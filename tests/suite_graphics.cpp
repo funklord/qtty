@@ -33,6 +33,16 @@ int suite_graphics() {
         CHECK(detectGraphicsMode() == Capabilities::Sixel, "foot -> Sixel");
         setenvs("", "xterm-256color", "");
         CHECK(detectGraphicsMode() == Capabilities::Halfblocks, "plain xterm -> Halfblocks");
+        setenvs("", "beerssh", "");
+        CHECK(detectGraphicsMode() == Capabilities::KittyAlpha,
+              "beerssh recognised (provisional KittyAlpha)");
+        qputenv("QTTY_GRAPHICS", "sixel");
+        CHECK(detectGraphicsMode() == Capabilities::Sixel,
+              "QTTY_GRAPHICS override beats TERM heuristics");
+        qputenv("QTTY_GRAPHICS", "none");
+        CHECK(detectGraphicsMode() == Capabilities::NoGraphics,
+              "QTTY_GRAPHICS=none disables graphics");
+        qunsetenv("QTTY_GRAPHICS");
         setenvs(oldKitty, oldTerm, oldProg);
     }
 

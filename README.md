@@ -48,6 +48,7 @@ reviewed change.
     tests/            CTest suite + snapshot fixtures
     tools/            qtty-inspect, qtty-replay
     docs/design.md    the design document — read this first
+    docs/beerssh.md   integration contract with beerssh (the terminal end)
     spikes/           the Phase-0 spikes exactly as run (§16); standalone
 
 ## Naming

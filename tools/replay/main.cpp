@@ -9,12 +9,19 @@
 //   click <col> <row> mouse press+release at cell
 //   frame             print the composed frame between markers
 //
+// --ansi: emit the raw ANSI/graphics byte stream through the real
+// AnsiBackend instead of text frames — a deterministic corpus for terminal
+// parser testing (docs/beerssh.md §4). Combine with QTTY_GRAPHICS to force a
+// graphics tier into the stream.
+//
 // Drives the built-in sample UI; applications link libqtty and reuse
 // InputRouter/Compositor the same way for their own screens.
 #include <qtty/qtty.h>
+#include "../../src/backends/ansi/ansibackend.h"
 #include <QtWidgets>
 #include <QTextStream>
 #include <cstdio>
+#include <memory>
 
 using namespace Qtty;
 
@@ -57,8 +64,17 @@ int main(int argc, char **argv) {
     InputRouter router(&win);
     Compositor comp(&win, &router);
 
+    bool ansi = false;
+    QString scriptPath;
+    for (int i = 1; i < argc; ++i) {
+        if (!qstrcmp(argv[i], "--ansi")) ansi = true;
+        else scriptPath = QString::fromLocal8Bit(argv[i]);
+    }
+    std::unique_ptr<AnsiBackend> backend;
+    if (ansi) backend = std::make_unique<AnsiBackend>();
+
     QFile file;
-    if (argc > 1) { file.setFileName(QString::fromLocal8Bit(argv[1])); file.open(QIODevice::ReadOnly); }
+    if (!scriptPath.isEmpty()) { file.setFileName(scriptPath); file.open(QIODevice::ReadOnly); }
     else file.open(stdin, QIODevice::ReadOnly);
     QTextStream in(&file);
 
@@ -85,7 +101,12 @@ int main(int argc, char **argv) {
         } else if (cmd == QLatin1String("frame")) {
             CellBuffer buf(48, 14);
             comp.compose(buf);
-            printf("--- frame %d ---\n%s--- end ---\n", frameNo++, qPrintable(buf.toText()));
+            if (backend) {
+                backend->present(buf, QRegion(0, 0, buf.cols(), buf.rows()));
+                ++frameNo;
+            } else {
+                printf("--- frame %d ---\n%s--- end ---\n", frameNo++, qPrintable(buf.toText()));
+            }
         } else {
             fprintf(stderr, "qtty-replay: unknown command '%s'\n", qPrintable(cmd));
         }

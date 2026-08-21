@@ -9,9 +9,25 @@ namespace Qtty {
 
 // ---- negotiation -----------------------------------------------------------
 Capabilities::GraphicsMode detectGraphicsMode() {
+    // Explicit override wins — the contract with cooperating terminals
+    // (docs/beerssh.md): the terminal exports QTTY_GRAPHICS naming the best
+    // mode it implements. Also the testing hook.
+    const QByteArray force = qgetenv("QTTY_GRAPHICS").toLower();
+    if (!force.isEmpty()) {
+        if (force == "none")        return Capabilities::NoGraphics;
+        if (force == "halfblocks")  return Capabilities::Halfblocks;
+        if (force == "sixel")       return Capabilities::Sixel;
+        if (force == "iterm2")      return Capabilities::ITerm2;
+        if (force == "kitty")       return Capabilities::Kitty;
+        if (force == "kitty-alpha") return Capabilities::KittyAlpha;
+    }
     const QByteArray term = qgetenv("TERM").toLower();
     const QByteArray prog = qgetenv("TERM_PROGRAM").toLower();
 
+    if (term.contains("beerssh"))
+        // Provisional until beerssh publishes its capability set
+        // (docs/beerssh.md): assume the modern bar, correct via QTTY_GRAPHICS.
+        return Capabilities::KittyAlpha;
     if (!qgetenv("KITTY_WINDOW_ID").isEmpty() || term.contains("kitty")
         || term.contains("ghostty"))
         return Capabilities::KittyAlpha;          // kitty protocol, alpha over text
