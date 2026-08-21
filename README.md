@@ -44,6 +44,18 @@ integral metrics (DejaVu Sans Mono for now; bundled font planned).
     docs/design.md    the design document — read this first
     spikes/           the Phase-0 spikes exactly as run (§16); standalone
 
+## Naming
+
+The project is **qtty** — lowercase in every machine-facing context: namespace,
+CMake target, library, headers, package and binary names. Env vars and macros
+are `QTTY_*` by their own conventions. In prose, "Qtty" at sentence and title
+positions is fine (the Git/git pattern). Never `QTty` or Q-class styling —
+that convention belongs to Qt's classes. Descriptively: "qtty — terminal
+rendering for Qt applications" (the trademark fair-use form).
+
+qtty is not affiliated with or endorsed by The Qt Company. "Qt" is a
+trademark of The Qt Company Ltd.
+
 ## License
 
 Not yet chosen (design intends a permissive license; note Qt's own LGPLv3/GPL
