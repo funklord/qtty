@@ -79,7 +79,9 @@ void CellPaintEngine::drawLines(const QLineF *l, int n) { for (int i = 0; i < n;
 void CellPaintEngine::drawLines(const QLine *l, int n)  { for (int i = 0; i < n; ++i) line(QLineF(l[i])); }
 
 void CellPaintEngine::drawPath(const QPainterPath &path) {
-    fillRectF(path.boundingRect(), /*outlineOnly=*/true);
+    // Solid-brush paths are fills — this is how QTextLayout paints selection
+    // regions (§17.2). Only brushless paths degrade to outline boxes.
+    fillRectF(path.boundingRect(), /*outlineOnly=*/brush_.style() == Qt::NoBrush);
 }
 
 void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &pm, const QRectF &) {
@@ -97,11 +99,26 @@ void CellPaintEngine::drawPolygon(const QPointF *pts, int n, PolygonDrawMode) {
     fillRectF(p.boundingRect(), true);
 }
 
+// Fill classification (§17.2): erase for window-ish palette roles, coloured
+// background for everything else — which is how selections reach the cells.
 void CellPaintEngine::fillRectF(const QRectF &r, bool outlineOnly) {
     QRect c = toCells(r);
     if (!c.isValid() || c.width() > 400 || c.height() > 200) return;
     if (outlineOnly || brush_.style() == Qt::NoBrush) { box(c); return; }
-    if (c.width() > 1 && c.height() > 1) dev_->buffer().fill(c, Cell{});
+
+    const QRgb col = brush_.color().rgba();
+    const QPalette &pal = QGuiApplication::palette();
+    bool erase = false;
+    for (QPalette::ColorRole role : {QPalette::Window, QPalette::Base,
+                                     QPalette::Button, QPalette::AlternateBase})
+        if (pal.color(role).rgba() == col) erase = true;
+
+    if (erase) {
+        if (c.width() > 1 && c.height() > 1) dev_->buffer().fill(c, Cell{});
+        return;
+    }
+    Cell v; v.bg = Color::rgb(col);                 // coloured fill (selection etc.)
+    dev_->buffer().fill(c, v);
 }
 
 void CellPaintEngine::box(const QRect &c) {

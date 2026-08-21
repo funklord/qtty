@@ -40,6 +40,8 @@ public:
                        const QWidget *) const override;
     void drawControl(ControlElement, const QStyleOption *, QPainter *,
                      const QWidget *) const override;
+    void drawComplexControl(ComplexControl, const QStyleOptionComplex *, QPainter *,
+                            const QWidget *) const override;
 };
 
 } // namespace qtty

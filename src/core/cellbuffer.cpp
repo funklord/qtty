@@ -72,6 +72,9 @@ void CellBuffer::putCluster(int x, int y, const QString &cluster,
     clearWidePartner(x, y);
     if (w == 2) clearWidePartner(x + 1, y);
     Cell &c = d_[y * c_ + x];
+    // A Default bg means "no opinion": glyphs written over a highlight fill
+    // keep it (selection rendering, §17.2). Explicit backgrounds replace.
+    if (bg.kind() == Color::Default) bg = c.bg;
     c.ch = cluster; c.fg = fg; c.bg = bg; c.attrs = attrs; c.width = quint8(w);
     if (w == 2 && x + 1 < c_) {
         Cell &cont = d_[y * c_ + x + 1];
