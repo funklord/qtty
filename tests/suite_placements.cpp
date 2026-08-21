@@ -1,17 +1,16 @@
-// test_placements — §5.7 cell-anchored placements through the drawPixmap
-// funnel: stable identity, scroll tracking, upload-once (§16.3).
+// suite_placements — §5.7 drawPixmap funnel (§16.3 semantics).
 #include <qtty/qtty.h>
 #include <QtWidgets>
 #include <cstdio>
 
 using qtty::GridMetrics;
 
-static int failures = 0;
-#define CHECK(cond, msg) do { \
-    if (cond) printf("PASS: %s\n", msg); \
-    else { printf("FAIL: %s\n", msg); ++failures; } } while (0)
+static int fails = 0;
+#define CHECK(c, m) do { if (c) printf("PASS: %s\n", m); \
+                         else { printf("FAIL: %s\n", m); ++fails; } } while (0)
 
-class PixWidget : public QWidget {           // paints one pixmap at a cell offset
+namespace {
+class PixWidget : public QWidget {
 public:
     QPixmap pm;
     QPoint cellPos{3, 2};
@@ -20,11 +19,10 @@ public:
         p.drawPixmap(cellPos.x() * GridMetrics::cw(), cellPos.y() * GridMetrics::ch(), pm);
     }
 };
+} // namespace
 
-int main(int argc, char **argv) {
-    qtty::prepareEnvironment();
-    QApplication app(argc, argv);
-    qtty::setup(app);
+int suite_placements() {
+    fails = 0;
     const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 
     QPixmap sticker(10 * cw, 4 * ch);
@@ -41,22 +39,18 @@ int main(int argc, char **argv) {
     QVector<qtty::CellImage> pl;
     qtty::renderOnce(w, buf, &pl);
     CHECK(pl.size() == 1, "one drawPixmap -> one placement");
-    CHECK(!pl.isEmpty() && pl[0].cellRect == QRect(3, 2, 10, 4),
-          "placement lands at the drawn cell rect");
-    CHECK(!pl.isEmpty() && pl[0].key == sticker.cacheKey(),
-          "placement identity is the pixmap cacheKey");
+    CHECK(!pl.isEmpty() && pl[0].cellRect == QRect(3, 2, 10, 4), "placement at drawn cell rect");
+    CHECK(!pl.isEmpty() && pl[0].key == sticker.cacheKey(), "identity is pixmap cacheKey");
+    CHECK(buf.images.size() == 1, "placements travel with the frame buffer");
 
-    // "scroll": move the anchor two rows up, identity stays, position tracks
     quint64 keyBefore = pl.isEmpty() ? 0 : pl[0].key;
     w.cellPos = QPoint(3, 0);
     QVector<qtty::CellImage> pl2;
     qtty::renderOnce(w, buf, &pl2);
     CHECK(!pl2.isEmpty() && pl2[0].cellRect.topLeft() == QPoint(3, 0),
-          "placement tracks the new anchor after scroll");
-    CHECK(!pl2.isEmpty() && pl2[0].key == keyBefore,
-          "same image -> same key across frames (upload-once)");
+          "placement tracks the new anchor (scroll)");
+    CHECK(!pl2.isEmpty() && pl2[0].key == keyBefore, "same image -> same key (upload-once)");
 
-    // tiny image stays a glyph, not a placement (§8.6)
     PixWidget tiny;
     tiny.pm = QPixmap(cw, ch);
     tiny.pm.fill(Qt::blue);
@@ -69,6 +63,5 @@ int main(int argc, char **argv) {
     qtty::renderOnce(tiny, tb, &tp);
     CHECK(tp.isEmpty(), "1-cell pixmap substitutes a glyph, no placement");
 
-    printf(failures ? "%d FAILURE(S)\n" : "all passed\n", failures);
-    return failures ? 1 : 0;
+    return fails;
 }

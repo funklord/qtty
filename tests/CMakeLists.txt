@@ -1,6 +1,0 @@
-foreach(t test_render test_grid test_placements)
-    add_executable(${t} ${t}.cpp)
-    target_link_libraries(${t} PRIVATE qtty::qtty)
-    target_compile_definitions(${t} PRIVATE QTTY_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-    add_test(NAME ${t} COMMAND ${t})
-endforeach()

@@ -26,12 +26,18 @@ Phase-2 build-out of those spikes. Expect API movement.
 
 ## Build
 
-    cmake -S . -B build && cmake --build build -j
-    ctest --test-dir build            # snapshot + invariant tests
-    ./build/examples/chat/chat --tui  # run the example in your terminal
+qmake project files are the source of truth; they generate plain Makefiles.
 
-Requires Qt 6 (Qt 5.15 support planned), CMake ≥ 3.16, a monospace font with
-integral metrics (DejaVu Sans Mono for now; bundled font planned).
+    mkdir build && cd build
+    qmake6 ../qtty.pro        # or qmake (Qt 5.15 support planned)
+    make -j                   # gmake / any make flavour
+    make check                # run the test suite (qtty-tests)
+    ./examples/chat/chat --tui
+
+Requires Qt 6 and a monospace font with integral metrics (DejaVu Sans Mono
+for now; bundled font planned). Fixture maintenance:
+`tests/qtty-tests --record render` rewrites the render snapshot after a
+reviewed change.
 
 ## Layout
 
@@ -40,7 +46,7 @@ integral metrics (DejaVu Sans Mono for now; bundled font planned).
     src/backends/     ansi (built-in), null (CI), termpaint + legacy (planned)
     examples/chat/    canonical dual-frontend example (§16.4)
     tests/            CTest suite + snapshot fixtures
-    tools/            qtty-inspect (qtty-replay planned)
+    tools/            qtty-inspect, qtty-replay
     docs/design.md    the design document — read this first
     spikes/           the Phase-0 spikes exactly as run (§16); standalone
 

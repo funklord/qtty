@@ -1,8 +1,11 @@
-// src/runtime/application.cpp — L6 entry points (§5.6).
+// src/runtime/application.cpp — L6 entry points (§5.6), wired to the real
+// §5 architecture: AnsiBackend -> InputRouter -> Compositor -> FrameScheduler.
 #include "qtty/application.h"
 #include "qtty/grid.h"
 #include "qtty/paint.h"
-#include "../backends/ansi/ansiruntime.h"
+#include "qtty/runtime.h"
+#include "qtty/theme.h"
+#include "../backends/ansi/ansibackend.h"
 #include <QtWidgets>
 
 namespace qtty {
@@ -13,8 +16,8 @@ void prepareEnvironment() {
 }
 
 void setup(QApplication &app) {
-    // Bundled-font provisioning (§5.3) is Phase 2; DejaVu Sans Mono is the
-    // interim source of integral metrics, asserted below as designed.
+    // Bundled-font provisioning (§5.3) is later Phase-2 work; DejaVu Sans
+    // Mono is the interim source of integral metrics, asserted as designed.
     QFont f(QStringLiteral("DejaVu Sans Mono"));
     f.setPixelSize(16);
     QFontMetrics fm(f);
@@ -24,6 +27,7 @@ void setup(QApplication &app) {
     GridMetrics::set(cw, ch);
     app.setFont(f);
     app.setStyle(new GridStyle);
+    setTheme(CellTheme::terminalDefault());
 }
 
 void renderOnce(QWidget &win, CellBuffer &buf, QVector<CellImage> *placements) {
@@ -32,11 +36,27 @@ void renderOnce(QWidget &win, CellBuffer &buf, QVector<CellImage> *placements) {
     win.render(&p, QPoint(), QRegion(),
                QWidget::RenderFlags(QWidget::DrawWindowBackground | QWidget::DrawChildren));
     p.end();
+    buf.images = dev.placements;
     if (placements) *placements = dev.placements;
 }
 
 int exec(QApplication &app, QWidget &win) {
-    detail::AnsiRuntime rt(&win);
+    AnsiBackend backend;
+
+    const QSize cells = backend.size();
+    win.setAttribute(Qt::WA_DontShowOnScreen);
+    win.resize(cells.width() * GridMetrics::cw(), cells.height() * GridMetrics::ch());
+    win.show();
+    QCoreApplication::processEvents();
+    setFocusWidget(win.focusWidget());
+
+    InputRouter router(&win);
+    Compositor compositor(&win, &router);
+    FrameScheduler scheduler(&backend, &compositor, &win);
+    backend.setEventSink(&router);
+    router.frameRequested = [&scheduler] { scheduler.requestFrame(); };
+
+    scheduler.renderNow();                      // initial frame
     return app.exec();
 }
 

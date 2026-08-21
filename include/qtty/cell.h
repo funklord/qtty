@@ -1,19 +1,24 @@
-// qtty/cell.h — L2 cell model (§5.2).
-// Spike-fidelity subset: colour, attrs beyond rev/bold, and grapheme-cluster
-// width handling are Phase 2 work (§17.1) and extend this type in place.
+// qtty/cell.h — L2 cell model (§5.2): grapheme clusters, wide cells,
+// colours/attrs, region diff, and frame-attached image placements (§5.7).
 #pragma once
 #include <QString>
 #include <QVector>
 #include <QRect>
+#include <QRegion>
 #include <QPixmap>
+#include "color.h"
 
 namespace qtty {
 
 struct Cell {
-    QString ch = QStringLiteral(" ");   // one grapheme cluster (§5.2)
-    bool rev = false;
-    bool bold = false;
-    bool operator==(const Cell &o) const { return ch == o.ch && rev == o.rev && bold == o.bold; }
+    QString ch = QStringLiteral(" ");   // ONE grapheme cluster, not one QChar
+    Color fg, bg;
+    Attrs attrs;
+    quint8 width = 1;                   // 1, 2 (wide), or 0 (continuation cell)
+
+    bool operator==(const Cell &o) const {
+        return ch == o.ch && fg == o.fg && bg == o.bg && attrs == o.attrs && width == o.width;
+    }
     bool operator!=(const Cell &o) const { return !(*this == o); }
 };
 
@@ -21,8 +26,17 @@ struct Cell {
 struct CellImage {
     quint64 key = 0;        // QPixmap::cacheKey() → upload-once identity
     QRect   cellRect;       // anchor + span, in cells
-    QPixmap pixmap;         // pixel source (backends encode from this)
+    QPixmap pixmap;
 };
+
+// Display width of one grapheme cluster: 2 for East Asian wide/fullwidth and
+// emoji presentation, else 1. The table is deliberately simple; terminals
+// disagree at the margins, and Capabilities::unicodeWide lets a backend
+// override behaviour (§5.2).
+int clusterWidth(QStringView cluster);
+
+// Split text into grapheme clusters (QTextBoundaryFinder::Grapheme).
+QVector<QString> toClusters(const QString &text);
 
 class CellBuffer {
 public:
@@ -37,34 +51,31 @@ public:
     }
     const Cell &at(int x, int y) const { return const_cast<CellBuffer *>(this)->at(x, y); }
 
-    void fill(const QRect &r, const Cell &v) {
-        for (int y = r.top(); y <= r.bottom(); ++y)
-            for (int x = r.left(); x <= r.right(); ++x) at(x, y) = v;
-    }
-    void text(int x, int y, const QString &s, bool rev = false, bool bold = false) {
-        for (int i = 0; i < s.size(); ++i) {
-            Cell &c = at(x + i, y);
-            c.ch = QString(s[i]); c.rev = rev; c.bold = bold;
-        }
-    }
-    int diffCells(const CellBuffer &prev) const {
-        if (prev.c_ != c_ || prev.r_ != r_) return c_ * r_;
-        int n = 0;
-        for (int i = 0; i < d_.size(); ++i) if (d_[i] != prev.d_[i]) ++n;
-        return n;
-    }
-    QString toText() const {
-        QString out;
-        for (int y = 0; y < r_; ++y) {
-            QString line;
-            for (int x = 0; x < c_; ++x) line += d_[y * c_ + x].ch;
-            while (line.endsWith(QLatin1Char(' '))) line.chop(1);
-            out += line + QLatin1Char('\n');
-        }
-        return out;
-    }
+    void fill(const QRect &r, const Cell &v);
+
+    // Write one grapheme cluster at (x,y), handling wide-cell continuation:
+    // a width-2 cluster claims (x,y) and marks (x+1,y) as continuation; any
+    // write over half of a wide pair clears the partner first (§5.2 — the
+    // classic corruption source, unit-tested).
+    void putCluster(int x, int y, const QString &cluster,
+                    Color fg = {}, Color bg = {}, Attrs attrs = {});
+
+    // Write a string of clusters starting at (x,y); returns cells consumed.
+    int text(int x, int y, const QString &s,
+             Color fg = {}, Color bg = {}, Attrs attrs = {});
+
+    // Damage vs a previous frame, as a cell-space region.
+    QRegion diff(const CellBuffer &prev) const;
+    int diffCells(const CellBuffer &prev) const;
+
+    QString toText() const;             // snapshot format (§9): glyphs only
+
+    // Frame payload: placements collected for this frame (§5.7). Travels with
+    // the buffer through present().
+    QVector<CellImage> images;
 
 private:
+    void clearWidePartner(int x, int y);
     int c_, r_;
     QVector<Cell> d_;
 };

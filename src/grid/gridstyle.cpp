@@ -69,6 +69,26 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
     case PM_IndicatorHeight:                               return ch;
     case PM_ExclusiveIndicatorWidth:                       return 3 * cw;
     case PM_ExclusiveIndicatorHeight:                      return ch;
+    // §17.1 audit — every metric that shapes geometry lands on the grid:
+    case PM_SplitterWidth:                                 return cw;
+    case PM_MenuHMargin: case PM_MenuVMargin:              return 0;
+    case PM_MenuBarHMargin: case PM_MenuBarVMargin:        return 0;
+    case PM_MenuBarItemSpacing:                            return 2 * cw;
+    case PM_TabBarTabHSpace:                               return 2 * cw;
+    case PM_TabBarTabVSpace:                               return 0;
+    case PM_TabBarBaseHeight: case PM_TabBarBaseOverlap:   return 0;
+    case PM_TabBarTabShiftHorizontal:
+    case PM_TabBarTabShiftVertical:                        return 0;
+    case PM_ProgressBarChunkWidth:                         return cw;
+    case PM_SliderThickness: case PM_SliderControlThickness: return ch;
+    case PM_SliderLength:                                  return 3 * cw;
+    case PM_CheckBoxLabelSpacing:
+    case PM_RadioButtonLabelSpacing:                       return cw;
+    case PM_ToolBarItemMargin: case PM_ToolBarItemSpacing: return 0;
+    case PM_ToolBarFrameWidth:                             return 0;
+    case PM_DockWidgetSeparatorExtent:                     return cw;
+    case PM_HeaderMargin:                                  return 0;
+    case PM_HeaderGripMargin:                              return cw;
     default:                                               return QProxyStyle::pixelMetric(m, o, w);
     }
 }
@@ -115,7 +135,9 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
                     // router-owned focus instead.
                     bool foc = (opt->state & State_HasFocus) || (w && w == s_focus);
                     dev->buffer().text(c.left(), c.top(),
-                                       QLatin1Char('<') + b->text + QLatin1Char('>'), foc);
+                                       QLatin1Char('<') + b->text + QLatin1Char('>'),
+                                       Color(), Color(),
+                                       foc ? Attrs(Attr::Reverse) : Attrs());
                 }
                 return;
             }

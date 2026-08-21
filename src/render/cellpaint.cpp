@@ -1,6 +1,9 @@
 // src/render/cellpaint.cpp — CellPaintDevice / CellPaintEngine (§5.4).
 #include "qtty/paint.h"
 #include "qtty/grid.h"
+#include "qtty/theme.h"
+#include <QGuiApplication>
+#include <QPalette>
 #include <QPainterPath>
 #include <QFontMetricsF>
 
@@ -47,12 +50,27 @@ QRect CellPaintEngine::toCells(const QRectF &r) const {
                  qMax(1, qRound(m.width() / cw)), qMax(1, qRound(m.height() / ch)));
 }
 
+// Text colour policy (§6): colours matching the app palette's standard text
+// roles emit Color::Default so the terminal's own scheme applies; anything
+// the app explicitly coloured passes through as Rgb.
+static Color penToFg(const QPen &pen) {
+    const QRgb c = pen.color().rgba();
+    const QPalette &pal = QGuiApplication::palette();
+    for (QPalette::ColorRole r : {QPalette::WindowText, QPalette::Text, QPalette::ButtonText})
+        if (pal.color(r).rgba() == c) return Color();
+    return Color::rgb(c);
+}
+
 void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
     QPointF q = xf_.map(p) + QPointF(dev_->origin);
     QFontMetricsF fm(ti.font());
     int col = qRound(q.x() / GridMetrics::cw());
     int row = qRound((q.y() - fm.ascent()) / GridMetrics::ch());
-    dev_->buffer().text(col, row, ti.text(), false, ti.font().bold());
+    Attrs a;
+    if (ti.font().bold()) a |= Attr::Bold;
+    if (ti.font().italic()) a |= Attr::Italic;
+    if (ti.font().underline()) a |= Attr::Underline;
+    dev_->buffer().text(col, row, ti.text(), penToFg(pen_), Color(), a);
 }
 
 void CellPaintEngine::drawRects(const QRectF *r, int n) { for (int i = 0; i < n; ++i) fillRectF(r[i]); }
