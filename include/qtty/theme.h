@@ -3,7 +3,7 @@
 #include <QPalette>
 #include "color.h"
 
-namespace qtty {
+namespace Qtty {
 
 // The theme maps Qt palette roles to terminal colours. The default theme
 // keeps everything Color::Default (the terminal's own scheme) — the most
@@ -23,8 +23,8 @@ struct CellTheme {
     Color background(QPalette::ColorRole r) const;
 };
 
-// Process-wide active theme (installed by qtty::setup, replaceable).
+// Process-wide active theme (installed by Qtty::setup, replaceable).
 const CellTheme &theme();
 void setTheme(const CellTheme &);
 
-} // namespace qtty
+} // namespace Qtty

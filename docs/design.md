@@ -917,7 +917,9 @@ so the entire clash surface is the frontend shim in `main.cpp`. To keep it that 
 any project — including one that already has its own `Cell`, `Overlay`, or `Style` —
 the library commits to:
 
-- **Everything public lives in `namespace qtty`.** No types, functions, or globals at
+- **Everything public lives in `namespace Qtty`.** (Capitalised, matching the
+  Qt-ecosystem convention — `Qt::`, `KIO::`, `QXlsx::`; file-system names stay
+  lowercase `qtty`, the KDE repo/namespace pattern.) No types, functions, or globals at
   global scope. The spike core deliberately breaks this (`CW`, `CH`, `g_qttyFocus`,
   `Cell` unqualified) for brevity; the library wraps all of it. No `using namespace`
   in any public header.

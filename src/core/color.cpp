@@ -1,7 +1,7 @@
 // src/core/color.cpp — quantisation and contrast (§6).
 #include "qtty/color.h"
 
-namespace qtty {
+namespace Qtty {
 
 // xterm 256: 16 system + 6x6x6 cube (16..231) + grey ramp (232..255).
 static int cubeLevel(int v) {                 // 0..255 → 0..5 (cube levels 0,95,135,175,215,255)
@@ -71,4 +71,4 @@ bool hasMinimumContrast(const Color &fg, const Color &bg, int minDelta) {
     return qAbs(fg.luminance(true) - bg.luminance(false)) >= minDelta;
 }
 
-} // namespace qtty
+} // namespace Qtty

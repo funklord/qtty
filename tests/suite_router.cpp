@@ -4,7 +4,7 @@
 #include <QtWidgets>
 #include <cstdio>
 
-using namespace qtty;
+using namespace Qtty;
 
 static int fails = 0;
 #define CHECK(c, m) do { if (c) printf("PASS: %s\n", m); \

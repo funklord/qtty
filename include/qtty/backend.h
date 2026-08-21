@@ -11,7 +11,7 @@
 #include <optional>
 #include "cell.h"
 
-namespace qtty {
+namespace Qtty {
 
 struct Capabilities {
     enum ColorDepth { Mono, Ansi16, Xterm256, TrueColor };
@@ -76,4 +76,4 @@ public:
     virtual void clearOverlay(int id) = 0;
 };
 
-} // namespace qtty
+} // namespace Qtty

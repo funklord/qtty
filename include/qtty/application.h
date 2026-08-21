@@ -2,18 +2,18 @@
 //
 // Canonical usage (see examples/chat/main.cpp):
 //     decide frontend
-//       -> qtty::prepareEnvironment()   BEFORE QApplication
+//       -> Qtty::prepareEnvironment()   BEFORE QApplication
 //       -> QApplication ctor
-//       -> qtty::setup(app)             BEFORE any widget (font + style)
+//       -> Qtty::setup(app)             BEFORE any widget (font + style)
 //       -> construct shared widgets
-//       -> qtty::exec(app, win)  /  win.show(); app.exec()
+//       -> Qtty::exec(app, win)  /  win.show(); app.exec()
 #pragma once
 #include <QWidget>
 #include "cell.h"
 
 class QApplication;
 
-namespace qtty {
+namespace Qtty {
 
 // Selects the offscreen platform and pins scaling. MUST precede QApplication.
 void prepareEnvironment();
@@ -30,4 +30,4 @@ int exec(QApplication &app, QWidget &win);
 void renderOnce(QWidget &win, CellBuffer &buf,
                 QVector<CellImage> *placements = nullptr);
 
-} // namespace qtty
+} // namespace Qtty

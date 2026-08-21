@@ -2,7 +2,7 @@
 #include "qtty/cell.h"
 #include <QTextBoundaryFinder>
 
-namespace qtty {
+namespace Qtty {
 
 // ---- cluster width ---------------------------------------------------------
 static bool isWideCodepoint(char32_t u) {
@@ -131,4 +131,4 @@ QString CellBuffer::toText() const {
     return out;
 }
 
-} // namespace qtty
+} // namespace Qtty

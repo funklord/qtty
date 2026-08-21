@@ -8,7 +8,7 @@
 #include "cell.h"
 #include "application.h"
 
-namespace qtty {
+namespace Qtty {
 namespace test {
 
 // Compare `got` with the named fixture under <root>/tests/snapshots/.
@@ -47,4 +47,4 @@ inline QString snapshotOf(QWidget &w, int cols, int rows) {
 }
 
 } // namespace test
-} // namespace qtty
+} // namespace Qtty

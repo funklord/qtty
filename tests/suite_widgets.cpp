@@ -4,7 +4,7 @@
 #include <QtWidgets>
 #include <cstdio>
 
-using namespace qtty;
+using namespace Qtty;
 
 static int fails = 0;
 static bool g_record = false;
@@ -197,8 +197,8 @@ int suite_widgets() {
         tabs->addTab(new QWidget, "Advanced");
         v->addWidget(tabs, 1);
         show(win, 44, 16);
-        const QString got = qtty::test::snapshotOf(win, 46, 17);
-        fails += qtty::test::checkSnapshot(QStringLiteral(QTTY_SOURCE_DIR),
+        const QString got = Qtty::test::snapshotOf(win, 46, 17);
+        fails += Qtty::test::checkSnapshot(QStringLiteral(QTTY_SOURCE_DIR),
                                            QStringLiteral("widgets_gallery"), got, g_record);
         if (!g_record) printf("%s: gallery snapshot\n", fails ? "FAIL" : "PASS");
     }

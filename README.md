@@ -52,12 +52,13 @@ reviewed change.
 
 ## Naming
 
-The project is **qtty** — lowercase in every machine-facing context: namespace,
-CMake target, library, headers, package and binary names. Env vars and macros
-are `QTTY_*` by their own conventions. In prose, "Qtty" at sentence and title
-positions is fine (the Git/git pattern). Never `QTty` or Q-class styling —
-that convention belongs to Qt's classes. Descriptively: "qtty — terminal
-rendering for Qt applications" (the trademark fair-use form).
+The project is **qtty** lowercase in file-system contexts — repo, library,
+headers/include path, package and binary names — with the C++ namespace
+**`Qtty::`**, matching the Qt-ecosystem mould (`Qt::`, `KIO::`, `QXlsx::`;
+the KDE pattern of repo `kio` / namespace `KIO`). Env vars and macros are
+`QTTY_*`. In prose, "Qtty" (the Git/git pattern). Never `QTty` or Q-class
+styling — that convention belongs to Qt's classes. Descriptively: "qtty —
+terminal rendering for Qt applications" (the trademark fair-use form).
 
 qtty is not affiliated with or endorsed by The Qt Company. "Qt" is a
 trademark of The Qt Company Ltd.

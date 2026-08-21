@@ -3,7 +3,7 @@
 #include <QColor>
 #include <QFlags>
 
-namespace qtty {
+namespace Qtty {
 
 // A terminal colour: the terminal's defaults, a palette index, or true colour.
 // Quantisation to the backend's depth happens at present time (§6), so L2-L4
@@ -59,4 +59,4 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(Attrs)
 // Violations are a theme bug; debug builds log them at present time.
 bool hasMinimumContrast(const Color &fg, const Color &bg, int minDelta = 48);
 
-} // namespace qtty
+} // namespace Qtty

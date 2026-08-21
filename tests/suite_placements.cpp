@@ -3,7 +3,7 @@
 #include <QtWidgets>
 #include <cstdio>
 
-using qtty::GridMetrics;
+using Qtty::GridMetrics;
 
 static int fails = 0;
 #define CHECK(c, m) do { if (c) printf("PASS: %s\n", m); \
@@ -35,9 +35,9 @@ int suite_placements() {
     w.show();
     QCoreApplication::processEvents();
 
-    qtty::CellBuffer buf(40, 12);
-    QVector<qtty::CellImage> pl;
-    qtty::renderOnce(w, buf, &pl);
+    Qtty::CellBuffer buf(40, 12);
+    QVector<Qtty::CellImage> pl;
+    Qtty::renderOnce(w, buf, &pl);
     CHECK(pl.size() == 1, "one drawPixmap -> one placement");
     CHECK(!pl.isEmpty() && pl[0].cellRect == QRect(3, 2, 10, 4), "placement at drawn cell rect");
     CHECK(!pl.isEmpty() && pl[0].key == sticker.cacheKey(), "identity is pixmap cacheKey");
@@ -45,8 +45,8 @@ int suite_placements() {
 
     quint64 keyBefore = pl.isEmpty() ? 0 : pl[0].key;
     w.cellPos = QPoint(3, 0);
-    QVector<qtty::CellImage> pl2;
-    qtty::renderOnce(w, buf, &pl2);
+    QVector<Qtty::CellImage> pl2;
+    Qtty::renderOnce(w, buf, &pl2);
     CHECK(!pl2.isEmpty() && pl2[0].cellRect.topLeft() == QPoint(3, 0),
           "placement tracks the new anchor (scroll)");
     CHECK(!pl2.isEmpty() && pl2[0].key == keyBefore, "same image -> same key (upload-once)");
@@ -58,9 +58,9 @@ int suite_placements() {
     tiny.resize(GridMetrics::cells(10, 4));
     tiny.show();
     QCoreApplication::processEvents();
-    qtty::CellBuffer tb(10, 4);
-    QVector<qtty::CellImage> tp;
-    qtty::renderOnce(tiny, tb, &tp);
+    Qtty::CellBuffer tb(10, 4);
+    QVector<Qtty::CellImage> tp;
+    Qtty::renderOnce(tiny, tb, &tp);
     CHECK(tp.isEmpty(), "1-cell pixmap substitutes a glyph, no placement");
 
     return fails;

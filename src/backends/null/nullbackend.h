@@ -3,7 +3,7 @@
 #pragma once
 #include "qtty/backend.h"
 
-namespace qtty {
+namespace Qtty {
 
 class NullBackend : public ITerminalBackend {
 public:
@@ -33,4 +33,4 @@ private:
     ITerminalEventSink *sink_ = nullptr;
 };
 
-} // namespace qtty
+} // namespace Qtty

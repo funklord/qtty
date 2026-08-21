@@ -4,12 +4,12 @@
 #include <QtWidgets>
 #include <cstdio>
 
-using qtty::GridMetrics;
+using Qtty::GridMetrics;
 
 int main(int argc, char **argv) {
-    qtty::prepareEnvironment();
+    Qtty::prepareEnvironment();
     QApplication app(argc, argv);
-    qtty::setup(app);
+    Qtty::setup(app);
     const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 
     QDialog dlg;
@@ -35,8 +35,8 @@ int main(int argc, char **argv) {
                g.x() / cw, g.y() / ch, g.width() / cw, g.height() / ch,
                GridMetrics::isAligned(g) ? "aligned" : "MISALIGNED");
     }
-    qtty::CellBuffer buf(52, 12);
-    qtty::renderOnce(dlg, buf);
+    Qtty::CellBuffer buf(52, 12);
+    Qtty::renderOnce(dlg, buf);
     printf("\nrendering:\n%s", qPrintable(buf.toText()));
     return 0;
 }

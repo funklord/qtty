@@ -1,6 +1,6 @@
 #include "qtty/theme.h"
 
-namespace qtty {
+namespace Qtty {
 
 CellTheme CellTheme::terminalDefault() { return CellTheme{}; }
 
@@ -39,4 +39,4 @@ static CellTheme s_theme = CellTheme::terminalDefault();
 const CellTheme &theme() { return s_theme; }
 void setTheme(const CellTheme &t) { s_theme = t; }
 
-} // namespace qtty
+} // namespace Qtty

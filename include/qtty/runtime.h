@@ -1,5 +1,5 @@
 // qtty/runtime.h — L5/L6 runtime tier (§5.5, §5.6, §17.1):
-// InputRouter, Compositor, FrameScheduler. Wired together by qtty::exec();
+// InputRouter, Compositor, FrameScheduler. Wired together by Qtty::exec();
 // exposed for custom frame loops and tests.
 #pragma once
 #include <QObject>
@@ -14,7 +14,7 @@
 class QWidget;
 class QApplication;
 
-namespace qtty {
+namespace Qtty {
 
 // ---------------------------------------------------------------- InputRouter
 // Owns everything Qt's platform layer would normally own (measured F3/F4):
@@ -94,4 +94,4 @@ private:
     std::unique_ptr<CellBuffer> prev_;
 };
 
-} // namespace qtty
+} // namespace Qtty

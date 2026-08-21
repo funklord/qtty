@@ -3,7 +3,7 @@
 #include <QtWidgets>
 #include <cstdio>
 
-using qtty::GridMetrics;
+using Qtty::GridMetrics;
 
 static int fails = 0;
 #define CHECK(c, m) do { if (c) printf("PASS: %s\n", m); \
@@ -41,10 +41,10 @@ int suite_grid() {
     QCoreApplication::processEvents();
     CHECK(dlg.focusWidget() == edit, "window->focusWidget() tracks setFocus (F4)");
 
-    qtty::CellBuffer f1(40, 10), f2(40, 10);
-    qtty::setFocusWidget(nullptr); qtty::renderOnce(dlg, f1);
-    qtty::setFocusWidget(b1);      qtty::renderOnce(dlg, f2);
-    qtty::setFocusWidget(nullptr);
+    Qtty::CellBuffer f1(40, 10), f2(40, 10);
+    Qtty::setFocusWidget(nullptr); Qtty::renderOnce(dlg, f1);
+    Qtty::setFocusWidget(b1);      Qtty::renderOnce(dlg, f2);
+    Qtty::setFocusWidget(nullptr);
     int d = f2.diffCells(f1);
     CHECK(d > 0 && d <= b1->width() / cw * 2, "focus injection dirties only the button");
 

@@ -7,7 +7,7 @@
 #include "qtty/application.h"
 #include <QtWidgets>
 
-namespace qtty {
+namespace Qtty {
 
 // ----------------------------------------------------------------- Compositor
 Compositor::Compositor(QWidget *window, InputRouter *router)
@@ -104,4 +104,4 @@ void FrameScheduler::renderNow() {
     sinceLast_.restart();
 }
 
-} // namespace qtty
+} // namespace Qtty

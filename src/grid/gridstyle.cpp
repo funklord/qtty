@@ -7,7 +7,7 @@
 #include <QPainter>
 #include <QWidget>
 
-namespace qtty {
+namespace Qtty {
 
 static int s_cw = 8, s_ch = 16;
 int GridMetrics::cw() { return s_cw; }
@@ -353,4 +353,4 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
     QProxyStyle::drawComplexControl(cc, opt, p, w);
 }
 
-} // namespace qtty
+} // namespace Qtty

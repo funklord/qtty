@@ -7,7 +7,7 @@
 #include <QPainterPath>
 #include <QFontMetricsF>
 
-namespace qtty {
+namespace Qtty {
 
 CellPaintDevice::CellPaintDevice(CellBuffer &b) : buf_(b), eng_(new CellPaintEngine) {}
 CellPaintDevice::~CellPaintDevice() { delete eng_; }
@@ -153,4 +153,4 @@ void CellPaintEngine::line(const QLineF &l) {
     }
 }
 
-} // namespace qtty
+} // namespace Qtty

@@ -16,7 +16,7 @@
 #include <QTextStream>
 #include <cstdio>
 
-using namespace qtty;
+using namespace Qtty;
 
 static int keyByName(const QString &n) {
     static const QHash<QString, int> map = {

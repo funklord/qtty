@@ -10,7 +10,7 @@
 #include <QTransform>
 #include "cell.h"
 
-namespace qtty {
+namespace Qtty {
 
 class CellPaintEngine;
 
@@ -63,4 +63,4 @@ private:
     QPen pen_; QBrush brush_; QFont font_; QTransform xf_;
 };
 
-} // namespace qtty
+} // namespace Qtty

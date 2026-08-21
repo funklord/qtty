@@ -14,7 +14,7 @@ int suite_router();
 int suite_widgets_entry(bool record);
 
 int main(int argc, char **argv) {
-    qtty::prepareEnvironment();
+    Qtty::prepareEnvironment();
     QApplication app(argc, argv);
 
     // §10.1 inertness gate runs BEFORE setup() by necessity.
@@ -25,7 +25,7 @@ int main(int argc, char **argv) {
         ++failures;
     } else printf("PASS: inert before setup()\n");
 
-    qtty::setup(app);
+    Qtty::setup(app);
 
     bool record = false;
     QString only;

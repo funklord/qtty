@@ -7,7 +7,7 @@
 #include "qtty/grid.h"
 #include <QtWidgets>
 
-namespace qtty {
+namespace Qtty {
 
 InputRouter::InputRouter(QWidget *window) : win_(window) {
     quitKeys_ = { KeyEvent{Qt::Key_C, QString(), true, false, false},
@@ -175,4 +175,4 @@ void InputRouter::onResize(QSize cells) {
 
 void InputRouter::onFocusChange(bool) { if (frameRequested) frameRequested(); }
 
-} // namespace qtty
+} // namespace Qtty

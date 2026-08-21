@@ -18,11 +18,11 @@
 //      libraries.
 //
 // Order matters and is the one sharp edge:
-//      decide frontend  ->  qtty::prepareEnvironment()   (sets QT_QPA_PLATFORM)
+//      decide frontend  ->  Qtty::prepareEnvironment()   (sets QT_QPA_PLATFORM)
 //                       ->  QApplication ctor
-//                       ->  qtty::setup(app)             (font + style)
+//                       ->  Qtty::setup(app)             (font + style)
 //                       ->  construct shared widgets     (they read app font)
-//                       ->  qtty::exec / app.exec
+//                       ->  Qtty::exec / app.exec
 // prepareEnvironment() must precede QApplication, and setup() must precede
 // widget construction so the shared UI derives its metrics from the final font.
 
@@ -58,11 +58,11 @@ int main(int argc, char **argv) {
     const bool tui = wantTui(argc, argv);
 
 #ifndef QTTY_NO_TUI
-    if (tui) qtty::prepareEnvironment();       // BEFORE QApplication
+    if (tui) Qtty::prepareEnvironment();       // BEFORE QApplication
 #endif
     QApplication app(argc, argv);
 #ifndef QTTY_NO_TUI
-    if (tui) qtty::setup(app);                 // BEFORE any widget
+    if (tui) Qtty::setup(app);                 // BEFORE any widget
 #endif
 
     ChatWindow win;                            // identical in both frontends
@@ -71,7 +71,7 @@ int main(int argc, char **argv) {
         QTimer::singleShot(300, &app, &QCoreApplication::quit);
 
 #ifndef QTTY_NO_TUI
-    if (tui) return qtty::exec(app, win);
+    if (tui) return Qtty::exec(app, win);
 #endif
     win.show();
     return app.exec();

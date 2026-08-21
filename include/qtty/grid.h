@@ -6,15 +6,15 @@
 
 class QWidget;
 
-namespace qtty {
+namespace Qtty {
 
-// One cell ≡ cw() × ch() device pixels. Values are set once by qtty::setup()
+// One cell ≡ cw() × ch() device pixels. Values are set once by Qtty::setup()
 // from the measured application font (§5.3 "font provisioning").
 class GridMetrics {
 public:
     static int cw();
     static int ch();
-    static void set(int cw, int ch);            // called by qtty::setup()
+    static void set(int cw, int ch);            // called by Qtty::setup()
     static QSize cells(int c, int r) { return {c * cw(), r * ch()}; }
     static bool isAligned(const QRect &px) {
         return px.x() % cw() == 0 && px.y() % ch() == 0
@@ -44,4 +44,4 @@ public:
                             const QWidget *) const override;
 };
 
-} // namespace qtty
+} // namespace Qtty

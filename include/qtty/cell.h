@@ -8,7 +8,7 @@
 #include <QPixmap>
 #include "color.h"
 
-namespace qtty {
+namespace Qtty {
 
 struct Cell {
     QString ch = QStringLiteral(" ");   // ONE grapheme cluster, not one QChar
@@ -80,4 +80,4 @@ private:
     QVector<Cell> d_;
 };
 
-} // namespace qtty
+} // namespace Qtty

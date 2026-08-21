@@ -1,7 +1,7 @@
 # Legacy backend adapters (Phase 1)
 
 One subdirectory per product: each adapts an existing TUI implementation's
-terminal layer to `qtty::ITerminalBackend` (§5.1). Escape decoding stays in
+terminal layer to `Qtty::ITerminalBackend` (§5.1). Escape decoding stays in
 the legacy code — that is where its accumulated bug fixes live (§5.1);
 convergence onto one backend is Phase 5 and optional.
 

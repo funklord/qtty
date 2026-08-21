@@ -3,7 +3,7 @@
 #include <QtWidgets>
 #include <cstdio>
 
-using qtty::GridMetrics;
+using Qtty::GridMetrics;
 
 int suite_render(bool record) {
     QDialog dlg;
@@ -24,8 +24,8 @@ int suite_render(bool record) {
     dlg.show();
     QCoreApplication::processEvents();
 
-    const QString got = qtty::test::snapshotOf(dlg, 52, 14);
-    int r = qtty::test::checkSnapshot(QStringLiteral(QTTY_SOURCE_DIR),
+    const QString got = Qtty::test::snapshotOf(dlg, 52, 14);
+    int r = Qtty::test::checkSnapshot(QStringLiteral(QTTY_SOURCE_DIR),
                                       QStringLiteral("prefs_dialog"), got, record);
     if (!r && !record) printf("PASS: snapshot matches\n");
     return r;

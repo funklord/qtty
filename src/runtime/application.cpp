@@ -8,7 +8,7 @@
 #include "../backends/ansi/ansibackend.h"
 #include <QtWidgets>
 
-namespace qtty {
+namespace Qtty {
 
 void prepareEnvironment() {
     qputenv("QT_QPA_PLATFORM", "offscreen");
@@ -22,7 +22,7 @@ void setup(QApplication &app) {
     f.setPixelSize(16);
     QFontMetrics fm(f);
     const int cw = fm.horizontalAdvance(u'M'), ch = fm.height();
-    Q_ASSERT_X(cw > 0 && fm.horizontalAdvance(u'i') == cw, "qtty::setup",
+    Q_ASSERT_X(cw > 0 && fm.horizontalAdvance(u'i') == cw, "Qtty::setup",
                "monospace font with integral metrics required");
     GridMetrics::set(cw, ch);
     app.setFont(f);
@@ -60,4 +60,4 @@ int exec(QApplication &app, QWidget &win) {
     return app.exec();
 }
 
-} // namespace qtty
+} // namespace Qtty

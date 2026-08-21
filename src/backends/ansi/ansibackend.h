@@ -11,7 +11,7 @@
 
 class QSocketNotifier;
 
-namespace qtty {
+namespace Qtty {
 
 class AnsiBackend : public QObject, public ITerminalBackend {
 public:
@@ -39,4 +39,4 @@ private:
     termios saved_{};
 };
 
-} // namespace qtty
+} // namespace Qtty

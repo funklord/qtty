@@ -6,7 +6,7 @@
 #include <sys/ioctl.h>
 #include <cstdio>
 
-namespace qtty {
+namespace Qtty {
 
 AnsiBackend::AnsiBackend() {
     winsize ws{};
@@ -171,4 +171,4 @@ bool AnsiBackend::decodeOne() {
     return true;
 }
 
-} // namespace qtty
+} // namespace Qtty
