@@ -9,6 +9,8 @@
 #include "backend.h"
 #include "grid.h"
 #include "paint.h"
+#include "graphics.h"
+#include "overlay.h"
 #include "runtime.h"
 #include "application.h"
 #include "testing.h"

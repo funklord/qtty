@@ -12,6 +12,7 @@ int suite_grid();
 int suite_placements();
 int suite_router();
 int suite_widgets_entry(bool record);
+int suite_graphics();
 
 int main(int argc, char **argv) {
     Qtty::prepareEnvironment();
@@ -41,6 +42,7 @@ int main(int argc, char **argv) {
         {"placements", [&] { return suite_placements(); }},
         {"router",     [&] { return suite_router(); }},
         {"widgets",    [&] { return suite_widgets_entry(record); }},
+        {"graphics",   [&] { return suite_graphics(); }},
     };
     for (auto &s : suites) {
         if (!only.isEmpty() && only != QLatin1String(s.name)) continue;

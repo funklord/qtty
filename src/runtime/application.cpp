@@ -40,7 +40,11 @@ void renderOnce(QWidget &win, CellBuffer &buf, QVector<CellImage> *placements) {
     if (placements) *placements = dev.placements;
 }
 
+static bool s_tuiActive = false;
+bool isTuiActive() { return s_tuiActive; }
+
 int exec(QApplication &app, QWidget &win) {
+    s_tuiActive = true;
     AnsiBackend backend;
 
     const QSize cells = backend.size();
@@ -57,7 +61,9 @@ int exec(QApplication &app, QWidget &win) {
     router.frameRequested = [&scheduler] { scheduler.requestFrame(); };
 
     scheduler.renderNow();                      // initial frame
-    return app.exec();
+    const int rc = app.exec();
+    s_tuiActive = false;
+    return rc;
 }
 
 } // namespace Qtty

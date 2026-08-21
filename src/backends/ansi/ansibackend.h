@@ -8,12 +8,14 @@
 #include <QByteArray>
 #include <termios.h>
 #include "qtty/backend.h"
+#include <QSet>
 
 class QSocketNotifier;
 
 namespace Qtty {
 
-class AnsiBackend : public QObject, public ITerminalBackend {
+class AnsiBackend : public QObject, public ITerminalBackend,
+                    public IGraphicsOutput {
 public:
     AnsiBackend();
     ~AnsiBackend() override;
@@ -26,6 +28,11 @@ public:
     void suspend() override;
     void resume() override;
 
+    // IGraphicsOutput (§5.7): pixel tiers for capable terminals.
+    void presentPixels(const QImage &frame, const QRegion &cellRegion) override;
+    void presentOverlay(int id, const QImage &rgba, QPoint cell, int z) override;
+    void clearOverlay(int id) override;
+
 private:
     void readInput();
     bool decodeOne();                    // one key from pending_ → sink
@@ -34,6 +41,8 @@ private:
     QSocketNotifier *notifier_ = nullptr;
     QByteArray pending_;
     QSize cells_;
+    Capabilities::GraphicsMode mode_;
+    QSet<quint64> uploaded_;                     // kitty upload-once cache
     bool rawOk_ = false;
     bool active_ = false;
     termios saved_{};

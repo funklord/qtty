@@ -25,6 +25,10 @@ void setup(QApplication &app);
 // Run `win` full-screen on the controlling terminal until quit.
 int exec(QApplication &app, QWidget &win);
 
+// True while exec() is driving a terminal session. Overlay uses this to pick
+// its rendering path (§5.7); apps can branch on it for target-specific polish.
+bool isTuiActive();
+
 // Render one frame of `win` into `buf` (and collect §5.7 placements when
 // `placements` is non-null). Used by tests, tools, and custom frame loops.
 void renderOnce(QWidget &win, CellBuffer &buf,

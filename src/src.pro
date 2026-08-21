@@ -18,6 +18,8 @@ HEADERS += \
     ../include/qtty/runtime.h \
     ../include/qtty/application.h \
     ../include/qtty/testing.h \
+    ../include/qtty/graphics.h \
+    ../include/qtty/overlay.h \
     backends/ansi/ansibackend.h \
     backends/null/nullbackend.h
 
@@ -30,4 +32,6 @@ SOURCES += \
     runtime/inputrouter.cpp \
     runtime/compositor.cpp \
     runtime/application.cpp \
+    graphics/graphics.cpp \
+    graphics/overlay.cpp \
     backends/ansi/ansibackend.cpp

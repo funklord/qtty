@@ -1,4 +1,6 @@
 #include "ansibackend.h"
+#include "qtty/graphics.h"
+#include "qtty/grid.h"
 #include <QSocketNotifier>
 #include <QImage>
 #include <QCoreApplication>
@@ -9,6 +11,7 @@
 namespace Qtty {
 
 AnsiBackend::AnsiBackend() {
+    mode_ = detectGraphicsMode();
     winsize ws{};
     if (ioctl(1, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
         cells_ = QSize(ws.ws_col, ws.ws_row);
@@ -24,8 +27,13 @@ AnsiBackend::~AnsiBackend() { suspend(); }
 Capabilities AnsiBackend::capabilities() const {
     Capabilities c;
     c.color = Capabilities::Xterm256;
-    c.graphics = Capabilities::Halfblocks;          // mosaic tier (§5.7)
+    c.graphics = mode_;                             // negotiated (§5.7, §17.3)
     return c;
+}
+
+static QByteArray moveTo(QPoint cell) {
+    return "\033[" + QByteArray::number(cell.y() + 1) + ';'
+         + QByteArray::number(cell.x() + 1) + 'H';
 }
 
 QSize AnsiBackend::size() const { return cells_; }
@@ -73,25 +81,12 @@ static void emitSgr(QByteArray &out, const Cell &c, Sgr &cur) {
 
 void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
     // Full-frame emission: measured cheap (§16.1 F9); damage-limited output
-    // arrives with DEC 2026 bracketing in Phase 2 polish.
-    CellBuffer composed = frame;                     // mosaic composites in-place
-    for (const CellImage &ci : frame.images) {
-        QImage img = ci.pixmap.toImage();
-        for (int cy = 0; cy < ci.cellRect.height(); ++cy)
-            for (int cx = 0; cx < ci.cellRect.width(); ++cx) {
-                int X = ci.cellRect.x() + cx, Y = ci.cellRect.y() + cy;
-                if (X < 0 || Y < 0 || X >= composed.cols() || Y >= composed.rows()) continue;
-                int tx = qMin(cx * img.width()  / ci.cellRect.width()
-                              + img.width()  / (2 * ci.cellRect.width()),  img.width() - 1);
-                int ty = qMin(cy * img.height() / ci.cellRect.height()
-                              + img.height() / (2 * ci.cellRect.height()), img.height() - 1);
-                QRgb px = img.pixel(tx, ty);
-                if (qAlpha(px) < 40) continue;
-                composed.putCluster(X, Y,
-                    qAlpha(px) > 200 ? QStringLiteral("█") : QStringLiteral("▓"),
-                    Color::rgb(px));
-            }
-    }
+    // arrives with DEC 2026 bracketing in later polish.
+    CellBuffer composed = frame;
+    const bool pixelPlacements = mode_ >= Capabilities::Sixel;
+    if (!pixelPlacements)                            // fallback tier: colour
+        for (const CellImage &ci : frame.images)     // half-blocks (§17.3)
+            composeHalfblocks(composed, ci.pixmap.toImage(), ci.cellRect);
 
     QByteArray out = "\033[H";
     Sgr cur;
@@ -104,6 +99,70 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
         }
         if (y < composed.rows() - 1) out += "\033[0m\r\n", cur = Sgr{};
     }
+    if (pixelPlacements) {                           // real pixels (§5.7)
+        if (mode_ == Capabilities::Kitty || mode_ == Capabilities::KittyAlpha) {
+            out += kittyDeleteAll();
+            for (const CellImage &ci : frame.images) {
+                out += moveTo(ci.cellRect.topLeft());
+                const quint32 id = quint32(ci.key & 0xFFFFFF) + 1;
+                if (!uploaded_.contains(ci.key)) {
+                    uploaded_.insert(ci.key);
+                    out += encodeKittyImage(id, ci.pixmap.toImage());
+                } else {
+                    out += kittyPlace(id);           // upload-once: ~30 bytes
+                }
+            }
+        } else if (mode_ == Capabilities::Sixel) {
+            for (const CellImage &ci : frame.images) {
+                out += moveTo(ci.cellRect.topLeft());
+                out += encodeSixel(ci.pixmap.toImage());
+            }
+        } else if (mode_ == Capabilities::ITerm2) {
+            for (const CellImage &ci : frame.images) {
+                out += moveTo(ci.cellRect.topLeft());
+                out += encodeITerm2(ci.pixmap.toImage(),
+                                    ci.cellRect.width(), ci.cellRect.height());
+            }
+        }
+    }
+    fwrite(out.constData(), 1, out.size(), stdout);
+    fflush(stdout);
+}
+
+void AnsiBackend::presentPixels(const QImage &frame, const QRegion &) {
+    QByteArray out = "\033[H";
+    const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+    switch (mode_) {
+    case Capabilities::Kitty:
+    case Capabilities::KittyAlpha:
+        out += kittyDeleteAll();
+        out += encodeKittyImage(0xFFFFFF0u, frame);
+        break;
+    case Capabilities::Sixel:
+        out += encodeSixel(frame);
+        break;
+    case Capabilities::ITerm2:
+        out += encodeITerm2(frame, frame.width() / cw, frame.height() / ch);
+        break;
+    default:
+        return;                                      // no pixel path
+    }
+    fwrite(out.constData(), 1, out.size(), stdout);
+    fflush(stdout);
+}
+
+void AnsiBackend::presentOverlay(int id, const QImage &rgba, QPoint cell, int z) {
+    if (mode_ != Capabilities::KittyAlpha) return;
+    QByteArray out = moveTo(cell);
+    out += encodeKittyImage(0xFFFFE00u + quint32(id), rgba, z > 0 ? z : 1);
+    fwrite(out.constData(), 1, out.size(), stdout);
+    fflush(stdout);
+}
+
+void AnsiBackend::clearOverlay(int id) {
+    if (mode_ != Capabilities::KittyAlpha) return;
+    QByteArray out = "\033_Ga=d,d=i,q=2,i="
+                   + QByteArray::number(0xFFFFE00u + quint32(id)) + ";\033\\";
     fwrite(out.constData(), 1, out.size(), stdout);
     fflush(stdout);
 }

@@ -5,6 +5,8 @@
 #include "qtty/grid.h"
 #include "qtty/paint.h"
 #include "qtty/application.h"
+#include "qtty/graphics.h"
+#include "qtty/overlay.h"
 #include <QtWidgets>
 
 namespace Qtty {
@@ -90,14 +92,57 @@ void FrameScheduler::requestFrame() {
 
 void FrameScheduler::renderNow() {
     const QSize cells = backend_->size();
+    const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
     CellBuffer frame(cells.width(), cells.height());
     comp_->compose(frame);
+
+    // Overlay tier selection (§5.7, §17.3).
+    const auto overlays = Overlay::visibleOverlays();
+    const auto gmode = backend_->capabilities().graphics;
+    auto *gfx = dynamic_cast<IGraphicsOutput *>(backend_);
+
+    auto overlayCellRect = [&](Overlay *o) {
+        return o->cellRect().isNull()
+            ? QRect(0, 0, frame.cols(), frame.rows())
+            : QRect(int(o->cellRect().x()), int(o->cellRect().y()),
+                    int(o->cellRect().width()), int(o->cellRect().height()));
+    };
+
+    const bool softwareComposite = !overlays.isEmpty() && gfx
+        && (gmode == Capabilities::Sixel || gmode == Capabilities::ITerm2
+            || gmode == Capabilities::Kitty);
+
+    if (!overlays.isEmpty() && !softwareComposite && gmode != Capabilities::KittyAlpha)
+        for (Overlay *o : overlays)                       // fallback: half-blocks
+            composeHalfblocks(frame, o->image(), overlayCellRect(o));
 
     QRegion damage = prev_ ? frame.diff(*prev_)
                            : QRegion(0, 0, frame.cols(), frame.rows());
     const bool imagesChanged = !prev_ || frame.images.size() != prev_->images.size();
-    if (!damage.isEmpty() || imagesChanged || !prev_)
+
+    if (softwareComposite) {
+        // one finished picture: rasterise cells, blend placements + overlays
+        QImage px = rasterize(frame, QGuiApplication::font());
+        QPainter p(&px);
+        for (const CellImage &ci : frame.images)
+            p.drawPixmap(ci.cellRect.x() * cw, ci.cellRect.y() * ch, ci.pixmap);
+        for (Overlay *o : overlays) {
+            const QRect r = overlayCellRect(o);
+            p.drawImage(QRect(r.x() * cw, r.y() * ch, r.width() * cw, r.height() * ch),
+                        o->image());
+        }
+        p.end();
+        gfx->presentPixels(px, QRegion(0, 0, frame.cols(), frame.rows()));
+    } else if (!damage.isEmpty() || imagesChanged || !prev_ || !overlays.isEmpty()) {
         backend_->present(frame, damage);
+        if (gmode == Capabilities::KittyAlpha && gfx) {   // terminal-blended alpha
+            int id = 0;
+            for (Overlay *o : overlays)
+                gfx->presentOverlay(id++, o->image(),
+                                    overlayCellRect(o).topLeft(),
+                                    qMax(1, o->z()));
+        }
+    }
     backend_->setCursor(comp_->cursorCell(),
                         comp_->cursorCell() ? CursorShape::Bar : CursorShape::Hidden);
     prev_ = std::make_unique<CellBuffer>(frame);
