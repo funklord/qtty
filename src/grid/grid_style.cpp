@@ -155,7 +155,14 @@ static QString elide(const QString &s, int cells) {
 	int used = 0; QString out;
 	for (const QString &cl : toClusters(s)) {
 		int cw = clusterWidth(cl);
-		if (used + cw > cells) { if (!out.isEmpty()) out.chop(1), out += QLatin1Char('…'); break; }
+		// U+2026, not QLatin1Char('...'): QLatin1Char takes a char, so a
+		// UTF-8 ellipsis in a character literal is a multichar constant
+		// that truncates to its last byte -- 0xA6, a broken bar in
+		// Latin-1. The elision marker rendered as garbage.
+		if (used + cw > cells) {
+			if (!out.isEmpty()) out.chop(1), out += QChar(0x2026);
+			break;
+		}
 		out += cl; used += cw;
 	}
 	return out;
