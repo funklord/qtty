@@ -97,7 +97,7 @@ void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &pm, const QRect
 	QRect c = toCells(r);
 	if (!c.isValid()) return;
 	if (c.width() >= 2 && c.height() >= 2)      // section 5.7: real image -> placement
-		dev_->placements.append({pm.cacheKey(), c, pm});
+		dev_->placements.append({quint64(pm.cacheKey()), c, pm});
 	else                                        // tiny icon -> glyph substitution (section 8.6)
 		dev_->buffer().text(c.left(), c.top(), QStringLiteral("▒"));
 }

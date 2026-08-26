@@ -8,11 +8,11 @@
 namespace Qtty {
 
 // xterm 256: 16 system + 6x6x6 cube (16..231) + grey ramp (232..255).
-static int cubeLevel(int v) {                 // 0..255 -> 0..5 (cube levels 0,95,135,175,215,255)
-	if (v < 48) return 0;
-	if (v < 115) return 1;
-	return (v - 35) / 40;
-}
+//
+// The inverse of this -- an RGB component to its cube level -- used to sit
+// beside it and is gone with the RGB nearest match it served. Matching in
+// CIELAB compares whole colours against the candidate table rather than
+// choosing a level per channel, so there is nothing left to invert.
 static int cubeValue(int level) { return level ? 55 + level * 40 : 0; }
 
 // The 16 system colours, as the xterm defaults spell them. Terminals are free

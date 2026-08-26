@@ -24,7 +24,12 @@ struct Cell {
 
 // section 5.7 cell-anchored placement: a pixel image riding the cell grid.
 struct CellImage {
-	quint64 key = 0;        // QPixmap::cacheKey() -> upload-once identity
+	// QPixmap::cacheKey() -> upload-once identity. Qt returns qint64 and
+	// this is unsigned because the value is an opaque handle rather than a
+	// number: it is compared and used as a map key, never ordered or
+	// arithmetic. The conversion is written out at every call site so it
+	// reads as intended rather than as a narrowing the compiler noticed.
+	quint64 key = 0;
 	QRect   cellRect;       // anchor + span, in cells
 	QPixmap pixmap;
 };

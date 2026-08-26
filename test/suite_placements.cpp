@@ -40,7 +40,7 @@ int suite_placements() {
 	Qtty::renderOnce(w, buf, &pl);
 	CHECK(pl.size() == 1, "one drawPixmap -> one placement");
 	CHECK(!pl.isEmpty() && pl[0].cellRect == QRect(3, 2, 10, 4), "placement at drawn cell rect");
-	CHECK(!pl.isEmpty() && pl[0].key == sticker.cacheKey(), "identity is pixmap cacheKey");
+	CHECK(!pl.isEmpty() && pl[0].key == quint64(sticker.cacheKey()), "identity is pixmap cacheKey");
 	CHECK(buf.images.size() == 1, "placements travel with the frame buffer");
 
 	quint64 keyBefore = pl.isEmpty() ? 0 : pl[0].key;
