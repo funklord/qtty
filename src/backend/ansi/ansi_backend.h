@@ -42,6 +42,7 @@ private:
 	QByteArray pending_;
 	QSize cells_;
 	Capabilities::GraphicsMode mode_;
+	Capabilities::ColorDepth depth_;             // negotiated (section 6)
 	QSet<quint64> uploaded_;                     // kitty upload-once cache
 	bool rawOk_ = false;
 	bool active_ = false;

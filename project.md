@@ -283,9 +283,12 @@ Open:
 
 And one raised by the tree rather than by the design:
 
-- **OQ-6.** Are PascalCase type names inside `namespace Qtty` a settled
-  exception to the global style rule? See §8.5. This is the copyright
-  holder's to answer, not a session's.
+- ~~**OQ-6.** Are PascalCase type names inside `namespace Qtty` a settled
+  exception to the global style rule?~~ **Closed 2026-08-26 by the
+  copyright holder: yes, for type names and nothing wider.** See §8.5.
+  It opened a follow-on that is not an open question but a piece of work:
+  the members are still `camelCase` and the rule says they should not be.
+  §11 carries it.
 
 ## 5. Risks
 
@@ -462,24 +465,41 @@ shortcut table (F3's mitigation), Tab and Backtab through
 `focusNextPrevChild()` (F4's), popup attribute stamping (F7's), and a
 synthetic press with a fabricated release. Missing:
 
-- **Modal input is never dropped.** `keyTarget()` prefers
-  `activePopupWidget()`, then `activeModalWidget()`, then the window's
-  focus widget -- so keys do reach a modal. But design.md §8.3 specifies
-  that input *outside* `activeModalWidget()` is dropped before dispatch,
-  and there is no such rule.
+~~Modal input is never dropped.~~ **Done.** `input_scope()` is the
+active modal if there is one and the window otherwise, and every path
+that used to reach for `win_` -- the shortcut table, the Tab chain, the
+arrow-scroll fallback, the focus write-back -- goes through it. A click
+outside the modal is now **dropped rather than redirected**, because a
+click on a blocked window means nothing and delivering it to the dialog
+would invent a press the user never made. It also stamps
+`WA_DontShowOnScreen` on every late-created top-level rather than only
+popups, which F7 measured for `QComboBox`'s internal container and which
+applies equally to a dialog the application opens.
+
+Still missing:
+
 - `onPaste` fabricates a key event with `key=0`.
 - No mnemonic handling, and no grab-widget branch.
 
-**Compositor and FrameScheduler -- partial, and this is the largest
-correctness gap in the tree.** `src/runtime/compositor.cpp` renders the
-tracked window and then the router's popup list. It does **not** walk
-`QApplication::topLevelWidgets()` and does **not** render
-`activeModalWidget()`. The tracking filter in `src/runtime/input_router.cpp`
-only adds a window to that list when its flags say `Qt::Popup` or
-`Qt::ToolTip`. So **a modal `QDialog` is stamped `WA_DontShowOnScreen`
-and then never drawn** -- it disappears, silently, while still taking
-input. That contradicts design.md §5.4 step 3 and §8.1, and it
-invalidates the §17.2 dialog row.
+**Compositor and FrameScheduler -- done.** This was the largest
+correctness gap in the tree: `compose()` rendered the tracked window and
+the router's popup list, walked no top-levels, and drew no modal. Since
+the tracking filter only noticed `Qt::Popup` and `Qt::ToolTip`, **a modal
+`QDialog` was stamped `WA_DontShowOnScreen` and then drawn by nobody** --
+it disappeared while still holding input, which is the worst of both.
+
+`compose()` now walks `QApplication::topLevelWidgets()` as design.md
+§5.4 step 3 specifies, then stacks modals and popups explicitly on top,
+which is §8.1's mitigation and is deliberately not a reading of window
+flags -- there is no window manager here, so there is no z-order to read.
+The cursor follows the layer that owns input, so a modal's text field
+places the terminal cursor rather than the blocked window's.
+
+Popups now **flip** rather than slide. §8.1's example is a menu opening
+at x=78 that must flip left; `qBound` alone slid it along the edge
+instead, which detaches a menu from the item it was opened from and can
+cover that item. Flipping puts the far edge on the anchor; sliding stays
+as the fallback for a layer too big to fit either side.
 
 **GridStyle hardening -- partial.** `src/grid/grid_style.cpp`. The
 `pixelMetric` audit is thorough: 35 or more metrics answered explicitly,
@@ -490,26 +510,53 @@ the rest snapped. Missing:
   `include/qtty/grid.h` nor overridden, though design.md §5.3 lists both.
 - The off-by-one vertical-centring baseline calibration that §16 called
   for is not done.
-- **`GridGuard` does not exist at all**, though design.md §5.3 calls it
-  the highest value-per-line component in the project.
+- ~~`GridGuard` does not exist at all.~~ **Done.** It is an event filter
+  checking every widget geometry against the grid as it is assigned, so a
+  misalignment is reported where it happens rather than as a smeared
+  frame several layers away. It **reports rather than aborts**: a
+  misaligned widget is a quality defect, and a guard that takes the
+  application down is one somebody switches off, at which point it guards
+  nothing. `QHeaderView` and `QScrollBar` are exempt by name, because F5
+  measured that they self-size and land off the grid however the style is
+  written -- an exemption that is reviewable, rather than a guard that
+  fires on every item view and is then disabled. Installed automatically
+  in debug builds and by tests explicitly, which is design.md §9's "runs
+  as an assertion in every test".
 - `GridMetrics` has `cw`, `ch`, `set`, `cells` and `isAligned`, but not
   `toCells()` or `snapUp()`.
 - The proxy base is hardcoded to Fusion, so §10.1's promise that an
   application's custom style *becomes* `GridStyle`'s proxy base is not
   honoured.
 
-**Theming -- written, but not wired.** `src/core/theme.cpp` defines
-`CellTheme` and `Qtty::theme()`, and `test/suite_theme.cpp` unit-tests
-it. **No rendering code reads `theme()`.** `CellPaintEngine` consults
-`QGuiApplication::palette()` directly. Consequently:
+**Theming -- wired.** `Qtty::theme()` is the single source rendering
+resolves colour through. `CellPaintEngine` still consults
+`QGuiApplication::palette()`, but for one thing only -- recovering *which
+role* produced a pen or brush -- and what that role looks like on a
+terminal is the theme's to say. `setTheme()` therefore changes what gets
+drawn, which it previously did not.
 
-- The hand-authored Ansi16 role table design.md §6 demands does not
-  exist; `Color::toAnsi16()` falls back to nearest-of-16, which §6
-  explicitly rejects as producing unreadable pairings.
-- `AnsiBackend::present` always emits xterm-256 (`ESC[38;5;` and
-  `ESC[48;5;`) regardless of `Capabilities::color`. There is no TrueColor
-  path and no Ansi16 path.
-- There is no contrast assertion at present time, which §6 requires.
+- **The hand-authored Ansi16 role table exists** (`ansi16_for_role()`),
+  and it is a design artifact with a stated reason per entry, as §6 asks.
+  Nearest-of-16 survives only as the fallback for colours with no role
+  behind them, which is what Channel B output is. The measured case is
+  `Highlight`: Fusion's 0x308cc6 nearest-matches to 6 (teal) -- wrong hue,
+  and a third the luminance delta under white text -- against the
+  authored 4.
+- **Quantisation is CIELAB**, as §6 requires. Measured against the RGB
+  version it replaced: rgb(40,120,50) went to grey 238 and now goes to
+  green 22, an error of 38 parts in 3850 squared-RGB units being enough
+  to turn a saturated green into a grey. Memoised, and the memo is
+  cleared wholesale past 4096 entries because a photographic Channel B
+  image can present millions of distinct colours and a cache that only
+  grows is a leak wearing a cache's costume.
+- **All three SGR paths exist** and are chosen by `Capabilities::color`,
+  which `AnsiBackend` now negotiates rather than hardcoding to
+  Xterm256: `QTTY_COLOR` overrides, then `COLORTERM`, then a `-direct` or
+  `256color` `TERM`, with the sixteen colours as the documented floor.
+- **The contrast check runs at present time**, counting in all builds and
+  logging in debug, capped. Never fatal: a contrast violation is a
+  quality defect, not a corruption, and aborting a user's terminal
+  application over one would be wrong.
 
 **Snapshot harness -- done, but thin.** `test/snapshot/prefs_dialog.txt`
 and `test/snapshot/widgets_gallery.txt` are the fixtures, and
@@ -518,8 +565,9 @@ and `test/snapshot/widgets_gallery.txt` are the fixtures, and
 design.md §9 specifies is dropped, so **no test can snapshot colour or
 attributes**. `qtty-replay` (`tool/replay/`) drives a built-in sample UI
 only; the characterisation runner design.md §9 makes the backbone of the
-migration does not exist. `src/backend/null/null_backend.h` is compiled
-and referenced by nothing.
+migration does not exist. `src/backend/null/null_backend.h` is now reachable and
+exercised -- see the backend seam below -- but it is still not what the
+snapshot tests are built on; they call `renderOnce()` directly.
 
 ### 7.2 Widget tier (design.md §17.2)
 
@@ -537,16 +585,19 @@ bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 - **The `QTextEdit` interaction layer is absent** -- `src/widget/` is a
   README describing what should be there. Display is free by F8, so this
   is the cursor, selection and partial-line scrolling only.
-- **`QDialog`/`QMessageBox` is blocked by the compositor gap** above, not
-  by anything in the widget tier.
+- ~~`QDialog`/`QMessageBox` is blocked by the compositor gap.~~
+  **Unblocked** (§7.1): a modal is composited, holds input exclusively,
+  and takes the cursor. What is still untested is `QMessageBox`
+  specifically, and a dialog's own layout under the grid.
 - **No `CellItemDelegate` class exists**, so item views have no Channel A
   role coverage; `QTableView` is never exercised at all.
 - **`ICellPainted` and its `Q_DECLARE_INTERFACE` do not exist**, though
   that pair is R5's stated mitigation and F5's suggested remedy.
-- Menus draw a submenu indicator but nothing opens or routes a submenu;
-  there are no mnemonics; and the compositor clamps a popup with
-  `qBound` rather than **flipping** it, so the menu opening at x=78 that
-  design.md §8.1 names specifically is clamped, not flipped.
+- Menus draw a submenu indicator but nothing opens or routes a submenu,
+  and there are no mnemonics. ~~The compositor clamps rather than
+  flipping.~~ **Flipping is done** (§7.1) -- the discriminating check is
+  that the popup's far edge lands on its anchor, since "fully inside the
+  terminal" is true of a clamped popup too.
 
 ### 7.3 Graphics tier (design.md §17.3)
 
@@ -593,17 +644,43 @@ and is not reachable from a real terminal.
 - **Mouse input is unreachable.** The backend never enables SGR 1006
   reporting and its decoder has no mouse branch, so
   `InputRouter::onMouse` cannot fire from a real terminal.
-- **`ITerminalBackend` is not injectable.** `Qtty::exec()` constructs an
-  `AnsiBackend` on the stack (`src/runtime/application.cpp`). The runtime
-  therefore cannot be run against `NullBackend`, against a legacy
-  adapter, or against termpaint. This blocks Phase 1 outright, and it is
-  also why the design.md §9 snapshot harness is not the harness the tests
-  actually use.
+- ~~`ITerminalBackend` is not injectable.~~ **Done, and it was the
+  blocker under the others.** `Qtty::exec()` constructed an `AnsiBackend`
+  on its own stack, so the runtime could only ever be driven by the
+  built-in terminal backend: `NullBackend` was compiled into the library
+  and reachable from nothing, a legacy adapter had nowhere to plug in,
+  and Phase 1 could not start. `exec(app, win, backend)` takes the
+  backend now and `exec(app, win)` supplies `AnsiBackend` by calling it,
+  so the two paths cannot drift. `test/suite_runtime.cpp` drives a real
+  session on `NullBackend` and checks that the frame arriving at the
+  backend is the widget tree.
+
+  Deciding §8.2 -- whether L6 becomes the `Application` class design.md
+  §5.6 specifies -- is still open. This does the smaller thing the
+  blocker needed without pre-empting that answer.
+
+**The font check is a hard startup error now.** design.md §5.3 asks for
+the advance and the line height to be asserted at startup, and R3's
+mitigation is "startup assert; bundled font; documented hard failure".
+What was there was a `Q_ASSERT_X` comparing the advance of `'i'` with
+that of `'M'` -- which tests monospace-ness rather than integrality, and
+which compiles out in release, so **no shipping build carried the
+mitigation at all**. `grid_font_problem()` returns a diagnostic rather
+than asserting, and `setup()` reads it in every build and calls `qFatal`
+with whatever failed. It checks fixed pitch, that the line height and the
+advance are whole numbers, and that a spread of twelve characters --
+thin, wide, punctuation, digits -- all advance identically, which is
+where a font that is monospace for Latin and proportional elsewhere gives
+itself away. Measured here: DejaVu Sans Mono at 16px is exactly 10x19,
+which is design.md §16's figure.
 
 ### 7.5 Absent entirely
 
-- `GridGuard`, and with it the invariant test design.md §9 says runs as
-  an assertion in every test.
+- **`GridGuard` in every suite.** The guard exists now, but only
+  `test/suite_runtime.cpp` installs it. design.md §9 wants it running as
+  an assertion in *every* test, which means installing it in the runner
+  rather than per suite -- and doing that will report whatever the widget
+  suites are currently misaligning, which is the point of it.
 - `ICellPainted`.
 - **The whole of design.md §7's Tier-2 hint system** -- `setPriority`,
   `setCompact`, `CompactionPass`, the `"qtty.cells"` property -- and the
@@ -611,13 +688,11 @@ and is not reachable from a real terminal.
   `setFixedWidth` in shared UI code. Tier 1 is free and works; Tier 3 is
   a convention; Tier 2 is the part that needed building and was not
   built.
-- CIELAB quantisation and the Ansi16 role table (design.md §6).
-- **The bundled font, and the integral-metrics startup assertion.**
-  design.md §5.3 requires a hard startup error if the font's advance and
-  height are not exactly cw and ch. `Qtty::setup()` uses `Q_ASSERT_X`,
-  which checks monospace-ness rather than integral metrics **and compiles
-  out in release** -- so R3's mitigation is not in place in the builds
-  that ship.
+- **The bundled font.** The startup check is in place (§7.4), but it
+  checks a font the *machine* happens to provide. design.md §5.3 wants
+  the font bundled and installed with `QFontDatabase::addApplicationFont`
+  so the grid does not depend on what is installed -- which is also what
+  would make the snapshot fixtures reproducible (§7.6).
 - `TermpaintBackend`, and the four legacy adapters.
 - Qt 5.15 support.
 - **The design.md §11 benchmark** -- a 200x60 grid with a 5000-row table.
@@ -627,7 +702,29 @@ and is not reachable from a real terminal.
   and TUI builds must reach the same observable state), and the
   render-twice-diff-must-be-empty invariant.
 
-### 7.6 The fixtures are machine-dependent
+### 7.6 Two latent bugs, found while fixing the compositor
+
+Neither is introduced by the work in this section; both were found by
+editing the code around them and are recorded rather than fixed, because
+each wants a decision rather than a patch.
+
+**The primary window's origin is assumed twice, differently.**
+`Compositor::compose()` draws `win_` at the origin whatever its geometry
+says, while `InputRouter::onMouse()` maps a click through
+`win_->mapFromGlobal(px)`. The two agree only while the primary window
+sits at (0,0), which `exec()` happens to arrange. The moment it does not,
+drawing and hit-testing disagree by the window's offset. The modal and
+popup paths do not share the fault -- the compositor positions those by
+their real geometry -- which is what makes the primary window the odd one
+out rather than the rule.
+
+**A flipped popup does not remember its anchor.** The flip is computed
+from the geometry the popup has when it is composed, so a popup that is
+resized after being flipped does not re-derive the flip from the point it
+was opened at. It stays inside the terminal either way, so the symptom is
+a menu that is on the correct side for its old size.
+
+### 7.7 The fixtures are machine-dependent
 
 Worth recording on its own, because it will bite whoever changes machine
 first. `Qtty::setup()` derives the cell size from the **locally installed**
@@ -697,7 +794,7 @@ Both files were removed when the example moved to linking the real
 library. The three-variant packaging story (`chat`, `chat-gui`,
 `chat-tui`) has no build rule behind it any more.
 
-### 8.5 The namespace, and the global style rule
+### 8.5 The namespace, and the global style rule -- settled
 
 Commit `e099862` moved `qtty::` to `Qtty::` for Qt-ecosystem consistency,
 and `README.md` documents the choice and the reasoning.
@@ -707,10 +804,35 @@ variables, type names and fields". qtty's public types are `PascalCase`
 inside `namespace Qtty` -- `CellBuffer`, `GridStyle`, `InputRouter`,
 `CellPaintEngine`.
 
-**Whether that is a settled exception is an open question for the
-copyright holder** (OQ-6). It is recorded here and not decided. Note the
-two halves are separable: the namespace spelling is one question, the
-type-name spelling inside it is another.
+**Decided by the copyright holder, 2026-08-26: the exception stands, and
+it is exactly type names.** The reason is this library's position rather
+than a preference. Its entire public surface is Qt's -- the types are
+`QProxyStyle`, `QPaintDevice` and `QPaintEngine` subclasses, and a caller
+writes `Qtty::GridStyle` in the same expression as
+`QStyle::PE_FrameWindow`. Spelling it `qtty::grid_style` would make this
+one library read unlike every library it appears beside and unlike the
+toolkit it exists to serve. `code-style.md` carries the full form.
+
+The exception is qtty's, argued from qtty's position, and no sibling
+inherits it.
+
+**What it leaves behind is a piece of work rather than a question.**
+Deciding that only type names are exempt makes the tree's `camelCase`
+*members* -- `putCluster`, `cellRect`, `setEventSink`, `frameRequested`
+-- a real divergence from the rule, not an ambiguity in it. They are
+pre-existing and there are many; converting them is a mechanical rename
+across every header and call site and it needs a proof, so it is its own
+pass and it is listed in §11. New code written since the decision uses
+`snake_case` for members, which means the tree is mixed until that pass
+runs. That is stated here so the next reader knows the mixture is a
+known state with a scheduled end, not drift.
+
+Two members are worth calling out as *not* part of that pass, because
+they are the foreign-API carve-out rather than the divergence:
+`focusWidget()` and `setFocusWidget()` deliberately mirror
+`QApplication::focusWidget()`, which they replace (measured F4). Where
+qtty stands in for a Qt call, keeping Qt's spelling is the rule working,
+not an exception to it.
 
 ## 9. Build and repository conventions
 
@@ -777,7 +899,40 @@ which would make the optimisation level depend on where in the line qmake
 happened to put it. Debug builds get `-Og` rather than qmake's `-O0`, for
 the same reason `-Og` exists.
 
-### 9.4 The Makefile interface
+### 9.4 Tests are built by the test target, and only by it
+
+`test/` is deliberately not a `SUBDIRS` entry in `qtty.pro`. A plain
+`make` builds the library, the two tools and the example; `make test`
+runs qmake on `test/test.pro` into `$(BUILD_DIR)-test` and builds the
+suite there. That is `build-and-commit.md`'s rule, and it was paid for
+here within an hour of the Makefile being written.
+
+The first version had `test` in `SUBDIRS` and gave the library rule an
+explicit prerequisite list:
+
+    $(LIB): $(BUILD_DIR)/Makefile $(SOURCES) $(HEADERS)
+            $(MAKE) -C $(BUILD_DIR)
+
+`SOURCES` is `src/` only. So editing a **test** file left `$(LIB)` up to
+date, make printed `Nothing to be done for 'all'`, the sub-make never
+ran, and the test binary that then got executed was the previous one. It
+reported the previous answer -- which is indistinguishable from the new
+code being correct. That cost a real detour: a `GridGuard` check was
+diagnosed as a bug in the guard, probed in isolation twice where it
+worked perfectly, and was a stale object the whole time.
+
+Two things fix it and both are kept. The rule now depends on `FORCE`,
+because a prerequisite list here is a claim that this file knows what the
+sub-make depends on and it does not -- only the generated Makefile knows,
+and it tracks headers through `-MMD` that no wildcard here can see.
+Recursing every time costs a no-op sub-make. And tests leaving the
+default build removes the question from that path entirely.
+
+The two rebuild triggers are checked rather than assumed: touching a test
+source recompiles its object, and touching a public header recompiles the
+library objects that include it.
+
+### 9.5 The Makefile interface
 
 The same interface every sibling project presents. qmake does the build
 because moc does not fit hand-written pattern rules; the Makefile is the
@@ -812,7 +967,7 @@ the global guidelines, and neither should be removed:
 - **A run over zero binaries fails rather than passing.** A loop that
   finds no test binary exits 0 and reads exactly like a pass.
 
-### 9.5 Indentation was converted, and the spikes were not
+### 9.6 Indentation was converted, and the spikes were not
 
 The tree was 4-space indented and was converted to tabs by
 `tool/style_gate.py fix`: **2372 violations across 48 files**. `spike/`
@@ -822,7 +977,7 @@ exactly as they were run, which is what makes them evidence for the
 numbers §6 cites. Reindenting them would edit the record. Nothing in the
 library builds them.
 
-### 9.6 What was measured on this machine
+### 9.7 What was measured on this machine
 
 Qt **6.8.2**, `qmake6` present, the offscreen platform plugin present,
 DejaVu Sans Mono present. The tree builds clean and the suite reports
@@ -839,32 +994,64 @@ Qt's own API is called exactly as it is spelled (`setParent`,
 name because it is Qt's name and not ours. Names qtty introduces stay
 `snake_case`.
 
-The unsettled part is type names: qtty's public types are `PascalCase`
-inside `namespace Qtty`, which §8.5 records as an open question rather
-than as settled practice.
+The one settled exception is type names: qtty's public types are
+`PascalCase` inside `namespace Qtty`, decided 2026-08-26 and recorded
+with its reason in §8.5 and in `code-style.md`. It covers type names and
+nothing wider -- a method is `put_cluster`, not `putCluster`. The tree's
+existing members do not yet follow that; see §8.5 and §11.
 
 ## 11. What is next, in order
 
-Dependency-ordered. The first four block other work; everything after
-them is design.md §17 in whatever order suits.
+The four items that used to head this list -- backend injection, the
+compositor's top-level walk, theme wiring, and `GridGuard` with a real
+startup check -- **are done**, and §7 records what each of them was and
+what it now is. What follows is what they unblocked, and what they did
+not touch.
 
-1. **Backend injection into `Qtty::exec()`.** `exec()` constructs an
-   `AnsiBackend` on the stack, so the runtime cannot be driven by
-   `NullBackend`, by a legacy adapter, or by termpaint. Phase 1 cannot
-   start without it, and the design.md §9 harness -- which is supposed to
-   be built on `NullBackend` -- cannot be the harness the tests use.
-   Settling §8.2 is part of doing this.
-2. **The compositor's top-level walk, including `activeModalWidget()`.**
-   The largest correctness gap: it silently disappears every modal
-   dialog, and it is what makes the §17.2 dialog row unfinishable.
-3. **Theme wiring.** Until `Qtty::theme()` is the single source that
-   rendering reads, the Ansi16 role table and the contrast assertion have
-   nowhere to land, and `AnsiBackend` has no reason to emit anything but
-   xterm-256.
-4. **`GridGuard`, plus a real integral-metrics startup check.** Cheap,
-   and it converts the class of bug the remaining widget work is most
-   likely to introduce into a failure at the point of origin. The startup
-   check is R3's mitigation and currently compiles out in release.
+Dependency-ordered:
+
+1. **`GridGuard` in the test runner rather than in one suite.** design.md
+   §9 wants it asserting in every test. Installing it in `test/main.cpp`
+   is a two-line change; the work is in whatever it then reports, which
+   is the point of having written it. Do this first, because every item
+   below moves widget geometry.
+2. **The attribute plane in `CellBuffer::toText()`.** Fixtures carry
+   glyphs only, so **no snapshot can catch a regression in the reverse
+   video, bold and dim that most of the Channel A work produces** -- the
+   attribute work is covered by targeted checks and by nothing wider. It
+   unblocks testing rather than features, which is why it is this high.
+3. **Decode or round-trip coverage for the graphics encoders.** Sixel,
+   kitty and iTerm2 are asserted on byte structure alone, and byte
+   structure cannot tell a well-formed stream from a correct one.
+4. **The declared-but-unreachable surface in §7.4** -- SIGWINCH so a
+   resize does anything at all, SGR 1006 so mouse input can arrive from a
+   real terminal, bracketed paste, focus events. Each is small; together
+   they are the difference between the runtime working and the runtime
+   working when someone drags the window edge.
+5. **§8.2**: whether L6 becomes the `Application` class design.md §5.6
+   specifies. The backend seam no longer waits on it, so this is now a
+   design decision taken on its merits rather than a blocker.
+
+Then, as its own pass and not folded into anything else, the **member
+rename**. Closing OQ-6 in favour of PascalCase *type* names made the
+tree's `camelCase` members a plain divergence from the rule rather than
+an ambiguity in it -- `putCluster`, `cellRect`, `setEventSink`,
+`frameRequested` and their neighbours become `put_cluster`, `cell_rect`,
+`set_event_sink`, `frame_requested`. It is a mechanical rename across
+every header, every definition and every call site, so it carries a
+proof: the invariant is that the translation unit's behaviour is
+unchanged, which for a pure rename means the suite still reports the same
+count and the tree still links with no undefined symbols. Two names stay
+as they are and the pass must not touch them -- `focusWidget()` and
+`setFocusWidget()` deliberately mirror the `QApplication` call they
+replace (F4), which is the foreign-API rule working rather than an
+exception to it.
+
+It is listed after the four above rather than before, because a rename
+across every call site collides with any work in flight, and the four
+above are the work in flight. Until it runs the tree is mixed: new code
+written since the decision uses `snake_case` members and the older code
+does not.
 
 Then the rest of design.md §17, and two things worth doing early within
 it because they unblock testing rather than features: the attribute plane

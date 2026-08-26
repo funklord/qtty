@@ -1,6 +1,7 @@
 #include "ansi_backend.h"
 #include "qtty/graphics.h"
 #include "qtty/grid.h"
+#include "qtty/theme.h"
 #include <QSocketNotifier>
 #include <QImage>
 #include <QCoreApplication>
@@ -10,8 +11,42 @@
 
 namespace Qtty {
 
+// Colour-depth negotiation (sections 5.1 and 6). Same shape as
+// detectGraphicsMode() in src/graphics/graphics.cpp, deliberately: an explicit
+// environment override wins, then what the terminal says about itself, and the
+// floor is the sixteen colours Capabilities already defaults to.
+//
+// Before this the backend hardcoded Xterm256 and emitted 38;5; whatever the
+// terminal could do -- so a true-colour terminal was quantised for nothing and
+// a 16-colour one was sent codes it does not understand.
+static Capabilities::ColorDepth detect_color_depth() {
+	const QByteArray force = qgetenv("QTTY_COLOR").toLower();
+	if (!force.isEmpty()) {
+		if (force == "mono" || force == "1")          return Capabilities::Mono;
+		if (force == "16" || force == "ansi16")       return Capabilities::Ansi16;
+		if (force == "256" || force == "xterm256")    return Capabilities::Xterm256;
+		if (force == "truecolor" || force == "24bit") return Capabilities::TrueColor;
+	}
+	// COLORTERM is the de-facto announcement, and these two spellings are the
+	// ones terminals actually export.
+	const QByteArray colorterm = qgetenv("COLORTERM").toLower();
+	if (colorterm == "truecolor" || colorterm == "24bit")
+		return Capabilities::TrueColor;
+
+	const QByteArray term = qgetenv("TERM").toLower();
+	if (term.isEmpty() || term == "dumb")
+		return Capabilities::Mono;                    // nothing claimed at all
+	// terminfo spells a direct-colour entry "-direct" (xterm-direct,
+	// tmux-direct), which is how the 24-bit terminals that do not export
+	// COLORTERM say so.
+	if (term.contains("direct"))   return Capabilities::TrueColor;
+	if (term.contains("256color")) return Capabilities::Xterm256;
+	return Capabilities::Ansi16;                     // the documented floor
+}
+
 AnsiBackend::AnsiBackend() {
 	mode_ = detectGraphicsMode();
+	depth_ = detect_color_depth();
 	winsize ws{};
 	if (ioctl(1, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
 		cells_ = QSize(ws.ws_col, ws.ws_row);
@@ -26,7 +61,7 @@ AnsiBackend::~AnsiBackend() { suspend(); }
 
 Capabilities AnsiBackend::capabilities() const {
 	Capabilities c;
-	c.color = Capabilities::Xterm256;
+	c.color = depth_;                               // negotiated (section 6)
 	c.graphics = mode_;                             // negotiated (sections 5.7, 17.3)
 	return c;
 }
@@ -61,22 +96,18 @@ void AnsiBackend::suspend() {
 }
 
 // ---- output ----------------------------------------------------------------
-struct Sgr { int fg = -2, bg = -2; Attrs attrs; };
+// The last SGR state written, so that a run of identical cells costs nothing.
+// It caches the cell's colours rather than the quantised ones: equal inputs
+// quantise equally, and the authored ANSI-16 index is part of Color's identity
+// (color.h), so two colours that would emit different bytes never compare
+// equal here.
+struct Sgr { Color fg, bg; Attrs attrs; bool primed = false; };
 
-static void emitSgr(QByteArray &out, const Cell &c, Sgr &cur) {
-	const int fg = c.fg.toXterm256();
-	const int bg = c.bg.toXterm256();
-	if (fg == cur.fg && bg == cur.bg && c.attrs == cur.attrs) return;
-	out += "\033[0m";
-	if (fg >= 0) out += "\033[38;5;" + QByteArray::number(fg) + 'm';
-	if (bg >= 0) out += "\033[48;5;" + QByteArray::number(bg) + 'm';
-	if (c.attrs & Attr::Bold)      out += "\033[1m";
-	if (c.attrs & Attr::Dim)       out += "\033[2m";
-	if (c.attrs & Attr::Italic)    out += "\033[3m";
-	if (c.attrs & Attr::Underline) out += "\033[4m";
-	if (c.attrs & Attr::Reverse)   out += "\033[7m";
-	if (c.attrs & Attr::Strike)    out += "\033[9m";
-	cur = {fg, bg, c.attrs};
+static void emitSgr(QByteArray &out, const Cell &c, Sgr &cur,
+	                Capabilities::ColorDepth depth) {
+	if (cur.primed && c.fg == cur.fg && c.bg == cur.bg && c.attrs == cur.attrs) return;
+	out += sgr_sequence(c.fg, c.bg, c.attrs, depth);   // section 6: theme.cpp owns
+	cur = {c.fg, c.bg, c.attrs, true};                 // the three depths
 }
 
 void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
@@ -94,11 +125,21 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 		for (int x = 0; x < composed.cols(); ++x) {
 			const Cell &c = composed.at(x, y);
 			if (c.width == 0) continue;              // continuation of wide cell
-			emitSgr(out, c, cur);
+			emitSgr(out, c, cur, depth_);
 			out += c.ch.toUtf8();
 		}
 		if (y < composed.rows() - 1) out += "\033[0m\r\n", cur = Sgr{};
 	}
+	// section 6 contrast rule, applied after mapping -- the only point at which
+	// the emitted pairing is known. Reporting only, and never fatal; theme.cpp
+	// says why. The cost is one memoised lookup per glyph-bearing cell.
+	//
+	// Deliberately on `frame` and not on `composed`: a half-block mosaic cell's
+	// foreground and background are two adjacent pixels of an image, and a
+	// legibility rule has nothing to say about those. Checking the composed
+	// frame would report every image as hundreds of violations and drown the
+	// theme faults this exists to find.
+	contrast_violations(frame, depth_);
 	if (pixelPlacements) {                           // real pixels (section 5.7)
 		if (mode_ == Capabilities::Kitty || mode_ == Capabilities::KittyAlpha) {
 			out += kittyDeleteAll();

@@ -50,14 +50,23 @@ QRect CellPaintEngine::toCells(const QRectF &r) const {
 		         qMax(1, qRound(m.width() / cw)), qMax(1, qRound(m.height() / ch)));
 }
 
-// Text colour policy (section 6): colours matching the app palette's standard text
-// roles emit Color::Default so the terminal's own scheme applies; anything
-// the app explicitly coloured passes through as Rgb.
+// Text colour policy (section 6). The application palette is consulted for one
+// thing only -- which ROLE produced this pen -- and what that role looks like
+// on a terminal is theme()'s to say. That is the wiring project.md section 11
+// item 3 asks for: theme() is the single source, and setTheme() therefore
+// changes what gets drawn. Under CellTheme::terminalDefault() every role
+// resolves to Color::Default and the terminal's own scheme applies, which is
+// the behaviour this replaced.
+//
+// A pen colour no role explains is Channel B output -- something the
+// application coloured itself -- and passes through as true colour, carrying
+// no authored ANSI-16 index because no role authored one.
 static Color penToFg(const QPen &pen) {
 	const QRgb c = pen.color().rgba();
 	const QPalette &pal = QGuiApplication::palette();
-	for (QPalette::ColorRole r : {QPalette::WindowText, QPalette::Text, QPalette::ButtonText})
-		if (pal.color(r).rgba() == c) return Color();
+	for (QPalette::ColorRole r : {QPalette::WindowText, QPalette::Text,
+			                      QPalette::ButtonText, QPalette::HighlightedText})
+		if (pal.color(r).rgba() == c) return theme().foreground(r);
 	return Color::rgb(c);
 }
 
@@ -99,8 +108,27 @@ void CellPaintEngine::drawPolygon(const QPointF *pts, int n, PolygonDrawMode) {
 	fillRectF(p.boundingRect(), true);
 }
 
-// Fill classification (section 17.2): erase for window-ish palette roles, coloured
-// background for everything else -- which is how selections reach the cells.
+// Is `role` one of the surfaces a widget sits ON, as opposed to something
+// drawn over one? The distinction decides what an unthemed fill means: a
+// surface the theme has not coloured is the terminal's own background and is
+// erased, while a selection the theme has not coloured still has to be
+// visible.
+static bool is_surface_role(QPalette::ColorRole role) {
+	return role == QPalette::Window || role == QPalette::Base
+		|| role == QPalette::Button || role == QPalette::AlternateBase;
+}
+
+// Fill classification (sections 6 and 17.2). The brush colour is matched back to
+// the palette role that produced it, and the role is resolved through the
+// active CellTheme -- theme() is the single source for what a cell is
+// coloured, not QGuiApplication::palette().
+//
+// A surface role the theme leaves at Color::Default erases to the terminal's
+// own background, which is what CellTheme::terminalDefault() means and is the
+// behaviour this replaced. A themed surface paints. A non-surface role the
+// theme does not name, and any colour with no role behind it at all, keeps the
+// application's own colour -- that is how a selection reaches the cells under
+// the default theme, and how Channel B output reaches them at all.
 void CellPaintEngine::fillRectF(const QRectF &r, bool outlineOnly) {
 	QRect c = toCells(r);
 	if (!c.isValid() || c.width() > 400 || c.height() > 200) return;
@@ -108,16 +136,22 @@ void CellPaintEngine::fillRectF(const QRectF &r, bool outlineOnly) {
 
 	const QRgb col = brush_.color().rgba();
 	const QPalette &pal = QGuiApplication::palette();
-	bool erase = false;
+	QPalette::ColorRole matched = QPalette::NoRole;
 	for (QPalette::ColorRole role : {QPalette::Window, QPalette::Base,
-			                         QPalette::Button, QPalette::AlternateBase})
-		if (pal.color(role).rgba() == col) erase = true;
+			                         QPalette::Button, QPalette::AlternateBase,
+			                         QPalette::Highlight, QPalette::ToolTipBase})
+		if (pal.color(role).rgba() == col) { matched = role; break; }
 
-	if (erase) {
-		if (c.width() > 1 && c.height() > 1) dev_->buffer().fill(c, Cell{});
-		return;
+	Color bg = matched == QPalette::NoRole ? Color::rgb(col)
+		                                   : theme().background(matched);
+	if (bg.kind() == Color::Default) {
+		if (is_surface_role(matched)) {
+			if (c.width() > 1 && c.height() > 1) dev_->buffer().fill(c, Cell{});
+			return;
+		}
+		bg = Color::rgb(col);                       // unthemed selection etc.
 	}
-	Cell v; v.bg = Color::rgb(col);                 // coloured fill (selection etc.)
+	Cell v; v.bg = bg;
 	dev_->buffer().fill(c, v);
 }
 
