@@ -708,15 +708,19 @@ Neither is introduced by the work in this section; both were found by
 editing the code around them and are recorded rather than fixed, because
 each wants a decision rather than a patch.
 
-**The primary window's origin is assumed twice, differently.**
-`Compositor::compose()` draws `win_` at the origin whatever its geometry
-says, while `InputRouter::onMouse()` maps a click through
-`win_->mapFromGlobal(px)`. The two agree only while the primary window
-sits at (0,0), which `exec()` happens to arrange. The moment it does not,
-drawing and hit-testing disagree by the window's offset. The modal and
-popup paths do not share the fault -- the compositor positions those by
-their real geometry -- which is what makes the primary window the odd one
-out rather than the rule.
+~~The primary window's origin is assumed twice, differently.~~ **Closed
+by stating it.** `Compositor::compose()` draws `win_` at the origin
+whatever its geometry says, while `InputRouter::onMouse()` maps a click
+through `win_->mapFromGlobal(px)`. The two agree only at (0,0) -- and
+`exec()` sized the window without ever positioning it, so they were
+agreeing because that is where the offscreen platform happens to put a
+window, not because anything required it.
+
+`exec()` moves it there now. The assumption was not wrong, it was
+unstated, and an unstated one cannot be tested: a probe that starts at
+the origin cannot express an origin bug. The check moves the window away
+before calling `exec()`, which is what makes it capable of failing --
+verified by removing the one line and watching it go red.
 
 **A flipped popup does not remember its anchor.** The flip is computed
 from the geometry the popup has when it is composed, so a popup that is

@@ -65,6 +65,17 @@ int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 
 	const QSize cells = backend.size();
 	win.setAttribute(Qt::WA_DontShowOnScreen);
+
+	// The primary window is the whole terminal, and it is at the origin. Both
+	// halves matter and only the first was being set. Compositor::compose()
+	// draws win_ at QPoint() whatever its geometry says, while
+	// InputRouter::onMouse() maps a click through win_->mapFromGlobal(): the
+	// two agree at (0,0) and nowhere else, and they were agreeing by accident
+	// because that is where the offscreen platform happens to put a window.
+	// Stating it here costs one call and makes the accident an invariant --
+	// which is the only kind of assumption a test can be written against,
+	// since a probe at the origin cannot express an origin bug.
+	win.move(0, 0);
 	win.resize(cells.width() * GridMetrics::cw(), cells.height() * GridMetrics::ch());
 	win.show();
 	QCoreApplication::processEvents();

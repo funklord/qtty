@@ -31,6 +31,7 @@ int suite_runtime() {
 		v->addWidget(label);
 		v->addStretch();
 
+		win.move(7 * cw, 3 * ch);              // exec() must put this back
 		CHECK(backend.sink() == nullptr, "backend has no sink before exec()");
 
 		// A repeating timer, not singleShot(0). exec() calls processEvents()
@@ -53,6 +54,14 @@ int suite_runtime() {
 		      "the frame the backend received is the widget tree");
 		CHECK(win.size() == QSize(40 * cw, 12 * ch),
 		      "the window was sized from the backend's cell size");
+		// Deliberately moved off the origin before exec(), because that is the
+		// only way this check can fail: the compositor draws the primary
+		// window at QPoint() and the router maps clicks through
+		// mapFromGlobal(), so the two agree at (0,0) whether or not anything
+		// enforces it. A probe that starts there cannot tell the difference.
+		CHECK(win.pos() == QPoint(0, 0),
+		      "exec() puts the primary window at the origin, which the "
+		      "compositor and the router both assume");
 		CHECK(!isTuiActive(), "exec() clears the TUI flag on the way out");
 	}
 
