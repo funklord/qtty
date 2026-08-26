@@ -47,7 +47,7 @@ TARGET  = qtty
 VERSION ?= $(shell cat VERSION)
 
 BUILD_DIR      ?= build
-TEST_BUILD_DIR ?= $(BUILD_DIR)
+TEST_BUILD_DIR ?= $(BUILD_DIR)-test
 DEB_DIR        ?= $(BUILD_DIR)/deb
 
 PREFIX  ?= /usr/local
@@ -55,8 +55,9 @@ DESTDIR ?=
 
 SOURCES = $(wildcard src/*.cpp src/*/*.cpp src/*/*/*.cpp)
 HEADERS = $(wildcard include/qtty/*.h src/*/*.h src/*/*/*.h)
-PROFILES = qtty.pro qtty.pri src/src.pro test/test.pro \
+PROFILES = qtty.pro qtty.pri src/src.pro \
            tool/inspect/inspect.pro tool/replay/replay.pro example/chat/chat.pro
+TEST_PROFILES = test/test.pro qtty.pri
 
 ifdef DEBUG
     QMAKE_CONFIG = CONFIG+=debug CONFIG-=release
@@ -75,7 +76,7 @@ LIB      = $(BUILD_DIR)/lib/libqtty.a
 INSPECT  = $(BUILD_DIR)/tool/inspect/qtty-inspect
 REPLAY   = $(BUILD_DIR)/tool/replay/qtty-replay
 EXAMPLE  = $(BUILD_DIR)/example/chat/chat
-TEST_BIN = $(TEST_BUILD_DIR)/test/qtty-tests
+TEST_BIN = $(TEST_BUILD_DIR)/qtty-tests
 
 .DEFAULT_GOAL := all
 
@@ -89,7 +90,20 @@ $(BUILD_DIR)/Makefile: $(PROFILES) VERSION
 	mkdir -p $(BUILD_DIR)
 	cd $(BUILD_DIR) && $(QMAKE) $(CURDIR)/qtty.pro $(QMAKE_CONFIG) QMAKE_CXX=$(CXX)
 
-$(LIB): $(BUILD_DIR)/Makefile $(SOURCES) $(HEADERS)
+# FORCE, and it is load-bearing rather than belt-and-braces. A rule listing
+# $(SOURCES) as its prerequisites is a claim that this file knows what the
+# sub-make depends on, and it does not: only the generated Makefile knows,
+# and it tracks headers through -MMD that no wildcard here can see. The first
+# version of this rule was keyed on $(SOURCES) alone, which is src/ only --
+# so editing a test file left $(LIB) up to date, make printed "Nothing to be
+# done for 'all'", the sub-make never ran, and the test binary that got run
+# was the previous one. A stale binary reports the previous answer, which is
+# indistinguishable from the new code being correct. Recursing every time
+# costs a no-op sub-make and does not force a relink.
+.PHONY: FORCE
+FORCE:
+
+$(LIB): $(BUILD_DIR)/Makefile FORCE
 	$(MAKE) -C $(BUILD_DIR)
 
 # -----------------------------------------------------------------------------
@@ -115,8 +129,20 @@ endif
 TEST_ENV = QT_QPA_PLATFORM=offscreen $(TEST_CRASH_ENV)
 TEST_TIMEOUT ?= 300
 
-test: $(LIB)
-	$(MAKE) -C $(BUILD_DIR)
+# test/ is not a SUBDIR of qtty.pro, so the default build cannot produce a
+# test binary at all -- which is the rule in build-and-commit.md, and also
+# removes the whole class of "did that get rebuilt?" from the default path.
+# It gets its own qmake run and its own build directory, and is told where
+# the library is because $$shadowed() cannot work it out from over here.
+$(TEST_BUILD_DIR)/Makefile: $(TEST_PROFILES) VERSION
+	mkdir -p $(TEST_BUILD_DIR)
+	cd $(TEST_BUILD_DIR) && $(QMAKE) $(CURDIR)/test/test.pro $(QMAKE_CONFIG) \
+	        QMAKE_CXX=$(CXX) QTTY_LIB_DIR=$(CURDIR)/$(BUILD_DIR)/lib
+
+tests-build: $(LIB) $(TEST_BUILD_DIR)/Makefile FORCE
+	$(MAKE) -C $(TEST_BUILD_DIR)
+
+test: tests-build
 	@ran=0; failed=0; \
 	for binary in $(TEST_BIN); do \
 		[ -x "$$binary" ] && [ -f "$$binary" ] || continue; \
@@ -134,8 +160,7 @@ test: $(LIB)
 	[ "$$failed" -eq 0 ]
 
 # Rewrite a snapshot fixture after a reviewed change: make record R=render
-record: $(LIB)
-	$(MAKE) -C $(BUILD_DIR)
+record: tests-build
 	@test -n "$(R)" || { echo "record: name the fixture, e.g. make record R=render" >&2; exit 1; }
 	$(TEST_ENV) $(TEST_BIN) --record $(R)
 
@@ -195,11 +220,9 @@ version-check:
 # -----------------------------------------------------------------------------
 
 run: $(LIB)
-	$(MAKE) -C $(BUILD_DIR)
 	$(EXAMPLE) --tui
 
 install: $(LIB)
-	$(MAKE) -C $(BUILD_DIR)
 	install -d $(DESTDIR)$(PREFIX)/include/qtty
 	install -m 0644 include/qtty/*.h $(DESTDIR)$(PREFIX)/include/qtty/
 	install -d $(DESTDIR)$(PREFIX)/lib
@@ -221,6 +244,7 @@ uninstall:
 
 clean:
 	@if [ -f $(BUILD_DIR)/Makefile ]; then $(MAKE) -C $(BUILD_DIR) clean; fi
+	@if [ -f $(TEST_BUILD_DIR)/Makefile ]; then $(MAKE) -C $(TEST_BUILD_DIR) clean; fi
 
 # A wildcard is legitimate only where the names are not knowable, and then the
 # directory has to be vouched for instead: it must be non-empty, relative, and
@@ -255,5 +279,5 @@ distclean: veryclean
 help:
 	@sed -n '/^# TARGETS/,/^#$$/p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
-.PHONY: all test record check style style-source style-docs hooks version-check \
-        run install uninstall clean veryclean distclean help
+.PHONY: all test tests-build record check style style-source style-docs hooks \
+        version-check run install uninstall clean veryclean distclean help FORCE

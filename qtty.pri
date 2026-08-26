@@ -10,7 +10,9 @@ QTTY_ROOT = $$PWD
 # $$PWD/../lib unconditionally, which wrote the library into the source tree
 # whatever qmake was told -- lib/libqtty.a was a tracked file that every
 # build rewrote, and a shadow build still dirtied the repository.
-QTTY_LIB_DIR = $$shadowed($$PWD)/lib
+# A build driven from elsewhere -- the test build -- passes this in, because
+# $$shadowed() can only answer for the tree qmake was pointed at.
+isEmpty(QTTY_LIB_DIR): QTTY_LIB_DIR = $$shadowed($$PWD)/lib
 QTTY_LIB = $$QTTY_LIB_DIR/libqtty.a
 
 CONFIG += c++17
