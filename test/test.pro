@@ -15,6 +15,10 @@ PRE_TARGETDEPS += $$QTTY_LIB
 # binary cannot find on its own once the build moved out of it.
 DEFINES += QTTY_SOURCE_DIR=\\\"$$QTTY_ROOT\\\"
 
+# NullBackend is the section 9 harness backend and lives in src/ rather than
+# in the public headers, the same way tool/replay reaches AnsiBackend.
+INCLUDEPATH += $$QTTY_ROOT
+
 SOURCES += main.cpp \
            suite_cells.cpp \
            suite_theme.cpp \
@@ -23,4 +27,5 @@ SOURCES += main.cpp \
            suite_placements.cpp \
            suite_router.cpp \
            suite_widgets.cpp \
-           suite_graphics.cpp
+           suite_graphics.cpp \
+           suite_runtime.cpp

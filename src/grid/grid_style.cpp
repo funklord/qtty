@@ -6,6 +6,9 @@
 #include <QStyleOptionButton>
 #include <QPainter>
 #include <QWidget>
+#include <QCoreApplication>
+#include <QFontMetricsF>
+#include <QFontInfo>
 
 namespace Qtty {
 
@@ -17,6 +20,94 @@ void GridMetrics::set(int cw, int ch) { s_cw = cw; s_ch = ch; }
 static QWidget *s_focus = nullptr;
 QWidget *focusWidget() { return s_focus; }
 void setFocusWidget(QWidget *w) { s_focus = w; }
+
+// ------------------------------------------------- font provisioning (5.3/R3)
+
+QString grid_font_problem(const QFont &font) {
+	const QFontInfo info(font);
+	if (!info.fixedPitch())
+		return QStringLiteral("'%1' resolved to '%2', which is not fixed pitch")
+			   .arg(font.family(), info.family());
+
+	// Real-valued metrics, because the integer ones have already rounded and
+	// would report 10 for an advance of 9.6. Integrality is the property the
+	// whole grid rests on, so it is the one to ask about directly.
+	const QFontMetricsF fm(font);
+	const qreal height = fm.height();
+	if (!qFuzzyCompare(height, qRound(height)))
+		return QStringLiteral("line height is %1 px, which is not a whole number")
+			   .arg(height);
+	if (qRound(height) <= 0)
+		return QStringLiteral("line height is %1 px").arg(height);
+
+	// A spread of characters rather than a pair: 'i' against 'M' is the check
+	// this replaced, and it passes on a font that is fixed-pitch for Latin and
+	// proportional anywhere else. These cover thin, wide, punctuation and
+	// digits, which is where a not-quite-monospace font gives itself away.
+	const QString probe = QStringLiteral("MilW@#0oX|._");
+	const qreal advance = fm.horizontalAdvance(QChar(u'M'));
+	if (!qFuzzyCompare(advance, qRound(advance)))
+		return QStringLiteral("advance is %1 px, which is not a whole number")
+			   .arg(advance);
+	if (qRound(advance) <= 0)
+		return QStringLiteral("advance is %1 px").arg(advance);
+	for (const QChar c : probe) {
+		const qreal a = fm.horizontalAdvance(c);
+		if (!qFuzzyCompare(a, advance))
+			return QStringLiteral("'%1' advances %2 px against %3 px for 'M'")
+				   .arg(c).arg(a).arg(advance);
+	}
+	return QString();
+}
+
+// ------------------------------------------------------------------ GridGuard
+
+static int s_violations = 0;
+static GridGuard *s_guard = nullptr;
+
+int GridGuard::violations() { return s_violations; }
+void GridGuard::reset() { s_violations = 0; }
+
+bool GridGuard::is_exempt(const QWidget *w) {
+	// Measured F5: QHeaderView and QScrollBar ignore some style metrics and
+	// size themselves, so they land off the grid however the style is written.
+	// The design records that as a small known set rather than a systemic
+	// failure, and until they are given ICellPainted or fixed sizing they
+	// would make this guard report a violation on every item view -- which is
+	// how a guard becomes noise and then becomes disabled.
+	static const char *const exempt[] = {
+		"QHeaderView", "QScrollBar", "QAbstractScrollAreaScrollBarContainer",
+	};
+	for (const QObject *o = w; o; o = o->parent())
+		for (const char *name : exempt)
+			if (o->inherits(name)) return true;
+	return false;
+}
+
+bool GridGuard::eventFilter(QObject *obj, QEvent *event) {
+	if (event->type() == QEvent::Resize || event->type() == QEvent::Move) {
+		if (QWidget *w = qobject_cast<QWidget *>(obj)) {
+			if (!is_exempt(w) && !GridMetrics::isAligned(w->geometry())) {
+				++s_violations;
+				const QRect g = w->geometry();
+				qWarning("qtty: %s '%s' geometry %dx%d+%d+%d is off the "
+					     "%dx%d grid",
+					     w->metaObject()->className(),
+					     qPrintable(w->objectName()),
+					     g.width(), g.height(), g.x(), g.y(),
+					     GridMetrics::cw(), GridMetrics::ch());
+			}
+		}
+	}
+	return false;                                // never consume
+}
+
+void GridGuard::install(QCoreApplication &app) {
+	if (s_guard) return;
+	s_guard = new GridGuard;
+	s_guard->setParent(&app);
+	app.installEventFilter(s_guard);
+}
 
 // Channel A target detection: via the paint ENGINE, never p->device() -- inside
 // a paintEvent the device is the QWidget itself (section 16, F1).

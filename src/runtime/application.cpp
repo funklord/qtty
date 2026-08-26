@@ -20,14 +20,31 @@ void setup(QApplication &app) {
 	// Mono is the interim source of integral metrics, asserted as designed.
 	QFont f(QStringLiteral("DejaVu Sans Mono"));
 	f.setPixelSize(16);
-	QFontMetrics fm(f);
-	const int cw = fm.horizontalAdvance(u'M'), ch = fm.height();
-	Q_ASSERT_X(cw > 0 && fm.horizontalAdvance(u'i') == cw, "Qtty::setup",
-		       "monospace font with integral metrics required");
-	GridMetrics::set(cw, ch);
+
+	// A hard startup error, not a rendering glitch (section 5.3, risk R3). The
+	// check this replaced was a Q_ASSERT_X comparing the advance of 'i' with
+	// that of 'M': it tested monospace-ness rather than integral metrics, and
+	// being an assert it compiled out in release, so no shipping build carried
+	// R3's mitigation at all. qFatal is deliberate -- every column the grid
+	// computes from here is wrong, and failing at the point of cause is worth
+	// more than a screen that degrades a little further with each column.
+	if (const QString problem = grid_font_problem(f); !problem.isEmpty()) {
+		qFatal("qtty: the grid needs a font with integral metrics: %s",
+			   qPrintable(problem));
+	}
+
+	const QFontMetrics fm(f);
+	GridMetrics::set(fm.horizontalAdvance(u'M'), fm.height());
 	app.setFont(f);
 	app.setStyle(new GridStyle);
 	setTheme(CellTheme::terminalDefault());
+
+	// The guard is installed in debug builds and compiled out of release, as
+	// the design specifies. Tests install it explicitly whatever the build,
+	// since section 9 asks for it to run as an assertion in every test.
+#ifndef QT_NO_DEBUG
+	GridGuard::install(app);
+#endif
 }
 
 void renderOnce(QWidget &win, CellBuffer &buf, QVector<CellImage> *placements) {
@@ -43,9 +60,8 @@ void renderOnce(QWidget &win, CellBuffer &buf, QVector<CellImage> *placements) {
 static bool s_tuiActive = false;
 bool isTuiActive() { return s_tuiActive; }
 
-int exec(QApplication &app, QWidget &win) {
+int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	s_tuiActive = true;
-	AnsiBackend backend;
 
 	const QSize cells = backend.size();
 	win.setAttribute(Qt::WA_DontShowOnScreen);
@@ -64,6 +80,13 @@ int exec(QApplication &app, QWidget &win) {
 	const int rc = app.exec();
 	s_tuiActive = false;
 	return rc;
+}
+
+int exec(QApplication &app, QWidget &win) {
+	// The built-in backend, owned for the duration of the run. Everything else
+	// happens in the overload above, so the two paths cannot drift.
+	AnsiBackend backend;
+	return exec(app, win, backend);
 }
 
 } // namespace Qtty

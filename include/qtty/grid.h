@@ -1,10 +1,13 @@
 // qtty/grid.h -- L3 grid metrics, style, and the alignment guard (section 5.3).
 #pragma once
 #include <QProxyStyle>
+#include <QObject>
+#include <QString>
 #include <QRect>
 #include <QSize>
 
 class QWidget;
+class QCoreApplication;
 
 namespace Qtty {
 
@@ -20,6 +23,42 @@ public:
 		return px.x() % cw() == 0 && px.y() % ch() == 0
 			&& px.width() % cw() == 0 && px.height() % ch() == 0;
 	}
+};
+
+// section 5.3 and risk R3: the grid is sound only if one cell is a whole
+// number of pixels and every glyph advances by exactly that. Returns an empty
+// string when `font` can carry the grid, and otherwise says what failed.
+//
+// Qtty::setup() treats a non-empty answer as a hard startup error rather than
+// a warning, which is what the design asks for: a font whose advance is 9.6
+// pixels does not produce a slightly blurry TUI, it produces one where the
+// column a widget thinks it occupies and the column it draws into diverge
+// further with every column. The check this replaced was Q_ASSERT_X on
+// `advance('i') == advance('M')`, which tested monospace-ness rather than
+// integrality and compiled out in release -- so R3's stated mitigation was
+// not in place in any shipping build.
+QString grid_font_problem(const QFont &font);
+
+// section 5.3, and the design calls this "the highest value-per-line component
+// in the project": an event filter that checks every widget geometry against
+// the grid as it is assigned, so a misalignment is reported where it happens
+// rather than as a smeared frame several layers away.
+//
+// It reports rather than aborts. A misaligned widget is a quality defect, and
+// a guard that takes the application down with it is one somebody switches
+// off -- at which point it guards nothing.
+class GridGuard : public QObject {
+public:
+	// Installs a single guard on `app`, owned by it. Calling twice is a no-op.
+	static void install(QCoreApplication &app);
+	static int violations();          // count since the last reset
+	static void reset();
+	// Widgets whose class self-sizes and cannot be gridded from the style
+	// (measured F5). Named rather than silently skipped, so the exemption is
+	// reviewable and does not quietly grow.
+	static bool is_exempt(const QWidget *w);
+
+	bool eventFilter(QObject *, QEvent *) override;
 };
 
 // InputRouter-owned focus (section 5.5, measured F4): under the offscreen platform no

@@ -10,6 +10,7 @@
 #pragma once
 #include <QWidget>
 #include "cell.h"
+#include "backend.h"
 
 class QApplication;
 
@@ -22,7 +23,16 @@ void prepareEnvironment();
 // construction: the shared UI derives its metrics from the application font.
 void setup(QApplication &app);
 
-// Run `win` full-screen on the controlling terminal until quit.
+// Run `win` on `backend` until quit. The backend is L1's seam (section 5.1):
+// a legacy adapter, termpaint, or NullBackend under test all drive the same
+// runtime through it. This overload is what makes the seam real -- until it
+// existed, exec() constructed an AnsiBackend on its own stack and no other
+// backend could reach the runtime at all, which blocked Phase 1 and left the
+// section 9 harness unable to use the backend it was specified in terms of.
+int exec(QApplication &app, QWidget &win, ITerminalBackend &backend);
+
+// Run `win` full-screen on the controlling terminal until quit. The
+// convenience form of the above, on the built-in AnsiBackend.
 int exec(QApplication &app, QWidget &win);
 
 // True while exec() is driving a terminal session. Overlay uses this to pick
