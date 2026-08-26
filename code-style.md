@@ -1,0 +1,625 @@
+<!-- Copied from ~/.claude/guidelines/code-style.md -- the source. Keep in
+     sync; fix drift the moment you notice it. -->
+
+# code-style.md
+
+Code style for private projects. This file is the **source**. Every private
+project except the one holding this file carries a copy at its repo root,
+and the copies must not diverge -- see *Keeping the copies in sync* at the
+end, which says why the exception exists.
+
+Vendored submodules, generated sources and attic/historical material are
+exempt: they keep whatever their upstream or generator produces. Each
+project's copy names its own exempt paths.
+
+## The three rules
+
+1. **`snake_case`, not `camelCase`,** for identifiers this project defines.
+2. **Tabs for indentation, spaces for alignment.**
+3. **Lowercase filenames,** unless a tool demands otherwise.
+
+Everything below is these three rules in detail, plus the exceptions that
+are already settled. An exception not listed here is not yet settled: raise
+it rather than deciding in passing.
+
+## 1. Naming
+
+`snake_case` for functions, variables, type names and fields.
+
+This holds **even inside a toolkit whose own API is `camelCase`**. Call the
+foreign API exactly as it is spelled (`setParent`, `addWidget`) -- that is
+not a violation, it is the API's name. But names *you* introduce stay
+`snake_case`. Do not let the surrounding convention pull your own names
+across.
+
+- Prefer the plain descriptive name over the redundant one. Name the thing,
+  not its category: `plan`, not `plan_struct` or `plan_result`.
+- **No abbreviations that are not already vocabulary.** `observed`, not
+  `obs`; `interface`, not `iff`. This matters most wherever an internal
+  name escapes into something you cannot rename later -- a wire format, a
+  config key, a CLI output, an on-disk path.
+- **One word per concept, everywhere.** The same word in the type name, the
+  file path, the subcommand and the documentation. A synonym introduced for
+  variety reads as a second concept.
+
+### Prefixes, and visibility
+
+Prefixes exist to keep this project's symbols from colliding with a
+library's. So they follow **visibility**, and the choice is a matter of
+judgement rather than a mechanical rule:
+
+- **Anything with more than small visibility carries the project prefix** --
+  the public API, and anything a linker or importer outside its own module
+  can reach.
+- **Module-private symbols are left unprefixed**, precisely so that the
+  absence of a prefix reads as "this does not leave the module."
+
+The middle case decides itself on link safety, not on taste. A symbol that
+is internal by intent but still reaches the linker -- cross-file within a
+library, not `static`, not part of the API -- is *not* private for this
+purpose. Prefix it. A deliberate parallel copy of a function in two
+libraries needs a **distinct** name, not the same name in both on the
+assumption that nothing will ever link both sides; that assumption fails
+later, at a call site that changed nothing, and names files you did not
+touch.
+
+Where a language enforces its own scheme, accept it rather than fight it,
+and say in the project's copy that the toolchain is doing it:
+
+- **Rust** -- `non_snake_case` and `non_camel_case_types` are on by default,
+  so types are `PascalCase` and constants `SCREAMING_SNAKE_CASE`. That is
+  the toolchain's, not a choice. Package systems that demand kebab-case
+  (Cargo crate names, Debian package names) likewise read back with their
+  own spelling; do not invent a third by naming the directory differently
+  from the package.
+- **Python** -- a leading underscore (`_name`) is the language's private
+  marker and stands in for "unprefixed" above.
+
+## 2. Indentation and alignment
+
+Indent structural nesting with **tab** characters, one tab per level. When
+lining up tokens *within* a line -- continuation parameters under an open
+paren, a block comment's `*` column, an aligned trailing comment -- use
+**spaces**, after the indent tabs.
+
+The point of the split: alignment is expressed relative to the shared
+leading tabs, so it survives at any tab width. No tab width is prescribed
+anywhere; the viewer decides.
+
+```c
+int thing_do(thing_t *thing, const char *name, size_t name_len,
+              uint8_t *out, size_t out_cap) {
+>---if (!thing) return ERR_MALFORMED;
+>---return thing_write(thing, name, name_len, out, out_cap,
+>---                    THING_DEFAULT_FLAGS);
+}
+```
+
+(`>---` marks a tab; everything lining up under `(` is spaces.)
+
+Never mix tabs and spaces *within* the indent itself. Tabs come first and
+spaces come after; the reverse, or an alternation, is what breaks at a
+different tab width -- and in Python it is a syntax error.
+
+### Settled exceptions
+
+Divergence needs a technical reason. These reasons are already accepted and
+need no discussion:
+
+- **Makefile recipe lines** -- `make` requires a literal tab. Compliant by
+  construction.
+- **YAML** -- the spec forbids tabs for indentation outright. Use spaces.
+- **Markdown** -- list continuation and code fences are space-indented by
+  specification. Exempt.
+- **Debian packaging files** -- exempt, and the two halves are exempt for
+  different reasons. `debian/changelog` has a fixed layout that a tab is
+  not part of: `dpkg-parsechangelog` calls a tab-indented change line
+  "unrecognized" and loses the trailer outright if a tab precedes `--`. A
+  deb822 continuation in `control` or `copyright` is the opposite case --
+  `deb822(5)` allows a leading SPACE *or* TAB and dpkg round-trips either,
+  but that leading whitespace is field syntax rather than indentation, so
+  the rule has nothing to say about it and everything past it is
+  alignment. Both measured against dpkg rather than read off the manual.
+- **Go** -- `gofmt` emits tabs natively. Compliant already.
+- **Vendored, generated and attic sources** -- exempt, per the header.
+
+Python deserves a note, because PEP 8 prefers spaces and the tension looks
+worse than it is: the language's only hard rule is that indentation must not
+be *ambiguous*, and tabs-then-spaces is unambiguous at every tab width.
+Continuation lines inside brackets are not indentation-significant at all.
+Never a space *before* a tab in leading whitespace -- that is the case that
+raises `TabError`.
+
+Anything else that seems to need spaces: signal it to the list in
+`claude-guidelines`' `project.md`, follow the rule meanwhile, and it gets
+settled and added here in a pass rather than in whichever project met it
+first.
+
+## 3. Filenames
+
+**Lowercase, always**, for everything the project names itself. So
+`main_window.cpp`, not `MainWindow.cpp`.
+
+**The separator follows what the name binds to**, and the two cases are a
+technical difference rather than a matter of taste:
+
+- **`snake_case` where the filename becomes an identifier** -- a source
+  file, a header, a module. `desired_state.rs` *is* the module
+  `desired_state`, and `desired-state.rs` cannot be a module at all,
+  because a hyphen is not legal in a Rust path; Python imports are the
+  same. That is the language's requirement wearing a convention's
+  clothes, and it is not negotiable where it applies.
+- **`kebab-case` for prose** -- documentation, design notes, decision
+  records. Nothing imports `code-style.md`, so no identifier is at stake,
+  and kebab-case is what markdown and URLs settled on long ago.
+
+This rule used to say `snake_case` for documentation too, and every
+private project was quietly ignoring it -- including this one. Measured
+across all fourteen trees before it was rewritten: of 197 tracked markdown
+basenames, 174 are kebab-case, 19 are a single word with no separator to
+argue about, and four carry an underscore. Three of those four are SHOUTY
+and break the lowercase half regardless of separator, which leaves exactly
+one genuine counter-example in the workspace. Every file in this
+guidelines directory was already kebab-case, so the rule as written was
+one its own document broke.
+
+Settled exceptions:
+
+- **Names a tool will not accept lowercased** -- `Makefile`,
+  `CMakeLists.txt`, `AndroidManifest.xml`, `Dockerfile`, `Cargo.toml`.
+- **Root files with an established convention** -- `README.md`, `LICENSE`,
+  `CHANGELOG.md`, `AUTHORS`, `VERSION`. The last is this workspace's own
+  rather than the wider world's, and is settled by use: thirteen of the
+  fourteen private projects track one, and a build reads it for the
+  package version and for whatever the program prints, so the number
+  lives in exactly one place. `claude-guidelines` is the one without it,
+  and it packages nothing.
+- **Package-system spellings** -- kebab-case where Cargo or Debian require
+  it. That is now the same spelling prose uses, so a crate directory and
+  the design note beside it agree by construction rather than by
+  coincidence.
+
+### Singular, unless somebody else standardised the plural
+
+**Prefer the singular for a directory this project names itself.** `helper/`
+rather than `helpers/`, `doc/` rather than `docs/`, `fixture/` rather than
+`fixtures/`. The name says what kind of thing lives there, not how many;
+one of them and forty of them go in the same place, and the directory
+should not have to be renamed when the count changes.
+
+There are two exceptions, and they are not equal. This is the same shape
+as the lowercase rule above, which yields first to `Makefile` because make
+will not read anything else, and only then to `README.md` because the world
+settled it.
+
+**First: a name a tool requires is not a name we choose.** It outranks the
+singular exactly as it outranks lowercase, it needs no measurement and no
+argument, and the test is whether something breaks when the name changes.
+This is a *technical* fact, so it is open-ended rather than a list -- a
+tool met tomorrow that demands a name gets the same answer, whether the
+name it demands is plural, singular, capitalised or none of those.
+
+Present here: **Cargo** looks for `tests/`, `examples/` and `benches/` by
+those exact names, and `cargo-fuzz` for `fuzz_targets/`. **GitHub**
+requires `.github/workflows/`. **git** keeps `hooks/`, which is why
+`tool/hooks/` is spelled that way. And a **foreign package's directory
+names are the same exception one layer out**: the Android SDK ships
+`platform-tools/` and `build-tools/`, and those spellings are the SDK's
+however this tree spells its own. The rename pass learned that by
+breaking them -- a word-boundary rewrite of `tools/` reaches into
+`platform-tools/` because the hyphen is a boundary, so every adb target
+in four projects pointed at a binary that was not there and the
+signature check went quiet by a new route. A sweep must skip compound
+names it does not own, and package-system spellings (Cargo crates,
+Debian packages) under *Filenames* above are this same carve-out.
+
+**Second: a plural an ecosystem has settled**, which is a convention rather
+than a requirement -- nothing breaks, but a reader would be surprised by
+the singular. Cargo workspaces conventionally keep members in `crates/`,
+and that is this kind rather than the first. **These need measuring**, and
+the project's copy names what it was measured against, so the next reader
+does not reopen it.
+
+Where the two are confused, the cost lands on whoever renames a directory
+because it looked like a convention and finds the build no longer works.
+So say which kind is being claimed.
+
+**The settled inventory took this rule by the holder's instruction, not by
+sweep.** When this section was first written, three canonical names in
+`harmonization.md` were plural -- `tools/`, `docs/` and `docs/decisions/` --
+and the paragraph here held them out of reach, because renaming an inventory
+entry is a cross-project rewrite rather than a spelling change: the decision
+records were cited by path hundreds of times, and `tools/` was named from
+`sync.py`, every Makefile's hook target and the `~/.claude` symlink the
+copies are spread from. The holder then said to rename all three, and they
+are `tool/`, `doc/` and `doc/decision/` now, moved in a deliberate pass with
+each project's gates run against the result. The history is kept because the
+next inventory entry will raise the same question, and the answer stays the
+same: an inventory name moves when its owner says so, at whatever cost was
+measured, and not as a side effect of a style rule.
+
+## ASCII in source
+
+Source and comments are ASCII. Write `--` where prose would use an em dash,
+and "section" for a section sign.
+
+This governs **the text the repository writes about itself**, not the data
+the software handles. Three exceptions, and they are the rule's shape
+rather than holes in it:
+
+- **Documentation.** Markdown may use typographic punctuation.
+- **User-facing text in UI software.** A tick a program prints is output,
+  not prose -- `GREEN('gpg ')` is correct as it stands.
+- **Anything that genuinely requires Unicode**: a fixture for a UTF-8
+  parser, a terminal emulator's character tables, a font tool.
+
+Where a project needs the rule enforced, `ascii_only` in `.style-gate.toml`
+turns it on. In Python and in C/C++ it enforces exactly the shape above --
+ASCII outside string literals, Unicode allowed inside them. Python is read
+with `tokenize`; C and C++ get a scanner written for the purpose, nothing in
+the standard library lexing them. Every other language still gets a
+whole-file byte check, having no lexer here, and so does a file in either of
+those two that will not lex: a file nobody can parse is not a file that has
+been cleared.
+
+It was the whole file for everyone until a project that prints two status
+ticks had to switch the check off to keep them, which switched it off for
+its comments as well, and an em dash arrived in one. **An exception wider
+than its reason is how a rule stops being enforced.**
+
+The C/C++ half followed from the same shape, measured. A Qt tree kept the
+check off for the glyphs on its toolbar and in its media dialog, which are
+genuinely output; of the 1114 non-ASCII characters in the 233 C and C++
+files its gate reads, 260 were those, and the other 854 were prose that had
+collected in comments across 163 of the files -- 437 em dashes and 369
+section signs, the two characters this rule names by example. One em dash is
+what the first incident cost. The difference is only how long nobody looked.
+
+## Formatters
+
+A formatter is allowed **only if it can be configured to honour the three
+rules completely**. Configuration gaps are disqualifying, not something to
+work around: a formatter that gets indentation right and alignment wrong
+will rewrite the tree on somebody's next save.
+
+So the decision is per tool, per project, and it is a real evaluation:
+
+- If it can be made to comply, use it, and commit the config with a comment
+  saying which setting is load-bearing and what happens without it.
+- If it cannot, do not run it -- **not even ad hoc on a single file**. The
+  failure mode is a silent conversion of files that were already correct,
+  discovered later as a reverted commit rather than an error.
+- If no existing tool fits and the rule is worth mechanising, write our
+  own. A checker that only gates indentation is worth more than a formatter
+  that reflows everything.
+
+**Record the decision and the finding that produced it** in the project's
+copy of this file -- which tool, what specifically failed, what would change
+the answer. A verdict without its evidence gets re-litigated, and a tool
+that improves later never gets reconsidered because nobody remembers what
+was actually wrong with it.
+
+Naming and filename rules are review items, not automated ones.
+
+## Precedence
+
+Three layers, and they are not equals:
+
+1. **The global guidelines** (`~/.claude/CLAUDE.md` and the files it
+   imports) -- the source, and they win.
+2. **The project's `project.md`** -- project-specific design and conventions.
+3. **The project's `code-style.md`** -- this file, copied.
+
+A project copy that disagrees with the source is **drift, not an
+override**: fix it. A project that genuinely needs to diverge needs a
+technical reason, and that is not a decision to make while working on
+something else -- signal it to the list in `claude-guidelines`'
+`project.md` and keep following the source meanwhile.
+
+**When a conflict between layers actually comes up, stop and ask.** Do not
+silently pick a winner, even the global one.
+
+This precedence rule lives here and in the global guidelines only. It does
+not belong in a `project.md`.
+
+## Keeping the copies in sync
+
+Each private project keeps a copy of this file at its repo root -- except
+the one this file lives in. `claude-guidelines` holds the source at
+`guidelines/code-style.md`, and a copy beside it would be the same document
+twice in one repository with nothing to keep the two honest; its root
+`code-style.md` says so and points here. Every other private project carries
+a copy, opening with a header that names the source:
+
+```markdown
+<!-- Copied from ~/.claude/guidelines/code-style.md -- the source. Keep in
+     sync; fix drift the moment you notice it. -->
+```
+
+Below the copied rules, a project adds only what is genuinely its own: its
+exempt paths, its formatter verdicts, its language-specific notes, its
+tooling commands.
+
+**This source is deliberately plain ASCII** -- no em dashes, no section
+signs, no arrows -- so that a copy can be byte-verbatim in every project,
+including one whose own rules restrict the characters its files may
+contain. Keep it that way when editing: a typographic character introduced
+here becomes a transliteration problem in every repository that carries a
+copy.
+
+Where a copy must still be adapted, **"do not diverge" means semantically
+identical, not byte-identical**: a project transliterating to satisfy its
+own character-set rule, or renumbering a heading to fit its own structure,
+is that project's rule working correctly, **not drift, and not something to
+reconcile back**. What must match is every rule and every exception, in
+substance.
+
+**`sync.py --check` now reports the copies that have fallen behind**, which
+until 2026-08-24 nothing did. The three files spread verbatim were checked on
+every run and this one -- the document that says what the rules are -- was
+checked by nobody, so drift was indistinguishable from the adaptation the
+section above asks for. It found real losses: four copies had dropped
+*Precedence*, the section saying this source outranks them; three had dropped
+*Formatters*, whose rule was paid for by a formatter rewriting committed
+files; one had dropped *ASCII in source*; and seven had dropped this very
+section, which is the one that would have told a reader to look.
+
+It asks the weaker question that can actually be answered -- does the copy
+still carry a section for every section here -- and it never writes this
+file, because overwriting a copy would delete the part the project owns. A
+heading that *extends* one of these satisfies it, since that is what
+recording a project's own formatter verdict looks like.
+
+**If you notice a copy diverging from the source, reconcile it as soon as
+you notice** -- do not leave it for later and do not work around it. If the
+divergence looks deliberate rather than stale, that is the conflict case
+above: ask.
+
+Noticing requires looking. **Re-read this source before writing or
+reconciling any project's copy**, rather than working from what was loaded
+at the start of the session -- it may have changed since, and a copy
+reconciled against a stale source is drift being written rather than
+fixed.
+
+The project's `project.md` may state the three rules in brief and point
+here for the detail. It does not restate the precedence rule.
+
+---
+
+## This project
+
+Everything above is the copied source. What follows is qtty's own.
+
+### Exempt paths
+
+`exclude` in `.style-gate.toml` names them: `build`, `build-android`,
+`spike`, `__pycache__`, `.claude`. The build trees and `__pycache__` are
+generated and exempt by the header's rule. `spike/` is the one that needed
+a reason written down.
+
+**`spike/` holds the Phase-0 record** -- the four spikes and the focus
+probe exactly as they were run. That is what makes them evidence for the
+measurements `doc/design.md` section 16 cites, so reindenting them would
+edit the record rather than tidy it. They are historical material, which
+the header exempts, and they are standalone: nothing in the library builds
+them.
+
+Note that `exclude` **replaces** the gate's shipped defaults rather than
+extending them, so that list restates all of them. Adding a path there
+means adding it to a list, not to a default.
+
+### The conversion, and the indent ladder
+
+The tree was 4-space indented throughout and was converted to tabs on
+2026-08-26 by `tool/style_gate.py fix`: **2372 violations across 48
+files**. The fixer carries its own proof -- expanding leading tabs back to
+`indent_width` columns must reproduce the original file, and only leading
+whitespace is ever rewritten -- so a conversion it cannot prove it refuses
+to write.
+
+**The ladder was measured before converting, not assumed.** Of 3277
+leading space runs in the tree on conversion day, 1819 were 4 columns, 897
+were 8 and 282 were 12, which makes it unambiguously 4. That is why
+`.style-gate.toml` says `indent_width = 4`, and it is migration
+information only: checking never reads it, because a tab carries the level
+and the viewer decides how wide it looks.
+
+### Qt, and the naming rule
+
+Qt's own API is `camelCase` and stays that way at the call site:
+`paintEvent`, `sizeHint`, `drawPrimitive`, `setProperty`. That is the API's
+spelling, not a violation. **A reimplemented Qt virtual keeps Qt's name**,
+because the signature is theirs -- `void paintEvent(QPaintEvent *event)
+override`.
+
+Names qtty introduces are `snake_case`.
+
+The project prefix is expressed four ways, one per namespace the language
+does not cover, and `doc/design.md` section 10.1 is authoritative for all
+of them:
+
+- **C++ namespace** `Qtty::`. Everything public lives in it; nothing at
+  global scope.
+- **Macros** `QTTY_`-prefixed, and there are no public macros beyond
+  include guards. Macros are the one C++ clash no namespace can fix.
+- **Environment variables** `QTTY_*`.
+- **String namespaces** wherever a string acts as an identifier: dynamic
+  properties `"qtty.cells"` and `"qtty.glyph"`, `Q_DECLARE_INTERFACE` ids
+  `"org.qtty.*"`, settings keys.
+
+The file-system spelling is lowercase `qtty` -- repo, library, include
+path, package and binary names -- which is the KDE repo/namespace pattern
+(`kio` and `KIO::`) and is recorded in `README.md`.
+
+### Filenames
+
+Compound C++ basenames were renamed to `snake_case` in the same pass as
+the tab conversion:
+
+    cellbuffer.cpp        -> cell_buffer.cpp
+    gridstyle.cpp         -> grid_style.cpp
+    cellpaint.cpp         -> cell_paint.cpp
+    inputrouter.cpp       -> input_router.cpp
+    ansibackend.{cpp,h}   -> ansi_backend.{cpp,h}
+    nullbackend.h         -> null_backend.h
+
+The run-together spelling is Qt's convention, not this workspace's. Every
+sibling here is already `snake_case` -- hydra has `address_input.cpp`,
+bbq-predictor `main_window.cpp` -- so this was drift being fixed rather
+than a local rule being invented.
+
+`qtty.pro` and `qtty.pri` are package-system spellings: qmake wants the
+project file named for the target.
+
+### Directory names
+
+Renamed in the same pass, and the two kinds are worth keeping apart:
+
+    docs/             -> doc/
+    tools/            -> tool/
+    tests/            -> test/
+    examples/         -> example/
+    spikes/           -> spike/
+    src/backends/     -> src/backend/
+    src/widgets/      -> src/widget/
+    test/snapshots/   -> test/snapshot/
+
+`doc/` and `tool/` are **the settled inventory** in
+`~/.claude/guidelines/harmonization.md` -- canonical names, not this
+project's choice. The rest is the singular rule above, applied to
+directories this project names itself. Nothing here is a tool-required
+plural: this is qmake and CTest, neither of which looks for a directory by
+name the way Cargo looks for `tests/`.
+
+**`spike/` was already what `doc/design.md` called it**, so that rename
+closed a design-versus-code gap rather than opening one.
+
+### ASCII in source: the split, and why `ascii_only` is not yet on
+
+qtty is a terminal library, so it legitimately emits non-ASCII characters
+as **output**. Measured on 2026-08-26, its C and C++ sources hold **340
+non-ASCII characters**, and they fall into exactly the two groups the
+source's rule distinguishes:
+
+- **Prose that collected in comments** -- 115 section signs and 79 em
+  dashes, which are the two characters the rule names by example, plus a
+  scattering of arrows. These are the repository writing about itself, and
+  the rule says they should be `--` and "section". (The 80th em dash is
+  not one of them: it sits inside a `setPlaceholderText` string in the
+  chat example, which is user-facing text and stays.)
+- **Genuine output in string literals** -- box-drawing characters (the
+  light horizontal and vertical, and the four light corners), block and
+  shade characters (full block, the three shades, upper and lower half
+  block), arrow and marker glyphs (the small triangles, black circle,
+  star, smiley), plus CJK and accented characters in the wide-cluster and
+  grapheme test fixtures. A terminal emulator's character tables are named
+  in the source as an explicit exception, and these are that.
+
+This is precisely the split `ascii_only` was built for: the gate lexes C
+and C++, so a glyph inside a string literal is output and stays, while an
+em dash in a comment is prose and does not.
+
+**`ascii_only` is not currently set in `.style-gate.toml`, and the key
+being absent is the honest state**: the comment prose has not yet been
+converted. Turning the flag on today would report that prose and nothing
+else -- no fixture, no box-drawing glyph, no placeholder string.
+Converting it is what closes this, and it is a mechanical bulk edit that
+carries a proof rather than a sampled diff. The flag goes on with that
+change, not before it, and claiming the rule is enforced while the key is
+absent would be exactly the vacuous pass the guidelines warn about.
+
+### Settled: PascalCase type names inside `namespace Qtty`
+
+**Decided by the copyright holder, 2026-08-26.** Types inside
+`namespace Qtty` are `PascalCase`; everything else this project introduces
+-- functions, methods, variables, struct fields -- stays `snake_case`. This
+is a divergence from the source's "snake_case for functions, variables,
+type names and fields", and it is recorded here with its reason rather
+than left to be re-derived.
+
+The reason is that qtty's entire public surface is Qt's: the types are
+`QProxyStyle`, `QPaintDevice` and `QPaintEngine` subclasses, and a caller
+writes `Qtty::GridStyle` in the same expression as `QStyle::PE_FrameWindow`.
+Spelling them `qtty::grid_style` would make this one library read unlike
+every other library it appears beside, and unlike the toolkit it exists to
+serve.
+
+The namespace itself was capitalised on the same reasoning, deliberately:
+commit `e099862` ("Namespace: qtty:: -> Qtty:: (Qt-ecosystem convention)")
+moved it to match `Qt::`, `KIO::` and `QXlsx::`, following the KDE pattern
+of a lowercase repository `kio` with a namespace `KIO`. `README.md`
+documents that choice along with the lowercase file-system spelling that
+goes with it, and `project.md` records it as a decision.
+
+**The carve-out is exactly type names, and nothing wider.** A method is
+`put_cluster`, not `putCluster`; a field is `cell_rect`, not `cellRect`.
+Where the two rules meet in one declaration, the type takes Qt's spelling
+and the member takes this workspace's:
+
+```cpp
+namespace Qtty {
+class CellBuffer {
+public:
+	void put_cluster(int col, int row, const QString &ch);
+	QRegion diff(const CellBuffer &prev) const;
+};
+}
+```
+
+The exception does not extend to the rest of the workspace: it is qtty's,
+argued from qtty's position inside the Qt ecosystem, and a project without
+that position does not inherit it.
+
+### Formatter: clang-format is deliberately NOT used
+
+There is no `.clang-format` here, and adding one would be a mistake rather
+than an oversight. Two findings, both established in the sibling Qt trees
+rather than re-derived here:
+
+- **With no config present, `clang-format` falls back to LLVM defaults,
+  which are spaces.** Running it silently converts a tab-indented tree
+  that was already correct -- which has actually happened in
+  `fuzzypickles` and `beerssh`, and was discovered as a reverted commit
+  rather than as an error. That is the exact failure mode the *Formatters*
+  section names.
+- **A config does not fix it.** This project's continuation parameters sit
+  one column past the open paren, and `AlignAfterOpenBracket` cannot
+  express that -- every mode it has aligns *to* the paren. So any config
+  would reflow nearly every multi-line signature in the tree.
+
+**Do not run it, not even ad hoc on a single file.**
+
+What would change the answer: an `AlignAfterOpenBracket` mode that offsets
+from the paren rather than aligning to it, together with tab indentation
+that survives a missing config. If both arrive, this verdict is worth
+re-taking; until then it is settled and the evidence is above so that it
+does not get re-litigated.
+
+The gate is `tool/style_gate.py`, spread verbatim from
+`~/.claude/tool/style_gate.py`, and its per-tree configuration is
+`.style-gate.toml`. The `floor` there makes the gate fail rather than pass
+when the file list collapses, which is what stops a vacuous green.
+
+### Tooling
+
+    make style                          both gates below
+    make style-source                   tabs, trailing whitespace, final newline
+    make style-docs                     project.md held against the tree
+    python3 tool/style_gate.py check    the source gate directly
+    python3 tool/style_gate.py fix PATH convert a path, with its own proof
+    python3 tool/style_gate.py list     what would be checked, and why
+
+`list` is the one to run when a gate passes suspiciously fast: it prints
+the file list and the reason each path is in or out, which is how a
+vacuous pass is told from a real one.
+
+## See also
+
+- **`~/.claude/guidelines/code-style.md`** -- the source this file copies.
+- **`project.md`** -- design and intent, authoritative over the code. It
+  wins over this file where the two disagree.
+- **`doc/design.md` section 10.1** -- the namespace and global-state
+  contract: `namespace Qtty`, no public macros, the `"qtty.*"` and
+  `"org.qtty.*"` string namespaces, and which Qt singletons the library
+  owns in TUI mode. The naming rules above are this file's restatement of
+  it; that section is authoritative.
