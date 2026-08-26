@@ -12,6 +12,39 @@
 namespace Qtty {
 
 // ----------------------------------------------------------------- Compositor
+namespace {
+
+// Whether a top-level can be composited at all. Anything the terminal cannot
+// show is skipped rather than rendered into nowhere: a widget that is not
+// visible, one of the platform's own bookkeeping windows, or a window with no
+// size yet (section 5.4 step 3).
+bool is_compositable(const QWidget *w) {
+	return w && w->isVisible() && w->windowType() != Qt::Desktop && !w->size().isEmpty();
+}
+
+// Where a layer goes inside the terminal rectangle (section 8.1).
+//
+// `flip` is for anchored layers -- menus, combo drop-downs, tooltips -- whose
+// top-left IS the point they were opened at. section 8.1: "a menu opening at
+// x=78 must flip left, which the desktop code never had to do". Flipping puts
+// the far edge on the anchor, so the menu stays attached to the item it was
+// opened from; sliding it along the edge, which qBound alone does, detaches it
+// and can cover that item. Sliding stays as the fallback for a layer too big
+// to fit on either side of its anchor, where there is nothing better to do.
+QPoint placed_at(const QRect &g, int cols, int rows, int cw, int ch, bool flip) {
+	const int limit_x = cols * cw, limit_y = rows * ch;
+	int x = g.x(), y = g.y();
+	if (flip) {
+		if (x + g.width() > limit_x && x - g.width() >= 0) x -= g.width();
+		if (y + g.height() > limit_y && y - g.height() >= 0) y -= g.height();
+	}
+	x = qBound(0, x, qMax(0, limit_x - g.width()));
+	y = qBound(0, y, qMax(0, limit_y - g.height()));
+	return QPoint((x / cw) * cw, (y / ch) * ch);          // snap the result to the grid
+}
+
+} // namespace
+
 Compositor::Compositor(QWidget *window, InputRouter *router)
 	: win_(window), router_(router) {}
 
@@ -20,38 +53,73 @@ void Compositor::compose(CellBuffer &out) {
 	out.images.clear();
 
 	CellPaintDevice dev(out);
-	{   // main window at origin
+	auto draw = [&](QWidget *w, QPoint at) {
+		dev.origin = at;
 		QPainter p(&dev);
-		win_->render(&p, QPoint(), QRegion(),
-			         QWidget::RenderFlags(QWidget::DrawWindowBackground | QWidget::DrawChildren));
+		w->render(&p, QPoint(), QRegion(),
+			      QWidget::RenderFlags(QWidget::DrawWindowBackground | QWidget::DrawChildren));
 		p.end();
+	};
+	// Move a layer inside the terminal rectangle and report where it landed.
+	auto place = [&](QWidget *w, bool flip) {
+		const QPoint pos = placed_at(w->geometry(), out.cols(), out.rows(), cw, ch, flip);
+		if (pos != w->geometry().topLeft()) w->move(pos);
+		return pos;
+	};
+
+	// section 5.4 step 3: walk QApplication::topLevelWidgets(), rather than
+	// rendering the one window we were handed. The primary window is the base
+	// layer and is drawn at the origin; every other plain top-level follows at
+	// its own position, kept inside the terminal rectangle.
+	//
+	// There is no window manager here and so no true z-order to read, which is
+	// why modals and popups are pulled out of this pass and stacked explicitly
+	// below (section 8.1: treat them as an explicit stack "rather than trusting
+	// window flags"). Within the plain layer the list order is all there is.
+	draw(win_, QPoint());
+	QWidget *cursor_layer = win_;
+	QPoint cursor_origin;
+
+	QVector<QWidget *> modals;
+	const auto tops = QApplication::topLevelWidgets();
+	for (QWidget *w : tops) {
+		if (w == win_ || !is_compositable(w)) continue;
+		if (InputRouter::is_popup_layer(w)) continue;     // the popup stack draws these
+		if (w->isModal()) { modals.append(w); continue; } // the modal stack does
+		draw(w, place(w, false));
 	}
-	// popup stack in z-order, clamped to the terminal rect (section 8.1: a menu
-	// opening at the right edge must flip inside)
+
+	// section 8.1's mitigation: activeModalWidget() and activePopupWidget() as
+	// an explicit z-ordered stack on top. Without it a modal QDialog was stamped
+	// WA_DontShowOnScreen by the router and then drawn by nobody -- invisible
+	// while still holding input, which is the worst of both.
+	QWidget *const active_modal = QApplication::activeModalWidget();
+	if (active_modal && modals.removeAll(active_modal))
+		modals.append(active_modal);                      // the active one is topmost
+	for (QWidget *w : std::as_const(modals)) {
+		const QPoint at = place(w, false);                // a dialog is not anchored
+		draw(w, at);
+		if (w == active_modal) { cursor_layer = w; cursor_origin = at; }
+	}
+
+	// popups last: always the top of the stack, and flipped rather than slid.
 	const auto popups = router_ ? router_->popups() : QVector<QWidget *>{};
 	for (QWidget *pop : popups) {
-		QRect g = pop->geometry();
-		int maxX = out.cols() * cw - g.width();
-		int maxY = out.rows() * ch - g.height();
-		QPoint pos(qBound(0, g.x(), qMax(0, maxX)), qBound(0, g.y(), qMax(0, maxY)));
-		// snap the clamp to the grid
-		pos = QPoint((pos.x() / cw) * cw, (pos.y() / ch) * ch);
-		if (pos != g.topLeft()) pop->move(pos);
-		dev.origin = pos;
-		QPainter p(&dev);
-		pop->render(&p, QPoint(), QRegion(),
-			        QWidget::RenderFlags(QWidget::DrawWindowBackground | QWidget::DrawChildren));
-		p.end();
+		if (!is_compositable(pop)) continue;
+		draw(pop, place(pop, true));
 	}
+
 	dev.origin = QPoint();
 	out.images = dev.placements;
 
-	// hardware cursor from the focus widget (section 5.5)
+	// Hardware cursor from the focus widget of the layer that owns input
+	// (section 5.5). A modal owns input while it is up (section 8.3), so it owns
+	// the cursor too; a popup has no text cursor of its own.
 	cursor_.reset();
-	if (QWidget *fw = win_->focusWidget()) {
+	if (QWidget *fw = cursor_layer->focusWidget()) {
 		QVariant v = fw->inputMethodQuery(Qt::ImCursorRectangle);
 		if (v.isValid()) {
-			QPoint g = fw->mapTo(win_, v.toRect().topLeft());
+			QPoint g = cursor_origin + fw->mapTo(cursor_layer, v.toRect().topLeft());
 			QPoint cell(g.x() / cw, g.y() / ch);
 			if (cell.x() >= 0 && cell.y() >= 0
 				&& cell.x() < out.cols() && cell.y() < out.rows())

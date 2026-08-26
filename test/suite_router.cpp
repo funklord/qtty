@@ -1,5 +1,6 @@
 // suite_router -- section 5.5: shortcuts (F3), tab order, arrow fallback, mouse
-// dispatch, popup stamping + compositor clamping (F7, section 8.1).
+// dispatch, popup stamping + compositor placement (F7, section 8.1), the
+// top-level walk (section 5.4 step 3), and modal handling (section 8.3).
 #include <qtty/qtty.h>
 #include <QtWidgets>
 #include <cstdio>
@@ -99,6 +100,105 @@ int suite_router() {
 	QCoreApplication::processEvents();
 	comp.compose(frame);
 	CHECK(comp.cursorCell().has_value(), "cursor cell reported for focused editor");
+
+	// ------------------------------------------------ section 8.1: modals
+	// A modal QDialog was stamped WA_DontShowOnScreen by the filter above and
+	// then drawn by nobody: compose() rendered the one tracked window plus the
+	// popup stack, and a modal is neither. It was invisible while still taking
+	// input, which is why these checks come in a group -- drawing it and
+	// routing to it are the same defect from two sides.
+	QDialog dlg(&win);
+	dlg.setModal(true);
+	auto *dv = new QVBoxLayout(&dlg);
+	dv->setContentsMargins(0, 0, 0, 0);
+	dv->setSpacing(0);
+	dv->addWidget(new QLabel(QStringLiteral("MODALHERE"), &dlg));
+	auto *ok = new QPushButton(QStringLiteral("Ok"), &dlg);
+	dv->addWidget(ok);
+	dlg.resize(GridMetrics::cells(12, 4));
+	dlg.move(4 * cw, 8 * ch);
+	dlg.show();
+	QCoreApplication::processEvents();
+	CHECK(dlg.testAttribute(Qt::WA_DontShowOnScreen),
+	      "modal dialog stamped WA_DontShowOnScreen (F7)");
+	CHECK(QApplication::activeModalWidget() == &dlg, "dialog is the active modal");
+
+	CellBuffer modal_frame(40, 16);
+	comp.compose(modal_frame);
+	CHECK(modal_frame.toText().contains(QStringLiteral("MODALHERE")),
+	      "modal dialog is composited (section 8.1)");
+
+	// section 8.3: a click outside the modal is dropped, not delivered to what
+	// happens to sit under it. The button is the one the click test above used,
+	// so it is known to be reachable when no modal is up.
+	const QPoint under = btn->geometry().center();
+	CHECK(!dlg.geometry().contains(under),
+	      "the button used for the drop check really is outside the modal");
+	const int clicked_before = clicked;
+	MouseEvent outside{QPoint(under.x() / cw, under.y() / ch), 1, true, false, false, 0};
+	MouseEvent outside_up = outside; outside_up.press = false; outside_up.release = true;
+	router.onMouse(outside);
+	router.onMouse(outside_up);
+	CHECK(clicked == clicked_before,
+	      "mouse outside the modal is dropped before dispatch (section 8.3)");
+
+	// ...and the same click inside it still lands, so the rule is a filter and
+	// not a blanket refusal.
+	int modal_clicked = 0;
+	QObject::connect(ok, &QPushButton::clicked, [&] { modal_clicked++; });
+	const QPoint inside = dlg.geometry().topLeft() + ok->geometry().center();
+	MouseEvent on_ok{QPoint(inside.x() / cw, inside.y() / ch), 1, true, false, false, 0};
+	MouseEvent on_ok_up = on_ok; on_ok_up.press = false; on_ok_up.release = true;
+	router.onMouse(on_ok);
+	router.onMouse(on_ok_up);
+	CHECK(modal_clicked == 1, "mouse inside the modal reaches the dialog");
+
+	dlg.close();
+	QCoreApplication::processEvents();
+	CHECK(!QApplication::activeModalWidget(), "modal leaves on close");
+
+	// ---------------------------------- section 5.4 step 3: top-level walk
+	// A second plain top-level is part of the frame. compose() used to render
+	// only the window it was constructed with, so this one was simply absent.
+	QWidget second;
+	second.setAttribute(Qt::WA_DontShowOnScreen);
+	auto *sv = new QVBoxLayout(&second);
+	sv->setContentsMargins(0, 0, 0, 0);
+	sv->setSpacing(0);
+	sv->addWidget(new QLabel(QStringLiteral("SECONDWIN"), &second));
+	second.resize(GridMetrics::cells(12, 2));
+	second.move(20 * cw, 13 * ch);
+	second.show();
+	QCoreApplication::processEvents();
+	CellBuffer walk_frame(40, 16);
+	comp.compose(walk_frame);
+	CHECK(walk_frame.toText().contains(QStringLiteral("SECONDWIN")),
+	      "second top-level is composited (section 5.4 step 3)");
+	second.hide();
+	QCoreApplication::processEvents();
+
+	// -------------------------------- section 8.1: flip, rather than slide
+	// "A menu opening at x=78 must flip left, which the desktop code never had
+	// to do." Sliding also lands inside the terminal, so a check for "inside"
+	// alone passes either way; what tells them apart is where the far edge
+	// ends up. Flipped, it is on the anchor. Slid, it is on the screen edge.
+	QMenu edge(&win);
+	edge.addAction(QStringLiteral("FLIPME"));
+	edge.popup(QPoint(37 * cw, 2 * ch));
+	QCoreApplication::processEvents();
+	const int anchor_x = edge.geometry().x();
+	CHECK(anchor_x + edge.width() > 40 * cw,
+	      "the flip case is real: the menu overhangs the right edge as opened");
+	CellBuffer flip_frame(40, 16);
+	comp.compose(flip_frame);
+	CHECK(edge.geometry().right() <= anchor_x,
+	      "menu at the right edge flips left of its anchor (section 8.1)");
+	CHECK(edge.geometry().left() >= 0 && edge.geometry().right() < 40 * cw,
+	      "flipped menu lands fully inside the terminal rectangle");
+	CHECK(flip_frame.toText().contains(QStringLiteral("FLIPME")),
+	      "flipped menu is drawn whole, not clipped away");
+	edge.close();
+	QCoreApplication::processEvents();
 
 	return fails;
 }

@@ -1,8 +1,10 @@
 // src/runtime/input_router.cpp -- L5 (section 5.5), rules measured in section 16:
 //   F3: synthetic keys never reach QShortcutMap -- the router owns shortcuts.
 //   F4: no window activates -- window->focusWidget() is the key target.
-//   F7: internally-created popups don't inherit WA_DontShowOnScreen -- stamp
-//       them from a global filter, and track their z-order for the compositor.
+//   F7: internally-created top-levels don't inherit WA_DontShowOnScreen --
+//       stamp every one from a global filter, popup and modal dialog alike,
+//       and track the popups' z-order for the compositor.
+//   section 8.3: input outside activeModalWidget() is dropped before dispatch.
 #include "qtty/runtime.h"
 #include "qtty/grid.h"
 #include <QtWidgets>
@@ -27,21 +29,45 @@ QVector<QWidget *> InputRouter::popups() const {
 	return out;
 }
 
+bool InputRouter::is_popup_layer(const QWidget *w) {
+	const Qt::WindowFlags f = w->windowFlags();
+	return (f & Qt::Popup) == Qt::Popup || f.testFlag(Qt::ToolTip);
+}
+
+// section 8.3: while a modal is up it is the whole of the input tree. Nothing
+// outside it may be reached -- not by a key, not by a shortcut, not by the
+// arrow-key scroll fallback -- because the window manager that enforces that
+// on the desktop is not here and Qt's own modal blocking runs in the platform
+// layer we bypass with synthetic events.
+QWidget *InputRouter::input_scope() const {
+	QWidget *m = QApplication::activeModalWidget();
+	return m ? m : win_;
+}
+
 QWidget *InputRouter::keyTarget() const {
+	// popup > modal > window focus. A key carries no position, so preferring
+	// the modal IS the section 8.3 rule for keys: anything outside it is
+	// unreachable rather than dropped. onMouse() has to do the dropping
+	// itself, because a click does carry one.
 	if (QWidget *p = QApplication::activePopupWidget())
 		return p->focusWidget() ? p->focusWidget() : p;
-	if (QWidget *m = QApplication::activeModalWidget())
-		return m->focusWidget() ? m->focusWidget() : m;
-	return win_->focusWidget() ? win_->focusWidget() : win_;
+	QWidget *scope = input_scope();
+	return scope->focusWidget() ? scope->focusWidget() : scope;
 }
 
 bool InputRouter::eventFilter(QObject *o, QEvent *e) {
 	if (e->type() == QEvent::Show) {
 		if (auto *w = qobject_cast<QWidget *>(o)) {
 			if (w->isWindow() && w != win_) {
-				w->setAttribute(Qt::WA_DontShowOnScreen);          // F7 stamping
-				if ((w->windowFlags() & Qt::Popup) == Qt::Popup
-					|| w->windowFlags().testFlag(Qt::ToolTip)) {
+				// F7 stamping, and it is not only for popups. Any top-level
+				// created after exec() started -- a QComboBox's internal
+				// container, a QMenu, or a QDialog the application opens --
+				// arrives with the attribute unset and would be mapped to a
+				// real screen on a platform that has one. Modals included:
+				// this runtime draws them itself (section 8.1), so the
+				// platform must never try to.
+				w->setAttribute(Qt::WA_DontShowOnScreen);
+				if (is_popup_layer(w)) {
 					popups_.removeAll(QPointer<QWidget>(w));
 					popups_.append(w);                             // top of stack
 					if (frameRequested) frameRequested();
@@ -65,10 +91,13 @@ bool InputRouter::matchShortcut(const KeyEvent &k) {
 	if (k.shift) mods |= Qt::ShiftModifier;
 	const QKeySequence pressed(QKeyCombination(mods, Qt::Key(k.qtKey)).toCombined());
 
-	// Collect actions from the window, all children, and menus (rebuilt per
-	// press: correctness first, the table is small; section 5.5).
-	QList<QAction *> actions = win_->actions();
-	const auto children = win_->findChildren<QWidget *>();
+	// Collect actions from the input scope, all its children, and menus
+	// (rebuilt per press: correctness first, the table is small; section 5.5).
+	// The scope is the modal while one is up, so a main-window shortcut cannot
+	// fire behind a dialog that is blocking it (section 8.3).
+	QWidget *const scope = input_scope();
+	QList<QAction *> actions = scope->actions();
+	const auto children = scope->findChildren<QWidget *>();
 	for (QWidget *c : children) actions += c->actions();
 	for (QAction *a : std::as_const(actions)) {
 		if (!a->isEnabled()) continue;
@@ -94,7 +123,7 @@ void InputRouter::deliverKey(QWidget *target, const KeyEvent &k) {
 	// scroll area -- the TUI convention (section 5.5).
 	if (!press.isAccepted() && (k.qtKey == Qt::Key_Up || k.qtKey == Qt::Key_Down
 		                        || k.qtKey == Qt::Key_PageUp || k.qtKey == Qt::Key_PageDown)) {
-		if (auto *area = win_->findChild<QAbstractScrollArea *>()) {
+		if (auto *area = input_scope()->findChild<QAbstractScrollArea *>()) {
 			int step = GridMetrics::ch();
 			if (k.qtKey == Qt::Key_PageUp || k.qtKey == Qt::Key_PageDown)
 				step *= 5;
@@ -113,13 +142,13 @@ void InputRouter::onKey(const KeyEvent &k) {
 		}
 	if (k.qtKey == Qt::Key_Tab && !k.ctrl) {
 		// Focus chain works without an active window (F4); drive it directly.
-		QWidget *scope = QApplication::activeModalWidget() ? QApplication::activeModalWidget() : win_;
+		QWidget *scope = input_scope();
 		struct Probe : QWidget { using QWidget::focusNextPrevChild; };
 		static_cast<Probe *>(scope)->focusNextPrevChild(!k.shift);
 		setFocusWidget(scope->focusWidget());
 	} else if (!matchShortcut(k)) {
 		deliverKey(keyTarget(), k);
-		setFocusWidget(win_->focusWidget());
+		setFocusWidget(input_scope()->focusWidget());
 	}
 	QCoreApplication::processEvents();
 	if (frameRequested) frameRequested();
@@ -128,11 +157,27 @@ void InputRouter::onKey(const KeyEvent &k) {
 void InputRouter::onMouse(const MouseEvent &m) {
 	const QPoint px(m.cell.x() * GridMetrics::cw() + GridMetrics::cw() / 2,
 		            m.cell.y() * GridMetrics::ch() + GridMetrics::ch() / 2);
-	// Popups first (top of stack down), then the window (section 5.5 routing order).
-	QWidget *top = win_;
+	// Popups first (top of stack down), then the modal, then the window
+	// (section 5.5 routing order).
+	QWidget *top = nullptr;
 	const auto ps = popups();
 	for (auto it = ps.rbegin(); it != ps.rend(); ++it)
 		if ((*it)->geometry().contains(px)) { top = *it; break; }
+	if (!top) {
+		if (QWidget *modal = QApplication::activeModalWidget()) {
+			// section 8.3: input outside activeModalWidget() is dropped before
+			// dispatch. keyTarget() already gives keys to the modal, but a
+			// click carries a position and had no such rule, so it went to
+			// whatever sat under the dialog -- a button pressed through a
+			// modal that was there to block it. Dropped, not redirected: a
+			// click on the blocked window means nothing, and delivering it to
+			// the dialog instead would invent a press the user never made.
+			if (!modal->geometry().contains(px)) return;
+			top = modal;
+		} else {
+			top = win_;
+		}
+	}
 	const QPoint local = top->mapFromGlobal(px);   // offscreen: global == root coords
 	QWidget *child = top->childAt(local);
 	QWidget *target = child ? child : top;
@@ -155,7 +200,7 @@ void InputRouter::onMouse(const MouseEvent &m) {
 				           btn, Qt::NoButton, Qt::NoModifier);
 			QApplication::sendEvent(target, &ev);
 		}
-		setFocusWidget(win_->focusWidget());
+		setFocusWidget(input_scope()->focusWidget());
 	}
 	QCoreApplication::processEvents();
 	if (frameRequested) frameRequested();

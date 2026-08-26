@@ -40,7 +40,15 @@ public:
 	QVector<QWidget *> popups() const;
 
 	// The widget key events target right now (popup > modal > window focus).
+	// Nothing outside the active modal is ever returned: section 8.3 requires
+	// input outside activeModalWidget() to be dropped before dispatch, and
+	// there is no window manager to enforce it.
 	QWidget *keyTarget() const;
+
+	// True for a layer the popup stack owns -- Qt::Popup or Qt::ToolTip. The
+	// Compositor asks the same question, so it is answered in one place: a
+	// window the router tracks must not also be drawn by the top-level walk.
+	static bool is_popup_layer(const QWidget *);
 
 	bool eventFilter(QObject *, QEvent *) override;   // popup stamping + tracking
 
@@ -50,6 +58,9 @@ public:
 private:
 	bool matchShortcut(const KeyEvent &);
 	void deliverKey(QWidget *target, const KeyEvent &);
+	// The widget tree input is allowed to reach: the active modal if there is
+	// one, else the window (section 8.3).
+	QWidget *input_scope() const;
 
 	QWidget *win_;
 	QVector<QPointer<QWidget>> popups_;
@@ -57,9 +68,12 @@ private:
 };
 
 // ----------------------------------------------------------------- Compositor
-// Walks window + popup stack in z-order into one CellBuffer (section 5.4 step 3),
-// clamping popups to the terminal rectangle (section 8.1) and collecting placements
-// and the cursor position (section 5.5).
+// Walks QApplication::topLevelWidgets() in z-order into one CellBuffer
+// (section 5.4 step 3), then stacks activeModalWidget() and the popups on top
+// as section 8.1 asks -- explicitly, rather than trusting window flags. Layers
+// are kept inside the terminal rectangle: an anchored one (menu, drop-down,
+// tooltip) flips to the other side of its anchor, everything else slides.
+// Placements and the cursor position (section 5.5) are collected as it goes.
 class Compositor {
 public:
 	Compositor(QWidget *window, InputRouter *router);
