@@ -1,10 +1,11 @@
-# libqtty — static library
+# libqtty -- the static library. Everything else in the tree links this.
+include(../qtty.pri)
+
 TEMPLATE = lib
 TARGET = qtty
-CONFIG += staticlib c++17
+CONFIG += staticlib
 QT += widgets
-DESTDIR = $$PWD/../lib
-INCLUDEPATH += $$PWD/../include
+DESTDIR = $$QTTY_LIB_DIR
 
 HEADERS += \
     ../include/qtty/qtty.h \
@@ -20,18 +21,18 @@ HEADERS += \
     ../include/qtty/testing.h \
     ../include/qtty/graphics.h \
     ../include/qtty/overlay.h \
-    backends/ansi/ansibackend.h \
-    backends/null/nullbackend.h
+    backend/ansi/ansi_backend.h \
+    backend/null/null_backend.h
 
 SOURCES += \
-    core/cellbuffer.cpp \
+    core/cell_buffer.cpp \
     core/color.cpp \
     core/theme.cpp \
-    grid/gridstyle.cpp \
-    render/cellpaint.cpp \
-    runtime/inputrouter.cpp \
+    grid/grid_style.cpp \
+    render/cell_paint.cpp \
+    runtime/input_router.cpp \
     runtime/compositor.cpp \
     runtime/application.cpp \
     graphics/graphics.cpp \
     graphics/overlay.cpp \
-    backends/ansi/ansibackend.cpp
+    backend/ansi/ansi_backend.cpp

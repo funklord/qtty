@@ -1,0 +1,44 @@
+# Configuration for tool/style_gate.py -- see code-style.md.
+# Nothing here changes the rules; it says which files in THIS tree they
+# apply to, and how small the file list may get before a pass is a lie.
+
+# Migration only: the columns a level occupied before this tree was
+# converted. Checking never reads it -- a tab carries the level and the
+# viewer decides how wide it looks. Measured, not assumed: of 3277 leading
+# space runs in the tree on conversion day, 1819 were 4 columns, 897 were 8
+# and 282 were 12, so the ladder is unambiguously 4.
+indent_width = 4
+
+# A fraction of the raw population: the gated count must be at least this
+# share of every path git lists, before excludes and extension selection
+# run. Those filters are what a bad edit collapses, so the baseline sits
+# upstream of the failure this guards, and it moves with the tree. Half the
+# ratio measured on migration day, so a collapse of more than half the gated
+# share fires and adding files never does.
+floor = 0.36
+
+# spike/ is the Phase 0 record -- the four spikes and the focus probe exactly
+# as they were run, which is what makes them evidence for the measurements
+# design.md cites. Reindenting them would edit the record. They are historical
+# material, which code-style.md exempts, and they are standalone: nothing in
+# the library builds them.
+exclude = ["build", "build-android", "spike", "__pycache__", ".claude"]
+
+# ASCII outside string literals, which is the rule in code-style.md.
+#
+# qtty is a terminal library, so its sources legitimately carry box-drawing,
+# block and shade glyphs, arrows, and CJK and accented characters -- as
+# program output and as grapheme fixtures, inside string literals. A
+# whole-file byte check would have meant giving those up, which is how a rule
+# gets switched off for the comments as well as for the output. The gate lexes
+# C and C++, so a glyph inside a literal is output and stays, and an em dash
+# in a comment is prose and does not.
+#
+# Measured on the day it was turned on: 265 non-ASCII characters in the 39
+# gated C and C++ files, of which 73 in 30 distinct forms were inside literals
+# and stayed, and 192 were prose that had collected in comments -- 112 section
+# signs, 62 em dashes and 10 arrows among them, none of which anybody decided
+# to add. They arrived one paste at a time, which is what a rule that is off
+# does. The 73 were counted before the conversion and counted again after it,
+# unchanged.
+ascii_only = true

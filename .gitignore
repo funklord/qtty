@@ -1,4 +1,32 @@
+# Where `make` puts everything. BUILD_DIR defaults to build/; a second one
+# for a sanitized or cross build is named on the command line, so the glob
+# covers build-*/ too.
 build/
+build-*/
+
+# libqtty.a used to be written into lib/ by every .pro file's DESTDIR and was
+# committed there -- a tracked file that each build rewrote, so a clean tree
+# went dirty on `make`. qtty.pri derives the directory with $$shadowed() now
+# and the artifact is gone from git; this line stops it coming back.
+lib/
+
+# qmake writes .qmake.stash beside whatever invoked it, and moc/uic/rcc output
+# lands in the build directory -- except when somebody runs qmake in the source
+# tree by hand, which is how these arrive.
+.qmake.stash
+Makefile.qtty
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+*.o
+*.a
+
+# Running the style gate leaves a __pycache__ in tool/. Exactly the kind of
+# file a blanket `git add` sweeps into somebody's commit, which is why staging
+# is by name.
+__pycache__/
+
+# Editors and IDE integration.
 *.user
 compile_commands.json
 .cache/

@@ -1,6 +1,6 @@
-// qtty/application.h — L6 runtime entry points (§5.6).
+// qtty/application.h -- L6 runtime entry points (section 5.6).
 //
-// Canonical usage (see examples/chat/main.cpp):
+// Canonical usage (see example/chat/main.cpp):
 //     decide frontend
 //       -> Qtty::prepareEnvironment()   BEFORE QApplication
 //       -> QApplication ctor
@@ -26,12 +26,12 @@ void setup(QApplication &app);
 int exec(QApplication &app, QWidget &win);
 
 // True while exec() is driving a terminal session. Overlay uses this to pick
-// its rendering path (§5.7); apps can branch on it for target-specific polish.
+// its rendering path (section 5.7); apps can branch on it for target-specific polish.
 bool isTuiActive();
 
-// Render one frame of `win` into `buf` (and collect §5.7 placements when
+// Render one frame of `win` into `buf` (and collect section 5.7 placements when
 // `placements` is non-null). Used by tests, tools, and custom frame loops.
 void renderOnce(QWidget &win, CellBuffer &buf,
-                QVector<CellImage> *placements = nullptr);
+	            QVector<CellImage> *placements = nullptr);
 
 } // namespace Qtty

@@ -1,9 +1,0 @@
-TEMPLATE = app
-TARGET = qtty-inspect
-CONFIG += c++17 console
-CONFIG -= app_bundle
-QT += widgets
-INCLUDEPATH += $$PWD/../../include
-LIBS += -L$$PWD/../../lib -lqtty
-PRE_TARGETDEPS += $$PWD/../../lib/libqtty.a
-SOURCES += main.cpp

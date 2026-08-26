@@ -1,9 +1,0 @@
-TEMPLATE = app
-TARGET = qtty-replay
-CONFIG += c++17 console
-CONFIG -= app_bundle
-QT += widgets
-INCLUDEPATH += $$PWD/../../include $$PWD/../..
-LIBS += -L$$PWD/../../lib -lqtty
-PRE_TARGETDEPS += $$PWD/../../lib/libqtty.a
-SOURCES += main.cpp

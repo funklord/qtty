@@ -8,7 +8,7 @@ a custom `QPaintDevice`/`QPaintEngine`, and a terminal-backend interface that
 existing TUI codebases adapt to.
 
 **Status: pre-alpha.** The architecture is spike-validated (see
-`docs/design.md` §16: rendering, popups, input, focus, resize, placements,
+`doc/design.md` §16: rendering, popups, input, focus, resize, placements,
 graphics compositing — all measured, not assumed); the library itself is the
 Phase-2 build-out of those spikes. Expect API movement.
 
@@ -21,35 +21,48 @@ Phase-2 build-out of those spikes. Expect API movement.
   sixel/iTerm2 software composite, half-block/mosaic fallback — declared in
   `Capabilities`, invisible to app code.
 - Deterministic snapshot testing with no tty (`NullBackend`, text fixtures).
-- Strict hygiene contract (`docs/design.md` §10.1): everything in
-  `namespace qtty`, no public macros, inert in GUI builds.
+- Strict hygiene contract (`doc/design.md` §10.1): everything in
+  `namespace Qtty`, no public macros, inert in GUI builds.
 
 ## Build
 
-qmake project files are the source of truth; they generate plain Makefiles.
+The `Makefile` at the root is the entry point:
 
-    mkdir build && cd build
-    qmake6 ../qtty.pro        # or qmake (Qt 5.15 support planned)
-    make -j                   # gmake / any make flavour
-    make check                # run the test suite (qtty-tests)
-    ./examples/chat/chat --tui
+    make                # build the library, the tools and the example
+    make test           # build and run the test suite
+    make check          # style + test — what must pass before committing
+    make style          # the shared source gate
+    make hooks          # install the commit-msg hook
+    make help           # every target
 
-Requires Qt 6 and a monospace font with integral metrics (DejaVu Sans Mono
-for now; bundled font planned). Fixture maintenance:
-`tests/qtty-tests --record render` rewrites the render snapshot after a
-reviewed change.
+`make` drives qmake into `BUILD_DIR` (default `build/`), so a build never
+writes into the source tree. `DEBUG=1` gives `-Og`; the default is `-Os`.
+`SANITIZE=1` adds ASan/UBSan. Running qmake by hand in a directory of your
+own still works, and is what the Makefile does:
+
+    mkdir build && cd build && qmake6 ../qtty.pro && make -j
+
+Requires Qt 6 — built here against 6.8.2 — and a monospace font with
+integral metrics (DejaVu Sans Mono for now; bundled font planned). Fixture
+maintenance: `make record R=render` rewrites the render snapshot after a
+reviewed change. The example runs with `make run`, or directly as
+`build/example/chat/chat --tui`.
 
 ## Layout
 
     include/qtty/     public headers (§10)
-    src/core|grid|render|runtime/
-    src/backends/     ansi (built-in), null (CI), termpaint + legacy (planned)
-    examples/chat/    canonical dual-frontend example (§16.4)
-    tests/            CTest suite + snapshot fixtures
-    tools/            qtty-inspect, qtty-replay
-    docs/design.md    the design document — read this first
-    docs/beerssh.md   integration contract with beerssh (the terminal end)
-    spikes/           the Phase-0 spikes exactly as run (§16); standalone
+    src/core|grid|render|runtime|graphics/
+    src/backend/      ansi (built-in), null (CI), termpaint + legacy (planned)
+    src/widget/       replaced widgets (planned)
+    example/chat/     canonical dual-frontend example (§16.4)
+    test/             the suite; text fixtures in test/snapshot/
+    tool/             qtty-inspect, qtty-replay, style_gate.py, hooks/
+    doc/design.md     the design document — read this first
+    doc/beerssh.md    integration contract with beerssh (the terminal end)
+    spike/            the Phase-0 spikes exactly as run (§16); standalone
+    Makefile          the entry point; qtty.pro and qtty.pri are the qmake side
+    VERSION           the one place the version number is stated
+    project.md        design and intent; code-style.md, .style-gate.toml
 
 ## Naming
 
