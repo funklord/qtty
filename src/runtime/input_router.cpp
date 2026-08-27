@@ -49,8 +49,27 @@ QWidget *InputRouter::key_target() const {
 	// the modal IS the section 8.3 rule for keys: anything outside it is
 	// unreachable rather than dropped. on_mouse() has to do the dropping
 	// itself, because a click does carry one.
-	if (QWidget *p = QApplication::activePopupWidget())
+	// The router's OWN stack, not QApplication::activePopupWidget(). That
+	// function returns null for every popup here, and the reason is this
+	// class: the stamping filter sets WA_DontShowOnScreen on a popup as it is
+	// shown (F7), the platform never maps it, and Qt's open-popup list is
+	// driven by that mapping. So the branch that used to stand here could not
+	// fire, and keys typed at an open menu went to the widget behind it --
+	// Down and Return did nothing, and the menu drew perfectly throughout
+	// because the compositor reads this same stack rather than Qt's.
+	//
+	// design.md section 16's gate 2 passed because it clicked. A synthetic
+	// mouse press on actionGeometry().center() triggers the action without
+	// consulting key_target() at all, so the keyboard path was never
+	// exercised by the measurement that declared popups working.
+	//
+	// activeModalWidget() below is NOT affected: Qt tracks a modal through
+	// setWindowModality and show, which stamping does not disturb.
+	const QVector<QWidget *> open = popups();
+	if (!open.isEmpty()) {
+		QWidget *p = open.last();                 // topmost
 		return p->focusWidget() ? p->focusWidget() : p;
+	}
 	QWidget *scope = input_scope();
 	return scope->focusWidget() ? scope->focusWidget() : scope;
 }
@@ -81,6 +100,67 @@ bool InputRouter::eventFilter(QObject *o, QEvent *e) {
 		}
 	}
 	return false;                                                  // observe only
+}
+
+// The actions a mnemonic may reach right now. A popup owns the keyboard while
+// it is up, so Alt-O inside an open File menu must find that menu's Open and
+// not a like-lettered action on the window behind it.
+static QList<QAction *> mnemonic_actions(QWidget *scope,
+                                        const InputRouter *router) {
+	// The router's stack, for the reason key_target() gives: Qt's
+	// activePopupWidget() is null for a stamped popup.
+	if (router && !router->popups().isEmpty())
+		scope = router->popups().last();
+	QList<QAction *> actions = scope->actions();
+	const auto children = scope->findChildren<QWidget *>();
+	for (QWidget *c : children) actions += c->actions();
+	return actions;
+}
+
+// The letter a `&` marks, or a null QChar. Qt spells a literal ampersand
+// "&&", which marks nothing.
+static QChar mnemonic_of(const QString &text) {
+	for (int i = 0; i + 1 < text.size(); ++i) {
+		if (text.at(i) != QLatin1Char('&')) continue;
+		if (text.at(i + 1) == QLatin1Char('&')) { ++i; continue; }
+		return text.at(i + 1).toLower();
+	}
+	return QChar();
+}
+
+bool InputRouter::match_mnemonic(const KeyEvent &k) {
+	// A mnemonic arrives as Alt with text and no Qt::Key: the terminal sends
+	// ESC then the letter, and there is no key code to be had. That is why
+	// match_shortcut() cannot serve -- it returns false on the first line for
+	// want of a qt_key.
+	if (!k.alt || k.text.size() != 1) return false;
+	const QChar want = k.text.at(0).toLower();
+	if (!want.isLetterOrNumber()) return false;
+
+	for (QAction *a : mnemonic_actions(input_scope(), this)) {
+		if (!a->isEnabled() || a->isSeparator()) continue;
+		if (mnemonic_of(a->text()) != want) continue;
+		if (QMenu *sub = a->menu()) {
+			// A menu opens rather than triggers. Positioned under the item it
+			// belongs to when that item is in a menu bar, which is where a
+			// reader expects it; anywhere else, at the widget's own corner.
+			QWidget *owner = a->associatedObjects().isEmpty()
+			    ? nullptr
+			    : qobject_cast<QWidget *>(a->associatedObjects().first());
+			QPoint at(0, 0);
+			if (auto *bar = qobject_cast<QMenuBar *>(owner)) {
+				const QRect g = bar->actionGeometry(a);
+				at = bar->mapToGlobal(QPoint(g.left(), g.bottom() + 1));
+			} else if (owner) {
+				at = owner->mapToGlobal(QPoint(0, 0));
+			}
+			sub->popup(at);
+			return true;
+		}
+		a->trigger();
+		return true;
+	}
+	return false;
 }
 
 bool InputRouter::match_shortcut(const KeyEvent &k) {
@@ -146,7 +226,7 @@ void InputRouter::on_key(const KeyEvent &k) {
 		struct Probe : QWidget { using QWidget::focusNextPrevChild; };
 		static_cast<Probe *>(scope)->focusNextPrevChild(!k.shift);
 		setFocusWidget(scope->focusWidget());
-	} else if (!match_shortcut(k)) {
+	} else if (!match_shortcut(k) && !match_mnemonic(k)) {
 		deliver_key(key_target(), k);
 		setFocusWidget(input_scope()->focusWidget());
 	}

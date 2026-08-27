@@ -257,5 +257,78 @@ int suite_router() {
 		CHECK(doc->toPlainText() == QStringLiteral("a\nb"),
 		      "a multi-line editor keeps the newline it can hold");
 	}
+
+	// ---- mnemonics (section 17.2) --------------------------------------------
+	//
+	// Alt-<letter> against the `&` markers in action text. It could not have
+	// been implemented before the backend learned to decode Alt at all, and
+	// it cannot use the shortcut matcher: a mnemonic arrives with text and no
+	// Qt::Key, because a terminal sends ESC then the letter.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(30, 8));
+		auto *bar = new QMenuBar(&host);
+		bar->setGeometry(0, 0, GridMetrics::cw() * 30, GridMetrics::ch());
+		QMenu *file = bar->addMenu(QStringLiteral("&File"));
+		int opened = 0;
+		QAction *open = file->addAction(QStringLiteral("&Open"));
+		QObject::connect(open, &QAction::triggered, [&] { ++opened; });
+		QAction *quit = file->addAction(QStringLiteral("&&Literal"));
+		QObject::connect(quit, &QAction::triggered, [&] { ++opened; });
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter mr(&host);
+
+		// Alt-F opens the File menu rather than triggering anything.
+		//
+		// Asserted against the ROUTER's stack, not QApplication::
+		// activePopupWidget(), and the first version of this check asked the
+		// wrong one. That function returns null for every popup here: the
+		// stamping filter sets WA_DontShowOnScreen as the popup is shown, the
+		// platform never maps it, and Qt's open-popup list is driven by that
+		// mapping. The check failed while the menu was open and visible.
+		mr.on_key({0, QStringLiteral("f"), false, true, false});
+		CHECK(mr.popups().contains(file),
+		      "Alt with a menu's mnemonic opens that menu");
+		CHECK(opened == 0, "and triggers nothing while doing it");
+
+		// The finding that came out of that: keys reach an open menu at all.
+		// key_target() consulted activePopupWidget(), so the branch could
+		// never fire and Down and Return went to the widget behind the menu.
+		// The menu drew correctly throughout, because the compositor reads
+		// the router's stack rather than Qt's -- so nothing looked wrong.
+		CHECK(mr.key_target() == file || file->isAncestorOf(mr.key_target()),
+		      "an open menu is what keys are aimed at");
+
+		// Alt-O inside the open menu finds the menu's own item, not the
+		// window behind it.
+		mr.on_key({0, QStringLiteral("o"), false, true, false});
+		CHECK(opened == 1, "Alt with an item's mnemonic triggers that item");
+
+		// And the keyboard actually drives it: Down then Return fires the
+		// highlighted item. design.md section 16's gate 2 declared popups
+		// working on a synthetic mouse CLICK, which triggers an action
+		// without consulting key_target() at all, so this path went
+		// unexercised by the measurement that signed it off.
+		const int before_keys = opened;
+		mr.on_key({Qt::Key_Down, {}, false, false, false});
+		mr.on_key({Qt::Key_Return, {}, false, false, false});
+		CHECK(opened > before_keys, "Down then Return fires the menu's item");
+
+		file->close();
+		QCoreApplication::processEvents();
+
+		// "&&" is a literal ampersand and marks no letter. Alt-L must not
+		// reach it -- the item's mnemonic is nothing, not 'l'.
+		const int before = opened;
+		mr.on_key({0, QStringLiteral("l"), false, true, false});
+		CHECK(opened == before, "a doubled ampersand marks no mnemonic");
+
+		// A letter with no marker anywhere is not swallowed: it must still
+		// reach the focus widget as ordinary Alt-text.
+		mr.on_key({0, QStringLiteral("z"), false, true, false});
+		CHECK(opened == before, "an unmatched mnemonic triggers nothing");
+	}
 	return fails;
 }

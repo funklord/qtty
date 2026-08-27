@@ -517,7 +517,37 @@ Still missing:
   The path had no test at all and could not have had one until the
   backend learned to decode bracketed paste -- an implemented sink that
   nothing called, which is §7.4's theme exactly.
-- No mnemonic handling, and no grab-widget branch.
+- ~~No mnemonic handling.~~ **Done**, and it could not have been built
+  before the backend learned to decode Alt at all. A mnemonic cannot use
+  the shortcut matcher: it arrives with text and **no `Qt::Key`**, since
+  a terminal sends ESC then the letter, and `match_shortcut()` returns
+  false on its first line for want of one. Alt with a menu's mnemonic
+  opens that menu; with an item's, triggers it; `&&` marks nothing,
+  because that is Qt's spelling for a literal ampersand.
+- **Keys did not reach an open menu at all, and that is what building
+  mnemonics turned up.** `key_target()`'s first branch asked
+  `QApplication::activePopupWidget()`, which returns **null for every
+  popup in this runtime**: the stamping filter sets
+  `WA_DontShowOnScreen` as a popup is shown (F7), the platform never maps
+  it, and Qt's open-popup list is driven by that mapping. So the branch
+  could not fire, and Down and Return went to the widget behind the menu.
+
+  Nothing looked wrong, which is the part worth keeping. The menu drew
+  perfectly the whole time, because `Compositor` reads the **router's**
+  popup stack rather than Qt's -- so the half of the system that was
+  right disguised the half that was not.
+
+  And design.md §16's gate 2 signed popups off as working: it sent a
+  synthetic mouse press at `actionGeometry().center()`, which triggers an
+  action without consulting `key_target()` at all. The measurement was
+  sound and the conclusion drawn from it was wider than what it
+  exercised -- the same shape as this project's own "nothing in that tree
+  is bent" claim recorded in §9.8.
+
+  `key_target()` reads the router's stack now. `activeModalWidget()` is
+  unaffected and stays: Qt tracks a modal through `setWindowModality` and
+  show, which stamping does not disturb.
+- No grab-widget branch.
 
 **Compositor and FrameScheduler -- done.** This was the largest
 correctness gap in the tree: `compose()` rendered the tracked window and

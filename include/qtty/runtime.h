@@ -57,6 +57,11 @@ public:
 
 private:
 	bool match_shortcut(const KeyEvent &);
+	// Alt-<letter> against the `&` markers in action text (section 17.2). A
+	// separate matcher because a mnemonic is not a shortcut: it carries no
+	// Qt::Key at all -- a terminal sends ESC then the letter -- and it opens
+	// a menu where a shortcut triggers an action.
+	bool match_mnemonic(const KeyEvent &);
 	void deliver_key(QWidget *target, const KeyEvent &);
 	// The widget tree input is allowed to reach: the active modal if there is
 	// one, else the window (section 8.3).
