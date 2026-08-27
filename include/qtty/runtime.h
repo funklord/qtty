@@ -70,6 +70,11 @@ private:
 	QWidget *win_;
 	QVector<QPointer<QWidget>> popups_;
 	QVector<KeyEvent> quit_keys_;
+	// The widget a press grabbed, held until the release (section 5.5). A
+	// QPointer because a press can destroy its own target -- a button that
+	// closes a dialog -- and the release then arrives for a widget that is
+	// gone.
+	QPointer<QWidget> grab_;
 };
 
 // ----------------------------------------------------------------- Compositor

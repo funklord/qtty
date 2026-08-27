@@ -547,7 +547,32 @@ Still missing:
   `key_target()` reads the router's stack now. `activeModalWidget()` is
   unaffected and stays: Qt tracks a modal through `setWindowModality` and
   show, which stamping does not disturb.
-- No grab-widget branch.
+- ~~No grab-widget branch.~~ **Done**, and it was half of a larger
+  absence: `on_mouse()` handled the wheel, presses and releases and
+  **never read `m.motion` at all**. The backend had been parsing it
+  correctly the whole time -- SGR 1002 is enabled precisely because it
+  reports drags -- and `MouseEvent` has carried the flag since the seam
+  was written, so every drag event arrived at the router and was
+  discarded. Nothing that needs a drag worked, which is why this entry
+  and §7.2's splitter entry were one defect.
+
+  A press now records its target and motion and release go to that
+  widget wherever the pointer is. Qt calls this a mouse grab and takes it
+  from the platform; there is no platform here, so the router keeps it,
+  in a `QPointer` because a press can destroy its own target -- a button
+  that closes a dialog -- and the release then arrives for a widget that
+  is gone.
+
+  The two halves fail separately, and that was measured rather than
+  assumed. Removing motion delivery takes both a slider drag and a
+  splitter drag red; removing only the grab leaves the slider passing and
+  fails the splitter alone. A slider drag never leaves the slider, so
+  moves are all it needs; a splitter handle is one cell wide and the
+  pointer is off it after the first move.
+
+  A third check was written and removed: a stray release far from the
+  handle, which passes with the grab gone because the cell it names holds
+  a `QLabel` and a release on a `QLabel` does nothing either way.
 
 **Compositor and FrameScheduler -- done.** This was the largest
 correctness gap in the tree: `compose()` rendered the tracked window and
@@ -793,7 +818,27 @@ bar, scrollbars, tabs, the progress bar and the slider. Exercised by
     not been relinked. Relinked, it disagrees exactly where it should.
     `make test` does not have this problem, which is the argument for
     putting the check in the suite rather than leaving it in a probe.
-- `QSplitter` drag is unimplemented.
+- ~~`QSplitter` drag is unimplemented.~~ **Done** -- it was the motion
+  and grab absence in §7.1, not anything about splitters, and it needed
+  no splitter-specific code.
+
+  **What it surfaced is that a `QSplitter` lays its panes off the grid,
+  and always has.** `PM_SplitterWidth` already answers one cell, so the
+  handle is fine; the panes are not. A 300px splitter with a 10px handle
+  splits evenly into 145/145, which is off the grid before any input is
+  involved -- so this is not a consequence of the drag, it is what having
+  a splitter test at all revealed. `GridGuard` reported 36 violations the
+  moment one existed.
+
+  It is not fixed here, because fixing it means snapping child geometry,
+  which is exactly §7.8's open question and the copyright holder's to
+  decide. What is done instead is to **assert the count**: the suite
+  checks that nothing before the splitter left the grid, then that the
+  splitter block does. The day snapping lands, that second check goes red
+  and this entry has to be brought up to date -- which is better than a
+  paragraph nobody re-reads. Aligned splits do exist for this geometry
+  (140/150 sums to the same 290), so the decision is not blocked by
+  arithmetic.
 - ~~The `QTextEdit` interaction layer is absent.~~ **It works, and
   needed no code** -- which makes it the fourth gap in this document that
   was an obstruction rather than an absence. F8 had already measured that

@@ -261,7 +261,23 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 	const QPoint local = top->mapFromGlobal(px);   // offscreen: global == root coords
 	QWidget *child = top->childAt(local);
 	QWidget *target = child ? child : top;
-	const QPoint pos = target->mapFrom(top, local);
+
+	// A drag belongs to the widget the press landed on, for as long as the
+	// button is down. Without that, every event re-runs the hit test above and
+	// the drag is handed to whatever the pointer is over -- which for the two
+	// things a terminal user actually drags is fatal: a splitter handle is one
+	// cell wide, and a slider's groove ends. Both were dead (section 7.2), and
+	// motion was the larger half of why: the backend parses it (SGR 1002
+	// reports drags) and MouseEvent has carried a `motion` flag all along,
+	// which this function read for the first time here.
+	//
+	// Qt calls this a mouse grab and would normally set it from the platform.
+	// There is no platform here, so the router keeps it: the press records the
+	// target, motion and release go to it wherever the pointer is, and the
+	// release clears it.
+	if (!grab_.isNull() && (m.motion || m.release)) target = grab_;
+
+	const QPoint pos = target->mapFromGlobal(px);
 
 	if (m.wheel) {
 		QWheelEvent ev(QPointF(pos), QPointF(px), QPoint(),
@@ -271,14 +287,25 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 	} else {
 		const auto btn = Qt::LeftButton;
 		if (m.press) {
+			grab_ = target;
 			QMouseEvent ev(QEvent::MouseButtonPress, QPointF(pos), QPointF(px),
 			               btn, btn, Qt::NoModifier);
+			QApplication::sendEvent(target, &ev);
+		}
+		if (m.motion) {
+			// Held-button state matters: a widget reads buttons() to tell a
+			// drag from a hover, so a move sent with Qt::NoButton while
+			// grabbed would arrive as the pointer merely passing over.
+			const auto held = grab_.isNull() ? Qt::NoButton : Qt::MouseButtons(btn);
+			QMouseEvent ev(QEvent::MouseMove, QPointF(pos), QPointF(px),
+			               Qt::NoButton, held, Qt::NoModifier);
 			QApplication::sendEvent(target, &ev);
 		}
 		if (m.release) {
 			QMouseEvent ev(QEvent::MouseButtonRelease, QPointF(pos), QPointF(px),
 			               btn, Qt::NoButton, Qt::NoModifier);
 			QApplication::sendEvent(target, &ev);
+			grab_ = nullptr;
 		}
 		setFocusWidget(input_scope()->focusWidget());
 	}

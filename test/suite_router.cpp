@@ -430,5 +430,73 @@ int suite_router() {
 		QCoreApplication::processEvents();
 		CHECK(fired == 1, "Return in the submenu fires its item, not the parent's");
 	}
+	// ------------------------------------------------ section 5.5: drags
+	// Motion was parsed by the backend and dropped by the router, and there
+	// was no grab, so nothing that needs a drag worked -- section 7.2 recorded
+	// the splitter as unimplemented and section 7.1 as "no grab-widget
+	// branch"; they were one defect with two halves.
+	//
+	// Both are asserted because the halves fail separately, which was measured
+	// rather than assumed: with motion delivery removed, the slider AND the
+	// splitter go red; with motion kept and only the grab removed, the slider
+	// still passes and the splitter alone fails. A slider drag never leaves
+	// the slider, so it needs the moves and nothing more; a splitter handle is
+	// one cell wide and the pointer is off it after the first move, so it
+	// needs the moves to keep arriving at the widget the press landed on.
+	{
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *sl = new QSlider(Qt::Horizontal, &h);
+		sl->setRange(0, 100);
+		sl->setValue(0);
+		sl->setGeometry(0, 0, cw * 20, ch);
+		h.resize(GridMetrics::cells(30, 4));
+		h.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&h);
+		r.on_mouse({QPoint(1, 0), 1, true, false, false, 0});
+		for (int x = 2; x <= 15; ++x) r.on_mouse({QPoint(x, 0), 1, false, false, true, 0});
+		r.on_mouse({QPoint(15, 0), 1, false, true, false, 0});
+		CHECK(sl->value() > 0, "dragging a slider moves it");
+	}
+	// The splitter goes last and takes the guard with it, because it lays its
+	// panes out off the grid and always has: a 300px splitter with a one-cell
+	// handle splits evenly into 145/145, before any input is involved. That is
+	// section 7.8's open question -- whether qtty snaps child geometry -- and
+	// implementing the drag surfaced it rather than caused it. Asserting the
+	// count rather than prose means the day snapping lands this check goes red
+	// and the record has to be brought up to date.
+	CHECK(GridGuard::violations() == 0, "nothing before the splitter left the grid");
+	GridGuard::reset();
+	{
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *sp = new QSplitter(Qt::Horizontal, &h);
+		sp->addWidget(new QLabel(QStringLiteral("A")));
+		sp->addWidget(new QLabel(QStringLiteral("B")));
+		sp->setGeometry(0, 0, cw * 30, ch * 4);
+		h.resize(GridMetrics::cells(30, 4));
+		h.show();
+		QCoreApplication::processEvents();
+		const QList<int> before = sp->sizes();
+		QSplitterHandle *handle = sp->handle(1);
+		const int hcell = handle ? handle->mapTo(&h, QPoint(0, 0)).x() / cw : -1;
+		InputRouter r(&h);
+		r.on_mouse({QPoint(hcell, 1), 1, true, false, false, 0});
+		for (int x = hcell; x <= 22; ++x) r.on_mouse({QPoint(x, 1), 1, false, false, true, 0});
+		r.on_mouse({QPoint(22, 1), 1, false, true, false, 0});
+		CHECK(sp->sizes() != before, "dragging a splitter handle resizes its panes");
+
+		// A stray release far from the handle was checked here too and is
+		// gone: it passes with the grab removed, because the cell it names
+		// holds a QLabel and a release on a QLabel does nothing either way. A
+		// check that cannot fail for the reason it was written is worse than
+		// no check, so the splitter drag above carries the grab on its own --
+		// which the sabotage run confirms it does.
+	}
+	CHECK(GridGuard::violations() > 0,
+	      "a QSplitter lays its panes off the grid (section 7.8, not yet decided)");
+	GridGuard::reset();
+
 	return fails;
 }
