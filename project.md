@@ -283,6 +283,26 @@ Open:
 
 And one raised by the tree rather than by the design:
 
+- **OQ-7.** Which metric should the ANSI-16 *fallback* use? The primary
+  route is the hand-authored role table and design.md section 6 is
+  emphatic that it should be; the fallback exists only for a colour with
+  no palette role behind it, which is Channel B output or a colour an
+  application chose itself. It matches in **RGB**, while `to_xterm256()`
+  was changed to match in **CIELAB** precisely because RGB nearest turns
+  a saturated green into a grey.
+
+  Measured before asking: over 24389 sampled colours the two metrics
+  disagree on **44.1%** of them, so this is not a rounding difference.
+  But which is *better* at sixteen colours is not obvious and the
+  measurement does not settle it -- Lab is the standard for perceptual
+  nearest, and on rgb(200,60,60) it picks the dark red where RGB picks
+  the bright one, which is arguably the worse answer for a foreground.
+  With no visual reference to arbitrate, changing 44% of fallback answers
+  on my judgement would be a guess wearing a measurement's clothes.
+
+  Recorded rather than changed. What would settle it: rendering a page of
+  Channel B colours both ways in a real terminal and looking.
+
 - ~~**OQ-6.** Are PascalCase type names inside `namespace Qtty` a settled
   exception to the global style rule?~~ **Closed 2026-08-26 by the
   copyright holder: yes, for type names and nothing wider.** See §8.5.
@@ -940,10 +960,19 @@ displaced by one and the fixture's one promise to its reader was false.
 Neither recorded fixture contains a wide character, so nothing had ever
 shown it the case.
 
-Where to point it next: `Color::to_ansi16`'s fallback path, which is only
-reached by colours with no role and is therefore exercised by nothing
-that goes through a theme; and `diff()` across buffers of different
-sizes, which returns a full-screen region and is checked nowhere.
+Both targets named here have since been examined, and **neither was a
+bug** -- which is worth recording, because a lens that always finds
+something is one that is being made to. `diff()` across differently sized
+buffers is correct as written and is now covered. `Color::to_ansi16`'s
+fallback is correct but matches in RGB where `to_xterm256` matches in
+CIELAB; the two disagree on 44.1% of sampled colours and which is better
+at sixteen colours is a design question, recorded as OQ-7 rather than
+decided.
+
+So the lens is four for six. The two that came up empty cost a
+measurement each and bought coverage and an open question -- which is
+the ordinary outcome, and the four that paid out are what makes it worth
+running rather than what makes it reliable.
 
 ### 7.7 Latent bugs, found by working around them
 

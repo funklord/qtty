@@ -158,5 +158,26 @@ int suite_cells() {
 		CHECK(glyphs.size() == 3,
 		      "and the glyph plane still carries one per cluster, not per cell");
 	}
+
+	// diff() against a buffer of a different size. Correct as written -- a
+	// resized frame shares nothing with its predecessor, so everything is
+	// damage -- but nothing had ever asked, and this is the path a terminal
+	// resize takes, which is now reachable for the first time since the
+	// backend grew a SIGWINCH handler.
+	{
+		CellBuffer small(4, 2), big(8, 3);
+		small.text(0, 0, QStringLiteral("ab"));
+		big.text(0, 0, QStringLiteral("ab"));
+		CHECK(big.diff(small) == QRegion(0, 0, 8, 3),
+		      "a diff against a differently sized buffer damages everything");
+		CHECK(big.diff_cells(small) == 24,
+		      "and counts every cell, not the cells that happen to match");
+		// Same size, same content: the paired probe, so the two above cannot
+		// be satisfied by a diff that reports everything whatever it is given.
+		CellBuffer other(8, 3);
+		other.text(0, 0, QStringLiteral("ab"));
+		CHECK(big.diff(other).isEmpty() && big.diff_cells(other) == 0,
+		      "while an identical buffer of the same size damages nothing");
+	}
 	return fails;
 }
