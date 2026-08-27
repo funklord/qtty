@@ -588,6 +588,28 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 	QProxyStyle::drawComplexControl(cc, opt, p, w);
 }
 
+int GridStyle::styleHint(StyleHint hint, const QStyleOption *opt, const QWidget *w,
+                        QStyleHintReturn *ret) const {
+	switch (hint) {
+	case SH_DialogButtonBox_ButtonsHaveIcons:
+		// qtty draws no icons, so a button that reserves width for one spends
+		// cells on something invisible. Worse, this hint comes from the
+		// platform theme: measured, offscreen answers 0 and xcb answers 1, so
+		// the same dialog laid its buttons out two cells apart depending on
+		// the desktop the program was started from -- a "Cancel" button 90px
+		// wide became 110. It was found by running the suite under a second
+		// platform and watching one snapshot fixture shift.
+		//
+		// This is the ONLY such divergence, which is a measurement rather than
+		// a hope: all 121 style hints and all 96 pixel metrics were compared
+		// across the two platforms, and the other 216 agree.
+		return 0;
+	default:
+		break;
+	}
+	return QProxyStyle::styleHint(hint, opt, w, ret);
+}
+
 // ------------------------------------------------------------------ GridSnap
 // GridGuard's other half (section 7.8). See grid.h for why the policy is
 // round-to-nearest and nothing else.

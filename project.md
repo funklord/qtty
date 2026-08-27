@@ -1476,6 +1476,36 @@ defaults to `offscreen` alone and names `xcb` as the deliberate second
 run. A target claiming two platforms while the second aborts would be
 the vacuous pass again, one level up.
 
+**The `xcb` run paid for itself immediately, which is the argument for
+the whole exercise.** The suite came up with exactly one failure -- the
+`prefs_dialog` snapshot, whose button row sat two cells left of the
+fixture -- and the cause was not the fixture. `GridStyle` is a
+`QProxyStyle`, and a proxy passes style hints straight through;
+`SH_DialogButtonBox_ButtonsHaveIcons` comes from the **platform theme**,
+answering 0 under offscreen and 1 under xcb. So a `Cancel` button grew
+from 90 to 110 pixels to reserve room for an icon a cell renderer cannot
+draw, and **a terminal program's layout depended on the desktop it
+happened to be launched from.**
+
+The eliminations are worth keeping because each killed an obvious
+suspect: the base style is `QFusionStyle` under both; the dialog is
+explicitly sized and `WA_DontShowOnScreen`, so its geometry is fixed;
+`DejaVu Sans Mono` resolves identically with the same advance, and a
+standalone `QPushButton("Cancel")` hints 90x19 under both. Only inside a
+`QDialogButtonBox` did the width move.
+
+`GridStyle::styleHint()` pins the hint to 0 now, and the whole suite
+passes under both platforms. **The scope of the exposure was measured
+rather than assumed**: all 121 style hints and all 96 pixel metrics were
+compared across the two platforms, and that hint is the only
+disagreement in 217.
+
+One honesty note about the test guarding it. Asserting the hint is 0
+**cannot fail under offscreen**, whose theme answers 0 regardless, so
+under the default platform it is a check that inspects nothing. The test
+says so and names the command that does discriminate. That command was
+run: red before the override, green after.
+
 ## 8. Where the document and the code disagree
 
 `~/.claude/guidelines/working-practice.md` is explicit: where the document

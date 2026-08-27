@@ -137,6 +137,14 @@ public:
 	// it never constructed that widget.
 	QRect subControlRect(ComplexControl, const QStyleOptionComplex *, SubControl,
 	                     const QWidget *) const override;
+	// A QProxyStyle passes style hints straight through, and some of them come
+	// from the PLATFORM THEME rather than from the base style -- so a terminal
+	// program's layout would depend on the desktop it happened to be launched
+	// from. Swept: of 121 hints and 96 pixel metrics, exactly one differs
+	// between the offscreen platform and xcb, and it is one a cell renderer
+	// must refuse. See the implementation.
+	int styleHint(StyleHint, const QStyleOption *, const QWidget *,
+	              QStyleHintReturn *) const override;
 };
 
 } // namespace Qtty

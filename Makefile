@@ -166,9 +166,14 @@ TEST_ENV = QTTY_QPA_PLATFORM=$(TEST_PLATFORM) $(TEST_CRASH_ENV)
 # font to measure. `vnc` would open a listening socket and `linuxfb` writes to
 # the console framebuffer, neither of which a test target should do by itself.
 #
-# That leaves `xcb` as the real second configuration, and it is deliberately
-# not the default because it puts windows on whoever's display is attached.
-# Run it when there is somebody to watch:
+# That leaves `xcb` as the real second configuration. The whole suite passes
+# under it, and getting there took one fix: the platform theme sets
+# SH_DialogButtonBox_ButtonsHaveIcons, which a QProxyStyle passes through, so
+# a dialog reserved width for an icon no cell renderer can draw and its button
+# row moved two cells. GridStyle pins that hint now.
+#
+# It is deliberately not the default anyway, because it needs a display and
+# puts windows on it. Run it when there is somebody to watch:
 #
 #     make test-platforms TEST_PLATFORMS="offscreen xcb"
 TEST_PLATFORMS ?= offscreen

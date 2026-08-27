@@ -52,5 +52,24 @@ int suite_grid() {
 	QApplication::sendEvent(edit, &k);
 	CHECK(edit->text() == QStringLiteral("x"), "synthetic key edits QLineEdit");
 
+	// A QProxyStyle passes style hints through, and some come from the
+	// PLATFORM THEME rather than the base style -- so a terminal program's
+	// layout could depend on the desktop it was launched from. Measured: of
+	// 121 style hints and 96 pixel metrics, exactly one differs between
+	// offscreen and xcb, and it makes a dialog reserve width for an icon a
+	// cell renderer cannot draw. A "Cancel" button went 90px to 110px, moving
+	// the whole button row two cells.
+	//
+	// **This check cannot fail under offscreen**, whose theme answers 0
+	// anyway, and saying so is better than letting a green result stand in for
+	// one. Where it discriminates is
+	//
+	//     make test-platforms TEST_PLATFORMS="offscreen xcb"
+	//
+	// which was run: it failed before this override and passes after.
+	CHECK(QApplication::style()->styleHint(
+	          QStyle::SH_DialogButtonBox_ButtonsHaveIcons) == 0,
+	      "dialog buttons reserve no room for icons the terminal cannot draw");
+
 	return fails;
 }
