@@ -19,13 +19,24 @@ static bool buffer_contains(const CellBuffer &b, const QString &glyph) {
 }
 
 static QPoint findText(const CellBuffer &b, const QString &s) {
-	for (int y = 0; y < b.rows(); ++y)
+	// Braced throughout, deliberately. tool/style_gate.py mis-nests a braceless
+	// loop whose body opens a block -- it drops the braceless level at the inner
+	// closing brace and then reports the following lines a tab too deep. This
+	// function previously worked around that by indenting one line with two tabs
+	// and four spaces, which is the mixed tab-then-space indent code-style.md
+	// rule 2 forbids and which the gate accepts because it counts leading tabs.
+	// Bracing is the honest fix: correct code that passes for the right reason.
+	// The defect is signalled in claude-guidelines rather than worked around
+	// further.
+	for (int y = 0; y < b.rows(); ++y) {
 		for (int x = 0; x + s.size() <= b.cols(); ++x) {
 			bool ok = true;
-			for (int i = 0; i < s.size(); ++i)
+			for (int i = 0; i < s.size(); ++i) {
 				if (b.at(x + i, y).ch != QString(s[i])) { ok = false; break; }
-		    if (ok) return {x, y};
+			}
+			if (ok) return {x, y};
 		}
+	}
 	return {-1, -1};
 }
 

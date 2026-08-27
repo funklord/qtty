@@ -795,9 +795,32 @@ which is design.md §16's figure.
   would make the snapshot fixtures reproducible (§7.6).
 - `TermpaintBackend`, and the four legacy adapters.
 - Qt 5.15 support.
-- **The design.md §11 benchmark** -- a 200x60 grid with a 5000-row table.
-  So the 0.16 ms and 3.8 ms figures are spike measurements that nothing
-  in the tree holds to.
+- ~~The design.md §11 benchmark.~~ **Done**, and the budget holds with
+  room. Measured on a 200x60 grid with a 5000-row table, Qt 6.8.2:
+  **1.4 ms** to render a frame against a 16 ms local budget, 0.15 ms to
+  diff it. The 80x24 dialog comes out at **0.15 ms**, which reproduces
+  F9's 0.16 ms on a different Qt and a different machine -- independent
+  corroboration of a spike figure, which is worth more than the figure.
+
+  **What it asserts is deliberately not the timing.** This machine runs
+  several concurrent builds, and the same binary measured 1.35 ms and
+  2.41 ms minutes apart; a threshold tight enough to mean something is
+  one that goes red for reasons that are not the code's, and a test that
+  fails for unrelated reasons is one somebody disables. So it asserts
+  what is load-independent -- render-twice-diffs-to-nothing, which is
+  design.md §9's named invariant and did not exist; that one keystroke
+  dirties 1 cell of 12000 and that the damage stays inside the widget
+  that changed; that damage is proportional to the change rather than to
+  the grid; that rows past the bottom of a 5000-row model are never
+  painted, which is why such a model is affordable at all -- and it
+  *reports* the three durations beside the budget for a human to read.
+  One duration is asserted, at ten times the whole budget, so only an
+  order-of-magnitude regression trips it.
+
+  It carries its own paired probe: a frame that differs everywhere must
+  report every cell damaged. Without it, a `diff()` that returned nothing
+  whatever it was handed would satisfy every empty-diff check in the file
+  and fail none.
 - The design.md §9 differential test (the same model driven through GUI
   and TUI builds must reach the same observable state), and the
   render-twice-diff-must-be-empty invariant.
@@ -1063,6 +1086,26 @@ they are the foreign-API carve-out rather than the divergence:
 `QApplication::focusWidget()`, which they replace (measured F4). Where
 qtty stands in for a Qt call, keeping Qt's spelling is the rule working,
 not an exception to it.
+
+### 8.6 `diff()` has no early row skip
+
+design.md §11 says `CellBuffer::diff` is "the only full-screen scan per
+frame; O(cells) with early row skip". The O(cells) half is right. There
+is no early row skip: `src/core/cell_buffer.cpp` compares every cell of
+every row, with no per-row fast path that would let an unchanged row be
+skipped without examining it.
+
+Flagged rather than resolved either way, because both readings are
+defensible and the choice is a design decision. The document may be
+describing an optimisation that was intended and never written -- in
+which case a row-level memcmp before the per-cell loop is a small change
+that would earn its place at 200x60. Or the phrase may have been
+describing the run-collapsing that IS there, which skips no work but does
+keep the output proportional to the change rather than to the row.
+
+Measured while writing the §11 benchmark, so the cost is known rather
+than guessed: `diff()` over a 200x60 frame is 0.154 ms against a 16 ms
+budget. Whichever way this is settled, it is not urgent.
 
 ## 9. Build and repository conventions
 

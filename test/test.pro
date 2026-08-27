@@ -29,4 +29,5 @@ SOURCES += main.cpp \
            suite_widgets.cpp \
            suite_graphics.cpp \
            suite_runtime.cpp \
-           suite_backend.cpp
+           suite_backend.cpp \
+           suite_budget.cpp

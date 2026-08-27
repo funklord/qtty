@@ -17,6 +17,7 @@ int suite_widgets_entry(bool record);
 int suite_graphics();
 int suite_runtime();
 int suite_backend();
+int suite_budget();
 
 namespace {
 
@@ -96,6 +97,7 @@ int main(int argc, char **argv) {
 		{"graphics",   [&] { return suite_graphics(); }},
 		{"runtime",    [&] { return suite_runtime(); }},
 		{"backend",    [&] { return suite_backend(); }},
+		{"budget",     [&] { return suite_budget(); }},
 	};
 	for (auto &s : suites) {
 		if (!only.isEmpty() && only != QLatin1String(s.name)) continue;
