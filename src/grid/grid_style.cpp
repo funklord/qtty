@@ -1,6 +1,7 @@
 // src/grid/grid_style.cpp -- GridMetrics, GridStyle, focus ownership (sections 5.3-5.5).
 #include "qtty/grid.h"
 #include "qtty/paint.h"
+#include "../cell_geometry.h"
 #include <QStyleFactory>
 #include <QStyleOption>
 #include <QStyleOptionButton>
@@ -82,14 +83,35 @@ bool GridGuard::is_exempt(const QWidget *w) {
 	// The test is a principle rather than a list, and deliberately so. A list
 	// of nine class names is one somebody adds a tenth to without deciding
 	// anything, and that is how an exemption grows until the guard reports
-	// nothing. Qt marks its own internal children two ways and both are
-	// stable: an objectName beginning "qt_", and a class name carrying
+	// nothing. Qt marks most of its own internal children two ways and both
+	// are stable: an objectName beginning "qt_", and a class name carrying
 	// "Private". Anything descended from such a widget is inside Qt's own
 	// construction and is exempt with it.
 	//
+	// The principle is not complete, and saying so is better than pretending.
+	// Qt has private widget classes that follow neither convention -- declared
+	// in a .cpp, exported nowhere, named like ordinary public classes. They
+	// are the named residue below, and the point of naming them HERE rather
+	// than folding them into the principle is that each one is then visibly
+	// an exception with a reason attached, instead of a list entry somebody
+	// appended. An addition should be as hard to make as this comment is to
+	// write.
+	//
 	// What is NOT exempt is the case worth catching: a widget the
 	// application made, at a geometry the application can change.
-	static const char *const by_class[] = { "QHeaderView", "QScrollBar" };
+	static const char *const by_class[] = {
+		// F5 measured these two: they ignore style metrics and size
+		// themselves, so they land off the grid however the style is written.
+		"QHeaderView", "QScrollBar",
+		// The corner between a table's two headers. A private class in
+		// qtableview.cpp -- no qt_ objectName, no "Private" in the name --
+		// that QTableView constructs and sizes, and that an application
+		// cannot reach. It sits at its construction-time 10x19+10+10 when
+		// both headers are hidden, which is off any row grid taller than 10.
+		// Found the first time a QTableView was exercised at all; it had
+		// never appeared because nothing had built one.
+		"QTableCornerButton",
+	};
 	for (const QObject *o = w; o; o = o->parent()) {
 		const QString name = o->objectName();
 		if (name.startsWith(QLatin1String("qt_"))) return true;
@@ -140,30 +162,6 @@ void GridGuard::install(QCoreApplication &app) {
 	app.installEventFilter(s_guard);
 }
 
-// Channel A target detection: via the paint ENGINE, never p->device() -- inside
-// a paintEvent the device is the QWidget itself (section 16, F1).
-static CellPaintDevice *cell_target(QPainter *p) {
-	if (auto *e = dynamic_cast<CellPaintEngine *>(p->paintEngine())) return e->device();
-	return nullptr;
-}
-
-// Neither transform() nor combinedTransform() carries render()'s redirection
-// offset -- map through a widget (section 16, F2). WHICH widget matters: opt->rect is
-// in the coordinates of the widget being painted, and during a paintEvent
-// that widget IS p->device() (section 16, F1) -- for item views the *viewport*, not
-// the view the style is handed as `w`. Mapping through `w` there silently
-// drops the header/frame offset.
-static QRect cells_of(const QRect &r, QPainter *p, CellPaintDevice *dev,
-                     const QWidget *w) {
-	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
-	const QWidget *paint_widget = dynamic_cast<QWidget *>(p->device());
-	const QWidget *m = paint_widget ? paint_widget : w;
-	QPoint tl = m ? m->mapTo(m->window(), r.topLeft()) : r.topLeft();
-	tl += dev->origin;
-	return QRect(qRound(tl.x() / double(cw)), qRound(tl.y() / double(ch)),
-	             qMax(1, qRound(r.width() / double(cw))),
-	             qMax(1, qRound(r.height() / double(ch))));
-}
 
 static void draw_box(CellBuffer &b, const QRect &c) {
 	if (c.width() < 2 || c.height() < 2) return;
@@ -326,24 +324,6 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 	QProxyStyle::drawPrimitive(pe, opt, p, w);       // GUI path, untouched
 }
 
-// Elide a string to a cell budget (cluster-aware enough for labels).
-static QString elide(const QString &s, int cells) {
-	if (cells <= 0) return {};
-	int used = 0; QString out;
-	for (const QString &cl : to_clusters(s)) {
-		int cw = cluster_width(cl);
-		// U+2026, not QLatin1Char('...'): QLatin1Char takes a char, so a
-		// UTF-8 ellipsis in a character literal is a multichar constant
-		// that truncates to its last byte -- 0xA6, a broken bar in
-		// Latin-1. The elision marker rendered as garbage.
-		if (used + cw > cells) {
-			if (!out.isEmpty()) out.chop(1), out += QChar(0x2026);
-			break;
-		}
-		out += cl; used += cw;
-	}
-	return out;
-}
 
 void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter *p,
                             const QWidget *w) const {
@@ -378,7 +358,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				const QStringList parts = mi->text.split(QLatin1Char('\t'));
 				QString label = parts.value(0);
 				label.remove(QLatin1Char('&'));       // mnemonic markers
-				dev->buffer().text(c.left() + 1, c.top(), elide(label, c.width() - 2),
+				dev->buffer().text(c.left() + 1, c.top(), elide_to_cells(label, c.width() - 2),
 					               Color(), Color(), a);
 				if (parts.size() > 1) {               // right-aligned shortcut
 					const QString sc = parts[1];
@@ -407,9 +387,13 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 		case CE_ItemViewItem:                          // list/table/tree cells
 			if (auto *vi = qstyleoption_cast<const QStyleOptionViewItem *>(opt)) {
 				const Attrs a = (opt->state & State_Selected) ? Attrs(Attr::Reverse) : Attrs();
-				if (a) { Cell v; v.attrs = a;
-						 dev->buffer().fill(QRect(c.left(), c.top(), c.width(), 1), v); }
-				dev->buffer().text(c.left() + 1, c.top(), elide(vi->text, c.width() - 1),
+				// The whole item, not its top row. A one-cell fill was
+				// indistinguishable from a correct one while every item in
+				// the suite was one cell tall, and wrong the moment a
+				// delegate returned a taller sizeHint: the row highlighted
+				// its first line and left the rest on the ordinary ground.
+				if (a) { Cell v; v.attrs = a; dev->buffer().fill(c, v); }
+				dev->buffer().text(c.left() + 1, c.top(), elide_to_cells(vi->text, c.width() - 1),
 					               Color(), Color(), a);
 				return;
 			}
@@ -418,7 +402,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 			return;                                    // no chrome; label only
 		case CE_HeaderLabel:
 			if (auto *h = qstyleoption_cast<const QStyleOptionHeader *>(opt)) {
-				dev->buffer().text(c.left(), c.top(), elide(h->text, c.width()),
+				dev->buffer().text(c.left(), c.top(), elide_to_cells(h->text, c.width()),
 					               Color(), Color(), Attr::Bold);
 				return;
 			}
@@ -427,7 +411,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 			if (auto *t = qstyleoption_cast<const QStyleOptionTab *>(opt)) {
 				const bool sel = opt->state & State_Selected;
 				const QString label = QLatin1Char('[') + t->text + QLatin1Char(']');
-				dev->buffer().text(c.left(), c.top(), elide(label, c.width()),
+				dev->buffer().text(c.left(), c.top(), elide_to_cells(label, c.width()),
 					               Color(), Color(),
 					               sel ? Attrs(Attr::Reverse) : Attrs());
 				return;

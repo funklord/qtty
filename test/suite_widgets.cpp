@@ -391,6 +391,28 @@ int suite_widgets() {
 		                                   QStringLiteral("widgets_gallery"), got, g_record);
 		if (!g_record) printf("%s: gallery snapshot\n", fails ? "FAIL" : "PASS");
 	}
+
+	// A selected item taller than one cell is reversed throughout, not just on
+	// its first line. Invisible while every item was one cell tall, which is
+	// every item this suite had before CellItemDelegate could return a taller
+	// sizeHint -- so the check needs a multi-row item to say anything at all.
+	{
+		QListWidget list;
+		list.setFrameShape(QFrame::NoFrame);
+		auto *tall = new QListWidgetItem(QStringLiteral("tall"));
+		tall->setSizeHint(QSize(GridMetrics::cw() * 10, GridMetrics::ch() * 3));
+		list.addItem(tall);
+		list.setCurrentItem(tall);
+		show(list, 12, 4);
+		CellBuffer b(12, 4);
+		render_once(list, b);
+
+		int reversed = 0;
+		for (int y = 0; y < 3; ++y)
+			if (b.at(0, y).attrs & Attr::Reverse) ++reversed;
+		CHECK(reversed == 3, "a three-cell selected item is reversed on all "
+		                     "three rows, not only the first");
+	}
 	return fails;
 }
 

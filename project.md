@@ -894,6 +894,31 @@ cheap, but the cost scales with distinct colours times area per band --
 worth knowing before the sixel path carries a full-screen Channel B
 image at frame rate.
 
+~~The Channel A coordinate rules were copied rather than shared.~~
+**Closed, and the copy was hiding a bug.** `cell_target()` and
+`cells_of()` -- findings F1 and F2, which are *measurements* rather than
+preferences -- were file-static in `grid_style.cpp` and were copied into
+`cell_item_delegate.cpp` when it arrived. They live in
+`src/cell_geometry.h` now, an internal header that does not leave the
+tree.
+
+The third copied helper is the finding. Both files had an `elide`, and
+they were not the same rule: a differential run over 143 cases had them
+disagreeing on 9, every one involving a wide cluster or a budget of one,
+and `GridStyle`'s was wrong on all nine. It ended with `out.chop(1)`,
+which removes one **QChar** where it meant one **cluster**, and it
+reserved no cell for the marker -- so a five-character CJK string elided
+to three cells came back as a lone ellipsis using one of them, and at a
+budget of one it came back **empty**, rendering a truncated string as
+nothing. Chopping a QChar would also split a surrogate pair, which is an
+invalid string rather than a short one.
+
+Neither implementation had a test that asked about a wide cluster, which
+is why it survived: both handled ASCII identically, and ASCII was all
+anything checked. Two implementations of one rule disagreeing is what
+surfaced it -- the corroboration was independent because the two were
+written by different hands for different callers.
+
 **A gradient fill lands as a literal RGB background.** `fillRectF`
 recovers which palette role produced a brush by comparing the brush
 colour against each role's colour for **exact equality**, and Fusion
@@ -1233,7 +1258,39 @@ The two rebuild triggers are checked rather than assumed: touching a test
 source recompiles its object, and touching a public header recompiles the
 library objects that include it.
 
-### 9.5 The Makefile interface
+### 9.5 qmake's dependency list is a snapshot, and goes stale on an ADD
+
+qmake does not emit `-MMD` dependency files. It writes a **static** list
+into the generated Makefile, scanned once when qmake ran:
+
+    cell_buffer.o: ../../src/core/cell_buffer.cpp ../../include/qtty/cell.h
+
+That tracks an edited header correctly and knows nothing about a header
+that did not exist when the scan happened. So **adding** a header and
+then editing it rebuilds nothing, in either the library build or the test
+build.
+
+Measured the expensive way. A new internal header was sabotaged to prove
+a set of checks could fail; `make` reported success, no object was
+recompiled, and the binary that ran was the previous one -- so the checks
+passed and the conclusion drawn was "these checks do not discriminate".
+They discriminate perfectly. A sabotage that changes nothing and a check
+that cannot fail are indistinguishable from the output, and this is the
+second time in one session that pair has cost a wrong conclusion.
+
+**§9.4's proof was real and incomplete, which is the part worth keeping.**
+It showed that touching a public header recompiles the library objects
+that include it -- and that header was already in qmake's list, so it
+proved *edit* tracking and said nothing about *add* tracking. A proof
+demonstrates the case it exercises and no other, and choosing the case is
+where the thinking is.
+
+Both qmake targets take `$(HEADERS)` as a prerequisite now, so any header
+change re-runs qmake and regenerates the snapshot. `$(HEADERS)` also
+gained `src/*.h`, which it had never matched -- the internal header at
+the top of `src/` was invisible to it, which is how the gap surfaced.
+
+### 9.6 The Makefile interface
 
 The same interface every sibling project presents. qmake does the build
 because moc does not fit hand-written pattern rules; the Makefile is the
@@ -1268,7 +1325,7 @@ the global guidelines, and neither should be removed:
 - **A run over zero binaries fails rather than passing.** A loop that
   finds no test binary exits 0 and reads exactly like a pass.
 
-### 9.6 Indentation was converted, and the spikes were not
+### 9.7 Indentation was converted, and the spikes were not
 
 The tree was 4-space indented and was converted to tabs by
 `tool/style_gate.py fix`: **2372 violations across 48 files**. `spike/`
@@ -1278,7 +1335,7 @@ exactly as they were run, which is what makes them evidence for the
 numbers §6 cites. Reindenting them would edit the record. Nothing in the
 library builds them.
 
-### 9.7 Two mixed indents are deliberate, and must not be "fixed"
+### 9.8 Two mixed indents are deliberate, and must not be "fixed"
 
 `src/graphics/graphics.cpp` has two regions indented with tabs followed
 by spaces -- the lambda body around lines 254-257 and the final `else`
@@ -1323,7 +1380,7 @@ right about them. These two regions wait for the lambda case. Whoever
 fixes the gate should expect them to go red, and that is the signal to
 correct them -- not a regression.
 
-### 9.8 What was measured on this machine
+### 9.9 What was measured on this machine
 
 Qt **6.8.2**, `qmake6` present, the offscreen platform plugin present,
 DejaVu Sans Mono present. The tree builds clean and the suite reports

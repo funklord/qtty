@@ -1,5 +1,6 @@
 // suite_cells -- L2: clusters, wide cells, continuation rules, region diff (section 5.2).
 #include <qtty/qtty.h>
+#include "src/cell_geometry.h"
 #include <cstdio>
 
 using namespace Qtty;
@@ -53,5 +54,38 @@ int suite_cells() {
 	CHECK(consumed == 4 && t.at(3, 0).ch == QStringLiteral("b"),
 	      "text() advances 1+2+1 cells");
 
+
+	// elide_to_cells: a wide cluster is two cells, and the marker needs one.
+	//
+	// This is the gap that let a wrong implementation live in GridStyle for
+	// months: both versions of the rule handled ASCII identically, and neither
+	// had a check that asked about a wide cluster. A differential run over the
+	// two found them disagreeing on 9 cases of 143 -- every one involving a
+	// wide cluster or a budget of 1 -- and the loser was chopping one QChar
+	// where it meant one cluster, and reserving no cell for the marker.
+	{
+		const QString cjk = QString::fromUtf8("\u6f22\u5b57\u30c6\u30b9\u30c8");
+		const auto width = [](const QString &s) {
+			int n = 0;
+			for (const QString &c : to_clusters(s)) n += cluster_width(c);
+			return n;
+		};
+		CHECK(width(cjk) == 10, "five wide clusters are ten cells");
+		CHECK(elide_to_cells(cjk, 10) == cjk, "text that fits is returned whole");
+		CHECK(width(elide_to_cells(cjk, 3)) == 3,
+		      "eliding to 3 cells uses all 3, not one");
+		CHECK(width(elide_to_cells(cjk, 1)) == 1,
+		      "eliding to 1 cell is the marker, never an empty string");
+		CHECK(elide_to_cells(cjk, 1) == QString(QChar(0x2026)),
+		      "and the marker is U+2026, not a truncated byte");
+		CHECK(elide_to_cells(cjk, 0).isEmpty(), "a zero budget elides to nothing");
+		// A surrogate pair must not be split: chopping a QChar would leave
+		// half of one, which is an invalid string rather than a short one.
+		const QString emoji = QString::fromUtf8("\U0001F389ok");
+		const QString cut = elide_to_cells(emoji, 2);
+		CHECK(!cut.isEmpty() && cut.at(cut.size() - 1) == QChar(0x2026)
+		      && !cut.at(0).isLowSurrogate(),
+		      "eliding never leaves half a surrogate pair");
+	}
 	return fails;
 }

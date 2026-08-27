@@ -54,7 +54,9 @@ PREFIX  ?= /usr/local
 DESTDIR ?=
 
 SOURCES = $(wildcard src/*.cpp src/*/*.cpp src/*/*/*.cpp)
-HEADERS = $(wildcard include/qtty/*.h src/*/*.h src/*/*/*.h)
+# src/*.h too: an internal header at the top of src/ was invisible to this
+# list, which is how the gap below was found.
+HEADERS = $(wildcard include/qtty/*.h src/*.h src/*/*.h src/*/*/*.h)
 PROFILES = qtty.pro qtty.pri src/src.pro \
            tool/inspect/inspect.pro tool/replay/replay.pro example/chat/chat.pro
 TEST_PROFILES = test/test.pro qtty.pri
@@ -86,7 +88,26 @@ TEST_BIN = $(TEST_BUILD_DIR)/qtty-tests
 
 all: $(LIB)
 
-$(BUILD_DIR)/Makefile: $(PROFILES) VERSION
+# The header list is a prerequisite, and that is not belt-and-braces.
+#
+# qmake does NOT emit -MMD dependency files. It writes a STATIC dependency
+# list into the generated Makefile, scanned once when qmake ran:
+#
+#     cell_buffer.o: ../../src/core/cell_buffer.cpp ../../include/qtty/cell.h
+#
+# That tracks headers correctly and goes stale the moment one is ADDED, since
+# a header that did not exist at qmake time is in nobody's list. Measured: a
+# new internal header was edited, `make` reported success, no object was
+# recompiled, and the test binary that ran was the previous one -- which
+# reports the previous answer, and a sabotage that changes nothing looks
+# exactly like a check that cannot fail.
+#
+# Depending on $(HEADERS) re-runs qmake when any header changes, which costs a
+# second and regenerates the snapshot. The alternative -- trusting a list
+# captured at configure time -- is the class of fault build-and-commit.md
+# calls load-bearing precisely because it produces a wrong answer rather than
+# an error.
+$(BUILD_DIR)/Makefile: $(PROFILES) VERSION $(HEADERS)
 	mkdir -p $(BUILD_DIR)
 	cd $(BUILD_DIR) && $(QMAKE) $(CURDIR)/qtty.pro $(QMAKE_CONFIG) QMAKE_CXX=$(CXX)
 
@@ -145,7 +166,9 @@ TEST_TIMEOUT ?= 300
 # removes the whole class of "did that get rebuilt?" from the default path.
 # It gets its own qmake run and its own build directory, and is told where
 # the library is because $$shadowed() cannot work it out from over here.
-$(TEST_BUILD_DIR)/Makefile: $(TEST_PROFILES) VERSION
+# Same reason as the library's rule above: qmake's dependency snapshot is
+# taken once, and a header added afterwards is in no object's list.
+$(TEST_BUILD_DIR)/Makefile: $(TEST_PROFILES) VERSION $(HEADERS)
 	mkdir -p $(TEST_BUILD_DIR)
 	cd $(TEST_BUILD_DIR) && $(QMAKE) $(CURDIR)/test/test.pro $(QMAKE_CONFIG) \
 	        QMAKE_CXX=$(CXX) QTTY_LIB_DIR=$(CURDIR)/$(BUILD_DIR)/lib
