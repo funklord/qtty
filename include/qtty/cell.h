@@ -85,9 +85,13 @@ public:
 	// that cannot see a selection is one that goes green when a selection
 	// stops being drawn.
 	//
-	// The planes line up with the glyph plane column for column, including
-	// skipping a wide cluster's continuation cell, so a column can be read
-	// straight down across all three.
+	// The planes line up with the glyph plane COLUMN for column, so a column
+	// can be read straight down across all three. That needs the attribute
+	// and colour planes to carry one character per CELL while the glyph plane
+	// carries one per CLUSTER: a wide cluster is one glyph occupying two
+	// columns, so its continuation cell contributes no glyph and does
+	// contribute an attribute and a colour. Skipping it in all three left the
+	// planes a character short under every wide cluster.
 	QString to_snapshot() const;
 
 	// Frame payload: placements collected for this frame (section 5.7). Travels with

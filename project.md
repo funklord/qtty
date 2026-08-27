@@ -926,9 +926,24 @@ check passing.
 Where to point it next, in this tree: anything that takes a QString and
 counts, anything that takes bytes and decodes, and anything with an edge
 the fixtures never reach. `to_snapshot()`'s planes against a wide cluster
-and `InputRouter::on_paste` were both unexamined; the paste path has
-since been looked at and is in §7.1, and `to_snapshot()` against a wide
-cluster has not.
+and `InputRouter::on_paste` were both unexamined. **Both have since been
+looked at and both were wrong**, which makes the lens four for four in
+one session.
+
+The paste path is in §7.1. `to_snapshot()` promised that "the planes line
+up with the glyph plane column for column, so a column can be read
+straight down across all three" -- and under a wide cluster they did not,
+because all three planes skipped the continuation cell. The glyph plane
+is right to: a wide cluster is one glyph occupying two columns. The other
+two were then a character short, so every plane below a wide glyph was
+displaced by one and the fixture's one promise to its reader was false.
+Neither recorded fixture contains a wide character, so nothing had ever
+shown it the case.
+
+Where to point it next: `Color::to_ansi16`'s fallback path, which is only
+reached by colours with no role and is therefore exercised by nothing
+that goes through a theme; and `diff()` across buffers of different
+sizes, which returns a full-screen region and is checked nowhere.
 
 ### 7.7 Latent bugs, found by working around them
 

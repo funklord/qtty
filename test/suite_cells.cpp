@@ -129,5 +129,34 @@ int suite_cells() {
 		CHECK(d.text(0, 0, QStringLiteral("ab") + wide) == 4,
 		      "a mixed run still reports its true width");
 	}
+
+	// The snapshot planes must line up with the glyph plane COLUMN for column,
+	// which is the one thing the format promises a reader. A wide cluster is
+	// the case that tests it: one glyph occupying two columns, so the glyph
+	// plane emits one character where the attribute and colour planes must
+	// emit two. Skipping the continuation cell in all three -- which is what
+	// the glyph plane correctly does -- left the other two a character short
+	// under every wide cluster, and no fixture had one.
+	{
+		const QString wide = QString::fromUtf8("\u6f22");
+		CellBuffer b(6, 1);
+		b.text(0, 0, QStringLiteral("a") + wide + QStringLiteral("b"));
+		for (int x = 0; x < 4; ++x) b.at(x, 0).attrs = Attr::Reverse;
+
+		const QStringList lines = b.to_snapshot().split(QLatin1Char('\n'));
+		const QString glyphs = lines.value(0);
+		const int attrs_row = lines.indexOf(QStringLiteral("--- attrs ---")) + 1;
+		const QString attrs = lines.value(attrs_row);
+
+		// Display columns, not QChars: that distinction IS the bug.
+		int glyph_columns = 0;
+		for (const QString &cl : to_clusters(glyphs)) glyph_columns += cluster_width(cl);
+		CHECK(glyph_columns == 4, "the glyph plane spans four columns");
+		CHECK(attrs.size() == 4,
+		      "the attribute plane carries one character per cell, so the "
+		      "planes are the same width");
+		CHECK(glyphs.size() == 3,
+		      "and the glyph plane still carries one per cluster, not per cell");
+	}
 	return fails;
 }

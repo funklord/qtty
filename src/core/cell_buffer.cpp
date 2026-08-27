@@ -224,8 +224,14 @@ QString CellBuffer::to_snapshot() const {
 		QString g, a, k;
 		for (int x = 0; x < c_; ++x) {
 			const Cell &c = d_[y * c_ + x];
-			if (c.width == 0) continue;                 // continuation: no glyph
-			g += c.ch;
+			// The glyph plane skips a continuation cell, because the wide
+			// cluster in the lead already occupies both columns. The other
+			// two planes must NOT skip it, or they come up a character short
+			// under every wide cluster and the columns stop lining up -- which
+			// is the one thing this format promises. One character per CELL
+			// there, one per CLUSTER here, and all three planes end the same
+			// number of display columns wide.
+			if (c.width != 0) g += c.ch;
 			a += attr_char(c.attrs);
 			k += letter_for(c);
 		}
