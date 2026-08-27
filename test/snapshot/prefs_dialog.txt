@@ -1,14 +1,14 @@
 
-
  [x] Enable telemetry
-
-
  ( ) Daily              (o) Weekly
 
+
+
+
+
+
+
                              <OK>     <Cancel>
-
-
-
 
 
 

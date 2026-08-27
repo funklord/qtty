@@ -14,6 +14,7 @@ int suite_router();
 int suite_widgets_entry(bool record);
 int suite_graphics();
 int suite_runtime();
+int suite_backend();
 
 int main(int argc, char **argv) {
 	Qtty::prepareEnvironment();
@@ -28,6 +29,12 @@ int main(int argc, char **argv) {
 	} else printf("PASS: inert before setup()\n");
 
 	Qtty::setup(app);
+
+	// section 9: "GridGuard runs as an assertion in every test". Installed
+	// here rather than in each suite, so a suite added later is covered by
+	// having been written rather than by remembering to opt in -- which is
+	// the failure mode a per-suite install has and this does not.
+	Qtty::GridGuard::install(app);
 
 	bool record = false;
 	QString only;
@@ -45,11 +52,24 @@ int main(int argc, char **argv) {
 		{"widgets",    [&] { return suite_widgets_entry(record); }},
 		{"graphics",   [&] { return suite_graphics(); }},
 		{"runtime",    [&] { return suite_runtime(); }},
+		{"backend",    [&] { return suite_backend(); }},
 	};
 	for (auto &s : suites) {
 		if (!only.isEmpty() && only != QLatin1String(s.name)) continue;
 		printf("\n== %s ==\n", s.name);
+		Qtty::GridGuard::reset();
 		failures += s.run();
+		// The guard's own finding, reported per suite so it names which one
+		// moved a widget off the grid rather than leaving a total nobody can
+		// attribute. It is a real check and counts as one.
+		const int off = Qtty::GridGuard::violations();
+		if (off == 0) {
+			printf("PASS: every widget geometry landed on the grid\n");
+		} else {
+			printf("FAIL: %d widget geometry/geometries off the grid "
+			       "(see the qtty: warnings above)\n", off);
+			++failures;
+		}
 	}
 	printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "OK",
 	       failures, failures == 1 ? "" : "s");

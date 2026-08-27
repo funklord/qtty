@@ -130,6 +130,19 @@ int suite_graphics() {
 
 	// ---- Overlay API + registry ----
 	{
+		// The overlay's GUI twin is a top-level widget placed against the
+		// first visible top-level it can find (section 5.7), so with no window
+		// open at all it keeps Qt's default 640x480 -- which is off the grid,
+		// and what GridGuard reported here. An application always has a window
+		// by the time it shows an overlay, so the test has one too, sized in
+		// cells like every other window in the suite. Its cell rect then
+		// resolves against a grid-aligned origin.
+		QWidget base;
+		base.setAttribute(Qt::WA_DontShowOnScreen);
+		base.resize(GridMetrics::cells(20, 6));
+		base.show();
+		QCoreApplication::processEvents();
+
 		CHECK(Overlay::visibleOverlays().isEmpty(), "registry starts empty");
 		Overlay o;
 		QImage img(4 * cw, 2 * ch, QImage::Format_ARGB32);

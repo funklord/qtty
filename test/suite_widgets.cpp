@@ -133,7 +133,25 @@ int suite_widgets() {
 		QSplitter split(Qt::Horizontal);
 		split.addWidget(new QLabel("left"));
 		split.addWidget(new QLabel("right"));
-		show(split, 30, 4);
+		// A splitter divides its width by the panes' size hints, and a QLabel's
+		// hint is however wide its text happens to be -- 129 and 161 px here,
+		// neither a cell multiple. The sizes are the application's to state, so
+		// state them: 30 cells of width less the one-cell handle
+		// (PM_SplitterWidth) leaves 29 to divide, 14 and 15.
+		//
+		// The order is the point, and show() from the helper above cannot give
+		// it. setSizes() lays the panes out against the width the splitter has
+		// when it is called, so the resize has to come first; and it has to
+		// come before show(), because the guard counts the layout that show()
+		// performs. Setting the sizes afterwards leaves the right pixels
+		// behind a violation that has already been recorded -- measured: the
+		// panes were 140 and 150 by the time anything rendered, and the suite
+		// still reported four QLabel geometries off the grid.
+		split.setAttribute(Qt::WA_DontShowOnScreen);
+		split.resize(GridMetrics::cells(30, 4));
+		split.setSizes({14 * GridMetrics::cw(), 15 * GridMetrics::cw()});
+		split.show();
+		QCoreApplication::processEvents();
 		CellBuffer b(32, 5);
 		renderOnce(split, b);
 		CHECK(bufferContains(b, QStringLiteral("│")), "splitter handle renders");
@@ -183,6 +201,17 @@ int suite_widgets() {
 		v->addWidget(combo);
 		auto *pb = new QProgressBar(&win);
 		pb->setRange(0, 100); pb->setValue(40);
+		// One cell tall, stated rather than left to the widget. GridStyle
+		// answers CT_ProgressBar with exactly ch and the hint obeys it, but
+		// QProgressBar's minimumSizeHint() does not go through the style at
+		// all, and a layout honours the minimum over the hint. Measured at
+		// ch = 19: fontMetrics().height() is 19, sizeHint() 110x19,
+		// minimumSizeHint() 110x21 -- so the bar came out 21 tall, which moved
+		// the slider to y = 59 and the tab widget to y = 78 and left the tabs
+		// 207 tall. One widget two pixels over put three of them off the grid.
+		// QSlider and QComboBox were measured on the same run and answer 19
+		// for both, so this is the progress bar's alone.
+		pb->setFixedHeight(GridMetrics::ch());
 		v->addWidget(pb);
 		auto *slider = new QSlider(Qt::Horizontal, &win);
 		slider->setRange(0, 10); slider->setValue(3);
@@ -195,6 +224,12 @@ int suite_widgets() {
 		pv->addWidget(chk);
 		tabs->addTab(page, "General");
 		tabs->addTab(new QWidget, "Advanced");
+		// The tab widget is the one item that stretches, and that is what
+		// keeps the column on the grid rather than a trailing addStretch():
+		// the window, the layout margins and every other item are cell
+		// multiples, so whatever is left over for the single expanding item
+		// is a cell multiple too. (suite_render's dialog needs the stretch
+		// instead, because nothing in it expands.)
 		v->addWidget(tabs, 1);
 		show(win, 44, 16);
 		const QString got = Qtty::test::snapshotOf(win, 46, 17);

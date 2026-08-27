@@ -505,11 +505,40 @@ as the fallback for a layer too big to fit either side.
 `pixelMetric` audit is thorough: 35 or more metrics answered explicitly,
 the rest snapped. Missing:
 
-- `sizeFromContents` is a blanket snap-up, not per-`ContentsType`.
+- ~~`sizeFromContents` is a blanket snap-up, not per-`ContentsType`.~~
+  **Done, and it was the largest visible quality defect in the tree.**
+  Snapping the proxy style's answer up is wrong in the direction that
+  matters: Fusion sizes a control for a mouse. Measured at cw=10 ch=19
+  before the fix -- `QCheckBox` and `QRadioButton` came out **38 px, two
+  cells**; `QPushButton`, `QLineEdit` and `QComboBox` came out **57 px,
+  three cells**. Only `QLabel` was right, and only because its height
+  already equals the line height. So every dialog was two to three times
+  taller than it needed to be, with blank rows between its controls.
+
+  A single-line control is one cell tall by construction now, and the
+  width still snaps up because a width is a count of characters and
+  rounding one down truncates text. The types that genuinely carry more
+  than a line -- an item view row, a group box, a whole menu -- keep the
+  snap-up, which is the only rule that cannot clip.
 - `subElementRect` and `subControlRect` are neither declared in
   `include/qtty/grid.h` nor overridden, though design.md §5.3 lists both.
-- The off-by-one vertical-centring baseline calibration that §16 called
-  for is not done.
+- ~~The off-by-one vertical-centring baseline calibration that §16 called
+  for is not done.~~ **Explained, and it needed no calibration.** §16
+  recorded the symptom -- "vertical text centring within multi-cell
+  widgets is visibly off by one row" -- and could not place the cause.
+  There was none to place: the widgets were **two cells tall when they
+  should have been one**, and a control with two rows to fill puts its
+  indicator on one and its text on the other. `[x]` and `Enable
+  telemetry` landed on different rows for that reason and no other.
+  With single-line controls one cell tall the two are on the same row by
+  construction. The recorded fixture shows it: the prefs dialog went from
+  controls separated by blank rows to one row per control.
+
+  Worth keeping as a shape rather than as a fact about this bug. The
+  symptom was described as a *rendering* fault -- a baseline, a centring
+  calculation -- and it was a *geometry* fault two layers up. A design
+  note that names the symptom and guesses at the layer is the kind that
+  sends the next reader to the wrong file.
 - ~~`GridGuard` does not exist at all.~~ **Done.** It is an event filter
   checking every widget geometry against the grid as it is assigned, so a
   misalignment is reported where it happens rather than as a smeared
@@ -628,22 +657,51 @@ Missing:
 - The `qtty.glyph` / `QIcon::name()` icon substitution registry
   (design.md §8.6).
 
-### 7.4 Declared but unreachable
+### 7.4 Declared but unreachable -- mostly closed
 
-A theme worth its own subsection, because each item reads as implemented
-and is not reachable from a real terminal.
+This was a theme rather than a list: a surface that read as implemented
+and could not be reached from a real terminal. Sinks existed, the router
+implemented them, and the backend called none of them. Most of it is
+closed now; what each item was is kept, because the shape is the useful
+part. A declaration is not a feature, and a test that drives the sink
+directly -- as this tree's did -- proves the sink and says nothing about
+whether anything ever calls it.
 
-- **`Capabilities::mouse`, `bracketedPaste`, `synchronisedOutput`,
-  `unicodeWide` and `title` are never set by `AnsiBackend` and never
-  read** by anything.
-- **`onResize`, `onPaste` and `onFocusChange` are implemented on the
-  router and never called by the backend.** There is no SIGWINCH handler,
-  no focus-event (1004) decoding and no bracketed-paste (2004) decoding
-  in `src/backend/ansi/ansi_backend.cpp`. **A terminal resize does
-  nothing.**
-- **Mouse input is unreachable.** The backend never enables SGR 1006
-  reporting and its decoder has no mouse branch, so
-  `InputRouter::onMouse` cannot fire from a real terminal.
+- ~~`onResize`, `onPaste` and `onFocusChange` are implemented on the
+  router and never called by the backend.~~ **Done.** `resume()` asks the
+  terminal for SGR 1006 mouse, 1002 press/release/drag, 2004 bracketed
+  paste and 1004 focus reporting, and `suspend()` turns each off again --
+  which matters more than the screen restore, because a terminal left in
+  mouse mode writes an escape burst into the user's shell on every click
+  for the rest of that shell's life. `SIGWINCH` is handled through a
+  self-pipe, so **dragging a terminal's edge does something at last.**
+- ~~Mouse input is unreachable.~~ **Done**, and the decoder had to be
+  rewritten for it. It read a fixed three bytes and switched on the
+  third, which works for the arrow keys and nothing else: an SGR mouse
+  report is `ESC [ < 0 ; 34 ; 12 M` and a paste opens `ESC [ 2 0 0 ~`.
+  Both were read as an unknown key, three bytes at a time, which then
+  desynchronised everything after them. It parses a real CSI now --
+  private prefix, parameters, final byte -- and returns for more bytes
+  when the sequence is incomplete, which is the case the old one could
+  not represent at all.
+- **`Capabilities` answers for four of its fields now** -- `mouse` and
+  `bracketedPaste` from whether input is a tty, `unicodeWide` because L2
+  measures width itself. `synchronisedOutput` is deliberately still
+  false: section 11 wants DEC 2026 to eliminate tearing and nothing emits
+  the brackets yet, so claiming it would describe an intention rather
+  than the backend. `title` likewise -- there is no OSC emitter.
+- **`test/suite_backend.cpp` covers the decoder**, which had no test at
+  all -- which is how the fixed-width reader survived long after the
+  runtime grew sinks it could not feed. It drives the real code path by
+  making stdin a pipe rather than by reaching past `readInput()` into a
+  helper written for the test, and it checks the case the old decoder
+  could not express: a sequence split across two reads.
+- **Terminal control now goes only to a terminal.** `resume()` emitted
+  the alternate-screen switch and the mode sets unconditionally, so a run
+  whose output was redirected wrote them into the file. Found by the new
+  suite: its first PASS line came out appended to a mode-setting
+  sequence. Guarded on `isatty(1)`, and asked separately from the input
+  side, because output can be a pipe while input is still a keyboard.
 - ~~`ITerminalBackend` is not injectable.~~ **Done, and it was the
   blocker under the others.** `Qtty::exec()` constructed an `AnsiBackend`
   on its own stack, so the runtime could only ever be driven by the
@@ -676,11 +734,12 @@ which is design.md §16's figure.
 
 ### 7.5 Absent entirely
 
-- **`GridGuard` in every suite.** The guard exists now, but only
-  `test/suite_runtime.cpp` installs it. design.md §9 wants it running as
-  an assertion in *every* test, which means installing it in the runner
-  rather than per suite -- and doing that will report whatever the widget
-  suites are currently misaligning, which is the point of it.
+- ~~`GridGuard` in every suite.~~ **Done, and it paid for itself
+  immediately.** It is installed in `test/main.cpp` and reset per suite,
+  so a suite written later is covered by having been written rather than
+  by remembering to opt in. It reported **83 misaligned geometries across
+  five suites** on its first run, and sorting those out is where the
+  `sizeFromContents` fix above came from -- see §7.7.
 - `ICellPainted`.
 - **The whole of design.md §7's Tier-2 hint system** -- `setPriority`,
   `setCompact`, `CompactionPass`, the `"qtty.cells"` property -- and the
@@ -702,11 +761,13 @@ which is design.md §16's figure.
   and TUI builds must reach the same observable state), and the
   render-twice-diff-must-be-empty invariant.
 
-### 7.6 Two latent bugs, found while fixing the compositor
+### 7.6 Three latent bugs, found by working around them
 
-Neither is introduced by the work in this section; both were found by
-editing the code around them and are recorded rather than fixed, because
-each wants a decision rather than a patch.
+None of these was introduced by the work in this section. Each was found
+by editing or measuring the code around it, which is the only reason they
+are known at all -- they are quiet faults that no test was asking about.
+The first is closed; the other two are recorded rather than fixed,
+because each wants a decision or a place to live rather than a patch.
 
 ~~The primary window's origin is assumed twice, differently.~~ **Closed
 by stating it.** `Compositor::compose()` draws `win_` at the origin
@@ -722,13 +783,100 @@ the origin cannot express an origin bug. The check moves the window away
 before calling `exec()`, which is what makes it capable of failing --
 verified by removing the one line and watching it go red.
 
+**`QTabWidget` paints one row below its own geometry.** Isolated with a
+probe: a window containing only a tab widget reproduces it. The widget
+ends at y=285 and a rule is drawn at y=285..304, in the window's bottom
+margin and one cell wider than the pane box above it. Pre-existing and
+byte-identical in the fixture before and after the size change, so
+re-recording froze nothing new -- but a control drawing outside its own
+rectangle is a real fault in `src/grid/grid_style.cpp`, and on a real
+screen it would overwrite whatever sat beneath it.
+
 **A flipped popup does not remember its anchor.** The flip is computed
 from the geometry the popup has when it is composed, so a popup that is
 resized after being flipped does not re-derive the flip from the point it
 was opened at. It stays inside the terminal either way, so the symptom is
 a menu that is on the correct side for its old size.
 
-### 7.7 The fixtures are machine-dependent
+### 7.7 What the guard found, and what an application still has to do
+
+Installing `GridGuard` in the runner reported 83 misaligned geometries
+across five suites. Sorting them turned out to be the most productive
+hour in the tree, and the categories are worth recording because two of
+them are the library's fault and two are not.
+
+**Qt's own internal children -- 62 of the 83, and not the application's
+to fix.** A combo box's popup container, scroller and list view; a
+splitter handle; a tab widget's stacked page area; a tab bar's two
+scroll buttons; a scroll area's viewport and its scrollbar containers.
+F5 named two of these (`QHeaderView`, `QScrollBar`) and the class is
+much larger. The guard exempts them by a **principle rather than a
+list**: an `objectName` beginning `qt_`, or a class name carrying
+`Private`, or descent from such a widget. A list of nine class names is
+one somebody adds a tenth to without deciding anything, and that is how
+an exemption grows until the guard reports nothing.
+
+**A top-level's position, which nothing reads.** Qt centres a dialog
+over its parent and assigns it a y that is not a cell multiple. In qtty
+that coordinate means nothing: there is no window manager, and
+`Compositor::compose()` decides where each top-level is drawn and snaps
+it (§8.1). The guard asks a window about its **size** and not its
+position. Checking the position reported every dialog in the suite for a
+number nothing consults.
+
+**Control heights -- the library's fault, and fixed.** See §7.1: single-
+line controls were two and three cells tall. This was the bulk of the
+visible damage and the cause of §16's off-by-one centring.
+
+**Layout slack -- the library's fault, and NOT fixed. This is the open
+one.** `QBoxLayout` hands leftover space to its items when nothing can
+absorb it, in shares that are not cell multiples. Measured: a dialog 12
+cells tall whose content needs 9 put its three rows at y = 33, 85 and
+137 against ch=19; adding a trailing stretch, or sizing the dialog to
+its content, gave zero misalignments. `QSplitter` does the same thing
+horizontally, dividing by size hints rather than by cells.
+
+**A second mechanism, and the style cannot reach it.**
+`QProgressBar::minimumSizeHint()` does not go through the style at all --
+it answers 110x**21** where `sizeHint()` correctly answers 110x19 -- and a
+layout honours the minimum over the hint. Those two pixels moved every
+widget below it: the slider to y=59, the tab widget to y=78, and left the
+tab widget 207 tall. It was mistaken for leftover-space distribution
+until somebody measured both hints separately, which is the only way to
+tell the two apart, since they present identically as "a widget is a few
+pixels too tall".
+
+The consequence is worth stating plainly: **`GridStyle` cannot make a
+progress bar one cell tall.** Every application must call
+`setFixedHeight(GridMetrics::ch())` itself, or qtty must grow a
+widget-side fix -- an event filter or an `ICellPainted` implementation --
+because there is no style hook on that path. `QSlider` and `QComboBox`
+answer 19 for both hints, so as measured this is the progress bar's
+alone; nothing has audited the rest of the widget set for it.
+
+That matters more than the arithmetic, because **design.md §7 promises
+Tier 1 is free** -- "style metrics differ, so the same layout compacts
+automatically". It is not free for any layout with slack in it, which is
+most of them. Today an application must add a stretch and call
+`setSizes()` in cell multiples, and nothing tells it so except the guard.
+
+The two candidate answers, neither taken:
+
+- **Snap child geometry after layout activation**, which is what §7's
+  unbuilt `CompactionPass` is for. It would make Tier 1 genuinely free.
+  The risk is real and must be measured before it is written: snapping a
+  child's origin down can close a gap the layout meant to keep, and in
+  the worst case overlap two widgets. In the measured case it was safe --
+  33, 85, 137 became 19, 76, 133, each still a clear cell apart -- but
+  one case is not a proof.
+- **Leave it to the application and say so**, which means §7 Tier 1 is
+  narrower than the design claims and the document should say what an
+  application must do rather than promising it need do nothing.
+
+Which of the two is right is a design decision and is recorded here
+rather than taken.
+
+### 7.8 The fixtures are machine-dependent
 
 Worth recording on its own, because it will bite whoever changes machine
 first. `Qtty::setup()` derives the cell size from the **locally installed**
@@ -1014,11 +1162,15 @@ not touch.
 
 Dependency-ordered:
 
-1. **`GridGuard` in the test runner rather than in one suite.** design.md
-   §9 wants it asserting in every test. Installing it in `test/main.cpp`
-   is a two-line change; the work is in whatever it then reports, which
-   is the point of having written it. Do this first, because every item
-   below moves widget geometry.
+1. **Decide the layout-slack question (§7.7).** Either qtty snaps child
+   geometry after layout activation -- design.md §7's unbuilt
+   `CompactionPass`, which would make its Tier 1 promise true -- or §7 is
+   narrowed to say what an application must do instead. It is first
+   because it is a decision rather than work, everything below moves
+   widget geometry, and the guard now reports the consequences of getting
+   it wrong. Whichever way it goes, the risk to measure before writing
+   any snapping is whether closing a layout's gap can overlap two
+   widgets; one safe case is not a proof.
 2. **The attribute plane in `CellBuffer::toText()`.** Fixtures carry
    glyphs only, so **no snapshot can catch a regression in the reverse
    video, bold and dim that most of the Channel A work produces** -- the
@@ -1027,11 +1179,10 @@ Dependency-ordered:
 3. **Decode or round-trip coverage for the graphics encoders.** Sixel,
    kitty and iTerm2 are asserted on byte structure alone, and byte
    structure cannot tell a well-formed stream from a correct one.
-4. **The declared-but-unreachable surface in §7.4** -- SIGWINCH so a
-   resize does anything at all, SGR 1006 so mouse input can arrive from a
-   real terminal, bracketed paste, focus events. Each is small; together
-   they are the difference between the runtime working and the runtime
-   working when someone drags the window edge.
+4. ~~The declared-but-unreachable surface in §7.4.~~ **Done** -- see
+   §7.4. What is left of that section is `synchronisedOutput` (DEC 2026,
+   which §11's frame budget wants) and a title emitter, both of which are
+   additions rather than gaps.
 5. **§8.2**: whether L6 becomes the `Application` class design.md §5.6
    specifies. The backend seam no longer waits on it, so this is now a
    design decision taken on its merits rather than a blocker.

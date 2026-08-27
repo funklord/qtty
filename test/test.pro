@@ -28,4 +28,5 @@ SOURCES += main.cpp \
            suite_router.cpp \
            suite_widgets.cpp \
            suite_graphics.cpp \
-           suite_runtime.cpp
+           suite_runtime.cpp \
+           suite_backend.cpp

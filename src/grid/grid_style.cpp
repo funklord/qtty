@@ -69,27 +69,58 @@ int GridGuard::violations() { return s_violations; }
 void GridGuard::reset() { s_violations = 0; }
 
 bool GridGuard::is_exempt(const QWidget *w) {
-	// Measured F5: QHeaderView and QScrollBar ignore some style metrics and
-	// size themselves, so they land off the grid however the style is written.
-	// The design records that as a small known set rather than a systemic
-	// failure, and until they are given ICellPainted or fixed sizing they
-	// would make this guard report a violation on every item view -- which is
-	// how a guard becomes noise and then becomes disabled.
-	static const char *const exempt[] = {
-		"QHeaderView", "QScrollBar", "QAbstractScrollAreaScrollBarContainer",
-	};
-	for (const QObject *o = w; o; o = o->parent())
-		for (const char *name : exempt)
-			if (o->inherits(name)) return true;
+	// Widgets Qt builds for itself, which the application never constructs
+	// and cannot size. Measured F5 named two of these -- QHeaderView and
+	// QScrollBar -- and the class is larger than that: running the guard over
+	// the whole suite turned up a combo box's popup container, scroller and
+	// list view, a splitter handle, a tab widget's stacked page area, a tab
+	// bar's two scroll buttons, and a scroll area's viewport and its
+	// scrollbar containers. Every one is internal, and none of them is
+	// reachable to be fixed from the style, which is why design.md section
+	// 5.3 reaches for ICellPainted or fixed sizing for this class instead.
+	//
+	// The test is a principle rather than a list, and deliberately so. A list
+	// of nine class names is one somebody adds a tenth to without deciding
+	// anything, and that is how an exemption grows until the guard reports
+	// nothing. Qt marks its own internal children two ways and both are
+	// stable: an objectName beginning "qt_", and a class name carrying
+	// "Private". Anything descended from such a widget is inside Qt's own
+	// construction and is exempt with it.
+	//
+	// What is NOT exempt is the case worth catching: a widget the
+	// application made, at a geometry the application can change.
+	static const char *const by_class[] = { "QHeaderView", "QScrollBar" };
+	for (const QObject *o = w; o; o = o->parent()) {
+		const QString name = o->objectName();
+		if (name.startsWith(QLatin1String("qt_"))) return true;
+		const QLatin1String cls(o->metaObject()->className());
+		if (cls.contains(QLatin1String("Private"))) return true;
+		for (const char *k : by_class)
+			if (o->inherits(k)) return true;
+	}
+	// A QTabBar's scroll buttons are named rather than qt_-prefixed, and are
+	// created and sized by the tab bar. Reached through the parent so a
+	// QToolButton the application puts in a tab bar is still checked.
+	if (w && w->parent() && w->parent()->inherits("QTabBar")
+	    && w->inherits("QToolButton"))
+		return true;
 	return false;
 }
 
 bool GridGuard::eventFilter(QObject *obj, QEvent *event) {
 	if (event->type() == QEvent::Resize || event->type() == QEvent::Move) {
 		if (QWidget *w = qobject_cast<QWidget *>(obj)) {
-			if (!is_exempt(w) && !GridMetrics::isAligned(w->geometry())) {
+			// A top-level is asked about its SIZE and not its position. In
+			// qtty a window's own x and y mean nothing: there is no window
+			// manager, and Compositor::compose() decides where each
+			// top-level is drawn and snaps that to the grid on the way
+			// (section 8.1). Qt assigns a position anyway -- centring a
+			// dialog over its parent -- and checking it reported every
+			// dialog in the suite for a coordinate nothing reads.
+			const QRect g = w->geometry();
+			const QRect asked = w->isWindow() ? QRect(QPoint(), g.size()) : g;
+			if (!is_exempt(w) && !GridMetrics::isAligned(asked)) {
 				++s_violations;
-				const QRect g = w->geometry();
 				qWarning("qtty: %s '%s' geometry %dx%d+%d+%d is off the "
 				         "%dx%d grid",
 				         w->metaObject()->className(),
@@ -192,11 +223,66 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 	}
 }
 
+// section 5.3: a size for every ContentsType, rather than one rule for all of
+// them. Snapping the proxy's answer up was the first version and it is wrong in
+// the direction that matters: Fusion sizes a control for a mouse, so a check
+// box asks for 25 pixels against a 19-pixel cell and a push button for 27, and
+// rounding those up gives two and three ROWS for a control that occupies one.
+//
+// Measured before this was written, at cw=10 ch=19: check box and radio button
+// came out 38 (2 cells), push button, line edit and combo box 57 (3 cells).
+// Only QLabel was right, and only because its height already equals the line
+// height. A dialog of five controls was therefore twice as tall as it needed to
+// be, and -- the reason this surfaced -- a control two cells tall puts its
+// indicator on one row and its text on the other, which is the off-by-one
+// vertical centring section 16 recorded and could not place.
+//
+// So a single-line control is one cell tall by construction. The width still
+// snaps up, because a width is a count of characters and rounding one down
+// truncates text.
 QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const QSize &cs,
                                   const QWidget *w) const {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
-	QSize s = QProxyStyle::sizeFromContents(t, o, cs, w);
-	return QSize(((s.width() + cw - 1) / cw) * cw, ((s.height() + ch - 1) / ch) * ch);
+	const QSize s = QProxyStyle::sizeFromContents(t, o, cs, w);
+	const int width = ((s.width() + cw - 1) / cw) * cw;
+	const int snapped = ((s.height() + ch - 1) / ch) * ch;
+
+	switch (t) {
+	// Controls that hold exactly one line of text, whatever a desktop style
+	// would give them for a mouse target.
+	case CT_CheckBox:
+	case CT_RadioButton:
+	case CT_PushButton:
+	case CT_LineEdit:
+	case CT_ComboBox:
+	case CT_SpinBox:
+	case CT_ToolButton:
+	case CT_MenuBarItem:
+	case CT_TabBarTab:
+	case CT_HeaderSection:
+	case CT_ProgressBar:
+	case CT_Slider:
+		return QSize(width, ch);
+
+	// A menu item is one row, except a separator, which is also one row but
+	// asks for a few pixels and would otherwise round to nothing.
+	case CT_MenuItem:
+		return QSize(width, ch);
+
+	// These genuinely carry more than a line -- an item view row with a
+	// multi-line delegate, a group box around other widgets, a whole menu --
+	// so the snap-up is the right rule and the only one that cannot clip.
+	case CT_ItemViewItem:
+	case CT_GroupBox:
+	case CT_Menu:
+	case CT_MdiControls:
+	case CT_ScrollBar:
+	case CT_SizeGrip:
+	case CT_Splitter:
+	case CT_TabWidget:
+	default:
+		return QSize(width, snapped);
+	}
 }
 
 void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPainter *p,
@@ -417,8 +503,20 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			}
 			break;
 		case CC_ComboBox: {
-			if (c.height() >= 2) drawBox(dev->buffer(), c);
+			// A box needs two rows to have a top and a bottom, and since
+			// sizeFromContents made a combo one cell tall it never has them.
+			// Bracket it instead, which is what CE_PushButtonLabel already
+			// does for a button and what a TUI reader expects: the control
+			// has to be visibly a control, and at one row a frame cannot say
+			// so. Before this it rendered as bare text with a marker, wearing
+			// the one-cell indent where the frame used to be.
 			const int row = c.top() + c.height() / 2;
+			if (c.height() >= 2) {
+				drawBox(dev->buffer(), c);
+			} else {
+				dev->buffer().putCluster(c.left(), row, QStringLiteral("["));
+				dev->buffer().putCluster(c.right(), row, QStringLiteral("]"));
+			}
 			dev->buffer().putCluster(c.right() - 1, row, QStringLiteral("▾"));
 			return;                                    // label via CE_ComboBoxLabel
 		}
@@ -439,8 +537,14 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			}
 			break;
 		case CC_SpinBox: {
-			if (c.height() >= 2) drawBox(dev->buffer(), c);
+			// Same as the combo above, and for the same reason.
 			const int row = c.top() + c.height() / 2;
+			if (c.height() >= 2) {
+				drawBox(dev->buffer(), c);
+			} else {
+				dev->buffer().putCluster(c.left(), row, QStringLiteral("["));
+				dev->buffer().putCluster(c.right(), row, QStringLiteral("]"));
+			}
 			dev->buffer().putCluster(c.right() - 1, row, QStringLiteral("±"));
 			return;                                    // value text via child edit
 		}
