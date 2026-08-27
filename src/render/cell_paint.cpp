@@ -175,6 +175,14 @@ static bool is_surface_role(QPalette::ColorRole role) {
 	    || role == QPalette::Button || role == QPalette::AlternateBase;
 }
 
+// A rect covering less than half a cell in either direction: a caret, a rule,
+// a hairline. to_cells() cannot represent it, since it rounds every extent up
+// to at least one whole cell.
+bool CellPaintEngine::is_thin(const QRectF &r) const {
+	const QRectF m = xf_.mapRect(r).translated(dev_->origin);
+	return m.width() * 2 < GridMetrics::cw() || m.height() * 2 < GridMetrics::ch();
+}
+
 // Fill classification (sections 6 and 17.2). The brush colour is matched back to
 // the palette role that produced it, and the role is resolved through the
 // active CellTheme -- theme() is the single source for what a cell is
@@ -189,6 +197,21 @@ static bool is_surface_role(QPalette::ColorRole role) {
 void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 	QRect c = to_cells(r);
 	if (!c.isValid() || c.width() > 400 || c.height() > 200) return;
+
+	// A rect thinner than half a cell does not cover the cell, so it cannot
+	// stand for the cell's background -- to_cells() rounds it up to a whole
+	// cell, and filling that cell erases whatever glyph is in it. The case
+	// that found this is a text caret: QLineEdit paints it as a 1px-wide rect
+	// in the Text colour AFTER drawing the line, so a focused editor blanked
+	// the character the caret sat on. Reproduced as a QSpinBox whose value
+	// vanished once it had focus and a key -- the value was in the widget and
+	// in the trace, and a 1.0x19.0px fill at its cell removed it.
+	//
+	// Dropping it loses nothing: the caret is carried by the terminal's own
+	// cursor, which Compositor::compose() places from the focus widget and
+	// ITerminalBackend::set_cursor() emits. A thin fill may still colour a
+	// cell that is empty, which is what keeps a rule drawn on a blank row.
+	const bool thin = is_thin(r);
 	if (outline_only || brush_.style() == Qt::NoBrush) { box(c); return; }
 
 	const QRgb col = brush_.color().rgba();
@@ -203,13 +226,18 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 	                                       : theme().background(matched);
 	if (bg.kind() == Color::Default) {
 		if (is_surface_role(matched)) {
-			if (c.width() > 1 && c.height() > 1) dev_->buffer().fill(c, Cell{});
+			if (!thin && c.width() > 1 && c.height() > 1) dev_->buffer().fill(c, Cell{});
 			return;
 		}
 		bg = Color::rgb(col);                       // unthemed selection etc.
 	}
 	Cell v; v.bg = bg;
-	dev_->buffer().fill(c, v);
+	if (!thin) { dev_->buffer().fill(c, v); return; }
+	for (int y = c.top(); y <= c.bottom(); ++y)
+		for (int x = c.left(); x <= c.right(); ++x) {
+			Cell &cell = dev_->buffer().at(x, y);
+			if (cell.ch == QStringLiteral(" ")) cell.bg = bg;
+		}
 }
 
 void CellPaintEngine::box(const QRect &c) {

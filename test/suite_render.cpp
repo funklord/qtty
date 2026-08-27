@@ -108,5 +108,68 @@ int suite_render(bool record) {
 			printf("PASS: outside a cell render the interface is not consulted\n");
 		else { printf("FAIL: outside a cell render the interface is not consulted\n"); ++r; }
 	}
+
+	// A caret is a fill, and a fill used to erase the cell it lands in.
+	// QLineEdit paints its text cursor as a ~1px-wide rect in the Text colour
+	// AFTER drawing the line, so to_cells() rounded it up to a whole cell and
+	// blanked the character under it. Found as a QSpinBox whose value
+	// disappeared once it had focus and a key: the value was correct in the
+	// widget and drawn in the trace, then removed by a 1.0x19.0px fill.
+	//
+	// The caret is not lost by dropping it -- Compositor::compose() places the
+	// terminal's own cursor from the focus widget. What this asserts is the
+	// rule that made it safe to drop: a rect covering less than half a cell
+	// cannot stand for that cell's background.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *edit = new QLineEdit(&host);
+		edit->setText(QStringLiteral("abcde"));
+		edit->setGeometry(0, 0, GridMetrics::cw() * 10, GridMetrics::ch());
+		host.resize(GridMetrics::cells(20, 2));
+		host.show();
+		QCoreApplication::processEvents();
+		edit->setFocus();
+		QCoreApplication::processEvents();
+
+		Qtty::CellBuffer buf(20, 2);
+		Qtty::render_once(host, buf);
+		const QString before = buf.to_text();
+
+		// Paint a caret-shaped fill straight at the engine, in the Text
+		// colour, the way QLineEdit does. Going through the engine rather than
+		// through focus is deliberate: whether Qt shows a caret depends on a
+		// blink timer and on window activation, so a test that waited for one
+		// would pass vacuously on the run where it did not blink.
+		{
+			Qtty::CellPaintDevice dev(buf);
+			QPainter p(&dev);
+			p.fillRect(QRectF(GridMetrics::cw() * 2, 0, 1, GridMetrics::ch()),
+			           QGuiApplication::palette().color(QPalette::Text));
+		}
+
+		if (buf.to_text() == before)
+			printf("PASS: a caret-width fill leaves the glyph under it\n");
+		else {
+			printf("FAIL: a caret-width fill leaves the glyph under it\n");
+			printf("      before '%s'\n      after  '%s'\n",
+			       qPrintable(before.section('\n', 0, 0)),
+			       qPrintable(buf.to_text().section('\n', 0, 0)));
+			++r;
+		}
+
+		// The other half, so the rule is not just "thin fills do nothing": a
+		// fill of the same colour that DOES cover the cell still paints.
+		{
+			Qtty::CellPaintDevice dev(buf);
+			QPainter p(&dev);
+			p.fillRect(QRectF(0, 0, GridMetrics::cw() * 5, GridMetrics::ch()),
+			           QGuiApplication::palette().color(QPalette::Text));
+		}
+		if (buf.to_text() != before)
+			printf("PASS: a fill that does cover the cells still paints\n");
+		else { printf("FAIL: a fill that does cover the cells still paints\n"); ++r; }
+	}
+
 	return r;
 }

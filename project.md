@@ -712,25 +712,65 @@ bar, scrollbars, tabs, the progress bar and the slider. Exercised by
   `280x13+3+3` inside a one-cell spin box -- the same missing
   `subControlRect` as the combo, fixed with it and now on the grid.
 
-  **What is still wrong: the value does not render.** The spin box draws
-  its brackets and its glyph and nothing between them. The cause is not
-  found, and the eliminations are recorded instead of a guess, because
-  this document has twice cost a reader a wrong file by naming a layer it
-  had not measured:
+  **The value not rendering was found and fixed, and the entry that stood
+  here described it wrongly.** It said "the value does not render", and
+  listed eliminations under that heading. The value renders perfectly in
+  the ordinary case; what the failing test did, and the entry did not
+  say, was give the spin box focus and send it keys. Every elimination
+  below it was gathered with that condition present and unnoticed, which
+  is why none of them discriminated -- they were all varying the spin box
+  while the variable was somewhere else entirely. **A defect recorded
+  without the conditions that produce it sends the next reader to vary
+  the wrong thing**, and that cost more here than a wrong guess at the
+  cause would have.
 
-  * the internal `QLineEdit` holds the right text and is visible;
-  * its geometry is correct and cell-aligned since the fix;
-  * `SE_LineEditContents` returns the full rect, 270x19+0+0;
-  * a bare `QLineEdit` with the same text renders -- framed **and**
-    frameless, so the spin box's `setFrame(false)` is not it;
-  * a `QLineEdit` that is a *child* of a plain widget renders, alone and
-    through its parent, so "rendering a child on its own" is not it;
-  * rendering the spin box's edit into a 40x4 buffer produces four empty
-    rows, so it is not a mapping that puts the text outside the frame.
+  The bisect that broke it open varied one thing at a time and is worth
+  keeping, because each step killed a plausible cause:
 
-  Whatever remains is specific to `QAbstractSpinBox`'s own line edit. A
-  spin box whose value can be changed and cannot be read is a real
-  defect, and it is open.
+  * `stepUp()` renders. A raw `QKeyEvent` press renders. Press **and**
+    release does not -- so it is not stepping, and not the key.
+  * Qt focus alone renders; qtty's `setFocusWidget()` alone renders; both
+    together render. So focus is not it either, and neither is the
+    router's `setFocusWidget(input_scope()->focusWidget())`, which for a
+    `QSpinBox` returns the spin box rather than its inner edit.
+  * The release is what makes `QAbstractSpinBox` select its text, and
+    `deselect()` afterwards brings the value straight back. But a plain
+    focused `QLineEdit` with `selectAll()` renders fine, so "selected
+    text does not render" was wrong too.
+
+  What settled it was tracing the paint engine rather than reasoning
+  about the widget. The failing render emits, in order: a `Highlight`
+  fill at the value's cell, the glyph, and then **a second fill at the
+  same cell in the `Text` colour, after the glyph** -- `1.0x19.0` pixels,
+  one pixel wide and one cell tall. That is `QLineEdit`'s text caret, and
+  `CellPaintEngine::to_cells()` rounds every extent up to at least a
+  whole cell, so a one-pixel caret became a full-cell fill and
+  `fill_rectf()` blanked the glyph under it.
+
+  **So it was never a spin box defect.** It is the general rule that a
+  rect thinner than half a cell cannot stand for that cell's background,
+  and `fill_rectf()` now honours it: a thin fill colours a cell that is
+  empty and leaves a cell that is not. Nothing is lost by dropping the
+  caret, because the caret is already carried by the terminal's own
+  cursor -- `Compositor::compose()` places it from the focus widget and
+  `ITerminalBackend::set_cursor()` emits it.
+
+  The spin box reached it first only because `QAbstractSpinBox` selects
+  on step, and a selection is what makes Qt paint a caret in an offscreen
+  widget at all. Any focused editor showing a caret had the same fault.
+
+  Two measurements taken while fixing it, both worth having:
+
+  * **The whole suite emits no sub-cell fill at all** -- instrumented and
+    counted at zero across 290 checks, with the probe shown to report a
+    positive on the known caret case before the zero was believed. So
+    nothing existing depended on the old behaviour, and the caret was
+    untested, which is why it survived.
+  * **`Compositor::cursor_cell()` reports 0,0 for a focused `QSpinBox`
+    whose caret paints at cell 1.** `QAbstractSpinBox` answers
+    `ImCursorRectangle` for itself rather than forwarding to its inner
+    edit, so the terminal cursor lands on the spin box's frame instead of
+    in its field. Small, real, and open.
 - `QSplitter` drag is unimplemented.
 - ~~The `QTextEdit` interaction layer is absent.~~ **It works, and
   needed no code** -- which makes it the fourth gap in this document that

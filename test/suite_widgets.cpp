@@ -513,6 +513,18 @@ int suite_widgets() {
 		QLineEdit *edit = spin->findChild<QLineEdit *>();
 		CHECK(edit && GridMetrics::is_aligned(edit->geometry()),
 		      "a spin box's internal edit lands on the grid");
+
+		// The value must still be readable after all of that. It was not:
+		// stepping selects the text, a selection is what makes Qt paint a
+		// caret, and the caret erased the digit (section 7.2). The end-to-end
+		// symptom is kept here as well as the engine rule in suite_render,
+		// because what a user meets is a spin box they can change and cannot
+		// read -- and the state that produces it is exactly the state this
+		// test is already in, focused and stepped.
+		Qtty::CellBuffer buf(30, 6);
+		Qtty::render_once(host, buf);
+		CHECK(buffer_contains(buf, QString::number(spin->value())),
+		      "a stepped spin box still shows its value");
 	}
 	return fails;
 }

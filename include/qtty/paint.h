@@ -86,6 +86,7 @@ public:
 
 private:
 	QRect to_cells(const QRectF &) const;
+	bool is_thin(const QRectF &) const;
 	void fill_rectf(const QRectF &, bool outline_only = false);
 	void box(const QRect &cells);
 	void line(const QLineF &);
