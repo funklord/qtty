@@ -37,6 +37,19 @@ struct TermCaps {
 	QSize text_px;              // the text area in pixels, invalid until reported
 };
 
+// Inside tmux, everything below is answered by TMUX rather than by the
+// terminal, and anything written for the terminal is swallowed. $TMUX is set
+// by tmux for its own children and is not inherited across ssh into somewhere
+// else, which makes it the one environment variable here that does not lie.
+bool inside_tmux();
+
+// Wrap a payload so tmux forwards it to the terminal underneath: DCS tmux ;
+// <payload, every ESC doubled> ST. Requires `set -g allow-passthrough on`,
+// and degrades correctly without it -- tmux eats the wrapper, the terminal
+// never sees the query, nothing answers, and the negotiation concludes no
+// graphics. Which is the right answer for a tmux that will not pass them.
+QByteArray tmux_wrap(const QByteArray &payload);
+
 // The batched query. One write rather than five, because five sequential
 // probes cost five round trips before the first frame and over ssh that is
 // the whole of a visible startup delay.

@@ -447,6 +447,35 @@ int suite_backend() {
 		CHECK(negotiate_graphics(none) == Capabilities::Halfblocks,
 		      "and an unremarkable $TERM with no answer is half-blocks");
 
+		// Inside tmux the pixel tiers are refused however capable the outer
+		// terminal is, because passthrough carries the image but not the
+		// cursor: it would arrive in the wrong place. Half-blocks are text
+		// and tmux moves them like any other text.
+		const QByteArray had_tmux = qgetenv("TMUX");
+		qputenv("TMUX", "/tmp/tmux-1000/default,1234,0");
+		qputenv("TERM", "xterm-kitty");
+		CHECK(inside_tmux(), "$TMUX is how tmux is known");
+		CHECK(negotiate_graphics(kitty) == Capabilities::Halfblocks,
+		      "and inside it even a proven kitty terminal gets half-blocks");
+		qunsetenv("TMUX");
+		qputenv("TERM", "screen-256color");
+		CHECK(inside_tmux(), "$TERM saying screen is enough on its own");
+		qputenv("TERM", "xterm-kitty");
+		CHECK(!inside_tmux(), "and an ordinary $TERM with no $TMUX is not tmux");
+		if (!had_tmux.isEmpty()) qputenv("TMUX", had_tmux);
+
+		// The query is wrapped so the terminal UNDERNEATH answers. Unwrapped,
+		// tmux answers it itself -- it is a terminal too, and it knows
+		// nothing about what it is sitting in -- and the fence rule would
+		// then believe that answer.
+		const QByteArray wrapped = tmux_wrap("\033[c");
+		CHECK(wrapped.startsWith("\033Ptmux;") && wrapped.endsWith("\033\\"),
+		      "passthrough is a DCS tmux string");
+		CHECK(wrapped.contains("\033\033["),
+		      "and every ESC inside it is doubled");
+		CHECK(tmux_wrap("plain") == QByteArray("\033Ptmux;plain\033\\"),
+		      "a payload with no ESC is carried as it is");
+
 		// The variant is chosen by $TERM because it cannot be asked, and both
 		// answers draw -- so a wrong one costs appearance, not correctness.
 		qputenv("TERM_PROGRAM", "WezTerm");
@@ -524,6 +553,16 @@ int suite_backend() {
 			// master read blocks once the buffer is empty, and "read until it
 			// is empty" is only bounded if the descriptor says so.
 			::fcntl(master, F_SETFL, O_NONBLOCK);
+			// $TERM is set explicitly rather than inherited. This machine's
+			// is "screen", which inside_tmux() correctly reads as a
+			// multiplexer and which would make the tier half-blocks -- so
+			// without this the test asserts the ambient environment rather
+			// than the code, and passes or fails by where it was run.
+			const QByteArray pty_term = qgetenv("TERM");
+			const QByteArray pty_tmux = qgetenv("TMUX");
+			qputenv("TERM", "xterm-kitty");
+			qunsetenv("TMUX");
+
 			winsize ws{};
 			ws.ws_col = 80;
 			ws.ws_row = 24;
@@ -597,6 +636,8 @@ int suite_backend() {
 			::close(keep_out);
 			::close(master);
 			::close(slave);
+			if (pty_term.isEmpty()) qunsetenv("TERM"); else qputenv("TERM", pty_term);
+			if (!pty_tmux.isEmpty()) qputenv("TMUX", pty_tmux);
 		}
 	}
 

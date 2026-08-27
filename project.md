@@ -1074,6 +1074,46 @@ using them would have created two more:
   image on two terminals with different cells gets different footprints,
   which is the entire reason the cell is asked for.
 
+**tmux is detected, the query is wrapped through it, and the pixel tiers
+are refused inside it.** `fuzzypickles` names this problem -- "$TERM lies
+both ways (a tmux inside kitty...)" -- and does not solve it, so this part
+is qtty's own.
+
+`$TMUX` is set by tmux for its own children and is not inherited across ssh
+into somewhere else, which makes it the one environment variable in this
+whole area that does not lie; `$TERM` starting with screen or tmux is
+accepted too, but only ever to say yes.
+
+The query is wrapped as `DCS tmux ; <payload, every ESC doubled> ST`,
+because unwrapped it is answered by **tmux itself** -- tmux is a terminal
+too, and it knows nothing about what it is sitting in. That answer would
+arrive with the fence attached, and the "a terminal that answered is
+believed completely" rule would then believe it. Without
+`allow-passthrough on` the wrapper is simply eaten, nothing answers, and
+the negotiation concludes no graphics -- which is the right answer for a
+tmux that will not pass them.
+
+**The pixel tiers are refused inside tmux however capable the outer
+terminal proves to be, and the reason is placement rather than
+capability.** Passthrough carries the image to the outer terminal, but the
+cursor it lands at is that terminal's, not the one tmux is drawing with, so
+the picture arrives in the wrong place. Kitty's Unicode-placeholder mode is
+the fix precisely because it makes a placement a run of ordinary text cells
+that tmux moves like any other text. Until that exists, half-blocks are the
+honest answer, being text already.
+
+That is what qtty did before by accident -- `$TERM` reads as screen inside
+tmux, so it fell to half-blocks without knowing why. What changed is that
+the query still goes out, wrapped, so the colour depth and the background
+are learned from the real terminal instead of guessed.
+
+**And it caught a test asserting its own environment.** The pty case
+inherited `$TERM`, which on this machine is `screen`; `inside_tmux()` reads
+that correctly, so the test began failing for the right reason. It sets
+`$TERM` explicitly now. A test that inherits the variable it is reasoning
+about passes or fails by where it was run, which is the fault this whole
+section has been about.
+
 Still not done from this list:
 
 - **Unicode-placeholder mode** -- the kitty path that survives tmux, and

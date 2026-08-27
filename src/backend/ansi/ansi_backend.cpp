@@ -66,6 +66,21 @@ Capabilities::GraphicsMode negotiate_graphics(const TermCaps &caps) {
 	const QByteArray force = qgetenv("QTTY_GRAPHICS").toLower();
 	if (!force.isEmpty()) return detect_graphics_mode();
 
+	// Inside tmux the pixel tiers are refused, however capable the terminal
+	// underneath turns out to be, and the reason is placement rather than
+	// capability. Passthrough carries the IMAGE to the outer terminal, but
+	// the cursor it lands at is the outer terminal's, not the one tmux is
+	// drawing with -- so the picture arrives in the wrong place. Kitty's
+	// Unicode-placeholder mode is the fix, because it makes a placement a run
+	// of ordinary text cells that tmux moves like any other text; until that
+	// exists, half-blocks are the honest answer, being text already.
+	//
+	// This is what qtty did before by accident -- $TERM reads as screen
+	// inside tmux, so it fell to half-blocks without knowing why. The
+	// difference is that the query still goes out, wrapped, so the colour
+	// depth and the background are learned from the real terminal.
+	if (inside_tmux()) return Capabilities::Halfblocks;
+
 	if (caps.kitty || caps.answered) {
 		if (caps.kitty) {
 			// The protocol is proven; which VARIANT is not, and cannot be

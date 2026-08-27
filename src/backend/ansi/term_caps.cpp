@@ -171,6 +171,25 @@ void scan_osc11(const QByteArray &b, TermCaps &out) {
 
 } // namespace
 
+bool inside_tmux() {
+	if (!qgetenv("TMUX").isEmpty()) return true;
+	// $TERM alone is weaker and is used only to say yes, never to rule tmux
+	// out: a terminal calling itself screen or tmux is one, and being wrong
+	// costs a wrapper that the terminal ignores as an unknown DCS string.
+	const QByteArray term = qgetenv("TERM").toLower();
+	return term.startsWith("screen") || term.startsWith("tmux");
+}
+
+QByteArray tmux_wrap(const QByteArray &payload) {
+	QByteArray out("\033Ptmux;");
+	for (char c : payload) {
+		out += c;
+		if (uchar(c) == 0x1b) out += c;       // every ESC is doubled
+	}
+	out += "\033\\";
+	return out;
+}
+
 QByteArray caps_query() {
 	// In the order the replies are expected back, with primary device
 	// attributes LAST as the fence.
@@ -211,7 +230,12 @@ bool caps_complete(const QByteArray &buf) {
 
 TermCaps collect_caps(int in_fd, int out_fd, int timeout_ms) {
 	TermCaps caps;
-	const QByteArray query = caps_query();
+	// Wrapped inside tmux, or the query is answered by tmux itself: it is a
+	// terminal too, and it answers device attributes while knowing nothing
+	// about what it is sitting in. That reply would arrive as a measured
+	// "this terminal has no graphics", which is worse than not asking --
+	// the fence rule would then believe it.
+	const QByteArray query = inside_tmux() ? tmux_wrap(caps_query()) : caps_query();
 	int off = 0;
 	while (off < query.size()) {
 		const ssize_t w = ::write(out_fd, query.constData() + off, query.size() - off);
