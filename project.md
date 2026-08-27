@@ -587,12 +587,30 @@ drawn, which it previously did not.
   quality defect, not a corruption, and aborting a user's terminal
   application over one would be wrong.
 
-**Snapshot harness -- done, but thin.** `test/snapshot/prefs_dialog.txt`
-and `test/snapshot/widgets_gallery.txt` are the fixtures, and
-`make record R=<fixture>` rewrites one after a reviewed change. But
-`CellBuffer::toText()` emits **glyphs only** -- the attribute plane
-design.md §9 specifies is dropped, so **no test can snapshot colour or
-attributes**. `qtty-replay` (`tool/replay/`) drives a built-in sample UI
+**Snapshot harness -- done.** `test/snapshot/prefs_dialog.txt` and
+`test/snapshot/widgets_gallery.txt` are the fixtures, and
+`make record R=<fixture>` rewrites one after a reviewed change.
+`CellBuffer::to_snapshot()` emits the three planes design.md §9 asks for
+-- glyphs, attributes and colours over the same grid, plus a legend --
+where `toText()` emitted glyphs alone and **no test could snapshot colour
+or attributes at all**.
+
+Proved rather than assumed. Removing the reverse video from the selected
+tab leaves the **glyph plane byte-identical** and changes the attribute
+plane, so the old format went green on a lost selection and the new one
+does not. That is the regression class most of the Channel A work
+produces, and it was invisible.
+
+Three decisions in the format, each for a reason. The attribute plane
+encodes the **whole six-bit mask** as one character rather than the first
+flag set, because a plane showing only the first would go green when a
+second stopped being drawn. A colour **pair** gets a letter rather than
+each colour, since a terminal frame uses a handful -- the ground, a
+selection, a highlight -- and the legend stays readable. And a plane with
+nothing in it collapses to `(none)`: a frame drawn entirely in the
+terminal's own colours is the common case, and thirty blank rows bury the
+glyph plane a reader came for, while an attribute appearing anywhere
+still replaces the line with a plane. `qtty-replay` (`tool/replay/`) drives a built-in sample UI
 only; the characterisation runner design.md §9 makes the backbone of the
 migration does not exist. `src/backend/null/null_backend.h` is now reachable and
 exercised -- see the backend seam below -- but it is still not what the
@@ -761,7 +779,7 @@ which is design.md §16's figure.
   and TUI builds must reach the same observable state), and the
   render-twice-diff-must-be-empty invariant.
 
-### 7.6 Three latent bugs, found by working around them
+### 7.6 Four latent bugs, found by working around them
 
 None of these was introduced by the work in this section. Each was found
 by editing or measuring the code around it, which is the only reason they
@@ -782,6 +800,24 @@ unstated, and an unstated one cannot be tested: a probe that starts at
 the origin cannot express an origin bug. The check moves the window away
 before calling `exec()`, which is what makes it capable of failing --
 verified by removing the one line and watching it go red.
+
+**A gradient fill lands as a literal RGB background.** `fillRectF`
+recovers which palette role produced a brush by comparing the brush
+colour against each role's colour for **exact equality**, and Fusion
+paints gradients. Measured: the tab pane's interior arrives as `#fbfbfb`,
+which is no role at all -- it sits midway between `Base` (`#ffffff`) and
+`AlternateBase` (`#f7f7f7`), a gradient stop. Matching nothing, it falls
+through to a true-colour background, so on a terminal the whole tab pane
+carries a near-white block behind its contents, and on a dark terminal
+that is exactly as bad as it sounds.
+
+The colour plane found this on its first run, which is the argument for
+having built it. The fix is a design question rather than a patch: match
+roles with a tolerance, ask the style for the role instead of
+reverse-engineering it from a colour, or suppress the fill for regions
+Channel A has already drawn as a box. Exact-colour matching is the shared
+cause and it is fragile for any style that paints a gradient, which is
+most of them.
 
 **`QTabWidget` paints one row below its own geometry.** Isolated with a
 probe: a window containing only a tab widget reproduces it. The widget
@@ -1171,11 +1207,9 @@ Dependency-ordered:
    it wrong. Whichever way it goes, the risk to measure before writing
    any snapping is whether closing a layout's gap can overlap two
    widgets; one safe case is not a proof.
-2. **The attribute plane in `CellBuffer::toText()`.** Fixtures carry
-   glyphs only, so **no snapshot can catch a regression in the reverse
-   video, bold and dim that most of the Channel A work produces** -- the
-   attribute work is covered by targeted checks and by nothing wider. It
-   unblocks testing rather than features, which is why it is this high.
+2. ~~The attribute plane in `CellBuffer::toText()`.~~ **Done** -- see
+   §7.1. What it immediately found is in §7.6: a gradient fill landing as
+   a literal RGB background behind the whole tab pane.
 3. **Decode or round-trip coverage for the graphics encoders.** Sixel,
    kitty and iTerm2 are asserted on byte structure alone, and byte
    structure cannot tell a well-formed stream from a correct one.

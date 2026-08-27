@@ -39,11 +39,15 @@ inline int checkSnapshot(const QString &root, const QString &name,
 	return 0;
 }
 
-// Render a widget to snapshot text in one call.
+// Render a widget to a section 9 snapshot in one call -- glyphs, attributes
+// and colours. It used to return glyphs alone, which meant a fixture could
+// not see the reverse video, bold and dim that most of the Channel A work
+// produces: a frame that stopped drawing a selection compared equal to one
+// that drew it.
 inline QString snapshotOf(QWidget &w, int cols, int rows) {
 	CellBuffer buf(cols, rows);
 	renderOnce(w, buf);
-	return buf.toText();
+	return buf.to_snapshot();
 }
 
 } // namespace test

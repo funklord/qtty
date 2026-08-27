@@ -1,5 +1,8 @@
 // src/core/cell_buffer.cpp -- L2 implementation (sections 5.2, 6).
 #include "qtty/cell.h"
+#include <QHash>
+#include <QStringList>
+#include <algorithm>
 #include <QTextBoundaryFinder>
 
 namespace Qtty {
@@ -114,6 +117,142 @@ int CellBuffer::diffCells(const CellBuffer &prev) const {
 	int n = 0;
 	for (int i = 0; i < d_.size(); ++i) if (d_[i] != prev.d_[i]) ++n;
 	return n;
+}
+
+namespace {
+
+// One printable character per attribute mask. Attrs is six flags, so 64
+// combinations, and a plane that showed only the first set flag would go
+// green when a second one stopped being drawn. The whole mask is encoded.
+//
+// '.' for none, so the common case reads as background and a set attribute
+// stands out. The rest are digits then letters, which keeps a plane
+// diffable and greppable -- a fixture is read by people.
+QChar attr_char(Attrs a) {
+	const int mask = int(a) & 0x3f;
+	if (mask == 0) return QLatin1Char('.');
+	static const char *const table =
+	    "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+=";
+	return QLatin1Char(table[mask]);
+}
+
+QString attr_names(Attrs a) {
+	QStringList on;
+	if (a & Attr::Bold)      on << QStringLiteral("bold");
+	if (a & Attr::Dim)       on << QStringLiteral("dim");
+	if (a & Attr::Italic)    on << QStringLiteral("italic");
+	if (a & Attr::Underline) on << QStringLiteral("underline");
+	if (a & Attr::Reverse)   on << QStringLiteral("reverse");
+	if (a & Attr::Strike)    on << QStringLiteral("strike");
+	return on.join(QLatin1Char('+'));
+}
+
+QString colour_name(const Color &c) {
+	switch (c.kind()) {
+	case Color::Default: return QStringLiteral("default");
+	case Color::Indexed: return QStringLiteral("index:%1").arg(c.index());
+	// Six digits, not eight: the alpha byte is masked off, so an eighth
+	// pair would print a constant 00 in every fixture and read as colour.
+	case Color::Rgb:     return QStringLiteral("#%1").arg(c.value() & 0xffffffu,
+		                                                  6, 16, QLatin1Char('0'));
+	}
+	return QStringLiteral("?");
+}
+
+} // namespace
+
+QString CellBuffer::to_snapshot() const {
+	// A colour PAIR gets a letter, rather than each colour getting one. A
+	// terminal frame uses a handful of pairs -- the ground, a selection, a
+	// highlight -- so the plane stays short and the legend stays readable.
+	// Keyed on the printed names so two colours that emit the same bytes
+	// share a letter, which is what a reader comparing two fixtures cares
+	// about.
+	QVector<QString> order;
+	QHash<QString, QChar> letters;
+	static const char *const alphabet =
+	    ".abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+	// '.' is the default pair, always, whatever order the cells arrive in --
+	// so the ordinary ground reads as background in every fixture. Everything
+	// else takes the next letter in first-seen order, which means a frame's
+	// legend reads top-left to bottom-right.
+	int next = 1;                                   // index 0 is '.', reserved
+	const auto letter_for = [&](const Cell &c) {
+		const QString key = colour_name(c.fg) + QLatin1Char(' ') + colour_name(c.bg);
+		const auto it = letters.constFind(key);
+		if (it != letters.constEnd()) return it.value();
+		const bool plain = c.fg.kind() == Color::Default
+		                && c.bg.kind() == Color::Default;
+		// Running out of letters would silently merge two pairs into one and
+		// make the plane lie, so it is said out loud instead.
+		const QChar ch = plain ? QLatin1Char('.')
+		               : QLatin1Char(next < 62 ? alphabet[next++] : '?');
+		letters.insert(key, ch);
+		order.append(key);
+		return ch;
+	};
+
+	QString glyphs, attrs, colours;
+	for (int y = 0; y < r_; ++y) {
+		QString g, a, k;
+		for (int x = 0; x < c_; ++x) {
+			const Cell &c = d_[y * c_ + x];
+			if (c.width == 0) continue;                 // continuation: no glyph
+			g += c.ch;
+			a += attr_char(c.attrs);
+			k += letter_for(c);
+		}
+		// Trailing default cells carry nothing and only make a diff noisier.
+		// All three planes are trimmed on the same rule so the columns stay
+		// readable straight down.
+		while (g.endsWith(QLatin1Char(' '))) g.chop(1);
+		while (a.endsWith(QLatin1Char('.'))) a.chop(1);
+		while (k.endsWith(QLatin1Char('.'))) k.chop(1);
+		glyphs  += g + QLatin1Char('\n');
+		attrs   += a + QLatin1Char('\n');
+		colours += k + QLatin1Char('\n');
+	}
+
+	// A plane with nothing in it collapses to one line. A frame drawn entirely
+	// in the terminal's own colours is the common case, and fifteen blank rows
+	// twice over buries the glyph plane a reader came for. The marker is still
+	// a value: an attribute appearing anywhere replaces the line with a plane,
+	// which is exactly as loud a diff as a changed row would be.
+	const auto plane = [](const QString &name, const QString &body,
+	                      QChar empty) {
+		QString flat = body;
+		flat.remove(QLatin1Char('\n'));
+		flat.remove(empty);
+		return QStringLiteral("--- %1 ---\n").arg(name)
+		     + (flat.isEmpty() ? QStringLiteral("(none)\n") : body);
+	};
+
+	QString out = glyphs;
+	out += plane(QStringLiteral("attrs"), attrs, QLatin1Char('.'));
+	out += plane(QStringLiteral("colours"), colours, QLatin1Char('.'));
+	out += QStringLiteral("--- legend ---\n");
+	// Named in the order the letters were handed out, so the legend reads
+	// top-left to bottom-right of the frame.
+	QVector<QPair<QChar, QString>> rows;
+	for (const QString &key : order) rows.append({letters.value(key), key});
+	std::sort(rows.begin(), rows.end(),
+	          [](const auto &l, const auto &r) { return l.first < r.first; });
+	for (const auto &row : rows)
+		out += QStringLiteral("%1 fg=%2 bg=%3\n")
+		       .arg(row.first)
+		       .arg(row.second.section(QLatin1Char(' '), 0, 0))
+		       .arg(row.second.section(QLatin1Char(' '), 1, 1));
+	// The attribute legend is fixed rather than per-frame: a reader meeting a
+	// letter needs to look it up whether or not this frame used it.
+	out += QStringLiteral("attrs: . none");
+	for (int mask = 1; mask < 64; ++mask) {
+		const Attrs a = Attrs(QFlag(mask));
+		if (attrs.contains(attr_char(a)))
+			out += QStringLiteral(", %1 %2").arg(attr_char(a)).arg(attr_names(a));
+	}
+	out += QLatin1Char('\n');
+	return out;
 }
 
 QString CellBuffer::toText() const {

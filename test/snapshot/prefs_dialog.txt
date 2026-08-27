@@ -12,3 +12,10 @@
 
 
 
+--- attrs ---
+(none)
+--- colours ---
+(none)
+--- legend ---
+. fg=default bg=default
+attrs: . none

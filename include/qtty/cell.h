@@ -73,7 +73,22 @@ public:
 	QRegion diff(const CellBuffer &prev) const;
 	int diffCells(const CellBuffer &prev) const;
 
-	QString toText() const;             // snapshot format (section 9): glyphs only
+	QString toText() const;             // glyphs only, one row per line
+
+	// The full section 9 snapshot: the glyph plane, then an attribute plane
+	// and a colour plane over the same grid, then a legend naming what each
+	// colour letter stands for.
+	//
+	// toText() alone was what the fixtures recorded, and it drops everything
+	// except the character -- so the reverse video, bold and dim that most of
+	// the Channel A work produces could not be snapshotted at all. A fixture
+	// that cannot see a selection is one that goes green when a selection
+	// stops being drawn.
+	//
+	// The planes line up with the glyph plane column for column, including
+	// skipping a wide cluster's continuation cell, so a column can be read
+	// straight down across all three.
+	QString to_snapshot() const;
 
 	// Frame payload: placements collected for this frame (section 5.7). Travels with
 	// the buffer through present().
