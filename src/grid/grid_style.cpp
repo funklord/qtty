@@ -238,6 +238,32 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 // So a single-line control is one cell tall by construction. The width still
 // snaps up, because a width is a count of characters and rounding one down
 // truncates text.
+QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *opt,
+                                SubControl sc, const QWidget *w) const {
+	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+	if (cc == CC_ComboBox && opt) {
+		// The cell layout drawComplexControl draws: an opening bracket, the
+		// text, the arrow, a closing bracket. The edit field is what is left
+		// between them, and it has to be stated here or Qt places the internal
+		// QLineEdit at the proxy style's pixel offsets -- two pixels in from a
+		// border this style never draws.
+		const QRect r = opt->rect;
+		switch (sc) {
+		case SC_ComboBoxEditField:
+			return QRect(r.left() + cw, r.top(),
+				         qMax(cw, r.width() - 3 * cw), qMax(ch, r.height()));
+		case SC_ComboBoxArrow:
+			return QRect(r.right() + 1 - 2 * cw, r.top(), cw, qMax(ch, r.height()));
+		case SC_ComboBoxFrame:
+		case SC_ComboBoxListBoxPopup:
+			return r;
+		default:
+			break;
+		}
+	}
+	return QProxyStyle::subControlRect(cc, opt, sc, w);
+}
+
 QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const QSize &cs,
                                   const QWidget *w) const {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();

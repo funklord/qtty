@@ -81,6 +81,14 @@ public:
 	                 const QWidget *) const override;
 	void drawComplexControl(ComplexControl, const QStyleOptionComplex *, QPainter *,
 	                        const QWidget *) const override;
+	// section 5.3 lists this among the overrides that grid the widgets Qt
+	// builds for itself. A combo box's internal QLineEdit is placed by it,
+	// and without it the edit sits at the proxy style's pixel offsets inside
+	// a cell-sized combo -- measured at 377x15+2+2 in a one-cell combo,
+	// which GridGuard reports and which no application can correct, because
+	// it never constructed that widget.
+	QRect subControlRect(ComplexControl, const QStyleOptionComplex *, SubControl,
+	                     const QWidget *) const override;
 };
 
 } // namespace Qtty

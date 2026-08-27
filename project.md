@@ -588,8 +588,20 @@ the rest snapped. Missing:
   rounding one down truncates text. The types that genuinely carry more
   than a line -- an item view row, a group box, a whole menu -- keep the
   snap-up, which is the only rule that cannot clip.
-- `subElementRect` and `subControlRect` are neither declared in
-  `include/qtty/grid.h` nor overridden, though design.md §5.3 lists both.
+- ~~`subControlRect` is neither declared nor overridden.~~ **Done for
+  `CC_ComboBox`**, which is where it was costing something. An editable
+  combo's internal `QLineEdit` is placed by that call, and with the proxy
+  style answering it the edit sat at Fusion's pixel offsets inside a
+  cell-sized combo -- measured at 377x15+2+2 in a one-cell combo. No
+  application could correct it, because no application constructed that
+  widget; only the style can reach it, which is design.md §5.3's whole
+  argument for the style over widget subclasses.
+
+  `GridGuard` is what found it, on a test written to cover something
+  else entirely, and removing the override reddens it again. The other
+  complex controls still take the proxy's answer, and `subElementRect`
+  is still not overridden -- neither has yet cost anything measurable,
+  and this one was done because it had.
 - ~~The off-by-one vertical-centring baseline calibration that §16 called
   for is not done.~~ **Explained, and it needed no calibration.** §16
   recorded the symptom -- "vertical text centring within multi-cell
@@ -691,15 +703,28 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
-**Partial:** `QLineEdit`, `QComboBox`, and the item views.
+**Partial:** `QLineEdit` and the item views.
 
 **Thin or absent:**
 
 - `QSpinBox` draws a box and one glyph, with **no test**.
 - `QSplitter` drag is unimplemented.
-- **The `QTextEdit` interaction layer is absent** -- `src/widget/` is a
-  README describing what should be there. Display is free by F8, so this
-  is the cursor, selection and partial-line scrolling only.
+- ~~The `QTextEdit` interaction layer is absent.~~ **It works, and
+  needed no code** -- which makes it the fourth gap in this document that
+  was an obstruction rather than an absence. F8 had already measured that
+  display is free when the document font's line height equals the cell
+  height; what was missing was keys reaching the widget, which is the
+  routing fixed in §7.1. `QPlainTextEdit` and `QTextEdit` both take
+  typing, Return and wide clusters now, and what is typed reaches the
+  cells. `src/widget/`'s README still describes a replacement layer, and
+  §17.2's nought-to-four-day estimate was for the case where display had
+  not come free. What is genuinely untested is selection and
+  partial-line scrolling.
+- **The editable `QComboBox` takes typed text**, non-ASCII included. It
+  was untested rather than unhandled. Testing it is what found the
+  missing `subControlRect` in §7.1: the combo's internal `QLineEdit` sat
+  at the proxy style's pixel offsets, and `GridGuard` reported it on a
+  test written to cover something else.
 - ~~`QDialog`/`QMessageBox` is blocked by the compositor gap.~~
   **Unblocked** (§7.1): a modal is composited, holds input exclusively,
   and takes the cursor. What is still untested is `QMessageBox`

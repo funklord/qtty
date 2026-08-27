@@ -413,6 +413,73 @@ int suite_widgets() {
 		CHECK(reversed == 3, "a three-cell selected item is reversed on all "
 		                     "three rows, not only the first");
 	}
+
+	// ---- editable combo and the text editors (section 17.2) ------------------
+	//
+	// Both were recorded as gaps -- "editable variant untested/unhandled" and
+	// a QTextEdit interaction layer estimated at up to four days. Neither
+	// needed code. F8 already measured that display is free when the document
+	// font's line height equals the cell height; what was missing was keys
+	// reaching them, which is the routing fixed for menus. Recorded as absent,
+	// obstructed in fact -- the third and fourth time in this tree.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&host);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		auto *combo = new QComboBox(&host);
+		combo->setEditable(true);
+		combo->addItems({QStringLiteral("alpha")});
+		auto *doc = new QPlainTextEdit(&host);
+		doc->setFixedHeight(GridMetrics::ch() * 4);
+		auto *rich = new QTextEdit(&host);
+		rich->setFixedHeight(GridMetrics::ch() * 3);
+		v->addWidget(combo);
+		v->addWidget(doc);
+		v->addWidget(rich);
+		v->addStretch();
+		host.resize(GridMetrics::cells(40, 12));
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter er(&host);
+
+		const auto typed = [&](const QString &text) {
+			for (const QString &cl : to_clusters(text))
+				er.on_key({0, cl, false, false, false});
+		};
+
+		combo->lineEdit()->clear();
+		combo->lineEdit()->setFocus();
+		setFocusWidget(combo->lineEdit());
+		typed(QString::fromUtf8("h\u00e9llo"));
+		CHECK(combo->currentText() == QString::fromUtf8("h\u00e9llo"),
+		      "an editable combo takes typed text, non-ASCII included");
+
+		doc->setFocus();
+		setFocusWidget(doc);
+		typed(QStringLiteral("abc"));
+		er.on_key({Qt::Key_Return, {}, false, false, false});
+		typed(QString::fromUtf8("\u6f22\u5b57"));
+		CHECK(doc->toPlainText() == QString::fromUtf8("abc\n\u6f22\u5b57"),
+		      "a plain text editor takes typing, Return and wide clusters");
+
+		rich->setFocus();
+		setFocusWidget(rich);
+		typed(QStringLiteral("rich"));
+		CHECK(rich->toPlainText() == QStringLiteral("rich"),
+		      "and so does QTextEdit, which section 8.4 lists as Replaced");
+
+		// Display is the half F8 already measured; this is the half that
+		// proves the two agree -- what was typed is what the cells carry.
+		CellBuffer b(40, 12);
+		render_once(host, b);
+		const QString frame = b.to_text();
+		CHECK(frame.contains(QString::fromUtf8("h\u00e9llo")),
+		      "the combo's text reaches the cells");
+		CHECK(frame.contains(QStringLiteral("abc")),
+		      "and the editor's does too");
+	}
 	return fails;
 }
 
