@@ -781,7 +781,35 @@ which is design.md §16's figure.
   by remembering to opt in. It reported **83 misaligned geometries across
   five suites** on its first run, and sorting those out is where the
   `sizeFromContents` fix above came from -- see §7.7.
-- `ICellPainted`.
+- ~~`ICellPainted`.~~ **Done**, and with it risk R5's stated mitigation and
+  F5's suggested remedy: a widget that knows how to draw itself in cells
+  says so, and its ordinary painting is skipped rather than drawn first
+  and overwritten -- Channel B output underneath would show through
+  wherever the cell painting left a cell alone.
+
+  Two decisions worth keeping. The interface is **not** a QObject,
+  because a widget already inherits one and two QObject bases are
+  illegal; it is a plain abstract class the widget inherits second.
+  And qtty dispatches with `dynamic_cast` rather than the `qobject_cast`
+  design.md §5.3 shows: `qobject_cast` across an interface needs
+  `Q_INTERFACES` on the widget and therefore moc, while `dynamic_cast`
+  needs neither and accepts a widget that merely inherits the class.
+  `Q_DECLARE_INTERFACE` is declared anyway so an application can use
+  either. `IGraphicsOutput` was already dispatched this way.
+
+  Replacing a widget's painting means consuming its paint event, which
+  is the only hook Qt offers -- so the dispatch is a filter, and
+  `CellPaintDevice::active()` is what tells it whether a cell render is
+  running at all. That is §10.1's inertness rule made mechanical: in a
+  GUI build there is no active cell device, the filter stands down, and
+  the widget paints exactly as it would with qtty absent.
+
+  Four checks, each proved able to fail against a *different* wrong
+  implementation: not installing the filter reddens four; painting cells
+  without consuming the event reddens the two that say the ordinary
+  painting was skipped -- which is the discriminating pair, since the
+  first two pass while the widget is still wrong; and consulting the
+  interface outside a render reddens the inertness check alone.
 - **The whole of design.md §7's Tier-2 hint system** -- `setPriority`,
   `setCompact`, `CompactionPass`, the `"qtty.cells"` property -- and the
   CI check banning `setContentsMargins`, `setSpacing`, `setFixedSize` and

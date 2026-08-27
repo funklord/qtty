@@ -37,6 +37,11 @@ void setup(QApplication &app) {
 	GridMetrics::set(fm.horizontalAdvance(u'M'), fm.height());
 	app.setFont(f);
 	app.setStyle(new GridStyle);
+	// Lets an ICellPainted widget paint itself in cells instead of going
+	// through Channel B (section 5.3, risk R5). Inert in a GUI build by
+	// construction: with no cell device being rendered into, the filter stands
+	// down and the widget paints normally.
+	install_cell_paint_filter(app);
 	set_theme(CellTheme::terminal_default());
 
 	// The guard is installed in debug builds and compiled out of release, as

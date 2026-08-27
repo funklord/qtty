@@ -1,5 +1,8 @@
 // src/render/cell_paint.cpp -- CellPaintDevice / CellPaintEngine (section 5.4).
 #include "qtty/paint.h"
+#include <QCoreApplication>
+#include <QEvent>
+#include <QWidget>
 #include "qtty/grid.h"
 #include "qtty/theme.h"
 #include <QGuiApplication>
@@ -9,8 +12,62 @@
 
 namespace Qtty {
 
-CellPaintDevice::CellPaintDevice(CellBuffer &b) : buf_(b), eng_(new CellPaintEngine) {}
-CellPaintDevice::~CellPaintDevice() { delete eng_; }
+// The device currently being rendered into. Single-threaded by construction:
+// rendering happens on the GUI thread and nowhere else (design.md section 5.4),
+// which is the same assumption Color::to_xterm256()'s memo already rests on.
+//
+// Saved and restored rather than merely set and cleared, so that a nested
+// render -- a tool rendering into its own buffer while a frame is in flight --
+// puts the outer device back instead of leaving null behind it.
+static CellPaintDevice *s_active = nullptr;
+
+CellPaintDevice *CellPaintDevice::active() { return s_active; }
+
+CellPaintDevice::CellPaintDevice(CellBuffer &b)
+    : buf_(b), eng_(new CellPaintEngine), outer_(s_active) { s_active = this; }
+
+CellPaintDevice::~CellPaintDevice() { s_active = outer_; delete eng_; }
+
+// section 5.3, risk R5: a widget that implements ICellPainted paints itself
+// into the buffer, and its ordinary painting is skipped entirely rather than
+// being drawn first and overwritten -- Channel B output underneath would show
+// wherever the cell painting left a cell alone.
+//
+// A paint event is the only hook Qt offers for replacing a widget's painting,
+// and it says nothing about where the pixels are going. That is what
+// CellPaintDevice::active() is for: in a GUI build there is no active cell
+// device, the filter stands down, and the widget paints normally. Section
+// 10.1's inertness rule made concrete.
+class CellPaintFilter : public QObject {
+public:
+	bool eventFilter(QObject *o, QEvent *e) override {
+		if (e->type() != QEvent::Paint) return false;
+		CellPaintDevice *dev = CellPaintDevice::active();
+		if (!dev) return false;                    // GUI build, or not rendering
+		QWidget *w = qobject_cast<QWidget *>(o);
+		if (!w) return false;
+		// dynamic_cast, not qobject_cast: the latter needs Q_INTERFACES on the
+		// widget and therefore moc. IGraphicsOutput is dispatched the same way.
+		auto *painted = dynamic_cast<ICellPainted *>(o);
+		if (!painted) return false;
+
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		const QPoint tl = w->mapTo(w->window(), QPoint(0, 0)) + dev->origin;
+		const QRect cells(qRound(tl.x() / double(cw)), qRound(tl.y() / double(ch)),
+		                  qMax(1, qRound(w->width()  / double(cw))),
+		                  qMax(1, qRound(w->height() / double(ch))));
+		painted->paint_cells(dev->buffer(), cells);
+		return true;                               // consumed: no Channel B pass
+	}
+};
+
+void install_cell_paint_filter(QCoreApplication &app) {
+	static CellPaintFilter *filter = nullptr;
+	if (filter) return;
+	filter = new CellPaintFilter;
+	filter->setParent(&app);
+	app.installEventFilter(filter);
+}
 QPaintEngine *CellPaintDevice::paintEngine() const { return eng_; }
 
 int CellPaintDevice::metric(PaintDeviceMetric m) const {
