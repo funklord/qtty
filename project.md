@@ -708,8 +708,20 @@ bar, scrollbars, tabs, the progress bar and the slider. Exercised by
   role coverage; `QTableView` is never exercised at all.
 - **`ICellPainted` and its `Q_DECLARE_INTERFACE` do not exist**, though
   that pair is R5's stated mitigation and F5's suggested remedy.
-- Menus draw a submenu indicator but nothing opens or routes a submenu,
-  and there are no mnemonics. ~~The compositor clamps rather than
+- ~~Menus draw a submenu indicator but nothing opens or routes a
+  submenu, and there are no mnemonics.~~ **Both done.** Mnemonics needed
+  building (§7.1). **Submenus needed no code at all**: Qt's own
+  `QMenu::keyPressEvent` opens one on Right, and it had simply never run,
+  because keys were not reaching the menu -- the dead `activePopupWidget()`
+  branch recorded in §7.1. Fixing that made submenus work, and the
+  compositor already drew them, since it walks the router's popup stack
+  and a submenu is just another entry on it.
+
+  Worth keeping as a shape: a feature recorded as absent was a feature
+  **obstructed**, and the obstruction was two layers away in key routing.
+  Ten checks now cover menus and submenus, and putting `key_target()` back
+  on Qt's tracking reddens all ten -- so the suite says which layer owns
+  them. ~~The compositor clamps rather than
   flipping.~~ **Flipping is done** (§7.1) -- the discriminating check is
   that the popup's far edge lands on its anchor, since "fully inside the
   terminal" is true of a clamped popup too.

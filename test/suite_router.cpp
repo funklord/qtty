@@ -330,5 +330,54 @@ int suite_router() {
 		mr.on_key({0, QStringLiteral("z"), false, true, false});
 		CHECK(opened == before, "an unmatched mnemonic triggers nothing");
 	}
+
+	// ---- submenus (section 17.2) ---------------------------------------------
+	//
+	// Recorded as absent -- "nothing opens or routes a submenu" -- and it
+	// needed no new code. Qt's own QMenu::keyPressEvent opens a submenu on
+	// Right; it never ran because keys were not reaching the menu at all.
+	// Fixing key_target() to read the router's popup stack made this work,
+	// and this suite exists so the next change to that routing says so.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(40, 10));
+		QMenu menu(&host);
+		menu.addAction(QStringLiteral("Plain"));
+		QMenu *sub = menu.addMenu(QStringLiteral("More"));
+		int fired = 0;
+		QAction *deep = sub->addAction(QStringLiteral("Deep"));
+		QObject::connect(deep, &QAction::triggered, [&] { ++fired; });
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter sr(&host);
+
+		menu.popup(QPoint(0, 0));
+		QCoreApplication::processEvents();
+		sr.on_key({Qt::Key_Down, {}, false, false, false});
+		sr.on_key({Qt::Key_Down, {}, false, false, false});
+		CHECK(menu.activeAction() && menu.activeAction()->text() == QStringLiteral("More"),
+		      "Down walks the menu to the submenu's item");
+
+		sr.on_key({Qt::Key_Right, {}, false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(sub->isVisible(), "Right opens the submenu");
+		CHECK(sr.popups().size() == 2, "and both menus are on the popup stack");
+		CHECK(sr.popups().last() == sub, "with the submenu on top");
+
+		// Both are drawn: a submenu the compositor does not know about is a
+		// menu the user cannot see themselves navigating.
+		Compositor sc(&host, &sr);
+		CellBuffer sb(40, 10);
+		sc.compose(sb);
+		const QString frame = sb.to_text();
+		CHECK(frame.contains(QStringLiteral("Plain")), "the parent menu is drawn");
+		CHECK(frame.contains(QStringLiteral("Deep")), "and the submenu over it");
+
+		sr.on_key({Qt::Key_Down, {}, false, false, false});
+		sr.on_key({Qt::Key_Return, {}, false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(fired == 1, "Return in the submenu fires its item, not the parent's");
+	}
 	return fails;
 }
