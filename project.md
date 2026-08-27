@@ -1286,18 +1286,35 @@ branch around 274-278. That is the mixed structural indent
 `code-style.md` rule 2 forbids, and it is left alone on purpose.
 
 They compensate for a fault in `tool/style_gate.py` that is still open. A
-lambda inside a **braceless** loop's body loses an indentation level at
-its closing `};`, so the gate believes those lines sit one level
-shallower than they do, and the spaces make up the difference. Correcting
-them to plain tabs -- which is what the rule asks for -- makes the gate
-report them as violations.
+lambda inside a **braceless** loop's body makes the gate believe the
+lines around it sit one level shallower than they do, and the spaces make
+up the difference. Correcting them to plain tabs -- which is what the
+rule asks for -- makes the gate report them as violations.
 
 Reduced to a fixture, and the reduction is the actionable part: a lambda
 inside a **braced** loop conforms, and the identical lambda inside a
-braceless loop's body does not. The trigger is the braceless level, and
-what distinguishes this from the fault fixed in claude-guidelines
-`9e2dcbf` is that a lambda's brace ends with `};` -- an expression brace
-followed by a statement terminator -- rather than with a plain `}`.
+braceless loop's body does not, so the trigger is the braceless level.
+
+**The mechanism is the lambda's opening brace, not its closing one**, and
+this paragraph said the opposite until claude-guidelines corrected it
+(`961d01a`). `convert_c` decrements the pending braceless-body count on
+any `{`, on the reasoning that the brace takes the level the braceless
+body would have had -- but a lambda's brace opens an *expression*, and
+the enclosing block had already taken that body. So the lambda eats the
+outer loop's level, which is why the body and the closing `};` both come
+out a tab too deep. The reproduction was right and the attribution was
+wrong, which is worth leaving visible: a reduction that fires reliably
+says where to look, and says nothing about why.
+
+**The obvious fix was written, measured and reverted**, so nobody spends
+the afternoon rediscovering it. Conditioning the decrement on
+`await_body` -- consume only a brace that IS the awaited body -- fixes
+this case exactly and breaks aligned string continuations, sending a
+continued argument inside a following block to a level too deep. That is
+a different trade rather than a refinement, and it would swap one class
+of false finding for another across sixteen trees. A correct fix probably
+has to recognise a lambda introducer by its preceding token -- a `]` or
+the `)` of a parameter list -- rather than reason from `await_body`.
 
 **So this is the anti-pattern deliberately left in place rather than
 propagated.** Nine other lines in these two files were the same
