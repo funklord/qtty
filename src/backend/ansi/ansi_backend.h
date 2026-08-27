@@ -9,6 +9,7 @@
 #include <termios.h>
 #include "qtty/backend.h"
 #include <QSet>
+#include <QVector>
 
 class QSocketNotifier;
 
@@ -35,16 +36,26 @@ public:
 
 private:
 	void readInput();
-	bool decodeOne();                    // one key from pending_ -> sink
+	bool decodeOne();                    // one event from pending_ -> sink
+	// A complete CSI at the head of pending_, or -1 if more bytes are needed.
+	// Fills the private prefix, the numeric parameters and the final byte.
+	int parseCsi(QByteArray &prefix, QVector<int> &params, char &final) const;
+	bool dispatchCsi(const QByteArray &prefix, const QVector<int> &params,
+	                 char final);
+	void readWinch();                    // SIGWINCH arrived down the self-pipe
 
 	ITerminalEventSink *sink_ = nullptr;
 	QSocketNotifier *notifier_ = nullptr;
+	QSocketNotifier *winch_notifier_ = nullptr;
 	QByteArray pending_;
+	QByteArray paste_;                   // accumulating between CSI 200~/201~
+	bool in_paste_ = false;
 	QSize cells_;
 	Capabilities::GraphicsMode mode_;
 	Capabilities::ColorDepth depth_;             // negotiated (section 6)
 	QSet<quint64> uploaded_;                     // kitty upload-once cache
 	bool rawOk_ = false;
+	bool tty_out_ = false;               // stdout is a terminal
 	bool active_ = false;
 	termios saved_{};
 };

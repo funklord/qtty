@@ -7,7 +7,10 @@
 #include <QCoreApplication>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <csignal>
+#include <fcntl.h>
 #include <cstdio>
+#include <cstring>
 
 namespace Qtty {
 
@@ -63,6 +66,25 @@ Capabilities AnsiBackend::capabilities() const {
 	Capabilities c;
 	c.color = depth_;                               // negotiated (section 6)
 	c.graphics = mode_;                             // negotiated (sections 5.7, 17.3)
+
+	// These four were fields nobody set and nobody read. They are answers
+	// about this backend now, and each is answerable because resume() asks
+	// the terminal for the mode and decodeOne() understands the replies.
+	//
+	// mouse and bracketedPaste are reported for a tty because the modes are
+	// requested unconditionally and a terminal that does not implement one
+	// ignores the request -- there is no reply to wait for, and the DCS
+	// handshake doc/beerssh.md proposes is what would turn these from "asked
+	// for" into "confirmed".
+	c.mouse = rawOk_;
+	c.bracketedPaste = rawOk_;
+	c.unicodeWide = true;                           // L2 measures width itself
+
+	// DEC 2026 is NOT claimed. section 11 wants synchronised output to
+	// eliminate tearing, and nothing emits the brackets yet; saying true here
+	// would be a field describing an intention rather than the backend.
+	c.synchronisedOutput = false;
+	c.title = false;                                // no OSC 0/2 emitter yet
 	return c;
 }
 
@@ -73,8 +95,47 @@ static QByteArray moveTo(QPoint cell) {
 
 QSize AnsiBackend::size() const { return cells_; }
 
+// ---- terminal resize -------------------------------------------------------
+//
+// A signal handler may call almost nothing, so it writes one byte to a pipe
+// and returns; a QSocketNotifier on the read end turns that into an ordinary
+// event in the Qt loop, where the real work is legal. This is the standard
+// self-pipe, and it is the reason a resize can be handled at all: before it,
+// ITerminalEventSink::onResize existed, InputRouter implemented it, and
+// nothing ever called it -- dragging a terminal's edge did nothing whatever.
+static int s_winch_pipe[2] = {-1, -1};
+
+extern "C" void qtty_winch_handler(int) {
+	if (s_winch_pipe[1] >= 0) {
+		const char b = 1;
+		const ssize_t ignored = ::write(s_winch_pipe[1], &b, 1);
+		(void)ignored;                 // nothing useful to do in a handler
+	}
+}
+
+void AnsiBackend::readWinch() {
+	char drain[64];
+	while (::read(s_winch_pipe[0], drain, sizeof drain) > 0) { }
+	winsize ws{};
+	if (ioctl(1, TIOCGWINSZ, &ws) != 0 || ws.ws_col <= 0) return;
+	const QSize now(ws.ws_col, ws.ws_row);
+	if (now == cells_) return;         // SIGWINCH also fires for pixel-only changes
+	cells_ = now;
+	if (sink_) sink_->onResize(cells_);
+}
+
 void AnsiBackend::resume() {
 	if (active_) return;
+	// Terminal control goes to a terminal and nowhere else. Emitting it
+	// unconditionally means a run whose output is redirected writes the
+	// alternate-screen switch, the mode sets and the mode resets into the
+	// file -- and a test that constructs a backend takes the developer's
+	// screen with it. Found exactly that way: the suite's first PASS line
+	// came out appended to a mode-setting sequence.
+	//
+	// Input setup is asked about separately, because the two ends are
+	// independent: output can be a pipe while input is still a keyboard.
+	tty_out_ = isatty(1);
 	if (isatty(0) && tcgetattr(0, &saved_) == 0) {
 		termios t = saved_;
 		t.c_lflag &= ~(ICANON | ECHO);
@@ -82,15 +143,55 @@ void AnsiBackend::resume() {
 		tcsetattr(0, TCSANOW, &t);
 		rawOk_ = true;
 	}
-	printf("\033[?1049h\033[?25l");
-	fflush(stdout);
+	// Alternate screen and hidden cursor, then the three reporting modes the
+	// runtime already has sinks for and never received anything on. Each is
+	// switched off again in suspend(): a terminal left in mouse-reporting mode
+	// after the program exits pastes escape sequences into the user's shell
+	// every time they click, and that outlives the process.
+	//
+	//   1006  SGR mouse reporting -- coordinates as decimal parameters rather
+	//         than as bytes, so columns past 223 are expressible at all.
+	//   1002  report presses, releases and drags (not bare motion, which is a
+	//         packet per cell moved over an ssh link nobody is reading).
+	//   2004  bracketed paste, so a paste arrives as text rather than as a
+	//         burst of keystrokes that autorepeat handling cannot tell from
+	//         typing.
+	//   1004  focus in/out, which is how a TUI knows to dim its selection.
+	if (tty_out_) {
+		printf("\033[?1049h\033[?25l\033[?1006h\033[?1002h"
+		       "\033[?2004h\033[?1004h");
+		fflush(stdout);
+	}
+
+	if (s_winch_pipe[0] < 0 && ::pipe(s_winch_pipe) == 0) {
+		fcntl(s_winch_pipe[0], F_SETFL, O_NONBLOCK);
+		fcntl(s_winch_pipe[1], F_SETFL, O_NONBLOCK);
+		struct sigaction sa{};
+		sa.sa_handler = qtty_winch_handler;
+		sigemptyset(&sa.sa_mask);
+		sa.sa_flags = SA_RESTART;      // do not break the read() in readInput()
+		sigaction(SIGWINCH, &sa, nullptr);
+	}
+	if (s_winch_pipe[0] >= 0 && !winch_notifier_) {
+		winch_notifier_ = new QSocketNotifier(s_winch_pipe[0],
+		                                     QSocketNotifier::Read, this);
+		QObject::connect(winch_notifier_, &QSocketNotifier::activated,
+		                 this, [this] { readWinch(); });
+	}
 	active_ = true;
 }
 
 void AnsiBackend::suspend() {
 	if (!active_) return;
-	printf("\033[0m\033[?1049l\033[?25h");
-	fflush(stdout);
+	// The reporting modes go off before the alternate screen does, and they
+	// matter more than the screen restore: a terminal left in mouse mode
+	// writes an escape burst into the user's shell on every click, for the
+	// rest of that shell's life. Reset in the reverse order they were set.
+	if (tty_out_) {
+		printf("\033[?1004l\033[?2004l\033[?1002l\033[?1006l"
+		       "\033[0m\033[?1049l\033[?25h");
+		fflush(stdout);
+	}
 	if (rawOk_) tcsetattr(0, TCSANOW, &saved_);
 	active_ = false;
 }
@@ -228,38 +329,158 @@ void AnsiBackend::readInput() {
 	while (!pending_.isEmpty()) { if (!decodeOne()) break; }
 }
 
-bool AnsiBackend::decodeOne() {
-	if (!sink_) { pending_.clear(); return false; }
-	unsigned char c = pending_[0];
-	if (c == 0x1b) {                                  // ESC sequences
-		if (pending_.size() < 2) return false;
-		if (pending_[1] == '[') {
-			if (pending_.size() < 3) return false;
-			char fin = pending_[2];
-			int consumed = 3;
-			KeyEvent k;
-			switch (fin) {
-			case 'A': k.qtKey = Qt::Key_Up; break;
-			case 'B': k.qtKey = Qt::Key_Down; break;
-			case 'C': k.qtKey = Qt::Key_Right; break;
-			case 'D': k.qtKey = Qt::Key_Left; break;
-			case 'H': k.qtKey = Qt::Key_Home; break;
-			case 'F': k.qtKey = Qt::Key_End; break;
-			case 'Z': k.qtKey = Qt::Key_Tab; k.shift = true; break;
-			case '3': k.qtKey = Qt::Key_Delete;  consumed = 4; break;   // 3~
-			case '5': k.qtKey = Qt::Key_PageUp;  consumed = 4; break;   // 5~
-			case '6': k.qtKey = Qt::Key_PageDown; consumed = 4; break;  // 6~
-			default:  k.qtKey = 0; break;
-			}
-			if (pending_.size() < consumed) return false;
-			pending_.remove(0, consumed);
-			if (k.qtKey) sink_->onKey(k);
-			return true;
+// A CSI is ESC [ , an optional private prefix, semicolon-separated decimal
+// parameters, then a final byte in 0x40..0x7e. Returns the number of bytes the
+// sequence occupies, or -1 when the buffer does not hold all of it yet.
+//
+// The decoder this replaced read a fixed three bytes and switched on the
+// third, which works for the arrow keys and for nothing else: an SGR mouse
+// report is `ESC [ < 0 ; 34 ; 12 M`, and a bracketed paste opens with
+// `ESC [ 2 0 0 ~`. Both were read as an unknown key and thrown away, three
+// bytes at a time, which then desynchronised the rest of the buffer.
+int AnsiBackend::parseCsi(QByteArray &prefix, QVector<int> &params,
+                          char &final) const {
+	int i = 2;                                    // past ESC [
+	prefix.clear();
+	params.clear();
+	while (i < pending_.size() && strchr("<>?!", pending_[i]))
+		prefix.append(pending_[i++]);
+	int value = -1;
+	while (i < pending_.size()) {
+		const char c = pending_[i];
+		if (c >= '0' && c <= '9') {
+			value = (value < 0 ? 0 : value) * 10 + (c - '0');
+			++i;
+		} else if (c == ';') {
+			params.append(value < 0 ? 0 : value);
+			value = -1;
+			++i;
+		} else {
+			break;
 		}
-		pending_.remove(0, 2);                        // Alt-<char>
-		KeyEvent k; k.alt = true; k.text = QString(QChar(pending_.isEmpty() ? 0 : c));
+	}
+	if (i >= pending_.size()) return -1;          // still arriving
+	if (value >= 0) params.append(value);
+	final = pending_[i];
+	if (final < 0x40 || final > 0x7e) return -1;  // not a terminator: wait
+	return i + 1;
+}
+
+bool AnsiBackend::dispatchCsi(const QByteArray &prefix,
+                              const QVector<int> &params, char final) {
+	const auto param = [&](int n, int fallback) {
+		return n < params.size() ? params[n] : fallback;
+	};
+
+	// SGR 1006 mouse: ESC [ < button ; col ; row M (press) or m (release).
+	// Coordinates are 1-based. The button word carries the button in its low
+	// two bits, motion at 32 and the wheel at 64.
+	if (prefix == "<" && (final == 'M' || final == 'm')) {
+		const int b = param(0, 0);
+		MouseEvent m;
+		m.cell = QPoint(param(1, 1) - 1, param(2, 1) - 1);
+		m.motion = (b & 32) != 0;
+		if (b & 64) {
+			// Wheel. It reports as a press with no matching release, so it is
+			// neither a press nor a release here -- delivering it as a press
+			// would leave a button stuck down for the rest of the session.
+			m.wheel = (b & 1) ? -1 : 1;
+		} else {
+			m.button = (b & 3) + 1;               // 1 left, 2 middle, 3 right
+			m.press = (final == 'M') && !m.motion;
+			m.release = (final == 'm');
+		}
+		sink_->onMouse(m);
 		return true;
 	}
+
+	if (final == '~') {
+		switch (param(0, 0)) {
+		case 200: in_paste_ = true;  paste_.clear(); return true;
+		case 201:
+			in_paste_ = false;
+			sink_->onPaste(QString::fromUtf8(paste_));
+			paste_.clear();
+			return true;
+		case 1: case 7:  sink_->onKey({Qt::Key_Home, {}, false, false, false}); return true;
+		case 2:          sink_->onKey({Qt::Key_Insert, {}, false, false, false}); return true;
+		case 3:          sink_->onKey({Qt::Key_Delete, {}, false, false, false}); return true;
+		case 4: case 8:  sink_->onKey({Qt::Key_End, {}, false, false, false}); return true;
+		case 5:          sink_->onKey({Qt::Key_PageUp, {}, false, false, false}); return true;
+		case 6:          sink_->onKey({Qt::Key_PageDown, {}, false, false, false}); return true;
+		default:         return true;             // consumed, unmapped
+		}
+	}
+
+	// Focus reporting (1004). A TUI dims its selection when the terminal
+	// loses focus, the way a desktop window does.
+	if (final == 'I') { sink_->onFocusChange(true);  return true; }
+	if (final == 'O') { sink_->onFocusChange(false); return true; }
+
+	KeyEvent k;
+	switch (final) {
+	case 'A': k.qtKey = Qt::Key_Up; break;
+	case 'B': k.qtKey = Qt::Key_Down; break;
+	case 'C': k.qtKey = Qt::Key_Right; break;
+	case 'D': k.qtKey = Qt::Key_Left; break;
+	case 'H': k.qtKey = Qt::Key_Home; break;
+	case 'F': k.qtKey = Qt::Key_End; break;
+	case 'Z': k.qtKey = Qt::Key_Tab; k.shift = true; break;
+	default:  return true;                        // consumed, unmapped
+	}
+	// xterm reports modifiers as a second parameter, 1 + a bitmask.
+	const int mods = param(1, 1) - 1;
+	k.shift = k.shift || (mods & 1);
+	k.alt   = (mods & 2) != 0;
+	k.ctrl  = (mods & 4) != 0;
+	sink_->onKey(k);
+	return true;
+}
+
+bool AnsiBackend::decodeOne() {
+	if (!sink_) { pending_.clear(); return false; }
+	const unsigned char c = pending_[0];
+
+	// Inside a bracketed paste every byte is content until the closing CSI,
+	// including bytes that would otherwise be keys. That is the whole point of
+	// the mode: a newline in pasted text is text, not Return.
+	if (in_paste_) {
+		if (c == 0x1b && pending_.size() >= 2 && pending_[1] == '[') {
+			QByteArray prefix; QVector<int> params; char final = 0;
+			const int n = parseCsi(prefix, params, final);
+			if (n < 0) return false;              // wait for the rest
+			if (final == '~' && !params.isEmpty() && params[0] == 201) {
+				pending_.remove(0, n);
+				return dispatchCsi(prefix, params, final);
+			}
+			paste_.append(pending_.left(n));      // an escape inside the paste
+			pending_.remove(0, n);
+			return true;
+		}
+		paste_.append(char(c));
+		pending_.remove(0, 1);
+		return true;
+	}
+
+	if (c == 0x1b) {                              // ESC sequences
+		if (pending_.size() < 2) return false;
+		if (pending_[1] == '[') {
+			QByteArray prefix; QVector<int> params; char final = 0;
+			const int n = parseCsi(prefix, params, final);
+			if (n < 0) return false;              // still arriving
+			pending_.remove(0, n);
+			return dispatchCsi(prefix, params, final);
+		}
+		if (pending_.size() < 2) return false;
+		const char alt = pending_[1];
+		pending_.remove(0, 2);
+		KeyEvent k;
+		k.alt = true;
+		k.text = QString(QChar(alt));
+		sink_->onKey(k);
+		return true;
+	}
+
 	pending_.remove(0, 1);
 	KeyEvent k;
 	if (c == '\r' || c == '\n')       k.qtKey = Qt::Key_Return;
