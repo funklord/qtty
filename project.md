@@ -766,11 +766,33 @@ bar, scrollbars, tabs, the progress bar and the slider. Exercised by
     positive on the known caret case before the zero was believed. So
     nothing existing depended on the old behaviour, and the caret was
     untested, which is why it survived.
-  * **`Compositor::cursor_cell()` reports 0,0 for a focused `QSpinBox`
-    whose caret paints at cell 1.** `QAbstractSpinBox` answers
-    `ImCursorRectangle` for itself rather than forwarding to its inner
-    edit, so the terminal cursor lands on the spin box's frame instead of
-    in its field. Small, real, and open.
+  * **The terminal cursor was landing a cell to the left of the caret**,
+    and that one is fixed too. `QAbstractSpinBox` does forward
+    `ImCursorRectangle` -- verbatim, so the rect comes back in the inner
+    edit's coordinates while `compose()` mapped it from the spin box,
+    dropping the edit's offset. `compose()` now finds the widget that
+    actually returned the rect and maps from there.
+
+    Two things about the *checks* are worth more than the fix. The first
+    probe compared `cursor_cell()` against a truth computed by the same
+    `mapTo()` the fix had just changed -- it was the fix checked against
+    itself, and it said "ok" four times. The invariant that means
+    something is that the same editor at the same place reports the same
+    cell whether it is standalone or nested, and the first attempt at
+    *that* failed for a reason of its own: a standalone `QLineEdit` has a
+    frame and a spin box's inner edit does not, so the two were not the
+    same editor at the same place and the disagreement was the probe's.
+    The second is that at caret position 0 both mappings round to the
+    same cell, so a test written at position 0 -- which is where a
+    stepped spin box leaves it -- passes with the bug present. The suite
+    check uses positions 1 and 2.
+
+    And the stale-binary trap caught this one on the way past. The
+    sabotage run rebuilt the library and reported "agree", which read as
+    the fix making no difference; the probe was statically linked and had
+    not been relinked. Relinked, it disagrees exactly where it should.
+    `make test` does not have this problem, which is the argument for
+    putting the check in the suite rather than leaving it in a probe.
 - `QSplitter` drag is unimplemented.
 - ~~The `QTextEdit` interaction layer is absent.~~ **It works, and
   needed no code** -- which makes it the fourth gap in this document that

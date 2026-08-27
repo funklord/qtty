@@ -101,6 +101,57 @@ int suite_router() {
 	comp.compose(frame);
 	CHECK(comp.cursor_cell().has_value(), "cursor cell reported for focused editor");
 
+	// ...and it must land in the right cell, which has_value() cannot say. A
+	// widget that delegates editing to an internal editor -- QSpinBox --
+	// forwards ImCursorRectangle to it VERBATIM, so the rect arrives in the
+	// editor's coordinates while compose() was mapping it from the outer
+	// widget, dropping the editor's offset and putting the terminal cursor on
+	// the spin box's frame instead of in its field.
+	//
+	// The invariant is that the same editor, at the same place on screen,
+	// reports the same cell whether it is standalone or nested. Two caret
+	// positions, because at position 0 the two answers round to the same cell
+	// and a one-position test passes with the bug present. The standalone edit
+	// is frameless to match the spin box's, or the two are not the same
+	// editor at the same place and the test compares nothing.
+	{
+		auto cursor_of = [&](bool nested, int pos) {
+			QWidget h;
+			h.setAttribute(Qt::WA_DontShowOnScreen);
+			QWidget *outer = nullptr;
+			QLineEdit *inner = nullptr;
+			if (nested) {
+				auto *sp = new QSpinBox(&h);
+				sp->setRange(0, 100);
+				sp->setValue(43);
+				sp->setGeometry(0, 0, cw * 20, ch);
+				outer = sp;
+				inner = sp->findChild<QLineEdit *>();
+			} else {
+				inner = new QLineEdit(&h);
+				inner->setText(QStringLiteral("43"));
+				inner->setFrame(false);
+				outer = inner;
+			}
+			h.resize(GridMetrics::cells(30, 2));
+			h.show();
+			QCoreApplication::processEvents();
+			if (!nested) inner->setGeometry(cw, 0, cw * 17, ch);
+			outer->setFocus();
+			QCoreApplication::processEvents();
+			inner->setCursorPosition(pos);
+			QCoreApplication::processEvents();
+			InputRouter rr(&h);
+			Compositor cc(&h, &rr);
+			CellBuffer bb(30, 2);
+			cc.compose(bb);
+			return cc.cursor_cell();
+		};
+		bool same = true;
+		for (int pos : {1, 2}) same = same && cursor_of(false, pos) == cursor_of(true, pos);
+		CHECK(same, "a nested editor reports the same cursor cell as a standalone one");
+	}
+
 	// ------------------------------------------------ section 8.1: modals
 	// A modal QDialog was stamped WA_DontShowOnScreen by the filter above and
 	// then drawn by nobody: compose() rendered the one tracked window plus the

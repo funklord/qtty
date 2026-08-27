@@ -118,8 +118,24 @@ void Compositor::compose(CellBuffer &out) {
 	cursor_.reset();
 	if (QWidget *fw = cursor_layer->focusWidget()) {
 		QVariant v = fw->inputMethodQuery(Qt::ImCursorRectangle);
+		// A widget that delegates editing to an internal editor forwards this
+		// query to it VERBATIM, so the rect comes back in the editor's own
+		// coordinates rather than the focus widget's. Measured on QSpinBox:
+		// the spin box and its inner QLineEdit both answer 10x20+17+0 while
+		// the edit sits at +10, so mapping from the spin box put the terminal
+		// cursor a cell to the left of the caret, on the frame instead of in
+		// the field. The widget that owns the rect is the one that returned
+		// it, so find it and map from there.
+		QWidget *owner = fw;
+		if (v.isValid())
+			for (QWidget *child : fw->findChildren<QWidget *>())
+				if (child->isVisible()
+				    && child->inputMethodQuery(Qt::ImCursorRectangle) == v) {
+					owner = child;
+					break;
+				}
 		if (v.isValid()) {
-			QPoint g = cursor_origin + fw->mapTo(cursor_layer, v.toRect().topLeft());
+			QPoint g = cursor_origin + owner->mapTo(cursor_layer, v.toRect().topLeft());
 			QPoint cell(g.x() / cw, g.y() / ch);
 			if (cell.x() >= 0 && cell.y() >= 0
 			    && cell.x() < out.cols() && cell.y() < out.rows())
