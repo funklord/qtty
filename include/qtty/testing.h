@@ -15,9 +15,9 @@ namespace test {
 // record=true (re)writes the fixture instead. Returns 0 on match/record,
 // 1 on mismatch (printing both sides).
 inline int checkSnapshot(const QString &root, const QString &name,
-		                 const QString &got, bool record = false) {
+                         const QString &got, bool record = false) {
 	const QString path = root + QStringLiteral("/test/snapshot/") + name
-			           + QStringLiteral(".txt");
+	                   + QStringLiteral(".txt");
 	if (record) {
 		QFile f(path);
 		f.open(QIODevice::WriteOnly | QIODevice::Truncate);
@@ -33,7 +33,7 @@ inline int checkSnapshot(const QString &root, const QString &name,
 	const QString want = QString::fromUtf8(f.readAll());
 	if (got != want) {
 		fprintf(stderr, "FAIL: snapshot '%s' mismatch\n--- want ---\n%s--- got ---\n%s",
-				qPrintable(name), qPrintable(want), qPrintable(got));
+		        qPrintable(name), qPrintable(want), qPrintable(got));
 		return 1;
 	}
 	return 0;

@@ -13,7 +13,7 @@ namespace Qtty {
 
 InputRouter::InputRouter(QWidget *window) : win_(window) {
 	quitKeys_ = { KeyEvent{Qt::Key_C, QString(), true, false, false},
-			      KeyEvent{Qt::Key_D, QString(), true, false, false} };
+		          KeyEvent{Qt::Key_D, QString(), true, false, false} };
 	qApp->installEventFilter(this);
 }
 
@@ -122,14 +122,14 @@ void InputRouter::deliverKey(QWidget *target, const KeyEvent &k) {
 	// Arrow keys a focus widget ignored fall back to scrolling the nearest
 	// scroll area -- the TUI convention (section 5.5).
 	if (!press.isAccepted() && (k.qtKey == Qt::Key_Up || k.qtKey == Qt::Key_Down
-		                        || k.qtKey == Qt::Key_PageUp || k.qtKey == Qt::Key_PageDown)) {
+	                            || k.qtKey == Qt::Key_PageUp || k.qtKey == Qt::Key_PageDown)) {
 		if (auto *area = input_scope()->findChild<QAbstractScrollArea *>()) {
 			int step = GridMetrics::ch();
 			if (k.qtKey == Qt::Key_PageUp || k.qtKey == Qt::Key_PageDown)
 				step *= 5;
 			const int dir = (k.qtKey == Qt::Key_Up || k.qtKey == Qt::Key_PageUp) ? -1 : 1;
 			area->verticalScrollBar()->setValue(
-				area->verticalScrollBar()->value() + dir * step);
+			    area->verticalScrollBar()->value() + dir * step);
 		}
 	}
 }
@@ -156,7 +156,7 @@ void InputRouter::onKey(const KeyEvent &k) {
 
 void InputRouter::onMouse(const MouseEvent &m) {
 	const QPoint px(m.cell.x() * GridMetrics::cw() + GridMetrics::cw() / 2,
-		            m.cell.y() * GridMetrics::ch() + GridMetrics::ch() / 2);
+	                m.cell.y() * GridMetrics::ch() + GridMetrics::ch() / 2);
 	// Popups first (top of stack down), then the modal, then the window
 	// (section 5.5 routing order).
 	QWidget *top = nullptr;
@@ -185,19 +185,19 @@ void InputRouter::onMouse(const MouseEvent &m) {
 
 	if (m.wheel) {
 		QWheelEvent ev(QPointF(pos), QPointF(px), QPoint(),
-			           QPoint(0, m.wheel * GridMetrics::ch()),
-			           Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+		               QPoint(0, m.wheel * GridMetrics::ch()),
+		               Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
 		QApplication::sendEvent(target, &ev);
 	} else {
 		const auto btn = Qt::LeftButton;
 		if (m.press) {
 			QMouseEvent ev(QEvent::MouseButtonPress, QPointF(pos), QPointF(px),
-				           btn, btn, Qt::NoModifier);
+			               btn, btn, Qt::NoModifier);
 			QApplication::sendEvent(target, &ev);
 		}
 		if (m.release) {
 			QMouseEvent ev(QEvent::MouseButtonRelease, QPointF(pos), QPointF(px),
-				           btn, Qt::NoButton, Qt::NoModifier);
+			               btn, Qt::NoButton, Qt::NoModifier);
 			QApplication::sendEvent(target, &ev);
 		}
 		setFocusWidget(input_scope()->focusWidget());

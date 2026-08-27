@@ -173,7 +173,7 @@ Color quantise(const Color &c, Capabilities::ColorDepth depth) {
 
 // One already-quantised colour, in the spelling `depth` calls for.
 static void append_color(QByteArray &out, const Color &c, bool foreground,
-	                     Capabilities::ColorDepth depth) {
+                         Capabilities::ColorDepth depth) {
 	if (c.kind() == Color::Default) return;      // 39/49: the leading reset did it
 	if (depth == Capabilities::Ansi16) {
 		// 30-37 / 40-47 for the first eight and 90-97 / 100-107 for the bright
@@ -189,8 +189,8 @@ static void append_color(QByteArray &out, const Color &c, bool foreground,
 	if (c.kind() == Color::Rgb) {
 		out += foreground ? "\033[38;2;" : "\033[48;2;";
 		out += QByteArray::number(qRed(c.value())) + ';'
-			 + QByteArray::number(qGreen(c.value())) + ';'
-			 + QByteArray::number(qBlue(c.value())) + 'm';
+		     + QByteArray::number(qGreen(c.value())) + ';'
+		     + QByteArray::number(qBlue(c.value())) + 'm';
 		return;
 	}
 	out += foreground ? "\033[38;5;" : "\033[48;5;";
@@ -198,7 +198,7 @@ static void append_color(QByteArray &out, const Color &c, bool foreground,
 }
 
 QByteArray sgr_sequence(const Color &fg, const Color &bg, Attrs attrs,
-	                    Capabilities::ColorDepth depth) {
+                        Capabilities::ColorDepth depth) {
 	QByteArray out = "\033[0m";                  // known state, then build up
 	append_color(out, quantise(fg, depth), true, depth);
 	append_color(out, quantise(bg, depth), false, depth);
@@ -224,7 +224,7 @@ QByteArray sgr_sequence(const Color &fg, const Color &bg, Attrs attrs,
 // be unreadable, and counting the background fill would drown the real
 // findings -- a warning that fires on every frame is a warning nobody reads.
 int contrast_violations(const CellBuffer &frame, Capabilities::ColorDepth depth,
-	                    int min_delta) {
+                        int min_delta) {
 	int violations = 0;
 	for (int y = 0; y < frame.rows(); ++y)
 		for (int x = 0; x < frame.cols(); ++x) {
@@ -237,9 +237,9 @@ int contrast_violations(const CellBuffer &frame, Capabilities::ColorDepth depth,
 #ifndef QT_NO_DEBUG
 			if (violations <= 8)
 				qWarning("qtty: cell (%d,%d) %s is below the section 6 contrast "
-					     "minimum: luminance delta %d, wanted %d",
-					     x, y, qPrintable(c.ch),
-					     qAbs(fg.luminance(true) - bg.luminance(false)), min_delta);
+				         "minimum: luminance delta %d, wanted %d",
+				         x, y, qPrintable(c.ch),
+				         qAbs(fg.luminance(true) - bg.luminance(false)), min_delta);
 #endif
 		}
 	return violations;

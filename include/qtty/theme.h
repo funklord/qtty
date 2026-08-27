@@ -58,13 +58,13 @@ Color quantise(const Color &c, Capabilities::ColorDepth depth);
 // why this sits with the mapping rather than inside a backend -- and why it
 // can be tested without a tty.
 QByteArray sgr_sequence(const Color &fg, const Color &bg, Attrs attrs,
-	                    Capabilities::ColorDepth depth);
+                        Capabilities::ColorDepth depth);
 
 // section 6's contrast rule, applied after mapping: the number of cells in
 // `frame` whose foreground and background fail to clear `min_delta` of
 // luminance once quantised to `depth`. Debug builds log the first few.
 // Never fatal -- theme.cpp says why.
 int contrast_violations(const CellBuffer &frame, Capabilities::ColorDepth depth,
-	                    int min_delta = 48);
+                        int min_delta = 48);
 
 } // namespace Qtty

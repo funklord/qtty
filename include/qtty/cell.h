@@ -63,11 +63,11 @@ public:
 	// write over half of a wide pair clears the partner first (section 5.2 -- the
 	// classic corruption source, unit-tested).
 	void putCluster(int x, int y, const QString &cluster,
-		            Color fg = {}, Color bg = {}, Attrs attrs = {});
+	                Color fg = {}, Color bg = {}, Attrs attrs = {});
 
 	// Write a string of clusters starting at (x,y); returns cells consumed.
 	int text(int x, int y, const QString &s,
-		     Color fg = {}, Color bg = {}, Attrs attrs = {});
+	         Color fg = {}, Color bg = {}, Attrs attrs = {});
 
 	// Damage vs a previous frame, as a cell-space region.
 	QRegion diff(const CellBuffer &prev) const;

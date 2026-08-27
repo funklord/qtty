@@ -27,7 +27,7 @@ QString grid_font_problem(const QFont &font) {
 	const QFontInfo info(font);
 	if (!info.fixedPitch())
 		return QStringLiteral("'%1' resolved to '%2', which is not fixed pitch")
-			   .arg(font.family(), info.family());
+		       .arg(font.family(), info.family());
 
 	// Real-valued metrics, because the integer ones have already rounded and
 	// would report 10 for an advance of 9.6. Integrality is the property the
@@ -36,7 +36,7 @@ QString grid_font_problem(const QFont &font) {
 	const qreal height = fm.height();
 	if (!qFuzzyCompare(height, qRound(height)))
 		return QStringLiteral("line height is %1 px, which is not a whole number")
-			   .arg(height);
+		       .arg(height);
 	if (qRound(height) <= 0)
 		return QStringLiteral("line height is %1 px").arg(height);
 
@@ -48,14 +48,14 @@ QString grid_font_problem(const QFont &font) {
 	const qreal advance = fm.horizontalAdvance(QChar(u'M'));
 	if (!qFuzzyCompare(advance, qRound(advance)))
 		return QStringLiteral("advance is %1 px, which is not a whole number")
-			   .arg(advance);
+		       .arg(advance);
 	if (qRound(advance) <= 0)
 		return QStringLiteral("advance is %1 px").arg(advance);
 	for (const QChar c : probe) {
 		const qreal a = fm.horizontalAdvance(c);
 		if (!qFuzzyCompare(a, advance))
 			return QStringLiteral("'%1' advances %2 px against %3 px for 'M'")
-				   .arg(c).arg(a).arg(advance);
+			       .arg(c).arg(a).arg(advance);
 	}
 	return QString();
 }
@@ -91,11 +91,11 @@ bool GridGuard::eventFilter(QObject *obj, QEvent *event) {
 				++s_violations;
 				const QRect g = w->geometry();
 				qWarning("qtty: %s '%s' geometry %dx%d+%d+%d is off the "
-					     "%dx%d grid",
-					     w->metaObject()->className(),
-					     qPrintable(w->objectName()),
-					     g.width(), g.height(), g.x(), g.y(),
-					     GridMetrics::cw(), GridMetrics::ch());
+				         "%dx%d grid",
+				         w->metaObject()->className(),
+				         qPrintable(w->objectName()),
+				         g.width(), g.height(), g.x(), g.y(),
+				         GridMetrics::cw(), GridMetrics::ch());
 			}
 		}
 	}
@@ -123,15 +123,15 @@ static CellPaintDevice *cellTarget(QPainter *p) {
 // the view the style is handed as `w`. Mapping through `w` there silently
 // drops the header/frame offset.
 static QRect cellsOf(const QRect &r, QPainter *p, CellPaintDevice *dev,
-	                 const QWidget *w) {
+                     const QWidget *w) {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	const QWidget *paintWidget = dynamic_cast<QWidget *>(p->device());
 	const QWidget *m = paintWidget ? paintWidget : w;
 	QPoint tl = m ? m->mapTo(m->window(), r.topLeft()) : r.topLeft();
 	tl += dev->origin;
 	return QRect(qRound(tl.x() / double(cw)), qRound(tl.y() / double(ch)),
-		         qMax(1, qRound(r.width() / double(cw))),
-		         qMax(1, qRound(r.height() / double(ch))));
+	             qMax(1, qRound(r.width() / double(cw))),
+	             qMax(1, qRound(r.height() / double(ch))));
 }
 
 static void drawBox(CellBuffer &b, const QRect &c) {
@@ -193,14 +193,14 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 }
 
 QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const QSize &cs,
-	                              const QWidget *w) const {
+                                  const QWidget *w) const {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	QSize s = QProxyStyle::sizeFromContents(t, o, cs, w);
 	return QSize(((s.width() + cw - 1) / cw) * cw, ((s.height() + ch - 1) / ch) * ch);
 }
 
 void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPainter *p,
-	                          const QWidget *w) const {
+                              const QWidget *w) const {
 	if (auto *dev = cellTarget(p)) {
 		QRect c = cellsOf(opt->rect, p, dev, w);
 		switch (pe) {
@@ -260,7 +260,7 @@ static QString elide(const QString &s, int cells) {
 }
 
 void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter *p,
-	                        const QWidget *w) const {
+                            const QWidget *w) const {
 	if (auto *dev = cellTarget(p)) {
 		QRect c = cellsOf(opt->rect, p, dev, w);
 		switch (ce) {
@@ -272,9 +272,9 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// State_HasFocus never arrives in TUI mode (F4): router focus.
 				bool foc = (opt->state & State_HasFocus) || (w && w == s_focus);
 				dev->buffer().text(bc.left(), bc.top(),
-						           QLatin1Char('<') + b->text + QLatin1Char('>'),
-						           Color(), Color(),
-						           foc ? Attrs(Attr::Reverse) : Attrs());
+					               QLatin1Char('<') + b->text + QLatin1Char('>'),
+					               Color(), Color(),
+					               foc ? Attrs(Attr::Reverse) : Attrs());
 			}
 			return;
 		case CE_MenuItem:
@@ -293,15 +293,15 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				QString label = parts.value(0);
 				label.remove(QLatin1Char('&'));       // mnemonic markers
 				dev->buffer().text(c.left() + 1, c.top(), elide(label, c.width() - 2),
-						           Color(), Color(), a);
+					               Color(), Color(), a);
 				if (parts.size() > 1) {               // right-aligned shortcut
 					const QString sc = parts[1];
 					dev->buffer().text(c.right() - sc.size(), c.top(), sc,
-							           Color(), Color(), a | Attr::Dim);
+						               Color(), Color(), a | Attr::Dim);
 				}
 				if (mi->menuItemType == QStyleOptionMenuItem::SubMenu)
 					dev->buffer().text(c.right(), c.top(), QStringLiteral("▸"),
-							           Color(), Color(), a);
+						               Color(), Color(), a);
 				return;
 			}
 			break;
@@ -311,7 +311,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				QString label = mi->text;
 				label.remove(QLatin1Char('&'));
 				dev->buffer().text(c.left() + 1, c.top(), label, Color(), Color(),
-						           hot ? Attrs(Attr::Reverse) : Attrs());
+					               hot ? Attrs(Attr::Reverse) : Attrs());
 				return;
 			}
 			break;
@@ -324,7 +324,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				if (a) { Cell v; v.attrs = a;
 						 dev->buffer().fill(QRect(c.left(), c.top(), c.width(), 1), v); }
 				dev->buffer().text(c.left() + 1, c.top(), elide(vi->text, c.width() - 1),
-						           Color(), Color(), a);
+					               Color(), Color(), a);
 				return;
 			}
 			break;
@@ -333,7 +333,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 		case CE_HeaderLabel:
 			if (auto *h = qstyleoption_cast<const QStyleOptionHeader *>(opt)) {
 				dev->buffer().text(c.left(), c.top(), elide(h->text, c.width()),
-						           Color(), Color(), Attr::Bold);
+					               Color(), Color(), Attr::Bold);
 				return;
 			}
 			break;
@@ -342,8 +342,8 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				const bool sel = opt->state & State_Selected;
 				const QString label = QLatin1Char('[') + t->text + QLatin1Char(']');
 				dev->buffer().text(c.left(), c.top(), elide(label, c.width()),
-						           Color(), Color(),
-						           sel ? Attrs(Attr::Reverse) : Attrs());
+					               Color(), Color(),
+					               sel ? Attrs(Attr::Reverse) : Attrs());
 				return;
 			}
 			break;
@@ -359,7 +359,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					const QString label = pb->text.isEmpty()
 						? QStringLiteral("%1%").arg(qRound(frac * 100)) : pb->text;
 					dev->buffer().text(c.center().x() - label.size() / 2, c.top(),
-							           label, Color(), Color(), Attr::Reverse);
+						               label, Color(), Color(), Attr::Reverse);
 				}
 				return;
 			}
@@ -384,7 +384,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 }
 
 void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex *opt,
-	                               QPainter *p, const QWidget *w) const {
+                                   QPainter *p, const QWidget *w) const {
 	if (auto *dev = cellTarget(p)) {
 		QRect c = cellsOf(opt->rect, p, dev, w);
 		switch (cc) {
@@ -398,7 +398,7 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				int thumbLen = 1, thumbPos = 0;
 				if (span > 0 && track > 0) {
 					thumbLen = qBound(1, track * sb->pageStep
-							             / qMax(1, span + sb->pageStep), track);
+						                 / qMax(1, span + sb->pageStep), track);
 					thumbPos = (track - thumbLen) * (sb->sliderPosition - sb->minimum) / span;
 				}
 				for (int i = 0; i < len; ++i) {
@@ -431,7 +431,7 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 					? (len - 1) * (sl->sliderPosition - sl->minimum) / span : 0;
 				for (int i = 0; i < len; ++i) {
 					const QString g = i == pos ? QStringLiteral("●")
-							        : (vert ? QStringLiteral("│") : QStringLiteral("─"));
+						            : (vert ? QStringLiteral("│") : QStringLiteral("─"));
 					if (vert) dev->buffer().putCluster(c.left(), c.top() + i, g);
 					else      dev->buffer().putCluster(c.left() + i, c.top(), g);
 				}

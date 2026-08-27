@@ -30,7 +30,7 @@ void setup(QApplication &app) {
 	// more than a screen that degrades a little further with each column.
 	if (const QString problem = grid_font_problem(f); !problem.isEmpty()) {
 		qFatal("qtty: the grid needs a font with integral metrics: %s",
-			   qPrintable(problem));
+		       qPrintable(problem));
 	}
 
 	const QFontMetrics fm(f);
@@ -51,7 +51,7 @@ void renderOnce(QWidget &win, CellBuffer &buf, QVector<CellImage> *placements) {
 	CellPaintDevice dev(buf);
 	QPainter p(&dev);
 	win.render(&p, QPoint(), QRegion(),
-		       QWidget::RenderFlags(QWidget::DrawWindowBackground | QWidget::DrawChildren));
+	           QWidget::RenderFlags(QWidget::DrawWindowBackground | QWidget::DrawChildren));
 	p.end();
 	buf.images = dev.placements;
 	if (placements) *placements = dev.placements;

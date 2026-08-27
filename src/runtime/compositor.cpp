@@ -46,7 +46,7 @@ QPoint placed_at(const QRect &g, int cols, int rows, int cw, int ch, bool flip) 
 } // namespace
 
 Compositor::Compositor(QWidget *window, InputRouter *router)
-	: win_(window), router_(router) {}
+    : win_(window), router_(router) {}
 
 void Compositor::compose(CellBuffer &out) {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
@@ -57,7 +57,7 @@ void Compositor::compose(CellBuffer &out) {
 		dev.origin = at;
 		QPainter p(&dev);
 		w->render(&p, QPoint(), QRegion(),
-			      QWidget::RenderFlags(QWidget::DrawWindowBackground | QWidget::DrawChildren));
+		          QWidget::RenderFlags(QWidget::DrawWindowBackground | QWidget::DrawChildren));
 		p.end();
 	};
 	// Move a layer inside the terminal rectangle and report where it landed.
@@ -122,7 +122,7 @@ void Compositor::compose(CellBuffer &out) {
 			QPoint g = cursor_origin + fw->mapTo(cursor_layer, v.toRect().topLeft());
 			QPoint cell(g.x() / cw, g.y() / ch);
 			if (cell.x() >= 0 && cell.y() >= 0
-				&& cell.x() < out.cols() && cell.y() < out.rows())
+			    && cell.x() < out.cols() && cell.y() < out.rows())
 				cursor_ = cell;
 		}
 	}
@@ -132,8 +132,8 @@ std::optional<QPoint> Compositor::cursorCell() const { return cursor_; }
 
 // ------------------------------------------------------------- FrameScheduler
 FrameScheduler::FrameScheduler(ITerminalBackend *backend, Compositor *compositor,
-	                           QWidget *window)
-	: backend_(backend), comp_(compositor), win_(window) {
+                               QWidget *window)
+    : backend_(backend), comp_(compositor), win_(window) {
 	coalesce_.setSingleShot(true);
 	coalesce_.setInterval(0);
 	QObject::connect(&coalesce_, &QTimer::timeout, this, [this] { renderNow(); });
@@ -171,21 +171,21 @@ void FrameScheduler::renderNow() {
 
 	auto overlayCellRect = [&](Overlay *o) {
 		return o->cellRect().isNull()
-			? QRect(0, 0, frame.cols(), frame.rows())
-			: QRect(int(o->cellRect().x()), int(o->cellRect().y()),
-			        int(o->cellRect().width()), int(o->cellRect().height()));
+		    ? QRect(0, 0, frame.cols(), frame.rows())
+		    : QRect(int(o->cellRect().x()), int(o->cellRect().y()),
+		            int(o->cellRect().width()), int(o->cellRect().height()));
 	};
 
 	const bool softwareComposite = !overlays.isEmpty() && gfx
-		&& (gmode == Capabilities::Sixel || gmode == Capabilities::ITerm2
-		    || gmode == Capabilities::Kitty);
+	    && (gmode == Capabilities::Sixel || gmode == Capabilities::ITerm2
+	        || gmode == Capabilities::Kitty);
 
 	if (!overlays.isEmpty() && !softwareComposite && gmode != Capabilities::KittyAlpha)
 		for (Overlay *o : overlays)                       // fallback: half-blocks
 			composeHalfblocks(frame, o->image(), overlayCellRect(o));
 
 	QRegion damage = prev_ ? frame.diff(*prev_)
-		                   : QRegion(0, 0, frame.cols(), frame.rows());
+	                       : QRegion(0, 0, frame.cols(), frame.rows());
 	const bool imagesChanged = !prev_ || frame.images.size() != prev_->images.size();
 
 	if (softwareComposite) {
@@ -197,7 +197,7 @@ void FrameScheduler::renderNow() {
 		for (Overlay *o : overlays) {
 			const QRect r = overlayCellRect(o);
 			p.drawImage(QRect(r.x() * cw, r.y() * ch, r.width() * cw, r.height() * ch),
-				        o->image());
+			            o->image());
 		}
 		p.end();
 		gfx->presentPixels(px, QRegion(0, 0, frame.cols(), frame.rows()));
@@ -207,12 +207,12 @@ void FrameScheduler::renderNow() {
 			int id = 0;
 			for (Overlay *o : overlays)
 				gfx->presentOverlay(id++, o->image(),
-					                overlayCellRect(o).topLeft(),
-					                qMax(1, o->z()));
+				                    overlayCellRect(o).topLeft(),
+				                    qMax(1, o->z()));
 		}
 	}
 	backend_->setCursor(comp_->cursorCell(),
-		                comp_->cursorCell() ? CursorShape::Bar : CursorShape::Hidden);
+	                    comp_->cursorCell() ? CursorShape::Bar : CursorShape::Hidden);
 	prev_ = std::make_unique<CellBuffer>(frame);
 	sinceLast_.restart();
 }

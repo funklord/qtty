@@ -144,7 +144,7 @@ int Color::luminance(bool isForeground) const {
 			// luminance is a judgement about what terminals actually show
 			// rather than arithmetic on the table above.
 			static const int sysLum[16] = {0,32,80,96,32,48,80,192,
-							               128,96,180,220,96,150,200,255};
+						                   128,96,180,220,96,150,200,255};
 			return sysLum[index_];
 		}
 		const QRgb v = xterm256_rgb(index_);

@@ -47,7 +47,7 @@ public:
 	// screen.
 	bool operator==(const Color &o) const {
 		return kind_ == o.kind_ && index_ == o.index_ && ansi16_ == o.ansi16_
-			&& (kind_ != Rgb || rgb_ == o.rgb_);
+		    && (kind_ != Rgb || rgb_ == o.rgb_);
 	}
 	bool operator!=(const Color &o) const { return !(*this == o); }
 

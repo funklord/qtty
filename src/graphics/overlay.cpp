@@ -52,7 +52,7 @@ QVector<Overlay *> Overlay::visibleOverlays() {
 	for (Overlay *o : registry())
 		if (o->isVisible() && !o->image().isNull()) out.append(o);
 	std::sort(out.begin(), out.end(),
-		      [](Overlay *a, Overlay *b) { return a->z() < b->z(); });
+	          [](Overlay *a, Overlay *b) { return a->z() < b->z(); });
 	return out;
 }
 
@@ -66,7 +66,7 @@ void Overlay::syncGuiTwin() {
 	if (!tw) {
 		tw = new TwinWidget;
 		tw->setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint
-			               | Qt::Tool | Qt::WindowTransparentForInput);
+		                   | Qt::Tool | Qt::WindowTransparentForInput);
 		tw->setAttribute(Qt::WA_TranslucentBackground);
 		guiTwin_ = tw;
 	}
@@ -79,10 +79,10 @@ void Overlay::syncGuiTwin() {
 	if (base) {
 		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 		QRect target = rect_.isNull()
-			? base->geometry()
-			: QRect(base->geometry().topLeft()
-			            + QPoint(int(rect_.x() * cw), int(rect_.y() * ch)),
-			        QSize(int(rect_.width() * cw), int(rect_.height() * ch)));
+		    ? base->geometry()
+		    : QRect(base->geometry().topLeft()
+		                + QPoint(int(rect_.x() * cw), int(rect_.y() * ch)),
+		            QSize(int(rect_.width() * cw), int(rect_.height() * ch)));
 		tw->setGeometry(target);
 	}
 	tw->show();

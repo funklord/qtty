@@ -29,14 +29,14 @@ Capabilities::GraphicsMode detectGraphicsMode() {
 		// (doc/beerssh.md): assume the modern bar, correct via QTTY_GRAPHICS.
 		return Capabilities::KittyAlpha;
 	if (!qgetenv("KITTY_WINDOW_ID").isEmpty() || term.contains("kitty")
-		|| term.contains("ghostty"))
+	    || term.contains("ghostty"))
 		return Capabilities::KittyAlpha;          // kitty protocol, alpha over text
 	if (prog.contains("wezterm"))
 		return Capabilities::Kitty;               // kitty protocol, no alpha-over-text
 	if (prog.contains("iterm"))
 		return Capabilities::ITerm2;
 	if (term.contains("sixel") || term.contains("mlterm") || term.contains("foot")
-		|| prog.contains("mintty"))
+	    || prog.contains("mintty"))
 		return Capabilities::Sixel;
 	return Capabilities::Halfblocks;              // every colour terminal
 }
@@ -80,9 +80,9 @@ QByteArray encodeSixel(const QImage &src) {
 		if (used[c]) {
 			QRgb v = reg(c);
 			out += '#' + QByteArray::number(c) + ";2;"
-				 + QByteArray::number(qRed(v)   * 100 / 255) + ';'
-				 + QByteArray::number(qGreen(v) * 100 / 255) + ';'
-				 + QByteArray::number(qBlue(v)  * 100 / 255);
+			     + QByteArray::number(qRed(v)   * 100 / 255) + ';'
+			     + QByteArray::number(qGreen(v) * 100 / 255) + ';'
+			     + QByteArray::number(qBlue(v)  * 100 / 255);
 		}
 
 	for (int band = 0; band < h; band += 6) {
@@ -140,11 +140,11 @@ static QByteArray kittyChunks(const QByteArray &ctrl, const QByteArray &payload)
 QByteArray encodeKittyImage(quint32 id, const QImage &src, int z) {
 	const QImage img = src.convertToFormat(QImage::Format_RGBA8888);
 	QByteArray raw(reinterpret_cast<const char *>(img.constBits()),
-		           int(img.sizeInBytes()));
+	               int(img.sizeInBytes()));
 	QByteArray ctrl = "a=T,f=32,q=2"
-		",i=" + QByteArray::number(id)
-		+ ",s=" + QByteArray::number(img.width())
-		+ ",v=" + QByteArray::number(img.height());
+	    ",i=" + QByteArray::number(id)
+	    + ",s=" + QByteArray::number(img.width())
+	    + ",v=" + QByteArray::number(img.height());
 	if (z) ctrl += ",z=" + QByteArray::number(z);
 	return kittyChunks(ctrl, raw.toBase64());
 }
@@ -164,15 +164,15 @@ QByteArray encodeITerm2(const QImage &img, int wCells, int hCells) {
 	buf.open(QIODevice::WriteOnly);
 	img.save(&buf, "PNG");
 	return "\033]1337;File=inline=1;width=" + QByteArray::number(wCells)
-		 + ";height=" + QByteArray::number(hCells)
-		 + ";preserveAspectRatio=0:" + png.toBase64() + "\a";
+	     + ";height=" + QByteArray::number(hCells)
+	     + ";preserveAspectRatio=0:" + png.toBase64() + "\a";
 }
 
 // ---- rasterizer ------------------------------------------------------------
 QImage rasterize(const CellBuffer &frame, const QFont &font) {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	QImage img(frame.cols() * cw, frame.rows() * ch,
-		       QImage::Format_ARGB32_Premultiplied);
+	           QImage::Format_ARGB32_Premultiplied);
 	const QRgb defBg = qRgb(16, 20, 24), defFg = qRgb(215, 218, 220);
 	img.fill(defBg);
 	QPainter p(&img);
@@ -195,7 +195,7 @@ QImage rasterize(const CellBuffer &frame, const QFont &font) {
 				p.setPen(QColor::fromRgb(fg));
 				p.drawText(x * cw, y * ch + fm.ascent(), c.ch);
 			}
-		}
+	    }
 	p.end();
 	return img;
 }
@@ -203,8 +203,8 @@ QImage rasterize(const CellBuffer &frame, const QFont &font) {
 // ---- halfblock fallback ----------------------------------------------------
 static QRgb blend(QRgb over, int a, QRgb under) {
 	return qRgb((qRed(over)   * a + qRed(under)   * (255 - a)) / 255,
-		        (qGreen(over) * a + qGreen(under) * (255 - a)) / 255,
-		        (qBlue(over)  * a + qBlue(under)  * (255 - a)) / 255);
+	            (qGreen(over) * a + qGreen(under) * (255 - a)) / 255,
+	            (qBlue(over)  * a + qBlue(under)  * (255 - a)) / 255);
 }
 
 void composeHalfblocks(CellBuffer &frame, const QImage &src, const QRect &cellRect) {
@@ -216,10 +216,10 @@ void composeHalfblocks(CellBuffer &frame, const QImage &src, const QRect &cellRe
 			if (X < 0 || Y < 0 || X >= frame.cols() || Y >= frame.rows()) continue;
 			// two vertical samples per cell (2x vertical resolution)
 			auto sample = [&](double fy) -> QRgb {
-				int sx = qMin(int((cx + 0.5) * img.width() / cellRect.width()), img.width() - 1);
-				int sy = qMin(int((cy + fy) * img.height() / cellRect.height()), img.height() - 1);
-				return img.pixel(sx, sy);
-			};
+			    int sx = qMin(int((cx + 0.5) * img.width() / cellRect.width()), img.width() - 1);
+			    int sy = qMin(int((cy + fy) * img.height() / cellRect.height()), img.height() - 1);
+			    return img.pixel(sx, sy);
+		    };
 			const QRgb top = sample(0.25), bot = sample(0.75);
 			const int aT = qAlpha(top), aB = qAlpha(bot);
 			if (aT < 40 && aB < 40) continue;                  // transparent: untouched
@@ -230,18 +230,18 @@ void composeHalfblocks(CellBuffer &frame, const QImage &src, const QRect &cellRe
 				cell.bg = Color::rgb(QRgb(bot | 0xFF000000));
 				cell.attrs = {}; cell.width = 1;
 			} else if (aT > 200 || aB > 200) {                 // half-covered edge
-				const bool topHalf = aT > 200;
-				cell.ch = topHalf ? QStringLiteral("▀") : QStringLiteral("▄");
-				cell.fg = Color::rgb(QRgb((topHalf ? top : bot) | 0xFF000000));
-				// keep whatever bg is behind the uncovered half
-				cell.attrs = {}; cell.width = 1;
-			} else {                                           // translucent: tint bg,
-				const int a = qMax(aT, aB);                    // glyph stays readable
-				const QRgb under = cell.bg.kind() == Color::Rgb ? cell.bg.value()
-				                                                : underDefault;
-				cell.bg = Color::rgb(blend(top, a, under));
-			}
-		}
+			    const bool topHalf = aT > 200;
+			    cell.ch = topHalf ? QStringLiteral("▀") : QStringLiteral("▄");
+			    cell.fg = Color::rgb(QRgb((topHalf ? top : bot) | 0xFF000000));
+			    // keep whatever bg is behind the uncovered half
+			    cell.attrs = {}; cell.width = 1;
+		    } else {                                           // translucent: tint bg,
+			    const int a = qMax(aT, aB);                    // glyph stays readable
+			    const QRgb under = cell.bg.kind() == Color::Rgb ? cell.bg.value()
+			                                                    : underDefault;
+			    cell.bg = Color::rgb(blend(top, a, under));
+		    }
+	    }
 }
 
 } // namespace Qtty

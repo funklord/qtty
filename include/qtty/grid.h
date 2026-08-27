@@ -21,7 +21,7 @@ public:
 	static QSize cells(int c, int r) { return {c * cw(), r * ch()}; }
 	static bool isAligned(const QRect &px) {
 		return px.x() % cw() == 0 && px.y() % ch() == 0
-			&& px.width() % cw() == 0 && px.height() % ch() == 0;
+		    && px.width() % cw() == 0 && px.height() % ch() == 0;
 	}
 };
 
@@ -74,13 +74,13 @@ public:
 	GridStyle();
 	int pixelMetric(PixelMetric, const QStyleOption *, const QWidget *) const override;
 	QSize sizeFromContents(ContentsType, const QStyleOption *, const QSize &,
-		                   const QWidget *) const override;
+	                       const QWidget *) const override;
 	void drawPrimitive(PrimitiveElement, const QStyleOption *, QPainter *,
-		               const QWidget *) const override;
+	                   const QWidget *) const override;
 	void drawControl(ControlElement, const QStyleOption *, QPainter *,
-		             const QWidget *) const override;
+	                 const QWidget *) const override;
 	void drawComplexControl(ComplexControl, const QStyleOptionComplex *, QPainter *,
-		                    const QWidget *) const override;
+	                        const QWidget *) const override;
 };
 
 } // namespace Qtty

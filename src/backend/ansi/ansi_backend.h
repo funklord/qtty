@@ -15,7 +15,7 @@ class QSocketNotifier;
 namespace Qtty {
 
 class AnsiBackend : public QObject, public ITerminalBackend,
-	                public IGraphicsOutput {
+                    public IGraphicsOutput {
 public:
 	AnsiBackend();
 	~AnsiBackend() override;

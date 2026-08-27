@@ -47,7 +47,7 @@ QRect CellPaintEngine::toCells(const QRectF &r) const {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	QRectF m = xf_.mapRect(r).translated(dev_->origin);
 	return QRect(qRound(m.left() / cw), qRound(m.top() / ch),
-		         qMax(1, qRound(m.width() / cw)), qMax(1, qRound(m.height() / ch)));
+	             qMax(1, qRound(m.width() / cw)), qMax(1, qRound(m.height() / ch)));
 }
 
 // Text colour policy (section 6). The application palette is consulted for one
@@ -65,7 +65,7 @@ static Color penToFg(const QPen &pen) {
 	const QRgb c = pen.color().rgba();
 	const QPalette &pal = QGuiApplication::palette();
 	for (QPalette::ColorRole r : {QPalette::WindowText, QPalette::Text,
-			                      QPalette::ButtonText, QPalette::HighlightedText})
+		                          QPalette::ButtonText, QPalette::HighlightedText})
 		if (pal.color(r).rgba() == c) return theme().foreground(r);
 	return Color::rgb(c);
 }
@@ -115,7 +115,7 @@ void CellPaintEngine::drawPolygon(const QPointF *pts, int n, PolygonDrawMode) {
 // visible.
 static bool is_surface_role(QPalette::ColorRole role) {
 	return role == QPalette::Window || role == QPalette::Base
-		|| role == QPalette::Button || role == QPalette::AlternateBase;
+	    || role == QPalette::Button || role == QPalette::AlternateBase;
 }
 
 // Fill classification (sections 6 and 17.2). The brush colour is matched back to
@@ -138,12 +138,12 @@ void CellPaintEngine::fillRectF(const QRectF &r, bool outlineOnly) {
 	const QPalette &pal = QGuiApplication::palette();
 	QPalette::ColorRole matched = QPalette::NoRole;
 	for (QPalette::ColorRole role : {QPalette::Window, QPalette::Base,
-			                         QPalette::Button, QPalette::AlternateBase,
-			                         QPalette::Highlight, QPalette::ToolTipBase})
+		                             QPalette::Button, QPalette::AlternateBase,
+		                             QPalette::Highlight, QPalette::ToolTipBase})
 		if (pal.color(role).rgba() == col) { matched = role; break; }
 
 	Color bg = matched == QPalette::NoRole ? Color::rgb(col)
-		                                   : theme().background(matched);
+	                                       : theme().background(matched);
 	if (bg.kind() == Color::Default) {
 		if (is_surface_role(matched)) {
 			if (c.width() > 1 && c.height() > 1) dev_->buffer().fill(c, Cell{});

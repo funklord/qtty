@@ -68,7 +68,7 @@ Capabilities AnsiBackend::capabilities() const {
 
 static QByteArray moveTo(QPoint cell) {
 	return "\033[" + QByteArray::number(cell.y() + 1) + ';'
-		 + QByteArray::number(cell.x() + 1) + 'H';
+	     + QByteArray::number(cell.x() + 1) + 'H';
 }
 
 QSize AnsiBackend::size() const { return cells_; }
@@ -104,7 +104,7 @@ void AnsiBackend::suspend() {
 struct Sgr { Color fg, bg; Attrs attrs; bool primed = false; };
 
 static void emitSgr(QByteArray &out, const Cell &c, Sgr &cur,
-	                Capabilities::ColorDepth depth) {
+                    Capabilities::ColorDepth depth) {
 	if (cur.primed && c.fg == cur.fg && c.bg == cur.bg && c.attrs == cur.attrs) return;
 	out += sgr_sequence(c.fg, c.bg, c.attrs, depth);   // section 6: theme.cpp owns
 	cur = {c.fg, c.bg, c.attrs, true};                 // the three depths
@@ -162,7 +162,7 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 			for (const CellImage &ci : frame.images) {
 				out += moveTo(ci.cellRect.topLeft());
 				out += encodeITerm2(ci.pixmap.toImage(),
-					                ci.cellRect.width(), ci.cellRect.height());
+				                    ci.cellRect.width(), ci.cellRect.height());
 			}
 		}
 	}
@@ -203,7 +203,7 @@ void AnsiBackend::presentOverlay(int id, const QImage &rgba, QPoint cell, int z)
 void AnsiBackend::clearOverlay(int id) {
 	if (mode_ != Capabilities::KittyAlpha) return;
 	QByteArray out = "\033_Ga=d,d=i,q=2,i="
-		           + QByteArray::number(0xFFFFE00u + quint32(id)) + ";\033\\";
+	               + QByteArray::number(0xFFFFE00u + quint32(id)) + ";\033\\";
 	fwrite(out.constData(), 1, out.size(), stdout);
 	fflush(stdout);
 }

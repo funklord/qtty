@@ -42,6 +42,6 @@ bool isTuiActive();
 // Render one frame of `win` into `buf` (and collect section 5.7 placements when
 // `placements` is non-null). Used by tests, tools, and custom frame loops.
 void renderOnce(QWidget &win, CellBuffer &buf,
-	            QVector<CellImage> *placements = nullptr);
+                QVector<CellImage> *placements = nullptr);
 
 } // namespace Qtty

@@ -9,18 +9,18 @@ static bool isWideCodepoint(char32_t u) {
 	// East Asian Wide/Fullwidth + common emoji blocks. Deliberately compact;
 	// refined against terminals empirically (section 5.2).
 	return (u >= 0x1100  && u <= 0x115F)   // Hangul Jamo
-		|| (u >= 0x2E80  && u <= 0x303E)   // CJK Radicals..CJK Symbols
-		|| (u >= 0x3041  && u <= 0x33FF)   // Kana..CJK Compat
-		|| (u >= 0x3400  && u <= 0x4DBF)
-		|| (u >= 0x4E00  && u <= 0x9FFF)   // CJK Unified
-		|| (u >= 0xA000  && u <= 0xA4CF)   // Yi
-		|| (u >= 0xAC00  && u <= 0xD7A3)   // Hangul Syllables
-		|| (u >= 0xF900  && u <= 0xFAFF)
-		|| (u >= 0xFE30  && u <= 0xFE4F)
-		|| (u >= 0xFF00  && u <= 0xFF60)   // Fullwidth forms
-		|| (u >= 0xFFE0  && u <= 0xFFE6)
-		|| (u >= 0x1F300 && u <= 0x1FAFF)  // emoji blocks
-		|| (u >= 0x20000 && u <= 0x3FFFD); // CJK Ext B+
+	    || (u >= 0x2E80  && u <= 0x303E)   // CJK Radicals..CJK Symbols
+	    || (u >= 0x3041  && u <= 0x33FF)   // Kana..CJK Compat
+	    || (u >= 0x3400  && u <= 0x4DBF)
+	    || (u >= 0x4E00  && u <= 0x9FFF)   // CJK Unified
+	    || (u >= 0xA000  && u <= 0xA4CF)   // Yi
+	    || (u >= 0xAC00  && u <= 0xD7A3)   // Hangul Syllables
+	    || (u >= 0xF900  && u <= 0xFAFF)
+	    || (u >= 0xFE30  && u <= 0xFE4F)
+	    || (u >= 0xFF00  && u <= 0xFF60)   // Fullwidth forms
+	    || (u >= 0xFFE0  && u <= 0xFFE6)
+	    || (u >= 0x1F300 && u <= 0x1FAFF)  // emoji blocks
+	    || (u >= 0x20000 && u <= 0x3FFFD); // CJK Ext B+
 }
 
 int clusterWidth(QStringView cluster) {
@@ -66,7 +66,7 @@ void CellBuffer::clearWidePartner(int x, int y) {
 }
 
 void CellBuffer::putCluster(int x, int y, const QString &cluster,
-	                        Color fg, Color bg, Attrs attrs) {
+                            Color fg, Color bg, Attrs attrs) {
 	if (x < 0 || y < 0 || x >= c_ || y >= r_) return;
 	const int w = clusterWidth(cluster);
 	clearWidePartner(x, y);
