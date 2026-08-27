@@ -37,7 +37,7 @@ four times over. What is missing in all four is the layer above it --
 widget hierarchy, layout, focus, event propagation -- which is exactly
 what Qt already implements. design.md §3 records the alternative that was
 weighed and rejected as the primary path (adopting Tui Widgets or
-terminalgui), and §13.2 keeps it as the documented fallback.
+terminalgui), and design.md §13.2 keeps it as the documented fallback.
 
 ### 0.1 Identity
 
@@ -90,7 +90,7 @@ trademark fair-use shape.
 
 ## 1. Architecture in brief
 
-design.md §4 carries the diagram; §5.1 to §5.7 carry the layer
+design.md §4 carries the diagram; §5.1 to design.md §5.7 carry the layer
 specifications. The summary:
 
 - **L1 -- terminal backend** (design.md §5.1). Owns the tty and nothing
@@ -276,7 +276,7 @@ Open:
   other, which makes this the most urgent of the three.
 - **OQ-4.** Do any of the four products need the TUI where QtWidgets
   cannot be linked (embedded, serial console)? If yes, that product goes
-  to the §13.2 fallback permanently and Phase 4's scope changes.
+  to the design.md §13.2 fallback permanently and Phase 4's scope changes.
 - **OQ-5.** Accessibility: is a `QAccessible` bridge worth it, given that
   the terminal already exposes text to screen readers when the cursor is
   placed correctly (design.md §5.5)?
@@ -342,7 +342,7 @@ insurance rather than a plan.
 Four spikes, roughly 700 lines, about three working days. They are kept
 in `spike/` **exactly as run**, which is what makes them evidence for the
 numbers design.md cites; the style gate exempts the directory for that
-reason. design.md §16, §16.1, §16.2, §16.3 and §16.4 are the record.
+reason. design.md §16, §16.1, §16.2, §16.3 and design.md §16.4 are the record.
 
 **Environment: Qt 6.4.2, `-platform offscreen`, a Linux container with no
 X11, DejaVu Sans Mono at 16 px -- measured advance 10 px, height 19 px,
@@ -489,7 +489,7 @@ the tracking filter only noticed `Qt::Popup` and `Qt::ToolTip`, **a modal
 it disappeared while still holding input, which is the worst of both.
 
 `compose()` now walks `QApplication::topLevelWidgets()` as design.md
-§5.4 step 3 specifies, then stacks modals and popups explicitly on top,
+design.md §5.4 step 3 specifies, then stacks modals and popups explicitly on top,
 which is §8.1's mitigation and is deliberately not a reading of window
 flags -- there is no window manager here, so there is no z-order to read.
 The cursor follows the layer that owns input, so a modal's text field
@@ -553,7 +553,7 @@ the rest snapped. Missing:
   as an assertion in every test".
 - `GridMetrics` has `cw`, `ch`, `set`, `cells` and `isAligned`, but not
   `toCells()` or `snapUp()`.
-- The proxy base is hardcoded to Fusion, so §10.1's promise that an
+- The proxy base is hardcoded to Fusion, so design.md §10.1's promise that an
   application's custom style *becomes* `GridStyle`'s proxy base is not
   honoured.
 
@@ -669,7 +669,7 @@ Missing:
   of view drew past the terminal, and one scrolled off the top was
   positioned at a **negative row**. Only the mosaic tier was safe, and
   only because it composites into the `CellBuffer`, which clips by
-  construction -- which is why §16.3 saw it as a kitty problem.
+  construction -- which is why design.md §16.3 saw it as a kitty problem.
 
   `crop_placement()` answers all three: what of a placement is on screen,
   in cells, and the matching rectangle of the image in pixels.
@@ -775,7 +775,7 @@ whether anything ever calls it.
   backend is the widget tree.
 
   Deciding §8.2 -- whether L6 becomes the `Application` class design.md
-  §5.6 specifies -- is still open. This does the smaller thing the
+  design.md §5.6 specifies -- is still open. This does the smaller thing the
   blocker needed without pre-empting that answer.
 
 **The font check is a hard startup error now.** design.md §5.3 asks for
@@ -800,7 +800,7 @@ which is design.md §16's figure.
   so a suite written later is covered by having been written rather than
   by remembering to opt in. It reported **83 misaligned geometries across
   five suites** on its first run, and sorting those out is where the
-  `sizeFromContents` fix above came from -- see §7.7.
+  `sizeFromContents` fix above came from -- see §7.8.
 - ~~`ICellPainted`.~~ **Done**, and with it risk R5's stated mitigation and
   F5's suggested remedy: a widget that knows how to draw itself in cells
   says so, and its ordinary painting is skipped rather than drawn first
@@ -820,7 +820,7 @@ which is design.md §16's figure.
   Replacing a widget's painting means consuming its paint event, which
   is the only hook Qt offers -- so the dispatch is a filter, and
   `CellPaintDevice::active()` is what tells it whether a cell render is
-  running at all. That is §10.1's inertness rule made mechanical: in a
+  running at all. That is design.md §10.1's inertness rule made mechanical: in a
   GUI build there is no active cell device, the filter stands down, and
   the widget paints exactly as it would with qtty absent.
 
@@ -840,7 +840,7 @@ which is design.md §16's figure.
   checks a font the *machine* happens to provide. design.md §5.3 wants
   the font bundled and installed with `QFontDatabase::addApplicationFont`
   so the grid does not depend on what is installed -- which is also what
-  would make the snapshot fixtures reproducible (§7.6).
+  would make the snapshot fixtures reproducible (§7.9).
 - `TermpaintBackend`, and the four legacy adapters.
 - Qt 5.15 support.
 - ~~The design.md §11 benchmark.~~ **Done**, and the budget holds with
@@ -873,7 +873,44 @@ which is design.md §16's figure.
   and TUI builds must reach the same observable state), and the
   render-twice-diff-must-be-empty invariant.
 
-### 7.6 Latent bugs, found by working around them
+### 7.6 One question found three bugs: which hard case does nothing test?
+
+Three faults in one session, none related in the code and all identical
+in shape. Each rule was correct for the easy case, nothing had ever shown
+it the hard one, and the suite was green throughout.
+
+- **`elide` counted QChars where it meant clusters.** Correct on ASCII,
+  where the two are the same. A five-character CJK string elided to three
+  cells returned a lone ellipsis using one; at a budget of one it
+  returned empty.
+- **Key input was decoded as Latin-1, one byte at a time.** Correct on
+  ASCII, which is exactly the range where Latin-1 and UTF-8 agree. Every
+  other character arrived as two, three or four wrong ones.
+- **A width-2 cluster in the last column was written as width 2 with no
+  continuation cell**, so the row rendered one column wider than the
+  buffer. Every wide-cluster check in the suite had room to spare.
+  `text()` had the matching fault, reporting 6 cells written into a
+  4-column row.
+
+What makes this a lens rather than three anecdotes is that the second and
+third were found by *asking the question*, not by meeting a symptom. The
+first was found by accident -- two copies of one rule disagreeing -- and
+the question is what it generalised to.
+
+**The failure mode they share is a test suite selected to confirm correct
+behaviour.** Every check was written by someone who knew what the code
+should do and picked an input that showed it doing so. None was chosen
+because a plausible wrong implementation would pass it. That is the same
+principle the graphics round-trips measured from the other end: four of
+five deliberately broken encoders left every pre-existing structural
+check passing.
+
+Where to point it next, in this tree: anything that takes a QString and
+counts, anything that takes bytes and decodes, and anything with an edge
+the fixtures never reach. `to_snapshot()`'s planes against a wide cluster
+and `InputRouter::on_paste` are both unexamined.
+
+### 7.7 Latent bugs, found by working around them
 
 None of these was introduced by the work in this section. Each was found
 by editing or measuring the code around it, which is the only reason they
@@ -972,7 +1009,7 @@ resized after being flipped does not re-derive the flip from the point it
 was opened at. It stays inside the terminal either way, so the symptom is
 a menu that is on the correct side for its old size.
 
-### 7.7 What the guard found, and what an application still has to do
+### 7.8 What the guard found, and what an application still has to do
 
 Installing `GridGuard` in the runner reported 83 misaligned geometries
 across five suites. Sorting them turned out to be the most productive
@@ -1050,7 +1087,7 @@ The two candidate answers, neither taken:
 Which of the two is right is a design decision and is recorded here
 rather than taken.
 
-### 7.8 The fixtures are machine-dependent
+### 7.9 The fixtures are machine-dependent
 
 Worth recording on its own, because it will bite whoever changes machine
 first. `Qtty::setup()` derives the cell size from the **locally installed**
@@ -1433,7 +1470,7 @@ not touch.
 
 Dependency-ordered:
 
-1. **Decide the layout-slack question (§7.7).** Either qtty snaps child
+1. **Decide the layout-slack question (§7.8).** Either qtty snaps child
    geometry after layout activation -- design.md §7's unbuilt
    `CompactionPass`, which would make its Tier 1 promise true -- or §7 is
    narrowed to say what an application must do instead. It is first
@@ -1443,7 +1480,7 @@ Dependency-ordered:
    any snapping is whether closing a layout's gap can overlap two
    widgets; one safe case is not a proof.
 2. ~~The attribute plane in `CellBuffer::toText()`.~~ **Done** -- see
-   §7.1. What it immediately found is in §7.6: a gradient fill landing as
+   §7.1. What it immediately found is in §7.7: a gradient fill landing as
    a literal RGB background behind the whole tab pane.
 3. ~~Decode or round-trip coverage for the graphics encoders.~~ **Done.**
    Each encoder is decoded independently and compared against the source
@@ -1513,4 +1550,4 @@ that self-size; the `QTextEdit` interaction layer; submenus, mnemonics
 and an editable combo box; `PixelSurface`; the
 §11 benchmark, without which the 0.16 ms and 3.8 ms figures are spike
 measurements nothing holds; and the bundled font, which is what would
-make the fixtures reproducible (§7.8).
+make the fixtures reproducible (§7.9).

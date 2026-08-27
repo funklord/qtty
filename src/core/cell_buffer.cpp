@@ -72,6 +72,25 @@ void CellBuffer::put_cluster(int x, int y, const QString &cluster,
                             Color fg, Color bg, Attrs attrs) {
 	if (x < 0 || y < 0 || x >= c_ || y >= r_) return;
 	const int w = cluster_width(cluster);
+	// A width-2 cluster is a lead plus a continuation cell (section 5.2), and
+	// in the last column there is no continuation to have. Writing it anyway
+	// produced a cell claiming two columns in a one-column space: to_text()
+	// emitted the glyph, the row rendered one column wider than the buffer,
+	// and a terminal either wrapped it onto the next line or truncated it.
+	//
+	// A blank is what fits. Every terminal that lays out wide text does the
+	// same, and it keeps the invariant the whole cell model rests on -- a
+	// width-2 cell always has its partner -- instead of breaking it at exactly
+	// the edge nothing had tested.
+	if (w == 2 && x + 1 >= c_) {
+		clear_wide_partner(x, y);
+		Cell &edge = d_[y * c_ + x];
+		edge = Cell{};
+		edge.fg = fg;
+		edge.bg = bg.kind() == Color::Default ? edge.bg : bg;
+		edge.attrs = attrs;
+		return;
+	}
 	clear_wide_partner(x, y);
 	if (w == 2) clear_wide_partner(x + 1, y);
 	Cell &c = d_[y * c_ + x];
@@ -89,8 +108,15 @@ void CellBuffer::put_cluster(int x, int y, const QString &cluster,
 int CellBuffer::text(int x, int y, const QString &s, Color fg, Color bg, Attrs attrs) {
 	int consumed = 0;
 	for (const QString &cl : to_clusters(s)) {
+		const int w = cluster_width(cl);
+		// Stop at the edge rather than walking past it. This used to add the
+		// width of every cluster it was given, including ones put_cluster then
+		// refused for being out of bounds, so it reported 6 for a 4-column
+		// buffer -- and a caller advancing a cursor by the return value
+		// carried on off the end of the row.
+		if (x + consumed + w > c_) break;
 		put_cluster(x + consumed, y, cl, fg, bg, attrs);
-		consumed += cluster_width(cl);
+		consumed += w;
 	}
 	return consumed;
 }

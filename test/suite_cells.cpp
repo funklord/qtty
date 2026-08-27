@@ -87,5 +87,47 @@ int suite_cells() {
 		      && !cut.at(0).isLowSurrogate(),
 		      "eliding never leaves half a surrogate pair");
 	}
+
+	// A width-2 cluster in the LAST column has no continuation cell to take,
+	// and section 5.2's invariant is that it always has one. Nothing had ever
+	// asked: every wide-cluster check in this suite had room to spare, which
+	// is the same gap that hid the Latin-1 input decode and the elide fault.
+	{
+		const QString wide = QString::fromUtf8("\u6f22");
+		CellBuffer b(4, 1);
+		b.put_cluster(3, 0, wide);
+		CHECK(b.at(3, 0).width == 1,
+		      "a wide cluster with no room is not written as width 2");
+		CHECK(b.to_text().trimmed().isEmpty(),
+		      "it renders as a blank, not a glyph overflowing the row");
+
+		// The row must never render wider than the buffer. That is the fault
+		// the blank prevents: a terminal given one column too many wraps it
+		// onto the next line or truncates it, and either way the frame after
+		// it is misaligned.
+		CellBuffer wide_row(4, 1);
+		wide_row.text(0, 0, wide + wide);
+		int rendered = 0;
+		for (int x = 0; x < 4; ++x)
+			rendered += wide_row.at(x, 0).width;
+		CHECK(rendered <= 4, "a full row of wide clusters occupies exactly the row");
+	}
+
+	// text() reports what it wrote, not what it was handed. It used to add the
+	// width of every cluster including ones put_cluster refused as out of
+	// bounds, so it answered 6 for a 4-column buffer -- and a caller advancing
+	// a cursor by that walked off the end of the row.
+	{
+		const QString wide = QString::fromUtf8("\u6f22");
+		CellBuffer b(4, 1);
+		CHECK(b.text(0, 0, wide + wide + wide) == 4,
+		      "text() stops at the edge and reports the cells it filled");
+		CellBuffer c(4, 1);
+		CHECK(c.text(0, 0, QStringLiteral("abcdef")) == 4,
+		      "and the same for narrow clusters");
+		CellBuffer d(8, 1);
+		CHECK(d.text(0, 0, QStringLiteral("ab") + wide) == 4,
+		      "a mixed run still reports its true width");
+	}
 	return fails;
 }
