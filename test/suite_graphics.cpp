@@ -9,6 +9,231 @@ static int fails = 0;
 #define CHECK(c, m) do { if (c) printf("PASS: %s\n", m); \
                          else { printf("FAIL: %s\n", m); ++fails; } } while (0)
 
+// ---- round trip: decode what the encoders emit, independently --------------
+//
+// project.md section 7.3 records the gap these close. The encoder checks in
+// the suite below assert byte structure -- a header is present, a terminator
+// is present, a size appears -- and byte structure cannot tell a well-formed
+// stream from a correct one. An encoder emitting a syntactically perfect
+// stream of the wrong pixels passes every one of them. So the bytes are
+// parsed back to pixels here, by code that shares nothing with
+// src/graphics/graphics.cpp, and the pixels are compared against the source.
+//
+// Every check below was confirmed able to fail, by breaking encodeSixel,
+// encodeKittyImage and encodeITerm2 one at a time in a scratch copy of the
+// tree and watching the round trip go red: a dropped sixel band, a sixel run
+// length one too long, a green/blue swap in the sixel colour registers, a
+// red/blue swap in the kitty RGBA payload, and an iTerm2 PNG shifted one
+// column left. Four of the five leave every structural check in this file
+// passing, which is the whole argument for the round trip existing.
+
+// The fixture's six colours are all exact xterm-256 cube entries: every
+// channel is one of the cube levels 0, 95, 135, 175, 215, 255, so Color's
+// CIELAB match picks each of them back out of the palette unchanged and the
+// sixel palette step costs nothing. That is what lets the sixel tolerance be
+// 3 rather than 47 -- see the note beside it.
+static const QRgb fixture_red     = qRgb(255,   0,   0);
+static const QRgb fixture_blue    = qRgb(  0,   0, 255);
+static const QRgb fixture_amber   = qRgb(255, 215,  95);
+static const QRgb fixture_green   = qRgb(  0, 175,   0);
+static const QRgb fixture_steel   = qRgb(135, 175, 215);
+static const QRgb fixture_magenta = qRgb(215,   0, 215);
+
+// A solid block round-trips through almost any encoder bug, so every part of
+// this 13 x 14 image is doing a job:
+//
+//   - 13 x 14 is neither square nor a multiple of 6. A row/column
+//     transposition therefore changes the raster dimensions, and the last
+//     sixel band is a partial one -- rows 12 and 13 of a six-row band.
+//   - Rows 0 to 4 are red for columns 0 to 5 and blue for 6 to 12: a vertical
+//     edge inside a band, with runs of six and seven identical columns either
+//     side. encodeSixel takes its "!" run-length path above three, so both
+//     sides of the edge go through the RLE encoder.
+//   - Row 5 is amber and row 6 is green. Those are the last row of band 0 and
+//     the first row of band 1, so an off-by-one in the band arithmetic swaps
+//     them, duplicates one or drops one.
+//   - Rows 7 to 11, columns 0 to 6 are fully transparent: sixel's P2=1
+//     untouched path, and a real alpha channel for kitty and for PNG.
+//   - Rows 7 to 11, columns 7 to 12 are steel blue (135, 175, 215), whose
+//     three channels are three different cube levels. A red/green or
+//     red/blue channel swap moves it 40 or 80 units and cannot hide inside
+//     the tolerance.
+//   - Rows 12 and 13 are magenta with one green pixel at (2, 12). Its
+//     transpose (12, 2) sits inside the blue block, so a decoder or an
+//     encoder reading x for y puts blue where green belongs.
+static QImage round_trip_fixture() {
+	QImage img(13, 14, QImage::Format_ARGB32);
+	img.fill(Qt::transparent);
+	for (int y = 0; y <= 4; ++y)
+		for (int x = 0; x < img.width(); ++x)
+			img.setPixel(x, y, x < 6 ? fixture_red : fixture_blue);
+	for (int x = 0; x < img.width(); ++x) {
+		img.setPixel(x, 5, fixture_amber);
+		img.setPixel(x, 6, fixture_green);
+	}
+	for (int y = 7; y <= 11; ++y)
+		for (int x = 7; x < img.width(); ++x)
+			img.setPixel(x, y, fixture_steel);
+	for (int y = 12; y <= 13; ++y)
+		for (int x = 0; x < img.width(); ++x)
+			img.setPixel(x, y, fixture_magenta);
+	img.setPixel(2, 12, fixture_green);
+	return img;
+}
+
+// A pixel buffer reconstructed from a sixel stream. A pixel no band ever
+// painted stays 0 -- alpha zero -- because that is what P2=1 means: untouched
+// is transparent, not black.
+struct SixelImage {
+	int w = 0, h = 0;
+	bool ok = false;                              // ST reached, stream understood
+	QVector<QRgb> px;
+	QRgb at(int x, int y) const { return px[y * w + x]; }
+};
+
+// Parse the subset of DEC sixel that encodeSixel emits: the DCS header, the
+// raster attributes, "#c;2;r;g;b" register definitions and "#c" selections,
+// "!n" run lengths, "$" carriage return within a band, "-" band advance, ST.
+// Anything else means the stream is not what this encoder is documented to
+// produce, and the parse is refused rather than half-decoded.
+static SixelImage decode_sixel(const QByteArray &in) {
+	SixelImage img;
+	int p = 0;
+	const auto literal = [&](const char *s) {
+		const QByteArray want(s);
+		if (in.mid(p, want.size()) != want) return false;
+		p += want.size();
+		return true;
+	};
+	const auto number = [&] {
+		int v = -1;
+		while (p < in.size() && in[p] >= '0' && in[p] <= '9')
+			v = (v < 0 ? 0 : v) * 10 + (in[p++] - '0');
+		return v;
+	};
+	const auto semicolon = [&] {
+		if (p < in.size() && in[p] == ';') { ++p; return true; }
+		return false;
+	};
+
+	if (!literal("\033P0;1;0q") || !literal("\""))  return img;
+	if (number() < 0 || !semicolon())               return img;   // pan
+	if (number() < 0 || !semicolon())               return img;   // pad
+	const int w = number();
+	if (!semicolon())                               return img;
+	const int h = number();
+	if (w <= 0 || h <= 0)                           return img;
+	img.w = w;
+	img.h = h;
+	img.px.fill(0, w * h);
+
+	QVector<QRgb> reg(256, 0);
+	int color = 0, x = 0, band = 0;
+	const auto put = [&](char c, int count) {
+		const int bits = c - 63;                  // '?' is six zero bits
+		for (int i = 0; i < count; ++i, ++x) {
+			if (x >= w) continue;                 // past the raster: discard
+			for (int dy = 0; dy < 6; ++dy)
+				if ((bits & (1 << dy)) && band + dy < h)
+					img.px[(band + dy) * w + x] = reg[color];
+		}
+	};
+
+	while (p < in.size()) {
+		const char c = in[p];
+		if (c == '\033') { img.ok = literal("\033\\"); break; }
+		if (c == '#') {
+			++p;
+			const int n = number();
+			if (n < 0 || n > 255) return img;
+			if (p < in.size() && in[p] == ';') {  // a definition, not a select
+				++p;
+				const int space = number();       // 2 = RGB, and in percent
+				if (!semicolon()) return img;
+				const int r = number();
+				if (!semicolon()) return img;
+				const int g = number();
+				if (!semicolon()) return img;
+				const int b = number();
+				if (space != 2 || r < 0 || g < 0 || b < 0) return img;
+				reg[n] = qRgb(r * 255 / 100, g * 255 / 100, b * 255 / 100);
+			}
+			color = n;                            // selecting does not move x
+			continue;
+		}
+		if (c == '$') { x = 0; ++p; continue; }           // return within band
+		if (c == '-') { x = 0; band += 6; ++p; continue; } // next band
+		if (c == '!') {
+			++p;
+			const int n = number();
+			if (n <= 0 || p >= in.size() || in[p] < '?' || in[p] > '~') return img;
+			put(in[p++], n);
+			continue;
+		}
+		if (c >= '?' && c <= '~') { put(c, 1); ++p; continue; }
+		return img;
+	}
+	return img;
+}
+
+// The payloads of a kitty APC chain, concatenated in the order sent.
+struct KittyStream {
+	QByteArray ctrl;                              // the first chunk's keys
+	QByteArray payload;                           // every chunk's payload
+	int chunks = 0;
+	bool ok = false;
+};
+
+// Walk the chain. A continuation chunk carries nothing but its m= key, so
+// anything else in one means the chain was not built the way the protocol
+// says, and the stream is refused rather than silently half-decoded.
+static KittyStream split_kitty(const QByteArray &in) {
+	KittyStream s;
+	int p = 0;
+	while (p < in.size()) {
+		if (in.mid(p, 3) != "\033_G") return s;
+		p += 3;
+		const int semi = in.indexOf(';', p);
+		const int st = in.indexOf("\033\\", p);
+		if (semi < 0 || st < 0 || semi > st) return s;
+		const QByteArray ctrl = in.mid(p, semi - p);
+		if (s.chunks == 0) s.ctrl = ctrl;
+		else if (ctrl != "m=1" && ctrl != "m=0") return s;
+		s.payload += in.mid(semi + 1, st - semi - 1);
+		++s.chunks;
+		p = st + 2;
+	}
+	s.ok = s.chunks > 0;
+	return s;
+}
+
+// One comma-separated k=v out of a kitty control block, or -1.
+static int kitty_key(const QByteArray &ctrl, const char *key) {
+	const QList<QByteArray> keys = ctrl.split(',');
+	for (const QByteArray &kv : keys) {
+		const int eq = kv.indexOf('=');
+		if (eq > 0 && kv.left(eq) == key) return kv.mid(eq + 1).toInt();
+	}
+	return -1;
+}
+
+// The strong comparison, with no tolerance at all: kitty carries raw RGBA and
+// iTerm2 carries PNG, and both are lossless. Returns -1 for a size
+// disagreement, otherwise the number of pixels that differ. A pixel that is
+// fully transparent on both sides has no colour to disagree about, since PNG
+// is free to store anything under an alpha of zero.
+static int exact_mismatches(const QImage &want, const QImage &got) {
+	if (want.size() != got.size()) return -1;
+	int wrong = 0;
+	for (int y = 0; y < want.height(); ++y)
+		for (int x = 0; x < want.width(); ++x) {
+			const QRgb a = want.pixel(x, y), b = got.pixel(x, y);
+			if (qAlpha(a) == 0 && qAlpha(b) == 0) continue;
+			if (a != b) ++wrong;
+		}
+	return wrong;
+}
+
 int suite_graphics() {
 	fails = 0;
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
@@ -88,6 +313,115 @@ int suite_graphics() {
 		CHECK(it.startsWith("\033]1337;File=inline=1"), "iTerm2 OSC header");
 		CHECK(it.contains("width=4") && it.contains("height=2"), "iTerm2 cell sizing");
 		CHECK(it.endsWith("\a"), "iTerm2 BEL terminator");
+	}
+
+	// ---- round trip: sixel ----
+	//
+	// The tolerance is 3 per channel, and it is a measurement rather than a
+	// fudge. The fixture's colours are exact xterm-256 cube entries, so the
+	// palette step is lossless for them and the only lossy step left is the
+	// register definition, which DEC specifies in percent. encodeSixel writes
+	// v * 100 / 255 and this decoder reads back v * 255 / 100, both
+	// truncating; over the six levels the fixture uses -- 0, 95, 135, 175,
+	// 215, 255 -- the residuals are 0, 1, 3, 2, 1, 0. So 3 is the worst the
+	// round trip can honestly produce and anything above it is a real
+	// disagreement. A colour off the cube would need about 47, half the
+	// widest gap between cube levels, and a tolerance that wide hides a
+	// swapped channel -- which is why the fixture does not use one.
+	{
+		const QImage src = round_trip_fixture();
+		const SixelImage dec = decode_sixel(encodeSixel(src));
+		const bool geometry = dec.ok && dec.w == src.width()
+		                   && dec.h == src.height();
+		CHECK(geometry, "sixel round-trip: stream parses, raster attributes say 13x14");
+
+		int untouched_wrong = 0, painted_wrong = 0, worst = 0;
+		if (geometry)
+			for (int y = 0; y < src.height(); ++y)
+				for (int x = 0; x < src.width(); ++x) {
+					const QRgb want = src.pixel(x, y), got = dec.at(x, y);
+					const bool opaque = qAlpha(want) >= 128;
+					if (!opaque && qAlpha(got) != 0) ++untouched_wrong;
+					else if (opaque && qAlpha(got) == 0) ++painted_wrong;
+					else if (opaque)
+						worst = qMax(worst, qMax(qAbs(qRed(want)   - qRed(got)),
+						             qMax(qAbs(qGreen(want) - qGreen(got)),
+						                  qAbs(qBlue(want)  - qBlue(got)))));
+				}
+		CHECK(geometry && untouched_wrong == 0,
+		      "sixel round-trip: transparent source pixels stay unpainted (P2=1)");
+		CHECK(geometry && painted_wrong == 0 && worst <= 3,
+		      "sixel round-trip: every opaque pixel within 3/255 of the source");
+
+		// Named on its own because an off-by-one in the band arithmetic is
+		// the sixel bug, and "row 5 is amber, row 6 is green" says which end
+		// moved where a whole-image count only says a pixel is wrong.
+		const auto within = [](QRgb got, QRgb want) {
+			return qAlpha(got) != 0 && qAbs(qRed(got)   - qRed(want))   <= 3
+			                        && qAbs(qGreen(got) - qGreen(want)) <= 3
+			                        && qAbs(qBlue(got)  - qBlue(want))  <= 3;
+		};
+		CHECK(geometry && within(dec.at(6, 5), fixture_amber)
+		      && within(dec.at(6, 6), fixture_green),
+		      "sixel round-trip: band-boundary stripes stay on rows 5 and 6");
+	}
+
+	// ---- round trip: kitty ----
+	{
+		const QImage src = round_trip_fixture();
+		const KittyStream s = split_kitty(encodeKittyImage(3, src));
+		const auto b64 = QByteArray::fromBase64Encoding(s.payload,
+		        QByteArray::AbortOnBase64DecodingErrors);
+		const int sw = kitty_key(s.ctrl, "s"), sv = kitty_key(s.ctrl, "v");
+		const bool raw = s.ok && kitty_key(s.ctrl, "f") == 32
+		    && b64.decodingStatus == QByteArray::Base64DecodingStatus::Ok
+		    && sw == src.width() && sv == src.height()
+		    && b64.decoded.size() == sw * sv * 4;
+		CHECK(raw, "kitty round-trip: f=32 payload is s*v*4 base64 RGBA bytes");
+		CHECK(raw && exact_mismatches(src,
+		          QImage(reinterpret_cast<const uchar *>(b64.decoded.constData()),
+		                 sw, sv, QImage::Format_RGBA8888)) == 0,
+		      "kitty round-trip: every pixel exact, alpha included");
+
+		// The same over a payload big enough to be chunked: 48 x 40 of RGBA
+		// is 10240 base64 bytes, three chunks of 4096. Reassembling them out
+		// of order, or losing one, leaves a stream that still carries a
+		// header, a terminator and the right m= keys.
+		QImage wide(48, 40, QImage::Format_ARGB32);
+		for (int y = 0; y < wide.height(); ++y)
+			for (int x = 0; x < wide.width(); ++x)
+				wide.setPixel(x, y, qRgb(x * 5, y * 6, (x * 3 + y * 7) & 0xFF));
+		const KittyStream big = split_kitty(encodeKittyImage(4, wide));
+		const auto wb = QByteArray::fromBase64Encoding(big.payload,
+		        QByteArray::AbortOnBase64DecodingErrors);
+		const bool chunked = big.ok && big.chunks == 3
+		    && wb.decodingStatus == QByteArray::Base64DecodingStatus::Ok
+		    && wb.decoded.size() == 48 * 40 * 4;
+		CHECK(chunked, "kitty round-trip: 48x40 arrives as three reassembled chunks");
+		CHECK(chunked && exact_mismatches(wide,
+		          QImage(reinterpret_cast<const uchar *>(wb.decoded.constData()),
+		                 48, 40, QImage::Format_RGBA8888)) == 0,
+		      "kitty round-trip: chunk order preserved, every pixel exact");
+	}
+
+	// ---- round trip: iTerm2 ----
+	{
+		const QImage src = round_trip_fixture();
+		const QByteArray it = encodeITerm2(src, 7, 3);
+		const int colon = it.indexOf(':');
+		const auto b64 = QByteArray::fromBase64Encoding(
+		        it.mid(colon + 1, it.size() - colon - 2),
+		        QByteArray::AbortOnBase64DecodingErrors);
+		QImage got;
+		const bool decoded = colon > 0
+		    && b64.decodingStatus == QByteArray::Base64DecodingStatus::Ok
+		    && b64.decoded.startsWith("\211PNG\r\n\032\n")
+		    && got.loadFromData(b64.decoded, "PNG");
+		CHECK(decoded && got.size() == src.size(),
+		      "iTerm2 round-trip: payload is a 13x14 PNG");
+		CHECK(decoded && exact_mismatches(src,
+		          got.convertToFormat(QImage::Format_ARGB32)) == 0,
+		      "iTerm2 round-trip: every pixel exact, alpha included");
 	}
 
 	// ---- rasterizer ----
