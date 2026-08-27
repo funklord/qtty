@@ -660,10 +660,33 @@ well-formed and wrong passes.
 
 Missing:
 
-- **Viewport cropping for half-clipped kitty placements.** design.md
-  §16.3 named this explicitly as the remainder after the chat spike --
-  the heart entering at cell (3,13) half-clipped by the viewport is the
-  real partial-visibility case.
+- ~~Viewport cropping for half-clipped kitty placements.~~ **Done, and it
+  was every pixel tier rather than kitty's alone.** design.md §16.3 named
+  it as the kitty remainder after the chat spike -- the heart entering at
+  cell (3,13) half-clipped by the viewport. Measured while fixing it:
+  kitty, sixel and iTerm2 all placed a `CellImage` at its full size at
+  `cell_rect.topLeft()` whatever the grid was, so a sticker scrolled out
+  of view drew past the terminal, and one scrolled off the top was
+  positioned at a **negative row**. Only the mosaic tier was safe, and
+  only because it composites into the `CellBuffer`, which clips by
+  construction -- which is why §16.3 saw it as a kitty problem.
+
+  `crop_placement()` answers all three: what of a placement is on screen,
+  in cells, and the matching rectangle of the image in pixels.
+
+  **kitty carries the crop as a source rectangle, not as different
+  pixels**, and that is the part worth remembering. `a=p` takes
+  `x/y/w/h` selecting a region of the *stored* image, so the upload stays
+  whole and upload-once survives a crop. Uploading the cropped pixels
+  instead would file them under the full image's cache key, and the next
+  unclipped sighting of that sticker would show the crop -- a cache
+  poisoned by a scroll. Sixel and iTerm2 have no such mechanism and crop
+  the image itself, which is safe because neither is cached. iTerm2 needs
+  both halves together: OSC 1337 sizes the image in cells, so cropping
+  the pixels without the cell count squeezes the whole picture into the
+  visible rows instead of hiding the rest.
+
+  Nine checks, and removing the clip makes seven of them fail.
 - **Unicode-placeholder mode** -- the kitty path that survives tmux, and
   the one design.md §5.7 calls stronger still because a placement becomes
   a run of ordinary text cells that the existing diff machinery moves
@@ -1294,8 +1317,7 @@ What is left there, in no particular order and none of it blocked:
 `CellItemDelegate` and the item-view roles; `ICellPainted`, which is
 risk R5's stated mitigation and F5's suggested remedy for the widgets
 that self-size; the `QTextEdit` interaction layer; submenus, mnemonics
-and an editable combo box; `PixelSurface`; kitty viewport cropping for a
-half-clipped placement, which §16.3 named as that tier's remainder; the
+and an editable combo box; `PixelSurface`; the
 §11 benchmark, without which the 0.16 ms and 3.8 ms figures are spike
 measurements nothing holds; and the bundled font, which is what would
 make the fixtures reproducible (§7.8).

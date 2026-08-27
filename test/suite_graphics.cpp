@@ -496,5 +496,60 @@ int suite_graphics() {
 		CHECK(Overlay::visible_overlays().isEmpty(), "hidden overlays leave registry");
 	}
 
+
+	// ---- viewport cropping (section 16.3) ------------------------------------
+	//
+	// The case section 16.3 measured and left open: a sticker scrolled so that
+	// it is half out of view. Its cell_rect runs past the grid, and every pixel
+	// tier placed it whole -- kitty and sixel drawing outside the terminal, and
+	// a placement scrolled off the top positioned at a negative row. Only the
+	// mosaic tier was safe, because it composites into the CellBuffer.
+	{
+		// 4 cells wide, 4 tall, at 10x19 per cell.
+		QImage art(40, 76, QImage::Format_ARGB32);
+		art.fill(qRgb(200, 40, 40));
+
+		const QSize grid(20, 10);
+		// Fully visible: nothing is cropped, and the source is the whole image.
+		CroppedPlacement whole = crop_placement(QRect(2, 2, 4, 4), art.size(), grid);
+		CHECK(whole.cells == QRect(2, 2, 4, 4) && whole.source == QRect(0, 0, 40, 76),
+		      "a placement inside the grid is not cropped");
+
+		// Off the bottom: rows 8 and 9 are visible, 10 and 11 are not.
+		CroppedPlacement bottom = crop_placement(QRect(2, 8, 4, 4), art.size(), grid);
+		CHECK(bottom.cells == QRect(2, 8, 4, 2),
+		      "a placement past the bottom keeps only the visible rows");
+		CHECK(bottom.source == QRect(0, 0, 40, 38),
+		      "and takes the matching top half of the image");
+
+		// Off the top, which is the scrolled case and the one that produced a
+		// negative row before.
+		CroppedPlacement top = crop_placement(QRect(2, -2, 4, 4), art.size(), grid);
+		CHECK(top.cells == QRect(2, 0, 4, 2),
+		      "a placement above the grid starts at row 0, never negative");
+		CHECK(top.source == QRect(0, 38, 40, 38),
+		      "and takes the matching bottom half of the image");
+
+		// Off the right edge.
+		CroppedPlacement right = crop_placement(QRect(18, 2, 4, 4), art.size(), grid);
+		CHECK(right.cells == QRect(18, 2, 2, 4) && right.source == QRect(0, 0, 20, 76),
+		      "a placement past the right edge keeps only the visible columns");
+
+		// Wholly off screen: nothing to draw at all.
+		CHECK(crop_placement(QRect(2, 30, 4, 4), art.size(), grid).cells.isEmpty(),
+		      "a placement entirely off the grid is dropped");
+
+		// kitty carries the crop as a source rectangle rather than as different
+		// pixels, so the upload stays whole and upload-once survives a crop.
+		const QByteArray plain = kitty_place(7);
+		CHECK(!plain.contains(",x=") && !plain.contains(",w="),
+		      "an uncropped re-place carries no source rectangle");
+		const QByteArray cropped = kitty_place(7, 0, QRect(0, 38, 40, 38));
+		CHECK(cropped.contains("x=0") && cropped.contains("y=38")
+		      && cropped.contains("w=40") && cropped.contains("h=38"),
+		      "a cropped re-place carries x/y/w/h into the stored image");
+		CHECK(cropped.size() < 64,
+		      "and is still small enough to be the upload-once path");
+	}
 	return fails;
 }

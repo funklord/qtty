@@ -149,10 +149,45 @@ QByteArray encode_kitty_image(quint32 id, const QImage &src, int z) {
 	return kitty_chunks(ctrl, raw.toBase64());
 }
 
-QByteArray kitty_place(quint32 id, int z) {
+QByteArray kitty_place(quint32 id, int z, const QRect &source) {
 	QByteArray ctrl = "a=p,q=2,i=" + QByteArray::number(id);
+	// x/y/w/h select a rectangle of the stored image. Emitted only when the
+	// placement is actually cropped, so an ordinary re-place stays the ~30
+	// bytes section 16.3 measured.
+	if (!source.isNull() && !source.isEmpty())
+		ctrl += ",x=" + QByteArray::number(source.x())
+		      + ",y=" + QByteArray::number(source.y())
+		      + ",w=" + QByteArray::number(source.width())
+		      + ",h=" + QByteArray::number(source.height());
 	if (z) ctrl += ",z=" + QByteArray::number(z);
 	return "\033_G" + ctrl + ";\033\\";
+}
+
+CroppedPlacement crop_placement(const QRect &cell_rect, QSize image, QSize grid) {
+	const QRect visible = cell_rect.intersected(QRect(QPoint(0, 0), grid));
+	if (visible.isEmpty() || cell_rect.isEmpty() || image.isEmpty())
+		return {QRect(), QRect()};
+	if (visible == cell_rect)
+		return {cell_rect, QRect(QPoint(0, 0), image)};
+
+	// The image spans cell_rect, so a cell maps to a fixed block of pixels.
+	// Derived from the image and the rect rather than from GridMetrics: an
+	// image placed into N cells is N cells wide whatever the cell size is,
+	// and taking the ratio here keeps this function testable without a
+	// configured grid.
+	const int px_w = image.width()  / cell_rect.width();
+	const int px_h = image.height() / cell_rect.height();
+	QRect source((visible.left() - cell_rect.left()) * px_w,
+	             (visible.top()  - cell_rect.top())  * px_h,
+	             visible.width()  * px_w,
+	             visible.height() * px_h);
+	// Integer division above can leave a remainder, so the last visible cell
+	// would ask for pixels past the edge. Clamp rather than round, because
+	// asking a terminal for a source rectangle outside the image is a
+	// protocol error on kitty and a crash risk in QImage::copy.
+	source = source.intersected(QRect(QPoint(0, 0), image));
+	if (source.isEmpty()) return {QRect(), QRect()};
+	return {visible, source};
 }
 
 QByteArray kitty_delete_all() { return "\033_Ga=d,d=a,q=2;\033\\"; }

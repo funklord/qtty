@@ -242,28 +242,59 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 	// theme faults this exists to find.
 	contrast_violations(frame, depth_);
 	if (pixel_placements) {                           // real pixels (section 5.7)
+		// Every tier crops to the viewport first (section 16.3). A sticker
+		// scrolled half out of view has a cell_rect running past the grid, and
+		// placing it whole drew outside the terminal -- or, scrolled off the
+		// top, at a negative row.
+		const QSize grid(composed.cols(), composed.rows());
 		if (mode_ == Capabilities::Kitty || mode_ == Capabilities::KittyAlpha) {
 			out += kitty_delete_all();
 			for (const CellImage &ci : frame.images) {
-				out += moveTo(ci.cell_rect.topLeft());
+				const QImage img = ci.pixmap.toImage();
+				const CroppedPlacement cp =
+				    crop_placement(ci.cell_rect, img.size(), grid);
+				if (cp.cells.isEmpty()) continue;     // wholly off screen
+				out += moveTo(cp.cells.topLeft());
 				const quint32 id = quint32(ci.key & 0xFFFFFF) + 1;
+				// The upload is always the WHOLE image, and the crop is
+				// applied at placement time through kitty's source rectangle.
+				// Uploading the cropped pixels instead would file them under
+				// the full image's cache key, and the next unclipped sighting
+				// would show the crop.
+				const bool whole = cp.source == QRect(QPoint(0, 0), img.size());
 				if (!uploaded_.contains(ci.key)) {
 					uploaded_.insert(ci.key);
-					out += encode_kitty_image(id, ci.pixmap.toImage());
+					out += encode_kitty_image(id, img);
+					if (!whole) out += kitty_place(id, 0, cp.source);
 				} else {
-					out += kitty_place(id);           // upload-once: ~30 bytes
+					out += kitty_place(id, 0, whole ? QRect() : cp.source);
 				}
 			}
 		} else if (mode_ == Capabilities::Sixel) {
 			for (const CellImage &ci : frame.images) {
-				out += moveTo(ci.cell_rect.topLeft());
-				out += encode_sixel(ci.pixmap.toImage());
+				const QImage img = ci.pixmap.toImage();
+				const CroppedPlacement cp =
+				    crop_placement(ci.cell_rect, img.size(), grid);
+				if (cp.cells.isEmpty()) continue;
+				out += moveTo(cp.cells.topLeft());
+				// No source-rectangle mechanism here, so the image itself is
+				// cropped. Safe: sixel is re-encoded every frame and cached by
+				// nothing, so there is no stored copy to poison.
+				out += encode_sixel(img.copy(cp.source));
 			}
 		} else if (mode_ == Capabilities::ITerm2) {
 			for (const CellImage &ci : frame.images) {
-				out += moveTo(ci.cell_rect.topLeft());
-				out += encode_iterm2(ci.pixmap.toImage(),
-				                    ci.cell_rect.width(), ci.cell_rect.height());
+				const QImage img = ci.pixmap.toImage();
+				const CroppedPlacement cp =
+				    crop_placement(ci.cell_rect, img.size(), grid);
+				if (cp.cells.isEmpty()) continue;
+				out += moveTo(cp.cells.topLeft());
+				// Cropped image and cropped cell size together: OSC 1337 sizes
+				// the image in cells, so cropping one without the other would
+				// squeeze the whole picture into the visible rows instead of
+				// hiding the part that is off screen.
+				out += encode_iterm2(img.copy(cp.source),
+				                     cp.cells.width(), cp.cells.height());
 			}
 		}
 	}
