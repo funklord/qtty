@@ -503,12 +503,54 @@ bool AnsiBackend::decode_one() {
 			return dispatch_csi(prefix, params, final);
 		}
 		if (pending_.size() < 2) return false;
-		const char alt = pending_[1];
-		pending_.remove(0, 2);
+		// Alt-<char>, and the character may be multi-byte for the same reason
+		// the plain path below handles: ESC then a UTF-8 lead byte is Alt held
+		// with a non-ASCII key. Decoded as a sequence rather than as one byte,
+		// which is what made the plain path wrong.
+		const unsigned char alt = static_cast<unsigned char>(pending_[1]);
+		int len = 1;
+		if      ((alt & 0xE0) == 0xC0) len = 2;
+		else if ((alt & 0xF0) == 0xE0) len = 3;
+		else if ((alt & 0xF8) == 0xF0) len = 4;
+		if (pending_.size() < 1 + len) return false;      // still arriving
 		KeyEvent k;
 		k.alt = true;
-		k.text = QString(QChar(alt));
+		k.text = QString::fromUtf8(pending_.mid(1, len));
+		pending_.remove(0, 1 + len);
 		sink_->on_key(k);
+		return true;
+	}
+
+	// A byte with the high bit set opens a UTF-8 sequence, and the whole
+	// sequence is one character. It used to become QString(QChar(c)), which is
+	// Latin-1 for one byte: typing an e-acute sent 0xC3 0xA9 and produced two
+	// key events carrying two wrong characters, and a CJK character produced
+	// three. Every non-ASCII keystroke was corrupted, in a library whose cell
+	// model is built on grapheme clusters -- the input path could not deliver
+	// even one.
+	//
+	// Incomplete sequences wait, exactly as a half-arrived CSI does: a
+	// terminal splits input at any byte, and a read() boundary in the middle
+	// of a character is ordinary rather than exceptional.
+	if (c >= 0x80) {
+		int len = 0;
+		if      ((c & 0xE0) == 0xC0) len = 2;
+		else if ((c & 0xF0) == 0xE0) len = 3;
+		else if ((c & 0xF8) == 0xF0) len = 4;
+		if (len == 0) {
+			// A continuation byte with no lead, or an invalid lead. Dropped
+			// rather than delivered: it is not a character, and passing it on
+			// as Latin-1 is what this replaced.
+			pending_.remove(0, 1);
+			return true;
+		}
+		if (pending_.size() < len) return false;      // still arriving
+		const QByteArray seq = pending_.left(len);
+		pending_.remove(0, len);
+		KeyEvent utf8;
+		utf8.qt_key = 0;
+		utf8.text = QString::fromUtf8(seq);
+		sink_->on_key(utf8);
 		return true;
 	}
 

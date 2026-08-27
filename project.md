@@ -733,7 +733,27 @@ whether anything ever calls it.
   than the backend. `title` likewise -- there is no OSC emitter.
 - **`test/suite_backend.cpp` covers the decoder**, which had no test at
   all -- which is how the fixed-width reader survived long after the
-  runtime grew sinks it could not feed. It drives the real code path by
+  runtime grew sinks it could not feed.
+- **Non-ASCII input was corrupted, and the suite could not see it.** The
+  decoder built a key event's text as `QString(QChar(c))` from one byte,
+  which is Latin-1. Typing an e-acute sends `0xC3 0xA9` and produced
+  **two** key events carrying two wrong characters; a CJK character
+  produced three; an emoji four. Every non-ASCII keystroke was mangled,
+  in a library whose entire cell model is grapheme clusters -- the input
+  path could not deliver even one.
+
+  It survived because the suite fed it only ASCII, which is exactly where
+  a one-byte Latin-1 decode and a UTF-8 decode agree. That is the same
+  shape as the `elide` fault in §7.6, found the same day by the same
+  question: **which hard case does nothing test?** Both rules handled
+  ASCII correctly and neither had ever been shown anything else.
+
+  Sequences are decoded whole now, and an incomplete one waits exactly as
+  a half-arrived CSI does -- a terminal splits input at any byte, and a
+  read() boundary mid-character is ordinary. A stray continuation byte is
+  dropped rather than delivered, since it is not a character. The Alt
+  path had the identical fault one byte later and is fixed with it.
+  Seven checks go red against the old decode. It drives the real code path by
   making stdin a pipe rather than by reaching past `readInput()` into a
   helper written for the test, and it checks the case the old decoder
   could not express: a sequence split across two reads.

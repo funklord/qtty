@@ -132,6 +132,52 @@ int suite_backend() {
 	CHECK(rec.mice.size() == 1 && rec.mice[0].cell == QPoint(9, 3),
 	      "the sequence completes on the next read");
 
+	// -- UTF-8 input. The suite fed only ASCII before, which is exactly why
+	//    a Latin-1 single-byte decode survived here: every character it was
+	//    ever given was one byte, and one byte is where the two agree.
+	feed(QString::fromUtf8("\u00e9").toUtf8());
+	CHECK(rec.keys.size() == 1
+	      && rec.keys[0].text == QString::fromUtf8("\u00e9"),
+	      "a two-byte character is one key event, not two");
+	feed(QString::fromUtf8("\u6f22").toUtf8());
+	CHECK(rec.keys.size() == 1
+	      && rec.keys[0].text == QString::fromUtf8("\u6f22"),
+	      "a three-byte character is one key event, not three");
+	feed(QString::fromUtf8("\U0001F389").toUtf8());
+	CHECK(rec.keys.size() == 1
+	      && rec.keys[0].text == QString::fromUtf8("\U0001F389"),
+	      "a four-byte character is one key event carrying a surrogate pair");
+
+	// Split across two reads, which a terminal does at any byte. The CSI
+	// parser already had to handle this; so does a character.
+	{
+		const QByteArray utf8 = QString::fromUtf8("\u6f22").toUtf8();
+		rec.clear();
+		feeder.send(utf8.left(2));
+		QCoreApplication::processEvents();
+		CHECK(rec.keys.isEmpty(), "a partial UTF-8 sequence produces nothing yet");
+		feeder.send(utf8.mid(2));
+		QCoreApplication::processEvents();
+		CHECK(rec.keys.size() == 1
+		      && rec.keys[0].text == QString::fromUtf8("\u6f22"),
+		      "the character completes on the next read");
+	}
+
+	// A stray continuation byte is not a character and must not be delivered
+	// as one -- passing it on as Latin-1 is what the old decode did.
+	feed(QByteArray(1, char(0xA9)));
+	CHECK(rec.keys.isEmpty(), "a stray continuation byte is dropped, not delivered");
+
+	// Alt with a non-ASCII key: the same sequence decode, one byte later.
+	feed(QByteArray("\033") + QString::fromUtf8("\u00e9").toUtf8());
+	CHECK(rec.keys.size() == 1 && rec.keys[0].alt
+	      && rec.keys[0].text == QString::fromUtf8("\u00e9"),
+	      "Alt with a two-byte character is one key event");
+	feed(QByteArray("\033a"));
+	CHECK(rec.keys.size() == 1 && rec.keys[0].alt
+	      && rec.keys[0].text == QStringLiteral("a"),
+	      "Alt with an ASCII character still works");
+
 	// -- plain text still works, and is what most input is
 	feed("hi");
 	CHECK(rec.keys.size() == 2 && rec.keys[0].text == QStringLiteral("h"),
