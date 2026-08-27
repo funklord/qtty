@@ -779,7 +779,7 @@ which is design.md §16's figure.
   and TUI builds must reach the same observable state), and the
   render-twice-diff-must-be-empty invariant.
 
-### 7.6 Four latent bugs, found by working around them
+### 7.6 Latent bugs, found by working around them
 
 None of these was introduced by the work in this section. Each was found
 by editing or measuring the code around it, which is the only reason they
@@ -800,6 +800,25 @@ unstated, and an unstated one cannot be tested: a probe that starts at
 the origin cannot express an origin bug. The check moves the window away
 before calling `exec()`, which is what makes it capable of failing --
 verified by removing the one line and watching it go red.
+
+**The sixel encoder carried a second copy of the xterm-256 palette**,
+identical to `Qtty::xterm256_rgb()` in the public header -- verified
+index by index, 0 of 256 differing, before it was removed. Two copies of
+one table is the parallel-copy hazard `code-style.md` names, and the
+sixel encoder is exactly the path it is worst in: nothing but a sixel
+terminal reads its output, so a correction to one copy would leave the
+other wrong silently. Closed. Its `c < 16` branch and a `c < 0` clamp
+were dead with it, since `toXterm256()` returns -1 only for a `Default`
+colour and this call site constructs `Color::rgb()`; the clamp would
+have written white into a pixel rather than reporting, had it ever
+fired.
+
+Still open in the same function, and not a correctness fault: the
+per-band colour scan is `for each of 256 registers, rescan up to 6*w
+pixels`. It short-circuits, so a text frame with a handful of colours is
+cheap, but the cost scales with distinct colours times area per band --
+worth knowing before the sixel path carries a full-screen Channel B
+image at frame rate.
 
 **A gradient fill lands as a literal RGB background.** `fillRectF`
 recovers which palette role produced a brush by comparing the brush
@@ -1210,9 +1229,13 @@ Dependency-ordered:
 2. ~~The attribute plane in `CellBuffer::toText()`.~~ **Done** -- see
    §7.1. What it immediately found is in §7.6: a gradient fill landing as
    a literal RGB background behind the whole tab pane.
-3. **Decode or round-trip coverage for the graphics encoders.** Sixel,
-   kitty and iTerm2 are asserted on byte structure alone, and byte
-   structure cannot tell a well-formed stream from a correct one.
+3. ~~Decode or round-trip coverage for the graphics encoders.~~ **Done.**
+   Each encoder is decoded independently and compared against the source
+   -- exactly for kitty and iTerm2, within a measured 3/255 for sixel,
+   which is the truncation residual of DEC's percent-valued colour
+   registers and not a fudge. The measured argument for having done it:
+   of five deliberate sabotages, **four leave every pre-existing
+   structural check in the file passing**.
 4. ~~The declared-but-unreachable surface in §7.4.~~ **Done** -- see
    §7.4. What is left of that section is `synchronisedOutput` (DEC 2026,
    which §11's frame budget wants) and a title emitter, both of which are

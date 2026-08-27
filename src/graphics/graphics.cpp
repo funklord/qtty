@@ -53,8 +53,13 @@ QByteArray encodeSixel(const QImage &src) {
 		const QRgb *line = reinterpret_cast<const QRgb *>(img.constScanLine(y));
 		for (int x = 0; x < w; ++x) {
 			if (qAlpha(line[x]) < 128) continue;
-			int c = Color::rgb(line[x]).toXterm256();
-			if (c < 0) c = 15;
+			// toXterm256() returns -1 only for a Default colour, and the
+			// colour here is constructed with Color::rgb(), so it always
+			// takes the Lab match and always lands in 16..255. The clamp
+			// that stood here could not fire, and had it ever fired it would
+			// have written white into the pixel rather than reporting -- a
+			// silent wrong answer in the one path nothing else reads.
+			const int c = Color::rgb(line[x]).toXterm256();
 			idx[y * w + x] = c;
 			used[c] = true;
 		}
@@ -63,22 +68,17 @@ QByteArray encodeSixel(const QImage &src) {
 	QByteArray out = "\033P0;1;0q";               // P2=1: untouched -> transparent
 	out += "\"1;1;" + QByteArray::number(w) + ';' + QByteArray::number(h);
 
-	auto reg = [](int c) -> QRgb {                // xterm-256 index -> rgb
-		if (c < 16) {
-			static const QRgb basic[16] = {
-				0xFF000000,0xFF800000,0xFF008000,0xFF808000,0xFF000080,0xFF800080,
-				0xFF008080,0xFFC0C0C0,0xFF808080,0xFFFF0000,0xFF00FF00,0xFFFFFF00,
-				0xFF0000FF,0xFFFF00FF,0xFF00FFFF,0xFFFFFFFF };
-			return basic[c];
-		}
-		if (c >= 232) { int v = 8 + (c - 232) * 10; return qRgb(v, v, v); }
-		int i = c - 16;
-		auto lv = [](int l) { return l ? 55 + l * 40 : 0; };
-		return qRgb(lv(i / 36), lv((i / 6) % 6), lv(i % 6));
-	};
+	// xterm256_rgb() rather than a copy of it. This carried its own 16-colour
+	// table, its own grey ramp and its own cube arithmetic, all identical to
+	// the public function in color.h -- verified index by index, 0 of 256
+	// differing, before the copy was removed. Two copies of one table is the
+	// parallel-copy hazard code-style.md names: correct one and the other
+	// stays wrong, silently, in a path nothing else exercises. The sixel
+	// encoder is exactly such a path, since nothing but a sixel terminal
+	// reads its output.
 	for (int c = 0; c < 256; ++c)
 		if (used[c]) {
-			QRgb v = reg(c);
+			const QRgb v = xterm256_rgb(c);
 			out += '#' + QByteArray::number(c) + ";2;"
 			     + QByteArray::number(qRed(v)   * 100 / 255) + ';'
 			     + QByteArray::number(qGreen(v) * 100 / 255) + ';'
