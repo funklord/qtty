@@ -574,6 +574,25 @@ Still missing:
   handle, which passes with the grab gone because the cell it names holds
   a `QLabel` and a release on a `QLabel` does nothing either way.
 
+  **The same lens found a second field one along, and that one was worse
+  than an absence.** `m.button` was parsed by the backend -- SGR 1006
+  carries it and `AnsiBackend` writes 1 left, 2 middle, 3 right -- and
+  `on_mouse()` sent `Qt::LeftButton` whatever arrived. So a right click
+  did not fail to open a context menu; it **activated whatever it landed
+  on**. Measured: a right click on a `QPushButton` emitted `clicked()`.
+
+  The buttons are mapped now, and a right press also raises the
+  `QContextMenuEvent` that a platform layer would normally synthesise --
+  there is no platform here, so nothing had ever asked for one.
+  `QWidget::event()` reads `contextMenuPolicy` from that event, so
+  default, custom and actions policies all start working at once, and a
+  menu opened from one is stamped and composited like any other popup.
+
+  Worth keeping about the tests: the check that matters is
+  **`hits == 0`**, not the one asking for a context menu. A suite that
+  only tested for the menu would have read this as a feature nobody had
+  written, when what was actually there was a misfire.
+
 **Compositor and FrameScheduler -- done.** This was the largest
 correctness gap in the tree: `compose()` rendered the tracked window and
 the router's popup list, walked no top-levels, and drew no modal. Since

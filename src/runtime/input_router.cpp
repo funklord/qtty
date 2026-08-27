@@ -234,6 +234,23 @@ void InputRouter::on_key(const KeyEvent &k) {
 	if (frame_requested) frame_requested();
 }
 
+// SGR 1006 reports the button in the low two bits and the backend hands it on
+// as 1 left, 2 middle, 3 right. Nothing read it: on_mouse() sent Qt::LeftButton
+// whatever arrived, so a right-click ACTIVATED a button rather than doing
+// nothing, and no context menu could ever be asked for. Measured: a right
+// click on a QPushButton emitted clicked().
+//
+// Anything unrecognised is left, which is what the previous behaviour was for
+// every button and is the harmless direction to be wrong in -- a wheel event
+// leaves button at 0 and does not reach here.
+static Qt::MouseButton qt_button(int button) {
+	switch (button) {
+	case 2:  return Qt::MiddleButton;
+	case 3:  return Qt::RightButton;
+	default: return Qt::LeftButton;
+	}
+}
+
 void InputRouter::on_mouse(const MouseEvent &m) {
 	const QPoint px(m.cell.x() * GridMetrics::cw() + GridMetrics::cw() / 2,
 	                m.cell.y() * GridMetrics::ch() + GridMetrics::ch() / 2);
@@ -285,7 +302,7 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 		               Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
 		QApplication::sendEvent(target, &ev);
 	} else {
-		const auto btn = Qt::LeftButton;
+		const auto btn = qt_button(m.button);
 		if (m.press) {
 			grab_ = target;
 			QMouseEvent ev(QEvent::MouseButtonPress, QPointF(pos), QPointF(px),
@@ -299,6 +316,16 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 			const auto held = grab_.isNull() ? Qt::NoButton : Qt::MouseButtons(btn);
 			QMouseEvent ev(QEvent::MouseMove, QPointF(pos), QPointF(px),
 			               Qt::NoButton, held, Qt::NoModifier);
+			QApplication::sendEvent(target, &ev);
+		}
+		if (m.press && btn == Qt::RightButton) {
+			// The platform layer is what normally turns a right press into a
+			// context menu event; there is no platform here, so nothing ever
+			// asked for one. QWidget::event() reads contextMenuPolicy from
+			// here, so every policy -- default, custom, actions -- starts
+			// working at once. On the press rather than the release, which is
+			// the X11 convention and so the one a terminal user expects.
+			QContextMenuEvent ev(QContextMenuEvent::Mouse, pos, px, Qt::NoModifier);
 			QApplication::sendEvent(target, &ev);
 		}
 		if (m.release) {

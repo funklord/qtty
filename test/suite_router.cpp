@@ -481,6 +481,76 @@ int suite_router() {
 		CHECK(le->selectedText() == QStringLiteral("hello"),
 		      "dragging across a line edit selects the text under it");
 	}
+	// ------------------------------------------- section 5.5: which button
+	// SGR 1006 carries the button and the backend hands it on, and on_mouse()
+	// sent Qt::LeftButton whatever arrived -- the same parsed-and-discarded
+	// shape as motion, one field along. The consequence was not a missing
+	// feature but a wrong action: a right click ACTIVATED whatever it landed
+	// on. That is what the first check is for, and it is the one that would
+	// have caught this, since a check that only asked for a context menu
+	// would read as an absent feature rather than a misfire.
+	{
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *b = new QPushButton(QStringLiteral("Go"), &h);
+		b->setGeometry(0, 0, cw * 10, ch);
+		int hits = 0, asked = 0;
+		QObject::connect(b, &QPushButton::clicked, [&] { ++hits; });
+		b->setContextMenuPolicy(Qt::CustomContextMenu);
+		QObject::connect(b, &QWidget::customContextMenuRequested, [&] { ++asked; });
+		h.resize(GridMetrics::cells(30, 4));
+		h.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&h);
+
+		r.on_mouse({QPoint(2, 0), 3, true, false, false, 0});
+		r.on_mouse({QPoint(2, 0), 3, false, true, false, 0});
+		CHECK(hits == 0, "a right click does not activate a button");
+		CHECK(asked == 1, "a right click asks for a context menu");
+
+		// ...and the left button still does what it did, so the mapping is a
+		// mapping and not a blanket refusal of the buttons it does not know.
+		r.on_mouse({QPoint(2, 0), 1, true, false, false, 0});
+		r.on_mouse({QPoint(2, 0), 1, false, true, false, 0});
+		CHECK(hits == 1, "a left click still activates it");
+		CHECK(asked == 1, "and asks for no context menu");
+	}
+	{
+		// End to end, because contextMenuEvent() reaching the widget is only
+		// worth having if what it opens is then drawn: the menu has to be
+		// picked up by the stamping filter and composited like any other
+		// popup. A check that stopped at the event would pass with the
+		// compositor blind to it.
+		struct Ctx : QWidget {
+			using QWidget::QWidget;
+			QMenu *menu = nullptr;
+			void contextMenuEvent(QContextMenuEvent *e) override {
+				menu = new QMenu(this);
+				menu->addAction(QStringLiteral("Cut"));
+				menu->popup(e->globalPos());
+			}
+		};
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *c = new Ctx(&h);
+		c->setGeometry(0, 0, cw * 20, ch * 3);
+		h.resize(GridMetrics::cells(40, 10));
+		h.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&h);
+		r.on_mouse({QPoint(3, 1), 3, true, false, false, 0});
+		QCoreApplication::processEvents();
+		CHECK(c->menu != nullptr, "a right click opens the widget's context menu");
+		CHECK(r.popups().size() == 1, "and the router tracks it as a popup");
+		Compositor cc(&h, &r);
+		CellBuffer bb(40, 10);
+		cc.compose(bb);
+		CHECK(bb.to_text().contains(QStringLiteral("Cut")),
+		      "and the compositor draws it");
+		if (c->menu) c->menu->close();
+		QCoreApplication::processEvents();
+	}
+
 	// The splitter goes last and takes the guard with it, because it lays its
 	// panes out off the grid and always has: a 300px splitter with a one-cell
 	// handle splits evenly into 145/145, before any input is involved. That is
