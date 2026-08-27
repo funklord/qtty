@@ -1056,6 +1056,24 @@ it. The suite grew a pty, because the startup query, raw mode and the
 SIGWINCH path all require stdin and stdout to BE a terminal -- against a
 socketpair they prove the parser and leave the wiring untested.
 
+**Both measurements are consumed, not merely exposed.** A field nobody reads
+is §7.4's own fault, and plumbing the cell size and the background without
+using them would have created two more:
+
+- **The background reaches the half-block compositor**, which had
+  `qRgb(16, 20, 24)` hardcoded for its whole life. On a light terminal that
+  haloes every translucent edge darkly, and the real value was always
+  askable. The test asserts that two different backgrounds give two
+  different cells rather than pinning a colour, because what matters is that
+  the argument is consulted -- pinning one value would pass with the
+  parameter ignored if the expectation happened to be the old constant.
+- **`Qtty::cells()` is implemented**, one of the two accommodations
+  design.md §5.7 offers for image sizing, and it takes the cell size rather
+  than assuming one. With no measurement it returns an invalid size rather
+  than a plausible wrong one. Its discriminating check is that the same
+  image on two terminals with different cells gets different footprints,
+  which is the entire reason the cell is asked for.
+
 Still not done from this list:
 
 - **Unicode-placeholder mode** -- the kitty path that survives tmux, and

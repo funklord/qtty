@@ -551,5 +551,48 @@ int suite_graphics() {
 		CHECK(cropped.size() < 64,
 		      "and is still small enough to be the upload-once path");
 	}
+	// The terminal's background reaches the compositor. It was a constant --
+	// qRgb(16, 20, 24) -- for the whole life of this function, which haloes
+	// every translucent edge darkly on a light terminal, and the value was
+	// always askable: OSC 11 is in the startup query.
+	//
+	// Asserted as a difference rather than against a colour, because what
+	// matters is that the argument is consulted at all. Pinning one value
+	// would pass with the parameter ignored if the expectation happened to be
+	// the old constant.
+	{
+		QImage translucent(4, 4, QImage::Format_ARGB32);
+		translucent.fill(QColor(200, 0, 0, 120));       // half-covered: tints bg
+		Qtty::CellBuffer dark(4, 2), light(4, 2);
+		Qtty::compose_halfblocks(dark, translucent, QRect(0, 0, 4, 2), qRgb(0, 0, 0));
+		Qtty::compose_halfblocks(light, translucent, QRect(0, 0, 4, 2),
+		                         qRgb(255, 255, 255));
+		CHECK(dark.at(0, 0).bg != light.at(0, 0).bg,
+		      "a translucent pixel composites against the terminal's background");
+	}
+
+	// section 5.7's image sizing, which needs the cell measured rather than
+	// assumed: a half-block pixel is one cell wide and half a cell tall, so
+	// treating a cell as square squashes every picture on a terminal whose
+	// cells are not 1:2.
+	{
+		CHECK(Qtty::cells(QSize(100, 190), QSize(10, 19)) == QSize(10, 10),
+		      "an exact fit is exactly that many cells");
+		// Rounded up: given four cells an image needing four and a half is
+		// cropped, and a picture missing its last row is worse than one with
+		// a gap under it.
+		CHECK(Qtty::cells(QSize(105, 200), QSize(10, 19)) == QSize(11, 11),
+		      "and a partial cell is rounded up rather than cropped");
+		// The discriminating pair. The same image on two terminals whose
+		// cells differ must not get the same footprint -- that is the whole
+		// reason the cell size is asked for.
+		CHECK(Qtty::cells(QSize(160, 160), QSize(10, 20))
+		          != Qtty::cells(QSize(160, 160), QSize(8, 16)),
+		      "a different cell size gives a different footprint");
+		// An unmeasured cell yields nothing rather than a plausible guess.
+		CHECK(!Qtty::cells(QSize(100, 100), QSize()).isValid(),
+		      "and with no cell size measured it answers nothing");
+	}
+
 	return fails;
 }

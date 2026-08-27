@@ -65,6 +65,29 @@ struct CroppedPlacement {
 };
 CroppedPlacement crop_placement(const QRect &cell_rect, QSize image, QSize grid);
 
-void compose_halfblocks(CellBuffer &frame, const QImage &img, const QRect &cell_rect);
+// How many cells an image of `image_px` pixels occupies on a terminal whose
+// cell measures `cell_px`. design.md section 5.7 calls this one of the two
+// GUI-invisible accommodations an application may use to size an image.
+//
+// It needs the cell size and cannot assume one, which is the whole point: a
+// half-block pixel is one cell wide and half a cell tall, and treating a cell
+// as square squashes every picture on a terminal whose cells are not 1:2.
+// Capabilities::cell_px carries the answer once the terminal has given it,
+// and is invalid until then -- so a caller with no answer gets an empty size
+// back rather than a plausible wrong one.
+//
+// Rounded up. An image that needs four and a half cells is given five and
+// leaves a margin; given four it would be cropped, and a picture missing its
+// last row is worse than one with a gap under it.
+QSize cells(QSize image_px, QSize cell_px);
+
+// `under` is what a translucent pixel is composited against: the terminal's
+// own background. It defaults to a dark grey because that is what this
+// function assumed for its whole life, and the assumption is wrong on a light
+// terminal -- every partly-transparent edge gets a dark halo. AnsiBackend
+// passes the real one when the terminal answered OSC 11 (section 5.7); a
+// caller with no terminal to ask keeps the old behaviour by saying nothing.
+void compose_halfblocks(CellBuffer &frame, const QImage &img, const QRect &cell_rect,
+                        QRgb under = qRgb(16, 20, 24));
 
 } // namespace Qtty

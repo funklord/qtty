@@ -242,9 +242,18 @@ static QRgb blend(QRgb over, int a, QRgb under) {
 	            (qBlue(over)  * a + qBlue(under)  * (255 - a)) / 255);
 }
 
-void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_rect) {
+QSize cells(QSize image_px, QSize cell_px) {
+	if (!cell_px.isValid() || cell_px.width() <= 0 || cell_px.height() <= 0)
+		return QSize();                 // nothing was measured; say so
+	if (image_px.width() <= 0 || image_px.height() <= 0) return QSize();
+	return QSize((image_px.width() + cell_px.width() - 1) / cell_px.width(),
+	             (image_px.height() + cell_px.height() - 1) / cell_px.height());
+}
+
+void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_rect,
+                       QRgb under) {
 	const QImage img = src.convertToFormat(QImage::Format_ARGB32);
-	const QRgb under_default = qRgb(16, 20, 24);
+	const QRgb under_default = under;
 	for (int cy = 0; cy < cell_rect.height(); ++cy)
 		for (int cx = 0; cx < cell_rect.width(); ++cx) {
 			const int X = cell_rect.x() + cx, Y = cell_rect.y() + cy;

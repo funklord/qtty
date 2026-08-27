@@ -317,7 +317,14 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 	const bool pixel_placements = mode_ >= Capabilities::Sixel;
 	if (!pixel_placements)                            // fallback tier: colour
 		for (const CellImage &ci : frame.images)     // half-blocks (section 17.3)
-			compose_halfblocks(composed, ci.pixmap.toImage(), ci.cell_rect);
+			// The terminal's own background where it answered for it, rather
+			// than the dark grey this guessed for its whole life. A light
+			// terminal haloed every translucent edge, and the value was
+			// always askable -- OSC 11 is in the startup query.
+			compose_halfblocks(composed, ci.pixmap.toImage(), ci.cell_rect,
+			                   caps_.bg_known
+			                       ? qRgb(caps_.bg[0], caps_.bg[1], caps_.bg[2])
+			                       : qRgb(16, 20, 24));
 
 	QByteArray out = "\033[H";
 	Sgr cur;
