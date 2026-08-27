@@ -8,7 +8,10 @@ TARGET = qtty-tests
 CONFIG += console testcase
 CONFIG -= app_bundle
 QT += widgets
-LIBS += -L$$QTTY_LIB_DIR -lqtty
+# -lutil for openpty(). The backend's startup query, its raw-mode setup and
+# its SIGWINCH path all require stdin and stdout to be an actual terminal, so
+# the suite makes one rather than leaving those paths uncovered.
+LIBS += -L$$QTTY_LIB_DIR -lqtty -lutil
 PRE_TARGETDEPS += $$QTTY_LIB
 
 # The fixtures under test/snapshot/ are read from the source tree, which the

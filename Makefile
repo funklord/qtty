@@ -18,6 +18,7 @@
 #   make              -- build the library, the tools and the example
 #   make test         -- build and run the test suite
 #   make test-platforms -- the suite under each QPA in TEST_PLATFORMS
+#   make coverage F=x -- line coverage for src/**/x.cpp
 #   make check        -- style + test; what must pass before committing
 #   make style        -- the shared source gate and the project.md checks
 #   make hooks        -- install tool/hooks/commit-msg into .git/hooks
@@ -257,6 +258,25 @@ test-platforms: tests-build
 	echo "test-platforms: $(words $(TEST_PLATFORMS)) platform(s) + 1 hostile environment, $$failed failed"; \
 	[ "$$failed" -eq 0 ]
 
+# Line coverage for one source, measured rather than asserted. Built into its
+# own tree so an instrumented object never reaches a normal build, and named
+# explicitly so `make coverage` cannot be the thing that quietly slows
+# everything else down.
+#
+#     make coverage F=term_caps
+#
+# It exists because "fully covered" is a claim with a short shelf life: the
+# capability parser was written to be at 100% and the only thing that will
+# notice a new uncovered branch is a command somebody can run.
+COV_DIR = build-cov
+coverage:
+	@test -n "$(F)" || { echo "coverage: name the file, e.g. make coverage F=term_caps" >&2; exit 1; }
+	$(MAKE) test BUILD_DIR=$(COV_DIR) \
+		QMAKE_CONFIG='CONFIG+=release CONFIG-=debug \
+		              QMAKE_CXXFLAGS+=--coverage QMAKE_LFLAGS+=--coverage' >/dev/null
+	@cd $(COV_DIR)/src && gcov -n $(F).cpp 2>/dev/null \
+		| grep -A1 "$(F).cpp" || { echo "coverage: no data for $(F)" >&2; exit 1; }
+
 # Rewrite a snapshot fixture after a reviewed change: make record R=render
 record: tests-build
 	@test -n "$(R)" || { echo "record: name the fixture, e.g. make record R=render" >&2; exit 1; }
@@ -377,5 +397,5 @@ distclean: veryclean
 help:
 	@sed -n '/^# TARGETS/,/^#$$/p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
-.PHONY: all test test-platforms tests-build record check style style-source style-docs hooks \
+.PHONY: all test test-platforms tests-build coverage record check style style-source style-docs hooks \
         version-check run install uninstall clean veryclean distclean help FORCE

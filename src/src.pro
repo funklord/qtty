@@ -23,6 +23,7 @@ HEADERS += \
     ../include/qtty/graphics.h \
     ../include/qtty/overlay.h \
     backend/ansi/ansi_backend.h \
+    backend/ansi/term_caps.h \
     backend/null/null_backend.h
 
 SOURCES += \
@@ -37,4 +38,5 @@ SOURCES += \
     runtime/application.cpp \
     graphics/graphics.cpp \
     graphics/overlay.cpp \
-    backend/ansi/ansi_backend.cpp
+    backend/ansi/ansi_backend.cpp \
+    backend/ansi/term_caps.cpp

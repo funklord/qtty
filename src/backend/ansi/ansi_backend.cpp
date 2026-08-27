@@ -47,15 +47,77 @@ static Capabilities::ColorDepth detect_color_depth() {
 	return Capabilities::Ansi16;                     // the documented floor
 }
 
+// What the terminal is, given what it answered and what the environment
+// claims. The order is the whole design.
+//
+// 1. An explicit override wins outright: it is the contract with a
+//    cooperating terminal (doc/beerssh.md) and the testing hook.
+// 2. A terminal that ANSWERED is believed completely, and that includes
+//    believing its silences: with the fence present, no kitty reply is a real
+//    "no". This is the only step allowed to turn a capability off.
+// 3. A terminal that answered nothing has told us nothing, so fall back to
+//    reading $TERM as qtty always did. Not to the floor: an unanswering
+//    terminal is usually one behind a multiplexer, not one without pixels.
+//
+// The asymmetry in step 3 is the point. A guess that says yes to kitty costs
+// a screenful of escape sequences; a guess that says no costs half-blocks.
+// Only step 2 has measured its answer, so only step 2 may say no.
+Capabilities::GraphicsMode negotiate_graphics(const TermCaps &caps) {
+	const QByteArray force = qgetenv("QTTY_GRAPHICS").toLower();
+	if (!force.isEmpty()) return detect_graphics_mode();
+
+	if (caps.kitty || caps.answered) {
+		if (caps.kitty) {
+			// The protocol is proven; which VARIANT is not, and cannot be
+			// asked. $TERM chooses between two modes that both work, so a
+			// wrong guess here costs appearance rather than correctness.
+			const QByteArray term = qgetenv("TERM").toLower();
+			const QByteArray prog = qgetenv("TERM_PROGRAM").toLower();
+			if (prog.contains("wezterm")) return Capabilities::Kitty;
+			if (term.contains("kitty") || term.contains("ghostty")
+			    || !qgetenv("KITTY_WINDOW_ID").isEmpty())
+				return Capabilities::KittyAlpha;
+			return Capabilities::Kitty;      // proven protocol, unproven alpha
+		}
+		if (caps.sixel) return Capabilities::Sixel;
+		return Capabilities::Halfblocks;     // answered, and has neither
+	}
+	return detect_graphics_mode();           // learned nothing; read $TERM
+}
+
+// Colour, under the same rule with one addition: a weak signal may say YES
+// here because the cost of being wrong is a colour approximated rather than a
+// screen full of bytes the terminal cannot read. $COLORTERM survives an ssh
+// into a machine whose terminal is not the one that set it, which is exactly
+// why XTGETTCAP is asked first and $COLORTERM is only ever consulted upward.
+Capabilities::ColorDepth negotiate_color(const TermCaps &caps) {
+	const QByteArray force = qgetenv("QTTY_COLOR").toLower();
+	if (!force.isEmpty()) return detect_color_depth();
+	if (caps.truecolor) return Capabilities::TrueColor;
+	return detect_color_depth();
+}
+
 AnsiBackend::AnsiBackend() {
-	mode_ = detect_graphics_mode();
-	depth_ = detect_color_depth();
 	winsize ws{};
 	if (ioctl(1, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
 		cells_ = QSize(ws.ws_col, ws.ws_row);
 	else
 		cells_ = QSize(80, 24);                     // piped/CI fallback
 	resume();
+
+	// Ask the terminal what it is, now that resume() has put it in raw mode
+	// -- a cooked line discipline would hold every reply until a newline that
+	// is never coming -- and before the notifier owns stdin, since two readers
+	// of the same descriptor is how a reply gets torn in half.
+	//
+	// Only when both ends are a terminal. Down a pipe there is nobody to
+	// answer, and the query would be written into whatever is reading and the
+	// caller's own input eaten waiting for a reply that cannot arrive.
+	if (raw_ok_ && tty_out_)
+		caps_ = collect_caps(0, 1, 100);
+
+	mode_ = negotiate_graphics(caps_);
+	depth_ = negotiate_color(caps_);
 	notifier_ = new QSocketNotifier(0, QSocketNotifier::Read, this);
 	connect(notifier_, &QSocketNotifier::activated, this, [this] { read_input(); });
 }
@@ -66,6 +128,10 @@ Capabilities AnsiBackend::capabilities() const {
 	Capabilities c;
 	c.color = depth_;                               // negotiated (section 6)
 	c.graphics = mode_;                             // negotiated (sections 5.7, 17.3)
+	c.cell_px = caps_.cell_px;                      // invalid until it answers
+	c.background_known = caps_.bg_known;
+	if (caps_.bg_known)
+		c.background = QColor(caps_.bg[0], caps_.bg[1], caps_.bg[2]);
 
 	// These four were fields nobody set and nobody read. They are answers
 	// about this backend now, and each is answerable because resume() asks
@@ -113,13 +179,33 @@ extern "C" void qtty_winch_handler(int) {
 	}
 }
 
+// Ask again for the pixel geometry. The answer does NOT come back here -- it
+// arrives on stdin like everything else the terminal says, and the decoder
+// routes it into caps_. That is the shape of the whole capability channel:
+// graphics is tied to input because the terminal has only one way to talk
+// back, and a resize is the event that makes the old answer wrong.
+void AnsiBackend::query_geometry() {
+	if (!tty_out_) return;
+	const char q[] = "\033[14t\033[16t";
+	const ssize_t n = ::write(1, q, sizeof(q) - 1);
+	(void)n;                           // a terminal that will not answer is fine
+}
+
 void AnsiBackend::read_winch() {
 	char drain[64];
 	while (::read(s_winch_pipe[0], drain, sizeof drain) > 0) { }
 	winsize ws{};
 	if (ioctl(1, TIOCGWINSZ, &ws) != 0 || ws.ws_col <= 0) return;
+
+	// Before the early return below, not after it. The comment on that return
+	// names the exact case this is for: SIGWINCH also fires when only the
+	// PIXEL size changed -- a font size change, or a window resize that does
+	// not cross a cell boundary -- and then the cell count is the one thing
+	// that has not moved while every pixel measurement qtty holds has.
+	query_geometry();
+
 	const QSize now(ws.ws_col, ws.ws_row);
-	if (now == cells_) return;         // SIGWINCH also fires for pixel-only changes
+	if (now == cells_) return;
 	cells_ = now;
 	if (sink_) sink_->on_resize(cells_);
 }
@@ -162,6 +248,19 @@ void AnsiBackend::resume() {
 		       "\033[?2004h\033[?1004h");
 		fflush(stdout);
 	}
+
+	// SIGPIPE would kill the process outright when the far end of the output
+	// goes away, and for a terminal program that is an ordinary event: the
+	// window is closed, or the output is a pipe whose reader has finished.
+	// Found by writing the capability query to a socket whose peer had
+	// closed -- the whole suite died with signal 13 and no message at all,
+	// which is what this failure always looks like.
+	//
+	// Ignored rather than handled: every write here already checks its
+	// result, so the error path exists and a signal only prevents it from
+	// running. Taken at the same point as SIGWINCH, which is where qtty takes
+	// over the terminal anyway.
+	signal(SIGPIPE, SIG_IGN);
 
 	if (s_winch_pipe[0] < 0 && ::pipe(s_winch_pipe) == 0) {
 		fcntl(s_winch_pipe[0], F_SETFL, O_NONBLOCK);
@@ -397,6 +496,42 @@ int AnsiBackend::parse_csi(QByteArray &prefix, QVector<int> &params,
 	return i + 1;
 }
 
+// OSC, DCS, APC, PM and SOS share one shape: ESC <opener> ... terminator,
+// where the terminator is ST (ESC backslash) or, for OSC, a bare BEL.
+//
+// Before this the decoder had no branch for any of them, so every byte of a
+// reply arrived as a keystroke: measured, one OSC 11 background reply became
+// 23 fake keys, an XTGETTCAP reply 14 and a kitty reply 10. That is why qtty
+// could not ask the terminal anything -- the answer would have been typed
+// into the application -- and it is the same defect either way round, because
+// a terminal may send these unsolicited.
+//
+// Bounded. A stream that opens a string sequence and never closes it must not
+// grow pending_ without limit, so past the cap the opener is dropped and the
+// bytes after it are read as ordinary input.
+int AnsiBackend::parse_string_sequence() const {
+	const int cap = 4096;
+	for (int i = 2; i < pending_.size(); ++i) {
+		const unsigned char c = pending_[i];
+		if (c == 0x07 && pending_[1] == ']') return i + 1;         // OSC, BEL
+		if (c == 0x1b && i + 1 < pending_.size() && pending_[i + 1] == '\\')
+			return i + 2;                                          // ST
+		if (c == 0x1b) return i;      // a new escape: the old one was abandoned
+	}
+	return pending_.size() > cap ? 0 : -1;        // 0 asks the caller to drop
+}
+
+// A parameter list back to its wire form, so a reply parsed here can be
+// handed to the one parser that knows what the fields mean.
+static QByteArray params_to_bytes(const QVector<int> &params) {
+	QByteArray out;
+	for (int i = 0; i < params.size(); ++i) {
+		if (i) out += ';';
+		out += QByteArray::number(params[i]);
+	}
+	return out;
+}
+
 bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
                               const QVector<int> &params, char final) {
 	const auto param = [&](int n, int fallback) {
@@ -422,6 +557,39 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 			m.release = (final == 'm');
 		}
 		sink_->on_mouse(m);
+		return true;
+	}
+
+	// Window operations, ESC [ <what> ; height ; width t. 4 is the text area
+	// in pixels and 6 is one cell; 8 is a resize the terminal is reporting
+	// rather than one SIGWINCH announced, which some multiplexers send and
+	// which arrives HERE rather than as a signal -- the same channel as the
+	// keys, which is the whole reason this function has to know about it.
+	if (final == 't') {
+		const int what = param(0, 0);
+		if (what == 8) {
+			const int rows = param(1, 0), cols = param(2, 0);
+			if (rows > 0 && cols > 0) {
+				cells_ = QSize(cols, rows);
+				sink_->on_resize(cells_);
+			}
+			return true;
+		}
+		// Rebuilt rather than passed through, because scan_caps() parses
+		// bytes and this arrived as parsed parameters. One parser, one set of
+		// rules about which field is height.
+		if (what == 4 || what == 6) {
+			scan_caps(QStringLiteral("\033[%1;%2;%3t").arg(what)
+			              .arg(param(1, 0)).arg(param(2, 0)).toLatin1(), caps_);
+			return true;
+		}
+		return true;
+	}
+	// Device attributes. The reply to our own fence, and unsolicited from
+	// some terminals at startup; either way it is not a key.
+	if (final == 'c') {
+		scan_caps(QByteArrayLiteral("\033[") + prefix + params_to_bytes(params)
+		              + QByteArrayLiteral("c"), caps_);
 		return true;
 	}
 
@@ -501,6 +669,18 @@ bool AnsiBackend::decode_one() {
 			if (n < 0) return false;              // still arriving
 			pending_.remove(0, n);
 			return dispatch_csi(prefix, params, final);
+		}
+		// A string sequence -- OSC, DCS, APC, PM, SOS. Consumed and offered
+		// to the capability parser, never turned into keys. The terminal's
+		// answers to caps_query() come back here, and so does anything it
+		// reports unasked.
+		if (strchr("]P_^X", pending_[1])) {
+			const int n = parse_string_sequence();
+			if (n < 0) return false;              // still arriving
+			if (n == 0) { pending_.remove(0, 1); return true; }   // over the cap
+			scan_caps(pending_.left(n), caps_);
+			pending_.remove(0, n);
+			return true;
 		}
 		if (pending_.size() < 2) return false;
 		// Alt-<char>, and the character may be multi-byte for the same reason

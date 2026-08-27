@@ -8,12 +8,18 @@
 #include <QByteArray>
 #include <termios.h>
 #include "qtty/backend.h"
+#include "term_caps.h"
 #include <QSet>
 #include <QVector>
 
 class QSocketNotifier;
 
 namespace Qtty {
+
+// Exposed so the rules can be tested against a TermCaps built by hand. Doing
+// it against a live terminal would mean owning one that answers each way.
+Capabilities::GraphicsMode negotiate_graphics(const TermCaps &caps);
+Capabilities::ColorDepth negotiate_color(const TermCaps &caps);
 
 class AnsiBackend : public QObject, public ITerminalBackend,
                     public IGraphicsOutput {
@@ -40,6 +46,10 @@ private:
 	// A complete CSI at the head of pending_, or -1 if more bytes are needed.
 	// Fills the private prefix, the numeric parameters and the final byte.
 	int parse_csi(QByteArray &prefix, QVector<int> &params, char &final) const;
+	// OSC, DCS, APC, PM and SOS all share one framing: ESC <opener> ... ST,
+	// where ST is ESC \ or, for OSC, a bare BEL. Returns the length consumed,
+	// -1 while it is still arriving. Nothing in here is ever a key.
+	int parse_string_sequence() const;
 	bool dispatch_csi(const QByteArray &prefix, const QVector<int> &params,
 	                 char final);
 	void read_winch();                    // SIGWINCH arrived down the self-pipe
@@ -52,6 +62,8 @@ private:
 	bool in_paste_ = false;
 	QSize cells_;
 	Capabilities::GraphicsMode mode_;
+	TermCaps caps_;                               // what the terminal answered
+	void query_geometry();                        // re-ask after a resize
 	Capabilities::ColorDepth depth_;             // negotiated (section 6)
 	QSet<quint64> uploaded_;                     // kitty upload-once cache
 	bool raw_ok_ = false;

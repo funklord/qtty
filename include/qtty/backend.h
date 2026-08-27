@@ -7,6 +7,8 @@
 #include <QPoint>
 #include <QRegion>
 #include <QImage>
+#include <QColor>
+#include <QSize>
 #include <QString>
 #include <optional>
 #include "cell.h"
@@ -22,9 +24,25 @@ struct Capabilities {
 	bool unicode_wide        = true;    // honours wcwidth-2 correctly
 	bool title              = false;
 
-	// Pixel-graphics support, decided per terminal type (section 5.7).
+	// Pixel-graphics support, negotiated with the terminal (section 5.7).
 	enum GraphicsMode { NoGraphics, Halfblocks, Sixel, ITerm2, Kitty, KittyAlpha };
 	GraphicsMode graphics   = NoGraphics;
+
+	// What one cell measures, if the terminal was willing to say. Invalid
+	// until it answers, and it may answer LATER: the reply arrives on stdin
+	// like everything else, and a resize is re-asked because a font change
+	// moves this without moving the cell count.
+	//
+	// It matters because a half-block pixel is one cell wide and half a cell
+	// tall. Treating that as square squashes every image on a terminal whose
+	// cells are not 1:2, which is a wrong picture rather than a missing one.
+	QSize cell_px;
+
+	// The terminal's background, if it answered OSC 11. Every tier below
+	// kitty composites an image's alpha against it, so without this they have
+	// to guess -- and guessing black on a light terminal haloes every icon.
+	bool background_known = false;
+	QColor background;
 };
 
 enum class CursorShape { Block, Underline, Bar, Hidden };

@@ -990,6 +990,74 @@ Missing:
   visible rows instead of hiding the rest.
 
   Nine checks, and removing the clip makes seven of them fail.
+**qtty asks the terminal now, and that closed two gaps at once.** It used to
+decide its colour depth and graphics tier from `$TERM`, `$TERM_PROGRAM`,
+`$COLORTERM` and `$KITTY_WINDOW_ID` alone -- every one of which is inherited
+across ssh and su, so all of them are wrong in both directions. The lessons
+are `fuzzypickles`' `tui/term_gfx.c`, which had solved this; what follows
+credits it because the reasons matter more than the code.
+
+**It could not have asked before, and the reason is the second gap.** The
+decoder had no branch for OSC, DCS or APC at all, so a reply was typed into
+the application: measured, one OSC 11 background reply arrived as **23 fake
+keystrokes**, an XTGETTCAP reply as 14 and a kitty reply as 10. Querying and
+key handling are the same defect from two sides, which is why the terminal
+had never been asked anything.
+
+What is implemented, and why each part is shaped as it is:
+
+- **One batched query with device attributes LAST as the fence.** Five
+  sequential probes cost five round trips before the first frame, and over
+  ssh that is the whole of a visible startup delay. Every terminal answers
+  DA1, so its arrival means a missing kitty reply is a real "no" rather than
+  a slow one.
+- **The kitty probe is safe to send blind** -- a terminal without the
+  protocol ignores the APC string entirely.
+- **XTGETTCAP instead of `$COLORTERM`** for direct colour, and the cell size
+  and background asked rather than assumed.
+- **Polled in slices and rescanned after each chunk**, because replies are
+  not guaranteed to arrive together and over ssh routinely do not. **A
+  timeout is not a failure**: whatever arrived still counts.
+- **The parser is split from the I/O and is additive**, which is what makes
+  a terminal that answers the graphics query but not the colour one, or
+  answers out of order, or splits a reply across two reads, into a line of
+  test rather than a flaky experiment.
+
+**The rule the whole thing turns on is an asymmetry.** A signal that cannot
+be verified may only ever say YES; only a measurement may say no. A guess
+that says yes to kitty costs a screenful of escape sequences, and one that
+says no costs half-blocks. So: an explicit override wins, then a terminal
+that ANSWERED is believed completely -- including its silences -- and a
+terminal that answered nothing has told us nothing, so `$TERM` is read as
+before. Dropping to the floor there would regress every terminal behind a
+multiplexer that eats the query.
+
+**Resizes come on stdin too, which is why graphics is tied to input.**
+`read_winch()` had an early return when the cell count was unchanged,
+commented "SIGWINCH also fires for pixel-only changes" -- which is exactly
+the case where the cell PIXEL size moved and every pixel measurement qtty
+holds went stale. It re-asks before that return now, and the answer arrives
+through the decoder like everything else the terminal says. `CSI 8 t`, a
+resize the terminal reports rather than signals, is handled on the same
+path.
+
+**Two faults found while building it, neither of them in the plan.**
+`SIGPIPE` killed the whole suite with signal 13 and no message when the
+query was written to a socket whose peer had closed -- which would equally
+kill any qtty program whose output is a pipe the reader has finished with.
+`AnsiBackend` ignores it now, so the write fails and is reported. And the
+first pty test hung, because a pty master read blocks once the buffer is
+empty and "read until empty" is bounded only if the descriptor says so.
+
+**Coverage is measured, not asserted: `term_caps.cpp` is at 100% of 120
+lines**, and `make coverage F=term_caps` is there so the claim can be
+re-checked rather than believed. The backend rose from 66.77% to 70.77% with
+it. The suite grew a pty, because the startup query, raw mode and the
+SIGWINCH path all require stdin and stdout to BE a terminal -- against a
+socketpair they prove the parser and leave the wiring untested.
+
+Still not done from this list:
+
 - **Unicode-placeholder mode** -- the kitty path that survives tmux, and
   the one design.md §5.7 calls stronger still because a placement becomes
   a run of ordinary text cells that the existing diff machinery moves
