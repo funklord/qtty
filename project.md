@@ -1559,8 +1559,52 @@ ran under it.
   reduced to watching `Polish` alone, it goes red -- so the simulation
   reproduces the ordering and not merely the symptom.
 
-**What remains failing under gtk3 is §7.7's, and is not this section's
-to fix.** The `widgets_gallery` fixture differs in one legend entry:
+**And then the question nobody had asked: does a platform theme load
+under the OFFSCREEN platform?** It does. That turns every finding above
+from an xcb curiosity into something qtty shipped, because
+`QT_QPA_PLATFORMTHEME=gtk3` is set globally by distributions and
+`prepare_environment()` pinned only the platform. Measured in that
+configuration -- offscreen, the platform qtty forces, with the theme
+ambient -- `QApplication::font("QPushButton")` came back **Noto Sans 13,
+not fixed pitch, advancing 12 against a 10-pixel cell.** Every column
+such a widget computed was wrong, on any desktop that sets the variable.
+
+So the fix is to pin the theme, not to keep patching what it sets.
+`prepare_environment()` now does to `QT_QPA_PLATFORMTHEME` exactly what
+it does to `QT_QPA_PLATFORM`, and for the argument already written
+there: a terminal program must not inherit the desktop's look, and it
+must not inherit its behaviour either. An empty value selects Qt's
+generic theme, which is what every fixture here has always been recorded
+against, so pinning makes real use match what is tested instead of
+diverging from it. `QTTY_QPA_PLATFORMTHEME` overrides it deliberately,
+the same escape the platform has.
+
+**What settles pinning over patching is the key bindings.** A theme
+supplies those too, and **20 of the 71 standard keys differ** under
+gtk3: `Delete` gains `Ctrl+D`, `DeleteEndOfLine` and
+`DeleteCompleteLine` appear as `Ctrl+K` and `Ctrl+U`, `MoveToEndOfLine`
+gains `Ctrl+E`, `Quit` gains `Ctrl+Q`, `Redo` loses two of its three.
+Fonts and hints can each be forced back one at a time; **key bindings
+cannot, because Qt exposes no way to choose the keyboard scheme.** A
+terminal program whose keys depend on the machine's desktop is wrong in
+a way no per-symptom fix reaches, and it is worse over ssh, where that
+desktop is not even the one the user is sitting at.
+
+The per-symptom fixes stay anyway, and the division is worth stating:
+**the pin is policy and can be overridden, the font filter is the
+guarantee.** An application may register a class font itself, and a
+future Qt may route one differently; the filter holds the invariant the
+grid actually depends on either way.
+
+`make test-platforms` runs the suite once more with the hostile theme
+ambient, which is the only thing that would notice the pin being
+deleted -- confirmed by deleting it and watching the target go red. It
+**refuses rather than passes** when the theme plugin is not installed,
+because an unknown theme name is ignored silently and looks exactly like
+a pin that works.
+
+**What remains failing under a DELIBERATE gtk3 override is §7.7's, and
+is not this section's to fix.** The `widgets_gallery` fixture differs in one legend entry:
 `bg=#fbfbfb` against `bg=#ffffff`. That is the tab pane's gradient
 landing as a literal RGB because it matches no palette role -- already
 recorded in §7.7 as awaiting a decision. The measurement adds something

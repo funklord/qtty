@@ -28,6 +28,30 @@ void prepare_environment() {
 	// sets by accident and no user has already exported for another reason.
 	const QByteArray want = qgetenv("QTTY_QPA_PLATFORM");
 	qputenv("QT_QPA_PLATFORM", want.isEmpty() ? QByteArray("offscreen") : want);
+
+	// The platform THEME is pinned for the same reason and by the same rule,
+	// and this is the fix rather than the three that preceded it. A theme
+	// loads under the offscreen platform perfectly happily -- measured -- so
+	// a desktop was reaching into a terminal program by a route nobody had
+	// looked at. With QT_QPA_PLATFORMTHEME=gtk3, which distributions set
+	// globally, it supplied per-class fonts (QPushButton, QLabel and QMenu
+	// came back Noto Sans 13, NOT fixed pitch, advancing 12 against a
+	// 10-pixel cell), 14 of the 22 palette roles, three style hints, and 20
+	// of the 71 standard key bindings.
+	//
+	// The last of those is why pinning beats patching: fonts and hints can be
+	// forced back one at a time, and key bindings cannot -- Qt exposes no way
+	// to choose the keyboard scheme, so Ctrl+K, Ctrl+U, Ctrl+E and Ctrl+D
+	// appear or do not appear according to the desktop. A terminal program
+	// whose keys depend on the machine's desktop is wrong in a way no
+	// per-symptom fix reaches.
+	//
+	// Empty selects Qt's generic theme, which is what these fixtures have
+	// always been recorded against, so pinning makes real use match what is
+	// tested rather than diverging from it.
+	const QByteArray theme = qgetenv("QTTY_QPA_PLATFORMTHEME");
+	qputenv("QT_QPA_PLATFORMTHEME", theme);
+
 	qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
 }
 

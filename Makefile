@@ -218,9 +218,21 @@ test: tests-build
 	echo "test: $$ran binary(ies), $$failed failed"; \
 	[ "$$failed" -eq 0 ]
 
-# The same suite under each platform in TEST_PLATFORMS. A pass under one
-# platform says the code is right for that platform's assumptions and nothing
-# more; this is what makes an assumption visible instead of load-bearing.
+# A platform theme this suite must be IMMUNE to. prepare_environment() pins
+# QT_QPA_PLATFORMTHEME for the same reason it pins the platform, and that pin
+# is one line somebody can delete; this is the only thing that would notice.
+# Without it a desktop supplied per-class fonts that are not fixed pitch, and
+# every column a widget computed was wrong.
+#
+# The plugin must exist or the run proves nothing -- an unknown theme name is
+# ignored silently, which looks exactly like a pin that works.
+TEST_HOSTILE_THEME ?= gtk3
+QT_PLUGIN_PATH_FOR_CHECK = $(shell $(QMAKE) -query QT_INSTALL_PLUGINS 2>/dev/null)
+
+# The same suite under each platform in TEST_PLATFORMS, then once more with a
+# hostile theme in the environment. A pass under one platform says the code is
+# right for that platform's assumptions and nothing more; this is what makes an
+# assumption visible instead of load-bearing.
 test-platforms: tests-build
 	@failed=0; \
 	for platform in $(TEST_PLATFORMS); do \
@@ -229,7 +241,18 @@ test-platforms: tests-build
 			timeout $(TEST_TIMEOUT) $(TEST_BIN) > /dev/null 2>&1 \
 			&& echo "    ok" || { echo "    FAILED"; failed=$$((failed + 1)); }; \
 	done; \
-	echo "test-platforms: $(words $(TEST_PLATFORMS)) platform(s), $$failed failed"; \
+	plugin="$(QT_PLUGIN_PATH_FOR_CHECK)/platformthemes/libq$(TEST_HOSTILE_THEME).so"; \
+	echo "--- $(TEST_BIN) with QT_QPA_PLATFORMTHEME=$(TEST_HOSTILE_THEME) in the environment"; \
+	if [ ! -f "$$plugin" ]; then \
+		echo "    SKIPPED: $$plugin is not installed, so an ambient theme" >&2; \
+		echo "             cannot be applied and this would pass vacuously." >&2; \
+	else \
+		QT_QPA_PLATFORMTHEME=$(TEST_HOSTILE_THEME) $(TEST_CRASH_ENV) \
+			timeout $(TEST_TIMEOUT) $(TEST_BIN) > /dev/null 2>&1 \
+			&& echo "    ok (the pin absorbed it)" \
+			|| { echo "    FAILED"; failed=$$((failed + 1)); }; \
+	fi; \
+	echo "test-platforms: $(words $(TEST_PLATFORMS)) platform(s) + 1 hostile theme, $$failed failed"; \
 	[ "$$failed" -eq 0 ]
 
 # Rewrite a snapshot fixture after a reviewed change: make record R=render
