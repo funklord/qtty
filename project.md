@@ -707,7 +707,30 @@ bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 
 **Thin or absent:**
 
-- `QSpinBox` draws a box and one glyph, with **no test**.
+- **`QSpinBox` has tests now**, and they found two things. Its keys work:
+  Up and Down step the value. Its internal `QLineEdit` was at
+  `280x13+3+3` inside a one-cell spin box -- the same missing
+  `subControlRect` as the combo, fixed with it and now on the grid.
+
+  **What is still wrong: the value does not render.** The spin box draws
+  its brackets and its glyph and nothing between them. The cause is not
+  found, and the eliminations are recorded instead of a guess, because
+  this document has twice cost a reader a wrong file by naming a layer it
+  had not measured:
+
+  * the internal `QLineEdit` holds the right text and is visible;
+  * its geometry is correct and cell-aligned since the fix;
+  * `SE_LineEditContents` returns the full rect, 270x19+0+0;
+  * a bare `QLineEdit` with the same text renders -- framed **and**
+    frameless, so the spin box's `setFrame(false)` is not it;
+  * a `QLineEdit` that is a *child* of a plain widget renders, alone and
+    through its parent, so "rendering a child on its own" is not it;
+  * rendering the spin box's edit into a 40x4 buffer produces four empty
+    rows, so it is not a mapping that puts the text outside the frame.
+
+  Whatever remains is specific to `QAbstractSpinBox`'s own line edit. A
+  spin box whose value can be changed and cannot be read is a real
+  defect, and it is open.
 - `QSplitter` drag is unimplemented.
 - ~~The `QTextEdit` interaction layer is absent.~~ **It works, and
   needed no code** -- which makes it the fourth gap in this document that

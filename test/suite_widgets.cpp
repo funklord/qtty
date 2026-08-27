@@ -480,6 +480,40 @@ int suite_widgets() {
 		CHECK(frame.contains(QStringLiteral("abc")),
 		      "and the editor's does too");
 	}
+
+	// QSpinBox, which section 7.2 recorded as having no test at all.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&host);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		auto *spin = new QSpinBox(&host);
+		spin->setRange(0, 10);
+		spin->setValue(5);
+		v->addWidget(spin);
+		v->addStretch();
+		host.resize(GridMetrics::cells(30, 6));
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter sr(&host);
+		spin->setFocus();
+		setFocusWidget(spin);
+
+		sr.on_key({Qt::Key_Up, {}, false, false, false});
+		CHECK(spin->value() == 6, "Up steps a spin box");
+		sr.on_key({Qt::Key_Down, {}, false, false, false});
+		sr.on_key({Qt::Key_Down, {}, false, false, false});
+		CHECK(spin->value() == 4, "and Down steps it back");
+
+		// The internal QLineEdit is placed by subControlRect, which this
+		// style did not override: it came out 280x13+3+3 inside a one-cell
+		// spin box, at the proxy style's pixel insets. No application can
+		// correct that -- it never constructed the widget.
+		QLineEdit *edit = spin->findChild<QLineEdit *>();
+		CHECK(edit && GridMetrics::is_aligned(edit->geometry()),
+		      "a spin box's internal edit lands on the grid");
+	}
 	return fails;
 }
 

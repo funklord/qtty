@@ -241,6 +241,29 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *opt,
                                 SubControl sc, const QWidget *w) const {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+	if (cc == CC_SpinBox && opt) {
+		// The same fault as the combo below, in the same place, and it cost
+		// more: the spin box's internal QLineEdit came out 280x13+3+3 inside a
+		// one-cell spin box -- Fusion's three-pixel inset and a thirteen-pixel
+		// height in a nineteen-pixel cell -- so the value did not reach the
+		// buffer at all. A spin box whose value can be changed and cannot be
+		// read.
+		const QRect r = opt->rect;
+		switch (sc) {
+		case SC_SpinBoxEditField:
+			return QRect(r.left() + cw, r.top(),
+				         qMax(cw, r.width() - 3 * cw), qMax(ch, r.height()));
+		case SC_SpinBoxUp:
+			return QRect(r.right() + 1 - 2 * cw, r.top(), cw, qMax(ch, r.height() / 2));
+		case SC_SpinBoxDown:
+			return QRect(r.right() + 1 - 2 * cw, r.top() + r.height() / 2,
+				         cw, qMax(ch, r.height() / 2));
+		case SC_SpinBoxFrame:
+			return r;
+		default:
+			break;
+		}
+	}
 	if (cc == CC_ComboBox && opt) {
 		// The cell layout drawComplexControl draws: an opening bracket, the
 		// text, the arrow, a closing bracket. The edit field is what is left
