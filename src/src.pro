@@ -16,6 +16,7 @@ HEADERS += \
     ../include/qtty/backend.h \
     ../include/qtty/grid.h \
     ../include/qtty/paint.h \
+    ../include/qtty/delegate.h \
     ../include/qtty/runtime.h \
     ../include/qtty/application.h \
     ../include/qtty/testing.h \
@@ -30,6 +31,7 @@ SOURCES += \
     core/theme.cpp \
     grid/grid_style.cpp \
     render/cell_paint.cpp \
+    widget/cell_item_delegate.cpp \
     runtime/input_router.cpp \
     runtime/compositor.cpp \
     runtime/application.cpp \

@@ -1,6 +1,7 @@
 // suite_widgets -- section 17.2 Channel A coverage: targeted asserts per widget plus
 // the widgets_gallery snapshot.
 #include <qtty/qtty.h>
+#include <qtty/delegate.h>
 #include <QtWidgets>
 #include <cstdio>
 
@@ -201,6 +202,148 @@ int suite_widgets() {
 		CHECK(buffer_contains(b, QStringLiteral("─")), "separator renders");
 		CHECK(findText(b, QStringLiteral("Ctrl+O")).x() >= 0, "shortcut right-aligned");
 		menu.close();
+	}
+
+	// item views: the roles CellItemDelegate carries (design.md sections 8.4,
+	// 8.6 and 17.2), on the QTableView the tier had never exercised at all.
+	// Channel A already draws an item's frame -- the selection fill, and the
+	// suppression of the pixel panels -- from CE_ItemViewItem, and the checks
+	// below deliberately assert none of that. What they assert is the DATA the
+	// style is handed and cannot lay out: the check state, the decoration, and
+	// where the alignment asks for the text. Every one of them fails with the
+	// delegate left uninstalled.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		QStandardItemModel model(2, 2);
+		auto *checked = new QStandardItem(QStringLiteral("open"));
+		checked->setCheckable(true);
+		checked->setCheckState(Qt::Checked);
+		auto *clear = new QStandardItem(QStringLiteral("shut"));
+		clear->setCheckable(true);
+		clear->setCheckState(Qt::Unchecked);
+		model.setItem(0, 0, checked);
+		model.setItem(1, 0, clear);
+		auto *right = new QStandardItem(QStringLiteral("42"));
+		right->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+		model.setItem(0, 1, right);
+		model.setItem(1, 1, new QStandardItem(QStringLiteral("7")));
+
+		QTableView table;
+		table.setModel(&model);
+		table.setItemDelegate(new CellItemDelegate(&table));
+		table.setFrameShape(QFrame::NoFrame);
+		// Both headers sized in cells, stated rather than left to the header's
+		// own hint -- and shown rather than hidden, which is not cosmetic: the
+		// corner button between them takes its geometry from the two headers,
+		// and a QTableView whose headers are hidden leaves it at the size it
+		// was constructed with, which is off the row grid. GridGuard does not
+		// exempt it, so hiding the headers here costs a violation.
+		table.horizontalHeader()->setFixedHeight(ch);
+		table.horizontalHeader()->setDefaultSectionSize(12 * cw);
+		table.verticalHeader()->setFixedWidth(4 * cw);
+		table.verticalHeader()->setDefaultSectionSize(ch);
+		show(table, 30, 6);
+		table.setRowHeight(1, 3 * ch);
+		QCoreApplication::processEvents();
+		CellBuffer b(32, 7);
+		render_once(table, b);
+
+		const QPoint on = findText(b, QStringLiteral("[x]"));
+		const QPoint off = findText(b, QStringLiteral("[ ]"));
+		CHECK(on.x() >= 0 && off.x() >= 0, "table draws check state as [x] and [ ]");
+		const QPoint label = findText(b, QStringLiteral("open"));
+		CHECK(on.x() >= 0 && label.y() == on.y()
+		      && label.x() == on.x() + CellItemDelegate::check_cells(),
+		      "display text follows the check indicator");
+		// The far edge of column 1, in cells. Derived from the view rather
+		// than written down, so the check holds if a section size changes.
+		const int column_right = (table.viewport()->x() + table.columnViewportPosition(1)
+		                          + table.columnWidth(1)) / cw - 1;
+		const QPoint number = findText(b, QStringLiteral("42"));
+		CHECK(number.x() >= 0 && number.x() + 1 == column_right,
+		      "AlignRight lands against the column's far edge");
+		const int row_top = (table.viewport()->y() + table.rowViewportPosition(1)) / ch;
+		CHECK(findText(b, QStringLiteral("shut")).y() == row_top + 1,
+		      "AlignVCenter centres text in a three-row section");
+	}
+	// decoration role (section 8.6). The delegate does not decide what an icon
+	// becomes: it hands the pixmap to QPainter, and CellPaintEngine::drawPixmap
+	// is already the funnel -- two cells or more in each direction is a
+	// section 5.7 placement carrying real pixels, and anything smaller
+	// substitutes a glyph. Both answers are asserted here because the delegate
+	// is what makes an item view reach that funnel at all: CE_ItemViewItem
+	// drops the icon.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		QPixmap avatar(4 * cw, 2 * ch);
+		avatar.fill(Qt::red);
+		QStandardItemModel model;
+		model.appendRow(new QStandardItem(QIcon(avatar), QStringLiteral("avatar")));
+		QListView list;
+		list.setModel(&model);
+		list.setItemDelegate(new CellItemDelegate(&list));
+		list.setFrameShape(QFrame::NoFrame);
+		list.setIconSize(QSize(4 * cw, 2 * ch));
+		show(list, 24, 6);
+		CellBuffer b(26, 7);
+		QVector<CellImage> placements;
+		render_once(list, b, &placements);
+		CHECK(placements.size() == 1 && placements[0].cell_rect.size() == QSize(4, 2),
+		      "a readable decoration becomes a 4x2 placement");
+		const QPoint label = findText(b, QStringLiteral("avatar"));
+		CHECK(!placements.isEmpty() && label.y() >= 0
+		      && label.x() == placements[0].cell_rect.right() + 2,
+		      "text starts one cell past the decoration");
+
+		QPixmap dot(cw, ch);
+		dot.fill(Qt::red);
+		QStandardItemModel one;
+		one.appendRow(new QStandardItem(QIcon(dot), QStringLiteral("dot")));
+		QListView narrow;
+		narrow.setModel(&one);
+		narrow.setItemDelegate(new CellItemDelegate(&narrow));
+		narrow.setFrameShape(QFrame::NoFrame);
+		narrow.setIconSize(QSize(cw, ch));
+		show(narrow, 24, 4);
+		CellBuffer nb(26, 5);
+		QVector<CellImage> none;
+		render_once(narrow, nb, &none);
+		CHECK(none.isEmpty() && buffer_contains(nb, QStringLiteral("▒")),
+		      "a one-cell decoration substitutes a glyph, no placement");
+	}
+	// sizeHint. Neither "it is a cell multiple" nor "it is exactly the cells
+	// a plain row occupies" is a check: GridStyle already snaps
+	// CT_ItemViewItem, and measured against the delegate this replaces, a
+	// plain five-character item comes back 60x19 from both. The first version
+	// asserted exactly that and passed with the whole override taken out.
+	//
+	// What discriminates is the part of the row the proxied answer sizes
+	// differently -- the indicator (four cells here against Fusion's three,
+	// because "[x] " is what gets drawn) and the decoration with the gap after
+	// it. Both were measured before being written down.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		QStandardItemModel model(3, 1);
+		model.setItem(0, 0, new QStandardItem(QStringLiteral("label")));
+		auto *checkable = new QStandardItem(QStringLiteral("label"));
+		checkable->setCheckable(true);
+		model.setItem(1, 0, checkable);
+		QPixmap avatar(4 * cw, 2 * ch);
+		avatar.fill(Qt::red);
+		model.setItem(2, 0, new QStandardItem(QIcon(avatar), QStringLiteral("label")));
+
+		CellItemDelegate delegate;
+		QStyleOptionViewItem option;
+		option.decorationSize = QSize(4 * cw, 2 * ch);   // what a view would set
+		const QSize plain = delegate.sizeHint(option, model.index(0, 0));
+		const QSize with_check = delegate.sizeHint(option, model.index(1, 0));
+		const QSize with_icon = delegate.sizeHint(option, model.index(2, 0));
+		CHECK(with_check.width() - plain.width() == CellItemDelegate::check_cells() * cw,
+		      "sizeHint reserves the indicator it draws");
+		// indent + four cells of decoration + the gap + five cells of "label".
+		CHECK(with_icon.width() == (CellItemDelegate::indent_cells() + 4 + 1 + 5) * cw
+		      && with_icon.height() % ch == 0 && with_icon.height() >= 2 * ch,
+		      "sizeHint reserves the decoration and the gap, in whole cells");
 	}
 
 	// gallery snapshot: one window with the whole tier
