@@ -4,6 +4,8 @@
 #include <QtWidgets>
 #include <cstdio>
 #include <cstring>
+#include <csignal>
+#include <unistd.h>
 
 int suite_cells();
 int suite_theme();
@@ -16,7 +18,48 @@ int suite_graphics();
 int suite_runtime();
 int suite_backend();
 
+namespace {
+
+// The suite bounds its own running time, and the bound is here rather than
+// only in the Makefile recipe on purpose. A recipe's `timeout` protects
+// `make test` and protects nobody debugging -- and debugging is exactly when
+// the binary gets run directly. This tree paid for that: a suite that called
+// exec() waited on an event loop that never started, and running it by hand
+// to find out why hung until it was killed from another terminal.
+//
+// SIGALRM is the whole mechanism. A handler may call almost nothing, so it
+// writes a fixed string with write(2) and leaves by _exit -- neither printf
+// nor exit is legal here, and a watchdog that crashes instead of reporting is
+// worse than none. QTTY_TEST_TIMEOUT raises it for a deliberately slow run.
+constexpr unsigned default_timeout_seconds = 300;
+
+extern "C" void qtty_test_watchdog(int) {
+	static const char msg[] =
+	    "\nFAILED: the suite exceeded its own time limit and was stopped.\n"
+	    "That is a hang, not a slow machine -- raise QTTY_TEST_TIMEOUT only\n"
+	    "once you know which suite is waiting and on what.\n";
+	const ssize_t ignored = ::write(2, msg, sizeof msg - 1);
+	(void)ignored;
+	::_exit(2);
+}
+
+} // namespace
+
 int main(int argc, char **argv) {
+	unsigned limit = default_timeout_seconds;
+	if (const QByteArray env = qgetenv("QTTY_TEST_TIMEOUT"); !env.isEmpty()) {
+		bool ok = false;
+		const unsigned v = env.toUInt(&ok);
+		if (ok) limit = v;
+	}
+	if (limit > 0) {
+		struct sigaction sa{};
+		sa.sa_handler = qtty_test_watchdog;
+		sigemptyset(&sa.sa_mask);
+		sigaction(SIGALRM, &sa, nullptr);
+		alarm(limit);
+	}
+
 	Qtty::prepareEnvironment();
 	QApplication app(argc, argv);
 

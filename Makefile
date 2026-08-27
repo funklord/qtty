@@ -114,10 +114,14 @@ $(LIB): $(BUILD_DIR)/Makefile FORCE
 # `check` inside BUILD_DIR (CONFIG testcase); this one is the tree's.
 # -----------------------------------------------------------------------------
 
-# QtTest runs `gdb --batch --pid <self>` on a fatal signal, and a traced
-# process that stops is neither reaped nor killable with SIGTERM. Five of them
-# held 15 GB resident in a sibling project. Ask for a backtrace explicitly
-# with QTTY_TEST_STACK_DUMP=1 when one is actually wanted.
+# Precautionary, and inert today -- said plainly because an inert guard with a
+# dramatic comment is worse than none. QtTest runs `gdb --batch --pid <self>`
+# on a fatal signal, and a traced process that stops is neither reaped nor
+# killable with SIGTERM; five of them held 15 GB resident in a sibling project.
+# This suite links no QtTest and uses none, so the variables currently guard
+# nothing. They are set anyway because the cost is zero and the guard becomes
+# load-bearing the day a suite adds QtTest -- which is the day nobody would
+# think to add them.
 ifdef QTTY_TEST_STACK_DUMP
     TEST_CRASH_ENV =
 else
@@ -127,6 +131,13 @@ endif
 # The suite renders widgets, so it needs a platform plugin; offscreen is the
 # one the library itself runs under and needs no display.
 TEST_ENV = QT_QPA_PLATFORM=offscreen $(TEST_CRASH_ENV)
+
+# This timeout is convenience, not the bound. The suite carries its own
+# wall-clock limit in test/main.cpp, because a limit that lives only here
+# protects `make test` and protects nobody debugging -- and running the binary
+# directly is what debugging means. That is not hypothetical here: a suite
+# waiting on an event loop that never started hung until it was killed from
+# another terminal, and it was being run by hand at the time to find out why.
 TEST_TIMEOUT ?= 300
 
 # test/ is not a SUBDIR of qtty.pro, so the default build cannot produce a
