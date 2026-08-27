@@ -848,8 +848,10 @@ bar, scrollbars, tabs, the progress bar and the slider. Exercised by
   typing, Return and wide clusters now, and what is typed reaches the
   cells. `src/widget/`'s README still describes a replacement layer, and
   §17.2's nought-to-four-day estimate was for the case where display had
-  not come free. What is genuinely untested is selection and
-  partial-line scrolling.
+  not come free. **Selecting text with the mouse works**, and is
+  covered since the grab landed (§7.1): it needed no text-widget code at
+  all, only motion events that carry the held button. What is genuinely
+  untested is partial-line scrolling.
 - **The editable `QComboBox` takes typed text**, non-ASCII included. It
   was untested rather than unhandled. Testing it is what found the
   missing `subControlRect` in §7.1: the combo's internal `QLineEdit` sat

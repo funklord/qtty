@@ -459,6 +459,28 @@ int suite_router() {
 		r.on_mouse({QPoint(15, 0), 1, false, true, false, 0});
 		CHECK(sl->value() > 0, "dragging a slider moves it");
 	}
+	{
+		// Selecting text with the mouse came free with the same change, and
+		// section 7.2 had recorded selection as the untested half of the text
+		// widgets. It is a third distinct shape: the target never changes and
+		// the moves land inside the widget, but each one has to carry the
+		// held button or QLineEdit reads them as the pointer passing over.
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *le = new QLineEdit(&h);
+		le->setText(QStringLiteral("hello world"));
+		le->setFrame(false);
+		le->setGeometry(0, 0, cw * 20, ch);
+		h.resize(GridMetrics::cells(30, 4));
+		h.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&h);
+		r.on_mouse({QPoint(0, 0), 1, true, false, false, 0});
+		for (int x = 1; x <= 5; ++x) r.on_mouse({QPoint(x, 0), 1, false, false, true, 0});
+		r.on_mouse({QPoint(5, 0), 1, false, true, false, 0});
+		CHECK(le->selectedText() == QStringLiteral("hello"),
+		      "dragging across a line edit selects the text under it");
+	}
 	// The splitter goes last and takes the guard with it, because it lays its
 	// panes out off the grid and always has: a 300px splitter with a one-cell
 	// handle splits evenly into 145/145, before any input is involved. That is
