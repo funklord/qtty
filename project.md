@@ -478,7 +478,25 @@ applies equally to a dialog the application opens.
 
 Still missing:
 
-- `onPaste` fabricates a key event with `key=0`.
+- ~~`onPaste` fabricates a key event with `key=0`.~~ **Examined and
+  fixed**, and the key=0 event turns out to be right: a paste is text,
+  not typing, which is the whole reason bracketed paste exists.
+  Delivering the newlines as Return would fire the default button and
+  submit a dialog halfway through a paste.
+
+  What was wrong is what a single-line editor then held. Measured:
+  pasting two lines into a `QLineEdit` left its `text()` containing a
+  literal newline -- a state no user can type, that nothing downstream
+  expects, and that renders as a stray glyph in a cell. Newlines fold to
+  spaces for such a target, which is what a clipboard paste into the same
+  field does, and a multi-line editor keeps the newline it can hold. The
+  test is by type because Qt exposes no generic "accepts a newline"
+  query; a third-party single-line editor still gets the raw text, which
+  is a known edge rather than a hidden one.
+
+  The path had no test at all and could not have had one until the
+  backend learned to decode bracketed paste -- an implemented sink that
+  nothing called, which is §7.4's theme exactly.
 - No mnemonic handling, and no grab-widget branch.
 
 **Compositor and FrameScheduler -- done.** This was the largest
@@ -908,7 +926,9 @@ check passing.
 Where to point it next, in this tree: anything that takes a QString and
 counts, anything that takes bytes and decodes, and anything with an edge
 the fixtures never reach. `to_snapshot()`'s planes against a wide cluster
-and `InputRouter::on_paste` are both unexamined.
+and `InputRouter::on_paste` were both unexamined; the paste path has
+since been looked at and is in §7.1, and `to_snapshot()` against a wide
+cluster has not.
 
 ### 7.7 Latent bugs, found by working around them
 

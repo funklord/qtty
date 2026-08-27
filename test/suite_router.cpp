@@ -200,5 +200,62 @@ int suite_router() {
 	edge.close();
 	QCoreApplication::processEvents();
 
+
+	// ---- paste (section 5.5) -------------------------------------------------
+	//
+	// The router's paste path had no test at all. It became reachable only
+	// when the backend learned to decode bracketed paste, and until then
+	// nothing could have exercised it -- an implemented sink that nothing
+	// calls, which is section 7.4's theme.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *vb = new QVBoxLayout(&host);
+		vb->setContentsMargins(0, 0, 0, 0);
+		vb->setSpacing(0);
+		auto *line = new QLineEdit(&host);
+		auto *doc = new QPlainTextEdit(&host);
+		// Sized in whole cells by hand, because section 7.8 says an
+		// application must: a QPlainTextEdit's minimum is not a cell multiple
+		// and the layout honours the minimum, so leaving it to the layout put
+		// this fixture one pixel off the grid and GridGuard said so. That is
+		// the guard earning its place on a test written minutes earlier.
+		doc->setFixedHeight(GridMetrics::ch() * 4);
+		vb->addWidget(line);
+		vb->addWidget(doc);
+		host.resize(GridMetrics::cells(30, 5));
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter pr(&host);
+
+		line->setFocus();
+		setFocusWidget(line);
+		pr.on_paste(QStringLiteral("hello"));
+		CHECK(line->text() == QStringLiteral("hello"), "a paste arrives as text");
+
+		line->clear();
+		pr.on_paste(QString::fromUtf8("caf\u00e9 \u6f22"));
+		CHECK(line->text() == QString::fromUtf8("caf\u00e9 \u6f22"),
+		      "a paste carries non-ASCII whole");
+
+		// The case bracketed paste exists for. Delivering the newline as
+		// Return would fire the default button and submit the dialog
+		// mid-paste; delivering it raw leaves a newline inside a QLineEdit,
+		// which is a state no user can type.
+		line->clear();
+		pr.on_paste(QStringLiteral("two\nlines"));
+		CHECK(!line->text().contains(QLatin1Char('\n')),
+		      "a multi-line paste leaves no newline in a single-line editor");
+		CHECK(line->text() == QStringLiteral("two lines"),
+		      "the newline becomes a space, and nothing else is lost");
+
+		// A multi-line editor keeps them: the fold is about the target, not
+		// about pastes.
+		doc->setFocus();
+		setFocusWidget(doc);
+		pr.on_paste(QStringLiteral("a\nb"));
+		CHECK(doc->toPlainText() == QStringLiteral("a\nb"),
+		      "a multi-line editor keeps the newline it can hold");
+	}
 	return fails;
 }

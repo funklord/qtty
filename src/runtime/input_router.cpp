@@ -207,8 +207,34 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 }
 
 void InputRouter::on_paste(const QString &text) {
-	QKeyEvent ev(QEvent::KeyPress, 0, Qt::NoModifier, text);
-	QApplication::sendEvent(key_target(), &ev);
+	QWidget *target = key_target();
+
+	// A paste is text, not typing, which is the whole reason bracketed paste
+	// exists: delivering the newlines as Return would fire the default button
+	// and submit a dialog halfway through the paste. So the text goes in as
+	// one event carrying the lot.
+	//
+	// But a single-line editor cannot hold a newline, and it accepts one
+	// anyway through this path -- measured: pasting two lines into a QLineEdit
+	// left its text() containing a literal newline, a state no user can type
+	// and one nothing downstream expects. Folded to spaces for those targets,
+	// which is what a clipboard paste into the same field does.
+	//
+	// The test is by type because Qt exposes no generic "accepts a newline"
+	// query -- ImhMultiLine is a hint an application sets, not something
+	// QLineEdit reports. QLineEdit is the single-line text entry in Qt
+	// Widgets, and QAbstractSpinBox embeds one, so focus lands on a QLineEdit
+	// for both. A third-party single-line editor would still get the raw
+	// newlines, and that is a known edge rather than a hidden one.
+	QString payload = text;
+	if (qobject_cast<QLineEdit *>(target)) {
+		payload.replace(QLatin1Char('\r'), QLatin1Char(' '));
+		payload.replace(QLatin1Char('\n'), QLatin1Char(' '));
+	}
+
+	QKeyEvent ev(QEvent::KeyPress, 0, Qt::NoModifier, payload);
+	QApplication::sendEvent(target, &ev);
+	QCoreApplication::processEvents();
 	if (frame_requested) frame_requested();
 }
 
