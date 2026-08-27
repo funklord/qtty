@@ -571,6 +571,72 @@ int suite_widgets() {
 		      "and its border stays in its own row");
 	}
 
+	// design.md section 8.6: the icon substitution registry. A terminal
+	// cannot draw a 16-pixel icon in one cell, which is why drawPixmap()
+	// stamps a placeholder block there; the registry is how an application
+	// says what the icon MEANS, chosen by whoever knows the icon set.
+	{
+		Qtty::clear_icon_glyphs();
+		Qtty::set_icon_glyph(QStringLiteral("edit-cut"), QStringLiteral("XC"));
+		CHECK(Qtty::icon_glyph(QStringLiteral("edit-cut")) == QStringLiteral("XC"),
+		      "an icon name resolves to its registered glyph");
+		CHECK(Qtty::icon_glyph(QStringLiteral("edit-paste")).isEmpty(),
+		      "and an unregistered one resolves to nothing");
+		Qtty::set_icon_glyph(QString(), QStringLiteral("x"));
+		CHECK(Qtty::icon_glyph(QString()).isEmpty(),
+		      "an empty name is not a key -- every unnamed icon would share it");
+
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		CHECK(Qtty::glyph_for(&host, QStringLiteral("edit-cut"))
+		          == QStringLiteral("XC"), "the registry answers for a widget");
+		host.setProperty("qtty.glyph", QStringLiteral("PP"));
+		CHECK(Qtty::glyph_for(&host, QStringLiteral("edit-cut"))
+		          == QStringLiteral("PP"),
+		      "and a widget property beats it, being per-instance");
+		host.setProperty("qtty.glyph", QString());
+		CHECK(Qtty::glyph_for(&host, QStringLiteral("edit-cut"))
+		          == QStringLiteral("XC"),
+		      "an empty property falls through rather than blanking the icon");
+		CHECK(Qtty::glyph_for(nullptr, QStringLiteral("edit-cut"))
+		          == QStringLiteral("XC"), "and no widget is not an error");
+	}
+	{
+		// End to end on a toolbar, and through the ACTION's property rather
+		// than the button's: a toolbar's QToolButton is built by Qt from a
+		// QAction the application created, so requiring the property on the
+		// button would require it on a widget the application never sees.
+		// Measured on this machine, that is also the only route that works --
+		// QIcon::name() is empty unless an icon theme resolved the icon, and
+		// qtty pins the platform theme off.
+		Qtty::clear_icon_glyphs();
+		QMainWindow win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *bar = win.addToolBar(QStringLiteral("main"));
+		auto *cut = bar->addAction(QStringLiteral("Cut"));
+		cut->setProperty("qtty.glyph", QStringLiteral("XC"));
+		bar->addAction(QStringLiteral("Copy"));
+		win.resize(GridMetrics::cells(40, 6));
+		win.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer buf(40, 6);
+		Qtty::render_once(win, buf);
+		const QString row = buf.to_text().split(QLatin1Char('\n')).value(0);
+		CHECK(row.startsWith(QStringLiteral("[XC Cut][Copy]")),
+		      "an action's glyph is drawn beside its text");
+
+		// The measurement must agree with the drawing, or the label is put in
+		// a box a cell too narrow and the elide eats the last letter instead
+		// of the thing that did not fit. Asserted through the button's width
+		// rather than by reading the row twice.
+		QToolButton *first = bar->findChildren<QToolButton *>().value(0);
+		for (QToolButton *b : bar->findChildren<QToolButton *>())
+			if (b->isVisible()) { first = b; break; }
+		CHECK(first && first->width() == GridMetrics::cw() * 8,
+		      "and the button was measured with the glyph in it");
+		Qtty::clear_icon_glyphs();
+	}
+
 	return fails;
 }
 

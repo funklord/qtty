@@ -1119,13 +1119,55 @@ Still not done from this list:
 - **Unicode-placeholder mode** -- the kitty path that survives tmux, and
   the one design.md §5.7 calls stronger still because a placement becomes
   a run of ordinary text cells that the existing diff machinery moves
-  with no special cases.
+  with no special cases. Everything it needs is now in place: tmux is
+  detected, the query is wrapped through it, and the cell size is known.
+
+  **It is blocked on data rather than on work.** The encoding needs
+  kitty's row/column diacritic table -- 297 specific code points -- and
+  that table is not on this machine: no kitty package, no
+  `rowcolumn_diacritics` file, and a search of the whole filesystem
+  returns nothing. Writing those code points from memory would put a
+  screenful of wrong combining marks on a real kitty terminal, and a
+  round-trip test against a decoder written from the same memory is one
+  witness wearing two hats. **The table has to come from kitty.**
 - The roughly 100 ms scroll-settle debounce for slow links.
 - `Qtty::PixelSurface`.
 - `qtty::cells()` and `alignTextDocument()`, the two GUI-invisible
   accommodations design.md §5.7 offers for cell-multiple image sizing.
-- The `qtty.glyph` / `QIcon::name()` icon substitution registry
-  (design.md §8.6).
+- ~~The `qtty.glyph` / `QIcon::name()` icon substitution registry
+  (design.md §8.6).~~ **Done.** A terminal cannot draw a 16-pixel icon in
+  one cell -- there is nothing to see at that size, which is why
+  `drawPixmap()` has always stamped a placeholder block there. The registry
+  is how an application says what an icon MEANS, chosen by whoever knows the
+  icon set rather than guessed by the library, and `CC_ToolButton` is its
+  first consumer.
+
+  **The route that works is the ACTION's property, not the icon's name**,
+  and that was measured rather than designed. `QIcon::name()` is empty
+  unless an icon THEME resolved the icon, and on this machine nothing
+  resolves -- `QIcon::fromTheme("edit-cut")` comes back null with an empty
+  name under no theme, under `hicolor` and under `Adwaita` with the search
+  path set. qtty pins the platform theme off, so that is the normal case
+  rather than this machine being odd. The property route also fits how
+  applications are written: a toolbar's `QToolButton` is built by Qt from a
+  `QAction`, so requiring the property on the button would require it on a
+  widget the application never sees.
+
+  `glyph_for()` is split in two for that reason. There is no way to give a
+  `QIcon` a name by hand, so the `QIcon` overload cannot be driven past its
+  first line here; the name overload carries every rule and is exercised in
+  full. Saying which is which is better than a coverage figure that hides
+  it.
+
+  The measurement and the drawing share one label builder, because a label
+  measured without its glyph is drawn into a box a cell too narrow and the
+  elide then eats the last letter rather than the thing that did not fit.
+  The test asserts the button's WIDTH as well as the row, which is what
+  catches that.
+
+  Not done from §8.6: the debug-versus-release placeholder rule -- a single
+  cell in debug and nothing in release. It needs a way to exercise both
+  builds, and the suite runs in one.
 
 ### 7.4 Declared but unreachable -- mostly closed
 

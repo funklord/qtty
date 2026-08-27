@@ -3,6 +3,7 @@
 #include <QProxyStyle>
 #include <QObject>
 #include <QString>
+#include <QIcon>
 #include <QRect>
 #include <QSize>
 
@@ -114,6 +115,37 @@ public:
 // State_HasFocus never set. GridStyle consults this instead.
 QWidget *focusWidget();
 void setFocusWidget(QWidget *);
+
+// design.md section 8.6: a substitution registry mapping an icon to a glyph.
+//
+// A terminal cannot draw a 16-pixel icon in one cell -- there is nothing to
+// see at that size, which is why CellPaintEngine::drawPixmap() has always
+// stamped a placeholder block there instead. The registry is what lets an
+// application say what the icon MEANS: "document-save" is a floppy on a
+// desktop and can be a disk glyph here, chosen by whoever knows the icon set
+// rather than guessed by the library.
+//
+// Two ways in, and the widget wins. A `qtty.glyph` dynamic property on the
+// widget is per-instance and answers the case a name cannot: two toolbars
+// using the same standard icon for different things. The registry is keyed on
+// QIcon::name(), which is set for themed icons and empty for one built from a
+// pixmap -- so an unnamed icon simply finds nothing, which is the honest
+// answer rather than a wrong glyph.
+void set_icon_glyph(const QString &icon_name, const QString &glyph);
+QString icon_glyph(const QString &icon_name);         // empty when unregistered
+void clear_icon_glyphs();
+
+// What to draw for this widget's icon, or empty if nothing is registered and
+// no property is set. Checks the property first for the reason above.
+//
+// Split in two so the rules can be tested. QIcon::name() is empty unless an
+// icon THEME resolved the icon, and there is no way to give an icon a name by
+// hand -- so on a machine with no matching theme installed (this one, and any
+// machine where qtty has pinned the platform theme off) the QIcon overload
+// cannot be driven past its first line. The name overload carries every rule
+// and is fully exercised; the other adds only the call to QIcon::name().
+QString glyph_for(const QWidget *w, const QString &icon_name);
+QString glyph_for(const QWidget *w, const QIcon &icon);
 
 // sections 5.3/5.4: cell-multiple metrics for layouts and widgets; Channel A
 // (semantic) drawing when the paint target is a CellPaintDevice.

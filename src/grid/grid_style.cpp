@@ -6,12 +6,27 @@
 #include <QStyleOption>
 #include <QStyleOptionButton>
 #include <QPainter>
+#include <QHash>
+#include <QToolButton>
 #include <QWidget>
 #include <QCoreApplication>
 #include <QFontMetricsF>
 #include <QFontInfo>
 
 namespace Qtty {
+
+// What a tool button actually shows: its icon's glyph, its text, or both.
+// Built in one place because sizeFromContents() and drawComplexControl() must
+// agree exactly -- a label measured without the glyph is drawn into a box one
+// cell too narrow, and the elide would then eat the last letter rather than
+// the thing that did not fit.
+static QString tool_button_label(const QStyleOptionToolButton *tb, const QWidget *w) {
+	const QString text = strip_mnemonic(tb->text);
+	const QString glyph = glyph_for(w, tb->icon);
+	if (glyph.isEmpty()) return text;
+	if (text.isEmpty()) return glyph;
+	return glyph + QLatin1Char(' ') + text;
+}
 
 static int s_cw = 8, s_ch = 16;
 int GridMetrics::cw() { return s_cw; }
@@ -334,7 +349,7 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 	case CT_ToolButton:
 		if (auto *tb = qstyleoption_cast<const QStyleOptionToolButton *>(o)) {
 			int cells = 0;
-			for (const QString &cluster : to_clusters(strip_mnemonic(tb->text)))
+			for (const QString &cluster : to_clusters(tool_button_label(tb, w)))
 				cells += cluster_width(cluster);
 			return QSize((cells + 2) * cw, ch);      // + the two brackets
 		}
@@ -620,7 +635,7 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				const int inner = c.width() - 2;
 				if (inner > 0)
 					dev->buffer().text(c.left() + 1, row,
-						                   elide_to_cells(strip_mnemonic(tb->text), inner),
+						                   elide_to_cells(tool_button_label(tb, w), inner),
 						                   Color(), Color(),
 						                   on ? Attrs(Attr::Reverse) : Attrs());
 				return;
@@ -713,6 +728,62 @@ int GridStyle::styleHint(StyleHint hint, const QStyleOption *opt, const QWidget 
 		break;
 	}
 	return QProxyStyle::styleHint(hint, opt, w, ret);
+}
+
+// ------------------------------------------------------------- icon glyphs
+// design.md section 8.6. A flat map rather than anything cleverer: the
+// population is an application's own icon names, and it is read once per
+// icon drawn.
+static QHash<QString, QString> &glyph_registry() {
+	static QHash<QString, QString> map;
+	return map;
+}
+
+void set_icon_glyph(const QString &icon_name, const QString &glyph) {
+	if (icon_name.isEmpty()) return;             // nothing to key on
+	glyph_registry().insert(icon_name, glyph);
+}
+
+QString icon_glyph(const QString &icon_name) {
+	return glyph_registry().value(icon_name);
+}
+
+void clear_icon_glyphs() { glyph_registry().clear(); }
+
+QString glyph_for(const QWidget *w, const QIcon &icon) {
+	return glyph_for(w, icon.isNull() ? QString() : icon.name());
+}
+
+QString glyph_for(const QWidget *w, const QString &icon_name) {
+	// The property first. It is per-instance, so it answers the case a name
+	// cannot: two widgets sharing one standard icon for different meanings.
+	if (w) {
+		const QVariant v = w->property("qtty.glyph");
+		if (v.isValid()) {
+			const QString g = v.toString();
+			if (!g.isEmpty()) return g;
+		}
+		// ...and the action behind it, which is the object an application
+		// actually holds. A toolbar's QToolButton is built by Qt from a
+		// QAction the application created, so requiring the property on the
+		// button would mean requiring it on a widget the application never
+		// sees. Measured: this is the route that works, because QIcon::name()
+		// is empty unless an icon THEME resolved the icon, and qtty pins the
+		// platform theme off.
+		if (auto *tb = qobject_cast<const QToolButton *>(w)) {
+			if (QAction *a = tb->defaultAction()) {
+				const QVariant av = a->property("qtty.glyph");
+				if (av.isValid()) {
+					const QString g = av.toString();
+					if (!g.isEmpty()) return g;
+				}
+			}
+		}
+	}
+	// A themed icon has a name and one built from a pixmap does not, so an
+	// unnamed icon finds nothing -- which is the honest answer rather than a
+	// wrong glyph.
+	return icon_glyph(icon_name);
 }
 
 // ------------------------------------------------------------------ GridSnap
