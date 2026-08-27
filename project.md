@@ -747,6 +747,53 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**`QToolBar` works now**, and it needed three things that had to arrive
+together. It rendered as an empty strip: two actions laid out correctly
+at 60x19 and 70x19, and not one glyph on the screen.
+
+- **`QToolBar` defaults to `Qt::ToolButtonIconOnly`** and a terminal
+  draws no icon, so the base style measured each button for an icon --
+  about two cells -- and the label had nowhere to go. `CT_ToolButton` is
+  measured from its text here instead. `SH_ToolButtonStyle` is pinned to
+  text-only as well, but that reaches only widgets set to follow the
+  style, which is why the measurement had to move rather than the hint
+  alone. It is the same judgement as pinning the dialog-button icon hint:
+  no space is reserved for what cannot be drawn.
+- **Nothing drew a tool button's label.** `CC_ToolButton` does, bracketed
+  like a tab -- the nearest thing already in this style, being a row of
+  adjacent labels one of which may be current. A push button's angle
+  brackets would read as a dialog button sitting in a toolbar.
+- **`PM_ToolBarHandleExtent` was 9**, most of a cell, pushing every
+  button off the grid. A terminal toolbar cannot be dragged, so it is
+  nothing; the separator and the overflow arrow get a cell each, being
+  things that are drawn.
+
+The test uses the DEFAULT tool button style deliberately. With
+`setToolButtonStyle(Qt::ToolButtonTextOnly)` it passes with the sizing
+left broken, and the default is what an application gets.
+
+**And it uncovered a general fault in Channel B: a rule on the last
+pixel row of a widget was drawn in the row below it.** `line()` mapped a
+coordinate with `qRound`, so a toolbar 19 pixels tall drawing its bottom
+border at y=17 and y=18 put it in row 1 -- a row the toolbar does not
+occupy -- and it came out as a full-width rule across the central
+widget, measured as `body` followed by `──────`. A line belongs to the
+cell it is **in**, not the boundary it is nearest, so it floors now.
+
+The same edit fixed the span's far end, which ran one column past the
+buffer: a line to x=399 asked for column `qRound(39.9)` = 40 on a
+40-column buffer. Nothing was corrupted, because `CellBuffer::at()`
+returns a scratch cell out of range -- which is why it had never been
+noticed rather than why it was safe.
+
+**The `widgets_gallery` fixture recorded the defect and was
+re-recorded.** It carried a full-width rule one row below the tab pane;
+the trace says that rule is `LINE (10,284)-(429,284)`, and with a 19-pixel
+cell row 14 spans y=266 to 284, so y=284 is the last pixel of the row the
+pane's `└───┘` is already in. Exactly one line of the fixture changed,
+which is the whole check on a re-record: a fixture rewritten because the
+code changed is only honest if the diff is the change.
+
 **Partial:** `QLineEdit` and the item views.
 
 **Thin or absent:**

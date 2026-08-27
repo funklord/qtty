@@ -214,6 +214,16 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 	case PM_RadioButtonLabelSpacing:                       return cw;
 	case PM_ToolBarItemMargin: case PM_ToolBarItemSpacing: return 0;
 	case PM_ToolBarFrameWidth:                             return 0;
+	// A terminal toolbar cannot be dragged, so its grip is nothing rather
+	// than the nine pixels Fusion reserves -- which was pushing every tool
+	// button off the grid by most of a cell. The separator and the overflow
+	// arrow each get a whole cell, being things that are actually drawn.
+	case PM_ToolBarHandleExtent:                           return 0;
+	case PM_ToolBarSeparatorExtent:                        return cw;
+	case PM_ToolBarExtensionExtent:                        return cw;
+	// Icons are not drawn at all (see SH_ToolButtonStyle below), so reserving
+	// room for one spends cells on nothing.
+	case PM_ToolBarIconSize:                               return 0;
 	case PM_DockWidgetSeparatorExtent:                     return cw;
 	case PM_HeaderMargin:                                  return 0;
 	case PM_HeaderGripMargin:                              return cw;
@@ -303,12 +313,31 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 	case CT_LineEdit:
 	case CT_ComboBox:
 	case CT_SpinBox:
-	case CT_ToolButton:
 	case CT_MenuBarItem:
 	case CT_TabBarTab:
 	case CT_HeaderSection:
 	case CT_ProgressBar:
 	case CT_Slider:
+		return QSize(width, ch);
+
+	// A tool button is measured from its TEXT, not from what toolButtonStyle
+	// asked for. QToolBar defaults to Qt::ToolButtonIconOnly and a terminal
+	// draws no icon, so the base style returned an icon-sized button of about
+	// two cells and the label had nowhere to go -- a toolbar rendered as "]]".
+	// Pinning SH_ToolButtonStyle reaches only the widgets that follow the
+	// style; measuring it here reaches the rest, and keeps the measurement and
+	// the drawing in one place, which is what a style is for.
+	//
+	// It sits outside the group above rather than in it: those cases fall
+	// through to a shared return, and a case with a body in the middle of them
+	// is a trap for whoever adds the next one.
+	case CT_ToolButton:
+		if (auto *tb = qstyleoption_cast<const QStyleOptionToolButton *>(o)) {
+			int cells = 0;
+			for (const QString &cluster : to_clusters(strip_mnemonic(tb->text)))
+				cells += cluster_width(cluster);
+			return QSize((cells + 2) * cw, ch);      // + the two brackets
+		}
 		return QSize(width, ch);
 
 	// A menu item is one row, except a separator, which is also one row but
@@ -348,6 +377,24 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 		case PE_FrameWindow: case PE_Frame: case PE_FrameGroupBox:
 		case PE_PanelMenu: case PE_FrameMenu: case PE_PanelLineEdit:
 			draw_box(dev->buffer(), c);
+			return;
+		case PE_PanelToolBar:
+			// Nothing. Fusion paints a background and a border along the
+			// bottom edge, and that border sits at y = ch exactly -- one pixel
+			// into the row BELOW the toolbar, which Channel B then drew as a
+			// full-width rule through whatever lived there. Measured: a
+			// toolbar over a central widget wrote "<Save>----------" across
+			// the button's own row.
+			//
+			// A toolbar has no frame on a grid. Its extent is legible from the
+			// buttons in it, and a rule drawn in a neighbour's cells is not a
+			// frame, it is damage.
+			return;
+		case PE_IndicatorToolBarHandle:
+			return;                                    // extent is nil, so is this
+		case PE_IndicatorToolBarSeparator:
+			for (int y = c.top(); y <= c.bottom(); ++y)
+				dev->buffer().put_cluster(c.left(), y, QStringLiteral("│"));
 			return;
 		case PE_IndicatorBranch: {                    // tree expanders (section 17.2)
 			QString g = QStringLiteral(" ");
@@ -554,6 +601,31 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			dev->buffer().put_cluster(c.right() - 1, row, QStringLiteral("▾"));
 			return;                                    // label via CE_ComboBoxLabel
 		}
+		case CC_ToolButton:
+			if (auto *tb = qstyleoption_cast<const QStyleOptionToolButton *>(opt)) {
+				// Bracketed like a tab, which is the nearest thing already in
+				// this style: a row of adjacent labels, one of which may be
+				// current. A push button's angle brackets would read as a
+				// dialog button sitting in a toolbar.
+				const int row = c.top() + c.height() / 2;
+				// Clear first. A toolbar draws its own background through
+				// Channel B before its children, and the leftover showed
+				// between the label and the closing bracket -- "[Cut-]".
+				dev->buffer().fill(c, Cell{});
+				const bool on = (tb->state & State_On)
+					             || (tb->state & State_Sunken)
+					             || (w && w == s_focus);
+				dev->buffer().put_cluster(c.left(), row, QStringLiteral("["));
+				dev->buffer().put_cluster(c.right(), row, QStringLiteral("]"));
+				const int inner = c.width() - 2;
+				if (inner > 0)
+					dev->buffer().text(c.left() + 1, row,
+						                   elide_to_cells(strip_mnemonic(tb->text), inner),
+						                   Color(), Color(),
+						                   on ? Attrs(Attr::Reverse) : Attrs());
+				return;
+			}
+			break;
 		case CC_Slider:
 			if (auto *sl = qstyleoption_cast<const QStyleOptionSlider *>(opt)) {
 				const bool vert = sl->orientation == Qt::Vertical;
@@ -618,6 +690,18 @@ int GridStyle::styleHint(StyleHint hint, const QStyleOption *opt, const QWidget 
 		// terminal program is routinely run over ssh, where the machine
 		// holding the desktop theme is not the machine anybody is looking at.
 		return 0;                                  // QDialogButtonBox::WinLayout
+	case SH_ToolButtonStyle:
+		// QToolBar defaults to Qt::ToolButtonIconOnly, and a terminal draws no
+		// icon -- so a toolbar rendered as an empty strip. Measured: two
+		// actions laid out correctly, 60x19 and 70x19, and not one glyph on
+		// the screen. Text-only is the only setting that says anything here,
+		// and it is the same judgement as pinning the dialog-button icon hint
+		// above: space is not reserved for what cannot be drawn.
+		//
+		// A style hint rather than a change to QToolBar, because this is
+		// exactly what the hint is for: an application that sets a style on
+		// its toolbar explicitly still wins.
+		return Qt::ToolButtonTextOnly;
 	case SH_LineEdit_PasswordCharacter:
 		// Same shape: U+25CF under offscreen, U+2022 under gtk3, so what a
 		// password field showed depended on the desktop. Both are one cell

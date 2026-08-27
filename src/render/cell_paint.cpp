@@ -1,5 +1,6 @@
 // src/render/cell_paint.cpp -- CellPaintDevice / CellPaintEngine (section 5.4).
 #include "qtty/paint.h"
+#include <cmath>
 #include <QCoreApplication>
 #include <QEvent>
 #include <QWidget>
@@ -261,13 +262,27 @@ void CellPaintEngine::line(const QLineF &l) {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	QLineF m(xf_.map(l.p1()) + QPointF(dev_->origin), xf_.map(l.p2()) + QPointF(dev_->origin));
 	CellBuffer &b = dev_->buffer();
+	// The cell a pixel is IN, not the boundary it is nearest. Rounding put a
+	// rule on the last pixel row of a widget into the row below it: a toolbar
+	// 19 pixels tall draws its bottom border at y = 17 and 18, and qRound(17/19)
+	// is 1 -- so the border was written across a row the toolbar does not
+	// occupy, over whatever lived there. Measured as "<Save>----------" on a
+	// central widget's own row, and it is the same shape as the caret fault in
+	// section 7.2: a sub-cell mark landing in a neighbour's cell.
+	//
+	// Flooring also fixes the span's far end, which ran one column past the
+	// buffer -- a line to x=399 asked for column qRound(39.9) = 40 on a
+	// 40-column buffer. CellBuffer::at() returns a scratch cell out of range,
+	// so it wrote nowhere rather than corrupting anything; it was invisible
+	// for that reason rather than harmless by design.
+	const auto cell_of = [](double px, int size) { return int(std::floor(px / size)); };
 	if (qAbs(m.dy()) < ch / 2.0) {
-		int y = qRound(m.y1() / ch);
-		for (int x = qRound(qMin(m.x1(), m.x2()) / cw); x <= qRound(qMax(m.x1(), m.x2()) / cw); ++x)
+		const int y = cell_of(m.y1(), ch);
+		for (int x = cell_of(qMin(m.x1(), m.x2()), cw); x <= cell_of(qMax(m.x1(), m.x2()), cw); ++x)
 			if (b.at(x, y).ch == QStringLiteral(" ")) b.at(x, y).ch = QStringLiteral("─");
 	} else if (qAbs(m.dx()) < cw / 2.0) {
-		int x = qRound(m.x1() / cw);
-		for (int y = qRound(qMin(m.y1(), m.y2()) / ch); y <= qRound(qMax(m.y1(), m.y2()) / ch); ++y)
+		const int x = cell_of(m.x1(), cw);
+		for (int y = cell_of(qMin(m.y1(), m.y2()), ch); y <= cell_of(qMax(m.y1(), m.y2()), ch); ++y)
 			if (b.at(x, y).ch == QStringLiteral(" ")) b.at(x, y).ch = QStringLiteral("│");
 	}
 }

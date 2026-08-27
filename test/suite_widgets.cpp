@@ -526,6 +526,51 @@ int suite_widgets() {
 		CHECK(buffer_contains(buf, QString::number(spin->value())),
 		      "a stepped spin box still shows its value");
 	}
+	// QToolBar rendered as an empty strip. Two things were wrong and only the
+	// pair produces anything: QToolBar defaults to Qt::ToolButtonIconOnly and
+	// a terminal draws no icon, so the buttons were measured for an icon and
+	// the label had nowhere to go; and nothing drew a tool button's label at
+	// all. Measured before the fix: two actions laid out correctly at 60x19
+	// and 70x19, and not one glyph on the screen.
+	//
+	// The default style is used deliberately rather than
+	// setToolButtonStyle(Qt::ToolButtonTextOnly), because with the style set
+	// explicitly this passes with the sizing left broken -- it is the default
+	// that carries the defect, and it is what an application gets.
+	{
+		QMainWindow win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *bar = win.addToolBar(QStringLiteral("main"));
+		bar->addAction(QStringLiteral("Cut"));
+		bar->addAction(QStringLiteral("Copy"));
+		auto *central = new QWidget;
+		win.setCentralWidget(central);
+		auto *label = new QLabel(QStringLiteral("body"), central);
+		label->setGeometry(0, 0, GridMetrics::cw() * 8, GridMetrics::ch());
+		win.resize(GridMetrics::cells(40, 6));
+		win.show();
+		QCoreApplication::processEvents();
+
+		Qtty::CellBuffer buf(40, 6);
+		Qtty::render_once(win, buf);
+		const QStringList rows = buf.to_text().split(QLatin1Char('\n'));
+		CHECK(rows.value(0).startsWith(QStringLiteral("[Cut][Copy]")),
+		      "a toolbar draws its actions");
+
+		bool aligned = true;
+		for (QToolButton *b : bar->findChildren<QToolButton *>())
+			if (b->isVisible() && !GridMetrics::is_aligned(b->geometry())) aligned = false;
+		CHECK(aligned, "and its buttons land on the grid");
+
+		// The other half, and a separate defect: a rule drawn on the LAST
+		// pixel row of a widget was rounded into the row below it, so the
+		// toolbar's own bottom border was written across the central widget's
+		// row -- measured as "body" followed by a full-width rule. A line
+		// belongs to the cell it is in, not the boundary it is nearest.
+		CHECK(rows.value(1).trimmed() == QStringLiteral("body"),
+		      "and its border stays in its own row");
+	}
+
 	return fails;
 }
 
