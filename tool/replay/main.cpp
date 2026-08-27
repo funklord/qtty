@@ -25,7 +25,7 @@
 
 using namespace Qtty;
 
-static int keyByName(const QString &n) {
+static int key_by_name(const QString &n) {
 	static const QHash<QString, int> map = {
 		{"tab", Qt::Key_Tab}, {"return", Qt::Key_Return}, {"enter", Qt::Key_Return},
 		{"backspace", Qt::Key_Backspace}, {"up", Qt::Key_Up}, {"down", Qt::Key_Down},
@@ -36,7 +36,7 @@ static int keyByName(const QString &n) {
 }
 
 int main(int argc, char **argv) {
-	prepareEnvironment();
+	prepare_environment();
 	QApplication app(argc, argv);
 	setup(app);
 
@@ -65,47 +65,47 @@ int main(int argc, char **argv) {
 	Compositor comp(&win, &router);
 
 	bool ansi = false;
-	QString scriptPath;
+	QString script_path;
 	for (int i = 1; i < argc; ++i) {
 		if (!qstrcmp(argv[i], "--ansi")) ansi = true;
-		else scriptPath = QString::fromLocal8Bit(argv[i]);
+		else script_path = QString::fromLocal8Bit(argv[i]);
 	}
 	std::unique_ptr<AnsiBackend> backend;
 	if (ansi) backend = std::make_unique<AnsiBackend>();
 
 	QFile file;
-	if (!scriptPath.isEmpty()) { file.setFileName(scriptPath); file.open(QIODevice::ReadOnly); }
+	if (!script_path.isEmpty()) { file.setFileName(script_path); file.open(QIODevice::ReadOnly); }
 	else file.open(stdin, QIODevice::ReadOnly);
 	QTextStream in(&file);
 
-	int frameNo = 0;
+	int frame_no = 0;
 	while (!in.atEnd()) {
-		const QString lineRaw = in.readLine();
-		const QString line = lineRaw.trimmed();
+		const QString line_raw = in.readLine();
+		const QString line = line_raw.trimmed();
 		if (line.isEmpty() || line.startsWith(QLatin1Char('#'))) continue;
 		const QStringList parts = line.split(QLatin1Char(' '));
 		const QString cmd = parts[0].toLower();
 		if (cmd == QLatin1String("text") && parts.size() > 1) {
-			const QString t = lineRaw.mid(lineRaw.indexOf(QLatin1Char(' ')) + 1);
-			for (const QString &cl : toClusters(t))
-				router.onKey({0, cl, false, false, false});
+			const QString t = line_raw.mid(line_raw.indexOf(QLatin1Char(' ')) + 1);
+			for (const QString &cl : to_clusters(t))
+				router.on_key({0, cl, false, false, false});
 		} else if (cmd == QLatin1String("key") && parts.size() == 2) {
-			router.onKey({keyByName(parts[1]), QString(), false, false, false});
+			router.on_key({key_by_name(parts[1]), QString(), false, false, false});
 		} else if (cmd == QLatin1String("ctrl") && parts.size() == 2) {
-			router.onKey({Qt::Key_A + (parts[1].at(0).toLower().unicode() - 'a'),
+			router.on_key({Qt::Key_A + (parts[1].at(0).toLower().unicode() - 'a'),
 				          QString(), true, false, false});
 		} else if (cmd == QLatin1String("click") && parts.size() == 3) {
 			QPoint cell(parts[1].toInt(), parts[2].toInt());
-			router.onMouse({cell, 1, true, false, false, 0});
-			router.onMouse({cell, 1, false, true, false, 0});
+			router.on_mouse({cell, 1, true, false, false, 0});
+			router.on_mouse({cell, 1, false, true, false, 0});
 		} else if (cmd == QLatin1String("frame")) {
 			CellBuffer buf(48, 14);
 			comp.compose(buf);
 			if (backend) {
 				backend->present(buf, QRegion(0, 0, buf.cols(), buf.rows()));
-				++frameNo;
+				++frame_no;
 			} else {
-				printf("--- frame %d ---\n%s--- end ---\n", frameNo++, qPrintable(buf.toText()));
+				printf("--- frame %d ---\n%s--- end ---\n", frame_no++, qPrintable(buf.to_text()));
 			}
 		} else {
 			fprintf(stderr, "qtty-replay: unknown command '%s'\n", qPrintable(cmd));

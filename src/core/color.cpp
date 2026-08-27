@@ -13,7 +13,7 @@ namespace Qtty {
 // beside it and is gone with the RGB nearest match it served. Matching in
 // CIELAB compares whole colours against the candidate table rather than
 // choosing a level per channel, so there is nothing left to invert.
-static int cubeValue(int level) { return level ? 55 + level * 40 : 0; }
+static int cube_value(int level) { return level ? 55 + level * 40 : 0; }
 
 // The 16 system colours, as the xterm defaults spell them. Terminals are free
 // to re-map these, which is exactly why the Ansi16 route is a role table and
@@ -29,7 +29,7 @@ QRgb xterm256_rgb(int index) {
 	if (index < 16) return system16[index];
 	if (index >= 232) { const int v = 8 + (index - 232) * 10; return qRgb(v, v, v); }
 	const int i = index - 16;
-	return qRgb(cubeValue(i / 36), cubeValue((i / 6) % 6), cubeValue(i % 6));
+	return qRgb(cube_value(i / 36), cube_value((i / 6) % 6), cube_value(i % 6));
 }
 
 // ---- CIELAB (section 6) ----------------------------------------------------
@@ -78,7 +78,7 @@ static const QVector<Lab> &candidate_lab() {
 	return table;
 }
 
-int Color::toXterm256() const {
+int Color::to_xterm256() const {
 	if (kind_ == Indexed) return index_;
 	if (kind_ == Default) return -1;                     // caller emits 39/49
 	// Memoised on the colour itself. A frame holds a handful of distinct
@@ -111,7 +111,7 @@ int Color::toXterm256() const {
 	return best;
 }
 
-int Color::toAnsi16() const {
+int Color::to_ansi16() const {
 	if (kind_ == Default) return -1;
 	// Primary route (section 6): the hand-authored role table in theme.cpp,
 	// attached to the colour by CellTheme when it resolved the role.
@@ -134,18 +134,18 @@ int Color::toAnsi16() const {
 	return best;
 }
 
-int Color::luminance(bool isForeground) const {
+int Color::luminance(bool is_foreground) const {
 	switch (kind_) {
-	case Default: return isForeground ? 210 : 20;        // conventional dark theme
+	case Default: return is_foreground ? 210 : 20;        // conventional dark theme
 	case Rgb:     return (qRed(rgb_) * 299 + qGreen(rgb_) * 587 + qBlue(rgb_) * 114) / 1000;
 	case Indexed: {
 		if (index_ < 16) {
 			// The system colours are the terminal's to re-map, so their
 			// luminance is a judgement about what terminals actually show
 			// rather than arithmetic on the table above.
-			static const int sysLum[16] = {0,32,80,96,32,48,80,192,
+			static const int system_luminance[16] = {0,32,80,96,32,48,80,192,
 						                   128,96,180,220,96,150,200,255};
-			return sysLum[index_];
+			return system_luminance[index_];
 		}
 		const QRgb v = xterm256_rgb(index_);
 		return (qRed(v) * 299 + qGreen(v) * 587 + qBlue(v) * 114) / 1000;
@@ -153,8 +153,8 @@ int Color::luminance(bool isForeground) const {
 	return 128;
 }
 
-bool hasMinimumContrast(const Color &fg, const Color &bg, int minDelta) {
-	return qAbs(fg.luminance(true) - bg.luminance(false)) >= minDelta;
+bool has_minimum_contrast(const Color &fg, const Color &bg, int min_delta) {
+	return qAbs(fg.luminance(true) - bg.luminance(false)) >= min_delta;
 }
 
 } // namespace Qtty

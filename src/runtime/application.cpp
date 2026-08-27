@@ -10,7 +10,7 @@
 
 namespace Qtty {
 
-void prepareEnvironment() {
+void prepare_environment() {
 	qputenv("QT_QPA_PLATFORM", "offscreen");
 	qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
 }
@@ -37,7 +37,7 @@ void setup(QApplication &app) {
 	GridMetrics::set(fm.horizontalAdvance(u'M'), fm.height());
 	app.setFont(f);
 	app.setStyle(new GridStyle);
-	setTheme(CellTheme::terminalDefault());
+	set_theme(CellTheme::terminal_default());
 
 	// The guard is installed in debug builds and compiled out of release, as
 	// the design specifies. Tests install it explicitly whatever the build,
@@ -47,7 +47,7 @@ void setup(QApplication &app) {
 #endif
 }
 
-void renderOnce(QWidget &win, CellBuffer &buf, QVector<CellImage> *placements) {
+void render_once(QWidget &win, CellBuffer &buf, QVector<CellImage> *placements) {
 	CellPaintDevice dev(buf);
 	QPainter p(&dev);
 	win.render(&p, QPoint(), QRegion(),
@@ -58,7 +58,7 @@ void renderOnce(QWidget &win, CellBuffer &buf, QVector<CellImage> *placements) {
 }
 
 static bool s_tuiActive = false;
-bool isTuiActive() { return s_tuiActive; }
+bool is_tui_active() { return s_tuiActive; }
 
 int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	s_tuiActive = true;
@@ -69,7 +69,7 @@ int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	// The primary window is the whole terminal, and it is at the origin. Both
 	// halves matter and only the first was being set. Compositor::compose()
 	// draws win_ at QPoint() whatever its geometry says, while
-	// InputRouter::onMouse() maps a click through win_->mapFromGlobal(): the
+	// InputRouter::on_mouse() maps a click through win_->mapFromGlobal(): the
 	// two agree at (0,0) and nowhere else, and they were agreeing by accident
 	// because that is where the offscreen platform happens to put a window.
 	// Stating it here costs one call and makes the accident an invariant --
@@ -84,10 +84,10 @@ int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	InputRouter router(&win);
 	Compositor compositor(&win, &router);
 	FrameScheduler scheduler(&backend, &compositor, &win);
-	backend.setEventSink(&router);
-	router.frameRequested = [&scheduler] { scheduler.requestFrame(); };
+	backend.set_event_sink(&router);
+	router.frame_requested = [&scheduler] { scheduler.request_frame(); };
 
-	scheduler.renderNow();                      // initial frame
+	scheduler.render_now();                      // initial frame
 	const int rc = app.exec();
 	s_tuiActive = false;
 	return rc;

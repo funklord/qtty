@@ -3,18 +3,18 @@
 
 namespace Qtty {
 
-CellTheme CellTheme::terminalDefault() { return CellTheme{}; }
+CellTheme CellTheme::terminal_default() { return CellTheme{}; }
 
-CellTheme CellTheme::fromPalette(const QPalette &p) {
+CellTheme CellTheme::from_palette(const QPalette &p) {
 	CellTheme t;
-	t.windowText       = Color::rgb(p.color(QPalette::WindowText));
+	t.window_text       = Color::rgb(p.color(QPalette::WindowText));
 	t.text             = Color::rgb(p.color(QPalette::Text));
-	t.buttonText       = Color::rgb(p.color(QPalette::ButtonText));
+	t.button_text       = Color::rgb(p.color(QPalette::ButtonText));
 	t.window           = Color::rgb(p.color(QPalette::Window));
 	t.base             = Color::rgb(p.color(QPalette::Base));
 	t.button           = Color::rgb(p.color(QPalette::Button));
 	t.highlight        = Color::rgb(p.color(QPalette::Highlight));
-	t.highlightedText  = Color::rgb(p.color(QPalette::HighlightedText));
+	t.highlighted_text  = Color::rgb(p.color(QPalette::HighlightedText));
 	return t;
 }
 
@@ -119,7 +119,7 @@ int ansi16_for_role(QPalette::ColorRole role) {
 	default:
 		// NoRole, NColorRoles, and whatever a later Qt adds: no authored
 		// spelling. Returning -1 rather than a plausible index is the point --
-		// Color::toAnsi16() then falls back to the nearest of the sixteen and
+		// Color::to_ansi16() then falls back to the nearest of the sixteen and
 		// the absence stays visible instead of becoming a silent black.
 		return -1;
 	}
@@ -129,9 +129,9 @@ Color CellTheme::foreground(QPalette::ColorRole r) const {
 	Color c;
 	switch (r) {
 	case QPalette::Text:            c = text; break;
-	case QPalette::ButtonText:      c = buttonText; break;
-	case QPalette::HighlightedText: c = highlightedText; break;
-	default:                        c = windowText; break;
+	case QPalette::ButtonText:      c = button_text; break;
+	case QPalette::HighlightedText: c = highlighted_text; break;
+	default:                        c = window_text; break;
 	}
 	return c.with_ansi16(ansi16_for_role(r));
 }
@@ -147,9 +147,9 @@ Color CellTheme::background(QPalette::ColorRole r) const {
 	return c.with_ansi16(ansi16_for_role(r));
 }
 
-static CellTheme s_theme = CellTheme::terminalDefault();
+static CellTheme s_theme = CellTheme::terminal_default();
 const CellTheme &theme() { return s_theme; }
-void setTheme(const CellTheme &t) { s_theme = t; }
+void set_theme(const CellTheme &t) { s_theme = t; }
 
 // ---- quantisation and emission (section 6) ---------------------------------
 
@@ -158,11 +158,11 @@ Color quantise(const Color &c, Capabilities::ColorDepth depth) {
 	case Capabilities::Mono:
 		return Color();                          // attributes carry everything
 	case Capabilities::Ansi16: {
-		const int i = c.toAnsi16();
+		const int i = c.to_ansi16();
 		return i < 0 ? Color() : Color::indexed(quint8(i));
 	}
 	case Capabilities::Xterm256: {
-		const int i = c.toXterm256();
+		const int i = c.to_xterm256();
 		return i < 0 ? Color() : Color::indexed(quint8(i));
 	}
 	case Capabilities::TrueColor:
@@ -232,7 +232,7 @@ int contrast_violations(const CellBuffer &frame, Capabilities::ColorDepth depth,
 			if (c.width == 0 || c.ch == QStringLiteral(" ")) continue;
 			const Color fg = quantise(c.fg, depth);
 			const Color bg = quantise(c.bg, depth);
-			if (hasMinimumContrast(fg, bg, min_delta)) continue;
+			if (has_minimum_contrast(fg, bg, min_delta)) continue;
 			++violations;
 #ifndef QT_NO_DEBUG
 			if (violations <= 8)

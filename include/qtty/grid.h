@@ -19,7 +19,7 @@ public:
 	static int ch();
 	static void set(int cw, int ch);            // called by Qtty::setup()
 	static QSize cells(int c, int r) { return {c * cw(), r * ch()}; }
-	static bool isAligned(const QRect &px) {
+	static bool is_aligned(const QRect &px) {
 		return px.x() % cw() == 0 && px.y() % ch() == 0
 		    && px.width() % cw() == 0 && px.height() % ch() == 0;
 	}

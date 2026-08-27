@@ -24,25 +24,25 @@ public:
 	Capabilities capabilities() const override;
 	QSize size() const override;
 	void present(const CellBuffer &frame, const QRegion &damage) override;
-	void setCursor(std::optional<QPoint> cell, CursorShape shape) override;
-	void setEventSink(ITerminalEventSink *s) override { sink_ = s; }
+	void set_cursor(std::optional<QPoint> cell, CursorShape shape) override;
+	void set_event_sink(ITerminalEventSink *s) override { sink_ = s; }
 	void suspend() override;
 	void resume() override;
 
 	// IGraphicsOutput (section 5.7): pixel tiers for capable terminals.
-	void presentPixels(const QImage &frame, const QRegion &cellRegion) override;
-	void presentOverlay(int id, const QImage &rgba, QPoint cell, int z) override;
-	void clearOverlay(int id) override;
+	void present_pixels(const QImage &frame, const QRegion &cell_region) override;
+	void present_overlay(int id, const QImage &rgba, QPoint cell, int z) override;
+	void clear_overlay(int id) override;
 
 private:
-	void readInput();
-	bool decodeOne();                    // one event from pending_ -> sink
+	void read_input();
+	bool decode_one();                    // one event from pending_ -> sink
 	// A complete CSI at the head of pending_, or -1 if more bytes are needed.
 	// Fills the private prefix, the numeric parameters and the final byte.
-	int parseCsi(QByteArray &prefix, QVector<int> &params, char &final) const;
-	bool dispatchCsi(const QByteArray &prefix, const QVector<int> &params,
+	int parse_csi(QByteArray &prefix, QVector<int> &params, char &final) const;
+	bool dispatch_csi(const QByteArray &prefix, const QVector<int> &params,
 	                 char final);
-	void readWinch();                    // SIGWINCH arrived down the self-pipe
+	void read_winch();                    // SIGWINCH arrived down the self-pipe
 
 	ITerminalEventSink *sink_ = nullptr;
 	QSocketNotifier *notifier_ = nullptr;
@@ -54,7 +54,7 @@ private:
 	Capabilities::GraphicsMode mode_;
 	Capabilities::ColorDepth depth_;             // negotiated (section 6)
 	QSet<quint64> uploaded_;                     // kitty upload-once cache
-	bool rawOk_ = false;
+	bool raw_ok_ = false;
 	bool tty_out_ = false;               // stdout is a terminal
 	bool active_ = false;
 	termios saved_{};

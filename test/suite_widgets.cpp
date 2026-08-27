@@ -11,7 +11,7 @@ static bool g_record = false;
 #define CHECK(c, m) do { if (c) printf("PASS: %s\n", m); \
                          else { printf("FAIL: %s\n", m); ++fails; } } while (0)
 
-static bool bufferContains(const CellBuffer &b, const QString &glyph) {
+static bool buffer_contains(const CellBuffer &b, const QString &glyph) {
 	for (int y = 0; y < b.rows(); ++y)
 		for (int x = 0; x < b.cols(); ++x)
 			if (b.at(x, y).ch == glyph) return true;
@@ -45,8 +45,8 @@ int suite_widgets() {
 		combo.addItems({"Alpha", "Beta"});
 		show(combo, 20, 3);
 		CellBuffer b(22, 4);
-		renderOnce(combo, b);
-		CHECK(bufferContains(b, QStringLiteral("▾")), "combo draws dropdown arrow");
+		render_once(combo, b);
+		CHECK(buffer_contains(b, QStringLiteral("▾")), "combo draws dropdown arrow");
 		CHECK(findText(b, QStringLiteral("Alpha")).x() >= 0, "combo label renders");
 	}
 	// progress bar: fill + percentage
@@ -55,8 +55,8 @@ int suite_widgets() {
 		pb.setRange(0, 100); pb.setValue(50);
 		show(pb, 20, 1);
 		CellBuffer b(22, 2);
-		renderOnce(pb, b);
-		CHECK(bufferContains(b, QStringLiteral("█")) && bufferContains(b, QStringLiteral("░")),
+		render_once(pb, b);
+		CHECK(buffer_contains(b, QStringLiteral("█")) && buffer_contains(b, QStringLiteral("░")),
 		      "progress bar fills half");
 		CHECK(findText(b, QStringLiteral("50%")).x() >= 0, "progress label centred");
 	}
@@ -67,7 +67,7 @@ int suite_widgets() {
 		tabs.addTab(new QWidget, "Second");
 		show(tabs, 30, 8);
 		CellBuffer b(32, 9);
-		renderOnce(tabs, b);
+		render_once(tabs, b);
 		QPoint p1 = findText(b, QStringLiteral("First"));
 		QPoint p2 = findText(b, QStringLiteral("Second"));
 		CHECK(p1.x() >= 0 && p2.x() >= 0, "both tab labels render");
@@ -90,8 +90,8 @@ int suite_widgets() {
 		tree.setCurrentItem(kid);
 		QCoreApplication::processEvents();
 		CellBuffer b(32, 9);
-		renderOnce(tree, b);
-		CHECK(bufferContains(b, QStringLiteral("▾")), "expanded branch shows ▾");
+		render_once(tree, b);
+		CHECK(buffer_contains(b, QStringLiteral("▾")), "expanded branch shows ▾");
 		QPoint h = findText(b, QStringLiteral("Name"));
 		CHECK(h.x() >= 0 && (b.at(h.x(), h.y()).attrs & Attr::Bold), "header label bold");
 		QPoint k = findText(b, QStringLiteral("child"));
@@ -112,10 +112,10 @@ int suite_widgets() {
 		list.setFrameShape(QFrame::NoFrame);
 		show(list, 24, 10);
 		CellBuffer b(26, 11);
-		renderOnce(list, b);
-		CHECK(bufferContains(b, QStringLiteral("▲")) && bufferContains(b, QStringLiteral("▼")),
+		render_once(list, b);
+		CHECK(buffer_contains(b, QStringLiteral("▲")) && buffer_contains(b, QStringLiteral("▼")),
 		      "scrollbar arrows render");
-		CHECK(bufferContains(b, QStringLiteral("█")) && bufferContains(b, QStringLiteral("░")),
+		CHECK(buffer_contains(b, QStringLiteral("█")) && buffer_contains(b, QStringLiteral("░")),
 		      "scrollbar thumb + groove render");
 	}
 	// slider: handle on track
@@ -124,9 +124,9 @@ int suite_widgets() {
 		slider.setRange(0, 10); slider.setValue(5);
 		show(slider, 20, 1);
 		CellBuffer b(22, 2);
-		renderOnce(slider, b);
-		CHECK(bufferContains(b, QStringLiteral("●")), "slider handle renders");
-		CHECK(bufferContains(b, QStringLiteral("─")), "slider track renders");
+		render_once(slider, b);
+		CHECK(buffer_contains(b, QStringLiteral("●")), "slider handle renders");
+		CHECK(buffer_contains(b, QStringLiteral("─")), "slider track renders");
 	}
 	// splitter handle between panes
 	{
@@ -153,8 +153,8 @@ int suite_widgets() {
 		split.show();
 		QCoreApplication::processEvents();
 		CellBuffer b(32, 5);
-		renderOnce(split, b);
-		CHECK(bufferContains(b, QStringLiteral("│")), "splitter handle renders");
+		render_once(split, b);
+		CHECK(buffer_contains(b, QStringLiteral("│")), "splitter handle renders");
 	}
 	// line edit: selection carries a background colour
 	{
@@ -164,7 +164,7 @@ int suite_widgets() {
 		edit.selectAll();
 		QCoreApplication::processEvents();
 		CellBuffer b(22, 4);
-		renderOnce(edit, b);
+		render_once(edit, b);
 		QPoint h = findText(b, QStringLiteral("hello"));
 		CHECK(h.x() >= 0, "line edit text renders");
 		CHECK(h.x() >= 0 && b.at(h.x(), h.y()).bg.kind() != Color::Default,
@@ -182,12 +182,12 @@ int suite_widgets() {
 		menu.setActiveAction(open);
 		QCoreApplication::processEvents();
 		CellBuffer b(30, 8);
-		renderOnce(menu, b);
+		render_once(menu, b);
 		QPoint o = findText(b, QStringLiteral("Open"));
 		CHECK(o.x() >= 0, "menu item renders");
 		CHECK(o.x() >= 0 && (b.at(o.x(), o.y()).attrs & Attr::Reverse),
 		      "active menu item highlighted");
-		CHECK(bufferContains(b, QStringLiteral("─")), "separator renders");
+		CHECK(buffer_contains(b, QStringLiteral("─")), "separator renders");
 		CHECK(findText(b, QStringLiteral("Ctrl+O")).x() >= 0, "shortcut right-aligned");
 		menu.close();
 	}
@@ -232,8 +232,8 @@ int suite_widgets() {
 		// instead, because nothing in it expands.)
 		v->addWidget(tabs, 1);
 		show(win, 44, 16);
-		const QString got = Qtty::test::snapshotOf(win, 46, 17);
-		fails += Qtty::test::checkSnapshot(QStringLiteral(QTTY_SOURCE_DIR),
+		const QString got = Qtty::test::snapshot_of(win, 46, 17);
+		fails += Qtty::test::check_snapshot(QStringLiteral(QTTY_SOURCE_DIR),
 		                                   QStringLiteral("widgets_gallery"), got, g_record);
 		if (!g_record) printf("%s: gallery snapshot\n", fails ? "FAIL" : "PASS");
 	}

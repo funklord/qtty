@@ -119,7 +119,7 @@ bool GridGuard::eventFilter(QObject *obj, QEvent *event) {
 			// dialog in the suite for a coordinate nothing reads.
 			const QRect g = w->geometry();
 			const QRect asked = w->isWindow() ? QRect(QPoint(), g.size()) : g;
-			if (!is_exempt(w) && !GridMetrics::isAligned(asked)) {
+			if (!is_exempt(w) && !GridMetrics::is_aligned(asked)) {
 				++s_violations;
 				qWarning("qtty: %s '%s' geometry %dx%d+%d+%d is off the "
 				         "%dx%d grid",
@@ -142,7 +142,7 @@ void GridGuard::install(QCoreApplication &app) {
 
 // Channel A target detection: via the paint ENGINE, never p->device() -- inside
 // a paintEvent the device is the QWidget itself (section 16, F1).
-static CellPaintDevice *cellTarget(QPainter *p) {
+static CellPaintDevice *cell_target(QPainter *p) {
 	if (auto *e = dynamic_cast<CellPaintEngine *>(p->paintEngine())) return e->device();
 	return nullptr;
 }
@@ -153,11 +153,11 @@ static CellPaintDevice *cellTarget(QPainter *p) {
 // that widget IS p->device() (section 16, F1) -- for item views the *viewport*, not
 // the view the style is handed as `w`. Mapping through `w` there silently
 // drops the header/frame offset.
-static QRect cellsOf(const QRect &r, QPainter *p, CellPaintDevice *dev,
+static QRect cells_of(const QRect &r, QPainter *p, CellPaintDevice *dev,
                      const QWidget *w) {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
-	const QWidget *paintWidget = dynamic_cast<QWidget *>(p->device());
-	const QWidget *m = paintWidget ? paintWidget : w;
+	const QWidget *paint_widget = dynamic_cast<QWidget *>(p->device());
+	const QWidget *m = paint_widget ? paint_widget : w;
 	QPoint tl = m ? m->mapTo(m->window(), r.topLeft()) : r.topLeft();
 	tl += dev->origin;
 	return QRect(qRound(tl.x() / double(cw)), qRound(tl.y() / double(ch)),
@@ -165,7 +165,7 @@ static QRect cellsOf(const QRect &r, QPainter *p, CellPaintDevice *dev,
 	             qMax(1, qRound(r.height() / double(ch))));
 }
 
-static void drawBox(CellBuffer &b, const QRect &c) {
+static void draw_box(CellBuffer &b, const QRect &c) {
 	if (c.width() < 2 || c.height() < 2) return;
 	for (int x = c.left() + 1; x < c.right(); ++x) {
 		b.at(x, c.top()).ch = QStringLiteral("─");
@@ -287,8 +287,8 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 
 void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPainter *p,
                               const QWidget *w) const {
-	if (auto *dev = cellTarget(p)) {
-		QRect c = cellsOf(opt->rect, p, dev, w);
+	if (auto *dev = cell_target(p)) {
+		QRect c = cells_of(opt->rect, p, dev, w);
 		switch (pe) {
 		case PE_IndicatorCheckBox:
 			dev->buffer().text(c.left(), c.top(),
@@ -300,7 +300,7 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 			return;
 		case PE_FrameWindow: case PE_Frame: case PE_FrameGroupBox:
 		case PE_PanelMenu: case PE_FrameMenu: case PE_PanelLineEdit:
-			drawBox(dev->buffer(), c);
+			draw_box(dev->buffer(), c);
 			return;
 		case PE_IndicatorBranch: {                    // tree expanders (section 17.2)
 			QString g = QStringLiteral(" ");
@@ -330,8 +330,8 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 static QString elide(const QString &s, int cells) {
 	if (cells <= 0) return {};
 	int used = 0; QString out;
-	for (const QString &cl : toClusters(s)) {
-		int cw = clusterWidth(cl);
+	for (const QString &cl : to_clusters(s)) {
+		int cw = cluster_width(cl);
 		// U+2026, not QLatin1Char('...'): QLatin1Char takes a char, so a
 		// UTF-8 ellipsis in a character literal is a multichar constant
 		// that truncates to its last byte -- 0xA6, a broken bar in
@@ -347,14 +347,14 @@ static QString elide(const QString &s, int cells) {
 
 void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter *p,
                             const QWidget *w) const {
-	if (auto *dev = cellTarget(p)) {
-		QRect c = cellsOf(opt->rect, p, dev, w);
+	if (auto *dev = cell_target(p)) {
+		QRect c = cells_of(opt->rect, p, dev, w);
 		switch (ce) {
 		case CE_PushButtonBevel:
 			return;                                   // bevel is the label's brackets
 		case CE_PushButtonLabel:
 			if (auto *b = qstyleoption_cast<const QStyleOptionButton *>(opt)) {
-				QRect bc = w ? cellsOf(w->rect(), p, dev, w) : c;
+				QRect bc = w ? cells_of(w->rect(), p, dev, w) : c;
 				// State_HasFocus never arrives in TUI mode (F4): router focus.
 				bool foc = (opt->state & State_HasFocus) || (w && w == s_focus);
 				dev->buffer().text(bc.left(), bc.top(),
@@ -367,7 +367,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 			if (auto *mi = qstyleoption_cast<const QStyleOptionMenuItem *>(opt)) {
 				if (mi->menuItemType == QStyleOptionMenuItem::Separator) {
 					for (int x = c.left(); x <= c.right(); ++x)
-						dev->buffer().putCluster(x, c.top(), QStringLiteral("─"));
+						dev->buffer().put_cluster(x, c.top(), QStringLiteral("─"));
 					return;
 				}
 				const Attrs a = (opt->state & State_Selected) ? Attrs(Attr::Reverse) : Attrs();
@@ -439,7 +439,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				const double frac = span > 0 ? double(pb->progress - pb->minimum) / span : 0.0;
 				const int filled = qRound(frac * c.width());
 				for (int x = 0; x < c.width(); ++x)
-					dev->buffer().putCluster(c.left() + x, c.top(),
+					dev->buffer().put_cluster(c.left() + x, c.top(),
 						x < filled ? QStringLiteral("█") : QStringLiteral("░"));
 				if (pb->textVisible) {
 					const QString label = pb->text.isEmpty()
@@ -451,11 +451,11 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 			}
 			break;
 		case CE_Splitter: {
-			const bool horizontalHandle = opt->rect.width() < opt->rect.height();
-			const QString g = horizontalHandle ? QStringLiteral("│") : QStringLiteral("─");
+			const bool horizontal_handle = opt->rect.width() < opt->rect.height();
+			const QString g = horizontal_handle ? QStringLiteral("│") : QStringLiteral("─");
 			for (int y = c.top(); y <= c.bottom(); ++y)
 				for (int x = c.left(); x <= c.right(); ++x)
-					dev->buffer().putCluster(x, y, g);
+					dev->buffer().put_cluster(x, y, g);
 			return;
 		}
 		case CE_ScrollBarAddLine: case CE_ScrollBarSubLine:
@@ -471,8 +471,8 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 
 void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex *opt,
                                    QPainter *p, const QWidget *w) const {
-	if (auto *dev = cellTarget(p)) {
-		QRect c = cellsOf(opt->rect, p, dev, w);
+	if (auto *dev = cell_target(p)) {
+		QRect c = cells_of(opt->rect, p, dev, w);
 		switch (cc) {
 		case CC_ScrollBar:                             // section 16 F5: self-drawn whole
 			if (auto *sb = qstyleoption_cast<const QStyleOptionSlider *>(opt)) {
@@ -481,11 +481,11 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				if (len < 2) return;
 				const int track = len - 2;
 				const int span = sb->maximum - sb->minimum;
-				int thumbLen = 1, thumbPos = 0;
+				int thumb_len = 1, thumb_pos = 0;
 				if (span > 0 && track > 0) {
-					thumbLen = qBound(1, track * sb->pageStep
+					thumb_len = qBound(1, track * sb->pageStep
 						                 / qMax(1, span + sb->pageStep), track);
-					thumbPos = (track - thumbLen) * (sb->sliderPosition - sb->minimum) / span;
+					thumb_pos = (track - thumb_len) * (sb->sliderPosition - sb->minimum) / span;
 				}
 				for (int i = 0; i < len; ++i) {
 					QString g;
@@ -493,11 +493,11 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 					else if (i == len - 1) g = vert ? QStringLiteral("▼") : QStringLiteral("▶");
 					else {
 						const int t = i - 1;
-						g = (t >= thumbPos && t < thumbPos + thumbLen)
+						g = (t >= thumb_pos && t < thumb_pos + thumb_len)
 							? QStringLiteral("█") : QStringLiteral("░");
 					}
-					if (vert) dev->buffer().putCluster(c.left(), c.top() + i, g);
-					else      dev->buffer().putCluster(c.left() + i, c.top(), g);
+					if (vert) dev->buffer().put_cluster(c.left(), c.top() + i, g);
+					else      dev->buffer().put_cluster(c.left() + i, c.top(), g);
 				}
 				return;
 			}
@@ -512,12 +512,12 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			// the one-cell indent where the frame used to be.
 			const int row = c.top() + c.height() / 2;
 			if (c.height() >= 2) {
-				drawBox(dev->buffer(), c);
+				draw_box(dev->buffer(), c);
 			} else {
-				dev->buffer().putCluster(c.left(), row, QStringLiteral("["));
-				dev->buffer().putCluster(c.right(), row, QStringLiteral("]"));
+				dev->buffer().put_cluster(c.left(), row, QStringLiteral("["));
+				dev->buffer().put_cluster(c.right(), row, QStringLiteral("]"));
 			}
-			dev->buffer().putCluster(c.right() - 1, row, QStringLiteral("▾"));
+			dev->buffer().put_cluster(c.right() - 1, row, QStringLiteral("▾"));
 			return;                                    // label via CE_ComboBoxLabel
 		}
 		case CC_Slider:
@@ -530,8 +530,8 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				for (int i = 0; i < len; ++i) {
 					const QString g = i == pos ? QStringLiteral("●")
 						            : (vert ? QStringLiteral("│") : QStringLiteral("─"));
-					if (vert) dev->buffer().putCluster(c.left(), c.top() + i, g);
-					else      dev->buffer().putCluster(c.left() + i, c.top(), g);
+					if (vert) dev->buffer().put_cluster(c.left(), c.top() + i, g);
+					else      dev->buffer().put_cluster(c.left() + i, c.top(), g);
 				}
 				return;
 			}
@@ -540,12 +540,12 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			// Same as the combo above, and for the same reason.
 			const int row = c.top() + c.height() / 2;
 			if (c.height() >= 2) {
-				drawBox(dev->buffer(), c);
+				draw_box(dev->buffer(), c);
 			} else {
-				dev->buffer().putCluster(c.left(), row, QStringLiteral("["));
-				dev->buffer().putCluster(c.right(), row, QStringLiteral("]"));
+				dev->buffer().put_cluster(c.left(), row, QStringLiteral("["));
+				dev->buffer().put_cluster(c.right(), row, QStringLiteral("]"));
 			}
-			dev->buffer().putCluster(c.right() - 1, row, QStringLiteral("±"));
+			dev->buffer().put_cluster(c.right() - 1, row, QStringLiteral("±"));
 			return;                                    // value text via child edit
 		}
 		default:

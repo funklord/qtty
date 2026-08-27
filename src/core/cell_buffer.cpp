@@ -8,7 +8,7 @@
 namespace Qtty {
 
 // ---- cluster width ---------------------------------------------------------
-static bool isWideCodepoint(char32_t u) {
+static bool is_wide_codepoint(char32_t u) {
 	// East Asian Wide/Fullwidth + common emoji blocks. Deliberately compact;
 	// refined against terminals empirically (section 5.2).
 	return (u >= 0x1100  && u <= 0x115F)   // Hangul Jamo
@@ -26,18 +26,18 @@ static bool isWideCodepoint(char32_t u) {
 	    || (u >= 0x20000 && u <= 0x3FFFD); // CJK Ext B+
 }
 
-int clusterWidth(QStringView cluster) {
+int cluster_width(QStringView cluster) {
 	if (cluster.isEmpty()) return 1;
 	char32_t first = cluster.at(0).unicode();
 	if (cluster.size() >= 2 && cluster.at(0).isHighSurrogate() && cluster.at(1).isLowSurrogate())
 		first = QChar::surrogateToUcs4(cluster.at(0), cluster.at(1));
-	if (isWideCodepoint(first)) return 2;
+	if (is_wide_codepoint(first)) return 2;
 	// VS16 forces emoji presentation -> wide
 	for (QChar c : cluster) if (c.unicode() == 0xFE0F) return 2;
 	return 1;
 }
 
-QVector<QString> toClusters(const QString &text) {
+QVector<QString> to_clusters(const QString &text) {
 	QVector<QString> out;
 	QTextBoundaryFinder f(QTextBoundaryFinder::Grapheme, text);
 	int prev = 0;
@@ -55,7 +55,7 @@ void CellBuffer::fill(const QRect &r, const Cell &v) {
 		for (int x = r.left(); x <= r.right(); ++x) at(x, y) = v;
 }
 
-void CellBuffer::clearWidePartner(int x, int y) {
+void CellBuffer::clear_wide_partner(int x, int y) {
 	if (x < 0 || y < 0 || x >= c_ || y >= r_) return;
 	Cell &c = d_[y * c_ + x];
 	if (c.width == 0 && x > 0) {                        // continuation: clear lead
@@ -68,12 +68,12 @@ void CellBuffer::clearWidePartner(int x, int y) {
 	}
 }
 
-void CellBuffer::putCluster(int x, int y, const QString &cluster,
+void CellBuffer::put_cluster(int x, int y, const QString &cluster,
                             Color fg, Color bg, Attrs attrs) {
 	if (x < 0 || y < 0 || x >= c_ || y >= r_) return;
-	const int w = clusterWidth(cluster);
-	clearWidePartner(x, y);
-	if (w == 2) clearWidePartner(x + 1, y);
+	const int w = cluster_width(cluster);
+	clear_wide_partner(x, y);
+	if (w == 2) clear_wide_partner(x + 1, y);
 	Cell &c = d_[y * c_ + x];
 	// A Default bg means "no opinion": glyphs written over a highlight fill
 	// keep it (selection rendering, section 17.2). Explicit backgrounds replace.
@@ -88,9 +88,9 @@ void CellBuffer::putCluster(int x, int y, const QString &cluster,
 
 int CellBuffer::text(int x, int y, const QString &s, Color fg, Color bg, Attrs attrs) {
 	int consumed = 0;
-	for (const QString &cl : toClusters(s)) {
-		putCluster(x + consumed, y, cl, fg, bg, attrs);
-		consumed += clusterWidth(cl);
+	for (const QString &cl : to_clusters(s)) {
+		put_cluster(x + consumed, y, cl, fg, bg, attrs);
+		consumed += cluster_width(cl);
 	}
 	return consumed;
 }
@@ -99,20 +99,20 @@ QRegion CellBuffer::diff(const CellBuffer &prev) const {
 	if (prev.c_ != c_ || prev.r_ != r_) return QRegion(0, 0, c_, r_);
 	QRegion damage;
 	for (int y = 0; y < r_; ++y) {
-		int runStart = -1;
+		int run_start = -1;
 		for (int x = 0; x <= c_; ++x) {
 			const bool changed = x < c_ && d_[y * c_ + x] != prev.d_[y * c_ + x];
-			if (changed && runStart < 0) runStart = x;
-			if (!changed && runStart >= 0) {
-				damage += QRect(runStart, y, x - runStart, 1);
-				runStart = -1;
+			if (changed && run_start < 0) run_start = x;
+			if (!changed && run_start >= 0) {
+				damage += QRect(run_start, y, x - run_start, 1);
+				run_start = -1;
 			}
 		}
 	}
 	return damage;
 }
 
-int CellBuffer::diffCells(const CellBuffer &prev) const {
+int CellBuffer::diff_cells(const CellBuffer &prev) const {
 	if (prev.c_ != c_ || prev.r_ != r_) return c_ * r_;
 	int n = 0;
 	for (int i = 0; i < d_.size(); ++i) if (d_[i] != prev.d_[i]) ++n;
@@ -255,7 +255,7 @@ QString CellBuffer::to_snapshot() const {
 	return out;
 }
 
-QString CellBuffer::toText() const {
+QString CellBuffer::to_text() const {
 	QString out;
 	for (int y = 0; y < r_; ++y) {
 		QString line;

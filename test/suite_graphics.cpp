@@ -19,8 +19,8 @@ static int fails = 0;
 // parsed back to pixels here, by code that shares nothing with
 // src/graphics/graphics.cpp, and the pixels are compared against the source.
 //
-// Every check below was confirmed able to fail, by breaking encodeSixel,
-// encodeKittyImage and encodeITerm2 one at a time in a scratch copy of the
+// Every check below was confirmed able to fail, by breaking encode_sixel,
+// encode_kitty_image and encode_iterm2 one at a time in a scratch copy of the
 // tree and watching the round trip go red: a dropped sixel band, a sixel run
 // length one too long, a green/blue swap in the sixel colour registers, a
 // red/blue swap in the kitty RGBA payload, and an iTerm2 PNG shifted one
@@ -47,7 +47,7 @@ static const QRgb fixture_magenta = qRgb(215,   0, 215);
 //     sixel band is a partial one -- rows 12 and 13 of a six-row band.
 //   - Rows 0 to 4 are red for columns 0 to 5 and blue for 6 to 12: a vertical
 //     edge inside a band, with runs of six and seven identical columns either
-//     side. encodeSixel takes its "!" run-length path above three, so both
+//     side. encode_sixel takes its "!" run-length path above three, so both
 //     sides of the edge go through the RLE encoder.
 //   - Row 5 is amber and row 6 is green. Those are the last row of band 0 and
 //     the first row of band 1, so an off-by-one in the band arithmetic swaps
@@ -91,7 +91,7 @@ struct SixelImage {
 	QRgb at(int x, int y) const { return px[y * w + x]; }
 };
 
-// Parse the subset of DEC sixel that encodeSixel emits: the DCS header, the
+// Parse the subset of DEC sixel that encode_sixel emits: the DCS header, the
 // raster attributes, "#c;2;r;g;b" register definitions and "#c" selections,
 // "!n" run lengths, "$" carriage return within a band, "-" band advance, ST.
 // Anything else means the stream is not what this encoder is documented to
@@ -241,34 +241,34 @@ int suite_graphics() {
 	// ---- negotiation (env-driven, restored afterwards) ----
 	{
 		auto save = [](const char *k) { return qgetenv(k); };
-		QByteArray oldKitty = save("KITTY_WINDOW_ID"), oldTerm = save("TERM"),
-		           oldProg = save("TERM_PROGRAM");
+		QByteArray old_kitty = save("KITTY_WINDOW_ID"), old_term = save("TERM"),
+		           old_prog = save("TERM_PROGRAM");
 		auto setenvs = [](QByteArray k, QByteArray t, QByteArray p) {
 			if (k.isEmpty()) qunsetenv("KITTY_WINDOW_ID"); else qputenv("KITTY_WINDOW_ID", k);
 			if (t.isEmpty()) qunsetenv("TERM"); else qputenv("TERM", t);
 			if (p.isEmpty()) qunsetenv("TERM_PROGRAM"); else qputenv("TERM_PROGRAM", p);
 		};
 		setenvs("1", "xterm-kitty", "");
-		CHECK(detectGraphicsMode() == Capabilities::KittyAlpha, "kitty -> KittyAlpha");
+		CHECK(detect_graphics_mode() == Capabilities::KittyAlpha, "kitty -> KittyAlpha");
 		setenvs("", "xterm-ghostty", "");
-		CHECK(detectGraphicsMode() == Capabilities::KittyAlpha, "ghostty -> KittyAlpha");
+		CHECK(detect_graphics_mode() == Capabilities::KittyAlpha, "ghostty -> KittyAlpha");
 		setenvs("", "xterm-256color", "iTerm.app");
-		CHECK(detectGraphicsMode() == Capabilities::ITerm2, "iTerm -> ITerm2");
+		CHECK(detect_graphics_mode() == Capabilities::ITerm2, "iTerm -> ITerm2");
 		setenvs("", "foot", "");
-		CHECK(detectGraphicsMode() == Capabilities::Sixel, "foot -> Sixel");
+		CHECK(detect_graphics_mode() == Capabilities::Sixel, "foot -> Sixel");
 		setenvs("", "xterm-256color", "");
-		CHECK(detectGraphicsMode() == Capabilities::Halfblocks, "plain xterm -> Halfblocks");
+		CHECK(detect_graphics_mode() == Capabilities::Halfblocks, "plain xterm -> Halfblocks");
 		setenvs("", "beerssh", "");
-		CHECK(detectGraphicsMode() == Capabilities::KittyAlpha,
+		CHECK(detect_graphics_mode() == Capabilities::KittyAlpha,
 		      "beerssh recognised (provisional KittyAlpha)");
 		qputenv("QTTY_GRAPHICS", "sixel");
-		CHECK(detectGraphicsMode() == Capabilities::Sixel,
+		CHECK(detect_graphics_mode() == Capabilities::Sixel,
 		      "QTTY_GRAPHICS override beats TERM heuristics");
 		qputenv("QTTY_GRAPHICS", "none");
-		CHECK(detectGraphicsMode() == Capabilities::NoGraphics,
+		CHECK(detect_graphics_mode() == Capabilities::NoGraphics,
 		      "QTTY_GRAPHICS=none disables graphics");
 		qunsetenv("QTTY_GRAPHICS");
-		setenvs(oldKitty, oldTerm, oldProg);
+		setenvs(old_kitty, old_term, old_prog);
 	}
 
 	// ---- sixel encoder: structure ----
@@ -279,7 +279,7 @@ int suite_graphics() {
 			for (int x = 0; x < 12; ++x) img.setPixel(x, y, qRgb(255, 0, 0));
 		for (int y = 6; y < 12; ++y)
 			for (int x = 0; x < 12; ++x) img.setPixel(x, y, qRgb(0, 0, 255));
-		QByteArray six = encodeSixel(img);
+		QByteArray six = encode_sixel(img);
 		CHECK(six.startsWith("\033P0;1;0q"), "sixel DCS header with P2=1 transparency");
 		CHECK(six.endsWith("\033\\"), "sixel ST terminator");
 		CHECK(six.contains("\"1;1;12;12"), "sixel raster attributes carry size");
@@ -292,24 +292,24 @@ int suite_graphics() {
 	{
 		QImage img(64, 64, QImage::Format_RGBA8888);
 		img.fill(QColor(10, 200, 50, 255));
-		QByteArray k = encodeKittyImage(7, img);
+		QByteArray k = encode_kitty_image(7, img);
 		CHECK(k.startsWith("\033_G"), "kitty APC introducer");
 		CHECK(k.contains("a=T") && k.contains("f=32") && k.contains("i=7"),
 		      "kitty transmit-and-display control keys");
 		CHECK(k.contains("s=64") && k.contains("v=64"), "kitty dimensions");
 		CHECK(k.contains(",m=1") && k.contains("m=0"),
 		      "payload > 4096 chunks with m=1/m=0");
-		QByteArray place = kittyPlace(7);
+		QByteArray place = kitty_place(7);
 		CHECK(place.size() < 40 && place.contains("a=p") && place.contains("i=7"),
 		      "re-place by id is ~30 bytes (upload-once)");
-		CHECK(kittyDeleteAll().contains("a=d"), "delete-all helper");
+		CHECK(kitty_delete_all().contains("a=d"), "delete-all helper");
 	}
 
 	// ---- iTerm2 encoder ----
 	{
 		QImage img(20, 20, QImage::Format_ARGB32);
 		img.fill(Qt::green);
-		QByteArray it = encodeITerm2(img, 4, 2);
+		QByteArray it = encode_iterm2(img, 4, 2);
 		CHECK(it.startsWith("\033]1337;File=inline=1"), "iTerm2 OSC header");
 		CHECK(it.contains("width=4") && it.contains("height=2"), "iTerm2 cell sizing");
 		CHECK(it.endsWith("\a"), "iTerm2 BEL terminator");
@@ -320,7 +320,7 @@ int suite_graphics() {
 	// The tolerance is 3 per channel, and it is a measurement rather than a
 	// fudge. The fixture's colours are exact xterm-256 cube entries, so the
 	// palette step is lossless for them and the only lossy step left is the
-	// register definition, which DEC specifies in percent. encodeSixel writes
+	// register definition, which DEC specifies in percent. encode_sixel writes
 	// v * 100 / 255 and this decoder reads back v * 255 / 100, both
 	// truncating; over the six levels the fixture uses -- 0, 95, 135, 175,
 	// 215, 255 -- the residuals are 0, 1, 3, 2, 1, 0. So 3 is the worst the
@@ -330,7 +330,7 @@ int suite_graphics() {
 	// swapped channel -- which is why the fixture does not use one.
 	{
 		const QImage src = round_trip_fixture();
-		const SixelImage dec = decode_sixel(encodeSixel(src));
+		const SixelImage dec = decode_sixel(encode_sixel(src));
 		const bool geometry = dec.ok && dec.w == src.width()
 		                   && dec.h == src.height();
 		CHECK(geometry, "sixel round-trip: stream parses, raster attributes say 13x14");
@@ -369,7 +369,7 @@ int suite_graphics() {
 	// ---- round trip: kitty ----
 	{
 		const QImage src = round_trip_fixture();
-		const KittyStream s = split_kitty(encodeKittyImage(3, src));
+		const KittyStream s = split_kitty(encode_kitty_image(3, src));
 		const auto b64 = QByteArray::fromBase64Encoding(s.payload,
 		        QByteArray::AbortOnBase64DecodingErrors);
 		const int sw = kitty_key(s.ctrl, "s"), sv = kitty_key(s.ctrl, "v");
@@ -391,7 +391,7 @@ int suite_graphics() {
 		for (int y = 0; y < wide.height(); ++y)
 			for (int x = 0; x < wide.width(); ++x)
 				wide.setPixel(x, y, qRgb(x * 5, y * 6, (x * 3 + y * 7) & 0xFF));
-		const KittyStream big = split_kitty(encodeKittyImage(4, wide));
+		const KittyStream big = split_kitty(encode_kitty_image(4, wide));
 		const auto wb = QByteArray::fromBase64Encoding(big.payload,
 		        QByteArray::AbortOnBase64DecodingErrors);
 		const bool chunked = big.ok && big.chunks == 3
@@ -407,7 +407,7 @@ int suite_graphics() {
 	// ---- round trip: iTerm2 ----
 	{
 		const QImage src = round_trip_fixture();
-		const QByteArray it = encodeITerm2(src, 7, 3);
+		const QByteArray it = encode_iterm2(src, 7, 3);
 		const int colon = it.indexOf(':');
 		const auto b64 = QByteArray::fromBase64Encoding(
 		        it.mid(colon + 1, it.size() - colon - 2),
@@ -430,13 +430,13 @@ int suite_graphics() {
 		b.text(1, 0, QStringLiteral("Hi"), Color::rgb(qRgb(255, 0, 0)));
 		QImage px = rasterize(b, QGuiApplication::font());
 		CHECK(px.size() == QSize(8 * cw, 2 * ch), "rasterizer emits cols*cw x rows*ch");
-		bool redSeen = false;
-		for (int y = 0; y < ch && !redSeen; ++y)
+		bool red_seen = false;
+		for (int y = 0; y < ch && !red_seen; ++y)
 			for (int x = cw; x < 3 * cw; ++x) {
 				QRgb p = px.pixel(x, y);
-				if (qRed(p) > 150 && qGreen(p) < 100) { redSeen = true; break; }
+				if (qRed(p) > 150 && qGreen(p) < 100) { red_seen = true; break; }
 		    }
-		CHECK(redSeen, "rasterizer draws coloured glyphs");
+		CHECK(red_seen, "rasterizer draws coloured glyphs");
 	}
 
 	// ---- halfblock composite: opacity semantics (section 5.7) ----
@@ -450,7 +450,7 @@ int suite_graphics() {
 		p.fillRect(6 * cw, 0, 4 * cw, 4 * ch, QColor(255, 0, 0, 255));   // opaque
 		p.fillRect(0, 0, 6 * cw, 4 * ch, QColor(0, 80, 255, 90));        // translucent
 		p.end();
-		composeHalfblocks(frame, ov, QRect(0, 0, 10, 4));
+		compose_halfblocks(frame, ov, QRect(0, 0, 10, 4));
 		CHECK(frame.at(1, 1).ch == QStringLiteral("K"),
 		      "text under translucent overlay survives");
 		CHECK(frame.at(1, 1).bg.kind() == Color::Rgb,
@@ -477,23 +477,23 @@ int suite_graphics() {
 		base.show();
 		QCoreApplication::processEvents();
 
-		CHECK(Overlay::visibleOverlays().isEmpty(), "registry starts empty");
+		CHECK(Overlay::visible_overlays().isEmpty(), "registry starts empty");
 		Overlay o;
 		QImage img(4 * cw, 2 * ch, QImage::Format_ARGB32);
 		img.fill(QColor(255, 255, 0, 200));
-		o.setImage(img);
-		o.setRect(QRectF(2, 1, 4, 2));
-		CHECK(Overlay::visibleOverlays().isEmpty(), "hidden overlay not listed");
+		o.set_image(img);
+		o.set_rect(QRectF(2, 1, 4, 2));
+		CHECK(Overlay::visible_overlays().isEmpty(), "hidden overlay not listed");
 		o.show();
-		CHECK(Overlay::visibleOverlays().size() == 1, "shown overlay listed");
-		o.setOpacity(0.5);
+		CHECK(Overlay::visible_overlays().size() == 1, "shown overlay listed");
+		o.set_opacity(0.5);
 		const QImage half = o.image();
 		CHECK(qAlpha(half.pixel(1, 1)) < 130, "opacity multiplies into alpha");
 		Overlay o2;
-		o2.setImage(img); o2.setZ(-1); o2.show();
-		CHECK(Overlay::visibleOverlays().first() == &o2, "overlays z-ordered");
+		o2.set_image(img); o2.set_z(-1); o2.show();
+		CHECK(Overlay::visible_overlays().first() == &o2, "overlays z-ordered");
 		o.hide(); o2.hide();
-		CHECK(Overlay::visibleOverlays().isEmpty(), "hidden overlays leave registry");
+		CHECK(Overlay::visible_overlays().isEmpty(), "hidden overlays leave registry");
 	}
 
 	return fails;

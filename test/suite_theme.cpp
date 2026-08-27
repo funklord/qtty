@@ -13,12 +13,12 @@ static int fails = 0;
 int suite_theme() {
 	fails = 0;
 
-	CHECK(Color().toXterm256() == -1, "Default maps to terminal default (-1)");
-	CHECK(Color::indexed(196).toXterm256() == 196, "Indexed passes through");
-	CHECK(Color::rgb(qRgb(255, 0, 0)).toXterm256() == 196, "pure red -> cube 196");
-	CHECK(Color::rgb(qRgb(0, 0, 0)).toXterm256() == 16, "black -> cube 16");
-	CHECK(Color::rgb(qRgb(255, 255, 255)).toXterm256() == 231, "white -> cube 231");
-	int grey = Color::rgb(qRgb(128, 128, 128)).toXterm256();
+	CHECK(Color().to_xterm256() == -1, "Default maps to terminal default (-1)");
+	CHECK(Color::indexed(196).to_xterm256() == 196, "Indexed passes through");
+	CHECK(Color::rgb(qRgb(255, 0, 0)).to_xterm256() == 196, "pure red -> cube 196");
+	CHECK(Color::rgb(qRgb(0, 0, 0)).to_xterm256() == 16, "black -> cube 16");
+	CHECK(Color::rgb(qRgb(255, 255, 255)).to_xterm256() == 231, "white -> cube 231");
+	int grey = Color::rgb(qRgb(128, 128, 128)).to_xterm256();
 	CHECK(grey >= 232 || grey == 102, "mid grey -> grey ramp or grey cube cell");
 
 	// section 6 requires the xterm-256 match to be made in CIELAB, not in RGB, and
@@ -28,14 +28,14 @@ int suite_theme() {
 	// green to a GREY, by a margin of 38 parts in 3850. In Lab it is 22 --
 	// rgb(0,95,0), a green -- and not marginally: 13.9 against 19.0 for the
 	// runner-up.
-	CHECK(Color::rgb(qRgb(40, 120, 50)).toXterm256() == 22,
+	CHECK(Color::rgb(qRgb(40, 120, 50)).to_xterm256() == 22,
 	      "CIELAB puts a mid green on green 22 (RGB nearest gave grey 238)");
 	// Memoisation must not change the answer, only how often it is computed.
-	CHECK(Color::rgb(qRgb(40, 120, 50)).toXterm256() == 22,
+	CHECK(Color::rgb(qRgb(40, 120, 50)).to_xterm256() == 22,
 	      "and the memoised second lookup agrees with the first");
 
-	CHECK(Color::rgb(qRgb(255, 0, 0)).toAnsi16() == 9, "red -> bright red in 16");
-	CHECK(Color().toAnsi16() == -1, "Default stays default in 16");
+	CHECK(Color::rgb(qRgb(255, 0, 0)).to_ansi16() == 9, "red -> bright red in 16");
+	CHECK(Color().to_ansi16() == -1, "Default stays default in 16");
 
 	// -- the hand-authored ANSI-16 role table (section 6) ----------------------
 	//
@@ -46,7 +46,7 @@ int suite_theme() {
 	// pairing with a third of the luminance delta white-on-blue gives. The
 	// first check below is what the fallback still produces for a colour that
 	// arrives with no role; the second is what the table says instead.
-	CHECK(Color::rgb(qRgb(48, 140, 198)).toAnsi16() == 6,
+	CHECK(Color::rgb(qRgb(48, 140, 198)).to_ansi16() == 6,
 	      "role-less nearest-match lands Fusion's highlight blue on 6 (teal)");
 	CHECK(ansi16_for_role(QPalette::Highlight) == 4,
 	      "authored table maps Highlight to 4 (blue), not the nearest-match 6");
@@ -74,10 +74,10 @@ int suite_theme() {
 	{
 		QPalette fusion;
 		fusion.setColor(QPalette::Highlight, QColor(48, 140, 198));
-		const CellTheme t = CellTheme::fromPalette(fusion);
-		CHECK(t.background(QPalette::Highlight).toAnsi16() == 4,
+		const CellTheme t = CellTheme::from_palette(fusion);
+		CHECK(t.background(QPalette::Highlight).to_ansi16() == 4,
 		      "a themed Highlight emits the authored 4");
-		CHECK(t.highlight.toAnsi16() == 6,
+		CHECK(t.highlight.to_ansi16() == 6,
 		      "the same colour with no role attached still nearest-matches to 6");
 	}
 
@@ -119,7 +119,7 @@ int suite_theme() {
 	{
 		QPalette fusion;
 		fusion.setColor(QPalette::Highlight, QColor(48, 140, 198));
-		const CellTheme t = CellTheme::fromPalette(fusion);
+		const CellTheme t = CellTheme::from_palette(fusion);
 		CHECK(sgr_sequence(Color(), t.background(QPalette::Highlight), {},
 		                   Capabilities::Ansi16)
 		      == QByteArray("\033[0m\033[44m"),
@@ -127,8 +127,8 @@ int suite_theme() {
 	}
 
 	// -- contrast (section 6), the rule the emission path now applies ----------
-	CHECK(hasMinimumContrast(Color(), Color()), "terminal default fg/bg contrast ok");
-	CHECK(!hasMinimumContrast(Color::rgb(qRgb(120, 120, 120)),
+	CHECK(has_minimum_contrast(Color(), Color()), "terminal default fg/bg contrast ok");
+	CHECK(!has_minimum_contrast(Color::rgb(qRgb(120, 120, 120)),
 	                          Color::rgb(qRgb(128, 128, 128))),
 	      "near-identical greys flagged as low contrast");
 	{
@@ -149,21 +149,21 @@ int suite_theme() {
 		      "a blank frame reports nothing -- no glyph, no unreadable pairing");
 	}
 
-	CellTheme t = CellTheme::terminalDefault();
+	CellTheme t = CellTheme::terminal_default();
 	CHECK(t.text == Color() && t.window == Color(),
 	      "default theme is all terminal-default");
 
 	QPalette pal;
 	pal.setColor(QPalette::Highlight, QColor(30, 90, 200));
-	CellTheme p = CellTheme::fromPalette(pal);
+	CellTheme p = CellTheme::from_palette(pal);
 	CHECK(p.highlight == Color::rgb(QColor(30, 90, 200)),
-	      "fromPalette captures roles as Rgb");
+	      "from_palette captures roles as Rgb");
 
 	// -- the wiring (project.md section 11 item 3) ----------------------------
 	//
 	// theme() has to be the single source rendering resolves colours through,
 	// or nothing else in section 6 has anywhere to land. Before this,
-	// CellPaintEngine read QGuiApplication::palette() directly: setTheme()
+	// CellPaintEngine read QGuiApplication::palette() directly: set_theme()
 	// could not reach a cell, and the two renders below came out identical.
 	{
 		QWidget w;
@@ -174,24 +174,24 @@ int suite_theme() {
 		QCoreApplication::processEvents();
 
 		CellBuffer plain(8, 3);
-		setTheme(CellTheme::terminalDefault());
-		renderOnce(w, plain);
+		set_theme(CellTheme::terminal_default());
+		render_once(w, plain);
 
 		QPalette themed_palette = QGuiApplication::palette();
 		themed_palette.setColor(QPalette::Window, QColor(20, 40, 60));
 		CellBuffer themed(8, 3);
-		setTheme(CellTheme::fromPalette(themed_palette));
-		renderOnce(w, themed);
-		setTheme(CellTheme::terminalDefault());     // leave the process as found
+		set_theme(CellTheme::from_palette(themed_palette));
+		render_once(w, themed);
+		set_theme(CellTheme::terminal_default());     // leave the process as found
 
 		CHECK(plain.at(1, 1).bg.kind() == Color::Default,
 		      "terminal-default theme leaves the window ground to the terminal");
 		CHECK(themed.at(1, 1).bg.kind() == Color::Rgb
 		      && themed.at(1, 1).bg.value() == qRgb(20, 40, 60),
-		      "setTheme() changes what renderOnce draws");
-		CHECK(themed.at(1, 1).bg.toAnsi16() == 0,
+		      "set_theme() changes what render_once draws");
+		CHECK(themed.at(1, 1).bg.to_ansi16() == 0,
 		      "and the drawn colour carries Window's authored ANSI-16 index");
-		CHECK(plain.diffCells(themed) > 0,
+		CHECK(plain.diff_cells(themed) > 0,
 		      "the two frames differ, which is the defect this closes");
 	}
 

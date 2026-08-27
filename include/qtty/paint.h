@@ -54,8 +54,8 @@ public:
 	CellPaintDevice *device() const { return dev_; }
 
 private:
-	QRect toCells(const QRectF &) const;
-	void fillRectF(const QRectF &, bool outlineOnly = false);
+	QRect to_cells(const QRectF &) const;
+	void fill_rectf(const QRectF &, bool outline_only = false);
 	void box(const QRect &cells);
 	void line(const QLineF &);
 

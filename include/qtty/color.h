@@ -53,15 +53,15 @@ public:
 
 	// Nearest xterm-256 index (16..255: 6x6x6 cube + grey ramp), matched in
 	// CIELAB rather than in RGB as design.md section 6 requires. Memoised.
-	int toXterm256() const;
+	int to_xterm256() const;
 	// Ansi16 (section 6). Default passes through; an authored index -- attached by
 	// CellTheme from the hand-written role table -- is the primary route;
 	// nearest-of-16 is the fallback for colours that arrive with no role at
 	// all, which is what Channel B output is.
-	int toAnsi16() const;
+	int to_ansi16() const;
 
 	// Perceived luminance 0..255 (Default fg assumed light, bg dark).
-	int luminance(bool isForeground) const;
+	int luminance(bool is_foreground) const;
 
 private:
 	constexpr Color(Kind k, quint8 i, QRgb c) : kind_(k), index_(i), rgb_(c) {}
@@ -91,6 +91,6 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(Attrs)
 
 // section 6 contrast rule: minimum luminance delta between fg and bg of a cell.
 // Violations are a theme bug; debug builds log them at present time.
-bool hasMinimumContrast(const Color &fg, const Color &bg, int minDelta = 48);
+bool has_minimum_contrast(const Color &fg, const Color &bg, int min_delta = 48);
 
 } // namespace Qtty

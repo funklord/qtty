@@ -48,9 +48,9 @@ int suite_runtime() {
 		quitter.stop();
 
 		CHECK(rc == 0, "exec() on an injected backend returns cleanly");
-		CHECK(backend.frameCount() > 0, "the injected backend received a frame");
+		CHECK(backend.frame_count() > 0, "the injected backend received a frame");
 		CHECK(backend.sink() != nullptr, "exec() wired the router into the backend");
-		CHECK(backend.lastFrame().contains(QStringLiteral("seam")),
+		CHECK(backend.last_frame().contains(QStringLiteral("seam")),
 		      "the frame the backend received is the widget tree");
 		CHECK(win.size() == QSize(40 * cw, 12 * ch),
 		      "the window was sized from the backend's cell size");
@@ -62,7 +62,7 @@ int suite_runtime() {
 		CHECK(win.pos() == QPoint(0, 0),
 		      "exec() puts the primary window at the origin, which the "
 		      "compositor and the router both assume");
-		CHECK(!isTuiActive(), "exec() clears the TUI flag on the way out");
+		CHECK(!is_tui_active(), "exec() clears the TUI flag on the way out");
 	}
 
 	// --------------------------------------- font provisioning (5.3, risk R3)

@@ -8,7 +8,7 @@
 namespace Qtty {
 
 // ---- negotiation -----------------------------------------------------------
-Capabilities::GraphicsMode detectGraphicsMode() {
+Capabilities::GraphicsMode detect_graphics_mode() {
 	// Explicit override wins -- the contract with cooperating terminals
 	// (doc/beerssh.md): the terminal exports QTTY_GRAPHICS naming the best
 	// mode it implements. Also the testing hook.
@@ -42,7 +42,7 @@ Capabilities::GraphicsMode detectGraphicsMode() {
 }
 
 // ---- sixel -----------------------------------------------------------------
-QByteArray encodeSixel(const QImage &src) {
+QByteArray encode_sixel(const QImage &src) {
 	const QImage img = src.convertToFormat(QImage::Format_ARGB32);
 	const int w = img.width(), h = img.height();
 
@@ -53,13 +53,13 @@ QByteArray encodeSixel(const QImage &src) {
 		const QRgb *line = reinterpret_cast<const QRgb *>(img.constScanLine(y));
 		for (int x = 0; x < w; ++x) {
 			if (qAlpha(line[x]) < 128) continue;
-			// toXterm256() returns -1 only for a Default colour, and the
+			// to_xterm256() returns -1 only for a Default colour, and the
 			// colour here is constructed with Color::rgb(), so it always
 			// takes the Lab match and always lands in 16..255. The clamp
 			// that stood here could not fire, and had it ever fired it would
 			// have written white into the pixel rather than reporting -- a
 			// silent wrong answer in the one path nothing else reads.
-			const int c = Color::rgb(line[x]).toXterm256();
+			const int c = Color::rgb(line[x]).to_xterm256();
 			idx[y * w + x] = c;
 			used[c] = true;
 		}
@@ -86,7 +86,7 @@ QByteArray encodeSixel(const QImage &src) {
 		}
 
 	for (int band = 0; band < h; band += 6) {
-		bool firstColor = true;
+		bool first_color = true;
 		for (int c = 0; c < 256; ++c) {
 			if (!used[c]) continue;
 			// does this colour appear in the band?
@@ -95,22 +95,22 @@ QByteArray encodeSixel(const QImage &src) {
 				for (int x = 0; x < w; ++x)
 					if (idx[y * w + x] == c) { present = true; break; }
 			if (!present) continue;
-			if (!firstColor) out += '$';          // carriage return within band
-			firstColor = false;
+			if (!first_color) out += '$';          // carriage return within band
+			first_color = false;
 			out += '#' + QByteArray::number(c);
-			int runChar = -1, runLen = 0;
+			int run_char = -1, run_len = 0;
 			auto flush = [&] {
-				if (runLen <= 0) return;
-				if (runLen > 3) out += '!' + QByteArray::number(runLen) + char(runChar);
-				else for (int i = 0; i < runLen; ++i) out += char(runChar);
+				if (run_len <= 0) return;
+				if (run_len > 3) out += '!' + QByteArray::number(run_len) + char(run_char);
+				else for (int i = 0; i < run_len; ++i) out += char(run_char);
 			};
 			for (int x = 0; x < w; ++x) {
 				int bits = 0;
 				for (int dy = 0; dy < 6 && band + dy < h; ++dy)
 					if (idx[(band + dy) * w + x] == c) bits |= 1 << dy;
 				const int ch = 63 + bits;         // '?' + bits
-				if (ch == runChar) ++runLen;
-				else { flush(); runChar = ch; runLen = 1; }
+				if (ch == run_char) ++run_len;
+				else { flush(); run_char = ch; run_len = 1; }
 			}
 			flush();
 		}
@@ -121,7 +121,7 @@ QByteArray encodeSixel(const QImage &src) {
 }
 
 // ---- kitty -----------------------------------------------------------------
-static QByteArray kittyChunks(const QByteArray &ctrl, const QByteArray &payload) {
+static QByteArray kitty_chunks(const QByteArray &ctrl, const QByteArray &payload) {
 	QByteArray out;
 	const int N = 4096;
 	for (int off = 0; off < payload.size(); off += N) {
@@ -137,7 +137,7 @@ static QByteArray kittyChunks(const QByteArray &ctrl, const QByteArray &payload)
 	return out;
 }
 
-QByteArray encodeKittyImage(quint32 id, const QImage &src, int z) {
+QByteArray encode_kitty_image(quint32 id, const QImage &src, int z) {
 	const QImage img = src.convertToFormat(QImage::Format_RGBA8888);
 	QByteArray raw(reinterpret_cast<const char *>(img.constBits()),
 	               int(img.sizeInBytes()));
@@ -146,25 +146,25 @@ QByteArray encodeKittyImage(quint32 id, const QImage &src, int z) {
 	    + ",s=" + QByteArray::number(img.width())
 	    + ",v=" + QByteArray::number(img.height());
 	if (z) ctrl += ",z=" + QByteArray::number(z);
-	return kittyChunks(ctrl, raw.toBase64());
+	return kitty_chunks(ctrl, raw.toBase64());
 }
 
-QByteArray kittyPlace(quint32 id, int z) {
+QByteArray kitty_place(quint32 id, int z) {
 	QByteArray ctrl = "a=p,q=2,i=" + QByteArray::number(id);
 	if (z) ctrl += ",z=" + QByteArray::number(z);
 	return "\033_G" + ctrl + ";\033\\";
 }
 
-QByteArray kittyDeleteAll() { return "\033_Ga=d,d=a,q=2;\033\\"; }
+QByteArray kitty_delete_all() { return "\033_Ga=d,d=a,q=2;\033\\"; }
 
 // ---- iTerm2 ----------------------------------------------------------------
-QByteArray encodeITerm2(const QImage &img, int wCells, int hCells) {
+QByteArray encode_iterm2(const QImage &img, int w_cells, int h_cells) {
 	QByteArray png;
 	QBuffer buf(&png);
 	buf.open(QIODevice::WriteOnly);
 	img.save(&buf, "PNG");
-	return "\033]1337;File=inline=1;width=" + QByteArray::number(wCells)
-	     + ";height=" + QByteArray::number(hCells)
+	return "\033]1337;File=inline=1;width=" + QByteArray::number(w_cells)
+	     + ";height=" + QByteArray::number(h_cells)
 	     + ";preserveAspectRatio=0:" + png.toBase64() + "\a";
 }
 
@@ -173,18 +173,18 @@ QImage rasterize(const CellBuffer &frame, const QFont &font) {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	QImage img(frame.cols() * cw, frame.rows() * ch,
 	           QImage::Format_ARGB32_Premultiplied);
-	const QRgb defBg = qRgb(16, 20, 24), defFg = qRgb(215, 218, 220);
-	img.fill(defBg);
+	const QRgb default_bg = qRgb(16, 20, 24), default_fg = qRgb(215, 218, 220);
+	img.fill(default_bg);
 	QPainter p(&img);
 	QFontMetrics fm(font);
 	for (int y = 0; y < frame.rows(); ++y)
 		for (int x = 0; x < frame.cols(); ++x) {
 			const Cell &c = frame.at(x, y);
 			if (c.width == 0) continue;
-			QRgb fg = c.fg.kind() == Color::Rgb ? c.fg.value() : defFg;
-			QRgb bg = c.bg.kind() == Color::Rgb ? c.bg.value() : defBg;
+			QRgb fg = c.fg.kind() == Color::Rgb ? c.fg.value() : default_fg;
+			QRgb bg = c.bg.kind() == Color::Rgb ? c.bg.value() : default_bg;
 			if (c.attrs & Attr::Reverse) std::swap(fg, bg);
-			if (bg != defBg || (c.attrs & Attr::Reverse))
+			if (bg != default_bg || (c.attrs & Attr::Reverse))
 				p.fillRect(x * cw, y * ch, cw * c.width, ch, QColor::fromRgb(bg));
 			if (c.ch != QStringLiteral(" ")) {
 				QFont f = font;
@@ -207,38 +207,38 @@ static QRgb blend(QRgb over, int a, QRgb under) {
 	            (qBlue(over)  * a + qBlue(under)  * (255 - a)) / 255);
 }
 
-void composeHalfblocks(CellBuffer &frame, const QImage &src, const QRect &cellRect) {
+void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_rect) {
 	const QImage img = src.convertToFormat(QImage::Format_ARGB32);
-	const QRgb underDefault = qRgb(16, 20, 24);
-	for (int cy = 0; cy < cellRect.height(); ++cy)
-		for (int cx = 0; cx < cellRect.width(); ++cx) {
-			const int X = cellRect.x() + cx, Y = cellRect.y() + cy;
+	const QRgb under_default = qRgb(16, 20, 24);
+	for (int cy = 0; cy < cell_rect.height(); ++cy)
+		for (int cx = 0; cx < cell_rect.width(); ++cx) {
+			const int X = cell_rect.x() + cx, Y = cell_rect.y() + cy;
 			if (X < 0 || Y < 0 || X >= frame.cols() || Y >= frame.rows()) continue;
 			// two vertical samples per cell (2x vertical resolution)
 			auto sample = [&](double fy) -> QRgb {
-			    int sx = qMin(int((cx + 0.5) * img.width() / cellRect.width()), img.width() - 1);
-			    int sy = qMin(int((cy + fy) * img.height() / cellRect.height()), img.height() - 1);
+			    int sx = qMin(int((cx + 0.5) * img.width() / cell_rect.width()), img.width() - 1);
+			    int sy = qMin(int((cy + fy) * img.height() / cell_rect.height()), img.height() - 1);
 			    return img.pixel(sx, sy);
 		    };
 			const QRgb top = sample(0.25), bot = sample(0.75);
-			const int aT = qAlpha(top), aB = qAlpha(bot);
-			if (aT < 40 && aB < 40) continue;                  // transparent: untouched
+			const int alpha_top = qAlpha(top), alpha_bot = qAlpha(bot);
+			if (alpha_top < 40 && alpha_bot < 40) continue;                  // transparent: untouched
 			Cell &cell = frame.at(X, Y);
-			if (aT > 200 && aB > 200) {                        // opaque: 2 pixels
+			if (alpha_top > 200 && alpha_bot > 200) {                        // opaque: 2 pixels
 				cell.ch = QStringLiteral("▀");
 				cell.fg = Color::rgb(QRgb(top | 0xFF000000));
 				cell.bg = Color::rgb(QRgb(bot | 0xFF000000));
 				cell.attrs = {}; cell.width = 1;
-			} else if (aT > 200 || aB > 200) {                 // half-covered edge
-			    const bool topHalf = aT > 200;
-			    cell.ch = topHalf ? QStringLiteral("▀") : QStringLiteral("▄");
-			    cell.fg = Color::rgb(QRgb((topHalf ? top : bot) | 0xFF000000));
+			} else if (alpha_top > 200 || alpha_bot > 200) {                 // half-covered edge
+			    const bool top_half = alpha_top > 200;
+			    cell.ch = top_half ? QStringLiteral("▀") : QStringLiteral("▄");
+			    cell.fg = Color::rgb(QRgb((top_half ? top : bot) | 0xFF000000));
 			    // keep whatever bg is behind the uncovered half
 			    cell.attrs = {}; cell.width = 1;
 		    } else {                                           // translucent: tint bg,
-			    const int a = qMax(aT, aB);                    // glyph stays readable
+			    const int a = qMax(alpha_top, alpha_bot);                    // glyph stays readable
 			    const QRgb under = cell.bg.kind() == Color::Rgb ? cell.bg.value()
-			                                                    : underDefault;
+			                                                    : under_default;
 			    cell.bg = Color::rgb(blend(top, a, under));
 		    }
 	    }

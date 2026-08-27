@@ -28,17 +28,17 @@ struct Recorder : ITerminalEventSink {
 	QStringList pastes;
 	QVector<QSize> resizes;
 	QVector<bool> focus;
-	void onKey(const KeyEvent &k) override { keys.append(k); }
-	void onMouse(const MouseEvent &m) override { mice.append(m); }
-	void onPaste(const QString &s) override { pastes.append(s); }
-	void onResize(QSize c) override { resizes.append(c); }
-	void onFocusChange(bool f) override { focus.append(f); }
+	void on_key(const KeyEvent &k) override { keys.append(k); }
+	void on_mouse(const MouseEvent &m) override { mice.append(m); }
+	void on_paste(const QString &s) override { pastes.append(s); }
+	void on_resize(QSize c) override { resizes.append(c); }
+	void on_focus_change(bool f) override { focus.append(f); }
 	void clear() { keys.clear(); mice.clear(); pastes.clear();
 		           resizes.clear(); focus.clear(); }
 };
 
 // The backend reads from fd 0, so bytes are fed through a pipe made to be
-// stdin. That drives readInput() and the decoder exactly as a terminal would,
+// stdin. That drives read_input() and the decoder exactly as a terminal would,
 // rather than reaching past them into a helper written for the test.
 struct Feeder {
 	int saved_stdin = -1, write_fd = -1;
@@ -71,7 +71,7 @@ int suite_backend() {
 	}
 	AnsiBackend backend;
 	Recorder rec;
-	backend.setEventSink(&rec);
+	backend.set_event_sink(&rec);
 
 	// One helper, so each case says only what it sends and what it expects.
 	const auto feed = [&](const QByteArray &bytes) {
@@ -82,13 +82,13 @@ int suite_backend() {
 
 	// -- keys, including the modifier parameter the old decoder could not see
 	feed("\033[A");
-	CHECK(rec.keys.size() == 1 && rec.keys[0].qtKey == Qt::Key_Up,
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Up,
 	      "CSI A decodes as Up");
 	feed("\033[1;5C");
-	CHECK(rec.keys.size() == 1 && rec.keys[0].qtKey == Qt::Key_Right
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Right
 	      && rec.keys[0].ctrl, "CSI 1;5C decodes as Ctrl-Right");
 	feed("\033[3~");
-	CHECK(rec.keys.size() == 1 && rec.keys[0].qtKey == Qt::Key_Delete,
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Delete,
 	      "CSI 3~ decodes as Delete");
 
 	// -- SGR 1006 mouse. Unreachable before: the backend never enabled the

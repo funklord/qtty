@@ -1244,29 +1244,58 @@ Dependency-ordered:
    specifies. The backend seam no longer waits on it, so this is now a
    design decision taken on its merits rather than a blocker.
 
-Then, as its own pass and not folded into anything else, the **member
-rename**. Closing OQ-6 in favour of PascalCase *type* names made the
-tree's `camelCase` members a plain divergence from the rule rather than
-an ambiguity in it -- `putCluster`, `cellRect`, `setEventSink`,
-`frameRequested` and their neighbours become `put_cluster`, `cell_rect`,
-`set_event_sink`, `frame_requested`. It is a mechanical rename across
-every header, every definition and every call site, so it carries a
-proof: the invariant is that the translation unit's behaviour is
-unchanged, which for a pure rename means the suite still reports the same
-count and the tree still links with no undefined symbols. Two names stay
-as they are and the pass must not touch them -- `focusWidget()` and
-`setFocusWidget()` deliberately mirror the `QApplication` call they
-replace (F4), which is the foreign-API rule working rather than an
-exception to it.
+The **member rename** is done. Closing OQ-6 in favour of PascalCase
+*type* names made the tree's `camelCase` members a plain divergence from
+the rule rather than an ambiguity in it, and 117 names moved:
+`putCluster` -> `put_cluster`, `setEventSink` -> `set_event_sink`,
+`cellRect` -> `cell_rect`, `frameRequested` -> `frame_requested` and
+their neighbours.
 
-It is listed after the four above rather than before, because a rename
-across every call site collides with any work in flight, and the four
-above are the work in flight. Until it runs the tree is mixed: new code
-written since the decision uses `snake_case` members and the older code
-does not.
+**What made it safe was deciding what NOT to rename, mechanically.** An
+identifier is Qt's if it appears anywhere in Qt's headers, so the filter
+skipped every one that did -- conservative by construction, since
+ambiguity left a name alone. That protected the whole override surface
+without anybody listing it: `drawPrimitive`, `pixelMetric`,
+`sizeFromContents`, `eventFilter`, `paintEngine`, `updateState` and the
+rest keep Qt's spelling because they *are* Qt's names. `focusWidget()`
+and `setFocusWidget()` are exempt for a different reason -- they
+deliberately mirror the `QApplication` call they replace (F4).
 
-Then the rest of design.md §17, and two things worth doing early within
-it because they unblock testing rather than features: the attribute plane
-in `CellBuffer::toText()` (no test can snapshot colour without it), and
-decode or round-trip coverage for the graphics encoders (byte structure
-alone cannot tell a well-formed stream from a correct one).
+**The filter's cost is a half-renamed struct, and that had to be looked
+for rather than assumed.** A name of ours that Qt happens to use too was
+skipped, so `CellTheme` nearly ended with `window_text` beside
+`buttonText`, and `version.h` actually did end with `version_patch`
+beside `versionMajor` -- caught because `make version-check` greps for
+those names and went red. Ten such names were added back by hand after
+checking each overrides nothing.
+
+**The proof is reversibility.** Applying the inverse map to the result
+must reproduce every original file byte for byte, which catches a target
+colliding with an existing name, a substitution that is not one-to-one,
+and a rewrite inside a token that merely looked like one -- none of which
+a passing suite would necessarily show. It fired: `minDelta` converges
+onto a `min_delta` that already existed, so the inverse could not be
+exact, and that one name was done as its own pass and read by eye. The
+first attempt also reverted only the files that failed rather than all of
+them, which left a half-renamed tree and made the next run's proof
+meaningless; an all-or-nothing revert is part of the shape.
+
+The behavioural invariant held throughout: 201 tests, 0 failures, zero
+build warnings, and the example and both tools still link.
+
+Then the rest of design.md §17. The two items that used to head this
+paragraph -- the attribute plane and the encoder round-trips -- are done
+and are recorded in §7.1 and §7.3; both were chosen because they unblock
+testing rather than features, and both immediately found a defect that
+had been invisible, which is the argument for picking that kind of work
+first.
+
+What is left there, in no particular order and none of it blocked:
+`CellItemDelegate` and the item-view roles; `ICellPainted`, which is
+risk R5's stated mitigation and F5's suggested remedy for the widgets
+that self-size; the `QTextEdit` interaction layer; submenus, mnemonics
+and an editable combo box; `PixelSurface`; kitty viewport cropping for a
+half-clipped placement, which §16.3 named as that tier's remainder; the
+§11 benchmark, without which the 0.16 ms and 3.8 ms figures are spike
+measurements nothing holds; and the bundled font, which is what would
+make the fixtures reproducible (§7.8).

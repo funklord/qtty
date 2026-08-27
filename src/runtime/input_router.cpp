@@ -12,7 +12,7 @@
 namespace Qtty {
 
 InputRouter::InputRouter(QWidget *window) : win_(window) {
-	quitKeys_ = { KeyEvent{Qt::Key_C, QString(), true, false, false},
+	quit_keys_ = { KeyEvent{Qt::Key_C, QString(), true, false, false},
 		          KeyEvent{Qt::Key_D, QString(), true, false, false} };
 	qApp->installEventFilter(this);
 }
@@ -21,7 +21,7 @@ InputRouter::~InputRouter() {
 	if (qApp) qApp->removeEventFilter(this);
 }
 
-void InputRouter::setQuitKeys(const QVector<KeyEvent> &k) { quitKeys_ = k; }
+void InputRouter::set_quit_keys(const QVector<KeyEvent> &k) { quit_keys_ = k; }
 
 QVector<QWidget *> InputRouter::popups() const {
 	QVector<QWidget *> out;
@@ -44,10 +44,10 @@ QWidget *InputRouter::input_scope() const {
 	return m ? m : win_;
 }
 
-QWidget *InputRouter::keyTarget() const {
+QWidget *InputRouter::key_target() const {
 	// popup > modal > window focus. A key carries no position, so preferring
 	// the modal IS the section 8.3 rule for keys: anything outside it is
-	// unreachable rather than dropped. onMouse() has to do the dropping
+	// unreachable rather than dropped. on_mouse() has to do the dropping
 	// itself, because a click does carry one.
 	if (QWidget *p = QApplication::activePopupWidget())
 		return p->focusWidget() ? p->focusWidget() : p;
@@ -70,26 +70,26 @@ bool InputRouter::eventFilter(QObject *o, QEvent *e) {
 				if (is_popup_layer(w)) {
 					popups_.removeAll(QPointer<QWidget>(w));
 					popups_.append(w);                             // top of stack
-					if (frameRequested) frameRequested();
+					if (frame_requested) frame_requested();
 				}
 			}
 		}
 	} else if (e->type() == QEvent::Hide) {
 		if (auto *w = qobject_cast<QWidget *>(o)) {
-			if (popups_.removeAll(QPointer<QWidget>(w)) && frameRequested)
-				frameRequested();
+			if (popups_.removeAll(QPointer<QWidget>(w)) && frame_requested)
+				frame_requested();
 		}
 	}
 	return false;                                                  // observe only
 }
 
-bool InputRouter::matchShortcut(const KeyEvent &k) {
-	if (!k.qtKey || k.qtKey == Qt::Key_unknown) return false;
+bool InputRouter::match_shortcut(const KeyEvent &k) {
+	if (!k.qt_key || k.qt_key == Qt::Key_unknown) return false;
 	Qt::KeyboardModifiers mods;
 	if (k.ctrl) mods |= Qt::ControlModifier;
 	if (k.alt) mods |= Qt::AltModifier;
 	if (k.shift) mods |= Qt::ShiftModifier;
-	const QKeySequence pressed(QKeyCombination(mods, Qt::Key(k.qtKey)).toCombined());
+	const QKeySequence pressed(QKeyCombination(mods, Qt::Key(k.qt_key)).toCombined());
 
 	// Collect actions from the input scope, all its children, and menus
 	// (rebuilt per press: correctness first, the table is small; section 5.5).
@@ -108,53 +108,53 @@ bool InputRouter::matchShortcut(const KeyEvent &k) {
 	return false;
 }
 
-void InputRouter::deliverKey(QWidget *target, const KeyEvent &k) {
+void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 	Qt::KeyboardModifiers mods;
 	if (k.ctrl) mods |= Qt::ControlModifier;
 	if (k.alt) mods |= Qt::AltModifier;
 	if (k.shift) mods |= Qt::ShiftModifier;
-	QKeyEvent press(QEvent::KeyPress, k.qtKey, mods, k.text);
+	QKeyEvent press(QEvent::KeyPress, k.qt_key, mods, k.text);
 	QApplication::sendEvent(target, &press);
 	// Terminals have no key-release; fabricate one immediately (section 5.5).
-	QKeyEvent release(QEvent::KeyRelease, k.qtKey, mods, k.text);
+	QKeyEvent release(QEvent::KeyRelease, k.qt_key, mods, k.text);
 	QApplication::sendEvent(target, &release);
 
 	// Arrow keys a focus widget ignored fall back to scrolling the nearest
 	// scroll area -- the TUI convention (section 5.5).
-	if (!press.isAccepted() && (k.qtKey == Qt::Key_Up || k.qtKey == Qt::Key_Down
-	                            || k.qtKey == Qt::Key_PageUp || k.qtKey == Qt::Key_PageDown)) {
+	if (!press.isAccepted() && (k.qt_key == Qt::Key_Up || k.qt_key == Qt::Key_Down
+	                            || k.qt_key == Qt::Key_PageUp || k.qt_key == Qt::Key_PageDown)) {
 		if (auto *area = input_scope()->findChild<QAbstractScrollArea *>()) {
 			int step = GridMetrics::ch();
-			if (k.qtKey == Qt::Key_PageUp || k.qtKey == Qt::Key_PageDown)
+			if (k.qt_key == Qt::Key_PageUp || k.qt_key == Qt::Key_PageDown)
 				step *= 5;
-			const int dir = (k.qtKey == Qt::Key_Up || k.qtKey == Qt::Key_PageUp) ? -1 : 1;
+			const int dir = (k.qt_key == Qt::Key_Up || k.qt_key == Qt::Key_PageUp) ? -1 : 1;
 			area->verticalScrollBar()->setValue(
 			    area->verticalScrollBar()->value() + dir * step);
 		}
 	}
 }
 
-void InputRouter::onKey(const KeyEvent &k) {
-	for (const KeyEvent &q : std::as_const(quitKeys_))
-		if (q.qtKey == k.qtKey && q.ctrl == k.ctrl && q.alt == k.alt) {
+void InputRouter::on_key(const KeyEvent &k) {
+	for (const KeyEvent &q : std::as_const(quit_keys_))
+		if (q.qt_key == k.qt_key && q.ctrl == k.ctrl && q.alt == k.alt) {
 			qApp->quit();
 			return;
 		}
-	if (k.qtKey == Qt::Key_Tab && !k.ctrl) {
+	if (k.qt_key == Qt::Key_Tab && !k.ctrl) {
 		// Focus chain works without an active window (F4); drive it directly.
 		QWidget *scope = input_scope();
 		struct Probe : QWidget { using QWidget::focusNextPrevChild; };
 		static_cast<Probe *>(scope)->focusNextPrevChild(!k.shift);
 		setFocusWidget(scope->focusWidget());
-	} else if (!matchShortcut(k)) {
-		deliverKey(keyTarget(), k);
+	} else if (!match_shortcut(k)) {
+		deliver_key(key_target(), k);
 		setFocusWidget(input_scope()->focusWidget());
 	}
 	QCoreApplication::processEvents();
-	if (frameRequested) frameRequested();
+	if (frame_requested) frame_requested();
 }
 
-void InputRouter::onMouse(const MouseEvent &m) {
+void InputRouter::on_mouse(const MouseEvent &m) {
 	const QPoint px(m.cell.x() * GridMetrics::cw() + GridMetrics::cw() / 2,
 	                m.cell.y() * GridMetrics::ch() + GridMetrics::ch() / 2);
 	// Popups first (top of stack down), then the modal, then the window
@@ -166,7 +166,7 @@ void InputRouter::onMouse(const MouseEvent &m) {
 	if (!top) {
 		if (QWidget *modal = QApplication::activeModalWidget()) {
 			// section 8.3: input outside activeModalWidget() is dropped before
-			// dispatch. keyTarget() already gives keys to the modal, but a
+			// dispatch. key_target() already gives keys to the modal, but a
 			// click carries a position and had no such rule, so it went to
 			// whatever sat under the dialog -- a button pressed through a
 			// modal that was there to block it. Dropped, not redirected: a
@@ -203,21 +203,21 @@ void InputRouter::onMouse(const MouseEvent &m) {
 		setFocusWidget(input_scope()->focusWidget());
 	}
 	QCoreApplication::processEvents();
-	if (frameRequested) frameRequested();
+	if (frame_requested) frame_requested();
 }
 
-void InputRouter::onPaste(const QString &text) {
+void InputRouter::on_paste(const QString &text) {
 	QKeyEvent ev(QEvent::KeyPress, 0, Qt::NoModifier, text);
-	QApplication::sendEvent(keyTarget(), &ev);
-	if (frameRequested) frameRequested();
+	QApplication::sendEvent(key_target(), &ev);
+	if (frame_requested) frame_requested();
 }
 
-void InputRouter::onResize(QSize cells) {
+void InputRouter::on_resize(QSize cells) {
 	win_->resize(cells.width() * GridMetrics::cw(), cells.height() * GridMetrics::ch());
 	QCoreApplication::processEvents();
-	if (frameRequested) frameRequested();
+	if (frame_requested) frame_requested();
 }
 
-void InputRouter::onFocusChange(bool) { if (frameRequested) frameRequested(); }
+void InputRouter::on_focus_change(bool) { if (frame_requested) frame_requested(); }
 
 } // namespace Qtty

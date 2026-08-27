@@ -18,12 +18,12 @@
 //      libraries.
 //
 // Order matters and is the one sharp edge:
-//      decide frontend  ->  Qtty::prepareEnvironment()   (sets QT_QPA_PLATFORM)
+//      decide frontend  ->  Qtty::prepare_environment()   (sets QT_QPA_PLATFORM)
 //                       ->  QApplication ctor
 //                       ->  Qtty::setup(app)             (font + style)
 //                       ->  construct shared widgets     (they read app font)
 //                       ->  Qtty::exec / app.exec
-// prepareEnvironment() must precede QApplication, and setup() must precede
+// prepare_environment() must precede QApplication, and setup() must precede
 // widget construction so the shared UI derives its metrics from the final font.
 
 #include <QtWidgets>
@@ -58,7 +58,7 @@ int main(int argc, char **argv) {
 	const bool tui = wantTui(argc, argv);
 
 #ifndef QTTY_NO_TUI
-	if (tui) Qtty::prepareEnvironment();       // BEFORE QApplication
+	if (tui) Qtty::prepare_environment();       // BEFORE QApplication
 #endif
 	QApplication app(argc, argv);
 #ifndef QTTY_NO_TUI

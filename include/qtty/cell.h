@@ -30,18 +30,18 @@ struct CellImage {
 	// arithmetic. The conversion is written out at every call site so it
 	// reads as intended rather than as a narrowing the compiler noticed.
 	quint64 key = 0;
-	QRect   cellRect;       // anchor + span, in cells
+	QRect   cell_rect;       // anchor + span, in cells
 	QPixmap pixmap;
 };
 
 // Display width of one grapheme cluster: 2 for East Asian wide/fullwidth and
 // emoji presentation, else 1. The table is deliberately simple; terminals
-// disagree at the margins, and Capabilities::unicodeWide lets a backend
+// disagree at the margins, and Capabilities::unicode_wide lets a backend
 // override behaviour (section 5.2).
-int clusterWidth(QStringView cluster);
+int cluster_width(QStringView cluster);
 
 // Split text into grapheme clusters (QTextBoundaryFinder::Grapheme).
-QVector<QString> toClusters(const QString &text);
+QVector<QString> to_clusters(const QString &text);
 
 class CellBuffer {
 public:
@@ -62,7 +62,7 @@ public:
 	// a width-2 cluster claims (x,y) and marks (x+1,y) as continuation; any
 	// write over half of a wide pair clears the partner first (section 5.2 -- the
 	// classic corruption source, unit-tested).
-	void putCluster(int x, int y, const QString &cluster,
+	void put_cluster(int x, int y, const QString &cluster,
 	                Color fg = {}, Color bg = {}, Attrs attrs = {});
 
 	// Write a string of clusters starting at (x,y); returns cells consumed.
@@ -71,15 +71,15 @@ public:
 
 	// Damage vs a previous frame, as a cell-space region.
 	QRegion diff(const CellBuffer &prev) const;
-	int diffCells(const CellBuffer &prev) const;
+	int diff_cells(const CellBuffer &prev) const;
 
-	QString toText() const;             // glyphs only, one row per line
+	QString to_text() const;             // glyphs only, one row per line
 
 	// The full section 9 snapshot: the glyph plane, then an attribute plane
 	// and a colour plane over the same grid, then a legend naming what each
 	// colour letter stands for.
 	//
-	// toText() alone was what the fixtures recorded, and it drops everything
+	// to_text() alone was what the fixtures recorded, and it drops everything
 	// except the character -- so the reverse video, bold and dim that most of
 	// the Channel A work produces could not be snapshotted at all. A fixture
 	// that cannot see a selection is one that goes green when a selection
@@ -95,7 +95,7 @@ public:
 	QVector<CellImage> images;
 
 private:
-	void clearWidePartner(int x, int y);
+	void clear_wide_partner(int x, int y);
 	int c_, r_;
 	QVector<Cell> d_;
 };

@@ -15,7 +15,7 @@
 namespace Qtty {
 
 // Colour-depth negotiation (sections 5.1 and 6). Same shape as
-// detectGraphicsMode() in src/graphics/graphics.cpp, deliberately: an explicit
+// detect_graphics_mode() in src/graphics/graphics.cpp, deliberately: an explicit
 // environment override wins, then what the terminal says about itself, and the
 // floor is the sixteen colours Capabilities already defaults to.
 //
@@ -48,7 +48,7 @@ static Capabilities::ColorDepth detect_color_depth() {
 }
 
 AnsiBackend::AnsiBackend() {
-	mode_ = detectGraphicsMode();
+	mode_ = detect_graphics_mode();
 	depth_ = detect_color_depth();
 	winsize ws{};
 	if (ioctl(1, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
@@ -57,7 +57,7 @@ AnsiBackend::AnsiBackend() {
 		cells_ = QSize(80, 24);                     // piped/CI fallback
 	resume();
 	notifier_ = new QSocketNotifier(0, QSocketNotifier::Read, this);
-	connect(notifier_, &QSocketNotifier::activated, this, [this] { readInput(); });
+	connect(notifier_, &QSocketNotifier::activated, this, [this] { read_input(); });
 }
 
 AnsiBackend::~AnsiBackend() { suspend(); }
@@ -69,21 +69,21 @@ Capabilities AnsiBackend::capabilities() const {
 
 	// These four were fields nobody set and nobody read. They are answers
 	// about this backend now, and each is answerable because resume() asks
-	// the terminal for the mode and decodeOne() understands the replies.
+	// the terminal for the mode and decode_one() understands the replies.
 	//
-	// mouse and bracketedPaste are reported for a tty because the modes are
+	// mouse and bracketed_paste are reported for a tty because the modes are
 	// requested unconditionally and a terminal that does not implement one
 	// ignores the request -- there is no reply to wait for, and the DCS
 	// handshake doc/beerssh.md proposes is what would turn these from "asked
 	// for" into "confirmed".
-	c.mouse = rawOk_;
-	c.bracketedPaste = rawOk_;
-	c.unicodeWide = true;                           // L2 measures width itself
+	c.mouse = raw_ok_;
+	c.bracketed_paste = raw_ok_;
+	c.unicode_wide = true;                           // L2 measures width itself
 
 	// DEC 2026 is NOT claimed. section 11 wants synchronised output to
 	// eliminate tearing, and nothing emits the brackets yet; saying true here
 	// would be a field describing an intention rather than the backend.
-	c.synchronisedOutput = false;
+	c.synchronised_output = false;
 	c.title = false;                                // no OSC 0/2 emitter yet
 	return c;
 }
@@ -101,7 +101,7 @@ QSize AnsiBackend::size() const { return cells_; }
 // and returns; a QSocketNotifier on the read end turns that into an ordinary
 // event in the Qt loop, where the real work is legal. This is the standard
 // self-pipe, and it is the reason a resize can be handled at all: before it,
-// ITerminalEventSink::onResize existed, InputRouter implemented it, and
+// ITerminalEventSink::on_resize existed, InputRouter implemented it, and
 // nothing ever called it -- dragging a terminal's edge did nothing whatever.
 static int s_winch_pipe[2] = {-1, -1};
 
@@ -113,7 +113,7 @@ extern "C" void qtty_winch_handler(int) {
 	}
 }
 
-void AnsiBackend::readWinch() {
+void AnsiBackend::read_winch() {
 	char drain[64];
 	while (::read(s_winch_pipe[0], drain, sizeof drain) > 0) { }
 	winsize ws{};
@@ -121,7 +121,7 @@ void AnsiBackend::readWinch() {
 	const QSize now(ws.ws_col, ws.ws_row);
 	if (now == cells_) return;         // SIGWINCH also fires for pixel-only changes
 	cells_ = now;
-	if (sink_) sink_->onResize(cells_);
+	if (sink_) sink_->on_resize(cells_);
 }
 
 void AnsiBackend::resume() {
@@ -141,7 +141,7 @@ void AnsiBackend::resume() {
 		t.c_lflag &= ~(ICANON | ECHO);
 		t.c_cc[VMIN] = 1; t.c_cc[VTIME] = 0;
 		tcsetattr(0, TCSANOW, &t);
-		rawOk_ = true;
+		raw_ok_ = true;
 	}
 	// Alternate screen and hidden cursor, then the three reporting modes the
 	// runtime already has sinks for and never received anything on. Each is
@@ -169,14 +169,14 @@ void AnsiBackend::resume() {
 		struct sigaction sa{};
 		sa.sa_handler = qtty_winch_handler;
 		sigemptyset(&sa.sa_mask);
-		sa.sa_flags = SA_RESTART;      // do not break the read() in readInput()
+		sa.sa_flags = SA_RESTART;      // do not break the read() in read_input()
 		sigaction(SIGWINCH, &sa, nullptr);
 	}
 	if (s_winch_pipe[0] >= 0 && !winch_notifier_) {
 		winch_notifier_ = new QSocketNotifier(s_winch_pipe[0],
 		                                     QSocketNotifier::Read, this);
 		QObject::connect(winch_notifier_, &QSocketNotifier::activated,
-		                 this, [this] { readWinch(); });
+		                 this, [this] { read_winch(); });
 	}
 	active_ = true;
 }
@@ -192,7 +192,7 @@ void AnsiBackend::suspend() {
 		       "\033[0m\033[?1049l\033[?25h");
 		fflush(stdout);
 	}
-	if (rawOk_) tcsetattr(0, TCSANOW, &saved_);
+	if (raw_ok_) tcsetattr(0, TCSANOW, &saved_);
 	active_ = false;
 }
 
@@ -204,7 +204,7 @@ void AnsiBackend::suspend() {
 // equal here.
 struct Sgr { Color fg, bg; Attrs attrs; bool primed = false; };
 
-static void emitSgr(QByteArray &out, const Cell &c, Sgr &cur,
+static void emit_sgr(QByteArray &out, const Cell &c, Sgr &cur,
                     Capabilities::ColorDepth depth) {
 	if (cur.primed && c.fg == cur.fg && c.bg == cur.bg && c.attrs == cur.attrs) return;
 	out += sgr_sequence(c.fg, c.bg, c.attrs, depth);   // section 6: theme.cpp owns
@@ -215,10 +215,10 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 	// Full-frame emission: measured cheap (section 16.1 F9); damage-limited output
 	// arrives with DEC 2026 bracketing in later polish.
 	CellBuffer composed = frame;
-	const bool pixelPlacements = mode_ >= Capabilities::Sixel;
-	if (!pixelPlacements)                            // fallback tier: colour
+	const bool pixel_placements = mode_ >= Capabilities::Sixel;
+	if (!pixel_placements)                            // fallback tier: colour
 		for (const CellImage &ci : frame.images)     // half-blocks (section 17.3)
-			composeHalfblocks(composed, ci.pixmap.toImage(), ci.cellRect);
+			compose_halfblocks(composed, ci.pixmap.toImage(), ci.cell_rect);
 
 	QByteArray out = "\033[H";
 	Sgr cur;
@@ -226,7 +226,7 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 		for (int x = 0; x < composed.cols(); ++x) {
 			const Cell &c = composed.at(x, y);
 			if (c.width == 0) continue;              // continuation of wide cell
-			emitSgr(out, c, cur, depth_);
+			emit_sgr(out, c, cur, depth_);
 			out += c.ch.toUtf8();
 		}
 		if (y < composed.rows() - 1) out += "\033[0m\r\n", cur = Sgr{};
@@ -241,29 +241,29 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 	// frame would report every image as hundreds of violations and drown the
 	// theme faults this exists to find.
 	contrast_violations(frame, depth_);
-	if (pixelPlacements) {                           // real pixels (section 5.7)
+	if (pixel_placements) {                           // real pixels (section 5.7)
 		if (mode_ == Capabilities::Kitty || mode_ == Capabilities::KittyAlpha) {
-			out += kittyDeleteAll();
+			out += kitty_delete_all();
 			for (const CellImage &ci : frame.images) {
-				out += moveTo(ci.cellRect.topLeft());
+				out += moveTo(ci.cell_rect.topLeft());
 				const quint32 id = quint32(ci.key & 0xFFFFFF) + 1;
 				if (!uploaded_.contains(ci.key)) {
 					uploaded_.insert(ci.key);
-					out += encodeKittyImage(id, ci.pixmap.toImage());
+					out += encode_kitty_image(id, ci.pixmap.toImage());
 				} else {
-					out += kittyPlace(id);           // upload-once: ~30 bytes
+					out += kitty_place(id);           // upload-once: ~30 bytes
 				}
 			}
 		} else if (mode_ == Capabilities::Sixel) {
 			for (const CellImage &ci : frame.images) {
-				out += moveTo(ci.cellRect.topLeft());
-				out += encodeSixel(ci.pixmap.toImage());
+				out += moveTo(ci.cell_rect.topLeft());
+				out += encode_sixel(ci.pixmap.toImage());
 			}
 		} else if (mode_ == Capabilities::ITerm2) {
 			for (const CellImage &ci : frame.images) {
-				out += moveTo(ci.cellRect.topLeft());
-				out += encodeITerm2(ci.pixmap.toImage(),
-				                    ci.cellRect.width(), ci.cellRect.height());
+				out += moveTo(ci.cell_rect.topLeft());
+				out += encode_iterm2(ci.pixmap.toImage(),
+				                    ci.cell_rect.width(), ci.cell_rect.height());
 			}
 		}
 	}
@@ -271,20 +271,20 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 	fflush(stdout);
 }
 
-void AnsiBackend::presentPixels(const QImage &frame, const QRegion &) {
+void AnsiBackend::present_pixels(const QImage &frame, const QRegion &) {
 	QByteArray out = "\033[H";
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	switch (mode_) {
 	case Capabilities::Kitty:
 	case Capabilities::KittyAlpha:
-		out += kittyDeleteAll();
-		out += encodeKittyImage(0xFFFFFF0u, frame);
+		out += kitty_delete_all();
+		out += encode_kitty_image(0xFFFFFF0u, frame);
 		break;
 	case Capabilities::Sixel:
-		out += encodeSixel(frame);
+		out += encode_sixel(frame);
 		break;
 	case Capabilities::ITerm2:
-		out += encodeITerm2(frame, frame.width() / cw, frame.height() / ch);
+		out += encode_iterm2(frame, frame.width() / cw, frame.height() / ch);
 		break;
 	default:
 		return;                                      // no pixel path
@@ -293,15 +293,15 @@ void AnsiBackend::presentPixels(const QImage &frame, const QRegion &) {
 	fflush(stdout);
 }
 
-void AnsiBackend::presentOverlay(int id, const QImage &rgba, QPoint cell, int z) {
+void AnsiBackend::present_overlay(int id, const QImage &rgba, QPoint cell, int z) {
 	if (mode_ != Capabilities::KittyAlpha) return;
 	QByteArray out = moveTo(cell);
-	out += encodeKittyImage(0xFFFFE00u + quint32(id), rgba, z > 0 ? z : 1);
+	out += encode_kitty_image(0xFFFFE00u + quint32(id), rgba, z > 0 ? z : 1);
 	fwrite(out.constData(), 1, out.size(), stdout);
 	fflush(stdout);
 }
 
-void AnsiBackend::clearOverlay(int id) {
+void AnsiBackend::clear_overlay(int id) {
 	if (mode_ != Capabilities::KittyAlpha) return;
 	QByteArray out = "\033_Ga=d,d=i,q=2,i="
 	               + QByteArray::number(0xFFFFE00u + quint32(id)) + ";\033\\";
@@ -309,7 +309,7 @@ void AnsiBackend::clearOverlay(int id) {
 	fflush(stdout);
 }
 
-void AnsiBackend::setCursor(std::optional<QPoint> cell, CursorShape shape) {
+void AnsiBackend::set_cursor(std::optional<QPoint> cell, CursorShape shape) {
 	if (cell && shape != CursorShape::Hidden)
 		printf("\033[%d;%dH\033[?25h", cell->y() + 1, cell->x() + 1);
 	else
@@ -318,15 +318,15 @@ void AnsiBackend::setCursor(std::optional<QPoint> cell, CursorShape shape) {
 }
 
 // ---- input decoding --------------------------------------------------------
-void AnsiBackend::readInput() {
+void AnsiBackend::read_input() {
 	char buf[256];
 	ssize_t n = ::read(0, buf, sizeof buf);
 	if (n <= 0) {                                     // EOF: quit politely
-		if (sink_) sink_->onKey({Qt::Key_D, QString(), true, false, false});
+		if (sink_) sink_->on_key({Qt::Key_D, QString(), true, false, false});
 		return;
 	}
 	pending_.append(buf, n);
-	while (!pending_.isEmpty()) { if (!decodeOne()) break; }
+	while (!pending_.isEmpty()) { if (!decode_one()) break; }
 }
 
 // A CSI is ESC [ , an optional private prefix, semicolon-separated decimal
@@ -338,7 +338,7 @@ void AnsiBackend::readInput() {
 // report is `ESC [ < 0 ; 34 ; 12 M`, and a bracketed paste opens with
 // `ESC [ 2 0 0 ~`. Both were read as an unknown key and thrown away, three
 // bytes at a time, which then desynchronised the rest of the buffer.
-int AnsiBackend::parseCsi(QByteArray &prefix, QVector<int> &params,
+int AnsiBackend::parse_csi(QByteArray &prefix, QVector<int> &params,
                           char &final) const {
 	int i = 2;                                    // past ESC [
 	prefix.clear();
@@ -366,7 +366,7 @@ int AnsiBackend::parseCsi(QByteArray &prefix, QVector<int> &params,
 	return i + 1;
 }
 
-bool AnsiBackend::dispatchCsi(const QByteArray &prefix,
+bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
                               const QVector<int> &params, char final) {
 	const auto param = [&](int n, int fallback) {
 		return n < params.size() ? params[n] : fallback;
@@ -390,7 +390,7 @@ bool AnsiBackend::dispatchCsi(const QByteArray &prefix,
 			m.press = (final == 'M') && !m.motion;
 			m.release = (final == 'm');
 		}
-		sink_->onMouse(m);
+		sink_->on_mouse(m);
 		return true;
 	}
 
@@ -399,33 +399,33 @@ bool AnsiBackend::dispatchCsi(const QByteArray &prefix,
 		case 200: in_paste_ = true;  paste_.clear(); return true;
 		case 201:
 			in_paste_ = false;
-			sink_->onPaste(QString::fromUtf8(paste_));
+			sink_->on_paste(QString::fromUtf8(paste_));
 			paste_.clear();
 			return true;
-		case 1: case 7:  sink_->onKey({Qt::Key_Home, {}, false, false, false}); return true;
-		case 2:          sink_->onKey({Qt::Key_Insert, {}, false, false, false}); return true;
-		case 3:          sink_->onKey({Qt::Key_Delete, {}, false, false, false}); return true;
-		case 4: case 8:  sink_->onKey({Qt::Key_End, {}, false, false, false}); return true;
-		case 5:          sink_->onKey({Qt::Key_PageUp, {}, false, false, false}); return true;
-		case 6:          sink_->onKey({Qt::Key_PageDown, {}, false, false, false}); return true;
+		case 1: case 7:  sink_->on_key({Qt::Key_Home, {}, false, false, false}); return true;
+		case 2:          sink_->on_key({Qt::Key_Insert, {}, false, false, false}); return true;
+		case 3:          sink_->on_key({Qt::Key_Delete, {}, false, false, false}); return true;
+		case 4: case 8:  sink_->on_key({Qt::Key_End, {}, false, false, false}); return true;
+		case 5:          sink_->on_key({Qt::Key_PageUp, {}, false, false, false}); return true;
+		case 6:          sink_->on_key({Qt::Key_PageDown, {}, false, false, false}); return true;
 		default:         return true;             // consumed, unmapped
 		}
 	}
 
 	// Focus reporting (1004). A TUI dims its selection when the terminal
 	// loses focus, the way a desktop window does.
-	if (final == 'I') { sink_->onFocusChange(true);  return true; }
-	if (final == 'O') { sink_->onFocusChange(false); return true; }
+	if (final == 'I') { sink_->on_focus_change(true);  return true; }
+	if (final == 'O') { sink_->on_focus_change(false); return true; }
 
 	KeyEvent k;
 	switch (final) {
-	case 'A': k.qtKey = Qt::Key_Up; break;
-	case 'B': k.qtKey = Qt::Key_Down; break;
-	case 'C': k.qtKey = Qt::Key_Right; break;
-	case 'D': k.qtKey = Qt::Key_Left; break;
-	case 'H': k.qtKey = Qt::Key_Home; break;
-	case 'F': k.qtKey = Qt::Key_End; break;
-	case 'Z': k.qtKey = Qt::Key_Tab; k.shift = true; break;
+	case 'A': k.qt_key = Qt::Key_Up; break;
+	case 'B': k.qt_key = Qt::Key_Down; break;
+	case 'C': k.qt_key = Qt::Key_Right; break;
+	case 'D': k.qt_key = Qt::Key_Left; break;
+	case 'H': k.qt_key = Qt::Key_Home; break;
+	case 'F': k.qt_key = Qt::Key_End; break;
+	case 'Z': k.qt_key = Qt::Key_Tab; k.shift = true; break;
 	default:  return true;                        // consumed, unmapped
 	}
 	// xterm reports modifiers as a second parameter, 1 + a bitmask.
@@ -433,11 +433,11 @@ bool AnsiBackend::dispatchCsi(const QByteArray &prefix,
 	k.shift = k.shift || (mods & 1);
 	k.alt   = (mods & 2) != 0;
 	k.ctrl  = (mods & 4) != 0;
-	sink_->onKey(k);
+	sink_->on_key(k);
 	return true;
 }
 
-bool AnsiBackend::decodeOne() {
+bool AnsiBackend::decode_one() {
 	if (!sink_) { pending_.clear(); return false; }
 	const unsigned char c = pending_[0];
 
@@ -447,11 +447,11 @@ bool AnsiBackend::decodeOne() {
 	if (in_paste_) {
 		if (c == 0x1b && pending_.size() >= 2 && pending_[1] == '[') {
 			QByteArray prefix; QVector<int> params; char final = 0;
-			const int n = parseCsi(prefix, params, final);
+			const int n = parse_csi(prefix, params, final);
 			if (n < 0) return false;              // wait for the rest
 			if (final == '~' && !params.isEmpty() && params[0] == 201) {
 				pending_.remove(0, n);
-				return dispatchCsi(prefix, params, final);
+				return dispatch_csi(prefix, params, final);
 			}
 			paste_.append(pending_.left(n));      // an escape inside the paste
 			pending_.remove(0, n);
@@ -466,10 +466,10 @@ bool AnsiBackend::decodeOne() {
 		if (pending_.size() < 2) return false;
 		if (pending_[1] == '[') {
 			QByteArray prefix; QVector<int> params; char final = 0;
-			const int n = parseCsi(prefix, params, final);
+			const int n = parse_csi(prefix, params, final);
 			if (n < 0) return false;              // still arriving
 			pending_.remove(0, n);
-			return dispatchCsi(prefix, params, final);
+			return dispatch_csi(prefix, params, final);
 		}
 		if (pending_.size() < 2) return false;
 		const char alt = pending_[1];
@@ -477,18 +477,18 @@ bool AnsiBackend::decodeOne() {
 		KeyEvent k;
 		k.alt = true;
 		k.text = QString(QChar(alt));
-		sink_->onKey(k);
+		sink_->on_key(k);
 		return true;
 	}
 
 	pending_.remove(0, 1);
 	KeyEvent k;
-	if (c == '\r' || c == '\n')       k.qtKey = Qt::Key_Return;
-	else if (c == 0x7f || c == 0x08)  k.qtKey = Qt::Key_Backspace;
-	else if (c == '\t')               k.qtKey = Qt::Key_Tab;
-	else if (c < 0x20) { k.qtKey = Qt::Key_A + (c - 1); k.ctrl = true; }   // ^A..^Z
-	else { k.qtKey = 0; k.text = QString(QChar(c)); }
-	sink_->onKey(k);
+	if (c == '\r' || c == '\n')       k.qt_key = Qt::Key_Return;
+	else if (c == 0x7f || c == 0x08)  k.qt_key = Qt::Key_Backspace;
+	else if (c == '\t')               k.qt_key = Qt::Key_Tab;
+	else if (c < 0x20) { k.qt_key = Qt::Key_A + (c - 1); k.ctrl = true; }   // ^A..^Z
+	else { k.qt_key = 0; k.text = QString(QChar(c)); }
+	sink_->on_key(k);
 	return true;
 }
 

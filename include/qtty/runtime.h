@@ -27,14 +27,14 @@ public:
 	~InputRouter() override;
 
 	// ITerminalEventSink
-	void onKey(const KeyEvent &) override;
-	void onMouse(const MouseEvent &) override;
-	void onPaste(const QString &) override;
-	void onResize(QSize cells) override;
-	void onFocusChange(bool) override;
+	void on_key(const KeyEvent &) override;
+	void on_mouse(const MouseEvent &) override;
+	void on_paste(const QString &) override;
+	void on_resize(QSize cells) override;
+	void on_focus_change(bool) override;
 
 	// Keys that quit the application (default: Ctrl-C, Ctrl-D).
-	void setQuitKeys(const QVector<KeyEvent> &);
+	void set_quit_keys(const QVector<KeyEvent> &);
 
 	// Visible popup stack in z-order, maintained by the stamping filter.
 	QVector<QWidget *> popups() const;
@@ -43,7 +43,7 @@ public:
 	// Nothing outside the active modal is ever returned: section 8.3 requires
 	// input outside activeModalWidget() to be dropped before dispatch, and
 	// there is no window manager to enforce it.
-	QWidget *keyTarget() const;
+	QWidget *key_target() const;
 
 	// True for a layer the popup stack owns -- Qt::Popup or Qt::ToolTip. The
 	// Compositor asks the same question, so it is answered in one place: a
@@ -53,18 +53,18 @@ public:
 	bool eventFilter(QObject *, QEvent *) override;   // popup stamping + tracking
 
 	// Set by FrameScheduler: called after each handled input batch.
-	std::function<void()> frameRequested;
+	std::function<void()> frame_requested;
 
 private:
-	bool matchShortcut(const KeyEvent &);
-	void deliverKey(QWidget *target, const KeyEvent &);
+	bool match_shortcut(const KeyEvent &);
+	void deliver_key(QWidget *target, const KeyEvent &);
 	// The widget tree input is allowed to reach: the active modal if there is
 	// one, else the window (section 8.3).
 	QWidget *input_scope() const;
 
 	QWidget *win_;
 	QVector<QPointer<QWidget>> popups_;
-	QVector<KeyEvent> quitKeys_;
+	QVector<KeyEvent> quit_keys_;
 };
 
 // ----------------------------------------------------------------- Compositor
@@ -78,7 +78,7 @@ class Compositor {
 public:
 	Compositor(QWidget *window, InputRouter *router);
 	void compose(CellBuffer &out);                        // fills out + out.images
-	std::optional<QPoint> cursorCell() const;             // after compose()
+	std::optional<QPoint> cursor_cell() const;             // after compose()
 
 private:
 	QWidget *win_;
@@ -94,8 +94,8 @@ private:
 class FrameScheduler : public QObject {
 public:
 	FrameScheduler(ITerminalBackend *backend, Compositor *compositor, QWidget *window);
-	void requestFrame();                                   // coalesced
-	void renderNow();                                      // immediate (initial frame)
+	void request_frame();                                   // coalesced
+	void render_now();                                      // immediate (initial frame)
 	bool eventFilter(QObject *, QEvent *) override;        // UpdateRequest watcher
 
 private:
@@ -104,7 +104,7 @@ private:
 	QWidget *win_;
 	QTimer coalesce_;
 	QTimer idle_;
-	QElapsedTimer sinceLast_;
+	QElapsedTimer since_last_;
 	std::unique_ptr<CellBuffer> prev_;
 };
 

@@ -27,15 +27,15 @@ Overlay::Overlay(QObject *parent) : QObject(parent) { registry().append(this); }
 
 Overlay::~Overlay() {
 	registry().removeAll(this);
-	delete guiTwin_;
+	delete gui_twin_;
 }
 
-void Overlay::setImage(const QImage &rgba) { img_ = rgba; syncGuiTwin(); }
-void Overlay::setRect(const QRectF &cellRect) { rect_ = cellRect; syncGuiTwin(); }
-void Overlay::setOpacity(qreal o) { opacity_ = qBound(0.0, o, 1.0); syncGuiTwin(); }
-void Overlay::setZ(int z) { z_ = z; }
-void Overlay::show() { visible_ = true; syncGuiTwin(); }
-void Overlay::hide() { visible_ = false; syncGuiTwin(); }
+void Overlay::set_image(const QImage &rgba) { img_ = rgba; sync_gui_twin(); }
+void Overlay::set_rect(const QRectF &cell_rect) { rect_ = cell_rect; sync_gui_twin(); }
+void Overlay::set_opacity(qreal o) { opacity_ = qBound(0.0, o, 1.0); sync_gui_twin(); }
+void Overlay::set_z(int z) { z_ = z; }
+void Overlay::show() { visible_ = true; sync_gui_twin(); }
+void Overlay::hide() { visible_ = false; sync_gui_twin(); }
 
 QImage Overlay::image() const {
 	if (opacity_ >= 1.0) return img_;
@@ -47,7 +47,7 @@ QImage Overlay::image() const {
 	return out;
 }
 
-QVector<Overlay *> Overlay::visibleOverlays() {
+QVector<Overlay *> Overlay::visible_overlays() {
 	QVector<Overlay *> out;
 	for (Overlay *o : registry())
 		if (o->isVisible() && !o->image().isNull()) out.append(o);
@@ -56,19 +56,19 @@ QVector<Overlay *> Overlay::visibleOverlays() {
 	return out;
 }
 
-void Overlay::syncGuiTwin() {
-	if (isTuiActive()) return;                 // runtime composites in TUI mode
+void Overlay::sync_gui_twin() {
+	if (is_tui_active()) return;                 // runtime composites in TUI mode
 	if (!visible_ || img_.isNull()) {
-		if (guiTwin_) guiTwin_->hide();
+		if (gui_twin_) gui_twin_->hide();
 		return;
 	}
-	auto *tw = static_cast<TwinWidget *>(guiTwin_);
+	auto *tw = static_cast<TwinWidget *>(gui_twin_);
 	if (!tw) {
 		tw = new TwinWidget;
 		tw->setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint
 		                   | Qt::Tool | Qt::WindowTransparentForInput);
 		tw->setAttribute(Qt::WA_TranslucentBackground);
-		guiTwin_ = tw;
+		gui_twin_ = tw;
 	}
 	tw->img = image();
 	QWidget *base = QApplication::activeWindow();

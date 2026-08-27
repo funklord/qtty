@@ -14,7 +14,7 @@ namespace test {
 // Compare `got` with the named fixture under <root>/test/snapshot/.
 // record=true (re)writes the fixture instead. Returns 0 on match/record,
 // 1 on mismatch (printing both sides).
-inline int checkSnapshot(const QString &root, const QString &name,
+inline int check_snapshot(const QString &root, const QString &name,
                          const QString &got, bool record = false) {
 	const QString path = root + QStringLiteral("/test/snapshot/") + name
 	                   + QStringLiteral(".txt");
@@ -44,9 +44,9 @@ inline int checkSnapshot(const QString &root, const QString &name,
 // not see the reverse video, bold and dim that most of the Channel A work
 // produces: a frame that stopped drawing a selection compared equal to one
 // that drew it.
-inline QString snapshotOf(QWidget &w, int cols, int rows) {
+inline QString snapshot_of(QWidget &w, int cols, int rows) {
 	CellBuffer buf(cols, rows);
-	renderOnce(w, buf);
+	render_once(w, buf);
 	return buf.to_snapshot();
 }
 

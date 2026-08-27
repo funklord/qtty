@@ -32,7 +32,7 @@ int suite_grid() {
 		bool ok = true;
 		for (QWidget *c : dlg.findChildren<QWidget *>()) {
 			if (c->geometry().isNull() || !c->isVisible()) continue;
-			if (!GridMetrics::isAligned(c->geometry())) ok = false;
+			if (!GridMetrics::is_aligned(c->geometry())) ok = false;
 		}
 		CHECK(ok, qPrintable(QStringLiteral("aligned at %1x%2").arg(s.width()).arg(s.height())));
 	}
@@ -42,10 +42,10 @@ int suite_grid() {
 	CHECK(dlg.focusWidget() == edit, "window->focusWidget() tracks setFocus (F4)");
 
 	Qtty::CellBuffer f1(40, 10), f2(40, 10);
-	Qtty::setFocusWidget(nullptr); Qtty::renderOnce(dlg, f1);
-	Qtty::setFocusWidget(b1);      Qtty::renderOnce(dlg, f2);
+	Qtty::setFocusWidget(nullptr); Qtty::render_once(dlg, f1);
+	Qtty::setFocusWidget(b1);      Qtty::render_once(dlg, f2);
 	Qtty::setFocusWidget(nullptr);
-	int d = f2.diffCells(f1);
+	int d = f2.diff_cells(f1);
 	CHECK(d > 0 && d <= b1->width() / cw * 2, "focus injection dirties only the button");
 
 	QKeyEvent k(QEvent::KeyPress, 0, Qt::NoModifier, QStringLiteral("x"));

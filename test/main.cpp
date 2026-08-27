@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
 		alarm(limit);
 	}
 
-	Qtty::prepareEnvironment();
+	Qtty::prepare_environment();
 	QApplication app(argc, argv);
 
 	// section 10.1 inertness gate runs BEFORE setup() by necessity.

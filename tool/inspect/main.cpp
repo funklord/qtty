@@ -7,7 +7,7 @@
 using Qtty::GridMetrics;
 
 int main(int argc, char **argv) {
-	Qtty::prepareEnvironment();
+	Qtty::prepare_environment();
 	QApplication app(argc, argv);
 	Qtty::setup(app);
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
@@ -33,10 +33,10 @@ int main(int argc, char **argv) {
 		printf("  %-24s cells %3d,%2d %3dx%-2d  %s\n",
 		       c->metaObject()->className(),
 		       g.x() / cw, g.y() / ch, g.width() / cw, g.height() / ch,
-		       GridMetrics::isAligned(g) ? "aligned" : "MISALIGNED");
+		       GridMetrics::is_aligned(g) ? "aligned" : "MISALIGNED");
 	}
 	Qtty::CellBuffer buf(52, 12);
-	Qtty::renderOnce(dlg, buf);
-	printf("\nrendering:\n%s", qPrintable(buf.toText()));
+	Qtty::render_once(dlg, buf);
+	printf("\nrendering:\n%s", qPrintable(buf.to_text()));
 	return 0;
 }

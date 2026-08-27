@@ -21,8 +21,8 @@ struct Msg { QString author, text; QPixmap sticker; };
 // Real apps load PNGs; the import step is where [grid] discipline 3 lives:
 // normalise sticker dimensions to multiples of the cell size. Here we just
 // draw them at the right size directly. cw/ch come from the app font.
-inline QPixmap makeSticker(int cw, int ch, int wCells, int hCells, int kind) {
-	QPixmap pm(wCells * cw, hCells * ch);
+inline QPixmap makeSticker(int cw, int ch, int w_cells, int h_cells, int kind) {
+	QPixmap pm(w_cells * cw, h_cells * ch);
 	pm.fill(Qt::transparent);
 	QPainter p(&pm);
 	p.setRenderHint(QPainter::Antialiasing);

@@ -2,7 +2,7 @@
 //
 // Canonical usage (see example/chat/main.cpp):
 //     decide frontend
-//       -> Qtty::prepareEnvironment()   BEFORE QApplication
+//       -> Qtty::prepare_environment()   BEFORE QApplication
 //       -> QApplication ctor
 //       -> Qtty::setup(app)             BEFORE any widget (font + style)
 //       -> construct shared widgets
@@ -17,7 +17,7 @@ class QApplication;
 namespace Qtty {
 
 // Selects the offscreen platform and pins scaling. MUST precede QApplication.
-void prepareEnvironment();
+void prepare_environment();
 
 // Installs the cell-metric font and GridStyle. MUST precede widget
 // construction: the shared UI derives its metrics from the application font.
@@ -37,11 +37,11 @@ int exec(QApplication &app, QWidget &win);
 
 // True while exec() is driving a terminal session. Overlay uses this to pick
 // its rendering path (section 5.7); apps can branch on it for target-specific polish.
-bool isTuiActive();
+bool is_tui_active();
 
 // Render one frame of `win` into `buf` (and collect section 5.7 placements when
 // `placements` is non-null). Used by tests, tools, and custom frame loops.
-void renderOnce(QWidget &win, CellBuffer &buf,
+void render_once(QWidget &win, CellBuffer &buf,
                 QVector<CellImage> *placements = nullptr);
 
 } // namespace Qtty

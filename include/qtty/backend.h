@@ -17,9 +17,9 @@ struct Capabilities {
 	enum ColorDepth { Mono, Ansi16, Xterm256, TrueColor };
 	ColorDepth color        = Ansi16;
 	bool mouse              = false;   // SGR 1006 or better
-	bool bracketedPaste     = false;
-	bool synchronisedOutput = false;   // DEC 2026 -- tear-free frames
-	bool unicodeWide        = true;    // honours wcwidth-2 correctly
+	bool bracketed_paste     = false;
+	bool synchronised_output = false;   // DEC 2026 -- tear-free frames
+	bool unicode_wide        = true;    // honours wcwidth-2 correctly
 	bool title              = false;
 
 	// Pixel-graphics support, decided per terminal type (section 5.7).
@@ -29,17 +29,17 @@ struct Capabilities {
 
 enum class CursorShape { Block, Underline, Bar, Hidden };
 
-struct KeyEvent   { int qtKey = 0; QString text; bool ctrl = false, alt = false, shift = false; };
+struct KeyEvent   { int qt_key = 0; QString text; bool ctrl = false, alt = false, shift = false; };
 struct MouseEvent { QPoint cell; int button = 0; bool press = false, release = false, motion = false; int wheel = 0; };
 
 class ITerminalEventSink {
 public:
 	virtual ~ITerminalEventSink() = default;
-	virtual void onKey(const KeyEvent &) = 0;
-	virtual void onMouse(const MouseEvent &) = 0;
-	virtual void onPaste(const QString &) = 0;
-	virtual void onResize(QSize cells) = 0;
-	virtual void onFocusChange(bool focused) = 0;
+	virtual void on_key(const KeyEvent &) = 0;
+	virtual void on_mouse(const MouseEvent &) = 0;
+	virtual void on_paste(const QString &) = 0;
+	virtual void on_resize(QSize cells) = 0;
+	virtual void on_focus_change(bool focused) = 0;
 };
 
 class ITerminalBackend {
@@ -53,11 +53,11 @@ public:
 	// everything, but must never render outside it incorrectly.
 	virtual void present(const CellBuffer &frame, const QRegion &damage) = 0;
 
-	virtual void setCursor(std::optional<QPoint> cell, CursorShape shape) = 0;
+	virtual void set_cursor(std::optional<QPoint> cell, CursorShape shape) = 0;
 
 	// Backends push input; they never poll. Event-loop integration is the
 	// backend's business (QSocketNotifier, thread, ...).
-	virtual void setEventSink(ITerminalEventSink *) = 0;
+	virtual void set_event_sink(ITerminalEventSink *) = 0;
 
 	virtual void suspend() = 0;                     // SIGTSTP / shelling out
 	virtual void resume() = 0;
@@ -70,10 +70,10 @@ class IGraphicsOutput {
 public:
 	virtual ~IGraphicsOutput() = default;
 	// One full-terminal RGBA frame, already composited by GraphicsPlane.
-	virtual void presentPixels(const QImage &frame, const QRegion &cellRegion) = 0;
+	virtual void present_pixels(const QImage &frame, const QRegion &cell_region) = 0;
 	// KittyAlpha only: alpha image over live text, terminal-blended.
-	virtual void presentOverlay(int id, const QImage &rgba, QPoint cell, int z) = 0;
-	virtual void clearOverlay(int id) = 0;
+	virtual void present_overlay(int id, const QImage &rgba, QPoint cell, int z) = 0;
+	virtual void clear_overlay(int id) = 0;
 };
 
 } // namespace Qtty

@@ -210,15 +210,15 @@ version-check:
 		echo "               VERSION; the two will drift" >&2; \
 		exit 1; \
 	fi; \
-	header=$$(sed -n 's/.*versionString = "\([^"]*\)".*/\1/p' include/qtty/version.h); \
+	header=$$(sed -n 's/.*version_string = "\([^"]*\)".*/\1/p' include/qtty/version.h); \
 	if [ "$$file" != "$$header" ]; then \
 		echo "version-check: VERSION says $$file but" >&2; \
 		echo "               include/qtty/version.h says $$header" >&2; \
 		exit 1; \
 	fi; \
-	major=$$(sed -n 's/.*versionMajor = \([0-9]*\).*/\1/p' include/qtty/version.h); \
-	minor=$$(sed -n 's/.*versionMinor = \([0-9]*\).*/\1/p' include/qtty/version.h); \
-	patch=$$(sed -n 's/.*versionPatch = \([0-9]*\).*/\1/p' include/qtty/version.h); \
+	major=$$(sed -n 's/.*version_major = \([0-9]*\).*/\1/p' include/qtty/version.h); \
+	minor=$$(sed -n 's/.*version_minor = \([0-9]*\).*/\1/p' include/qtty/version.h); \
+	patch=$$(sed -n 's/.*version_patch = \([0-9]*\).*/\1/p' include/qtty/version.h); \
 	if [ "$$major.$$minor.$$patch" != "$$file" ]; then \
 		echo "version-check: VERSION says $$file but version.h's" >&2; \
 		echo "               components are $$major.$$minor.$$patch" >&2; \

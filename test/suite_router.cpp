@@ -43,14 +43,14 @@ int suite_router() {
 	save->setShortcut(QKeySequence(QStringLiteral("Ctrl+S")));
 	win.addAction(save);
 	QObject::connect(save, &QAction::triggered, [&] { fired++; });
-	router.onKey({Qt::Key_S, QString(), true, false, false});
+	router.on_key({Qt::Key_S, QString(), true, false, false});
 	CHECK(fired == 1, "router resolves Ctrl+S to QAction (F3)");
 
 	// typing reaches the focus widget
 	edit->setFocus(Qt::OtherFocusReason);
 	QCoreApplication::processEvents();
-	router.onKey({0, QStringLiteral("h"), false, false, false});
-	router.onKey({0, QStringLiteral("i"), false, false, false});
+	router.on_key({0, QStringLiteral("h"), false, false, false});
+	router.on_key({0, QStringLiteral("i"), false, false, false});
 	CHECK(edit->text() == QStringLiteral("hi"), "text keys reach focus widget (F4)");
 
 	// arrow the focus widget ignores falls back to scrolling -- focus is the
@@ -58,12 +58,12 @@ int suite_router() {
 	// ACCEPTS arrows for button-group navigation, so no fallback there -- by
 	// design, not a bug.)
 	const int before = list->verticalScrollBar()->value();
-	router.onKey({Qt::Key_Down, QString(), false, false, false});
+	router.on_key({Qt::Key_Down, QString(), false, false, false});
 	CHECK(list->verticalScrollBar()->value() > before,
 	      "ignored Down scrolls the scroll area");
 
 	// Tab walks the focus chain
-	router.onKey({Qt::Key_Tab, QString(), false, false, false});
+	router.on_key({Qt::Key_Tab, QString(), false, false, false});
 	CHECK(win.focusWidget() == btn, "Tab advances focus chain");
 
 	// mouse: click the button by cell
@@ -72,8 +72,8 @@ int suite_router() {
 	QPoint center = btn->geometry().center();
 	MouseEvent press{QPoint(center.x() / cw, center.y() / ch), 1, true, false, false, 0};
 	MouseEvent release = press; release.press = false; release.release = true;
-	router.onMouse(press);
-	router.onMouse(release);
+	router.on_mouse(press);
+	router.on_mouse(release);
 	CHECK(clicked == 1, "cell-space click reaches the button");
 
 	// popup stamping + tracking (F7)
@@ -99,7 +99,7 @@ int suite_router() {
 	edit->setFocus(Qt::OtherFocusReason);
 	QCoreApplication::processEvents();
 	comp.compose(frame);
-	CHECK(comp.cursorCell().has_value(), "cursor cell reported for focused editor");
+	CHECK(comp.cursor_cell().has_value(), "cursor cell reported for focused editor");
 
 	// ------------------------------------------------ section 8.1: modals
 	// A modal QDialog was stamped WA_DontShowOnScreen by the filter above and
@@ -125,7 +125,7 @@ int suite_router() {
 
 	CellBuffer modal_frame(40, 16);
 	comp.compose(modal_frame);
-	CHECK(modal_frame.toText().contains(QStringLiteral("MODALHERE")),
+	CHECK(modal_frame.to_text().contains(QStringLiteral("MODALHERE")),
 	      "modal dialog is composited (section 8.1)");
 
 	// section 8.3: a click outside the modal is dropped, not delivered to what
@@ -137,8 +137,8 @@ int suite_router() {
 	const int clicked_before = clicked;
 	MouseEvent outside{QPoint(under.x() / cw, under.y() / ch), 1, true, false, false, 0};
 	MouseEvent outside_up = outside; outside_up.press = false; outside_up.release = true;
-	router.onMouse(outside);
-	router.onMouse(outside_up);
+	router.on_mouse(outside);
+	router.on_mouse(outside_up);
 	CHECK(clicked == clicked_before,
 	      "mouse outside the modal is dropped before dispatch (section 8.3)");
 
@@ -149,8 +149,8 @@ int suite_router() {
 	const QPoint inside = dlg.geometry().topLeft() + ok->geometry().center();
 	MouseEvent on_ok{QPoint(inside.x() / cw, inside.y() / ch), 1, true, false, false, 0};
 	MouseEvent on_ok_up = on_ok; on_ok_up.press = false; on_ok_up.release = true;
-	router.onMouse(on_ok);
-	router.onMouse(on_ok_up);
+	router.on_mouse(on_ok);
+	router.on_mouse(on_ok_up);
 	CHECK(modal_clicked == 1, "mouse inside the modal reaches the dialog");
 
 	dlg.close();
@@ -172,7 +172,7 @@ int suite_router() {
 	QCoreApplication::processEvents();
 	CellBuffer walk_frame(40, 16);
 	comp.compose(walk_frame);
-	CHECK(walk_frame.toText().contains(QStringLiteral("SECONDWIN")),
+	CHECK(walk_frame.to_text().contains(QStringLiteral("SECONDWIN")),
 	      "second top-level is composited (section 5.4 step 3)");
 	second.hide();
 	QCoreApplication::processEvents();
@@ -195,7 +195,7 @@ int suite_router() {
 	      "menu at the right edge flips left of its anchor (section 8.1)");
 	CHECK(edge.geometry().left() >= 0 && edge.geometry().right() < 40 * cw,
 	      "flipped menu lands fully inside the terminal rectangle");
-	CHECK(flip_frame.toText().contains(QStringLiteral("FLIPME")),
+	CHECK(flip_frame.to_text().contains(QStringLiteral("FLIPME")),
 	      "flipped menu is drawn whole, not clipped away");
 	edge.close();
 	QCoreApplication::processEvents();

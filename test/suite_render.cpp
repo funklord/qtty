@@ -31,8 +31,8 @@ int suite_render(bool record) {
 	dlg.show();
 	QCoreApplication::processEvents();
 
-	const QString got = Qtty::test::snapshotOf(dlg, 52, 14);
-	int r = Qtty::test::checkSnapshot(QStringLiteral(QTTY_SOURCE_DIR),
+	const QString got = Qtty::test::snapshot_of(dlg, 52, 14);
+	int r = Qtty::test::check_snapshot(QStringLiteral(QTTY_SOURCE_DIR),
 	                                  QStringLiteral("prefs_dialog"), got, record);
 	if (!r && !record) printf("PASS: snapshot matches\n");
 	return r;

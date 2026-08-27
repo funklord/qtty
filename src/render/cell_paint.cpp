@@ -43,7 +43,7 @@ void CellPaintEngine::updateState(const QPaintEngineState &s) {
 	if (s.state() & DirtyTransform) xf_ = s.transform();
 }
 
-QRect CellPaintEngine::toCells(const QRectF &r) const {
+QRect CellPaintEngine::to_cells(const QRectF &r) const {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	QRectF m = xf_.mapRect(r).translated(dev_->origin);
 	return QRect(qRound(m.left() / cw), qRound(m.top() / ch),
@@ -53,15 +53,15 @@ QRect CellPaintEngine::toCells(const QRectF &r) const {
 // Text colour policy (section 6). The application palette is consulted for one
 // thing only -- which ROLE produced this pen -- and what that role looks like
 // on a terminal is theme()'s to say. That is the wiring project.md section 11
-// item 3 asks for: theme() is the single source, and setTheme() therefore
-// changes what gets drawn. Under CellTheme::terminalDefault() every role
+// item 3 asks for: theme() is the single source, and set_theme() therefore
+// changes what gets drawn. Under CellTheme::terminal_default() every role
 // resolves to Color::Default and the terminal's own scheme applies, which is
 // the behaviour this replaced.
 //
 // A pen colour no role explains is Channel B output -- something the
 // application coloured itself -- and passes through as true colour, carrying
 // no authored ANSI-16 index because no role authored one.
-static Color penToFg(const QPen &pen) {
+static Color pen_to_fg(const QPen &pen) {
 	const QRgb c = pen.color().rgba();
 	const QPalette &pal = QGuiApplication::palette();
 	for (QPalette::ColorRole r : {QPalette::WindowText, QPalette::Text,
@@ -79,22 +79,22 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	if (ti.font().bold()) a |= Attr::Bold;
 	if (ti.font().italic()) a |= Attr::Italic;
 	if (ti.font().underline()) a |= Attr::Underline;
-	dev_->buffer().text(col, row, ti.text(), penToFg(pen_), Color(), a);
+	dev_->buffer().text(col, row, ti.text(), pen_to_fg(pen_), Color(), a);
 }
 
-void CellPaintEngine::drawRects(const QRectF *r, int n) { for (int i = 0; i < n; ++i) fillRectF(r[i]); }
-void CellPaintEngine::drawRects(const QRect *r, int n)  { for (int i = 0; i < n; ++i) fillRectF(QRectF(r[i])); }
+void CellPaintEngine::drawRects(const QRectF *r, int n) { for (int i = 0; i < n; ++i) fill_rectf(r[i]); }
+void CellPaintEngine::drawRects(const QRect *r, int n)  { for (int i = 0; i < n; ++i) fill_rectf(QRectF(r[i])); }
 void CellPaintEngine::drawLines(const QLineF *l, int n) { for (int i = 0; i < n; ++i) line(l[i]); }
 void CellPaintEngine::drawLines(const QLine *l, int n)  { for (int i = 0; i < n; ++i) line(QLineF(l[i])); }
 
 void CellPaintEngine::drawPath(const QPainterPath &path) {
 	// Solid-brush paths are fills -- this is how QTextLayout paints selection
 	// regions (section 17.2). Only brushless paths degrade to outline boxes.
-	fillRectF(path.boundingRect(), /*outlineOnly=*/brush_.style() == Qt::NoBrush);
+	fill_rectf(path.boundingRect(), /*outline_only=*/brush_.style() == Qt::NoBrush);
 }
 
 void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &pm, const QRectF &) {
-	QRect c = toCells(r);
+	QRect c = to_cells(r);
 	if (!c.isValid()) return;
 	if (c.width() >= 2 && c.height() >= 2)      // section 5.7: real image -> placement
 		dev_->placements.append({quint64(pm.cacheKey()), c, pm});
@@ -105,7 +105,7 @@ void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &pm, const QRect
 void CellPaintEngine::drawPolygon(const QPointF *pts, int n, PolygonDrawMode) {
 	QPolygonF p;
 	for (int i = 0; i < n; ++i) p << pts[i];
-	fillRectF(p.boundingRect(), true);
+	fill_rectf(p.boundingRect(), true);
 }
 
 // Is `role` one of the surfaces a widget sits ON, as opposed to something
@@ -124,15 +124,15 @@ static bool is_surface_role(QPalette::ColorRole role) {
 // coloured, not QGuiApplication::palette().
 //
 // A surface role the theme leaves at Color::Default erases to the terminal's
-// own background, which is what CellTheme::terminalDefault() means and is the
+// own background, which is what CellTheme::terminal_default() means and is the
 // behaviour this replaced. A themed surface paints. A non-surface role the
 // theme does not name, and any colour with no role behind it at all, keeps the
 // application's own colour -- that is how a selection reaches the cells under
 // the default theme, and how Channel B output reaches them at all.
-void CellPaintEngine::fillRectF(const QRectF &r, bool outlineOnly) {
-	QRect c = toCells(r);
+void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
+	QRect c = to_cells(r);
 	if (!c.isValid() || c.width() > 400 || c.height() > 200) return;
-	if (outlineOnly || brush_.style() == Qt::NoBrush) { box(c); return; }
+	if (outline_only || brush_.style() == Qt::NoBrush) { box(c); return; }
 
 	const QRgb col = brush_.color().rgba();
 	const QPalette &pal = QGuiApplication::palette();

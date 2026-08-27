@@ -128,7 +128,7 @@ void Compositor::compose(CellBuffer &out) {
 	}
 }
 
-std::optional<QPoint> Compositor::cursorCell() const { return cursor_; }
+std::optional<QPoint> Compositor::cursor_cell() const { return cursor_; }
 
 // ------------------------------------------------------------- FrameScheduler
 FrameScheduler::FrameScheduler(ITerminalBackend *backend, Compositor *compositor,
@@ -136,85 +136,85 @@ FrameScheduler::FrameScheduler(ITerminalBackend *backend, Compositor *compositor
     : backend_(backend), comp_(compositor), win_(window) {
 	coalesce_.setSingleShot(true);
 	coalesce_.setInterval(0);
-	QObject::connect(&coalesce_, &QTimer::timeout, this, [this] { renderNow(); });
+	QObject::connect(&coalesce_, &QTimer::timeout, this, [this] { render_now(); });
 	idle_.setInterval(100);                       // catches timer-driven updates
 	QObject::connect(&idle_, &QTimer::timeout, this, [this] {
-		if (win_->isVisible()) requestFrame();
+		if (win_->isVisible()) request_frame();
 	});
 	idle_.start();
-	sinceLast_.start();
+	since_last_.start();
 	qApp->installEventFilter(this);
 }
 
 bool FrameScheduler::eventFilter(QObject *o, QEvent *e) {
 	if (e->type() == QEvent::UpdateRequest || e->type() == QEvent::LayoutRequest)
-		if (qobject_cast<QWidget *>(o)) requestFrame();
+		if (qobject_cast<QWidget *>(o)) request_frame();
 	return false;
 }
 
-void FrameScheduler::requestFrame() {
+void FrameScheduler::request_frame() {
 	// 16 ms local budget (section 11); coalesce bursts into one frame.
-	const int wait = qMax(0, 16 - int(sinceLast_.elapsed()));
+	const int wait = qMax(0, 16 - int(since_last_.elapsed()));
 	if (!coalesce_.isActive()) coalesce_.start(wait);
 }
 
-void FrameScheduler::renderNow() {
+void FrameScheduler::render_now() {
 	const QSize cells = backend_->size();
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	CellBuffer frame(cells.width(), cells.height());
 	comp_->compose(frame);
 
 	// Overlay tier selection (sections 5.7, 17.3).
-	const auto overlays = Overlay::visibleOverlays();
+	const auto overlays = Overlay::visible_overlays();
 	const auto gmode = backend_->capabilities().graphics;
 	auto *gfx = dynamic_cast<IGraphicsOutput *>(backend_);
 
-	auto overlayCellRect = [&](Overlay *o) {
-		return o->cellRect().isNull()
+	auto overlay_cell_rect = [&](Overlay *o) {
+		return o->cell_rect().isNull()
 		    ? QRect(0, 0, frame.cols(), frame.rows())
-		    : QRect(int(o->cellRect().x()), int(o->cellRect().y()),
-		            int(o->cellRect().width()), int(o->cellRect().height()));
+		    : QRect(int(o->cell_rect().x()), int(o->cell_rect().y()),
+		            int(o->cell_rect().width()), int(o->cell_rect().height()));
 	};
 
-	const bool softwareComposite = !overlays.isEmpty() && gfx
+	const bool software_composite = !overlays.isEmpty() && gfx
 	    && (gmode == Capabilities::Sixel || gmode == Capabilities::ITerm2
 	        || gmode == Capabilities::Kitty);
 
-	if (!overlays.isEmpty() && !softwareComposite && gmode != Capabilities::KittyAlpha)
+	if (!overlays.isEmpty() && !software_composite && gmode != Capabilities::KittyAlpha)
 		for (Overlay *o : overlays)                       // fallback: half-blocks
-			composeHalfblocks(frame, o->image(), overlayCellRect(o));
+			compose_halfblocks(frame, o->image(), overlay_cell_rect(o));
 
 	QRegion damage = prev_ ? frame.diff(*prev_)
 	                       : QRegion(0, 0, frame.cols(), frame.rows());
-	const bool imagesChanged = !prev_ || frame.images.size() != prev_->images.size();
+	const bool images_changed = !prev_ || frame.images.size() != prev_->images.size();
 
-	if (softwareComposite) {
+	if (software_composite) {
 		// one finished picture: rasterise cells, blend placements + overlays
 		QImage px = rasterize(frame, QGuiApplication::font());
 		QPainter p(&px);
 		for (const CellImage &ci : frame.images)
-			p.drawPixmap(ci.cellRect.x() * cw, ci.cellRect.y() * ch, ci.pixmap);
+			p.drawPixmap(ci.cell_rect.x() * cw, ci.cell_rect.y() * ch, ci.pixmap);
 		for (Overlay *o : overlays) {
-			const QRect r = overlayCellRect(o);
+			const QRect r = overlay_cell_rect(o);
 			p.drawImage(QRect(r.x() * cw, r.y() * ch, r.width() * cw, r.height() * ch),
 			            o->image());
 		}
 		p.end();
-		gfx->presentPixels(px, QRegion(0, 0, frame.cols(), frame.rows()));
-	} else if (!damage.isEmpty() || imagesChanged || !prev_ || !overlays.isEmpty()) {
+		gfx->present_pixels(px, QRegion(0, 0, frame.cols(), frame.rows()));
+	} else if (!damage.isEmpty() || images_changed || !prev_ || !overlays.isEmpty()) {
 		backend_->present(frame, damage);
 		if (gmode == Capabilities::KittyAlpha && gfx) {   // terminal-blended alpha
 			int id = 0;
 			for (Overlay *o : overlays)
-				gfx->presentOverlay(id++, o->image(),
-				                    overlayCellRect(o).topLeft(),
+				gfx->present_overlay(id++, o->image(),
+				                    overlay_cell_rect(o).topLeft(),
 				                    qMax(1, o->z()));
 		}
 	}
-	backend_->setCursor(comp_->cursorCell(),
-	                    comp_->cursorCell() ? CursorShape::Bar : CursorShape::Hidden);
+	backend_->set_cursor(comp_->cursor_cell(),
+	                    comp_->cursor_cell() ? CursorShape::Bar : CursorShape::Hidden);
 	prev_ = std::make_unique<CellBuffer>(frame);
-	sinceLast_.restart();
+	since_last_.restart();
 }
 
 } // namespace Qtty

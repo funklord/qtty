@@ -11,23 +11,23 @@ public:
 	Capabilities capabilities() const override { return {}; }
 	QSize size() const override { return size_; }
 	void present(const CellBuffer &frame, const QRegion &) override {
-		lastFrame_ = frame.toText();
+		last_frame_ = frame.to_text();
 		++frames_;
 	}
-	void setCursor(std::optional<QPoint> cell, CursorShape) override { cursor_ = cell; }
-	void setEventSink(ITerminalEventSink *s) override { sink_ = s; }
+	void set_cursor(std::optional<QPoint> cell, CursorShape) override { cursor_ = cell; }
+	void set_event_sink(ITerminalEventSink *s) override { sink_ = s; }
 	void suspend() override {}
 	void resume() override {}
 
 	// test accessors
-	QString lastFrame() const { return lastFrame_; }
-	int frameCount() const { return frames_; }
+	QString last_frame() const { return last_frame_; }
+	int frame_count() const { return frames_; }
 	std::optional<QPoint> cursor() const { return cursor_; }
 	ITerminalEventSink *sink() const { return sink_; }
 
 private:
 	QSize size_;
-	QString lastFrame_;
+	QString last_frame_;
 	int frames_ = 0;
 	std::optional<QPoint> cursor_;
 	ITerminalEventSink *sink_ = nullptr;
