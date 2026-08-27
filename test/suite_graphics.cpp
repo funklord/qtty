@@ -435,7 +435,7 @@ int suite_graphics() {
 			for (int x = cw; x < 3 * cw; ++x) {
 				QRgb p = px.pixel(x, y);
 				if (qRed(p) > 150 && qGreen(p) < 100) { red_seen = true; break; }
-		    }
+			}
 		CHECK(red_seen, "rasterizer draws coloured glyphs");
 	}
 

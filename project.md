@@ -1278,7 +1278,35 @@ exactly as they were run, which is what makes them evidence for the
 numbers §6 cites. Reindenting them would edit the record. Nothing in the
 library builds them.
 
-### 9.7 What was measured on this machine
+### 9.7 Two mixed indents are deliberate, and must not be "fixed"
+
+`src/graphics/graphics.cpp` has two regions indented with tabs followed
+by spaces -- the lambda body around lines 254-257 and the final `else`
+branch around 274-278. That is the mixed structural indent
+`code-style.md` rule 2 forbids, and it is left alone on purpose.
+
+They compensate for a fault in `tool/style_gate.py` that is still open. A
+lambda inside a **braceless** loop's body loses an indentation level at
+its closing `};`, so the gate believes those lines sit one level
+shallower than they do, and the spaces make up the difference. Correcting
+them to plain tabs -- which is what the rule asks for -- makes the gate
+report them as violations.
+
+Reduced to a fixture, and the reduction is the actionable part: a lambda
+inside a **braced** loop conforms, and the identical lambda inside a
+braceless loop's body does not. The trigger is the braceless level, and
+what distinguishes this from the fault fixed in claude-guidelines
+`9e2dcbf` is that a lambda's brace ends with `};` -- an expression brace
+followed by a statement terminator -- rather than with a plain `}`.
+
+**So this is the anti-pattern deliberately left in place rather than
+propagated.** Nine other lines in these two files were the same
+compensation and are corrected, because the `9e2dcbf` fix made the gate
+right about them. These two regions wait for the lambda case. Whoever
+fixes the gate should expect them to go red, and that is the signal to
+correct them -- not a regression.
+
+### 9.8 What was measured on this machine
 
 Qt **6.8.2**, `qmake6` present, the offscreen platform plugin present,
 DejaVu Sans Mono present. The tree builds clean and the suite reports

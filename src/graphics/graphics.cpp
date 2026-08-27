@@ -230,7 +230,7 @@ QImage rasterize(const CellBuffer &frame, const QFont &font) {
 				p.setPen(QColor::fromRgb(fg));
 				p.drawText(x * cw, y * ch + fm.ascent(), c.ch);
 			}
-	    }
+		}
 	p.end();
 	return img;
 }
@@ -265,18 +265,18 @@ void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_
 				cell.bg = Color::rgb(QRgb(bot | 0xFF000000));
 				cell.attrs = {}; cell.width = 1;
 			} else if (alpha_top > 200 || alpha_bot > 200) {                 // half-covered edge
-			    const bool top_half = alpha_top > 200;
-			    cell.ch = top_half ? QStringLiteral("▀") : QStringLiteral("▄");
-			    cell.fg = Color::rgb(QRgb((top_half ? top : bot) | 0xFF000000));
-			    // keep whatever bg is behind the uncovered half
-			    cell.attrs = {}; cell.width = 1;
-		    } else {                                           // translucent: tint bg,
+				const bool top_half = alpha_top > 200;
+				cell.ch = top_half ? QStringLiteral("▀") : QStringLiteral("▄");
+				cell.fg = Color::rgb(QRgb((top_half ? top : bot) | 0xFF000000));
+				// keep whatever bg is behind the uncovered half
+				cell.attrs = {}; cell.width = 1;
+			} else {                                           // translucent: tint bg,
 			    const int a = qMax(alpha_top, alpha_bot);                    // glyph stays readable
 			    const QRgb under = cell.bg.kind() == Color::Rgb ? cell.bg.value()
 			                                                    : under_default;
 			    cell.bg = Color::rgb(blend(top, a, under));
 		    }
-	    }
+		}
 }
 
 } // namespace Qtty
