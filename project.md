@@ -1396,6 +1396,32 @@ four of those eight still had off-grid *children*, which is the slack
 this section is about, so the population needing a snap is real while the
 population at risk from one is not.
 
+**`GridSnap` is built, and it is off by default.** It is `GridGuard`'s
+other half -- same event, same exemptions, same install-once shape --
+and neither is installed by `Qtty::setup()`, so a program can have the
+report without the correction and a GUI build does nothing at all unless
+asked (§10.1's inertness rule). Building the mechanism is not taking the
+decision: whether §7 Tier 1 becomes free by turning it on is still the
+copyright holder's, and nothing turns it on.
+
+`GridSnap::snap()` is public because the property that makes it safe is
+worth asserting on rectangles rather than only through a widget, and the
+suite asserts both halves directly: that snapping a snapped rectangle
+changes nothing, and that no two disjoint rectangles are made to
+overlap. The first is not decoration -- **idempotence is what makes the
+filter terminate**, since it sets geometry only when the snapped rect
+differs, and a policy that moved twice would set geometry from inside
+its own resize for ever.
+
+**A widget with a fixed size off the grid cannot be snapped**, and the
+suite says so rather than leaving it to be found. Qt clamps
+`setGeometry` to a widget's size constraints, so `setFixedWidth(23)`
+survives every pass and `GridGuard` goes on reporting it; a fixed width
+of two cells snaps like anything else. That is the right division of
+labour -- 23 is the application's number and only the application can
+change it -- but it is the sort of boundary that is discovered painfully
+if nobody writes it down.
+
 **The probe's first version reported zero overlaps for both policies and
 was wrong.** Its control -- two widgets three pixels apart, which no
 gap-closing policy can leave disjoint -- came back clean, because the
@@ -1414,6 +1440,41 @@ changes cw and ch and invalidates both snapshot fixtures.
 
 That is exactly what the bundled font (D7) was meant to prevent, and it
 is not bundled (§7.5). The fixtures do pass here, on Qt 6.8.2, today.
+
+**And the suite could not run under any other platform at all, which was
+found by trying.** `prepare_environment()` called
+`qputenv("QT_QPA_PLATFORM", "offscreen")` unconditionally, so it
+overwrote whatever the environment said -- including a deliberate
+override. The first attempt to run the suite elsewhere therefore
+reported a clean pass under `minimal` that was really offscreen wearing
+another name, and the `make test-platforms` target built on it could not
+fail: given a platform that does not exist, it printed `ok`.
+
+Forcing offscreen is right and stays. A desktop session commonly exports
+`QT_QPA_PLATFORM` as `xcb` or `wayland`, and honouring an ambient
+setting would make a terminal program open a window. What was wrong is
+that there was no way past it, so the override is now a qtty-specific
+`QTTY_QPA_PLATFORM`, which nothing sets by accident.
+
+**A single platform is a single configuration, and this tree has paid
+for that repeatedly.** `QApplication::activePopupWidget()` is
+permanently null under offscreen, which is why keys typed at an open
+menu went to the widget behind it; no window ever activates, which is
+why `focusWidget()` had to be reimplemented; and a caret paints only
+under a selection, which is why the caret fault in §7.2 survived until a
+spin box happened to select its own text. None of those announced
+itself.
+
+What a second platform costs, measured: **`minimal` cannot host the
+suite.** It ships no font database, so `DejaVu Sans Mono` resolves to
+`''`, and `grid_font_problem()` refuses at startup -- correctly, since a
+grid needs integral metrics and there is no font to measure. `vnc` opens
+a listening socket and `linuxfb` writes to the console framebuffer, so
+neither belongs in a target that runs unattended. That leaves `xcb`,
+which needs a display and puts windows on it, so `TEST_PLATFORMS`
+defaults to `offscreen` alone and names `xcb` as the deliberate second
+run. A target claiming two platforms while the second aborts would be
+the vacuous pass again, one level up.
 
 ## 8. Where the document and the code disagree
 

@@ -136,5 +136,107 @@ int suite_runtime() {
 		CHECK(GridGuard::violations() == 0, "reset clears the count");
 	}
 
+	// ------------------------------------------------- section 7.8: GridSnap
+	// The guard's other half. Its policy is a proof rather than a preference,
+	// so the proof is asserted directly on rectangles before any widget is
+	// involved -- a widget test can only sample, and the property is universal.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		const QRect samples[] = {
+			QRect(0, 0, 45, ch), QRect(46, 0, 45, ch), QRect(3, 7, 3, 3),
+			QRect(10, 19, 88, 19), QRect(-4, 0, 27, 40), QRect(0, 0, 0, 0),
+		};
+		bool idempotent = true;
+		for (const QRect &r : samples)
+			idempotent = idempotent && GridSnap::snap(GridSnap::snap(r)) == GridSnap::snap(r);
+		// Not decoration: idempotence is what makes the filter terminate. It
+		// sets geometry only when the snapped rect differs, so a snap that
+		// moved twice would set geometry from inside its own resize for ever.
+		CHECK(idempotent, "snapping a snapped rectangle changes nothing");
+
+		bool disjoint_stays = true;
+		for (const QRect &a : samples)
+			for (const QRect &b : samples)
+				if (!a.intersects(b) && GridSnap::snap(a).intersects(GridSnap::snap(b)))
+					disjoint_stays = false;
+		CHECK(disjoint_stays, "snapping never overlaps two disjoint rectangles");
+
+		// The control for the check above, and the reason the policy is
+		// round-to-nearest: the rejected policy fails this exact pair. A 1px
+		// gap survives rounding and does not survive floor-origin/ceil-size,
+		// so a run where the check above passes vacuously is one where these
+		// two rectangles were never disjoint to begin with.
+		CHECK(!QRect(0, 0, 45, ch).intersects(QRect(46, 0, 45, ch)),
+		      "the 1px-gap pair really is disjoint before snapping");
+	}
+	{
+		// Inert unless installed (section 10.1's rule, which this has to obey
+		// as much as the paint filter does).
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *l = new QHBoxLayout(&h);
+		for (int i = 0; i < 4; ++i)
+			l->addWidget(new QPushButton(QStringLiteral("b%1").arg(i)));
+		h.resize(GridMetrics::cells(40, 12));
+		h.show();
+		QCoreApplication::processEvents();
+		l->activate();
+		QCoreApplication::processEvents();
+		int off = 0;
+		for (QObject *o : h.children())
+			if (auto *w = qobject_cast<QWidget *>(o))
+				if (!GridMetrics::is_aligned(w->geometry())) ++off;
+		CHECK(!GridSnap::installed() && off > 0,
+		      "without GridSnap a box layout leaves its children off the grid");
+	}
+	{
+		GridSnap::install(*qApp);
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *l = new QHBoxLayout(&h);
+		for (int i = 0; i < 4; ++i)
+			l->addWidget(new QPushButton(QStringLiteral("b%1").arg(i)));
+		h.resize(GridMetrics::cells(40, 12));
+		h.show();
+		QCoreApplication::processEvents();
+		l->activate();
+		QCoreApplication::processEvents();
+		int off = 0, overlaps = 0;
+		QVector<QRect> rs;
+		for (QObject *o : h.children())
+			if (auto *w = qobject_cast<QWidget *>(o)) {
+				rs.append(w->geometry());
+				if (!GridMetrics::is_aligned(w->geometry())) ++off;
+			}
+		for (int i = 0; i < rs.size(); ++i)
+			for (int j = i + 1; j < rs.size(); ++j)
+				if (rs[i].intersects(rs[j])) ++overlaps;
+		CHECK(off == 0, "with GridSnap the same layout lands on the grid");
+		CHECK(overlaps == 0, "and no two children overlap");
+
+		// The boundary, asserted rather than left to be discovered: Qt clamps
+		// setGeometry to a widget's size constraints, so a fixed size that is
+		// not a cell multiple cannot be snapped and the guard goes on
+		// reporting it. That is the right division of labour -- it is the
+		// application's number -- but only if it is written down. The pair
+		// discriminates: 23 resists, 20 does not, so the check is about the
+		// constraint and not about fixed widths in general.
+		auto *stubborn = new QPushButton(QStringLiteral("x"), &h);
+		stubborn->setFixedWidth(23);
+		stubborn->setGeometry(0, 0, 23, ch);
+		auto *willing = new QPushButton(QStringLiteral("y"), &h);
+		willing->setFixedWidth(2 * cw);
+		willing->setGeometry(0, 2 * ch, 2 * cw, ch);
+		QCoreApplication::processEvents();
+		CHECK(stubborn->width() == 23,
+		      "a fixed size off the grid resists snapping (the application's to fix)");
+		CHECK(GridMetrics::is_aligned(willing->geometry()),
+		      "a fixed size on the grid does not");
+
+		GridSnap::remove();
+		CHECK(!GridSnap::installed(), "remove() uninstalls it");
+	}
+	GridGuard::reset();      // the fixed-width button above is a reported one
+
 	return fails;
 }

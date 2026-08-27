@@ -61,6 +61,54 @@ public:
 	bool eventFilter(QObject *, QEvent *) override;
 };
 
+// section 7.8's CompactionPass, and design.md section 7's promise that Tier 1
+// is free -- "style metrics differ, so the same layout compacts
+// automatically". It is not free for a layout with slack in it, which is most
+// of them: GridStyle can make the metrics cell multiples but nothing makes a
+// layout hand the remainder to a child rather than leaving it as a gap.
+//
+// GridSnap is GridGuard's other half. The guard measures and reports; this
+// corrects, using the same exemptions, the same event, and the same
+// install-once shape. Neither is installed by Qtty::setup(): both are opt-in,
+// so a program that wants the report without the correction can have it, and
+// so that a library which must behave normally in a GUI build (section 10.1)
+// does nothing at all unless asked.
+//
+// **Round each edge to the nearest cell, and nothing else.** The policy is not
+// a preference. Rounding is monotonic, so if one widget's right edge is at or
+// before another's left edge, the rounded edges keep that order -- two
+// disjoint siblings stay disjoint and become adjacent at worst. Flooring the
+// origin and ceiling the size does NOT have that property and was measured
+// overlapping a neighbour across any gap narrower than a cell (section 7.8).
+//
+// A consequence worth knowing rather than discovering: a widget narrower than
+// half a cell rounds to zero width and disappears. Growing it to one cell
+// instead is exactly the case that overlaps, so the alternative to vanishing
+// is a widget drawn on top of its neighbour, and a cell grid cannot represent
+// either widget honestly.
+//
+// Rounding is also idempotent, which is what makes this terminate: snapping an
+// already-snapped rectangle is a no-op, so the geometry this sets raises one
+// more resize that changes nothing and stops.
+class GridSnap : public QObject {
+public:
+	static void install(QCoreApplication &app);
+	// Uninstalls and destroys the filter. It exists because a correcting
+	// filter installed on the application is not something a test can leave
+	// behind: every later case would run with its geometry quietly rewritten,
+	// including the ones checking that it is inert when absent.
+	static void remove();
+	static bool installed();
+	// Round each edge to the nearest cell. Public because the property that
+	// makes it safe is worth asserting directly rather than only through a
+	// widget.
+	static QRect snap(const QRect &px);
+	static int snapped();             // geometries corrected since the last reset
+	static void reset();
+
+	bool eventFilter(QObject *, QEvent *) override;
+};
+
 // InputRouter-owned focus (section 5.5, measured F4): under the offscreen platform no
 // window activates, so QApplication::focusWidget() is always null and
 // State_HasFocus never set. GridStyle consults this instead.

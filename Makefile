@@ -17,6 +17,7 @@
 # TARGETS
 #   make              -- build the library, the tools and the example
 #   make test         -- build and run the test suite
+#   make test-platforms -- the suite under each QPA in TEST_PLATFORMS
 #   make check        -- style + test; what must pass before committing
 #   make style        -- the shared source gate and the project.md checks
 #   make hooks        -- install tool/hooks/commit-msg into .git/hooks
@@ -150,8 +151,27 @@ else
 endif
 
 # The suite renders widgets, so it needs a platform plugin; offscreen is the
-# one the library itself runs under and needs no display.
-TEST_ENV = QT_QPA_PLATFORM=offscreen $(TEST_CRASH_ENV)
+# one the library itself runs under and needs no display. Overridable, because
+# a single platform is a single configuration: several faults in this tree hid
+# in offscreen's particulars rather than in the code -- activePopupWidget() is
+# permanently null there, no window ever activates, and a caret paints only
+# under a selection. `make test-platforms` runs the suite under a second one.
+TEST_PLATFORM ?= offscreen
+TEST_ENV = QTTY_QPA_PLATFORM=$(TEST_PLATFORM) $(TEST_CRASH_ENV)
+
+# Platforms the suite is expected to pass under, and the honest answer today
+# is one. `minimal` was tried and cannot host the suite: it ships no font
+# database, so DejaVu Sans Mono resolves to '' and grid_font_problem() refuses
+# at startup -- correctly, since a grid needs integral metrics and there is no
+# font to measure. `vnc` would open a listening socket and `linuxfb` writes to
+# the console framebuffer, neither of which a test target should do by itself.
+#
+# That leaves `xcb` as the real second configuration, and it is deliberately
+# not the default because it puts windows on whoever's display is attached.
+# Run it when there is somebody to watch:
+#
+#     make test-platforms TEST_PLATFORMS="offscreen xcb"
+TEST_PLATFORMS ?= offscreen
 
 # This timeout is convenience, not the bound. The suite carries its own
 # wall-clock limit in test/main.cpp, because a limit that lives only here
@@ -191,6 +211,20 @@ test: tests-build
 		exit 1; \
 	fi; \
 	echo "test: $$ran binary(ies), $$failed failed"; \
+	[ "$$failed" -eq 0 ]
+
+# The same suite under each platform in TEST_PLATFORMS. A pass under one
+# platform says the code is right for that platform's assumptions and nothing
+# more; this is what makes an assumption visible instead of load-bearing.
+test-platforms: tests-build
+	@failed=0; \
+	for platform in $(TEST_PLATFORMS); do \
+		echo "--- $(TEST_BIN) on $$platform"; \
+		QTTY_QPA_PLATFORM=$$platform $(TEST_CRASH_ENV) \
+			timeout $(TEST_TIMEOUT) $(TEST_BIN) > /dev/null 2>&1 \
+			&& echo "    ok" || { echo "    FAILED"; failed=$$((failed + 1)); }; \
+	done; \
+	echo "test-platforms: $(words $(TEST_PLATFORMS)) platform(s), $$failed failed"; \
 	[ "$$failed" -eq 0 ]
 
 # Rewrite a snapshot fixture after a reviewed change: make record R=render
@@ -313,5 +347,5 @@ distclean: veryclean
 help:
 	@sed -n '/^# TARGETS/,/^#$$/p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
-.PHONY: all test tests-build record check style style-source style-docs hooks \
+.PHONY: all test test-platforms tests-build record check style style-source style-docs hooks \
         version-check run install uninstall clean veryclean distclean help FORCE

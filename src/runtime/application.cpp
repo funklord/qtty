@@ -11,7 +11,23 @@
 namespace Qtty {
 
 void prepare_environment() {
-	qputenv("QT_QPA_PLATFORM", "offscreen");
+	// Offscreen is FORCED and not merely preferred, and the difference
+	// matters: a desktop session commonly exports QT_QPA_PLATFORM as xcb or
+	// wayland, and honouring that would make a terminal program open a
+	// window. So an ambient setting must not reach this.
+	//
+	// But forcing it unconditionally, which is what stood here, means the
+	// library can never be exercised under any other platform -- and a single
+	// platform is a single configuration. Several faults in this tree lived in
+	// offscreen's particulars rather than in the code: QApplication::
+	// activePopupWidget() is permanently null there, no window ever activates,
+	// and a caret paints only under a selection. Nothing announced any of
+	// those; they were found one at a time.
+	//
+	// The override is therefore a qtty-specific variable, which no desktop
+	// sets by accident and no user has already exported for another reason.
+	const QByteArray want = qgetenv("QTTY_QPA_PLATFORM");
+	qputenv("QT_QPA_PLATFORM", want.isEmpty() ? QByteArray("offscreen") : want);
 	qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
 }
 

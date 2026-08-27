@@ -588,4 +588,63 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 	QProxyStyle::drawComplexControl(cc, opt, p, w);
 }
 
+// ------------------------------------------------------------------ GridSnap
+// GridGuard's other half (section 7.8). See grid.h for why the policy is
+// round-to-nearest and nothing else.
+static GridSnap *s_snap = nullptr;
+static int s_snapped = 0;
+static bool s_snapping = false;
+
+QRect GridSnap::snap(const QRect &px) {
+	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+	const int l = qRound(double(px.left()) / cw) * cw;
+	const int t = qRound(double(px.top()) / ch) * ch;
+	const int r = qRound(double(px.right() + 1) / cw) * cw;
+	const int b = qRound(double(px.bottom() + 1) / ch) * ch;
+	// qMax(0, ...) rather than qMax(cw, ...): a widget under half a cell wide
+	// rounds away to nothing, and growing it to a whole cell is the case
+	// measured overlapping its neighbour.
+	return QRect(l, t, qMax(0, r - l), qMax(0, b - t));
+}
+
+int GridSnap::snapped() { return s_snapped; }
+void GridSnap::reset() { s_snapped = 0; }
+bool GridSnap::installed() { return s_snap != nullptr; }
+
+bool GridSnap::eventFilter(QObject *obj, QEvent *event) {
+	if (s_snapping) return false;                // our own setGeometry coming back
+	if (event->type() != QEvent::Resize && event->type() != QEvent::Move)
+		return false;
+	QWidget *w = qobject_cast<QWidget *>(obj);
+	// A top-level is left alone for the reason GridGuard does not check its
+	// position: there is no window manager, and Compositor::compose() places
+	// and snaps every top-level itself (section 8.1). Snapping one here would
+	// fight that, and the terminal decides a window's size in any case.
+	if (!w || w->isWindow() || !w->parentWidget() || GridGuard::is_exempt(w))
+		return false;
+
+	const QRect want = snap(w->geometry());
+	if (want == w->geometry()) return false;
+
+	s_snapping = true;
+	w->setGeometry(want);
+	s_snapping = false;
+	++s_snapped;
+	return false;                                // never consume
+}
+
+void GridSnap::install(QCoreApplication &app) {
+	if (s_snap) return;
+	s_snap = new GridSnap;
+	s_snap->setParent(&app);
+	app.installEventFilter(s_snap);
+}
+
+void GridSnap::remove() {
+	if (!s_snap) return;
+	if (QCoreApplication *app = qApp) app->removeEventFilter(s_snap);
+	delete s_snap;
+	s_snap = nullptr;
+}
+
 } // namespace Qtty
