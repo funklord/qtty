@@ -1367,7 +1367,42 @@ The two candidate answers, neither taken:
   application must do rather than promising it need do nothing.
 
 Which of the two is right is a design decision and is recorded here
-rather than taken.
+rather than taken. **What the decision was waiting on has now been
+measured**, and the answer is sharper than "it was safe in one case".
+
+The risk is not a property of snapping. It is a property of **which
+snapping policy**, and the two obvious ones differ absolutely:
+
+- **Floor the origin and ceil the size** closes any gap narrower than a
+  cell, and overlaps the neighbour when it does. Measured: a 1px gap
+  between two widgets overlaps, and so does a sub-cell-wide widget beside
+  its neighbour.
+- **Round each edge to the nearest cell** cannot do it at all, and this
+  is a proof rather than a sample. Rounding is monotonic, so if
+  `a.right + 1 <= b.left` then the rounded edges keep that order: two
+  disjoint siblings stay disjoint, becoming adjacent at worst.
+
+There is exactly one case where rounding does overlap, and it is not a
+defect in the policy: **two widgets that both live inside a single
+cell.** A cell renderer cannot draw those whatever it does with their
+geometry, so the overlap is the grid speaking rather than the snap.
+
+Two further measurements bear on the cost. Across eight real layout
+arrangements -- box, grid, form, nested, mixed size policies, a splitter
+-- **no sub-cell gap arose at all**, because `GridStyle` already returns
+cell-multiple layout spacing; the sub-cell case has to be reached by
+absolute geometry or by an explicit `setSpacing()` under a cell. And
+four of those eight still had off-grid *children*, which is the slack
+this section is about, so the population needing a snap is real while the
+population at risk from one is not.
+
+**The probe's first version reported zero overlaps for both policies and
+was wrong.** Its control -- two widgets three pixels apart, which no
+gap-closing policy can leave disjoint -- came back clean, because the
+numbers picked happened to abut: 47 ceils to 50 and the neighbour started
+at 50. Without the control the run would have read as a clean bill for
+floor/ceil, which is the policy that is actually unsafe. That is the
+whole argument for a control that lives inside the probe.
 
 ### 7.9 The fixtures are machine-dependent
 
