@@ -52,7 +52,21 @@ void prepare_environment() {
 	const QByteArray theme = qgetenv("QTTY_QPA_PLATFORMTHEME");
 	qputenv("QT_QPA_PLATFORMTHEME", theme);
 
+	// Scaling is the third ambient lever, and disabling high-DPI scaling was
+	// not enough on its own: QT_SCALE_FACTOR and QT_SCREEN_SCALE_FACTORS
+	// override it, and a HiDPI desktop commonly sets one. With either at 2 the
+	// line height came out 18.6406 px and setup() refused to start at all --
+	// grid_font_problem() doing its job, but the cause was the environment
+	// rather than the font, so the program simply would not run there.
+	//
+	// A cell grid has no device pixel ratio to honour. The terminal decides
+	// how big a cell is on screen; qtty needs the metrics to be whole numbers
+	// and nothing else. So these are pinned neutral with the other two, and
+	// the guard stays for the case it was written for -- a font that genuinely
+	// cannot carry the grid.
 	qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
+	qputenv("QT_SCALE_FACTOR", "1");
+	qputenv("QT_SCREEN_SCALE_FACTORS", "");
 }
 
 namespace {

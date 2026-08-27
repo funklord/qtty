@@ -1603,6 +1603,38 @@ deleted -- confirmed by deleting it and watching the target go red. It
 because an unknown theme name is ignored silently and looks exactly like
 a pin that works.
 
+**Scaling is the third lever, and disabling high-DPI scaling was not
+enough on its own.** `QT_SCALE_FACTOR` and `QT_SCREEN_SCALE_FACTORS`
+override it, and a HiDPI desktop commonly sets one. With either at 2 the
+line height came out **18.6406 px** and `setup()` refused to start --
+`grid_font_problem()` doing exactly its job, on a cause that was the
+environment rather than the font. The visible consequence was not a
+misrendering but a program that **would not run at all** on such a
+desktop.
+
+A cell grid has no device pixel ratio to honour: the terminal decides how
+big a cell is on screen, and qtty needs the metrics to be whole numbers
+and nothing else. So both are pinned neutral with the platform and the
+theme, and the guard stays for the case it was written for. Its positive
+control is already in the suite -- a proportional font is rejected, and
+the message says "fixed pitch" -- so what changed is the cause, not the
+check.
+
+Swept with them, and clean: `QT_FONT_DPI=192`,
+`QT_ENABLE_HIGHDPI_SCALING=1` and `QT_STYLE_OVERRIDE=Windows` all leave
+`cw`, `ch` and the rendering untouched. The last is worth knowing rather
+than assuming -- `setup()` calls `setStyle()` explicitly, so the override
+never gets a say.
+
+The pins are guarded two ways, and both were confirmed by removing the
+line and watching them go red. The suite asserts the values directly,
+which discriminates under a clean environment precisely because nothing
+else sets them: an empty value means the pin is gone, not that the
+machine is tidy. And `make test-platforms` runs the whole suite once
+more under a **hostile environment** -- scaling and theme together --
+which is the end-to-end form: without the pin that run does not fail an
+assertion, it fails to start.
+
 **What remains failing under a DELIBERATE gtk3 override is §7.7's, and
 is not this section's to fix.** The `widgets_gallery` fixture differs in one legend entry:
 `bg=#fbfbfb` against `bg=#ffffff`. That is the tab pane's gradient

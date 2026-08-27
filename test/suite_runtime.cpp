@@ -69,6 +69,20 @@ int suite_runtime() {
 	{
 		QFont mono(QStringLiteral("DejaVu Sans Mono"));
 		mono.setPixelSize(16);
+		// The ambient scaling levers are pinned by prepare_environment(), and
+		// this is what notices if that stops happening. It discriminates under
+		// a clean environment precisely because nothing else sets these: an
+		// empty value means the pin is gone, not that the machine is tidy.
+		//
+		// It is not cosmetic. With QT_SCALE_FACTOR=2 the line height came out
+		// 18.6406 px and setup() refused to start -- the font guard working
+		// correctly on a cause that was the environment, so every qtty program
+		// simply would not run on a HiDPI desktop that sets it.
+		CHECK(qgetenv("QT_SCALE_FACTOR") == QByteArray("1"),
+		      "prepare_environment() pins QT_SCALE_FACTOR");
+		CHECK(qgetenv("QT_SCREEN_SCALE_FACTORS").isEmpty(),
+		      "and QT_SCREEN_SCALE_FACTORS");
+
 		CHECK(grid_font_problem(mono).isEmpty(),
 		      "the grid font passes the integral-metrics check");
 

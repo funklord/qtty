@@ -242,17 +242,19 @@ test-platforms: tests-build
 			&& echo "    ok" || { echo "    FAILED"; failed=$$((failed + 1)); }; \
 	done; \
 	plugin="$(QT_PLUGIN_PATH_FOR_CHECK)/platformthemes/libq$(TEST_HOSTILE_THEME).so"; \
-	echo "--- $(TEST_BIN) with QT_QPA_PLATFORMTHEME=$(TEST_HOSTILE_THEME) in the environment"; \
-	if [ ! -f "$$plugin" ]; then \
-		echo "    SKIPPED: $$plugin is not installed, so an ambient theme" >&2; \
-		echo "             cannot be applied and this would pass vacuously." >&2; \
+	hostile="QT_SCALE_FACTOR=2 QT_SCREEN_SCALE_FACTORS=2"; \
+	if [ -f "$$plugin" ]; then \
+		hostile="$$hostile QT_QPA_PLATFORMTHEME=$(TEST_HOSTILE_THEME)"; \
 	else \
-		QT_QPA_PLATFORMTHEME=$(TEST_HOSTILE_THEME) $(TEST_CRASH_ENV) \
-			timeout $(TEST_TIMEOUT) $(TEST_BIN) > /dev/null 2>&1 \
-			&& echo "    ok (the pin absorbed it)" \
-			|| { echo "    FAILED"; failed=$$((failed + 1)); }; \
+		echo "    note: $$plugin is absent, so the theme half of the hostile" >&2; \
+		echo "          environment is not applied and only scaling is tested." >&2; \
 	fi; \
-	echo "test-platforms: $(words $(TEST_PLATFORMS)) platform(s) + 1 hostile theme, $$failed failed"; \
+	echo "--- $(TEST_BIN) with a hostile environment: $$hostile"; \
+	env $$hostile $(TEST_CRASH_ENV) \
+		timeout $(TEST_TIMEOUT) $(TEST_BIN) > /dev/null 2>&1 \
+		&& echo "    ok (the pins absorbed it)" \
+		|| { echo "    FAILED"; failed=$$((failed + 1)); }; \
+	echo "test-platforms: $(words $(TEST_PLATFORMS)) platform(s) + 1 hostile environment, $$failed failed"; \
 	[ "$$failed" -eq 0 ]
 
 # Rewrite a snapshot fixture after a reviewed change: make record R=render
