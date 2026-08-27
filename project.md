@@ -1506,6 +1506,68 @@ under the default platform it is a check that inspects nothing. The test
 says so and names the command that does discriminate. That command was
 run: red before the override, green after.
 
+**Going one step further -- a real desktop theme -- found three more,
+and one of them was serious.** `QT_QPA_PLATFORMTHEME=gtk3` loads a
+platform theme proper rather than the generic Unix one, and it moves
+much more than a style hint. All three were invisible until something
+ran under it.
+
+- **`SH_DialogButtonLayout` and `SH_LineEdit_PasswordCharacter` are the
+  same class as the icon hint**, so they are pinned with it. The first
+  changes button ORDER -- gtk3 answers GnomeLayout and the dialog came
+  back as `<Cancel><OK>` -- and the second changes the character a
+  password field shows, U+25CF against U+2022. Pinning them to the
+  values this library has always produced is not a choice about button
+  order or bullet glyphs; it is a refusal to let either change
+  underneath a program. It matters more here than on a desktop because a
+  terminal program is routinely run over ssh, where the machine holding
+  the theme is not the machine anybody is looking at.
+- **A mnemonic marker was being drawn.** `CE_PushButtonLabel` wrote
+  `QStyleOptionButton::text` unchanged, so a `QPushButton("&Save")`
+  rendered `<&Save>`. This one is not platform-dependent at all and was
+  merely *found* here, because gtk3 supplies its standard button text as
+  `&OK` and `&Cancel` where the generic theme does not. The check box
+  and the group box were already right, and only because `GridStyle`
+  does not override their labels: they fall through to a base style that
+  draws through `Qt::TextShowMnemonic`. The sharper reason it had to go
+  is internal -- `InputRouter::match_mnemonic()` reads that marker to
+  route Alt-s, so **the library asks applications to write `&Save` and
+  was then drawing the ampersand.**
+- **The serious one: a platform theme sets fonts per widget class, and
+  those beat the application font.** Measured under gtk3,
+  `QApplication::font()` was DejaVu Sans Mono 16 as asked, while
+  `QPushButton`, `QLabel` and `QMenu` were handed **Noto Sans 13, not
+  fixed pitch**, advancing 12 for `M` and 3 for `i` against a 10-pixel
+  cell. Every column such a widget computes is wrong, which is precisely
+  what R3 and `grid_font_problem()` exist to prevent -- and the check
+  could not see it, because it is handed the font `setup()` built, the
+  one font a theme does not override. **A guard reading the wrong object
+  reports success exactly as loudly as a real pass.**
+
+  `setup()` now forces the family and size on every widget through an
+  event filter, which needs no list of class names. It watches `Polish`
+  **and `FontChange`**, and the second is the one that matters: traced
+  under gtk3, the button still reported DejaVu Sans Mono at polish time
+  and a `FontChange` arrived afterwards leaving it Sans, so a filter
+  watching only `Polish` saw the right font every time and corrected
+  nothing.
+
+  Its test simulates a theme rather than waiting for one, by registering
+  a class font the way a theme does, and varies the SIZE rather than the
+  family so it does not depend on which fonts are installed. That is
+  what lets it fail under the default platform. Confirmed by sabotage:
+  reduced to watching `Polish` alone, it goes red -- so the simulation
+  reproduces the ordering and not merely the symptom.
+
+**What remains failing under gtk3 is §7.7's, and is not this section's
+to fix.** The `widgets_gallery` fixture differs in one legend entry:
+`bg=#fbfbfb` against `bg=#ffffff`. That is the tab pane's gradient
+landing as a literal RGB because it matches no palette role -- already
+recorded in §7.7 as awaiting a decision. The measurement adds something
+to it, though: the defect is not only that a role was lost, it is that
+**the colour then depends on which desktop the program was launched
+from**, since 14 of the 22 palette roles differ under gtk3.
+
 ## 8. Where the document and the code disagree
 
 `~/.claude/guidelines/working-practice.md` is explicit: where the document

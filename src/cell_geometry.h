@@ -87,4 +87,38 @@ inline QString elide_to_cells(const QString &s, int cells) {
 	return out;
 }
 
+// A mnemonic marker is Qt's, not the label's: "&Save" is drawn "Save" with the
+// S underlined, and "&&" is a literal ampersand. Every style that draws text
+// itself has to do this, because Qt does it inside drawItemText() via
+// Qt::TextShowMnemonic and a style that writes the string straight out never
+// gets there.
+//
+// Measured: CE_PushButtonLabel wrote QStyleOptionButton::text unchanged, so a
+// QPushButton("&Save") rendered "<&Save>". The check box and the group box
+// were right precisely because GridStyle does NOT override their labels and
+// they fall through to the base style. InputRouter owns the matching half of
+// this concept -- mnemonic_of() finds the marked letter so Alt-s can reach the
+// button -- which is the sharper reason the ampersand had to go: the library
+// asks applications to write "&Save" and was then drawing the ampersand.
+//
+// The underline is not drawn. A terminal has one underline attribute and
+// design.md spends it on other things; the mnemonic is discoverable by the
+// Alt key rather than by the glyph. That is a limitation, not an oversight.
+inline QString strip_mnemonic(const QString &s) {
+	QString out;
+	out.reserve(s.size());
+	for (int i = 0; i < s.size(); ++i) {
+		if (s.at(i) != QLatin1Char('&')) { out += s.at(i); continue; }
+		if (i + 1 < s.size() && s.at(i + 1) == QLatin1Char('&')) {
+			out += QLatin1Char('&');             // "&&" is one literal ampersand
+			++i;
+			continue;
+		}
+		// A lone trailing '&' is kept: it marks nothing, and dropping it would
+		// silently edit a label that meant to end in one.
+		if (i + 1 >= s.size()) out += QLatin1Char('&');
+	}
+	return out;
+}
+
 } // namespace Qtty

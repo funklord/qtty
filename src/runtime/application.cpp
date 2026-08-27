@@ -31,6 +31,55 @@ void prepare_environment() {
 	qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
 }
 
+namespace {
+
+// A platform theme sets fonts PER WIDGET CLASS, and those beat the
+// application-wide font that setup() installs. Measured under xcb with the
+// gtk3 theme: QApplication::font() was DejaVu Sans Mono 16 as asked, while
+// QPushButton, QLabel and QMenu were handed Noto Sans 13, not fixed pitch,
+// advancing 12 for 'M' and 3 for 'i' against a 10-pixel cell.
+//
+// That is exactly the failure grid_font_problem() exists to prevent, and the
+// check could not see it: it is handed the font setup() built, which is the
+// one font the theme does NOT override. A guard reading the wrong object
+// reports success as loudly as a real pass.
+//
+// Forcing the family and size on every widget as it is polished needs no list
+// of class names, which is the point -- a list is a thing Qt adds to. Weight,
+// italic and underline are kept, because those are a widget's own and a
+// terminal can carry all three.
+class FontEnforcer : public QObject {
+public:
+	QFont base;
+	bool eventFilter(QObject *o, QEvent *e) override {
+		// Polish AND FontChange, because the theme's class font does not
+		// arrive at polish time. Traced under gtk3: at Polish the button
+		// still reported DejaVu Sans Mono, and a FontChange landed afterwards
+		// leaving it Sans -- so a filter watching only Polish saw the right
+		// font every time and corrected nothing. Reacting to the change is
+		// what actually catches it.
+		//
+		// Setting the font here raises another FontChange, which terminates
+		// because the test below is an equality: the second pass matches and
+		// returns. Same idempotence argument as GridSnap.
+		if (e->type() != QEvent::Polish && e->type() != QEvent::FontChange)
+			return false;
+		QWidget *w = qobject_cast<QWidget *>(o);
+		if (!w) return false;
+		const QFont had = w->font();
+		if (had.family() == base.family() && had.pixelSize() == base.pixelSize())
+			return false;                        // already ours: idempotent
+		QFont want = base;
+		want.setBold(had.bold());
+		want.setItalic(had.italic());
+		want.setUnderline(had.underline());
+		w->setFont(want);
+		return false;                            // never consume
+	}
+};
+
+} // namespace
+
 void setup(QApplication &app) {
 	// Bundled-font provisioning (section 5.3) is later Phase-2 work; DejaVu Sans
 	// Mono is the interim source of integral metrics, asserted as designed.
@@ -52,6 +101,10 @@ void setup(QApplication &app) {
 	const QFontMetrics fm(f);
 	GridMetrics::set(fm.horizontalAdvance(u'M'), fm.height());
 	app.setFont(f);
+	auto *fonts = new FontEnforcer;
+	fonts->base = f;
+	fonts->setParent(&app);
+	app.installEventFilter(fonts);
 	app.setStyle(new GridStyle);
 	// Lets an ICellPainted widget paint itself in cells instead of going
 	// through Channel B (section 5.3, risk R5). Inert in a GUI build by

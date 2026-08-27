@@ -12,6 +12,7 @@ static int fails = 0;
 int suite_grid() {
 	fails = 0;
 	const int cw = GridMetrics::cw();
+	const int ch = GridMetrics::ch();
 
 	QDialog dlg;
 	auto *v = new QVBoxLayout(&dlg);
@@ -70,6 +71,67 @@ int suite_grid() {
 	CHECK(QApplication::style()->styleHint(
 	          QStyle::SH_DialogButtonBox_ButtonsHaveIcons) == 0,
 	      "dialog buttons reserve no room for icons the terminal cannot draw");
+
+	// A mnemonic marker is Qt's, not the label's. CE_PushButtonLabel wrote
+	// QStyleOptionButton::text unchanged, so "&Save" drew as "<&Save>" -- and
+	// the library asks applications to write exactly that, because
+	// InputRouter::match_mnemonic() reads the marker to route Alt-s. The check
+	// box and the group box were already right, and only because GridStyle
+	// does not override their labels: they fall through to a base style that
+	// draws through Qt::TextShowMnemonic.
+	{
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *save = new QPushButton(QStringLiteral("&Save"), &h);
+		save->setGeometry(0, 0, cw * 12, ch);
+		auto *amp = new QPushButton(QStringLiteral("A && B"), &h);
+		amp->setGeometry(0, ch, cw * 12, ch);
+		h.resize(GridMetrics::cells(20, 3));
+		h.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer buf(20, 3);
+		Qtty::render_once(h, buf);
+		const QStringList rows = buf.to_text().split(QLatin1Char('\n'));
+		CHECK(rows.value(0).contains(QStringLiteral("<Save>")),
+		      "a button's mnemonic marker is not drawn");
+		// The other half of Qt's rule, and the one a naive strip gets wrong:
+		// "&&" is a literal ampersand, so a label may still contain one.
+		CHECK(rows.value(1).contains(QStringLiteral("<A & B>")),
+		      "but a doubled ampersand still draws one");
+	}
+
+	// A platform theme sets fonts PER WIDGET CLASS, and those beat the
+	// application font setup() installs -- measured under xcb with gtk3, where
+	// QPushButton, QLabel and QMenu came back as Noto Sans 13, not fixed
+	// pitch, advancing 12 for 'M' and 3 for 'i' against a 10-pixel cell. That
+	// is the failure grid_font_problem() exists to prevent, and it could not
+	// see it: it is handed the font setup() built, the one font a theme does
+	// not override.
+	//
+	// The theme is SIMULATED here rather than waited for, by registering a
+	// class font of the kind a theme registers. That is what makes this check
+	// able to fail under the default platform instead of only under a desktop
+	// -- the size is varied rather than the family, so the test does not
+	// depend on which fonts happen to be installed.
+	{
+		const QFont grid = QApplication::font();
+		QFont intruder = grid;
+		intruder.setPixelSize(grid.pixelSize() - 5);
+		QApplication::setFont(intruder, "QPushButton");
+
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *b = new QPushButton(QStringLiteral("x"), &h);
+		b->setGeometry(0, 0, cw * 4, ch);
+		h.resize(GridMetrics::cells(10, 2));
+		h.show();
+		QCoreApplication::processEvents();
+		CHECK(b->font().pixelSize() == grid.pixelSize(),
+		      "a class font from a platform theme is overridden by the grid font");
+		CHECK(QFontMetrics(b->font()).horizontalAdvance(QChar('M')) == cw,
+		      "so every widget still advances exactly one cell");
+		QApplication::setFont(grid, "QPushButton");     // leave nothing behind
+	}
 
 	return fails;
 }

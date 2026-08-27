@@ -387,7 +387,8 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// State_HasFocus never arrives in TUI mode (F4): router focus.
 				bool foc = (opt->state & State_HasFocus) || (w && w == s_focus);
 				dev->buffer().text(bc.left(), bc.top(),
-					               QLatin1Char('<') + b->text + QLatin1Char('>'),
+					               QLatin1Char('<') + strip_mnemonic(b->text)
+					                   + QLatin1Char('>'),
 					               Color(), Color(),
 					               foc ? Attrs(Attr::Reverse) : Attrs());
 			}
@@ -604,6 +605,26 @@ int GridStyle::styleHint(StyleHint hint, const QStyleOption *opt, const QWidget 
 		// a hope: all 121 style hints and all 96 pixel metrics were compared
 		// across the two platforms, and the other 216 agree.
 		return 0;
+	case SH_DialogButtonLayout:
+		// Button ORDER, and the desktop was choosing it: offscreen answers
+		// WinLayout and a gtk3 platform theme answers GnomeLayout, which puts
+		// Cancel first. Measured -- the prefs_dialog fixture came back as
+		// "<Cancel><OK>" under gtk3.
+		//
+		// Pinning to the value this library has always produced is not a
+		// choice about button order; it is a refusal to let the order change
+		// underneath a program. Changing it would be the decision, and this
+		// is not that. It matters more here than on a desktop because a
+		// terminal program is routinely run over ssh, where the machine
+		// holding the desktop theme is not the machine anybody is looking at.
+		return 0;                                  // QDialogButtonBox::WinLayout
+	case SH_LineEdit_PasswordCharacter:
+		// Same shape: U+25CF under offscreen, U+2022 under gtk3, so what a
+		// password field showed depended on the desktop. Both are one cell
+		// wide, so this is about determinism rather than about which glyph is
+		// better -- and a snapshot suite whose output a desktop can change is
+		// not a snapshot suite.
+		return 0x25CF;
 	default:
 		break;
 	}
