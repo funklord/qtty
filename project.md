@@ -795,6 +795,27 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**Nothing asserted that a byte on stdin becomes text in a widget.** The
+decoder has 33 checks in `suite_backend` and the router has 20 of its own;
+no test ran a byte through both. Every case on one side stops at a
+recording sink, every case on the other starts from a hand-built event --
+both halves exhaustively covered, the chain between them covered nowhere,
+**in the one path a terminal library exists for.**
+
+The exact mirror of what the beerssh session found on its side the same
+hour: thirty-two router tests, a transport test whose comment called
+itself "the seam the input router gets tested through", and nothing
+asserting that pressing a key sends a byte.
+
+The discriminators were chosen by the rule that afternoon produced -- the
+name is the intent, the discriminator is the mechanism. A plain letter
+proves almost nothing, because a path that forwarded each byte's character
+would pass it with the decoder cut out entirely. An **arrow** is three
+bytes that must move the cursor and insert nothing, and a **three-byte
+character** must arrive as one keystroke rather than three, which its
+length says and its glyph does not. Sabotaging the escape branch fails the
+arrow; sabotaging the three-byte UTF-8 lead fails the character.
+
 **A guard whose failure path was inert, found because the beerssh session
 described theirs.** They fixed two the same day -- one that never fired,
 one that fired and proceeded anyway -- and named the construction: *a

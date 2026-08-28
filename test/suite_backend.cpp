@@ -389,6 +389,62 @@ int suite_backend() {
 		}
 	}
 
+	// Bytes on stdin becoming text in a widget. The decoder has 33 checks
+	// here and the router has 20 of its own; NOTHING ran a byte through both.
+	// Every test on this side stops at a recording sink, and every test on
+	// that side starts from a hand-built event -- both halves exhaustively
+	// covered and the chain between them covered nowhere, which is the one
+	// path a terminal library exists for.
+	//
+	// The mirror of what the beerssh session found on its side within the
+	// hour: thirty-two router tests, a transport test, and nothing asserting
+	// that pressing a key sends a byte.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *edit = new QLineEdit(&win);
+		edit->setGeometry(0, 0, GridMetrics::cw() * 20, GridMetrics::ch());
+		win.resize(GridMetrics::cells(30, 4));
+		win.show();
+		QCoreApplication::processEvents();
+		edit->setFocus();
+		setFocusWidget(edit);
+		QCoreApplication::processEvents();
+
+		InputRouter router(&win);
+		backend.set_event_sink(&router);
+
+		const auto type = [&](const QByteArray &bytes) {
+			feeder.send(bytes);
+			for (int i = 0; i < 30; ++i) QCoreApplication::processEvents();
+		};
+
+		type("ab");
+		CHECK(edit->text() == QStringLiteral("ab"),
+		      "a byte on stdin becomes text in the focused widget");
+
+		// The discriminators, chosen because a plain letter proves almost
+		// nothing: a path that simply forwarded each byte's character would
+		// pass the check above with the decoder cut out entirely.
+		//
+		// An arrow is three bytes that must move the cursor and insert
+		// NOTHING. A forwarder inserts "[C".
+		type("\033[D\033[D");
+		type("X");
+		CHECK(edit->text() == QStringLiteral("Xab"),
+		      "and an arrow moves the cursor rather than inserting its bytes");
+
+		// A multi-byte character must arrive as ONE character. A byte-at-a-
+		// time path yields three, and its length is what says so -- the
+		// glyph looks plausible either way.
+		edit->clear();
+		type(QString(QChar(0x6f22)).toUtf8());
+		CHECK(edit->text().size() == 1 && edit->text().at(0) == QChar(0x6f22),
+		      "and a three-byte character arrives as one, not three");
+
+		backend.set_event_sink(&rec);
+	}
+
 	// -- the resize report, which arrives on stdin rather than as a signal.
 	//    Some multiplexers send it, and a terminal answers window operations
 	//    the same way, so the decoder has to know a report from a key.
