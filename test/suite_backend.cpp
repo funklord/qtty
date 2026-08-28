@@ -272,6 +272,19 @@ int suite_backend() {
 		      "kitty alone does not complete the reply");
 		CHECK(caps_complete("\033[?62;4;22c"), "DA1 does");
 
+		// -- OSC 4, the palette. Only the low sixteen are asked for, because
+		//    16 to 255 are a formula every terminal shares and asking would
+		//    be 240 round trips to learn what is already known.
+		const TermCaps pal = caps_of("\033]4;0;rgb:0000/0000/0000\033\\"
+		                             "\033]4;1;rgb:cdcd/0000/0000\033\\"
+		                             "\033]4;15;rgb:ffff/ffff/ffff\033\\");
+		CHECK(pal.palette16.size() == 16, "an OSC 4 reply sizes the palette");
+		CHECK(pal.palette16[1] == qRgb(0xcd, 0, 0), "and lands each index");
+		CHECK(pal.palette16[15] == qRgb(255, 255, 255),
+		      "including the four-digit white, which two digits would darken");
+		CHECK(caps_of("\033]4;99;rgb:ffff/ffff/ffff\033\\").palette16.isEmpty(),
+		      "an index outside the sixteen asked for is ignored");
+
 		// -- DECRQM, which is how a capability is asked about rather than
 		//    assumed. The distinction that matters is between silence and a
 		//    definite zero: qtty used to report mouse and bracketed paste
@@ -304,6 +317,8 @@ int suite_backend() {
 		CHECK(q.contains("\033_G") && q.contains("+q524742")
 		      && q.contains("\033]11;?") && q.contains("\033[16t"),
 		      "and asks for kitty, direct colour, the background and the cell");
+		CHECK(q.contains("\033]4;0;?") && q.contains(";15;?"),
+		      "and for the low sixteen of the palette, not all 256");
 		CHECK(q.contains("\033[?1006$p") && q.contains("\033[?2004$p")
 		      && q.contains("\033[?1004$p") && q.contains("\033[?2026$p"),
 		      "and asks about the modes it had been assuming");

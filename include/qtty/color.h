@@ -1,6 +1,7 @@
 // qtty/color.h -- L2 colour model and quantisation (section 6).
 #pragma once
 #include <QColor>
+#include <QVector>
 #include <QFlags>
 
 namespace Qtty {
@@ -76,6 +77,22 @@ private:
 // Lab candidate table, the luminance calculation and the nearest-of-16
 // fallback all need the same answer.
 QRgb xterm256_rgb(int index);
+
+// The terminal's own low sixteen, when it has told us. Every terminal agrees
+// on 16..255 -- they are a formula -- but 0..15 are the user's scheme, and a
+// terminal with one is the normal case rather than the exotic one.
+//
+// It matters in exactly one place, which is narrower than it first looks:
+// to_xterm256() matches against 16..255 only, so a scheme cannot affect
+// 256-colour quantisation at all. What it does affect is to_ansi16(), which
+// picks the nearest of the sixteen for a colour that has no authored role --
+// and picking "nearest" against the wrong sixteen colours is how a fallback
+// lands somewhere the user can see is wrong.
+//
+// Absent an answer the built-in xterm table stands, which is what every
+// terminal agrees on and what this assumed before it could ask.
+void set_terminal_palette(const QVector<QRgb> &low16);   // empty resets
+QVector<QRgb> terminal_palette();                        // empty when unasked
 
 enum class Attr : quint8 {
 	None      = 0x00,

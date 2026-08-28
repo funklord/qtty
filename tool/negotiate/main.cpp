@@ -46,6 +46,14 @@ int main(int argc, char **argv) {
 	            : "not reported");
 	fprintf(out, "background           %s\n",
 	        c.background_known ? qPrintable(c.background.name()) : "not reported");
+	// The palette is not on Capabilities: it is consumed by the colour model
+	// rather than reported to an application, so it is read from there.
+	const QVector<QRgb> pal = terminal_palette();
+	fprintf(out, "palette              %s\n",
+	        pal.isEmpty() ? "not reported (xterm table assumed)"
+	                      : qPrintable(QStringLiteral("%1 low entries, 0=%2 1=%3")
+	                            .arg(pal.size())
+	                            .arg(QColor(pal[0]).name(), QColor(pal[1]).name())));
 	fprintf(out, "mouse                %s\n", c.mouse ? "yes" : "no");
 	fprintf(out, "bracketed paste      %s\n", c.bracketed_paste ? "yes" : "no");
 	if (out != stdout) fclose(out);

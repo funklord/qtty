@@ -169,6 +169,45 @@ void scan_osc11(const QByteArray &b, TermCaps &out) {
 	}
 }
 
+// The OSC 4 reply, ESC ] 4 ; <index> ; rgb:RRRR/GGGG/BBBB ST -- one reply per
+// index, so a query naming several gets several back.
+//
+// The components are scaled by their own digit width exactly as OSC 11's are,
+// and for the same reason: "rgb:f/f/f" is white and reading two digits per
+// field would make it near-black.
+void scan_osc4(const QByteArray &b, TermCaps &out) {
+	static const QByteArray prefix("\033]4;");
+	for (int i = 0; i + prefix.size() < b.size(); ++i) {
+		if (b.mid(i, prefix.size()) != prefix) continue;
+		int j = i + prefix.size();
+		const int index = scan_uint(b, j);
+		if (index < 0 || index > 15) continue;      // only the low sixteen asked
+		if (j + 5 >= b.size() || b.mid(j, 5) != QByteArrayLiteral(";rgb:")) continue;
+		j += 5;
+		unsigned char rgb[3];
+		bool ok = true;
+		for (int c = 0; c < 3 && ok; ++c) {
+			long v = 0;
+			int digits = 0;
+			while (j < b.size() && hex_digit(b[j]) >= 0 && digits < 4) {
+				v = v * 16 + hex_digit(b[j]);
+				++j;
+				++digits;
+			}
+			if (digits == 0) { ok = false; break; }
+			const long span = (1L << (4 * digits)) - 1;
+			rgb[c] = (unsigned char)((v * 255 + span / 2) / span);
+			if (c < 2) {
+				if (j >= b.size() || b[j] != '/') { ok = false; break; }
+				++j;
+			}
+		}
+		if (!ok) continue;
+		if (out.palette16.isEmpty()) out.palette16.resize(16);
+		out.palette16[index] = qRgb(rgb[0], rgb[1], rgb[2]);
+	}
+}
+
 // The DECRPM reply, ESC [ ? <mode> ; <value> $ y.
 //
 // The "$" is an INTERMEDIATE byte rather than a final, which is what made this
@@ -248,6 +287,12 @@ QByteArray caps_query() {
 	    "\033[?1004$p"                            // focus reporting
 	    "\033[?2004$p"                            // bracketed paste
 	    "\033[?2026$p"                            // synchronised output
+	    // The low sixteen palette entries. Only these: 16 to 255 are a formula
+	    // every terminal shares, so asking would be 240 round trips to learn
+	    // what is already known. Several index/? pairs in one OSC, answered
+	    // one reply each.
+	    "\033]4;0;?;1;?;2;?;3;?;4;?;5;?;6;?;7;?"
+	    ";8;?;9;?;10;?;11;?;12;?;13;?;14;?;15;?\033\\"
 	    // Device attributes, doubling as the sixel probe and as the fence.
 	    "\033[c");
 }
@@ -256,6 +301,7 @@ void scan_caps(const QByteArray &buf, TermCaps &out) {
 	if (find_kitty(buf)) out.kitty = true;
 	scan_tcap(buf, out);
 	scan_osc11(buf, out);
+	scan_osc4(buf, out);
 	scan_winop(buf, out);
 	scan_decrqm(buf, out);
 	scan_da(buf, out);

@@ -175,6 +175,39 @@ produce a terminal with tracking and no usable encoding, which is stranger
 than either having a mouse or not. Worth knowing before anyone reads
 `-sgr-mouse` as "SGR only".
 
+### OSC 4, and a claim of qtty's own that was too broad
+
+beerssh answers `ESC ] 4 ; <n> ; ? ST` now, one reply per index, several
+pairs per query. qtty asks for **0..15 only**: 16..255 are a formula every
+terminal shares, so asking would be 240 round trips to learn what is
+already known.
+
+**qtty's own request overstated the case, and the correction belongs
+here.** It was put as "every quantised colour is computed against the wrong
+table". It is not. `Color::to_xterm256()` builds its candidate list from
+indices **16..255 only** -- the low sixteen are deliberately excluded from
+256-colour matching -- so a user's scheme cannot affect that path at all.
+What it affects is `to_ansi16()`, which picks the nearest of the sixteen
+for a colour carrying no authored role, and that is a documented last
+resort rather than the primary route.
+
+Narrower, then, but real: picking "nearest" against the wrong sixteen
+colours is how a fallback lands somewhere the user can see is wrong.
+
+Measured 10:53, beerssh binary 10:48:54 before the run **and after it**:
+
+    palette   16 low entries, 0=#000000 1=#aa0000
+
+qtty's built-in table has index 1 at **#800000**. So beerssh's default
+scheme differs from the table qtty would otherwise have assumed, on the
+very first index -- exactly as beerssh predicted when it said a default
+build ships a scheme and the difference would show on a normal run rather
+than an exotic one.
+
+A partial answer is refused rather than mixed: half a user's scheme and
+half xterm's is a palette no terminal has, and matching against it would
+be worse than matching against either.
+
 ### Superseded: two things beerssh did not answer
 
 - **OSC 11**, the background colour. Every tier below kitty composites an

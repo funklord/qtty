@@ -195,5 +195,51 @@ int suite_theme() {
 		      "the two frames differ, which is the defect this closes");
 	}
 
+	// The terminal's own low sixteen, asked for with OSC 4 and used here. It
+	// matters in exactly one place and that narrowness is worth stating:
+	// to_xterm256() matches against indices 16..255 only, so a user's scheme
+	// cannot affect 256-colour quantisation at all. to_ansi16() picks the
+	// nearest of the sixteen for a colour with no authored role, and picking
+	// "nearest" against the wrong sixteen is how a fallback lands somewhere
+	// the user can see is wrong.
+	{
+		const QVector<QRgb> before = Qtty::terminal_palette();
+		CHECK(before.isEmpty(), "no palette is assumed until the terminal answers");
+
+		// A mid-blue that the xterm table matches to blue.
+		const Color probe = Color::rgb(qRgb(40, 40, 200));
+		const int xterm_answer = probe.to_ansi16();
+
+		// A scheme in which index 1 -- normally red -- is that same blue. The
+		// nearest of THOSE sixteen is index 1, and no amount of reasoning
+		// about xterm's table would reach it.
+		QVector<QRgb> scheme(16);
+		for (int i = 0; i < 16; ++i) scheme[i] = qRgb(0, 0, 0);
+		scheme[1] = qRgb(40, 40, 200);
+		scheme[7] = qRgb(200, 200, 200);
+		Qtty::set_terminal_palette(scheme);
+		CHECK(Qtty::terminal_palette().size() == 16, "the answer is kept");
+
+		const Color fresh = Color::rgb(qRgb(40, 40, 200));
+		CHECK(fresh.to_ansi16() == 1,
+		      "a colour matches against the terminal's sixteen, not xterm's");
+		CHECK(fresh.to_ansi16() != xterm_answer,
+		      "which is a different answer, or this proves nothing");
+
+		// Cleared, and the built-in table stands again -- which is what a
+		// terminal that never answered gets, and what this assumed before it
+		// could ask.
+		Qtty::set_terminal_palette(QVector<QRgb>());
+		CHECK(Qtty::terminal_palette().isEmpty() &&
+		      Color::rgb(qRgb(40, 40, 200)).to_ansi16() == xterm_answer,
+		      "and clearing it restores the built-in table");
+
+		// A short answer is refused rather than padded: half a user's scheme
+		// and half xterm's is a palette no terminal has.
+		Qtty::set_terminal_palette(QVector<QRgb>{qRgb(1, 2, 3)});
+		CHECK(Qtty::terminal_palette().isEmpty(),
+		      "and a partial palette is refused, not mixed with the built-in one");
+	}
+
 	return fails;
 }

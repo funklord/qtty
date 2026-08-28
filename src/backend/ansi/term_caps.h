@@ -23,6 +23,8 @@
 
 #include <QByteArray>
 #include <QHash>
+#include <QRgb>
+#include <QVector>
 #include <QSize>
 
 namespace Qtty {
@@ -43,6 +45,11 @@ struct TermCaps {
 	// all, which is a different thing from answering 0 and must stay so --
 	// silence is no information, and 0 is a definite no.
 	QHash<int, int> dec_modes;
+
+	// The terminal's low sixteen palette entries, from OSC 4, or empty. Only
+	// 0..15 are asked for: 16..255 are a formula every terminal shares, so
+	// asking would cost 240 round trips to learn what is already known.
+	QVector<QRgb> palette16;
 };
 
 // Tri-state: -1 when the terminal said nothing about this mode, otherwise the

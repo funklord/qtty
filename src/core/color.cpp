@@ -24,9 +24,29 @@ static const QRgb system16[16] = {
 	0xFF808080, 0xFFFF0000, 0xFF00FF00, 0xFFFFFF00,
 	0xFF0000FF, 0xFFFF00FF, 0xFF00FFFF, 0xFFFFFFFF };
 
+// The terminal's own low sixteen, or empty. Global for the reason CellTheme is
+// global: it is a property of the session, every colour conversion needs it,
+// and threading it through a value type's const methods would put it in every
+// signature to serve one branch.
+static QVector<QRgb> s_palette;
+
+void set_terminal_palette(const QVector<QRgb> &low16) {
+	s_palette = low16.size() == 16 ? low16 : QVector<QRgb>();
+}
+
+QVector<QRgb> terminal_palette() { return s_palette; }
+
+// The sixteen this session should match against: the terminal's if it said,
+// and the xterm table otherwise. One function, because a second copy of this
+// choice is how the matcher and the encoder would start disagreeing about
+// which palette they are quantising to.
+static QRgb low16(int index) {
+	return s_palette.isEmpty() ? system16[index] : s_palette[index];
+}
+
 QRgb xterm256_rgb(int index) {
 	if (index < 0 || index > 255) return 0xFF000000;
-	if (index < 16) return system16[index];
+	if (index < 16) return low16(index);
 	if (index >= 232) { const int v = 8 + (index - 232) * 10; return qRgb(v, v, v); }
 	const int i = index - 16;
 	return qRgb(cube_value(i / 36), cube_value((i / 6) % 6), cube_value(i % 6));
@@ -125,9 +145,10 @@ int Color::to_ansi16() const {
 	const QRgb c = kind_ == Rgb ? rgb_ : xterm256_rgb(index_);
 	int best = 7, best_distance = INT_MAX;
 	for (int i = 0; i < 16; ++i) {
-		const int dr = qRed(system16[i]) - qRed(c);
-		const int dg = qGreen(system16[i]) - qGreen(c);
-		const int db = qBlue(system16[i]) - qBlue(c);
+		const QRgb cand = low16(i);
+		const int dr = qRed(cand) - qRed(c);
+		const int dg = qGreen(cand) - qGreen(c);
+		const int db = qBlue(cand) - qBlue(c);
 		const int d = dr * dr + dg * dg + db * db;
 		if (d < best_distance) { best_distance = d; best = i; }
 	}

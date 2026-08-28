@@ -156,6 +156,16 @@ AnsiBackend::AnsiBackend() {
 
 	mode_ = negotiate_graphics(caps_);
 	depth_ = negotiate_color(caps_);
+
+	// The terminal's own low sixteen, where it answered for all of them. A
+	// partial answer is refused rather than mixed with the built-in table:
+	// half a user's scheme and half xterm's is a palette no terminal has, and
+	// matching against it would be worse than matching against either.
+	if (caps_.palette16.size() == 16) {
+		bool complete = true;
+		for (QRgb c : caps_.palette16) if (c == 0) complete = false;
+		if (complete) set_terminal_palette(caps_.palette16);
+	}
 	notifier_ = new QSocketNotifier(0, QSocketNotifier::Read, this);
 	connect(notifier_, &QSocketNotifier::activated, this, [this] { read_input(); });
 }
