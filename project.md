@@ -596,6 +596,24 @@ Still missing:
   anything. They are covered now, along with the quit keys and the
   five-row page step.
 
+  **And the two halves being right separately is not the same fact as the
+  chain working.** The backend delivering a resize to its sink was checked
+  in one suite, the router resizing its window in another, and nothing had
+  ever run SIGWINCH through a real `InputRouter` to a real window. That is
+  the "correct function, unwired feature" shape again, one level up:
+  neither half was wrong and the connection was untested. It is driven end
+  to end now, on the pty, and sabotaging the sink fails both the unit and
+  the chain.
+
+  **The chain test failed first, and the fault was the test's.**
+  `read_winch()` asks `TIOCGWINSZ` on descriptor 1, and the preceding case
+  had left descriptor 1 pointing at the real stdout rather than the pty --
+  so it read the wrong terminal's size and returned early. Reported
+  without checking, that would have been a library defect that was its own
+  plumbing. Worth recording beside the flush note below: a pty test that
+  redirects descriptors has two ways to lie, and both look like the code
+  being wrong.
+
   Two things about writing those tests are worth keeping, because both
   made a test lie before it told the truth. `qApp->quit()` leaves the
   application in a state where a later `processEvents()` need not deliver,

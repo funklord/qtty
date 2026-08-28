@@ -912,6 +912,47 @@ int suite_backend() {
 				CHECK(live_rec.resizes.size() == 1
 				          && live_rec.resizes[0] == QSize(100, 30),
 				      "and reports the new cell size once");
+
+				// End to end, because the two halves being right separately
+				// is not the same fact as the chain working. The backend
+				// delivering to a sink is checked above; the router resizing
+				// its window is checked in suite_router; nothing had ever run
+				// SIGWINCH through a real InputRouter to a real window --
+				// which is exactly the "correct function, unwired feature"
+				// shape this suite keeps turning up.
+				{
+					// fd 1 must BE the pty for this: read_winch() asks
+					// TIOCGWINSZ on descriptor 1, and the preceding case left
+					// it pointing at the real stdout so it would have read the
+					// wrong terminal's size and returned early. A test that
+					// measured that would have reported a library fault that
+					// was its own plumbing.
+					fflush(stdout);
+					::dup2(slave, 1);
+
+					QWidget win;
+					win.setAttribute(Qt::WA_DontShowOnScreen);
+					win.resize(GridMetrics::cells(80, 24));
+					win.show();
+					QCoreApplication::processEvents();
+					InputRouter router(&win);
+					live.set_event_sink(&router);
+
+					ws.ws_col = 60;
+					ws.ws_row = 20;
+					::ioctl(slave, TIOCSWINSZ, &ws);
+					::raise(SIGWINCH);
+					for (int i = 0; i < 50; ++i) QCoreApplication::processEvents();
+
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					CHECK(win.size() == QSize(60 * GridMetrics::cw(),
+					                          20 * GridMetrics::ch()),
+					      "a terminal resize reaches the window, signal to geometry");
+					fflush(stdout);            // before switching BACK, again
+					::dup2(slave, 1);
+					live.set_event_sink(&live_rec);
+				}
 			}
 			fflush(stdout);
 			::dup2(keep_in, 0);
