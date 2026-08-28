@@ -1495,5 +1495,72 @@ int suite_backend() {
 	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Up,
 	      "a DECRPM reply does not stall the decoder");
 
+	// The gate that decides whether to WRITE at all, which is the half of
+	// that lens this suite had not asked -- every check above asks what is
+	// written. tty_out_ gates resume(), suspend() and the geometry query and
+	// gates none of the frame output; nothing asserted either side of it.
+	//
+	// It matters most in suspend(). A terminal left in mouse-reporting mode
+	// writes an escape burst into the user's shell on every click for the
+	// rest of that shell's life, so the modes must go off -- and must never
+	// have been set for a stream that is not a terminal, since then there is
+	// nothing to reset and the bytes land in somebody's file.
+	{
+		int fds[2];
+		int pm = -1, ps = -1;
+		if (::pipe(fds) == 0 && ::openpty(&pm, &ps, nullptr, nullptr, nullptr) == 0) {
+			const auto run_into = [&](int fd) {
+				const int keep = ::dup(1);
+				fflush(stdout);
+				::dup2(fd, 1);
+				{
+					AnsiBackend b;
+					Recorder r;
+					b.set_event_sink(&r);
+					b.resume();
+					b.suspend();
+				}
+				fflush(stdout);
+				::dup2(keep, 1);
+				::close(keep);
+			};
+			// The CONTROL, and the reason it is here rather than assumed:
+			// "wrote nothing" is satisfied by a backend that writes nothing
+			// ever, so the same two calls are made down a pty first.
+			::fcntl(pm, F_SETFL, O_NONBLOCK);
+			run_into(ps);
+			QByteArray on_tty;
+			{
+				char b[4096];
+				ssize_t n;
+				while ((n = ::read(pm, b, sizeof(b))) > 0) on_tty.append(b, int(n));
+			}
+			run_into(fds[1]);
+			::close(fds[1]);
+			::fcntl(fds[0], F_SETFL, O_NONBLOCK);
+			QByteArray on_pipe;
+			{
+				char b[4096];
+				ssize_t n;
+				while ((n = ::read(fds[0], b, sizeof(b))) > 0)
+					on_pipe.append(b, int(n));
+			}
+			::close(fds[0]);
+			::close(pm);
+			::close(ps);
+			CHECK(on_tty.contains("\033[?1049h") && on_tty.contains("\033[?1006h"),
+			      "a terminal gets the alternate screen and the reporting modes");
+			CHECK(on_tty.contains("\033[?1006l") && on_tty.contains("\033[?1049l"),
+			      "and gets them all switched off again");
+			CHECK(!on_pipe.contains("\033[?1049h") && !on_pipe.contains("\033[?1006h"),
+			      "while a pipe is sent no mode it cannot be in");
+			CHECK(on_pipe.isEmpty(),
+			      "and is written nothing at all by resume and suspend");
+		} else {
+			printf("FAIL: could not build the tty/pipe pair\n");
+			++fails;
+		}
+	}
+
 	return fails;
 }

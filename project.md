@@ -795,6 +795,39 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**The gate that decides whether to write at all was asserted on neither
+side.** Every check in the backend suite asks *what* is written; `tty_out_`
+decides *whether*, and gates `resume()`, `suspend()` and the geometry query.
+
+It matters most in `suspend()`. A terminal left in mouse-reporting mode
+writes an escape burst into the user's shell on every click for the rest of
+that shell's life -- so the modes must go off, and must never have been set
+for a stream that is not a terminal, where there is nothing to reset and
+the bytes land in somebody's file.
+
+Both sides are asserted now, and **the control is the point**: "wrote
+nothing" is satisfied by a backend that writes nothing ever, so the same
+two calls run down a pty first and are asserted to produce the alternate
+screen and the reporting modes. One variable changes between the two runs.
+Removing the guard fails exactly the two pipe checks.
+
+**Open, and not settled here: the frame output is not gated by the same
+flag.** `present()`, `set_cursor()`, `present_pixels()`, `present_overlay()`
+and `clear_overlay()` all write whatever `isatty(1)` says, while setup,
+teardown and the geometry query do not. The setup comment says the two ends
+are deliberately independent -- "output can be a pipe while input is still a
+keyboard" -- so this may be intended.
+
+It reads both ways and the reasoning is worth keeping rather than deciding
+in passing. Under `program | cat` the escapes still reach a terminal
+through `cat`, so emitting frames is what makes that work at all -- and the
+modes being suppressed leaves it half-dressed, drawing over the scrollback
+with no mouse and no hidden cursor. Under `program > file` the frames are
+escape soup in a file, and a sixel or kitty upload is a binary blob in it.
+**Whose decision it is: the copyright holder's**, since it is a question
+about what the library promises a redirected stream, not about what the
+code currently does.
+
 **Four methods whose whole job is to emit had no wire test at all.** Once
 the keys were covered, `present_pixels()`, `present_overlay()`,
 `clear_overlay()` and `set_cursor()` were every uncovered line left in the
