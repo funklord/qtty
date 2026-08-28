@@ -574,6 +574,64 @@ int suite_graphics() {
 		      "a translucent pixel composites against the terminal's background");
 	}
 
+	// kitty's Unicode placeholders, checked against the WORKED EXAMPLES in
+	// kitty's own specification rather than against a decoder written here.
+	// A round trip through our own decoder would agree with itself and be
+	// wrong together; these two literals come from the protocol document, so
+	// they are the one witness this file cannot supply for itself.
+	//
+	// The spec prints, for image id 42 in a 2x2:
+	//   \e[38;5;42m \U10EEEE\U0305\U0305  \U10EEEE\U0305\U030D
+	//   \e[38;5;42m \U10EEEE\U030D\U0305  \U10EEEE\U030D\U030D
+	// so a cell is the placeholder, then the ROW diacritic, then the COLUMN.
+	{
+		const auto cluster = [](std::initializer_list<char32_t> cps) {
+			QString out;
+			for (char32_t c : cps) out += QString::fromUcs4(&c, 1);
+			return out;
+		};
+		Qtty::CellBuffer frame(4, 3);
+		Qtty::compose_kitty_placeholders(frame, 42, QRect(0, 0, 2, 2));
+
+		CHECK(frame.at(0, 0).ch == cluster({0x10EEEE, 0x0305, 0x0305}),
+		      "placeholder (0,0) matches the specification's example");
+		CHECK(frame.at(1, 0).ch == cluster({0x10EEEE, 0x0305, 0x030D}),
+		      "and (0,1), which is row 0 column 1");
+		CHECK(frame.at(0, 1).ch == cluster({0x10EEEE, 0x030D, 0x0305}),
+		      "and (1,0), so the row diacritic comes first");
+		CHECK(frame.at(1, 1).ch == cluster({0x10EEEE, 0x030D, 0x030D}),
+		      "and (1,1)");
+		// The id travels in the foreground colour: 42 is 0x00002A.
+		CHECK(frame.at(0, 0).fg.kind() == Qtty::Color::Rgb
+		      && (frame.at(0, 0).fg.value() & 0xFFFFFF) == 42u,
+		      "the image id is carried in the foreground colour");
+
+		// The specification's second example: id 33554474 = 42 + (2 << 24)
+		// needs a third diacritic for the most significant byte, because the
+		// colour carries only 24 bits. U+030E is the diacritic for 2.
+		Qtty::CellBuffer wide(4, 3);
+		Qtty::compose_kitty_placeholders(wide, 33554474u, QRect(0, 0, 2, 2));
+		CHECK(wide.at(0, 0).ch == cluster({0x10EEEE, 0x0305, 0x0305, 0x030E}),
+		      "a big id adds the most-significant-byte diacritic");
+		CHECK(wide.at(1, 0).ch == cluster({0x10EEEE, 0x0305, 0x030D, 0x030E}),
+		      "on every cell, not only the first");
+
+		// One grapheme cluster per cell, which is what makes a placement
+		// ordinary text that any Unicode-aware program moves correctly -- the
+		// whole reason this mode exists.
+		CHECK(frame.at(0, 0).width == 1,
+		      "a placeholder cell is one cell wide");
+
+		// The transmit is quiet, or the terminal answers into whatever host
+		// application the placeholders are being printed through.
+		const QImage art(2, 2, QImage::Format_ARGB32);
+		const QByteArray tx = Qtty::encode_kitty_virtual(42, art, 2, 2);
+		CHECK(tx.startsWith("\033_Ga=T,U=1,q=2,"),
+		      "the transmit creates a virtual placement quietly");
+		CHECK(tx.contains(",c=2,r=2"), "sized in cells, not pixels");
+		CHECK(tx.endsWith("\033\\"), "and is a well-formed APC string");
+	}
+
 	// The other half of section 5.7's pair: an image in the TEXT FLOW must be
 	// a cell multiple or every line after it leaves the cell rows -- which
 	// compounds down the document rather than showing as one wrong picture.

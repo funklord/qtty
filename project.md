@@ -1122,14 +1122,44 @@ Still not done from this list:
   with no special cases. Everything it needs is now in place: tmux is
   detected, the query is wrapped through it, and the cell size is known.
 
-  **It is blocked on data rather than on work.** The encoding needs
-  kitty's row/column diacritic table -- 297 specific code points -- and
-  that table is not on this machine: no kitty package, no
-  `rowcolumn_diacritics` file, and a search of the whole filesystem
-  returns nothing. Writing those code points from memory would put a
-  screenful of wrong combining marks on a real kitty terminal, and a
-  round-trip test against a decoder written from the same memory is one
-  witness wearing two hats. **The table has to come from kitty.**
+  **The encoder and the table are done; the wiring is not.** The table was
+  blocked on data rather than work -- 297 specific code points, none of
+  them ours to choose, and not on this machine. It came from kitty's own
+  `gen/rowcolumn-diacritics.txt`, and the protocol from kitty's
+  `docs/graphics-protocol.rst`, rather than from recall.
+
+  **Fetching it caught an error that recall would have made.** The
+  placeholder character is **U+10EEEE**; U+10EFFF is what memory offered,
+  and it is a plausible neighbour in the same private-use block. A wrong
+  one prints a box in every cell of every image. Sabotaging the constant
+  back to U+10EFFF fails seven checks, and swapping two diacritics fails
+  six -- so the vectors discriminate.
+
+  What makes those checks worth anything is where they come from: they are
+  the **worked examples in kitty's own specification**, not a round trip
+  through a decoder written here. A decoder built from the same memory as
+  the encoder agrees with itself and is wrong together; the specification
+  is the one witness this tree cannot supply for itself.
+
+  The generator carries a proof and refuses to write without it: exactly
+  297 entries, index 0 is U+0305 with 1 and 2 the two the specification's
+  examples pin, no duplicates, every value a code point, and a
+  re-extraction from the source text that must agree.
+
+  **The sabotage reported zero failures the first time, and that was the
+  build rather than the test.** `kitty_diacritics.h` was not in `src.pro`'s
+  `HEADERS`, and qmake writes its dependency list once -- so the edited
+  header never reached the compiler and a green suite meant nothing. It is
+  registered now, and §9.4's staleness note has one more instance: the
+  check that a sabotage landed has to be that the OBJECT rebuilt, not that
+  the text changed.
+
+  **Still to do: the wiring, and one constraint found while writing it.**
+  The image id travels in the foreground colour, so a 256-colour terminal
+  would quantise it and destroy the id. Placeholders are therefore only
+  safe at true colour, or with ids of 255 or less emitted as a palette
+  index -- which the negotiation now knows enough to decide, but nothing
+  yet acts on.
 - ~~The roughly 100 ms scroll-settle debounce for slow links.~~ **Done.**
   Sixel and iTerm2 images have no placement handles, so moving one means
   re-emitting it -- on a slow link that is the whole frame budget spent on

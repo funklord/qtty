@@ -82,6 +82,34 @@ CroppedPlacement crop_placement(const QRect &cell_rect, QSize image, QSize grid)
 // last row is worse than one with a gap under it.
 QSize cells(QSize image_px, QSize cell_px);
 
+// kitty's Unicode-placeholder mode: the path that survives tmux, and the one
+// design.md section 5.7 calls stronger still.
+//
+// An image is transmitted once and given a VIRTUAL placement, then displayed
+// by printing ordinary text -- U+10EEEE with combining diacritics encoding the
+// row and column, and the image id carried in the foreground colour. Because
+// the placement is text, anything Unicode-aware moves it correctly when it
+// redraws: tmux, vim, weechat, and qtty's own diff machinery, with no special
+// cases anywhere.
+//
+// The transmit is quiet (q=2) so the terminal sends no replies that would be
+// read as input by whatever is in between.
+//
+// Both halves come from kitty's specification rather than from recall, and so
+// does the diacritic table -- see src/graphics/kitty_diacritics.h. The
+// placeholder character is U+10EEEE; it is easy to misremember, and a wrong
+// one prints a private-use box in every cell.
+QByteArray encode_kitty_virtual(quint32 id, const QImage &img, int cols, int rows);
+
+// Write a virtual placement's placeholder cells into the buffer. One cell per
+// grid position, each carrying U+10EEEE plus the row and column diacritics --
+// a single grapheme cluster, which is exactly what a Cell holds -- with the id
+// in the foreground colour.
+//
+// Ids of 2^24 or more need a third diacritic for the most significant byte,
+// because the foreground colour carries only 24 bits.
+void compose_kitty_placeholders(CellBuffer &frame, quint32 id, const QRect &cell_rect);
+
 // The other accommodation design.md section 5.7 names: round every image in a
 // QTextDocument up to a whole number of cells.
 //

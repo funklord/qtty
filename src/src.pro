@@ -25,6 +25,7 @@ HEADERS += \
     backend/ansi/ansi_backend.h \
     backend/ansi/term_caps.h \
     backend/ansi/scroll_settle.h \
+    graphics/kitty_diacritics.h \
     backend/null/null_backend.h
 
 SOURCES += \

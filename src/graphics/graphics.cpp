@@ -1,5 +1,7 @@
 // src/graphics/graphics.cpp -- encoders, negotiation, rasterizer, halfblocks.
 #include "qtty/graphics.h"
+#include "kitty_diacritics.h"
+#include <QBuffer>
 #include <QUrl>
 #include <QPixmap>
 #include <QTextFragment>
@@ -245,6 +247,57 @@ static QRgb blend(QRgb over, int a, QRgb under) {
 	return qRgb((qRed(over)   * a + qRed(under)   * (255 - a)) / 255,
 	            (qGreen(over) * a + qGreen(under) * (255 - a)) / 255,
 	            (qBlue(over)  * a + qBlue(under)  * (255 - a)) / 255);
+}
+
+QByteArray encode_kitty_virtual(quint32 id, const QImage &img, int cols, int rows) {
+	// Transmit and create the virtual placement in one escape, which the
+	// specification allows: a=T with U=1. q=2 is quiet mode, so the terminal
+	// answers nothing -- a reply here would be read as input by whatever host
+	// application the placeholders are being printed through.
+	QByteArray png;
+	QBuffer buf(&png);
+	buf.open(QIODevice::WriteOnly);
+	img.save(&buf, "PNG");
+	buf.close();
+	const QByteArray b64 = png.toBase64();
+
+	QByteArray head = "\033_Ga=T,U=1,q=2,f=100,i=" + QByteArray::number(id)
+	                + ",c=" + QByteArray::number(cols)
+	                + ",r=" + QByteArray::number(rows);
+	QByteArray out;
+	const int chunk = 4096;
+	for (int off = 0; off < b64.size(); off += chunk) {
+		const QByteArray part = b64.mid(off, chunk);
+		const bool more = off + chunk < b64.size();
+		out += off == 0 ? head : QByteArray("\033_G");
+		out += ",m=" + QByteArray::number(more ? 1 : 0) + ';' + part + "\033\\";
+	}
+	return out;
+}
+
+void compose_kitty_placeholders(CellBuffer &frame, quint32 id, const QRect &cell_rect) {
+	const bool wide_id = id >= (1u << 24);
+	const int msb = int((id >> 24) & 0xFF);
+	for (int r = 0; r < cell_rect.height(); ++r) {
+		for (int c = 0; c < cell_rect.width(); ++c) {
+			const int X = cell_rect.x() + c, Y = cell_rect.y() + r;
+			if (X < 0 || Y < 0 || X >= frame.cols() || Y >= frame.rows()) continue;
+			if (r >= KITTY_DIACRITIC_COUNT || c >= KITTY_DIACRITIC_COUNT) continue;
+			if (wide_id && msb >= KITTY_DIACRITIC_COUNT) continue;
+			QString cluster;
+			cluster += QString::fromUcs4(reinterpret_cast<const char32_t *>(
+			    &KITTY_PLACEHOLDER), 1);
+			cluster += QString::fromUcs4(&KITTY_DIACRITICS[r], 1);
+			cluster += QString::fromUcs4(&KITTY_DIACRITICS[c], 1);
+			if (wide_id) cluster += QString::fromUcs4(&KITTY_DIACRITICS[msb], 1);
+			Cell &cell = frame.at(X, Y);
+			cell.ch = cluster;
+			cell.fg = Color::rgb(qRgb(int((id >> 16) & 0xFF),
+			                          int((id >> 8) & 0xFF), int(id & 0xFF)));
+			cell.attrs = {};
+			cell.width = 1;
+		}
+	}
 }
 
 int align_text_document(QTextDocument *doc, QSize cell_px) {
