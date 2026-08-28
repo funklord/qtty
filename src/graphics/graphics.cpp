@@ -1,5 +1,10 @@
 // src/graphics/graphics.cpp -- encoders, negotiation, rasterizer, halfblocks.
 #include "qtty/graphics.h"
+#include <QUrl>
+#include <QPixmap>
+#include <QTextFragment>
+#include <QTextCursor>
+#include <QTextBlock>
 #include "qtty/grid.h"
 #include <QFontMetrics>
 #include <QPainter>
@@ -240,6 +245,59 @@ static QRgb blend(QRgb over, int a, QRgb under) {
 	return qRgb((qRed(over)   * a + qRed(under)   * (255 - a)) / 255,
 	            (qGreen(over) * a + qGreen(under) * (255 - a)) / 255,
 	            (qBlue(over)  * a + qBlue(under)  * (255 - a)) / 255);
+}
+
+int align_text_document(QTextDocument *doc, QSize cell_px) {
+	if (!doc || !cell_px.isValid() || cell_px.width() <= 0 || cell_px.height() <= 0)
+		return 0;
+	const int cw = cell_px.width(), ch = cell_px.height();
+	const auto round_up = [](double v, int step) {
+		return double((int(v) + step - 1) / step * step);
+	};
+
+	// Collected first, applied afterwards. Editing a fragment's format through
+	// a cursor changes the document, and the block iterator being walked is
+	// not guaranteed to survive that.
+	struct Edit { int start, end; QTextImageFormat format; };
+	QVector<Edit> edits;
+
+	for (QTextBlock b = doc->begin(); b != doc->end(); b = b.next()) {
+		for (QTextBlock::iterator it = b.begin(); !it.atEnd(); ++it) {
+			const QTextFragment f = it.fragment();
+			if (!f.isValid()) continue;
+			const QTextCharFormat cf = f.charFormat();
+			if (!cf.isImageFormat()) continue;
+			QTextImageFormat img = cf.toImageFormat();
+
+			double w = img.width(), h = img.height();
+			if (w <= 0 || h <= 0) {
+				// Unset in the format, so the layout would use the resource's
+				// natural size and undo any rounding. Resolve it and write it
+				// back explicitly.
+				const QVariant res = doc->resource(QTextDocument::ImageResource,
+				                                  QUrl(img.name()));
+				QSize natural;
+				if (res.canConvert<QImage>()) natural = res.value<QImage>().size();
+				else if (res.canConvert<QPixmap>()) natural = res.value<QPixmap>().size();
+				if (natural.isEmpty()) continue;      // unknowable: leave it
+				if (w <= 0) w = natural.width();
+				if (h <= 0) h = natural.height();
+			}
+			const double aw = round_up(w, cw), ah = round_up(h, ch);
+			if (aw == img.width() && ah == img.height()) continue;
+			img.setWidth(aw);
+			img.setHeight(ah);
+			edits.append({f.position(), f.position() + f.length(), img});
+		}
+	}
+
+	for (const Edit &e : edits) {
+		QTextCursor cur(doc);
+		cur.setPosition(e.start);
+		cur.setPosition(e.end, QTextCursor::KeepAnchor);
+		cur.setCharFormat(e.format);
+	}
+	return int(edits.size());
 }
 
 QSize cells(QSize image_px, QSize cell_px) {

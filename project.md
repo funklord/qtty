@@ -1132,8 +1132,29 @@ Still not done from this list:
   witness wearing two hats. **The table has to come from kitty.**
 - The roughly 100 ms scroll-settle debounce for slow links.
 - `Qtty::PixelSurface`.
-- `qtty::cells()` and `alignTextDocument()`, the two GUI-invisible
-  accommodations design.md §5.7 offers for cell-multiple image sizing.
+- ~~`qtty::cells()` and `alignTextDocument()`, the two GUI-invisible
+  accommodations design.md §5.7 offers for cell-multiple image sizing.~~
+  **Both done.** `align_text_document()` rounds every image in a
+  `QTextDocument` up to whole cells, because an image in the TEXT FLOW that
+  is not a cell multiple pushes every line after it off the cell rows --
+  which compounds down the document rather than showing up as one wrong
+  picture.
+
+  Three cases, and the middle one is the reason it is not a two-line
+  function. An image with an explicit size is rounded. An image with **no**
+  size in its format has its natural size resolved from the document's own
+  resources and written back explicitly, because the layout would otherwise
+  use that natural size and undo the rounding -- skipping it would look
+  like it worked. An image whose size cannot be determined at all is left
+  exactly as it was, since rounding an unknown is inventing a number.
+
+  It is idempotent and reports how many images it changed, which is what
+  makes it safe to run over every document once wherever they are built,
+  and lets a caller tell "nothing to do" from "nothing was done".
+
+  Spelled `align_text_document`, not design.md's `alignTextDocument`: the
+  member rename in §11 moved this project's own identifiers to snake_case
+  and the document still carries the pre-rename name.
 - ~~The `qtty.glyph` / `QIcon::name()` icon substitution registry
   (design.md §8.6).~~ **Done.** A terminal cannot draw a 16-pixel icon in
   one cell -- there is nothing to see at that size, which is why

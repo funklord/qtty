@@ -3,6 +3,7 @@
 // software-composite path, and the colour half-block fallback.
 #pragma once
 #include <QImage>
+#include <QTextDocument>
 #include <QByteArray>
 #include <QFont>
 #include "cell.h"
@@ -80,6 +81,30 @@ CroppedPlacement crop_placement(const QRect &cell_rect, QSize image, QSize grid)
 // leaves a margin; given four it would be cropped, and a picture missing its
 // last row is worse than one with a gap under it.
 QSize cells(QSize image_px, QSize cell_px);
+
+// The other accommodation design.md section 5.7 names: round every image in a
+// QTextDocument up to a whole number of cells.
+//
+// An image embedded in the TEXT FLOW must have a cell-multiple size or every
+// line after it leaves the cell rows -- the inverse of F8, and it compounds
+// down the document rather than showing up as one wrong picture. Rounding up
+// rather than down for the reason cells() does: an image given less room than
+// it needs is cropped, and a picture missing its last row is worse than one
+// with a gap under it.
+//
+// An image with no explicit size in its format has its natural size resolved
+// from the document's own resources and written back explicitly, because the
+// layout would otherwise use that natural size and undo the rounding. One
+// whose size cannot be determined at all is left alone -- rounding an unknown
+// would be inventing a number.
+//
+// Named align_text_document rather than design.md's alignTextDocument: the
+// member rename pass (section 11) moved this project's own identifiers to
+// snake_case, and the document still spells the pre-rename name.
+//
+// Returns the number of images it changed, so a caller can tell "nothing to
+// do" from "nothing was done".
+int align_text_document(QTextDocument *doc, QSize cell_px);
 
 // `under` is what a translucent pixel is composited against: the terminal's
 // own background. It defaults to a dark grey because that is what this

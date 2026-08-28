@@ -1,6 +1,9 @@
 // suite_graphics -- section 17.3: encoders, negotiation, halfblock composite, overlays.
 #include <qtty/qtty.h>
 #include <QtWidgets>
+#include <QTextBlock>
+#include <QTextFragment>
+#include <QTextCursor>
 #include <cstdio>
 
 using namespace Qtty;
@@ -569,6 +572,67 @@ int suite_graphics() {
 		                         qRgb(255, 255, 255));
 		CHECK(dark.at(0, 0).bg != light.at(0, 0).bg,
 		      "a translucent pixel composites against the terminal's background");
+	}
+
+	// The other half of section 5.7's pair: an image in the TEXT FLOW must be
+	// a cell multiple or every line after it leaves the cell rows -- which
+	// compounds down the document rather than showing as one wrong picture.
+	{
+		QTextDocument doc;
+		QImage art(25, 30, QImage::Format_ARGB32);
+		art.fill(Qt::red);
+		doc.addResource(QTextDocument::ImageResource,
+		                QUrl(QStringLiteral("art://one")), art);
+		QTextCursor cur(&doc);
+		cur.insertText(QStringLiteral("before "));
+		QTextImageFormat sized;
+		sized.setName(QStringLiteral("art://one"));
+		sized.setWidth(25);
+		sized.setHeight(30);
+		cur.insertImage(sized);
+		cur.insertText(QStringLiteral(" after"));
+
+		// Unsized in the format: the layout would use the resource's natural
+		// size and undo the rounding, so it has to be resolved and written
+		// back rather than skipped.
+		QTextImageFormat unsized;
+		unsized.setName(QStringLiteral("art://one"));
+		cur.insertImage(unsized);
+
+		// A name that resolves to nothing at all. Rounding an unknown would
+		// be inventing a number, so it is left exactly as it was.
+		QTextImageFormat missing;
+		missing.setName(QStringLiteral("art://absent"));
+		cur.insertImage(missing);
+
+		const int changed = Qtty::align_text_document(&doc, QSize(10, 19));
+		CHECK(changed == 2, "both resolvable images are aligned and the third is not");
+
+		QVector<QSizeF> got;
+		for (QTextBlock b = doc.begin(); b != doc.end(); b = b.next())
+			for (QTextBlock::iterator it = b.begin(); !it.atEnd(); ++it) {
+				const QTextFragment f = it.fragment();
+				if (f.isValid() && f.charFormat().isImageFormat()) {
+					const QTextImageFormat i = f.charFormat().toImageFormat();
+					got.append(QSizeF(i.width(), i.height()));
+				}
+			}
+		CHECK(got.size() == 3, "the document still has its three images");
+		// 25 -> 30 and 30 -> 38: rounded UP, because an image given less room
+		// than it needs is cropped and a picture missing its last row is
+		// worse than one with a gap under it.
+		CHECK(got.value(0) == QSizeF(30, 38), "an explicit size is rounded up");
+		CHECK(got.value(1) == QSizeF(30, 38),
+		      "and a natural size is resolved and then rounded");
+		CHECK(got.value(2) == QSizeF(0, 0), "an unresolvable image is left alone");
+
+		// Idempotent, which is what makes it safe to call on a document that
+		// has already been through it -- the obvious way to use it is on
+		// every document, once, wherever they are built.
+		CHECK(Qtty::align_text_document(&doc, QSize(10, 19)) == 0,
+		      "running it again changes nothing");
+		CHECK(Qtty::align_text_document(nullptr, QSize(10, 19)) == 0,
+		      "and a null document is not a crash");
 	}
 
 	// section 5.7's image sizing, which needs the cell measured rather than
