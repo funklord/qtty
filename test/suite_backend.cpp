@@ -1234,6 +1234,134 @@ int suite_backend() {
 						else qputenv("QTTY_GRAPHICS", had_gfx3);
 					}
 
+					// The four methods that WRITE and had no wire test at
+					// all: present_pixels, present_overlay, clear_overlay and
+					// set_cursor were every uncovered line left in this file
+					// once the keys were done. Each is a public entry point
+					// whose whole job is to emit, and each was reached only by
+					// callers no test drove -- the seam finding again, from
+					// the emission end.
+					fflush(stdout);
+					::dup2(slave, 1);
+					{
+						const QByteArray had_gfx4 = qgetenv("QTTY_GRAPHICS");
+						QByteArray eout;
+						const auto pump = [&] {
+							ssize_t n;
+							while ((n = ::read(master, drain, sizeof(drain))) > 0)
+								eout.append(drain, int(n));
+						};
+						const auto fresh = [&] {
+							const ssize_t w5 = ::write(master, answer.constData(),
+							                           answer.size());
+							(void)w5;
+						};
+						const int icw = GridMetrics::cw(), ich = GridMetrics::ch();
+						QImage art(icw * 2, ich * 2, QImage::Format_ARGB32);
+						art.fill(QColor(10, 200, 30));
+
+						// The cursor. Its POLICY -- which cell, and whether a
+						// delegating widget gets one -- is asserted in the
+						// widget suite; what it emits was asserted nowhere.
+						// The exact sequence, because the interesting part is
+						// the 1-based conversion: a check for "some CUP" would
+						// pass with the row and column off by one, which is
+						// the whole of what this function computes.
+						fresh();
+						{
+							AnsiBackend cur;
+							Recorder cur_rec;
+							cur.set_event_sink(&cur_rec);
+							(void)cur.capabilities();
+							while (::read(master, drain, sizeof(drain)) > 0) { }
+							eout.clear();
+							cur.set_cursor(QPoint(3, 2), CursorShape::Bar);
+							pump();
+							const bool placed = eout.contains("\033[3;4H")
+							                 && eout.contains("\033[?25h");
+							eout.clear();
+							cur.set_cursor(std::nullopt, CursorShape::Hidden);
+							pump();
+							const bool hidden = eout.contains("\033[?25l");
+							fflush(stdout);
+							::dup2(keep_out, 1);
+							CHECK(placed,
+							      "set_cursor puts the cursor at the cell, counting from one");
+							CHECK(hidden, "and hides it when there is none");
+							fflush(stdout);
+							::dup2(slave, 1);
+						}
+
+						// present_pixels: one finished picture, which is what
+						// the compositor hands over when an overlay forces a
+						// software composite. Three tiers, and all three are
+						// asserted together so that a switch answering the
+						// same way whatever the mode fails rather than passes.
+						QByteArray kout, sout2, iout;
+						const auto pixels = [&](const char *mode, QByteArray &into) {
+							qputenv("QTTY_GRAPHICS", mode);
+							fresh();
+							AnsiBackend px;
+							Recorder px_rec;
+							px.set_event_sink(&px_rec);
+							(void)px.capabilities();
+							while (::read(master, drain, sizeof(drain)) > 0) { }
+							eout.clear();
+							px.present_pixels(art, QRegion());
+							pump();
+							into = eout;
+						};
+						pixels("kitty", kout);
+						pixels("sixel", sout2);
+						pixels("iterm2", iout);
+
+						// The overlay pair, on the tier that has one. The id
+						// arithmetic is the assertion: overlays live in their
+						// own id space above the placements, and a transmit
+						// and a delete that disagreed about it would leave the
+						// picture on screen for ever.
+						qputenv("QTTY_GRAPHICS", "kitty-alpha");
+						fresh();
+						QByteArray ovon, ovoff;
+						{
+							AnsiBackend ov;
+							Recorder ov_rec;
+							ov.set_event_sink(&ov_rec);
+							(void)ov.capabilities();
+							while (::read(master, drain, sizeof(drain)) > 0) { }
+							eout.clear();
+							ov.present_overlay(7, art, QPoint(2, 1), 3);
+							pump();
+							ovon = eout;
+							eout.clear();
+							ov.clear_overlay(7);
+							pump();
+							ovoff = eout;
+						}
+						const QByteArray ovid =
+						    "i=" + QByteArray::number(0xFFFFE00u + 7u);
+
+						fflush(stdout);
+						::dup2(keep_out, 1);
+						CHECK(kout.contains("\033_Ga=T") && kout.contains("a=d,d=a"),
+						      "present_pixels on kitty replaces the picture");
+						CHECK(sout2.contains("\033P0;1;0q"),
+						      "and on sixel it is a sixel");
+						CHECK(iout.contains("\033]1337;File=inline=1"),
+						      "and on iTerm2 it is an inline file");
+						CHECK(!sout2.contains("\033_Ga=T")
+						      && !iout.contains("\033_Ga=T"),
+						      "each tier emits only its own, rather than one answer for all");
+						CHECK(ovon.contains("\033_Ga=T") && ovon.contains(ovid),
+						      "present_overlay transmits in the overlay id space");
+						CHECK(ovoff.contains("a=d,d=i") && ovoff.contains(ovid),
+						      "and clear_overlay deletes the same id");
+						fflush(stdout);
+						::dup2(slave, 1);
+						if (had_gfx4.isEmpty()) qunsetenv("QTTY_GRAPHICS");
+						else qputenv("QTTY_GRAPHICS", had_gfx4);
+					}
+
 					fflush(stdout);            // before switching BACK, too
 					::dup2(slave, 1);
 					if (had_gfx.isEmpty()) qunsetenv("QTTY_GRAPHICS");

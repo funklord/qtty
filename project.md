@@ -795,6 +795,32 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**Four methods whose whole job is to emit had no wire test at all.** Once
+the keys were covered, `present_pixels()`, `present_overlay()`,
+`clear_overlay()` and `set_cursor()` were every uncovered line left in the
+backend -- each a public entry point reached only through callers no test
+drove. The seam finding again, from the emission end.
+
+`set_cursor()` is the one that matters most, because its **policy** is
+asserted in the widget suite -- which cell, and whether a delegating widget
+gets one -- and what it writes was asserted nowhere. The assertion is the
+exact sequence rather than "some CUP", since the 1-based conversion is the
+whole of what the function computes and an off-by-one satisfies any looser
+check. Sabotaging the `+ 1`s fails it.
+
+The three pixel tiers are asserted **together**, with a fourth check that
+neither of the other two emits kitty's escape: a switch answering the same
+way whatever the mode passes every individual check and fails that one.
+Sabotaging sixel to emit a kitty image fails both, which is the pair
+working. The overlay pair is asserted on its id arithmetic -- overlays live
+in an id space above the placements, and a transmit and a delete that
+disagreed would leave the picture on screen for ever.
+
+97.03% in the backend after, from 86.70%. What remains is the palette
+completion, the SIGWINCH pipe failure path (inert by construction), the
+known-background half-block branch, one unmapped key and an escape arriving
+inside a bracketed paste.
+
 **Coverage named seven keys the decoder had never decoded.** Measured over
 the whole library rather than guessed at: 94.5% of lines, concentrated
 enough that `ansi_backend.cpp` at 86.70% held most of what was missing. Its
