@@ -29,9 +29,16 @@ Today (implemented):
 - `QTTY_GRAPHICS` env override: `none | halfblocks | sixel | iterm2 | kitty
   | kitty-alpha`. A cooperating terminal exports this and qtty obeys —
   exact, no sniffing.
-- `TERM` containing `beerssh` is recognised and provisionally assumed
-  `kitty-alpha` (the modern bar). Correct via `QTTY_GRAPHICS` until [Q1] is
-  answered.
+- ~~`TERM` containing `beerssh` is recognised and provisionally assumed
+  `kitty-alpha`.~~ **Removed**, and the removal is the point of the
+  measurement below. That special case was a guess at a sibling's
+  capability set made before either end could ask; now that beerssh answers
+  the standard kitty query, the measured path decides and the guess is
+  never reached. Where it *would* still be reached -- a beerssh that
+  answered nothing -- it was actively dangerous: it said yes to kitty on
+  behalf of a terminal that had just proved silent, and it assumed
+  **alpha over text**, which beerssh has never claimed and the protocol has
+  no query for. A silent beerssh gets half-blocks now.
 
 Proposed next step: a query handshake so capabilities survive ssh hops where
 env vars may not (`SendEnv`/`AcceptEnv` friction):
@@ -72,7 +79,7 @@ The wire reply, all features on:
     ESC P 0 + r 5463 ESC \      XTGETTCAP Tc: no
     ESC [ ? 1 ; 2 ; 4 c         device attributes, 4 = sixel
 
-**[Q1] is answered**: kitty graphics and sixel, both discoverable by the
+**[Q1] is answered in part**: kitty graphics and sixel, both discoverable by the
 conventional probes. Whether kitty alpha-over-text works is NOT answered —
 the protocol has no query for it, which is why qtty picks that variant from
 `$TERM` and treats a wrong guess as costing appearance rather than

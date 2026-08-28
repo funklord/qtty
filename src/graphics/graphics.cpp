@@ -31,10 +31,22 @@ Capabilities::GraphicsMode detect_graphics_mode() {
 	const QByteArray term = qgetenv("TERM").toLower();
 	const QByteArray prog = qgetenv("TERM_PROGRAM").toLower();
 
-	if (term.contains("beerssh"))
-		// Provisional until beerssh publishes its capability set
-		// (doc/beerssh.md): assume the modern bar, correct via QTTY_GRAPHICS.
-		return Capabilities::KittyAlpha;
+	// There was a beerssh special case here, assuming KittyAlpha from $TERM
+	// alone -- "provisional until beerssh publishes its capability set". It is
+	// removed, and the reason is worth keeping.
+	//
+	// This function is now only reached when the terminal answered NOTHING
+	// (negotiate_graphics), so every branch in it is a guess. A guess that
+	// says yes to kitty costs a screenful of escape sequences, and this one
+	// said yes on behalf of a terminal that had just proved silent. It also
+	// assumed ALPHA over text, which beerssh has never claimed and which the
+	// protocol has no query for -- an unverified guess in the most expensive
+	// direction available.
+	//
+	// It is unnecessary as well as unsafe: beerssh answers the kitty query
+	// (measured, doc/beerssh.md), so the measured path decides and hands back
+	// the tier without any of this. A silent beerssh now falls to half-blocks,
+	// which is the safe direction and the honest one.
 	if (!qgetenv("KITTY_WINDOW_ID").isEmpty() || term.contains("kitty")
 	    || term.contains("ghostty"))
 		return Capabilities::KittyAlpha;          // kitty protocol, alpha over text

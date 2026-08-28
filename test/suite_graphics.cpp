@@ -261,9 +261,25 @@ int suite_graphics() {
 		CHECK(detect_graphics_mode() == Capabilities::Sixel, "foot -> Sixel");
 		setenvs("", "xterm-256color", "");
 		CHECK(detect_graphics_mode() == Capabilities::Halfblocks, "plain xterm -> Halfblocks");
+		// $TERM=beerssh used to be a special case returning KittyAlpha --
+		// "provisional until beerssh publishes its capability set". It is
+		// gone, and this asserts the absence rather than deleting the case
+		// quietly.
+		//
+		// Two reasons it had to go. This function is now reached only when
+		// the terminal answered NOTHING, so every branch is a guess -- and
+		// that one said yes to kitty on behalf of a terminal that had just
+		// proved silent, which is the direction that costs a screenful of
+		// escape sequences. It also assumed ALPHA over text, which beerssh
+		// never claimed and the protocol has no query for.
+		//
+		// It is unnecessary too: beerssh answers the kitty query, so the
+		// measured path decides and never reaches here. Verified against the
+		// real terminal, not only here -- graphics on gives Kitty, and
+		// --term-features=none gives half-blocks.
 		setenvs("", "beerssh", "");
-		CHECK(detect_graphics_mode() == Capabilities::KittyAlpha,
-		      "beerssh recognised (provisional KittyAlpha)");
+		CHECK(detect_graphics_mode() == Capabilities::Halfblocks,
+		      "a silent terminal gets no tier from its name alone");
 		qputenv("QTTY_GRAPHICS", "sixel");
 		CHECK(detect_graphics_mode() == Capabilities::Sixel,
 		      "QTTY_GRAPHICS override beats TERM heuristics");
