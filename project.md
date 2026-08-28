@@ -795,6 +795,46 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**A tool button with a menu looked exactly like one without.** Coverage
+named the four `PE_IndicatorArrow*` cases as never drawn, and asking which
+widget reaches them found that **none does**: the combo box, the spin box,
+the scroll bar and the tool button are all drawn whole by this style, so
+every obvious candidate answers for itself. The arrows are reachable only
+by an application calling `drawPrimitive()` directly.
+
+That is a coverage curiosity. The defect behind it is not: a dropdown had
+no affordance at all, so the only way to discover one was to press the
+button. `CC_ToolButton` drew brackets and a label; `CT_ToolButton` measured
+brackets and a label. Both know about the menu now, and the pair is the
+point -- a marker drawn without being measured takes a cell the elide then
+pays for out of the label, which is the toolbar fault of section 17.2 in
+the other order.
+
+Asserted as the **exact row**, `[Go ▾]`, at the button's size hint. Position
+is the whole of it: an arrow over the label or outside the closing bracket
+satisfies any check that asks only whether the glyph is present. Sized wider
+the label pads and the marker tracks the bracket, which is also correct and
+is why the assertion needs the hint -- the first draft set a width of ten
+cells and got `[Go     ▾]`, a probe assuming a geometry it had itself
+overridden.
+
+**And it found a `GridGuard` false positive, which is the second.** A
+`QMenu` handed to a tool button sits at its construction-time 100x30 until
+it is popped up, and the guard reported it -- so any application using
+`QToolButton::setMenu()` gets a violation for a geometry nothing draws
+from, whose only "fix" is to resize a menu that nothing reads. The
+deforming-the-source failure, exactly.
+
+Not an exemption by class, because a menu that IS on screen must be checked
+like anything else. It is a question of **when**: a widget that has never
+been shown has no drawn geometry. `QEvent::Show` joins the triggers so
+nothing is lost -- a widget laid out while hidden and shown at an unchanged
+geometry would otherwise escape, there being no resize to catch it -- and
+adding it produced no new violations anywhere in the suite.
+
+`drawPolygon` is covered too, driven at the engine rather than through a
+widget, since the widgets that would reach it are the self-drawn ones above.
+
 **The gate that decides whether to write at all was asserted on neither
 side.** Every check in the backend suite asks *what* is written; `tty_out_`
 decides *whether*, and gates `resume()`, `suspend()` and the geometry query.

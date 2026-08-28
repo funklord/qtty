@@ -153,8 +153,24 @@ bool GridGuard::is_exempt(const QWidget *w) {
 }
 
 bool GridGuard::eventFilter(QObject *obj, QEvent *event) {
-	if (event->type() == QEvent::Resize || event->type() == QEvent::Move) {
+	if (event->type() == QEvent::Resize || event->type() == QEvent::Move
+	    || event->type() == QEvent::Show) {
 		if (QWidget *w = qobject_cast<QWidget *>(obj)) {
+			// A widget that has never been shown has a geometry nothing
+			// draws from, and Qt gives it one anyway. A QMenu handed to a
+			// tool button sits at its construction-time 100x30 until it is
+			// popped up, at which point the compositor positions and snaps
+			// it -- so the reported geometry is one the application should
+			// not be setting, and an author told to fix it would resize a
+			// menu that nothing reads. That is the deforming-the-source
+			// failure the style gate taught this tree.
+			//
+			// Not an exemption by class, which would be wrong: a menu that
+			// IS on screen must be checked like anything else. It is a
+			// question of WHEN, so Show joins the triggers -- otherwise a
+			// widget laid out while hidden and shown at an unchanged
+			// geometry would escape, there being no resize to catch.
+			if (event->type() != QEvent::Show && w->isHidden()) return false;
 			// A top-level is asked about its SIZE and not its position. In
 			// qtty a window's own x and y mean nothing: there is no window
 			// manager, and Compositor::compose() decides where each
@@ -366,7 +382,12 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 			int cells = 0;
 			for (const QString &cluster : to_clusters(tool_button_label(tb, w)))
 				cells += cluster_width(cluster);
-			return QSize((cells + 2) * cw, ch);      // + the two brackets
+			// A button carrying a menu is measured for the marker that says
+			// so, or the marker is drawn into the last cell of the label and
+			// the elide eats a letter to make room for something the
+			// measurement never admitted was there.
+			const bool menu = tb->features & QStyleOptionToolButton::HasMenu;
+			return QSize((cells + 2 + (menu ? 2 : 0)) * cw, ch);
 		}
 		return QSize(width, ch);
 
@@ -655,7 +676,18 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 					             || (w && w == s_focus);
 				dev->buffer().put_cluster(c.left(), row, QStringLiteral("["));
 				dev->buffer().put_cluster(c.right(), row, QStringLiteral("]"));
-				const int inner = c.width() - 2;
+				// A menu is an affordance or it is nothing: a tool button
+				// with a dropdown looked exactly like one without, so the
+				// only way to discover it was to press it. The base style
+				// draws this with PE_IndicatorArrowDown, which this style
+				// answers -- but nothing reaches that primitive, because the
+				// combo box, the spin box, the scroll bar and this are all
+				// drawn whole here.
+				const bool menu = tb->features & QStyleOptionToolButton::HasMenu;
+				if (menu)
+					dev->buffer().put_cluster(c.right() - 1, row,
+						                      QStringLiteral("▾"));
+				const int inner = c.width() - 2 - (menu ? 2 : 0);
 				if (inner > 0)
 					dev->buffer().text(c.left() + 1, row,
 						                   elide_to_cells(tool_button_label(tb, w), inner),

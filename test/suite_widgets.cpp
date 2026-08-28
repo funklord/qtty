@@ -683,6 +683,50 @@ int suite_widgets() {
 		      "and the button was measured with the glyph in it");
 		Qtty::clear_icon_glyphs();
 	}
+	{
+		// The four arrow primitives, which coverage named as never drawn.
+		// They are not dead: the qtty style draws the combo box, the spin box
+		// and the scroll bar WHOLE, so none of the obvious candidates reaches
+		// them -- but a tool button with a menu falls through to the base
+		// style, which asks this one for PE_IndicatorArrowDown.
+		//
+		// Note what that means for the combo test above, which asserts the
+		// same glyph: it passes through CC_ComboBox's own drawing, so a check
+		// for the arrow cannot say which path drew it. This window holds one
+		// tool button and nothing else, so here it can.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *tb = new QToolButton(&host);
+		auto *menu = new QMenu(tb);
+		menu->addAction(QStringLiteral("One"));
+		tb->setText(QStringLiteral("Go"));
+		tb->setMenu(menu);
+		tb->setPopupMode(QToolButton::MenuButtonPopup);
+		// At its size HINT, which is what a layout or a toolbar gives it.
+		// Sized wider the label pads and the marker tracks the closing
+		// bracket -- also correct, and not what discriminates: the exact row
+		// is only exact when the button is the width it asked for.
+		tb->setGeometry(0, 0, tb->sizeHint().width(), GridMetrics::ch());
+		host.resize(GridMetrics::cells(20, 3));
+		host.show();
+		QCoreApplication::processEvents();
+
+		Qtty::CellBuffer buf(20, 3);
+		Qtty::render_once(host, buf);
+		// The exact row, not "the arrow appears somewhere": position is the
+		// whole of it. An arrow drawn over the label, or outside the closing
+		// bracket, satisfies any check that only asks whether the glyph is
+		// present -- and one drawn over the label is the toolbar fault this
+		// suite already found once, in the other order.
+		const QString row = buf.to_text().split(QLatin1Char('\n')).value(0);
+		CHECK(row.startsWith(QStringLiteral("[Go ▾]")),
+		      "a tool button with a menu says so, beside its label");
+		// And the measurement must agree with the drawing, or the marker is
+		// drawn into a cell the width never admitted was needed and the
+		// elide eats a letter to pay for it.
+		CHECK(tb->sizeHint().width() == GridMetrics::cw() * 6,
+		      "and the button was measured with the marker in it");
+	}
 
 	return fails;
 }

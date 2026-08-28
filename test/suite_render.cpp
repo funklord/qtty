@@ -260,5 +260,44 @@ int suite_render(bool record) {
 		}
 	}
 
+	// drawPolygon, which coverage named as a paint-engine primitive nothing
+	// ever exercised. It is not decoration: every Qt widget that draws an
+	// arrow, a triangle or a chevron through the default style arrives here,
+	// and the engine turns it into the box of its bounding rectangle rather
+	// than dropping it.
+	//
+	// Driven at the engine, like the caret above, because reaching it through
+	// a widget would depend on which style path that widget happens to take
+	// -- and the qtty style draws the combo, spin and scroll bars whole, so
+	// the obvious candidates never call it.
+	{
+		Qtty::CellBuffer buf(10, 4);
+		const QString before = buf.to_text();
+		{
+			Qtty::CellPaintDevice dev(buf);
+			QPainter p(&dev);
+			const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+			const QPointF tri[3] = { QPointF(cw, ch), QPointF(cw * 4, ch),
+				                     QPointF(cw * 2.5, ch * 3) };
+			p.setBrush(QGuiApplication::palette().color(QPalette::Text));
+			p.drawPolygon(tri, 3);
+		}
+		// Asserted as CHANGED plus a corner, not merely changed: a polygon
+		// that painted one stray cell would satisfy "something happened",
+		// and the bounding box is what this primitive actually computes.
+		const bool drew = buf.to_text() != before;
+		const bool boxed = buf.at(1, 1).ch != QStringLiteral(" ")
+		                && buf.at(3, 1).ch != QStringLiteral(" ");
+		if (drew && boxed)
+			printf("PASS: a polygon becomes the box of its bounding rectangle\n");
+		else {
+			printf("FAIL: a polygon becomes the box of its bounding rectangle\n");
+			printf("      drew=%d boxed=%d, buffer '%s'\n", int(drew), int(boxed),
+			       qPrintable(buf.to_text().replace(QLatin1Char('\n'),
+			                                        QLatin1Char('/'))));
+			++r;
+		}
+	}
+
 	return r;
 }
