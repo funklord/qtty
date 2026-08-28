@@ -113,15 +113,32 @@ and nothing else changes -- so the switch is honest and qtty reads the
 difference. That is the first capability qtty has verified against a
 terminal that can be told to lack it, rather than against its own double.
 
-**A new discrepancy, and it is qtty's.** beerssh reports a cell of **9x18**
+**A discrepancy, and it is qtty's.** beerssh reports a cell of **9x18**
 while qtty's own `GridMetrics` derives **10x19** from DejaVu Sans Mono at
-16px. Both are right about different things -- qtty's is the arithmetic its
-layout runs on, beerssh's is what a cell measures on screen -- but
-`compose_halfblocks()` samples an image against the internal ratio, so a
-half-block mosaic is stretched by about five per cent here. `Qtty::cells()`
-takes the terminal's figure and is correct; the mosaic sampler does not and
-is not. Recorded rather than fixed: the internal metric is the basis of
-every widget geometry in the tree.
+16px. Both are right about different things: qtty's is the arithmetic its
+layout runs on, beerssh's is what a cell measures on screen.
+
+**The first version of this paragraph blamed the wrong function, and the
+correction is worth more than the finding.** It said
+`compose_halfblocks()` samples against the internal ratio. It does not --
+it references `GridMetrics` nowhere at all, fits the image to the
+`cell_rect` it is handed, and carries a comment saying exactly that. A
+reader sent there would have found innocent code and no fault.
+
+The mechanism is the LAYOUT, not the sampler. A pixmap a widget draws
+reaches `CellPaintEngine::to_cells()`, which converts pixels to cells at
+qtty's internal 10x19; the terminal then draws each of those cells at
+9x18. So a WxH image occupies `ceil(W/10) x ceil(H/19)` cells and is shown
+at `(cells_w * 9) x (cells_h * 18)` pixels -- an aspect of
+`(W/H) * (9/10) * (19/18)`, about five per cent narrow. The figure was
+right and the cause was not.
+
+It is not image-specific in origin and not a bug in any one function:
+qtty's notion of a pixel is simply not the terminal's, and only things
+whose appearance depends on pixel ASPECT notice. Text and box drawing do
+not, being cells. What an application should do is size images through
+`Qtty::cells()` with `Capabilities::cell_px`, which is the terminal's
+figure and correct -- which is what that pair is for.
 
 **Both ends were moving during this, twice.** An earlier run of the tool
 reported the background as unanswered while a raw capture minutes later
