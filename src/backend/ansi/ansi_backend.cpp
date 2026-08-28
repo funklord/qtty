@@ -113,6 +113,7 @@ Capabilities::ColorDepth negotiate_color(const TermCaps &caps) {
 }
 
 AnsiBackend::AnsiBackend() {
+	clock_.start();
 	winsize ws{};
 	if (ioctl(1, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
 		cells_ = QSize(ws.ws_col, ws.ws_row);
@@ -329,7 +330,21 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 	// Full-frame emission: measured cheap (section 16.1 F9); damage-limited output
 	// arrives with DEC 2026 bracketing in later polish.
 	CellBuffer composed = frame;
-	const bool pixel_placements = mode_ >= Capabilities::Sixel;
+	// Sixel and iTerm2 have no placement handles, so moving an image means
+	// re-emitting it -- on a slow link that is the whole frame budget spent
+	// on a picture about to move again. While placements are moving they
+	// degrade to the half-block mosaic, which is cells and diffs like any
+	// other text, and the real pixels come back once scrolling settles
+	// (design.md section 5.7).
+	//
+	// Kitty is excluded deliberately: there a placement has a handle and
+	// moving it is one short escape with no re-upload, so degrading would
+	// trade a cheap correct picture for a coarse one and buy nothing.
+	const bool handles = mode_ == Capabilities::Kitty
+	                  || mode_ == Capabilities::KittyAlpha;
+	const bool settled = handles
+	                  || settle_.update(frame.images, clock_.elapsed());
+	const bool pixel_placements = mode_ >= Capabilities::Sixel && settled;
 	if (!pixel_placements)                            // fallback tier: colour
 		for (const CellImage &ci : frame.images)     // half-blocks (section 17.3)
 			// The terminal's own background where it answered for it, rather

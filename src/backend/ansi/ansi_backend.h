@@ -9,6 +9,8 @@
 #include <termios.h>
 #include "qtty/backend.h"
 #include "term_caps.h"
+#include "scroll_settle.h"
+#include <QElapsedTimer>
 #include <QSet>
 #include <QVector>
 
@@ -63,6 +65,8 @@ private:
 	QSize cells_;
 	Capabilities::GraphicsMode mode_;
 	TermCaps caps_;                               // what the terminal answered
+	ScrollSettle settle_;                         // section 5.7, sixel/iTerm2 only
+	QElapsedTimer clock_;
 	void query_geometry();                        // re-ask after a resize
 	Capabilities::ColorDepth depth_;             // negotiated (section 6)
 	QSet<quint64> uploaded_;                     // kitty upload-once cache

@@ -11,6 +11,7 @@
 #include <qtty/qtty.h>
 #include "src/backend/ansi/ansi_backend.h"
 #include "src/backend/ansi/term_caps.h"
+#include "src/backend/ansi/scroll_settle.h"
 #include <QtWidgets>
 #include <cstdio>
 #include <unistd.h>
@@ -621,6 +622,77 @@ int suite_backend() {
 				char out[4096];
 				const ssize_t got = ::read(master, out, sizeof(out));
 				const QByteArray written(out, got > 0 ? int(got) : 0);
+				// The settle policy WIRED, not merely correct: a policy
+				// nothing consults is the fault this suite keeps finding.
+				// Driven at the sixel tier, since that is the one that pays
+				// for movement -- kitty is excluded by design because a
+				// placement there has a handle.
+				{
+					const QByteArray had_gfx = qgetenv("QTTY_GRAPHICS");
+					qputenv("QTTY_GRAPHICS", "sixel");
+					AnsiBackend sx;
+					Recorder sx_rec;
+					sx.set_event_sink(&sx_rec);
+					CellBuffer f(20, 6);
+					CellImage ci;
+					ci.key = 77;
+					ci.cell_rect = QRect(0, 0, 4, 2);
+					ci.pixmap = QPixmap::fromImage(
+					    QImage(8, 8, QImage::Format_ARGB32));
+					f.images.append(ci);
+
+					const auto emit_frame = [&](const QRect &at) {
+						f.images[0].cell_rect = at;
+						while (::read(master, drain, sizeof(drain)) > 0) { }
+						sx.present(f, QRegion());
+						QByteArray got;
+						ssize_t n;
+						while ((n = ::read(master, drain, sizeof(drain))) > 0)
+							got.append(drain, int(n));
+						return got;
+					};
+					const QByteArray still = emit_frame(QRect(0, 0, 4, 2));
+					const QByteArray moved = emit_frame(QRect(0, 2, 4, 2));
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					CHECK(still.contains("\033P0;1;0q"),
+					      "a still placement is emitted as real sixel");
+					CHECK(!moved.contains("\033P0;1;0q"),
+					      "and a moved one degrades to the mosaic instead");
+					// The exclusion, which is a claim and therefore needs a
+					// check: kitty placements have handles, so moving one is
+					// a short escape with no re-upload and degrading it would
+					// trade a cheap correct picture for a coarse one. Without
+					// this, "excluded" is a comment.
+					fflush(stdout);
+					::dup2(slave, 1);          // present() must write to the pty
+					qputenv("QTTY_GRAPHICS", "kitty");
+					AnsiBackend kt;
+					Recorder kt_rec;
+					kt.set_event_sink(&kt_rec);
+					const auto kitty_frame = [&](const QRect &at) {
+						f.images[0].cell_rect = at;
+						while (::read(master, drain, sizeof(drain)) > 0) { }
+						kt.present(f, QRegion());
+						QByteArray got;
+						ssize_t n;
+						while ((n = ::read(master, drain, sizeof(drain))) > 0)
+							got.append(drain, int(n));
+						return got;
+					};
+					kitty_frame(QRect(0, 0, 4, 2));
+					const QByteArray kmoved = kitty_frame(QRect(0, 2, 4, 2));
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					CHECK(kmoved.contains("\033_G"),
+					      "a moved kitty placement is NOT degraded, having a handle");
+
+					fflush(stdout);            // before switching BACK, too
+					::dup2(slave, 1);
+					if (had_gfx.isEmpty()) qunsetenv("QTTY_GRAPHICS");
+					else qputenv("QTTY_GRAPHICS", had_gfx);
+				}
+
 				fflush(stdout);
 				::dup2(keep_out, 1);
 				CHECK(written.contains("\033[16t"),
@@ -639,6 +711,60 @@ int suite_backend() {
 			if (pty_term.isEmpty()) qunsetenv("TERM"); else qputenv("TERM", pty_term);
 			if (!pty_tmux.isEmpty()) qputenv("TMUX", pty_tmux);
 		}
+	}
+
+	// -- section 5.7's scroll-settle policy. The clock is a parameter, so
+	//    this exercises a hundred-millisecond debounce without sleeping for
+	//    one: a test that sleeps is a test that is flaky on a loaded machine.
+	{
+		const auto placed = [](quint64 key, QRect at) {
+			QVector<CellImage> v;
+			CellImage ci;
+			ci.key = key;
+			ci.cell_rect = at;
+			v.append(ci);
+			return v;
+		};
+		ScrollSettle s(100);
+
+		// Nothing has moved yet, so the pixels go out at once. Degrading the
+		// FIRST frame would be exactly backwards: that is when the picture is
+		// most wanted and nothing is costing anything yet.
+		CHECK(s.update(placed(1, QRect(0, 0, 4, 2)), 0),
+		      "the first frame draws real pixels");
+		CHECK(s.update(placed(1, QRect(0, 0, 4, 2)), 10),
+		      "and a frame where nothing moved still does");
+
+		// A placement moves: degrade now, and keep degrading until the
+		// debounce has elapsed with it standing still.
+		CHECK(!s.update(placed(1, QRect(0, 1, 4, 2)), 20),
+		      "a moved placement degrades to the mosaic");
+		CHECK(!s.update(placed(1, QRect(0, 1, 4, 2)), 60),
+		      "and stays degraded while the debounce runs");
+		CHECK(!s.update(placed(1, QRect(0, 2, 4, 2)), 100),
+		      "a move during the wait restarts it");
+		CHECK(!s.update(placed(1, QRect(0, 2, 4, 2)), 150),
+		      "so the clock runs from the LAST move, not the first");
+		CHECK(s.update(placed(1, QRect(0, 2, 4, 2)), 200),
+		      "and the pixels come back once it has settled");
+		CHECK(s.update(placed(1, QRect(0, 2, 4, 2)), 210),
+		      "and stay back rather than flickering");
+
+		// A placement appearing is a picture arriving, not a scroll. Counting
+		// it would degrade the first frame of every image -- the one case the
+		// pixels are most wanted -- which is why only a MOVED placement
+		// counts.
+		ScrollSettle arrive(100);
+		CHECK(arrive.update(placed(1, QRect(0, 0, 4, 2)), 0), "an image arrives");
+		QVector<CellImage> two = placed(1, QRect(0, 0, 4, 2));
+		CellImage second;
+		second.key = 2;
+		second.cell_rect = QRect(5, 0, 4, 2);
+		two.append(second);
+		CHECK(arrive.update(two, 10),
+		      "and a second one appearing beside it is not a scroll");
+		CHECK(arrive.update(placed(1, QRect(0, 0, 4, 2)), 20),
+		      "nor is one going away");
 	}
 
 	return fails;

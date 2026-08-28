@@ -1130,7 +1130,36 @@ Still not done from this list:
   screenful of wrong combining marks on a real kitty terminal, and a
   round-trip test against a decoder written from the same memory is one
   witness wearing two hats. **The table has to come from kitty.**
-- The roughly 100 ms scroll-settle debounce for slow links.
+- ~~The roughly 100 ms scroll-settle debounce for slow links.~~ **Done.**
+  Sixel and iTerm2 images have no placement handles, so moving one means
+  re-emitting it -- on a slow link that is the whole frame budget spent on
+  a picture about to move again. While placements are moving they degrade
+  to the half-block mosaic, which is cells and diffs like any other text,
+  and the real pixels come back once scrolling settles.
+
+  **Kitty is excluded deliberately**, because a placement there has a
+  handle and moving it is one short escape with no re-upload -- degrading
+  would trade a cheap correct picture for a coarse one and buy nothing.
+  design.md scopes the policy to the two tiers that pay for movement.
+
+  Only a placement that MOVED counts. One appearing or vanishing is a
+  picture arriving or leaving, and counting it would degrade the first
+  frame of every image -- the one moment the pixels are most wanted.
+
+  The clock is a parameter rather than a timer read inside, for the reason
+  the capability parser takes bytes rather than a descriptor: a
+  hundred-millisecond debounce tested against the real clock is a test that
+  sleeps, and a test that sleeps is flaky on a loaded machine. Eleven
+  checks drive the policy directly, including that the wait restarts from
+  the LAST move rather than the first.
+
+  **Two things had to be checked separately, and one of them was a claim
+  with nothing behind it.** The policy being correct and the backend
+  consulting it are different facts, so the pty case drives `present()` at
+  the sixel tier and looks for the sixel introducer in what actually
+  reaches the terminal. And "kitty is excluded" was a comment until a
+  sabotage that made kitty degrade too failed to turn anything red; there
+  is a check for it now, and that sabotage fails it at once.
 - ~~`Qtty::PixelSurface`.~~ **Done**, and it is the mirror of
   `ICellPainted`: that interface is for a widget which knows how to draw
   itself in CELLS, this is for one whose content is genuinely pixels -- a

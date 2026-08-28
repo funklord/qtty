@@ -24,6 +24,7 @@ HEADERS += \
     ../include/qtty/overlay.h \
     backend/ansi/ansi_backend.h \
     backend/ansi/term_caps.h \
+    backend/ansi/scroll_settle.h \
     backend/null/null_backend.h
 
 SOURCES += \
