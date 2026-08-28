@@ -628,6 +628,7 @@ int suite_backend() {
 			// A pty buffers, so this is the terminal having answered promptly
 			// rather than a race being papered over.
 			const QByteArray answer = "\033_Gi=31;OK\033\\"
+			                          "\033[?2026;1$y"
 			                          "\033P1+r524742=38\033\\"
 			                          "\033]11;rgb:1c1c/1c1c/1c1c\033\\"
 			                          "\033[6;19;10t"
@@ -742,6 +743,72 @@ int suite_backend() {
 					::dup2(keep_out, 1);
 					CHECK(kmoved.contains("\033_G"),
 					      "a moved kitty placement is NOT degraded, having a handle");
+
+					// DEC 2026, and the pair that matters: the bracket must
+					// open AND close, and the claim in capabilities() must
+					// match what actually goes out. A field saying
+					// "synchronised" over bare frames is exactly the defect
+					// shape this negotiation exists to stop, and it would be
+					// invisible from inside this process.
+					fflush(stdout);
+					::dup2(slave, 1);
+					{
+						const ssize_t w3 = ::write(master, answer.constData(),
+						                           answer.size());
+						(void)w3;
+					}
+					AnsiBackend sy;
+					Recorder sy_rec;
+					sy.set_event_sink(&sy_rec);
+					const bool claims = sy.capabilities().synchronised_output;
+					while (::read(master, drain, sizeof(drain)) > 0) { }
+					CellBuffer sf(20, 4);
+					sy.present(sf, QRegion());
+					QByteArray syout;
+					{
+						ssize_t n;
+						while ((n = ::read(master, drain, sizeof(drain))) > 0)
+							syout.append(drain, int(n));
+					}
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					// The pty answered 2026;1 in `answer`, so this terminal
+					// has it. Both halves, and the claim, or none.
+					CHECK(claims, "a terminal that confirms 2026 is reported as synchronised");
+					CHECK(syout.contains("\033[?2026h") && syout.contains("\033[?2026l"),
+					      "and its frames are bracketed at both ends");
+					CHECK(syout.indexOf("\033[?2026h") < syout.indexOf("\033[?2026l"),
+					      "in that order, which is the only order that syncs anything");
+
+					// The other half, and the one that discriminates: a
+					// terminal answering 0 must get BARE frames and must not
+					// be reported as synchronised. Without this, bracketing
+					// unconditionally would pass every check above.
+					fflush(stdout);
+					::dup2(slave, 1);
+					{
+						QByteArray no = answer;
+						no.replace("\033[?2026;1$y", "\033[?2026;0$y");
+						const ssize_t w4 = ::write(master, no.constData(), no.size());
+						(void)w4;
+					}
+					AnsiBackend nosy;
+					Recorder nosy_rec;
+					nosy.set_event_sink(&nosy_rec);
+					const bool nosy_claims = nosy.capabilities().synchronised_output;
+					while (::read(master, drain, sizeof(drain)) > 0) { }
+					nosy.present(sf, QRegion());
+					QByteArray nosyout;
+					{
+						ssize_t n;
+						while ((n = ::read(master, drain, sizeof(drain))) > 0)
+							nosyout.append(drain, int(n));
+					}
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					CHECK(!nosy_claims, "a terminal answering 0 is not reported as synchronised");
+					CHECK(!nosyout.contains("\033[?2026"),
+					      "and gets no bracket at all, rather than a claim over bare frames");
 
 					// Placeholders end to end. This is the case the whole
 					// tmux path exists for: a proven kitty terminal behind a

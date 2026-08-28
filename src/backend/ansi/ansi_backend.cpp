@@ -192,13 +192,19 @@ Capabilities AnsiBackend::capabilities() const {
 	// DEC 2026 is NOT claimed. section 11 wants synchronised output to
 	// eliminate tearing, and nothing emits the brackets yet; saying true here
 	// would be a field describing an intention rather than the backend.
-	// The terminal's own answer is now available -- DECRQM 2026 is in the
-	// startup query and lands in caps_ -- but this field means "qtty uses
-	// synchronised output", not "the terminal has it", and changing which
-	// question it answers would silently redefine public API. What the
-	// measurement removes is the excuse: implementing it no longer needs a
-	// capability nobody can check.
-	c.synchronised_output = false;
+	// DEC 2026, and the field still means "qtty uses synchronised output"
+	// rather than "the terminal has it" -- it is true because present()
+	// brackets its frames, and it is only true when the terminal confirmed
+	// the mode.
+	//
+	// CONFIRMED ONLY, with the assumption false, which is the opposite
+	// default to mouse and paste above and deliberately so. Those two are
+	// about input qtty would otherwise mishandle, so silence leaves the
+	// working assumption alone. This is about an optimisation worth nothing
+	// on a terminal that lacks it, and DECRQM is the discovery mechanism the
+	// synchronised-output specification itself names -- so a terminal that
+	// says nothing has declined to be asked, and gets unbracketed frames.
+	c.synchronised_output = sync_frames();
 	c.title = false;                                // no OSC 0/2 emitter yet
 	return c;
 }
@@ -233,6 +239,14 @@ extern "C" void qtty_winch_handler(int) {
 // routes it into caps_. That is the shape of the whole capability channel:
 // graphics is tied to input because the terminal has only one way to talk
 // back, and a resize is the event that makes the old answer wrong.
+// Whether frames are bracketed. One place, because present() and
+// capabilities() must not be able to disagree: a field claiming synchronised
+// output while the frames go out bare is exactly the shape of defect this
+// negotiation exists to stop, and it would be invisible from inside.
+bool AnsiBackend::sync_frames() const {
+	return tty_out_ && mode_usable(caps_, 2026, false);
+}
+
 void AnsiBackend::query_geometry() {
 	if (!tty_out_) return;
 	const char q[] = "\033[14t\033[16t";
@@ -418,7 +432,14 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 
 	// The transmission goes out ahead of the frame: the virtual placement has
 	// to exist before the cells that reference it are printed.
-	QByteArray out = uploads + "\033[H";
+	//
+	// Inside the synchronised bracket when the terminal has it: the frame is
+	// a cursor home followed by every cell, and a terminal painting halfway
+	// through that shows a torn one. Begun before the uploads so an image and
+	// the text referencing it land together.
+	QByteArray out;
+	if (sync_frames()) out += "\033[?2026h";
+	out += uploads + "\033[H";
 	Sgr cur;
 	for (int y = 0; y < composed.rows(); ++y) {
 		for (int x = 0; x < composed.cols(); ++x) {
@@ -496,6 +517,11 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 			}
 		}
 	}
+	// Closed after the images, not after the text: on a tier that paints
+	// pixels the picture is part of the frame, and ending the bracket before
+	// it would leave exactly the tear this exists to prevent -- the text
+	// updated and the image arriving separately.
+	if (sync_frames()) out += "\033[?2026l";
 	fwrite(out.constData(), 1, out.size(), stdout);
 	fflush(stdout);
 }

@@ -1390,10 +1390,39 @@ whether anything ever calls it.
   not represent at all.
 - **`Capabilities` answers for four of its fields now** -- `mouse` and
   `bracketedPaste` from whether input is a tty, `unicodeWide` because L2
-  measures width itself. `synchronisedOutput` is deliberately still
-  false: section 11 wants DEC 2026 to eliminate tearing and nothing emits
-  the brackets yet, so claiming it would describe an intention rather
-  than the backend. `title` likewise -- there is no OSC emitter.
+  measures width itself.
+
+  **`mouse` and `bracketedPaste` are no longer taken from the tty**, which
+  was a fact about the local terminal device that said nothing about what
+  the terminal understands. They are asked with DECRQM now (§7.4), and raw
+  mode is demoted to the assumption used when the terminal says nothing.
+
+  **`synchronisedOutput` is implemented and true when earned.** DEC 2026
+  is asked in the startup query and `present()` brackets its frames when
+  the terminal confirmed the mode, so the field still means "qtty uses
+  synchronised output" rather than "the terminal has it" -- what changed
+  is that qtty now does.
+
+  Confirmed only, with the assumption **false**, which is the opposite
+  default to mouse and paste and deliberately so. Those are about input
+  that would otherwise be mishandled, so silence leaves the working
+  assumption alone; this is an optimisation worth nothing on a terminal
+  that lacks it, and DECRQM is the discovery mechanism the
+  synchronised-output specification itself names. A terminal that says
+  nothing has declined to be asked and gets unbracketed frames.
+
+  One function decides, because `present()` and `capabilities()` must not
+  be able to disagree: a field claiming synchronised output over frames
+  that go out bare is exactly the defect shape this negotiation exists to
+  stop, and it would be invisible from inside the process. The tests
+  assert the claim and both brackets together, and bracketing
+  unconditionally fails the terminal-answered-0 case.
+
+  Verified against beerssh, which can be told to lack it: all features
+  gives `2026;2` and the frames are bracketed, `-synchronised-output`
+  gives `2026;0` and they are not.
+
+  `title` is still false -- there is no OSC emitter.
 - **`test/suite_backend.cpp` covers the decoder**, which had no test at
   all -- which is how the fixed-width reader survived long after the
   runtime grew sinks it could not feed.
@@ -2462,9 +2491,10 @@ Dependency-ordered:
    of five deliberate sabotages, **four leave every pre-existing
    structural check in the file passing**.
 4. ~~The declared-but-unreachable surface in §7.4.~~ **Done** -- see
-   §7.4. What is left of that section is `synchronisedOutput` (DEC 2026,
-   which §11's frame budget wants) and a title emitter, both of which are
-   additions rather than gaps.
+   §7.4. `synchronisedOutput` is done too: DEC 2026 is asked for and the
+   frames are bracketed when the terminal confirms it. What is left of
+   that section is a title emitter, which is an addition rather than a
+   gap.
 5. **§8.2**: whether L6 becomes the `Application` class design.md §5.6
    specifies. The backend seam no longer waits on it, so this is now a
    design decision taken on its merits rather than a blocker.

@@ -75,6 +75,7 @@ private:
 	ScrollSettle settle_;                         // section 5.7, sixel/iTerm2 only
 	QElapsedTimer clock_;
 	void query_geometry();                        // re-ask after a resize
+	bool sync_frames() const;                     // DEC 2026, confirmed only
 	Capabilities::ColorDepth depth_;             // negotiated (section 6)
 	QSet<quint64> uploaded_;                     // kitty upload-once cache
 	bool raw_ok_ = false;
