@@ -795,6 +795,47 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**Qt's standard iconography has no route to a glyph, and that is a
+decision rather than a defect.** Three measurements, taken because a
+dialog probe looked like it had found a missing icon:
+
+- `QIcon::fromTheme("dialog-warning")` is **null with an empty name** here.
+  qtty pins the platform theme off, so nothing resolves.
+- `standardIcon(SP_MessageBoxWarning)` is **not null, has three sizes, and
+  its name is empty**. Qt's built-in fallbacks are pixmaps with no
+  identity.
+- `glyph_for()` is keyed on `QIcon::name()`. So neither route reaches it.
+
+**And the suspected defect was smaller than it looked.** A `QMessageBox`
+severity icon is not missing: it arrives as a 5x3-cell **image placement**,
+which a graphics-capable terminal draws as a picture and a text-only one
+composes as half-blocks. `render_once()` collects placements without
+rasterising them, so a probe reading `to_text()` sees a blank -- the probe's
+limit, not the library's. Recorded because the first reading of that probe
+was "the icon is missing", which is a mechanism, and it was wrong.
+
+What is left is real but narrow: **a 5x3 half-block mosaic of a warning
+triangle is unlikely to be legible**, and a glyph would serve a text tier
+better. The same question covers `QDockWidget`'s title buttons, which
+render as two identical empty brackets -- a close and a float that cannot
+be told apart, since neither carries text and neither icon has a name.
+
+The option, its cost, and whose it is: qtty could map
+`QStyle::StandardPixmap` values to glyphs directly, which is a small table
+and reaches every standard icon at once, but it means qtty deciding what
+Qt's iconography looks like in a terminal rather than an application
+saying. That is **the copyright holder's** call, not one to make while
+fixing something else. The alternative measured and closed above --
+returning themed icons so the existing name-based registry resolves them --
+does not work here, and that is why it is written down rather than tried
+again.
+
+Also observed, and left alone deliberately: an **empty `QLineEdit` renders
+as nothing at all**. A terminal field with no decoration is arguably right,
+and the cursor marks it while focused, but a form of empty fields is
+invisible until tabbed through. Same class of question as the icons, and
+the same owner.
+
 **The pixmap rule predicted the next two, which is the first time this
 sweep stopped being a search.** *Anything the base style draws as a pixmap
 arrives here as a shaded block* was written down after the sort indicator;
