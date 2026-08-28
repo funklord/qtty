@@ -346,6 +346,34 @@ int suite_backend() {
 	QCoreApplication::processEvents();
 	CHECK(rec.keys.isEmpty(), "a reply split across two reads is still not keys");
 
+	// Every string-sequence opener the decoder claims to frame, each followed
+	// by a key that must still arrive. The list in decode_one() is
+	// "]P_^X" -- OSC, DCS, APC, PM, SOS -- and only the first three had a
+	// test, so PM and SOS were framed by code nothing exercised.
+	//
+	// Prompted by the beerssh session pointing out that it now answers many
+	// more queries than it did, and every reply is one this decoder has to
+	// terminate. The failure mode is not a wrong answer: an unterminated
+	// sequence swallows the session, as the DECRPM case did.
+	{
+		struct { const char *name; QByteArray bytes; } openers[] = {
+			{"OSC ended by ST",  QByteArray("\033]11;rgb:f/f/f\033\\")},
+			{"OSC ended by BEL", QByteArray("\033]0;title\007")},
+			{"DCS",              QByteArray("\033P1+r524742=38\033\\")},
+			{"DCS, DA3 shape",   QByteArray("\033P!|00000000\033\\")},
+			{"APC",              QByteArray("\033_Gi=31;OK\033\\")},
+			{"PM",               QByteArray("\033^private\033\\")},
+			{"SOS",              QByteArray("\033Xstring\033\\")},
+		};
+		for (const auto &o : openers) {
+			feed(o.bytes + QByteArray("\033[A"));
+			const bool ok = rec.keys.size() == 1
+			             && rec.keys[0].qt_key == Qt::Key_Up;
+			printf("%s: a key after %s still arrives\n", ok ? "PASS" : "FAIL", o.name);
+			if (!ok) ++fails;
+		}
+	}
+
 	// -- the resize report, which arrives on stdin rather than as a signal.
 	//    Some multiplexers send it, and a terminal answers window operations
 	//    the same way, so the decoder has to know a report from a key.

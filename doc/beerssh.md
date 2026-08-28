@@ -147,6 +147,34 @@ simply gained OSC 11 in between -- its binary was rebuilt twenty seconds
 before the run that finally saw it. Every figure in this file is worth a
 timestamp and the other binary's mtime, which is why both are given.
 
+### The negotiation falsified, 10:11, beerssh c1ebf5b
+
+beerssh's `--term-features` now switches all twelve, and the three mode
+features answer `0` rather than `2` -- the veto reaches `request_dec_mode`
+as well as `set_dec_mode`, so the mode is never recorded and DECRQM never
+claims it. That distinction was the one qtty asked for, and it is the whole
+reason this table means anything:
+
+| beerssh spec | qtty reports |
+|---|---|
+| *(all)* | mouse yes, paste yes |
+| `-sgr-mouse` | **mouse no**, paste yes |
+| `-bracketed-paste` | mouse yes, **paste no** |
+| both | **mouse no**, **paste no** |
+
+**Before the DECRQM work qtty reported `yes` in every one of those rows**,
+because it took the answer from whether it got raw mode -- a fact about the
+local tty device that says nothing about the terminal. This is the first
+capability in this tree to be **falsified** by a terminal that genuinely
+lacks it, rather than confirmed by qtty's own test double, and the two
+switches move independently.
+
+The mouse is deliberately one switch on their side -- 1000, 1002, 1003,
+1005, 1006 and 1015 together -- because gating the SGR encoding alone would
+produce a terminal with tracking and no usable encoding, which is stranger
+than either having a mouse or not. Worth knowing before anyone reads
+`-sgr-mouse` as "SGR only".
+
 ### Superseded: two things beerssh did not answer
 
 - **OSC 11**, the background colour. Every tier below kitty composites an
