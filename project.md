@@ -795,6 +795,51 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**Four branches of the font guard cannot be reached here, and that is a
+measurement.** `grid_font_problem()` refuses a fractional line height, a
+fractional advance, and either at zero or less; only its fixed-pitch
+message had ever been produced by a test. Every attempt to reach the rest
+failed and the attempts are worth recording, because the next reader will
+otherwise repeat them: letter spacing, which
+`QFontMetricsF::horizontalAdvance(QChar)` ignores entirely -- it applies
+when laying out a run, not to one character; stretch at 50, 62, 75 and 150;
+stretch at 1, 3, 5 and 8, which the engine clamps so the advance never
+falls below 1; and fractional point sizes of 10.5, 11.3 and 13.7. **Every
+one gave a whole-number advance and a height of 19.**
+
+They are not dead code. An engine with subpixel metrics or a fractional
+device pixel ratio produces exactly what they refuse, which is the case
+`prepare_environment()` pins `QT_SCALE_FACTOR` to avoid -- so the branches
+guard the configuration this machine is deliberately not in. Left uncovered
+and said so, rather than left as a silent gap.
+
+**Four things that were reachable, and one of them a feature.** A toolbar
+**separator** had never been drawn -- `QToolBar::addSeparator()` goes
+through `PE_IndicatorToolBarSeparator`, and the alternative to drawing it
+is a gap a user cannot tell from spacing. Asserted between the two actions
+by index, not merely present, since a rule drawn anywhere satisfies "there
+is a bar" and where it sits is the whole job.
+
+The four arrow primitives are asserted as what they now are: **public style
+API**, called through `drawPrimitive()` by an application's own widget,
+since no widget in this style reaches them. All four into one buffer at
+four columns, which is what catches an arrow ignoring the rect it was
+given.
+
+`Qtty::focusWidget()` has **no caller anywhere in src** -- the router and
+the compositor use `QWidget::focusWidget()`, a different function with the
+same name. It is public API in `grid.h`, the way an application asks who
+the router considers focused while no window is ever activated, so it is
+asserted as the round trip it promises rather than removed. Both
+directions: "returns the last thing set" is satisfied by a function that
+returns a pointer it never updates.
+
+And the paint device's own metrics, which Qt asks for when it decides how
+to scale -- a wrong answer there is a wrong decision made inside Qt where
+nothing of ours can see it.
+
+Whole tree 97.60%.
+
 **The front door had no test at all.** `exec(app, win)` -- the
 two-argument overload every application calls -- was uncovered entirely,
 because everything tests the three-argument form with a `NullBackend`. The

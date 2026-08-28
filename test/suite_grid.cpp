@@ -140,5 +140,38 @@ int suite_grid() {
 		QApplication::setFont(grid, "QPushButton");     // leave nothing behind
 	}
 
+	{
+		// Qtty::focusWidget(), which has no caller anywhere in src: the
+		// router and the compositor use QWidget::focusWidget(), a different
+		// function with the same name. This one is public API in grid.h --
+		// how an application asks who the router considers focused, since Qt
+		// cannot answer while no window is ever activated -- so it is
+		// asserted as the round trip it promises rather than removed.
+		QWidget a, b;
+		Qtty::setFocusWidget(&a);
+		const bool first = Qtty::focusWidget() == &a;
+		Qtty::setFocusWidget(&b);
+		// Both directions, because "returns the last thing set" is satisfied
+		// by a function that returns a pointer it never updates.
+		CHECK(first && Qtty::focusWidget() == &b,
+		      "focusWidget() answers with whatever setFocusWidget() was last given");
+		Qtty::setFocusWidget(nullptr);
+		CHECK(Qtty::focusWidget() == nullptr, "and with nothing when there is nothing");
+	}
+	{
+		// The two style hints this style pins for a reason, asserted at the
+		// style rather than through a widget: SH_ToolButtonStyle is what
+		// stops a toolbar reserving space for icons a terminal cannot draw,
+		// and it is not reached by the toolbar tests because CC_ToolButton
+		// draws the label whatever the hint says. A hint nobody asks is
+		// still a promise this style makes to a widget that does.
+		QStyle *st = QApplication::style();
+		CHECK(st->styleHint(QStyle::SH_ToolButtonStyle, nullptr, nullptr)
+		          == Qt::ToolButtonTextOnly,
+		      "the style asks for text-only tool buttons, icons being undrawable");
+		CHECK(st->styleHint(QStyle::SH_DialogButtonLayout, nullptr, nullptr) == 0,
+		      "and for a dialog button layout that does not follow the desktop");
+	}
+
 	return fails;
 }

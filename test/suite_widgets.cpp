@@ -747,6 +747,64 @@ int suite_widgets() {
 		      "and the button was measured with the marker in it");
 	}
 
+	{
+		// A toolbar SEPARATOR, which nothing had ever drawn. QToolBar draws
+		// it through PE_IndicatorToolBarSeparator, and a terminal has a
+		// character for exactly this -- so the alternative to drawing it is
+		// a gap the user cannot tell from spacing.
+		QMainWindow win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *bar = win.addToolBar(QStringLiteral("main"));
+		bar->addAction(QStringLiteral("Cut"));
+		bar->addSeparator();
+		bar->addAction(QStringLiteral("Quit"));
+		win.resize(GridMetrics::cells(40, 6));
+		win.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer buf(40, 6);
+		Qtty::render_once(win, buf);
+		const QString row = buf.to_text().split(QLatin1Char('\n')).value(0);
+		// Between the two buttons, not merely present: a rule drawn anywhere
+		// satisfies "contains a bar", and the whole job of a separator is
+		// where it is.
+		const int cut = row.indexOf(QStringLiteral("Cut"));
+		const int quit = row.indexOf(QStringLiteral("Quit"));
+		const int rule = row.indexOf(QStringLiteral("│"));
+		CHECK(cut >= 0 && quit > cut && rule > cut && rule < quit,
+		      "a toolbar separator is drawn between the actions it separates");
+	}
+	{
+		// The four arrow primitives. No widget in this style reaches them --
+		// the combo box, spin box, scroll bar and tool button are all drawn
+		// whole -- so they are asserted as what they are: public style API,
+		// which an application's own widget calls through drawPrimitive().
+		Qtty::CellBuffer buf(6, 4);
+		QStyle *st = QApplication::style();
+		const struct { QStyle::PrimitiveElement pe; const char *glyph; } arrows[] = {
+			{QStyle::PE_IndicatorArrowDown,  "▾"},
+			{QStyle::PE_IndicatorArrowUp,    "▴"},
+			{QStyle::PE_IndicatorArrowLeft,  "◂"},
+			{QStyle::PE_IndicatorArrowRight, "▸"},
+		};
+		bool all = true;
+		int i = 0;
+		for (const auto &a : arrows) {
+			Qtty::CellPaintDevice dev(buf);
+			QPainter p(&dev);
+			QStyleOption opt;
+			opt.rect = QRect(i * GridMetrics::cw(), 0,
+			                 GridMetrics::cw(), GridMetrics::ch());
+			st->drawPrimitive(a.pe, &opt, &p, nullptr);
+			p.end();
+			all = all && buf.at(i, 0).ch == QString::fromUtf8(a.glyph);
+			++i;
+		}
+		// One glyph per direction, and each in its own cell: drawing them
+		// into one buffer at four columns is what catches an arrow that
+		// ignores the rect it was given, which the earlier draft did not.
+		CHECK(all, "each arrow primitive draws its own glyph at its own rect");
+	}
+
 	return fails;
 }
 

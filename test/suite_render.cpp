@@ -299,5 +299,46 @@ int suite_render(bool record) {
 		}
 	}
 
+	{
+		// The paint device's own metrics, which nothing had asked for. Qt
+		// asks through QPaintDevice::width() and friends whenever it decides
+		// how to scale or whether a device is monochrome, so a wrong answer
+		// here is a wrong decision made inside Qt where nothing of ours can
+		// see it.
+		Qtty::CellBuffer buf(12, 5);
+		Qtty::CellPaintDevice dev(buf);
+		const bool sized = dev.width() == 12 * GridMetrics::cw()
+		                && dev.height() == 5 * GridMetrics::ch();
+		// The ratio matters most: anything other than 1 makes Qt lay out at
+		// one scale and this device round at another, which is the whole
+		// class of fault GridMetrics exists to prevent.
+		const bool plain = qFuzzyCompare(dev.devicePixelRatio(), 1.0)
+		                && dev.depth() > 1 && dev.widthMM() > 0;
+		if (sized && plain)
+			printf("PASS: the paint device reports its own size, depth and ratio\n");
+		else {
+			printf("FAIL: the paint device reports its own size, depth and ratio\n"
+			       "      %dx%d px, depth %d, ratio %f, %d mm\n",
+			       dev.width(), dev.height(), dev.depth(),
+			       dev.devicePixelRatio(), dev.widthMM());
+			++r;
+		}
+
+		// A pen colour matching no palette foreground role, which is the
+		// branch that falls through to a literal RGB. Every existing text
+		// test paints in a themed colour, so the fallback had never run.
+		{
+			QPainter p(&dev);
+			p.setPen(QColor(3, 250, 137));
+			p.drawText(QPoint(0, GridMetrics::ch()), QStringLiteral("z"));
+		}
+		if (buf.at(0, 0).ch == QStringLiteral("z"))
+			printf("PASS: text in an unthemed colour still lands in its cell\n");
+		else {
+			printf("FAIL: text in an unthemed colour still lands in its cell\n");
+			++r;
+		}
+	}
+
 	return r;
 }
