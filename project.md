@@ -795,6 +795,38 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**A disabled control looked exactly like an enabled one**, at every
+control. Qt reports the state in every option it hands the style, and the
+style tested `State_Enabled` **at no site at all** -- so a button nobody
+can press drew the same characters in the same colours with no attribute, a
+greyed menu item read as available, and the only way to find out was to
+click and have nothing happen. Dim rather than a colour: a terminal's dim
+is one SGR that composes with whatever the theme already chose, while a
+grey would have to be picked against a background this style does not know.
+
+Asserted on the **attribute**, which is the whole of the change --
+`to_text()` shows characters, so a check on the rendered string passes
+against the bug and would have gone on passing -- and in both directions,
+since "the disabled one is dim" is satisfied by a style that dims
+everything.
+
+**A checkable item view drew no check at all.** An item view whose items
+are checkable showed the text and nothing else, so the state a user opens
+such a list to set was invisible, with no second place to read it from --
+unlike a checkbox, which at least has a label beside it.
+
+**A vertical progress bar was drawn as a horizontal one in its top row**,
+leaving the rest of the widget blank: a meter reading nothing, in the
+orientation an application picks precisely because it has a tall space to
+fill. It fills upward now, which is what a column of liquid does and what a
+bar drawn from the top gets exactly backwards -- and the test asserts the
+direction, since a bar filling downward passes any check that only counts
+solid cells.
+
+All three came from the same pass as the two below: render widget
+configurations nothing exercises, and read the output. **Five defects from
+two probe runs**, none of them found by looking for a particular fault.
+
 **Every framed scroll area lost the bottom rule of its own border**, and
 the corners stayed -- which is why it read as a rendering quirk rather than
 as the arithmetic fault it is. Found by rendering widget configurations

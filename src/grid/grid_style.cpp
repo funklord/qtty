@@ -412,6 +412,21 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 	}
 }
 
+// A disabled control is dim, and until now it was not anything. Qt reports
+// the state in every option it hands the style, and this style tested for it
+// at no site at all -- so a button nobody can press looked exactly like one
+// they can, a greyed menu item read as available, and the only way to find
+// out was to click and have nothing happen. The same fault as the tristate
+// checkbox, at every control rather than one.
+//
+// Dim rather than a colour: a terminal's dim is one SGR that composes with
+// whatever the theme already chose, while a grey would have to be picked
+// against a background this style does not know.
+static Attrs with_state(const QStyleOption *opt, Attrs base = Attrs()) {
+	if (opt && !(opt->state & QStyle::State_Enabled)) base |= Attr::Dim;
+	return base;
+}
+
 void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPainter *p,
                               const QWidget *w) const {
 	if (auto *dev = cell_target(p)) {
@@ -427,11 +442,13 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 			dev->buffer().text(c.left(), c.top(),
 				(opt->state & State_NoChange) ? QStringLiteral("[-]")
 				: (opt->state & State_On)     ? QStringLiteral("[x]")
-				                              : QStringLiteral("[ ]"));
+				                              : QStringLiteral("[ ]"),
+				Color(), Color(), with_state(opt));
 			return;
 		case PE_IndicatorRadioButton:
 			dev->buffer().text(c.left(), c.top(),
-				(opt->state & State_On) ? QStringLiteral("(o)") : QStringLiteral("( )"));
+				(opt->state & State_On) ? QStringLiteral("(o)") : QStringLiteral("( )"),
+				Color(), Color(), with_state(opt));
 			return;
 		case PE_FrameWindow: case PE_Frame: case PE_FrameGroupBox:
 		case PE_PanelMenu: case PE_FrameMenu: case PE_PanelLineEdit:
@@ -496,7 +513,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					               QLatin1Char('<') + strip_mnemonic(b->text)
 					                   + QLatin1Char('>'),
 					               Color(), Color(),
-					               foc ? Attrs(Attr::Reverse) : Attrs());
+					               with_state(opt, foc ? Attrs(Attr::Reverse) : Attrs()));
 			}
 			return;
 		case CE_MenuItem:
@@ -506,7 +523,8 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 						dev->buffer().put_cluster(x, c.top(), QStringLiteral("─"));
 					return;
 				}
-				const Attrs a = (opt->state & State_Selected) ? Attrs(Attr::Reverse) : Attrs();
+				const Attrs a = with_state(opt, (opt->state & State_Selected)
+					                            ? Attrs(Attr::Reverse) : Attrs());
 				if (a) {                              // highlight spans the row
 					Cell v; v.attrs = a;
 					dev->buffer().fill(QRect(c.left(), c.top(), c.width(), 1), v);
@@ -536,7 +554,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// is a literal one. One spelling of the rule, in one place.
 				const QString label = strip_mnemonic(mi->text);
 				dev->buffer().text(c.left() + 1, c.top(), label, Color(), Color(),
-					               hot ? Attrs(Attr::Reverse) : Attrs());
+					               with_state(opt, hot ? Attrs(Attr::Reverse) : Attrs()));
 				return;
 			}
 			break;
@@ -545,14 +563,31 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 			return;
 		case CE_ItemViewItem:                          // list/table/tree cells
 			if (auto *vi = qstyleoption_cast<const QStyleOptionViewItem *>(opt)) {
-				const Attrs a = (opt->state & State_Selected) ? Attrs(Attr::Reverse) : Attrs();
+				const Attrs a = with_state(opt, (opt->state & State_Selected)
+					                            ? Attrs(Attr::Reverse) : Attrs());
 				// The whole item, not its top row. A one-cell fill was
 				// indistinguishable from a correct one while every item in
 				// the suite was one cell tall, and wrong the moment a
 				// delegate returned a taller sizeHint: the row highlighted
 				// its first line and left the rest on the ordinary ground.
 				if (a) { Cell v; v.attrs = a; dev->buffer().fill(c, v); }
-				dev->buffer().text(c.left() + 1, c.top(), elide_to_cells(vi->text, c.width() - 1),
+				// The check indicator, which was not drawn at all: an item
+				// view whose items are checkable showed the text and nothing
+				// else, so the state a user is there to set was invisible and
+				// unsettable by eye. Qt says whether an item has one and what
+				// it is; the glyphs are the checkbox's, because a check is a
+				// check wherever it appears.
+				int text_at = c.left() + 1;
+				if (vi->features & QStyleOptionViewItem::HasCheckIndicator) {
+					const QString box =
+						vi->checkState == Qt::Checked            ? QStringLiteral("[x]")
+						: vi->checkState == Qt::PartiallyChecked ? QStringLiteral("[-]")
+						                                        : QStringLiteral("[ ]");
+					dev->buffer().text(text_at, c.top(), box, Color(), Color(), a);
+					text_at += 4;                  // the box and one space
+				}
+				const int room = c.right() - text_at + 1;
+				dev->buffer().text(text_at, c.top(), elide_to_cells(vi->text, room),
 					               Color(), Color(), a);
 				return;
 			}
@@ -577,7 +612,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					                    + QLatin1Char(']');
 				dev->buffer().text(c.left(), c.top(), elide_to_cells(label, c.width()),
 					               Color(), Color(),
-					               sel ? Attrs(Attr::Reverse) : Attrs());
+					               with_state(opt, sel ? Attrs(Attr::Reverse) : Attrs()));
 				return;
 			}
 			break;
@@ -585,10 +620,23 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 			if (auto *pb = qstyleoption_cast<const QStyleOptionProgressBar *>(opt)) {
 				const int span = pb->maximum - pb->minimum;
 				const double frac = span > 0 ? double(pb->progress - pb->minimum) / span : 0.0;
-				const int filled = qRound(frac * c.width());
-				for (int x = 0; x < c.width(); ++x)
-					dev->buffer().put_cluster(c.left() + x, c.top(),
-						x < filled ? QStringLiteral("█") : QStringLiteral("░"));
+				// Vertical bars fill upward, and were drawn as a horizontal
+				// bar in their top row with the rest of the widget left
+				// blank -- a meter reading nothing, in the orientation an
+				// application picks precisely because it has a tall space.
+				// Qt reports the orientation in the state flags.
+				const bool horizontal = pb->state & State_Horizontal;
+				const int extent = horizontal ? c.width() : c.height();
+				const int filled = qRound(frac * extent);
+				for (int i = 0; i < extent; ++i) {
+					// Upward: the bottom cell is the first to fill, which is
+					// what a column of liquid does and what a bar drawn from
+					// the top would get exactly backwards.
+					const bool on = horizontal ? i < filled : i >= extent - filled;
+					const QString g = on ? QStringLiteral("█") : QStringLiteral("░");
+					if (horizontal) dev->buffer().put_cluster(c.left() + i, c.top(), g);
+					else            dev->buffer().put_cluster(c.left(), c.top() + i, g);
+				}
 				if (pb->textVisible) {
 					const QString label = pb->text.isEmpty()
 						? QStringLiteral("%1%").arg(qRound(frac * 100)) : pb->text;
@@ -700,7 +748,7 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 					dev->buffer().text(c.left() + 1, row,
 						                   elide_to_cells(tool_button_label(tb, w), inner),
 						                   Color(), Color(),
-						                   on ? Attrs(Attr::Reverse) : Attrs());
+						                   with_state(opt, on ? Attrs(Attr::Reverse) : Attrs()));
 				return;
 			}
 			break;

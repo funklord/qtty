@@ -921,6 +921,97 @@ int suite_widgets() {
 		      "and the middle one says it is neither");
 	}
 
+	{
+		// A disabled control is dim. Qt reports the state in every option it
+		// hands the style and the style tested for it nowhere, so a button
+		// nobody can press looked exactly like one they can: same characters,
+		// same colours, no attribute. The only way to find out was to click
+		// and have nothing happen.
+		//
+		// Asserted on the ATTRIBUTE, which is the whole of the change --
+		// to_text() shows characters, so a check on the rendered string
+		// passes against the bug and would have gone on passing.
+		const auto attrs_of = [&](bool enabled) {
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *b = new QPushButton(QStringLiteral("Go"), &host);
+			b->setEnabled(enabled);
+			b->setGeometry(0, 0, GridMetrics::cw() * 6, GridMetrics::ch());
+			host.resize(GridMetrics::cells(12, 3));
+			host.show();
+			QCoreApplication::processEvents();
+			Qtty::CellBuffer buf(12, 3);
+			Qtty::render_once(host, buf);
+			Attrs seen;
+			for (int x = 0; x < 12; ++x)
+				if (buf.at(x, 0).ch == QStringLiteral("G")) seen = buf.at(x, 0).attrs;
+			return seen;
+		};
+		const Attrs on = attrs_of(true), off = attrs_of(false);
+		// Both directions. "The disabled one is dim" is satisfied by a style
+		// that dims everything, which would be a different bug wearing the
+		// same green.
+		CHECK(off.testFlag(Attr::Dim), "a disabled button's label is dim");
+		CHECK(!on.testFlag(Attr::Dim), "and an enabled one's is not");
+	}
+	{
+		// A checkable item view showed its text and nothing else, so the
+		// state a user opens such a list to set was invisible -- and there is
+		// no second place to read it from, unlike a checkbox which at least
+		// has a label beside it.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *list = new QListWidget(&host);
+		for (int i = 0; i < 2; ++i) {
+			auto *it = new QListWidgetItem(QStringLiteral("row%1").arg(i));
+			it->setCheckState(i ? Qt::Checked : Qt::Unchecked);
+			list->addItem(it);
+		}
+		list->setGeometry(0, 0, GridMetrics::cw() * 16, GridMetrics::ch() * 4);
+		host.resize(GridMetrics::cells(20, 5));
+		host.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer buf(20, 5);
+		Qtty::render_once(host, buf);
+		const QString text = buf.to_text();
+		// Both states and the text: a box drawn over the label would satisfy
+		// a check for "[x] appears somewhere", and the label is what says
+		// which row the box belongs to.
+		CHECK(text.contains(QStringLiteral("[ ] row0")),
+		      "an unchecked item shows an empty box before its text");
+		CHECK(text.contains(QStringLiteral("[x] row1")),
+		      "and a checked one shows a filled box");
+	}
+	{
+		// A vertical progress bar was drawn as a horizontal one in its top
+		// row, leaving the rest of the widget blank -- a meter reading
+		// nothing, in the orientation an application picks precisely because
+		// it has a tall space to fill.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *bar = new QProgressBar(&host);
+		bar->setOrientation(Qt::Vertical);
+		bar->setTextVisible(false);
+		bar->setRange(0, 4);
+		bar->setValue(2);
+		bar->setGeometry(0, 0, GridMetrics::cw(), GridMetrics::ch() * 4);
+		host.resize(GridMetrics::cells(6, 5));
+		host.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer buf(6, 5);
+		Qtty::render_once(host, buf);
+		// Half full, filling UPWARD: the bottom two cells are solid and the
+		// top two are not. A bar that filled downward passes any check that
+		// only counts solid cells, and is the one thing a reader would call
+		// obviously wrong.
+		CHECK(buf.at(0, 3).ch == QStringLiteral("█")
+		      && buf.at(0, 2).ch == QStringLiteral("█"),
+		      "a vertical progress bar fills from the bottom");
+		CHECK(buf.at(0, 0).ch == QStringLiteral("░")
+		      && buf.at(0, 1).ch == QStringLiteral("░"),
+		      "and leaves the unfilled part above it");
+	}
+
 	return fails;
 }
 
