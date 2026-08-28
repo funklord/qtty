@@ -230,6 +230,64 @@ int suite_runtime() {
 		CHECK(backend.frame_count() > first,
 		      "while a tree that changed is");
 	}
+	{
+		// The OTHER branch of that same gate, which the check above cannot
+		// reach and which no widget test can see: `images_changed` compares
+		// frame.images.SIZE. CellImage carries a content-addressed key --
+		// the upload-once identity, and the only field that can tell two
+		// pictures apart -- and the gate counts them instead.
+		//
+		// So a picture that changes without changing the CELLS under it
+		// diffs to nothing, counts the same, and is never presented. Both
+		// halves of the seam stay innocent: the compositor built the right
+		// frame, and present() would have written it correctly had it been
+		// called.
+		struct Plot : PixelSurface {
+			using PixelSurface::PixelSurface;
+			QColor c = QColor(200, 40, 40);
+			void paintEvent(QPaintEvent *) override {
+				QPainter p(this);
+				p.fillRect(rect(), c);
+			}
+		};
+		NullBackend backend(QSize(30, 8));
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *plot = new Plot(&win);
+		plot->setGeometry(0, 0, cw * 4, ch * 2);
+		win.resize(GridMetrics::cells(30, 8));
+		win.show();
+		QCoreApplication::processEvents();
+
+		InputRouter router(&win);
+		Compositor comp(&win, &router);
+		FrameScheduler sched(&backend, &comp, &win);
+		sched.render_now();
+		const int before = backend.frame_count();
+		sched.render_now();
+		CHECK(backend.frame_count() == before,
+		      "an unchanged picture is not presented again either");
+
+		// Only the PIXELS move. The widget keeps its geometry, so the cells
+		// it occupies are identical and the placement count is identical --
+		// which is exactly the case a size comparison cannot express.
+		plot->c = QColor(40, 200, 40);
+		plot->update();
+		QCoreApplication::processEvents();
+		sched.render_now();
+		CHECK(backend.frame_count() > before,
+		      "and a picture whose pixels changed under unchanged cells is");
+
+		// The second field of that comparison, which the first case cannot
+		// reach: a picture that MOVES keeps its key, because the key is the
+		// pixels. Comparing keys alone would leave it drawn where it was.
+		const int moved_from = backend.frame_count();
+		plot->move(cw * 6, ch * 3);
+		QCoreApplication::processEvents();
+		sched.render_now();
+		CHECK(backend.frame_count() > moved_from,
+		      "and a picture that moved with the same pixels is too");
+	}
 
 	// ------------------------------------------------- section 7.8: GridSnap
 	// The guard's other half. Its policy is a proof rather than a preference,

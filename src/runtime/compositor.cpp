@@ -202,7 +202,15 @@ void FrameScheduler::render_now() {
 
 	QRegion damage = prev_ ? frame.diff(*prev_)
 	                       : QRegion(0, 0, frame.cols(), frame.rows());
-	const bool images_changed = !prev_ || frame.images.size() != prev_->images.size();
+	// By CONTENT, not by count. This compared frame.images.size() against
+	// the previous frame's, which cannot express the case that matters: a
+	// picture repainted in place keeps its cell geometry, so the cells under
+	// it diff to nothing and the placement count is unchanged -- and the new
+	// image was never presented at all. A PixelSurface showing a plot, a
+	// meter or a video still simply froze, while both halves of the seam
+	// stayed innocent, the compositor having built the right frame and
+	// present() being correct about writing one it was never handed.
+	const bool images_changed = !prev_ || frame.images != prev_->images;
 
 	if (software_composite) {
 		// one finished picture: rasterise cells, blend placements + overlays

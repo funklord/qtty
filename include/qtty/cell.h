@@ -32,6 +32,15 @@ struct CellImage {
 	quint64 key = 0;
 	QRect   cell_rect;       // anchor + span, in cells
 	QPixmap pixmap;
+
+	// The pixmap is deliberately NOT compared, and this is not an omission:
+	// `key` is its cacheKey, so two placements have equal keys exactly when
+	// they carry the same pixels. Comparing the key IS comparing the image,
+	// at the cost of a quint64 rather than of a per-frame pixel walk.
+	bool operator==(const CellImage &o) const {
+		return key == o.key && cell_rect == o.cell_rect;
+	}
+	bool operator!=(const CellImage &o) const { return !(*this == o); }
 };
 
 // Display width of one grapheme cluster: 2 for East Asian wide/fullwidth and

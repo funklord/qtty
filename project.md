@@ -795,6 +795,39 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**A picture that changed was never sent, and both halves of the seam were
+innocent.** The output mirror of the input gap below, found by asking the
+same question of the other direction: every render test stops at a
+`CellBuffer` and every wire test *starts* from a hand-built one, so
+`FrameScheduler::render_now()` -- the code that decides whether anything
+reaches the terminal at all -- sat between two exhaustively covered halves.
+
+The gate reads
+
+    const bool images_changed = !prev_ || frame.images.size() != prev_->images.size();
+
+and `CellImage` carries `key`, a content-addressed upload-once identity:
+**the one field that can tell two pictures apart, with the gate counting
+them instead.** A `PixelSurface` repainted in place keeps its geometry, so
+the cells under it diff to nothing and the count is unchanged -- the frame
+is correct, `present()` would have written it correctly, and `present()` is
+not called. A plot, a meter or a video still simply froze.
+
+Neither half could see it. The compositor built the right frame; the
+backend is right about writing one it was never handed. This is
+*correctly computed, drawn somewhere nothing looks* with the omission in
+the **gating condition** rather than the payload, which is why every test
+of the payload passes.
+
+Comparison is by content now, through a `CellImage::operator==` written
+beside the fields in the manner of `Cell::operator==`. It deliberately
+does not compare the pixmap: the key *is* the pixmap's identity, so
+comparing the key compares the image at the cost of a `quint64` rather
+than a per-frame pixel walk. Both fields are asserted by their own case --
+pixels changing under unchanged cells, and a picture that **moves**, which
+keeps its key because the key is the pixels. Sabotaging each field fails
+exactly its own case.
+
 **Nothing asserted that a byte on stdin becomes text in a widget.** The
 decoder has 33 checks in `suite_backend` and the router has 20 of its own;
 no test ran a byte through both. Every case on one side stops at a
