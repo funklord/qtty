@@ -360,7 +360,28 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 	case CT_ComboBox:
 	case CT_SpinBox:
 	case CT_MenuBarItem:
+	// A tab bar down the side is a column of rows, not a rotated strip. Qt
+	// hands a West or East tab its contents size already rotated -- narrow
+	// and tall -- so taking that width gave a tab two cells wide and the
+	// label elided to "[...", which is what a vertical tab bar rendered as.
+	// Measured from the text like a tool button, the bar becomes as wide as
+	// its longest label and each tab is one row, which is what a terminal
+	// application with side tabs looks like.
 	case CT_TabBarTab:
+		if (auto *t = qstyleoption_cast<const QStyleOptionTab *>(o)) {
+			const bool vertical = t->shape == QTabBar::RoundedWest
+				               || t->shape == QTabBar::RoundedEast
+				               || t->shape == QTabBar::TriangularWest
+				               || t->shape == QTabBar::TriangularEast;
+			if (vertical) {
+				int cells = 0;
+				for (const QString &cl : to_clusters(strip_mnemonic(t->text)))
+					cells += cluster_width(cl);
+				return QSize((cells + 2) * cw, ch);   // + the two brackets
+			}
+		}
+		return QSize(width, ch);
+
 	case CT_HeaderSection:
 	case CT_ProgressBar:
 	case CT_Slider:
@@ -618,7 +639,15 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 			break;
 		case CE_ProgressBar:
 			if (auto *pb = qstyleoption_cast<const QStyleOptionProgressBar *>(opt)) {
+				// minimum == maximum is Qt's indeterminate bar: the range
+				// is unknown and the desktop animates it. It was drawn as a
+				// bar at 0% with "0%" written across it, which does not read
+				// as "working" -- it reads as stalled, which is the one thing
+				// it is not. A distinct shade and no number says the length
+				// of the job is unknown, without inventing an animation a
+				// frame-diffing renderer would repaint the screen for.
 				const int span = pb->maximum - pb->minimum;
+				const bool unknown = span <= 0;
 				const double frac = span > 0 ? double(pb->progress - pb->minimum) / span : 0.0;
 				// Vertical bars fill upward, and were drawn as a horizontal
 				// bar in their top row with the rest of the widget left
@@ -628,6 +657,17 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				const bool horizontal = pb->state & State_Horizontal;
 				const int extent = horizontal ? c.width() : c.height();
 				const int filled = qRound(frac * extent);
+				if (unknown) {
+					for (int i = 0; i < extent; ++i) {
+						if (horizontal)
+							dev->buffer().put_cluster(c.left() + i, c.top(),
+								                      QStringLiteral("▒"));
+						else
+							dev->buffer().put_cluster(c.left(), c.top() + i,
+								                      QStringLiteral("▒"));
+					}
+					return;
+				}
 				for (int i = 0; i < extent; ++i) {
 					// Upward: the bottom cell is the first to fill, which is
 					// what a column of liquid does and what a bar drawn from

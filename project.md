@@ -795,6 +795,29 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**A tab bar down the side rendered as `[...`.** Qt hands a West or East
+tab its contents size already rotated -- narrow and tall -- so taking that
+width gave a tab two cells wide and a label elided to nothing. Measured
+from the text instead, as the tool button already is, the bar becomes as
+wide as its longest label and each tab is one row: a column of names beside
+the pane, which is what a terminal application with side tabs looks like.
+Asserted on both the whole label and the row it lands on -- a strip that
+merely fitted would put both tabs on row 0, and a column of elided tabs
+would stack correctly and say nothing.
+
+**An indeterminate progress bar read as stalled.** `minimum == maximum` is
+Qt's way of saying the length of the job is unknown, and it drew a bar at 0%
+with "0%" written across it -- which is the one thing it is not. A distinct
+shade and no number now, without inventing an animation a frame-diffing
+renderer would repaint the screen for. Paired with a bar whose length is
+known, so "shows no percentage" is not satisfied by a style that never
+shows one.
+
+These two were seen in the same probe run as the three below and reported
+as "recorded rather than fixed" when they were neither -- they had been
+mentioned in conversation and written nowhere. That is the gap this
+document exists to close, so they are fixed and here.
+
 **A disabled control looked exactly like an enabled one**, at every
 control. Qt reports the state in every option it hands the style, and the
 style tested `State_Enabled` **at no site at all** -- so a button nobody

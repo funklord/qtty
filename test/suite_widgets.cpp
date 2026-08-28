@@ -1012,6 +1012,64 @@ int suite_widgets() {
 		      "and leaves the unfilled part above it");
 	}
 
+	{
+		// An indeterminate progress bar. minimum == maximum is Qt's way of
+		// saying the length of the job is unknown, and it was drawn as a bar
+		// at 0% with "0%" written across it -- which does not read as
+		// working, it reads as stalled, the one thing it is not.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *busy = new QProgressBar(&host);
+		busy->setRange(0, 0);
+		busy->setGeometry(0, 0, GridMetrics::cw() * 8, GridMetrics::ch());
+		auto *known = new QProgressBar(&host);
+		known->setRange(0, 10);
+		known->setValue(5);
+		known->setGeometry(0, GridMetrics::ch(), GridMetrics::cw() * 8,
+		                   GridMetrics::ch());
+		host.resize(GridMetrics::cells(12, 3));
+		host.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer buf(12, 3);
+		Qtty::render_once(host, buf);
+		const QStringList rows = buf.to_text().split(QLatin1Char('\n'));
+		// Paired with a bar whose length IS known, so "shows no percentage"
+		// is not satisfied by a style that never shows one, and "uses its own
+		// shade" is not satisfied by one drawing the same thing everywhere.
+		CHECK(rows.value(0).startsWith(QStringLiteral("▒▒▒"))
+		      && !rows.value(0).contains(QLatin1Char('%')),
+		      "an unknown-length bar says so, and quotes no percentage");
+		CHECK(rows.value(1).contains(QLatin1Char('%'))
+		      && rows.value(1).contains(QStringLiteral("█")),
+		      "while a known one still fills and still says how far");
+	}
+	{
+		// A tab bar down the side is a column of rows, not a rotated strip.
+		// Qt hands a West tab its contents size already rotated -- narrow and
+		// tall -- so taking that width gave a tab two cells wide and a label
+		// elided to "[...", which is what a vertical tab bar rendered as.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *tabs = new QTabWidget(&host);
+		tabs->setTabPosition(QTabWidget::West);
+		tabs->addTab(new QWidget, QStringLiteral("General"));
+		tabs->addTab(new QWidget, QStringLiteral("Network"));
+		tabs->setGeometry(0, 0, GridMetrics::cw() * 18, GridMetrics::ch() * 5);
+		host.resize(GridMetrics::cells(24, 6));
+		host.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer buf(24, 6);
+		Qtty::render_once(host, buf);
+		const QStringList rows = buf.to_text().split(QLatin1Char('\n'));
+		// Whole labels, and one BELOW the other. Either alone is weaker than
+		// it looks: a strip that merely fitted would put both on row 0, and a
+		// column of elided tabs would stack correctly and say nothing.
+		CHECK(rows.value(0).startsWith(QStringLiteral("[General]")),
+		      "a west tab bar shows its first label whole");
+		CHECK(rows.value(1).startsWith(QStringLiteral("[Network]")),
+		      "and the next one on the row below, being a column");
+	}
+
 	return fails;
 }
 
