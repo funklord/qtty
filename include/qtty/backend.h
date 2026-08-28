@@ -28,6 +28,18 @@ struct Capabilities {
 	enum GraphicsMode { NoGraphics, Halfblocks, Sixel, ITerm2, Kitty, KittyAlpha };
 	GraphicsMode graphics   = NoGraphics;
 
+	// Placements are delivered as kitty Unicode placeholders rather than as
+	// direct placements: the image is transmitted once and displayed by
+	// printing ordinary text, so anything Unicode-aware in between moves it
+	// correctly when it redraws. That is what gets an image through tmux,
+	// where a direct placement would land at the OUTER terminal's cursor
+	// rather than where tmux is drawing.
+	//
+	// A flag rather than another GraphicsMode, because the tier is still
+	// kitty -- what changes is how a placement is carried, not what the
+	// terminal can draw.
+	bool unicode_placements = false;
+
 	// What one cell measures, if the terminal was willing to say. Invalid
 	// until it answers, and it may answer LATER: the reply arrives on stdin
 	// like everything else, and a resize is re-asked because a font change

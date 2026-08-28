@@ -79,7 +79,15 @@ Capabilities::GraphicsMode negotiate_graphics(const TermCaps &caps) {
 	// inside tmux, so it fell to half-blocks without knowing why. The
 	// difference is that the query still goes out, wrapped, so the colour
 	// depth and the background are learned from the real terminal.
-	if (inside_tmux()) return Capabilities::Halfblocks;
+	// Inside tmux a DIRECT placement lands at the outer terminal's cursor
+	// rather than where tmux is drawing, so it arrives in the wrong place.
+	// Unicode placeholders fix that by making a placement ordinary text --
+	// but only where the id can survive the trip, which is what
+	// use_placeholders() decides. Where it cannot, half-blocks are still the
+	// honest answer, being text already.
+	if (inside_tmux())
+		return use_placeholders(caps, negotiate_color(caps))
+		           ? Capabilities::Kitty : Capabilities::Halfblocks;
 
 	if (caps.kitty || caps.answered) {
 		if (caps.kitty) {
@@ -110,6 +118,20 @@ Capabilities::ColorDepth negotiate_color(const TermCaps &caps) {
 	if (!force.isEmpty()) return detect_color_depth();
 	if (caps.truecolor) return Capabilities::TrueColor;
 	return detect_color_depth();
+}
+
+bool use_placeholders(const TermCaps &caps, Capabilities::ColorDepth depth) {
+	// Needed only where something in between would move a direct placement
+	// without knowing it had. Outside tmux a real placement is cheaper and
+	// exact, so placeholders would be a downgrade.
+	if (!inside_tmux()) return false;
+	// The terminal must actually speak the protocol. Assuming it does is the
+	// mistake this whole negotiation exists to stop.
+	if (!caps.kitty) return false;
+	// And the id must survive: it travels in the FOREGROUND COLOUR, so at 256
+	// colours it would be quantised to a palette index and the terminal would
+	// look up the wrong image, or none. True colour carries all 24 bits.
+	return depth == Capabilities::TrueColor;
 }
 
 AnsiBackend::AnsiBackend() {
@@ -144,6 +166,7 @@ Capabilities AnsiBackend::capabilities() const {
 	Capabilities c;
 	c.color = depth_;                               // negotiated (section 6)
 	c.graphics = mode_;                             // negotiated (sections 5.7, 17.3)
+	c.unicode_placements = use_placeholders(caps_, depth_);
 	c.cell_px = caps_.cell_px;                      // invalid until it answers
 	c.background_known = caps_.bg_known;
 	if (caps_.bg_known)
@@ -340,12 +363,39 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 	// Kitty is excluded deliberately: there a placement has a handle and
 	// moving it is one short escape with no re-upload, so degrading would
 	// trade a cheap correct picture for a coarse one and buy nothing.
+	// Placeholders first: they replace the placement mechanism entirely, so
+	// none of the tier logic below applies. The image is transmitted once and
+	// the placement becomes ordinary text cells, which the loop that emits
+	// text handles with no knowledge that they are an image at all -- which
+	// is the entire point of the mode.
+	const bool placeholders = use_placeholders(caps_, depth_);
+	QByteArray uploads;
+	if (placeholders) {
+		for (const CellImage &ci : frame.images) {
+			const quint32 id = quint32(ci.key & 0xFFFFFF) + 1;
+			if (!uploaded_.contains(ci.key)) {
+				uploaded_.insert(ci.key);
+				uploads += encode_kitty_virtual(id, ci.pixmap.toImage(),
+				                                ci.cell_rect.width(),
+				                                ci.cell_rect.height());
+			}
+			compose_kitty_placeholders(composed, id, ci.cell_rect);
+		}
+		// Wrapped so tmux forwards the transmission to the terminal
+		// underneath. The placeholder CELLS are deliberately NOT wrapped:
+		// they are text, and tmux is meant to see them and move them.
+		if (!uploads.isEmpty() && inside_tmux()) uploads = tmux_wrap(uploads);
+	}
+
 	const bool handles = mode_ == Capabilities::Kitty
 	                  || mode_ == Capabilities::KittyAlpha;
 	const bool settled = handles
 	                  || settle_.update(frame.images, clock_.elapsed());
-	const bool pixel_placements = mode_ >= Capabilities::Sixel && settled;
-	if (!pixel_placements)                            // fallback tier: colour
+	const bool pixel_placements = mode_ >= Capabilities::Sixel && settled
+	                           && !placeholders;
+	// Not when placeholders are carrying the images: a mosaic composed over
+	// the placeholder cells would overwrite the very text that displays them.
+	if (!pixel_placements && !placeholders)           // fallback tier: colour
 		for (const CellImage &ci : frame.images)     // half-blocks (section 17.3)
 			// The terminal's own background where it answered for it, rather
 			// than the dark grey this guessed for its whole life. A light
@@ -356,7 +406,9 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 			                       ? qRgb(caps_.bg[0], caps_.bg[1], caps_.bg[2])
 			                       : qRgb(16, 20, 24));
 
-	QByteArray out = "\033[H";
+	// The transmission goes out ahead of the frame: the virtual placement has
+	// to exist before the cells that reference it are printed.
+	QByteArray out = uploads + "\033[H";
 	Sgr cur;
 	for (int y = 0; y < composed.rows(); ++y) {
 		for (int x = 0; x < composed.cols(); ++x) {

@@ -1154,12 +1154,32 @@ Still not done from this list:
   check that a sabotage landed has to be that the OBJECT rebuilt, not that
   the text changed.
 
-  **Still to do: the wiring, and one constraint found while writing it.**
-  The image id travels in the foreground colour, so a 256-colour terminal
-  would quantise it and destroy the id. Placeholders are therefore only
-  safe at true colour, or with ids of 255 or less emitted as a palette
-  index -- which the negotiation now knows enough to decide, but nothing
-  yet acts on.
+  **Wired.** `use_placeholders()` says yes only where they are both needed
+  and safe: inside a host application that would otherwise move a
+  placement without knowing it had, on a terminal **proven** to speak
+  kitty, at a depth that can carry the id. Outside tmux a real placement
+  is cheaper and exact, so placeholders there would be a downgrade.
+
+  The depth condition is not a detail. The id travels in the **foreground
+  colour**, so at 256 colours it would be quantised to a palette index and
+  the terminal would look up the wrong image or none at all. True colour
+  carries all 24 bits, and this is why the XTGETTCAP question in the
+  startup query earns its place: `$COLORTERM` guessing wrong here does not
+  cost an approximated colour, it costs the picture.
+
+  The transmission is wrapped through tmux; the placeholder **cells are
+  deliberately not**, because they are text and tmux is meant to see them
+  and move them. That asymmetry is the whole mechanism in one line.
+
+  **So the tmux refusal recorded above is lifted, conditionally.** It was
+  standing in for this the whole time.
+
+  Two things the end-to-end check needed, both of which had made it lie
+  first. Each backend runs its own startup query, so the terminal's answer
+  had to be re-armed before the second one -- otherwise it measured a
+  silent terminal and correctly concluded there was no kitty. And a mosaic
+  must not be composed when placeholders are carrying the images, or it
+  overwrites the very text that displays them.
 - ~~The roughly 100 ms scroll-settle debounce for slow links.~~ **Done.**
   Sixel and iTerm2 images have no placement handles, so moving one means
   re-emitting it -- on a slow link that is the whole frame budget spent on

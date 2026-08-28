@@ -448,16 +448,18 @@ int suite_backend() {
 		CHECK(negotiate_graphics(none) == Capabilities::Halfblocks,
 		      "and an unremarkable $TERM with no answer is half-blocks");
 
-		// Inside tmux the pixel tiers are refused however capable the outer
-		// terminal is, because passthrough carries the image but not the
-		// cursor: it would arrive in the wrong place. Half-blocks are text
-		// and tmux moves them like any other text.
+		// Inside tmux a DIRECT placement would land at the outer terminal's
+		// cursor rather than where tmux draws, so it arrives in the wrong
+		// place. Unicode placeholders carry an image through correctly -- but
+		// only where the id survives, and this capability set is not true
+		// colour, so the id could not. Half-blocks are the fallback, being
+		// text already. The placeholder case is checked below.
 		const QByteArray had_tmux = qgetenv("TMUX");
 		qputenv("TMUX", "/tmp/tmux-1000/default,1234,0");
 		qputenv("TERM", "xterm-kitty");
 		CHECK(inside_tmux(), "$TMUX is how tmux is known");
 		CHECK(negotiate_graphics(kitty) == Capabilities::Halfblocks,
-		      "and inside it even a proven kitty terminal gets half-blocks");
+		      "and a kitty terminal whose depth cannot carry the id falls back");
 		qunsetenv("TMUX");
 		qputenv("TERM", "screen-256color");
 		CHECK(inside_tmux(), "$TERM saying screen is enough on its own");
@@ -476,6 +478,31 @@ int suite_backend() {
 		      "and every ESC inside it is doubled");
 		CHECK(tmux_wrap("plain") == QByteArray("\033Ptmux;plain\033\\"),
 		      "a payload with no ESC is carried as it is");
+
+		// Placeholders: needed only where something in between would move a
+		// direct placement without knowing it had, and safe only where the
+		// image id survives the trip.
+		TermCaps tcaps; tcaps.answered = true; tcaps.kitty = true;
+		tcaps.truecolor = true;
+		qputenv("TMUX", "/tmp/tmux-1000/default,1234,0");
+		CHECK(use_placeholders(tcaps, Capabilities::TrueColor),
+		      "inside tmux a true-colour kitty terminal uses placeholders");
+		// The id travels in the FOREGROUND COLOUR, so at 256 colours it would
+		// be quantised to a palette index and the terminal would look up the
+		// wrong image, or none at all.
+		CHECK(!use_placeholders(tcaps, Capabilities::Xterm256),
+		      "but not at 256 colours, which would quantise the id away");
+		TermCaps nokitty; nokitty.answered = true;
+		CHECK(!use_placeholders(nokitty, Capabilities::TrueColor),
+		      "and neither does one proven NOT to speak the protocol");
+		// And with them available, tmux no longer forces half-blocks: that
+		// refusal was only ever standing in for this.
+		CHECK(negotiate_graphics(tcaps) == Capabilities::Kitty,
+		      "so tmux stops forcing half-blocks once placeholders can carry it");
+		qunsetenv("TMUX");
+		CHECK(!use_placeholders(tcaps, Capabilities::TrueColor),
+		      "outside tmux a real placement is cheaper and exact");
+		if (!had_tmux.isEmpty()) qputenv("TMUX", had_tmux);
 
 		// The variant is chosen by $TERM because it cannot be asked, and both
 		// answers draw -- so a wrong one costs appearance, not correctness.
@@ -573,6 +600,7 @@ int suite_backend() {
 			// A pty buffers, so this is the terminal having answered promptly
 			// rather than a race being papered over.
 			const QByteArray answer = "\033_Gi=31;OK\033\\"
+			                          "\033P1+r524742=38\033\\"
 			                          "\033]11;rgb:1c1c/1c1c/1c1c\033\\"
 			                          "\033[6;19;10t"
 			                          "\033[?62;4;22c";
@@ -686,6 +714,52 @@ int suite_backend() {
 					::dup2(keep_out, 1);
 					CHECK(kmoved.contains("\033_G"),
 					      "a moved kitty placement is NOT degraded, having a handle");
+
+					// Placeholders end to end. This is the case the whole
+					// tmux path exists for: a proven kitty terminal behind a
+					// multiplexer, where a direct placement would land at the
+					// outer terminal's cursor rather than where tmux draws.
+					fflush(stdout);
+					::dup2(slave, 1);
+					const QByteArray had_tmux2 = qgetenv("TMUX");
+					qputenv("TMUX", "/tmp/tmux-1000/default,1,0");
+					qunsetenv("QTTY_GRAPHICS");
+					// Re-armed: each backend runs its own startup query, and
+					// the answer loaded at the top was consumed by the first
+					// one. Without this it measures a silent terminal and
+					// correctly concludes there is no kitty here.
+					{
+						const ssize_t w2 = ::write(master, answer.constData(),
+						                           answer.size());
+						(void)w2;
+					}
+					AnsiBackend ph;
+					Recorder ph_rec;
+					ph.set_event_sink(&ph_rec);
+					const Capabilities pc = ph.capabilities();
+					while (::read(master, drain, sizeof(drain)) > 0) { }
+					f.images[0].cell_rect = QRect(0, 0, 2, 2);
+					ph.present(f, QRegion());
+					QByteArray pout;
+					{
+						ssize_t n;
+						while ((n = ::read(master, drain, sizeof(drain))) > 0)
+							pout.append(drain, int(n));
+					}
+					const char32_t place = 0x10EEEE;
+					const QByteArray glyph = QString::fromUcs4(&place, 1).toUtf8();
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					CHECK(pc.unicode_placements,
+					      "a kitty terminal inside tmux reports placeholder delivery");
+					CHECK(pout.contains("\033Ptmux;"),
+					      "the transmission is wrapped through tmux");
+					CHECK(pout.contains(glyph),
+					      "and the placement itself is printed as ordinary text");
+					CHECK(!pout.contains("\033_Ga=p"),
+					      "with no direct placement, which tmux would misplace");
+					if (had_tmux2.isEmpty()) qunsetenv("TMUX");
+					else qputenv("TMUX", had_tmux2);
 
 					fflush(stdout);            // before switching BACK, too
 					::dup2(slave, 1);

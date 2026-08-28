@@ -23,6 +23,12 @@ namespace Qtty {
 Capabilities::GraphicsMode negotiate_graphics(const TermCaps &caps);
 Capabilities::ColorDepth negotiate_color(const TermCaps &caps);
 
+// Whether placements should be carried as Unicode placeholders. True only
+// where they are both NEEDED and SAFE: inside a host application that would
+// otherwise misplace them, on a terminal proven to speak kitty, at a colour
+// depth that can carry the image id exactly.
+bool use_placeholders(const TermCaps &caps, Capabilities::ColorDepth depth);
+
 class AnsiBackend : public QObject, public ITerminalBackend,
                     public IGraphicsOutput {
 public:
