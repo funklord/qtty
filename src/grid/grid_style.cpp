@@ -215,7 +215,14 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 	case PM_DefaultFrameWidth:                             return cw;   // section 16.3: must be cell-safe
 	case PM_ButtonMargin:                                  return cw;
 	case PM_FocusFrameHMargin: case PM_FocusFrameVMargin:  return 0;
-	case PM_MenuPanelWidth: case PM_MenuBarPanelWidth:     return cw;
+	case PM_MenuPanelWidth:                                return cw;
+	// The menu BAR gets none, and the two were sharing a case. A panel width
+	// is applied on every side, so a horizontal cell used as a VERTICAL inset
+	// put every item at y=10 in a bar 19 tall: each one straddled two rows
+	// and hung below the bar it belonged to, and nothing was drawn where the
+	// bar was. A popup menu genuinely wants its border, which is why it keeps
+	// cw; a menu bar has no border to draw on a grid.
+	case PM_MenuBarPanelWidth:                             return 0;
 	case PM_IndicatorWidth:                                return 3 * cw;
 	case PM_IndicatorHeight:                               return ch;
 	case PM_ExclusiveIndicatorWidth:                       return 3 * cw;
@@ -494,8 +501,11 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 		case CE_MenuBarItem:
 			if (auto *mi = qstyleoption_cast<const QStyleOptionMenuItem *>(opt)) {
 				const bool hot = opt->state & (State_Selected | State_Sunken);
-				QString label = mi->text;
-				label.remove(QLatin1Char('&'));
+				// strip_mnemonic(), not remove('&'): the ad-hoc version that
+				// stood here turned "A && B" into "A  B" rather than
+				// "A & B", because it did not know that a doubled ampersand
+				// is a literal one. One spelling of the rule, in one place.
+				const QString label = strip_mnemonic(mi->text);
 				dev->buffer().text(c.left() + 1, c.top(), label, Color(), Color(),
 					               hot ? Attrs(Attr::Reverse) : Attrs());
 				return;
@@ -530,7 +540,12 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 		case CE_TabBarTab:                             // shape + label in one
 			if (auto *t = qstyleoption_cast<const QStyleOptionTab *>(opt)) {
 				const bool sel = opt->state & State_Selected;
-				const QString label = QLatin1Char('[') + t->text + QLatin1Char(']');
+				// The marker was drawn literally here and nowhere else was it
+				// missing entirely -- measured, "&General" came out
+				// "[&Genera..." , the ampersand both visible AND stealing the
+				// cell that made the label elide a character early.
+				const QString label = QLatin1Char('[') + strip_mnemonic(t->text)
+					                    + QLatin1Char(']');
 				dev->buffer().text(c.left(), c.top(), elide_to_cells(label, c.width()),
 					               Color(), Color(),
 					               sel ? Attrs(Attr::Reverse) : Attrs());

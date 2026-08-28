@@ -571,6 +571,53 @@ int suite_widgets() {
 		      "and its border stays in its own row");
 	}
 
+	// The mnemonic rule, everywhere that draws its own text. Fixing the push
+	// button removed that symptom and left the CAUSE -- a style that writes
+	// option text straight into cells never reaches drawItemText(), which is
+	// where Qt strips the marker -- alive in two more places. Found by
+	// looking for it deliberately, after the beerssh session observed that a
+	// fix removing a symptom can hide what caused it.
+	//
+	// Three spellings of one rule stood here: strip_mnemonic() on the button,
+	// an ad-hoc remove('&') on the menu bar which turned "A && B" into
+	// "A  B", and nothing at all on the tab bar.
+	{
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *tabs = new QTabWidget(&h);
+		tabs->addTab(new QWidget, QStringLiteral("&General"));
+		tabs->addTab(new QWidget, QStringLiteral("A&dvanced"));
+		tabs->setGeometry(0, 0, GridMetrics::cw() * 30, GridMetrics::ch() * 4);
+		h.resize(GridMetrics::cells(30, 6));
+		h.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer buf(30, 6);
+		Qtty::render_once(h, buf);
+		const QString row = buf.to_text().split(QLatin1Char('\n')).value(0);
+		// Measured before the fix as "[&Genera...": the marker was drawn AND
+		// stole the cell that made the label elide a character early, so the
+		// two symptoms had one cause.
+		CHECK(row.startsWith(QStringLiteral("[General][Advanced]")),
+		      "a tab's mnemonic marker is not drawn, and does not cost a cell");
+	}
+	{
+		QMainWindow win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		// addAction rather than addMenu: a menu bar item is an action either
+		// way, and addMenu() would build a QMenu this never shows -- which
+		// then sits at Qt's default 100x30 and is reported off the grid, a
+		// widget nothing has laid out rather than one laid out wrongly.
+		win.menuBar()->addAction(QStringLiteral("A && B"));
+		win.menuBar()->setGeometry(0, 0, GridMetrics::cw() * 30, GridMetrics::ch());
+		win.resize(GridMetrics::cells(30, 6));
+		win.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer buf(30, 6);
+		Qtty::render_once(*win.menuBar(), buf);
+		CHECK(buf.to_text().contains(QStringLiteral("A & B")),
+		      "and a menu bar's doubled ampersand is one, not none");
+	}
+
 	// design.md section 8.6: the icon substitution registry. A terminal
 	// cannot draw a 16-pixel icon in one cell, which is why drawPixmap()
 	// stamps a placeholder block there; the registry is how an application

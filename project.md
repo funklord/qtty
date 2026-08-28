@@ -795,6 +795,33 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**The menu bar drew no items at all, and the mnemonic fix had hidden two
+more instances of its own cause.** Both came from looking deliberately,
+after the beerssh session observed that a fix removing a symptom can hide
+what caused it -- their own dead guard had survived exactly that way.
+
+The cause behind the push-button ampersand was never the button: it is
+that a style writing option text straight into cells never reaches
+`drawItemText()`, which is where Qt strips the marker. Fixing the button
+removed that symptom. Measured afterwards, **three spellings of one rule**
+stood in this file: `strip_mnemonic()` on the button, an ad-hoc
+`remove('&')` on the menu bar which turned `A && B` into `A  B`, and
+nothing at all on the tab bar -- where `&General` rendered as
+`[&Genera...`, the marker both visible AND stealing the cell that made the
+label elide a character early. One spelling now.
+
+**And `PM_MenuBarPanelWidth` was a horizontal cell used as a vertical
+inset.** It shared a case with `PM_MenuPanelWidth` and returned `cw`, so
+every menu bar item sat at y=10 in a bar 19 tall: each straddled two rows
+and hung below the bar it belonged to, and **nothing was drawn where the
+bar was**. A popup menu genuinely wants that border and keeps it; a menu
+bar has none to draw on a grid. With it at zero the items land on the row
+and `A && B` renders as `A & B`, which is the two fixes confirming each
+other.
+
+Same shape as `PM_ToolBarHandleExtent` being 9, and found the same way:
+by rendering a widget nothing had ever rendered.
+
 **`QToolBar` works now**, and it needed three things that had to arrive
 together. It rendered as an empty strip: two actions laid out correctly
 at 60x19 and 70x19, and not one glyph on the screen.
