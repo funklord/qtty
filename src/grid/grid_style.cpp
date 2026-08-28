@@ -500,6 +500,27 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 			dev->buffer().text(c.right(), c.top(), g);
 			return;
 		}
+		case PE_IndicatorHeaderArrow:
+			// A sort indicator, which fell through to the base style and was
+			// drawn as a PIXMAP -- so it arrived at the cell painter as an
+			// image too small to place and came out as the tiny-icon
+			// substitute, a shaded block. A column sorted ascending and one
+			// sorted descending were the same meaningless mark.
+			if (auto *h = qstyleoption_cast<const QStyleOptionHeader *>(opt)) {
+				if (h->sortIndicator == QStyleOptionHeader::None) return;
+				// SortDown is ASCENDING. Measured, not read off the enum:
+				// QHeaderView sets sortIndicator to SortDown when the order
+				// is Qt::AscendingOrder, so taking the name at face value
+				// drew an A-to-Z column with a downward arrow and a Z-to-A
+				// one with an upward arrow -- confidently backwards, which is
+				// worse than the shaded block this replaced, that at least
+				// claimed nothing.
+				dev->buffer().text(c.left(), c.top(),
+					h->sortIndicator == QStyleOptionHeader::SortDown
+					    ? QStringLiteral("▴") : QStringLiteral("▾"),
+					Color(), Color(), with_state(opt));
+			}
+			return;
 		case PE_IndicatorArrowDown:  dev->buffer().text(c.left(), c.top(), QStringLiteral("▾")); return;
 		case PE_IndicatorArrowUp:    dev->buffer().text(c.left(), c.top(), QStringLiteral("▴")); return;
 		case PE_IndicatorArrowLeft:  dev->buffer().text(c.left(), c.top(), QStringLiteral("◂")); return;
@@ -550,10 +571,34 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					Cell v; v.attrs = a;
 					dev->buffer().fill(QRect(c.left(), c.top(), c.width(), 1), v);
 				}
+				// A checkable item's mark, which was not drawn at all: a
+				// menu is where a toggle usually lives, and "Word Wrap" with
+				// no tick beside it says nothing about whether it is on. The
+				// state was in the action and nowhere on the screen.
+				//
+				// One cell, and the shape says which kind of toggle it is --
+				// a tick for an independent one, a bullet for a member of an
+				// exclusive group, matching the checkbox and radio button
+				// this style already draws. The cell is reserved whenever the
+				// item is checkable, so a run of checkable items aligns; an
+				// ordinary item in the same menu starts one cell earlier,
+				// which is the cost of deciding per item, Qt handing the
+				// style one item at a time.
+				int label_at = c.left() + 1;
+				if (mi->checkType != QStyleOptionMenuItem::NotCheckable) {
+					const bool one_of = mi->checkType
+						              == QStyleOptionMenuItem::Exclusive;
+					const QString mark = !mi->checked ? QStringLiteral(" ")
+						               : one_of       ? QStringLiteral("•")
+						                              : QStringLiteral("✓");
+					dev->buffer().text(label_at, c.top(), mark, Color(), Color(), a);
+					label_at += 2;
+				}
 				const QStringList parts = mi->text.split(QLatin1Char('\t'));
 				QString label = parts.value(0);
 				label.remove(QLatin1Char('&'));       // mnemonic markers
-				dev->buffer().text(c.left() + 1, c.top(), elide_to_cells(label, c.width() - 2),
+				dev->buffer().text(label_at, c.top(),
+					               elide_to_cells(label, c.right() - label_at),
 					               Color(), Color(), a);
 				if (parts.size() > 1) {               // right-aligned shortcut
 					const QString sc = parts[1];

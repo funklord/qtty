@@ -819,5 +819,50 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	{
+		// A checkable menu item's mark. A menu is where a toggle usually
+		// lives, and "Wrap" with no tick beside it says nothing about whether
+		// it is on: the state was in the action and nowhere on the screen.
+		//
+		// Driven through the compositor rather than by calling the style,
+		// because a menu is a top-level and render_once() on the window it
+		// belongs to does not contain it -- the same reason the context menu
+		// above is asserted this way.
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		h.resize(GridMetrics::cells(30, 8));
+		h.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&h);
+
+		QMenu menu(&h);
+		QAction *wrap = menu.addAction(QStringLiteral("Wrap"));
+		wrap->setCheckable(true);
+		wrap->setChecked(true);
+		QAction *off = menu.addAction(QStringLiteral("Trim"));
+		off->setCheckable(true);
+		menu.addAction(QStringLiteral("Quit"));
+		menu.popup(QPoint(0, 0));
+		QCoreApplication::processEvents();
+
+		Compositor comp(&h, &r);
+		CellBuffer buf(30, 8);
+		comp.compose(buf);
+		const QString drawn = buf.to_text();
+		// All three items, which is what makes it an assertion about the
+		// MARK rather than about a tick appearing somewhere: a checked item
+		// carries one, a checkable-but-unchecked item carries a space in the
+		// same column so the two line up, and an ordinary item carries
+		// neither.
+		CHECK(drawn.contains(QStringLiteral("✓ Wrap")),
+		      "a checked menu item is ticked");
+		CHECK(drawn.contains(QStringLiteral("  Trim")),
+		      "an unchecked checkable one keeps the column, so they align");
+		CHECK(drawn.contains(QStringLiteral("Quit")),
+		      "and an ordinary item is unaffected");
+		menu.close();
+		QCoreApplication::processEvents();
+	}
+
 	return fails;
 }

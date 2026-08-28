@@ -1070,6 +1070,42 @@ int suite_widgets() {
 		      "and the next one on the row below, being a column");
 	}
 
+	{
+		// A sort indicator. It fell through to the base style, which draws
+		// one as a PIXMAP, so it reached the cell painter as an image too
+		// small to place and came out as the tiny-icon substitute -- a shaded
+		// block. A column sorted ascending and one sorted descending carried
+		// the same meaningless mark, which is worse than none: it looks like
+		// a rendering fault rather than like information.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *view = new QHeaderView(Qt::Horizontal, &host);
+		auto *model = new QStandardItemModel(1, 2, view);
+		model->setHorizontalHeaderLabels({QStringLiteral("Aa"), QStringLiteral("Bb")});
+		view->setModel(model);
+		view->setSortIndicatorShown(true);
+		view->setGeometry(0, 0, GridMetrics::cw() * 20, GridMetrics::ch());
+		host.resize(GridMetrics::cells(24, 2));
+		host.show();
+		QCoreApplication::processEvents();
+		const auto row_for = [&](Qt::SortOrder o) {
+			view->setSortIndicator(0, o);
+			QCoreApplication::processEvents();
+			Qtty::CellBuffer buf(24, 2);
+			Qtty::render_once(host, buf);
+			return buf.to_text().split(QLatin1Char('\n')).value(0);
+		};
+		const QString up = row_for(Qt::AscendingOrder);
+		const QString down = row_for(Qt::DescendingOrder);
+		// The two orders must DIFFER, which is the whole point of the mark
+		// and the thing the shaded block could not do. Checking only that an
+		// arrow appears would pass for a style that drew the same one both
+		// ways.
+		CHECK(up.contains(QStringLiteral("▴")) && down.contains(QStringLiteral("▾")),
+		      "a sorted column says which way it is sorted");
+		CHECK(up != down, "and the two orders do not draw the same mark");
+	}
+
 	return fails;
 }
 

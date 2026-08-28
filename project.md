@@ -795,6 +795,38 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**A sort indicator was a shaded block, and a checkable menu item had no
+mark at all.** Two more of the same family, from a fourth probe run.
+
+The sort indicator fell through to the base style, which draws one as a
+**pixmap** -- so it reached the cell painter as an image too small to place
+and came out as the tiny-icon substitute. Ascending and descending carried
+the same meaningless mark, which is worse than none: it reads as a
+rendering fault rather than as information. **Anything the base style draws
+as a pixmap arrives here as a shaded block**, which is the general shape to
+look for and is how the tab-close button and the dock-widget handles will
+present when somebody renders those.
+
+**`SortDown` is ASCENDING**, measured rather than read off the enum:
+`QHeaderView` sets `sortIndicator` to `SortDown` when the order is
+`Qt::AscendingOrder`, so taking the name at face value drew an A-to-Z
+column with a downward arrow -- confidently backwards, which is worse than
+the block it replaced, because the block claimed nothing. The first version
+did exactly that and the test caught it. Asserted as the two orders
+**differing**, since a check that an arrow appears passes for a style that
+draws the same one both ways.
+
+`CE_MenuItem` ignored `checkType` and `checked` entirely. A menu is where a
+toggle usually lives, and "Wrap" with no tick beside it says nothing about
+whether it is on -- the state was in the action and nowhere on the screen.
+One cell now, and the shape says which kind of toggle it is: a tick for an
+independent one, a bullet for a member of an exclusive group, matching the
+checkbox and the radio button this style already draws. The cell is
+reserved whenever the item is checkable, so a run of checkable items
+aligns. Asserted on all three cases -- ticked, checkable-but-unchecked, and
+ordinary -- which is what makes it an assertion about the mark rather than
+about a tick appearing somewhere.
+
 **A tab bar down the side rendered as `[...`.** Qt hands a West or East
 tab its contents size already rotated -- narrow and tall -- so taking that
 width gave a tab two cells wide and a label elided to nothing. Measured
