@@ -1588,3 +1588,109 @@ int suite_backend() {
 
 	return fails;
 }
+
+// suite_exec -- the two-argument exec(), which is the front door every
+// application calls and which had no coverage at all: everything else tests
+// the three-argument form with a NullBackend, so the overload that builds a
+// real AnsiBackend and owns it for the run was never entered.
+//
+// Its OWN suite, and that is not tidiness. AnsiBackend::read_input() does a
+// blocking read(0) when its QSocketNotifier says stdin is ready, which is
+// correct for the one backend a program has. Two of them on one descriptor
+// both wake, the first takes the bytes, and the second blocks for ever --
+// measured, as a hang whose syscall was read on the pty slave. suite_backend
+// keeps a backend alive for the whole of its run, so this cannot live there.
+// qtty owning the terminal exclusively is the design (section 5.1), so the
+// test respects it rather than the product being widened to a configuration
+// it excludes.
+int suite_exec() {
+	int fails = 0;
+	int master = -1, slave = -1;
+	if (::openpty(&master, &slave, nullptr, nullptr, nullptr) != 0) {
+		printf("FAIL: could not open a pty for the front door\n");
+		return 1;
+	}
+	::fcntl(master, F_SETFL, O_NONBLOCK);
+
+	// A SMALL terminal, and this is what makes the test possible at all.
+	// exec() writes a whole frame from the same thread that has to drain the
+	// pty, so a frame larger than the buffer blocks in fwrite with its only
+	// reader stuck behind it. At 20x4 a frame is a few hundred bytes.
+	winsize ws{};
+	ws.ws_col = 20;
+	ws.ws_row = 4;
+	::ioctl(slave, TIOCSWINSZ, &ws);
+
+	const QByteArray answer = "\033_Gi=31;OK\033\\"
+	                          "\033[?2026;1$y"
+	                          "\033P1+r524742=38\033\\"
+	                          "\033]11;rgb:1c1c/1c1c/1c1c\033\\"
+	                          "\033[6;19;10t"
+	                          "\033[?62;4;22c";
+	const ssize_t pre = ::write(master, answer.constData(), answer.size());
+	(void)pre;
+
+	const int keep_in = ::dup(0), keep_out = ::dup(1);
+	fflush(stdout);
+	::dup2(slave, 0);
+	::dup2(slave, 1);
+
+	QWidget win;
+	auto *edit = new QLineEdit(&win);
+	edit->setGeometry(0, 0, GridMetrics::cw() * 10, GridMetrics::ch());
+	edit->setFocus();
+
+	// Repeating, not singleShot: exec() calls processEvents() before
+	// app.exec(), so a zero timer fires while there is no loop to quit and
+	// the test hangs for ever. Steps rather than one deadline, so the
+	// keystroke goes in after the loop is actually running.
+	int step = 0;
+	bool during = false;
+	QTimer drive;
+	drive.setInterval(10);
+	QObject::connect(&drive, &QTimer::timeout, qApp, [&] {
+		// Drain every tick. Nothing else reads the master during the run and
+		// the scheduler writes a frame on every idle tick, so the buffer
+		// fills and present() blocks inside fwrite.
+		char sink[4096];
+		while (::read(master, sink, sizeof(sink)) > 0) { }
+		if (step == 1) {
+			const ssize_t typed = ::write(master, "hi", 2);
+			(void)typed;
+		}
+		during = during || is_tui_active();
+		if (step >= 4) QCoreApplication::quit();
+		++step;
+	});
+	drive.start();
+
+	const bool active_before = is_tui_active();
+	auto *qa = qobject_cast<QApplication *>(qApp);
+	const int rc = qa ? Qtty::exec(*qa, win) : -1;
+	drive.stop();
+	const QString got = edit->text();
+	const bool active_after = is_tui_active();
+
+	fflush(stdout);
+	::dup2(keep_in, 0);
+	::dup2(keep_out, 1);
+	::close(keep_in);
+	::close(keep_out);
+	::close(master);
+	::close(slave);
+
+	// Driven with a keystroke rather than merely started and stopped:
+	// starting proves construction, and a keystroke proves the wiring exec()
+	// exists to do -- backend to router to widget, through the frame callback
+	// exec() installs, whose call site was uncovered for the same reason.
+	CHECK(rc == 0, "exec(app, win) runs and returns cleanly");
+	// Read from INSIDE the run as well. False before and false after is
+	// satisfied by a flag nothing ever sets, which is the whole of what the
+	// flag is for -- is_tui_active() is how a widget knows not to take the
+	// GUI path (section 10.1).
+	CHECK(!active_before && during && !active_after,
+	      "and the TUI flag is set for the run and cleared after it");
+	CHECK(got == QStringLiteral("hi"),
+	      "and a byte typed during the run reaches the widget");
+	return fails;
+}

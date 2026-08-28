@@ -795,6 +795,63 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**The front door had no test at all.** `exec(app, win)` -- the
+two-argument overload every application calls -- was uncovered entirely,
+because everything tests the three-argument form with a `NullBackend`. The
+overload that builds a real `AnsiBackend` and owns it for the run had never
+been entered, and `frame_requested`, which it installs, had never been
+called from a real run either.
+
+**Why nobody had entered it is a finding rather than an excuse**, and it
+took four wrong theories to reach. `exec()` writes a whole frame from the
+same thread that must drain the pty, so a frame larger than the buffer
+blocks in `fwrite` with its only reader stuck behind it. At 20x4 a frame is
+a few hundred bytes and a drain on every timer tick keeps ahead of it.
+
+The last theory was wrong too, and the instrument said so: the hang's
+syscall was `read`, not `write`. `AnsiBackend::read_input()` does a
+**blocking** `read(0)` when its notifier says stdin is ready, which is
+correct for the one backend a program has -- two of them on one descriptor
+both wake, the first takes the bytes, and the second blocks for ever.
+`suite_backend` keeps a backend alive for its whole run, so this cannot
+live there and has its own suite. qtty owning the terminal exclusively is
+the design, so the test respects it rather than the product being widened
+to a configuration it excludes.
+
+Read from `/proc/<pid>/syscall` and `wchan` rather than under a debugger,
+which is this workspace's own rule about crash handlers pointed at a hang.
+The first attempt read the wrong process -- `pgrep` matched the shell
+wrapper -- which is the instrument being wrong before the thing measured,
+for the sixth time in this file.
+
+**Two router branches nothing had taken**, both found by the same
+measurement. A click landing INSIDE a popup: every mouse test here clicks
+the window under one. And a popup CLOSING asking for a frame -- the showing
+half is what a menu test naturally covers, because a menu that never
+appears fails visibly, while a menu that never goes away is drawn from a
+frame nobody asked for and stays on screen until something unrelated
+triggers a redraw.
+
+Both assertions were wrong before they were right, and differently:
+
+- The click was to be asserted by the menu's action firing. It does not
+  fire -- and **the control says the router is not what that measures**:
+  sending the same press straight to the `QMenu`, router bypassed, does not
+  fire it either, a `QMenu` under the offscreen platform having no popup
+  grab. It is asserted now by what does NOT receive the click, paired with
+  the same cell once the popup is gone, which must reach the widget
+  underneath.
+- The close was measured against the count taken when the menu opened, and
+  **passed with the hide branch deleted**: `on_mouse()` ends by asking for a
+  frame too, so the clicks had already moved the number. A counter several
+  things increment says nothing unless it is read either side of the one
+  under test. It then failed with the code correct, because the synthetic
+  press had already dismissed the menu and closing it removed nothing --
+  so the hide path gets a fresh menu that was never clicked.
+
+Whole tree 97.04%; `application.cpp` 91.43% to 97.18%, its only remaining
+line a `qFatal` that cannot be tested because it aborts.
+
 **Every failure in this suite printed a sentence and nothing else.** The
 beerssh session paid two container runs and three wrong theories for a
 message that was accurate throughout -- "the underline cursor drew nothing"

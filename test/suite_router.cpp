@@ -686,5 +686,105 @@ int suite_router() {
 	      "a QSplitter lays its panes off the grid (section 7.8, not yet decided)");
 	GridGuard::reset();
 
+	{
+		// A popup CLOSING has to ask for a frame, and nothing asserted it.
+		// The showing half is what a menu test naturally covers, because a
+		// menu that never appeared fails visibly; a menu that never goes
+		// away is drawn from a frame nobody asked for, so the screen keeps
+		// showing it until something unrelated triggers a redraw. That is
+		// the ghost-menu class, and it is invisible to a test that only
+		// looks at what compose() produces while the menu is up.
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		h.resize(GridMetrics::cells(30, 8));
+		h.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&h);
+		int frames = 0;
+		r.frame_requested = [&frames] { ++frames; };
+
+		QMenu menu(&h);
+		QAction *cut = menu.addAction(QStringLiteral("Cut"));
+		bool fired = false;
+		QObject::connect(cut, &QAction::triggered, &menu, [&fired] { fired = true; });
+		menu.popup(QPoint(0, 0));
+		QCoreApplication::processEvents();
+		const int after_show = frames;
+		CHECK(after_show > 0, "a popup appearing asks for a frame");
+		CHECK(r.popups().size() == 1, "and is tracked while it is up");
+
+		// A click INSIDE the popup, which nothing had ever sent: every mouse
+		// test here clicks the window under one, so the branch that finds a
+		// popup by hit test had never been taken.
+		// Asserted by the ACTION firing, not by the popup still being
+		// tracked: a menu that handled the click closes itself, so the first
+		// draft's "still one popup" could not tell delivery from the click
+		// passing through and dismissing it. The two look identical from
+		// outside and only one of them is the feature.
+		// A click INSIDE a popup goes to the popup, which nothing had ever
+		// sent: every mouse test here clicks the window under one, so the
+		// branch that finds a popup by hit test had never been taken.
+		//
+		// Asserted by what does NOT receive it. The obvious assertion --
+		// that the menu's action fires -- cannot be made here, and the
+		// control says why: sending the same press straight to the QMenu,
+		// with the router bypassed entirely, does not fire it either. A
+		// QMenu under the offscreen platform has no popup grab and does not
+		// activate from a synthetic press, so that probe measures Qt rather
+		// than this router.
+		struct Catcher : QWidget {
+			using QWidget::QWidget;
+			int presses = 0;
+			void mousePressEvent(QMouseEvent *) override { ++presses; }
+		};
+		auto *under = new Catcher(&h);
+		under->setGeometry(0, 0, cw * 20, ch * 4);
+		under->show();
+		QCoreApplication::processEvents();
+
+		const QRect ag = menu.actionGeometry(cut);
+		const QPoint hit = menu.mapToGlobal(ag.center());
+		const QPoint hc(hit.x() / GridMetrics::cw(), hit.y() / GridMetrics::ch());
+		r.on_mouse({hc, 1, true, false, false, 0});
+		r.on_mouse({hc, 1, false, true, false, 0});
+		QCoreApplication::processEvents();
+		const int through = under->presses;
+
+		// A FRESH menu for the close, never clicked. The press above already
+		// dismissed the first one -- a QMenu closes on a synthetic press
+		// rather than activating -- so closing it again removed nothing and
+		// the hide branch never ran. The assertion failed with the code
+		// correct, which is the useful direction for it to fail in.
+		menu.close();
+		QCoreApplication::processEvents();
+		QMenu again(&h);
+		again.addAction(QStringLiteral("Copy"));
+		again.popup(QPoint(0, 0));
+		QCoreApplication::processEvents();
+
+		// Measured across the CLOSE alone. Compared against the count taken
+		// when the menu opened, this passed with the hide branch's
+		// frame_requested() deleted, because on_mouse() ends by asking for a
+		// frame too and the clicks had already moved the number. A counter
+		// several things increment says nothing unless it is read either
+		// side of the one under test.
+		const int before_close = frames;
+		again.close();
+		QCoreApplication::processEvents();
+		const int after_close = frames;
+
+		// The pair for the click check, and without it that check passes for
+		// a router that delivers no click anywhere: the SAME cell, once the
+		// popup is gone, must reach the widget underneath.
+		r.on_mouse({hc, 1, true, false, false, 0});
+		r.on_mouse({hc, 1, false, true, false, 0});
+		QCoreApplication::processEvents();
+		CHECK(through == 0 && under->presses > 0,
+		      "a click inside a popup does not fall through to the window");
+		CHECK(after_close > before_close,
+		      "and a popup going away asks for a frame of its own");
+		CHECK(r.popups().isEmpty(), "and stops being tracked");
+	}
+
 	return fails;
 }
