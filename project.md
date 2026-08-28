@@ -795,6 +795,24 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**The search key, applied deliberately rather than opportunistically.**
+It found two on the first two attempts, which is what makes it a key
+rather than an anecdote.
+
+The second: `suite_budget` asserts §9's damage invariant carefully -- an
+unchanged tree diffs to nothing, paired with an everywhere-different frame
+so that a `diff()` returning nothing whatever it was handed would fail. The
+parse half, done well. **What nothing asserted is what the frame loop does
+with that answer**: `FrameScheduler` skips `present()` entirely when the
+damage is empty, and skipping is the whole point of computing it. A
+`diff()` that always reported change would have cost a full repaint per
+frame and failed no test in the tree.
+
+Asserted now, and paired the same way `suite_budget` pairs its own --
+because a scheduler that never presented anything would pass "an unchanged
+tree is not presented again" and fail nothing. Both sabotages are caught:
+presenting regardless fails the skip, and never presenting fails the pair.
+
 **The search key, and a first-draft test that could not fail.** The
 beerssh session turned this section's own observation into a key worth
 keeping: *find the well-tested parser, then ask what consumes it and

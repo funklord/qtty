@@ -188,6 +188,49 @@ int suite_runtime() {
 		CHECK(GridGuard::violations() == 0, "reset clears the count");
 	}
 
+	// The other half of section 9's damage invariant. suite_budget asserts
+	// that an unchanged tree diffs to NOTHING, with a paired everywhere-
+	// different frame so a diff() returning nothing whatever it was handed
+	// would fail -- the parse half, done carefully. What nothing asserted is
+	// what the frame loop DOES with that answer: FrameScheduler skips
+	// present() entirely when the damage is empty, and skipping is the entire
+	// point of computing it.
+	//
+	// Found with the beerssh session's search key -- find the well-tested
+	// parser, then ask what consumes it and whether anything asserts the
+	// consumption.
+	{
+		NullBackend backend(QSize(30, 8));
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *label = new QLabel(QStringLiteral("steady"), &win);
+		label->setGeometry(0, 0, cw * 10, ch);
+		win.resize(GridMetrics::cells(30, 8));
+		win.show();
+		QCoreApplication::processEvents();
+
+		InputRouter router(&win);
+		Compositor comp(&win, &router);
+		FrameScheduler sched(&backend, &comp, &win);
+
+		sched.render_now();
+		const int first = backend.frame_count();
+		CHECK(first > 0, "the first frame is always presented, having no predecessor");
+
+		sched.render_now();
+		CHECK(backend.frame_count() == first,
+		      "and an unchanged tree is not presented again");
+
+		// Paired with a frame that DID change, for the reason suite_budget
+		// pairs its empty-diff checks: a scheduler that never presented
+		// anything would pass the check above and fail nothing.
+		label->setText(QStringLiteral("moved"));
+		QCoreApplication::processEvents();
+		sched.render_now();
+		CHECK(backend.frame_count() > first,
+		      "while a tree that changed is");
+	}
+
 	// ------------------------------------------------- section 7.8: GridSnap
 	// The guard's other half. Its policy is a proof rather than a preference,
 	// so the proof is asserted directly on rectangles before any widget is
