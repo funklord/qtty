@@ -65,6 +65,12 @@ void Overlay::sync_gui_twin() {
 	auto *tw = static_cast<TwinWidget *>(gui_twin_);
 	if (!tw) {
 		tw = new TwinWidget;
+		// Named so GridGuard can let it past. It is a top-level widget qtty
+		// builds for the GUI path and sizes in PIXELS deliberately -- the
+		// grid does not govern it -- and the application never constructs it
+		// and cannot size it, which is exactly the guard's own test for what
+		// it must not report.
+		tw->setObjectName(QStringLiteral("qtty_overlay_twin"));
 		tw->setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint
 		                   | Qt::Tool | Qt::WindowTransparentForInput);
 		tw->setAttribute(Qt::WA_TranslucentBackground);

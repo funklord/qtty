@@ -141,6 +141,14 @@ bool GridGuard::is_exempt(const QWidget *w) {
 	if (w && w->parent() && w->parent()->inherits("QTabBar")
 	    && w->inherits("QToolButton"))
 		return true;
+	// Overlay's GUI twin. Not Qt's -- ours -- but the same test applies and
+	// is the reason the residue is named rather than folded into the
+	// principle: it is a top-level qtty builds for the GUI path and sizes in
+	// PIXELS on purpose, so the grid has nothing to say about it, and the
+	// application never constructs it and cannot size it. Reported as a
+	// 640x480 default by every test that composites while not inside exec(),
+	// which is where it was found.
+	if (w && w->objectName() == QLatin1String("qtty_overlay_twin")) return true;
 	return false;
 }
 

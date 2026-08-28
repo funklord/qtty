@@ -238,6 +238,7 @@ static int exact_mismatches(const QImage &want, const QImage &got) {
 }
 
 int suite_graphics() {
+
 	fails = 0;
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 
@@ -730,6 +731,105 @@ int suite_graphics() {
 		// An unmeasured cell yields nothing rather than a plausible guess.
 		CHECK(!Qtty::cells(QSize(100, 100), QSize()).isValid(),
 		      "and with no cell size measured it answers nothing");
+	}
+
+	// design.md section 5.7's three overlay delivery strategies, none of which
+	// had a test. Overlay itself is covered -- the registry, the opacity, the
+	// z-order -- and the compositor path that CONSUMES that registry was not:
+	// a correct class and an unexercised connection, which is the shape that
+	// keeps turning up here. Found by measuring coverage across the library
+	// rather than by suspecting this file: compositor.cpp was the lowest at
+	// 78%, and this block was most of the gap.
+	{
+		struct Recorder : Qtty::ITerminalBackend, Qtty::IGraphicsOutput {
+			Qtty::Capabilities caps;
+			int pixels = 0, overlays = 0, cleared = 0;
+			QImage last_pixels, last_overlay;
+			QPoint last_cell;
+			int last_z = 0;
+			QSize size() const override { return QSize(20, 6); }
+			Qtty::Capabilities capabilities() const override { return caps; }
+			void present(const Qtty::CellBuffer &, const QRegion &) override {}
+			void set_cursor(std::optional<QPoint>, Qtty::CursorShape) override {}
+			void set_event_sink(Qtty::ITerminalEventSink *) override {}
+			void resume() override {}
+			void suspend() override {}
+			void present_pixels(const QImage &f, const QRegion &) override {
+				++pixels; last_pixels = f;
+			}
+			void present_overlay(int, const QImage &i, QPoint c, int z) override {
+				++overlays; last_overlay = i; last_cell = c; last_z = z;
+			}
+			void clear_overlay(int) override { ++cleared; }
+		};
+
+		// Reap anything an earlier case left to deleteLater() before
+		// compositing. Compositor::compose() walks EVERY top-level, so a
+		// widget merely awaiting deletion is still drawn and still resized --
+		// and GridGuard then reports its default 640x480 as off the grid,
+		// which is a fault in this suite's housekeeping rather than in the
+		// code under test. Found because this is the first block here that
+		// composites at all.
+		QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+		QCoreApplication::processEvents();
+
+		const auto drive = [&](Qtty::Capabilities::GraphicsMode mode, Recorder &rec) {
+			rec.caps.graphics = mode;
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(20, 6));
+			win.show();
+			QCoreApplication::processEvents();
+			Qtty::InputRouter router(&win);
+			Qtty::Compositor comp(&win, &router);
+			Qtty::FrameScheduler sched(&rec, &comp, &win);
+			sched.render_now();
+		};
+
+		QImage art(GridMetrics::cw() * 4, GridMetrics::ch() * 2,
+		           QImage::Format_ARGB32);
+		art.fill(QColor(200, 40, 40, 255));
+		Overlay ov;
+		ov.set_image(art);
+		ov.set_rect(QRectF(1, 1, 4, 2));
+		ov.set_z(3);
+		ov.show();
+		CHECK(Overlay::visible_overlays().size() == 1, "the overlay is registered");
+
+		// KittyAlpha: the terminal blends. Text stays live text underneath,
+		// which is the only tier where that is true and the reason the table
+		// calls it the one native path.
+		Recorder alpha;
+		drive(Qtty::Capabilities::KittyAlpha, alpha);
+		CHECK(alpha.overlays == 1 && alpha.pixels == 0,
+		      "KittyAlpha ships the overlay to the terminal, unrasterised");
+		CHECK(alpha.last_cell == QPoint(1, 1) && alpha.last_z == 3,
+		      "with its own cell position and z");
+
+		// Sixel, iTerm2 and plain Kitty cannot blend over text, so the plane
+		// composites in software and hands over one finished frame.
+		for (auto mode : {Qtty::Capabilities::Sixel, Qtty::Capabilities::ITerm2,
+			                  Qtty::Capabilities::Kitty}) {
+			Recorder soft;
+			drive(mode, soft);
+			const bool ok = soft.pixels == 1 && soft.overlays == 0
+			             && soft.last_pixels.size()
+			                == QSize(20 * GridMetrics::cw(), 6 * GridMetrics::ch());
+			printf("%s: tier %d composites in software into one full frame\n",
+			       ok ? "PASS" : "FAIL", int(mode));
+			if (!ok) ++fails;
+		}
+
+		// NoGraphics and Halfblocks: a pure L2 transform, so the overlay
+		// becomes cells and nothing is shipped as pixels at all. This is the
+		// tier that reaches every backend without backend changes.
+		Recorder blocks;
+		drive(Qtty::Capabilities::Halfblocks, blocks);
+		CHECK(blocks.pixels == 0 && blocks.overlays == 0,
+		      "Halfblocks ships no pixels, being cells already");
+
+		ov.hide();
+		CHECK(Overlay::visible_overlays().isEmpty(), "and it deregisters on hide");
 	}
 
 	return fails;

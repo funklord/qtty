@@ -1172,6 +1172,35 @@ The test gives the injected backend deliberately odd values, so that what
 comes back is shown to be the backend's rather than a default that happens
 to look plausible.
 
+**Coverage measured across the library, and the lowest file gave up a
+whole untested feature.** The lens is the one the PM and SOS framing
+handed over: code that exists and nothing exercises. Per-file line
+coverage ranks `compositor.cpp` last at **78% of 132 lines**, and most of
+that gap was one block -- design.md §5.7's **three overlay delivery
+strategies, none of which had a test.**
+
+`Overlay` itself was covered: the registry, the opacity, the z-order. What
+was not covered is the compositor path that CONSUMES that registry, which
+is the same shape as every other fault in this section -- a correct class
+and an unexercised connection. All three tiers are driven now, against a
+recording backend that implements both `ITerminalBackend` and
+`IGraphicsOutput`: `KittyAlpha` ships the image to the terminal
+unrasterised with its own cell and z, sixel/iTerm2/plain-kitty composite
+in software into one full-terminal frame, and half-blocks ship no pixels
+at all, being cells already. Removing the software-composite condition
+fails exactly the three middle cases.
+
+**It also found a false positive in `GridGuard`, which is a guard
+reporting something nobody can fix.** `Overlay` builds a top-level
+`TwinWidget` for the GUI path, guarded by `is_tui_active()` -- so any test
+that composites WITHOUT going through `exec()` gets one, at Qt's default
+640x480, and the guard reported it. The twin is sized in pixels
+deliberately, because in a GUI build the grid does not govern it, and the
+application never constructs it and cannot size it. That is precisely the
+guard's own test for what it must not report, so the twin is named and
+exempted with the reason attached rather than the suite being taught to
+look away.
+
 **And it caught a test asserting its own environment.** The pty case
 inherited `$TERM`, which on this machine is `screen`; `inside_tmux()` reads
 that correctly, so the test began failing for the right reason. It sets
