@@ -853,6 +853,61 @@ int suite_backend() {
 					CHECK(!nosyout.contains("\033[?2026"),
 					      "and gets no bracket at all, rather than a claim over bare frames");
 
+					// The wide-cluster model reaching the WIRE. suite_cells
+					// asserts 48 things about clusters and widths -- the
+					// parse half is the most thoroughly tested code in this
+					// tree -- and nothing asserted what present() does with
+					// one. Its whole handling is a single line,
+					// `if (c.width == 0) continue;`, and a passing parser is
+					// exactly what stopped anyone looking at it.
+					//
+					// Found with the search key the beerssh session drew out
+					// of this: find the well-tested parser, then ask what
+					// consumes it and whether anything asserts the
+					// consumption.
+					fflush(stdout);
+					::dup2(slave, 1);
+					{
+						// COLOURED, and that is the whole test. The first
+						// version used default colours and could not fail:
+						// a continuation cell's `ch` is EMPTY, so emitting it
+						// appends no bytes, and with equal colours it emits no
+						// SGR either -- the skip was a no-op and the sabotage
+						// that removed it stayed green.
+						//
+						// What the skip actually protects is the colour run.
+						// The continuation carries DEFAULT colours, so without
+						// it a coloured wide glyph is followed by an SGR reset
+						// and then the next cell's colour again, breaking the
+						// run in the middle of a character.
+						CellBuffer wide(6, 1);
+						wide.put_cluster(0, 0, QStringLiteral("\u6f22"));  // wide
+						wide.put_cluster(2, 0, QStringLiteral("x"));
+						wide.at(0, 0).fg = Color::rgb(qRgb(200, 40, 40));
+						wide.at(2, 0).fg = Color::rgb(qRgb(200, 40, 40));
+						while (::read(master, drain, sizeof(drain)) > 0) { }
+						live.present(wide, QRegion());
+						QByteArray wout;
+						ssize_t n;
+						while ((n = ::read(master, drain, sizeof(drain))) > 0)
+							wout.append(drain, int(n));
+						const QByteArray glyph = QStringLiteral("\u6f22").toUtf8();
+						fflush(stdout);
+						::dup2(keep_out, 1);
+						CHECK(wout.count(glyph) == 1,
+						      "a wide cluster is written once, not once per cell");
+						// The continuation must contribute NOTHING. If it
+						// emitted its own blank the row would be a cell too
+						// long and everything after it would shift, which is
+						// the failure the skip exists to prevent.
+						const int lead = wout.indexOf(glyph);
+						CHECK(lead >= 0
+						      && wout.mid(lead + glyph.size(), 1) == QByteArrayLiteral("x"),
+						      "and the colour run is not broken across its continuation");
+						fflush(stdout);
+						::dup2(slave, 1);
+					}
+
 					// Placeholders end to end. This is the case the whole
 					// tmux path exists for: a proven kitty terminal behind a
 					// multiplexer, where a direct placement would land at the

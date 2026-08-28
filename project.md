@@ -795,6 +795,32 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**The search key, and a first-draft test that could not fail.** The
+beerssh session turned this section's own observation into a key worth
+keeping: *find the well-tested parser, then ask what consumes it and
+whether anything asserts the consumption* -- because a passing test on the
+easy half is what stops anyone looking at the hard one.
+
+Pointed at the most thoroughly tested code in this tree, the cluster and
+width model: **48 assertions in `suite_cells` about the parse, and none at
+all about what `present()` does with a wide cluster.** Its entire handling
+is one line, `if (c.width == 0) continue;`.
+
+**The first test written for it was vacuous, and the sabotage said so.**
+Removing that line left the suite green. A continuation cell's `ch` is
+EMPTY, so emitting it appends no bytes at all, and with colours equal it
+emits no SGR either -- the line is a no-op for everything the test was
+looking at. What it actually protects is the COLOUR RUN: a continuation
+carries default colours, so without the skip a coloured wide glyph is
+followed by an SGR reset and then the next cell's colour again, breaking
+the run in the middle of one character. Coloured, the test discriminates
+and the same sabotage fails it.
+
+That is the fourth time this session a check has had to be built from the
+case where the two answers differ rather than from the case that confirms
+the right one, and the first where the sabotage caught it rather than
+review.
+
 **The menu bar drew no items at all, and the mnemonic fix had hidden two
 more instances of its own cause.** Both came from looking deliberately,
 after the beerssh session observed that a fix removing a symptom can hide
