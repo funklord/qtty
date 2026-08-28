@@ -551,6 +551,95 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// The third mouse feature, and the one still unexercised after motion and
+	// the button were both found wrong here. The backend parses the wheel --
+	// bit 64 of the SGR button word -- and the router turns it into a
+	// QWheelEvent; nothing had ever checked that it arrives.
+	{
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *area = new QScrollArea(&h);
+		auto *tall = new QWidget;
+		tall->setFixedSize(cw * 10, ch * 40);          // far taller than the view
+		area->setWidget(tall);
+		area->setGeometry(0, 0, cw * 20, ch * 5);
+		h.resize(GridMetrics::cells(30, 8));
+		h.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&h);
+
+		const int start = area->verticalScrollBar()->value();
+		MouseEvent down;
+		down.cell = QPoint(2, 2);
+		down.wheel = -1;                               // 64 | 1: wheel down
+		for (int i = 0; i < 3; ++i) r.on_mouse(down);
+		CHECK(area->verticalScrollBar()->value() > start,
+		      "a wheel event scrolls the area under the pointer");
+
+		// A wheel is neither a press nor a release, which is why the backend
+		// sets neither: delivering it as a press would leave a button stuck
+		// down for the rest of the session.
+		CHECK(!down.press && !down.release,
+		      "and carries no button state to leave stuck down");
+
+		// PageUp steps by five rows rather than one -- the branch the arrow
+		// fallback only reaches for the paging keys.
+		area->verticalScrollBar()->setValue(area->verticalScrollBar()->maximum());
+		const int before_page = area->verticalScrollBar()->value();
+		r.on_key({Qt::Key_PageUp, {}, false, false, false});
+		const int paged = before_page - area->verticalScrollBar()->value();
+		r.on_key({Qt::Key_Down, {}, false, false, false});
+		CHECK(paged >= 5 * ch,
+		      "PageUp scrolls five rows, not one");
+	}
+
+	// The two sinks a terminal drives that nothing had called. A resize
+	// arrives from SIGWINCH or from the terminal's own report, and the window
+	// must follow it or every widget is laid out for a size that is gone.
+	{
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		h.resize(GridMetrics::cells(20, 6));
+		h.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&h);
+
+		int frames = 0;
+		r.frame_requested = [&] { ++frames; };
+		r.on_resize(QSize(40, 12));
+		CHECK(h.size() == QSize(40 * cw, 12 * ch),
+		      "a resize sink resizes the window to the new cell count");
+		CHECK(frames > 0, "and asks for a frame, the old one being the wrong size");
+
+		const int after_resize = frames;
+		r.on_focus_change(true);
+		CHECK(frames > after_resize,
+		      "and a focus change asks for one too, since focus is drawn");
+
+		// Quit keys are matched before anything is delivered, so the key must
+		// not also reach the focus widget. Asserted by its absence rather than
+		// by quitting, which a suite cannot observe.
+		auto *edit = new QLineEdit(&h);
+		edit->setGeometry(0, 0, cw * 10, ch);
+		edit->show();                  // created after its parent was shown
+		edit->setFocus();
+		setFocusWidget(edit);
+		QCoreApplication::processEvents();
+		// The ordinary case FIRST. Calling qApp->quit() puts the application
+		// into a state where a later processEvents() need not deliver, so a
+		// test that quits and then expects typing is asserting the order it
+		// happens to have written rather than the behaviour -- measured, it
+		// failed exactly that way round.
+		r.on_key({Qt::Key_Q, QStringLiteral("q"), false, false, false});
+		CHECK(edit->text() == QStringLiteral("q"),
+		      "a key with no quit binding types into the focus widget");
+
+		r.set_quit_keys({{Qt::Key_Q, QStringLiteral("q"), false, false, false}});
+		r.on_key({Qt::Key_Q, QStringLiteral("q"), false, false, false});
+		CHECK(edit->text() == QStringLiteral("q"),
+		      "and the same key, once it is a quit key, is consumed not typed");
+	}
+
 	// The splitter goes last and takes the guard with it, because it lays its
 	// panes out off the grid and always has: a 300px splitter with a one-cell
 	// handle splits evenly into 145/145, before any input is involved. That is

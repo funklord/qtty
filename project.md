@@ -574,6 +574,36 @@ Still missing:
   handle, which passes with the grab gone because the cell it names holds
   a `QLabel` and a release on a `QLabel` does nothing either way.
 
+  **And there was a third mouse fault in the same function, found the same
+  way the first two were: by asking what in here nothing exercises.** With
+  the coverage instrument fixed to name lines rather than report a
+  percentage, `input_router.cpp` still had the wheel branch unrun. The
+  wheel is delivered to `childAt()`, and in a `QScrollArea` that is the
+  scrolled WIDGET -- which ignores the wheel. Qt propagates an ignored
+  wheel event itself, but only one the platform delivered;
+  `QApplication::sendEvent()` does not. **So the wheel did nothing at all
+  in a scroll area.** Measured: sent to the child, not accepted and nothing
+  moves; sent to its parent viewport, accepted and scrolls a row.
+
+  It walks up the parent chain until something accepts now, stopping at
+  the input layer so an event cannot escape it. Motion, the button and the
+  wheel: every one of the three was correctly parsed and delivered
+  somewhere that could not act on it.
+
+  **`on_resize()` and `on_focus_change()` had never been called either** --
+  two sinks a terminal drives, one of which resizes the window to the new
+  cell count, so nothing had checked that a terminal resize resizes
+  anything. They are covered now, along with the quit keys and the
+  five-row page step.
+
+  Two things about writing those tests are worth keeping, because both
+  made a test lie before it told the truth. `qApp->quit()` leaves the
+  application in a state where a later `processEvents()` need not deliver,
+  so a case that quits and then expects typing asserts the order it
+  happens to have been written in. And a child widget created AFTER its
+  parent is shown is not visible until shown itself -- which reads as "the
+  key was not delivered" and is not.
+
   **The same lens found a second field one along, and that one was worse
   than an absence.** `m.button` was parsed by the backend -- SGR 1006
   carries it and `AnsiBackend` writes 1 left, 2 middle, 3 right -- and

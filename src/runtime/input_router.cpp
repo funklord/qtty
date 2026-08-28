@@ -297,10 +297,26 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 	const QPoint pos = target->mapFromGlobal(px);
 
 	if (m.wheel) {
-		QWheelEvent ev(QPointF(pos), QPointF(px), QPoint(),
-		               QPoint(0, m.wheel * GridMetrics::ch()),
-		               Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
-		QApplication::sendEvent(target, &ev);
+		// Up the parent chain until something takes it. Qt propagates an
+		// ignored wheel event itself, but only for one the PLATFORM
+		// delivered; QApplication::sendEvent() does not, so a synthetic one
+		// stopped at whatever childAt() found.
+		//
+		// Measured: in a QScrollArea childAt() returns the scrolled WIDGET,
+		// which ignores the wheel and does not scroll, while its parent --
+		// the viewport -- accepts and scrolls by a row. So the wheel did
+		// nothing at all in a scroll area, which is the third thing wrong
+		// with this function's mouse handling after motion and the button,
+		// and the same shape as both: an event correctly parsed, delivered
+		// somewhere that cannot act on it.
+		for (QWidget *w = target; w; w = w->parentWidget()) {
+			QWheelEvent ev(QPointF(w->mapFromGlobal(px)), QPointF(px), QPoint(),
+			               QPoint(0, m.wheel * GridMetrics::ch()),
+			               Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+			QApplication::sendEvent(w, &ev);
+			if (ev.isAccepted()) break;
+			if (w == top) break;              // do not escape the input layer
+		}
 	} else {
 		const auto btn = qt_button(m.button);
 		if (m.press) {
