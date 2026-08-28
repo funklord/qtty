@@ -169,7 +169,37 @@ void scan_osc11(const QByteArray &b, TermCaps &out) {
 	}
 }
 
+// The DECRPM reply, ESC [ ? <mode> ; <value> $ y.
+//
+// The "$" is an INTERMEDIATE byte rather than a final, which is what made this
+// reply wedge the CSI parser before intermediates were handled: it waited for
+// a final it would never see, and every key behind it was stuck.
+void scan_decrqm(const QByteArray &b, TermCaps &out) {
+	for (int i = 0; i + 4 < b.size(); ++i) {
+		if (uchar(b[i]) != 0x1b || b[i + 1] != '[' || b[i + 2] != '?') continue;
+		int j = i + 3;
+		const int mode = scan_uint(b, j);
+		if (mode < 0 || j >= b.size() || b[j] != ';') continue;
+		++j;
+		const int value = scan_uint(b, j);
+		if (value < 0 || j + 1 >= b.size()) continue;
+		if (b[j] != '$' || b[j + 1] != 'y') continue;
+		out.dec_modes.insert(mode, value);
+	}
+}
+
 } // namespace
+
+int dec_mode(const TermCaps &caps, int mode) {
+	return caps.dec_modes.value(mode, -1);
+}
+
+bool mode_usable(const TermCaps &caps, int mode, bool assumed) {
+	const int v = dec_mode(caps, mode);
+	if (v < 0) return assumed;                    // silence: learned nothing
+	return v != 0;                                // 0 is the only definite no
+}
+
 
 bool inside_tmux() {
 	if (!qgetenv("TMUX").isEmpty()) return true;
@@ -210,6 +240,14 @@ QByteArray caps_query() {
 	    // picture on a terminal whose cells are not 1:2.
 	    "\033[14t"
 	    "\033[16t"
+	    // What the terminal makes of the modes qtty has just switched on.
+	    // Asked rather than assumed: qtty reported mouse and bracketed paste
+	    // from whether it got RAW MODE, which is a fact about the local tty
+	    // and says nothing whatever about what the terminal understands.
+	    "\033[?1006$p"                            // SGR mouse
+	    "\033[?1004$p"                            // focus reporting
+	    "\033[?2004$p"                            // bracketed paste
+	    "\033[?2026$p"                            // synchronised output
 	    // Device attributes, doubling as the sixel probe and as the fence.
 	    "\033[c");
 }
@@ -219,6 +257,7 @@ void scan_caps(const QByteArray &buf, TermCaps &out) {
 	scan_tcap(buf, out);
 	scan_osc11(buf, out);
 	scan_winop(buf, out);
+	scan_decrqm(buf, out);
 	scan_da(buf, out);
 }
 

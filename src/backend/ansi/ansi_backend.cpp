@@ -181,13 +181,23 @@ Capabilities AnsiBackend::capabilities() const {
 	// ignores the request -- there is no reply to wait for, and the DCS
 	// handshake doc/beerssh.md proposes is what would turn these from "asked
 	// for" into "confirmed".
-	c.mouse = raw_ok_;
-	c.bracketed_paste = raw_ok_;
+	// Raw mode is a fact about the local tty and says nothing about what the
+	// terminal understands, so it is now only the ASSUMPTION -- what to
+	// believe when the terminal did not answer. A definite "not recognised"
+	// from DECRQM overrides it; silence leaves it alone.
+	c.mouse = mode_usable(caps_, 1006, raw_ok_);
+	c.bracketed_paste = mode_usable(caps_, 2004, raw_ok_);
 	c.unicode_wide = true;                           // L2 measures width itself
 
 	// DEC 2026 is NOT claimed. section 11 wants synchronised output to
 	// eliminate tearing, and nothing emits the brackets yet; saying true here
 	// would be a field describing an intention rather than the backend.
+	// The terminal's own answer is now available -- DECRQM 2026 is in the
+	// startup query and lands in caps_ -- but this field means "qtty uses
+	// synchronised output", not "the terminal has it", and changing which
+	// question it answers would silently redefine public API. What the
+	// measurement removes is the excuse: implementing it no longer needs a
+	// capability nobody can check.
 	c.synchronised_output = false;
 	c.title = false;                                // no OSC 0/2 emitter yet
 	return c;
@@ -558,7 +568,7 @@ void AnsiBackend::read_input() {
 // `ESC [ 2 0 0 ~`. Both were read as an unknown key and thrown away, three
 // bytes at a time, which then desynchronised the rest of the buffer.
 int AnsiBackend::parse_csi(QByteArray &prefix, QVector<int> &params,
-                          char &final) const {
+                          QByteArray &inter, char &final) const {
 	int i = 2;                                    // past ESC [
 	prefix.clear();
 	params.clear();
@@ -578,8 +588,20 @@ int AnsiBackend::parse_csi(QByteArray &prefix, QVector<int> &params,
 			break;
 		}
 	}
-	if (i >= pending_.size()) return -1;          // still arriving
 	if (value >= 0) params.append(value);
+
+	// Intermediate bytes, 0x20 to 0x2F, which ECMA-48 puts between the
+	// parameters and the final. Without this the parser waited for a final it
+	// would never see: a DECRPM reply is ESC [ ? 1006 ; 1 $ y, and "$" is an
+	// intermediate. Measured -- one such reply wedged the decoder, and every
+	// key after it was stuck behind the sequence that never ended. A terminal
+	// may send one unsolicited, so this was reachable before anything here
+	// asked a mode question.
+	inter.clear();
+	while (i < pending_.size() && pending_[i] >= 0x20 && pending_[i] <= 0x2f)
+		inter.append(pending_[i++]);
+
+	if (i >= pending_.size()) return -1;          // still arriving
 	final = pending_[i];
 	if (final < 0x40 || final > 0x7e) return -1;  // not a terminator: wait
 	return i + 1;
@@ -622,7 +644,8 @@ static QByteArray params_to_bytes(const QVector<int> &params) {
 }
 
 bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
-                              const QVector<int> &params, char final) {
+                              const QVector<int> &params,
+                              const QByteArray &inter, char final) {
 	const auto param = [&](int n, int fallback) {
 		return n < params.size() ? params[n] : fallback;
 	};
@@ -672,6 +695,18 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 			              .arg(param(1, 0)).arg(param(2, 0)).toLatin1(), caps_);
 			return true;
 		}
+		return true;
+	}
+	// A DECRPM reply, ESC [ ? <mode> ; <value> $ y. Rebuilt and handed to the
+	// one parser, as the window operations are: the rules about what value 0
+	// means live there and should not be restated here.
+	//
+	// It reaches this function at all only because parse_csi() learned about
+	// intermediate bytes. Before that the "$" was not a final and the whole
+	// sequence never terminated, taking every key behind it with it.
+	if (final == 'y' && inter == QByteArrayLiteral("$")) {
+		scan_caps(QByteArrayLiteral("\033[?") + params_to_bytes(params)
+		              + QByteArrayLiteral("$y"), caps_);
 		return true;
 	}
 	// Device attributes. The reply to our own fence, and unsolicited from
@@ -734,12 +769,12 @@ bool AnsiBackend::decode_one() {
 	// the mode: a newline in pasted text is text, not Return.
 	if (in_paste_) {
 		if (c == 0x1b && pending_.size() >= 2 && pending_[1] == '[') {
-			QByteArray prefix; QVector<int> params; char final = 0;
-			const int n = parse_csi(prefix, params, final);
+			QByteArray prefix, inter; QVector<int> params; char final = 0;
+			const int n = parse_csi(prefix, params, inter, final);
 			if (n < 0) return false;              // wait for the rest
 			if (final == '~' && !params.isEmpty() && params[0] == 201) {
 				pending_.remove(0, n);
-				return dispatch_csi(prefix, params, final);
+				return dispatch_csi(prefix, params, inter, final);
 			}
 			paste_.append(pending_.left(n));      // an escape inside the paste
 			pending_.remove(0, n);
@@ -753,11 +788,11 @@ bool AnsiBackend::decode_one() {
 	if (c == 0x1b) {                              // ESC sequences
 		if (pending_.size() < 2) return false;
 		if (pending_[1] == '[') {
-			QByteArray prefix; QVector<int> params; char final = 0;
-			const int n = parse_csi(prefix, params, final);
+			QByteArray prefix, inter; QVector<int> params; char final = 0;
+			const int n = parse_csi(prefix, params, inter, final);
 			if (n < 0) return false;              // still arriving
 			pending_.remove(0, n);
-			return dispatch_csi(prefix, params, final);
+			return dispatch_csi(prefix, params, inter, final);
 		}
 		// A string sequence -- OSC, DCS, APC, PM, SOS. Consumed and offered
 		// to the capability parser, never turned into keys. The terminal's

@@ -91,8 +91,46 @@ its own mouse and paste flags from whether it got raw mode, not from
 anything the terminal said, so this document must not quote them as
 beerssh's.
 
-Two things beerssh does not answer, both of which qtty asks for and falls
-back from:
+### Re-measured 09:31, after both ends moved
+
+Both gaps below are **closed**, and qtty now asks four more questions. What
+beerssh answers today, all features on:
+
+    ESC _ G i=31;OK                       kitty
+    ESC P 1+r 524742=382F382F38           RGB, "8/8/8"
+    ESC P 1+r 5463                        Tc -- now yes, was 0+r
+    ESC ] 11 ; rgb:0000/0000/0000         background -- new
+    ESC [ 4 ; 432 ; 720 t                 text area -- new
+    ESC [ 6 ; 18 ; 9 t                    cell 9x18 -- new
+    ESC [ ? 1006 ; 1 $ y                  SGR mouse: set
+    ESC [ ? 1004 ; 1 $ y                  focus: set
+    ESC [ ? 2004 ; 1 $ y                  bracketed paste: set
+    ESC [ ? 2026 ; 2 $ y                  synchronised output: reset
+    ESC [ ? 1 ; 2 ; 4 c                   DA1, 4 = sixel
+
+`--term-features=-synchronised-output` turns that `2026;2` into `2026;0`,
+and nothing else changes -- so the switch is honest and qtty reads the
+difference. That is the first capability qtty has verified against a
+terminal that can be told to lack it, rather than against its own double.
+
+**A new discrepancy, and it is qtty's.** beerssh reports a cell of **9x18**
+while qtty's own `GridMetrics` derives **10x19** from DejaVu Sans Mono at
+16px. Both are right about different things -- qtty's is the arithmetic its
+layout runs on, beerssh's is what a cell measures on screen -- but
+`compose_halfblocks()` samples an image against the internal ratio, so a
+half-block mosaic is stretched by about five per cent here. `Qtty::cells()`
+takes the terminal's figure and is correct; the mosaic sampler does not and
+is not. Recorded rather than fixed: the internal metric is the basis of
+every widget geometry in the tree.
+
+**Both ends were moving during this, twice.** An earlier run of the tool
+reported the background as unanswered while a raw capture minutes later
+showed it arriving; the parser was fine on the exact bytes, and beerssh had
+simply gained OSC 11 in between -- its binary was rebuilt twenty seconds
+before the run that finally saw it. Every figure in this file is worth a
+timestamp and the other binary's mtime, which is why both are given.
+
+### Superseded: two things beerssh did not answer
 
 - **OSC 11**, the background colour. Every tier below kitty composites an
   image's alpha against it; without an answer qtty uses a dark grey, which

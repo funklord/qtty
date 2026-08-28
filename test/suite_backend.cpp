@@ -272,6 +272,31 @@ int suite_backend() {
 		      "kitty alone does not complete the reply");
 		CHECK(caps_complete("\033[?62;4;22c"), "DA1 does");
 
+		// -- DECRQM, which is how a capability is asked about rather than
+		//    assumed. The distinction that matters is between silence and a
+		//    definite zero: qtty used to report mouse and bracketed paste
+		//    from whether it got RAW MODE, which is a fact about the local
+		//    tty and says nothing about what the terminal understands.
+		const TermCaps modes = caps_of("\033[?1006;1$y\033[?2004;2$y"
+		                               "\033[?2026;0$y");
+		CHECK(dec_mode(modes, 1006) == 1, "DECRPM set is read");
+		CHECK(dec_mode(modes, 2004) == 2, "DECRPM reset is read, and is not zero");
+		CHECK(dec_mode(modes, 2026) == 0, "and not-recognised is read as zero");
+		CHECK(dec_mode(modes, 1004) == -1,
+		      "a mode the terminal said nothing about is unknown, not absent");
+
+		// The asymmetry, which is this file's rule applied one layer down.
+		// Only a definite zero may turn a capability off; silence leaves the
+		// caller's own belief alone, because it learned nothing.
+		CHECK(mode_usable(modes, 1006, false),
+		      "a mode the terminal confirms is usable even if unassumed");
+		CHECK(mode_usable(modes, 2004, false),
+		      "reset still means recognised -- the mode exists, it is just off");
+		CHECK(!mode_usable(modes, 2026, true),
+		      "not-recognised overrides the assumption");
+		CHECK(mode_usable(modes, 1004, true) && !mode_usable(modes, 1004, false),
+		      "and silence leaves the assumption exactly as it was");
+
 		// -- the query itself must carry the fence last, or the collector
 		//    stops reading before the answers it is waiting for arrive.
 		const QByteArray q = caps_query();
@@ -279,6 +304,9 @@ int suite_backend() {
 		CHECK(q.contains("\033_G") && q.contains("+q524742")
 		      && q.contains("\033]11;?") && q.contains("\033[16t"),
 		      "and asks for kitty, direct colour, the background and the cell");
+		CHECK(q.contains("\033[?1006$p") && q.contains("\033[?2004$p")
+		      && q.contains("\033[?1004$p") && q.contains("\033[?2026$p"),
+		      "and asks about the modes it had been assuming");
 	}
 
 	// -- and the same replies arriving on the LIVE input path, which is the
@@ -840,6 +868,18 @@ int suite_backend() {
 		CHECK(arrive.update(placed(1, QRect(0, 0, 4, 2)), 20),
 		      "nor is one going away");
 	}
+
+	// A DECRPM reply, ESC [ ? 1006 ; 1 $ y. The "$" is an intermediate byte,
+	// not a final, so a parser that only accepts finals in 0x40..0x7e never
+	// terminates the sequence. Probing whether the decoder survives one
+	// BEFORE relying on the mode query that produces them.
+	rec.clear();
+	feeder.send("\033[?1006;1$y");
+	QCoreApplication::processEvents();
+	feeder.send("\033[A");
+	for (int i = 0; i < 50; ++i) QCoreApplication::processEvents();
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Up,
+	      "a DECRPM reply does not stall the decoder");
 
 	return fails;
 }

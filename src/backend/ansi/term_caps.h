@@ -22,6 +22,7 @@
 #define QTTY_TERM_CAPS_H
 
 #include <QByteArray>
+#include <QHash>
 #include <QSize>
 
 namespace Qtty {
@@ -35,7 +36,24 @@ struct TermCaps {
 	unsigned char bg[3] = {0, 0, 0};
 	QSize cell_px;              // one cell in pixels, invalid until reported
 	QSize text_px;              // the text area in pixels, invalid until reported
+
+	// What DECRQM said about each private mode asked about, keyed by mode
+	// number. DECRPM's values: 0 not recognised, 1 set, 2 reset, 3 and 4 the
+	// permanent forms. An absent key means the terminal did not answer at
+	// all, which is a different thing from answering 0 and must stay so --
+	// silence is no information, and 0 is a definite no.
+	QHash<int, int> dec_modes;
 };
+
+// Tri-state: -1 when the terminal said nothing about this mode, otherwise the
+// DECRPM value. Named rather than inlined because the distinction between
+// "unknown" and "not recognised" is the whole point and is easy to lose.
+int dec_mode(const TermCaps &caps, int mode);
+
+// Whether a mode may be relied on, under this file's asymmetry rule. Silence
+// leaves the caller's own belief alone -- it learned nothing -- and only a
+// definite 0 turns a capability off.
+bool mode_usable(const TermCaps &caps, int mode, bool assumed);
 
 // Inside tmux, everything below is answered by TMUX rather than by the
 // terminal, and anything written for the terminal is swallowed. $TMUX is set

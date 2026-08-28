@@ -53,13 +53,14 @@ private:
 	bool decode_one();                    // one event from pending_ -> sink
 	// A complete CSI at the head of pending_, or -1 if more bytes are needed.
 	// Fills the private prefix, the numeric parameters and the final byte.
-	int parse_csi(QByteArray &prefix, QVector<int> &params, char &final) const;
+	int parse_csi(QByteArray &prefix, QVector<int> &params, QByteArray &inter,
+	              char &final) const;
 	// OSC, DCS, APC, PM and SOS all share one framing: ESC <opener> ... ST,
 	// where ST is ESC \ or, for OSC, a bare BEL. Returns the length consumed,
 	// -1 while it is still arriving. Nothing in here is ever a key.
 	int parse_string_sequence() const;
 	bool dispatch_csi(const QByteArray &prefix, const QVector<int> &params,
-	                 char final);
+	                 const QByteArray &inter, char final);
 	void read_winch();                    // SIGWINCH arrived down the self-pipe
 
 	ITerminalEventSink *sink_ = nullptr;
