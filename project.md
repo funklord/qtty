@@ -795,6 +795,33 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**The interaction sweep found nothing wrong, and that is the result.** The
+mirror of the rendering probes: which user actions reach a widget and
+change something? Space presses a focused button and ticks a checkbox,
+arrow keys step a slider, a combo box and a spin box, a click toggles a
+checkbox and selects a tab. All of it worked, and it is asserted now
+rather than left as a sentence -- these are the paths every application
+depends on and nothing covered them, the key tests stopping at a
+`QLineEdit` and the mouse tests at a button. Each assertion pins the
+DIRECTION as well as the change, since a widget that moved on any key
+would satisfy "the value differs".
+
+Two behaviours were checked and left alone, because they are Qt's and not
+this style's, and naming them stops the next sweep re-investigating:
+
+- **Enter on a focused push button does nothing.** Qt routes Return to a
+  dialog's default button, not to whatever has focus; a bare button in a
+  plain widget responds to Space alone. Matching the desktop is right.
+- **A click on a slider's groove pages rather than jumping.** Qt's
+  default adds `pageStep`, which on a 0..10 range with the default step
+  lands on the maximum however near the low end the click was.
+
+The second is a real question for a terminal, and it is the holder's:
+`SH_Slider_AbsoluteSetButtons` would make a click set the value where it
+landed, which suits a device with no fine pointer control and no drag
+worth speaking of. It changes interaction semantics rather than
+appearance, so it is recorded rather than pinned.
+
 **Qt's standard iconography has no route to a glyph, and that is a
 decision rather than a defect.** Three measurements, taken because a
 dialog probe looked like it had found a missing icon:
@@ -3351,11 +3378,26 @@ testing rather than features, and both immediately found a defect that
 had been invisible, which is the argument for picking that kind of work
 first.
 
-What is left there, in no particular order and none of it blocked:
-`CellItemDelegate` and the item-view roles; `ICellPainted`, which is
-risk R5's stated mitigation and F5's suggested remedy for the widgets
-that self-size; the `QTextEdit` interaction layer; submenus, mnemonics
-and an editable combo box; `PixelSurface`; the
-§11 benchmark, without which the 0.16 ms and 3.8 ms figures are spike
-measurements nothing holds; and the bundled font, which is what would
-make the fixtures reproducible (§7.9).
+What is left there is now **the bundled font**, which is what would make
+the fixtures reproducible (§7.9), and it is a decision before it is work:
+a font is somebody's licensed asset, and which one to carry is not a
+question to answer while doing something else.
+
+The rest of that list has been overtaken and the entries are corrected
+here rather than left to be re-read as gaps. `CellItemDelegate` and the
+item-view roles, `ICellPainted`, `PixelSurface`, submenus, mnemonics and
+an editable combo box are all built and covered -- §7.5 records the two
+that carried decisions worth keeping. The `QTextEdit` interaction layer
+is exercised end to end: a plain text editor takes typing, Return and
+wide clusters, and a `QTextEdit` takes them too.
+
+**And the §11 benchmark exists**, as `suite_budget`. The sentence that
+stood here said the 0.16 ms and 3.8 ms figures were spike measurements
+nothing held, and that was true when it was written. What the fixture
+does is deliberate and is the part worth knowing: it PRINTS its durations
+for a human to read against §11's 16 ms and 50 ms budgets, and asserts
+the damage behaviour instead. The reason is measured and is in that
+file's own header -- the same binary rendered the same fixture in 1.35 ms
+and 2.41 ms minutes apart, so a wall-clock assertion on a shared machine
+is a coin toss wearing a threshold. A stale roadmap entry is worse than
+none, because it sends somebody to build what is already there.

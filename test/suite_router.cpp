@@ -864,5 +864,71 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	{
+		// What a user actually DOES, asserted end to end. The mirror of the
+		// rendering sweep, and it found no defect -- which is worth having as
+		// a test rather than as a sentence, because these are the paths every
+		// application depends on and nothing here covered them: the key tests
+		// stop at a QLineEdit and the mouse tests at a button.
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		h.resize(GridMetrics::cells(40, 12));
+		auto *btn = new QPushButton(QStringLiteral("Go"), &h);
+		btn->setGeometry(0, 0, cw * 6, ch);
+		auto *chk = new QCheckBox(QStringLiteral("On"), &h);
+		chk->setGeometry(0, ch, cw * 8, ch);
+		auto *sld = new QSlider(Qt::Horizontal, &h);
+		sld->setRange(0, 10);
+		sld->setValue(5);
+		sld->setGeometry(0, ch * 2, cw * 10, ch);
+		auto *cmb = new QComboBox(&h);
+		cmb->addItems({QStringLiteral("a"), QStringLiteral("b")});
+		cmb->setGeometry(0, ch * 3, cw * 10, ch);
+		auto *spn = new QSpinBox(&h);
+		spn->setRange(0, 10);
+		spn->setValue(3);
+		spn->setGeometry(0, ch * 4, cw * 8, ch);
+		auto *tabs = new QTabBar(&h);
+		tabs->addTab(QStringLiteral("T1"));
+		tabs->addTab(QStringLiteral("T2"));
+		tabs->setGeometry(0, ch * 5, cw * 20, ch);
+		h.show();
+		QCoreApplication::processEvents();
+
+		InputRouter r(&h);
+		int clicks = 0;
+		QObject::connect(btn, &QPushButton::clicked, btn, [&clicks] { ++clicks; });
+		const auto press = [&](QWidget *w, int k, const QString &t = QString()) {
+			w->setFocus();
+			setFocusWidget(w);
+			QCoreApplication::processEvents();
+			r.on_key({k, t, false, false, false});
+			QCoreApplication::processEvents();
+		};
+		const auto click = [&](int x, int y) {
+			r.on_mouse({QPoint(x, y), 1, true, false, false, 0});
+			r.on_mouse({QPoint(x, y), 1, false, true, false, 0});
+			QCoreApplication::processEvents();
+		};
+
+		press(btn, Qt::Key_Space, QStringLiteral(" "));
+		CHECK(clicks == 1, "space on a focused button presses it");
+		press(chk, Qt::Key_Space, QStringLiteral(" "));
+		CHECK(chk->isChecked(), "and on a checkbox ticks it");
+		// Each of these asserts the DIRECTION as well as the change: a widget
+		// that moved on any key would satisfy "the value differs".
+		press(sld, Qt::Key_Right);
+		CHECK(sld->value() == 6, "right on a slider moves it up one step");
+		press(cmb, Qt::Key_Down);
+		CHECK(cmb->currentIndex() == 1, "down on a combo takes the next item");
+		press(spn, Qt::Key_Up);
+		CHECK(spn->value() == 4, "up on a spin box steps it");
+
+		click(1, 1);
+		CHECK(!chk->isChecked(), "a click on a checkbox toggles it back");
+		click(14, 5);
+		CHECK(tabs->currentIndex() == 1, "and a click on a tab selects it");
+	}
+
 	return fails;
 }
