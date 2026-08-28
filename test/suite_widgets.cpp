@@ -9,8 +9,15 @@ using namespace Qtty;
 
 static int fails = 0;
 static bool g_record = false;
+// The failure carries the condition that was false, not only the sentence.
+// A message that cannot separate the hypotheses it will generate guarantees
+// the guessing: twice in one day an assertion here had to be diagnosed by
+// adding a temporary print, which is the proof that what it printed was not
+// enough. Named by the beerssh session, which paid two container runs and
+// three wrong theories for the same lesson.
 #define CHECK(c, m) do { if (c) printf("PASS: %s\n", m); \
-                         else { printf("FAIL: %s\n", m); ++fails; } } while (0)
+                         else { printf("FAIL: %s\n      condition: %s\n", \
+                                       m, #c); ++fails; } } while (0)
 
 static bool buffer_contains(const CellBuffer &b, const QString &glyph) {
 	for (int y = 0; y < b.rows(); ++y)
@@ -719,8 +726,20 @@ int suite_widgets() {
 		// present -- and one drawn over the label is the toolbar fault this
 		// suite already found once, in the other order.
 		const QString row = buf.to_text().split(QLatin1Char('\n')).value(0);
-		CHECK(row.startsWith(QStringLiteral("[Go ▾]")),
-		      "a tool button with a menu says so, beside its label");
+		// The observed row on failure, because the condition alone cannot
+		// separate the hypotheses it generates -- an absent marker, one
+		// drawn over the label, one outside the bracket, and a button at a
+		// width other than its hint all fail it identically. Diagnosing this
+		// one during development took a temporary print, which is the proof
+		// that the sentence was not enough.
+		if (row.startsWith(QStringLiteral("[Go ▾]"))) {
+			printf("PASS: a tool button with a menu says so, beside its label\n");
+		} else {
+			printf("FAIL: a tool button with a menu says so, beside its label\n"
+			       "      row '%s', hint %d px, cell %d px\n",
+			       qPrintable(row), tb->sizeHint().width(), GridMetrics::cw());
+			++fails;
+		}
 		// And the measurement must agree with the drawing, or the marker is
 		// drawn into a cell the width never admitted was needed and the
 		// elide eats a letter to pay for it.

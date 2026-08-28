@@ -24,8 +24,15 @@
 using namespace Qtty;
 
 static int fails = 0;
+// The failure carries the condition that was false, not only the sentence.
+// A message that cannot separate the hypotheses it will generate guarantees
+// the guessing: twice in one day an assertion here had to be diagnosed by
+// adding a temporary print, which is the proof that what it printed was not
+// enough. Named by the beerssh session, which paid two container runs and
+// three wrong theories for the same lesson.
 #define CHECK(c, m) do { if (c) printf("PASS: %s\n", m); \
-                         else { printf("FAIL: %s\n", m); ++fails; } } while (0)
+                         else { printf("FAIL: %s\n      condition: %s\n", \
+                                       m, #c); ++fails; } } while (0)
 
 namespace {
 
@@ -526,7 +533,24 @@ int suite_backend() {
 		setFocusWidget(a2);
 		QCoreApplication::processEvents();
 		type("\033[Z");
-		CHECK(win.focusWidget() == a1, "CSI Z is a back-tab, and moves focus backwards");
+		// Which widget ended up focused, not merely that it was not a1: the
+		// interesting failures are focus moving FORWARD (the shift lost) and
+		// focus going nowhere (the key never arriving), and those are
+		// different bugs that this condition reports identically. The first
+		// draft of this assertion asked Qt for the focus and had to be
+		// diagnosed with a temporary print.
+		{
+			QWidget *f = win.focusWidget();
+			const char *where = f == a1 ? "a1" : f == a2 ? "a2"
+			                  : f == a3 ? "a3" : f ? "elsewhere" : "nowhere";
+			if (f == a1) {
+				printf("PASS: CSI Z is a back-tab, and moves focus backwards\n");
+			} else {
+				printf("FAIL: CSI Z is a back-tab, and moves focus backwards\n"
+				       "      focus is %s, having started at a2\n", where);
+				++fails;
+			}
+		}
 
 		backend.set_event_sink(&rec);
 	}

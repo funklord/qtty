@@ -795,6 +795,29 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**Every failure in this suite printed a sentence and nothing else.** The
+beerssh session paid two container runs and three wrong theories for a
+message that was accurate throughout -- "the underline cursor drew nothing"
+could not distinguish an absent cursor from a differently-sized cell from a
+probe looking in the wrong place, which were precisely the three hypotheses
+it generated. **A message that cannot separate the hypotheses it will
+generate guarantees the guessing.**
+
+The `CHECK` macro, copied identically into ten suites, now prints the
+condition that was false as well as the sentence. Mechanical, so it carries
+a proof: the 552 PASS lines are byte-identical before and after, and the
+failure path was then exercised deliberately, because a change that only
+touches the failure branch is not tested by a green run.
+
+The condition is not always enough, and the evidence for where is local:
+**twice today an assertion here had to be diagnosed by adding a temporary
+print.** That is the proof that what it printed was insufficient, so those
+two carry their observed value now -- the rendered row against the size
+hint, and which widget the focus actually reached. Both failures generate
+competing hypotheses that the condition reports identically: a marker
+absent, over the label, or outside the bracket; focus moved forward, or
+never moved at all.
+
 **A tool button with a menu looked exactly like one without.** Coverage
 named the four `PE_IndicatorArrow*` cases as never drawn, and asking which
 widget reaches them found that **none does**: the combo box, the spin box,

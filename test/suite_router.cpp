@@ -8,8 +8,15 @@
 using namespace Qtty;
 
 static int fails = 0;
+// The failure carries the condition that was false, not only the sentence.
+// A message that cannot separate the hypotheses it will generate guarantees
+// the guessing: twice in one day an assertion here had to be diagnosed by
+// adding a temporary print, which is the proof that what it printed was not
+// enough. Named by the beerssh session, which paid two container runs and
+// three wrong theories for the same lesson.
 #define CHECK(c, m) do { if (c) printf("PASS: %s\n", m); \
-                         else { printf("FAIL: %s\n", m); ++fails; } } while (0)
+                         else { printf("FAIL: %s\n      condition: %s\n", \
+                                       m, #c); ++fails; } } while (0)
 
 int suite_router() {
 	fails = 0;
