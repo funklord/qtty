@@ -442,6 +442,92 @@ int suite_backend() {
 		CHECK(edit->text().size() == 1 && edit->text().at(0) == QChar(0x6f22),
 		      "and a three-byte character arrives as one, not three");
 
+		// Home and End, in BOTH encodings, because a terminal picks one and
+		// the application meets whichever it picked. Coverage named these:
+		// the decoder maps Up, Right, Left and Delete and every test used
+		// those four, so the cases below had never run -- in a library whose
+		// whole subject is editing text in a terminal.
+		//
+		// Asserted by where the next character LANDS, which is the only
+		// thing that distinguishes a key that moved the cursor from one
+		// consumed and dropped. A test on the sink would pass for both.
+		edit->setText(QStringLiteral("bc"));
+		edit->end(false);
+		type("\033[H");                   // CSI H
+		type("a");
+		CHECK(edit->text() == QStringLiteral("abc"), "CSI H is Home");
+		type("\033[F");                   // CSI F
+		type("d");
+		CHECK(edit->text() == QStringLiteral("abcd"), "and CSI F is End");
+		type("\033[1~");                  // the ~ encoding of the same two
+		type("z");
+		CHECK(edit->text() == QStringLiteral("zabcd"), "CSI 1~ is Home as well");
+		type("\033[4~");
+		type("y");
+		CHECK(edit->text() == QStringLiteral("zabcdy"), "and CSI 4~ is End");
+
+		// Down, PageDown and PageUp, on a list rather than a line edit --
+		// the widget where they mean something, so the assertion is the row
+		// that ended up current rather than a key that was seen.
+		auto *list = new QListWidget(&win);
+		for (int i = 0; i < 40; ++i)
+			list->addItem(QStringLiteral("row %1").arg(i));
+		list->setGeometry(0, GridMetrics::ch(),
+		                  GridMetrics::cw() * 20, GridMetrics::ch() * 6);
+		list->show();
+		list->setCurrentRow(0);
+		list->setFocus();
+		setFocusWidget(list);
+		QCoreApplication::processEvents();
+
+		type("\033[B");
+		CHECK(list->currentRow() == 1, "CSI B is Down");
+		const int after_down = list->currentRow();
+		type("\033[6~");
+		const int after_pgdn = list->currentRow();
+		CHECK(after_pgdn > after_down + 1, "CSI 6~ is PageDown, not one row");
+		type("\033[5~");
+		CHECK(list->currentRow() < after_pgdn, "and CSI 5~ is PageUp");
+
+		// Insert has no standard effect in a Qt widget, so it is asserted
+		// where it can be: arriving AT one, as Qt::Key_Insert. That is still
+		// the delivery half -- the sink checks above prove the decode, and
+		// this proves a widget was handed the result.
+		struct Watcher : QWidget {
+			using QWidget::QWidget;
+			int last = 0;
+			void keyPressEvent(QKeyEvent *e) override { last = e->key(); }
+		};
+		auto *watch = new Watcher(&win);
+		watch->setFocusPolicy(Qt::StrongFocus);
+		watch->setGeometry(0, GridMetrics::ch() * 8, GridMetrics::cw() * 4,
+		                   GridMetrics::ch());
+		watch->show();
+		watch->setFocus();
+		setFocusWidget(watch);
+		QCoreApplication::processEvents();
+		type("\033[2~");
+		CHECK(watch->last == Qt::Key_Insert, "CSI 2~ reaches a widget as Insert");
+
+		// CSI Z is Shift+Tab, and shift is the whole of it: without it this
+		// moves focus FORWARD and the assertion below passes for the wrong
+		// reason, since with two widgets forward and backward are the same
+		// place. Three, so they are not.
+		auto *a1 = new QLineEdit(&win), *a2 = new QLineEdit(&win),
+		     *a3 = new QLineEdit(&win);
+		for (QLineEdit *e : {a1, a2, a3}) {
+			e->setGeometry(0, GridMetrics::ch() * 9, GridMetrics::cw() * 4,
+			               GridMetrics::ch());
+			e->show();
+		}
+		QWidget::setTabOrder(a1, a2);
+		QWidget::setTabOrder(a2, a3);
+		a2->setFocus();
+		setFocusWidget(a2);
+		QCoreApplication::processEvents();
+		type("\033[Z");
+		CHECK(win.focusWidget() == a1, "CSI Z is a back-tab, and moves focus backwards");
+
 		backend.set_event_sink(&rec);
 	}
 

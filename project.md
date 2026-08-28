@@ -795,6 +795,34 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**Coverage named seven keys the decoder had never decoded.** Measured over
+the whole library rather than guessed at: 94.5% of lines, concentrated
+enough that `ansi_backend.cpp` at 86.70% held most of what was missing. Its
+uncovered lines included `case 1`, `case 2`, `case 4`, `case 5`, `case 6`
+and the finals `B`, `H`, `F`, `Z` -- **Home, Insert, End, PageUp, PageDown,
+Down and back-tab.** Every existing test used Up, Right, Left or Delete, so
+the rest had never run, in a library whose whole subject is editing text in
+a terminal.
+
+They are asserted through the chain rather than at the sink, because the
+sink cannot tell a key that moved the cursor from one consumed and dropped:
+Home and End by **where the next character lands**, in both the letter and
+the `~` encoding since a terminal picks one and an application meets
+whichever it picked; Down, PageDown and PageUp on a `QListWidget`, by the
+row that ended up current; Insert at a widget that records the key it was
+handed, since Qt gives it no standard effect. 88.92% after.
+
+Back-tab needs **three** widgets. With two, forward and backward are the
+same place, so the assertion would pass with `focusNextPrevChild(!k.shift)`
+sabotaged to `true` -- and it does fail with three.
+
+**The first draft asked Qt for the focus and got nil.** `hasFocus()` is
+true only for the active window's focus widget, and nothing here is ever
+activated -- which is exactly why the router keeps its own focus notion.
+The window's own `focusWidget()` is the question this environment can
+answer. A probe placed where the error cannot be expressed, again, and the
+third time this suite has produced one.
+
 **And fixing that gate turned on an unbounded upload.** The duty the
 previous entry creates: a fix changes which code runs, so the path it
 enables is the next thing to read.
