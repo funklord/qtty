@@ -759,6 +759,40 @@ int suite_backend() {
 					      "a still placement is emitted as real sixel");
 					CHECK(!moved.contains("\033P0;1;0q"),
 					      "and a moved one degrades to the mosaic instead");
+					// iTerm2, the one tier whose emission nothing asserted.
+					// 68 checks in suite_graphics round-trip the encoders --
+					// the parse half is the strongest in that file -- and
+					// sixel and kitty are each checked on the wire above,
+					// while OSC 1337 appeared in no test at all. Third
+					// application of the search key, third find.
+					fflush(stdout);
+					::dup2(slave, 1);          // present() must write to the pty
+					qputenv("QTTY_GRAPHICS", "iterm2");
+					AnsiBackend it2;
+					Recorder it2_rec;
+					it2.set_event_sink(&it2_rec);
+					f.images[0].cell_rect = QRect(0, 0, 4, 2);
+					while (::read(master, drain, sizeof(drain)) > 0) { }
+					it2.present(f, QRegion());
+					QByteArray itout;
+					{
+						ssize_t n;
+						while ((n = ::read(master, drain, sizeof(drain))) > 0)
+							itout.append(drain, int(n));
+					}
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					CHECK(itout.contains("\033]1337;File=inline=1"),
+					      "the iTerm2 tier emits its image to the terminal");
+					// Sized in CELLS, which is the half that makes cropping
+					// work: OSC 1337 takes a cell count, so cropping the
+					// pixels without it squeezes the whole picture into the
+					// visible rows instead of hiding the rest.
+					CHECK(itout.contains("width=4") && itout.contains("height=2"),
+					      "sized in cells, matching the placement");
+					fflush(stdout);
+					::dup2(slave, 1);
+
 					// The exclusion, which is a claim and therefore needs a
 					// check: kitty placements have handles, so moving one is
 					// a short escape with no re-upload and degrading it would
