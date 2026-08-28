@@ -1190,6 +1190,27 @@ in software into one full-terminal frame, and half-blocks ship no pixels
 at all, being cells already. Removing the software-composite condition
 fails exactly the three middle cases.
 
+**And measuring it exposed a fault in the measuring instrument, which is
+this section's own theme arriving from the other side.** `make coverage`
+reported `term_caps.cpp` at "100.00% of 150", then at "99.44% of 177"
+after one `QHash<int, int>` was added -- without a line of its own going
+uncovered. `gcov -n` reports the TRANSLATION UNIT, and a translation unit
+carries every header inlined into it: the shortfall was Qt's
+`QHashPrivate`, instantiated into the object and attributed to the file.
+Chasing it would have meant writing tests for Qt's hash.
+
+A number that moves when a header is included is not a number about the
+file. The target counts the per-file `.gcov` listing now, which carries
+only that file's own lines, and **prints every uncovered line rather than
+a percentage** -- a percentage says how much and never which. That change
+is what turned the next two gaps from invisible into obvious.
+
+With them closed, `compositor.cpp` goes **78.03% to 98.39%**. The two
+lines left are inside the idle-repaint timer's lambda, whose only trigger
+is elapsed wall-clock time; a test that waits for a timer is a test that
+sleeps, and a sleeping test is flaky on a loaded machine. Left uncovered
+deliberately and recorded, rather than covered badly.
+
 **It also found a false positive in `GridGuard`, which is a guard
 reporting something nobody can fix.** `Overlay` builds a top-level
 `TwinWidget` for the GUI path, guarded by `is_tui_active()` -- so any test

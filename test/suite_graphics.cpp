@@ -743,13 +743,14 @@ int suite_graphics() {
 	{
 		struct Recorder : Qtty::ITerminalBackend, Qtty::IGraphicsOutput {
 			Qtty::Capabilities caps;
-			int pixels = 0, overlays = 0, cleared = 0;
+			int pixels = 0, overlays = 0, cleared = 0, frames = 0;
+			bool want_placement = false;
 			QImage last_pixels, last_overlay;
 			QPoint last_cell;
 			int last_z = 0;
 			QSize size() const override { return QSize(20, 6); }
 			Qtty::Capabilities capabilities() const override { return caps; }
-			void present(const Qtty::CellBuffer &, const QRegion &) override {}
+			void present(const Qtty::CellBuffer &, const QRegion &) override { ++frames; }
 			void set_cursor(std::optional<QPoint>, Qtty::CursorShape) override {}
 			void set_event_sink(Qtty::ITerminalEventSink *) override {}
 			void resume() override {}
@@ -783,7 +784,19 @@ int suite_graphics() {
 			Qtty::InputRouter router(&win);
 			Qtty::Compositor comp(&win, &router);
 			Qtty::FrameScheduler sched(&rec, &comp, &win);
+			if (rec.want_placement) {
+				auto *plot = new Qtty::PixelSurface(&win);
+				plot->setGeometry(0, 0, GridMetrics::cw() * 3, GridMetrics::ch() * 2);
+				plot->show();
+				QCoreApplication::processEvents();
+			}
 			sched.render_now();
+			// The coalescing path, which render_now() bypasses. A frame ASKED
+			// for rather than taken is how every frame after the first one
+			// arrives, and it was the other half of this file's coverage gap.
+			sched.request_frame();
+			for (int k = 0; k < 40 && rec.frames < 2; ++k)
+				QCoreApplication::processEvents();
 		};
 
 		QImage art(GridMetrics::cw() * 4, GridMetrics::ch() * 2,
@@ -811,6 +824,10 @@ int suite_graphics() {
 		for (auto mode : {Qtty::Capabilities::Sixel, Qtty::Capabilities::ITerm2,
 			                  Qtty::Capabilities::Kitty}) {
 			Recorder soft;
+			// With a PLACEMENT in the frame as well as an overlay: the software
+			// path draws both onto the rasterised frame, and an overlay-only
+			// case leaves the placement half of it unrun.
+			soft.want_placement = true;
 			drive(mode, soft);
 			const bool ok = soft.pixels == 1 && soft.overlays == 0
 			             && soft.last_pixels.size()

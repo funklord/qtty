@@ -260,7 +260,20 @@ test-platforms: tests-build
 	echo "test-platforms: $(words $(TEST_PLATFORMS)) platform(s) + 1 hostile environment, $$failed failed"; \
 	[ "$$failed" -eq 0 ]
 
-# Line coverage for one source, measured rather than asserted. Built into its
+# Line coverage for one source, measured rather than asserted -- and measured
+# for THAT SOURCE, which is not what gcov's summary reports.
+#
+# `gcov -n <file>.cpp` prints a percentage for the translation unit, and a
+# translation unit includes every header inlined into it. Adding one
+# QHash<int,int> dropped term_caps.cpp from "100.00% of 150" to "99.44% of
+# 177" without a line of its own going uncovered: the shortfall was Qt's
+# hash internals, instantiated into the object and attributed to the file.
+# A number that moves when a header is included is not a number about the
+# file, and chasing it would have meant writing tests for QHashPrivate.
+#
+# The per-file .gcov listing carries only the file's own lines, so that is
+# what is counted here, and every uncovered line is printed rather than
+# summarised -- a percentage says how much and never which. Built into its
 # own tree so an instrumented object never reaches a normal build, and named
 # explicitly so `make coverage` cannot be the thing that quietly slows
 # everything else down.
@@ -276,8 +289,13 @@ coverage:
 	$(MAKE) test BUILD_DIR=$(COV_DIR) \
 		QMAKE_CONFIG='CONFIG+=release CONFIG-=debug \
 		              QMAKE_CXXFLAGS+=--coverage QMAKE_LFLAGS+=--coverage' >/dev/null
-	@cd $(COV_DIR)/src && gcov -n $(F).cpp 2>/dev/null \
-		| grep -A1 "$(F).cpp" || { echo "coverage: no data for $(F)" >&2; exit 1; }
+	@( cd $(COV_DIR)/src && gcov $(F).cpp >/dev/null 2>&1 )
+	@test -f $(COV_DIR)/src/$(F).cpp.gcov \
+		|| { echo "coverage: no data for $(F)" >&2; exit 1; }
+	@awk -F: '$$1 ~ /^ *[0-9]+$$/ { ex++ } $$1 ~ /^ *#####/ { un++; print "  uncovered: " $$2 ": " $$3 } \
+	     END { t = ex + un; \
+	           printf "%s: %d of %d lines, %.2f%%\n", "$(F).cpp", ex, t, t ? 100.0 * ex / t : 0 } ' \
+	    $(COV_DIR)/src/$(F).cpp.gcov
 
 # Rewrite a snapshot fixture after a reviewed change: make record R=render
 record: tests-build
