@@ -1125,18 +1125,29 @@ code with qtty, so that the instrument is not the thing under test --
 showed the wire form: `ESC _ G i=31 ; OK`, an XTGETTCAP success for RGB,
 a failure for Tc, and `ESC [ ? 1 ; 2 c`.
 
-**Those numbers are provisional and are recorded as such.** Partway
-through the matrix the answers changed, and the cause was not qtty:
-`beerssh/build/beerssh` was rebuilt at the same second as the check, and
-that tree had five modified files including the two that answer the kitty
-query. Another session is working in it. A measurement taken while its
-subject is being rebuilt is not a measurement, and the apparent gaps it
-showed are not reportable as facts about beerssh -- `running-code.md`
-names a concurrent build as a candidate explanation for a changing
-result, and here it is a confirmed one rather than a candidate.
+**The first pass was taken while that tree was being rebuilt under it, and
+one of its findings was wrong.** Partway through the matrix the answers
+changed; `beerssh/build/beerssh` had been rebuilt at the same second as the
+check, with five modified files including the two that answer the kitty
+query. `running-code.md` names a concurrent build as a *candidate*
+explanation for a changing result -- here it was a confirmed one, so the
+numbers were recorded as provisional and nothing was reported to that
+project.
 
-What survives is the method and the tool. The inventory wants re-taking
-against a settled build, by whoever is not also holding it still.
+**Re-taken against a settled build, and the withdrawn finding is the
+interesting one.** The first pass had `none,+sixel` yielding half-blocks --
+sixel enabled and not advertised in the device attributes. It reproduces no
+longer: beerssh's `3525de0`, "answer DA1 and XTVERSION for this terminal,
+not for libvterm", lands attribute 4, and qtty now negotiates the whole
+tier ladder correctly -- `-kitty-graphics` falls to sixel, `none,+sixel`
+gives sixel, `none,+kitty-graphics` brings kitty back on its own.
+
+So the provisional finding was real in substance and unreportable in
+timing, and holding it back cost nothing: it was fixed in that tree while
+this one was waiting to be sure. The full inventory, and what beerssh does
+not answer, is in `doc/beerssh.md` -- which is qtty's own document about
+the integration, and the right place for it, since a sibling's tree is not
+this project's to edit.
 
 **The same lens found that none of it was reachable.** "A value produced
 that nothing consumes" is the shape that gave up the mouse button and the

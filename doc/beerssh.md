@@ -44,12 +44,73 @@ with `<caps>` a semicolon list: `g=kitty-alpha`, `sync=2026`, `mouse=1006`,
 back to env heuristics. The `l2` field lets both ends detect width-table
 skew and degrade to ASCII-safe rendering rather than misalign.
 
-- **[Q1]** Which graphics protocol(s) does beerssh implement or plan:
-  kitty (with alpha-over-text?), sixel, iTerm2, something of its own?
+### Measured, 2026-08-28
+
+The handshake above was drafted before qtty asked anything. It now asks the
+**standard** questions — a batched kitty query, XTGETTCAP, OSC 11, the
+window-op size reports and device attributes, with DA1 last as the fence —
+and beerssh answers three of them. So most of the proposal is unnecessary:
+a bespoke `DCS >qtty` exchange would buy nothing the existing protocols do
+not already carry, and it would only work against one terminal.
+
+Measured with `beerssh --term-features=<spec> -e qtty-negotiate` against
+beerssh at `3525de0`, with a raw capture from a C program sharing no code
+with qtty so that the instrument is not the thing under test:
+
+| beerssh spec | qtty negotiates |
+|---|---|
+| *(all features)* | Kitty, TrueColor |
+| `-kitty-graphics` | Sixel, TrueColor |
+| `none` | Halfblocks, Xterm256 |
+| `none,+sixel` | Sixel, Xterm256 |
+| `none,+kitty-graphics` | Kitty, Xterm256 |
+
+The wire reply, all features on:
+
+    ESC _ G i=31 ; OK ESC \     kitty graphics: yes
+    ESC P 1 + r 524742=382F382F38 ESC \   XTGETTCAP RGB: yes, "8/8/8"
+    ESC P 0 + r 5463 ESC \      XTGETTCAP Tc: no
+    ESC [ ? 1 ; 2 ; 4 c         device attributes, 4 = sixel
+
+**[Q1] is answered**: kitty graphics and sixel, both discoverable by the
+conventional probes. Whether kitty alpha-over-text works is NOT answered —
+the protocol has no query for it, which is why qtty picks that variant from
+`$TERM` and treats a wrong guess as costing appearance rather than
+correctness.
+
+**[Q3] is partly answered.** Direct colour is confirmed by XTGETTCAP. SGR
+mouse, bracketed paste and DEC 2026 are **not** measured here: qtty reports
+its own mouse and paste flags from whether it got raw mode, not from
+anything the terminal said, so this document must not quote them as
+beerssh's.
+
+Two things beerssh does not answer, both of which qtty asks for and falls
+back from:
+
+- **OSC 11**, the background colour. Every tier below kitty composites an
+  image's alpha against it; without an answer qtty uses a dark grey, which
+  haloes translucent edges on a light terminal.
+- **`CSI 14 t` / `CSI 16 t`**, the text area and cell size in pixels.
+  Without the cell size an image's aspect ratio cannot be preserved: a
+  half-block pixel is one cell wide and half a cell tall, and assuming 1:2
+  squashes every picture on a terminal whose cells are not.
+
+Neither is a defect in beerssh — they are not required of a terminal — but
+both are cheap to answer and each unlocks a specific correctness in the
+client. Recorded here rather than written into beerssh's own tree, which is
+not this project's to edit.
+
+**One earlier measurement was wrong and is withdrawn.** A first pass found
+`none,+sixel` yielding half-blocks, i.e. sixel enabled but not advertised in
+DA1. It was taken while that tree was being rebuilt under it, so it was not
+a measurement at all; beerssh's `3525de0` ("answer DA1 and XTVERSION for
+this terminal, not for libvterm") lands attribute 4, and the table above is
+against a settled build.
+
 - **[Q2]** Preferred identification: `TERM=beerssh`? `TERM=xterm-beerssh`
-  (ncurses-compat)? An exported env? The DCS handshake?
-- **[Q3]** DEC 2026 synchronised output supported? SGR 1006 mouse?
-  Bracketed paste? Focus events (1004)?
+  (ncurses-compat)? An exported env? The DCS handshake? Still open, and
+  less pressing now that the standard queries answer: identification only
+  decides the kitty variant.
 
 ## 3. A cooperative wire profile (future, high value over ssh)
 
