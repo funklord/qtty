@@ -553,6 +553,7 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 			}
 		}
 	}
+	if (placeholders || (pixel_placements && handles)) retire_uploads(frame, out);
 	// Closed after the images, not after the text: on a tier that paints
 	// pixels the picture is part of the frame, and ending the bracket before
 	// it would leave exactly the tear this exists to prevent -- the text
@@ -560,6 +561,46 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 	if (sync_frames()) out += "\033[?2026l";
 	fwrite(out.constData(), 1, out.size(), stdout);
 	fflush(stdout);
+}
+
+// Free the terminal's copy of a picture nothing is showing any more.
+//
+// kitty_delete_all() uses d=a, which drops PLACEMENTS and leaves the image
+// data behind -- correct, and the reason an unchanged picture is re-placed
+// rather than re-uploaded. But nothing ever freed the data, so a surface
+// that animates uploaded one image per distinct frame and the terminal kept
+// every one of them, in another process, for the life of the session. Our
+// own key set grew with it.
+//
+// It went unseen because it was unreachable: until the frame loop compared
+// placements by content, a picture that changed under unchanged cells was
+// never presented at all, so the upload path ran once per surface and the
+// leak had nothing to leak.
+//
+// A cap rather than freeing everything unreferenced this frame. A spinner
+// alternating between a handful of pictures would otherwise delete and
+// re-encode each of them on every frame, paying a full PNG for one it is
+// about to want again -- and animation is exactly the case that reaches
+// here at all.
+void AnsiBackend::retire_uploads(const CellBuffer &frame, QByteArray &out) {
+	static const int upload_cap = 16;
+	QSet<quint64> live;
+	for (const CellImage &ci : frame.images) {
+		live.insert(ci.key);
+		upload_order_.removeAll(ci.key);         // most recent last
+		upload_order_.append(ci.key);
+	}
+	for (int i = 0; upload_order_.size() > upload_cap && i < upload_order_.size(); ) {
+		const quint64 key = upload_order_.at(i);
+		if (live.contains(key)) { ++i; continue; }
+		// d=I, not d=i: uppercase frees the image data, which is the whole
+		// point. The lowercase form deletes placements and leaves exactly
+		// what this exists to release.
+		out += "\033_Ga=d,d=I,q=2,i="
+		     + QByteArray::number(quint32(key & 0xFFFFFF) + 1) + ";\033\\";
+		uploaded_.remove(key);
+		upload_order_.removeAt(i);
+	}
 }
 
 void AnsiBackend::present_pixels(const QImage &frame, const QRegion &) {

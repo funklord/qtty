@@ -78,6 +78,10 @@ private:
 	bool sync_frames() const;                     // DEC 2026, confirmed only
 	Capabilities::ColorDepth depth_;             // negotiated (section 6)
 	QSet<quint64> uploaded_;                     // kitty upload-once cache
+	// Least-recently-referenced first. The cache above is upload-ONCE and
+	// was also upload-forever: see retire_uploads().
+	QList<quint64> upload_order_;
+	void retire_uploads(const CellBuffer &frame, QByteArray &out);
 	bool raw_ok_ = false;
 	bool tty_out_ = false;               // stdout is a terminal
 	bool active_ = false;

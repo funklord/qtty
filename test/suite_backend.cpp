@@ -1044,6 +1044,110 @@ int suite_backend() {
 					if (had_tmux2.isEmpty()) qunsetenv("TMUX");
 					else qputenv("TMUX", had_tmux2);
 
+					// What the upload-once cache does when the pictures
+					// keep coming. kitty_delete_all() uses d=a, which drops
+					// PLACEMENTS and leaves the image data -- so nothing ever
+					// freed a picture, and a surface that animates uploads one
+					// image per distinct frame into another process for the
+					// life of the session.
+					//
+					// Unreachable until an hour ago: the frame loop compared
+					// placements by COUNT, so a picture that changed under
+					// unchanged cells was never presented, the upload path ran
+					// once per surface, and the leak had nothing to leak.
+					// Fixing the gate is what turned this on.
+					fflush(stdout);
+					::dup2(slave, 1);
+					{
+						const QByteArray had_gfx3 = qgetenv("QTTY_GRAPHICS");
+						qputenv("QTTY_GRAPHICS", "kitty");
+						{
+							const ssize_t w3 = ::write(master, answer.constData(),
+							                           answer.size());
+							(void)w3;
+						}
+						AnsiBackend up;
+						Recorder up_rec;
+						up.set_event_sink(&up_rec);
+						(void)up.capabilities();
+						while (::read(master, drain, sizeof(drain)) > 0) { }
+
+						CellBuffer uf(20, 6);
+						CellImage uci;
+						uci.cell_rect = QRect(0, 0, 2, 2);
+						uci.pixmap = QPixmap::fromImage(
+						    QImage(8, 8, QImage::Format_ARGB32));
+						uf.images.append(uci);
+						QByteArray uout;
+						// Drained after every frame rather than at the end:
+						// twenty frames of pixels and text will fill a pty
+						// buffer, and a full one blocks the writer inside
+						// present() with nobody reading.
+						const auto show = [&](quint64 key) {
+							uf.images[0].key = key;
+							up.present(uf, QRegion());
+							ssize_t n;
+							while ((n = ::read(master, drain, sizeof(drain))) > 0)
+								uout.append(drain, int(n));
+						};
+
+						for (quint64 k = 1; k <= 20; ++k) show(k);   // animating
+						const int freed = uout.count("\033_Ga=d,d=I");
+						const int sent = uout.count("a=T,f=32");
+
+						// Then the case the cap exists for: four pictures
+						// cycled, which is a spinner. Each is uploaded once
+						// and none is ever freed, because freeing on every
+						// unreferenced frame would re-encode a full image for
+						// one it is about to want again.
+						//
+						// A SECOND backend, and the first draft's fault. Run
+						// on the one above it started with sixteen live keys
+						// from the animation, so the frees it counted were
+						// those -- correct behaviour, arriving as a failure of
+						// an assertion that had measured a shared cache.
+						fflush(stdout);
+						::dup2(slave, 1);
+						{
+							const ssize_t w4 = ::write(master, answer.constData(),
+							                           answer.size());
+							(void)w4;
+						}
+						AnsiBackend sp;
+						Recorder sp_rec;
+						sp.set_event_sink(&sp_rec);
+						(void)sp.capabilities();
+						while (::read(master, drain, sizeof(drain)) > 0) { }
+						uout.clear();
+						const auto spin = [&](quint64 key) {
+							uf.images[0].key = key;
+							sp.present(uf, QRegion());
+							ssize_t n;
+							while ((n = ::read(master, drain, sizeof(drain))) > 0)
+								uout.append(drain, int(n));
+						};
+						for (int cycle = 0; cycle < 5; ++cycle)
+							for (quint64 k = 101; k <= 104; ++k) spin(k);
+						const int spin_sent = uout.count("a=T,f=32");
+						const int spin_freed = uout.count("\033_Ga=d,d=I");
+
+						fflush(stdout);
+						::dup2(keep_out, 1);
+						CHECK(sent == 20, "each distinct picture is uploaded once");
+						// Exactly four: the cap is 16, so the seventeenth
+						// upload is the first that can evict anything, and
+						// frames 17 to 20 evict one apiece.
+						CHECK(freed == 4,
+						      "and the terminal is told to free the ones nothing shows");
+						CHECK(spin_sent == 4,
+						      "a cycle of pictures within the cap uploads each once");
+						CHECK(spin_freed == 0, "and frees none of them");
+						fflush(stdout);
+						::dup2(slave, 1);
+						if (had_gfx3.isEmpty()) qunsetenv("QTTY_GRAPHICS");
+						else qputenv("QTTY_GRAPHICS", had_gfx3);
+					}
+
 					fflush(stdout);            // before switching BACK, too
 					::dup2(slave, 1);
 					if (had_gfx.isEmpty()) qunsetenv("QTTY_GRAPHICS");

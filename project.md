@@ -795,6 +795,41 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**And fixing that gate turned on an unbounded upload.** The duty the
+previous entry creates: a fix changes which code runs, so the path it
+enables is the next thing to read.
+
+`kitty_delete_all()` uses `d=a`, which drops **placements** and leaves the
+image data -- correct, and the reason an unchanged picture is re-placed for
+about thirty bytes rather than re-uploaded. But nothing ever freed the
+data. A surface that animates uploads one image per distinct frame, and the
+terminal kept every one of them, **in another process, for the life of the
+session**; the backend's own key set grew alongside it and was never
+emptied either.
+
+It had been unreachable rather than absent. While the frame loop compared
+placements by count, a picture that changed under unchanged cells was never
+presented at all, so the upload path ran once per surface and the leak had
+nothing to leak. **A leak whose feeder is broken measures as no leak.**
+
+`retire_uploads()` frees by `d=I` -- uppercase, which releases the data;
+the lowercase `d=i` deletes placements and leaves exactly what needs
+releasing. It keeps a cap of 16 rather than freeing everything unreferenced
+each frame, because a spinner cycling a handful of pictures would otherwise
+delete and re-encode a full PNG for one it is about to want again -- and
+animation is the only case that reaches here at all.
+
+Asserted on the wire: twenty distinct pictures upload twenty times and free
+four (the seventeenth is the first that can evict, and frames 17 to 20
+evict one apiece), while four pictures cycled five times upload four times
+and free none. Removing the retirement fails the first; removing the cap
+fails all three.
+
+The second assertion's first draft ran on the backend the animation had
+just filled, so the frees it counted were the animation's dead keys --
+correct behaviour arriving as a failure, because the assertion had measured
+a shared cache rather than the property. It gets its own backend.
+
 **A picture that changed was never sent, and both halves of the seam were
 innocent.** The output mirror of the input gap below, found by asking the
 same question of the other direction: every render test stops at a
