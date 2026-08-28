@@ -171,5 +171,94 @@ int suite_render(bool record) {
 		else { printf("FAIL: a fill that does cover the cells still paints\n"); ++r; }
 	}
 
+	// section 5.7's PixelSurface: the mirror of ICellPainted. That interface
+	// is for a widget that draws itself in CELLS; this is for one whose
+	// content is genuinely pixels, which Channel B would mangle by snapping
+	// every primitive in it to the grid.
+	{
+		struct Plot : Qtty::PixelSurface {
+			using Qtty::PixelSurface::PixelSurface;
+			QColor tone = Qt::red;
+			void paintEvent(QPaintEvent *) override {
+				QPainter p(this);
+				p.fillRect(rect(), tone);
+				// Deliberately sub-cell: through Channel B this would round
+				// to whole cells and stop being a diagonal at all.
+				p.setPen(Qt::blue);
+				p.drawLine(0, 0, width(), height());
+			}
+		};
+
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *plot = new Plot(&host);
+		plot->setGeometry(0, 0, GridMetrics::cw() * 6, GridMetrics::ch() * 3);
+		host.resize(GridMetrics::cells(20, 5));
+		host.show();
+		QCoreApplication::processEvents();
+
+		Qtty::CellBuffer buf(20, 5);
+		Qtty::render_once(host, buf);
+
+		if (buf.images.size() == 1)
+			printf("PASS: a pixel surface arrives as one placement\n");
+		else { printf("FAIL: a pixel surface arrives as one placement\n"); ++r; }
+
+		if (buf.images.size() == 1 && buf.images[0].cell_rect == QRect(0, 0, 6, 3))
+			printf("PASS: with the widget's own cell geometry\n");
+		else { printf("FAIL: with the widget's own cell geometry\n"); ++r; }
+
+		if (buf.images.size() == 1 && buf.images[0].pixmap.size() == plot->size())
+			printf("PASS: and its pixels at pixel resolution, not snapped to cells\n");
+		else {
+			printf("FAIL: and its pixels at pixel resolution, not snapped to cells\n");
+			++r;
+		}
+
+		// Consumed, so Channel B never saw it. Without that the red fill would
+		// have painted the cells underneath the placement as well, which is
+		// the mangling this exists to avoid.
+		bool tinted = false;
+		for (int y = 0; y < 3; ++y)
+			for (int x = 0; x < 6; ++x)
+				if (buf.at(x, y).bg.kind() != Qtty::Color::Default) tinted = true;
+		if (!tinted) printf("PASS: and Channel B did not also paint it into the cells\n");
+		else {
+			printf("FAIL: and Channel B did not also paint it into the cells\n");
+			++r;
+		}
+
+		// The key is content-addressed. One taken from the widget would tell
+		// the kitty tier the image had not changed and it would keep showing
+		// the first frame; a fresh key every time would re-upload an
+		// unchanged plot on every repaint.
+		Qtty::CellBuffer again(20, 5);
+		Qtty::render_once(host, again);
+		if (again.images.size() == 1 && buf.images.size() == 1
+		    && again.images[0].key == buf.images[0].key)
+			printf("PASS: an unchanged surface keeps its key, so it uploads once\n");
+		else {
+			printf("FAIL: an unchanged surface keeps its key, so it uploads once\n");
+			++r;
+		}
+
+		// The discriminating half, and the one that was missing: a key taken
+		// from the WIDGET also survives the check above, so unchanged-keeps-
+		// its-key proves nothing on its own. Changing the content must change
+		// the key, or the kitty tier keeps showing the first frame for ever.
+		plot->tone = Qt::green;
+		plot->update();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer moved(20, 5);
+		Qtty::render_once(host, moved);
+		if (moved.images.size() == 1 && buf.images.size() == 1
+		    && moved.images[0].key != buf.images[0].key)
+			printf("PASS: and changed content changes it, so the frame is not stale\n");
+		else {
+			printf("FAIL: and changed content changes it, so the frame is not stale\n");
+			++r;
+		}
+	}
+
 	return r;
 }

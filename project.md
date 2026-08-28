@@ -1131,7 +1131,34 @@ Still not done from this list:
   round-trip test against a decoder written from the same memory is one
   witness wearing two hats. **The table has to come from kitty.**
 - The roughly 100 ms scroll-settle debounce for slow links.
-- `Qtty::PixelSurface`.
+- ~~`Qtty::PixelSurface`.~~ **Done**, and it is the mirror of
+  `ICellPainted`: that interface is for a widget which knows how to draw
+  itself in CELLS, this is for one whose content is genuinely pixels -- a
+  plot, a meter, a video still -- which Channel B would mangle by snapping
+  every primitive in it to the grid. An application paints into it with
+  QPainter exactly as on the desktop; qtty harvests the result and hands it
+  to the graphics plane with the widget's cell geometry.
+
+  A base class rather than an interface, because there is nothing for the
+  application to implement: painting is the whole contract and it already
+  knows how. Detected by `dynamic_cast` for the reason `ICellPainted` is --
+  a `qobject_cast` would need `Q_INTERFACES` and therefore moc in the
+  application.
+
+  **The key is content-addressed, and finding out why took a failed
+  sabotage.** A key taken from the widget would tell the kitty tier the
+  image had not changed and it would show the first frame for ever; a fresh
+  key every repaint would re-upload an unchanged plot every frame. Hashing
+  the pixels is what makes upload-once mean what it says for a surface that
+  is repainted rather than cached.
+
+  The test originally asserted only that an unchanged surface keeps its
+  key -- and a widget-pointer key **passes that**, which the sabotage run
+  proved by not going red. What discriminates is the other half: changing
+  the content must change the key. Both halves are asserted now, and the
+  same sabotage fails the second immediately. One more instance of a check
+  that has to be built from the case where the two answers differ, not from
+  the case that confirms the right one.
 - ~~`qtty::cells()` and `alignTextDocument()`, the two GUI-invisible
   accommodations design.md §5.7 offers for cell-multiple image sizing.~~
   **Both done.** `align_text_document()` rounds every image in a

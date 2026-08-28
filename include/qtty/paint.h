@@ -2,6 +2,7 @@
 // Advanced API: applications normally never touch this; tests, tools, and
 // custom ICellPainted widgets do.
 #pragma once
+#include <QWidget>
 #include <QPaintDevice>
 #include <QtPlugin>
 #include <QPaintEngine>
@@ -32,6 +33,27 @@ class ICellPainted {
 public:
 	virtual ~ICellPainted() = default;
 	virtual void paint_cells(CellBuffer &buffer, const QRect &cells) const = 0;
+};
+
+// section 5.7: the mirror of ICellPainted. That interface is for a widget
+// that knows how to draw itself in CELLS; this is for one whose content is
+// genuinely pixels -- a plot, a meter, a video still -- and which Channel B
+// would mangle by snapping every primitive to the grid.
+//
+// An application paints into it with QPainter exactly as it would on the
+// desktop, and in a TUI build qtty harvests the result as an image and hands
+// it to the graphics plane with the widget's cell geometry. In a GUI build it
+// is an ordinary QWidget and nothing happens, which is section 10.1's
+// inertness rule again: the same code, both targets.
+//
+// A base class rather than an interface, because there is nothing for the
+// application to implement -- painting is the whole contract, and it already
+// knows how. Detected by dynamic_cast for the reason ICellPainted is: a
+// qobject_cast would need Q_INTERFACES and therefore moc in the application.
+class PixelSurface : public QWidget {
+public:
+	using QWidget::QWidget;
+	~PixelSurface() override;
 };
 
 // Installs the one filter that lets an ICellPainted widget paint itself.

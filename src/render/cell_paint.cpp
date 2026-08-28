@@ -49,6 +49,16 @@ public:
 		if (!w) return false;
 		// dynamic_cast, not qobject_cast: the latter needs Q_INTERFACES on the
 		// widget and therefore moc. IGraphicsOutput is dispatched the same way.
+		// A pixel surface is harvested rather than drawn: its content is
+		// genuinely pixels, and Channel B would snap every primitive in it to
+		// the grid. Guarded against its own render() below, which sends
+		// another paint event straight back here.
+		if (auto *surface = dynamic_cast<PixelSurface *>(o)) {
+			if (harvesting_) return false;         // our own render(): paint
+			return harvest(surface, dev);
+		}
+		// dynamic_cast, not qobject_cast: the latter needs Q_INTERFACES on the
+		// widget and therefore moc. IGraphicsOutput is dispatched the same way.
 		auto *painted = dynamic_cast<ICellPainted *>(o);
 		if (!painted) return false;
 
@@ -60,7 +70,39 @@ public:
 		painted->paint_cells(dev->buffer(), cells);
 		return true;                               // consumed: no Channel B pass
 	}
+
+private:
+	bool harvesting_ = false;
+
+	bool harvest(QWidget *w, CellPaintDevice *dev) {
+		if (w->width() <= 0 || w->height() <= 0) return true;
+		QImage img(w->size(), QImage::Format_ARGB32_Premultiplied);
+		img.fill(Qt::transparent);
+		harvesting_ = true;
+		w->render(&img);
+		harvesting_ = false;
+
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		const QPoint tl = w->mapTo(w->window(), QPoint(0, 0)) + dev->origin;
+		const QRect cells(qRound(tl.x() / double(cw)), qRound(tl.y() / double(ch)),
+		                  qMax(1, qRound(w->width()  / double(cw))),
+		                  qMax(1, qRound(w->height() / double(ch))));
+
+		// Content-addressed, because a surface is repainted rather than
+		// cached: a key taken from the widget would tell the kitty tier the
+		// image had not changed and it would keep showing the first frame,
+		// while a fresh key every frame would re-upload an unchanged plot on
+		// every repaint. Hashing the pixels is what makes upload-once mean
+		// what it says here.
+		const QByteArray bits(reinterpret_cast<const char *>(img.constBits()),
+		                      int(img.sizeInBytes()));
+		dev->placements.append({quint64(qHash(bits)), cells,
+			                        QPixmap::fromImage(img)});
+		return true;                               // consumed: no Channel B pass
+	}
 };
+
+PixelSurface::~PixelSurface() = default;
 
 void install_cell_paint_filter(QCoreApplication &app) {
 	static CellPaintFilter *filter = nullptr;
