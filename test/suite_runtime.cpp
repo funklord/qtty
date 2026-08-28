@@ -22,7 +22,21 @@ int suite_runtime() {
 	// backend, so NullBackend was compiled into the library and reachable from
 	// nothing. This is the test that the seam is real.
 	{
-		NullBackend backend(QSize(40, 12));
+		// Reports something distinctive, so that what an application reads
+		// back can be shown to have come from the BACKEND rather than from a
+		// default that happens to look plausible.
+		struct TellingBackend : NullBackend {
+			using NullBackend::NullBackend;
+			Capabilities capabilities() const override {
+				Capabilities c = NullBackend::capabilities();
+				c.cell_px = QSize(7, 13);
+				c.background_known = true;
+				c.background = QColor(1, 2, 3);
+				c.color = Capabilities::TrueColor;
+				return c;
+			}
+		};
+		TellingBackend backend(QSize(40, 12));
 		QWidget win;
 		auto *v = new QVBoxLayout(&win);
 		v->setContentsMargins(0, 0, 0, 0);
@@ -40,12 +54,36 @@ int suite_runtime() {
 		// the test hangs forever in app.exec(). A timer that keeps firing
 		// quits whenever the loop actually starts, which is the property
 		// wanted rather than a guess at how long setup takes.
+		// Read from inside the run, which is the only place an application
+		// could read it: Qtty::capabilities() answers for the session, and a
+		// session is what exec() is.
+		Capabilities seen;
+		bool asked_during = false;
 		QTimer quitter;
 		quitter.setInterval(10);
-		QObject::connect(&quitter, &QTimer::timeout, qApp, &QCoreApplication::quit);
+		QObject::connect(&quitter, &QTimer::timeout, qApp, [&] {
+			if (!asked_during) { seen = Qtty::capabilities(); asked_during = true; }
+			QCoreApplication::quit();
+		});
 		quitter.start();
+		CHECK(!Qtty::capabilities().cell_px.isValid(),
+		      "before a run there is nothing to know, and it says so");
 		const int rc = exec(*qApp, win, backend);
 		quitter.stop();
+
+		// The gap this closes: Capabilities were reachable only through
+		// ITerminalBackend, and the convenience exec() builds its backend
+		// internally -- so every field on that struct was declared and
+		// unreachable from the seat an application sits in.
+		CHECK(asked_during && seen.cell_px == QSize(7, 13)
+		      && seen.background_known && seen.background == QColor(1, 2, 3),
+		      "an application can read the negotiated capabilities during a run");
+		CHECK(seen.color == Capabilities::TrueColor,
+		      "and they are the backend's, not a plausible default");
+		// Cleared afterwards, because a stale answer is worse than none: a
+		// caller cannot tell one from a current one.
+		CHECK(!Qtty::capabilities().cell_px.isValid(),
+		      "and afterwards it goes back to knowing nothing");
 
 		CHECK(rc == 0, "exec() on an injected backend returns cleanly");
 		CHECK(backend.frame_count() > 0, "the injected backend received a frame");

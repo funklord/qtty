@@ -1138,6 +1138,29 @@ result, and here it is a confirmed one rather than a candidate.
 What survives is the method and the tool. The inventory wants re-taking
 against a settled build, by whoever is not also holding it still.
 
+**The same lens found that none of it was reachable.** "A value produced
+that nothing consumes" is the shape that gave up the mouse button and the
+motion flag; turned on the capability struct it gives up something worse.
+`Capabilities` could be obtained **only** through `ITerminalBackend`, and
+the convenience `exec(app, win)` constructs its backend internally -- so
+from the seat an application actually sits in, every field on that struct
+was declared and unreachable. That is §7.4's own fault, and the three
+fields the negotiation added had made it three instances worse.
+
+`Qtty::capabilities()` answers for the running session now, beside
+`is_tui_active()`. It is taken from the backend when a run starts and
+cleared when it ends rather than kept as a pointer, because a stale answer
+is worse than none: a caller cannot tell one from a current one.
+
+It is not a convenience. `Qtty::cells()` needs `cell_px` to size an image
+without squashing it, and the tiers below kitty need the background to
+composite against -- both are things an application must do, and until now
+neither could ask.
+
+The test gives the injected backend deliberately odd values, so that what
+comes back is shown to be the backend's rather than a default that happens
+to look plausible.
+
 **And it caught a test asserting its own environment.** The pty case
 inherited `$TERM`, which on this machine is `screen`; `inside_tmux()` reads
 that correctly, so the test began failing for the right reason. It sets

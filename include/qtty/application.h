@@ -35,6 +35,22 @@ int exec(QApplication &app, QWidget &win, ITerminalBackend &backend);
 // convenience form of the above, on the built-in AnsiBackend.
 int exec(QApplication &app, QWidget &win);
 
+// What the terminal qtty is driving turned out to be, as negotiated (section
+// 5.7). Valid while exec() is running; a default-constructed Capabilities
+// before and after, which reads as "nothing known" rather than as a claim.
+//
+// It exists because an application had no way to ask. Capabilities were
+// reachable only through ITerminalBackend, and the convenience exec() builds
+// its backend internally -- so every field on that struct was declared and
+// unreachable from the seat an application sits in, which is section 7.4's
+// own fault. The three fields the negotiation added made it three instances
+// worse before this closed it.
+//
+// What an application does with the answer is real work rather than
+// curiosity: Qtty::cells() needs cell_px to size an image without squashing
+// it, and a lower graphics tier needs the background to composite against.
+Capabilities capabilities();
+
 // True while exec() is driving a terminal session. Overlay uses this to pick
 // its rendering path (section 5.7); apps can branch on it for target-specific polish.
 bool is_tui_active();

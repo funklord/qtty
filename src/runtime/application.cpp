@@ -172,8 +172,15 @@ void render_once(QWidget &win, CellBuffer &buf, QVector<CellImage> *placements) 
 static bool s_tuiActive = false;
 bool is_tui_active() { return s_tuiActive; }
 
+// Taken from the backend when a run starts and cleared when it ends, rather
+// than kept as a pointer: a stale answer after exec() returns would be worse
+// than none, because a caller cannot tell one from a current one.
+static Capabilities s_caps;
+Capabilities capabilities() { return s_caps; }
+
 int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	s_tuiActive = true;
+	s_caps = backend.capabilities();
 
 	const QSize cells = backend.size();
 	win.setAttribute(Qt::WA_DontShowOnScreen);
@@ -202,6 +209,7 @@ int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	scheduler.render_now();                      // initial frame
 	const int rc = app.exec();
 	s_tuiActive = false;
+	s_caps = Capabilities{};
 	return rc;
 }
 
