@@ -1740,7 +1740,26 @@ The two candidate answers, neither taken:
   application must do rather than promising it need do nothing.
 
 Which of the two is right is a design decision and is recorded here
-rather than taken. **What the decision was waiting on has now been
+rather than taken.
+
+**What off-grid geometry actually costs has now been measured, and it is
+worse than untidiness.** The lens came from two bugs of one shape -- a
+caret erasing the glyph under it, and a toolbar's border drawn in the row
+below itself -- both a coordinate mapped to the nearest cell boundary
+instead of to the cell containing it. `line()` was wrong that way and is
+fixed; `to_cells()` and `drawTextItem()` still round, so the question was
+whether they are wrong too.
+
+They are not. Instrumented across the whole suite, rounding and flooring
+disagree 35 times, and **every one of the 35 has an off-grid coordinate.
+With cell-aligned input they never disagree at all** -- zero cases. So
+the rounding rule is sound and there is no third instance of that bug.
+
+What the measurement says instead belongs here: when geometry is off the
+grid, content is not placed slightly wrong, it is placed **a whole cell
+away** -- 35 times in this suite. That is the cost of the slack this
+section is about, and it is a fact for whoever decides the question rather
+than an argument for either answer. **What the decision was waiting on has now been
 measured**, and the answer is sharper than "it was safe in one case".
 
 The risk is not a property of snapping. It is a property of **which
