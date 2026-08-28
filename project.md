@@ -1107,6 +1107,37 @@ tmux, so it fell to half-blocks without knowing why. What changed is that
 the query still goes out, wrapped, so the colour depth and the background
 are learned from the real terminal instead of guessed.
 
+**The negotiation has now been run against a real, independent terminal.**
+`beerssh` grew a `--term-features` switch, so it can be told which
+extensions to speak, and `tool/negotiate` reports what qtty makes of
+whatever terminal it is run inside. Together they are the second witness
+this could not otherwise have: qtty's suite checks the negotiation against
+replies qtty's suite wrote, which is one witness however many cases it
+covers.
+
+Measured with `beerssh --term-features=<spec> -e qtty-negotiate`, the
+answers tracked the switches: all features gave the kitty tier at true
+colour, `-kitty-graphics` dropped to half-blocks, `-xtgettcap` left the
+tier alone and took the colour depth back to what `$TERM` claims, `none`
+gave half-blocks at `$TERM`'s depth, and `none,+kitty-graphics` brought
+the kitty tier back on its own. A raw capture -- a C program sharing no
+code with qtty, so that the instrument is not the thing under test --
+showed the wire form: `ESC _ G i=31 ; OK`, an XTGETTCAP success for RGB,
+a failure for Tc, and `ESC [ ? 1 ; 2 c`.
+
+**Those numbers are provisional and are recorded as such.** Partway
+through the matrix the answers changed, and the cause was not qtty:
+`beerssh/build/beerssh` was rebuilt at the same second as the check, and
+that tree had five modified files including the two that answer the kitty
+query. Another session is working in it. A measurement taken while its
+subject is being rebuilt is not a measurement, and the apparent gaps it
+showed are not reportable as facts about beerssh -- `running-code.md`
+names a concurrent build as a candidate explanation for a changing
+result, and here it is a confirmed one rather than a candidate.
+
+What survives is the method and the tool. The inventory wants re-taking
+against a settled build, by whoever is not also holding it still.
+
 **And it caught a test asserting its own environment.** The pty case
 inherited `$TERM`, which on this machine is `screen`; `inside_tmux()` reads
 that correctly, so the test began failing for the right reason. It sets

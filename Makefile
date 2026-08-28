@@ -60,7 +60,8 @@ SOURCES = $(wildcard src/*.cpp src/*/*.cpp src/*/*/*.cpp)
 # list, which is how the gap below was found.
 HEADERS = $(wildcard include/qtty/*.h src/*.h src/*/*.h src/*/*/*.h)
 PROFILES = qtty.pro qtty.pri src/src.pro \
-           tool/inspect/inspect.pro tool/replay/replay.pro example/chat/chat.pro
+           tool/inspect/inspect.pro tool/replay/replay.pro \
+           tool/negotiate/negotiate.pro example/chat/chat.pro
 TEST_PROFILES = test/test.pro qtty.pri
 
 ifdef DEBUG
@@ -79,6 +80,7 @@ endif
 LIB      = $(BUILD_DIR)/lib/libqtty.a
 INSPECT  = $(BUILD_DIR)/tool/inspect/qtty-inspect
 REPLAY   = $(BUILD_DIR)/tool/replay/qtty-replay
+NEGOTIATE = $(BUILD_DIR)/tool/negotiate/qtty-negotiate
 EXAMPLE  = $(BUILD_DIR)/example/chat/chat
 TEST_BIN = $(TEST_BUILD_DIR)/qtty-tests
 
