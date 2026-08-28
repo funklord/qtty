@@ -418,8 +418,16 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 		QRect c = cells_of(opt->rect, p, dev, w);
 		switch (pe) {
 		case PE_IndicatorCheckBox:
+			// Three states, three glyphs. A tristate box at PartiallyChecked
+			// arrives as State_NoChange and drew "[ ]" -- identical to
+			// unchecked, so the middle state existed in the model and not on
+			// the screen, and the only way to tell was to click and watch it
+			// cycle somewhere unexpected. Qt sets State_On for Checked and
+			// State_NoChange for the middle, and neither for Unchecked.
 			dev->buffer().text(c.left(), c.top(),
-				(opt->state & State_On) ? QStringLiteral("[x]") : QStringLiteral("[ ]"));
+				(opt->state & State_NoChange) ? QStringLiteral("[-]")
+				: (opt->state & State_On)     ? QStringLiteral("[x]")
+				                              : QStringLiteral("[ ]"));
 			return;
 		case PE_IndicatorRadioButton:
 			dev->buffer().text(c.left(), c.top(),

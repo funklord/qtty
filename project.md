@@ -795,6 +795,40 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**Every framed scroll area lost the bottom rule of its own border**, and
+the corners stayed -- which is why it read as a rendering quirk rather than
+as the arithmetic fault it is. Found by rendering widget configurations
+nothing exercises and reading the output, rather than by looking for it.
+
+`to_cells()` rounded the **extent** rather than each edge, so it lost where
+a rectangle actually sits. A scroll area's viewport is inset by one frame
+width, which is a whole column but only half a row on a cell taller than it
+is wide: `qRound(94 / 19)` is 5, so a viewport covering four whole rows and
+47% of a fifth claimed all five, and its background fill erased the rule
+the frame had just drawn. Text edit, plain text edit, list, table, tree --
+every framed `QAbstractScrollArea` had it.
+
+Rounding each edge and taking the extent from the two fixes it, and **costs
+nothing**: the whole suite passes unchanged, snapshots included. Two other
+candidates were measured first and both were worse. Returning `qMax(cw, ch)`
+for `PM_DefaultFrameWidth` gives a correct border and takes a column from
+each side, and a small editor's text stopped reaching the cells at all.
+Returning 0 and dropping the frame costs the border entirely. Neither is
+needed: the metric was not the thing that was wrong.
+
+Asserted as the **whole rule** rather than a corner, because the corners
+survived the bug -- a check for them passes against the broken frame -- and
+paired with the top border, which never broke, so a frame that stopped
+being drawn at all fails rather than passing by drawing nothing anywhere.
+
+**A tristate checkbox's middle state was invisible.** `PartiallyChecked`
+arrives as `State_NoChange`, which the style did not test for, so it drew
+`[ ]` -- identical to unchecked. The state existed in the model and not on
+the screen, and the only way to find it was to click and watch the box
+cycle somewhere unexpected. It draws `[-]` now, and the assertion compares
+all three states against each other, which is what cannot be satisfied by a
+widget drawing one glyph for two of them.
+
 **A horizontal scrollbar had never been drawn.** Every scrollbar test in
 this tree is vertical, so the `else` arm of the one loop that places a
 thumb had never run -- and the two arms are not symmetric, one walking rows

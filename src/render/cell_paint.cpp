@@ -146,8 +146,18 @@ void CellPaintEngine::updateState(const QPaintEngineState &s) {
 QRect CellPaintEngine::to_cells(const QRectF &r) const {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	QRectF m = xf_.mapRect(r).translated(dev_->origin);
-	return QRect(qRound(m.left() / cw), qRound(m.top() / ch),
-	             qMax(1, qRound(m.width() / cw)), qMax(1, qRound(m.height() / ch)));
+	// Each EDGE is rounded, and the extent follows from the two. Rounding the
+	// extent instead loses where the rectangle actually sits: a scroll area's
+	// viewport is inset by one frame width, which is a whole column but only
+	// half a row on a cell taller than it is wide, so its height rounded up
+	// to a whole extra row and its background fill erased the bottom of the
+	// frame drawn around it. Every framed QAbstractScrollArea -- text edit,
+	// list, table, tree -- lost the bottom rule of its own border, with the
+	// corners left standing because the frame drew those.
+	const qreal l = m.left() / cw, t = m.top() / ch;
+	const qreal r2 = m.right() / cw, b = m.bottom() / ch;
+	return QRect(qRound(l), qRound(t),
+	             qMax(1, qRound(r2) - qRound(l)), qMax(1, qRound(b) - qRound(t)));
 }
 
 // Text colour policy (section 6). The application palette is consulted for one

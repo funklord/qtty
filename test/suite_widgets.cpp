@@ -860,6 +860,67 @@ int suite_widgets() {
 		      "a spin box more than one row tall is framed, not bracketed");
 	}
 
+	{
+		// A framed scroll area keeps its own bottom border. Its viewport is
+		// inset by one frame width, which is a whole column but only half a
+		// row on a cell taller than it is wide -- so the viewport's height
+		// rounded up to an extra row and its background fill erased the rule
+		// the frame had just drawn, leaving the corners standing. Every
+		// framed QAbstractScrollArea had it: text edit, list, table, tree.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *doc = new QPlainTextEdit(&host);
+		doc->setPlainText(QStringLiteral("aa\nbb"));
+		doc->setGeometry(0, 0, GridMetrics::cw() * 12, GridMetrics::ch() * 5);
+		host.resize(GridMetrics::cells(20, 6));
+		host.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer buf(20, 6);
+		Qtty::render_once(host, buf);
+		const QStringList rows = buf.to_text().split(QLatin1Char('\n'));
+		const QString bottom = rows.value(4).left(12);
+		// The whole rule, not "a corner is present": the corners survived the
+		// bug, so a check for them passes against the broken frame. What was
+		// missing is everything between them.
+		CHECK(bottom == QStringLiteral("└──────────┘"),
+		      "a framed scroll area's bottom border survives its own viewport");
+		// Paired with the top, which never broke -- so a frame that stopped
+		// being drawn at all fails this rather than passing the check above
+		// by drawing nothing anywhere.
+		CHECK(rows.value(0).left(12) == QStringLiteral("┌──────────┐"),
+		      "and its top border is still there too");
+	}
+	{
+		// A tristate checkbox's middle state. It arrives as State_NoChange
+		// and drew "[ ]" -- identical to unchecked, so the state existed in
+		// the model and not on the screen, and the only way to find it was to
+		// click and watch the box cycle somewhere unexpected.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *box = new QCheckBox(QStringLiteral("Tri"), &host);
+		box->setTristate(true);
+		box->setGeometry(0, 0, GridMetrics::cw() * 10, GridMetrics::ch());
+		host.resize(GridMetrics::cells(20, 3));
+		host.show();
+		QCoreApplication::processEvents();
+		const auto glyph_at = [&](Qt::CheckState st) {
+			box->setCheckState(st);
+			QCoreApplication::processEvents();
+			Qtty::CellBuffer b(20, 3);
+			Qtty::render_once(host, b);
+			return b.to_text().split(QLatin1Char('\n')).value(0).left(3);
+		};
+		const QString un = glyph_at(Qt::Unchecked);
+		const QString part = glyph_at(Qt::PartiallyChecked);
+		const QString on = glyph_at(Qt::Checked);
+		// All three compared against each other, which is the assertion that
+		// cannot be satisfied by a widget drawing one glyph for two states.
+		CHECK(un != part && part != on && un != on,
+		      "three check states draw three different boxes");
+		CHECK(part == QStringLiteral("[-]"),
+		      "and the middle one says it is neither");
+	}
+
 	return fails;
 }
 
