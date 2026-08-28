@@ -1106,6 +1106,65 @@ int suite_widgets() {
 		CHECK(up != down, "and the two orders do not draw the same mark");
 	}
 
+	{
+		// A closable tab's close mark, and an arrow-type tool button. Both
+		// were predicted by the sort indicator rather than found: anything
+		// the base style draws as a pixmap arrives at the cell painter as an
+		// image too small to place and comes out as the tiny-icon
+		// substitute, so the close button offered a shaded block to click on.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *bar = new QTabBar(&host);
+		bar->setTabsClosable(true);
+		bar->addTab(QStringLiteral("One"));
+		bar->setGeometry(0, 0, GridMetrics::cw() * 20, GridMetrics::ch());
+		host.resize(GridMetrics::cells(24, 2));
+		host.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer buf(24, 2);
+		Qtty::render_once(host, buf);
+		const QString row = buf.to_text().split(QLatin1Char('\n')).value(0);
+		// The mark AND the absence of the substitute: a style that drew both
+		// would satisfy a check for the cross alone, and the shaded block is
+		// exactly what this replaced.
+		CHECK(row.contains(QStringLiteral("✕")),
+		      "a closable tab offers a close mark");
+		CHECK(!row.contains(QStringLiteral("▒")),
+		      "and not the shaded block a pixmap turns into");
+	}
+	{
+		// An arrow-type tool button -- the scroll and navigation buttons Qt
+		// builds, and any QToolButton given an arrowType -- has no text and
+		// no icon, and nothing asked what kind of arrow it was, so it drew an
+		// empty pair of brackets.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *b = new QToolButton(&host);
+		host.resize(GridMetrics::cells(12, 3));
+		host.show();
+		const auto drawn = [&](Qt::ArrowType t) {
+			b->setArrowType(t);
+			b->setGeometry(0, 0, b->sizeHint().width(), GridMetrics::ch());
+			QCoreApplication::processEvents();
+			Qtty::CellBuffer buf(12, 3);
+			Qtty::render_once(host, buf);
+			return buf.to_text().split(QLatin1Char('\n')).value(0).left(3);
+		};
+		// All four directions, each its own glyph: a button drawing one
+		// default arrow passes any check that only asks whether an arrow is
+		// there, and the direction is the entire content of this widget.
+		CHECK(drawn(Qt::UpArrow) == QStringLiteral("[▴]")
+		      && drawn(Qt::DownArrow) == QStringLiteral("[▾]")
+		      && drawn(Qt::LeftArrow) == QStringLiteral("[◂]")
+		      && drawn(Qt::RightArrow) == QStringLiteral("[▸]"),
+		      "an arrow tool button draws the arrow it was given");
+		// Measured for it too, or the bracket eats the arrow -- the same
+		// pairing the menu marker needed.
+		b->setArrowType(Qt::DownArrow);
+		CHECK(b->sizeHint().width() == GridMetrics::cw() * 3,
+		      "and is measured as one cell of arrow between its brackets");
+	}
+
 	return fails;
 }
 

@@ -167,6 +167,12 @@ public:
 	// a cell-sized combo -- measured at 377x15+2+2 in a one-cell combo,
 	// which GridGuard reports and which no application can correct, because
 	// it never constructed that widget.
+	// Snapping one Qt-placed rectangle: the close button a closable QTabBar
+	// builds sits at a pixel offset inside the tab, so it lands off the grid
+	// however it is sized. See the implementation for why this is answered
+	// rather than exempted.
+	QRect subElementRect(SubElement, const QStyleOption *,
+	                     const QWidget *) const override;
 	QRect subControlRect(ComplexControl, const QStyleOptionComplex *, SubControl,
 	                     const QWidget *) const override;
 	// A QProxyStyle passes style hints straight through, and some of them come

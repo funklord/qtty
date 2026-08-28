@@ -21,6 +21,22 @@ namespace Qtty {
 // cell too narrow, and the elide would then eat the last letter rather than
 // the thing that did not fit.
 static QString tool_button_label(const QStyleOptionToolButton *tb, const QWidget *w) {
+	// A button whose whole content is an ARROW -- the scroll and navigation
+	// buttons Qt builds, and any QToolButton given an arrowType -- rendered
+	// as an empty pair of brackets: it has no text and no icon, and nothing
+	// here asked what kind of arrow it was. Answered in the label helper
+	// rather than at the drawing site so that sizeFromContents() measures the
+	// same string that gets drawn, which is what the tool button's menu
+	// marker had to be taught separately.
+	if (tb->features & QStyleOptionToolButton::Arrow) {
+		switch (tb->arrowType) {
+		case Qt::UpArrow:    return QStringLiteral("▴");
+		case Qt::DownArrow:  return QStringLiteral("▾");
+		case Qt::LeftArrow:  return QStringLiteral("◂");
+		case Qt::RightArrow: return QStringLiteral("▸");
+		default:             break;
+		}
+	}
 	const QString text = strip_mnemonic(tb->text);
 	const QString glyph = glyph_for(w, tb->icon);
 	if (glyph.isEmpty()) return text;
@@ -228,6 +244,14 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 	case PM_LayoutHorizontalSpacing:                       return cw;
 	case PM_LayoutVerticalSpacing:                         return 0;
 	case PM_ScrollBarExtent:                               return cw;
+	// The close button QTabBar builds for a closable tab. Qt sizes it from
+	// these and nothing overrode them, so it came out 20x20 -- off the grid
+	// vertically, and reported by the guard as a widget the application
+	// cannot reach to fix, which is exactly the class that would otherwise
+	// have to be exempted by name. A cell is the right size for it: what it
+	// holds is one glyph.
+	case PM_TabCloseIndicatorWidth:                        return cw;
+	case PM_TabCloseIndicatorHeight:                       return ch;
 	case PM_DefaultFrameWidth:                             return cw;   // section 16.3: must be cell-safe
 	case PM_ButtonMargin:                                  return cw;
 	case PM_FocusFrameHMargin: case PM_FocusFrameVMargin:  return 0;
@@ -294,6 +318,27 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 // So a single-line control is one cell tall by construction. The width still
 // snaps up, because a width is a count of characters and rounding one down
 // truncates text.
+// The close button on a closable tab. QTabBar places it inside the tab rect
+// at a pixel offset, so it lands between columns however it is sized -- and
+// the guard reports it, correctly, as a widget the application cannot reach.
+//
+// Answered rather than exempted, which is the choice worth recording. An
+// exemption would silence the report and leave the button drawn half in one
+// cell and half in the next; snapping the rectangle the style is asked for
+// puts it in a cell, which is where a one-glyph button belongs. The
+// exemption list exists for widgets nothing can place, and this is not one
+// of them: the style is asked, so the style can answer.
+QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
+                                const QWidget *w) const {
+	QRect r = QProxyStyle::subElementRect(se, opt, w);
+	if (se == SE_TabBarTabRightButton || se == SE_TabBarTabLeftButton) {
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		r.moveLeft(qRound(double(r.left()) / cw) * cw);
+		r.moveTop(qRound(double(r.top()) / ch) * ch);
+	}
+	return r;
+}
+
 QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *opt,
                                 SubControl sc, const QWidget *w) const {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
@@ -500,6 +545,13 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 			dev->buffer().text(c.right(), c.top(), g);
 			return;
 		}
+		case PE_IndicatorTabClose:
+			// Drawn by the base style as a pixmap, so it arrived as the
+			// tiny-icon substitute: a closable tab offered a shaded block to
+			// click on, which says nothing about what clicking it does.
+			dev->buffer().text(c.left(), c.top(), QStringLiteral("✕"),
+				               Color(), Color(), with_state(opt));
+			return;
 		case PE_IndicatorHeaderArrow:
 			// A sort indicator, which fell through to the base style and was
 			// drawn as a PIXMAP -- so it arrived at the cell painter as an

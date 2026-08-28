@@ -795,6 +795,34 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**The pixmap rule predicted the next two, which is the first time this
+sweep stopped being a search.** *Anything the base style draws as a pixmap
+arrives here as a shaded block* was written down after the sort indicator;
+probing what else Qt draws that way found a **closable tab's close button**
+offering a shaded block to click on, and -- beside it, unpredicted -- an
+**arrow-type tool button rendering as an empty pair of brackets**. It has
+no text and no icon, and nothing asked what kind of arrow it was, so the
+scroll and navigation buttons Qt builds for itself drew nothing at all.
+
+The arrow is answered in `tool_button_label()` rather than at the drawing
+site, so that `sizeFromContents()` measures the same string that gets
+drawn. The menu marker had to be taught that separately and this did not,
+which is the earlier fault paying for itself.
+
+**And the close button raised a guard question worth recording as a
+choice.** `QTabBar` builds it as a private `CloseButton` sized 20x20 from
+two pixel metrics nothing overrode, and places it at a pixel offset inside
+the tab -- so it landed off the grid and the guard reported it, correctly,
+as a widget the application cannot reach. The exemption list exists for
+exactly that class.
+
+It is answered rather than exempted, twice over: the metrics make it one
+cell, which is the right size for a one-glyph button, and
+`subElementRect()` snaps the rectangle Qt asks the style for. An exemption
+would have silenced the report and left the button drawn half in one cell
+and half in the next. **The list is for widgets nothing can place; this one
+asks the style where to go**, so the style answers.
+
 **A sort indicator was a shaded block, and a checkable menu item had no
 mark at all.** Two more of the same family, from a fourth probe run.
 
