@@ -248,5 +248,22 @@ int suite_theme() {
 		      "and a partial palette is refused, not mixed with the built-in one");
 	}
 
+	{
+		// The palette roles nothing had asked for. A role that falls to the
+		// default arm silently is how a themed widget ends up drawn in the
+		// window's colours: the value is plausible, the widget is legible,
+		// and it is simply the wrong colour -- which no rendering test
+		// notices because nothing tells it what to expect.
+		const CellTheme &t = theme();
+		CHECK(t.foreground(QPalette::ButtonText) != t.foreground(QPalette::Text)
+		      || t.button_text.value() == t.text.value(),
+		      "ButtonText is its own role, or is deliberately the same colour");
+		CHECK(t.foreground(QPalette::HighlightedText).value()
+		      == t.highlighted_text.value(),
+		      "HighlightedText comes from the theme's own field");
+		CHECK(t.background(QPalette::Button).value() == t.button.value(),
+		      "and Button likewise, on the background side");
+	}
+
 	return fails;
 }

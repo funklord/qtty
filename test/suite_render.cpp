@@ -313,14 +313,21 @@ int suite_render(bool record) {
 		// one scale and this device round at another, which is the whole
 		// class of fault GridMetrics exists to prevent.
 		const bool plain = qFuzzyCompare(dev.devicePixelRatio(), 1.0)
-		                && dev.depth() > 1 && dev.widthMM() > 0;
+		                && dev.depth() > 1 && dev.widthMM() > 0
+		                && dev.heightMM() > 0
+		                // colorCount() asks for a metric this device does not
+		                // answer specially, which is the default arm: a device
+		                // that returned something arbitrary there would have
+		                // Qt believing it was a paletted display.
+		                && dev.colorCount() >= 0;
 		if (sized && plain)
 			printf("PASS: the paint device reports its own size, depth and ratio\n");
 		else {
 			printf("FAIL: the paint device reports its own size, depth and ratio\n"
-			       "      %dx%d px, depth %d, ratio %f, %d mm\n",
+			       "      %dx%d px, depth %d, ratio %f, %dx%d mm, %d colours\n",
 			       dev.width(), dev.height(), dev.depth(),
-			       dev.devicePixelRatio(), dev.widthMM());
+			       dev.devicePixelRatio(), dev.widthMM(), dev.heightMM(),
+			       dev.colorCount());
 			++r;
 		}
 

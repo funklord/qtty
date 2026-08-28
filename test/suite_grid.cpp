@@ -173,5 +173,36 @@ int suite_grid() {
 		      "and for a dialog button layout that does not follow the desktop");
 	}
 
+	{
+		// The subcontrol rects a terminal answers for itself. Qt asks for
+		// SC_SpinBoxFrame and SC_ComboBoxFrame when it decides where the
+		// editable part of one of these sits, and this style answers with
+		// the whole widget: there is no frame inset on a grid, so an inset
+		// answer would put the editor one cell in and lose a column of text.
+		QStyle *st = QApplication::style();
+		QStyleOptionSpinBox sb;
+		sb.rect = QRect(0, 0, GridMetrics::cw() * 8, GridMetrics::ch());
+		CHECK(st->subControlRect(QStyle::CC_SpinBox, &sb,
+		                         QStyle::SC_SpinBoxFrame, nullptr) == sb.rect,
+		      "a spin box's frame is the whole spin box, there being no inset");
+		QStyleOptionComboBox cb;
+		cb.rect = QRect(0, 0, GridMetrics::cw() * 10, GridMetrics::ch());
+		CHECK(st->subControlRect(QStyle::CC_ComboBox, &cb,
+		                         QStyle::SC_ComboBoxFrame, nullptr) == cb.rect,
+		      "and a combo box's likewise");
+	}
+	{
+		// GridSnap's counters, which are how section 7.8 will be decided:
+		// the number of rectangles the filter moved is the measurement, and
+		// a counter nobody can read is not a measurement.
+		Qtty::GridSnap::reset();
+		CHECK(Qtty::GridSnap::snapped() == 0, "the snap counter starts, and resets, at zero");
+		// Its installed() state is what says whether the count means
+		// anything -- zero snaps with the filter off is not evidence that
+		// nothing needed snapping.
+		CHECK(!Qtty::GridSnap::installed() || Qtty::GridSnap::snapped() >= 0,
+		      "and reports whether the filter is installed at all");
+	}
+
 	return fails;
 }

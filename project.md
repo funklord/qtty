@@ -795,6 +795,52 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**A horizontal scrollbar had never been drawn.** Every scrollbar test in
+this tree is vertical, so the `else` arm of the one loop that places a
+thumb had never run -- and the two arms are not symmetric, one walking rows
+and the other columns, so a fault in either is invisible from the other.
+Asserted by the thumb **moving** along the row between value 0 and value
+100: merely drawing one satisfies a check for the glyph, and a horizontal
+bar that placed its thumb by row would draw an identical row at every
+value.
+
+**The idle heartbeat had never ticked in a test.** Its comment says it
+catches timer-driven updates, and that is a real class: the compositor
+paints a widget by calling `render()` on it directly, so a widget whose
+output changes without Qt posting an `UpdateRequest` -- a clock, a meter
+reading a sensor, anything drawn from state rather than from a repaint --
+produces a different frame with nothing to say so. Without the 100 ms tick
+nothing asks for that frame and the screen sits still. Not starting the
+timer fails it.
+
+Also covered: a spin box tall enough to be framed rather than bracketed
+(every other test builds the one-row form, which takes the other arm); a
+mnemonic opening a submenu whose owner is **not** a menu bar, asserted on
+where it opens rather than that it opens, since the origin is what a null
+owner produces; the subcontrol rects a terminal answers for itself; and a
+wide cluster through the rasteriser, whose background fill is twice as wide
+as an ordinary cell's and had only ever been given narrow ones.
+
+**Why the last lines will not close, measured rather than assumed.** The
+residue is not laziness and not reachable behaviour:
+
+- **`D0` destructors.** `gcov -f` reports two destructors per polymorphic
+  class -- `D2`, the complete-object one, and `D0`, the deleting one that
+  runs when an object is destroyed through a base pointer. For
+  `InputRouter` D2 is 100% and D0 is 0%, because nothing heap-allocates a
+  router and deletes it polymorphically. Both are attributed to the same
+  source line, so the line reads as uncovered. Same for `Overlay` and
+  `CellPaintDevice`. **Line coverage cannot reach 100% for a polymorphic
+  class that is only ever stack-allocated**, which is worth knowing before
+  anybody chases it.
+- **`qFatal`**, which aborts, and the SIGWINCH pipe failure path, which is
+  inert by construction -- `F_SETFL` does not fail on a descriptor `pipe()`
+  has just returned.
+- **The four font-guard branches**, measured unreachable on this engine and
+  recorded above with everything that was tried.
+
+98.45% before this round's additions, and what remains is the list above.
+
 **A paste carrying an escape had never been sent**, which is the case
 bracketed paste exists for. Everything between the brackets is text,
 including bytes shaped like a control sequence -- a terminal that decoded

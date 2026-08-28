@@ -317,6 +317,51 @@ int suite_runtime() {
 		      "and a picture that moved with the same pixels is too");
 	}
 
+	{
+		// The idle heartbeat, which nothing had exercised. Its comment says
+		// it catches timer-driven updates, and that is a real class: the
+		// compositor paints a widget by calling render() on it directly, so
+		// a widget whose output changes without Qt ever posting an
+		// UpdateRequest -- a clock, a meter reading a sensor, anything drawn
+		// from state rather than from a repaint -- produces a different frame
+		// with nothing to say so. Without the 100 ms tick nothing would ask
+		// for that frame and the screen would sit still.
+		struct Ticking : QWidget {
+			using QWidget::QWidget;
+			mutable int paints = 0;
+			void paintEvent(QPaintEvent *) override {
+				QPainter p(this);
+				p.drawText(rect(), Qt::AlignLeft, QString::number(++paints));
+			}
+		};
+		NullBackend backend(QSize(30, 8));
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *tick = new Ticking(&win);
+		tick->setGeometry(0, 0, cw * 8, ch);
+		win.resize(GridMetrics::cells(30, 8));
+		win.show();
+		QCoreApplication::processEvents();
+
+		InputRouter router(&win);
+		Compositor comp(&win, &router);
+		FrameScheduler sched(&backend, &comp, &win);
+		sched.render_now();
+		const int settled = backend.frame_count();
+
+		// Nothing touches the widget from here: no event is posted, no
+		// update() is called, and the loop only turns. Bounded by wall clock
+		// as well as by the answer, so a scheduler that never fires ends the
+		// test rather than the suite's watchdog.
+		QElapsedTimer clock;
+		clock.start();
+		while (backend.frame_count() <= settled && clock.elapsed() < 1000)
+			QCoreApplication::processEvents(QEventLoop::WaitForMoreEvents,
+			                                20);
+		CHECK(backend.frame_count() > settled,
+		      "an idle tick redraws a widget that changed with no event to say so");
+	}
+
 	// ------------------------------------------------- section 7.8: GridSnap
 	// The guard's other half. Its policy is a proof rather than a preference,
 	// so the proof is asserted directly on rectangles before any widget is

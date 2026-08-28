@@ -805,6 +805,61 @@ int suite_widgets() {
 		CHECK(all, "each arrow primitive draws its own glyph at its own rect");
 	}
 
+	{
+		// A HORIZONTAL scrollbar, which nothing had drawn: every scrollbar
+		// test here is vertical, so the else arm of the one loop that places
+		// the thumb had never run. The two are not symmetric in the code --
+		// one walks rows and the other columns -- so a fault in either is
+		// invisible from the other.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *bar = new QScrollBar(Qt::Horizontal, &host);
+		bar->setRange(0, 100);
+		bar->setValue(0);
+		bar->setGeometry(0, 0, GridMetrics::cw() * 10, GridMetrics::ch());
+		host.resize(GridMetrics::cells(20, 3));
+		host.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer buf(20, 3);
+		Qtty::render_once(host, buf);
+		const QString row = buf.to_text().split(QLatin1Char('\n')).value(0);
+		const int at_start = row.indexOf(QStringLiteral("█"));
+
+		bar->setValue(100);
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer moved(20, 3);
+		Qtty::render_once(host, moved);
+		const QString row2 = moved.to_text().split(QLatin1Char('\n')).value(0);
+		const int at_end = row2.indexOf(QStringLiteral("█"));
+
+		// The thumb MOVES along the row. Merely drawing one satisfies a check
+		// for the glyph, and a horizontal bar that placed its thumb by row
+		// would draw an identical row at every value.
+		CHECK(at_start >= 0 && at_end > at_start,
+		      "a horizontal scrollbar puts its thumb where the value is");
+	}
+	{
+		// A spin box tall enough to have a box drawn round it. The one-row
+		// form is what every other test builds, and it takes the other arm:
+		// brackets rather than a frame.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *spin = new QSpinBox(&host);
+		spin->setRange(0, 99);
+		spin->setValue(7);
+		spin->setGeometry(0, 0, GridMetrics::cw() * 8, GridMetrics::ch() * 3);
+		host.resize(GridMetrics::cells(20, 5));
+		host.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer buf(20, 5);
+		Qtty::render_once(host, buf);
+		// A corner, not just any box character: a frame drawn one cell wrong
+		// still contains horizontal rules, and the corner is what says the
+		// rectangle is where the widget is.
+		CHECK(buf.at(0, 0).ch == QStringLiteral("┌"),
+		      "a spin box more than one row tall is framed, not bracketed");
+	}
+
 	return fails;
 }
 

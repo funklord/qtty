@@ -186,5 +186,27 @@ int suite_cells() {
 		CHECK(big.diff(other).isEmpty() && big.diff_cells(other) == 0,
 		      "while an identical buffer of the same size damages nothing");
 	}
+	{
+		// colour_name() for an INDEXED colour, and luminance for one. Both
+		// are how a fixture and the contrast rule describe a palette colour,
+		// and both had only ever been given RGB.
+		const Color idx = Color::indexed(33);
+		CellBuffer b(3, 1);
+		b.at(0, 0).fg = idx;
+		b.at(0, 0).ch = QStringLiteral("x");
+		// Through to_snapshot(), which is what a fixture records: the legend
+		// names an indexed colour by its INDEX rather than by the value it
+		// resolves to, so a snapshot stays readable as what the code asked
+		// for rather than as what the palette happened to be.
+		CHECK(b.to_snapshot().contains(QStringLiteral("index:33")),
+		      "a fixture names an indexed colour by its index");
+		// Resolved through the 256-colour table rather than guessed: an
+		// index carries no channels of its own, so a luminance that returned
+		// zero for every index would satisfy any check that only asked for a
+		// number.
+		CHECK(idx.luminance(true) > 0 && idx.luminance(true) <= 255,
+		      "and its luminance is measured from the colour it resolves to");
+	}
+
 	return fails;
 }

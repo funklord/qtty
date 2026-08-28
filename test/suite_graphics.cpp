@@ -457,6 +457,22 @@ int suite_graphics() {
 		b.text(1, 0, QStringLiteral("Hi"), Color::rgb(qRgb(255, 0, 0)));
 		QImage px = rasterize(b, QGuiApplication::font());
 		CHECK(px.size() == QSize(8 * cw, 2 * ch), "rasterizer emits cols*cw x rows*ch");
+		{
+			// A WIDE cluster through the rasteriser, which nothing had sent
+			// it: the background fill for a cell is cw wide for an ordinary
+			// one and twice that for a wide one, and only the narrow case had
+			// ever run. A wide glyph filled to one cell leaves half of itself
+			// standing on the previous cell's colour.
+			CellBuffer w(6, 1);
+			w.put_cluster(0, 0, QStringLiteral("\u6f22"));
+			w.at(0, 0).bg = Color::rgb(qRgb(0, 0, 200));
+			const QImage wide = rasterize(w, QGuiApplication::font());
+			// Sampled at the far edge of the SECOND cell, which is the half
+			// that a width of one would leave unpainted.
+			const QRgb far = wide.pixel(2 * cw - 1, ch / 2);
+			CHECK(qBlue(far) > 150 && qRed(far) < 100,
+			      "a wide cluster's background covers both of its cells");
+		}
 		bool red_seen = false;
 		for (int y = 0; y < ch && !red_seen; ++y)
 			for (int x = cw; x < 3 * cw; ++x) {

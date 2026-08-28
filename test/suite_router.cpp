@@ -786,5 +786,38 @@ int suite_router() {
 		CHECK(r.popups().isEmpty(), "and stops being tracked");
 	}
 
+	{
+		// A mnemonic opening a submenu whose owner is NOT a menu bar. The
+		// menu-bar case is covered because that is where a reader expects a
+		// menu; this is the other branch, and it decides where the submenu
+		// appears -- at the owning widget's corner rather than at the
+		// terminal's origin, which is where a null owner would put it.
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		h.resize(GridMetrics::cells(40, 10));
+		auto *host = new QWidget(&h);
+		host->setGeometry(cw * 6, ch * 3, cw * 10, ch * 2);
+		auto *act = new QAction(QStringLiteral("&Edit"), host);
+		auto *sub = new QMenu(host);
+		sub->addAction(QStringLiteral("Undo"));
+		act->setMenu(sub);
+		host->addAction(act);
+		h.show();
+		QCoreApplication::processEvents();
+
+		InputRouter r(&h);
+		r.on_key({0, QStringLiteral("e"), false, true, false});
+		QCoreApplication::processEvents();
+		// Where it opened, not merely that it did: a submenu at the origin is
+		// what a null owner produces, and it is the failure this branch
+		// exists to prevent -- the menu appears in the corner of the terminal
+		// with nothing beside it to say what it belongs to.
+		CHECK(sub->isVisible(), "a mnemonic on an action with a submenu opens it");
+		CHECK(sub->pos() == host->mapToGlobal(QPoint(0, 0)),
+		      "at the corner of the widget that owns it, not at the origin");
+		sub->close();
+		QCoreApplication::processEvents();
+	}
+
 	return fails;
 }
