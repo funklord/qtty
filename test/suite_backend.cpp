@@ -1386,6 +1386,137 @@ int suite_backend() {
 						else qputenv("QTTY_GRAPHICS", had_gfx4);
 					}
 
+					// The terminal's own low sixteen, adopted only when it
+					// answered for ALL of them. Half a user's scheme and half
+					// xterm's is a palette no terminal has, and matching
+					// against it would be worse than matching against either
+					// -- so the refusal is the half worth asserting, and the
+					// half a test written to the feature's name would skip.
+					fflush(stdout);
+					::dup2(slave, 1);
+					{
+						const QVector<QRgb> had_pal = terminal_palette();
+						const auto osc4 = [](int n, int v) {
+							return QByteArray("\033]4;") + QByteArray::number(n)
+							     + ";rgb:" + QByteArray::number(v, 16).rightJustified(2, '0')
+							     + '/' + QByteArray::number(v, 16).rightJustified(2, '0')
+							     + '/' + QByteArray::number(v, 16).rightJustified(2, '0')
+							     + "\033\\";
+						};
+						// Fifteen of sixteen: one short is the whole test.
+						set_terminal_palette({});
+						QByteArray partial;
+						for (int i = 0; i < 15; ++i) partial += osc4(i, 0x10 + i);
+						{
+							const ssize_t wp = ::write(master,
+							    (partial + answer).constData(),
+							    partial.size() + answer.size());
+							(void)wp;
+						}
+						AnsiBackend few;
+						Recorder few_rec;
+						few.set_event_sink(&few_rec);
+						(void)few.capabilities();
+						while (::read(master, drain, sizeof(drain)) > 0) { }
+						const bool refused = terminal_palette().isEmpty();
+
+						QByteArray full;
+						for (int i = 0; i < 16; ++i) full += osc4(i, 0x10 + i);
+						{
+							const ssize_t wf = ::write(master,
+							    (full + answer).constData(),
+							    full.size() + answer.size());
+							(void)wf;
+						}
+						AnsiBackend all;
+						Recorder all_rec;
+						all.set_event_sink(&all_rec);
+						(void)all.capabilities();
+						while (::read(master, drain, sizeof(drain)) > 0) { }
+						const QVector<QRgb> got = terminal_palette();
+
+						fflush(stdout);
+						::dup2(keep_out, 1);
+						CHECK(refused, "fifteen colours out of sixteen is not a palette");
+						CHECK(got.size() == 16 && got[0] == qRgb(0x10, 0x10, 0x10)
+						      && got[15] == qRgb(0x1f, 0x1f, 0x1f),
+						      "and sixteen of sixteen is adopted as the terminal's own");
+						fflush(stdout);
+						::dup2(slave, 1);
+						set_terminal_palette(had_pal);   // global: put it back
+					}
+
+					// Half-blocks against the terminal's OWN background. The
+					// fallback tier blends a translucent image over whatever
+					// sits behind it, and it guessed a dark grey for its
+					// whole life -- so on a light terminal every translucent
+					// edge was haloed. OSC 11 is in the startup query and
+					// this terminal answers 1c1c1c, so a fully transparent
+					// image must come out as exactly that and not as the
+					// old guess.
+					fflush(stdout);
+					::dup2(slave, 1);
+					{
+						const QByteArray had_gfx5 = qgetenv("QTTY_GRAPHICS");
+						qputenv("QTTY_GRAPHICS", "halfblocks");
+						{
+							const ssize_t w8 = ::write(master, answer.constData(),
+							                           answer.size());
+							(void)w8;
+						}
+						AnsiBackend hb;
+						Recorder hb_rec;
+						hb.set_event_sink(&hb_rec);
+						const Capabilities hc = hb.capabilities();
+						while (::read(master, drain, sizeof(drain)) > 0) { }
+
+						// HALF transparent, not fully: a fully transparent
+						// image is not painted at all, which is correct and
+						// which the first draft asserted a blend against --
+						// the frame came back blank and said so.
+						QImage clear(GridMetrics::cw() * 2, GridMetrics::ch() * 2,
+						             QImage::Format_ARGB32);
+						clear.fill(QColor(200, 0, 0, 128));
+						CellBuffer hf(20, 4);
+						CellImage hci;
+						hci.key = 4242;
+						hci.cell_rect = QRect(0, 0, 2, 1);
+						hci.pixmap = QPixmap::fromImage(clear);
+						hf.images.append(hci);
+						hb.present(hf, QRegion());
+						QByteArray hout;
+						{
+							ssize_t n;
+							while ((n = ::read(master, drain, sizeof(drain))) > 0)
+								hout.append(drain, int(n));
+						}
+						fflush(stdout);
+						::dup2(keep_out, 1);
+						CHECK(hc.background_known
+						      && hc.background == QColor(0x1c, 0x1c, 0x1c),
+						      "the terminal answered for its background");
+						// Asserted on the SHAPE of the result rather than
+						// on exact bytes: the terminal's background is a
+						// neutral grey, so blending a pure red over it leaves
+						// green and blue EQUAL. The grey this used to guess is
+						// (16, 20, 24), which is not neutral -- no blend over
+						// it can produce equal channels. That holds whichever
+						// way the arithmetic rounds.
+						const QRegularExpression sgr(
+						    QStringLiteral("[34]8;2;(\\d+);(\\d+);(\\d+)"));
+						auto m = sgr.match(QString::fromLatin1(hout));
+						const int g = m.hasMatch() ? m.captured(2).toInt() : -1;
+						const int b = m.hasMatch() ? m.captured(3).toInt() : -2;
+						CHECK(m.hasMatch(),
+						      "a half-transparent image paints cells in real colours");
+						CHECK(g == b && g > 12,
+						      "blended over the terminal's own neutral background");
+						fflush(stdout);
+						::dup2(slave, 1);
+						if (had_gfx5.isEmpty()) qunsetenv("QTTY_GRAPHICS");
+						else qputenv("QTTY_GRAPHICS", had_gfx5);
+					}
+
 					fflush(stdout);            // before switching BACK, too
 					::dup2(slave, 1);
 					if (had_gfx.isEmpty()) qunsetenv("QTTY_GRAPHICS");
@@ -1511,6 +1642,23 @@ int suite_backend() {
 	// not a final, so a parser that only accepts finals in 0x40..0x7e never
 	// terminates the sequence. Probing whether the decoder survives one
 	// BEFORE relying on the mode query that produces them.
+	// A paste carrying an ESCAPE, which is the case bracketed paste exists
+	// for and which nothing had sent. Everything pasted between the brackets
+	// is text, including bytes that look like a control sequence: a terminal
+	// that decoded them would let anything a user pastes drive the
+	// application, which is the whole reason the mode was invented.
+	rec.clear();
+	feeder.send("\033[200~a\033[Ab\033[201~");
+	for (int i = 0; i < 50; ++i) QCoreApplication::processEvents();
+	// Both halves. That the text arrived whole says the escape was kept; that
+	// NO key arrived says it was not also acted on -- and the second is the
+	// one that fails if the branch is missing, because then the paste is
+	// three fragments and an Up key.
+	CHECK(rec.pastes.size() == 1
+	      && rec.pastes[0] == QStringLiteral("a\033[Ab"),
+	      "an escape inside a paste is pasted, not obeyed");
+	CHECK(rec.keys.isEmpty(), "and produces no keystroke of its own");
+
 	rec.clear();
 	feeder.send("\033[?1006;1$y");
 	QCoreApplication::processEvents();
@@ -1518,6 +1666,33 @@ int suite_backend() {
 	for (int i = 0; i < 50; ++i) QCoreApplication::processEvents();
 	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Up,
 	      "a DECRPM reply does not stall the decoder");
+
+	// The terminal going away. read() returns 0, and the backend turns that
+	// into Ctrl+D rather than spinning on a descriptor that will never carry
+	// anything again -- an EOF descriptor is permanently READABLE, so a
+	// notifier over one fires for ever and a backend that merely returned
+	// would burn a core doing nothing.
+	{
+		int eof_fds[2];
+		if (::pipe(eof_fds) == 0) {
+			const int keep0 = ::dup(0);
+			::dup2(eof_fds[0], 0);
+			::close(eof_fds[1]);              // nothing will ever be written
+			rec.clear();
+			for (int i = 0; i < 20; ++i) QCoreApplication::processEvents();
+			// Restored before asserting, so that a failing CHECK's own
+			// printf is not the thing that has to survive a broken stdin.
+			::dup2(keep0, 0);
+			::close(keep0);
+			::close(eof_fds[0]);
+			CHECK(!rec.keys.isEmpty() && rec.keys[0].qt_key == Qt::Key_D
+			      && rec.keys[0].ctrl,
+			      "a terminal that went away arrives as Ctrl+D");
+		} else {
+			printf("FAIL: could not build the EOF pipe\n");
+			++fails;
+		}
+	}
 
 	// The gate that decides whether to WRITE at all, which is the half of
 	// that lens this suite had not asked -- every check above asks what is

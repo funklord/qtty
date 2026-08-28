@@ -795,6 +795,37 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**A paste carrying an escape had never been sent**, which is the case
+bracketed paste exists for. Everything between the brackets is text,
+including bytes shaped like a control sequence -- a terminal that decoded
+them would let anything a user pastes drive the application, which is why
+the mode was invented. Both halves are asserted: that the text arrives
+whole says the escape was kept, and that **no key arrives** says it was not
+also obeyed. The second is the one that fails without the branch, because
+then the paste is three fragments and an Up key.
+
+**A terminal going away** is the other end of the same descriptor.
+`read()` returns 0, and the backend turns that into Ctrl+D rather than
+returning -- an EOF descriptor is permanently *readable*, so a notifier
+over one fires for ever and a backend that merely returned would burn a
+core doing nothing.
+
+**Half-blocks blend over the terminal's own background**, and the first
+draft of that assertion was wrong in a way worth keeping: it used a fully
+transparent image, which is not painted at all. Correct behaviour, and the
+frame came back blank and said so. With half alpha the discriminator is the
+**shape** of the result rather than an exact byte -- the terminal's
+background is a neutral grey, so a pure red blended over it leaves green
+and blue equal, while the grey this used to guess, `(16, 20, 24)`, is not
+neutral and no blend over it can produce equal channels. That holds
+whichever way the arithmetic rounds.
+
+**The terminal's own low sixteen are adopted only when it answered for all
+of them**, and the refusal is the half worth asserting -- the half a test
+written to the feature's name would skip. Fifteen out of sixteen is
+refused; sixteen is adopted. Sabotaging the completeness check fails the
+first, and never adopting fails the second.
+
 **Four branches of the font guard cannot be reached here, and that is a
 measurement.** `grid_font_problem()` refuses a fractional line height, a
 fractional advance, and either at zero or less; only its fixed-pitch
