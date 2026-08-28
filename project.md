@@ -795,6 +795,35 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**A guard whose failure path was inert, found because the beerssh session
+described theirs.** They fixed two the same day -- one that never fired,
+one that fired and proceeded anyway -- and named the construction: *a
+condition guarding an action, with nothing said when the condition cannot
+be evaluated.*
+
+qtty had the same shape and a degree worse, because there was no condition
+at all:
+
+    fcntl(s_winch_pipe[0], F_SETFL, O_NONBLOCK);   // result discarded
+
+`read_winch()` drains that pipe with `while (read(...) > 0)` **on the GUI
+thread**. A descriptor that stayed blocking does not degrade the resize
+handling; it **freezes the application on the first SIGWINCH**, a long way
+from here and with nothing pointing back. Carrying on without the flag
+keeps exactly the hazard the line exists to remove.
+
+The result is read now, and a failure closes the pipe and installs no
+notifier: resizes are missed, which is a visible degradation rather than a
+hang. Not by returning early -- that would skip `active_ = true` and leave
+the backend in a state `suspend()` declines to undo, which would be a poor
+way to take a lesson about inert failure paths.
+
+No test: `F_SETFL` does not fail on a descriptor `pipe()` has just
+returned, so the branch is unreachable from a suite and an entry would
+report nothing for ever. Recorded in the source with that reason, which is
+the third time in this document -- enough to be a category rather than
+three exceptions.
+
 **The search key, applied deliberately rather than opportunistically.**
 It found two on the first two attempts, which is what makes it a key
 rather than an anecdote.

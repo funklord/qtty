@@ -336,13 +336,39 @@ void AnsiBackend::resume() {
 	signal(SIGPIPE, SIG_IGN);
 
 	if (s_winch_pipe[0] < 0 && ::pipe(s_winch_pipe) == 0) {
-		fcntl(s_winch_pipe[0], F_SETFL, O_NONBLOCK);
-		fcntl(s_winch_pipe[1], F_SETFL, O_NONBLOCK);
-		struct sigaction sa{};
-		sa.sa_handler = qtty_winch_handler;
-		sigemptyset(&sa.sa_mask);
-		sa.sa_flags = SA_RESTART;      // do not break the read() in read_input()
-		sigaction(SIGWINCH, &sa, nullptr);
+		// Both ends non-blocking, and the RESULT READ. read_winch() drains
+		// this pipe with `while (read(...) > 0)` on the GUI thread, so a
+		// descriptor that stayed blocking does not degrade the resize
+		// handling -- it freezes the application on the first SIGWINCH, a
+		// long way from here and with nothing pointing back.
+		//
+		// The result was discarded before, which is worse than an unchecked
+		// guard: there was not even a condition to fail. Carrying on without
+		// the flag keeps exactly the hazard the line exists to remove. If it
+		// cannot be set, the pipe is closed and no notifier is installed --
+		// resizes are missed, which is a visible degradation rather than a
+		// hang.
+		const int rf = fcntl(s_winch_pipe[0], F_SETFL, O_NONBLOCK);
+		const int wf = fcntl(s_winch_pipe[1], F_SETFL, O_NONBLOCK);
+		if (rf < 0 || wf < 0) {
+			qWarning("qtty: the SIGWINCH pipe cannot be made non-blocking, so "
+			         "terminal resizes will not be noticed; draining it on the "
+			         "GUI thread would hang the application instead");
+			::close(s_winch_pipe[0]);
+			::close(s_winch_pipe[1]);
+			s_winch_pipe[0] = s_winch_pipe[1] = -1;
+			// Not a return: the notifier below is already conditional on a
+			// valid descriptor, and returning here would skip `active_ = true`
+			// and leave the backend in a state suspend() declines to undo.
+			// Fixing one inert failure path by writing another would be a
+			// poor way to take the lesson.
+		} else {
+			struct sigaction sa{};
+			sa.sa_handler = qtty_winch_handler;
+			sigemptyset(&sa.sa_mask);
+			sa.sa_flags = SA_RESTART;      // do not break the read() in read_input()
+			sigaction(SIGWINCH, &sa, nullptr);
+		}
 	}
 	if (s_winch_pipe[0] >= 0 && !winch_notifier_) {
 		winch_notifier_ = new QSocketNotifier(s_winch_pipe[0],
