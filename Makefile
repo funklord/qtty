@@ -302,7 +302,11 @@ record: tests-build
 	@test -n "$(R)" || { echo "record: name the fixture, e.g. make record R=render" >&2; exit 1; }
 	$(TEST_ENV) $(TEST_BIN) --record $(R)
 
-check: style test
+# version-check joins these because a gate nobody runs is not a gate: it was
+# reachable only by typing its name, so the version consistency it enforces
+# and the copyright line it now checks were both unguarded in practice. It is
+# pure sed and grep and costs nothing.
+check: style version-check test
 
 # -----------------------------------------------------------------------------
 # Gates
@@ -351,7 +355,17 @@ version-check:
 		echo "               components are $$major.$$minor.$$patch" >&2; \
 		exit 1; \
 	fi; \
-	echo "version-check: $$file, in step"
+	holder=$$(sed -n 's/^    "\(Copyright (C).*\)";$$/\1/p' include/qtty/version.h); \
+	if [ -z "$$holder" ]; then \
+		echo "version-check: include/qtty/version.h states no copyright line" >&2; \
+		exit 1; \
+	fi; \
+	if ! grep -qF "$$holder" README.md; then \
+		echo "version-check: README.md does not carry the copyright line" >&2; \
+		echo "               version.h states: $$holder" >&2; \
+		exit 1; \
+	fi; \
+	echo "version-check: $$file, in step, attributed to $$holder"
 
 # -----------------------------------------------------------------------------
 # Run and install

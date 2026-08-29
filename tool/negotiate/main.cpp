@@ -10,15 +10,25 @@
 // because stdout is the terminal under test -- and under a terminal launched
 // with `-e` there may be nowhere for the output to be read from afterwards.
 #include <qtty/qtty.h>
+#include <qtty/version.h>
 #include "src/backend/ansi/ansi_backend.h"
 
 #include <QApplication>
+#include <QtGlobal>
 #include <cstdio>
 #include <cstdlib>
 
 using namespace Qtty;
 
 int main(int argc, char **argv) {
+	// Before anything else, and before QApplication: --version must work in a
+	// pipe, on a machine with no terminal to negotiate with, and without the
+	// startup query this tool otherwise sends.
+	for (int i = 1; i < argc; ++i)
+		if (!qstrcmp(argv[i], "--version") || !qstrcmp(argv[i], "-V")) {
+			printf("qtty-negotiate %s\n%s\n", version_string, copyright);
+			return 0;
+		}
 	prepare_environment();
 	QApplication app(argc, argv);
 	setup(app);

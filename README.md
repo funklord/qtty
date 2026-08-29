@@ -77,6 +77,10 @@ terminal rendering for Qt applications" (the trademark fair-use form).
 qtty is not affiliated with or endorsed by The Qt Company. "Qt" is a
 trademark of The Qt Company Ltd.
 
+## Copyright
+
+Copyright (C) 2026 Nabeel Sowan <nabeel@vibes.se>
+
 ## License
 
 Not yet chosen (design intends a permissive license; note Qt's own LGPLv3/GPL

@@ -795,6 +795,42 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**The copyright holder is named, on the surfaces qtty actually has.**
+Directive of 2026-08-29, relayed because `CLAUDE.md` is read once at session
+start: every private project names the holder in its `--version` output, its
+About window, and its README. It is **attribution, not licensing** --
+naming the holder is factual and grants nothing -- and explicitly not a
+per-file banner sweep.
+
+qtty had none of the three literally: it is a library, with no `--version`
+and no About window. What it has is `version_string`, the symbol a
+consuming program prints, so the line lives beside it in
+`include/qtty/version.h` and reaches a person through whatever prints the
+version -- which is the surface that will end up in beerssh's output. The
+README carries it in its own section, deliberately separate from the
+*License* section, which says the licence is not yet chosen and is not
+this directive's business or mine.
+
+`qtty-negotiate` gains `--version`, which makes the first surface real
+rather than notional: it is a program somebody runs, and it now says which
+qtty produced the capability report. Handled before `QApplication` and
+before `prepare_environment()`, so it works in a pipe, on a machine with no
+terminal to negotiate with, and without sending the startup query.
+
+**The two copies are checked against each other**, because two places
+stating one fact is drift waiting to happen: `make version-check` extracts
+the line from the header and refuses if the README does not carry it
+verbatim, or if the header states none. Both failure modes were exercised
+-- the README altered, and the constant emptied -- rather than assumed.
+
+**And the gate was wired into `make check`, where it had never been.** It
+was reachable only by typing its name, so the version consistency it
+enforces was unguarded in practice too. A gate nobody runs is not a gate.
+
+The example application is left alone: it is a demonstration of the
+library rather than a program this project ships, and the directive names
+the surfaces where a person looks for the project itself.
+
 **The interaction sweep found nothing wrong, and that is the result.** The
 mirror of the rendering probes: which user actions reach a widget and
 change something? Space presses a focused button and ticks a checkbox,
