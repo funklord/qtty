@@ -98,8 +98,18 @@ whatever it believed before, while one that answers 0 turns the capability
 off. **Silence is the right answer for a claim; a definite no is the right
 answer for a question that has one.**
 
-**Re-taken 2026-08-30 against beerssh at `395f354`** -- five commits later,
-including terminal-facing work -- and every row below reproduces, along
+**Re-taken 2026-08-30, and again on 08-31 with `--probes`.** The version
+measured is stated by its method, because the first attempt at this line
+named a commit that was inferred rather than known: what was run is the
+`beerssh` binary built 2026-08-30 17:35:28, which **postdates `395f354`
+(08-29 19:46) and predates `71eefea` (08-30 18:17)**, so `395f354` is the
+newest commit it can contain unless it was built from uncommitted work,
+which nothing here can tell. The four probe fixes it exercises landed
+earlier still, in `3525de0`.
+
+What that does NOT cover is anything after `71eefea`, `a8b4187` included --
+the binary on this machine is older than that commit by eight hours, so no
+measurement here says anything about it. Every row below reproduces, along
 with the background `#000000`, the palette entries `0=#000000 1=#aa0000`
 and the 9x20 cell size recorded further down. The point of re-running it is
 that the fact carries its method: a cross-implementation claim ages
