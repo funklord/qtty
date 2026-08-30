@@ -64,6 +64,40 @@ Measured with `beerssh --term-features=<spec> -e qtty-negotiate` against
 beerssh at `3525de0`, with a raw capture from a C program sharing no code
 with qtty so that the instrument is not the thing under test.
 
+## Silence, and the one place it is the wrong answer
+
+**Measured 2026-08-31 with `qtty-negotiate --probes`**, which reports each
+probe as answered or silent rather than reporting what qtty concluded. The
+ordinary output cannot answer this question: under the asymmetry rule an
+unverifiable signal may only say yes, so "no reply" and "a reply saying no"
+reach the same conclusion there, deliberately -- and they are exactly the
+two a terminal implementer needs told apart.
+
+Every announcement-style capability goes **silent** when switched off, which
+is the behaviour asked for. The byte counts are the evidence, since a reply
+that shrank rather than vanished would still be a reply:
+
+| spec | raw reply | what stopped |
+|---|---|---|
+| *(all on)* | 568 B | -- |
+| `-kitty-graphics` | 556 B | the `a=q` OK, 12 bytes, gone entirely |
+| `-sixel` | 566 B | DA1 `?1;2;4c` becomes `?1;2c` |
+| `-xtgettcap` | 533 B | both DCS replies |
+| `-window-size` | 547 B | `CSI 14t` and `CSI 16t` |
+| `-colour-query` | 121 B | OSC 11 and all sixteen OSC 4 replies |
+| `none` | 51 B | everything but the fence and the mode replies |
+
+**The DEC modes are the exception, and answering is right there.** With
+`-synchronised-output`, `-sgr-mouse`, `-bracketed-paste` or
+`-focus-reporting`, DECRQM answers **0, not recognised** -- and the reply
+stays 568 bytes. That is not answering-but-inert; it is the protocol's own
+way of saying no, and it is strictly better than silence. `mode_usable()`
+here treats silence as "learned nothing, keep your assumption" and 0 as a
+definite no, so a terminal that went quiet would leave qtty believing
+whatever it believed before, while one that answers 0 turns the capability
+off. **Silence is the right answer for a claim; a definite no is the right
+answer for a question that has one.**
+
 **Re-taken 2026-08-30 against beerssh at `395f354`** -- five commits later,
 including terminal-facing work -- and every row below reproduces, along
 with the background `#000000`, the palette entries `0=#000000 1=#aa0000`

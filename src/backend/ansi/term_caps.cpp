@@ -313,7 +313,7 @@ bool caps_complete(const QByteArray &buf) {
 	return probe.answered;
 }
 
-TermCaps collect_caps(int in_fd, int out_fd, int timeout_ms) {
+TermCaps collect_caps(int in_fd, int out_fd, int timeout_ms, QByteArray *raw) {
 	TermCaps caps;
 	// Wrapped inside tmux, or the query is answered by tmux itself: it is a
 	// terminal too, and it answers device attributes while knowing nothing
@@ -343,9 +343,11 @@ TermCaps collect_caps(int in_fd, int out_fd, int timeout_ms) {
 		if (got <= 0) break;
 		buf.append(chunk, int(got));
 		if (!caps_complete(buf)) continue;
+		if (raw) *raw = buf;
 		scan_caps(buf, caps);
 		return caps;
 	}
+	if (raw) *raw = buf;
 	scan_caps(buf, caps);                         // whatever arrived still counts
 	return caps;
 }

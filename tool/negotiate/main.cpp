@@ -12,11 +12,14 @@
 #include <qtty/qtty.h>
 #include <qtty/version.h>
 #include "src/backend/ansi/ansi_backend.h"
+#include "src/backend/ansi/term_caps.h"
 
 #include <QApplication>
 #include <QtGlobal>
 #include <cstdio>
 #include <cstdlib>
+#include <termios.h>
+#include <unistd.h>
 
 using namespace Qtty;
 
@@ -29,9 +32,45 @@ int main(int argc, char **argv) {
 			printf("qtty-negotiate %s\n%s\n", version_string, copyright);
 			return 0;
 		}
+	// --probes reports what the terminal ANSWERED, one probe at a time, and
+	// distinguishes silence from a definite no. The ordinary output cannot:
+	// it reports what qtty negotiated, which is downstream of both and treats
+	// them alike on purpose -- under the asymmetry rule an unverifiable
+	// signal may only say yes, so "no reply" and "reply saying no" reach the
+	// same conclusion here and must not for a terminal implementer checking
+	// that a disabled feature is silent rather than answering-but-inert.
+	bool probes = false;
+	for (int i = 1; i < argc; ++i)
+		if (!qstrcmp(argv[i], "--probes")) probes = true;
+
 	prepare_environment();
 	QApplication app(argc, argv);
 	setup(app);
+
+	// The probe report asks for itself rather than reading the backend's
+	// answers, because the backend keeps the parse and not the bytes -- and
+	// the bytes are the whole question. Same query, same parser.
+	TermCaps probed;
+	QByteArray raw;
+	if (probes) {
+		// Raw mode, for the length of the probe only. Without it the reply
+		// sits in the line discipline waiting for a newline that a terminal
+		// answering a query never sends, and every probe reports silence --
+		// which is what the first version of this did, while the ordinary
+		// output in the same run negotiated Kitty. A report that says
+		// "silent" when the terminal answered is worse than no report.
+		termios saved{};
+		const bool tty = isatty(0) && tcgetattr(0, &saved) == 0;
+		if (tty) {
+			termios t = saved;
+			t.c_lflag &= ~(ICANON | ECHO);
+			t.c_cc[VMIN] = 0;
+			t.c_cc[VTIME] = 0;
+			tcsetattr(0, TCSANOW, &t);
+		}
+		probed = collect_caps(0, 1, 200, &raw);
+		if (tty) tcsetattr(0, TCSANOW, &saved);
+	}
 
 	Capabilities c;
 	{
@@ -66,6 +105,57 @@ int main(int argc, char **argv) {
 	                            .arg(QColor(pal[0]).name(), QColor(pal[1]).name())));
 	fprintf(out, "mouse                %s\n", c.mouse ? "yes" : "no");
 	fprintf(out, "bracketed paste      %s\n", c.bracketed_paste ? "yes" : "no");
+
+	if (probes) {
+		fprintf(out, "\n-- probes --\n");
+		// The fence first: without the device-attributes reply nothing below
+		// means anything, because a missing answer cannot be told from a slow
+		// one until the terminal has answered SOMETHING.
+		fprintf(out, "DA1 fence            %s\n",
+		        probed.answered ? "answered" : "SILENT (nothing below is conclusive)");
+		fprintf(out, "kitty a=q            %s\n", probed.kitty ? "OK" : "no OK reply");
+		fprintf(out, "DA1 attribute 4      %s\n", probed.sixel ? "present" : "absent");
+		fprintf(out, "XTGETTCAP RGB/Tc     %s\n", probed.truecolor ? "confirmed" : "not confirmed");
+		fprintf(out, "OSC 11 background    %s\n", probed.bg_known ? "answered" : "silent");
+		fprintf(out, "CSI 16t cell size    %s\n", probed.cell_px.isValid() ? "answered" : "silent");
+		fprintf(out, "CSI 14t text size    %s\n", probed.text_px.isValid() ? "answered" : "silent");
+		fprintf(out, "OSC 4 palette        %s\n",
+		        probed.palette16.isEmpty() ? "silent" : "answered");
+		// The tri-state, which is the point of the mode: -1 is silence and 0
+		// is a terminal saying it does not recognise the mode. They are
+		// different facts and qtty keeps them apart everywhere but here.
+		// The modes are DERIVED from the query rather than listed again here.
+		// The first version carried its own list and included 1002, which
+		// caps_query() does not ask about -- so the report said "silent" about
+		// a question nobody sent, and silence was the only answer possible.
+		// That was one edit away from being sent to the terminal's author as
+		// their defect. Two lists of the same thing drift, and this one drifted
+		// before it was ever run.
+		QVector<int> asked;
+		{
+			const QByteArray q = caps_query();
+			int i = 0;
+			while ((i = q.indexOf("\033[?", i)) >= 0) {
+				i += 3;
+				int j = i;
+				while (j < q.size() && q[j] >= '0' && q[j] <= '9') ++j;
+				if (j < q.size() - 1 && q[j] == '$' && q[j + 1] == 'p')
+					asked.append(q.mid(i, j - i).toInt());
+				i = j;
+			}
+		}
+		for (int mode : asked) {
+			const int v = dec_mode(probed, mode);
+			fprintf(out, "DECRQM %-14d%s\n", mode,
+			        v < 0 ? "silent" : v == 0 ? "0 (not recognised)"
+			              : v == 1 ? "1 (set)" : v == 2 ? "2 (reset)"
+			              : "3/4 (permanent)");
+		}
+		QByteArray shown = raw;
+		shown.replace('\033', "<ESC>");
+		fprintf(out, "raw reply            %d bytes: %s\n",
+		        int(raw.size()), shown.isEmpty() ? "(none)" : shown.constData());
+	}
 	if (out != stdout) fclose(out);
 	return 0;
 }

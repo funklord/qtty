@@ -102,7 +102,15 @@ bool caps_complete(const QByteArray &buf);
 //
 // A timeout is not a failure. Whatever did arrive still counts -- a terminal
 // that answered the graphics query and nothing else is one we can draw on.
-TermCaps collect_caps(int in_fd, int out_fd, int timeout_ms);
+// `raw`, when given, receives every byte that arrived. The parse deliberately
+// forgets whether a capability was DECLINED or merely unanswered -- for most
+// of them the two mean the same thing to a caller -- but the difference is
+// exactly what a terminal implementer needs when checking that switching a
+// feature off silences the ANSWER rather than only the behaviour. A terminal
+// that still replies while ignoring the payload is worse than one that never
+// claimed the feature, because the reply is then cached as a lie.
+TermCaps collect_caps(int in_fd, int out_fd, int timeout_ms,
+                      QByteArray *raw = nullptr);
 
 } // namespace Qtty
 

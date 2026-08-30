@@ -795,6 +795,43 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**`qtty-negotiate --probes`: what the terminal ANSWERED, not what qtty
+concluded.** Built because the beerssh session asked for the one check it
+cannot make from inside its own tree -- that switching a feature off
+silences the *answer* rather than only the behaviour, since a terminal that
+still replies while ignoring the payload gets its lie cached. Its own test
+asserts what it believes the probe looks like, which is one witness wearing
+two hats.
+
+The ordinary output cannot answer that and should not: under the asymmetry
+rule an unverifiable signal may only say yes, so silence and a definite no
+reach the same conclusion there on purpose. `--probes` reports each probe
+separately and prints the raw reply, so a reply that shrank rather than
+vanished is visible as bytes.
+
+`collect_caps()` gained an optional `raw` out-param rather than the tool
+doing its own I/O -- same query, same parser, one implementation.
+
+**Two instrument errors, both caught before the results were reported**,
+which is the part worth keeping:
+
+- The first run said every probe was silent while the same run negotiated
+  Kitty. The backend sets termios raw before it asks; a tool-level probe
+  does not, so the replies sat in the line discipline waiting for a newline
+  that no terminal sends after a query. **A report that says "silent" when
+  the terminal answered is worse than no report.**
+- The mode list was written out a second time in the tool and included
+  1002, which `caps_query()` does not ask about. The report therefore said
+  "silent" about a question nobody sent, and silence was the only possible
+  answer -- one edit from being sent to the terminal's author as their
+  defect. The list is derived from the query now: two lists of one thing
+  drift, and this one had drifted before it was ever run.
+
+The measurements are in `doc/beerssh.md`. Every announcement-style
+capability goes silent when switched off; the DEC modes answer 0 instead,
+and **that is correct** -- silence is the right answer for a claim, a
+definite no for a question that has one.
+
 **The beerssh interoperability table was re-taken, and it holds.** Every
 row was measured against beerssh at `3525de0`; its HEAD is now `395f354`,
 five commits later and including terminal-facing work. All five
