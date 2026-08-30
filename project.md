@@ -795,6 +795,26 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**"61 files conform" asserted more than the gate checks, and I quoted it
+all day.** The shared `style_gate.py` was corrected at its source: its
+structural half compares each line's tab count against what the converter
+would emit, and the converter never ADDS indentation -- so a line with too
+few tabs and no alignment spaces is invisible to it. Over-indentation is
+caught; **under-indentation is not**, and a file with no tabs at all passed
+while printing that it conformed.
+
+The copy here is synced, and the message now says what was verified:
+`61 file(s) pass: whitespace, and indentation except under-indentation,
+which is not checked`. Nothing else changed -- the source gate was run
+against this tree before syncing, per the rule that a tool fix which
+reveals findings is applied with the source first, and it reported the same
+61 files with nothing new.
+
+Worth recording as a correction rather than a sync, because the citation
+was mine: every check-in this session quoted the old line as a pass. It was
+a real gate reporting a wider fact than it established, which is the third
+shape in `evidence.md`'s new entry on facts recorded without their method.
+
 **The copyright holder is named, on the surfaces qtty actually has.**
 Directive of 2026-08-29, relayed because `CLAUDE.md` is read once at session
 start: every private project names the holder in its `--version` output, its
