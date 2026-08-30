@@ -19,10 +19,47 @@ inline int check_snapshot(const QString &root, const QString &name,
 	const QString path = root + QStringLiteral("/test/snapshot/") + name
 	                   + QStringLiteral(".txt");
 	if (record) {
+		// Show what is about to be blessed. Re-recording is how a snapshot
+		// stops being evidence: the fixture is the measurement and the code
+		// is the intervention, and --record hands both to the same person in
+		// the same minute, so a regression can be promoted to the expected
+		// output by muscle memory. The Makefile calls this "after a reviewed
+		// change" and nothing here made a review possible -- it truncated
+		// the file and printed a path.
+		//
+		// Printing the differing rows does not change who is deciding. It
+		// changes whether they can see what they are deciding, which is the
+		// whole of what "reviewed" can mean for a fixture nobody reads in
+		// full.
+		QString before;
+		{
+			QFile old(path);
+			if (old.open(QIODevice::ReadOnly))
+				before = QString::fromUtf8(old.readAll());
+		}
+		if (!before.isEmpty() && before == got) {
+			printf("unchanged %s\n", qPrintable(path));
+			return 0;
+		}
+		if (before.isEmpty()) {
+			printf("new fixture %s\n", qPrintable(path));
+		} else {
+			const QStringList a = before.split(QLatin1Char('\n'));
+			const QStringList b = got.split(QLatin1Char('\n'));
+			int differing = 0;
+			for (int i = 0; i < qMax(a.size(), b.size()); ++i)
+				if (a.value(i) != b.value(i)) ++differing;
+			printf("recording %s -- %d line(s) differ:\n",
+			       qPrintable(path), differing);
+			for (int i = 0; i < qMax(a.size(), b.size()); ++i) {
+				if (a.value(i) == b.value(i)) continue;
+				printf("  %3d -%s\n      +%s\n", i,
+				       qPrintable(a.value(i)), qPrintable(b.value(i)));
+			}
+		}
 		QFile f(path);
 		f.open(QIODevice::WriteOnly | QIODevice::Truncate);
 		f.write(got.toUtf8());
-		printf("recorded %s\n", qPrintable(path));
 		return 0;
 	}
 	QFile f(path);
