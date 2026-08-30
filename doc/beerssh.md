@@ -62,7 +62,16 @@ not already carry, and it would only work against one terminal.
 
 Measured with `beerssh --term-features=<spec> -e qtty-negotiate` against
 beerssh at `3525de0`, with a raw capture from a C program sharing no code
-with qtty so that the instrument is not the thing under test:
+with qtty so that the instrument is not the thing under test.
+
+**Re-taken 2026-08-30 against beerssh at `395f354`** -- five commits later,
+including terminal-facing work -- and every row below reproduces, along
+with the background `#000000`, the palette entries `0=#000000 1=#aa0000`
+and the 9x20 cell size recorded further down. The point of re-running it is
+that the fact carries its method: a cross-implementation claim ages
+silently, because it is a statement about somebody else's program that
+nothing here would notice going stale, and the command that produced it is
+what makes the check cost a minute rather than a reconstruction:
 
 | beerssh spec | qtty negotiates |
 |---|---|
