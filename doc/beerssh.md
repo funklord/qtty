@@ -64,6 +64,14 @@ Measured with `beerssh --term-features=<spec> -e qtty-negotiate` against
 beerssh at `3525de0`, with a raw capture from a C program sharing no code
 with qtty so that the instrument is not the thing under test.
 
+**When to re-take this, agreed with the beerssh session 2026-08-31:** when
+something touches the emulator, the negotiation, or the vendored libvterm
+patches -- not on every commit. Build tooling and CI lifecycle work cannot
+move a byte of these tables, and re-running against them spends a
+measurement to confirm no change. A method without a trigger gets re-run
+either too often or never, and never is the one that leaves a stale table
+looking current.
+
 ## Silence, and the one place it is the wrong answer
 
 **Measured 2026-08-31 with `qtty-negotiate --probes`**, which reports each

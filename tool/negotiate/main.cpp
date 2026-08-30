@@ -131,20 +131,7 @@ int main(int argc, char **argv) {
 		// That was one edit away from being sent to the terminal's author as
 		// their defect. Two lists of the same thing drift, and this one drifted
 		// before it was ever run.
-		QVector<int> asked;
-		{
-			const QByteArray q = caps_query();
-			int i = 0;
-			while ((i = q.indexOf("\033[?", i)) >= 0) {
-				i += 3;
-				int j = i;
-				while (j < q.size() && q[j] >= '0' && q[j] <= '9') ++j;
-				if (j < q.size() - 1 && q[j] == '$' && q[j + 1] == 'p')
-					asked.append(q.mid(i, j - i).toInt());
-				i = j;
-			}
-		}
-		for (int mode : asked) {
+		for (int mode : queried_modes()) {
 			const int v = dec_mode(probed, mode);
 			fprintf(out, "DECRQM %-14d%s\n", mode,
 			        v < 0 ? "silent" : v == 0 ? "0 (not recognised)"

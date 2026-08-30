@@ -80,6 +80,15 @@ QByteArray tmux_wrap(const QByteArray &payload);
 // the whole of a visible startup delay.
 QByteArray caps_query();
 
+// The private modes caps_query() asks DECRQM about, derived from the query
+// itself rather than listed a second time. A tool reporting per-probe results
+// needs to know what was asked, and the first version of that report carried
+// its own list which already disagreed: it named 1002, which is set at
+// startup but never queried, so the report said "silent" about a question
+// nobody sent -- one edit from being sent to a terminal's author as their
+// defect. Two lists of one thing drift; this one drifted before it was run.
+QVector<int> queried_modes();
+
 // Additive: fields are only ever set, never cleared, so this may be called
 // again as more bytes arrive and again later for a reply that turns up during
 // normal input. Feeding it one sequence or a whole buffer is the same thing.

@@ -795,6 +795,29 @@ snapshot tests are built on; they call `renderOnce()` directly.
 bar, scrollbars, tabs, the progress bar and the slider. Exercised by
 `test/suite_widgets.cpp` and `test/suite_render.cpp`.
 
+**The mode-list derivation is defended by a test now, not by my having
+noticed.** `queried_modes()` moved into `term_caps.cpp` beside the query it
+reads, which is where the knowledge belongs, and three assertions hold it
+to the query: the count matches the number of `$p` requests -- arrived at
+without walking the string the way the function does, so a derivation that
+dropped entries would fail rather than return a plausible shorter list --
+every mode returned appears in the query, and **1002 is named as the one
+that must not be there**, since qtty sets it at startup and never asks
+about it. Sabotaging the walk to keep one mode fails the count; injecting
+1002 fails all three.
+
+That is the fix for the fault below turned into something that cannot
+silently come back. The report was wrong once because two lists of one
+thing drifted; the test is what makes the single list stay single.
+
+**Checked and found absent:** the beerssh session's container-cleanup fault
+-- a shell trap cannot preempt a foreground command, so a `trap` around a
+blocking `docker run` fires only on the path where the work already
+finished -- has no counterpart here. This tree has no `trap` anywhere and
+one shell script, the commit-msg hook, which spawns nothing. The bound on
+the test suite is inside the binary rather than in a recipe, which is what
+`running-code.md` prescribes and is why no trap was reached for.
+
 **`qtty-negotiate --probes`: what the terminal ANSWERED, not what qtty
 concluded.** Built because the beerssh session asked for the one check it
 cannot make from inside its own tree -- that switching a feature off

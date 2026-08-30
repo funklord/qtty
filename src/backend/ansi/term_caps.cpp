@@ -297,6 +297,21 @@ QByteArray caps_query() {
 	    "\033[c");
 }
 
+QVector<int> queried_modes() {
+	QVector<int> modes;
+	const QByteArray q = caps_query();
+	int i = 0;
+	while ((i = q.indexOf("\033[?", i)) >= 0) {
+		i += 3;
+		int j = i;
+		while (j < q.size() && q[j] >= '0' && q[j] <= '9') ++j;
+		if (j < q.size() - 1 && q[j] == '$' && q[j + 1] == 'p')
+			modes.append(q.mid(i, j - i).toInt());
+		i = j;
+	}
+	return modes;
+}
+
 void scan_caps(const QByteArray &buf, TermCaps &out) {
 	if (find_kitty(buf)) out.kitty = true;
 	scan_tcap(buf, out);

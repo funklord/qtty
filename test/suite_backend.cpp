@@ -1642,6 +1642,33 @@ int suite_backend() {
 	// not a final, so a parser that only accepts finals in 0x40..0x7e never
 	// terminates the sequence. Probing whether the decoder survives one
 	// BEFORE relying on the mode query that produces them.
+	// queried_modes() must agree with the query it is derived from. This is
+	// the defence for a fault that already happened: a per-probe report
+	// carried its own list of modes, included 1002 -- which qtty SETS at
+	// startup but never asks DECRQM about -- and therefore reported "silent"
+	// for a question nobody sent. That was one edit from reaching a
+	// terminal's author as their defect.
+	{
+		const QVector<int> modes = queried_modes();
+		const QByteArray q = caps_query();
+		// The count, independently: every DECRQM request ends "$p", so the
+		// number of those is how many modes were asked about, arrived at
+		// without walking the string the same way the function does. A
+		// derivation that dropped entries would still return a plausible
+		// list, and the report would be quietly narrower than the query.
+		CHECK(!modes.isEmpty() && modes.size() == q.count("$p"),
+		      "queried_modes() returns exactly as many modes as the query asks");
+		bool all_present = true;
+		for (int m : modes)
+			all_present = all_present
+			           && q.contains("\033[?" + QByteArray::number(m) + "$p");
+		CHECK(all_present, "and every one of them is a mode the query names");
+		// The specific fault, by name: a mode qtty sets but never queries
+		// must not appear, or silence gets reported for it for ever.
+		CHECK(!modes.contains(1002),
+		      "and 1002, which is set but never asked about, is not among them");
+	}
+
 	// A paste carrying an ESCAPE, which is the case bracketed paste exists
 	// for and which nothing had sent. Everything pasted between the brackets
 	// is text, including bytes that look like a control sequence: a terminal
