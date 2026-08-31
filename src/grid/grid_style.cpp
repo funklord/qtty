@@ -527,13 +527,15 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 			return;                                    // extent is nil, so is this
 		case PE_IndicatorToolBarSeparator:
 			for (int y = c.top(); y <= c.bottom(); ++y)
-				dev->buffer().put_cluster(c.left(), y, QStringLiteral("│"));
+				dev->buffer().put_cluster(c.left(), y, QStringLiteral("│"),
+					                      Color(), Color(), with_state(opt));
 			return;
 		case PE_IndicatorBranch: {                    // tree expanders (section 17.2)
 			QString g = QStringLiteral(" ");
 			if (opt->state & State_Children)
 				g = (opt->state & State_Open) ? QStringLiteral("▾") : QStringLiteral("▸");
-			dev->buffer().text(c.right(), c.top(), g);
+			const Attrs a = with_state(opt);
+			dev->buffer().text(c.right(), c.top(), g, Color(), Color(), a);
 			return;
 		}
 		case PE_IndicatorTabClose:
@@ -593,7 +595,16 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 			if (auto *b = qstyleoption_cast<const QStyleOptionButton *>(opt)) {
 				QRect bc = w ? cells_of(w->rect(), p, dev, w) : c;
 				// State_HasFocus never arrives in TUI mode (F4): router focus.
-				bool foc = (opt->state & State_HasFocus) || (w && w == s_focus);
+				//
+				// Sunken and On join it, which the tool button one case down
+				// already does and this did not. A button held under the
+				// pointer looked exactly like one at rest, so pressing it
+				// gave no feedback at all until whatever it does happens --
+				// the same shape as the disabled control, in the other
+				// direction. A checkable button that is checked was equally
+				// invisible, and Qt reports both in the same option.
+				bool foc = (opt->state & (State_HasFocus | State_Sunken | State_On))
+					       || (w && w == s_focus);
 				dev->buffer().text(bc.left(), bc.top(),
 					               QLatin1Char('<') + strip_mnemonic(b->text)
 					                   + QLatin1Char('>'),
@@ -606,7 +617,8 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 			if (auto *mi = qstyleoption_cast<const QStyleOptionMenuItem *>(opt)) {
 				if (mi->menuItemType == QStyleOptionMenuItem::Separator) {
 					for (int x = c.left(); x <= c.right(); ++x)
-						dev->buffer().put_cluster(x, c.top(), QStringLiteral("─"));
+						dev->buffer().put_cluster(x, c.top(), QStringLiteral("─"),
+							                      Color(), Color(), with_state(opt));
 					return;
 				}
 				const Attrs a = with_state(opt, (opt->state & State_Selected)
@@ -746,6 +758,13 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// it is not. A distinct shade and no number says the length
 				// of the job is unknown, without inventing an animation a
 				// frame-diffing renderer would repaint the screen for.
+				// The bar itself, and not only its percentage. Drawn with
+				// put_cluster and no attributes, a disabled progress bar was
+				// identical to a running one while the number over it was
+				// dim -- one widget carrying both answers, which is the
+				// disabled-item-view fault at a control that happens not to
+				// write its glyphs through text().
+				const Attrs bar = with_state(opt);
 				const int span = pb->maximum - pb->minimum;
 				const bool unknown = span <= 0;
 				const double frac = span > 0 ? double(pb->progress - pb->minimum) / span : 0.0;
@@ -761,10 +780,12 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					for (int i = 0; i < extent; ++i) {
 						if (horizontal)
 							dev->buffer().put_cluster(c.left() + i, c.top(),
-								                      QStringLiteral("▒"));
+								                      QStringLiteral("▒"),
+								                      Color(), Color(), bar);
 						else
 							dev->buffer().put_cluster(c.left(), c.top() + i,
-								                      QStringLiteral("▒"));
+								                      QStringLiteral("▒"),
+								                      Color(), Color(), bar);
 					}
 					return;
 				}
@@ -774,8 +795,12 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					// the top would get exactly backwards.
 					const bool on = horizontal ? i < filled : i >= extent - filled;
 					const QString g = on ? QStringLiteral("█") : QStringLiteral("░");
-					if (horizontal) dev->buffer().put_cluster(c.left() + i, c.top(), g);
-					else            dev->buffer().put_cluster(c.left(), c.top() + i, g);
+					if (horizontal)
+						dev->buffer().put_cluster(c.left() + i, c.top(), g,
+							                      Color(), Color(), bar);
+					else
+						dev->buffer().put_cluster(c.left(), c.top() + i, g,
+							                      Color(), Color(), bar);
 				}
 				if (pb->textVisible) {
 					const QString label = pb->text.isEmpty()
@@ -790,9 +815,10 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 		case CE_Splitter: {
 			const bool horizontal_handle = opt->rect.width() < opt->rect.height();
 			const QString g = horizontal_handle ? QStringLiteral("│") : QStringLiteral("─");
+			const Attrs a = with_state(opt);
 			for (int y = c.top(); y <= c.bottom(); ++y)
 				for (int x = c.left(); x <= c.right(); ++x)
-					dev->buffer().put_cluster(x, y, g);
+					dev->buffer().put_cluster(x, y, g, Color(), Color(), a);
 			return;
 		}
 		case CE_ScrollBarAddLine: case CE_ScrollBarSubLine:
@@ -824,6 +850,7 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 						                 / qMax(1, span + sb->pageStep), track);
 					thumb_pos = (track - thumb_len) * (sb->sliderPosition - sb->minimum) / span;
 				}
+				const Attrs a = with_state(opt);
 				for (int i = 0; i < len; ++i) {
 					QString g;
 					if (i == 0)            g = vert ? QStringLiteral("▲") : QStringLiteral("◀");
@@ -833,8 +860,10 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 						g = (t >= thumb_pos && t < thumb_pos + thumb_len)
 							? QStringLiteral("█") : QStringLiteral("░");
 					}
-					if (vert) dev->buffer().put_cluster(c.left(), c.top() + i, g);
-					else      dev->buffer().put_cluster(c.left() + i, c.top(), g);
+					if (vert) dev->buffer().put_cluster(c.left(), c.top() + i, g,
+						                               Color(), Color(), a);
+					else      dev->buffer().put_cluster(c.left() + i, c.top(), g,
+						                               Color(), Color(), a);
 				}
 				return;
 			}
@@ -848,13 +877,15 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			// so. Before this it rendered as bare text with a marker, wearing
 			// the one-cell indent where the frame used to be.
 			const int row = c.top() + c.height() / 2;
+			const Attrs a = with_state(opt);
+			CellBuffer &b = dev->buffer();
 			if (c.height() >= 2) {
-				draw_box(dev->buffer(), c);
+				draw_box(b, c);
 			} else {
-				dev->buffer().put_cluster(c.left(), row, QStringLiteral("["));
-				dev->buffer().put_cluster(c.right(), row, QStringLiteral("]"));
+				b.put_cluster(c.left(), row, QStringLiteral("["), Color(), Color(), a);
+				b.put_cluster(c.right(), row, QStringLiteral("]"), Color(), Color(), a);
 			}
-			dev->buffer().put_cluster(c.right() - 1, row, QStringLiteral("▾"));
+			b.put_cluster(c.right() - 1, row, QStringLiteral("▾"), Color(), Color(), a);
 			return;                                    // label via CE_ComboBoxLabel
 		}
 		case CC_ToolButton:
@@ -901,11 +932,24 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				const int span = sl->maximum - sl->minimum;
 				const int pos = span > 0
 					? (len - 1) * (sl->sliderPosition - sl->minimum) / span : 0;
+				// The groove carries the state; the handle also says whether
+				// it is being held. Qt sets State_Sunken on a slider whose
+				// handle has been grabbed, and this style already spells
+				// "pressed" as reverse video at the tool button and the menu
+				// bar item -- so the drag was a state in the model with
+				// nothing on the screen, and the handle looked the same
+				// whether it was being moved or merely sat where it was left.
+				const Attrs a = with_state(opt);
+				const Attrs held = (opt->state & State_Sunken) ? a | Attr::Reverse : a;
 				for (int i = 0; i < len; ++i) {
-					const QString g = i == pos ? QStringLiteral("●")
+					const bool handle = i == pos;
+					const QString g = handle ? QStringLiteral("●")
 						            : (vert ? QStringLiteral("│") : QStringLiteral("─"));
-					if (vert) dev->buffer().put_cluster(c.left(), c.top() + i, g);
-					else      dev->buffer().put_cluster(c.left() + i, c.top(), g);
+					const Attrs at = handle ? held : a;
+					if (vert) dev->buffer().put_cluster(c.left(), c.top() + i, g,
+						                               Color(), Color(), at);
+					else      dev->buffer().put_cluster(c.left() + i, c.top(), g,
+						                               Color(), Color(), at);
 				}
 				return;
 			}
@@ -913,13 +957,15 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 		case CC_SpinBox: {
 			// Same as the combo above, and for the same reason.
 			const int row = c.top() + c.height() / 2;
+			const Attrs a = with_state(opt);
+			CellBuffer &b = dev->buffer();
 			if (c.height() >= 2) {
-				draw_box(dev->buffer(), c);
+				draw_box(b, c);
 			} else {
-				dev->buffer().put_cluster(c.left(), row, QStringLiteral("["));
-				dev->buffer().put_cluster(c.right(), row, QStringLiteral("]"));
+				b.put_cluster(c.left(), row, QStringLiteral("["), Color(), Color(), a);
+				b.put_cluster(c.right(), row, QStringLiteral("]"), Color(), Color(), a);
 			}
-			dev->buffer().put_cluster(c.right() - 1, row, QStringLiteral("±"));
+			b.put_cluster(c.right() - 1, row, QStringLiteral("±"), Color(), Color(), a);
 			return;                                    // value text via child edit
 		}
 		default:

@@ -125,6 +125,124 @@ int suite_widgets() {
 		CHECK(f.x() >= 0 && (b.at(f.x(), f.y()).attrs & Attr::Italic),
 		      "a menu bar's font reaches its items, which the option's does not carry");
 	}
+	// The disabled state at the controls that draw themselves with
+	// put_cluster rather than text(). GridStyle carries State_Enabled into
+	// every label it writes, and carried it into no GLYPH it writes -- so a
+	// disabled slider, scroll bar and progress bar were pixel-for-cell
+	// identical to working ones, and the progress bar was the tell: its
+	// percentage was dim because that goes through text(), while the bar
+	// under it was not, so one widget showed both answers at once.
+	//
+	// A pair again. "The disabled one is dim" is satisfied by a style that
+	// dims everything, and the enabled half is what says otherwise.
+	{
+		auto dim_run = [](const CellBuffer &b, int row) {
+			int n = 0;
+			for (int x = 0; x < b.cols(); ++x)
+				if (b.at(x, row).attrs & Attr::Dim) ++n;
+			return n;
+		};
+		auto build = [&](bool enabled) {
+			auto *h = new QWidget;
+			h->setAttribute(Qt::WA_DontShowOnScreen);
+			auto *lay = new QVBoxLayout(h);
+			lay->setContentsMargins(0, 0, 0, 0);
+			lay->setSpacing(0);
+			auto *sl = new QSlider(Qt::Horizontal, h);
+			sl->setRange(0, 10); sl->setValue(5);
+			sl->setFixedHeight(GridMetrics::ch());
+			auto *sb = new QScrollBar(Qt::Horizontal, h);
+			sb->setRange(0, 100); sb->setValue(20);
+			sb->setFixedHeight(GridMetrics::ch());
+			auto *pb = new QProgressBar(h);
+			pb->setRange(0, 100); pb->setValue(40);
+			pb->setFixedHeight(GridMetrics::ch());
+			lay->addWidget(sl); lay->addWidget(sb); lay->addWidget(pb);
+			sl->setEnabled(enabled); sb->setEnabled(enabled); pb->setEnabled(enabled);
+			return h;
+		};
+		QWidget *off = build(false);
+		show(*off, 20, 3);
+		CellBuffer b_off(22, 4);
+		render_once(*off, b_off);
+		QWidget *on = build(true);
+		show(*on, 20, 3);
+		CellBuffer b_on(22, 4);
+		render_once(*on, b_on);
+		CHECK(dim_run(b_off, 0) == 20 && dim_run(b_on, 0) == 0,
+		      "a disabled slider's groove and handle are dim");
+		CHECK(dim_run(b_off, 1) == 20 && dim_run(b_on, 1) == 0,
+		      "and a disabled scroll bar's arrows, track and thumb are");
+		CHECK(dim_run(b_off, 2) == 20 && dim_run(b_on, 2) == 0,
+		      "and a disabled progress bar's fill is, not only its percentage");
+		delete off;
+		delete on;
+	}
+	// The other direction, and the sweep this came from: what a control looks
+	// like WHILE it is being used. Qt reports State_Sunken on a button held
+	// under the pointer and on a slider whose handle has been grabbed; this
+	// style spells pressed as reverse video at the tool button and the menu
+	// bar item, and spelt it nowhere else -- so pressing a push button gave
+	// no feedback at all, and a slider handle looked the same whether it was
+	// being dragged or sitting where it was left.
+	{
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *btn = new QPushButton(QStringLiteral("Press"), &h);
+		btn->setGeometry(0, 0, GridMetrics::cw() * 10, GridMetrics::ch());
+		auto *sl = new QSlider(Qt::Horizontal, &h);
+		sl->setRange(0, 100);
+		sl->setValue(0);
+		sl->setGeometry(0, GridMetrics::ch(), GridMetrics::cw() * 20, GridMetrics::ch());
+		h.resize(GridMetrics::cells(20, 2));
+		h.show();
+		QCoreApplication::processEvents();
+		auto shot = [&](CellBuffer &b) { render_once(h, b); };
+
+		CellBuffer rest(22, 3);
+		shot(rest);
+		const QPoint label = findText(rest, QStringLiteral("Press"));
+
+		InputRouter r(&h);
+		r.on_mouse({QPoint(3, 0), 1, true, false, false, 0});
+		QCoreApplication::processEvents();
+		CellBuffer held(22, 3);
+		shot(held);
+		r.on_mouse({QPoint(3, 0), 1, false, true, false, 0});
+		QCoreApplication::processEvents();
+		CellBuffer after(22, 3);
+		shot(after);
+		CHECK(label.x() >= 0 && (held.at(label.x(), label.y()).attrs & Attr::Reverse)
+		      && !(rest.at(label.x(), label.y()).attrs & Attr::Reverse)
+		      && !(after.at(label.x(), label.y()).attrs & Attr::Reverse),
+		      "a push button held down is reverse, and is not before or after");
+
+		// The slider's handle moves as it is dragged, so the cell to read is
+		// the one the handle is in at the moment of the frame, not a fixed
+		// column. Found by writing it the other way first: a check on the
+		// press column passes on the groove, which is never reversed.
+		auto handle_of = [](const CellBuffer &b, int row) {
+			for (int x = 0; x < b.cols(); ++x)
+				if (b.at(x, row).ch == QStringLiteral("●")) return x;
+			return -1;
+		};
+		InputRouter r2(&h);
+		r2.on_mouse({QPoint(0, 1), 1, true, false, false, 0});
+		for (int x = 1; x <= 10; ++x)
+			r2.on_mouse({QPoint(x, 1), 1, false, false, true, 0});
+		QCoreApplication::processEvents();
+		CellBuffer dragging(22, 3);
+		shot(dragging);
+		r2.on_mouse({QPoint(10, 1), 1, false, true, false, 0});
+		QCoreApplication::processEvents();
+		CellBuffer dropped(22, 3);
+		shot(dropped);
+		const int held_at = handle_of(dragging, 1), rest_at = handle_of(dropped, 1);
+		CHECK(held_at >= 0 && rest_at >= 0
+		      && (dragging.at(held_at, 1).attrs & Attr::Reverse)
+		      && !(dropped.at(rest_at, 1).attrs & Attr::Reverse),
+		      "a slider handle being dragged is reverse, and is not once dropped");
+	}
 	// tabs: selected tab reverse-video
 	{
 		QTabWidget tabs;

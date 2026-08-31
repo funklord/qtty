@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-631 checks, 0 failures, under three configurations: the offscreen
+635 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -95,6 +95,21 @@ header, a tool button, a progress bar's percentage and the item view's own
 path. Neither snapshot fixture moved, because neither has an emphasised
 widget in it.
 
+**And then the same method at what is drawn DURING a drag**, §0e's second
+item. Eight configurations pressed, moved and rendered with the button
+still down. Five tracked correctly, which is recorded as a result. Three
+were **one fault seen three times** and are fixed: `GridStyle` carried the
+option's state into every label it writes and into **no glyph it writes**,
+so every control drawn with `put_cluster()` -- slider, scroll bar,
+progress bar, splitter handle, combo and spin box furniture, separators,
+tree expanders -- was stateless, and a disabled one was identical to a
+working one. The progress bar is what proves it was a fault: its
+percentage was dim and the bar under it was not. Two more are recorded as
+the copyright holder's, and one disagreement with design.md came out of it
+that is larger than either: **Channel A does not clip**, and a header
+resized past its viewport puts a grid line seven cells outside the widget,
+in a neighbour's rectangle. §8.7.
+
 ## 0b. Open questions, and who owns them
 
 An index, because these are recorded where they were found -- scattered
@@ -117,6 +132,9 @@ Owned by the copyright holder:
 | `SH_Slider_AbsoluteSetButtons`: a groove click setting the value where it landed | *the interaction sweep* |
 | What a literal `QColor` from `Qt::ForegroundRole`/`BackgroundRole` becomes on a terminal, which is OQ-7 arriving at the item views | §7.2, §7.7 |
 | What a table's grid should be on a cell grid, where the separator between two one-cell rows has nowhere to go | §7.2 |
+| Whether Channel A suppresses the private `QMovableTabWidget`, so a dragged tab stops being a picture the terminal cannot show | §7.2 |
+| Whether a text selection keeps the desktop's `QPalette::Highlight` RGB while an item view's selection is reverse video | §7.2, §7.7 |
+| Whether Channel A clips, which design.md says it does and the code does not | §8.7 |
 | The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
@@ -250,6 +268,16 @@ Three things it taught, which the next run should carry in:
   suspect is not only the temporary block you just wrote; a check that has
   been green for weeks can be answering a different question than its name
   says, and a sabotage run somewhere else in the file is what surfaces it.
+
+  **A fifth, and it is the one to carry into any probe that drives input:
+  some of what a widget does needs TIME to pass, not events to be
+  processed.** A tab dragged and dropped rendered wrongly afterwards --
+  the moved tab missing, a bracket doubled -- and the model was right the
+  whole time. Qt animates the tab back into place, and
+  `processEvents()` does not advance an animation that is waiting on a
+  timer. A bounded `QEventLoop` with a 400 ms `singleShot` quit, and the
+  frame came out correct. Every "after the release" assertion in a drag
+  probe has this hazard, and it reads exactly like a rendering defect.
 - **The controls are where the findings actually get settled.** Every one
   of the item-view sweep's four findings needed a second render to place
   it: the same model with no delegate installed said the disabled-item
@@ -287,10 +315,11 @@ In the order I would take them, and none is blocked:
    writes a label. The residue is the two questions -- what a literal
    `QColor` becomes, and what a table's grid is on a cell grid -- which
    are the copyright holder's and are in §0b.
-2. **Sweep what is drawn during a drag.** Every rendering probe here took a
-   still frame. A splitter mid-drag, a slider with the button held, an item
-   view rubber-banding and a scrollbar thumb being moved are states the
-   compositor sees and no test has rendered.
+2. ~~**Sweep what is drawn during a drag.**~~ **Done**, and §7.2 records
+   it: eight configurations, five tracking correctly, three defects fixed
+   as one fault, two questions raised, and §8.7 -- Channel A not clipping
+   -- found on the way. The next unswept surface named by §0d is dialogs
+   beyond the standard three.
 3. **The `QStyle::StandardPixmap` question**, once decided, closes the dock
    title buttons and the message-box severity together. It is one small
    table and the two symptoms are the same cause; neither is worth fixing
@@ -2314,6 +2343,79 @@ another is worse than no check, because the reader it misdirects goes to
 the fixture. It reads the delta now, which is what `suite_render`'s
 snapshot always did.
 
+#### What is drawn during a drag
+
+§0e's second item, run with the same method and the same discipline: a
+press, some motion, and **a frame rendered with the button still down**,
+each beside a control frame taken before the press and after the release.
+Everything a still frame cannot see.
+
+**Five of the eight tracked correctly, and that is a result rather than a
+gap.** A slider follows the pointer, a splitter handle moves and the
+panes either side of it move with it, a scroll bar's thumb tracks, a
+header section resizes live, and an item view's rubber band selects the
+rows it passes over. The band's *rectangle* is not drawn and the
+selection it produces is, which is the readable answer on a grid: an
+outline over cells would fight the content it is over, and the thing the
+user needs to see -- which rows are caught -- is already reverse video.
+
+**Three were defects, and all three are fixed.** They are one fault seen
+three times: **`GridStyle` carried the option's state into every label it
+writes and into no glyph it writes.** Every control drawn with
+`put_cluster()` rather than `text()` was therefore stateless, and the
+progress bar is the one that proves it was a fault rather than a choice
+-- disabled, its percentage was dim, because that goes through `text()`,
+and the bar under the percentage was not. One widget showing both
+answers, exactly as the disabled item view did.
+
+- **A disabled slider, scroll bar and progress bar were identical to
+  working ones.** So were the splitter handle, the combo and spin box
+  brackets and markers, the tool button's menu arrow, the menu and
+  toolbar separators, and a tree's expander. All carry `with_state()`
+  now. This is the disabled-control fault that §7.2 records as fixed "at
+  every control rather than one" -- and it was fixed at every control
+  that writes its label through `text()`, which is not the same set.
+- **A push button held down looked exactly like one at rest**, so
+  pressing it gave no feedback at all until whatever it does happens.
+  `State_Sunken` and `State_On` join focus in the reverse-video test,
+  which is what the tool button one case down already did and this did
+  not -- and a *checked* checkable button was equally invisible for the
+  same reason.
+- **A slider handle being dragged looked the same as one sitting where it
+  was left.** Qt sets `State_Sunken` on a slider whose handle has been
+  grabbed; the handle is reverse while held now. That spelling is not
+  invented here: reverse *is* this style's word for pressed, at the tool
+  button and the menu bar item, and the change is to stop two controls
+  from being the only ones that say it.
+
+**Two are recorded rather than fixed.**
+
+- **A dragged tab is a picture.** With `setMovable(true)`, Qt moves a tab
+  by grabbing it into a `QPixmap` inside a private `QMovableTabWidget`
+  and hiding the original, so mid-drag the bar renders `───────▒One]` --
+  the pixmap arriving as the sub-two-cell substitute `▒`, and the tab's
+  own slot as the bar's dashes. The reorder itself works and the bar is
+  correct once the drag ends. The options are to leave it, or to
+  suppress that widget in Channel A so the bar stays readable and the tab
+  simply does not follow the pointer; the second costs matching a private
+  Qt class by name. **Owned by the copyright holder**, and small: movable
+  tabs are opt-in.
+- **A text selection is the desktop's colour, and an item view's is
+  not.** Dragging across a `QLineEdit` highlights with `bg=#308cc6` --
+  measured, and equal to `QPalette::Highlight` on this machine -- while a
+  selected item view row is reverse video. Both are deliberate:
+  `fill_rectf()` matches the `Highlight` role, asks the theme, gets
+  `Color::Default`, and then falls back to the application's own RGB so
+  that a selection is visible under a theme that names nothing. The
+  consequence is that **the most common highlight in the program is
+  whatever the desktop's palette says**, and disagrees with the other
+  selection in the same program. It is OQ-7 and §7.7 arriving somewhere
+  that matters more than a gradient. **Owned by the copyright holder.**
+
+The sweep also found the clipping disagreement now recorded as §8.7,
+which is neither of the above: a header resized past its viewport puts a
+grid line seven cells outside the widget.
+
 ### 7.3 Graphics tier (design.md §17.3)
 
 The most complete tier. `Overlay`, the half-block colour upgrade, the
@@ -3715,6 +3817,40 @@ keep the output proportional to the change rather than to the row.
 Measured while writing the §11 benchmark, so the cost is known rather
 than guessed: `diff()` over a 200x60 frame is 0.154 ms against a 16 ms
 budget. Whichever way this is settled, it is not urgent.
+
+### 8.7 Channel A does not clip, and design.md says it does
+
+design.md §432 lists the paint engine's entry point as
+`updateState(const QPaintEngineState &) override; // pen/brush/font/clip →
+Attrs`. Three of those four are implemented. **There is no clip handling
+anywhere in `src/render/cell_paint.cpp`** -- the word does not appear in
+it -- so every clip region Qt sets is ignored and a widget can write
+outside its own rectangle into cells belonging to another.
+
+Measured rather than reasoned about, because "no clip code" is a fact
+about the source and this is a fact about the screen. A `QTableView` 20
+cells wide, no frame, with a column widened past its viewport, beside a
+`QLabel` starting at cell 20: the table's vertical grid line for that
+column was written at **cell 27**, seven cells outside the table, in the
+label's rectangle. The label's text survived, and only by luck -- the
+rule lands through `CellPaintEngine::drawLine()`, which writes only into
+a cell whose glyph is a space, so it missed the row the text was on. A
+fill, a frame or a label would not have missed.
+
+Flagged rather than resolved, and it is the largest of the §8 entries.
+Implementing it means a clip region in cell space consulted by every
+write the engine makes -- `fill_rectf`, `drawTextItem`, `line`, `box`,
+the placements -- which is a real feature rather than a missing line, and
+it changes what Channel A promises. Deciding instead that Channel A does
+not clip is also a defensible answer, and it is what the code says today;
+it would want saying out loud in design.md, together with what an
+application is then responsible for. What is not defensible is the
+present state, where the document says one thing, the code does another,
+and the difference is invisible until two widgets are adjacent.
+
+Found by the drag sweep (§7.2) rather than by looking for it: a header
+being resized is how a column comes to be wider than the viewport that
+holds it.
 
 ## 9. Build and repository conventions
 
