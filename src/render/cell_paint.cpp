@@ -345,16 +345,53 @@ void CellPaintEngine::line(const QLineF &l) {
 		if (last > first && hi - last * double(size) < size / 2.0) --last;
 		return QPair<int, int>(first, last);
 	};
+	// A rule goes where a rule fits, and nowhere else.
+	//
+	// Writing only into a blank cell is right and is not enough: it cannot
+	// tell a space a LABEL wrote from a cell nothing has touched, so a rule
+	// crossing a row of text filled the gaps between the words. Measured,
+	// that is what a QTableView's grid did to its own labels -- "a label far
+	// wider than its column" came out with a rule in place of every space.
+	//
+	// So a rule that meets any content is not drawn at all. That is this
+	// tree's existing answer for chrome a cell grid cannot represent, applied
+	// where it had not reached: CE_HeaderSection draws no chrome and only its
+	// label, PE_PanelToolBar draws nothing, PE_IndicatorToolBarHandle draws
+	// nothing because its extent is nil, and draw_box() refuses a rectangle
+	// under two cells because a border needs a cell of its own. A horizontal
+	// grid line between two ONE-CELL rows has no cell of its own either.
+	//
+	// The blast radius was measured over the whole suite rather than assumed:
+	// 510 horizontal rules land on entirely clear cells and are untouched
+	// here; 8 land on entirely occupied ones and already drew nothing; and
+	// every one of the 426 that were partial belongs to a table's grid, as do
+	// all 102 vertical rules, which run down columns already carrying the
+	// horizontal grid they crossed.
+	//
+	// What this does not do is make a table grid possible. That needs the
+	// buffer to know a cell was WRITTEN, which is a per-cell flag and a change
+	// to the model every tier reads -- and the choice then stops being "a
+	// broken grid or none" and becomes a real one. Until then a table renders
+	// the way a TUI table usually does, with whitespace between its columns.
+	const auto clear_run = [&b](int fixed, int from, int to, bool horizontal) {
+		for (int i = from; i <= to; ++i) {
+			const Cell &c = horizontal ? b.at(i, fixed) : b.at(fixed, i);
+			if (c.ch != QStringLiteral(" ")) return false;
+		}
+		return true;
+	};
 	if (qAbs(m.dy()) < ch / 2.0) {
 		const int y = cell_of(m.y1(), ch);
 		const auto span = covered(qMin(m.x1(), m.x2()), qMax(m.x1(), m.x2()), cw);
+		if (!clear_run(y, span.first, span.second, true)) return;
 		for (int x = span.first; x <= span.second; ++x)
-			if (b.at(x, y).ch == QStringLiteral(" ")) b.at(x, y).ch = QStringLiteral("─");
+			b.at(x, y).ch = QStringLiteral("─");
 	} else if (qAbs(m.dx()) < cw / 2.0) {
 		const int x = cell_of(m.x1(), cw);
 		const auto span = covered(qMin(m.y1(), m.y2()), qMax(m.y1(), m.y2()), ch);
+		if (!clear_run(x, span.first, span.second, false)) return;
 		for (int y = span.first; y <= span.second; ++y)
-			if (b.at(x, y).ch == QStringLiteral(" ")) b.at(x, y).ch = QStringLiteral("│");
+			b.at(x, y).ch = QStringLiteral("│");
 	}
 }
 

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-654 checks, 0 failures, under three configurations: the offscreen
+656 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -182,6 +182,18 @@ palette comes out red. Three answers to one question in one program, and
 only one of them was the rule. The rule is shared now and all three agree;
 §7.2 carries it, and the entry has left §0b.
 
+**The table grid was the second, immediately after.** It was written up as
+"what should a table's grid be on a cell grid", and the tree had answered
+that four times already -- `CE_HeaderSection`, `PE_PanelToolBar`,
+`PE_IndicatorToolBarHandle` and `draw_box()`'s two-cell refusal all drop
+chrome a cell grid cannot represent, each with its reason beside it. A
+rule that meets content is not drawn now, and the blast radius was
+measured over the whole suite before taking it: of 426 partial horizontal
+rules and 102 vertical ones, **every single one belongs to a table's
+grid**. §7.2 carries that too, along with the question that IS real and
+was hiding behind the other -- a table grid that works needs the buffer to
+know a cell was written.
+
 **One branch was measured and rejected rather than argued about.** Letting
 the window take the terminal's size -- dropping the layout's minimum, so a
 short terminal is not simply clipped -- produces overlapping garbage:
@@ -210,7 +222,6 @@ Owned by the copyright holder:
 | Mapping `QStyle::StandardPixmap` to glyphs, which is qtty deciding what Qt's iconography looks like in a terminal | *Qt's standard iconography* |
 | Whether a one-row `QLineEdit` should be bracketed as the combo and spin box already are, at the measured cost of a second bracket inside each of those | §7.2, *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: a groove click setting the value where it landed | *the interaction sweep* |
-| What a table's grid should be on a cell grid, where the separator between two one-cell rows has nowhere to go | §7.2 |
 | Whether Channel A suppresses the private `QMovableTabWidget`, so a dragged tab stops being a picture the terminal cannot show | §7.2 |
 | Whether a text selection keeps the desktop's `QPalette::Highlight` RGB while an item view's selection is reverse video | §7.2, §7.7 |
 | Whether Channel A clips, which design.md says it does and the code does not | §8.7 |
@@ -406,6 +417,17 @@ Three things it taught, which the next run should carry in:
   did it anyway, one section away from the code that had decided. **The
   search is for the shape, not the name**: something else in the tree
   choosing between the same two answers, whatever it is called.
+
+  **Twice running, in two consecutive items**, which is why this is a rule
+  and not an anecdote. Both entries had been written into §0b as the
+  copyright holder's; both were answered in the tree, one by code that
+  already implemented the rule and one by four comments stating the
+  policy. The tell they share: the entry described a **general** question
+  ("what should a colour become", "what should a grid be") where the
+  actual situation offered only a broken answer and a plain one. **When
+  the options are "wrong" and "nothing", it is not a decision.** The real
+  decision was hiding behind each of them, and is smaller and sharper for
+  being separated out.
 - **A baseline nothing produced is not a baseline.** The scroll check
   first placed its widget below the viewport, where it is never painted:
   the rect it compared against was the one a default-constructed `QRect`
@@ -2518,28 +2540,57 @@ than fixed**, both because the fix is a decision rather than a line:
   `Text` brush is then the application palette's own, it matches a role,
   and the theme answers `Color::Default` under the default theme -- so a
   plain row is still written with no colour at all.
-- **A table's grid lines eat the spaces inside its own labels.** A
+- ~~**A table's grid lines eat the spaces inside its own labels.**~~
+  **Fixed, and it was not the decision it was written up as either.** A
   `QTableView` with `showGrid` on -- Qt's default -- rendered `a label far
-  wider than its column` as `─a─label─fa…`. Three controls place it: with
-  the grid off the text is clean, with the grid on and **no** delegate the
-  dashes are identical, so it is neither the delegate's nor the text's but
-  the rule's. The cause is one line in `CellPaintEngine::drawLine()`,
-  which writes a rule only into a cell whose glyph is `" "` -- a guard put
-  there to stop a mis-mapped rule painting over text, and one that
-  **cannot tell a space a label wrote from a cell nothing has touched**.
-  A row one cell tall has no edge to put a horizontal rule on, so the
-  rule lands in the row itself and fills every gap in the sentence.
+  wider than its column` with a rule in place of every space. Three
+  controls placed it: with the grid off the text is clean, with the grid on
+  and **no** delegate the rules are identical, so it is neither the
+  delegate's nor the text's but the line rule's. The cause is that
+  `CellPaintEngine::line()` writes only into a cell whose glyph is `" "`,
+  and **cannot tell a space a label wrote from a cell nothing has
+  touched**; a row one cell tall has no edge to put a horizontal rule on,
+  so the rule lands in the row and fills the gaps in the sentence.
 
-  The obvious fix -- skip a rule segment that meets any non-space -- was
-  checked against the case that would forbid it, a titled frame whose
-  border and title share a row, and **that case does not arise**: measured,
-  a `QGroupBox` puts its title in the row above its border. So the guard
-  has no known beneficiary, which makes the segment skip cheaper than it
-  looked. It is still not taken here, because the honest question is one
-  step earlier -- **what a table's grid should be on a cell grid at all**,
-  given that the separator between two one-cell rows has nowhere to go --
-  and answering it by editing a line-drawing guard would settle it by
-  accident. **Owned by the copyright holder.**
+  **A rule that meets any content is not drawn at all now**, and that is
+  this tree's own answer for chrome a cell grid cannot represent, applied
+  where it had not reached. `CE_HeaderSection` draws no chrome and only its
+  label; `PE_PanelToolBar` draws nothing; `PE_IndicatorToolBarHandle` draws
+  nothing because its extent is nil; `draw_box()` refuses a rectangle under
+  two cells, because a border needs a cell of its own. Four instances, each
+  with its reason written beside it. A horizontal grid line between two
+  one-cell rows has no cell of its own either.
+
+  **The blast radius was measured over the whole suite rather than
+  assumed**, which is what made this decidable: 510 horizontal rules land
+  on entirely clear cells and are untouched; 8 land on entirely occupied
+  ones and already drew nothing; and every one of the 426 that were partial
+  belongs to a table's grid -- as do all 102 vertical rules, which run down
+  columns already carrying the horizontal grid they crossed. So the change
+  affects one widget's chrome and nothing else in the tree.
+
+  What a table looks like now:
+
+      1  a label far … two words   │
+      2  mid           x           │
+
+  -- the labels intact, and a vertical rule surviving where it has a clear
+  column to live in. The lone right-hand rule is the rule being uniform
+  while the content is not, which is inherent to a cell grid.
+
+  **What is still open is a real question and a different one: a table
+  grid that works.** That needs the buffer to know a cell was WRITTEN,
+  which is a per-cell flag and a change to the model every tier reads.
+  Nobody has asked for it, and the choice today was never "grid or no
+  grid" but "a broken grid or none" -- which is not a choice. If a grid is
+  ever wanted, the route is the written flag, not re-enabling this.
+
+  Checked as a **difference**: the label's cells must be identical with the
+  grid on and off, which is what says the grid changed nothing about the
+  text. A check on the text alone passes against a table that failed to
+  render its label. The positive control from the mnemonic fix guards the
+  other side -- a rule spanning its widget must still draw every cell of
+  it -- and dropping every rule reddens exactly that one.
 
 **And the instrument was wrong for the third time, which §0d predicted.**
 The suite's `gallery snapshot` line printed `FAIL` while the fixture

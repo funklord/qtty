@@ -693,6 +693,53 @@ int suite_widgets() {
 	}
 
 
+	// A table's grid must not eat its labels' own spaces. Qt draws the grid
+	// itself, after the items, with QPainter::drawLine, and
+	// CellPaintEngine::line() wrote a rule into any cell whose glyph was a
+	// space -- which a label's own spaces are. So "a label far wider than its
+	// column" rendered with a rule in place of every gap between its words.
+	//
+	// A rule that meets content is not drawn at all now, which is this tree's
+	// answer for chrome a cell grid cannot represent. Asserted as a
+	// DIFFERENCE: the label's cells must be identical with the grid on and
+	// off, which is what says the grid changed nothing about the text. A
+	// check on the text alone would pass against a table that failed to
+	// render its label at all.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		QStandardItemModel m(2, 2);
+		const QString wide = QStringLiteral("a label far wider than its column");
+		m.setItem(0, 0, new QStandardItem(wide));
+		m.setItem(0, 1, new QStandardItem(QStringLiteral("two words")));
+		m.setItem(1, 0, new QStandardItem(QStringLiteral("mid")));
+		m.setItem(1, 1, new QStandardItem(QStringLiteral("x")));
+
+		auto render = [&](bool grid, CellBuffer &b) {
+			auto *v = new QTableView;
+			v->setModel(&m);
+			v->setShowGrid(grid);
+			v->setItemDelegate(new CellItemDelegate(v));
+			v->horizontalHeader()->setFixedHeight(ch);
+			v->horizontalHeader()->setDefaultSectionSize(14 * cw);
+			v->verticalHeader()->setFixedWidth(2 * cw);
+			v->verticalHeader()->setDefaultSectionSize(ch);
+			v->setFrameShape(QFrame::NoFrame);
+			show(*v, 32, 4);
+			render_once(*v, b);
+			delete v;
+		};
+		CellBuffer on(34, 5), off(34, 5);
+		render(true, on);
+		render(false, off);
+
+		const QPoint at = findText(off, QStringLiteral("two words"));
+		bool same = at.x() >= 0;
+		for (int x = 0; same && x < 28; ++x)
+			same = on.at(x, at.y()).ch == off.at(x, at.y()).ch;
+		CHECK(same, "a table's grid leaves its labels' own spaces alone");
+	}
+
+
 	// gallery snapshot: one window with the whole tier
 	{
 		QWidget win;
