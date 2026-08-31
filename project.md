@@ -15,7 +15,7 @@ open, and how to work in the tree. Where design.md holds the detail, this
 document states the substance in a sentence or two and cites the section
 number rather than restating it.
 
-## 0b. State, 2026-08-31
+## 0a. State, 2026-08-31
 
 625 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
@@ -41,6 +41,56 @@ and every framed scroll area losing the bottom rule of its own border.
 The interaction sweep that followed found **nothing** wrong, which is
 recorded as a result rather than a gap: space, arrows and clicks reach
 every common widget and change what they should.
+
+## 0b. Open questions, and who owns them
+
+An index, because these are recorded where they were found -- scattered
+through 3,400 lines -- and a question nobody can locate is one nobody
+answers. **None is a defect and none blocks anything**; each is a decision
+that was deliberately not taken while working on something else. The
+sections named carry the measurement and the options.
+
+Owned by the copyright holder:
+
+| Question | Where |
+|---|---|
+| §7.8: turn `GridSnap` on, at the measured price of off-grid geometry placing content a whole cell away | §7.8 |
+| §7.7: gradient fills landing as literal RGB, which varies with the desktop palette | §7.7 |
+| OQ-7: the ANSI-16 fallback metric | §7.7 |
+| Whether `focusWidget()`/`setFocusWidget()` keep their camelCase exemption | §11 |
+| Whether frame output should be gated on `isatty(1)` as setup and teardown are | *the gate that decides whether to write* |
+| Mapping `QStyle::StandardPixmap` to glyphs, which is qtty deciding what Qt's iconography looks like in a terminal | *Qt's standard iconography* |
+| Whether an empty `QLineEdit` should show anything | same |
+| `SH_Slider_AbsoluteSetButtons`: a groove click setting the value where it landed | *the interaction sweep* |
+| The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work | §7.9, §11 |
+
+Owned elsewhere, and signalled rather than fixed here:
+
+- **The braced-initialiser lexer fault in `style_gate.py`** is
+  `claude-guidelines`', signalled with three fixtures and the paren case
+  that must not change. It is larger than it looked: a braced continuation
+  may be tab-indented **or** column-aligned and both are legal, so the fix
+  must accept both rather than choose. 764 findings across eleven trees
+  turn on it.
+- **§9.8's two compensating regions** in `src/graphics/graphics.cpp` -- the
+  lambda body near 254-257 and the final `else` near 274-278 -- are bent
+  around the still-open lambda fault and **must go red when it is fixed**.
+  They are deliberate and are not to be tidied.
+
+**And a standing exposure that is not a question: this repository has no
+remote.** Everything in it exists on one machine. Nothing here can fix
+that, and it is recorded because a tree with no remote is the one place
+where losing the machine loses the work.
+
+**What I complied with rather than checked.** The style gate demanded an
+extra tab on about six continuation lines I wrote this session, and I gave
+it one each time without establishing whether the demand was correct.
+Tab-then-space continuations are the tree-wide norm -- 51 in
+`grid_style.cpp`, 34 in `term_caps.cpp`, 35 in the file whose regions are
+bent on purpose -- so those lines are conventional and are not a special
+list. But *suspect the check before the code* says to establish which it
+was, and I did not. If the lexer fix changes which form is required, they
+are candidates along with several hundred others.
 
 ## 0c. How to re-take what this document claims
 
@@ -117,56 +167,6 @@ fails, restore, confirm the count is zero. Two sabotages this session
 silently failed to apply -- their anchors matched twice -- and the green
 run that followed would have read as "the test does not discriminate" had
 the count not been checked.
-
-## 0a. Open questions, and who owns them
-
-An index, because these are recorded where they were found -- scattered
-through 3,400 lines -- and a question nobody can locate is one nobody
-answers. **None is a defect and none blocks anything**; each is a decision
-that was deliberately not taken while working on something else. The
-sections named carry the measurement and the options.
-
-Owned by the copyright holder:
-
-| Question | Where |
-|---|---|
-| §7.8: turn `GridSnap` on, at the measured price of off-grid geometry placing content a whole cell away | §7.8 |
-| §7.7: gradient fills landing as literal RGB, which varies with the desktop palette | §7.7 |
-| OQ-7: the ANSI-16 fallback metric | §7.7 |
-| Whether `focusWidget()`/`setFocusWidget()` keep their camelCase exemption | §11 |
-| Whether frame output should be gated on `isatty(1)` as setup and teardown are | *the gate that decides whether to write* |
-| Mapping `QStyle::StandardPixmap` to glyphs, which is qtty deciding what Qt's iconography looks like in a terminal | *Qt's standard iconography* |
-| Whether an empty `QLineEdit` should show anything | same |
-| `SH_Slider_AbsoluteSetButtons`: a groove click setting the value where it landed | *the interaction sweep* |
-| The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work | §7.9, §11 |
-
-Owned elsewhere, and signalled rather than fixed here:
-
-- **The braced-initialiser lexer fault in `style_gate.py`** is
-  `claude-guidelines`', signalled with three fixtures and the paren case
-  that must not change. It is larger than it looked: a braced continuation
-  may be tab-indented **or** column-aligned and both are legal, so the fix
-  must accept both rather than choose. 764 findings across eleven trees
-  turn on it.
-- **§9.8's two compensating regions** in `src/graphics/graphics.cpp` -- the
-  lambda body near 254-257 and the final `else` near 274-278 -- are bent
-  around the still-open lambda fault and **must go red when it is fixed**.
-  They are deliberate and are not to be tidied.
-
-**And a standing exposure that is not a question: this repository has no
-remote.** Everything in it exists on one machine. Nothing here can fix
-that, and it is recorded because a tree with no remote is the one place
-where losing the machine loses the work.
-
-**What I complied with rather than checked.** The style gate demanded an
-extra tab on about six continuation lines I wrote this session, and I gave
-it one each time without establishing whether the demand was correct.
-Tab-then-space continuations are the tree-wide norm -- 51 in
-`grid_style.cpp`, 34 in `term_caps.cpp`, 35 in the file whose regions are
-bent on purpose -- so those lines are conventional and are not a special
-list. But *suspect the check before the code* says to establish which it
-was, and I did not. If the lexer fix changes which form is required, they
-are candidates along with several hundred others.
 
 ## 0e. What I would pick up next
 
