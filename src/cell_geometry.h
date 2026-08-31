@@ -70,6 +70,38 @@ inline Attrs attrs_for_font(const QFont &f) {
 	return a;
 }
 
+// What a label written STRAIGHT INTO THE BUFFER must carry: the state the
+// option reports, and the emphasis of the font whoever owns the label was
+// given.
+//
+// The font half exists because the two text paths do not agree on their own.
+// Text drawn through QPainter arrives at CellPaintEngine, which reads the
+// painter's font -- so a bold QLabel comes out bold, and a check box's label
+// does too, because GridStyle does not override it and it falls through to
+// the base style. Text this style writes itself takes nothing from a font
+// unless it is asked to, so a bold QPushButton came out plain: the same
+// program, the same font, two answers depending on which route the label
+// happened to take.
+//
+// Take the font from the OPTION where the option carries one -- a menu item
+// and a view item both do, and theirs is the one Qt resolved for that item
+// rather than the widget's -- and from the widget otherwise. A null widget
+// contributes nothing rather than a default-constructed font's answer.
+inline Attrs label_attrs(const QStyleOption *opt, const QWidget *w,
+                         Attrs base = Attrs()) {
+	return with_state(opt, base) | (w ? attrs_for_font(w->font()) : Attrs());
+}
+// The union of the two, for an option that carries a font of its own. It is a
+// union rather than a choice because both are reasons to emphasise and
+// neither is the whole answer: measured, QMenuBar leaves
+// QStyleOptionMenuItem::font at the application font, so an italic menu bar
+// read as plain when the option's font was taken as authoritative -- while a
+// default menu action is bold in the option and nowhere on the widget.
+inline Attrs label_attrs(const QStyleOption *opt, const QWidget *w, const QFont &f,
+                         Attrs base = Attrs()) {
+	return label_attrs(opt, w, base) | attrs_for_font(f);
+}
+
 // The cell device being painted into, or null when this is an ordinary GUI
 // paint. Measured F1: p->device() is the QWidget during a paintEvent, so the
 // question has to be asked of the engine.

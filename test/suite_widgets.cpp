@@ -79,6 +79,52 @@ int suite_widgets() {
 		      "progress bar fills half");
 		CHECK(findText(b, QStringLiteral("50%")).x() >= 0, "progress label centred");
 	}
+	// A font's emphasis at the sites GridStyle writes itself. Text that goes
+	// through QPainter already carries it -- CellPaintEngine reads the
+	// painter's font -- so a check on a QLabel would pass against a style
+	// that does nothing, and did. These two are on labels the style writes.
+	//
+	// A pair again, for the reason the item-view checks are one: "the bold
+	// button is bold" is satisfied by a style that bolds every button.
+	{
+		QFont bold = QApplication::font();
+		bold.setBold(true);
+		QWidget host;
+		auto *lay = new QVBoxLayout(&host);
+		auto *heavy = new QPushButton(QStringLiteral("heavy"), &host);
+		heavy->setFont(bold);
+		lay->addWidget(heavy);
+		auto *light = new QPushButton(QStringLiteral("light"), &host);
+		lay->addWidget(light);
+		show(host, 24, 4);
+		CellBuffer b(26, 5);
+		render_once(host, b);
+		const QPoint h = findText(b, QStringLiteral("heavy"));
+		const QPoint l = findText(b, QStringLiteral("light"));
+		CHECK(h.x() >= 0 && l.x() >= 0 && (b.at(h.x(), h.y()).attrs & Attr::Bold)
+		      && !(b.at(l.x(), l.y()).attrs & Attr::Bold),
+		      "a bold push button's label is bold and a plain one's is not");
+	}
+	// The menu bar is the case that settles WHICH font the answer comes from,
+	// and it is why label_attrs() unions the widget's with the option's
+	// rather than preferring one. Measured: QMenuBar leaves
+	// QStyleOptionMenuItem::font at the application font, so an italic menu
+	// bar read as plain while the option's font was taken as authoritative --
+	// and a default menu action carries bold in the option and nowhere on the
+	// widget. Neither font alone answers for both.
+	{
+		QFont ital = QApplication::font();
+		ital.setItalic(true);
+		QMenuBar bar;
+		bar.addMenu(QStringLiteral("File"));
+		bar.setFont(ital);
+		show(bar, 24, 1);
+		CellBuffer b(26, 2);
+		render_once(bar, b);
+		const QPoint f = findText(b, QStringLiteral("File"));
+		CHECK(f.x() >= 0 && (b.at(f.x(), f.y()).attrs & Attr::Italic),
+		      "a menu bar's font reaches its items, which the option's does not carry");
+	}
 	// tabs: selected tab reverse-video
 	{
 		QTabWidget tabs;

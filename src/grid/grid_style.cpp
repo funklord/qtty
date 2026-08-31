@@ -598,7 +598,8 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					               QLatin1Char('<') + strip_mnemonic(b->text)
 					                   + QLatin1Char('>'),
 					               Color(), Color(),
-					               with_state(opt, foc ? Attrs(Attr::Reverse) : Attrs()));
+					               label_attrs(opt, w, foc ? Attrs(Attr::Reverse)
+					                                       : Attrs()));
 			}
 			return;
 		case CE_MenuItem:
@@ -610,6 +611,10 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				}
 				const Attrs a = with_state(opt, (opt->state & State_Selected)
 					                            ? Attrs(Attr::Reverse) : Attrs());
+				// The fill carries the state and not the font: bold on a
+				// space is nothing to look at and something to read in a
+				// snapshot. The label carries both.
+				const Attrs la = label_attrs(opt, w, mi->font, a);
 				if (a) {                              // highlight spans the row
 					Cell v; v.attrs = a;
 					dev->buffer().fill(QRect(c.left(), c.top(), c.width(), 1), v);
@@ -634,7 +639,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					const QString mark = !mi->checked ? QStringLiteral(" ")
 						               : one_of       ? QStringLiteral("•")
 						                              : QStringLiteral("✓");
-					dev->buffer().text(label_at, c.top(), mark, Color(), Color(), a);
+					dev->buffer().text(label_at, c.top(), mark, Color(), Color(), la);
 					label_at += 2;
 				}
 				const QStringList parts = mi->text.split(QLatin1Char('\t'));
@@ -642,11 +647,11 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				label.remove(QLatin1Char('&'));       // mnemonic markers
 				dev->buffer().text(label_at, c.top(),
 					               elide_to_cells(label, c.right() - label_at),
-					               Color(), Color(), a);
+					               Color(), Color(), la);
 				if (parts.size() > 1) {               // right-aligned shortcut
 					const QString sc = parts[1];
 					dev->buffer().text(c.right() - sc.size(), c.top(), sc,
-						               Color(), Color(), a | Attr::Dim);
+						               Color(), Color(), la | Attr::Dim);
 				}
 				if (mi->menuItemType == QStyleOptionMenuItem::SubMenu)
 					dev->buffer().text(c.right(), c.top(), QStringLiteral("▸"),
@@ -663,7 +668,8 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// is a literal one. One spelling of the rule, in one place.
 				const QString label = strip_mnemonic(mi->text);
 				dev->buffer().text(c.left() + 1, c.top(), label, Color(), Color(),
-					               with_state(opt, hot ? Attrs(Attr::Reverse) : Attrs()));
+					               label_attrs(opt, w, mi->font,
+					                           hot ? Attrs(Attr::Reverse) : Attrs()));
 				return;
 			}
 			break;
@@ -674,6 +680,10 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 			if (auto *vi = qstyleoption_cast<const QStyleOptionViewItem *>(opt)) {
 				const Attrs a = with_state(opt, (opt->state & State_Selected)
 					                            ? Attrs(Attr::Reverse) : Attrs());
+				// Qt::FontRole arrives in the option, and reaches the label
+				// whether or not CellItemDelegate is installed. The fill
+				// stays state-only, as in a menu item.
+				const Attrs la = label_attrs(opt, w, vi->font, a);
 				// The whole item, not its top row. A one-cell fill was
 				// indistinguishable from a correct one while every item in
 				// the suite was one cell tall, and wrong the moment a
@@ -692,12 +702,12 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 						vi->checkState == Qt::Checked            ? QStringLiteral("[x]")
 						: vi->checkState == Qt::PartiallyChecked ? QStringLiteral("[-]")
 						                                        : QStringLiteral("[ ]");
-					dev->buffer().text(text_at, c.top(), box, Color(), Color(), a);
+					dev->buffer().text(text_at, c.top(), box, Color(), Color(), la);
 					text_at += 4;                  // the box and one space
 				}
 				const int room = c.right() - text_at + 1;
 				dev->buffer().text(text_at, c.top(), elide_to_cells(vi->text, room),
-					               Color(), Color(), a);
+					               Color(), Color(), la);
 				return;
 			}
 			break;
@@ -706,7 +716,8 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 		case CE_HeaderLabel:
 			if (auto *h = qstyleoption_cast<const QStyleOptionHeader *>(opt)) {
 				dev->buffer().text(c.left(), c.top(), elide_to_cells(h->text, c.width()),
-					               Color(), Color(), Attr::Bold);
+					               Color(), Color(),
+					               label_attrs(opt, w, Attr::Bold));
 				return;
 			}
 			break;
@@ -721,7 +732,8 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					                    + QLatin1Char(']');
 				dev->buffer().text(c.left(), c.top(), elide_to_cells(label, c.width()),
 					               Color(), Color(),
-					               with_state(opt, sel ? Attrs(Attr::Reverse) : Attrs()));
+					               label_attrs(opt, w, sel ? Attrs(Attr::Reverse)
+					                                       : Attrs()));
 				return;
 			}
 			break;
@@ -769,7 +781,8 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					const QString label = pb->text.isEmpty()
 						? QStringLiteral("%1%").arg(qRound(frac * 100)) : pb->text;
 					dev->buffer().text(c.center().x() - label.size() / 2, c.top(),
-						               label, Color(), Color(), Attr::Reverse);
+						               label, Color(), Color(),
+						               label_attrs(opt, w, Attr::Reverse));
 				}
 				return;
 			}
@@ -876,7 +889,8 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 					dev->buffer().text(c.left() + 1, row,
 						                   elide_to_cells(tool_button_label(tb, w), inner),
 						                   Color(), Color(),
-						                   with_state(opt, on ? Attrs(Attr::Reverse) : Attrs()));
+						                   label_attrs(opt, w, on ? Attrs(Attr::Reverse)
+						                                          : Attrs()));
 				return;
 			}
 			break;

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-629 checks, 0 failures, under three configurations: the offscreen
+631 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -88,7 +88,12 @@ worth more than any of them: **text drawn through `QPainter` carries the
 font's emphasis and text written straight into the buffer does not**, so
 every site that writes into the buffer is a place a font stops meaning
 anything. One instance outside the delegate is measured and open -- a bold
-`QPushButton` renders plain.
+`QPushButton` renders plain -- **and is now fixed too**: `label_attrs()`
+carries the state and the font together at every site `GridStyle` writes a
+label itself, which is the button, the tab, the menu bar, a menu item, a
+header, a tool button, a progress bar's percentage and the item view's own
+path. Neither snapshot fixture moved, because neither has an emphasised
+widget in it.
 
 ## 0b. Open questions, and who owns them
 
@@ -274,45 +279,36 @@ the count not been checked.
 
 In the order I would take them, and none is blocked:
 
-1. **Carry a font's emphasis to every site that writes into the buffer.**
-   The item-view sweep (§7.2) closed this for `Qt::FontRole` and left the
-   general case measured and open: a bold `QPushButton` renders plain,
-   because `CE_PushButtonLabel` writes its string itself, and so does every
-   other label `GridStyle` writes rather than passes to `QPainter`.
-   `attrs_for_font()` is in `cell_geometry.h` and is the whole of the
-   translation; what the work actually is, is reaching the widget's font at
-   each write site and reviewing the two snapshots afterwards, since a
-   fixture recorded against plain text will move wherever a bold widget
-   sits in it. Take it first because the sweep already found the shape and
-   named the instance -- it is the one item here with its lens spent and
-   its fix unwritten.
-2. ~~**Run the probe method at the item-view roles.**~~ **Done**, and §7.2
-   records it: ten configurations, six already right, two defects fixed,
-   two questions raised. The residue it names -- what a literal `QColor`
-   becomes, and what a table's grid is on a cell grid -- are the copyright
-   holder's and are in §0b.
-3. **Sweep what is drawn during a drag.** Every rendering probe here took a
+1. ~~**Run the probe method at the item-view roles.**~~ and
+   ~~**carry a font's emphasis to every site that writes into the
+   buffer.**~~ **Both done**, and §7.2 records them: ten configurations,
+   six already right, two defects fixed, two questions raised, and then
+   the general form of the second defect fixed at every site `GridStyle`
+   writes a label. The residue is the two questions -- what a literal
+   `QColor` becomes, and what a table's grid is on a cell grid -- which
+   are the copyright holder's and are in §0b.
+2. **Sweep what is drawn during a drag.** Every rendering probe here took a
    still frame. A splitter mid-drag, a slider with the button held, an item
    view rubber-banding and a scrollbar thumb being moved are states the
    compositor sees and no test has rendered.
-4. **The `QStyle::StandardPixmap` question**, once decided, closes the dock
+3. **The `QStyle::StandardPixmap` question**, once decided, closes the dock
    title buttons and the message-box severity together. It is one small
    table and the two symptoms are the same cause; neither is worth fixing
    alone.
-5. **A second account, which cost nothing and is already spent.** Running
+4. **A second account, which cost nothing and is already spent.** Running
    the suite as a different user on the same machine is the cheapest
    configuration axis in this list -- no second machine, no second Qt, no
    container -- and it found the hinting defect in §7.9 on the first run,
    as a program that would not start. Anything else derived from the
    *user's* configuration rather than the environment's is reachable the
    same way, and fontconfig is unlikely to be the only such thing.
-6. **A second Qt version.** Everything here is measured under one, and the
+5. **A second Qt version.** Everything here is measured under one, and the
    beerssh session found a probe that passed on 6.10 and failed on 6.4.2 --
    a band assumed to start at y=0. I checked and found no instance here,
    but a single-version run cannot distinguish "no version-dependent
    probe" from "no second version", and that stays an unmeasured exposure
    rather than a clean bill.
-7. **`suite_budget` prints and does not assert**, deliberately, because the
+6. **`suite_budget` prints and does not assert**, deliberately, because the
    same binary rendered the same fixture in 1.35 ms and 2.41 ms minutes
    apart. If a stable assertion is ever wanted it has to be a
    *relationship* -- damage-limited work against full-redraw work, in cells
@@ -2237,14 +2233,42 @@ through `QPainter` carries the font's emphasis and text written straight
 into the buffer does not**, and every site that writes into the buffer is
 a place where a font stops meaning anything.
 
-That has one measured instance outside the delegate and it is **not
-fixed**: a `QPushButton` given a bold font renders plain, because
-`CE_PushButtonLabel` writes the string itself. The same holds wherever
-`GridStyle` writes a label. The delegate was fixed here and the style was
-not, because `QStyleOptionViewItem::font` **is** `Qt::FontRole` -- data the
-delegate exists to carry -- while a button's font is the widget's own and
-reaching it means `w->font()` at every write site. That is a change with
-its own sweep and its own snapshot review, and it is the next item in §0e.
+That had one measured instance outside the delegate -- a `QPushButton`
+given a bold font rendered plain, because `CE_PushButtonLabel` writes the
+string itself -- and it held wherever `GridStyle` writes a label rather
+than passing it to `QPainter`. **It is fixed, at every such site**:
+`label_attrs()` in `cell_geometry.h` takes the state and the font
+together, and the push button, the tab, the menu bar, a menu item, a
+header label, a tool button, a progress bar's percentage and the style's
+own `CE_ItemViewItem` path all go through it. Neither snapshot fixture
+moved, which is the expected result rather than a lucky one: neither has
+an emphasised widget in it.
+
+**Which font the answer comes from is the part that had to be measured,
+and the menu bar settles it.** The obvious rule -- prefer the option's
+font, since Qt resolves one per item -- is wrong: `QMenuBar` leaves
+`QStyleOptionMenuItem::font` at the application font, so an italic menu
+bar read as plain under it. The opposite rule is wrong too, because a
+default menu action carries bold in the option and nowhere on the widget.
+`label_attrs()` therefore takes the **union**, and the test that pins it
+is the menu bar, whose option demonstrably does not carry the answer.
+
+The fill is deliberately not included. A menu item and an item view both
+fill their row with the state attributes, and adding a font's bold to a
+run of spaces is nothing to look at and something to read wrongly in a
+snapshot; the label carries both, the fill carries the state.
+
+**One thing the sweep turned up is not a defect and is §7.8 arriving with
+a face.** A probe put a `QMenuBar` above a framed `QTreeWidget` in a
+layout and the tree lost the bottom rule of its own border, corners
+intact. The cause is in the probe rather than the library: a menu bar's
+height is not a cell multiple, the layout hands the widget below it a
+height of 96 against a 19-pixel cell, and `GridGuard` says so by name in
+the same run -- which is the instrument answering correctly and the
+finding being the probe's. It is recorded because §7.8's open question
+currently states the cost of `GridSnap` as a trade-off in the abstract,
+and this is what the other side of it looks like on a screen: not a
+widget one pixel out, but a border that is not there.
 
 **Two more findings came out of the same sweep and are recorded rather
 than fixed**, both because the fix is a decision rather than a line:
