@@ -124,6 +124,12 @@ int suite_grid() {
 		const QFont grid = QApplication::font();
 		QFont intruder = grid;
 		intruder.setPixelSize(grid.pixelSize() - 5);
+		// A theme's font is built fresh and asks for nothing in particular,
+		// so the intruder does not either. That is what lets the hinting
+		// check below fail: derived from the grid font it would arrive
+		// already carrying the request, and the enforcer could drop the
+		// property without anything noticing.
+		intruder.setHintingPreference(QFont::PreferNoHinting);
 		QApplication::setFont(intruder, "QPushButton");
 
 		QWidget h;
@@ -137,6 +143,17 @@ int suite_grid() {
 		      "a class font from a platform theme is overridden by the grid font");
 		CHECK(QFontMetrics(b->font()).horizontalAdvance(QChar('M')) == cw,
 		      "so every widget still advances exactly one cell");
+		// The family and the size are not the whole of it. Full hinting is
+		// what makes the metrics whole numbers at all -- without it, on a
+		// fontconfig left at the packaged hintslight default, this font
+		// advances 9.625 against a 10-cell -- so a widget that loses the
+		// request computes its columns off a different rasterisation of the
+		// same font than the grid was measured from. The enforcer copies its
+		// base wholesale today; a future edit that copies field by field, the
+		// way it already copies weight, italic and underline, is what this
+		// notices.
+		CHECK(b->font().hintingPreference() == QFont::PreferFullHinting,
+		      "and the grid font's hinting survives the override");
 		QApplication::setFont(grid, "QPushButton");     // leave nothing behind
 	}
 

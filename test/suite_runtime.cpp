@@ -112,8 +112,13 @@ int suite_runtime() {
 
 	// --------------------------------------- font provisioning (5.3, risk R3)
 	{
-		QFont mono(QStringLiteral("DejaVu Sans Mono"));
-		mono.setPixelSize(16);
+		// The font setup() installed, rather than a second one built here to
+		// the same recipe. The two parted company the moment the recipe grew
+		// a hinting request: reconstructing it drops whatever the copy does
+		// not remember to repeat, and this check then reports on a font no
+		// program uses. Read from the application and it is the grid font by
+		// construction.
+		const QFont mono = QApplication::font();
 		// The ambient scaling levers are pinned by prepare_environment(), and
 		// this is what notices if that stops happening. It discriminates under
 		// a clean environment precisely because nothing else sets these: an
@@ -127,6 +132,31 @@ int suite_runtime() {
 		      "prepare_environment() pins QT_SCALE_FACTOR");
 		CHECK(qgetenv("QT_SCREEN_SCALE_FACTORS").isEmpty(),
 		      "and QT_SCREEN_SCALE_FACTORS");
+
+		// The fourth lever, and the one that is not an environment variable:
+		// hinting comes from the user's fontconfig. setup() asks for full
+		// hinting on the font it builds, and this is what notices if that
+		// stops happening.
+		//
+		// It discriminates everywhere, which the end-to-end form does not.
+		// On an account whose fontconfig already selects hintfull -- the
+		// account this tree was written on -- the metrics are 10x19 with the
+		// request and 10x19 without it, so an assertion on the numbers
+		// inspects nothing there. Reading the request back off the installed
+		// font fails the moment the line is deleted, on any account.
+		//
+		// The command that discriminates end-to-end, on a machine whose
+		// fontconfig leaves the packaged hintslight default in place, is to
+		// run the suite at all: without the request the metrics come back
+		// 9.625 x 18.6406 and setup() aborts before the first check.
+		CHECK(QApplication::font().hintingPreference() == QFont::PreferFullHinting,
+		      "setup() installed a font that asks for full hinting");
+		// That the ENFORCER carries it too is checked in suite_grid, beside
+		// the class-font simulation, because that is the only place a widget's
+		// font is actually rebuilt. A plain widget here inherits the
+		// application font untouched -- the enforcer returns early on it --
+		// so a probe placed at this end would report on inheritance and pass
+		// whatever the enforcer does. Confirmed by sabotage: it did.
 
 		CHECK(grid_font_problem(mono).isEmpty(),
 		      "the grid font passes the integral-metrics check");

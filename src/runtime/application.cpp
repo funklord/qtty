@@ -124,6 +124,41 @@ void setup(QApplication &app) {
 	QFont f(QStringLiteral("DejaVu Sans Mono"));
 	f.setPixelSize(16);
 
+	// Hinting is the fourth ambient lever, and it was the one nothing pinned.
+	// The first three -- platform, platform theme, scaling -- are environment
+	// variables and are pinned in prepare_environment(); this one arrives from
+	// the user's fontconfig, which no variable overrides, so it has to be
+	// asked for on the font itself.
+	//
+	// It decides whether the metrics are whole numbers at all. Measured on
+	// this machine, same font file, same Qt, DejaVu Sans Mono at pixel size
+	// 16, varying only the hinting preference:
+	//
+	//     PreferFullHinting                  advance 10.0000  height 19.0000
+	//     Default/NoHinting/VerticalHinting  advance  9.6250  height 18.6406
+	//
+	// The second row is what a STOCK Debian gives, because
+	// /etc/fonts/conf.d/10-hinting-slight.conf makes hintslight the packaged
+	// default -- and against those metrics grid_font_problem() refuses and
+	// qFatal() aborts. So every qtty program failed to start for any user who
+	// had not, somewhere in their own fontconfig, turned full hinting on.
+	// Found by running the suite from a second account on the machine that
+	// has always passed it: the tree's 10x19 cell was that account's
+	// fontconfig, not a property of the font.
+	//
+	// Asking for full hinting here is therefore not a rendering preference.
+	// It is the same argument as the theme pin one function up -- a terminal
+	// program must not inherit the desktop's configuration -- with a sharper
+	// edge, because this lever does not change how qtty looks, it decides
+	// whether qtty runs. It also costs nothing to what is already recorded:
+	// 10x19 is exactly what design.md section 16 measured and what both
+	// snapshot fixtures were taken against, so the pin makes the fixtures
+	// independent of whose account renders them rather than moving them.
+	//
+	// The guard below stays, and now guards the case it was written for: a
+	// font that cannot carry the grid even when asked properly.
+	f.setHintingPreference(QFont::PreferFullHinting);
+
 	// A hard startup error, not a rendering glitch (section 5.3, risk R3). The
 	// check this replaced was a Q_ASSERT_X comparing the advance of 'i' with
 	// that of 'M': it tested monospace-ness rather than integral metrics, and

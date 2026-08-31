@@ -17,10 +17,23 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-625 checks, 0 failures, under three configurations: the offscreen
+627 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
-been part of it. Whole-tree line coverage **98.87%** (2105 of 2129); §7.9
+been part of it. The 627 and the `test-platforms` run are today's, taken
+from a second account; **xcb is the previous session's measurement and
+was not re-taken**, because that account has no display, and a
+configuration nobody ran is not a configuration that passed.
+
+**A fourth axis was added to that list, and it found a defect that
+stopped the program from starting at all: the fontconfig hint style.**
+The suite is now green under hintfull, hintslight and hintnone, where
+before it ran only under hintfull -- which is to say, only for a user
+whose own fontconfig had been changed from the packaged default. §7.9
+carries the measurement. The one-line shape: the 10x19 cell this tree
+derives everything from was an *account setting*, not a property of the
+font, and `setup()` now asks for the hinting that makes it so rather than
+inheriting whatever the desktop supplies. Whole-tree line coverage **98.87%** (2105 of 2129); §7.9
 records what the residue is and why none of it is reachable -- `D0`
 deleting destructors for classes only ever stack-allocated, a `qFatal`
 that aborts, an inert SIGWINCH failure path, and four font-guard branches
@@ -77,10 +90,15 @@ Owned elsewhere, and signalled rather than fixed here:
   around the still-open lambda fault and **must go red when it is fixed**.
   They are deliberate and are not to be tidied.
 
-**And a standing exposure that is not a question: this repository has no
-remote.** Everything in it exists on one machine. Nothing here can fix
-that, and it is recorded because a tree with no remote is the one place
-where losing the machine loses the work.
+**The standing exposure recorded here -- that the repository has no
+remote -- is closed, and was closed by measurement rather than by work.**
+`git remote -v` names `origin` at `git@github.com:funklord/qtty.git`, and
+`git log --oneline -1 origin/master` is HEAD, so every commit described in
+this document exists somewhere other than this machine. The paragraph is
+corrected rather than deleted because the claim was load-bearing: it was
+the reason "everything in it exists on one machine" appeared in the
+handover, and a reader who remembers that sentence needs to find out here
+that it is no longer true.
 
 **What I complied with rather than checked.** The style gate demanded an
 extra tab on about six continuation lines I wrote this session, and I gave
@@ -119,6 +137,29 @@ hostile environment; xcb is run directly, and needs the stack dump off
 because QtTest forks gdb on a fatal signal:
 
     QTTY_QPA_PLATFORM=xcb QTEST_DISABLE_STACK_DUMP=1 ./build-test/qtty-tests
+
+**The fontconfig hint style**, which is the axis §7.9's last finding
+turned on and has no environment variable. It is varied with a
+configuration file rather than a variable:
+
+    cat > /tmp/hint.conf <<'EOF'
+    <?xml version="1.0"?>
+    <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+    <fontconfig>
+      <include ignore_missing="yes">/etc/fonts/fonts.conf</include>
+      <match target="font">
+        <edit name="hinting" mode="assign"><bool>true</bool></edit>
+        <edit name="hintstyle" mode="assign"><const>hintfull</const></edit>
+      </match>
+    </fontconfig>
+    EOF
+    FONTCONFIG_FILE=/tmp/hint.conf ./build-test/qtty-tests
+
+`hintslight` and `hintnone` are the other two values worth running, and
+`fc-match --verbose "DejaVu Sans Mono" | grep hintstyle` says which one
+the account is on without changing anything -- `1` is slight, `3` is
+full. What the suite reports on an unconfigured account is the packaged
+default, so a green run there is the one that means something.
 
 **The beerssh probe matrix**, whose results are in `doc/beerssh.md` along
 with when to re-take them:
@@ -185,13 +226,20 @@ In the order I would take them, and none is blocked:
    title buttons and the message-box severity together. It is one small
    table and the two symptoms are the same cause; neither is worth fixing
    alone.
-4. **A second Qt version.** Everything here is measured under one, and the
+4. **A second account, which cost nothing and is already spent.** Running
+   the suite as a different user on the same machine is the cheapest
+   configuration axis in this list -- no second machine, no second Qt, no
+   container -- and it found the hinting defect in §7.9 on the first run,
+   as a program that would not start. Anything else derived from the
+   *user's* configuration rather than the environment's is reachable the
+   same way, and fontconfig is unlikely to be the only such thing.
+5. **A second Qt version.** Everything here is measured under one, and the
    beerssh session found a probe that passed on 6.10 and failed on 6.4.2 --
    a band assumed to start at y=0. I checked and found no instance here,
    but a single-version run cannot distinguish "no version-dependent
    probe" from "no second version", and that stays an unmeasured exposure
    rather than a clean bill.
-5. **`suite_budget` prints and does not assert**, deliberately, because the
+6. **`suite_budget` prints and does not assert**, deliberately, because the
    same binary rendered the same fixture in 1.35 ms and 2.41 ms minutes
    apart. If a stable assertion is ever wanted it has to be a
    *relationship* -- damage-limited work against full-redraw work, in cells
@@ -3279,6 +3327,89 @@ recorded in §7.7 as awaiting a decision. The measurement adds something
 to it, though: the defect is not only that a role was lost, it is that
 **the colour then depends on which desktop the program was launched
 from**, since 14 of the 22 palette roles differ under gtk3.
+
+**And then the fourth lever, which was not an environment variable and so
+was not pinned with the other three: hinting.** Found the way the theme
+findings were found -- by running the suite somewhere it had never run,
+in this case from a second account on the same machine, same font file,
+same Qt, same everything the first three pins cover. It did not fail a
+check. `setup()` aborted before the first one:
+
+    qtty: the grid needs a font with integral metrics:
+          line height is 18.6406 px, which is not a whole number
+
+That is the number §7.9 already records for `QT_SCALE_FACTOR=2`, arriving
+with no scale factor set. Measured with the preference varied and nothing
+else:
+
+| Hinting preference | advance of `M` | line height |
+|---|---|---|
+| `PreferFullHinting` | 10.0000 | 19.0000 |
+| default / `PreferNoHinting` / `PreferVerticalHinting` | 9.6250 | 18.6406 |
+
+Default means fontconfig's, and **fontconfig's packaged answer is
+hintslight** -- `/etc/fonts/conf.d/10-hinting-slight.conf`, present on a
+stock Debian. So the second row is what a user gets, and against those
+metrics `grid_font_problem()` refuses and `qFatal()` aborts. **Every qtty
+program failed to start for anyone who had not turned full hinting on in
+their own fontconfig**, which is a per-user desktop setting nobody would
+connect to a terminal program refusing to run.
+
+The sharper part is what it says about this tree's own numbers. **The
+10x19 cell was the first account's fontconfig, not a property of the
+font.** design.md §16 measured it, both snapshot fixtures were recorded
+against it, and every column here is derived from it -- and none of that
+was reproducible on the machine it was measured on, from a different
+login.
+
+`setup()` now asks for `PreferFullHinting` on the font it builds. That is
+the same argument as the theme pin -- a terminal program must not inherit
+the desktop's configuration -- with a sharper edge, because this lever
+does not change how qtty looks, it decides whether qtty runs. And it
+moves nothing already recorded: full hinting **is** 10x19, so the pin
+makes the fixtures independent of whose account renders them rather than
+re-taking them. Measured under all three hint styles, driven by
+`FONTCONFIG_FILE`, the suite is green in each: hintfull, hintslight and
+hintnone.
+
+Guarded two ways, and the division is the one §7.9 already draws between
+a check that discriminates and one that only looks like it does:
+
+- **The request is read back off the installed font**, which fails on any
+  account the moment the line is deleted.
+- **The enforcer must carry it**, checked in `suite_grid` beside the
+  class-font simulation, whose intruder now asks for no hinting the way a
+  theme's freshly built font does. `FontEnforcer` copies its base
+  wholesale today; a future edit that copies field by field, as it
+  already does for weight, italic and underline, is what this notices.
+
+Both were confirmed by sabotage, and the second one was **written in the
+wrong place first**: a plain `QWidget` probe inherits the application
+font untouched, the enforcer returns early on it, and the check passed
+with the enforcer sabotaged. It reported on inheritance and was moved to
+the only place a widget's font is actually rebuilt.
+
+The honesty note that goes with it, the same one the style-hint pin
+carries: **on an account whose fontconfig already selects hintfull, an
+assertion on the metrics cannot fail.** Sabotaged and run under such a
+configuration, `the grid font passes the integral-metrics check` passes
+while the two hinting checks fail -- which is the measurement that says
+the numbers are the wrong thing to assert here and the request is the
+right one.
+
+**One check was wrong rather than merely weak, and this is what exposed
+it.** The font-provisioning test built its own `DejaVu Sans Mono` at
+pixel size 16 and asked `grid_font_problem()` about that. A second font
+built to the same recipe is not the grid font; it is a copy that drops
+whatever the recipe grows and nobody remembers to repeat -- which is
+exactly what happened the moment the recipe grew a hinting request. It
+reads `QApplication::font()` now, which is the grid font by construction.
+
+**What this does not close is D7.** Hinting was one of the two levers
+that decide the cell, and it is now pinned; the font *version* and the
+rasterizer are the other, and only a bundled font settles those. The
+exposure is smaller than §7.9 opened with -- a different login no longer
+changes the answer -- and a different machine still can.
 
 ## 8. Where the document and the code disagree
 
