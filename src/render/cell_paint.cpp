@@ -328,13 +328,44 @@ void CellPaintEngine::line(const QLineF &l) {
 	// so it wrote nowhere rather than corrupting anything; it was invisible
 	// for that reason rather than harmless by design.
 	const auto cell_of = [](double px, int size) { return int(std::floor(px / size)); };
+
+	// The cells the line COVERS, not the ones it touches. A cell the line
+	// enters by a pixel is not a cell the line is in, and painting it writes a
+	// rule where nothing was drawn.
+	//
+	// This is the same half-cell test fill_rectf() already applies across a
+	// rect's thin axis, applied along a line's length instead: a rect thinner
+	// than half a cell does not stand for that cell's background, and a line
+	// overlapping less than half a cell does not stand for that cell's rule.
+	//
+	// Measured on a mnemonic. Qt underlines the marked letter with a line one
+	// cell long that starts a pixel early -- traced as (39.00,16.50) to
+	// (49.00,16.50) against cw = 10 -- so flooring both ends gave cells 3 and
+	// 4. Cell 4 held the letter and was skipped by the blank test below; cell
+	// 3 was the gap between a check box's indicator and its label, and every
+	// check box, radio button and group box with a mnemonic rendered a rule
+	// in that gap, between the indicator and the first letter. The letter
+	// keeps its underline attribute either way, which arrives through the
+	// font rather than through here.
+	//
+	// A line wholly inside one cell keeps that cell: it is the only cell it
+	// can be in, and a short rule on a blank row is a thing this draws on
+	// purpose.
+	const auto covered = [](double lo, double hi, int size) {
+		int first = int(std::floor(lo / size)), last = int(std::floor(hi / size));
+		if (first < last && (first + 1) * double(size) - lo < size / 2.0) ++first;
+		if (last > first && hi - last * double(size) < size / 2.0) --last;
+		return QPair<int, int>(first, last);
+	};
 	if (qAbs(m.dy()) < ch / 2.0) {
 		const int y = cell_of(m.y1(), ch);
-		for (int x = cell_of(qMin(m.x1(), m.x2()), cw); x <= cell_of(qMax(m.x1(), m.x2()), cw); ++x)
+		const auto span = covered(qMin(m.x1(), m.x2()), qMax(m.x1(), m.x2()), cw);
+		for (int x = span.first; x <= span.second; ++x)
 			if (b.at(x, y).ch == QStringLiteral(" ")) b.at(x, y).ch = QStringLiteral("─");
 	} else if (qAbs(m.dx()) < cw / 2.0) {
 		const int x = cell_of(m.x1(), cw);
-		for (int y = cell_of(qMin(m.y1(), m.y2()), ch); y <= cell_of(qMax(m.y1(), m.y2()), ch); ++y)
+		const auto span = covered(qMin(m.y1(), m.y2()), qMax(m.y1(), m.y2()), ch);
+		for (int y = span.first; y <= span.second; ++y)
 			if (b.at(x, y).ch == QStringLiteral(" ")) b.at(x, y).ch = QStringLiteral("│");
 	}
 }

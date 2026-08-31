@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-635 checks, 0 failures, under three configurations: the offscreen
+639 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -110,6 +110,18 @@ that is larger than either: **Channel A does not clip**, and a header
 resized past its viewport puts a grid line seven cells outside the widget,
 in a neighbour's rectangle. §8.7.
 
+**And then the dialogs beyond the standard three**, which §0d named as the
+next unswept surface. Seven rendered -- input, message, button box,
+progress, error, wizard, font -- and **almost all of it was already
+right**, including a wizard's Back button arriving dim on the first page.
+The one defect was in none of them and reaches the whole library: a
+mnemonic underline is a rule one cell long that starts a pixel early, so
+every check box, radio button and group box carrying one drew a rule in
+the gap between its indicator and its label. `CellPaintEngine::line()`
+takes the cells a line **covers** now rather than the ones it touches,
+which is the half-cell test `fill_rectf()` was already applying one
+function away.
+
 ## 0b. Open questions, and who owns them
 
 An index, because these are recorded where they were found -- scattered
@@ -128,7 +140,7 @@ Owned by the copyright holder:
 | Whether `focusWidget()`/`setFocusWidget()` keep their camelCase exemption | §11 |
 | Whether frame output should be gated on `isatty(1)` as setup and teardown are | *the gate that decides whether to write* |
 | Mapping `QStyle::StandardPixmap` to glyphs, which is qtty deciding what Qt's iconography looks like in a terminal | *Qt's standard iconography* |
-| Whether an empty `QLineEdit` should show anything | same |
+| Whether a one-row `QLineEdit` should be bracketed as the combo and spin box already are, at the measured cost of a second bracket inside each of those | §7.2, *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: a groove click setting the value where it landed | *the interaction sweep* |
 | What a literal `QColor` from `Qt::ForegroundRole`/`BackgroundRole` becomes on a terminal, which is OQ-7 arriving at the item views | §7.2, §7.7 |
 | What a table's grid should be on a cell grid, where the separator between two one-cell rows has nowhere to go | §7.2 |
@@ -278,6 +290,12 @@ Three things it taught, which the next run should carry in:
   timer. A bounded `QEventLoop` with a 400 ms `singleShot` quit, and the
   frame came out correct. Every "after the release" assertion in a drag
   probe has this hazard, and it reads exactly like a rendering defect.
+- **Vary one thing.** The first check-box probe made one item checked
+  *and* mnemonic-marked and the other neither, so the rule it found could
+  have come from either. It cost one more run to separate them, and the
+  test that came out asserts against a neighbour differing in exactly one
+  respect -- which is the same discipline as the controls below, applied
+  inside a single frame rather than across two.
 - **The controls are where the findings actually get settled.** Every one
   of the item-view sweep's four findings needed a second render to place
   it: the same model with no delegate installed said the disabled-item
@@ -290,10 +308,12 @@ Three things it taught, which the next run should carry in:
   the difference between a finding and a theory.
 - **Every one of the eleven was the same shape**: a state that existed in
   the model and not on the screen. That is the lens, and it is not spent.
-  It has since been applied to the item-view roles, where it found two
-  more of exactly that shape and two questions besides (§7.2); it has not
-  been applied to dialogs beyond the standard three, or to anything drawn
-  while a drag is in progress.
+  It has since been applied to the item-view roles, to what is drawn
+  during a drag, and to the dialogs beyond the standard three -- §7.2
+  carries all three. What is left unswept: anything an application draws
+  itself through `ICellPainted`, the graphics tier's placements against a
+  text-only terminal, and a screen at a size nothing has rendered at --
+  one column wide, or eighty by three.
 
 **The sabotage discipline that goes with it**, because a passing new test
 is not evidence: break the code the test claims to defend, confirm the edit
@@ -1357,6 +1377,14 @@ and the cursor marks it while focused, but a form of empty fields is
 invisible until tabbed through. Same class of question as the icons, and
 the same owner.
 
+**The dialog sweep sharpened this and it is worth reading with the above**
+(§7.2): it is not only the empty case -- a one-row line edit has no
+boundary with content either, and it is the only one of the four one-row
+editables that has none. The bracket was implemented and measured rather
+than argued about, and it costs a second closing bracket inside every
+editable combo box and spin box, each of which contains a `QLineEdit` that
+reaches the same primitive. That cost is what makes it a decision.
+
 **The pixmap rule predicted the next two, which is the first time this
 sweep stopped being a search.** *Anything the base style draws as a pixmap
 arrives here as a shaded block* was written down after the sort indicator;
@@ -2415,6 +2443,83 @@ answers, exactly as the disabled item view did.
 The sweep also found the clipping disagreement now recorded as §8.7,
 which is neither of the above: a header resized past its viewport puts a
 grid line seven cells outside the widget.
+
+#### Dialogs beyond the standard three
+
+design.md §17.2 scopes "QDialog/QMessageBox/QDialogButtonBox", and those
+are what the fixtures and the routing tests exercise. Seven dialogs
+outside that line were rendered and read: `QInputDialog`, a `QMessageBox`
+carrying informative text, detailed text, a check box and three standard
+buttons, a `QDialogButtonBox` with five roles at once, `QProgressDialog`,
+`QErrorMessage`, `QWizard`, and `QFontDialog`.
+
+**Almost all of it was already right, and that is the result.** A wizard
+draws its page title in bold, its separator rule, and its Back button
+**dim on the first page**, which is the disabled state arriving from a
+widget nobody had rendered. A message box lays out four buttons with the
+default one reversed and its check box below the informative text. The
+button box puts five roles in order. A progress dialog draws its bar with
+the percentage over it and its Abort button. An error message frames its
+text and underlines the mnemonic in "Show this message again". A font
+dialog -- the largest thing rendered here -- comes out legible, with the
+off-grid symptoms §7.8 already owns and nothing new.
+
+**One defect, and it was in none of the dialogs.** `QErrorMessage` drew a
+rule between its check box's indicator and the first letter of its label,
+and the cause reaches every check box, radio button and group box that
+carries a mnemonic anywhere in the library. Qt underlines the marked
+letter with a line one cell long that **starts a pixel early** -- traced
+as (39.00,16.50) to (49.00,16.50) against `cw` = 10 -- and
+`CellPaintEngine::line()` flooring both ends gave cells 3 **and** 4. Cell
+4 held the letter and was skipped by the blank-cell test; cell 3 was the
+gap, and got the rule.
+
+The fix is the rule the same file already applies one function away:
+`fill_rectf()` refuses a rect thinner than half a cell because it does not
+cover the cell it would colour, and `line()` now refuses a cell it
+overlaps by less than half for the same reason. **Coverage, not
+touching.** The letter keeps its underline attribute either way -- that
+arrives through the font, not through the line -- so the mnemonic still
+reads as one.
+
+It is checked in both directions, because the one-directional version is
+satisfied by an engine that has stopped drawing rules: a rule spanning its
+widget must still draw **every** cell of it, asserted against the widget's
+own width. Confirmed by sabotage each way. The first version of the probe
+was worse than the check: it varied the mnemonic and the check state
+together and could not have said which produced the rule.
+
+**And one measurement that belongs to an open question rather than to a
+fix.** §0b asks whether an empty `QLineEdit` should show anything. Rendered
+beside its neighbours, the question is sharper than "empty":
+
+    [plain edit                  ]     <- what a bracket would give
+    [editable combo            ]▾]     <- and what it costs
+    [42                        ]±]
+    [fixed combo                ▾]
+
+A one-row line edit has no boundary **with or without content** -- it is a
+run of text floating where the other three one-row editables are bracketed
+-- and `PE_PanelLineEdit` falls through to `draw_box()`, which returns
+without drawing anything below two rows. The project has already answered
+this question twice, for the combo box and the spin box, in a comment that
+states the principle: the control has to be visibly a control, and at one
+row a frame cannot say so.
+
+What stops it being a wiring gap is measured rather than assumed: **the
+bracket was implemented and rendered.** A bare line edit gets its
+boundary; an editable combo and a spin box get a second closing bracket
+inside their own, because each contains a `QLineEdit` that reaches the
+same primitive. So the fix is not the four lines it looks like -- it needs
+the panel to know it is not inside a control that has already bracketed
+itself, which is a parent-class test, which is the shape this tree
+distrusts. Recorded here so the decision is taken once with the cost
+visible. **Owned by the copyright holder.**
+
+Worth one more line, because it says something about the fixtures: the
+experimental bracket broke **no existing check**, both snapshots included.
+Neither fixture contains a one-row line edit, an editable combo or a spin
+box in a position that shows it.
 
 ### 7.3 Graphics tier (design.md §17.3)
 

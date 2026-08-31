@@ -243,6 +243,67 @@ int suite_widgets() {
 		      && !(dropped.at(rest_at, 1).attrs & Attr::Reverse),
 		      "a slider handle being dragged is reverse, and is not once dropped");
 	}
+	// A mnemonic underline is a rule one cell long that starts a pixel early,
+	// and it used to paint the cell before the letter. Found by rendering
+	// dialogs nobody had rendered: a QErrorMessage drew a rule between its
+	// check box's indicator and the first letter of its label. Every check
+	// box, radio button and group box carrying a mnemonic had it.
+	//
+	// Four items, varying the mnemonic and the check state separately,
+	// because the first version of this probe varied both at once and could
+	// not have said which one produced the rule. The letter keeps its
+	// underline attribute either way -- that arrives through the font, not
+	// through the line -- so the check is on the gap cell and on the
+	// attribute, which is what says the mnemonic still reads as one.
+	{
+		QWidget host;
+		auto *v = new QVBoxLayout(&host);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		auto add = [&](const QString &text, bool checked) {
+			auto *c = new QCheckBox(text, &host);
+			c->setChecked(checked);
+			c->setFixedHeight(GridMetrics::ch());
+			v->addWidget(c);
+		};
+		add(QStringLiteral("&Mnemonic checked"), true);
+		add(QStringLiteral("Plain checked"), true);
+		show(host, 30, 2);
+		CellBuffer b(32, 3);
+		render_once(host, b);
+		const QPoint marked = findText(b, QStringLiteral("Mnemonic"));
+		const QPoint plain = findText(b, QStringLiteral("Plain"));
+		CHECK(marked.x() > 0 && plain.x() > 0
+		      && b.at(marked.x() - 1, marked.y()).ch == b.at(plain.x() - 1, plain.y()).ch,
+		      "a mnemonic puts nothing in the gap a plain label leaves empty");
+		CHECK(marked.x() > 0 && (b.at(marked.x(), marked.y()).attrs & Attr::Underline)
+		      && !(b.at(plain.x(), plain.y()).attrs & Attr::Underline),
+		      "and the marked letter is still underlined");
+	}
+	// The other half of that rule, and the reason it is a coverage test
+	// rather than a "do not draw short lines" test: a rule that does cover
+	// its cells still draws. Without this the fix above is satisfied by an
+	// engine that has stopped drawing rules at all.
+	{
+		QWidget host;
+		auto *v = new QVBoxLayout(&host);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		auto *rule = new QFrame(&host);
+		rule->setFrameShape(QFrame::HLine);
+		rule->setFixedHeight(GridMetrics::ch());
+		v->addWidget(rule);
+		show(host, 20, 1);
+		CellBuffer b(22, 2);
+		render_once(host, b);
+		int drawn = 0;
+		for (int x = 0; x < b.cols(); ++x)
+			if (b.at(x, 0).ch == QStringLiteral("─")) ++drawn;
+		printf("info: rule drew %d cells of a %d-cell widget\n",
+		       drawn, rule->width() / GridMetrics::cw());
+		CHECK(drawn == rule->width() / GridMetrics::cw(),
+		      "a rule spanning its widget still draws every cell of it");
+	}
 	// tabs: selected tab reverse-video
 	{
 		QTabWidget tabs;
