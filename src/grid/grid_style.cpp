@@ -705,12 +705,33 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// whether or not CellItemDelegate is installed. The fill
 				// stays state-only, as in a menu item.
 				const Attrs la = label_attrs(opt, w, vi->font, a);
+				// Qt::ForegroundRole and Qt::BackgroundRole, by the rule
+				// cell_geometry.h now shares with CellPaintEngine: a colour
+				// no palette role explains is one the application chose, and
+				// it passes through. Without them a model that coloured a row
+				// got nothing here and nothing from the delegate either,
+				// while the same colour on a QLabel came out -- three answers
+				// to one question in one program.
+				const Color fg = fg_for(vi->palette.color(QPalette::Text).rgba());
+				Color bg;
+				if (vi->backgroundBrush.style() != Qt::NoBrush)
+					bg = bg_for(vi->backgroundBrush.color().rgba());
 				// The whole item, not its top row. A one-cell fill was
 				// indistinguishable from a correct one while every item in
 				// the suite was one cell tall, and wrong the moment a
 				// delegate returned a taller sizeHint: the row highlighted
 				// its first line and left the rest on the ordinary ground.
-				if (a) { Cell v; v.attrs = a; dev->buffer().fill(c, v); }
+				//
+				// A background role fills too, and has to: a row given a
+				// colour is a coloured ROW, and colouring only the cells its
+				// text happens to occupy leaves a stripe the width of the
+				// label.
+				if (a || bg.kind() != Color::Default) {
+					Cell v;
+					v.attrs = a;
+					v.bg = bg;
+					dev->buffer().fill(c, v);
+				}
 				// The check indicator, which was not drawn at all: an item
 				// view whose items are checkable showed the text and nothing
 				// else, so the state a user is there to set was invisible and
@@ -723,12 +744,12 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 						vi->checkState == Qt::Checked            ? QStringLiteral("[x]")
 						: vi->checkState == Qt::PartiallyChecked ? QStringLiteral("[-]")
 						                                        : QStringLiteral("[ ]");
-					dev->buffer().text(text_at, c.top(), box, Color(), Color(), la);
+					dev->buffer().text(text_at, c.top(), box, fg, bg, la);
 					text_at += 4;                  // the box and one space
 				}
 				const int room = c.right() - text_at + 1;
 				dev->buffer().text(text_at, c.top(), elide_to_cells(vi->text, room),
-					               Color(), Color(), la);
+					               fg, bg, la);
 				return;
 			}
 			break;

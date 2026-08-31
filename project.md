@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-652 checks, 0 failures, under three configurations: the offscreen
+654 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -172,6 +172,16 @@ decision §8.1 records as open, so the axis is priced rather than taken.
 by transitive luck on a class Qt 6 moved between modules. That include is
 right on every version and is fixed.
 
+**And one of §0b's open questions was not a question.**
+`Qt::ForegroundRole` and `Qt::BackgroundRole` reached nothing, and this
+document deferred that as OQ-7 arriving at the item views. It was not:
+OQ-7 asks which metric quantises an unthemed colour to sixteen, and the
+project had already settled what an unthemed colour DOES -- it passes
+through as the application's own, which is why a `QLabel` given a red
+palette comes out red. Three answers to one question in one program, and
+only one of them was the rule. The rule is shared now and all three agree;
+§7.2 carries it, and the entry has left §0b.
+
 **One branch was measured and rejected rather than argued about.** Letting
 the window take the terminal's size -- dropping the layout's minimum, so a
 short terminal is not simply clipped -- produces overlapping garbage:
@@ -200,7 +210,6 @@ Owned by the copyright holder:
 | Mapping `QStyle::StandardPixmap` to glyphs, which is qtty deciding what Qt's iconography looks like in a terminal | *Qt's standard iconography* |
 | Whether a one-row `QLineEdit` should be bracketed as the combo and spin box already are, at the measured cost of a second bracket inside each of those | §7.2, *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: a groove click setting the value where it landed | *the interaction sweep* |
-| What a literal `QColor` from `Qt::ForegroundRole`/`BackgroundRole` becomes on a terminal, which is OQ-7 arriving at the item views | §7.2, §7.7 |
 | What a table's grid should be on a cell grid, where the separator between two one-cell rows has nowhere to go | §7.2 |
 | Whether Channel A suppresses the private `QMovableTabWidget`, so a dragged tab stops being a picture the terminal cannot show | §7.2 |
 | Whether a text selection keeps the desktop's `QPalette::Highlight` RGB while an item view's selection is reverse video | §7.2, §7.7 |
@@ -388,6 +397,15 @@ Three things it taught, which the next run should carry in:
   probe that only reads the artefact cannot see a fault in the noise made
   producing it, and stdout, stderr and the terminal are the same file
   descriptor often enough here to matter.
+- **Check whether the project has already answered it before deferring
+  it.** `Qt::ForegroundRole` was written down as an open question owned by
+  the copyright holder, and the answer was in `cell_paint.cpp` with a
+  comment explaining itself: a colour no palette role explains passes
+  through as the application's own. A deferral costs nothing to write and
+  is caught by nothing -- `working-practice.md` says so, and this document
+  did it anyway, one section away from the code that had decided. **The
+  search is for the shape, not the name**: something else in the tree
+  choosing between the same two answers, whatever it is called.
 - **A baseline nothing produced is not a baseline.** The scroll check
   first placed its widget below the viewport, where it is never painted:
   the rect it compared against was the one a default-constructed `QRect`
@@ -2469,15 +2487,37 @@ widget one pixel out, but a border that is not there.
 **Two more findings came out of the same sweep and are recorded rather
 than fixed**, both because the fix is a decision rather than a line:
 
-- **`Qt::ForegroundRole` and `Qt::BackgroundRole` reach nothing.** The
-  delegate writes `Color(), Color()` for every cell, so a red item and a
-  blue-backgrounded item are indistinguishable from a plain one. The fix
-  is not the writing, it is what a literal `QColor` from a model becomes
-  on a terminal -- which is §7.7's open question and OQ-7 exactly: a
-  colour with no palette role behind it lands as literal RGB and varies
-  with the desktop. Implementing the role without settling that would
-  spread the same defect to every item view. **Owned by the copyright
-  holder, and it is the question already open rather than a new one.**
+- ~~**`Qt::ForegroundRole` and `Qt::BackgroundRole` reach nothing.**~~
+  **Fixed, and the deferral above was wrong.** It read as OQ-7 arriving at
+  the item views -- what should a literal `QColor` become on a terminal --
+  and that is not this question. OQ-7 asks which *metric* quantises an
+  unthemed colour down to sixteen, and it applies equally to every literal
+  colour already flowing through Channel B; nothing about an item view
+  makes it harder or easier.
+
+  **The project had already decided this one, under a different name.**
+  `CellPaintEngine` matches a colour against the palette roles, asks the
+  theme what that role looks like on a terminal, and passes anything with
+  no role behind it through as the application's own -- which is why a
+  `QLabel` given a red palette comes out red. Measured in one program:
+  **three answers to one question**, the label red, the same red on a
+  model row nothing, and the same row with no delegate installed nothing
+  again. That is `working-practice.md`'s wiring gap wearing a design
+  question's clothes, and this document deferred it.
+
+  The rule is `fg_for()` and `bg_for()` in `cell_geometry.h` now, shared
+  rather than copied, and `CellPaintEngine`'s own pen path calls it too.
+  A background role **fills the row** rather than colouring the cells its
+  label happens to occupy, which is checked at 24 cells because colouring
+  the label alone passes any check taken at the label's position. Three
+  checks, and the third is the one that matters: the style's own
+  `CE_ItemViewItem` must answer the same as the delegate, so one program
+  gives one answer whichever path a view happens to take.
+
+  An unset role costs nothing, which is what makes it safe: the option's
+  `Text` brush is then the application palette's own, it matches a role,
+  and the theme answers `Color::Default` under the default theme -- so a
+  plain row is still written with no colour at all.
 - **A table's grid lines eat the spaces inside its own labels.** A
   `QTableView` with `showGrid` on -- Qt's default -- rendered `a label far
   wider than its column` as `─a─label─fa…`. Three controls place it: with

@@ -629,6 +629,70 @@ int suite_widgets() {
 		      "sizeHint reserves the decoration and the gap, in whole cells");
 	}
 
+	// Qt::ForegroundRole and Qt::BackgroundRole, which reached nothing at all
+	// -- and were deferred once as a design question, wrongly. The project had
+	// already decided this somewhere else under a different name:
+	// CellPaintEngine passes a colour no palette role explains through as the
+	// application's own, which is why a QLabel given a red palette comes out
+	// red. Measured, in one program: three answers to one question -- the
+	// label red, the same red on a model row nothing, and the same row with no
+	// delegate installed nothing again.
+	{
+		QStandardItemModel m;
+		auto *red = new QStandardItem(QStringLiteral("red row"));
+		red->setForeground(QBrush(QColor(255, 0, 0)));
+		auto *blue = new QStandardItem(QStringLiteral("bg row"));
+		blue->setBackground(QBrush(QColor(0, 0, 255)));
+		m.appendRow(red);
+		m.appendRow(blue);
+		m.appendRow(new QStandardItem(QStringLiteral("plain row")));
+
+		auto render = [&](QListView &v, CellBuffer &b) {
+			v.setModel(&m);
+			v.setFrameShape(QFrame::NoFrame);
+			show(v, 24, 4);
+			render_once(v, b);
+		};
+		QListView with;
+		with.setItemDelegate(new CellItemDelegate(&with));
+		CellBuffer wb(26, 5);
+		render(with, wb);
+
+		const QPoint red_at = findText(wb, QStringLiteral("red row"));
+		const QPoint plain_at = findText(wb, QStringLiteral("plain row"));
+		CHECK(red_at.x() >= 0 && plain_at.x() >= 0
+		      && wb.at(red_at.x(), red_at.y()).fg == Color::rgb(qRgb(255, 0, 0))
+		      && wb.at(plain_at.x(), plain_at.y()).fg.kind() == Color::Default,
+		      "Qt::ForegroundRole reaches the cells, and a plain row stays plain");
+
+		// The whole row, not the cells the label happens to occupy. A
+		// background role that coloured only the text would pass any check
+		// taken at the label's position, and leave a stripe the width of the
+		// word on the screen.
+		const QPoint bg_at = findText(wb, QStringLiteral("bg row"));
+		int coloured = 0;
+		if (bg_at.y() >= 0)
+			for (int x = 0; x < 24; ++x)
+				if (wb.at(x, bg_at.y()).bg == Color::rgb(qRgb(0, 0, 255))) ++coloured;
+		CHECK(coloured == 24, "Qt::BackgroundRole fills the row, not the label");
+
+		// The same model with no delegate. GridStyle's own CE_ItemViewItem is
+		// the other half of the same question, and it answered differently
+		// until it was asked -- so this is the check that says one program
+		// gives one answer.
+		QListView without;
+		CellBuffer ob(26, 5);
+		render(without, ob);
+		const QPoint bare_red = findText(ob, QStringLiteral("red row"));
+		const QPoint bare_bg = findText(ob, QStringLiteral("bg row"));
+		CHECK(bare_red.x() >= 0 && bare_bg.y() >= 0
+		      && ob.at(bare_red.x(), bare_red.y()).fg
+		             == wb.at(red_at.x(), red_at.y()).fg
+		      && ob.at(0, bare_bg.y()).bg == Color::rgb(qRgb(0, 0, 255)),
+		      "and the style's own path answers the same with no delegate");
+	}
+
+
 	// gallery snapshot: one window with the whole tier
 	{
 		QWidget win;

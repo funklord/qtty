@@ -82,6 +82,28 @@ void CellItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
 	                                         ? Attrs(Attr::Reverse) : Attrs())
 	                    | attrs_for_font(opt.font);
 
+	// Qt::ForegroundRole and Qt::BackgroundRole, which reached nothing. Both
+	// arrive in the option -- the first as the palette's Text brush, the
+	// second as backgroundBrush -- and both are DATA, which is what this
+	// delegate carries.
+	//
+	// Deferred once as a design question and that was wrong: the project had
+	// already decided it somewhere else under a different name. A colour with
+	// no palette role behind it passes through as the application's own,
+	// which is the rule CellPaintEngine has always applied -- so a QLabel
+	// given a red palette comes out red while the same red on a model row
+	// came out as nothing. fg_for() and bg_for() are that one rule, shared
+	// rather than copied.
+	//
+	// An unset role costs nothing: the option's Text brush is then the
+	// application palette's own, which matches a role, and the theme answers
+	// Color::Default for it under the default theme. So a plain row is still
+	// written with no colour at all.
+	const Color fg = fg_for(opt.palette.color(QPalette::Text).rgba());
+	Color bg;
+	if (opt.backgroundBrush.style() != Qt::NoBrush)
+		bg = bg_for(opt.backgroundBrush.color().rgba());
+
 	int row = c.top();
 	if (c.height() > 1) {
 		if (opt.displayAlignment & Qt::AlignBottom)       row = c.bottom();
@@ -93,7 +115,7 @@ void CellItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
 		QString box = QStringLiteral("[ ]");
 		if (opt.checkState == Qt::Checked)                box = QStringLiteral("[x]");
 		else if (opt.checkState == Qt::PartiallyChecked)  box = QStringLiteral("[-]");
-		buffer.text(col, row, box, Color(), Color(), attrs);
+		buffer.text(col, row, box, fg, bg, attrs);
 		col += check_cells();
 	}
 
@@ -120,7 +142,7 @@ void CellItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
 		int x = col;
 		if (opt.displayAlignment & Qt::AlignRight)        x = c.right() - width + 1;
 		else if (opt.displayAlignment & Qt::AlignHCenter) x = col + (budget - width) / 2;
-		buffer.text(x, row, s, Color(), Color(), attrs);
+		buffer.text(x, row, s, fg, bg, attrs);
 	}
 }
 

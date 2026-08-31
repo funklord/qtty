@@ -23,11 +23,60 @@
 #include <QString>
 #include <QStyleOption>
 #include <QWidget>
+#include <QGuiApplication>
+#include <QPalette>
 #include "qtty/cell.h"
 #include "qtty/grid.h"
 #include "qtty/paint.h"
+#include "qtty/theme.h"
 
 namespace Qtty {
+
+// Which palette role explains a colour, or NoRole.
+//
+// This is the kernel of the rule cell_paint.cpp settled and wrote down: the
+// application palette is consulted for one thing only -- which ROLE produced
+// this colour -- and what that role looks like on a terminal is theme()'s to
+// say. A colour no role explains is one the application chose itself, and it
+// passes through as true colour.
+//
+// It lives here because three places need the same answer and two of them had
+// no answer at all. CellPaintEngine had it, so a QLabel given a red palette
+// came out red; CellItemDelegate and GridStyle's own CE_ItemViewItem wrote
+// Color() unconditionally, so the same red on a model's Qt::ForegroundRole
+// came out as nothing. Measured, in one program: three answers to one
+// question, and only one of them was the rule.
+inline QPalette::ColorRole role_of(QRgb c,
+                                   std::initializer_list<QPalette::ColorRole> roles) {
+	const QPalette &pal = QGuiApplication::palette();
+	for (QPalette::ColorRole r : roles)
+		if (pal.color(r).rgba() == c) return r;
+	return QPalette::NoRole;
+}
+
+// A text colour, by that rule. The role list is the one CellPaintEngine's pen
+// path uses, and is deliberately the same list rather than a similar one.
+inline Color fg_for(QRgb c) {
+	const QPalette::ColorRole r = role_of(c, {QPalette::WindowText, QPalette::Text,
+		                                      QPalette::ButtonText,
+		                                      QPalette::HighlightedText});
+	return r == QPalette::NoRole ? Color::rgb(c) : theme().foreground(r);
+}
+
+// A background colour, by the same rule. A surface role the theme leaves at
+// Color::Default means "the terminal's own background", which is nothing to
+// write rather than something to write in black -- so it comes back Default
+// and the caller leaves the cell alone.
+inline Color bg_for(QRgb c) {
+	const QPalette::ColorRole r = role_of(c, {QPalette::Window, QPalette::Base,
+		                                      QPalette::Button,
+		                                      QPalette::AlternateBase,
+		                                      QPalette::Highlight,
+		                                      QPalette::ToolTipBase});
+	if (r == QPalette::NoRole) return Color::rgb(c);
+	const Color themed = theme().background(r);
+	return themed;
+}
 
 // A disabled control is dim, and until this existed it was not anything.
 // Qt reports the state in every option it hands the style, and GridStyle

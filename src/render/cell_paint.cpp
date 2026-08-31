@@ -163,14 +163,10 @@ QRect CellPaintEngine::to_cells(const QRectF &r) const {
 // A pen colour no role explains is Channel B output -- something the
 // application coloured itself -- and passes through as true colour, carrying
 // no authored ANSI-16 index because no role authored one.
-static Color pen_to_fg(const QPen &pen) {
-	const QRgb c = pen.color().rgba();
-	const QPalette &pal = QGuiApplication::palette();
-	for (QPalette::ColorRole r : {QPalette::WindowText, QPalette::Text,
-		                          QPalette::ButtonText, QPalette::HighlightedText})
-		if (pal.color(r).rgba() == c) return theme().foreground(r);
-	return Color::rgb(c);
-}
+// The rule itself is fg_for() in cell_geometry.h now, because CellItemDelegate
+// and GridStyle's CE_ItemViewItem need the same answer and were each giving a
+// different one.
+static Color pen_to_fg(const QPen &pen) { return fg_for(pen.color().rgba()); }
 
 void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	QPointF q = xf_.map(p) + QPointF(dev_->origin);
