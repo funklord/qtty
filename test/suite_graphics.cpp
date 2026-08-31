@@ -19,6 +19,15 @@ static int fails = 0;
                          else { printf("FAIL: %s\n      condition: %s\n", \
                                        m, #c); ++fails; } } while (0)
 
+// Counts what Qt says while a call is being made. A named function rather
+// than a lambda because qInstallMessageHandler takes a plain function
+// pointer, so a capture is not available anyway and the counter has to be a
+// file static either way.
+static int g_messages = 0;
+static void count_message(QtMsgType, const QMessageLogContext &, const QString &) {
+	++g_messages;
+}
+
 // ---- round trip: decode what the encoders emit, independently --------------
 //
 // project.md section 7.3 records the gap these close. The encoder checks in
@@ -871,6 +880,87 @@ int suite_graphics() {
 		ov.hide();
 		CHECK(Overlay::visible_overlays().isEmpty(), "and it deregisters on hide");
 	}
+
+	// The mosaic tier in the three configurations nothing reached, found by
+	// rendering them and reading the cells (project.md section 0d).
+	{
+		// The half-covered edge: one of a cell's two vertical samples is
+		// opaque and the other is not. Both branches above it were covered --
+		// wholly opaque, and translucent over text -- and this one was
+		// measured unreachable by the suite rather than by the code, which is
+		// section 7.9's coverage residue rather than a missing feature.
+		//
+		// The image is eight rows over two cell rows, so each cell samples
+		// image rows at a quarter and three quarters of its own height. Paint
+		// the first two rows and the last two and the edge falls INSIDE a
+		// cell in both directions, which is what the earlier version of this
+		// got wrong: painting the top HALF of the image covers cell row 0
+		// entirely and takes the opaque branch.
+		QImage img(4, 8, QImage::Format_ARGB32);
+		img.fill(Qt::transparent);
+		for (int y = 0; y < 2; ++y)
+			for (int x = 0; x < 4; ++x)
+				img.setPixelColor(x, y, QColor(255, 0, 0, 255));
+		for (int y = 6; y < 8; ++y)
+			for (int x = 0; x < 4; ++x)
+				img.setPixelColor(x, y, QColor(0, 255, 0, 255));
+		CellBuffer edge(4, 2);
+		edge.text(0, 0, QStringLiteral("abcd"));
+		edge.text(0, 1, QStringLiteral("efgh"));
+		compose_halfblocks(edge, img, QRect(0, 0, 4, 2), qRgb(0, 0, 0));
+		CHECK(edge.at(0, 0).ch == QStringLiteral("▀")
+		      && edge.at(0, 1).ch == QStringLiteral("▄"),
+		      "a half-covered cell takes the block of the covered half");
+		CHECK(edge.at(0, 0).fg.kind() == Color::Rgb
+		      && qRed(edge.at(0, 0).fg.value()) > 200
+		      && edge.at(0, 1).fg.kind() == Color::Rgb
+		      && qGreen(edge.at(0, 1).fg.value()) > 200,
+		      "and the colour of that half, not of the empty one");
+		// The uncovered half keeps the background behind it. Asserted because
+		// the opaque branch one line up DOES set bg, so a half-covered cell
+		// falling into it would still draw a block of the right colour and
+		// paint the empty half solid.
+		CHECK(edge.at(0, 0).bg.kind() == Color::Default
+		      && edge.at(0, 1).bg.kind() == Color::Default,
+		      "and leaves the uncovered half showing what is behind it");
+
+		// A placement clipped at the top-left must show the BOTTOM-RIGHT of
+		// its image. Compositing the whole thing and then the same thing
+		// shifted two cells off-screen, the surviving cells have to equal the
+		// corresponding cells of the unclipped frame -- which is what says
+		// the image was cropped rather than moved. A gradient, because a flat
+		// fill cannot tell the two apart.
+		QImage grad(4, 4, QImage::Format_ARGB32);
+		for (int y = 0; y < 4; ++y)
+			for (int x = 0; x < 4; ++x)
+				grad.setPixelColor(x, y, QColor(x * 60, y * 60, 0, 255));
+		CellBuffer whole(4, 4), clipped(4, 4);
+		compose_halfblocks(whole, grad, QRect(0, 0, 4, 4), qRgb(0, 0, 0));
+		compose_halfblocks(clipped, grad, QRect(-2, -2, 4, 4), qRgb(0, 0, 0));
+		CHECK(clipped.at(0, 0).fg == whole.at(2, 2).fg
+		      && clipped.at(1, 1).fg == whole.at(3, 3).fg,
+		      "a placement clipped at the top-left shows its bottom-right");
+		CHECK(clipped.at(2, 0).ch == QStringLiteral(" ")
+		      && clipped.at(0, 2).ch == QStringLiteral(" "),
+		      "and nothing beyond where the placement ends");
+
+		// A null image draws nothing, QUIETLY. The sampling clamps to
+		// width() - 1, which is -1 when there is no width, and
+		// QImage::pixel() answers an out-of-range coordinate with a qWarning
+		// -- so this used to print two warnings per cell, into the stderr
+		// that in a TUI is the terminal being drawn. Counting the messages is
+		// the only way to see it: the buffer is untouched either way, so
+		// every assertion about the CELLS passes against the defect.
+		g_messages = 0;
+		QtMessageHandler previous = qInstallMessageHandler(count_message);
+		CellBuffer quiet(4, 2);
+		quiet.text(0, 0, QStringLiteral("abcd"));
+		compose_halfblocks(quiet, QImage(), QRect(0, 0, 4, 2), qRgb(0, 0, 0));
+		qInstallMessageHandler(previous);
+		CHECK(g_messages == 0 && quiet.at(0, 0).ch == QStringLiteral("a"),
+		      "a null image composites nothing and says nothing");
+	}
+
 
 	return fails;
 }

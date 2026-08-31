@@ -375,6 +375,21 @@ QSize cells(QSize image_px, QSize cell_px) {
 
 void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_rect,
                        QRgb under) {
+	// A null image has nothing to composite, and asking it for pixels is not
+	// quiet about it. The sampling below clamps to width() - 1, which is -1
+	// when there is no width, and QImage::pixel() answers an out-of-range
+	// coordinate with a qWarning and the value 12345 -- so a null placement
+	// drew nothing and printed TWO WARNINGS PER CELL while doing it. In a TUI
+	// that is stderr, which is the terminal: a 40x20 placement puts 1600 lines
+	// of "QImage::pixel: coordinate (-1,-1) out of range" through the screen
+	// the library is drawing.
+	//
+	// The library's own routes are already guarded -- the overlay registry
+	// skips a null image and the pixel-surface harvest skips a zero-size
+	// widget -- so this is the public entry point answering for itself.
+	// compose_halfblocks() is declared in qtty/graphics.h and an application
+	// may call it, or append a CellImage of its own to CellBuffer::images.
+	if (src.isNull()) return;
 	const QImage img = src.convertToFormat(QImage::Format_ARGB32);
 	const QRgb under_default = under;
 	for (int cy = 0; cy < cell_rect.height(); ++cy)

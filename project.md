@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-642 checks, 0 failures, under three configurations: the offscreen
+648 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -35,8 +35,8 @@ derives everything from was an *account setting*, not a property of the
 font, and `setup()` now asks for the hinting that makes it so rather than
 inheriting whatever the desktop supplies.
 
-Whole-tree line coverage **98.64%, 2175 of 2205**, re-taken today with
-the command in §0c into a build directory removed first.
+Whole-tree line coverage **98.74%, 2199 of 2227**, re-taken with the
+command in §0c into a build directory removed first.
 
 **That number is not comparable to the 98.87% (2105 of 2129) recorded
 this morning, and the difference is the denominator rather than the
@@ -50,17 +50,22 @@ previous runs merge, and the same tree measured 2179 covered instead of
 2175. Coverage is the one number here that a stale directory moves in the
 flattering direction.
 
-The residue is 30 lines. §7.9 accounts for most of it -- `D0` deleting
+The residue is 28 lines. §7.9 accounts for most of it -- `D0` deleting
 destructors for classes only ever stack-allocated, a `qFatal` that
 aborts, an inert SIGWINCH failure path, and four font-guard branches
-measured unreachable on this font engine -- and **five sites it does not
+measured unreachable on this font engine -- and **four sites it does not
 mention, which are gaps rather than unreachable code**: `cell_buffer`'s
-`"?"` fallback, two `QPaintDevice` metric cases, the translucent branch
-of the half-block compositor, `grid_style`'s tool-button size fallthrough,
-and the **vertical** indeterminate progress bar, whose horizontal twin is
-tested. The last is the one worth taking: it is the same
-orientation-shaped gap that produced the vertical-bar defect §0a opens
-with.
+`"?"` fallback, two `QPaintDevice` metric cases, `grid_style`'s
+tool-button size fallthrough, and **two orientations nothing renders** --
+the vertical indeterminate progress bar and the vertical slider, both of
+whose horizontal twins are tested.
+
+Those last two are the ones worth taking, and they are one shape: the
+orientation nobody renders is the orientation the vertical-bar defect
+§0a opens with was found in. **The half-block compositor's translucent
+branch has left this list** -- the mosaic sweep in §7.3 reached it, which
+is what closing a coverage gap by rendering rather than by aiming at line
+numbers looks like.
 
 **What the last stretch of work was, in one line each**, because the
 pattern mattered more than any single fix: render widget configurations
@@ -133,6 +138,16 @@ an `#include` added to a library source is invisible to qmake's subdirs
 template, whose sub-Makefiles are generated once and never rescanned, so
 a sabotage of the header changed nothing and the check aimed at it passed.
 §9.5 carries the fix and what it cost backwards.
+
+**And then the graphics tier**, at the fallback a terminal with no
+graphics protocol actually gets. Eight configurations composited and the
+cells read: the crop shows the right part of the image, the half-covered
+edge is right and had never been tested, the alpha thresholds behave as
+written. **One defect, and no assertion about the cells could have found
+it** -- a null image composited nothing, correctly, and printed
+`QImage::pixel: coordinate (-1,-1) out of range` twice per cell while
+doing it, into the stderr a TUI shares with the screen it is drawing.
+§7.3 carries it.
 
 ## 0b. Open questions, and who owns them
 
@@ -314,6 +329,15 @@ Three things it taught, which the next run should carry in:
   timer. A bounded `QEventLoop` with a 400 ms `singleShot` quit, and the
   frame came out correct. Every "after the release" assertion in a drag
   probe has this hazard, and it reads exactly like a rendering defect.
+- **When the defect is in what a call SAYS rather than what it writes,
+  assert on the saying.** A null image composited nothing, which is
+  correct, and printed two warnings per cell while doing it -- into the
+  stderr that a TUI shares with the screen. Every assertion about the
+  resulting cells passes against that, because the cells are right. The
+  check installs a Qt message handler and counts. The general form: a
+  probe that only reads the artefact cannot see a fault in the noise made
+  producing it, and stdout, stderr and the terminal are the same file
+  descriptor often enough here to matter.
 - **A baseline nothing produced is not a baseline.** The scroll check
   first placed its widget below the viewport, where it is never painted:
   the rect it compared against was the one a default-constructed `QRect`
@@ -2592,6 +2616,61 @@ Missing:
   visible rows instead of hiding the rest.
 
   Nine checks, and removing the clip makes seven of them fail.
+
+  **Swept with the probe method afterwards**, at the tier a terminal with
+  no graphics protocol actually gets: eight configurations composited into
+  a buffer and the cells read one by one. Most of it was already right,
+  and two of those are worth having as checks rather than as beliefs.
+
+  **A placement clipped at the top-left shows the bottom-right of its
+  image**, which is the half of cropping that is easy to get wrong in the
+  other direction -- moving the picture instead of cropping it looks
+  identical under a flat fill. Composited whole and again shifted two
+  cells off-screen, the surviving cells equal the corresponding cells of
+  the unclipped frame, with a gradient so the two answers differ.
+  Sabotaged by sampling from frame coordinates instead of
+  placement-relative ones, which is exactly the mistake, and the check
+  goes red.
+
+  **The half-covered edge is right, and until now it was not tested at
+  all** -- it is part of §7.9's coverage residue, reached by this sweep
+  rather than by aiming at the line numbers. A cell whose two vertical
+  samples disagree takes the block of the covered half, in the colour of
+  that half, and **leaves the background alone** so what is behind the
+  uncovered half shows through. All three are asserted, the third because
+  the opaque branch one line above does set a background and a
+  half-covered cell falling into it would still look plausible.
+
+  The probe needed two attempts to reach that branch, which is worth
+  keeping: painting the top HALF of the image covers cell row 0 entirely
+  and takes the opaque branch. The edge has to fall **between a cell's two
+  samples**, not between two cells.
+
+  Sound, and recorded as results rather than gaps: the alpha thresholds
+  behave as written at 39, 40, 200 and 201; a one-pixel image stretched
+  over eight cells and a 64x64 image squeezed into one both composite
+  without sampling out of range; and two translucent placements over each
+  other blend in order, the second reading the background the first left.
+
+  **One defect, and no assertion about the cells could have found it.** A
+  null image drew nothing -- correctly -- and printed
+  `QImage::pixel: coordinate (-1,-1) out of range` **twice per cell** while
+  doing it. The sampling clamps to `width() - 1`, which is -1 when there
+  is no width, and Qt answers an out-of-range coordinate with a warning
+  and the value 12345, whose alpha is zero, so every cell was skipped and
+  the buffer came out exactly as it should. In a TUI that stderr is the
+  terminal being drawn: a 40x20 placement puts 1600 lines through the
+  screen.
+
+  `compose_halfblocks()` returns on a null image now. The library's own
+  routes were already guarded -- the overlay registry skips a null image
+  and the pixel-surface harvest skips a zero-size widget -- so this is the
+  **public entry point** answering for itself, which it has to, because
+  `qtty/graphics.h` declares it and an application may also append a
+  `CellImage` of its own to `CellBuffer::images`.
+
+  The check counts Qt's messages around the call, because that is the only
+  place the defect exists.
 **qtty asks the terminal now, and that closed two gaps at once.** It used to
 decide its colour depth and graphics tier from `$TERM`, `$TERM_PROGRAM`,
 `$COLORTERM` and `$KITTY_WINDOW_ID` alone -- every one of which is inherited
