@@ -14,8 +14,10 @@ class CellDrawn : public QWidget, public Qtty::ICellPainted {
 public:
 	using QWidget::QWidget;
 	mutable int calls = 0;
+	mutable QRect got;
 	void paint_cells(Qtty::CellBuffer &buffer, const QRect &cells) const override {
 		++calls;
+		got = cells;
 		buffer.text(cells.left(), cells.top(), QStringLiteral("CELLS"));
 	}
 	// Ordinary painting, which must NOT happen while a cell render is running.
@@ -30,6 +32,24 @@ public:
 bool buffer_has(const Qtty::CellBuffer &b, const QString &needle) {
 	return b.to_text().contains(needle);
 }
+
+// A widget claiming both interfaces. PixelSurface is tested first in the
+// filter, so this is what says which one such a class actually gets --
+// qtty/paint.h tells applications not to write one, and this is what would
+// notice the consequence changing.
+class Both : public Qtty::PixelSurface, public Qtty::ICellPainted {
+public:
+	using Qtty::PixelSurface::PixelSurface;
+	mutable int cell_calls = 0;
+	void paint_cells(Qtty::CellBuffer &buffer, const QRect &cells) const override {
+		++cell_calls;
+		buffer.text(cells.left(), cells.top(), QStringLiteral("BOTH"));
+	}
+	void paintEvent(QPaintEvent *) override {
+		QPainter p(this);
+		p.fillRect(rect(), Qt::red);
+	}
+};
 
 } // namespace
 
@@ -108,6 +128,111 @@ int suite_render(bool record) {
 			printf("PASS: outside a cell render the interface is not consulted\n");
 		else { printf("FAIL: outside a cell render the interface is not consulted\n"); ++r; }
 	}
+
+	// What the interface is handed, in the three configurations the first
+	// ICellPainted checks above do not reach: a widget inside a scrolled
+	// viewport, one hanging off the edge of the window, and one that claims
+	// both interfaces at once. Found by rendering them, which is the method
+	// project.md section 0d describes.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+
+		// The rect is in WINDOW cells, so scrolling the viewport under the
+		// widget has to move it. A rect taken from the widget's own
+		// coordinates would be right at a scroll of zero and wrong at every
+		// other, which is why the check is a difference rather than a value.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *area = new QScrollArea(&host);
+		area->setGeometry(0, ch, cw * 20, ch * 3);
+		area->setFrameShape(QFrame::NoFrame);
+		auto *inner = new QWidget;
+		inner->resize(cw * 20, ch * 9);
+		auto *drawn = new CellDrawn(inner);
+		// INSIDE the viewport at rest, which is the whole of the baseline
+		// working. Placed below it, the widget is never painted, `got` keeps
+		// the QRect it was default-constructed with, and the difference this
+		// check measures is taken against a rect nothing produced -- which is
+		// what the first version of it did, and it read as a real failure.
+		drawn->setGeometry(0, ch, cw * 6, ch);
+		area->setWidget(inner);
+		host.resize(GridMetrics::cells(22, 6));
+		host.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer b(22, 6);
+		Qtty::render_once(host, b);
+		const QRect at_rest = drawn->got;
+		const int painted_once = drawn->calls;
+		area->verticalScrollBar()->setValue(ch);
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer b2(22, 6);
+		Qtty::render_once(host, b2);
+		if (painted_once > 0 && drawn->calls > painted_once
+		    && drawn->got.y() == at_rest.y() - 1 && drawn->got.x() == at_rest.x())
+			printf("PASS: a scrolled viewport moves the rect the interface is handed\n");
+		else {
+			printf("FAIL: a scrolled viewport moves the rect the interface is handed\n"
+			       "      condition: %d,%d became %d,%d over %d then %d paint(s), "
+			       "expected one row up\n",
+			       at_rest.x(), at_rest.y(), drawn->got.x(), drawn->got.y(),
+			       painted_once, drawn->calls - painted_once);
+			++r;
+		}
+
+		// Hanging off the left edge. The rect goes negative rather than being
+		// clamped, which is what lets an implementation draw its whole width
+		// and let the part that is off-screen fall away; CellBuffer drops a
+		// write out of range rather than wrapping it onto the row above,
+		// which is the half that would corrupt a frame silently.
+		QWidget edge;
+		edge.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *hung = new CellDrawn(&edge);
+		hung->setGeometry(-cw * 3, ch, cw * 8, ch);
+		edge.resize(GridMetrics::cells(20, 3));
+		edge.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer eb(20, 3);
+		Qtty::render_once(edge, eb);
+		bool wrapped = false;
+		for (int x = 0; x < eb.cols(); ++x)
+			if (eb.at(x, 0).ch != QStringLiteral(" ")) wrapped = true;
+		if (hung->got.x() == -3 && !wrapped)
+			printf("PASS: a widget off the left edge gets a negative rect, "
+			       "and what falls outside is dropped\n");
+		else {
+			printf("FAIL: a widget off the left edge gets a negative rect, "
+			       "and what falls outside is dropped\n"
+			       "      condition: rect x %d, row above %s\n",
+			       hung->got.x(), wrapped ? "written" : "clear");
+			++r;
+		}
+
+		// Both interfaces on one class. It compiles and the pixel path wins,
+		// because the filter tests for a surface first -- so paint_cells() is
+		// never called and the widget is harvested as an image with no
+		// warning. qtty/paint.h says not to do this; this is what says the
+		// consequence has not quietly changed, in either direction.
+		QWidget bh;
+		bh.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *both = new Both(&bh);
+		both->setGeometry(0, 0, cw * 8, ch * 2);
+		bh.resize(GridMetrics::cells(20, 4));
+		bh.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer bb(20, 4);
+		QVector<Qtty::CellImage> placements;
+		Qtty::render_once(bh, bb, &placements);
+		if (both->cell_calls == 0 && placements.size() == 1
+		    && !buffer_has(bb, QStringLiteral("BOTH")))
+			printf("PASS: a widget claiming both interfaces takes the pixel path\n");
+		else {
+			printf("FAIL: a widget claiming both interfaces takes the pixel path\n"
+			       "      condition: paint_cells called %d time(s), "
+			       "%d placement(s)\n", both->cell_calls, int(placements.size()));
+			++r;
+		}
+	}
+
 
 	// A caret is a fill, and a fill used to erase the cell it lands in.
 	// QLineEdit paints its text cursor as a ~1px-wide rect in the Text colour

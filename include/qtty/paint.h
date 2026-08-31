@@ -29,6 +29,19 @@ class CellPaintEngine;
 // `cells` is the widget's own rectangle in buffer coordinates: it already
 // carries the compositor's origin, so an implementation draws at cells.left()
 // and cells.top() and maps nothing itself.
+//
+// The buffer handed over is the WHOLE frame, and `cells` is where the widget
+// is rather than a boundary anything enforces. An implementation that writes
+// outside it writes over its neighbours, and nothing here notices -- measured,
+// not inferred. Two things follow. Stay inside `cells`; and a cell outside the
+// buffer is dropped rather than wrapped, so a widget scrolled or positioned
+// partly off-screen may draw its whole rect and let the edges fall away.
+//
+// A widget must not inherit both this and PixelSurface. It compiles, and the
+// pixel path wins: qtty tests for a surface first, so paint_cells() is never
+// called and the widget is harvested as an image with no warning. The two
+// interfaces answer opposite questions -- "my content is cells" against "my
+// content is pixels" -- and a class claiming both has not answered either.
 class ICellPainted {
 public:
 	virtual ~ICellPainted() = default;

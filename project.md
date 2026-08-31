@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-639 checks, 0 failures, under three configurations: the offscreen
+642 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -121,6 +121,18 @@ the gap between its indicator and its label. `CellPaintEngine::line()`
 takes the cells a line **covers** now rather than the ones it touches,
 which is the half-cell test `fill_rectf()` was already applying one
 function away.
+
+**And then `ICellPainted`**, where the interface itself came out sound --
+a scrolled viewport, an off-edge widget and a sub-cell one are all handed
+what they should be, and three of those are checks now -- and the two
+things worth having were found beside it. **A `QScrollArea` does not clip
+its content**, so anything scrolled out of view paints over its
+neighbours, with an ordinary `QLabel` as the control: that is §8.7, and it
+moves that entry from untidy to urgent. And **the build did not rebuild**:
+an `#include` added to a library source is invisible to qmake's subdirs
+template, whose sub-Makefiles are generated once and never rescanned, so
+a sabotage of the header changed nothing and the check aimed at it passed.
+§9.5 carries the fix and what it cost backwards.
 
 ## 0b. Open questions, and who owns them
 
@@ -281,6 +293,18 @@ Three things it taught, which the next run should carry in:
   been green for weeks can be answering a different question than its name
   says, and a sabotage run somewhere else in the file is what surfaces it.
 
+  **A sixth, and the worst of them, because it was not in the probe at
+  all: the binary under test was not the one that had been built.** An
+  `#include` added to a library source is invisible to qmake's subdirs
+  template (§9.5), so a sabotage of the header changed nothing, 27 checks
+  elsewhere went red and the one aimed at the sabotaged code passed. The
+  reading that presents itself is "this check does not discriminate" and
+  it is wrong. **`grep -c SABOTAGE` says the edit applied to the SOURCE;
+  it says nothing about the object.** When a sabotage produces a result
+  that makes no sense -- and a check passing while its own subject is
+  broken is exactly that -- `touch` the `.cpp` and run it again before
+  believing anything.
+
   **A fifth, and it is the one to carry into any probe that drives input:
   some of what a widget does needs TIME to pass, not events to be
   processed.** A tab dragged and dropped rendered wrongly afterwards --
@@ -290,6 +314,12 @@ Three things it taught, which the next run should carry in:
   timer. A bounded `QEventLoop` with a 400 ms `singleShot` quit, and the
   frame came out correct. Every "after the release" assertion in a drag
   probe has this hazard, and it reads exactly like a rendering defect.
+- **A baseline nothing produced is not a baseline.** The scroll check
+  first placed its widget below the viewport, where it is never painted:
+  the rect it compared against was the one a default-constructed `QRect`
+  carries, and the check failed for that reason and looked like a real
+  finding. It asserts the widget was painted in both frames now. Same
+  shape as the vacuous pass, in a difference rather than in a gate.
 - **Vary one thing.** The first check-box probe made one item checked
   *and* mnemonic-marked and the other neither, so the rule it found could
   have come from either. It cost one more run to separate them, and the
@@ -310,8 +340,8 @@ Three things it taught, which the next run should carry in:
   the model and not on the screen. That is the lens, and it is not spent.
   It has since been applied to the item-view roles, to what is drawn
   during a drag, and to the dialogs beyond the standard three -- §7.2
-  carries all three. What is left unswept: anything an application draws
-  itself through `ICellPainted`, the graphics tier's placements against a
+  carries all three, and §7.5 carries the `ICellPainted` sweep that
+  followed. What is left unswept: the graphics tier's placements against a
   text-only terminal, and a screen at a size nothing has rendered at --
   one column wide, or eighty by three.
 
@@ -3144,6 +3174,33 @@ which is design.md §16's figure.
   painting was skipped -- which is the discriminating pair, since the
   first two pass while the widget is still wrong; and consulting the
   interface outside a render reddens the inertness check alone.
+
+  **Swept with the probe method afterwards**, in the configurations those
+  four checks do not reach, and the interface came out sound. A widget
+  inside a scrolled viewport is handed a rect in **window** cells that
+  moves with the scroll; one hanging three cells off the left edge is
+  handed a negative rect and what falls outside is dropped rather than
+  wrapping onto the row above; a child widget paints over the cell
+  painting, which is what a child should do; and a widget four pixels
+  across is handed one whole cell, because the alternative to rounding it
+  up is handing it nothing to draw in. Three of those are checks now.
+
+  **Two things the sweep found are contract rather than code, and both are
+  written into `qtty/paint.h` where an implementer will meet them.** The
+  buffer handed to `paint_cells()` is the **whole frame** and `cells` is
+  where the widget is rather than a boundary anything enforces -- measured
+  by writing outside it, which lands on the neighbours with nothing
+  noticing. And **a class inheriting both `ICellPainted` and
+  `PixelSurface` gets the pixel path**: the filter tests for a surface
+  first, so `paint_cells()` is never called and the widget is harvested as
+  an image with no warning. That is now documented, and pinned by a check
+  so it cannot change silently in either direction. Which of the two
+  *should* win is not a question this raises -- the interfaces answer
+  opposite questions, and a class claiming both has answered neither.
+
+  The sweep's other two findings are elsewhere, because neither is the
+  interface's: a scroll area not clipping is §8.7, and a build that did
+  not rebuild is §9.5.
 - **The whole of design.md §7's Tier-2 hint system** -- `setPriority`,
   `setCompact`, `CompactionPass`, the `"qtty.cells"` property -- and the
   CI check banning `setContentsMargins`, `setSpacing`, `setFixedSize` and
@@ -3957,6 +4014,17 @@ Found by the drag sweep (§7.2) rather than by looking for it: a header
 being resized is how a column comes to be wider than the viewport that
 holds it.
 
+**The `ICellPainted` sweep then found the case that makes this urgent
+rather than untidy: a `QScrollArea` does not clip its content.** A widget
+inside one, scrolled so that its top row is above the viewport, paints
+that row over whatever is above the scroll area. Measured with a label
+reading `ABOVE THE AREA` above a three-row viewport: scrolled by one row,
+the frame came back `XXXXXXTHE AREA`. The control is what places it -- an
+**ordinary** `QLabel` in exactly the same position does the same thing, so
+this is not the interface's doing and not the delegate's, it is the clip
+nobody applies. Anything an application puts in a scroll area is affected,
+which is a different order of exposure from a stray rule beside a table.
+
 ## 9. Build and repository conventions
 
 A harmonization pass ran on **2026-08-26** and moved the tree onto the
@@ -4086,6 +4154,51 @@ Both qmake targets take `$(HEADERS)` as a prerequisite now, so any header
 change re-runs qmake and regenerates the snapshot. `$(HEADERS)` also
 gained `src/*.h`, which it had never matched -- the internal header at
 the top of `src/` was invisible to it, which is how the gap surfaced.
+
+**And that mitigation did not reach the library, which was found the same
+way a month later.** It is not only a header that can be new: an
+**`#include`** can be. `src/render/cell_paint.cpp` gained one for
+`src/cell_geometry.h`; `make test` reported success; `cell_paint.o` was
+not rebuilt, because its dependency list had been written before the
+include existed. A sabotage of the header then failed to change the
+binary -- 27 checks in other files went red and **the one check aimed at
+the sabotaged code passed**, which reads exactly like a check that does
+not discriminate. `touch`ing the `.cpp` is what said otherwise.
+
+The cause is qmake's subdirs template, and `$(HEADERS)` cannot reach it.
+The generated top-level Makefile recurses like this:
+
+    cd src/ && ( test -e Makefile || qmake -o Makefile ... ) && make -f Makefile
+
+**`test -e Makefile` means a sub-Makefile is generated once.** Re-running
+the top-level qmake regenerates the top-level Makefile and leaves every
+sub-Makefile exactly as it was, still carrying the scan taken when the
+build directory was first configured. `build-test/` escaped this by
+accident of shape: it is a plain app project with its own rule, and that
+rule re-runs qmake unconditionally when it is out of date.
+
+So the `$(BUILD_DIR)/Makefile` rule now removes the sub-Makefiles before
+re-running qmake. They are **named rather than found** -- the list is
+derived from the `.pro` files already in `$(PROFILES)`, so it cannot
+drift from the set qmake recurses into and no wildcard decides what gets
+deleted:
+
+    SUBDIR_MAKEFILES = $(addsuffix Makefile, \
+                         $(addprefix $(BUILD_DIR)/, \
+                           $(dir $(filter-out qtty.pro qtty.pri,$(PROFILES)))))
+
+Confirmed by doing it again with the fix in place: sabotaging
+`cell_geometry.h` alone now rebuilds `cell_paint.o` and reddens the check
+aimed at it, with nothing touched but the header. It costs one qmake run
+per subdirectory on the configure step and nothing per build.
+
+**What that costs backwards is worth stating plainly.** The refactor that
+introduced the include was verified against a stale object: the "every
+check and both fixtures unchanged" proof was taken from a binary that did
+not contain the change. It was re-verified afterwards. The other commits
+of that session were checked for the same exposure and are clean -- none
+of them added an `#include` to a library source, and the test build
+regenerates its own scan.
 
 ### 9.6 The Makefile interface
 

@@ -111,8 +111,39 @@ all: $(LIB)
 # captured at configure time -- is the class of fault build-and-commit.md
 # calls load-bearing precisely because it produces a wrong answer rather than
 # an error.
+# The generated Makefile in each SUBDIR, named rather than found: every one of
+# these paths is derived from a .pro file already listed in PROFILES, so the
+# list cannot drift from the one qmake recurses into and no wildcard decides
+# what gets removed.
+#
+# They are removed because qmake's subdirs template recurses with
+#
+#     cd src/ && ( test -e Makefile || qmake -o Makefile ... ) && make -f Makefile
+#
+# and that guard means a sub-Makefile is generated ONCE. Re-running the
+# top-level qmake regenerates the top-level Makefile and leaves every
+# sub-Makefile exactly as it was -- carrying the dependency scan taken the
+# first time it was configured.
+#
+# So the mitigation one rule down, depending on $(HEADERS) so that qmake
+# re-runs, does not reach the objects. Measured here, 2026-08-31: an #include
+# of src/cell_geometry.h was added to src/render/cell_paint.cpp, `make test`
+# reported success, and cell_paint.o was not rebuilt -- its dependency list had
+# been written before the include existed. A sabotage of the header then failed
+# to change the binary, 27 checks in other files went red and the one aimed at
+# the sabotaged code passed, which reads exactly like a test that does not
+# discriminate. It took `touch`ing the .cpp to find out otherwise.
+#
+# That is section 9.5's fault reached by a second door: not a header that is
+# new, but an include that is. Removing them costs one qmake run per subdir on
+# the configure step and nothing per build.
+SUBDIR_MAKEFILES = $(addsuffix Makefile, \
+                     $(addprefix $(BUILD_DIR)/, \
+                       $(dir $(filter-out qtty.pro qtty.pri,$(PROFILES)))))
+
 $(BUILD_DIR)/Makefile: $(PROFILES) VERSION $(HEADERS)
 	mkdir -p $(BUILD_DIR)
+	rm -f $(SUBDIR_MAKEFILES)
 	cd $(BUILD_DIR) && $(QMAKE) $(CURDIR)/qtty.pro $(QMAKE_CONFIG) QMAKE_CXX=$(CXX)
 
 # FORCE, and it is load-bearing rather than belt-and-braces. A rule listing

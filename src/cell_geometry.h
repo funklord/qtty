@@ -110,6 +110,29 @@ inline CellPaintDevice *cell_target(QPainter *p) {
 	return nullptr;
 }
 
+// The arithmetic half of cells_of(), separated from it because two callers
+// need the answer without a QPainter to ask about. The cell paint filter has a
+// widget and a paint event and no painter at all, and it had its own copy of
+// these four lines -- twice, once for ICellPainted and once for a pixel
+// surface -- which is the third and fourth copy of a rule this header exists
+// to keep to one. They agreed when they were written; nothing was going to
+// tell anybody when they stopped.
+//
+// A widget at least one cell wide and tall whatever its pixels say: a widget
+// four pixels across still has to be able to draw something, and the
+// alternative to rounding it up is handing it nothing to draw in. That is not
+// the half-cell coverage rule fill_rectf() and line() apply, and it is not
+// meant to be -- those decide whether a MARK stands for a cell, this decides
+// where a WIDGET is.
+inline QRect cells_of_rect(const QRect &r, const QWidget *m, const QPoint &origin) {
+	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+	QPoint tl = m ? m->mapTo(m->window(), r.topLeft()) : r.topLeft();
+	tl += origin;
+	return QRect(qRound(tl.x() / double(cw)), qRound(tl.y() / double(ch)),
+	             qMax(1, qRound(r.width() / double(cw))),
+	             qMax(1, qRound(r.height() / double(ch))));
+}
+
 // A widget-space rectangle in buffer cells. Measured F2: the redirection
 // offset QWidget::render() applies is carried by neither transform() nor
 // combinedTransform(), so the origin comes from the widget being painted --
@@ -117,14 +140,8 @@ inline CellPaintDevice *cell_target(QPainter *p) {
 // compositor's origin.
 inline QRect cells_of(const QRect &r, QPainter *p, CellPaintDevice *dev,
                       const QWidget *w) {
-	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	const QWidget *paint_widget = dynamic_cast<QWidget *>(p->device());
-	const QWidget *m = paint_widget ? paint_widget : w;
-	QPoint tl = m ? m->mapTo(m->window(), r.topLeft()) : r.topLeft();
-	tl += dev->origin;
-	return QRect(qRound(tl.x() / double(cw)), qRound(tl.y() / double(ch)),
-	             qMax(1, qRound(r.width() / double(cw))),
-	             qMax(1, qRound(r.height() / double(ch))));
+	return cells_of_rect(r, paint_widget ? paint_widget : w, dev->origin);
 }
 
 // Shorten `s` to fit `cells` columns, counting grapheme clusters and their

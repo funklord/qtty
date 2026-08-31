@@ -6,6 +6,7 @@
 #include <QWidget>
 #include "qtty/grid.h"
 #include "qtty/theme.h"
+#include "../cell_geometry.h"
 #include <QGuiApplication>
 #include <QPalette>
 #include <QPainterPath>
@@ -62,12 +63,7 @@ public:
 		auto *painted = dynamic_cast<ICellPainted *>(o);
 		if (!painted) return false;
 
-		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
-		const QPoint tl = w->mapTo(w->window(), QPoint(0, 0)) + dev->origin;
-		const QRect cells(qRound(tl.x() / double(cw)), qRound(tl.y() / double(ch)),
-		                  qMax(1, qRound(w->width()  / double(cw))),
-		                  qMax(1, qRound(w->height() / double(ch))));
-		painted->paint_cells(dev->buffer(), cells);
+		painted->paint_cells(dev->buffer(), cells_of_rect(w->rect(), w, dev->origin));
 		return true;                               // consumed: no Channel B pass
 	}
 
@@ -82,11 +78,7 @@ private:
 		w->render(&img);
 		harvesting_ = false;
 
-		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
-		const QPoint tl = w->mapTo(w->window(), QPoint(0, 0)) + dev->origin;
-		const QRect cells(qRound(tl.x() / double(cw)), qRound(tl.y() / double(ch)),
-		                  qMax(1, qRound(w->width()  / double(cw))),
-		                  qMax(1, qRound(w->height() / double(ch))));
+		const QRect cells = cells_of_rect(w->rect(), w, dev->origin);
 
 		// Content-addressed, because a surface is repainted rather than
 		// cached: a key taken from the widget would tell the kitty tier the
