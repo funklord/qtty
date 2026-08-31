@@ -42,6 +42,82 @@ The interaction sweep that followed found **nothing** wrong, which is
 recorded as a result rather than a gap: space, arrows and clicks reach
 every common widget and change what they should.
 
+## 0c. How to re-take what this document claims
+
+Every number here was measured, and a measurement without its command is
+one nobody can re-take. `make check`, `make test-platforms` and
+`make coverage F=<file>` are in the Makefile and documented there. These
+are the ones that were typed by hand:
+
+**Whole-tree coverage.** `make coverage` answers for one file; this is the
+tree:
+
+    make test BUILD_DIR=build-cov \
+      QMAKE_CONFIG='CONFIG+=release CONFIG-=debug \
+                    QMAKE_CXXFLAGS+=--coverage QMAKE_LFLAGS+=--coverage'
+    cd build-cov/src
+    for f in *.gcno; do gcov "${f%.gcno}" >/dev/null 2>&1; done
+    awk -F: '$1 ~ /^ *[0-9]+$/ {ex++} $1 ~ /^ *#####/ {un++} \
+             END {printf "%d of %d, %.2f%%\n", ex, ex+un, 100.0*ex/(ex+un)}' *.cpp.gcov
+
+Add `{print "  " $2 ": " $3}` to the `#####` branch to name the uncovered
+lines. `gcov -f <file>.cpp` is what separates a `D0` destructor from a `D2`
+and is why the residue is what it is.
+
+**The third configuration.** `make test-platforms` covers offscreen and the
+hostile environment; xcb is run directly, and needs the stack dump off
+because QtTest forks gdb on a fatal signal:
+
+    QTTY_QPA_PLATFORM=xcb QTEST_DISABLE_STACK_DUMP=1 ./build-test/qtty-tests
+
+**The beerssh probe matrix**, whose results are in `doc/beerssh.md` along
+with when to re-take them:
+
+    QTTY_NEGOTIATE_OUT=/tmp/out.txt \
+      beerssh --term-features=<spec> -e <path>/qtty-negotiate --probes
+
+The output goes to a file because stdout is the terminal under test.
+Reading it needs the raw byte count, not only the parsed lines: a reply
+that shrank rather than vanished is still a reply.
+
+## 0d. The method that found eleven defects, and how to run it again
+
+Not a tool -- a habit, and the most transferable thing here. **Render a
+widget configuration nothing exercises, print what a terminal would show,
+and read it.**
+
+Add a temporary block to `suite_widgets` that renders each candidate into a
+`CellBuffer` and prints its rows; run `make test`; read the output; delete
+the block. Candidates are configurations a test would not think to build:
+a disabled control, a tristate checkbox's middle state, a vertical
+progress bar, a west tab bar, an indeterminate range, a checkable item
+view, a closable tab, an arrow-type tool button.
+
+Three things it taught, which the next run should carry in:
+
+- **Print, do not assert.** The value is in reading output nobody
+  predicted. An assertion can only fail against what its author already
+  suspected.
+- **The probe has its own bugs, and they read as findings.** One probe
+  used a widget after the host that owned it was destroyed and segfaulted;
+  another rendered a `QMessageBox` and reported the severity icon missing
+  when it had arrived as a 5x3-cell image placement that `to_text()` does
+  not rasterise. **Check the instrument before believing the result** --
+  three times in one day it was the instrument.
+- **Every one of the eleven was the same shape**: a state that existed in
+  the model and not on the screen. That is the lens, and it is not spent --
+  it was applied to widgets and to interaction, not yet to item-view roles,
+  dialogs beyond the standard three, or anything drawn while a drag is in
+  progress.
+
+**The sabotage discipline that goes with it**, because a passing new test
+is not evidence: break the code the test claims to defend, confirm the edit
+actually applied (`grep -c SABOTAGE`), run, confirm the *named* check
+fails, restore, confirm the count is zero. Two sabotages this session
+silently failed to apply -- their anchors matched twice -- and the green
+run that followed would have read as "the test does not discriminate" had
+the count not been checked.
+
 ## 0a. Open questions, and who owns them
 
 An index, because these are recorded where they were found -- scattered
@@ -91,6 +167,35 @@ bent on purpose -- so those lines are conventional and are not a special
 list. But *suspect the check before the code* says to establish which it
 was, and I did not. If the lexer fix changes which form is required, they
 are candidates along with several hundred others.
+
+## 0e. What I would pick up next
+
+In the order I would take them, and none is blocked:
+
+1. **Run the probe method at the item-view roles.** `CellItemDelegate` and
+   the roles it honours are built and covered, but the sweep above never
+   rendered a delegate returning a decoration, a font, an alignment or a
+   size hint taller than a row. That is the largest unswept surface and it
+   is the same shape that produced the check-indicator defect.
+2. **Sweep what is drawn during a drag.** Every rendering probe here took a
+   still frame. A splitter mid-drag, a slider with the button held, an item
+   view rubber-banding and a scrollbar thumb being moved are states the
+   compositor sees and no test has rendered.
+3. **The `QStyle::StandardPixmap` question**, once decided, closes the dock
+   title buttons and the message-box severity together. It is one small
+   table and the two symptoms are the same cause; neither is worth fixing
+   alone.
+4. **A second Qt version.** Everything here is measured under one, and the
+   beerssh session found a probe that passed on 6.10 and failed on 6.4.2 --
+   a band assumed to start at y=0. I checked and found no instance here,
+   but a single-version run cannot distinguish "no version-dependent
+   probe" from "no second version", and that stays an unmeasured exposure
+   rather than a clean bill.
+5. **`suite_budget` prints and does not assert**, deliberately, because the
+   same binary rendered the same fixture in 1.35 ms and 2.41 ms minutes
+   apart. If a stable assertion is ever wanted it has to be a
+   *relationship* -- damage-limited work against full-redraw work, in cells
+   rather than milliseconds -- not a threshold on a clock.
 
 ## 0. What this is
 
