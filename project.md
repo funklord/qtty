@@ -162,6 +162,16 @@ and §7.8 gained the measurement that gives its open question a face: a
 window with Qt's default layout margins **loses its top row**, which on an
 80x1 terminal is the whole screen.
 
+**And the second Qt version, which §0e has wanted since it was written.**
+Qt 5.15.15 is installed beside 6.8.2, so the build was simply tried: the
+public headers compile clean, and the library fails on **three usages in
+two files**, named in §8.1. Writing those three conditionals is the
+decision §8.1 records as open, so the axis is priced rather than taken.
+**One of the five errors was a defect and not a version difference** --
+`grid_style.cpp` uses `QAction` and never included `<QAction>`, compiling
+by transitive luck on a class Qt 6 moved between modules. That include is
+right on every version and is fixed.
+
 **One branch was measured and rejected rather than argued about.** Letting
 the window take the terminal's size -- dropping the layout's minimum, so a
 short terminal is not simply clipped -- produces overlapping garbage:
@@ -329,6 +339,15 @@ Three things it taught, which the next run should carry in:
   been green for weeks can be answering a different question than its name
   says, and a sabotage run somewhere else in the file is what surfaces it.
 
+  **An eighth, and the cheapest to fall for: the same command run twice
+  does not measure twice.** The Qt 5 error list was collected with
+  `make -k`, and the count taken by running the same pipeline again --
+  which reported **zero errors**, because make had nothing left to redo
+  and printed nothing to count. A second invocation of a build command is
+  not a second measurement; it is a measurement of what changed since the
+  first, which is usually nothing. Take the count from the run that did
+  the work.
+
   **A seventh, and it is the one this document had already warned about
   in §7.1: a check written under a redirected descriptor asks the wrong
   terminal.** The odd-size sweep's zero-rows check was placed just below
@@ -437,12 +456,17 @@ In the order I would take them, and none is blocked:
    as a program that would not start. Anything else derived from the
    *user's* configuration rather than the environment's is reachable the
    same way, and fontconfig is unlikely to be the only such thing.
-5. **A second Qt version.** Everything here is measured under one, and the
-   beerssh session found a probe that passed on 6.10 and failed on 6.4.2 --
-   a band assumed to start at y=0. I checked and found no instance here,
-   but a single-version run cannot distinguish "no version-dependent
-   probe" from "no second version", and that stays an unmeasured exposure
-   rather than a clean bill.
+5. **A second Qt version, and it is now priced rather than open.** Qt
+   5.15.15 is installed beside 6.8.2 and the build was tried against it:
+   the public headers compile clean, and the library needs **three
+   conditionals in two files** -- §8.1 names them. Writing those three is
+   the decision §8.1 records as open, so the axis is reachable and not
+   free. It is also the wrong axis for what this item wanted: a version
+   sweep finds assumptions at run time, and Qt 5 cannot run the suite
+   without the port. **A second Qt 6 point release would answer it with
+   no decision at all**, and this machine has only one -- which is what
+   keeps the beerssh exposure (a probe that passed on 6.10 and failed on
+   6.4.2) an unmeasured one here rather than a clean bill.
 6. **`suite_budget` prints and does not assert**, deliberately, because the
    same binary rendered the same fixture in 1.35 ms and 2.41 ms minutes
    apart. If a stable assertion is ever wanted it has to be a
@@ -4037,6 +4061,47 @@ This is entangled with OQ-3, which is still open. Note the design's
 parenthesis is a claim about the *products*, not about qtty -- so the
 question is not only "which build system" but "does the Qt 5.15 half of
 the requirement still stand".
+
+**The cost half of that question is measured now, and it is smaller than
+it reads.** Qt 5.15.15 is installed on this machine beside 6.8.2, so the
+Makefile's own `QMAKE=` override is all it takes:
+
+    make BUILD_DIR=build-qt5 QMAKE=/usr/bin/qmake
+    make -k -C build-qt5/src 2>&1 | grep error:
+
+**The public headers are clean.** A translation unit that includes
+`qtty/qtty.h` and nothing else compiles under Qt 5.15 with no errors, so
+an application on Qt 5 could include qtty today. What does not compile is
+three usages in two implementation files:
+
+| Usage | Where | Qt 5 equivalent |
+|---|---|---|
+| `QPalette::Accent` | `src/core/theme.cpp` | absent before Qt 6.6 |
+| `QAction::associatedObjects()` | `src/runtime/input_router.cpp`, twice | `associatedWidgets()` |
+| `QKeyCombination` | `src/runtime/input_router.cpp` | the older combined `int` |
+
+That is the whole of it for the library. **None of it is fixed here**,
+because writing those three conditionals *is* the decision this section
+records as open -- §8.1 says the code has "no version conditionals
+anywhere", and adding the first three would settle by hand what belongs
+to the copyright holder.
+
+**One of the five errors was a defect rather than a version difference,
+and it is fixed.** `src/grid/grid_style.cpp` uses `QAction` through
+`QToolButton::defaultAction()` and had never included `<QAction>`; it
+compiled because something else drags the header in. That is luck rather
+than a fact about the file, and Qt 6 **moved `QAction` from QtWidgets to
+QtGui**, which is exactly the reorganisation that changes what a header
+brings with it. The include is right on every version and is not a
+position on which versions are supported.
+
+**What this does not measure is the thing §0e wanted a second version
+for.** A version axis finds assumptions at *run* time -- the beerssh
+session's probe that passed on 6.10 and failed on 6.4.2 -- and reaching
+that here means compiling the suite, which means the three conditionals,
+which is the decision. So the exposure §0e names is unchanged: it is now
+priced rather than closed. A second Qt **6** would answer it without any
+decision at all, and this machine has only one.
 
 ### 8.2 The L6 API shape
 

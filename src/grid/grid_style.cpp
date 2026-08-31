@@ -2,6 +2,15 @@
 #include "qtty/grid.h"
 #include "qtty/paint.h"
 #include "../cell_geometry.h"
+// QAction, which this file uses through QToolButton::defaultAction() and had
+// never included. It compiled because something else drags it in -- and that
+// is luck rather than a fact about this file: Qt 6 MOVED QAction from
+// QtWidgets to QtGui, which is exactly the kind of reorganisation that
+// changes what a header brings with it. Found by building against Qt 5.15,
+// where nothing here drags it in and the type is incomplete at the point of
+// use. Including what the file uses is right on every version and is not a
+// position on which versions are supported (section 8.1).
+#include <QAction>
 #include <QStyleFactory>
 #include <QStyleOption>
 #include <QStyleOptionButton>
