@@ -196,8 +196,33 @@ void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &pm, const QRect
 	if (!c.isValid()) return;
 	if (c.width() >= 2 && c.height() >= 2)      // section 5.7: real image -> placement
 		dev_->placements.append({quint64(pm.cacheKey()), c, pm});
-	else                                        // tiny icon -> glyph substitution (section 8.6)
-		dev_->buffer().text(c.left(), c.top(), QStringLiteral("▒"));
+	else {
+		// Too small to be a picture -- an icon -- so it is substituted by a
+		// glyph (section 8.6). The substitution covers the CELLS THE IMAGE
+		// OCCUPIES rather than one of them, which for a 1x1 icon is the same
+		// thing and for anything wider is not.
+		//
+		// Measured on a tab being dragged. Qt moves a movable tab by grabbing
+		// it into a pixmap inside a private widget, 82x19 px here, which is
+		// 8 cells by 1 -- so it failed "two cells in each direction", took
+		// this branch, and marked ONE cell. The other seven went on showing
+		// the tab bar underneath, which is not what the widget tree says is
+		// there: a picture covering eight cells left seven of them stale.
+		// One shaded block is an honest "a picture is here"; seven cells of
+		// something that has moved away is not.
+		//
+		// Whether a wide, short image should be a PLACEMENT instead of a
+		// glyph at all is a separate question and a real one -- 8x1 is a
+		// perfectly good kitty placement, and the mosaic tier has two
+		// vertical samples per cell to draw it with. It is not answered here,
+		// because relaxing the threshold by area or by aspect would also
+		// promote the 2x1 that a 16x16 icon becomes, and that icon arriving
+		// as a shaded block rather than a glyph is the fault this branch
+		// exists to prevent.
+		Cell v;
+		v.ch = QStringLiteral("▒");
+		dev_->buffer().fill(c, v);
+	}
 }
 
 void CellPaintEngine::drawPolygon(const QPointF *pts, int n, PolygonDrawMode) {

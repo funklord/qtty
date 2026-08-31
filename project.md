@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-656 checks, 0 failures, under three configurations: the offscreen
+658 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -182,6 +182,16 @@ palette comes out red. Three answers to one question in one program, and
 only one of them was the rule. The rule is shared now and all three agree;
 §7.2 carries it, and the entry has left §0b.
 
+**The dragged tab was the third, and it went further: the option the entry
+recorded does not exist.** `QMovableTabWidget` carries no `Q_OBJECT`, so
+the widget Qt drags a tab in reports its class as `QWidget` -- there is no
+name to match and never was. The symptom belonged to
+`CellPaintEngine::drawPixmap()`, whose icon substitution marked **one**
+cell for a picture 8 cells wide and left the other seven showing what was
+underneath. It covers the image's cells now, which for the 1x1 icon the
+rule was written for is the same thing: the whole suite draws two glyph
+substitutions and both are 1x1.
+
 **The table grid was the second, immediately after.** It was written up as
 "what should a table's grid be on a cell grid", and the tree had answered
 that four times already -- `CE_HeaderSection`, `PE_PanelToolBar`,
@@ -222,7 +232,7 @@ Owned by the copyright holder:
 | Mapping `QStyle::StandardPixmap` to glyphs, which is qtty deciding what Qt's iconography looks like in a terminal | *Qt's standard iconography* |
 | Whether a one-row `QLineEdit` should be bracketed as the combo and spin box already are, at the measured cost of a second bracket inside each of those | §7.2, *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: a groove click setting the value where it landed | *the interaction sweep* |
-| Whether Channel A suppresses the private `QMovableTabWidget`, so a dragged tab stops being a picture the terminal cannot show | §7.2 |
+| How to tell an icon from a picture, so a wide short image can be a placement rather than a shaded block -- the 2x2 threshold promotes neither 8x1 nor the 2x1 an icon becomes | §7.2 |
 | Whether a text selection keeps the desktop's `QPalette::Highlight` RGB while an item view's selection is reverse video | §7.2, §7.7 |
 | Whether Channel A clips, which design.md says it does and the code does not | §8.7 |
 | The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work | §7.9, §11 |
@@ -2648,16 +2658,40 @@ answers, exactly as the disabled item view did.
 
 **Two are recorded rather than fixed.**
 
-- **A dragged tab is a picture.** With `setMovable(true)`, Qt moves a tab
-  by grabbing it into a `QPixmap` inside a private `QMovableTabWidget`
-  and hiding the original, so mid-drag the bar renders `───────▒One]` --
-  the pixmap arriving as the sub-two-cell substitute `▒`, and the tab's
-  own slot as the bar's dashes. The reorder itself works and the bar is
-  correct once the drag ends. The options are to leave it, or to
-  suppress that widget in Channel A so the bar stays readable and the tab
-  simply does not follow the pointer; the second costs matching a private
-  Qt class by name. **Owned by the copyright holder**, and small: movable
-  tabs are opt-in.
+- ~~**A dragged tab is a picture.**~~ **The option this recorded does not
+  exist, and the symptom was somebody else's.** With `setMovable(true)`,
+  Qt moves a tab by grabbing it into a `QPixmap` inside a private widget
+  and hiding the original. The recorded choice was to suppress that widget
+  in Channel A, "at the cost of matching a private Qt class by name" --
+  and there is no name to match. Measured: during a drag the visible child
+  of the `QTabBar` reports `metaObject()->className()` as **`QWidget`**,
+  because `QMovableTabWidget` carries no `Q_OBJECT`. A class-name test
+  would match every plain widget in every application.
+
+  What produced the symptom was not the tab at all. The moving pixmap is
+  82x19 px, which is **8 cells by 1**, so it fails
+  `CellPaintEngine::drawPixmap()`'s "two cells or more in each direction"
+  and takes the icon branch -- which marked **one** cell and left the other
+  seven showing the tab bar underneath. A picture covering eight cells and
+  leaving seven of them stale is not a judgement about tabs; it is the
+  screen disagreeing with the widget tree.
+
+  The substitution covers the cells the image occupies now. For the 1x1
+  icon the rule was written for that is the same thing, which is why the
+  blast radius is nil: **the whole suite draws exactly two glyph
+  substitutions and both are 1x1**. The tab drag renders as eight shaded
+  cells moving along the bar -- an honest "a picture is here" -- instead
+  of a smear of stale label.
+
+  **What is left open is real, smaller, and was hiding behind the other.**
+  Should a wide, short image be a *placement* rather than a glyph? 8x1 is
+  a perfectly good kitty placement and the mosaic tier has two vertical
+  samples per cell to draw it with. It is not taken here because relaxing
+  the threshold by area or by aspect would also promote the 2x1 that a
+  16x16 icon becomes, and an icon arriving as a shaded block rather than a
+  glyph is the fault that branch exists to prevent. Telling an icon from a
+  picture is a decision, not a threshold to pick in passing. **Owned by
+  the copyright holder.**
 - **A text selection is the desktop's colour, and an item view's is
   not.** Dragging across a `QLineEdit` highlights with `bg=#308cc6` --
   measured, and equal to `QPalette::Highlight` on this machine -- while a

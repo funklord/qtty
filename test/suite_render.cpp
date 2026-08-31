@@ -84,6 +84,68 @@ int suite_render(bool record) {
 	                                  QStringLiteral("prefs_dialog"), got, record);
 	if (!r && !record) printf("PASS: snapshot matches\n");
 
+	// An image too small to be a picture is substituted by a glyph, and the
+	// substitution has to cover the cells the image OCCUPIES. For the 1x1 icon
+	// that motivated the rule those are the same thing; for anything wider
+	// they are not, and the difference is stale cells -- a picture covering
+	// eight of them marking one and leaving seven showing whatever was
+	// underneath.
+	//
+	// Measured on a tab being dragged: Qt moves a movable tab by grabbing it
+	// into a pixmap 82x19 px here, which is 8 cells by 1, so it fails "two
+	// cells in each direction" and takes this branch. Driven at the engine
+	// rather than through QTabBar, because the widget doing the grabbing is
+	// private to Qt and the rule under test is the engine's.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		Qtty::CellBuffer buf(12, 2);
+		buf.text(0, 0, QStringLiteral("aaaaaaaaaaaa"));
+		QPixmap wide(cw * 8, ch);
+		wide.fill(Qt::red);
+		QPixmap tiny(cw, ch);
+		tiny.fill(Qt::red);
+		int wide_placements = 0, tiny_placements = 0;
+		{
+			Qtty::CellPaintDevice dev(buf);
+			QPainter p(&dev);
+			p.drawPixmap(QRect(0, 0, cw * 8, ch), wide);
+			p.end();
+			wide_placements = int(dev.placements.size());
+		}
+		{
+			Qtty::CellPaintDevice dev(buf);
+			QPainter p(&dev);
+			p.drawPixmap(QRect(0, ch, cw, ch), tiny);
+			p.end();
+			tiny_placements = int(dev.placements.size());
+		}
+		int covered = 0;
+		for (int x = 0; x < 12; ++x)
+			if (buf.at(x, 0).ch == QStringLiteral("▒")) ++covered;
+		// The pair: the wide one covers its eight cells and stops there, so a
+		// substitution that filled the row would fail this as surely as one
+		// that marked a single cell.
+		if (covered == 8 && buf.at(8, 0).ch == QStringLiteral("a")
+		    && wide_placements == 0)
+			printf("PASS: an image too small to be a picture covers the cells "
+			       "it occupies\n");
+		else {
+			printf("FAIL: an image too small to be a picture covers the cells "
+			       "it occupies\n      condition: %d of 8 cells marked, cell 8 is "
+			       "'%s', %d placement(s)\n",
+			       covered, qPrintable(buf.at(8, 0).ch), wide_placements);
+			++r;
+		}
+		if (buf.at(0, 1).ch == QStringLiteral("▒") && buf.at(1, 1).ch != QStringLiteral("▒")
+		    && tiny_placements == 0)
+			printf("PASS: and a one-cell icon still marks one cell, with no placement\n");
+		else {
+			printf("FAIL: and a one-cell icon still marks one cell, with no placement\n"
+			       "      condition: %d placement(s)\n", tiny_placements);
+			++r;
+		}
+	}
+
 	// ---- ICellPainted (section 5.3, risk R5) ---------------------------------
 	{
 		QWidget host;
