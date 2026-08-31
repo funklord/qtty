@@ -494,5 +494,38 @@ int suite_runtime() {
 	}
 	GridGuard::reset();      // the fixed-width button above is a reported one
 
+	// A terminal with no cells. The sweep that found this rendered the whole
+	// tier at sizes nothing had rendered at -- one cell, one row, one column,
+	// three by three, two hundred by two -- and every one of them composed
+	// without complaint. Zero was the one that did not: the buffer is empty,
+	// rasterize() answers a null QImage, and the software composite path opens
+	// a QPainter on it, which fails and then warns on every call into the
+	// stderr that is the terminal.
+	//
+	// Paired with a size that DOES produce a frame, because "no frame" is also
+	// what a scheduler that never presents anything produces.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *label = new QLabel(QStringLiteral("hello"), &win);
+		label->setGeometry(0, 0, GridMetrics::cw() * 10, GridMetrics::ch());
+		win.resize(GridMetrics::cells(20, 4));
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter router(&win);
+		Compositor comp(&win, &router);
+
+		NullBackend empty(QSize(0, 0));
+		FrameScheduler none(&empty, &comp, &win);
+		none.render_now();
+		CHECK(empty.frame_count() == 0, "a terminal with no cells is given no frame");
+
+		NullBackend sized(QSize(20, 4));
+		FrameScheduler some(&sized, &comp, &win);
+		some.render_now();
+		CHECK(sized.frame_count() == 1, "and one with cells still is");
+	}
+
+
 	return fails;
 }

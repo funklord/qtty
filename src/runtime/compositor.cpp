@@ -176,6 +176,14 @@ void FrameScheduler::request_frame() {
 
 void FrameScheduler::render_now() {
 	const QSize cells = backend_->size();
+	// A terminal with no cells has no frame to be given. Without this the
+	// buffer is empty, rasterize() answers a null QImage, and the software
+	// composite path below opens a QPainter on it -- which fails and then
+	// warns on every call, into the stderr that is the terminal. The ANSI
+	// backend refuses a degenerate size at both of its own doors now; this
+	// says the same thing for every backend, including one an application
+	// injects through exec().
+	if (cells.isEmpty()) return;
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	CellBuffer frame(cells.width(), cells.height());
 	comp_->compose(frame);

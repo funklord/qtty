@@ -137,7 +137,13 @@ bool use_placeholders(const TermCaps &caps, Capabilities::ColorDepth depth) {
 AnsiBackend::AnsiBackend() {
 	clock_.start();
 	winsize ws{};
-	if (ioctl(1, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0)
+	// Both dimensions, which this asked about one of. A terminal that reports
+	// zero ROWS with a good column count is the same nonsense as one that
+	// reports zero columns -- `stty rows 0` produces it, and so does a pty
+	// whose size was set only partly -- and it arrives at the same place: a
+	// frame with no cells, whose rasterisation is a null QImage that QPainter
+	// refuses to open and warns about once per call, onto the terminal.
+	if (ioctl(1, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0 && ws.ws_row > 0)
 		cells_ = QSize(ws.ws_col, ws.ws_row);
 	else
 		cells_ = QSize(80, 24);                     // piped/CI fallback
@@ -268,7 +274,10 @@ void AnsiBackend::read_winch() {
 	char drain[64];
 	while (::read(s_winch_pipe[0], drain, sizeof drain) > 0) { }
 	winsize ws{};
-	if (ioctl(1, TIOCGWINSZ, &ws) != 0 || ws.ws_col <= 0) return;
+	// ws_row as well as ws_col, for the reason the constructor now gives:
+	// this refused a zero column count and accepted a zero row count, and the
+	// two are one condition arriving at one place.
+	if (ioctl(1, TIOCGWINSZ, &ws) != 0 || ws.ws_col <= 0 || ws.ws_row <= 0) return;
 
 	// Before the early return below, not after it. The comment on that return
 	// names the exact case this is for: SIGWINCH also fires when only the

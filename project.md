@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-648 checks, 0 failures, under three configurations: the offscreen
+652 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -148,6 +148,27 @@ it** -- a null image composited nothing, correctly, and printed
 `QImage::pixel: coordinate (-1,-1) out of range` twice per cell while
 doing it, into the stderr a TUI shares with the screen it is drawing.
 §7.3 carries it.
+
+**And then the sizes nothing had rendered at**, which was the last name on
+§0d's list: one cell, one row, one column, three by three, six by sixty,
+two hundred by two, a menu popped at the corner of a three-row screen, and
+zero. Everything above zero composed without complaint. **Zero did not**,
+and the sweep found the same asymmetry twice: `read_winch()` refused a
+zero column count and accepted a zero row count, and so did the
+constructor -- `stty rows 0` is enough, and it lands on a null `QImage`
+that `QPainter` warns about once per call into the terminal. Both doors
+refuse it now, `FrameScheduler` refuses an empty size for every backend,
+and §7.8 gained the measurement that gives its open question a face: a
+window with Qt's default layout margins **loses its top row**, which on an
+80x1 terminal is the whole screen.
+
+**One branch was measured and rejected rather than argued about.** Letting
+the window take the terminal's size -- dropping the layout's minimum, so a
+short terminal is not simply clipped -- produces overlapping garbage:
+`atextel` where three widgets share a row, `<Go>` over a progress bar.
+§6's Phase-0 policy note said small terminals need drop-optional-then-
+scroll "rather than faith in layout compression", and this is what that
+faith looks like rendered.
 
 ## 0b. Open questions, and who owns them
 
@@ -308,6 +329,16 @@ Three things it taught, which the next run should carry in:
   been green for weeks can be answering a different question than its name
   says, and a sabotage run somewhere else in the file is what surfaces it.
 
+  **A seventh, and it is the one this document had already warned about
+  in §7.1: a check written under a redirected descriptor asks the wrong
+  terminal.** The odd-size sweep's zero-rows check was placed just below
+  the line that puts descriptor 1 back on the real stdout, so `SIGWINCH`
+  reached a backend reading the wrong window size, and the check **passed
+  against a deliberately sabotaged guard**. The warning was on the page
+  and did not prevent it. What caught it was the sabotage producing no
+  red -- so the rule is not "remember the warning" but **run the sabotage
+  and disbelieve a green**.
+
   **A sixth, and the worst of them, because it was not in the probe at
   all: the binary under test was not the one that had been built.** An
   `#include` added to a library source is invisible to qmake's subdirs
@@ -364,10 +395,11 @@ Three things it taught, which the next run should carry in:
   the model and not on the screen. That is the lens, and it is not spent.
   It has since been applied to the item-view roles, to what is drawn
   during a drag, and to the dialogs beyond the standard three -- §7.2
-  carries all three, and §7.5 carries the `ICellPainted` sweep that
-  followed. What is left unswept: the graphics tier's placements against a
-  text-only terminal, and a screen at a size nothing has rendered at --
-  one column wide, or eighty by three.
+  carries all three, §7.5 the `ICellPainted` sweep, §7.3 the mosaic tier
+  and §7.1 the odd terminal sizes. **The list §0d has been working through
+  is finished.** What would come next is not another surface but another
+  configuration: a second Qt version (§0e), and whatever a real terminal
+  says that offscreen does not.
 
 **The sabotage discipline that goes with it**, because a passing new test
 is not evidence: break the code the test claims to defend, confirm the edit
@@ -1015,6 +1047,35 @@ Still missing:
   plumbing. Worth recording beside the flush note below: a pty test that
   redirects descriptors has two ways to lie, and both look like the code
   being wrong.
+
+  **It lied a second time, in the same file, to a check written after that
+  paragraph was.** The odd-size sweep added a case asserting that a
+  terminal reporting zero ROWS is refused; it was written just below the
+  line that puts descriptor 1 back on the real stdout, so the signal
+  reached a backend looking at the wrong terminal and the check passed
+  **against a deliberately sabotaged guard**. The pty had stored 100x0
+  and the backend went on saying 100x30, which is the right answer for a
+  reason that has nothing to do with the code under test. The warning
+  above was already written and did not prevent it: what prevents it is
+  the sabotage run, and only because the sabotage produced no red.
+
+  **A terminal reporting zero rows is refused now, at both of the doors
+  that read a size.** `read_winch()` tested `ws_col <= 0` and not
+  `ws_row`, and the constructor tested `ws_col > 0` and not `ws_row` --
+  the same asymmetry twice, in the two places a size arrives. Zero rows
+  with a good column count is what `stty rows 0` produces, and it lands
+  where zero columns would have: a frame with no cells, whose
+  rasterisation is a null `QImage` that `QPainter` refuses to open and
+  then warns about on every call, into the stderr that is the terminal.
+  Both are checked, each against its own door, and the constructor's case
+  needed a second backend built while the pty was already degenerate --
+  a resize guard cannot answer for a program that started that way.
+
+  **And `FrameScheduler::render_now()` says the same thing for every
+  backend**, including one an application injects through `exec()`: a
+  terminal with no cells is given no frame. Paired with a sized backend
+  that still gets one, because "presented nothing" is also what a
+  scheduler that never presents anything produces.
 
   Two things about writing those tests are worth keeping, because both
   made a test lie before it told the truth. `qApp->quit()` leaves the
@@ -3643,7 +3704,21 @@ at 50. Without the control the run would have read as a clean bill for
 floor/ceil, which is the policy that is actually unsafe. That is the
 whole argument for a control that lives inside the probe.
 
-### 7.9 The fixtures are machine-dependent
+**The odd-size sweep gave this question its sharpest face, and it is not
+an abstraction about a cell.** A window laid out by a plain
+`QVBoxLayout` -- Qt's default nine-pixel margins, nothing else unusual --
+**loses its top row on a terminal**, because nine pixels is neither zero
+rows nor one and the first widget's content lands in row 1. On an
+80x1 terminal that means the frame is **entirely blank**: the menu bar,
+the label, everything, is one row below the only row there is. The
+control is what makes it a measurement rather than a guess: the same
+window with `setContentsMargins(0, 0, 0, 0)` shows `   File` at 80x1 and
+its label as well at 80x2.
+
+So the price of leaving `GridSnap` off is not only "content lands a cell
+away"; on a short terminal it is the difference between a screen and a
+blank one, and the application did nothing unusual to earn it. It stays
+the copyright holder's question, with one more measurement under it.
 
 Worth recording on its own, because it will bite whoever changes machine
 first. `Qtty::setup()` derives the cell size from the **locally installed**

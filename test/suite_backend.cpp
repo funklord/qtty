@@ -1531,6 +1531,55 @@ int suite_backend() {
 				          && live_rec.resizes[0] == QSize(100, 30),
 				      "and reports the new cell size once");
 
+				// Zero ROWS with a good column count. read_winch() refused a
+				// zero column count and accepted this, which is the same
+				// nonsense arriving at the same place -- a frame with no
+				// cells, whose rasterisation is a null QImage that QPainter
+				// refuses to open and warns about once per call, onto the
+				// terminal. `stty rows 0` produces it, and so does a pty
+				// sized partly.
+				//
+				// fd 1 must BE the pty, for the reason the block below gives
+				// at length: read_winch() asks TIOCGWINSZ on descriptor 1,
+				// and the line above put it back on the real stdout. Written
+				// without this the check passed against the defect, because
+				// the signal never reached the backend at all -- which is the
+				// plumbing fault this file already warns about once.
+				//
+				// Asserted on BOTH halves: the size the backend reports must
+				// not move, and the sink must not be told about a resize that
+				// did not happen. A guard that returned after assigning would
+				// pass the second and fail the first.
+				{
+					fflush(stdout);
+					::dup2(slave, 1);
+					ws.ws_col = 100;
+					ws.ws_row = 0;
+					::ioctl(slave, TIOCSWINSZ, &ws);
+					::raise(SIGWINCH);
+					for (int i = 0; i < 20; ++i) QCoreApplication::processEvents();
+					const QSize after = live.size();
+					const int reported = int(live_rec.resizes.size());
+					// The other door into the same fault. A backend
+					// CONSTRUCTED against a terminal already reporting zero
+					// rows never sees a resize at all, so the guard above
+					// cannot answer for it -- and the constructor asked about
+					// columns only, exactly as read_winch() did. Its fallback
+					// for a size it cannot use is 80x24, which is what a
+					// piped run gets.
+					const QSize born = AnsiBackend().size();
+					ws.ws_row = 30;
+					::ioctl(slave, TIOCSWINSZ, &ws);
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					CHECK(after == QSize(100, 30) && reported == 1,
+					      "a terminal reporting zero rows is refused, as zero "
+					      "columns already was");
+					CHECK(born == QSize(80, 24),
+					      "and a backend born against one falls back, as it "
+					      "does for zero columns");
+				}
+
 				// End to end, because the two halves being right separately
 				// is not the same fact as the chain working. The backend
 				// delivering to a sink is checked above; the router resizing
