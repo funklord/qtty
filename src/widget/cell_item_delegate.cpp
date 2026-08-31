@@ -57,10 +57,30 @@ void CellItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
 	CellBuffer &buffer = dev->buffer();
 
 	// The one place this does have to agree with the style rather than defer
-	// to it: text written over a reverse-video row must carry the attribute
-	// too, or the row's own reverse video hides it. GridStyle maps
-	// State_Selected to Attr::Reverse, and so does this.
-	const Attrs attrs = (opt.state & QStyle::State_Selected) ? Attrs(Attr::Reverse) : Attrs();
+	// to it: text written over a row the style has already filled must carry
+	// the same attributes, or the fill and the text disagree about what the
+	// row is. GridStyle maps State_Selected to Attr::Reverse, and so does
+	// this; State_Enabled goes through with_state(), which both now share
+	// rather than each keeping a copy.
+	//
+	// Measured before that was true: a disabled item came out
+	// "2........22222222222" in the attribute plane -- the padding dim,
+	// because CE_ItemViewItem fills the whole item through with_state(), and
+	// the label not dim, because this wrote over it. One row carrying both
+	// answers, and the state a user needs -- that the row cannot be chosen --
+	// shown everywhere except on the word they are reading.
+	//
+	// Qt::FontRole joins them because it is DATA and this delegate is what
+	// carries data the style cannot lay out. A model marking a row bold is
+	// the ordinary way an item view says one row is different, and it arrives
+	// in the option as a font; text written straight into the buffer takes
+	// nothing from a font unless it is asked to. Measured: a bold QLabel
+	// comes out bold, because that text goes through QPainter and
+	// CellPaintEngine reads the painter's font -- and a bold item came out
+	// plain.
+	const Attrs attrs = with_state(&opt, (opt.state & QStyle::State_Selected)
+	                                         ? Attrs(Attr::Reverse) : Attrs())
+	                    | attrs_for_font(opt.font);
 
 	int row = c.top();
 	if (c.height() > 1) {

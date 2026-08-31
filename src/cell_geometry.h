@@ -17,15 +17,58 @@
 // drifts: somebody corrects one, the other keeps the old answer, and the
 // symptom is Channel A quietly not firing in half the tree.
 #pragma once
+#include <QFont>
 #include <QPainter>
 #include <QRect>
 #include <QString>
+#include <QStyleOption>
 #include <QWidget>
 #include "qtty/cell.h"
 #include "qtty/grid.h"
 #include "qtty/paint.h"
 
 namespace Qtty {
+
+// A disabled control is dim, and until this existed it was not anything.
+// Qt reports the state in every option it hands the style, and GridStyle
+// tested for it at no site at all -- so a button nobody can press looked
+// exactly like one they can, a greyed menu item read as available, and the
+// only way to find out was to click and have nothing happen. The same fault
+// as the tristate checkbox, at every control rather than one.
+//
+// Dim rather than a colour: a terminal's dim is one SGR that composes with
+// whatever the theme already chose, while a grey would have to be picked
+// against a background this style does not know.
+//
+// It lives here rather than in grid_style.cpp, where it was file-static,
+// because CellItemDelegate needs the same answer and getting a different one
+// is visible: measured before the move, a disabled item view drew its padding
+// dim -- the style's fill -- and then the delegate wrote the label over it
+// with no attributes, so one row carried both answers at once.
+inline Attrs with_state(const QStyleOption *opt, Attrs base = Attrs()) {
+	if (opt && !(opt->state & QStyle::State_Enabled)) base |= Attr::Dim;
+	return base;
+}
+
+// The emphasis a font carries, as cell attributes. A terminal has these four
+// and no others, which is why this is a translation rather than a rendering:
+// weight is bold or it is not, and a font's size, family and stretch have
+// nowhere to go on a grid where every cell is the same size.
+//
+// Text drawn through QPainter already gets this -- CellPaintEngine reads the
+// painter's font, which is why a bold QLabel comes out bold. Text written
+// straight into the buffer does not, because nothing carries the font that
+// far. That is the gap this closes for the one option that delivers a font as
+// DATA rather than as a widget's own: QStyleOptionViewItem::font carries
+// Qt::FontRole, and an item view is where a model says "this row differs".
+inline Attrs attrs_for_font(const QFont &f) {
+	Attrs a;
+	if (f.bold())      a |= Attr::Bold;
+	if (f.italic())    a |= Attr::Italic;
+	if (f.underline()) a |= Attr::Underline;
+	if (f.strikeOut()) a |= Attr::Strike;
+	return a;
+}
 
 // The cell device being painted into, or null when this is an ordinary GUI
 // paint. Measured F1: p->device() is the QWidget during a paintEvent, so the

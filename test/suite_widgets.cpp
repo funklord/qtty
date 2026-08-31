@@ -273,6 +273,57 @@ int suite_widgets() {
 		CHECK(findText(b, QStringLiteral("shut")).y() == row_top + 1,
 		      "AlignVCenter centres text in a three-row section");
 	}
+	// The state and the font, which are the two the delegate wrote nothing for
+	// and which the probe method found by rendering a configuration nothing
+	// exercised (project.md section 0d).
+	//
+	// Both checks are a PAIR against a neighbouring item, deliberately.
+	// Asserting that a disabled label is dim, alone, passes on any row the
+	// style has filled dim underneath -- and the fill was already correct
+	// while the label was not, which is the exact state that shipped. What
+	// discriminates is the difference between two items in one view.
+	{
+		QStandardItemModel m;
+		auto *on = new QStandardItem(QStringLiteral("enabled"));
+		auto *off = new QStandardItem(QStringLiteral("disabled"));
+		off->setFlags(Qt::ItemIsSelectable);           // everything but enabled
+		m.appendRow(on);
+		m.appendRow(off);
+		QListView list;
+		list.setModel(&m);
+		list.setItemDelegate(new CellItemDelegate(&list));
+		list.setFrameShape(QFrame::NoFrame);
+		show(list, 20, 3);
+		CellBuffer b(22, 4);
+		render_once(list, b);
+		const QPoint live = findText(b, QStringLiteral("enabled"));
+		const QPoint dead = findText(b, QStringLiteral("disabled"));
+		CHECK(live.x() >= 0 && dead.x() >= 0 && !(b.at(live.x(), live.y()).attrs & Attr::Dim)
+		      && (b.at(dead.x(), dead.y()).attrs & Attr::Dim),
+		      "a disabled item's label is dim and an enabled one's is not");
+	}
+	{
+		QStandardItemModel m;
+		QFont bold = QApplication::font();
+		bold.setBold(true);
+		auto *heavy = new QStandardItem(QStringLiteral("heavy"));
+		heavy->setData(bold, Qt::FontRole);
+		m.appendRow(heavy);
+		m.appendRow(new QStandardItem(QStringLiteral("light")));
+		QListView list;
+		list.setModel(&m);
+		list.setItemDelegate(new CellItemDelegate(&list));
+		list.setFrameShape(QFrame::NoFrame);
+		show(list, 20, 3);
+		CellBuffer b(22, 4);
+		render_once(list, b);
+		const QPoint heavy_at = findText(b, QStringLiteral("heavy"));
+		const QPoint light_at = findText(b, QStringLiteral("light"));
+		CHECK(heavy_at.x() >= 0 && light_at.x() >= 0
+		      && (b.at(heavy_at.x(), heavy_at.y()).attrs & Attr::Bold)
+		      && !(b.at(light_at.x(), light_at.y()).attrs & Attr::Bold),
+		      "Qt::FontRole reaches the cells: a bold row is bold");
+	}
 	// decoration role (section 8.6). The delegate does not decide what an icon
 	// becomes: it hands the pixmap to QPainter, and CellPaintEngine::drawPixmap
 	// is already the funnel -- two cells or more in each direction is a
@@ -394,9 +445,17 @@ int suite_widgets() {
 		v->addWidget(tabs, 1);
 		show(win, 44, 16);
 		const QString got = Qtty::test::snapshot_of(win, 46, 17);
+		// The delta, not the running total. This read `fails` -- every
+		// failure the suite had accumulated -- so the line naming the gallery
+		// snapshot reported on whatever had gone wrong earlier in the file.
+		// Found by sabotaging a delegate check twenty lines up and watching
+		// the snapshot go red without the fixture differing by a cell: a
+		// check that names one thing and answers about another, which is
+		// worse than no check, because it sends the reader to the fixture.
+		const int before = fails;
 		fails += Qtty::test::check_snapshot(QStringLiteral(QTTY_SOURCE_DIR),
 		                                   QStringLiteral("widgets_gallery"), got, g_record);
-		if (!g_record) printf("%s: gallery snapshot\n", fails ? "FAIL" : "PASS");
+		if (!g_record) printf("%s: gallery snapshot\n", fails > before ? "FAIL" : "PASS");
 	}
 
 	// A selected item taller than one cell is reversed throughout, not just on

@@ -478,20 +478,11 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 	}
 }
 
-// A disabled control is dim, and until now it was not anything. Qt reports
-// the state in every option it hands the style, and this style tested for it
-// at no site at all -- so a button nobody can press looked exactly like one
-// they can, a greyed menu item read as available, and the only way to find
-// out was to click and have nothing happen. The same fault as the tristate
-// checkbox, at every control rather than one.
-//
-// Dim rather than a colour: a terminal's dim is one SGR that composes with
-// whatever the theme already chose, while a grey would have to be picked
-// against a background this style does not know.
-static Attrs with_state(const QStyleOption *opt, Attrs base = Attrs()) {
-	if (opt && !(opt->state & QStyle::State_Enabled)) base |= Attr::Dim;
-	return base;
-}
+// with_state() was here, file-static, and is now in cell_geometry.h beside
+// the other rules this file shares with CellItemDelegate. It moved because
+// the delegate needs the same answer and was giving a different one: a
+// disabled item view drew its padding dim from the fill below and then had
+// the label written over it with no attributes at all.
 
 void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPainter *p,
                               const QWidget *w) const {

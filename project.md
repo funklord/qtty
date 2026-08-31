@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-627 checks, 0 failures, under three configurations: the offscreen
+629 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -33,11 +33,34 @@ whose own fontconfig had been changed from the packaged default. §7.9
 carries the measurement. The one-line shape: the 10x19 cell this tree
 derives everything from was an *account setting*, not a property of the
 font, and `setup()` now asks for the hinting that makes it so rather than
-inheriting whatever the desktop supplies. Whole-tree line coverage **98.87%** (2105 of 2129); §7.9
-records what the residue is and why none of it is reachable -- `D0`
-deleting destructors for classes only ever stack-allocated, a `qFatal`
-that aborts, an inert SIGWINCH failure path, and four font-guard branches
-measured unreachable on this font engine.
+inheriting whatever the desktop supplies.
+
+Whole-tree line coverage **98.64%, 2175 of 2205**, re-taken today with
+the command in §0c into a build directory removed first.
+
+**That number is not comparable to the 98.87% (2105 of 2129) recorded
+this morning, and the difference is the denominator rather than the
+work.** 76 executable lines appeared in a tree whose only C++ change
+since was one line, so the two runs measured different file sets. This
+one's is verified complete -- 13 `.cpp.gcov` for the 13 sources `make`
+compiles, listed rather than assumed -- and the earlier one's cannot be
+recovered. §0c now says to delete the build directory first, which is a
+second lesson from the same re-take: run in a reused one, `.gcda` from
+previous runs merge, and the same tree measured 2179 covered instead of
+2175. Coverage is the one number here that a stale directory moves in the
+flattering direction.
+
+The residue is 30 lines. §7.9 accounts for most of it -- `D0` deleting
+destructors for classes only ever stack-allocated, a `qFatal` that
+aborts, an inert SIGWINCH failure path, and four font-guard branches
+measured unreachable on this font engine -- and **five sites it does not
+mention, which are gaps rather than unreachable code**: `cell_buffer`'s
+`"?"` fallback, two `QPaintDevice` metric cases, the translucent branch
+of the half-block compositor, `grid_style`'s tool-button size fallthrough,
+and the **vertical** indeterminate progress bar, whose horizontal twin is
+tested. The last is the one worth taking: it is the same
+orientation-shaped gap that produced the vertical-bar defect §0a opens
+with.
 
 **What the last stretch of work was, in one line each**, because the
 pattern mattered more than any single fix: render widget configurations
@@ -54,6 +77,18 @@ and every framed scroll area losing the bottom rule of its own border.
 The interaction sweep that followed found **nothing** wrong, which is
 recorded as a result rather than a gap: space, arrows and clicks reach
 every common widget and change what they should.
+
+**The same method was then taken to the item-view roles**, which §0e named
+as the largest unswept surface, and it paid: ten configurations rendered,
+six already right, **two defects fixed** -- a disabled row whose label was
+the one part of it not dim, and `Qt::FontRole` reaching nothing at all --
+and **two findings recorded rather than fixed**, because each turns on a
+decision rather than a line. §7.2 carries all four. The generalisation is
+worth more than any of them: **text drawn through `QPainter` carries the
+font's emphasis and text written straight into the buffer does not**, so
+every site that writes into the buffer is a place a font stops meaning
+anything. One instance outside the delegate is measured and open -- a bold
+`QPushButton` renders plain.
 
 ## 0b. Open questions, and who owns them
 
@@ -75,6 +110,8 @@ Owned by the copyright holder:
 | Mapping `QStyle::StandardPixmap` to glyphs, which is qtty deciding what Qt's iconography looks like in a terminal | *Qt's standard iconography* |
 | Whether an empty `QLineEdit` should show anything | same |
 | `SH_Slider_AbsoluteSetButtons`: a groove click setting the value where it landed | *the interaction sweep* |
+| What a literal `QColor` from `Qt::ForegroundRole`/`BackgroundRole` becomes on a terminal, which is OQ-7 arriving at the item views | §7.2, §7.7 |
+| What a table's grid should be on a cell grid, where the separator between two one-cell rows has nowhere to go | §7.2 |
 | The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
@@ -118,8 +155,13 @@ one nobody can re-take. `make check`, `make test-platforms` and
 are the ones that were typed by hand:
 
 **Whole-tree coverage.** `make coverage` answers for one file; this is the
-tree:
+tree. **Delete the build directory first** -- `.gcda` files accumulate
+counts across runs, so a reused one reports the union of every suite that
+ever ran there and reads as better coverage than the tree has. Measured
+on the same tree the same afternoon: 2179 covered from a reused
+directory, 2175 from a fresh one.
 
+    rm -rf build-cov build-cov-test
     make test BUILD_DIR=build-cov \
       QMAKE_CONFIG='CONFIG+=release CONFIG-=debug \
                     QMAKE_CXXFLAGS+=--coverage QMAKE_LFLAGS+=--coverage'
@@ -195,11 +237,30 @@ Three things it taught, which the next run should carry in:
   when it had arrived as a 5x3-cell image placement that `to_text()` does
   not rasterise. **Check the instrument before believing the result** --
   three times in one day it was the instrument.
+
+  **A fourth, and this one was in the suite rather than in the probe**:
+  the `gallery snapshot` line reported the suite's running failure count
+  instead of its own result, so sabotaging an unrelated check turned the
+  snapshot red with the fixture matching to the cell. The instrument to
+  suspect is not only the temporary block you just wrote; a check that has
+  been green for weeks can be answering a different question than its name
+  says, and a sabotage run somewhere else in the file is what surfaces it.
+- **The controls are where the findings actually get settled.** Every one
+  of the item-view sweep's four findings needed a second render to place
+  it: the same model with no delegate installed said the disabled-item
+  fault was the delegate's rather than the style's; a bold `QLabel` said
+  the font fault was the buffer-writing sites' rather than the terminal's;
+  the same table with `showGrid` off, and again with no delegate, said the
+  dashes were the line rule's; and a titled `QGroupBox` said the guard
+  that produces them protects nothing. **Render the variant that would
+  exonerate the thing you suspect** -- it costs one more block and it is
+  the difference between a finding and a theory.
 - **Every one of the eleven was the same shape**: a state that existed in
-  the model and not on the screen. That is the lens, and it is not spent --
-  it was applied to widgets and to interaction, not yet to item-view roles,
-  dialogs beyond the standard three, or anything drawn while a drag is in
-  progress.
+  the model and not on the screen. That is the lens, and it is not spent.
+  It has since been applied to the item-view roles, where it found two
+  more of exactly that shape and two questions besides (§7.2); it has not
+  been applied to dialogs beyond the standard three, or to anything drawn
+  while a drag is in progress.
 
 **The sabotage discipline that goes with it**, because a passing new test
 is not evidence: break the code the test claims to defend, confirm the edit
@@ -213,33 +274,45 @@ the count not been checked.
 
 In the order I would take them, and none is blocked:
 
-1. **Run the probe method at the item-view roles.** `CellItemDelegate` and
-   the roles it honours are built and covered, but the sweep above never
-   rendered a delegate returning a decoration, a font, an alignment or a
-   size hint taller than a row. That is the largest unswept surface and it
-   is the same shape that produced the check-indicator defect.
-2. **Sweep what is drawn during a drag.** Every rendering probe here took a
+1. **Carry a font's emphasis to every site that writes into the buffer.**
+   The item-view sweep (§7.2) closed this for `Qt::FontRole` and left the
+   general case measured and open: a bold `QPushButton` renders plain,
+   because `CE_PushButtonLabel` writes its string itself, and so does every
+   other label `GridStyle` writes rather than passes to `QPainter`.
+   `attrs_for_font()` is in `cell_geometry.h` and is the whole of the
+   translation; what the work actually is, is reaching the widget's font at
+   each write site and reviewing the two snapshots afterwards, since a
+   fixture recorded against plain text will move wherever a bold widget
+   sits in it. Take it first because the sweep already found the shape and
+   named the instance -- it is the one item here with its lens spent and
+   its fix unwritten.
+2. ~~**Run the probe method at the item-view roles.**~~ **Done**, and §7.2
+   records it: ten configurations, six already right, two defects fixed,
+   two questions raised. The residue it names -- what a literal `QColor`
+   becomes, and what a table's grid is on a cell grid -- are the copyright
+   holder's and are in §0b.
+3. **Sweep what is drawn during a drag.** Every rendering probe here took a
    still frame. A splitter mid-drag, a slider with the button held, an item
    view rubber-banding and a scrollbar thumb being moved are states the
    compositor sees and no test has rendered.
-3. **The `QStyle::StandardPixmap` question**, once decided, closes the dock
+4. **The `QStyle::StandardPixmap` question**, once decided, closes the dock
    title buttons and the message-box severity together. It is one small
    table and the two symptoms are the same cause; neither is worth fixing
    alone.
-4. **A second account, which cost nothing and is already spent.** Running
+5. **A second account, which cost nothing and is already spent.** Running
    the suite as a different user on the same machine is the cheapest
    configuration axis in this list -- no second machine, no second Qt, no
    container -- and it found the hinting defect in §7.9 on the first run,
    as a program that would not start. Anything else derived from the
    *user's* configuration rather than the environment's is reachable the
    same way, and fontconfig is unlikely to be the only such thing.
-5. **A second Qt version.** Everything here is measured under one, and the
+6. **A second Qt version.** Everything here is measured under one, and the
    beerssh session found a probe that passed on 6.10 and failed on 6.4.2 --
    a band assumed to start at y=0. I checked and found no instance here,
    but a single-version run cannot distinguish "no version-dependent
    probe" from "no second version", and that stays an unmeasured exposure
    rather than a clean bill.
-6. **`suite_budget` prints and does not assert**, deliberately, because the
+7. **`suite_budget` prints and does not assert**, deliberately, because the
    same binary rendered the same fixture in 1.35 ms and 2.41 ms minutes
    apart. If a stable assertion is ever wanted it has to be a
    *relationship* -- damage-limited work against full-redraw work, in cells
@@ -2127,6 +2200,95 @@ code changed is only honest if the diff is the change.
   flipping.~~ **Flipping is done** (§7.1) -- the discriminating check is
   that the popup's far edge lands on its anchor, since "fully inside the
   terminal" is true of a clamped popup too.
+
+#### The item-view roles, swept with the probe method
+
+§0e's first item, run. Ten configurations rendered through
+`CellItemDelegate` and printed -- a disabled item, `Qt::FontRole` bold and
+italic, foreground and background roles, a tristate item beside a selected
+row, elision and centring in a table, an expanded tree, a decoration
+supplied as a colour, a taller row asking for its text at the bottom --
+each with a control run beside it wherever the answer needed one. **Six of
+the ten were already right**: the tristate mark, the selection, the
+elision, the tree's branch glyphs, the colour decoration falling back to
+`▒`, and `AlignBottom` in a three-row item all rendered as they should.
+
+**Two were defects, and both are fixed.**
+
+**A disabled item's label was not dim, while the rest of its row was.**
+The style fills the whole item through `with_state()` and the delegate
+then wrote the label over that fill with no attributes at all, so one row
+carried both answers -- measured as `2........22222222222` in the
+attribute plane, dim everywhere except across the eight cells a user is
+actually reading. The control settles which half was wrong: the same model
+in a view with **no** delegate installed comes back dim across all twenty
+cells, so the delegate was a regression against the style it defers to.
+`with_state()` has moved out of `grid_style.cpp` into `cell_geometry.h`,
+which is the header that exists for exactly this -- a rule both files need
+and neither should keep a copy of.
+
+**`Qt::FontRole` reached nothing.** A model marking a row bold is the
+ordinary way an item view says one row differs from another, and it
+arrived in the option as a font that nothing read. What makes this one
+sharp is the control: a **bold `QLabel` comes out bold**, because that
+text goes through `QPainter` and `CellPaintEngine` reads the painter's
+font. So the rule is not "a terminal cannot do bold" but **text drawn
+through `QPainter` carries the font's emphasis and text written straight
+into the buffer does not**, and every site that writes into the buffer is
+a place where a font stops meaning anything.
+
+That has one measured instance outside the delegate and it is **not
+fixed**: a `QPushButton` given a bold font renders plain, because
+`CE_PushButtonLabel` writes the string itself. The same holds wherever
+`GridStyle` writes a label. The delegate was fixed here and the style was
+not, because `QStyleOptionViewItem::font` **is** `Qt::FontRole` -- data the
+delegate exists to carry -- while a button's font is the widget's own and
+reaching it means `w->font()` at every write site. That is a change with
+its own sweep and its own snapshot review, and it is the next item in §0e.
+
+**Two more findings came out of the same sweep and are recorded rather
+than fixed**, both because the fix is a decision rather than a line:
+
+- **`Qt::ForegroundRole` and `Qt::BackgroundRole` reach nothing.** The
+  delegate writes `Color(), Color()` for every cell, so a red item and a
+  blue-backgrounded item are indistinguishable from a plain one. The fix
+  is not the writing, it is what a literal `QColor` from a model becomes
+  on a terminal -- which is §7.7's open question and OQ-7 exactly: a
+  colour with no palette role behind it lands as literal RGB and varies
+  with the desktop. Implementing the role without settling that would
+  spread the same defect to every item view. **Owned by the copyright
+  holder, and it is the question already open rather than a new one.**
+- **A table's grid lines eat the spaces inside its own labels.** A
+  `QTableView` with `showGrid` on -- Qt's default -- rendered `a label far
+  wider than its column` as `─a─label─fa…`. Three controls place it: with
+  the grid off the text is clean, with the grid on and **no** delegate the
+  dashes are identical, so it is neither the delegate's nor the text's but
+  the rule's. The cause is one line in `CellPaintEngine::drawLine()`,
+  which writes a rule only into a cell whose glyph is `" "` -- a guard put
+  there to stop a mis-mapped rule painting over text, and one that
+  **cannot tell a space a label wrote from a cell nothing has touched**.
+  A row one cell tall has no edge to put a horizontal rule on, so the
+  rule lands in the row itself and fills every gap in the sentence.
+
+  The obvious fix -- skip a rule segment that meets any non-space -- was
+  checked against the case that would forbid it, a titled frame whose
+  border and title share a row, and **that case does not arise**: measured,
+  a `QGroupBox` puts its title in the row above its border. So the guard
+  has no known beneficiary, which makes the segment skip cheaper than it
+  looked. It is still not taken here, because the honest question is one
+  step earlier -- **what a table's grid should be on a cell grid at all**,
+  given that the separator between two one-cell rows has nowhere to go --
+  and answering it by editing a line-drawing guard would settle it by
+  accident. **Owned by the copyright holder.**
+
+**And the instrument was wrong for the third time, which §0d predicted.**
+The suite's `gallery snapshot` line printed `FAIL` while the fixture
+matched to the cell, because it read the suite's running failure count
+rather than its own result: sabotaging a delegate check twenty lines above
+it turned the snapshot red. A check that names one thing and answers about
+another is worse than no check, because the reader it misdirects goes to
+the fixture. It reads the delta now, which is what `suite_render`'s
+snapshot always did.
 
 ### 7.3 Graphics tier (design.md §17.3)
 
