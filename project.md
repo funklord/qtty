@@ -5738,6 +5738,30 @@ needed a bracket that spans it, and this needed the axis the single
 metric cannot express -- three shapes of the same underlying fact, that
 **a style metric is one number and a terminal cell is two**.
 
+**And the lead that fact suggested was followed and came back narrower,
+which is the more useful result.** `PM_ScrollBarExtent` and
+`PM_SplitterWidth` are the same shape -- `cw` used for a HEIGHT when the
+widget is horizontal -- so a horizontal scroll bar should be ten pixels
+tall, half a row. Measured: **both are exactly one row.**
+
+The first explanation for that was wrong, and the sabotage said so.
+`GridSnap` looked like the answer, since it snaps every child widget's
+geometry and both are child widgets -- but removing the snap reddened
+two other checks and left these green. It is `sizeFromContents()`, whose
+snap-up list carries `CT_ScrollBar` and `CT_Splitter`; dropping just
+those two entries reddens the new check alone.
+
+So the boundary is sharper than "a metric is one number":
+
+- a metric that reaches a widget's own **size** is caught by the snap-up
+  list and is safe;
+- a metric that describes an **inset inside** a widget -- a group box's
+  contents, a popup's panel -- or a rectangle **the style draws itself**
+  -- a tab's bracket -- is not, and is where the three defects were.
+
+That is where a later sweep should look, and where it should not. The
+dependence is pinned by a check rather than left as a paragraph.
+
 Found by opening a popup over a scrolled root, which was a probe aimed at
 something else entirely: the hypothesis was that a popup anchored to a
 widget the new scroll had moved would be drawn at the unscrolled

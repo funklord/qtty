@@ -2002,6 +2002,60 @@ int suite_widgets() {
 	}
 
 
+
+	// Where the one-number-metric fault does NOT reach, which is worth a check
+	// because it is held incidentally rather than by design.
+	//
+	// Three widgets in a row were wrong because a QStyle metric is one number
+	// and a cell is not square: a group box's contents, a popup's panel, a
+	// tab's drawn bracket. PM_ScrollBarExtent and PM_SplitterWidth are the
+	// same shape of metric -- `cw` used for a HEIGHT when the widget is
+	// horizontal -- so the obvious guess is that a horizontal scroll bar is
+	// ten pixels tall, half a row.
+	//
+	// Measured, both are exactly one row -- and the first explanation for that
+	// was wrong, which is why the mechanism is named here rather than assumed.
+	// It looked like GridSnap: it snaps every child widget's geometry, and a
+	// scroll bar and a splitter handle are child widgets. Removing the snap
+	// reddened two OTHER checks and left this one green.
+	//
+	// It is sizeFromContents(), whose snap-up list carries CT_ScrollBar and
+	// CT_Splitter: dropping just those two from it reddens this check alone.
+	//
+	// So the boundary the three broken widgets share is sharper than "a metric
+	// is one number": a metric that reaches a widget's own SIZE is caught by
+	// the snap-up, and one that describes an inset INSIDE a widget -- a group
+	// box's contents, a popup's panel -- or a rectangle the style draws
+	// itself -- a tab's bracket -- is not. This pins that dependence: narrow
+	// the snap-up list and these go red and say why.
+	{
+		QWidget d;
+		d.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&d);
+		auto *area = new QScrollArea;
+		area->setFrameShape(QFrame::NoFrame);
+		auto *wide = new QLabel(QString(80, QLatin1Char('x')));
+		wide->setMinimumWidth(GridMetrics::cw() * 80);
+		area->setWidget(wide);
+		area->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+		v->addWidget(area);
+		auto *split = new QSplitter(Qt::Vertical);
+		split->addWidget(new QLabel(QStringLiteral("top")));
+		split->addWidget(new QLabel(QStringLiteral("bottom")));
+		v->addWidget(split);
+		d.resize(GridMetrics::cells(24, 10));
+		d.show();
+		QCoreApplication::processEvents();
+		const int ch = GridMetrics::ch();
+		const int bar = area->horizontalScrollBar()->height();
+		const int handle = split->count() > 1 && split->handle(1)
+		                       ? split->handle(1)->height() : 0;
+		CHECK(bar > 0 && bar % ch == 0 && handle > 0 && handle % ch == 0,
+		      "a horizontal bar and a splitter handle are whole rows tall");
+		GridGuard::reset();
+	}
+
+
 	return fails;
 }
 
