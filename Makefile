@@ -337,7 +337,7 @@ record: tests-build
 # reachable only by typing its name, so the version consistency it enforces
 # and the copyright line it now checks were both unguarded in practice. It is
 # pure sed and grep and costs nothing.
-check: style version-check test
+check: style layout version-check test
 
 # -----------------------------------------------------------------------------
 # Gates
@@ -347,6 +347,20 @@ style: style-source style-docs
 
 style-source:
 	python3 tool/style_gate.py check
+
+# design.md section 7's enforcement rule: shared view code must not hardcode
+# margins, spacing or pixel sizes. The document scopes it to an application's
+# src/ui/shared/, which is a directory this repository does not have -- qtty is
+# the library. What it does have is the UI it ships: the example, which exists
+# to show one view codebase serving both targets, and the tools' own windows.
+# Those are the shared view code here, so those are what the gate reads.
+#
+# NOT test/. A fixture is built at an exact size on purpose, so that the cell
+# arithmetic a check asserts is arithmetic and not a layout's opinion.
+LAYOUT_SRC = $(wildcard example/*/*.h example/*/*.cpp tool/*/*.h tool/*/*.cpp)
+
+layout:
+	python3 tool/layout_gate.py $(LAYOUT_SRC)
 
 # project.md is authoritative, so it is held to the tree: a heading that
 # appears twice means whichever one you find, the other is the one with the
@@ -462,5 +476,5 @@ distclean: veryclean
 help:
 	@sed -n '/^# TARGETS/,/^#$$/p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
-.PHONY: all test test-platforms tests-build coverage record check style style-source style-docs hooks \
+.PHONY: all test test-platforms tests-build coverage record check style style-source style-docs layout hooks \
         version-check run install uninstall clean veryclean distclean help FORCE

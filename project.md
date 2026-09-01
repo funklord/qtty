@@ -4195,14 +4195,13 @@ which is design.md §16's figure.
   The sweep's other two findings are elsewhere, because neither is the
   interface's: a scroll area not clipping is §8.7, and a build that did
   not rebuild is §9.5.
-- **design.md §7's Tier-2 hint system** -- what remains is the CI check
-  banning `setContentsMargins`, `setSpacing`, `setFixedSize` and
-  `setFixedWidth` in shared UI code. The hints themselves are done:
-  `GridSnap` does what `CompactionPass` was for, `set_priority()` carries
-  `Priority::Optional`, `"qtty.cells"` sets a widget's minimum in cells,
-  and `setCompact` is **deliberately not built** -- §8.8 carries the
-  argument, that its effect is unconditional on a terminal, so the hint
-  would switch nothing. The rest is built: `GridSnap` does
+- ~~**design.md §7's Tier-2 hint system**~~ **Done.** `GridSnap` does
+  what `CompactionPass` was for, `set_priority()` carries
+  `Priority::Optional`, `"qtty.cells"` sizes a widget in cells,
+  `tool/layout_gate.py` is the enforcement check and runs in `make
+  check`, and `setCompact` is **deliberately not built** -- §8.8 carries
+  the argument, that its effect is unconditional on a terminal, so the
+  hint would switch nothing. The rest is built: `GridSnap` does
   what `CompactionPass` was for, `set_priority()` carries
   `Priority::Optional`, and §7.8 records the small-terminal policy
   working in the order design.md names -- drop the optional widgets,
@@ -5379,7 +5378,36 @@ need**, which is the opposite of what §7's hints are for. If a second
 compaction mode ever appears that a GUI genuinely must not get, the hint
 is worth adding then and this paragraph is the argument for it.
 
-`w->setProperty("qtty.cells", QSize(20, 1))` is the third, and it is
+**The enforcement check bans non-zero LITERALS, not the calls**, and that
+is the third divergence. design.md §7 says a CI check "bans
+`setContentsMargins`, `setSpacing`, `setFixedSize`, and `setFixedWidth`
+under `src/ui/shared/`". Run against the call names, it flags **47 sites
+in this repository and every one of them is harmless**: they all pass
+zero. `setContentsMargins(0, 0, 0, 0)` is not a hardcoded pixel margin,
+it is "no margin", which means the same on both targets and is what a
+cell grid wants -- the example says `// window edge = cell edge` beside
+its own. A gate that opens with 47 false findings is a gate somebody
+turns off, which this document has already written down about a timing
+threshold.
+
+So `tool/layout_gate.py` flags an argument that is **entirely a non-zero
+number**. An expression is not a literal: `setFixedWidth(20 * cw)` is
+cell-derived and portable by construction. That distinction was not in
+the first version -- it searched the argument list for digits and flagged
+the 20 -- and the fixture caught it while the docstring was claiming the
+opposite. `// qtty-allow: <reason>` exempts a line, and the reason is
+required: an empty one is still a finding.
+
+**And the path is an argument**, because `src/ui/shared/` does not exist
+here. qtty is the library; the shared view code the rule is about lives
+in whatever application uses it. The gate takes paths so an application
+can point it at its own, and `make check` points it at the UI this tree
+does have -- the example, which exists to show one view codebase serving
+both targets, and the tools' own windows. Deliberately **not** `test/`: a
+fixture is built at an exact size on purpose, so that the cell arithmetic
+a check asserts is arithmetic rather than a layout's opinion.
+
+`w->setProperty("qtty.cells", QSize(20, 1))` is the third hint, and it is
 built now -- **but not where design.md says it is read**, and the reason
 is a fact about Qt rather than a preference.
 
