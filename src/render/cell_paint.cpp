@@ -135,6 +135,41 @@ void CellPaintEngine::updateState(const QPaintEngineState &s) {
 	if (s.state() & DirtyTransform) xf_ = s.transform();
 }
 
+// The clip in cells, or an invalid rect when there is none.
+//
+// design.md section 432 lists clip among the four things updateState() carries,
+// and three of the four were implemented: an application's own setClipRect()
+// was ignored outright, so a QPainter told to keep inside four cells filled
+// twenty. Asked of the PAINTER rather than reassembled from the state flags,
+// because Qt composes NoClip, ReplaceClip and IntersectClip itself and a
+// second implementation of that composition is a second thing to get wrong.
+//
+// The bounding rectangle, not the region. That under-clips a region with a
+// hole in it -- it draws a little more than it was allowed -- which is the
+// safe direction on a grid, and it is rare: of 3386 clip changes the suite
+// makes, 13 involve more than one rectangle.
+std::optional<QRect> CellPaintEngine::clip_cells() const {
+	const QPainter *p = painter();
+	if (!p || !p->hasClipping()) return std::nullopt;
+	// Rounded OUTWARD, which is the whole of why this does not reuse
+	// to_cells(). A cell is atomic: a clip covering part of one either admits
+	// that cell or it does not, and admitting it draws a little more than was
+	// allowed while refusing it loses content that was. Measured the wrong way
+	// round first -- to_cells() rounds each edge to the NEAREST cell, so a
+	// clip eight pixels tall against a nineteen-pixel cell rounded to nothing
+	// and a QLineEdit's text disappeared, which is a clip thinner than a cell
+	// being read as a clip that admits nothing.
+	//
+	// Same direction as taking the bounding rectangle rather than the region:
+	// under-clip, never over-clip.
+	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+	const QRectF m = xf_.mapRect(p->clipBoundingRect()).translated(dev_->origin);
+	const QRect out(int(std::floor(m.left() / cw)), int(std::floor(m.top() / ch)),
+	                int(std::ceil(m.right() / cw)) - int(std::floor(m.left() / cw)) + 1,
+	                int(std::ceil(m.bottom() / ch)) - int(std::floor(m.top() / ch)) + 1);
+	return out;
+}
+
 QRect CellPaintEngine::to_cells(const QRectF &r) const {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	QRectF m = xf_.mapRect(r).translated(dev_->origin);
@@ -177,7 +212,33 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	if (ti.font().bold()) a |= Attr::Bold;
 	if (ti.font().italic()) a |= Attr::Italic;
 	if (ti.font().underline()) a |= Attr::Underline;
-	dev_->buffer().text(col, row, ti.text(), pen_to_fg(pen_), Color(), a);
+	const std::optional<QRect> clip = clip_cells();
+	if (clip && (clip->isEmpty() || row < clip->top() || row > clip->bottom())) return;
+	QString text = ti.text();
+	if (clip) {
+		// Trimmed by CLUSTER, and from the left as well as the right: a string
+		// that starts before the clip loses its leading clusters and its
+		// origin moves with them, or what is left lands where the whole string
+		// would have. Cut, not elided -- a clip is not a shortage of room and
+		// an ellipsis would be qtty inventing a character nobody drew.
+		//
+		// A cluster straddling the edge is kept whole, which draws at most one
+		// cell more than allowed. Same direction as taking the clip's bounding
+		// rectangle: under-clip rather than lose a glyph.
+		QString visible;
+		int x = col;
+		for (const QString &cl : to_clusters(text)) {
+			const int w = cluster_width(cl);
+			if (x + w - 1 >= clip->left() && x <= clip->right()) {
+				if (visible.isEmpty()) col = x;
+				visible += cl;
+			}
+			x += w;
+		}
+		text = visible;
+		if (text.isEmpty()) return;
+	}
+	dev_->buffer().text(col, row, text, pen_to_fg(pen_), Color(), a);
 }
 
 void CellPaintEngine::drawRects(const QRectF *r, int n) { for (int i = 0; i < n; ++i) fill_rectf(r[i]); }
@@ -194,6 +255,12 @@ void CellPaintEngine::drawPath(const QPainterPath &path) {
 void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &pm, const QRectF &) {
 	QRect c = to_cells(r);
 	if (!c.isValid()) return;
+	// Wholly outside the clip is nothing to draw. A partly-clipped placement
+	// is left whole: the graphics tier crops every placement to the viewport
+	// already (crop_placement), and cropping twice by different rules is how
+	// the two answers part company.
+	const std::optional<QRect> clip = clip_cells();
+	if (clip && !clip->intersects(c)) return;
 	if (c.width() >= 2 && c.height() >= 2)      // section 5.7: real image -> placement
 		dev_->placements.append({quint64(pm.cacheKey()), c, pm});
 	else {
@@ -263,6 +330,8 @@ bool CellPaintEngine::is_thin(const QRectF &r) const {
 void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 	QRect c = to_cells(r);
 	if (!c.isValid() || c.width() > 400 || c.height() > 200) return;
+	const std::optional<QRect> clip = clip_cells();
+	if (clip && clip->isEmpty()) return;
 
 	// A rect thinner than half a cell does not cover the cell, so it cannot
 	// stand for the cell's background -- to_cells() rounds it up to a whole
@@ -278,7 +347,14 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 	// ITerminalBackend::set_cursor() emits. A thin fill may still colour a
 	// cell that is empty, which is what keeps a rule drawn on a blank row.
 	const bool thin = is_thin(r);
-	if (outline_only || brush_.style() == Qt::NoBrush) { box(c); return; }
+	// A box keeps its shape and loses the cells outside the clip, rather than
+	// being shrunk to fit: a smaller complete rectangle is a different frame,
+	// and dropping the whole thing loses a border that is mostly visible.
+	if (outline_only || brush_.style() == Qt::NoBrush) { box(c, clip); return; }
+	if (clip) {
+		c &= *clip;
+		if (c.isEmpty()) return;
+	}
 
 	const QRgb col = brush_.color().rgba();
 	const QPalette &pal = QGuiApplication::palette();
@@ -306,21 +382,29 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 		}
 }
 
-void CellPaintEngine::box(const QRect &c) {
+void CellPaintEngine::box(const QRect &c, const std::optional<QRect> &clip) {
 	if (c.width() < 2 || c.height() < 2) return;
 	CellBuffer &b = dev_->buffer();
+	// Per cell, so that a box crossing the clip's edge keeps the part inside
+	// it and loses the part outside. Shrinking the rectangle instead would
+	// draw a smaller complete frame, which is a different frame; dropping it
+	// would lose a border that is mostly visible.
+	const auto put = [&](int x, int y, const QString &g) {
+		if (clip && !clip->contains(x, y)) return;
+		b.at(x, y).ch = g;
+	};
 	for (int x = c.left() + 1; x < c.right(); ++x) {
-		b.at(x, c.top()).ch = QStringLiteral("─");
-		b.at(x, c.bottom()).ch = QStringLiteral("─");
+		put(x, c.top(), QStringLiteral("─"));
+		put(x, c.bottom(), QStringLiteral("─"));
 	}
 	for (int y = c.top() + 1; y < c.bottom(); ++y) {
-		b.at(c.left(), y).ch = QStringLiteral("│");
-		b.at(c.right(), y).ch = QStringLiteral("│");
+		put(c.left(), y, QStringLiteral("│"));
+		put(c.right(), y, QStringLiteral("│"));
 	}
-	b.at(c.left(), c.top()).ch = QStringLiteral("┌");
-	b.at(c.right(), c.top()).ch = QStringLiteral("┐");
-	b.at(c.left(), c.bottom()).ch = QStringLiteral("└");
-	b.at(c.right(), c.bottom()).ch = QStringLiteral("┘");
+	put(c.left(), c.top(), QStringLiteral("┌"));
+	put(c.right(), c.top(), QStringLiteral("┐"));
+	put(c.left(), c.bottom(), QStringLiteral("└"));
+	put(c.right(), c.bottom(), QStringLiteral("┘"));
 }
 
 void CellPaintEngine::line(const QLineF &l) {
@@ -405,15 +489,29 @@ void CellPaintEngine::line(const QLineF &l) {
 		}
 		return true;
 	};
+	const std::optional<QRect> clip = clip_cells();
+	if (clip && clip->isEmpty()) return;
 	if (qAbs(m.dy()) < ch / 2.0) {
 		const int y = cell_of(m.y1(), ch);
-		const auto span = covered(qMin(m.x1(), m.x2()), qMax(m.x1(), m.x2()), cw);
+		auto span = covered(qMin(m.x1(), m.x2()), qMax(m.x1(), m.x2()), cw);
+		if (clip) {
+			if (y < clip->top() || y > clip->bottom()) return;
+			span.first = qMax(span.first, clip->left());
+			span.second = qMin(span.second, clip->right());
+			if (span.first > span.second) return;
+		}
 		if (!clear_run(y, span.first, span.second, true)) return;
 		for (int x = span.first; x <= span.second; ++x)
 			b.at(x, y).ch = QStringLiteral("─");
 	} else if (qAbs(m.dx()) < cw / 2.0) {
 		const int x = cell_of(m.x1(), cw);
-		const auto span = covered(qMin(m.y1(), m.y2()), qMax(m.y1(), m.y2()), ch);
+		auto span = covered(qMin(m.y1(), m.y2()), qMax(m.y1(), m.y2()), ch);
+		if (clip) {
+			if (x < clip->left() || x > clip->right()) return;
+			span.first = qMax(span.first, clip->top());
+			span.second = qMin(span.second, clip->bottom());
+			if (span.first > span.second) return;
+		}
 		if (!clear_run(x, span.first, span.second, false)) return;
 		for (int y = span.first; y <= span.second; ++y)
 			b.at(x, y).ch = QStringLiteral("│");

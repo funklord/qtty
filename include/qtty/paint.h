@@ -10,6 +10,7 @@
 #include <QBrush>
 #include <QFont>
 #include <QTransform>
+#include <optional>
 #include "cell.h"
 
 class QCoreApplication;
@@ -121,9 +122,13 @@ public:
 
 private:
 	QRect to_cells(const QRectF &) const;
+	// The painter's clip in cells, invalid when there is none. design.md
+	// section 432 lists clip among what updateState() carries; it was the one
+	// of the four that was not implemented.
+	std::optional<QRect> clip_cells() const;
 	bool is_thin(const QRectF &) const;
 	void fill_rectf(const QRectF &, bool outline_only = false);
-	void box(const QRect &cells);
+	void box(const QRect &cells, const std::optional<QRect> &clip = std::nullopt);
 	void line(const QLineF &);
 
 	CellPaintDevice *dev_ = nullptr;

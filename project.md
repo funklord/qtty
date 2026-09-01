@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-658 checks, 0 failures, under three configurations: the offscreen
+660 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -172,6 +172,21 @@ decision §8.1 records as open, so the axis is priced rather than taken.
 by transitive luck on a class Qt 6 moved between modules. That include is
 right on every version and is fixed.
 
+**Channel A clips now**, which is design.md §432's fourth item and was
+the one of the four never implemented: a `QPainter` told to keep inside
+four cells filled twenty. What the measurement changed is §8.7's reason
+for existing. **It does not fix the scroll area**, because Qt sets no clip
+when `QWidget::render()` walks children -- traced, every draw in that case
+reports `hasClipping() == false` -- so there was never a clip there for
+the engine to ignore. The overflow is the compositor's to fix, and the
+engine honouring a clip is the half that had to exist first.
+
+**One rule came out of it worth carrying: clipping rounds outward.** A
+cell is atomic, so a clip covering part of one either admits it or loses
+content that was inside it. Rounding to the nearest cell instead -- which
+is right for placing a rectangle -- made a `QLineEdit`'s text disappear,
+and reddened three checks, none of which mentioned clipping.
+
 **And one of §0b's open questions was not a question.**
 `Qt::ForegroundRole` and `Qt::BackgroundRole` reached nothing, and this
 document deferred that as OQ-7 arriving at the item views. It was not:
@@ -234,7 +249,7 @@ Owned by the copyright holder:
 | `SH_Slider_AbsoluteSetButtons`: a groove click setting the value where it landed | *the interaction sweep* |
 | How to tell an icon from a picture, so a wide short image can be a placement rather than a shaded block -- the 2x2 threshold promotes neither 8x1 nor the 2x1 an icon becomes | §7.2 |
 | Whether a text selection keeps the desktop's `QPalette::Highlight` RGB while an item view's selection is reverse video | §7.2, §7.7 |
-| Whether Channel A clips, which design.md says it does and the code does not | §8.7 |
+| Whether the compositor sets a clip per layer, so a scroll area stops painting over its neighbours -- the engine honours one now, and Qt sets none | §8.7 |
 | The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
@@ -4324,50 +4339,57 @@ Measured while writing the §11 benchmark, so the cost is known rather
 than guessed: `diff()` over a 200x60 frame is 0.154 ms against a 16 ms
 budget. Whichever way this is settled, it is not urgent.
 
-### 8.7 Channel A does not clip, and design.md says it does
+### 8.7 Channel A clips now, and that is not what fixes a scroll area
 
 design.md §432 lists the paint engine's entry point as
 `updateState(const QPaintEngineState &) override; // pen/brush/font/clip →
-Attrs`. Three of those four are implemented. **There is no clip handling
-anywhere in `src/render/cell_paint.cpp`** -- the word does not appear in
-it -- so every clip region Qt sets is ignored and a widget can write
-outside its own rectangle into cells belonging to another.
+Attrs`. Three of those four were implemented. **The fourth is implemented
+now**, and the measurement that came with it corrects what this section
+used to say about why it mattered.
 
-Measured rather than reasoned about, because "no clip code" is a fact
-about the source and this is a fact about the screen. A `QTableView` 20
-cells wide, no frame, with a column widened past its viewport, beside a
-`QLabel` starting at cell 20: the table's vertical grid line for that
-column was written at **cell 27**, seven cells outside the table, in the
-label's rectangle. The label's text survived, and only by luck -- the
-rule lands through `CellPaintEngine::drawLine()`, which writes only into
-a cell whose glyph is a space, so it missed the row the text was on. A
-fill, a frame or a label would not have missed.
+**What the clip was worth.** An application's own `setClipRect()` was
+ignored outright: a `QPainter` told to keep inside four cells filled
+twenty. It keeps inside them now -- five, not four, for the reason below
+-- and fills, text, rules, boxes and placements all consult it. The clip
+is asked of the **painter** rather than reassembled from the state flags,
+because Qt composes `NoClip`, `ReplaceClip` and `IntersectClip` itself and
+a second implementation of that composition is a second thing to get
+wrong. It is the bounding **rectangle** rather than the region: of the
+3386 clip changes the suite makes, 13 involve more than one rectangle, and
+a bounding rectangle under-clips rather than losing content.
 
-Flagged rather than resolved, and it is the largest of the §8 entries.
-Implementing it means a clip region in cell space consulted by every
-write the engine makes -- `fill_rectf`, `drawTextItem`, `line`, `box`,
-the placements -- which is a real feature rather than a missing line, and
-it changes what Channel A promises. Deciding instead that Channel A does
-not clip is also a defensible answer, and it is what the code says today;
-it would want saying out loud in design.md, together with what an
-application is then responsible for. What is not defensible is the
-present state, where the document says one thing, the code does another,
-and the difference is invisible until two widgets are adjacent.
+**Clipping rounds outward, and that is a rule rather than a detail.** A
+cell is atomic: a clip covering part of one either admits that cell or
+loses content that was inside it. `to_cells()` rounds each edge to the
+nearest cell, which is right for placing a rectangle and wrong for
+admitting one -- used here it made a clip eight pixels tall against a
+nineteen-pixel cell round to nothing, and a `QLineEdit`'s text
+disappeared, because a text area's inset is a few pixels. Three checks
+went red on that and none of them said "clip"; the one that does is new.
 
-Found by the drag sweep (§7.2) rather than by looking for it: a header
-being resized is how a column comes to be wider than the viewport that
-holds it.
+**And what it does not fix is the reason this section was urgent.** A
+`QScrollArea` still paints its scrolled-out content over its neighbours.
+Traced through the render: **every draw in that case reports
+`hasClipping() == false`.** Qt sets no clip at all when
+`QWidget::render()` walks children -- it maps each child to its position
+and paints it whole -- so there was never a clip for the engine to ignore
+there. The mechanism this section recorded was wrong: the engine ignoring
+clips was real, and it was not the cause of the overflow.
 
-**The `ICellPainted` sweep then found the case that makes this urgent
-rather than untidy: a `QScrollArea` does not clip its content.** A widget
-inside one, scrolled so that its top row is above the viewport, paints
-that row over whatever is above the scroll area. Measured with a label
-reading `ABOVE THE AREA` above a three-row viewport: scrolled by one row,
-the frame came back `XXXXXXTHE AREA`. The control is what places it -- an
-**ordinary** `QLabel` in exactly the same position does the same thing, so
-this is not the interface's doing and not the delegate's, it is the clip
-nobody applies. Anything an application puts in a scroll area is affected,
-which is a different order of exposure from a stray rule beside a table.
+**What would fix it is the compositor, and it is now unblocked rather than
+done.** `Compositor::compose()` renders each top-level with one
+`render()` call and lets Qt walk the children, so the clip would have to
+be set per layer -- or per child, which `render()` gives no hook for. The
+engine honouring a clip is the half that had to exist first; setting one
+is a separate piece of work with its own question, which is whether the
+compositor can drive the walk itself without reimplementing what
+`render()` does.
+
+Found by the `ICellPainted` sweep (§7.5) rather than by looking for it,
+and re-measured here: an ordinary `QLabel` in the same position overflows
+exactly as the interface did, which is what said it was neither the
+interface's doing nor the delegate's.
+
 
 ## 9. Build and repository conventions
 

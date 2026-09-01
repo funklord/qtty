@@ -146,6 +146,75 @@ int suite_render(bool record) {
 		}
 	}
 
+	// The clip, which design.md section 432 lists among the four things
+	// updateState() carries and which was the one of the four not implemented.
+	// An application's own setClipRect() was ignored outright: a painter told
+	// to keep inside four cells filled twenty.
+	//
+	// Asserted as a pair against the same fill unclipped, because "few cells
+	// filled" is also what an engine that stopped filling would produce.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		auto fill_with = [&](bool clipped, Qtty::CellBuffer &b) {
+			Qtty::CellPaintDevice dev(b);
+			QPainter p(&dev);
+			if (clipped) p.setClipRect(QRect(0, 0, cw * 4, ch));
+			p.fillRect(QRect(0, 0, cw * 20, ch), Qt::red);
+			p.end();
+		};
+		auto filled = [](const Qtty::CellBuffer &b) {
+			int n = 0;
+			for (int x = 0; x < b.cols(); ++x)
+				if (b.at(x, 0).bg.kind() != Qtty::Color::Default) ++n;
+			return n;
+		};
+		Qtty::CellBuffer clipped(20, 2), open(20, 2);
+		fill_with(true, clipped);
+		fill_with(false, open);
+		// Five, not four: the clip rounds OUTWARD, so a cell it covers in part
+		// is admitted whole. Asserted as a range rather than a number because
+		// the rule is "no more than a cell of slack", not a magic 5.
+		const int c = filled(clipped), o = filled(open);
+		if (c >= 4 && c <= 5 && o == 20)
+			printf("PASS: a clip trims what is drawn, and no clip trims nothing\n");
+		else {
+			printf("FAIL: a clip trims what is drawn, and no clip trims nothing\n"
+			       "      condition: %d cells clipped, %d unclipped\n", c, o);
+			++r;
+		}
+
+		// Outward, and this is the half that cost an afternoon. to_cells()
+		// rounds each edge to the NEAREST cell, so a clip thinner than a cell
+		// rounds to nothing -- and read as "a clip that admits nothing" it
+		// makes a QLineEdit's text disappear, because the text area's inset is
+		// a few pixels on a nineteen-pixel cell. A cell is atomic: a clip
+		// covering part of one either admits it or loses content that was
+		// inside it.
+		//
+		// The clip runs from six pixels into cell 0 to four pixels into cell
+		// 2, so rounding each edge to the nearest cell gives cells 1 and 2 --
+		// dropping the cell the clip starts in and the one it ends in.
+		// Rounding outward gives 0 through 3. Chosen so the two answers differ
+		// by more than one cell, which a check on "at least three" separates.
+		Qtty::CellBuffer part(20, 2);
+		{
+			Qtty::CellPaintDevice dev(part);
+			QPainter p(&dev);
+			p.setClipRect(QRectF(cw * 0.6, 0, cw * 1.8, ch));
+			p.fillRect(QRect(0, 0, cw * 20, ch), Qt::red);
+			p.end();
+		}
+		if (filled(part) >= 3)
+			printf("PASS: a clip admits every cell it covers any part of\n");
+		else {
+			printf("FAIL: a clip admits every cell it covers any part of\n"
+			       "      condition: %d cells filled, nearest-rounding gives 2\n",
+			       filled(part));
+			++r;
+		}
+	}
+
+
 	// ---- ICellPainted (section 5.3, risk R5) ---------------------------------
 	{
 		QWidget host;
@@ -355,7 +424,13 @@ int suite_render(bool record) {
 		}
 		if (buf.to_text() != before)
 			printf("PASS: a fill that does cover the cells still paints\n");
-		else { printf("FAIL: a fill that does cover the cells still paints\n"); ++r; }
+		else {
+			printf("FAIL: a fill that does cover the cells still paints\n"
+			       "      before '%s'\n      after  '%s'\n",
+			       qPrintable(before.section('\n', 0, 0)),
+			       qPrintable(buf.to_text().section('\n', 0, 0)));
+			++r;
+		}
 	}
 
 	// section 5.7's PixelSurface: the mirror of ICellPainted. That interface
