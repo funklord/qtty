@@ -1815,6 +1815,53 @@ int suite_widgets() {
 
 
 
+
+	// An icon-only toolbar action, which is the common toolbar shape and had
+	// nothing to draw at all. SH_ToolButtonStyle is pinned to text-only
+	// because a terminal draws no icon, so an action carrying only a picture
+	// carried nothing: measured on four actions, "[Cut]" and "[Find]"
+	// rendered and the two icon-only ones occupied four cells between them
+	// and drew NOTHING.
+	//
+	// The tool tip is where such an action already keeps its words -- what Qt
+	// shows on hover and what a screen reader announces -- so it is what the
+	// label falls back to. design.md asks for Compact::IconsToLetters here; a
+	// word beats a letter and costs the application nothing new, which is why
+	// this is unconditional rather than a hint (section 8).
+	{
+		QMainWindow win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *tb = win.addToolBar(QStringLiteral("Main"));
+		QPixmap pm(16, 16);
+		pm.fill(Qt::red);
+		const QIcon icon(pm);
+		tb->addAction(icon, QStringLiteral("&Cut"));
+		tb->addAction(icon, QString())->setToolTip(QStringLiteral("Copy"));
+		tb->addAction(icon, QString());          // no text, no tip: no words
+		tb->addAction(QStringLiteral("Find"));
+		win.setCentralWidget(new QLabel(QStringLiteral("body")));
+		win.resize(GridMetrics::cells(40, 6));
+		win.show();
+		QCoreApplication::processEvents();
+		CellBuffer b(40, 6);
+		render_once(win, b);
+		const QString row = b.to_text().split(QLatin1Char('\n')).value(0);
+		CHECK(row.contains(QStringLiteral("[Copy]")),
+		      "an icon-only action falls back to its tool tip");
+		// And the one that has no words anywhere is still visibly a control.
+		// The bracket-dropping rule written for the dock widget's title
+		// buttons made this WORSE before this pair existed: it turned two
+		// cells of "[]" into two blank cells, which is an invisible button.
+		// Brackets are dropped to buy room for content, so with no content
+		// there is nothing to buy.
+		CHECK(row.contains(QStringLiteral("[]")),
+		      "and one with no words at all is still visibly a control");
+		CHECK(row.contains(QStringLiteral("[Cut]")) && row.contains(QStringLiteral("[Find]")),
+		      "while an action with text is untouched");
+		GridGuard::reset();
+	}
+
+
 	return fails;
 }
 

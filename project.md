@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-697 checks, 0 failures, under three configurations: the offscreen
+700 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4167,10 +4167,12 @@ which is design.md §16's figure.
   The sweep's other two findings are elsewhere, because neither is the
   interface's: a scroll area not clipping is §8.7, and a build that did
   not rebuild is §9.5.
-- **design.md §7's Tier-2 hint system**, of which `setCompact` and the
-  `"qtty.cells"` property are what remain, along with the CI check
-  banning `setContentsMargins`, `setSpacing`, `setFixedSize` and
-  `setFixedWidth` in shared UI code. The rest is built: `GridSnap` does
+- **design.md §7's Tier-2 hint system**, of which the `"qtty.cells"`
+  property is what remains, along with the CI check banning
+  `setContentsMargins`, `setSpacing`, `setFixedSize` and `setFixedWidth`
+  in shared UI code. `setCompact` is **deliberately not built** and §8.8
+  carries the argument: its effect is unconditional on a terminal, so the
+  hint would switch nothing. The rest is built: `GridSnap` does
   what `CompactionPass` was for, `set_priority()` carries
   `Priority::Optional`, and §7.8 records the small-terminal policy
   working in the order design.md names -- drop the optional widgets,
@@ -5299,6 +5301,56 @@ So **a channel that answers is not evidence it is the right channel**,
 which `evidence.md` says in as many words and this section had to learn
 twice. The trace was real, the number was right, and the question was
 wrong.
+
+### 8.8 The Tier-2 hint names, and the two hints that are not hints
+
+design.md §7 writes three Tier-2 calls. The code answers all three, and
+disagrees with the document about two of them in the same way.
+
+**`qtty::setPriority()` is `set_priority()`.** A name qtty INTRODUCES is
+`snake_case` (§10); only a Qt name or a reimplemented Qt virtual keeps
+Qt's spelling. This is the same call the `focusWidget`/`set_focus_widget`
+rename made, and it is recorded rather than resolved silently because
+design.md is the design document and the spelling rule is the tree's.
+
+**`qtty::setCompact(toolbar, Compact::IconsToLetters)` is not built, and
+the reason is that its effect is unconditional here.** A hint exists to
+let shared code ask for behaviour the GUI must not get. Measured, a
+terminal has no choice to offer:
+
+- `SH_ToolButtonStyle` is pinned to `Qt::ToolButtonTextOnly` for the
+  whole style, because a terminal draws no icon. Every toolbar is already
+  letters, and an application that sets its own tool button style still
+  wins -- which is the hint mechanism Qt already provides.
+- What was actually missing was the case the document's name points at:
+  an action with an icon and **no text** had nothing to fall back to and
+  drew nothing at all. Four actions, measured:
+
+      before   [Cut]    [Find]
+      after    [Cut][Copy][][Find]
+
+  The tool tip is where such an action already keeps its words -- what Qt
+  shows on hover and what a screen reader announces -- so that is what
+  the label falls back to. A word beats a letter, and it costs the
+  application nothing new.
+
+- **And this found a regression I had put there two commits earlier.**
+  The bracket-dropping rule written for the dock widget's title buttons
+  -- drop the brackets below three cells, so the content keeps the cells
+  -- turned a wordless two-cell action from `[]` into two blank cells: an
+  invisible button. Brackets are dropped to buy room for content, so with
+  **no** content there is nothing to buy, and they stay. Its own check,
+  and the sabotage was run on its own after the priority pass showed that
+  two sabotages applied together can mask each other.
+
+So `setCompact` would be an enum with one value that switches nothing.
+**Building it would be writing API for a document rather than for a
+need**, which is the opposite of what §7's hints are for. If a second
+compaction mode ever appears that a GUI genuinely must not get, the hint
+is worth adding then and this paragraph is the argument for it.
+
+`w->setProperty("qtty.cells", QSize(20, 1))` is the third, and it is
+genuinely unbuilt -- nothing reads that property.
 
 Two checks, both pairs, because "nothing drawn" passes any assertion about
 content failing to appear where it should not: the scrolled-out label must

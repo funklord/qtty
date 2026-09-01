@@ -62,7 +62,28 @@ static QString tool_button_label(const QStyleOptionToolButton *tb, const QWidget
 		if (n == QLatin1String("qt_dockwidget_floatbutton"))
 			return QStringLiteral("↗");
 	}
-	const QString text = strip_mnemonic(tb->text);
+	QString text = strip_mnemonic(tb->text);
+	// An icon-only action, which is the common toolbar shape and had nothing
+	// to draw: SH_ToolButtonStyle is pinned to text-only because a terminal
+	// draws no icon, so an action carrying only a picture carried nothing at
+	// all. Measured on a four-action toolbar -- "[Cut]" and "[Find]" rendered
+	// and the two icon-only actions occupied four cells between them and drew
+	// nothing.
+	//
+	// The tool tip is where such an action already keeps its words: it is
+	// what Qt shows on hover, what a screen reader announces, and what an
+	// application has therefore already written. A word beats the letter
+	// design.md's Compact::IconsToLetters asks for, and it costs the
+	// application nothing new -- which is why this is unconditional rather
+	// than a hint. section 8 records that divergence.
+	if (text.isEmpty() && w) {
+		text = w->toolTip();
+		if (text.isEmpty()) {
+			if (auto *btn = qobject_cast<const QToolButton *>(w))
+				if (QAction *a = btn->defaultAction()) text = a->toolTip();
+		}
+		text = strip_mnemonic(text);
+	}
 	const QString glyph = glyph_for(w, tb->icon);
 	if (glyph.isEmpty()) return text;
 	if (text.isEmpty()) return glyph;
@@ -1063,7 +1084,15 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				// are dropped, for the reason the one-row line edit keeps its
 				// two: the control is still visibly a control, and an empty
 				// box is not one.
-				const bool bracket = c.width() >= 3;
+				// ...unless there is nothing to put in the cells. Dropping
+				// the brackets buys room for content, and with no content it
+				// buys an invisible control instead -- which is what an
+				// icon-only action with no words became when this rule was
+				// first written for the dock buttons. Two cells of "[]" say
+				// "a button is here" and nothing else, and that is more than
+				// two blank cells say.
+				const QString label = tool_button_label(tb, w);
+				const bool bracket = c.width() >= 3 || label.isEmpty();
 				if (bracket) {
 					dev->buffer().put_cluster(c.left(), row, QStringLiteral("["));
 					dev->buffer().put_cluster(c.right(), row, QStringLiteral("]"));
@@ -1082,7 +1111,7 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				const int inner = c.width() - (bracket ? 2 : 0) - (menu ? 2 : 0);
 				if (inner > 0)
 					dev->buffer().text(c.left() + (bracket ? 1 : 0), row,
-					                       elide_to_cells(tool_button_label(tb, w), inner),
+					                       elide_to_cells(label, inner),
 					                       Color(), Color(),
 					                       label_attrs(opt, w, on ? Attrs(Attr::Reverse)
 					                                              : Attrs()));
