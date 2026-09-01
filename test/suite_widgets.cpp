@@ -2216,6 +2216,149 @@ int suite_widgets() {
 	}
 
 
+
+	// ---- focus is visible, for every widget that can take it ----
+	{
+		// A keyboard user in a terminal has no pointer to hover with and no
+		// window manager to tell them which control is live. Measured
+		// 2026-09-01, with focus moved to each widget in turn and the whole
+		// frame compared cell by cell INCLUDING attributes: only the push
+		// button changed anything it owned. What hid it was the terminal's
+		// hardware cursor, which landed on every widget because design.md
+		// 5.5's test for "has a caret" -- a valid ImCursorRectangle -- is one
+		// every QWidget answers.
+		//
+		// This asserts the property a user has, not the mechanism: a focused
+		// widget is distinguishable, by its own cells or by the cursor. The
+		// line edit is distinguished by the cursor alone and that is correct,
+		// so a check demanding changed cells everywhere would have to make an
+		// exception for it and would then be asserting the implementation.
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+
+		struct Row { const char *what; QWidget *w; };
+		QVector<Row> rows;
+		auto add = [&](const char *what, QWidget *w) {
+			v->addWidget(w);
+			rows.append(Row{ what, w });
+		};
+		auto *anchor = new QPushButton(QStringLiteral("Anchor"));
+		add("push button", anchor);
+		add("line edit",   new QLineEdit(QStringLiteral("text")));
+		add("check box",   new QCheckBox(QStringLiteral("Wrap")));
+		add("radio",       new QRadioButton(QStringLiteral("One")));
+		auto *combo = new QComboBox;
+		combo->addItems({ QStringLiteral("one"), QStringLiteral("two") });
+		add("combo box",   combo);
+		add("spin box",    new QSpinBox);
+		add("slider",      new QSlider(Qt::Horizontal));
+		auto *list = new QListWidget;
+		list->addItems({ QStringLiteral("alpha"), QStringLiteral("beta") });
+		list->setFixedHeight(3 * GridMetrics::ch());
+		add("list widget", list);
+		auto *tabs = new QTabWidget;
+		tabs->addTab(new QWidget, QStringLiteral("One"));
+		tabs->addTab(new QWidget, QStringLiteral("Two"));
+		tabs->setFixedHeight(3 * GridMetrics::ch());
+		add("tab widget",  tabs);
+		auto *bar = new QScrollBar(Qt::Horizontal);
+		bar->setRange(0, 100);
+		add("scroll bar",  bar);
+
+		win.resize(GridMetrics::cells(24, 18));
+		win.show();
+		QCoreApplication::processEvents();
+
+		InputRouter router(&win);
+		Compositor comp(&win, &router);
+
+		// Glyphs AND attributes, per row. An earlier version compared
+		// to_text(), which carries glyphs only -- and focus is spelled with
+		// Attr::Reverse, which to_text() cannot see, so every widget came
+		// back "identical" including the push button that already had a
+		// focus rendering.
+		auto shoot = [&](QWidget *focus, QString *out_cursor) {
+			focus->setFocus();
+			// Asked of the WINDOW, which is what Application and InputRouter
+			// do. A QTabWidget forwards focus to its tab bar through a focus
+			// proxy, so taking the widget setFocus was called on named one
+			// the style never draws.
+			set_focus_widget(win.focusWidget());
+			QCoreApplication::processEvents();
+			CellBuffer b(24, 18);
+			comp.compose(b);
+			*out_cursor = comp.cursor_cell()
+			    ? QStringLiteral("%1,%2").arg(comp.cursor_cell()->x())
+			                             .arg(comp.cursor_cell()->y())
+			    : QStringLiteral("none");
+			QVector<QString> sig;
+			for (int y = 0; y < b.rows(); ++y) {
+				QString line;
+				for (int x = 0; x < b.cols(); ++x) {
+					const Cell &c = b.at(x, y);
+					line += c.ch.isEmpty() ? QStringLiteral(".") : c.ch;
+					if (c.attrs & Attr::Reverse)   line += QLatin1Char('R');
+					if (c.attrs & Attr::Bold)      line += QLatin1Char('B');
+					if (c.attrs & Attr::Underline) line += QLatin1Char('U');
+					if (c.attrs & Attr::Dim)       line += QLatin1Char('D');
+				}
+				sig.append(line);
+			}
+			return sig;
+		};
+
+		QString base_cur;
+		const QVector<QString> base = shoot(anchor, &base_cur);
+		int invisible = 0;
+		for (const Row &r : rows) {
+			if (r.w == anchor) continue;
+			QString cur;
+			const QVector<QString> shot = shoot(r.w, &cur);
+			// Restricted to the rows the widget itself occupies, so that
+			// "something changed" cannot be satisfied by the ANCHOR losing
+			// its own highlight -- which happens on every one of these and
+			// would make the check pass whatever the widget did.
+			const QRect g(r.w->mapTo(&win, QPoint()), r.w->size());
+			bool own = false;
+			for (int y = g.top() / GridMetrics::ch();
+			     y <= g.bottom() / GridMetrics::ch() && y < shot.size(); ++y)
+				if (base[y] != shot[y]) own = true;
+			if (!own && cur == base_cur) {
+				printf("FAIL: focus on a %s shows nothing at all\n", r.what);
+				++invisible;
+			}
+		}
+		fails += invisible;
+		if (!invisible)
+			printf("PASS: every widget that can take focus shows that it has it\n");
+
+		// And the cursor is a caret, not a focus marker. It says "type here",
+		// and a screen reader says so out loud; parking it in the middle of a
+		// slider's track is a statement, not a decoration.
+		int stray = 0;
+		for (const Row &r : rows) {
+			QString cur;
+			shoot(r.w, &cur);
+			const bool edits = r.w->testAttribute(Qt::WA_InputMethodEnabled);
+			if (!edits && cur != QStringLiteral("none")) {
+				printf("FAIL: a %s is not a text field and got the cursor at %s\n",
+				       r.what, qPrintable(cur));
+				++stray;
+			}
+			if (edits && cur == QStringLiteral("none")) {
+				printf("FAIL: a %s edits text and got no cursor\n", r.what);
+				++stray;
+			}
+		}
+		fails += stray;
+		if (!stray)
+			printf("PASS: and the terminal's cursor goes only where text is edited\n");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

@@ -99,6 +99,30 @@ static QWidget *s_focus = nullptr;
 QWidget *focusWidget() { return s_focus; }
 void set_focus_widget(QWidget *w) { s_focus = w; }
 
+// Reverse video on the control that owns focus. design.md F10 settled this in
+// the spike -- "moving focus to a button changes exactly the button's cells to
+// reverse-video" -- and until now exactly two controls did it, the push button
+// and the tool button.
+//
+// Measured 2026-09-01, with focus moved to each of nine widgets in turn and
+// the whole frame compared cell by cell including attributes: not one of the
+// other seven changed a cell it owned. What hid it is that the terminal's
+// hardware cursor landed on every one of them, for a reason that is itself
+// wrong -- see Compositor::compose().
+//
+// The mark goes on the control's own glyph -- the check box's brackets, the
+// slider's handle, the scroll bar's thumb -- and not on everything the widget
+// covers. A whole reversed scroll bar says "focused" by shouting, where this
+// style already spells pressed, checked and selected the same quiet way.
+//
+// A line edit is deliberately not in the list: it has a real caret, which
+// says where typing goes as well as that typing goes here, and reversing the
+// field would hide it.
+static bool owns_focus(const QWidget *w) { return w && w == s_focus; }
+static Attrs focus_attrs(const QWidget *w) {
+	return owns_focus(w) ? Attrs(Attr::Reverse) : Attrs();
+}
+
 // ------------------------------------------------- font provisioning (5.3/R3)
 
 QString grid_font_problem(const QFont &font) {
@@ -264,20 +288,31 @@ void GridGuard::install(QCoreApplication &app) {
 }
 
 
-static void draw_box(CellBuffer &b, const QRect &c) {
+// A framed widget that owns focus gets the double-line box. The two sets live
+// in the same Unicode block, so a font with one has the other, and saying it
+// with glyphs rather than with an attribute matters here: the contents of a
+// focused list are already using reverse video to say which row is selected,
+// and a reversed border would be competing with them for the same signal.
+static void draw_box(CellBuffer &b, const QRect &c, bool focused = false) {
 	if (c.width() < 2 || c.height() < 2) return;
+	const QString h  = focused ? QStringLiteral("═") : QStringLiteral("─");
+	const QString v  = focused ? QStringLiteral("║") : QStringLiteral("│");
+	const QString tl = focused ? QStringLiteral("╔") : QStringLiteral("┌");
+	const QString tr = focused ? QStringLiteral("╗") : QStringLiteral("┐");
+	const QString bl = focused ? QStringLiteral("╚") : QStringLiteral("└");
+	const QString br = focused ? QStringLiteral("╝") : QStringLiteral("┘");
 	for (int x = c.left() + 1; x < c.right(); ++x) {
-		b.at(x, c.top()).ch = QStringLiteral("─");
-		b.at(x, c.bottom()).ch = QStringLiteral("─");
+		b.at(x, c.top()).ch = h;
+		b.at(x, c.bottom()).ch = h;
 	}
 	for (int y = c.top() + 1; y < c.bottom(); ++y) {
-		b.at(c.left(), y).ch = QStringLiteral("│");
-		b.at(c.right(), y).ch = QStringLiteral("│");
+		b.at(c.left(), y).ch = v;
+		b.at(c.right(), y).ch = v;
 	}
-	b.at(c.left(), c.top()).ch = QStringLiteral("┌");
-	b.at(c.right(), c.top()).ch = QStringLiteral("┐");
-	b.at(c.left(), c.bottom()).ch = QStringLiteral("└");
-	b.at(c.right(), c.bottom()).ch = QStringLiteral("┘");
+	b.at(c.left(), c.top()).ch = tl;
+	b.at(c.right(), c.top()).ch = tr;
+	b.at(c.left(), c.bottom()).ch = bl;
+	b.at(c.right(), c.bottom()).ch = br;
 }
 
 GridStyle::GridStyle() : QProxyStyle(QStyleFactory::create(QStringLiteral("Fusion"))) {}
@@ -639,12 +674,12 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 			    (opt->state & State_NoChange) ? QStringLiteral("[-]")
 			    : (opt->state & State_On)     ? QStringLiteral("[x]")
 			                                  : QStringLiteral("[ ]"),
-			    Color(), Color(), with_state(opt));
+			    Color(), Color(), with_state(opt) | focus_attrs(w));
 			return;
 		case PE_IndicatorRadioButton:
 			dev->buffer().text(c.left(), c.top(),
 			    (opt->state & State_On) ? QStringLiteral("(o)") : QStringLiteral("( )"),
-			    Color(), Color(), with_state(opt));
+			    Color(), Color(), with_state(opt) | focus_attrs(w));
 			return;
 		case PE_FrameWindow: case PE_Frame: case PE_FrameGroupBox:
 		case PE_PanelMenu: case PE_FrameMenu:
@@ -661,7 +696,13 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 		// suppress the fill for a region Channel A has already drawn as a box
 		// -- and it needed no new mechanism, only this case label.
 		case PE_FrameTabWidget:
-			draw_box(dev->buffer(), c);
+			// A framed widget is the only thing an item view, a text edit or
+			// a scroll area gives this style to mark, and until now nothing
+			// marked them: focus moved into a list and not one cell changed.
+			// The tab pane is in this group and never matches, because a
+			// QTabWidget hands focus to its tab bar through a focus proxy --
+			// which the bar's own case answers.
+			draw_box(dev->buffer(), c, owns_focus(w));
 			return;
 		// A one-row line edit is bracketed, the way the combo box and the spin
 		// box below already are and for the reason written there: the control
@@ -679,7 +720,7 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 		// setFrame(false) answers false and is obeyed. The widget says
 		// whether it wants a boundary; this only asks.
 		case PE_PanelLineEdit: {
-			if (c.height() >= 2) { draw_box(dev->buffer(), c); return; }
+			if (c.height() >= 2) { draw_box(dev->buffer(), c, owns_focus(w)); return; }
 			const auto *le = qobject_cast<const QLineEdit *>(w);
 			if (le && le->hasFrame()) {
 				dev->buffer().put_cluster(c.left(), c.top(), QStringLiteral("["));
@@ -949,10 +990,15 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				inner = elide_to_cells(inner, room);
 				inner += QString(qMax(0, room - int(inner.size())), QLatin1Char(' '));
 				const QString label = QLatin1Char('[') + inner + QLatin1Char(']');
+				// Underline rather than reverse, because reverse is taken:
+				// the selected tab already carries it, and the tab bar owning
+				// focus is a different fact from which tab is current. A bar
+				// that has the keys shows its current tab underlined as well
+				// as reversed; one that does not shows it reversed alone.
+				Attrs ta = sel ? Attrs(Attr::Reverse) : Attrs();
+				if (sel && owns_focus(w)) ta |= Attr::Underline;
 				dev->buffer().text(c.left(), c.top(), elide_to_cells(label, c.width()),
-				                   Color(), Color(),
-				                   label_attrs(opt, w, sel ? Attrs(Attr::Reverse)
-				                                           : Attrs()));
+				                   Color(), Color(), label_attrs(opt, w, ta));
 				return;
 			}
 			break;
@@ -1067,10 +1113,17 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 						g = (t >= thumb_pos && t < thumb_pos + thumb_len)
 						    ? QStringLiteral("█") : QStringLiteral("░");
 					}
+					// Focus marks the thumb, which is the part that moves.
+					// The arrow heads and the track are the same whoever
+					// owns the keys.
+					const Attrs at = (i > 0 && i < len - 1
+					                  && i - 1 >= thumb_pos
+					                  && i - 1 < thumb_pos + thumb_len)
+					                 ? a | focus_attrs(w) : a;
 					if (vert) dev->buffer().put_cluster(c.left(), c.top() + i, g,
-					                                   Color(), Color(), a);
+					                                   Color(), Color(), at);
 					else      dev->buffer().put_cluster(c.left() + i, c.top(), g,
-					                                   Color(), Color(), a);
+					                                   Color(), Color(), at);
 				}
 				return;
 			}
@@ -1084,7 +1137,7 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			// so. Before this it rendered as bare text with a marker, wearing
 			// the one-cell indent where the frame used to be.
 			const int row = c.top() + c.height() / 2;
-			const Attrs a = with_state(opt);
+			const Attrs a = with_state(opt) | focus_attrs(w);
 			CellBuffer &b = dev->buffer();
 			if (c.height() >= 2) {
 				draw_box(b, c);
@@ -1182,7 +1235,9 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				// nothing on the screen, and the handle looked the same
 				// whether it was being moved or merely sat where it was left.
 				const Attrs a = with_state(opt);
-				const Attrs held = (opt->state & State_Sunken) ? a | Attr::Reverse : a;
+				const Attrs held = ((opt->state & State_Sunken) ? Attrs(Attr::Reverse)
+				                                                : Attrs())
+				                   | focus_attrs(w) | a;
 				for (int i = 0; i < len; ++i) {
 					const bool handle = i == pos;
 					const QString g = handle ? QStringLiteral("●")
@@ -1199,7 +1254,7 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 		case CC_SpinBox: {
 			// Same as the combo above, and for the same reason.
 			const int row = c.top() + c.height() / 2;
-			const Attrs a = with_state(opt);
+			const Attrs a = with_state(opt) | focus_attrs(w);
 			CellBuffer &b = dev->buffer();
 			if (c.height() >= 2) {
 				draw_box(b, c);

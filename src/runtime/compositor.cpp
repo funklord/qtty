@@ -190,7 +190,28 @@ void Compositor::compose(CellBuffer &out) {
 	// (section 5.5). A modal owns input while it is up (section 8.3), so it owns
 	// the cursor too; a popup has no text cursor of its own.
 	cursor_.reset();
-	if (QWidget *fw = cursor_layer->focusWidget()) {
+	// design.md 5.5 adopts a generic trick -- ask the focus widget for
+	// ImCursorRectangle rather than special-casing input classes -- on the
+	// premise that "any widget that supports input methods reports its caret
+	// this way". Measured 2026-09-01, and the premise is false in the
+	// direction that matters: EVERY QWidget answers ImCursorRectangle, with
+	// QWidget's own default of a one-pixel rectangle at its horizontal
+	// centre. A check box, a radio button, a slider, a list, a tab bar and a
+	// scroll bar all returned 1x19+120+0 in a 24-cell form, and each of them
+	// got the terminal's hardware cursor parked in the middle of its label.
+	//
+	// A caret does not mean "this is focused", it means "type here" -- and a
+	// screen reader says so out loud, which is the reason design.md gives for
+	// placing it accurately in the first place.
+	//
+	// WA_InputMethodEnabled is the test that separates them, and it was
+	// measured rather than assumed: of the nine widgets, exactly the line
+	// edit and the spin box carry it, which is exactly the two that edit
+	// text. Qt clears it on a read-only line edit, so one of those loses its
+	// caret too, which is right.
+	QWidget *fw = cursor_layer->focusWidget();
+	if (fw && !fw->testAttribute(Qt::WA_InputMethodEnabled)) fw = nullptr;
+	if (fw) {
 		QVariant v = fw->inputMethodQuery(Qt::ImCursorRectangle);
 		// A widget that delegates editing to an internal editor forwards this
 		// query to it VERBATIM, so the rect comes back in the editor's own

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-01
 
-727 checks, 0 failures, under three configurations: the offscreen
+729 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -3622,6 +3622,72 @@ experimental bracket broke **no existing check**, both snapshots included.
 Neither fixture contains a one-row line edit, an editable combo or a spin
 box in a position that shows it.
 
+**Focus was invisible on eight of nine widgets** (2026-09-01). design.md
+F10 settled the convention in the spike -- *"moving focus to a button
+changes exactly the button's cells to reverse-video"* -- and exactly two
+controls implemented it, the push button and the tool button. A probe
+moved focus to each widget of a ten-widget form in turn and compared the
+whole frame cell by cell **including attributes**, restricted to the rows
+the widget itself occupies:
+
+    check box    own NO   radio       own NO   combo box  own NO
+    spin box     own NO   slider      own NO   list       own NO
+    tab bar      own NO   scroll bar  own NO
+
+A keyboard user in a terminal has no pointer to hover with and no window
+manager to say which control is live, so this is not cosmetic: a form was
+navigable only by counting Tab presses.
+
+What hid it for so long is that **the hardware cursor landed on every one
+of them**, which looked like focus feedback and was an unrelated bug --
+§8.9 has that half. Fixing the cursor without this would have made the
+eight strictly worse, which is why they are one change.
+
+Where the mark goes, per control, and why it is not one rule:
+
+- **Check box, radio, combo box, spin box** -- reverse video on the
+  control's own glyph, the `[x]`, the `(o)`, the brackets and the arrow.
+  Not on everything the widget covers: a whole reversed combo box says
+  "focused" by shouting, and this style already spells pressed, checked
+  and selected the same quiet way.
+- **Slider and scroll bar** -- reverse the handle and the thumb, the part
+  that moves. The track and the arrow heads are the same whoever holds
+  the keys.
+- **Framed widgets -- item views, text edits, scroll areas** -- the
+  **double-line box**, `╔═╗` where the unfocused one draws `┌─┐`. Said
+  with glyphs rather than with an attribute on purpose: the contents of a
+  focused list are already using reverse video to say which row is
+  selected, and a reversed border would compete with them for the same
+  signal. The two box sets are in one Unicode block, so a font with one
+  has the other.
+- **Tab bar** -- underline, because reverse is taken. The selected tab
+  already carries it, and "which tab is current" is a different fact from
+  "the bar has the keys"; a focused bar shows its current tab underlined
+  as well as reversed.
+- **Line edit** -- nothing, deliberately. It has a real caret, which says
+  where typing goes as well as that typing goes here, and reversing the
+  field would hide it.
+
+Two things the probe taught about its own instrument. It first compared
+`to_text()`, which carries glyphs and not attributes -- so every widget
+came back "identical", **including the push button that already had a
+focus rendering**, and the reading was the instrument describing itself.
+And it set the style's focus widget to the one `setFocus()` was called
+on; a `QTabWidget` forwards focus to its tab bar through a focus proxy,
+so the tab bar's own drawing never matched. The runtime asks the
+*window* for `focusWidget()`, and the probe now does what the runtime
+does.
+
+The check that stays behind asserts the property rather than the
+mechanism: **a focused widget is distinguishable, by its own cells or by
+the cursor.** The line edit passes on the cursor alone and that is
+correct, so a check demanding changed cells everywhere would need an
+exception for it and would then be asserting the implementation. It is
+scoped to the rows the widget occupies, because moving focus away from
+the anchor button always changes *something* -- the anchor's own
+highlight -- and a whole-frame comparison would have passed no matter
+what the widget did.
+
 ### 7.3 Graphics tier (design.md §17.3)
 
 The most complete tier. `Overlay`, the half-block colour upgrade, the
@@ -5671,6 +5737,58 @@ content failing to appear where it should not: the scrolled-out label must
 be visible when it is in view and absent from the row above the area when
 it is not, and a child eighteen cells wide inside a six-cell parent must
 arrive clipped rather than whole.
+
+### 8.9 `ImCursorRectangle` does not mean what design.md 5.5 takes it to mean
+
+Section 5.5 adopts what it calls an elegant trick -- ask the focus widget
+for `ImCursorRectangle` "rather than special-casing input classes" -- on
+the stated premise that *"any widget that supports input methods --
+`QLineEdit`, `QTextEdit`, custom editors -- reports its caret this
+way."* The code implements it faithfully, and the premise is false in
+the direction that matters.
+
+**Every `QWidget` answers `ImCursorRectangle`.** `QWidget`'s own
+implementation returns a one-pixel rectangle at the widget's horizontal
+centre, and it is a valid `QVariant`, so a validity test accepts it.
+Measured 2026-09-01 in a 24-cell form:
+
+    line edit    IMR 10x20+47+1   WA_InputMethodEnabled yes
+    check box    IMR  1x19+120+0  WA_InputMethodEnabled no
+    radio        IMR  1x19+120+0  WA_InputMethodEnabled no
+    combo box    IMR  1x19+120+0  WA_InputMethodEnabled no
+    spin box     IMR 10x20+-3+0   WA_InputMethodEnabled yes
+    slider       IMR  1x19+120+0  WA_InputMethodEnabled no
+    list widget  IMR  1x38+120+0  WA_InputMethodEnabled no
+    tab bar      IMR  1x57+120+0  WA_InputMethodEnabled no
+    scroll bar   IMR  1x19+120+0  WA_InputMethodEnabled no
+
+120 is half of 240 pixels, which is half of 24 cells: the centre, for
+every widget that does not edit text. So the terminal's hardware cursor
+was parked in the middle of a check box's label, a slider's track and a
+scroll bar's thumb.
+
+`WA_InputMethodEnabled` is the attribute that separates them, and the
+table is the measurement rather than the reasoning: exactly the two that
+edit text carry it. `Compositor::compose()` now tests it. A read-only
+`QLineEdit` has it cleared by Qt and loses its caret, which is right --
+there is nowhere to type.
+
+design.md's own justification is the argument against its
+implementation: *"a correctly positioned hardware cursor is the single
+largest perceived-quality difference between a good TUI and a bad one,
+and matters for screen readers."* A caret in the middle of a slider is
+not a decoration, it is a claim that typing goes there, and a screen
+reader says it out loud.
+
+**Measured and not chased: the spin box's caret is two cells left of its
+field.** Qt answers `10x20+-3+0` -- a caret at x = -3, outside the widget
+-- and the compositor's owner search maps that from the inner
+`QLineEdit`, giving column 0, which is the `[` rather than the digit. The
+compositor already carries a fix for a related fault in the same place
+(a spin box and its editor answering identically, so the rect had to be
+mapped from whichever returned it), and this is a different one. Recorded
+rather than fixed: it needs its own measurement, and the check added here
+asserts that a spin box gets a cursor, not where it lands.
 
 
 ## 9. Build and repository conventions
