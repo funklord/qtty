@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-704 checks, 0 failures, under three configurations: the offscreen
+706 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -5408,6 +5408,24 @@ makes the compositor drop and scroll.
 A non-positive size is ignored rather than obeyed, so a typo cannot pin
 a widget to nothing -- the same direction `priority_of()` takes for an
 out-of-range value.
+
+**The width is a floor and the height is exact**, and that asymmetry was
+not the first answer. A minimum alone honours the number and loses the
+shape, which the document's own example makes visible: a `QLineEdit`
+asked for 20x1 came out 38x1, because its vertical policy is `Fixed` and
+held on its own -- but a `QLabel` asked for the same came out
+**38x11**. Its policy is `Preferred`, so the layout stretched a one-row
+annotation over eleven rows and floated the text in the middle of an
+empty box. The floor was honoured and the annotation still did not mean
+what it said.
+
+The rule that fixes it is one the tree had already written down for
+every control `sizeFromContents()` sizes: *"a single-line control is one
+cell tall by construction. The width still snaps up, because a width is
+a count of characters and rounding one down truncates text."* The hint
+follows it -- minimum size in both axes, and a maximum height as well --
+so the same sentence governs a widget qtty sizes and a widget the
+application sizes.
 
 Two checks, both pairs, because "nothing drawn" passes any assertion about
 content failing to appear where it should not: the scrolled-out label must

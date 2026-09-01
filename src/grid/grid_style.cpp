@@ -1352,7 +1352,20 @@ static void apply_cells(QWidget *w) {
 	// cells tall because its width was misspelt. Same direction priority_of()
 	// takes for an out-of-range value.
 	if (c.width() <= 0 || c.height() <= 0) return;
+	// Width is a floor and height is exact, which is not an arbitrary
+	// asymmetry -- it is the rule sizeFromContents() already states for every
+	// control it sizes: "a single-line control is one cell tall by
+	// construction. The width still snaps up, because a width is a count of
+	// characters and rounding one down truncates text."
+	//
+	// Measured, and the case that forced it is the one design.md's own example
+	// uses. A QLineEdit asked for 20x1 got 38x1 -- its vertical policy is
+	// Fixed, so the height held on its own. A QLabel asked for the same got
+	// 38x**11**: policy Preferred, so the layout stretched a one-row
+	// annotation over eleven rows and floated the text in the middle of an
+	// empty box. The minimum was honoured and the shape was not.
 	w->setMinimumSize(c.width() * GridMetrics::cw(), c.height() * GridMetrics::ch());
+	w->setMaximumHeight(c.height() * GridMetrics::ch());
 }
 
 bool GridSnap::eventFilter(QObject *obj, QEvent *event) {

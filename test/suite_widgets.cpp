@@ -1927,6 +1927,39 @@ int suite_widgets() {
 	}
 
 
+
+	// The shape an application asked for, not just the floor. A widget's
+	// vertical size policy decides whether a layout stretches it, and most do:
+	// a QLineEdit's is Fixed and holds at one row on its own, but a QLabel's
+	// is Preferred, so "20x1" became 38x11 -- a one-row annotation stretched
+	// over eleven rows with the text floating in the middle.
+	//
+	// So the width is a floor and the height is exact, which is the rule
+	// sizeFromContents() already states: a width is a count of characters and
+	// rounding one down truncates text, while a single-line control is one
+	// cell tall by construction.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		QWidget d;
+		auto *v = new QVBoxLayout(&d);
+		auto *stretchy = new QLabel(QStringLiteral("a label"));
+		stretchy->setProperty("qtty.cells", QSize(20, 1));
+		v->addWidget(stretchy);
+		d.setAttribute(Qt::WA_DontShowOnScreen);
+		d.resize(GridMetrics::cells(40, 12));
+		d.show();
+		QCoreApplication::processEvents();
+		// The pair, because either half alone is satisfied by a bug: a fixed
+		// size in BOTH axes would hold the height and wrongly refuse the
+		// width, and a floor in both would grow the height as it did before.
+		CHECK(stretchy->height() == ch,
+		      "a one-row hint stays one row however stretchy the widget");
+		CHECK(stretchy->width() > 20 * cw,
+		      "while its width is a floor and still grows to fill");
+		GridGuard::reset();
+	}
+
+
 	return fails;
 }
 
