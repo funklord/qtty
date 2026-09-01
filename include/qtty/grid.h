@@ -160,6 +160,27 @@ void clear_icon_glyphs();
 QString glyph_for(const QWidget *w, const QString &icon_name);
 QString glyph_for(const QWidget *w, const QIcon &icon);
 
+// ------------------------------------------------------- adaptation (7 T2)
+// design.md section 7's Tier-2 hint, and the FIRST half of the policy it
+// names for a terminal too small for a layout's minimum: drop the optional
+// widgets, then scroll the root. The scrolling half is unconditional and is
+// in the compositor; this half needs the application to say what it can
+// afford to lose, because nothing else can know.
+//
+// Carried as the dynamic property "qtty.priority", which is what makes it a
+// no-op in a GUI build the way design.md requires: nothing reads the property
+// there, and the application does not have to link qtty or branch on target to
+// set it. It can equally be set from a .ui file.
+//
+// design.md spells this setPriority(). It is set_priority() here, for the rule
+// section 10 records and the reason the focusWidget rename records: a name
+// qtty INTRODUCES is snake_case, and only a Qt name or a reimplemented Qt
+// virtual keeps Qt's spelling. Recorded in section 8 as a divergence rather
+// than resolved silently.
+enum class Priority { Required, Optional };
+void set_priority(QWidget *w, Priority p);
+Priority priority_of(const QWidget *w);
+
 // sections 5.3/5.4: cell-multiple metrics for layouts and widgets; Channel A
 // (semantic) drawing when the paint target is a CellPaintDevice.
 class GridStyle : public QProxyStyle {

@@ -88,6 +88,9 @@ class Compositor {
 public:
 	Compositor(QWidget *window, InputRouter *router);
 	void compose(CellBuffer &out);                        // fills out + out.images
+	// design.md section 7's small-terminal policy, first half. Public so the
+	// behaviour can be exercised without a terminal; compose() calls it.
+	void apply_priority(int cols, int rows);
 	std::optional<QPoint> cursor_cell() const;             // after compose()
 
 private:
@@ -99,6 +102,10 @@ private:
 	// policy: drop the optional widgets, then scroll the root. This is the
 	// second half, which needs no annotation from the application.
 	QPoint scroll_;
+	// The widgets THIS pass hid, so that growing the terminal back shows
+	// exactly those and no others. A widget the application hid for its own
+	// reasons must stay hidden, and it is not in here.
+	QVector<QPointer<QWidget>> dropped_;
 	QWidget *win_;
 	InputRouter *router_;
 	std::optional<QPoint> cursor_;

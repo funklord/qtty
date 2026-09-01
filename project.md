@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-691 checks, 0 failures, under three configurations: the offscreen
+696 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4167,16 +4167,14 @@ which is design.md §16's figure.
   The sweep's other two findings are elsewhere, because neither is the
   interface's: a scroll area not clipping is §8.7, and a build that did
   not rebuild is §9.5.
-- **design.md §7's Tier-2 hint system** -- `setPriority`, `setCompact`,
-  the `"qtty.cells"` property -- and the CI check banning
-  `setContentsMargins`, `setSpacing`, `setFixedSize` and `setFixedWidth`
-  in shared UI code. Tier 1 is free and works; Tier 3 is a convention;
-  Tier 2 is the part that needed building and was not built. **Two pieces
-  of it now exist under other names**: `GridSnap` does what
-  `CompactionPass` was for, and the root scrolls to its focus when the
-  window exceeds the terminal (§7.8) -- which is the fallback design.md
-  puts *after* dropping optional widgets. What is left is the annotation
-  half, the part that needs the application to say what is optional.
+- **design.md §7's Tier-2 hint system**, of which `setCompact` and the
+  `"qtty.cells"` property are what remain, along with the CI check
+  banning `setContentsMargins`, `setSpacing`, `setFixedSize` and
+  `setFixedWidth` in shared UI code. The rest is built: `GridSnap` does
+  what `CompactionPass` was for, `set_priority()` carries
+  `Priority::Optional`, and §7.8 records the small-terminal policy
+  working in the order design.md names -- drop the optional widgets,
+  then scroll the root.
 - **The bundled font.** The startup check is in place (§7.4), but it
   checks a font the *machine* happens to provide. design.md §5.3 wants
   the font bundled and installed with `QFontDatabase::addApplicationFont`
@@ -4500,11 +4498,58 @@ without it the first check is satisfied by a compositor that scrolls
 whenever it likes, and every ordinary dialog would wander under the Tab
 key.
 
-What is still not built is the other half, and it is the half that needs
-the application's help: `Priority::Optional` and the rest of design.md
-§7's Tier-2 hints. Scrolling is the fallback that works with no
-annotation at all; dropping optional content is what would make a dense
-screen *fit*.
+**And the other half is built too, in the order design.md names it.**
+`set_priority(w, Priority::Optional)` marks what a screen can afford to
+lose, and `Compositor::apply_priority()` hides those widgets when the
+window's layout minimum does not fit the terminal. Dropping comes first
+and scrolling second, because dropping can make a screen *fit* and
+scrolling never does -- it only makes the rest reachable.
+
+Four properties, each asserted because each fails on its own: a pass that
+drops nothing, one that drops everything, one that never puts anything
+back, and one that hides the widget holding focus are four different
+bugs, and only the first is caught by "the screen fits".
+
+- **It is re-evaluated every frame rather than latched.** Put back first,
+  then measure, then drop again: a terminal that grows brings the content
+  back with no separate path to get wrong, and the hysteresis is the
+  whole of it.
+- **It hides only what it hid.** `dropped_` records this pass's own
+  work, so a widget the application hid for its own reasons stays hidden.
+- **It never drops the focused widget, nor an ancestor of it**, whatever
+  its priority. Hiding the widget that owns input moves focus somewhere
+  the application did not choose, and a terminal has no pointer to put it
+  back with. **The first check written for this was vacuous and the
+  sabotage said so** -- it marked a focused line edit optional among six
+  other optional labels, and since the pass stops as soon as the screen
+  fits, the edit survived because it was never reached. Removing the
+  focus rule changed nothing. Its own fixture now: the focused widget is
+  the only optional one and the terminal is far too small, so nothing but
+  the rule can save it.
+
+  The two sabotages also had to be run **separately**, which is the other
+  half of the lesson. Applied together, "never drop anything" masks "drop
+  the focused one too" completely -- one failure appeared where two were
+  expected, and the missing one was read as the check being weak before
+  it was read as the sabotages colliding.
+- **It stops as soon as the screen fits**, rather than dropping
+  everything optional.
+
+The hint is the dynamic property `"qtty.priority"`, which is what makes
+it a no-op in a GUI build the way design.md asks: nothing reads it there,
+and shared code neither links qtty nor branches on target to set it.
+
+**One thing this fixture showed that is NOT this feature's**, recorded
+because it is visible the moment a group box is on a small screen: a
+`QGroupBox`'s children land off the grid -- measured at `194x17+13+25`
+for a check box inside one -- and the indicators then draw *into* the
+frame rather than beside it:
+
+    ┌[ ]─Option 0────────┐
+    │[ ] Option 1        │
+
+`PM_LayoutLeftMargin` and friends are gridded, but a group box's own
+contents rectangle is not. Its own item, and not touched here.
 
 **The decision is taken: `GridSnap` is installed by `Qtty::setup()`.**
 design.md §7's Tier 1 promise -- "style metrics differ, so the same layout

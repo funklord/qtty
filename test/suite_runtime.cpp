@@ -692,5 +692,98 @@ int suite_runtime() {
 	}
 
 
+
+	// design.md section 7's Tier-2 hint, and the half of the small-terminal
+	// policy that needs the application: only it can say what a screen can
+	// afford to lose. Carried as a property so it is a no-op in a GUI build.
+	//
+	// Four things are asserted because each fails on its own. A pass that
+	// drops nothing, a pass that drops everything, a pass that never puts
+	// anything back, and a pass that hides the widget holding focus are four
+	// different bugs and only the first is caught by "the screen fits".
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		auto *keep = new QLabel(QStringLiteral("Required"));
+		v->addWidget(keep);
+		QVector<QLabel *> optional;
+		for (int i = 0; i < 6; ++i) {
+			auto *l = new QLabel(QStringLiteral("Extra %1").arg(i));
+			set_priority(l, Priority::Optional);
+			optional.append(l);
+			v->addWidget(l);
+		}
+		win.show();
+		keep->setFocus();
+		QCoreApplication::processEvents();
+
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+
+		win.resize(GridMetrics::cells(20, 12));
+		QCoreApplication::processEvents();
+		CellBuffer big(20, 12);
+		c.compose(big);
+		const bool none_dropped = keep->isVisible() && optional.first()->isVisible();
+
+		win.resize(GridMetrics::cells(20, 3));
+		QCoreApplication::processEvents();
+		CellBuffer small(20, 3);
+		c.compose(small);
+		int hidden = 0;
+		for (QLabel *l : std::as_const(optional))
+			if (!l->isVisible()) ++hidden;
+		const bool kept_required = keep->isVisible();
+
+		win.resize(GridMetrics::cells(20, 12));
+		QCoreApplication::processEvents();
+		CellBuffer back(20, 12);
+		c.compose(back);
+		int restored = 0;
+		for (QLabel *l : std::as_const(optional))
+			if (l->isVisible()) ++restored;
+
+		CHECK(none_dropped, "a terminal with room drops no optional widget");
+		CHECK(hidden > 0, "and one without room drops them");
+		CHECK(kept_required, "but never a required one");
+		CHECK(restored == optional.size(), "and a terminal that grows back shows them again");
+		GridGuard::reset();
+	}
+
+	// The focused widget is never dropped, whatever its priority: hiding the
+	// widget that owns input moves focus somewhere the application did not
+	// choose, and a terminal has no pointer to put it back with.
+	//
+	// Its own fixture, because the first version of this check was VACUOUS and
+	// the sabotage said so. It marked a focused line edit optional among six
+	// other optional labels, and the pass stops as soon as the screen fits --
+	// so the edit survived because it was never reached, not because it held
+	// the focus, and removing the focus rule changed nothing. Here the focused
+	// widget is the ONLY optional one and the terminal is far too small, so
+	// nothing but the rule can save it.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		auto *edit = new QLineEdit(QStringLiteral("field"));
+		set_priority(edit, Priority::Optional);
+		v->addWidget(edit);
+		for (int i = 0; i < 4; ++i)
+			v->addWidget(new QLabel(QStringLiteral("Required %1").arg(i)));
+		win.show();
+		edit->setFocus();
+		win.resize(GridMetrics::cells(20, 2));
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+		CellBuffer b(20, 2);
+		c.compose(b);
+		CHECK(edit->isVisible(),
+		      "nor the one holding the focus, whatever its priority");
+		GridGuard::reset();
+	}
+
+
 	return fails;
 }

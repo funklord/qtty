@@ -1204,6 +1204,28 @@ QString glyph_for(const QWidget *w, const QString &icon_name) {
 	return icon_glyph(icon_name);
 }
 
+// --------------------------------------------------------- adaptation (7 T2)
+static const char *const k_priority = "qtty.priority";
+
+void set_priority(QWidget *w, Priority p) {
+	if (!w) return;
+	// Cleared rather than set to Required, so that a widget carrying no hint
+	// and a widget explicitly told it is required are the same object. An
+	// application that sets the property back is not left with a stale one.
+	if (p == Priority::Required) w->setProperty(k_priority, QVariant());
+	else                         w->setProperty(k_priority, int(p));
+}
+
+Priority priority_of(const QWidget *w) {
+	if (!w) return Priority::Required;
+	const QVariant v = w->property(k_priority);
+	if (!v.isValid()) return Priority::Required;
+	// An out-of-range value is Required, which is the safe direction: a typo
+	// in a .ui file must not make a widget disappear.
+	return v.toInt() == int(Priority::Optional) ? Priority::Optional
+	                                            : Priority::Required;
+}
+
 // ------------------------------------------------------------------ GridSnap
 // GridGuard's other half (section 7.8). See grid.h for why the policy is
 // round-to-nearest and nothing else.

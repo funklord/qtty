@@ -48,6 +48,52 @@ QPoint placed_at(const QRect &g, int cols, int rows, int cw, int ch, bool flip) 
 Compositor::Compositor(QWidget *window, InputRouter *router)
     : win_(window), router_(router) {}
 
+// Hide the widgets the application marked Priority::Optional when the window's
+// layout minimum does not fit the terminal, and show them again when it does.
+//
+// Re-evaluated from scratch on every frame rather than latched, so a terminal
+// that grows brings the content back with no separate path to get wrong.
+void Compositor::apply_priority(int cols, int rows) {
+	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+	const QSize term(cols * cw, rows * ch);
+	const auto fits = [&] {
+		const QSize m = win_->minimumSizeHint();
+		return m.width() <= term.width() && m.height() <= term.height();
+	};
+
+	// Put back first, then measure: a screen that fits ONLY because something
+	// is hidden must not stay hidden for ever. Showing what this pass hid and
+	// re-asking is the whole of the hysteresis, and it is why `dropped_` holds
+	// what we hid rather than what is hidden.
+	bool restored = false;
+	for (const QPointer<QWidget> &w : std::as_const(dropped_)) {
+		if (w) { w->show(); restored = true; }
+	}
+	dropped_.clear();
+	if (restored && win_->layout()) win_->layout()->activate();
+	if (fits()) return;
+
+	// The focused widget is never dropped, nor is any ancestor of it. Hiding
+	// the widget that owns input moves focus somewhere the application did not
+	// choose, and on a terminal there is no pointer to put it back with.
+	const QWidget *const focus = win_->focusWidget();
+	const auto owns_focus = [&](const QWidget *w) {
+		for (const QWidget *f = focus; f; f = f->parentWidget())
+			if (f == w) return true;
+		return false;
+	};
+
+	const auto all = win_->findChildren<QWidget *>();
+	for (QWidget *w : all) {
+		if (priority_of(w) != Priority::Optional) continue;
+		if (!w->isVisible() || owns_focus(w)) continue;
+		w->hide();
+		dropped_.append(w);
+		if (win_->layout()) win_->layout()->activate();
+		if (fits()) break;                 // enough is enough: stop dropping
+	}
+}
+
 void Compositor::compose(CellBuffer &out) {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	out.images.clear();
@@ -76,6 +122,12 @@ void Compositor::compose(CellBuffer &out) {
 	// why modals and popups are pulled out of this pass and stacked explicitly
 	// below (section 8.1: treat them as an explicit stack "rather than trusting
 	// window flags"). Within the plain layer the list order is all there is.
+	// design.md section 7's policy in the order it names: drop what the
+	// application said is optional FIRST, and only then scroll what is left.
+	// Dropping can make a screen fit; scrolling never does, it only makes the
+	// rest reachable.
+	apply_priority(out.cols(), out.rows());
+
 	// Follow the focus rather than binding a key. Arrow keys belong to the
 	// focused widget and a chord would have to be learned, but Tab already
 	// walks the form -- so keeping the focused widget inside the terminal
