@@ -328,7 +328,7 @@ Owned by the copyright holder:
 |---|---|
 | A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. Cheaper to answer after the picture-rule entry below, which is the same question seen from the other end | *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed. All four candidate behaviours are printed now -- and `Left\|Middle` **removes paging** rather than adding anything, unless `SH_Slider_PageSetButtons` moves it to the right button | *the interaction sweep* |
-| Whether the "too small to be a picture" rule moves to the backend. Measured since: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()` rather than a structural change -- and no widget icon reaches the branch today | §7.2 |
+| Whether the "too small to be a picture" rule moves to the backend. Nothing left unmeasured: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()`; no widget icon reaches the branch today; and the cost is **1.4 KB once per distinct icon, 35 bytes a frame after** -- eight of them together less than the one 48x48 icon the library already uploads | §7.2 |
 | The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work. The exposure is now **measured** and **guarded** rather than feared: 7 of 102 installed families give the 10x19 the fixtures assume, and a check names it | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
@@ -3303,13 +3303,35 @@ answers, exactly as the disabled item view did.
   keeps the edge where the circle stops. On a graphics terminal the
   placement would be real pixels and there is no contest.
 
-  **What the suite cannot price is the cost**, and that is worth stating
-  plainly rather than assuming either way. "Every tiny icon becomes an
-  upload" has no instance here to measure, because no widget icon reaches
-  the branch -- the census above is six test fixtures and a tab drag. An
-  application that puts a 16x16 pixmap in a `QLabel` would pay it, and
-  upload-once keys on `cacheKey()`, so the bill is per distinct image
-  rather than per sighting.
+  ~~**What the suite cannot price is the cost.**~~ **Priced.** The
+  sentence here said "every tiny icon becomes an upload" had no instance
+  to measure, which was true of the widget suite and not of the encoders:
+  they take an image and return bytes, so the bill can be read directly.
+  Eight distinct 16x16 icons, the shape a toolbar would have:
+
+      kitty: first frame  11200 bytes for 8 uploads   (1400 each)
+             later frames   280 bytes for 8 re-places (  35 each)
+      for scale, one 48x48 upload is 12342 bytes
+
+  **The whole toolbar costs less than one icon the library already
+  sends.** A message box's severity icon is 48x48 and is uploaded today;
+  eight tiny ones together come to 11.2 KB against its 12.3. And they
+  amortise: 35 bytes each per frame afterwards, which independently
+  reproduces the "about 30 bytes on the kitty protocol" §7.1 recorded
+  from the chat spike, on a different fixture.
+
+  The text tier costs something too, and less. Composed as mosaics those
+  eight icons make **17 colour changes** across sixteen cells against the
+  blocks' **9** -- roughly double the SGR, on sixteen cells. Neither is a
+  shape at that size: the mosaic row is `▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀` and the block
+  row `▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒`, so what the change buys there is colour
+  resolution, four samples an icon against one.
+
+  So the cost objection that made this "a decision with a real cost" is
+  measured and it is small: **1.4 KB once per distinct icon on a graphics
+  terminal, 35 bytes a frame after that, and about double the SGR on a
+  text one.** The choice stays the holder's; what is gone is the
+  unpriced half of it.
 
   It stays **the copyright holder's**, and it is now a smaller question
   than it was written as: not where to build a mechanism, but whether to
