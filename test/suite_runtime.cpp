@@ -588,7 +588,26 @@ int suite_runtime() {
 		CHECK(sized.frame_count() == 1, "and one with cells still is");
 	}
 
-
+	// The cell size the snapshot fixtures were recorded at, named rather than
+	// assumed. Both fixtures record CELLS, and every position in them comes
+	// from cw and ch, which setup() derives from the locally installed DejaVu
+	// Sans Mono -- so a machine whose font differs invalidates them.
+	//
+	// How fragile that is, measured here rather than feared: of 102
+	// fixed-pitch families installed, all 102 give integral metrics at pixel
+	// size 16 once full hinting is asked for -- so integrality is no longer
+	// the exposure -- but they give **eleven distinct cell sizes**, and only
+	// seven families give the 10x19 these fixtures assume. 8x16 is the
+	// commonest at 35.
+	//
+	// This check is what turns that from two unexplained snapshot diffs into
+	// one sentence. It cannot be satisfied by a bundled font that nobody has
+	// chosen (project.md 7.9 and 11) -- it is the guard for the machine that
+	// has not got the same one.
+	{
+		CHECK(GridMetrics::cw() == 10 && GridMetrics::ch() == 19,
+		      "the cell is 10x19, which is what the snapshot fixtures assume");
+	}
 
 
 	return fails;

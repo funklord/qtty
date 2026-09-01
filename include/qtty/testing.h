@@ -7,6 +7,7 @@
 #include <cstdio>
 #include "cell.h"
 #include "application.h"
+#include "grid.h"
 
 namespace Qtty {
 namespace test {
@@ -69,8 +70,17 @@ inline int check_snapshot(const QString &root, const QString &name,
 	}
 	const QString want = QString::fromUtf8(f.readAll());
 	if (got != want) {
-		fprintf(stderr, "FAIL: snapshot '%s' mismatch\n--- want ---\n%s--- got ---\n%s",
-		        qPrintable(name), qPrintable(want), qPrintable(got));
+		// The cell size, because it is the likeliest reason a fixture fails
+		// on a machine that changed nothing. A snapshot is recorded in CELLS
+		// and every cell position in it comes from cw and ch, which
+		// Qtty::setup() derives from the locally installed font -- measured
+		// on this machine, 102 fixed-pitch families give eleven distinct cell
+		// sizes and only seven of them give the 10x19 these fixtures were
+		// taken at. Without this line that arrives as two unexplained diffs.
+		fprintf(stderr, "FAIL: snapshot '%s' mismatch (cell %dx%d)\n"
+		        "--- want ---\n%s--- got ---\n%s",
+		        qPrintable(name), GridMetrics::cw(), GridMetrics::ch(),
+		        qPrintable(want), qPrintable(got));
 		return 1;
 	}
 	return 0;

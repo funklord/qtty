@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-679 checks, 0 failures, under three configurations: the offscreen
+680 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -330,7 +330,7 @@ Owned by the copyright holder:
 | A dock widget's title buttons, which arrive with a 0x0 icon area -- a sizing fault rather than an iconography one | *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed -- measured, and the current behaviour is held by checks | *the interaction sweep* |
 | Whether the "too small to be a picture" rule moves to the backend, which knows whether the terminal can draw pictures -- it cannot be answered from the pixmap, and the cost is an upload per tiny icon | §7.2 |
-| The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work | §7.9, §11 |
+| The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work. The exposure is now **measured** and **guarded** rather than feared: 7 of 102 installed families give the 10x19 the fixtures assume, and a check names it | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
 
@@ -4508,6 +4508,49 @@ rasterizer are the other, and only a bundled font settles those. The
 exposure is smaller than §7.9 opened with -- a different login no longer
 changes the answer -- and a different machine still can.
 
+**So how large is what is left? Measured, not feared.** The bundled font
+is a licensed third-party asset and choosing one is the copyright
+holder's, not a thing to settle while doing something else -- but *how
+much rides on it* needs no licensing decision, and it had never been
+counted. A probe walked `QFontDatabase::families()` at pixel size 16 with
+full hinting and asked each fixed-pitch family for its cell:
+
+    102 fixed-pitch families, 102 with integral metrics
+      14x16: 1     9x14: 7     8x16: 35    10x19: 7    16x16: 24
+      11x12: 2     5x12: 2    32x16: 2     18x16: 1     8x14: 5
+      10x20: 1
+    this build uses 10x19
+
+Two things fall out, and they point opposite ways. **Integrality is no
+longer the exposure**: every one of the 102 gives whole-pixel metrics
+once hinting is pinned, which is the hinting fix (above) being worth
+more than it looked. R3's risk, "font metrics are not integral on some
+backend", survived 102 chances to fire on this machine -- which is
+evidence about this rasterizer and not about another one, and it is the
+most that can be said without a bundled font. **The cell size is**: eleven
+distinct values across the 102, and only **seven** families give the
+10x19 the fixtures were recorded at. The commonest cell on this machine
+is 8x16, at 35 families, and it is not ours.
+
+**What that buys is a guard, which is the part that needs no licence.**
+A machine with a different font does not get two inscrutable fixture
+diffs any more. It gets one check that says what is wrong --
+
+    FAIL: the cell is 10x19, which is what the snapshot fixtures assume
+
+-- and, if the fixtures are compared anyway, a mismatch line that names
+the cell it actually measured, `snapshot 'widgets_gallery' mismatch (cell
+10x20)`. Both were verified by moving the pixel size to 17 and reading
+the two failures, which is also why the numbers above are the second
+thing this session measured rather than the first: the probe was written
+to answer "how fragile", and the answer changed which defect was worth
+building against.
+
+The check cannot substitute for the font. It is deliberately the
+opposite: it converts an unowned assumption into a named one, so that
+whoever does choose a font is choosing against a stated requirement
+instead of chasing a diff.
+
 ## 8. Where the document and the code disagree
 
 `~/.claude/guidelines/working-practice.md` is explicit: where the document
@@ -4981,6 +5024,14 @@ right about them. These two regions wait for the lambda case. Whoever
 fixes the gate should expect them to go red, and that is the signal to
 correct them -- not a regression.
 
+**And `8da1c99` is not that fix, in case its subject reads like it.**
+That commit aligned brace continuations upstream, which touches the same
+lexer and the same file; whether it happened to close the lambda case was
+worth ten minutes rather than an assumption. Both compensating regions
+were un-bent to plain tabs and the gate re-run: **9 violations**, the
+same shape as before. The lambda case is open, and these two regions stay
+bent.
+
 ### 9.9 What was measured on this machine
 
 Qt **6.8.2**, `qmake6` present, the offscreen platform plugin present,
@@ -5122,7 +5173,13 @@ first.
 What is left there is now **the bundled font**, which is what would make
 the fixtures reproducible (§7.9), and it is a decision before it is work:
 a font is somebody's licensed asset, and which one to carry is not a
-question to answer while doing something else.
+question to answer while doing something else. What *has* been done is
+the half that needs no licence -- the exposure is counted (7 of 102
+installed families give the 10x19 the fixtures assume; all 102 give
+integral metrics, so the hinting pin holds R3 off on this rasterizer) and
+a check now names
+the assumption instead of letting it surface as two unexplained fixture
+diffs. §7.9 has the figures.
 
 The rest of that list has been overtaken and the entries are corrected
 here rather than left to be re-read as gaps. `CellItemDelegate` and the
