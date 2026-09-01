@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-684 checks, 0 failures, under three configurations: the offscreen
+686 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -328,7 +328,6 @@ Owned by the copyright holder:
 |---|---|
 | A message box's severity icon. The mechanism is now measured and has no open question -- a `QIconEngine` that registers each pixmap it mints, consulted through the `cacheKey()` the placement already carries. What is left is whether a warning triangle should become a glyph, taken against a mosaic that is **faithful and still unreadable** | *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed. All four candidate behaviours are printed now -- and `Left\|Middle` **removes paging** rather than adding anything, unless `SH_Slider_PageSetButtons` moves it to the right button | *the interaction sweep* |
-| Mouse **modifiers** are decoded and thrown away: shift, meta and control all arrive as a plain click, so an item view cannot be extend-selected or toggle-selected | §7.1 |
 | The **horizontal wheel** is delivered as a vertical one -- SGR 66 and 67 come out identical to 64 and 65, so scrolling sideways scrolls up and down | §7.1 |
 | Whether the "too small to be a picture" rule moves to the backend. Measured since: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()` rather than a structural change -- and no widget icon reaches the branch today | §7.2 |
 | The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work. The exposure is now **measured** and **guarded** rather than feared: 7 of 102 installed families give the 10x19 the fixtures assume, and a check names it | §7.9, §11 |
@@ -1364,15 +1363,33 @@ Still missing:
   sending `Qt::LeftButton` for everything -- a widget ignores a button it
   does not handle, and nothing activates spuriously.
 
-  **Two more defects are in that table and are NOT fixed here**, because
-  each is its own change and sweeping them in would misrepresent both.
-  They are in the open-questions index instead. **Modifiers are decoded
-  and discarded**: 4, 16 and 20 are shift-, control- and
-  control-shift-click, and all three come out as a plain left press, so an
-  item view cannot be extend-selected or toggle-selected from a terminal.
+  **Two more defects are in that table**, and each was taken as its own
+  change rather than swept into the button fix.
+
+  ~~**Modifiers are decoded and discarded**: 4, 16 and 20 are shift-,
+  control- and control-shift-click, and all three come out as a plain
+  left press.~~ **Fixed.** Bits 4, 8 and 16 are shift, meta and control;
+  `MouseEvent` carries them the way `KeyEvent` already did, and every
+  mouse event the router builds -- press, move, release, wheel and the
+  synthesised `QContextMenuEvent` -- was built with `Qt::NoModifier` and
+  now carries them too.
+
+  What that was worth is best said as the behaviour rather than the
+  bits: **an item view could not be extend-selected or toggle-selected
+  from a terminal at all.** The check is the pair -- the same two clicks
+  leave ONE row selected without control and TWO with it -- because a
+  check on the second alone would pass against a view that never
+  deselects anything.
+
+  The modifier map had three copies by then, one per key path, and a
+  fourth caller was the moment to stop: `qt_modifiers()` is one function
+  now, for the reason section 0d records about the mnemonic stripper
+  having grown three spellings of one rule before anyone counted.
+
   **The horizontal wheel is delivered as a vertical one**: 66 and 67 are
   wheel-left and wheel-right and decode identically to 64 and 65, so
-  scrolling sideways scrolls up and down.
+  scrolling sideways scrolls up and down. Still open, and in the index --
+  it needs a field the struct has not got, `wheel` being a single int.
 
 **Compositor and FrameScheduler -- done.** This was the largest
 correctness gap in the tree: `compose()` rendered the tracked window and
@@ -2680,6 +2697,24 @@ added only a "no placement either" clause that the same sabotage left
 green, which is a clause with nothing to say. Two checks were written
 before noticing that neither was needed; the census belongs in this
 document, not in an assertion.
+
+**And the modifier check failed first for a reason that was already
+written down.** A control-click was supposed to add a second row to an
+item view's selection; it selected one row with the modifier and one
+without, which reads exactly like "the modifier never arrived" -- the
+conclusion a session in a hurry writes into the record as a routing
+defect. It was the fixture. A `QListWidget`'s default frame offsets the
+viewport by `PM_DefaultFrameWidth` in **both** axes, which is a whole
+cell here, so the click aimed at row 0 landed in the frame above it and
+only the second click ever hit anything. §7.1 records that offset, from
+the chat spike that had to set `QFrame::NoFrame` for the same reason.
+
+The instrument lesson is not "read the document", which nobody
+disagrees with. It is that **a fixture built out of widgets inherits
+every one of their quirks**, and the ones this tree has already paid for
+are exactly the ones a new fixture will hit again. Printing the selected
+ROWS rather than their count is what separated the two hypotheses in one
+run: `2` alone, versus `0 2`, says which click missed.
 
 **The menu bar drew no items at all, and the mnemonic fix had hidden two
 more instances of its own cause.** Both came from looking deliberately,

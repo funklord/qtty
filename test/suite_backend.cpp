@@ -142,6 +142,21 @@ int suite_backend() {
 	CHECK(rec.mice.size() == 1 && rec.mice[0].motion && rec.mice[0].button == 0,
 	      "and a bare motion report carries no button at all");
 
+	// Bits 4, 8 and 16 are shift, meta and control, and they were decoded by
+	// nothing at all. Checked one at a time and then together, because a
+	// decoder that returned all three for any modifier would satisfy a check
+	// on the combination alone.
+	feed("\033[<4;5;5M");
+	const bool sh = !rec.mice.isEmpty() && rec.mice[0].shift
+	             && !rec.mice[0].ctrl && !rec.mice[0].alt;
+	feed("\033[<16;5;5M");
+	const bool ct = !rec.mice.isEmpty() && rec.mice[0].ctrl
+	             && !rec.mice[0].shift && !rec.mice[0].alt;
+	feed("\033[<20;5;5M");
+	const bool both = !rec.mice.isEmpty() && rec.mice[0].ctrl && rec.mice[0].shift
+	               && rec.mice[0].button == 1;
+	CHECK(sh && ct && both, "a click carries its keyboard modifiers");
+
 	// -- bracketed paste. The point of the mode is that a newline inside the
 	//    paste is text and not Return, so that is the case worth checking.
 	feed("\033[200~hello\nworld\033[201~");

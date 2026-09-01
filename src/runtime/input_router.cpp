@@ -163,12 +163,19 @@ bool InputRouter::match_mnemonic(const KeyEvent &k) {
 	return false;
 }
 
+// One spelling, because the mouse now needs it too and three copies of a rule
+// is how the mnemonic stripper came to have three (section 0d).
+static Qt::KeyboardModifiers qt_modifiers(bool ctrl, bool alt, bool shift) {
+	Qt::KeyboardModifiers mods;
+	if (ctrl) mods |= Qt::ControlModifier;
+	if (alt) mods |= Qt::AltModifier;
+	if (shift) mods |= Qt::ShiftModifier;
+	return mods;
+}
+
 bool InputRouter::match_shortcut(const KeyEvent &k) {
 	if (!k.qt_key || k.qt_key == Qt::Key_unknown) return false;
-	Qt::KeyboardModifiers mods;
-	if (k.ctrl) mods |= Qt::ControlModifier;
-	if (k.alt) mods |= Qt::AltModifier;
-	if (k.shift) mods |= Qt::ShiftModifier;
+	const Qt::KeyboardModifiers mods = qt_modifiers(k.ctrl, k.alt, k.shift);
 	const QKeySequence pressed(QKeyCombination(mods, Qt::Key(k.qt_key)).toCombined());
 
 	// Collect actions from the input scope, all its children, and menus
@@ -189,10 +196,7 @@ bool InputRouter::match_shortcut(const KeyEvent &k) {
 }
 
 void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
-	Qt::KeyboardModifiers mods;
-	if (k.ctrl) mods |= Qt::ControlModifier;
-	if (k.alt) mods |= Qt::AltModifier;
-	if (k.shift) mods |= Qt::ShiftModifier;
+	const Qt::KeyboardModifiers mods = qt_modifiers(k.ctrl, k.alt, k.shift);
 	QKeyEvent press(QEvent::KeyPress, k.qt_key, mods, k.text);
 	QApplication::sendEvent(target, &press);
 	// Terminals have no key-release; fabricate one immediately (section 5.5).
@@ -266,6 +270,7 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 	                m.cell.y() * GridMetrics::ch() + GridMetrics::ch() / 2);
 	// Popups first (top of stack down), then the modal, then the window
 	// (section 5.5 routing order).
+	const Qt::KeyboardModifiers mods = qt_modifiers(m.ctrl, m.alt, m.shift);
 	QWidget *top = nullptr;
 	const auto ps = popups();
 	for (auto it = ps.rbegin(); it != ps.rend(); ++it)
@@ -322,7 +327,7 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 		for (QWidget *w = target; w; w = w->parentWidget()) {
 			QWheelEvent ev(QPointF(w->mapFromGlobal(px)), QPointF(px), QPoint(),
 			               QPoint(0, m.wheel * GridMetrics::ch()),
-			               Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+			               Qt::NoButton, mods, Qt::NoScrollPhase, false);
 			QApplication::sendEvent(w, &ev);
 			if (ev.isAccepted()) break;
 			if (w == top) break;              // do not escape the input layer
@@ -332,7 +337,7 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 		if (m.press) {
 			grab_ = target;
 			QMouseEvent ev(QEvent::MouseButtonPress, QPointF(pos), QPointF(px),
-			               btn, btn, Qt::NoModifier);
+			               btn, btn, mods);
 			QApplication::sendEvent(target, &ev);
 		}
 		if (m.motion) {
@@ -341,7 +346,7 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 			// grabbed would arrive as the pointer merely passing over.
 			const auto held = grab_.isNull() ? Qt::NoButton : Qt::MouseButtons(btn);
 			QMouseEvent ev(QEvent::MouseMove, QPointF(pos), QPointF(px),
-			               Qt::NoButton, held, Qt::NoModifier);
+			               Qt::NoButton, held, mods);
 			QApplication::sendEvent(target, &ev);
 		}
 		if (m.press && btn == Qt::RightButton) {
@@ -351,12 +356,12 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 			// here, so every policy -- default, custom, actions -- starts
 			// working at once. On the press rather than the release, which is
 			// the X11 convention and so the one a terminal user expects.
-			QContextMenuEvent ev(QContextMenuEvent::Mouse, pos, px, Qt::NoModifier);
+			QContextMenuEvent ev(QContextMenuEvent::Mouse, pos, px, mods);
 			QApplication::sendEvent(target, &ev);
 		}
 		if (m.release) {
 			QMouseEvent ev(QEvent::MouseButtonRelease, QPointF(pos), QPointF(px),
-			               btn, Qt::NoButton, Qt::NoModifier);
+			               btn, Qt::NoButton, mods);
 			QApplication::sendEvent(target, &ev);
 			grab_ = nullptr;
 		}

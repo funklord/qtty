@@ -479,6 +479,46 @@ int suite_router() {
 	}
 
 
+	// What the modifiers are FOR, end to end. A control-click on an item view
+	// toggles rather than replaces the selection, and that is the behaviour a
+	// terminal could not reach at all while the decoder threw the bits away --
+	// SGR carries them, and every mouse event was built with Qt::NoModifier.
+	//
+	// The pair is what says it: the same two clicks without the modifier leave
+	// ONE row selected, with it leave TWO. A check on the second alone would
+	// pass against a view that never deselects anything.
+	{
+		const auto two_clicks = [&](bool ctrl) {
+			QWidget h;
+			h.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *lw = new QListWidget(&h);
+			for (int i = 0; i < 4; ++i)
+				lw->addItem(QStringLiteral("row %1").arg(i));
+			lw->setSelectionMode(QAbstractItemView::ExtendedSelection);
+			// section 7.1 records why: the default frame offsets the viewport
+			// by PM_DefaultFrameWidth in BOTH axes, which is a whole cell
+			// here, so a click aimed at row 0 lands in the frame above it.
+			// The first version of this fixture did exactly that and read as
+			// "the modifier does not arrive".
+			lw->setFrameShape(QFrame::NoFrame);
+			lw->setGeometry(0, 0, cw * 12, ch * 4);
+			h.resize(GridMetrics::cells(14, 6));
+			h.show();
+			QCoreApplication::processEvents();
+			InputRouter r(&h);
+			r.on_mouse({QPoint(1, 0), 1, true, false, false, 0, false, false, false});
+			r.on_mouse({QPoint(1, 0), 1, false, true, false, 0, false, false, false});
+			r.on_mouse({QPoint(1, 2), 1, true, false, false, 0, ctrl, false, false});
+			r.on_mouse({QPoint(1, 2), 1, false, true, false, 0, ctrl, false, false});
+			QCoreApplication::processEvents();
+			return lw->selectedItems().size();
+		};
+		const int plain = two_clicks(false), toggled = two_clicks(true);
+		CHECK(plain == 1 && toggled == 2,
+		      "a control-click adds to an item view's selection");
+	}
+
+
 	// ------------------------------------------------ section 5.5: drags
 	// Motion was parsed by the backend and dropped by the router, and there
 	// was no grab, so nothing that needs a drag worked -- section 7.2 recorded

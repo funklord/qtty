@@ -60,7 +60,17 @@ struct Capabilities {
 enum class CursorShape { Block, Underline, Bar, Hidden };
 
 struct KeyEvent   { int qt_key = 0; QString text; bool ctrl = false, alt = false, shift = false; };
-struct MouseEvent { QPoint cell; int button = 0; bool press = false, release = false, motion = false; int wheel = 0; };
+// The modifiers are spelled as KeyEvent spells them, and they are here for the
+// same reason they are there: a widget cannot tell an extend-select from a
+// plain click without them. SGR 1006 carries them in bits 4, 8 and 16 of the
+// button word, and they were decoded and discarded for the life of the file.
+struct MouseEvent {
+	QPoint cell;
+	int button = 0;
+	bool press = false, release = false, motion = false;
+	int wheel = 0;
+	bool ctrl = false, alt = false, shift = false;
+};
 
 class ITerminalEventSink {
 public:

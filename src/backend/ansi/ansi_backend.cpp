@@ -770,6 +770,12 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 		MouseEvent m;
 		m.cell = QPoint(param(1, 1) - 1, param(2, 1) - 1);
 		m.motion = (b & 32) != 0;
+		// Bits 4, 8 and 16, which were parsed by nothing. A shift-click and a
+		// control-click arrived as plain clicks, so an item view could not be
+		// extend-selected or toggle-selected from a terminal at all.
+		m.shift = (b & 4) != 0;
+		m.alt   = (b & 8) != 0;
+		m.ctrl  = (b & 16) != 0;
 		if (b & 64) {
 			// Wheel. It reports as a press with no matching release, so it is
 			// neither a press nor a release here -- delivering it as a press
