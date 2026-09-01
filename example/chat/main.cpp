@@ -1,7 +1,8 @@
 // main.cpp -- frontend selection: the packaging best-practices half of the example.
 //
 // Three ways to ship a Qtty application, all demonstrated by this one file
-// plus the CMakeLists next to it:
+// plus chat.pro next to it. (It said "the CMakeLists next to it"; CMake was
+// removed in 73fdee6 and this tree builds with qmake.)
 //
 //   1. ONE DUAL BINARY (recommended).  `chat` runs the GUI under a desktop
 //      session and the TUI on a bare terminal, decided at runtime. GUI-first

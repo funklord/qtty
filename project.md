@@ -5295,21 +5295,38 @@ a `QApplication` and a `std::unique_ptr<ITerminalBackend>`, with
 The free-function shape is what `example/chat/main.cpp` was written
 against and what design.md §16.4 calls "the intended `qtty::Application`
 API", so the two halves of the document do not agree with each other
-either. Whichever way this settles, §11's first item depends on it.
+either.
 
-### 8.3 The termpaint and backend READMEs
+**One half of this entry was itself stale and is withdrawn.** "The
+backend hardwired inside `exec()`" has not been true since the seam was
+added: `exec(QApplication &, QWidget &, ITerminalBackend &)` is public
+and is what the convenience `exec(app, win)` calls after building an
+`AnsiBackend` on its own stack. An application can pass `NullBackend`
+today, and a `TermpaintBackend` would need no API change. What remains
+open is only the SHAPE -- free functions or a class -- which is a
+decision on its merits and the copyright holder's.
 
-`src/backend/termpaint/README.md` and `include/qtty/backend.h` both still
-describe the in-tree backend as **`AnsiRuntime`**, which "currently drives
-the tty directly" and "will be rehosted behind `ITerminalBackend` in
-Phase 2".
+### 8.3 The termpaint and backend READMEs -- fixed
 
-That rehosting happened in commit `73fdee6`, and the class is
-`AnsiBackend`.
+~~`src/backend/termpaint/README.md` and `include/qtty/backend.h` both
+still describe the in-tree backend as **`AnsiRuntime`**~~ -- a class the
+tree stopped having in `73fdee6`, when the rehosting they described as
+future had already happened. Both now name `AnsiBackend` and say where
+it lives, and each keeps one sentence recording what it used to claim,
+so a reader who remembers the old text can see it was wrong rather than
+wonder which is current.
 
-### 8.4 The example's build instructions
+**Flagged rather than fixed for long enough to be worth noting.** This
+section exists to catch a document disagreeing with the code, and three
+of its entries had themselves gone stale -- 8.2's backend clause, and
+these two. A record of disagreements is only useful while somebody
+re-reads it against the tree.
 
-`example/chat/main.cpp` refers to "the CMakeLists next to it", and
+### 8.4 The example's build instructions -- half fixed
+
+~~`example/chat/main.cpp` refers to "the CMakeLists next to it"~~ -- it
+names `chat.pro` now, which is the file that is actually there, and says
+CMake was removed in `73fdee6`. What is still open is design.md's half:
 design.md §16.4 describes `examples/chat/CMakeLists.txt` and
 `qtty_mini.h` -- three targets from one source set, and a minimal
 stand-in runtime so the example runs in a real terminal today.

@@ -1,7 +1,9 @@
 // qtty/backend.h -- L1 terminal backend seam (section 5.1) and the optional graphics
 // extension (section 5.7). This is the interface the four legacy TUI implementations
-// adapt to in Phase 1; the in-tree AnsiRuntime will be rehosted behind it in
-// Phase 2 (it currently drives the tty directly -- see src/backend/ansi).
+// adapt to in Phase 1, and the one the in-tree backend already implements:
+// AnsiBackend, in src/backend/ansi, rehosted behind this seam in 73fdee6. The
+// header said "the in-tree AnsiRuntime will be rehosted behind it in Phase 2"
+// long after that happened, and named a class the tree does not have.
 #pragma once
 #include <QSize>
 #include <QPoint>
