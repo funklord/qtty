@@ -437,6 +437,48 @@ int suite_router() {
 		QCoreApplication::processEvents();
 		CHECK(fired == 1, "Return in the submenu fires its item, not the parent's");
 	}
+	// What a click on a slider's GROOVE does, held rather than decided.
+	// section 0b records whether SH_Slider_AbsoluteSetButtons should include
+	// the left button as the copyright holder's, because it changes what a
+	// click means rather than what it looks like. These two hold the current
+	// answer so that changing it is visible rather than silent.
+	//
+	// Asserted as RELATIONSHIPS, not values: the numbers depend on the
+	// groove's geometry and on pageStep, and a check on 24 or 83 would be
+	// measuring this test's arithmetic.
+	{
+		auto click_with = [&](int button, int cell) {
+			QWidget h;
+			h.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *sl = new QSlider(Qt::Horizontal, &h);
+			sl->setRange(0, 100);
+			sl->setValue(0);
+			sl->setGeometry(0, 0, cw * 20, ch);
+			h.resize(GridMetrics::cells(30, 4));
+			h.show();
+			QCoreApplication::processEvents();
+			InputRouter r(&h);
+			r.on_mouse({QPoint(cell, 0), button, true, false, false, 0});
+			r.on_mouse({QPoint(cell, 0), button, false, true, false, 0});
+			QCoreApplication::processEvents();
+			return sl->value();
+		};
+		// Middle-click sets the value where it landed, and always has: Fusion
+		// answers Qt::MiddleButton for the hint and qtty's mouse routing
+		// carries the button. Nothing exercised it until now, so a change to
+		// the hint could have taken it away unnoticed.
+		const int m5 = click_with(2, 5), m10 = click_with(2, 10), m15 = click_with(2, 15);
+		CHECK(m5 < m10 && m10 < m15 && m5 > 0 && m15 < 100,
+		      "a middle click sets a slider to where it landed");
+		// A left click pages, so it lands in the same place wherever it is
+		// clicked -- which is the behaviour the open question is about. The
+		// pair is what says it: middle tracks the click, left does not.
+		const int l5 = click_with(1, 5), l15 = click_with(1, 15);
+		CHECK(l5 == l15 && l5 > 0,
+		      "and a left click pages, landing in the same place either way");
+	}
+
+
 	// ------------------------------------------------ section 5.5: drags
 	// Motion was parsed by the backend and dropped by the router, and there
 	// was no grab, so nothing that needs a drag worked -- section 7.2 recorded

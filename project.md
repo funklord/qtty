@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-670 checks, 0 failures, under three configurations: the offscreen
+672 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -286,7 +286,7 @@ Owned by the copyright holder:
 | Whether frame output should be gated on `isatty(1)` as setup and teardown are | *the gate that decides whether to write* |
 | A message box's severity icon: a glyph cannot travel inside a `QIcon`, so reaching one needs `QPixmap::cacheKey()` identity surviving rasterisation | *Qt's standard iconography* |
 | A dock widget's title buttons, which arrive with a 0x0 icon area -- a sizing fault rather than an iconography one | *Qt's standard iconography* |
-| `SH_Slider_AbsoluteSetButtons`: a groove click setting the value where it landed | *the interaction sweep* |
+| `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed -- measured, and the current behaviour is held by checks | *the interaction sweep* |
 | How to tell an icon from a picture, so a wide short image can be a placement rather than a shaded block -- the 2x2 threshold promotes neither 8x1 nor the 2x1 an icon becomes | §7.2 |
 | The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work | §7.9, §11 |
 
@@ -1585,11 +1585,43 @@ this style's, and naming them stops the next sweep re-investigating:
   default adds `pageStep`, which on a 0..10 range with the default step
   lands on the maximum however near the low end the click was.
 
-The second is a real question for a terminal, and it is the holder's:
-`SH_Slider_AbsoluteSetButtons` would make a click set the value where it
-landed, which suits a device with no fine pointer control and no drag
-worth speaking of. It changes interaction semantics rather than
-appearance, so it is recorded rather than pinned.
+The second is a real question for a terminal, and it is still the
+holder's: `SH_Slider_AbsoluteSetButtons` would make a click set the value
+where it landed, which suits a device with no fine pointer control. It
+changes what a click MEANS rather than what it looks like, and this tree
+already draws that line: `SH_DialogButtonLayout` is pinned with the note
+that "changing it would be the decision, and this is not that". Pinning a
+hint so the desktop cannot move it is not the same act as moving it.
+
+**What was missing was the measurement, and it is here now.** A 0..100
+slider over a 20-cell groove, clicked at four positions:
+
+| cell | left | middle | right |
+|---|---|---|---|
+| 2 | 0 | 6 | 0 |
+| 5 | 10 | 24 | 0 |
+| 10 | 10 | 54 | 0 |
+| 15 | 10 | 83 | 0 |
+
+Three things follow that the entry did not say.
+
+**Absolute set already works, on the middle button.** Fusion answers
+`Qt::MiddleButton` for the hint and qtty's mouse routing carries the
+button, so 6, 24, 54 and 83 track the click across the groove. The
+capability is not missing; only the button is in question. Nothing
+exercised it until now, so a change to the hint could have taken it away
+unnoticed -- it has a check now.
+
+**A left click lands in the same place wherever it is clicked.** 10 at
+cell 5, 10 at cell 10, 10 at cell 15: one `pageStep` from where the handle
+was, and no further. On a terminal that is the whole of the interaction --
+there is no repeat-on-hold here -- so a click at three quarters of the
+groove sets a tenth.
+
+**And the naive change costs the behaviour that works.** The hint is a
+set of buttons: returning `Qt::LeftButton` alone removes middle-click
+absolute set, which the two checks catch together. Whoever takes this
+decision wants `Qt::LeftButton | Qt::MiddleButton`, not a replacement.
 
 **Qt's standard iconography has no route to a glyph, and that is a
 decision rather than a defect.** Three measurements, taken because a
