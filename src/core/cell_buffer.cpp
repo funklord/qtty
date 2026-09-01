@@ -180,7 +180,7 @@ QString colour_name(const Color &c) {
 	// Six digits, not eight: the alpha byte is masked off, so an eighth
 	// pair would print a constant 00 in every fixture and read as colour.
 	case Color::Rgb:     return QStringLiteral("#%1").arg(c.value() & 0xffffffu,
-		                                                  6, 16, QLatin1Char('0'));
+	                                                      6, 16, QLatin1Char('0'));
 	}
 	return QStringLiteral("?");
 }

@@ -393,12 +393,12 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		switch (sc) {
 		case SC_SpinBoxEditField:
 			return QRect(r.left() + cw, r.top(),
-				         qMax(cw, r.width() - 3 * cw), qMax(ch, r.height()));
+			             qMax(cw, r.width() - 3 * cw), qMax(ch, r.height()));
 		case SC_SpinBoxUp:
 			return QRect(r.right() + 1 - 2 * cw, r.top(), cw, qMax(ch, r.height() / 2));
 		case SC_SpinBoxDown:
 			return QRect(r.right() + 1 - 2 * cw, r.top() + r.height() / 2,
-				         cw, qMax(ch, r.height() / 2));
+			             cw, qMax(ch, r.height() / 2));
 		case SC_SpinBoxFrame:
 			return r;
 		default:
@@ -415,7 +415,7 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		switch (sc) {
 		case SC_ComboBoxEditField:
 			return QRect(r.left() + cw, r.top(),
-				         qMax(cw, r.width() - 3 * cw), qMax(ch, r.height()));
+			             qMax(cw, r.width() - 3 * cw), qMax(ch, r.height()));
 		case SC_ComboBoxArrow:
 			return QRect(r.right() + 1 - 2 * cw, r.top(), cw, qMax(ch, r.height()));
 		case SC_ComboBoxFrame:
@@ -455,9 +455,9 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 	case CT_TabBarTab:
 		if (auto *t = qstyleoption_cast<const QStyleOptionTab *>(o)) {
 			const bool vertical = t->shape == QTabBar::RoundedWest
-				               || t->shape == QTabBar::RoundedEast
-				               || t->shape == QTabBar::TriangularWest
-				               || t->shape == QTabBar::TriangularEast;
+			                   || t->shape == QTabBar::RoundedEast
+			                   || t->shape == QTabBar::TriangularWest
+			                   || t->shape == QTabBar::TriangularEast;
 			if (vertical) {
 				int cells = 0;
 				for (const QString &cl : to_clusters(strip_mnemonic(t->text)))
@@ -537,15 +537,15 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 			// cycle somewhere unexpected. Qt sets State_On for Checked and
 			// State_NoChange for the middle, and neither for Unchecked.
 			dev->buffer().text(c.left(), c.top(),
-				(opt->state & State_NoChange) ? QStringLiteral("[-]")
-				: (opt->state & State_On)     ? QStringLiteral("[x]")
-				                              : QStringLiteral("[ ]"),
-				Color(), Color(), with_state(opt));
+			    (opt->state & State_NoChange) ? QStringLiteral("[-]")
+			    : (opt->state & State_On)     ? QStringLiteral("[x]")
+			                                  : QStringLiteral("[ ]"),
+			    Color(), Color(), with_state(opt));
 			return;
 		case PE_IndicatorRadioButton:
 			dev->buffer().text(c.left(), c.top(),
-				(opt->state & State_On) ? QStringLiteral("(o)") : QStringLiteral("( )"),
-				Color(), Color(), with_state(opt));
+			    (opt->state & State_On) ? QStringLiteral("(o)") : QStringLiteral("( )"),
+			    Color(), Color(), with_state(opt));
 			return;
 		case PE_FrameWindow: case PE_Frame: case PE_FrameGroupBox:
 		case PE_PanelMenu: case PE_FrameMenu:
@@ -605,7 +605,7 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 		case PE_IndicatorToolBarSeparator:
 			for (int y = c.top(); y <= c.bottom(); ++y)
 				dev->buffer().put_cluster(c.left(), y, QStringLiteral("│"),
-					                      Color(), Color(), with_state(opt));
+				                          Color(), Color(), with_state(opt));
 			return;
 		case PE_IndicatorBranch: {                    // tree expanders (section 17.2)
 			QString g = QStringLiteral(" ");
@@ -620,7 +620,7 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 			// tiny-icon substitute: a closable tab offered a shaded block to
 			// click on, which says nothing about what clicking it does.
 			dev->buffer().text(c.left(), c.top(), QStringLiteral("✕"),
-				               Color(), Color(), with_state(opt));
+			                   Color(), Color(), with_state(opt));
 			return;
 		case PE_IndicatorHeaderArrow:
 			// A sort indicator, which fell through to the base style and was
@@ -638,9 +638,9 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 				// worse than the shaded block this replaced, that at least
 				// claimed nothing.
 				dev->buffer().text(c.left(), c.top(),
-					h->sortIndicator == QStyleOptionHeader::SortDown
-					    ? QStringLiteral("▴") : QStringLiteral("▾"),
-					Color(), Color(), with_state(opt));
+				    h->sortIndicator == QStyleOptionHeader::SortDown
+				        ? QStringLiteral("▴") : QStringLiteral("▾"),
+				    Color(), Color(), with_state(opt));
 			}
 			return;
 		case PE_IndicatorArrowDown:  dev->buffer().text(c.left(), c.top(), QStringLiteral("▾")); return;
@@ -681,13 +681,13 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// direction. A checkable button that is checked was equally
 				// invisible, and Qt reports both in the same option.
 				bool foc = (opt->state & (State_HasFocus | State_Sunken | State_On))
-					       || (w && w == s_focus);
+				           || (w && w == s_focus);
 				dev->buffer().text(bc.left(), bc.top(),
-					               QLatin1Char('<') + strip_mnemonic(b->text)
-					                   + QLatin1Char('>'),
-					               Color(), Color(),
-					               label_attrs(opt, w, foc ? Attrs(Attr::Reverse)
-					                                       : Attrs()));
+				                   QLatin1Char('<') + strip_mnemonic(b->text)
+				                       + QLatin1Char('>'),
+				                   Color(), Color(),
+				                   label_attrs(opt, w, foc ? Attrs(Attr::Reverse)
+				                                           : Attrs()));
 			}
 			return;
 		case CE_MenuItem:
@@ -695,11 +695,11 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				if (mi->menuItemType == QStyleOptionMenuItem::Separator) {
 					for (int x = c.left(); x <= c.right(); ++x)
 						dev->buffer().put_cluster(x, c.top(), QStringLiteral("─"),
-							                      Color(), Color(), with_state(opt));
+						                          Color(), Color(), with_state(opt));
 					return;
 				}
 				const Attrs a = with_state(opt, (opt->state & State_Selected)
-					                            ? Attrs(Attr::Reverse) : Attrs());
+				                                ? Attrs(Attr::Reverse) : Attrs());
 				// The fill carries the state and not the font: bold on a
 				// space is nothing to look at and something to read in a
 				// snapshot. The label carries both.
@@ -724,10 +724,10 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				int label_at = c.left() + 1;
 				if (mi->checkType != QStyleOptionMenuItem::NotCheckable) {
 					const bool one_of = mi->checkType
-						              == QStyleOptionMenuItem::Exclusive;
+					                  == QStyleOptionMenuItem::Exclusive;
 					const QString mark = !mi->checked ? QStringLiteral(" ")
-						               : one_of       ? QStringLiteral("•")
-						                              : QStringLiteral("✓");
+					                   : one_of       ? QStringLiteral("•")
+					                                  : QStringLiteral("✓");
 					dev->buffer().text(label_at, c.top(), mark, Color(), Color(), la);
 					label_at += 2;
 				}
@@ -735,16 +735,16 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				QString label = parts.value(0);
 				label.remove(QLatin1Char('&'));       // mnemonic markers
 				dev->buffer().text(label_at, c.top(),
-					               elide_to_cells(label, c.right() - label_at),
-					               Color(), Color(), la);
+				                   elide_to_cells(label, c.right() - label_at),
+				                   Color(), Color(), la);
 				if (parts.size() > 1) {               // right-aligned shortcut
 					const QString sc = parts[1];
 					dev->buffer().text(c.right() - sc.size(), c.top(), sc,
-						               Color(), Color(), la | Attr::Dim);
+					                   Color(), Color(), la | Attr::Dim);
 				}
 				if (mi->menuItemType == QStyleOptionMenuItem::SubMenu)
 					dev->buffer().text(c.right(), c.top(), QStringLiteral("▸"),
-						               Color(), Color(), a);
+					                   Color(), Color(), a);
 				return;
 			}
 			break;
@@ -757,8 +757,8 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// is a literal one. One spelling of the rule, in one place.
 				const QString label = strip_mnemonic(mi->text);
 				dev->buffer().text(c.left() + 1, c.top(), label, Color(), Color(),
-					               label_attrs(opt, w, mi->font,
-					                           hot ? Attrs(Attr::Reverse) : Attrs()));
+				                   label_attrs(opt, w, mi->font,
+				                               hot ? Attrs(Attr::Reverse) : Attrs()));
 				return;
 			}
 			break;
@@ -768,7 +768,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 		case CE_ItemViewItem:                          // list/table/tree cells
 			if (auto *vi = qstyleoption_cast<const QStyleOptionViewItem *>(opt)) {
 				const Attrs a = with_state(opt, (opt->state & State_Selected)
-					                            ? Attrs(Attr::Reverse) : Attrs());
+				                                ? Attrs(Attr::Reverse) : Attrs());
 				// Qt::FontRole arrives in the option, and reaches the label
 				// whether or not CellItemDelegate is installed. The fill
 				// stays state-only, as in a menu item.
@@ -809,15 +809,15 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				int text_at = c.left() + 1;
 				if (vi->features & QStyleOptionViewItem::HasCheckIndicator) {
 					const QString box =
-						vi->checkState == Qt::Checked            ? QStringLiteral("[x]")
-						: vi->checkState == Qt::PartiallyChecked ? QStringLiteral("[-]")
-						                                        : QStringLiteral("[ ]");
+					    vi->checkState == Qt::Checked            ? QStringLiteral("[x]")
+					    : vi->checkState == Qt::PartiallyChecked ? QStringLiteral("[-]")
+					                                            : QStringLiteral("[ ]");
 					dev->buffer().text(text_at, c.top(), box, fg, bg, la);
 					text_at += 4;                  // the box and one space
 				}
 				const int room = c.right() - text_at + 1;
 				dev->buffer().text(text_at, c.top(), elide_to_cells(vi->text, room),
-					               fg, bg, la);
+				                   fg, bg, la);
 				return;
 			}
 			break;
@@ -826,8 +826,8 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 		case CE_HeaderLabel:
 			if (auto *h = qstyleoption_cast<const QStyleOptionHeader *>(opt)) {
 				dev->buffer().text(c.left(), c.top(), elide_to_cells(h->text, c.width()),
-					               Color(), Color(),
-					               label_attrs(opt, w, Attr::Bold));
+				                   Color(), Color(),
+				                   label_attrs(opt, w, Attr::Bold));
 				return;
 			}
 			break;
@@ -839,11 +839,11 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// "[&Genera..." , the ampersand both visible AND stealing the
 				// cell that made the label elide a character early.
 				const QString label = QLatin1Char('[') + strip_mnemonic(t->text)
-					                    + QLatin1Char(']');
+				                        + QLatin1Char(']');
 				dev->buffer().text(c.left(), c.top(), elide_to_cells(label, c.width()),
-					               Color(), Color(),
-					               label_attrs(opt, w, sel ? Attrs(Attr::Reverse)
-					                                       : Attrs()));
+				                   Color(), Color(),
+				                   label_attrs(opt, w, sel ? Attrs(Attr::Reverse)
+				                                           : Attrs()));
 				return;
 			}
 			break;
@@ -878,12 +878,12 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					for (int i = 0; i < extent; ++i) {
 						if (horizontal)
 							dev->buffer().put_cluster(c.left() + i, c.top(),
-								                      QStringLiteral("▒"),
-								                      Color(), Color(), bar);
+							                          QStringLiteral("▒"),
+							                          Color(), Color(), bar);
 						else
 							dev->buffer().put_cluster(c.left(), c.top() + i,
-								                      QStringLiteral("▒"),
-								                      Color(), Color(), bar);
+							                          QStringLiteral("▒"),
+							                          Color(), Color(), bar);
 					}
 					return;
 				}
@@ -895,17 +895,17 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					const QString g = on ? QStringLiteral("█") : QStringLiteral("░");
 					if (horizontal)
 						dev->buffer().put_cluster(c.left() + i, c.top(), g,
-							                      Color(), Color(), bar);
+						                          Color(), Color(), bar);
 					else
 						dev->buffer().put_cluster(c.left(), c.top() + i, g,
-							                      Color(), Color(), bar);
+						                          Color(), Color(), bar);
 				}
 				if (pb->textVisible) {
 					const QString label = pb->text.isEmpty()
-						? QStringLiteral("%1%").arg(qRound(frac * 100)) : pb->text;
+					    ? QStringLiteral("%1%").arg(qRound(frac * 100)) : pb->text;
 					dev->buffer().text(c.center().x() - label.size() / 2, c.top(),
-						               label, Color(), Color(),
-						               label_attrs(opt, w, Attr::Reverse));
+					                   label, Color(), Color(),
+					                   label_attrs(opt, w, Attr::Reverse));
 				}
 				return;
 			}
@@ -945,7 +945,7 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				int thumb_len = 1, thumb_pos = 0;
 				if (span > 0 && track > 0) {
 					thumb_len = qBound(1, track * sb->pageStep
-						                 / qMax(1, span + sb->pageStep), track);
+					                     / qMax(1, span + sb->pageStep), track);
 					thumb_pos = (track - thumb_len) * (sb->sliderPosition - sb->minimum) / span;
 				}
 				const Attrs a = with_state(opt);
@@ -956,12 +956,12 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 					else {
 						const int t = i - 1;
 						g = (t >= thumb_pos && t < thumb_pos + thumb_len)
-							? QStringLiteral("█") : QStringLiteral("░");
+						    ? QStringLiteral("█") : QStringLiteral("░");
 					}
 					if (vert) dev->buffer().put_cluster(c.left(), c.top() + i, g,
-						                               Color(), Color(), a);
+					                                   Color(), Color(), a);
 					else      dev->buffer().put_cluster(c.left() + i, c.top(), g,
-						                               Color(), Color(), a);
+					                                   Color(), Color(), a);
 				}
 				return;
 			}
@@ -998,8 +998,8 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				// between the label and the closing bracket -- "[Cut-]".
 				dev->buffer().fill(c, Cell{});
 				const bool on = (tb->state & State_On)
-					             || (tb->state & State_Sunken)
-					             || (w && w == s_focus);
+				                 || (tb->state & State_Sunken)
+				                 || (w && w == s_focus);
 				// A bracket goes where a bracket fits, which is the rule the
 				// rendering side already states for a rule. Two cells hold
 				// "[]" and nothing else, so a dock widget's title buttons --
@@ -1024,14 +1024,14 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				const bool menu = tb->features & QStyleOptionToolButton::HasMenu;
 				if (menu)
 					dev->buffer().put_cluster(c.right() - 1, row,
-						                      QStringLiteral("▾"));
+					                          QStringLiteral("▾"));
 				const int inner = c.width() - (bracket ? 2 : 0) - (menu ? 2 : 0);
 				if (inner > 0)
 					dev->buffer().text(c.left() + (bracket ? 1 : 0), row,
-						                   elide_to_cells(tool_button_label(tb, w), inner),
-						                   Color(), Color(),
-						                   label_attrs(opt, w, on ? Attrs(Attr::Reverse)
-						                                          : Attrs()));
+					                       elide_to_cells(tool_button_label(tb, w), inner),
+					                       Color(), Color(),
+					                       label_attrs(opt, w, on ? Attrs(Attr::Reverse)
+					                                              : Attrs()));
 				return;
 			}
 			break;
@@ -1041,7 +1041,7 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				const int len = vert ? c.height() : c.width();
 				const int span = sl->maximum - sl->minimum;
 				const int pos = span > 0
-					? (len - 1) * (sl->sliderPosition - sl->minimum) / span : 0;
+				    ? (len - 1) * (sl->sliderPosition - sl->minimum) / span : 0;
 				// The groove carries the state; the handle also says whether
 				// it is being held. Qt sets State_Sunken on a slider whose
 				// handle has been grabbed, and this style already spells
@@ -1054,12 +1054,12 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				for (int i = 0; i < len; ++i) {
 					const bool handle = i == pos;
 					const QString g = handle ? QStringLiteral("●")
-						            : (vert ? QStringLiteral("│") : QStringLiteral("─"));
+					                : (vert ? QStringLiteral("│") : QStringLiteral("─"));
 					const Attrs at = handle ? held : a;
 					if (vert) dev->buffer().put_cluster(c.left(), c.top() + i, g,
-						                               Color(), Color(), at);
+					                                   Color(), Color(), at);
 					else      dev->buffer().put_cluster(c.left() + i, c.top(), g,
-						                               Color(), Color(), at);
+					                                   Color(), Color(), at);
 				}
 				return;
 			}

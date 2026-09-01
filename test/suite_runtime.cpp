@@ -176,25 +176,25 @@ int suite_runtime() {
 			      "the rejection says what was wrong with it");
 
 
-		// The guard's NUMERIC branches are unreachable here, and this is a
-		// measurement rather than an assumption. grid_font_problem() refuses
-		// a fractional line height, a fractional advance, and either of them
-		// at zero or less; only the fixed-pitch message above has ever been
-		// produced by a test.
-		//
-		// Tried, all giving integral metrics on this font engine: letter
-		// spacing (which QFontMetricsF::horizontalAdvance(QChar) ignores
-		// entirely -- it is applied when laying out a run, not to a single
-		// character), stretch at 50, 62, 75 and 150, stretch at 1, 3, 5 and 8
-		// which the engine clamps so the advance never falls below 1, and
-		// fractional point sizes of 10.5, 11.3 and 13.7. Every one produced a
-		// whole-number advance and a height of 19.
-		//
-		// They are not dead code: an engine with subpixel metrics or a
-		// fractional device pixel ratio produces exactly what they refuse,
-		// which is the case qtty pins QT_SCALE_FACTOR to avoid. Left
-		// uncovered deliberately, said here rather than left as a silent gap
-		// for somebody to rediscover.
+			// The guard's NUMERIC branches are unreachable here, and this is a
+			// measurement rather than an assumption. grid_font_problem() refuses
+			// a fractional line height, a fractional advance, and either of them
+			// at zero or less; only the fixed-pitch message above has ever been
+			// produced by a test.
+			//
+			// Tried, all giving integral metrics on this font engine: letter
+			// spacing (which QFontMetricsF::horizontalAdvance(QChar) ignores
+			// entirely -- it is applied when laying out a run, not to a single
+			// character), stretch at 50, 62, 75 and 150, stretch at 1, 3, 5 and 8
+			// which the engine clamps so the advance never falls below 1, and
+			// fractional point sizes of 10.5, 11.3 and 13.7. Every one produced a
+			// whole-number advance and a height of 19.
+			//
+			// They are not dead code: an engine with subpixel metrics or a
+			// fractional device pixel ratio produces exactly what they refuse,
+			// which is the case qtty pins QT_SCALE_FACTOR to avoid. Left
+			// uncovered deliberately, said here rather than left as a silent gap
+			// for somebody to rediscover.
 		}
 	}
 
