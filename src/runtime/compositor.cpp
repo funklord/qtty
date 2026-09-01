@@ -76,9 +76,31 @@ void Compositor::compose(CellBuffer &out) {
 	// why modals and popups are pulled out of this pass and stacked explicitly
 	// below (section 8.1: treat them as an explicit stack "rather than trusting
 	// window flags"). Within the plain layer the list order is all there is.
-	draw(win_, QPoint());
+	// Follow the focus rather than binding a key. Arrow keys belong to the
+	// focused widget and a chord would have to be learned, but Tab already
+	// walks the form -- so keeping the focused widget inside the terminal
+	// makes every widget reachable with the keys the application already
+	// answers. The offset is clamped to what actually overflows, so a window
+	// that fits scrolls by nothing and this is invisible.
+	const int max_x = qMax(0, (win_->width() + cw - 1) / cw - out.cols());
+	const int max_y = qMax(0, (win_->height() + ch - 1) / ch - out.rows());
+	if (QWidget *fw = win_->focusWidget()) {
+		const QPoint at = fw->mapTo(win_, QPoint());
+		const int left = at.x() / cw, top = at.y() / ch;
+		const int right = (at.x() + fw->width() - 1) / cw;
+		const int bottom = (at.y() + fw->height() - 1) / ch;
+		if (left < scroll_.x())                     scroll_.setX(left);
+		else if (right > scroll_.x() + out.cols() - 1) scroll_.setX(right - out.cols() + 1);
+		if (top < scroll_.y())                      scroll_.setY(top);
+		else if (bottom > scroll_.y() + out.rows() - 1) scroll_.setY(bottom - out.rows() + 1);
+	}
+	scroll_.setX(qBound(0, scroll_.x(), max_x));
+	scroll_.setY(qBound(0, scroll_.y(), max_y));
+
+	const QPoint root_at(-scroll_.x() * cw, -scroll_.y() * ch);
+	draw(win_, root_at);
 	QWidget *cursor_layer = win_;
-	QPoint cursor_origin;
+	QPoint cursor_origin = root_at;
 
 	QVector<QWidget *> modals;
 	const auto tops = QApplication::topLevelWidgets();

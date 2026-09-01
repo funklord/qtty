@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-689 checks, 0 failures, under three configurations: the offscreen
+691 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -1060,7 +1060,8 @@ on one dialog once F1 and F2 were fixed.
 factors redistribute correctly. The boundary found is the layout
 *minimum*: a resize below `minimumSizeHint()` is refused and content
 overflows, so small terminals need a drop-optional-then-scroll policy
-rather than faith in layout compression. `QComboBox`'s internal popup is
+rather than faith in layout compression. **The scrolling half of that is
+built now** -- see §7.8. `QComboBox`'s internal popup is
 discoverable and drivable, but does **not** inherit
 `WA_DontShowOnScreen`, so the runtime stamps it. `QTextEdit` through
 Channel B came out **better than designed for**: with the document font's
@@ -4166,12 +4167,16 @@ which is design.md §16's figure.
   The sweep's other two findings are elsewhere, because neither is the
   interface's: a scroll area not clipping is §8.7, and a build that did
   not rebuild is §9.5.
-- **The whole of design.md §7's Tier-2 hint system** -- `setPriority`,
-  `setCompact`, `CompactionPass`, the `"qtty.cells"` property -- and the
-  CI check banning `setContentsMargins`, `setSpacing`, `setFixedSize` and
-  `setFixedWidth` in shared UI code. Tier 1 is free and works; Tier 3 is
-  a convention; Tier 2 is the part that needed building and was not
-  built.
+- **design.md §7's Tier-2 hint system** -- `setPriority`, `setCompact`,
+  the `"qtty.cells"` property -- and the CI check banning
+  `setContentsMargins`, `setSpacing`, `setFixedSize` and `setFixedWidth`
+  in shared UI code. Tier 1 is free and works; Tier 3 is a convention;
+  Tier 2 is the part that needed building and was not built. **Two pieces
+  of it now exist under other names**: `GridSnap` does what
+  `CompactionPass` was for, and the root scrolls to its focus when the
+  window exceeds the terminal (§7.8) -- which is the fallback design.md
+  puts *after* dropping optional widgets. What is left is the annotation
+  half, the part that needs the application to say what is optional.
 - **The bundled font.** The startup check is in place (§7.4), but it
   checks a font the *machine* happens to provide. design.md §5.3 wants
   the font bundled and installed with `QFontDatabase::addApplicationFont`
@@ -4460,6 +4465,46 @@ Tier 1 is free** -- "style metrics differ, so the same layout compacts
 automatically". It is not free for any layout with slack in it, which is
 most of them. Today an application must add a stretch and call
 `setSizes()` in cell multiples, and nothing tells it so except the guard.
+
+**A window larger than the terminal scrolls to its focus.** This is the
+oldest unanswered finding in the document: Phase 0.5 measured that a
+resize below `minimumSizeHint()` is refused and content overflows, and
+design.md §7 named the policy -- drop the `Priority::Optional` widgets,
+then scroll the root -- and neither half was built. Printed rather than
+described, an eight-field dialog whose minimum is nine cells, in a
+six-row terminal:
+
+    | Field 0[value 0            ]|      | Field 3[value 3            ]|
+    | Field 1[value 1            ]|      | Field 4[value 4            ]|
+    | Field 2[value 2            ]|      | Field 5[value 5            ]|
+    | Field 3[value 3            ]|  ->  | Field 6[value 6            ]|
+    | Field 4[value 4            ]|      | Field 7[value 7            ]|
+    | Field 5[value 5            ]|      | <Close>|
+
+The left is what it showed: six fields, and neither the last two nor the
+button that closes the dialog. Nothing scrolled and nothing said so, and
+Tab would happily move focus to a widget nobody could see. The right is
+the same dialog after Tab reaches the button.
+
+**Following the focus is what makes it free.** The alternative was a key
+binding, and there is no key to spare: the arrows belong to the focused
+widget and a chord has to be learned. Tab already walks the form, so
+keeping the focused widget inside the terminal makes every widget
+reachable with the keys the application already answers -- no new
+gesture, no annotation, nothing for the application to call.
+
+The offset is clamped to what actually overflows, so **a window that fits
+scrolls by nothing** and this is invisible to every dialog that was
+working before. That is a check of its own rather than an assurance:
+without it the first check is satisfied by a compositor that scrolls
+whenever it likes, and every ordinary dialog would wander under the Tab
+key.
+
+What is still not built is the other half, and it is the half that needs
+the application's help: `Priority::Optional` and the rest of design.md
+§7's Tier-2 hints. Scrolling is the fallback that works with no
+annotation at all; dropping optional content is what would make a dense
+screen *fit*.
 
 **The decision is taken: `GridSnap` is installed by `Qtty::setup()`.**
 design.md §7's Tier 1 promise -- "style metrics differ, so the same layout

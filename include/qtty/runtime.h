@@ -91,6 +91,14 @@ public:
 	std::optional<QPoint> cursor_cell() const;             // after compose()
 
 private:
+	// Where the root layer is scrolled to, in cells. A layout refuses to
+	// shrink below its minimum, so on a terminal smaller than that the window
+	// keeps its size and the frame simply stops -- measured on a nine-cell
+	// dialog in a six-row terminal, which showed six fields and neither the
+	// last two nor the button that closes it. design.md section 7 names the
+	// policy: drop the optional widgets, then scroll the root. This is the
+	// second half, which needs no annotation from the application.
+	QPoint scroll_;
 	QWidget *win_;
 	InputRouter *router_;
 	std::optional<QPoint> cursor_;

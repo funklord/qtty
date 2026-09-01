@@ -610,5 +610,87 @@ int suite_runtime() {
 	}
 
 
+
+	// A window whose layout minimum exceeds the terminal, which is the case
+	// design.md section 7 measured and left unanswered. A layout refuses to
+	// shrink below its minimum, so the window keeps its size and the frame
+	// simply stops: measured on a nine-cell dialog in a six-row terminal,
+	// which showed six fields and neither the last two nor the button that
+	// closes it. Nothing scrolled, nothing said so, and Tab could move focus
+	// to a widget nobody could see.
+	//
+	// The root scrolls to follow the focus now. Following the focus rather
+	// than binding a key is what makes it free: arrow keys belong to the
+	// focused widget and a chord would have to be learned, but Tab already
+	// walks the form.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		for (int i = 0; i < 8; ++i) {
+			auto *row = new QHBoxLayout;
+			row->addWidget(new QLabel(QStringLiteral("Field %1").arg(i)));
+			row->addWidget(new QLineEdit(QStringLiteral("value %1").arg(i)));
+			v->addLayout(row);
+		}
+		auto *close = new QPushButton(QStringLiteral("&Close"));
+		v->addWidget(close);
+		win.show();
+		win.resize(GridMetrics::cells(30, 6));
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+
+		CellBuffer top(30, 6);
+		c.compose(top);
+		const QString at_top = top.to_text();
+		close->setFocus();
+		QCoreApplication::processEvents();
+		CellBuffer bottom(30, 6);
+		c.compose(bottom);
+		const QString at_bottom = bottom.to_text();
+		// The pair, because either half alone is satisfied by a bug. "The
+		// button is visible" would pass against a frame that showed
+		// everything; "the first field is gone" would pass against a frame
+		// that showed nothing at all.
+		CHECK(!at_top.contains(QStringLiteral("Close"))
+		      && at_bottom.contains(QStringLiteral("Close"))
+		      && at_top.contains(QStringLiteral("Field 0"))
+		      && !at_bottom.contains(QStringLiteral("Field 0")),
+		      "a window taller than the terminal scrolls to its focus");
+		GridGuard::reset();
+	}
+
+	// And the control: a window that FITS must not move, however the focus
+	// travels. Without this the check above is satisfied by a compositor that
+	// scrolls whenever it feels like it, and every ordinary dialog would
+	// wander under the Tab key.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		auto *first = new QLineEdit(QStringLiteral("one"));
+		auto *last = new QPushButton(QStringLiteral("&Go"));
+		v->addWidget(first);
+		v->addWidget(last);
+		win.show();
+		win.resize(GridMetrics::cells(20, 8));
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+		first->setFocus();
+		QCoreApplication::processEvents();
+		CellBuffer a(20, 8);
+		c.compose(a);
+		last->setFocus();
+		QCoreApplication::processEvents();
+		CellBuffer b(20, 8);
+		c.compose(b);
+		CHECK(a.to_text() == b.to_text(),
+		      "and a window that fits does not scroll at all");
+		GridGuard::reset();
+	}
+
+
 	return fails;
 }
