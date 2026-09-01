@@ -249,8 +249,23 @@ GridStyle::GridStyle() : QProxyStyle(QStyleFactory::create(QStringLiteral("Fusio
 int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *w) const {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	switch (m) {
+	// Vertical space is precious and horizontal space is not, which is the
+	// rule the spacings below already state -- one column between items and
+	// nothing between rows. The margins said the opposite: a whole ROW above
+	// the first widget and another below the last, on a screen with
+	// twenty-four of them.
+	//
+	// It cost more than the eight per cent. Measured on an 80x1 terminal, a
+	// window with a plain QVBoxLayout rendered ENTIRELY BLANK -- the menu bar
+	// sat at y=19, one row below the only row there was. That was written up
+	// as Qt's default nine-pixel margins rounding badly and it was neither
+	// Qt's nor rounding: it was this line.
+	//
+	// Left and right keep a column. A column of eighty is cheap where a row
+	// of twenty-four is not, and the indent is what stops text touching the
+	// screen edge.
 	case PM_LayoutLeftMargin: case PM_LayoutRightMargin:   return cw;
-	case PM_LayoutTopMargin:  case PM_LayoutBottomMargin:  return ch;
+	case PM_LayoutTopMargin:  case PM_LayoutBottomMargin:  return 0;
 	case PM_LayoutHorizontalSpacing:                       return cw;
 	case PM_LayoutVerticalSpacing:                         return 0;
 	case PM_ScrollBarExtent:                               return cw;

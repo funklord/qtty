@@ -523,6 +523,39 @@ int suite_runtime() {
 	}
 	GridGuard::reset();      // the fixed-width button above is a reported one
 
+	// Layout margins: nothing above and below, one column either side. That
+	// is the rule the spacings already state -- PM_LayoutVerticalSpacing is 0
+	// and PM_LayoutHorizontalSpacing is cw -- and the margins used to say the
+	// opposite, spending a whole row above the first widget and another below
+	// the last.
+	//
+	// It cost more than the eight per cent of a 24-row screen: at 80x1 a
+	// window with a plain QVBoxLayout rendered entirely blank, its first
+	// widget one row below the only row there was. The pair is what says the
+	// rule rather than "no margins": vertical zero AND horizontal one.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);            // Qt's defaults, untouched
+		auto *bar = new QMenuBar(&win);
+		bar->addMenu(QStringLiteral("File"));
+		v->addWidget(bar);
+		win.resize(GridMetrics::cells(80, 1));
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Compositor comp(&win, &r);
+		CellBuffer b(80, 1);
+		comp.compose(b);
+		const QString row = b.to_text().section(QLatin1Char('\n'), 0, 0);
+		CHECK(row.contains(QStringLiteral("File")),
+		      "a one-row terminal shows its first widget, not a margin");
+		CHECK(v->contentsMargins().top() == 0 && v->contentsMargins().bottom() == 0
+		      && v->contentsMargins().left() == GridMetrics::cw(),
+		      "and the margins are nothing vertically, one column either side");
+		GridGuard::reset();      // an 80x1 window cannot hold a menu bar on the grid
+	}
+
 	// A terminal with no cells. The sweep that found this rendered the whole
 	// tier at sizes nothing had rendered at -- one cell, one row, one column,
 	// three by three, two hundred by two -- and every one of them composed
@@ -554,6 +587,7 @@ int suite_runtime() {
 		some.render_now();
 		CHECK(sized.frame_count() == 1, "and one with cells still is");
 	}
+
 
 
 

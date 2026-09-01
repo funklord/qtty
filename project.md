@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-677 checks, 0 failures, under three configurations: the offscreen
+679 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -172,6 +172,15 @@ decision §8.1 records as open, so the axis is priced rather than taken.
 by transitive luck on a class Qt 6 moved between modules. That include is
 right on every version and is fixed.
 
+**A layout's vertical margins are zero now**, which was the last thing
+standing between an 80x1 terminal and a screen: a window with a plain
+`QVBoxLayout` rendered entirely blank, its first widget one row below the
+only row there was. That looked like taste and was not -- two lines below
+the offending one, `PM_LayoutVerticalSpacing` is already 0 while
+`PM_LayoutHorizontalSpacing` is `cw`, so the tree had stated the rule and
+the margins contradicted it. Left and right keep their column. Both
+fixtures moved, and only by losing a leading blank row.
+
 **OQ-7 is closed and the fallback stays RGB**, decided by an arbiter this
 project already had rather than by the screen the entry asked for.
 `has_minimum_contrast()` is qtty's own rule, and over 4374 saturated
@@ -317,7 +326,6 @@ Owned by the copyright holder:
 
 | Question | Where |
 |---|---|
-| Whether a layout's one-row top and bottom margin is right on a terminal, where it costs two rows of twenty-four and two of three | §7.8 |
 | A message box's severity icon: a glyph cannot travel inside a `QIcon`, so reaching one needs `QPixmap::cacheKey()` identity surviving rasterisation | *Qt's standard iconography* |
 | A dock widget's title buttons, which arrive with a 0x0 icon area -- a sizing fault rather than an iconography one | *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed -- measured, and the current behaviour is held by checks | *the interaction sweep* |
@@ -4184,12 +4192,26 @@ the first widget starts on row 1 because **qtty gives every layout a
 one-row margin**, and `GridSnap` neither causes that nor fixes it, which
 was checked both ways.
 
-So the real question is a margin policy, and it is small and separate:
-**a one-row top and bottom margin costs two of a 24-row screen and two of
-a three-row one.** Most terminal programs use no outer margin at all. It
-is left open rather than changed here, because unlike the slack question
-it is a matter of taste with no invariant behind it -- and because the
-measurement that produced it was reported wrongly once already.
+**Taken: the vertical margins are zero and the horizontal ones stay a
+column.** It looked like a matter of taste and it is not -- the tree had
+already stated the rule two lines below the one at fault.
+`PM_LayoutVerticalSpacing` is **0** and `PM_LayoutHorizontalSpacing` is
+`cw`: vertical space is precious and horizontal space is not. The margins
+said the opposite, spending a whole row above the first widget and another
+below the last, on a screen with twenty-four of them.
+
+The cost was more than the eight per cent. At 80x1 a window with a plain
+`QVBoxLayout` rendered **entirely blank**, its first widget one row below
+the only row there was; it reads `File` now. Left and right keep their
+column, because a column of eighty is cheap where a row of twenty-four is
+not, and the indent is what stops text touching the screen edge.
+
+Both fixtures moved and the change is legible in the diff: the leading
+blank row goes, and the row it frees is redistributed by the layout --
+`prefs_dialog`'s button row descends by one, the gallery's tab pane grows
+by one. No content appears or disappears. The checks are a pair, because
+"no margins" is a different rule from this one: the first widget must
+reach row 0 **and** the left margin must still be a column.
 
 Worth recording on its own, because it will bite whoever changes machine
 first. `Qtty::setup()` derives the cell size from the **locally installed**

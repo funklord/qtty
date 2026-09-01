@@ -1,4 +1,3 @@
-
  [x] Enable telemetry
  ( ) Daily              (o) Weekly
 
@@ -8,8 +7,9 @@
 
 
 
-                             <OK>     <Cancel>
 
+
+                             <OK>     <Cancel>
 
 
 --- attrs ---
