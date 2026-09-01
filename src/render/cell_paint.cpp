@@ -161,9 +161,27 @@ std::optional<QRect> CellPaintEngine::clip_cells() const {
 	const auto outward = [this](const QRectF &device_px) {
 		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 		const QRectF m = device_px.translated(dev_->origin);
+		// No "+ 1". A QRectF's right() is EXCLUSIVE -- x + width, not
+		// x + width - 1 -- so ceil(right / cw) is already one past the last
+		// cell the rectangle covers, and adding another admitted a cell
+		// nothing had drawn in. Measured: a widget six cells wide at column
+		// two occupies pixels 20..79, ceil(80 / 10) is 8, and the clip came
+		// out as columns 2..8 for a widget ending at column 7. That is where
+		// the one-cell overhang came from -- a check box, a radio button, a
+		// combo box and a group box each put the next character of their
+		// label in the widget beside them, always exactly one cell.
+		//
+		// It was read as the "keep a straddling cluster whole" rule below,
+		// which would have been a decision to reverse. It is arithmetic.
+		//
+		// Still outward, which is the point of the function: a rectangle
+		// ending part-way into a cell still admits that cell, because
+		// ceil() of a fraction rounds up. The eight-pixel clip against a
+		// nineteen-pixel cell that this comment was written for gives
+		// ceil(8 / 19) - 0 = 1 row, not none.
 		const int l = int(std::floor(m.left() / cw)), t = int(std::floor(m.top() / ch));
-		return QRect(l, t, int(std::ceil(m.right() / cw)) - l + 1,
-		             int(std::ceil(m.bottom() / ch)) - t + 1);
+		return QRect(l, t, int(std::ceil(m.right() / cw)) - l,
+		             int(std::ceil(m.bottom() / ch)) - t);
 	};
 
 	std::optional<QRect> clip;

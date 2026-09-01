@@ -268,9 +268,18 @@ int suite_render(bool record) {
 		}
 
 		// The same rule without any scrolling: a child wider than its parent
-		// is clipped to it. Eight cells rather than six is the outward
-		// rounding the clip does on purpose; what matters is that eighteen
-		// cells of label do not arrive.
+		// is clipped to it. This used to allow eight cells for a six-cell
+		// parent and called the slack "the outward rounding the clip does on
+		// purpose" -- it was not on purpose. clip_cells() took a QRectF's
+		// right(), which is EXCLUSIVE, and added one more cell on top of the
+		// ceil(), so every clip in the engine was a column and a row too
+		// large. That is where a check box, a radio button, a combo box and
+		// a group box each put one cell of their label in the widget beside
+		// them.
+		//
+		// Six cells for a six-cell parent, cell-aligned, is the whole answer.
+		// The intent this check states -- eighteen cells of label do not
+		// arrive -- is better served by it, not weakened.
 		QWidget h2;
 		h2.setAttribute(Qt::WA_DontShowOnScreen);
 		h2.resize(GridMetrics::cells(20, 2));
@@ -283,7 +292,7 @@ int suite_render(bool record) {
 		Qtty::CellBuffer b2(20, 2);
 		Qtty::render_once(h2, b2);
 		const QString row = b2.to_text().section(QLatin1Char('\n'), 0, 0).trimmed();
-		if (row.startsWith(QStringLiteral("OVERFLO")) && row.size() <= 8)
+		if (row == QStringLiteral("OVERFL"))
 			printf("PASS: a child wider than its parent is clipped to it\n");
 		else {
 			printf("FAIL: a child wider than its parent is clipped to it\n"

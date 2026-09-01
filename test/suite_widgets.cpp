@@ -2623,6 +2623,25 @@ int suite_widgets() {
 			return p;
 		});
 		one("scroll bar", [] { return new QScrollBar(Qt::Horizontal); });
+		// The four that used to leak one cell of label into the widget next
+		// door, and the list whose scroll bar landed on the row above. Both
+		// causes are fixed -- an off-by-one in the engine's clip rounding and
+		// a bound that stopped at the widget instead of its ancestors -- so
+		// they belong in the same list as the rest rather than in a comment
+		// explaining why they are exempt.
+		one("check box", [] { return new QCheckBox(QStringLiteral("Wrap")); });
+		one("radio", [] { return new QRadioButton(QStringLiteral("One")); });
+		one("combo box", [] {
+			auto *c = new QComboBox;
+			c->addItem(QStringLiteral("one"));
+			return c;
+		});
+		one("group box", [] { return new QGroupBox(QStringLiteral("Box")); });
+		one("list widget", [] {
+			auto *l = new QListWidget;
+			l->addItems({ QStringLiteral("alpha"), QStringLiteral("beta") });
+			return l;
+		});
 
 		const QVector<QSize> sizes = { QSize(1, 1), QSize(2, 1), QSize(3, 1),
 			                           QSize(1, 2), QSize(2, 2), QSize(6, 1) };

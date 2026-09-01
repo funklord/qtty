@@ -3870,16 +3870,38 @@ which was which in one reading.
 **What is left is two things, and neither is this fault.** Measured after
 the fix, the residue is exactly:
 
-- **One cell of text past the right edge**, on a check box, a radio
-  button, a combo box and a group box -- always exactly one, always the
-  next character of a label. That is `CellPaintEngine`'s own stated rule:
-  *"a cluster straddling the edge is kept whole, which draws at most one
-  cell more than allowed... under-clip rather than lose a glyph."* It is
-  a decision rather than an oversight, and the decision was taken before
-  anything knew the cell belongs to the widget next door. Worth
-  revisiting on that ground -- the style elides everywhere else, and
-  corrupting a neighbour is worse than truncating a label -- but it is a
-  reversal of a recorded choice and belongs in its own change.
+- **One cell of text past the right edge -- since fixed, and it was not
+  the decision it looked like.** A check box, a radio button, a combo box
+  and a group box each put the next character of their label in the
+  widget beside them, always exactly one cell. The obvious suspect was
+  `CellPaintEngine`'s stated rule -- *"a cluster straddling the edge is
+  kept whole, which draws at most one cell more than allowed... under-clip
+  rather than lose a glyph"* -- which would have been a design decision to
+  reverse, and this document said as much.
+
+  It was arithmetic. `clip_cells()` computed the far edge as
+  `ceil(right / cw) - left + 1`, and `right` there is a **QRectF's**,
+  which is exclusive: `x + width`, not `x + width - 1`. A widget six
+  cells wide at column two occupies pixels 20..79; the QRectF's right is
+  80, `ceil(80 / 10)` is 8, and the clip came out as columns 2..8 for a
+  widget ending at column 7. **Every clip in the engine was a column and
+  a row too large**, and had been since it was written.
+
+  The rounding is still outward, which is what the function is for: a
+  rectangle ending part-way into a cell still admits that cell, because
+  `ceil()` of a fraction rounds up. The eight-pixel clip against a
+  nineteen-pixel cell that the comment was written for gives one row, not
+  none.
+
+  **A check had recorded the fault as intentional.** §7.8's child-clipping
+  check allowed eight cells for a six-cell parent and called the slack
+  *"the outward rounding the clip does on purpose"*. It was not on
+  purpose. The check now asks for six, which is what a six-cell
+  cell-aligned parent should show, and the intent it states -- eighteen
+  cells of label do not arrive -- is better served by it. **A tolerance
+  with a reason attached is the hardest kind of bug to see**: the number
+  was wrong and the sentence beside it explained why the wrong number was
+  right.
 - **A child drawn outside its parent -- since fixed.** A `QListWidget`
   one row tall put its horizontal scroll bar's `◀█▶` on the row *above*
   itself. Measured rather than guessed at:
@@ -3910,9 +3932,12 @@ asserts an order of magnitude has to be *read* rather than trusted to
 fail. Accumulating the offset on the way up instead brought it back to
 1.51 ms, so the clip itself costs about a tenth of a millisecond.
 
-Both remaining pieces were the same sentence as the rest -- *a control
-draws inside the widget it was given* -- and one is left: the engine's
-one-cell overhang, which is a reversal of a recorded decision.
+All of it was the same sentence -- *a control draws inside the widget it
+was given* -- and it took four separate mechanisms to say it: a clip on
+the buffer, `draw_box()` honouring it, the clip cut down by every
+ancestor, and the engine's own rounding corrected. The overdraw check
+covers eleven widget kinds at six sizes each and none of them leaves its
+rectangle.
 
 ### 7.3 Graphics tier (design.md §17.3)
 
