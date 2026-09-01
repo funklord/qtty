@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-680 checks, 0 failures, under three configurations: the offscreen
+681 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -326,7 +326,7 @@ Owned by the copyright holder:
 
 | Question | Where |
 |---|---|
-| A message box's severity icon: a glyph cannot travel inside a `QIcon`, so reaching one needs `QPixmap::cacheKey()` identity surviving rasterisation | *Qt's standard iconography* |
+| A message box's severity icon. The mechanism is now measured and has no open question -- a `QIconEngine` that registers each pixmap it mints, consulted through the `cacheKey()` the placement already carries. What is left is whether a warning triangle should become a glyph, taken against a mosaic that is **faithful and still unreadable** | *Qt's standard iconography* |
 | A dock widget's title buttons, which arrive with a 0x0 icon area -- a sizing fault rather than an iconography one | *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed -- measured, and the current behaviour is held by checks | *the interaction sweep* |
 | Whether the "too small to be a picture" rule moves to the backend, which knows whether the terminal can draw pictures -- it cannot be answered from the pixmap, and the cost is an upload per tiny icon | §7.2 |
@@ -1723,11 +1723,43 @@ rasterising them, so a probe reading `to_text()` sees a blank -- the probe's
 limit, not the library's. Recorded because the first reading of that probe
 was "the icon is missing", which is a mechanism, and it was wrong.
 
-What is left is real but narrow: **a 5x3 half-block mosaic of a warning
-triangle is unlikely to be legible**, and a glyph would serve a text tier
-better. The same question covers `QDockWidget`'s title buttons, which
-render as two identical empty brackets -- a close and a float that cannot
-be told apart, since neither carries text and neither icon has a name.
+What is left is real but narrow, and it has now been **printed rather
+than guessed**. The sentence here used to say a 5x3 mosaic of a warning
+triangle was "unlikely to be legible", which was a prediction. It is
+worse than the prediction, and for a reason worth having.
+
+The pixmap is a perfectly good warning triangle -- 644 of 2304 pixels
+opaque, dumped at half resolution:
+
+    ...........##...........
+    ..........####..........
+    .........######.........
+    ........###...##........
+    .......####...###.......
+    ......#####..#####......
+    .....##############.....
+    ....#######...######....
+    ...##################...
+
+The exclamation mark is the two columns of background inside the body.
+Composed into the 5x3 cells the layout gives it, a text-only terminal
+gets:
+
+     ▄
+    ▄ ▄
+    ▀ ▀
+
+**The mosaic is faithful and still unreadable**, which is the finding.
+The composer is not losing anything -- it samples five columns by six
+half-rows and reports what is there. What is there, at that sampling, is
+a triangle whose distinguishing feature is a hole one cell wide, so the
+hole eats the middle of every row it touches and the outline stops being
+an outline. An icon can survive a coarse mosaic when its meaning is its
+silhouette; this one's meaning is its interior.
+
+The same question covers `QDockWidget`'s title buttons, which render as
+two identical empty brackets -- a close and a float that cannot be told
+apart, since neither carries text and neither icon has a name.
 
 **The option recorded here was "one small table", and it was tried.** The
 claim was that mapping `QStyle::StandardPixmap` values to glyphs would
@@ -1745,8 +1777,40 @@ icon to a `QPixmap` before the style draws it**. Traced at
   glyph cannot travel inside a `QIcon` to a cell renderer. Making one
   arrive would mean identity surviving the rasterisation -- a
   `QPixmap::cacheKey()` to glyph registry, minted where the icon is built
-  and consulted in `drawItemPixmap()`. That is a mechanism with a
-  lifetime question in the render path, not a table.
+  and consulted in `drawItemPixmap()`. That is a mechanism, not a table.
+
+  **Two halves of that sentence have since been measured, and they point
+  opposite ways.** "Minted where the icon is built" was wrong about
+  *where*: `standardIcon()` is not the mint point. One `QIcon` caches its
+  own pixmap, so asking it twice gives one identity -- but a second
+  `standardIcon()` call for the same value re-renders to a different one,
+  a different requested size gives a third, and the identity the message
+  box actually places matches **none** of them. A registry minted at
+  `standardIcon()` would resolve nothing. The mint point has to be inside
+  the icon: a `QIconEngine` that registers each pixmap it returns, which
+  is the object `QIcon` asks once per size, mode and state and then
+  caches. That relationship is pinned by a check now, and it goes red the
+  day Qt gives standard icons a stable identity -- which is the day this
+  is worth re-opening.
+
+  **The "lifetime question in the render path" is answered, and it was
+  already answered under another name.** `CellImage::key` *is* the
+  pixmap's `cacheKey()`, carried from the placement to the backend, and
+  `suite_placements` has asserted "identity is pixmap cacheKey" since the
+  upload-once work -- so the channel a glyph registry would ride already
+  exists and is held by a check. Measured on top of that: a pixmap minted
+  by hand arrives at the placement with its key intact, a dead pixmap's
+  key is not reused, successive keys differ by exactly 2^32 (a serial in
+  the high word, so recycling would need the serial to wrap), and a
+  shallow copy shares the key while a deep copy does not. A
+  cacheKey-to-glyph map therefore cannot mis-resolve; it can only grow,
+  bounded by icons times sizes times modes times states.
+
+  So the decision is smaller than it was written: not "is this
+  buildable", which is now a `QIconEngine` and a map with no unanswered
+  mechanism, but **should a warning triangle become a glyph**. That is
+  the holder's, and the legibility measurement above is what it should be
+  taken against.
 - The dock buttons arrive as a **0x0 pixmap into a -2x-6 rectangle**.
   There is no icon area at all, so no iconography decision can put
   anything in one. That is a sizing fault and a different question.

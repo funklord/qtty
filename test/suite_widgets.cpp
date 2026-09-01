@@ -814,6 +814,31 @@ int suite_widgets() {
 		      && placements[0].cell_rect.height() >= 2,
 		      "a message box's severity icon is a picture, not a glyph");
 
+		// And WHERE a key registry would have to mint, which is the part the
+		// recorded option got wrong. standardIcon() is not the mint point: one
+		// QIcon caches its own pixmap, so asking it twice gives one identity --
+		// but a SECOND standardIcon() call for the same value re-renders, and
+		// the identity the message box actually placed is neither of them.
+		// Measured, and printed as three keys that do not meet.
+		//
+		// So a cacheKey-to-glyph map minted at standardIcon() would resolve
+		// nothing, and the mint point has to be inside the icon -- a
+		// QIconEngine that registers each pixmap it returns, because that is
+		// the object QIcon asks once per size, mode and state and then caches.
+		//
+		// The relationships are the assertion, not the numbers. This goes red
+		// the day Qt gives standard icons a stable identity, and that day is
+		// exactly when this decision is worth re-opening.
+		QStyle *st = mb.style();
+		const QIcon i1 = st->standardIcon(QStyle::SP_MessageBoxWarning, nullptr, &mb);
+		const QIcon i2 = st->standardIcon(QStyle::SP_MessageBoxWarning, nullptr, &mb);
+		const quint64 k1 = quint64(i1.pixmap(48, 48).cacheKey());
+		const quint64 k1_again = quint64(i1.pixmap(48, 48).cacheKey());
+		const quint64 k2 = quint64(i2.pixmap(48, 48).cacheKey());
+		const quint64 placed = placements.isEmpty() ? 0 : placements[0].key;
+		CHECK(k1 == k1_again && k2 != k1 && placed != k1 && placed != k2,
+		      "a standard icon's identity does not survive standardIcon()");
+
 		QMainWindow win;
 		win.setAttribute(Qt::WA_DontShowOnScreen);
 		auto *dock = new QDockWidget(QStringLiteral("Panel"), &win);
