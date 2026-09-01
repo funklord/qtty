@@ -68,7 +68,12 @@ struct MouseEvent {
 	QPoint cell;
 	int button = 0;
 	bool press = false, release = false, motion = false;
-	int wheel = 0;
+	// The vertical wheel keeps the name it has always had, and the horizontal
+	// one is a second field rather than a rename: `wheel` is public API. SGR
+	// distinguishes them by bit 1 of the button word -- 64/65 are up/down and
+	// 66/67 are left/right -- and the decoder read only bit 0 for the whole
+	// life of the file, so scrolling sideways scrolled up and down.
+	int wheel = 0, wheel_x = 0;
 	bool ctrl = false, alt = false, shift = false;
 };
 

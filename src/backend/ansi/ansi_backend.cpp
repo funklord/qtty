@@ -780,7 +780,11 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 			// Wheel. It reports as a press with no matching release, so it is
 			// neither a press nor a release here -- delivering it as a press
 			// would leave a button stuck down for the rest of the session.
-			m.wheel = (b & 1) ? -1 : 1;
+			// Bit 1 picks the axis: 64/65 are the vertical wheel and 66/67
+			// the horizontal one. Reading bit 0 alone made a sideways scroll
+			// a vertical one, and in the wrong direction half the time.
+			if (b & 2) m.wheel_x = (b & 1) ? -1 : 1;
+			else       m.wheel   = (b & 1) ? -1 : 1;
 		} else {
 			// 1 left, 2 middle, 3 right, 4..7 the extended buttons, 0 none.
 			//

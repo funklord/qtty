@@ -506,10 +506,24 @@ int suite_router() {
 			h.show();
 			QCoreApplication::processEvents();
 			InputRouter r(&h);
-			r.on_mouse({QPoint(1, 0), 1, true, false, false, 0, false, false, false});
-			r.on_mouse({QPoint(1, 0), 1, false, true, false, 0, false, false, false});
-			r.on_mouse({QPoint(1, 2), 1, true, false, false, 0, ctrl, false, false});
-			r.on_mouse({QPoint(1, 2), 1, false, true, false, 0, ctrl, false, false});
+			// Built field by field rather than as a positional list. The first
+			// version was positional and broke the moment MouseEvent grew a
+			// field in the middle: every argument after it re-bound one place
+			// along, so `ctrl` silently became the horizontal wheel and this
+			// check went red for a reason that had nothing to do with it.
+			const auto click = [&](int row, bool press, bool with_ctrl) {
+				MouseEvent m;
+				m.cell = QPoint(1, row);
+				m.button = 1;
+				m.press = press;
+				m.release = !press;
+				m.ctrl = with_ctrl;
+				r.on_mouse(m);
+			};
+			click(0, true, false);
+			click(0, false, false);
+			click(2, true, ctrl);
+			click(2, false, ctrl);
 			QCoreApplication::processEvents();
 			return lw->selectedItems().size();
 		};
@@ -1017,6 +1031,50 @@ int suite_router() {
 		click(14, 5);
 		CHECK(tabs->currentIndex() == 1, "and a click on a tab selects it");
 	}
+
+
+	// The horizontal wheel, which was delivered as a vertical one. SGR puts
+	// the axis in bit 1 of the button word -- 64/65 up/down, 66/67 left/right
+	// -- and the decoder read bit 0 alone, so a sideways scroll scrolled the
+	// view up and down instead.
+	//
+	// The pair that says it is the horizontal bar moving in OPPOSITE
+	// directions for the two horizontal reports, and not moving at all for a
+	// vertical one. The second half is what the old code failed: it turned a
+	// wheel-left into a wheel-up, which a check on "the bar moved" would not
+	// have noticed.
+	{
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *area = new QScrollArea(&h);
+		// section 7.1: the default frame offsets the viewport in both axes.
+		area->setFrameShape(QFrame::NoFrame);
+		auto *inner = new QLabel(QString(200, QLatin1Char('x')));
+		inner->setMinimumWidth(cw * 200);
+		area->setWidget(inner);
+		area->setGeometry(0, 0, cw * 10, ch * 3);
+		h.resize(GridMetrics::cells(12, 5));
+		h.show();
+		QCoreApplication::processEvents();
+		QScrollBar *hb = area->horizontalScrollBar();
+		const auto scroll = [&](int wx, int wy) {
+			hb->setValue(hb->maximum() / 2);
+			const int before = hb->value();
+			InputRouter r(&h);
+			MouseEvent m;
+			m.cell = QPoint(4, 1);
+			m.wheel = wy;
+			m.wheel_x = wx;
+			r.on_mouse(m);
+			QCoreApplication::processEvents();
+			return hb->value() - before;
+		};
+		const int left = scroll(1, 0), right = scroll(-1, 0), vert = scroll(0, 1);
+		CHECK(left < 0 && right > 0 && vert == 0,
+		      "a horizontal wheel moves the horizontal bar, and only it");
+		GridGuard::reset();
+	}
+
 
 	return fails;
 }

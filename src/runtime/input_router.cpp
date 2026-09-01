@@ -311,7 +311,7 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 
 	const QPoint pos = target->mapFromGlobal(px);
 
-	if (m.wheel) {
+	if (m.wheel || m.wheel_x) {
 		// Up the parent chain until something takes it. Qt propagates an
 		// ignored wheel event itself, but only for one the PLATFORM
 		// delivered; QApplication::sendEvent() does not, so a synthetic one
@@ -326,7 +326,8 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 		// somewhere that cannot act on it.
 		for (QWidget *w = target; w; w = w->parentWidget()) {
 			QWheelEvent ev(QPointF(w->mapFromGlobal(px)), QPointF(px), QPoint(),
-			               QPoint(0, m.wheel * GridMetrics::ch()),
+			               QPoint(m.wheel_x * GridMetrics::cw(),
+			                      m.wheel * GridMetrics::ch()),
 			               Qt::NoButton, mods, Qt::NoScrollPhase, false);
 			QApplication::sendEvent(w, &ev);
 			if (ev.isAccepted()) break;

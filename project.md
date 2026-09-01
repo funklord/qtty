@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-686 checks, 0 failures, under three configurations: the offscreen
+688 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -328,7 +328,6 @@ Owned by the copyright holder:
 |---|---|
 | A message box's severity icon. The mechanism is now measured and has no open question -- a `QIconEngine` that registers each pixmap it mints, consulted through the `cacheKey()` the placement already carries. What is left is whether a warning triangle should become a glyph, taken against a mosaic that is **faithful and still unreadable** | *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed. All four candidate behaviours are printed now -- and `Left\|Middle` **removes paging** rather than adding anything, unless `SH_Slider_PageSetButtons` moves it to the right button | *the interaction sweep* |
-| The **horizontal wheel** is delivered as a vertical one -- SGR 66 and 67 come out identical to 64 and 65, so scrolling sideways scrolls up and down | §7.1 |
 | Whether the "too small to be a picture" rule moves to the backend. Measured since: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()` rather than a structural change -- and no widget icon reaches the branch today | §7.2 |
 | The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work. The exposure is now **measured** and **guarded** rather than feared: 7 of 102 installed families give the 10x19 the fixtures assume, and a check names it | §7.9, §11 |
 
@@ -1386,10 +1385,21 @@ Still missing:
   now, for the reason section 0d records about the mnemonic stripper
   having grown three spellings of one rule before anyone counted.
 
-  **The horizontal wheel is delivered as a vertical one**: 66 and 67 are
+  ~~**The horizontal wheel is delivered as a vertical one**: 66 and 67 are
   wheel-left and wheel-right and decode identically to 64 and 65, so
-  scrolling sideways scrolls up and down. Still open, and in the index --
-  it needs a field the struct has not got, `wheel` being a single int.
+  scrolling sideways scrolls up and down.~~ **Fixed.** Bit 1 of the button
+  word is the axis, and the decoder read bit 0 alone. `MouseEvent` gained
+  `wheel_x` as a second field rather than `wheel` becoming a `QPoint`,
+  because `wheel` is public API and additive is the change that keeps
+  every existing caller compiling.
+
+  The direction was measured rather than read off the documentation: a
+  positive `angleDelta().x()` moves a horizontal scroll bar's value
+  **down** by five, which is what makes SGR's wheel-left scroll left. The
+  check is the pair -- the bar moves in opposite directions for the two
+  horizontal reports, and **does not move at all** for a vertical one.
+  The second half is the one the old code failed, and a check on "the bar
+  moved" would have passed against it.
 
 **Compositor and FrameScheduler -- done.** This was the largest
 correctness gap in the tree: `compose()` rendered the tracked window and
@@ -2715,6 +2725,22 @@ every one of their quirks**, and the ones this tree has already paid for
 are exactly the ones a new fixture will hit again. Printing the selected
 ROWS rather than their count is what separated the two hypotheses in one
 run: `2` alone, versus `0 2`, says which click missed.
+
+**And that check then went red for a reason that had nothing to do with
+it, which is the better half of the story.** Adding `wheel_x` to
+`MouseEvent` -- a field in the MIDDLE of the struct -- broke the
+control-click check instantly, because the fixture built its events as a
+**positional** aggregate list. Every argument after the new field
+re-bound one place along, so the `ctrl` flag silently became the
+horizontal wheel. Nothing warned: the list was still the right length
+minus one, and the trailing field took its default.
+
+Two things worth keeping. **A positional aggregate initializer in a test
+is a hidden coupling to struct layout**, and the fix is to name the
+fields; the fixtures do that now. And **the check paid for itself within
+the hour** -- it was written for the modifiers and it caught an unrelated
+edit to a struct it merely uses, which is the argument for a check that
+goes through the real path rather than one that inspects a field.
 
 **The menu bar drew no items at all, and the mnemonic fix had hidden two
 more instances of its own cause.** Both came from looking deliberately,

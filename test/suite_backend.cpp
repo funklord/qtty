@@ -118,6 +118,19 @@ int suite_backend() {
 	CHECK(rec.mice.size() == 1 && rec.mice[0].wheel == 1
 	      && !rec.mice[0].press && !rec.mice[0].release,
 	      "wheel is neither a press nor a release");
+	// Bit 1 is the axis. 66 and 67 are wheel-left and wheel-right, and reading
+	// bit 0 alone made them identical to 64 and 65 -- a sideways scroll came
+	// out as a vertical one. Asserted as the axes being separate, which is
+	// what was broken, rather than as the four values.
+	feed("\033[<66;5;5M");
+	const int hl = rec.mice.isEmpty() ? 0 : rec.mice[0].wheel_x;
+	const int hlv = rec.mice.isEmpty() ? 9 : rec.mice[0].wheel;
+	feed("\033[<67;5;5M");
+	const int hr = rec.mice.isEmpty() ? 0 : rec.mice[0].wheel_x;
+	feed("\033[<65;5;5M");
+	const int vx = rec.mice.isEmpty() ? 9 : rec.mice[0].wheel_x;
+	CHECK(hl != 0 && hr != 0 && hl != hr && hlv == 0 && vx == 0,
+	      "the two wheel axes decode separately");
 	feed("\033[<32;7;3M");
 	CHECK(rec.mice.size() == 1 && rec.mice[0].motion, "drag decodes as motion");
 
