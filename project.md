@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-709 checks, 0 failures, under three configurations: the offscreen
+711 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -5761,6 +5761,33 @@ So the boundary is sharper than "a metric is one number":
 
 That is where a later sweep should look, and where it should not. The
 dependence is pinned by a check rather than left as a paragraph.
+
+**The sweep was then run where the boundary points, and found one.** A
+spin box drew a single `±` in one cell, and its two sub-control
+rectangles were 10x19 **at the same cell, offset by half a row**:
+`SC_SpinBoxUp` at `+100+0` and `SC_SpinBoxDown` at `+100+9`. On a
+one-cell spin box they overlap, Qt picks the first, and **no cell
+decrements** -- measured from 50, the arrow cell gave 51 and nothing
+anywhere gave 49. The down arrow was unreachable by mouse.
+
+Half a row cannot be hit on a grid, so the answer is not a better
+rectangle but a **second cell**:
+
+    [50       ±]      before, one glyph and one reachable action
+    [50      ▴▾]      after, a cell each
+
+The edit field gives up one column for it, and the glyphs are the ones
+`tool_button_label()` already uses for an `arrowType`. The check is the
+pair -- up gives 51 and down gives 49 from the same starting value --
+because "up increments" passed against the broken version.
+
+**And the style gate refused the comment three times today**, always the
+same way: a glyph written into a prose comment is non-ASCII outside a
+literal. The section marker, the box-drawing art, and now a plus-minus
+sign. The rule is simple and worth stating once here rather than
+rediscovering it a fourth time -- **name a glyph in a comment, do not
+draw it** -- and where a picture really is the clearest thing, draw it in
+ASCII, as the group box and tab entries above do.
 
 Found by opening a popup over a scrolled root, which was a probe aimed at
 something else entirely: the hypothesis was that a popup anchored to a

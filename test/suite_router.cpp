@@ -1076,5 +1076,48 @@ int suite_router() {
 	}
 
 
+
+	// A spin box's two arrows, and whether a click can reach both. It drew a
+	// single plus-minus glyph in one cell, and SC_SpinBoxUp and SC_SpinBoxDown were 10x19
+	// rectangles at the SAME cell, offset by half a row -- +100+0 and +100+9.
+	// On a one-cell spin box they overlapped, Qt picked the first, and **no
+	// cell decremented**: from 50, the arrow cell gave 51 and nothing gave 49.
+	//
+	// Half a row cannot be hit on a grid, so the answer was not a better
+	// rectangle but a second cell. This is the category the metric sweep
+	// named: an inset INSIDE a widget, which the snap-up list cannot reach.
+	//
+	// The pair is the assertion. "Up increments" passed against the broken
+	// version; it is the two together, from the same starting value, that say
+	// the arrows are separately reachable.
+	{
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *sp = new QSpinBox(&h);
+		sp->setRange(0, 100);
+		sp->setGeometry(0, 0, cw * 12, ch);
+		h.resize(GridMetrics::cells(14, 3));
+		h.show();
+		QCoreApplication::processEvents();
+		const auto click_cell = [&](int x) {
+			sp->setValue(50);
+			InputRouter r2(&h);
+			MouseEvent m;
+			m.cell = QPoint(x, 0);
+			m.button = 1;
+			m.press = true;
+			r2.on_mouse(m);
+			m.press = false;
+			m.release = true;
+			r2.on_mouse(m);
+			QCoreApplication::processEvents();
+			return sp->value();
+		};
+		CHECK(click_cell(9) == 51 && click_cell(10) == 49,
+		      "a spin box's up and down arrows are separately clickable");
+		GridGuard::reset();
+	}
+
+
 	return fails;
 }

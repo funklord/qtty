@@ -453,12 +453,15 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		switch (sc) {
 		case SC_SpinBoxEditField:
 			return QRect(r.left() + cw, r.top(),
-			             qMax(cw, r.width() - 3 * cw), qMax(ch, r.height()));
+			             qMax(cw, r.width() - 4 * cw), qMax(ch, r.height()));
+		// A cell each, side by side, rather than a cell split in half. The
+		// halves were r.height()/2 apart -- nine pixels on a nineteen-pixel
+		// cell -- so both rectangles covered the same cell and only the first
+		// could be clicked.
 		case SC_SpinBoxUp:
-			return QRect(r.right() + 1 - 2 * cw, r.top(), cw, qMax(ch, r.height() / 2));
+			return QRect(r.right() + 1 - 3 * cw, r.top(), cw, qMax(ch, r.height()));
 		case SC_SpinBoxDown:
-			return QRect(r.right() + 1 - 2 * cw, r.top() + r.height() / 2,
-			             cw, qMax(ch, r.height() / 2));
+			return QRect(r.right() + 1 - 2 * cw, r.top(), cw, qMax(ch, r.height()));
 		case SC_SpinBoxFrame:
 			return r;
 		default:
@@ -1189,7 +1192,20 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				b.put_cluster(c.left(), row, QStringLiteral("["), Color(), Color(), a);
 				b.put_cluster(c.right(), row, QStringLiteral("]"), Color(), Color(), a);
 			}
-			b.put_cluster(c.right() - 1, row, QStringLiteral("±"), Color(), Color(), a);
+			// Two cells, two arrows, and the reason is that a click has to be
+			// able to reach both. A single plus-minus glyph said "this steps"
+			// and nothing more, while SC_SpinBoxUp and SC_SpinBoxDown were
+			// 10x19 rectangles at the SAME cell offset by half a row --
+			// +100+0 and +100+9 -- so on a one-cell spin box they
+			// overlapped, Qt picked the first, and
+			// **no cell decremented**. Measured: clicking the arrow cell gave
+			// 51 from 50, and no click anywhere gave 49.
+			//
+			// Half a row cannot be hit on a grid, so the fix is not a better
+			// rectangle but a second cell. The glyphs are the tree's own
+			// arrows, the ones tool_button_label() uses for an arrowType.
+			b.put_cluster(c.right() - 2, row, QStringLiteral("▴"), Color(), Color(), a);
+			b.put_cluster(c.right() - 1, row, QStringLiteral("▾"), Color(), Color(), a);
 			return;                                    // value text via child edit
 		}
 		default:
