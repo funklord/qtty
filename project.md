@@ -115,6 +115,36 @@ reduction to two widgets passed with the fix removed: the collision
 depends on where Qt puts each run, and that moves with the layout. A
 reduction that stops reproducing is not a reduction.
 
+**Right-to-left is a whole dimension nothing has ever rendered**, and the
+sweep says so plainly. design.md does not mention it and neither does any
+source file, so this is a scope question -- does qtty support RTL? -- and
+not a defect against anything stated. It is in §0b. The same form in both
+directions:
+
+    left to right              right to left
+    |Name|                     |Name|
+    |[ ] Wrap|                 |            Wrap [ ]|
+    |[one              ▾]|     |[              one▾]|
+    |[value             ]|     |[value             ]|
+    |<OK>|                     |<OK>|
+    |████████40%░░░░░░░░░|     |████████40%░░░░░░░░░|
+
+**The check box mirrors and the combo box's text does; its arrow does
+not, nor does the progress bar's fill, nor a label's alignment.** The
+check box is the diagnostic: `GridStyle` does not override its label, so
+it falls through to the base style -- the same reason §0d records for the
+mnemonic marker being right there and wrong everywhere else. What qtty
+draws itself does not read `opt->direction`; what it leaves to Qt does.
+
+The line edit is measured and NOT explained: its text is Qt's, drawn
+through Channel B, and it stayed left. That may be the same cause or a
+different one, and saying which without looking would be the guess this
+document keeps having to withdraw.
+
+Half-fixing this would be worse than leaving it: a form whose progress
+bar mirrors and whose labels do not reads as broken, where one that
+mirrors nothing reads as unsupported.
+
 **And the same disagreement WRAPS text off the screen, which no code here
 can fix.** Wrapping is decided by the layout, in pixels, before anything
 reaches a cell. A 12-cell label holds six CJK clusters; Qt fits
@@ -417,6 +447,7 @@ Owned by the copyright holder:
 | A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. Cheaper to answer after the picture-rule entry below, which is the same question seen from the other end | *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed. All four candidate behaviours are printed now -- and `Left\|Middle` **removes paging** rather than adding anything, unless `SH_Slider_PageSetButtons` moves it to the right button | *the interaction sweep* |
 | Whether the "too small to be a picture" rule moves to the backend. Nothing left unmeasured: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()`; no widget icon reaches the branch today; and the cost is **1.4 KB once per distinct icon, 35 bytes a frame after** -- eight of them together less than the one 48x48 icon the library already uploads | §7.2 |
+| **Right-to-left: does qtty support it at all?** design.md never says, and nothing in the tree mentions it -- so this is a scope question rather than a defect. Measured: under `Qt::RightToLeft` a check box mirrors and a combo box's text does, while its arrow, a progress bar's fill, a label's alignment and a line edit's text do not. §7.2 has the rendered pair | *undesigned* |
 | The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
