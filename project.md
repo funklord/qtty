@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-664 checks, 0 failures, under three configurations: the offscreen
+666 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -277,7 +277,8 @@ Owned by the copyright holder:
 | OQ-7: the ANSI-16 fallback metric | §7.7 |
 | Whether `focusWidget()`/`setFocusWidget()` keep their camelCase exemption | §11 |
 | Whether frame output should be gated on `isatty(1)` as setup and teardown are | *the gate that decides whether to write* |
-| Mapping `QStyle::StandardPixmap` to glyphs, which is qtty deciding what Qt's iconography looks like in a terminal | *Qt's standard iconography* |
+| A message box's severity icon: a glyph cannot travel inside a `QIcon`, so reaching one needs `QPixmap::cacheKey()` identity surviving rasterisation | *Qt's standard iconography* |
+| A dock widget's title buttons, which arrive with a 0x0 icon area -- a sizing fault rather than an iconography one | *Qt's standard iconography* |
 | Whether a one-row `QLineEdit` should be bracketed as the combo and spin box already are, at the measured cost of a second bracket inside each of those | §7.2, *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: a groove click setting the value where it landed | *the interaction sweep* |
 | How to tell an icon from a picture, so a wide short image can be a placement rather than a shaded block -- the 2x2 threshold promotes neither 8x1 nor the 2x1 an icon becomes | §7.2 |
@@ -550,10 +551,14 @@ In the order I would take them, and none is blocked:
    as one fault, two questions raised, and §8.7 -- Channel A not clipping
    -- found on the way. The next unswept surface named by §0d is dialogs
    beyond the standard three.
-3. **The `QStyle::StandardPixmap` question**, once decided, closes the dock
-   title buttons and the message-box severity together. It is one small
-   table and the two symptoms are the same cause; neither is worth fixing
-   alone.
+3. ~~**The `QStyle::StandardPixmap` question**, once decided, closes the
+   dock title buttons and the message-box severity together.~~ **Withdrawn:
+   they are not the same cause and one table closes neither.** Measured --
+   `standardIcon()` is consulted for both, and a glyph returned that way
+   never reaches the cells because Qt rasterises an icon before the style
+   draws it. The severity icon arrives as 48x48 pixels with no identity;
+   the dock buttons arrive with a 0x0 icon area, which is a sizing fault.
+   §7.2 carries both, each pinned by a check.
 4. **A second account, which cost nothing and is already spent.** Running
    the suite as a different user on the same machine is the cheapest
    configuration axis in this list -- no second machine, no second Qt, no
@@ -1605,15 +1610,38 @@ better. The same question covers `QDockWidget`'s title buttons, which
 render as two identical empty brackets -- a close and a float that cannot
 be told apart, since neither carries text and neither icon has a name.
 
-The option, its cost, and whose it is: qtty could map
-`QStyle::StandardPixmap` values to glyphs directly, which is a small table
-and reaches every standard icon at once, but it means qtty deciding what
-Qt's iconography looks like in a terminal rather than an application
-saying. That is **the copyright holder's** call, not one to make while
-fixing something else. The alternative measured and closed above --
-returning themed icons so the existing name-based registry resolves them --
-does not work here, and that is why it is written down rather than tried
-again.
+**The option recorded here was "one small table", and it was tried.** The
+claim was that mapping `QStyle::StandardPixmap` values to glyphs would
+reach every standard icon at once and close both symptoms together. It
+closes neither, and they are not one cause.
+
+`GridStyle::standardIcon()` **is** consulted -- 28 calls across the suite,
+`SP_MessageBoxWarning` for the `QMessageBox` and two title-bar values for
+the `QDockWidget` -- so the hook exists. Overriding it to return an icon
+that paints a glyph changed nothing on screen, because **Qt rasterises an
+icon to a `QPixmap` before the style draws it**. Traced at
+`drawItemPixmap()`, which is where they arrive:
+
+- The severity icon arrives as **48x48 pixels with no identity left**. A
+  glyph cannot travel inside a `QIcon` to a cell renderer. Making one
+  arrive would mean identity surviving the rasterisation -- a
+  `QPixmap::cacheKey()` to glyph registry, minted where the icon is built
+  and consulted in `drawItemPixmap()`. That is a mechanism with a
+  lifetime question in the render path, not a table.
+- The dock buttons arrive as a **0x0 pixmap into a -2x-6 rectangle**.
+  There is no icon area at all, so no iconography decision can put
+  anything in one. That is a sizing fault and a different question.
+
+So the entry splits, and the sentence in §0e that said the two symptoms
+are the same cause is withdrawn. Both are pinned by checks now, as
+results rather than gaps: the severity icon is a picture of at least two
+cells in each direction, and the dock buttons are empty brackets with no
+placement drawn. Either check goes red the day somebody fixes its half,
+which is what keeps this paragraph honest.
+
+What has not changed is whose the decision is. **The copyright holder's**,
+and the alternative measured and closed above -- returning themed icons so
+the existing name-based registry resolves them -- still does not work.
 
 Also observed, and left alone deliberately: an **empty `QLineEdit` renders
 as nothing at all**. A terminal field with no decoration is arguably right,

@@ -787,6 +787,58 @@ int suite_widgets() {
 	}
 
 
+	// Qt's standard iconography, and what a glyph table would and would not
+	// reach. Recorded as two results because it was recorded as one cause and
+	// is not: the message box severity icon and a dock widget's title buttons
+	// fail for different reasons.
+	//
+	// GridStyle::standardIcon() IS consulted for both -- measured, 28 calls
+	// across the suite -- and returning an icon that paints a glyph changes
+	// neither, because Qt rasterises an icon to a QPixmap before the style
+	// draws it. The severity icon arrives at drawItemPixmap() as 48x48 pixels
+	// with no identity left; the dock buttons arrive as a 0x0 pixmap, which is
+	// no icon area at all and no iconography decision can fill it.
+	{
+		QMessageBox mb;
+		mb.setIcon(QMessageBox::Warning);
+		mb.setText(QStringLiteral("The file has been modified."));
+		mb.setStandardButtons(QMessageBox::Ok);
+		mb.setAttribute(Qt::WA_DontShowOnScreen);
+		mb.resize(GridMetrics::cells(40, 6));
+		mb.show();
+		QCoreApplication::processEvents();
+		CellBuffer b(42, 7);
+		QVector<CellImage> placements;
+		render_once(mb, b, &placements);
+		CHECK(placements.size() == 1 && placements[0].cell_rect.width() >= 2
+		      && placements[0].cell_rect.height() >= 2,
+		      "a message box's severity icon is a picture, not a glyph");
+
+		QMainWindow win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *dock = new QDockWidget(QStringLiteral("Panel"), &win);
+		dock->setWidget(new QLabel(QStringLiteral("body")));
+		win.addDockWidget(Qt::LeftDockWidgetArea, dock);
+		win.resize(GridMetrics::cells(30, 8));
+		win.show();
+		QCoreApplication::processEvents();
+		CellBuffer db(32, 9);
+		QVector<CellImage> dp;
+		render_once(win, db, &dp);
+		// Empty brackets, and no placement: the buttons are drawn and carry
+		// nothing. A check on "the title row contains []" would pass against a
+		// button that had a glyph in it, so the pair is the empty brackets AND
+		// the absence of any placement to have drawn.
+		CHECK(db.to_text().contains(QStringLiteral("[][]")) && dp.isEmpty(),
+		      "a dock widget's title buttons have no icon area to draw in");
+		// A QMainWindow's dock layout puts three widgets off the grid, and
+		// they are Qt's own rather than this suite's to place -- the same
+		// category section 7.8 exempts by principle. Reset so the count this
+		// block leaves behind is not attributed to whatever runs next.
+		GridGuard::reset();
+	}
+
+
 	// gallery snapshot: one window with the whole tier
 	{
 		QWidget win;
