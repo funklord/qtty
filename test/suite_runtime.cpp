@@ -831,5 +831,50 @@ int suite_runtime() {
 	}
 
 
+
+	// A popup's frame, and the row its contents lost to it. PM_MenuPanelWidth
+	// is one number and a cell is not square: `cw` is a whole column and
+	// 10/19 of a row, so a combo box's popup came out 3.05 cells tall --
+	// measured at 220x58 px with its list view at y=10 -- and the second item
+	// drew ON the frame's bottom border. The same fault as the group box, in
+	// another widget, found by opening a popup over a scrolled root.
+	//
+	// PM_MenuVMargin makes the vertical frame up to a whole row. Asserted as
+	// the two things that were wrong: the popup is a whole number of rows, and
+	// nothing but frame is on its border rows.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		auto *combo = new QComboBox;
+		combo->addItems({QStringLiteral("alpha"), QStringLiteral("beta")});
+		v->addWidget(combo);
+		win.show();
+		win.resize(GridMetrics::cells(24, 6));
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+		combo->showPopup();
+		QCoreApplication::processEvents();
+		CellBuffer b(24, 6);
+		c.compose(b);
+		const auto pops = r.popups();
+		const int h = pops.isEmpty() ? 0 : pops.first()->height();
+		QString top, bottom;
+		for (const QString &line : b.to_text().split(QLatin1Char('\n'))) {
+			if (line.contains(QStringLiteral("┌"))) top = line;
+			if (line.contains(QStringLiteral("└"))) bottom = line;
+		}
+		CHECK(h > 0 && h % GridMetrics::ch() == 0,
+		      "a popup is a whole number of rows tall");
+		CHECK(!top.isEmpty() && !bottom.isEmpty()
+		      && !bottom.contains(QStringLiteral("beta")),
+		      "and its bottom border carries no item");
+		combo->hidePopup();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
+
 	return fails;
 }

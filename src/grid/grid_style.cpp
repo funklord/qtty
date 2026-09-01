@@ -330,7 +330,21 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 	case PM_ExclusiveIndicatorHeight:                      return ch;
 	// section 17.1 audit -- every metric that shapes geometry lands on the grid:
 	case PM_SplitterWidth:                                 return cw;
-	case PM_MenuHMargin: case PM_MenuVMargin:              return 0;
+	case PM_MenuHMargin:                                   return 0;
+	// The vertical half of a popup's frame, which PM_MenuPanelWidth cannot
+	// supply: it is one number and a cell is not square. A panel of `cw` is a
+	// whole column and 10/19 of a row, so a combo box's popup came out 3.05
+	// cells tall -- measured, 220x58 px with its list view at y=10 -- and the
+	// second item drew ON the frame's bottom border:
+	//
+	//     +--------------------+
+	//     | v alpha            |
+	//     +   beta             +
+	//
+	// the same fault as the group box in another widget. This margin makes the
+	// vertical frame up to a whole row, so the panel costs one column on each
+	// side and one row on each side.
+	case PM_MenuVMargin:                                   return ch - cw;
 	case PM_MenuBarHMargin: case PM_MenuBarVMargin:        return 0;
 	case PM_MenuBarItemSpacing:                            return 2 * cw;
 	case PM_TabBarTabHSpace:                               return 2 * cw;

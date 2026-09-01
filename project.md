@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-707 checks, 0 failures, under three configurations: the offscreen
+709 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -5719,6 +5719,31 @@ a different trade rather than a refinement, and it would swap one class
 of false finding for another across sixteen trees. A correct fix probably
 has to recognise a lambda introducer by its preceding token -- a `]` or
 the `)` of a parameter list -- rather than reason from `await_body`.
+
+**A combo box's popup drew its last item on its own bottom border**, and
+this is the third widget in the same family. `PM_MenuPanelWidth` is one
+number and a cell is not square: `cw` is a whole column and **10/19 of a
+row**, so the popup came out 220x58 px -- **3.05 cells** -- with its list
+view at y=10, half a row down.
+
+    +--------------------+          +--------------------+
+    | v alpha            |    ->    | v alpha            |
+    +   beta             +          |   beta             |
+                                    +--------------------+
+
+`PM_MenuVMargin` makes the vertical frame up to a whole row: the panel
+costs one column on each side and one row on each side, and the popup is
+4.00 cells. The group box needed cell-shaped sub-control rects, the tab
+needed a bracket that spans it, and this needed the axis the single
+metric cannot express -- three shapes of the same underlying fact, that
+**a style metric is one number and a terminal cell is two**.
+
+Found by opening a popup over a scrolled root, which was a probe aimed at
+something else entirely: the hypothesis was that a popup anchored to a
+widget the new scroll had moved would be drawn at the unscrolled
+position. It is not -- `place()` works in terminal coordinates and the
+popup landed correctly, flipped above the combo because it did not fit
+below. The defect the probe found was in the frame it drew.
 
 **A closable tab drew its close mark outside the tab.** Qt sizes a tab
 wider than its label -- a closable one wider still, to hold the button --
