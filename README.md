@@ -37,7 +37,13 @@ The `Makefile` at the root is the entry point:
 Or with [fmake](../fmake), which needs no build file and nothing beyond the
 Python standard library:
 
-    fmake               # qtty-inspect, qtty-replay, qtty-negotiate, chat
+    python3 ~/src/fmake/fmake    # qtty-inspect, qtty-replay, qtty-negotiate, chat
+
+**Not `/usr/bin/fmake`.** The packaged one predates `$root` and leaves the
+reference in the value as text, so the build succeeds and the binary
+carries the literal string. Measured: `--version` printing
+the reference text. Run the one in fmake's own tree until a newer package is
+installed.
 
 `fmake.toml` beside it says three things fmake cannot read off the tree:
 that the tests find their snapshot fixtures through `QTTY_SOURCE_DIR`,
