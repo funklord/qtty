@@ -50,9 +50,9 @@ int suite_grid() {
 	CHECK(dlg.focusWidget() == edit, "window->focusWidget() tracks setFocus (F4)");
 
 	Qtty::CellBuffer f1(40, 10), f2(40, 10);
-	Qtty::setFocusWidget(nullptr); Qtty::render_once(dlg, f1);
-	Qtty::setFocusWidget(b1);      Qtty::render_once(dlg, f2);
-	Qtty::setFocusWidget(nullptr);
+	Qtty::set_focus_widget(nullptr); Qtty::render_once(dlg, f1);
+	Qtty::set_focus_widget(b1);      Qtty::render_once(dlg, f2);
+	Qtty::set_focus_widget(nullptr);
 	int d = f2.diff_cells(f1);
 	CHECK(d > 0 && d <= b1->width() / cw * 2, "focus injection dirties only the button");
 
@@ -165,14 +165,14 @@ int suite_grid() {
 		// cannot answer while no window is ever activated -- so it is
 		// asserted as the round trip it promises rather than removed.
 		QWidget a, b;
-		Qtty::setFocusWidget(&a);
+		Qtty::set_focus_widget(&a);
 		const bool first = Qtty::focusWidget() == &a;
-		Qtty::setFocusWidget(&b);
+		Qtty::set_focus_widget(&b);
 		// Both directions, because "returns the last thing set" is satisfied
 		// by a function that returns a pointer it never updates.
 		CHECK(first && Qtty::focusWidget() == &b,
-		      "focusWidget() answers with whatever setFocusWidget() was last given");
-		Qtty::setFocusWidget(nullptr);
+		      "focusWidget() answers with whatever set_focus_widget() was last given");
+		Qtty::set_focus_widget(nullptr);
 		CHECK(Qtty::focusWidget() == nullptr, "and with nothing when there is nothing");
 	}
 	{

@@ -1057,13 +1057,13 @@ int suite_widgets() {
 
 		combo->lineEdit()->clear();
 		combo->lineEdit()->setFocus();
-		setFocusWidget(combo->lineEdit());
+		set_focus_widget(combo->lineEdit());
 		typed(QString::fromUtf8("h\u00e9llo"));
 		CHECK(combo->currentText() == QString::fromUtf8("h\u00e9llo"),
 		      "an editable combo takes typed text, non-ASCII included");
 
 		doc->setFocus();
-		setFocusWidget(doc);
+		set_focus_widget(doc);
 		typed(QStringLiteral("abc"));
 		er.on_key({Qt::Key_Return, {}, false, false, false});
 		typed(QString::fromUtf8("\u6f22\u5b57"));
@@ -1071,7 +1071,7 @@ int suite_widgets() {
 		      "a plain text editor takes typing, Return and wide clusters");
 
 		rich->setFocus();
-		setFocusWidget(rich);
+		set_focus_widget(rich);
 		typed(QStringLiteral("rich"));
 		CHECK(rich->toPlainText() == QStringLiteral("rich"),
 		      "and so does QTextEdit, which section 8.4 lists as Replaced");
@@ -1104,7 +1104,7 @@ int suite_widgets() {
 		QCoreApplication::processEvents();
 		InputRouter sr(&host);
 		spin->setFocus();
-		setFocusWidget(spin);
+		set_focus_widget(spin);
 
 		sr.on_key({Qt::Key_Up, {}, false, false, false});
 		CHECK(spin->value() == 6, "Up steps a spin box");

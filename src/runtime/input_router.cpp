@@ -225,10 +225,10 @@ void InputRouter::on_key(const KeyEvent &k) {
 		QWidget *scope = input_scope();
 		struct Probe : QWidget { using QWidget::focusNextPrevChild; };
 		static_cast<Probe *>(scope)->focusNextPrevChild(!k.shift);
-		setFocusWidget(scope->focusWidget());
+		set_focus_widget(scope->focusWidget());
 	} else if (!match_shortcut(k) && !match_mnemonic(k)) {
 		deliver_key(key_target(), k);
-		setFocusWidget(input_scope()->focusWidget());
+		set_focus_widget(input_scope()->focusWidget());
 	}
 	QCoreApplication::processEvents();
 	if (frame_requested) frame_requested();
@@ -350,7 +350,7 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 			QApplication::sendEvent(target, &ev);
 			grab_ = nullptr;
 		}
-		setFocusWidget(input_scope()->focusWidget());
+		set_focus_widget(input_scope()->focusWidget());
 	}
 	QCoreApplication::processEvents();
 	if (frame_requested) frame_requested();

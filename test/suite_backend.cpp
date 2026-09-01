@@ -415,7 +415,7 @@ int suite_backend() {
 		win.show();
 		QCoreApplication::processEvents();
 		edit->setFocus();
-		setFocusWidget(edit);
+		set_focus_widget(edit);
 		QCoreApplication::processEvents();
 
 		InputRouter router(&win);
@@ -484,7 +484,7 @@ int suite_backend() {
 		list->show();
 		list->setCurrentRow(0);
 		list->setFocus();
-		setFocusWidget(list);
+		set_focus_widget(list);
 		QCoreApplication::processEvents();
 
 		type("\033[B");
@@ -511,7 +511,7 @@ int suite_backend() {
 		                   GridMetrics::ch());
 		watch->show();
 		watch->setFocus();
-		setFocusWidget(watch);
+		set_focus_widget(watch);
 		QCoreApplication::processEvents();
 		type("\033[2~");
 		CHECK(watch->last == Qt::Key_Insert, "CSI 2~ reaches a widget as Insert");
@@ -530,7 +530,7 @@ int suite_backend() {
 		QWidget::setTabOrder(a1, a2);
 		QWidget::setTabOrder(a2, a3);
 		a2->setFocus();
-		setFocusWidget(a2);
+		set_focus_widget(a2);
 		QCoreApplication::processEvents();
 		type("\033[Z");
 		// Which widget ended up focused, not merely that it was not a1: the

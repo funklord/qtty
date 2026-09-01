@@ -287,7 +287,7 @@ int suite_router() {
 		InputRouter pr(&host);
 
 		line->setFocus();
-		setFocusWidget(line);
+		set_focus_widget(line);
 		pr.on_paste(QStringLiteral("hello"));
 		CHECK(line->text() == QStringLiteral("hello"), "a paste arrives as text");
 
@@ -310,7 +310,7 @@ int suite_router() {
 		// A multi-line editor keeps them: the fold is about the target, not
 		// about pastes.
 		doc->setFocus();
-		setFocusWidget(doc);
+		set_focus_widget(doc);
 		pr.on_paste(QStringLiteral("a\nb"));
 		CHECK(doc->toPlainText() == QStringLiteral("a\nb"),
 		      "a multi-line editor keeps the newline it can hold");
@@ -672,7 +672,7 @@ int suite_router() {
 		edit->setGeometry(0, 0, cw * 10, ch);
 		edit->show();                  // created after its parent was shown
 		edit->setFocus();
-		setFocusWidget(edit);
+		set_focus_widget(edit);
 		QCoreApplication::processEvents();
 		// The ordinary case FIRST. Calling qApp->quit() puts the application
 		// into a state where a later processEvents() need not deliver, so a
@@ -948,7 +948,7 @@ int suite_router() {
 		QObject::connect(btn, &QPushButton::clicked, btn, [&clicks] { ++clicks; });
 		const auto press = [&](QWidget *w, int k, const QString &t = QString()) {
 			w->setFocus();
-			setFocusWidget(w);
+			set_focus_widget(w);
 			QCoreApplication::processEvents();
 			r.on_key({k, t, false, false, false});
 			QCoreApplication::processEvents();

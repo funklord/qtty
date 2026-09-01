@@ -113,8 +113,21 @@ public:
 // InputRouter-owned focus (section 5.5, measured F4): under the offscreen platform no
 // window activates, so QApplication::focusWidget() is always null and
 // State_HasFocus never set. GridStyle consults this instead.
+//
+// The two are spelled differently on purpose, and the rule that decides it is
+// the member rename's own: an identifier is Qt's if it appears anywhere in
+// Qt's headers. `focusWidget` does -- QApplication, QWidget and
+// QGraphicsWidget all declare it -- so it keeps Qt's spelling, and an
+// application replacing a `qApp->focusWidget()` call recognises it.
+// `setFocusWidget` appears in NO Qt header; it was carried along by
+// association with the getter, and it is qtty's own name like every other.
+//
+// The pairing was doing harm as well as being inconsistent.
+// `setFocusWidget(scope->focusWidget())` reads as the setter and getter of
+// one thing and is not: the argument is Qt's PER-WINDOW focus and the call is
+// qtty's PROCESS-WIDE one. Four sites in the library read that way.
 QWidget *focusWidget();
-void setFocusWidget(QWidget *);
+void set_focus_widget(QWidget *);
 
 // design.md section 8.6: a substitution registry mapping an icon to a glyph.
 //

@@ -262,7 +262,7 @@ int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	win.resize(cells.width() * GridMetrics::cw(), cells.height() * GridMetrics::ch());
 	win.show();
 	QCoreApplication::processEvents();
-	setFocusWidget(win.focusWidget());
+	set_focus_widget(win.focusWidget());
 
 	InputRouter router(&win);
 	Compositor compositor(&win, &router);

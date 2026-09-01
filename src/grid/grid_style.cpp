@@ -61,7 +61,7 @@ void GridMetrics::set(int cw, int ch) { s_cw = cw; s_ch = ch; }
 
 static QWidget *s_focus = nullptr;
 QWidget *focusWidget() { return s_focus; }
-void setFocusWidget(QWidget *w) { s_focus = w; }
+void set_focus_widget(QWidget *w) { s_focus = w; }
 
 // ------------------------------------------------- font provisioning (5.3/R3)
 

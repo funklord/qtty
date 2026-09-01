@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-674 checks, 0 failures, under three configurations: the offscreen
+675 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -172,6 +172,15 @@ decision §8.1 records as open, so the axis is priced rather than taken.
 by transitive luck on a class Qt 6 moved between modules. That include is
 right on every version and is fixed.
 
+**`setFocusWidget()` is `set_focus_widget()`**, and the tree's own rename
+filter is what decided it: an identifier is Qt's if it appears in Qt's
+headers, `focusWidget` does and keeps its spelling, `setFocusWidget`
+appears in none and was carried along by association. The pairing was
+doing harm too -- `setFocusWidget(scope->focusWidget())` reads as one
+thing's setter and getter and is not, the argument being Qt's per-window
+focus and the call qtty's process-wide one. §11 carries the proof the
+rename ran under.
+
 **Frame output stays ungated on `isatty(1)`**, and the tree had already
 settled that by building on it: `qtty-replay --ansi > corpus` drives the
 real backend through a redirect and the byte stream is the point -- 1683
@@ -300,7 +309,6 @@ Owned by the copyright holder:
 |---|---|
 | Whether a layout's one-row top and bottom margin is right on a terminal, where it costs two rows of twenty-four and two of three | §7.8 |
 | OQ-7: the ANSI-16 fallback metric | §7.7 |
-| Whether `focusWidget()`/`setFocusWidget()` keep their camelCase exemption | §11 |
 | A message box's severity icon: a glyph cannot travel inside a `QIcon`, so reaching one needs `QPixmap::cacheKey()` identity surviving rasterisation | *Qt's standard iconography* |
 | A dock widget's title buttons, which arrive with a 0x0 icon area -- a sizing fault rather than an iconography one | *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed -- measured, and the current behaviour is held by checks | *the interaction sweep* |
@@ -4992,8 +5000,36 @@ ambiguity left a name alone. That protected the whole override surface
 without anybody listing it: `drawPrimitive`, `pixelMetric`,
 `sizeFromContents`, `eventFilter`, `paintEngine`, `updateState` and the
 rest keep Qt's spelling because they *are* Qt's names. `focusWidget()`
-and `setFocusWidget()` are exempt for a different reason -- they
+and `setFocusWidget()` were exempt for a different reason -- they
 deliberately mirror the `QApplication` call they replace (F4).
+
+**Half of that was wrong, and the tree's own filter says which half.** The
+rule is "an identifier is Qt's if it appears anywhere in Qt's headers".
+Checked mechanically: `focusWidget` **is** there -- `QApplication`,
+`QWidget` and `QGraphicsWidget` all declare it -- so it keeps Qt's
+spelling and the exemption falls out of the filter rather than being a
+special case. `setFocusWidget` appears in **no Qt header at all**. It was
+carried along by association with the getter, and it is qtty's own name
+like the other 117. It is `set_focus_widget()` now.
+
+**The pairing was doing harm as well as being inconsistent.**
+`setFocusWidget(scope->focusWidget())` reads as the setter and getter of
+one thing and is not: the argument is Qt's **per-window** focus and the
+call is qtty's **process-wide** one. Four sites in the library read that
+way, and the rename makes them stop.
+
+The rename carried its own proof, which is why a global replace was safe
+here and would not have been for the getter: **the string
+`setFocusWidget` occurs in no Qt header**, so no Qt call could be caught
+by it. 25 occurrences before, 0 after, 25 of the new name, and no suite's
+`CHECK` count changed.
+
+Worth knowing about the getter, because it makes the exemption cheaper
+than it looks: **`Qtty::focusWidget()` has no caller in `src` at all.**
+The router and the compositor use `QWidget::focusWidget()`, and GridStyle
+reads the variable directly. It exists for applications and for the one
+check that exercises it, which is exactly the case its Qt spelling is
+for.
 
 **The filter's cost is a half-renamed struct, and that had to be looked
 for rather than assumed.** A name of ours that Qt happens to use too was
