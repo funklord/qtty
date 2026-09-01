@@ -405,6 +405,13 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 		r.moveLeft(qRound(double(r.left()) / cw) * cw);
 		r.moveTop(qRound(double(r.top()) / ch) * ch);
+		// Nothing else. A version of this moved the button to the cell
+		// before the tab's closing bracket, on the theory that snapping put
+		// it in a cell but not the right one -- and removing that again
+		// changed no rendered cell, because once the bracket spans the whole
+		// tab (CE_TabBarTab) Qt's own position is already inside it. The
+		// sabotage said so, and the line came out: a fix that cannot be shown
+		// to do anything is a fix for a defect that was somewhere else.
 	}
 	return r;
 }
@@ -913,8 +920,18 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// missing entirely -- measured, "&General" came out
 				// "[&Genera..." , the ampersand both visible AND stealing the
 				// cell that made the label elide a character early.
-				const QString label = QLatin1Char('[') + strip_mnemonic(t->text)
-				                        + QLatin1Char(']');
+				// The brackets span the WHOLE tab, not just its text. Qt
+				// sizes a tab wider than its label -- a closable one wider
+				// still, to hold the close button -- and drawing "[One]" at
+				// the left of a thirteen-cell tab left eight cells for the
+				// tab bar's base rule to show through: "[One]-------X-". A
+				// tab is a region you can click, and the bracket is what says
+				// where it ends.
+				QString inner = strip_mnemonic(t->text);
+				const int room = qMax(0, c.width() - 2);
+				inner = elide_to_cells(inner, room);
+				inner += QString(qMax(0, room - int(inner.size())), QLatin1Char(' '));
+				const QString label = QLatin1Char('[') + inner + QLatin1Char(']');
 				dev->buffer().text(c.left(), c.top(), elide_to_cells(label, c.width()),
 				                   Color(), Color(),
 				                   label_attrs(opt, w, sel ? Attrs(Attr::Reverse)

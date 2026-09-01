@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-706 checks, 0 failures, under three configurations: the offscreen
+707 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4201,16 +4201,16 @@ which is design.md §16's figure.
   `tool/layout_gate.py` is the enforcement check and runs in `make
   check`, and `setCompact` is **deliberately not built** -- §8.8 carries
   the argument, that its effect is unconditional on a terminal, so the
-  hint would switch nothing. The rest is built: `GridSnap` does
-  what `CompactionPass` was for, `set_priority()` carries
-  `Priority::Optional`, and §7.8 records the small-terminal policy
+  hint would switch nothing. §7.8 records the small-terminal policy
   working in the order design.md names -- drop the optional widgets,
   then scroll the root.
 - **The bundled font.** The startup check is in place (§7.4), but it
   checks a font the *machine* happens to provide. design.md §5.3 wants
   the font bundled and installed with `QFontDatabase::addApplicationFont`
-  so the grid does not depend on what is installed -- which is also what
-  would make the snapshot fixtures reproducible (§7.9).
+  so the grid does not depend on what is installed. **Not** what would
+  make the snapshot fixtures reproducible -- that was the reason this
+  entry gave and §7.9 disproves it: the fixtures depend on the cell size
+  and nothing else about the font.
 - `TermpaintBackend`, and the four legacy adapters.
 - Qt 5.15 support.
 - ~~The design.md §11 benchmark.~~ **Done**, and the budget holds with
@@ -5719,6 +5719,29 @@ a different trade rather than a refinement, and it would swap one class
 of false finding for another across sixteen trees. A correct fix probably
 has to recognise a lambda introducer by its preceding token -- a `]` or
 the `)` of a parameter list -- rather than reason from `await_body`.
+
+**A closable tab drew its close mark outside the tab.** Qt sizes a tab
+wider than its label -- a closable one wider still, to hold the button --
+and this style drew `[One]` at the left of it, so the tab bar's base rule
+filled the rest and the mark landed near the tab's right edge:
+
+    [One]-------X-[Two]-------X-      before
+    [One        X][Two        X]      after
+
+which read as a rule with a cross in it rather than as a tab you can
+close. **The existing pair of checks passed throughout**: they ask that
+the mark is present and that no shaded block replaced it, and a mark in
+the wrong place satisfies both. It was found by rendering a form and
+looking, not by asking a question about tabs -- the sweep §0d prescribes,
+run over the small-terminal code this session added.
+
+The bracket spans the whole tab now. **And the other half of the first
+fix was removed again**, which is the part worth keeping: it also moved
+the close button to the cell before the closing bracket, on the theory
+that snapping put it in a cell but not the right one. Reverting that
+changed no rendered cell -- once the bracket spans the tab, Qt's own
+position is already inside it -- so the line came out. A fix that cannot
+be shown to do anything is a fix for a defect that was somewhere else.
 
 **So this is the anti-pattern deliberately left in place rather than
 propagated.** Nine other lines in these two files were the same

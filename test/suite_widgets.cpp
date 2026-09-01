@@ -1960,6 +1960,48 @@ int suite_widgets() {
 	}
 
 
+
+	// A closable tab, whose close mark was drawn OUTSIDE the tab it closes.
+	// Qt sizes a tab wider than its label -- a closable one wider still, to
+	// hold the button -- and this style drew "[One]" at the left of it, so the
+	// tab bar's base rule filled the rest and the mark landed near the tab's
+	// right edge:
+	//
+	//     [One]-------X-[Two]-------X-
+	//
+	// which reads as a rule with a cross in it. The existing pair of checks
+	// passed throughout: they ask that the mark is present and that no shaded
+	// block replaced it, and a mark in the wrong place satisfies both. Found
+	// by rendering a form rather than by asking a question about it.
+	//
+	// Asserted as the relationship that was broken -- the mark is inside the
+	// tab's own brackets, and nothing of the base rule is -- rather than as a
+	// literal row, which would pin the tab's width.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *bar = new QTabBar(&host);
+		bar->setTabsClosable(true);
+		bar->addTab(QStringLiteral("One"));
+		bar->addTab(QStringLiteral("Two"));
+		bar->setGeometry(0, 0, GridMetrics::cw() * 30, GridMetrics::ch());
+		host.resize(GridMetrics::cells(32, 2));
+		host.show();
+		QCoreApplication::processEvents();
+		CellBuffer b(32, 2);
+		render_once(host, b);
+		const QString row = b.to_text().split(QLatin1Char('\n')).value(0);
+		const int open = row.indexOf(QLatin1Char('['));
+		const int close = row.indexOf(QLatin1Char(']'));
+		const int mark = row.indexOf(QStringLiteral("✕"));
+		const QString tab = open >= 0 && close > open
+		                        ? row.mid(open, close - open + 1) : QString();
+		CHECK(open >= 0 && mark > open && mark < close
+		      && !tab.contains(QStringLiteral("─")),
+		      "a closable tab's mark is inside the tab, with no rule between");
+	}
+
+
 	return fails;
 }
 
