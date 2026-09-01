@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-749 checks, 0 failures, under three configurations: the offscreen
+753 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -448,6 +448,7 @@ Owned by the copyright holder:
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed. All four candidate behaviours are printed now -- and `Left\|Middle` **removes paging** rather than adding anything, unless `SH_Slider_PageSetButtons` moves it to the right button | *the interaction sweep* |
 | Whether the "too small to be a picture" rule moves to the backend. Nothing left unmeasured: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()`; no widget icon reaches the branch today; and the cost is **1.4 KB once per distinct icon, 35 bytes a frame after** -- eight of them together less than the one 48x48 icon the library already uploads | §7.2 |
 | **Right-to-left: does qtty support it at all?** design.md never says, and nothing in the tree mentions it -- so this is a scope question rather than a defect. Measured: under `Qt::RightToLeft` a check box mirrors and a combo box's text does, while its arrow, a progress bar's fill, a label's alignment and a line edit's text do not. §7.2 has the rendered pair | *undesigned* |
+| **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism | §7.2 |
 | **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect | §7.2 |
 | The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
 
@@ -4038,6 +4039,42 @@ What *is* load-bearing is the set difference, and there is a check that
 says so: sabotaging it reddens "the window under both stays entered the
 whole time", because a window that is an ancestor of both children would
 be told it was left while the pointer never went outside it.
+
+**And the same question again, twice.** If Enter and Leave had no platform
+to send them, what else? Measured on a widget with a tooltip set:
+
+    two quick clicks: 2 presses, 0 double-click events
+    hovering for 1.5 s: 0 ToolTip events, interval is 400 ms
+
+- **`QWidget::mouseDoubleClickEvent()` never ran anywhere.** Two clicks
+  were two presses. `itemDoubleClicked`, a line edit selecting a word, a
+  tree expanding on a double click, a header resizing to fit -- all dead,
+  in a library whose whole point is that Qt's widgets work. Fixed:
+  `InputRouter` compares against `QApplication::doubleClickInterval()`,
+  which Qt publishes and nothing was reading.
+
+  **The second press is REPLACED, not followed.** That is Qt's own
+  arrangement -- `QWidget::mouseDoubleClickEvent()` forwards to
+  `mousePressEvent()` by default, which is why `QAbstractButton` needs no
+  override while `QAbstractItemView` has one -- and it was settled by
+  measurement rather than by memory of Qt's source: a check requires a
+  double-clicked `QPushButton` to still count **two** `clicked()` signals.
+  Sending both events would have counted three.
+
+  The same *cell*, not a pixel radius: a terminal reports a position in
+  cells, so "did not move" can only mean the same cell. That test is
+  load-bearing beyond its own check -- removing it reddens the existing
+  "a click on a tab selects it", because two clicks on different tabs
+  inside 400 ms became one double click on the second.
+
+- **`QEvent::ToolTip` is never sent**, and the machinery for tooltips is
+  built: `InputRouter` tracks `Qt::ToolTip` layers so the compositor
+  stacks them, and `theme()` defines `ToolTipBase` and `ToolTipText` --
+  black on bright yellow, chosen deliberately. A widget with a tooltip
+  hovered for a second and a half receives nothing. Same shape as
+  `WA_Hover`: the parts are there and the event that would use them
+  cannot arrive. Whether a terminal should pop a tooltip at all is the
+  hover question again, and §0b carries it.
 
 **Whether hover should be RENDERED is not settled here.** The state is
 now reachable, and `State_MouseOver` will arrive on options for the first

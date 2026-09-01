@@ -82,6 +82,12 @@ private:
 	// enterEvent() or leaveEvent() ever runs.
 	QPointer<QWidget> hovered_;
 	void update_hover(QWidget *now, const QPoint &window_pos);
+	// The last press, for recognising a double click. The platform layer
+	// does this too, from QApplication::doubleClickInterval(); with no
+	// platform, QWidget::mouseDoubleClickEvent() never ran anywhere.
+	QElapsedTimer since_press_;
+	QPoint last_press_cell_ = QPoint(-1, -1);
+	int last_press_button_ = 0;
 };
 
 // ----------------------------------------------------------------- Compositor

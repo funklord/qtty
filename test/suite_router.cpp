@@ -1236,5 +1236,75 @@ int suite_router() {
 		      "and the window under both stays entered the whole time");
 	}
 
+
+	// ---- a second click is a double click ----
+	{
+		// Measured before this existed: two clicks in the same cell gave two
+		// presses and zero double-click events, so QWidget::
+		// mouseDoubleClickEvent() never ran anywhere -- itemDoubleClicked, a
+		// line edit selecting a word, a tree expanding on double click were
+		// all dead. The platform layer does this from
+		// QApplication::doubleClickInterval(), and there is no platform.
+		struct Counting : QWidget {
+			int presses = 0, doubles = 0;
+			using QWidget::QWidget;
+			void mousePressEvent(QMouseEvent *) override { ++presses; }
+			void mouseDoubleClickEvent(QMouseEvent *) override { ++doubles; }
+		};
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		auto *w = new Counting;
+		v->addWidget(w);
+		auto *button = new QPushButton(QStringLiteral("OK"));
+		int clicks = 0;
+		QObject::connect(button, &QPushButton::clicked, [&clicks] { ++clicks; });
+		v->addWidget(button);
+		win.resize(GridMetrics::cells(10, 2));
+		win.show();
+		QCoreApplication::processEvents();
+
+		Qtty::InputRouter router(&win);
+		auto click = [&](int x, int y) {
+			router.on_mouse({ QPoint(x, y), 1, true, false, false,
+			                  0, 0, false, false, false });
+			router.on_mouse({ QPoint(x, y), 1, false, true, false,
+			                  0, 0, false, false, false });
+		};
+
+		click(2, 0);
+		click(2, 0);
+		CHECK(w->doubles == 1 && w->presses == 1,
+		      "a second click in the same cell arrives as a double click");
+		// A third starts again rather than chaining, which is what a platform
+		// does -- otherwise every click after the first in a fast sequence
+		// would be a double.
+		click(2, 0);
+		CHECK(w->doubles == 1 && w->presses == 2,
+		      "and a third click starts the count again");
+
+		// The half that says REPLACING the press is right rather than adding
+		// to it. Qt's QWidget::mouseDoubleClickEvent() forwards to
+		// mousePressEvent() by default -- which is why QAbstractButton has no
+		// override and QAbstractItemView does -- so a double-clicked button
+		// must still count two clicks. If this library sent the press AND the
+		// double click, it would count three.
+		clicks = 0;
+		click(2, 1);
+		click(2, 1);
+		CHECK(clicks == 2, "and a double-clicked button still counts two clicks");
+
+		// Far apart in space: different cells are different clicks however
+		// fast they arrive.
+		w->presses = 0;
+		w->doubles = 0;
+		click(2, 0);
+		click(7, 0);
+		CHECK(w->presses == 2 && w->doubles == 0,
+		      "while two clicks in different cells are two presses");
+	}
+
 	return fails;
 }

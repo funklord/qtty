@@ -337,9 +337,39 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 		const auto btn = qt_button(m.button);
 		if (m.press) {
 			grab_ = target;
-			QMouseEvent ev(QEvent::MouseButtonPress, QPointF(pos), QPointF(px),
-			               btn, btn, mods);
+			// A second press on the same cell with the same button, inside
+			// the interval Qt itself publishes, is a double click -- and it
+			// REPLACES the press rather than following it. That is Qt's own
+			// arrangement: QWidget::mouseDoubleClickEvent() forwards to
+			// mousePressEvent() by default, which is why QAbstractButton
+			// needs no override and QAbstractItemView has one. Sending both
+			// would make a button count the second click twice.
+			//
+			// The cell rather than a pixel radius: a terminal reports a
+			// position in cells, so "did not move" can only mean the same
+			// cell. Measured before this existed: two clicks
+			// gave two presses and no double click at all, so
+			// itemDoubleClicked, a line edit selecting a word and a tree
+			// expanding on double click were all dead.
+			const bool again = since_press_.isValid()
+			                && since_press_.elapsed() < QApplication::doubleClickInterval()
+			                && m.cell == last_press_cell_
+			                && m.button == last_press_button_;
+			QMouseEvent ev(again ? QEvent::MouseButtonDblClick
+			                     : QEvent::MouseButtonPress,
+			               QPointF(pos), QPointF(px), btn, btn, mods);
 			QApplication::sendEvent(target, &ev);
+			// A third click starts again rather than chaining into another
+			// double, which is what a platform does.
+			if (again) {
+				since_press_.invalidate();
+				last_press_cell_ = QPoint(-1, -1);
+				last_press_button_ = 0;
+			} else {
+				since_press_.start();
+				last_press_cell_ = m.cell;
+				last_press_button_ = m.button;
+			}
 		}
 		update_hover(target, pos);
 		if (m.motion) {
