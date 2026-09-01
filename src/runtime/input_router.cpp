@@ -341,6 +341,7 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 			               btn, btn, mods);
 			QApplication::sendEvent(target, &ev);
 		}
+		update_hover(target, pos);
 		if (m.motion) {
 			// Held-button state matters: a widget reads buttons() to tell a
 			// drag from a hover, so a move sent with Qt::NoButton while
@@ -370,6 +371,61 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 	}
 	QCoreApplication::processEvents();
 	if (frame_requested) frame_requested();
+}
+
+// Enter and Leave, which nothing was sending. QApplicationPrivate does this
+// from the platform's mouse events; there is no platform here, so the same
+// three things that were missing for the context menu are missing for hover:
+// an application's enterEvent() and leaveEvent() overrides never ran,
+// QWidget::underMouse() was permanently false, and QStyle::State_MouseOver
+// could not be set on any option.
+//
+// Measured before the fix, sweeping the pointer over every cell of a form:
+// underMouse() false on every widget, while Qt had set WA_Hover on the push
+// button -- so Qt was prepared to repaint for a hover that could never
+// arrive.
+//
+// The ancestor chains, not just the two widgets. underMouse() is true for a
+// container while the pointer is over its child, and a widget that stays
+// under the pointer must not be told it was left and re-entered: only the
+// difference between the two chains gets an event.
+//
+// The events alone are enough: Qt maintains WA_UnderMouse itself when Enter
+// and Leave arrive through QApplication::sendEvent(), so underMouse() answers
+// correctly without this function touching the attribute. That was not the
+// first version -- it set and cleared WA_UnderMouse explicitly, and a
+// sabotage of each line in turn changed nothing, which is what says a line
+// is not doing the work it claims. The set difference below is what does.
+//
+// The early return is an optimisation, not the mechanism. Without it the two
+// chains are equal and every widget is skipped anyway; with it, a move
+// within one widget does not build them.
+static QVector<QWidget *> hover_chain(QWidget *w) {
+	QVector<QWidget *> c;
+	for (QWidget *a = w; a; a = a->parentWidget()) {
+		c.append(a);
+		if (a->isWindow()) break;
+	}
+	return c;
+}
+
+void InputRouter::update_hover(QWidget *now, const QPoint &window_pos) {
+	if (now == hovered_) return;
+	const QVector<QWidget *> was = hovered_ ? hover_chain(hovered_)
+	                                        : QVector<QWidget *>();
+	const QVector<QWidget *> is = now ? hover_chain(now) : QVector<QWidget *>();
+	for (QWidget *w : was) {
+		if (is.contains(w)) continue;
+		QEvent leave(QEvent::Leave);
+		QApplication::sendEvent(w, &leave);
+	}
+	for (QWidget *w : is) {
+		if (was.contains(w)) continue;
+		const QPointF local = w->mapFrom(w->window(), window_pos);
+		QEnterEvent enter(local, local, local);
+		QApplication::sendEvent(w, &enter);
+	}
+	hovered_ = now;
 }
 
 void InputRouter::on_paste(const QString &text) {

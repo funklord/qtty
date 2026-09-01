@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-745 checks, 0 failures, under three configurations: the offscreen
+749 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -448,6 +448,7 @@ Owned by the copyright holder:
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed. All four candidate behaviours are printed now -- and `Left\|Middle` **removes paging** rather than adding anything, unless `SH_Slider_PageSetButtons` moves it to the right button | *the interaction sweep* |
 | Whether the "too small to be a picture" rule moves to the backend. Nothing left unmeasured: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()`; no widget icon reaches the branch today; and the cost is **1.4 KB once per distinct icon, 35 bytes a frame after** -- eight of them together less than the one 48x48 icon the library already uploads | §7.2 |
 | **Right-to-left: does qtty support it at all?** design.md never says, and nothing in the tree mentions it -- so this is a scope question rather than a defect. Measured: under `Qt::RightToLeft` a check box mirrors and a combo box's text does, while its arrow, a progress bar's fill, a label's alignment and a line edit's text do not. §7.2 has the rendered pair | *undesigned* |
+| **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect | §7.2 |
 | The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
@@ -3999,6 +4000,51 @@ the buffer, `draw_box()` honouring it, the clip cut down by every
 ancestor, and the engine's own rounding corrected. The overdraw check
 covers eleven widget kinds at six sizes each and none of them leaves its
 rectangle.
+
+**Nothing sent Enter or Leave** (2026-09-02). `QApplicationPrivate`
+dispatches them from the platform's mouse events, and there is no
+platform -- the same gap the right-press context menu had, two lines away
+in the same function. Measured by sweeping the pointer over every cell of
+a three-widget form:
+
+    60 mouse moves: 9 repaint requests, 0 cells changed
+    underMouse() false on every widget, WA_Hover set on the push button
+
+So Qt had marked the push button as wanting hover repaints, and the hover
+could never arrive. Three things were missing at once: an application's
+`enterEvent()` and `leaveEvent()` overrides never ran, `underMouse()` was
+permanently false, and `QStyle::State_MouseOver` could not be set on any
+option -- which is why nothing in `GridStyle` reads it.
+
+`InputRouter` now tracks the widget under the pointer and sends the two
+events across the **ancestor chains**, not just between the two widgets:
+`underMouse()` is true for a container while the pointer is over its
+child, and only the difference between the chains gets an event, so a
+widget that stays under the pointer is not told it was left and
+re-entered.
+
+**Two lines of the first version were doing nothing, and the sabotage is
+what said so.** It set and cleared `WA_UnderMouse` explicitly, with a
+comment explaining that the attribute is what `underMouse()` reads and
+that the dispatcher normally sets it. Sabotaging each line in turn
+changed no check: **Qt maintains the attribute itself** when Enter and
+Leave arrive through `QApplication::sendEvent()`. The lines are gone. A
+third, the early return when the widget has not changed, is an
+optimisation rather than the mechanism -- without it the two chains are
+equal and every widget is skipped anyway -- and it is kept as one, said
+so in the comment.
+
+What *is* load-bearing is the set difference, and there is a check that
+says so: sabotaging it reddens "the window under both stays entered the
+whole time", because a window that is an ancestor of both children would
+be told it was left while the pointer never went outside it.
+
+**Whether hover should be RENDERED is not settled here.** The state is
+now reachable, and `State_MouseOver` will arrive on options for the first
+time. Whether a terminal control should light up under the pointer is a
+question about what a TUI is, in the same class as the message box's
+severity glyph -- §0b carries it. What this fixes is Qt's own contract:
+an application could not ask where the pointer was, and now it can.
 
 ### 7.3 Graphics tier (design.md §17.3)
 

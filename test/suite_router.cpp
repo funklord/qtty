@@ -1174,5 +1174,67 @@ int suite_router() {
 	}
 
 
+
+	// ---- the pointer enters and leaves ----
+	{
+		// Nothing sent Enter or Leave. QApplicationPrivate does it from the
+		// platform's mouse events, and there is no platform -- the same gap
+		// the right-press context menu had two lines away in the same
+		// function. Measured before the fix, sweeping the pointer over every
+		// cell of a form: underMouse() false on every widget, while Qt had
+		// set WA_Hover on the push button, so it was prepared to repaint for
+		// a hover that could never arrive.
+		struct Counting : QWidget {
+			int enters = 0, leaves = 0;
+			using QWidget::QWidget;
+			void enterEvent(QEnterEvent *) override { ++enters; }
+			void leaveEvent(QEvent *) override { ++leaves; }
+		};
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		auto *top = new Counting;
+		auto *bottom = new Counting;
+		v->addWidget(top);
+		v->addWidget(bottom);
+		win.resize(GridMetrics::cells(10, 2));
+		win.show();
+		QCoreApplication::processEvents();
+
+		Qtty::InputRouter router(&win);
+		auto move_to = [&](int x, int y) {
+			router.on_mouse({ QPoint(x, y), 0, false, false, true,
+			                  0, 0, false, false, false });
+		};
+
+		move_to(2, 0);
+		CHECK(top->enters == 1 && top->underMouse(),
+		      "moving onto a widget enters it and it knows it");
+		// Along the SAME widget: a widget still under the pointer must not be
+		// told it was left and re-entered, which an implementation that sends
+		// on every move would do -- an application's enterEvent() firing once
+		// per cell of travel.
+		move_to(5, 0);
+		move_to(8, 0);
+		CHECK(top->enters == 1 && top->leaves == 0,
+		      "and moving within it sends nothing more");
+		move_to(2, 1);
+		CHECK(top->leaves == 1 && !top->underMouse()
+		      && bottom->enters == 1 && bottom->underMouse(),
+		      "while moving to another leaves the first and enters the second");
+		// The window is an ancestor of both and was never left, so it keeps
+		// its own answer throughout: underMouse() is true for a container
+		// while the pointer is over its child.
+		// The check that pins the mechanism. Only the DIFFERENCE between the
+		// two ancestor chains gets an event, and a sabotage that sends to
+		// every widget in both reddens exactly this line: the window is an
+		// ancestor of both children, so it would be told it was left while
+		// the pointer never went outside it.
+		CHECK(win.underMouse(),
+		      "and the window under both stays entered the whole time");
+	}
+
 	return fails;
 }

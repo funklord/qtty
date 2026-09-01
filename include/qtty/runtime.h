@@ -75,6 +75,13 @@ private:
 	// closes a dialog -- and the release then arrives for a widget that is
 	// gone.
 	QPointer<QWidget> grab_;
+	// The widget the pointer is over, so that Enter and Leave can be sent
+	// when it changes. The platform layer normally does this -- the same
+	// reason the right-press context menu is synthesised here -- and without
+	// it QWidget::underMouse() is permanently false and no application's
+	// enterEvent() or leaveEvent() ever runs.
+	QPointer<QWidget> hovered_;
+	void update_hover(QWidget *now, const QPoint &window_pos);
 };
 
 // ----------------------------------------------------------------- Compositor
