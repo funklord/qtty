@@ -839,6 +839,78 @@ int suite_widgets() {
 	}
 
 
+	// A one-row QLineEdit is bracketed, like the combo box and the spin box.
+	// The principle was already stated where those two were decided: the
+	// control has to be visibly a control, and at one row a frame cannot say
+	// so -- draw_box() needs two rows and silently draws nothing below that.
+	//
+	// The cost this was deferred over was an artefact of the first attempt.
+	// Bracketing every PE_PanelLineEdit gave an editable combo and a spin box
+	// a SECOND closing bracket inside their own, because each contains a
+	// QLineEdit reaching the same primitive. QLineEdit::hasFrame() separates
+	// them with no class list and no parent test: a plain edit answers true,
+	// and the two composite controls answer false because they draw the
+	// boundary themselves. An application that calls setFrame(false) answers
+	// false too, and is obeyed.
+	{
+		const int ch = GridMetrics::ch();
+		QWidget d;
+		auto *v = new QVBoxLayout(&d);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		auto *le = new QLineEdit(QStringLiteral("plain edit"), &d);
+		le->setFixedHeight(ch);
+		v->addWidget(le);
+		auto *ec = new QComboBox(&d);
+		ec->setEditable(true);
+		ec->addItem(QStringLiteral("editable combo"));
+		ec->setFixedHeight(ch);
+		v->addWidget(ec);
+		auto *sb = new QSpinBox(&d);
+		sb->setValue(42);
+		sb->setFixedHeight(ch);
+		v->addWidget(sb);
+		auto *nf = new QLineEdit(QStringLiteral("no frame"), &d);
+		nf->setFrame(false);
+		nf->setFixedHeight(ch);
+		v->addWidget(nf);
+		show(d, 30, 4);
+		CellBuffer b(32, 5);
+		render_once(d, b);
+		auto row = [&](int y) {
+			return b.to_text().section(QLatin1Char('\n'), y, y).trimmed();
+		};
+		CHECK(row(0).startsWith(QLatin1Char('[')) && row(0).endsWith(QLatin1Char(']')),
+		      "a one-row line edit is bracketed, as the combo and spin box are");
+		// One closing bracket, not two. Counting is what discriminates: a
+		// check that the row merely ENDS in ']' passes against the double.
+		CHECK(row(1).count(QLatin1Char(']')) == 1
+		      && row(2).count(QLatin1Char(']')) == 1,
+		      "and a combo's and spin box's own edit does not add a second");
+		// Honest about what this one can prove: it cannot fail against this
+		// code. Qt skips PE_PanelLineEdit entirely for an unframed edit, so
+		// the primitive never runs and the gate is never asked -- confirmed
+		// by sabotage, which reddened the check above and left this one
+		// green. It stays because the PROPERTY is worth holding: an
+		// application that asks for no frame must not be given one, whichever
+		// layer keeps that promise.
+		CHECK(!row(3).contains(QLatin1Char('[')),
+		      "and setFrame(false) is obeyed, so a bare field stays bare");
+
+		// The sibling question in the same entry, answered by the same rule:
+		// an empty field was invisible until tabbed through, and a form of
+		// them was a blank screen. It has a boundary now.
+		QLineEdit empty;
+		empty.setFixedHeight(ch);
+		show(empty, 20, 1);
+		CellBuffer eb(22, 2);
+		render_once(empty, eb);
+		const QString e = eb.to_text().section(QLatin1Char('\n'), 0, 0).trimmed();
+		CHECK(e.startsWith(QLatin1Char('[')) && e.endsWith(QLatin1Char(']')),
+		      "an empty field shows its boundary rather than nothing");
+	}
+
+
 	// gallery snapshot: one window with the whole tier
 	{
 		QWidget win;

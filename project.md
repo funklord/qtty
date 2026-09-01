@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-666 checks, 0 failures, under three configurations: the offscreen
+670 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -172,6 +172,13 @@ decision §8.1 records as open, so the axis is priced rather than taken.
 by transitive luck on a class Qt 6 moved between modules. That include is
 right on every version and is fixed.
 
+**A one-row `QLineEdit` is bracketed**, like the combo box and the spin box
+whose rationale it borrows, so an empty field is no longer invisible. The
+cost this was deferred over -- a second closing bracket inside those two --
+was an artefact of the first attempt: `QLineEdit::hasFrame()` separates
+them with no class list and no parent test, because a control that draws
+its own boundary already says so.
+
 **A text selection is reverse video now, like every other selection in the
 program.** It was the desktop's `QPalette::Highlight` as a literal RGB,
 which `qtty/theme.h`'s own rule forbids -- the default theme keeps every
@@ -279,7 +286,6 @@ Owned by the copyright holder:
 | Whether frame output should be gated on `isatty(1)` as setup and teardown are | *the gate that decides whether to write* |
 | A message box's severity icon: a glyph cannot travel inside a `QIcon`, so reaching one needs `QPixmap::cacheKey()` identity surviving rasterisation | *Qt's standard iconography* |
 | A dock widget's title buttons, which arrive with a 0x0 icon area -- a sizing fault rather than an iconography one | *Qt's standard iconography* |
-| Whether a one-row `QLineEdit` should be bracketed as the combo and spin box already are, at the measured cost of a second bracket inside each of those | §7.2, *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: a groove click setting the value where it landed | *the interaction sweep* |
 | How to tell an icon from a picture, so a wide short image can be a placement rather than a shaded block -- the 2x2 threshold promotes neither 8x1 nor the 2x1 an icon becomes | §7.2 |
 | The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work | §7.9, §11 |
@@ -1643,11 +1649,33 @@ What has not changed is whose the decision is. **The copyright holder's**,
 and the alternative measured and closed above -- returning themed icons so
 the existing name-based registry resolves them -- still does not work.
 
-Also observed, and left alone deliberately: an **empty `QLineEdit` renders
-as nothing at all**. A terminal field with no decoration is arguably right,
-and the cursor marks it while focused, but a form of empty fields is
-invisible until tabbed through. Same class of question as the icons, and
-the same owner.
+~~Also observed, and left alone deliberately: an **empty `QLineEdit`
+renders as nothing at all**.~~ **Answered, and by the rule the tree had
+already stated twice.** A one-row line edit is bracketed now, the way the
+combo box and the spin box are, for the reason written where those were
+decided: the control has to be visibly a control, and at one row a frame
+cannot say so. An empty field shows its boundary rather than nothing, so a
+form of them is no longer a blank screen.
+
+**The cost this was deferred over was an artefact of the first attempt.**
+Bracketing every `PE_PanelLineEdit` gave an editable combo box and a spin
+box a second closing bracket inside their own, because each contains a
+`QLineEdit` that reaches the same primitive -- measured, and recorded here
+as the price. `QLineEdit::hasFrame()` separates them, with **no class list
+and no parent test**: a plain edit answers true, and those two answer
+false because they draw the boundary themselves. Measured on all four:
+
+    [plain edit                  ]
+    [editable combo             ▾]
+    [42                         ±]
+    no frame
+
+The last is `setFrame(false)`, obeyed. Its check is kept and marked as one
+that **cannot fail against this code** -- Qt skips the primitive entirely
+for an unframed edit, so the gate is never asked, confirmed by a sabotage
+that reddened the double-bracket check and left this one green. It holds a
+property rather than a mechanism: an application that asks for no frame
+must not be given one, whichever layer keeps that promise.
 
 **The dialog sweep sharpened this and it is worth reading with the above**
 (§7.2): it is not only the empty case -- a one-row line edit has no

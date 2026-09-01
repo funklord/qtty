@@ -16,6 +16,7 @@
 #include <QStyleOptionButton>
 #include <QPainter>
 #include <QHash>
+#include <QLineEdit>
 #include <QToolButton>
 #include <QWidget>
 #include <QCoreApplication>
@@ -517,9 +518,33 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 				Color(), Color(), with_state(opt));
 			return;
 		case PE_FrameWindow: case PE_Frame: case PE_FrameGroupBox:
-		case PE_PanelMenu: case PE_FrameMenu: case PE_PanelLineEdit:
+		case PE_PanelMenu: case PE_FrameMenu:
 			draw_box(dev->buffer(), c);
 			return;
+		// A one-row line edit is bracketed, the way the combo box and the spin
+		// box below already are and for the reason written there: the control
+		// has to be visibly a control, and at one row a frame cannot say so --
+		// draw_box() needs two rows and silently draws nothing below that. An
+		// empty field was invisible until tabbed through, and a form of them
+		// was a blank screen.
+		//
+		// hasFrame() is what makes it safe, and it needs no class list and no
+		// parent test. Bracketing every panel call gave an editable combo box
+		// and a spin box a SECOND closing bracket inside their own, because
+		// each contains a QLineEdit that reaches this primitive -- measured,
+		// and the reason this was deferred. Those two answer false because
+		// they draw the boundary themselves, and an application that calls
+		// setFrame(false) answers false and is obeyed. The widget says
+		// whether it wants a boundary; this only asks.
+		case PE_PanelLineEdit: {
+			if (c.height() >= 2) { draw_box(dev->buffer(), c); return; }
+			const auto *le = qobject_cast<const QLineEdit *>(w);
+			if (le && le->hasFrame()) {
+				dev->buffer().put_cluster(c.left(), c.top(), QStringLiteral("["));
+				dev->buffer().put_cluster(c.right(), c.top(), QStringLiteral("]"));
+			}
+			return;
+		}
 		case PE_PanelToolBar:
 			// Nothing. Fusion paints a background and a border along the
 			// bottom edge, and that border sits at y = ch exactly -- one pixel
