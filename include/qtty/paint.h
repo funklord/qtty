@@ -133,6 +133,12 @@ private:
 
 	CellPaintDevice *dev_ = nullptr;
 	QPen pen_; QBrush brush_; QFont font_; QTransform xf_;
+	// Where the last text item on this row ended, in CELLS. Qt positions each
+	// run by the FONT's advances, and a run of wide clusters is narrower in
+	// pixels than it is in cells -- so the run after it starts on top of its
+	// tail. See drawTextItem() for the measurement.
+	int last_row_ = -1, last_end_col_ = 0;
+	qreal last_x_ = 0;
 };
 
 } // namespace Qtty

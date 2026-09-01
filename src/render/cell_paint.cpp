@@ -124,6 +124,9 @@ int CellPaintDevice::metric(PaintDeviceMetric m) const {
 
 bool CellPaintEngine::begin(QPaintDevice *pdev) {
 	dev_ = static_cast<CellPaintDevice *>(pdev);
+	last_row_ = -1;
+	last_end_col_ = 0;
+	last_x_ = 0;
 	return true;
 }
 bool CellPaintEngine::end() { dev_ = nullptr; return true; }
@@ -258,11 +261,30 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	// calls, so the fill's attribute was set and the text's write replaced
 	// it. Reverse is a property of the CELL rather than of whoever wrote it
 	// last.
+	// A run of wide clusters is narrower in PIXELS than it is in CELLS, and
+	// Qt positions each run by the font's advances. Measured on this machine:
+	// 'M' advances 10.0 -- exactly one cell -- while a CJK character advances
+	// **16.0**, not 20, so three of them end at pixel 48 where six cells end
+	// at 60. Qt then starts the next run at 48, which is column 4 or 5, on top
+	// of the third cluster's own cells. A QLineEdit holding "<CJK>xy" lost its
+	// third character entirely: the cells were written and then overwritten.
+	//
+	// Channel A never had this because GridStyle counts cells. Here the fix is
+	// to remember where the last run ENDED in cells and start no earlier,
+	// which is only applied when the runs are genuinely consecutive: same row,
+	// and the new run's pixel origin at or right of the previous one's. Text
+	// drawn leftwards after text drawn rightwards -- a right-aligned label
+	// after a left-aligned one -- is left alone.
+	if (row == last_row_ && q.x() >= last_x_ && col < last_end_col_)
+		col = last_end_col_;
 	int x = col;
 	for (const QString &cl : to_clusters(text)) {
 		const Attrs had = dev_->buffer().at(x, row).attrs & Attrs(Attr::Reverse);
 		x += dev_->buffer().text(x, row, cl, pen_to_fg(pen_), Color(), a | had);
 	}
+	last_row_ = row;
+	last_end_col_ = x;
+	last_x_ = q.x();
 }
 
 void CellPaintEngine::drawRects(const QRectF *r, int n) { for (int i = 0; i < n; ++i) fill_rectf(r[i]); }

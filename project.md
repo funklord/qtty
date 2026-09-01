@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-718 checks, 0 failures, under three configurations: the offscreen
+720 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -86,6 +86,39 @@ answer -- which is why the check covers that too.
 **The vertical indeterminate bar was already correct**, and now says so:
 it shades and shows no percentage, paired against a vertical bar whose
 length is known and still says 40%.
+
+**And the next axis after that lost a character.** Nothing had rendered a
+wide cluster through the widgets. The elision helper counts cells and was
+tested for it -- but that is Channel A, where `GridStyle` writes clusters
+into cells. **Channel B places glyphs by pixel position, and a wide
+cluster is not two cells wide in pixels.** Measured on this machine:
+
+    'M'                advances 10.0   = exactly one cell
+    a CJK character    advances 16.0   not 20
+    three of them      advance  48.0   where six cells are 60
+
+Qt draws a string as one run per font, so the Latin run after a CJK run
+starts at pixel 48 -- **inside the third cluster's own cells** -- and a
+`QLineEdit` holding CJK followed by Latin lost a character outright. The
+cells were written and then overwritten:
+
+    [ 日 本 語 x y ]      what the model says
+    [ 日 本 x y ]         what the buffer held
+
+`drawTextItem()` continues a run from where the last one ended in cells
+now, applied only when the runs are genuinely consecutive -- same row,
+new origin at or right of the old -- so a right-aligned label drawn after
+a left-aligned one is untouched.
+
+**The check had to be built from the fixture that reproduced it**, and a
+reduction to two widgets passed with the fix removed: the collision
+depends on where Qt puts each run, and that moves with the layout. A
+reduction that stops reproducing is not a reduction. The pair also
+divides unevenly and the sabotage said which half works -- "every row
+still spans its full width" stayed green, because the overwrite replaces
+a lead cell with a one-cell glyph and leaves the stray continuation, so
+the sum still comes to the buffer's width. Counting the wide clusters on
+the edit's row is what fails.
 
 **Two instrument notes from this pair**, both caught before anything was
 recorded. Asking Qt for the handle's rectangle with `upsideDown` set by

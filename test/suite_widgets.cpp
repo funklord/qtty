@@ -2149,6 +2149,73 @@ int suite_widgets() {
 	}
 
 
+
+	// Wide clusters through the widgets, which nothing had rendered. The
+	// elision helper counts cells and was tested for it, but that is Channel A
+	// -- GridStyle writing clusters into cells. Channel B places glyphs by
+	// PIXEL position, and a wide cluster is not two cells wide in pixels.
+	//
+	// Measured on this machine: 'M' advances 10.0, exactly one cell, and a CJK
+	// character advances **16.0**, not 20. Three of them end at pixel 48 where
+	// six cells end at 60, so Qt starts the next run at 48 -- inside the third
+	// cluster's own cells -- and a QLineEdit holding CJK followed by Latin
+	// **lost a character**: written, then overwritten.
+	//
+	// drawTextItem() continues a run from where the last one ended in cells.
+	// The assertion is the cell contents rather than the joined text, because
+	// to_text() cannot show a width-2 cluster sitting in one cell and the
+	// widths summing wrong is exactly the corruption.
+	{
+		const QString cjk = QString::fromUtf8("\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e");
+		QWidget d;
+		d.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&d);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		// The fixture that reproduced it, kept whole rather than reduced: a
+		// two-widget version of this passed with the fix REMOVED, because the
+		// collision depends on where Qt puts each run and that moves with the
+		// layout. A reduction that stops reproducing is not a reduction.
+		const QString mixed = QString::fromUtf8("ab\xe6\x97\xa5\xe6\x9c\xac cd");
+		v->addWidget(new QLabel(cjk));                       // Channel A
+		v->addWidget(new QPushButton(mixed));
+		v->addWidget(new QLineEdit(cjk + QStringLiteral("xy")));   // Channel B
+		auto *lw = new QListWidget;
+		lw->setFrameShape(QFrame::NoFrame);
+		lw->addItem(mixed);
+		v->addWidget(lw);
+		auto *tabs = new QTabBar;
+		tabs->addTab(cjk);
+		v->addWidget(tabs);
+		d.resize(GridMetrics::cells(20, 10));
+		d.show();
+		QCoreApplication::processEvents();
+		CellBuffer b(20, 10);
+		render_once(d, b);
+		// Every row still spans exactly the buffer: a width-2 cluster written
+		// into one cell breaks this sum, and nothing in the text would show it.
+		bool spans = true;
+		for (int y = 0; y < b.rows(); ++y) {
+			int sum = 0;
+			for (int x = 0; x < b.cols(); ++x) sum += b.at(x, y).width;
+			if (sum != b.cols()) spans = false;
+		}
+		// And the edit's row carries all three clusters, each two cells wide.
+		int wide_on_edit = 0;
+		for (int x = 0; x < b.cols(); ++x)
+			if (b.at(x, 2).width == 2) ++wide_on_edit;
+		// True and worth holding, but NOT the discriminating half: under the
+		// sabotage this stayed green, because the overwrite replaces a lead
+		// cell with a one-cell glyph and leaves the stray continuation, so the
+		// sum still comes to the buffer's width. The count below is what fails.
+		CHECK(spans, "wide clusters leave every row spanning its full width");
+		CHECK(wide_on_edit == 3,
+		      "and a line edit keeps every one of them, not the ones that fit "
+		      "the font's advance");
+		GridGuard::reset();
+	}
+
+
 	return fails;
 }
 
