@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-660 checks, 0 failures, under three configurations: the offscreen
+662 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -172,14 +172,20 @@ decision §8.1 records as open, so the axis is priced rather than taken.
 by transitive luck on a class Qt 6 moved between modules. That include is
 right on every version and is fixed.
 
-**Channel A clips now**, which is design.md §432's fourth item and was
-the one of the four never implemented: a `QPainter` told to keep inside
-four cells filled twenty. What the measurement changed is §8.7's reason
-for existing. **It does not fix the scroll area**, because Qt sets no clip
-when `QWidget::render()` walks children -- traced, every draw in that case
-reports `hasClipping() == false` -- so there was never a clip there for
-the engine to ignore. The overflow is the compositor's to fix, and the
-engine honouring a clip is the half that had to exist first.
+**Channel A clips, and §8.7 is closed.** It is design.md §432's fourth
+item and was the one of the four never implemented: a `QPainter` told to
+keep inside four cells filled twenty. **A `QScrollArea` no longer paints
+its scrolled-out content over its neighbours**, and a child wider than its
+parent is clipped to it -- which was the largest thing standing between
+this library and an application anyone depends on.
+
+**It took two goes, and the wrong turn is the part worth keeping.** With
+the user clip honoured the overflow remained, and every draw reported
+`hasClipping() == false`, so this document recorded "Qt sets no clip" and
+handed the rest to the compositor. Qt sets a clip: the **system** clip,
+which `QPaintEngine::systemClip()` carries and this engine had never asked
+about, while `hasClipping()` answers about the user clip and was honestly
+false. **A channel that answers is not evidence it is the right channel.**
 
 **One rule came out of it worth carrying: clipping rounds outward.** A
 cell is atomic, so a clip covering part of one either admits it or loses
@@ -249,7 +255,6 @@ Owned by the copyright holder:
 | `SH_Slider_AbsoluteSetButtons`: a groove click setting the value where it landed | *the interaction sweep* |
 | How to tell an icon from a picture, so a wide short image can be a placement rather than a shaded block -- the 2x2 threshold promotes neither 8x1 nor the 2x1 an icon becomes | §7.2 |
 | Whether a text selection keeps the desktop's `QPalette::Highlight` RGB while an item view's selection is reverse video | §7.2, §7.7 |
-| Whether the compositor sets a clip per layer, so a scroll area stops painting over its neighbours -- the engine honours one now, and Qt sets none | §8.7 |
 | The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
@@ -424,6 +429,15 @@ Three things it taught, which the next run should carry in:
   timer. A bounded `QEventLoop` with a 400 ms `singleShot` quit, and the
   frame came out correct. Every "after the release" assertion in a drag
   probe has this hazard, and it reads exactly like a rendering defect.
+- **A channel that answers is not evidence it is the right channel**, and
+  the clipping work paid for it twice. `QPainter::hasClipping()` reported
+  false on every draw of a scroll area's overflow, which is true and was
+  taken as "Qt sets no clip". Qt sets the **system** clip, a different
+  member of the same object, and honouring it fixed outright what had just
+  been written up as somebody else's work. The trace was real and the
+  number was right; the question was wrong. When a measurement says a
+  mechanism cannot be happening and the symptom says it is, the next thing
+  to doubt is which member you asked.
 - **When the defect is in what a call SAYS rather than what it writes,
   assert on the saying.** A null image composited nothing, which is
   correct, and printed two warnings per cell while doing it -- into the
@@ -4339,24 +4353,17 @@ Measured while writing the §11 benchmark, so the cost is known rather
 than guessed: `diff()` over a 200x60 frame is 0.154 ms against a 16 ms
 budget. Whichever way this is settled, it is not urgent.
 
-### 8.7 Channel A clips now, and that is not what fixes a scroll area
+### 8.7 Channel A clips, and the last thing this section said was wrong
 
 design.md §432 lists the paint engine's entry point as
 `updateState(const QPaintEngineState &) override; // pen/brush/font/clip →
 Attrs`. Three of those four were implemented. **The fourth is implemented
-now**, and the measurement that came with it corrects what this section
-used to say about why it mattered.
+now and the section is closed**, but it took two goes and the wrong turn
+is the part worth keeping.
 
-**What the clip was worth.** An application's own `setClipRect()` was
-ignored outright: a `QPainter` told to keep inside four cells filled
-twenty. It keeps inside them now -- five, not four, for the reason below
--- and fills, text, rules, boxes and placements all consult it. The clip
-is asked of the **painter** rather than reassembled from the state flags,
-because Qt composes `NoClip`, `ReplaceClip` and `IntersectClip` itself and
-a second implementation of that composition is a second thing to get
-wrong. It is the bounding **rectangle** rather than the region: of the
-3386 clip changes the suite makes, 13 involve more than one rectangle, and
-a bounding rectangle under-clips rather than losing content.
+**An application's own `setClipRect()` was ignored outright**: a
+`QPainter` told to keep inside four cells filled twenty. Fills, text,
+rules, boxes and placements consult the clip now.
 
 **Clipping rounds outward, and that is a rule rather than a detail.** A
 cell is atomic: a clip covering part of one either admits that cell or
@@ -4364,31 +4371,34 @@ loses content that was inside it. `to_cells()` rounds each edge to the
 nearest cell, which is right for placing a rectangle and wrong for
 admitting one -- used here it made a clip eight pixels tall against a
 nineteen-pixel cell round to nothing, and a `QLineEdit`'s text
-disappeared, because a text area's inset is a few pixels. Three checks
-went red on that and none of them said "clip"; the one that does is new.
+disappeared. Three checks went red on that and none of them said "clip".
 
-**And what it does not fix is the reason this section was urgent.** A
-`QScrollArea` still paints its scrolled-out content over its neighbours.
-Traced through the render: **every draw in that case reports
-`hasClipping() == false`.** Qt sets no clip at all when
-`QWidget::render()` walks children -- it maps each child to its position
-and paints it whole -- so there was never a clip for the engine to ignore
-there. The mechanism this section recorded was wrong: the engine ignoring
-clips was real, and it was not the cause of the overflow.
+**Then the wrong turn.** With the user clip honoured, a `QScrollArea`
+still painted its scrolled-out content over its neighbours, and every
+draw in that case reported `hasClipping() == false`. The conclusion
+written here was "Qt sets no clip when `QWidget::render()` walks
+children", and the remaining work was recorded as the compositor's.
 
-**What would fix it is the compositor, and it is now unblocked rather than
-done.** `Compositor::compose()` renders each top-level with one
-`render()` call and lets Qt walk the children, so the clip would have to
-be set per layer -- or per child, which `render()` gives no hook for. The
-engine honouring a clip is the half that had to exist first; setting one
-is a separate piece of work with its own question, which is whether the
-compositor can drive the walk itself without reimplementing what
-`render()` does.
+**Qt sets a clip. It is the SYSTEM clip, and this engine had never asked
+about it.** `QPaintEngine::systemClip()` is the channel Qt uses for widget
+rendering; `QPainter::hasClipping()` answers about the *user* clip and was
+honestly false the whole time. Measured across the suite: the system clip
+is set on essentially every widget draw, sometimes as four rectangles.
+Honouring it -- in device coordinates, so it does not go through the
+transform -- fixes both cases outright, with no compositor change at all:
+a scroll area's content stops at its viewport, and a child wider than its
+parent is clipped to it.
 
-Found by the `ICellPainted` sweep (§7.5) rather than by looking for it,
-and re-measured here: an ordinary `QLabel` in the same position overflows
-exactly as the interface did, which is what said it was neither the
-interface's doing nor the delegate's.
+So **a channel that answers is not evidence it is the right channel**,
+which `evidence.md` says in as many words and this section had to learn
+twice. The trace was real, the number was right, and the question was
+wrong.
+
+Two checks, both pairs, because "nothing drawn" passes any assertion about
+content failing to appear where it should not: the scrolled-out label must
+be visible when it is in view and absent from the row above the area when
+it is not, and a child eighteen cells wide inside a six-cell parent must
+arrive clipped rather than whole.
 
 
 ## 9. Build and repository conventions

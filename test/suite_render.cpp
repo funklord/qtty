@@ -215,6 +215,84 @@ int suite_render(bool record) {
 	}
 
 
+	// Qt clips a widget's children through the SYSTEM clip, not the user clip,
+	// and this engine asked only about the user one. So a QScrollArea's
+	// content was clipped by Qt and unclipped by us: scrolled out of view, it
+	// painted over whatever was above the area. Section 8.7 recorded that as
+	// "Qt sets no clip", which was this engine measuring the wrong channel --
+	// hasClipping() answers about the user clip and was honestly false.
+	//
+	// Both checks are pairs, because "nothing drawn" passes any assertion
+	// about content NOT appearing where it should not.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		QWidget sh;
+		sh.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *top = new QLabel(QStringLiteral("ABOVE THE AREA"), &sh);
+		top->setGeometry(0, 0, cw * 20, ch);
+		auto *area = new QScrollArea(&sh);
+		area->setGeometry(0, ch, cw * 20, ch * 3);
+		area->setFrameShape(QFrame::NoFrame);
+		auto *inner = new QWidget;
+		inner->resize(cw * 20, ch * 9);
+		auto *deep = new QLabel(QStringLiteral("XXXXXX"), inner);
+		deep->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+		deep->setGeometry(0, ch * 4, cw * 6, ch * 3);
+		area->setWidget(inner);
+		sh.resize(GridMetrics::cells(22, 6));
+		sh.show();
+		QCoreApplication::processEvents();
+
+		// In view first, so the check below cannot pass by the label never
+		// rendering at all.
+		area->verticalScrollBar()->setValue(4 * ch);
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer shown(22, 6);
+		Qtty::render_once(sh, shown);
+		const bool visible_when_in_view = shown.to_text().contains(QStringLiteral("XXXXXX"));
+
+		// Then scrolled one row further, so its only text row is above the
+		// viewport and lands on the label outside the scroll area.
+		area->verticalScrollBar()->setValue(5 * ch);
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer hidden(22, 6);
+		Qtty::render_once(sh, hidden);
+		const QString first = hidden.to_text().section(QLatin1Char('\n'), 0, 0);
+		if (visible_when_in_view && first.startsWith(QStringLiteral("ABOVE THE AREA")))
+			printf("PASS: a scroll area's content does not paint outside it\n");
+		else {
+			printf("FAIL: a scroll area's content does not paint outside it\n"
+			       "      condition: in view %d, first row '%s'\n",
+			       int(visible_when_in_view), qPrintable(first));
+			++r;
+		}
+
+		// The same rule without any scrolling: a child wider than its parent
+		// is clipped to it. Eight cells rather than six is the outward
+		// rounding the clip does on purpose; what matters is that eighteen
+		// cells of label do not arrive.
+		QWidget h2;
+		h2.setAttribute(Qt::WA_DontShowOnScreen);
+		h2.resize(GridMetrics::cells(20, 2));
+		auto *box = new QWidget(&h2);
+		box->setGeometry(0, 0, cw * 6, ch);
+		auto *over = new QLabel(QStringLiteral("OVERFLOWING"), box);
+		over->setGeometry(0, 0, cw * 18, ch);
+		h2.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer b2(20, 2);
+		Qtty::render_once(h2, b2);
+		const QString row = b2.to_text().section(QLatin1Char('\n'), 0, 0).trimmed();
+		if (row.startsWith(QStringLiteral("OVERFLO")) && row.size() <= 8)
+			printf("PASS: a child wider than its parent is clipped to it\n");
+		else {
+			printf("FAIL: a child wider than its parent is clipped to it\n"
+			       "      condition: row '%s'\n", qPrintable(row));
+			++r;
+		}
+	}
+
+
 	// ---- ICellPainted (section 5.3, risk R5) ---------------------------------
 	{
 		QWidget host;

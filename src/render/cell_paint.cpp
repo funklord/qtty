@@ -149,25 +149,35 @@ void CellPaintEngine::updateState(const QPaintEngineState &s) {
 // safe direction on a grid, and it is rare: of 3386 clip changes the suite
 // makes, 13 involve more than one rectangle.
 std::optional<QRect> CellPaintEngine::clip_cells() const {
+	// Outward, which is the whole of why this does not reuse to_cells(): a
+	// cell is atomic, so a clip covering part of one either admits that cell
+	// or loses content that was inside it. to_cells() rounds each edge to the
+	// NEAREST cell, which is right for placing a rectangle and wrong for
+	// admitting one -- used here it made a clip eight pixels tall against a
+	// nineteen-pixel cell round to nothing, and a QLineEdit's text vanished.
+	const auto outward = [this](const QRectF &device_px) {
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		const QRectF m = device_px.translated(dev_->origin);
+		const int l = int(std::floor(m.left() / cw)), t = int(std::floor(m.top() / ch));
+		return QRect(l, t, int(std::ceil(m.right() / cw)) - l + 1,
+		             int(std::ceil(m.bottom() / ch)) - t + 1);
+	};
+
+	std::optional<QRect> clip;
+	// The SYSTEM clip, which is the one Qt actually uses for widgets and the
+	// one this engine never asked about. Measured: rendering a window sets it
+	// on every child and leaves the user clip alone, so a scroll area's
+	// content was clipped by Qt and unclipped by us. It is in device
+	// coordinates already, so it does not go through the transform.
+	const QRegion sys = systemClip();
+	if (!sys.isEmpty()) clip = outward(QRectF(sys.boundingRect()));
+
 	const QPainter *p = painter();
-	if (!p || !p->hasClipping()) return std::nullopt;
-	// Rounded OUTWARD, which is the whole of why this does not reuse
-	// to_cells(). A cell is atomic: a clip covering part of one either admits
-	// that cell or it does not, and admitting it draws a little more than was
-	// allowed while refusing it loses content that was. Measured the wrong way
-	// round first -- to_cells() rounds each edge to the NEAREST cell, so a
-	// clip eight pixels tall against a nineteen-pixel cell rounded to nothing
-	// and a QLineEdit's text disappeared, which is a clip thinner than a cell
-	// being read as a clip that admits nothing.
-	//
-	// Same direction as taking the bounding rectangle rather than the region:
-	// under-clip, never over-clip.
-	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
-	const QRectF m = xf_.mapRect(p->clipBoundingRect()).translated(dev_->origin);
-	const QRect out(int(std::floor(m.left() / cw)), int(std::floor(m.top() / ch)),
-	                int(std::ceil(m.right() / cw)) - int(std::floor(m.left() / cw)) + 1,
-	                int(std::ceil(m.bottom() / ch)) - int(std::floor(m.top() / ch)) + 1);
-	return out;
+	if (p && p->hasClipping()) {
+		const QRect user = outward(xf_.mapRect(p->clipBoundingRect()));
+		clip = clip ? clip->intersected(user) : user;
+	}
+	return clip;
 }
 
 QRect CellPaintEngine::to_cells(const QRectF &r) const {
