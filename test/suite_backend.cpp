@@ -121,6 +121,27 @@ int suite_backend() {
 	feed("\033[<32;7;3M");
 	CHECK(rec.mice.size() == 1 && rec.mice[0].motion, "drag decodes as motion");
 
+	// The whole button word, not just its low two bits. Bit 128 marks buttons
+	// 8..11 and masking it off was an impersonation rather than a fallback:
+	// 128 became a LEFT press, 129 a middle one and 130 a RIGHT one, which
+	// fires a context menu. Low bits 3 is the protocol's "no button" and is
+	// now 0 rather than a fourth button number.
+	//
+	// Asserted as the relationship that was broken -- the extended buttons are
+	// distinct from the plain ones and from each other -- rather than as four
+	// literals, since the numbering is this decoder's own.
+	feed("\033[<128;5;5M");
+	const int back = rec.mice.isEmpty() ? -1 : rec.mice[0].button;
+	feed("\033[<129;5;5M");
+	const int fwd = rec.mice.isEmpty() ? -1 : rec.mice[0].button;
+	feed("\033[<130;5;5M");
+	const int ext = rec.mice.isEmpty() ? -1 : rec.mice[0].button;
+	CHECK(back > 3 && fwd > 3 && ext > 3 && back != fwd && fwd != ext,
+	      "an extended mouse button is not one of the first three");
+	feed("\033[<35;5;5M");
+	CHECK(rec.mice.size() == 1 && rec.mice[0].motion && rec.mice[0].button == 0,
+	      "and a bare motion report carries no button at all");
+
 	// -- bracketed paste. The point of the mode is that a newline inside the
 	//    paste is text and not Return, so that is the case worth checking.
 	feed("\033[200~hello\nworld\033[201~");

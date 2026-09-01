@@ -776,7 +776,21 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 			// would leave a button stuck down for the rest of the session.
 			m.wheel = (b & 1) ? -1 : 1;
 		} else {
-			m.button = (b & 3) + 1;               // 1 left, 2 middle, 3 right
+			// 1 left, 2 middle, 3 right, 4..7 the extended buttons, 0 none.
+			//
+			// Bit 128 is what marks buttons 8..11, and masking it off was not
+			// a fallback but an impersonation: a back-button click arrived as
+			// 128 & 3 == 0, so it WAS a left press, forward WAS a middle
+			// press, and button 10 WAS a right press -- which fires a context
+			// menu. The router's "anything unrecognised is left" never saw
+			// them, because the collapse happened here, one layer earlier.
+			//
+			// Low bits 3 is the protocol's "no button", which arrives on a
+			// bare motion report. It is 0 rather than a button number, so the
+			// router can say Qt::NoButton instead of guessing one.
+			if (b & 128)          m.button = 4 + (b & 3);
+			else if ((b & 3) == 3) m.button = 0;
+			else                   m.button = (b & 3) + 1;
 			m.press = (final == 'M') && !m.motion;
 			m.release = (final == 'm');
 		}

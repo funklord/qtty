@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-682 checks, 0 failures, under three configurations: the offscreen
+684 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -328,7 +328,8 @@ Owned by the copyright holder:
 |---|---|
 | A message box's severity icon. The mechanism is now measured and has no open question -- a `QIconEngine` that registers each pixmap it mints, consulted through the `cacheKey()` the placement already carries. What is left is whether a warning triangle should become a glyph, taken against a mosaic that is **faithful and still unreadable** | *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed. All four candidate behaviours are printed now -- and `Left\|Middle` **removes paging** rather than adding anything, unless `SH_Slider_PageSetButtons` moves it to the right button | *the interaction sweep* |
-| Whether an unrecognised mouse button should be dropped rather than delivered as a left click. `qt_button()` maps every unknown value to `Qt::LeftButton`, which its comment calls the harmless direction -- it was not harmless in the slider measurement, where it invented a behaviour and put it in a table | *the interaction sweep* |
+| Mouse **modifiers** are decoded and thrown away: shift, meta and control all arrive as a plain click, so an item view cannot be extend-selected or toggle-selected | §7.1 |
+| The **horizontal wheel** is delivered as a vertical one -- SGR 66 and 67 come out identical to 64 and 65, so scrolling sideways scrolls up and down | §7.1 |
 | Whether the "too small to be a picture" rule moves to the backend. Measured since: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()` rather than a structural change -- and no widget icon reaches the branch today | §7.2 |
 | The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work. The exposure is now **measured** and **guarded** rather than feared: 7 of 102 installed families give the 10x19 the fixtures assume, and a check names it | §7.9, §11 |
 
@@ -1325,6 +1326,54 @@ Still missing:
   only tested for the menu would have read this as a feature nobody had
   written, when what was actually there was a misfire.
 
+  **And the same misfire was still there one layer down, hiding behind
+  the fix.** `AnsiBackend` wrote `m.button = (b & 3) + 1`, and SGR's
+  button word does not fit in two bits: **bit 128 marks buttons 8..11**.
+  Masked off, `128` -- a back-button click -- became button 1 and so a
+  LEFT press; `129`, forward, became a middle press; `130` became a
+  **right** press, which now opens a context menu. The whole word,
+  decoded and printed:
+
+      word  what it is          button  motion press wheel
+         0  left press               1       0     1     0
+         2  right press              3       0     1     0
+         3  low bits 3 (none)        4       0     1     0
+         4  shift+left               1       0     1     0
+        16  ctrl+left                1       0     1     0
+        35  bare motion              4       1     0     0
+        64  wheel up                 0       0     0     1
+        66  wheel left               0       0     0     1
+       128  button 8 (back)          1       0     1     0
+       129  button 9 (fwd)           2       0     1     0
+       130  button 10                3       0     1     0
+
+  **This had been written up as an open question about the router's
+  fallback**, on the strength of a probe that passed button 4 and got a
+  left click. That attribution was wrong and is withdrawn: `qt_button()`'s
+  "anything unrecognised is left" never saw an extended button, because
+  the collapse happened in the decoder one layer earlier. The fallback was
+  harmless; what it was defending was not. **Where the information is
+  thrown away is where it has to be kept** -- the same sentence the
+  clipping and the picture-rule entries arrived at, and the third time
+  this document has had to say it.
+
+  Fixed at the decoder: bit 128 gives 4..7, low bits 3 gives 0, and
+  `qt_button()` carries those to `Qt::BackButton`, `Qt::ForwardButton`,
+  the two extras and `Qt::NoButton`. Faithful delivery rather than
+  dropping, which is what this tree already decided when it stopped
+  sending `Qt::LeftButton` for everything -- a widget ignores a button it
+  does not handle, and nothing activates spuriously.
+
+  **Two more defects are in that table and are NOT fixed here**, because
+  each is its own change and sweeping them in would misrepresent both.
+  They are in the open-questions index instead. **Modifiers are decoded
+  and discarded**: 4, 16 and 20 are shift-, control- and
+  control-shift-click, and all three come out as a plain left press, so an
+  item view cannot be extend-selected or toggle-selected from a terminal.
+  **The horizontal wheel is delivered as a vertical one**: 66 and 67 are
+  wheel-left and wheel-right and decode identically to 64 and 65, so
+  scrolling sideways scrolls up and down.
+
 **Compositor and FrameScheduler -- done.** This was the largest
 correctness gap in the tree: `compose()` rendered the tracked window and
 the router's popup list, walked no top-levels, and drew no modal. Since
@@ -1747,11 +1796,15 @@ one measured and three imagined.
 first run of this measurement reported the right button paging like the
 left, which would have been a routing defect. It was the probe: qtty
 numbers buttons 1 left, 2 middle, **3 right**, and the probe passed 4.
-`qt_button()` maps anything unrecognised to `Qt::LeftButton` -- a
-fallback its own comment calls "the harmless direction to be wrong in".
-It was not harmless here: it invented a behaviour that does not exist and
-put it in a table, and only the fact that the previously recorded column
-disagreed caught it.
+`qt_button()` maps anything unrecognised to `Qt::LeftButton`, so the
+probe invented a behaviour that does not exist and put it in a table;
+only the previously recorded column disagreeing caught it.
+
+**That was written up as an open question about the fallback, and the
+attribution was wrong.** Following it found something larger and it is
+in §7.1: the fallback was never the mechanism, because the *decoder*
+folds the extended buttons onto the first three before the router sees
+anything.
 
 **Qt's standard iconography has no route to a glyph, and that is a
 decision rather than a defect.** Three measurements, taken because a

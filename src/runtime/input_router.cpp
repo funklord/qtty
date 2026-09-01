@@ -240,13 +240,23 @@ void InputRouter::on_key(const KeyEvent &k) {
 // nothing, and no context menu could ever be asked for. Measured: a right
 // click on a QPushButton emitted clicked().
 //
-// Anything unrecognised is left, which is what the previous behaviour was for
-// every button and is the harmless direction to be wrong in -- a wheel event
-// leaves button at 0 and does not reach here.
+// The extended buttons arrive as 4..7 and 0 means "no button", both since the
+// backend stopped folding them onto the first three. The fallback below is
+// still left, and the sentence that used to stand here called that "the
+// harmless direction to be wrong in" -- which was true of the fallback and
+// false of the case it was defending. A back-button click never reached this
+// switch as an unknown: the DECODER had already made it a left press. Where
+// the information is thrown away is where it has to be kept, and that is one
+// layer earlier.
 static Qt::MouseButton qt_button(int button) {
 	switch (button) {
+	case 0:  return Qt::NoButton;          // the protocol's "no button"
 	case 2:  return Qt::MiddleButton;
 	case 3:  return Qt::RightButton;
+	case 4:  return Qt::BackButton;
+	case 5:  return Qt::ForwardButton;
+	case 6:  return Qt::ExtraButton1;
+	case 7:  return Qt::ExtraButton2;
 	default: return Qt::LeftButton;
 	}
 }
