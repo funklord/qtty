@@ -171,11 +171,26 @@ int suite_render(bool record) {
 		Qtty::CellBuffer clipped(20, 2), open(20, 2);
 		fill_with(true, clipped);
 		fill_with(false, open);
-		// Five, not four: the clip rounds OUTWARD, so a cell it covers in part
-		// is admitted whole. Asserted as a range rather than a number because
-		// the rule is "no more than a cell of slack", not a magic 5.
+		// Four, exactly. The clip is QRect(0, 0, cw * 4, ch) -- pixels 0..39
+		// on a ten-pixel cell, which is four whole cells with nothing
+		// part-covered, so outward rounding has nothing to round.
+		//
+		// This said "Five, not four: the clip rounds OUTWARD, so a cell it
+		// covers in part is admitted whole", and asserted a range so that
+		// either would pass. There was no part-covered cell; the fifth was
+		// clip_cells() adding one cell too many on the far edge, and the
+		// sentence explaining it made the wrong number look deliberate --
+		// the same way section 7.8's child check allowed eight cells for a
+		// six-cell parent and called the slack intentional. Two comments,
+		// one off-by-one, and a range wide enough to hide it in both.
 		const int c = filled(clipped), o = filled(open);
-		if (c >= 4 && c <= 5 && o == 20)
+		// Printed, because a range that accepts 4 or 5 cannot say which one
+		// the code gives -- and the sibling check in section 7.8 allowed
+		// eight cells for a six-cell parent, called the slack deliberate, and
+		// hid an off-by-one in this very function for as long as it existed.
+		// A tolerance is only honest when the value inside it is visible.
+		printf("info: a clip four cells wide admits %d cells\n", c);
+		if (c == 4 && o == 20)
 			printf("PASS: a clip trims what is drawn, and no clip trims nothing\n");
 		else {
 			printf("FAIL: a clip trims what is drawn, and no clip trims nothing\n"

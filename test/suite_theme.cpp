@@ -26,6 +26,10 @@ int suite_theme() {
 	CHECK(Color::rgb(qRgb(0, 0, 0)).to_xterm256() == 16, "black -> cube 16");
 	CHECK(Color::rgb(qRgb(255, 255, 255)).to_xterm256() == 231, "white -> cube 231");
 	int grey = Color::rgb(qRgb(128, 128, 128)).to_xterm256();
+	// Which of the two, printed. The check accepts either because both are
+	// defensible answers for a mid grey, but accepting either also means
+	// nothing here notices if the answer changes.
+	printf("info: mid grey resolves to xterm index %d\n", grey);
 	CHECK(grey >= 232 || grey == 102, "mid grey -> grey ramp or grey cube cell");
 
 	// section 6 requires the xterm-256 match to be made in CIELAB, not in RGB, and

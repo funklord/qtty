@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-744 checks, 0 failures, under three configurations: the offscreen
+745 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -490,6 +490,18 @@ one nobody can re-take. `make check`, `make test-platforms` and
 `make coverage F=<file>` are in the Makefile and documented there. These
 are the ones that were typed by hand:
 
+**The check count in §0a**, which is a grep and therefore only as good as
+the stream it greps:
+
+    ./build-test/qtty-tests 2>/dev/null | grep -c '^PASS:'
+
+`2>/dev/null` is not tidiness. The offscreen platform writes
+`This plugin does not support propagateSizeHints()` to **stderr**, and in
+a merged stream it lands mid-line and cuts a `PASS:` line in half -- two
+runs of one binary counted 744 and 745 for that reason alone. A
+measurement taken through a stream somebody else is writing to is not a
+measurement of the thing.
+
 **Whole-tree coverage.** `make coverage` answers for one file; this is the
 tree. **Delete the build directory first** -- `.gcda` files accumulate
 counts across runs, so a reused one reports the union of every suite that
@@ -702,6 +714,55 @@ Three things it taught, which the next run should carry in:
   is finished.** What would come next is not another surface but another
   configuration: a second Qt version (§0e), and whatever a real terminal
   says that offscreen does not.
+
+**A tolerance is only honest when the value inside it is visible.** The
+off-by-one above was found in spite of two checks, not by them: one
+allowed eight cells for a six-cell parent and called the slack *"the
+outward rounding the clip does on purpose"*, and another accepted four
+**or** five cells for a four-cell clip and said *"Five, not four: the
+clip rounds OUTWARD, so a cell it covers in part is admitted whole."*
+Neither cell was part-covered. Both sentences explained a wrong number,
+and a reader who wanted to know which number the code produced could not
+find out from a green run.
+
+So every numeric tolerance in the suite now **prints what it got**, the
+way the frame budget always has:
+
+    info: mid grey resolves to xterm index 244
+    info: a clip four cells wide admits 4 cells
+    info: PageUp scrolled 95 pixels, 5 rows (floor is five)
+    info: worst channel error in the mosaic is 3 of a tolerated 3
+    info: one keystroke dirties 1 of 12000 cells
+
+Reading them is the point, and it separates three kinds at a glance:
+
+- **Headroom.** A keystroke dirties 1 cell against a ceiling of 8. The
+  tolerance exists so a wide cluster or a scrolled field is not a
+  failure, and nothing is hiding in it.
+- **A limit the code just meets.** The mosaic's worst channel error is
+  3 against a tolerance of 3. That is the shape to check rather than
+  assume -- it is either a real bound or a number somebody raised until
+  the check passed. Here it is real: sixel states a colour as three
+  PERCENTAGES, so a channel round-trips through 101 values, 255/100 is
+  2.55 per step, and truncating puts the worst case at 3. It cannot do
+  better without leaving sixel's colour space. Recorded so the next
+  reader does not have to derive it again.
+- **A dead alternative.** Mid grey is accepted as *"the grey ramp or the
+  grey cube cell"* and is always 244, the ramp. The second branch has
+  never fired.
+
+The clip check is now `c == 4`, and the fifth cell it used to allow is
+the fault §7.2 records. **A range wide enough to admit the bug is a range
+that will admit it again.**
+
+**And count the checks with stderr separated.** The count in §0a is taken
+by grepping `^PASS:`, and the offscreen platform writes warnings --
+`This plugin does not support propagateSizeHints()` -- to stderr, which
+lands mid-line in a merged stream and cuts a PASS line in half. Two runs
+of the same binary counted 744 and 745 for that reason alone. The
+command is `qtty-tests 2>/dev/null | grep -c '^PASS:'`, and §0c carries
+it. **A measurement taken through a stream somebody else is writing to
+is not a measurement of the thing.**
 
 **And a check that passes is not a check that passes twice.** Two of these
 were found by accident on 2026-09-01, when the same binary -- byte for

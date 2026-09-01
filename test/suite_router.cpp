@@ -692,6 +692,8 @@ int suite_router() {
 		r.on_key({Qt::Key_PageUp, {}, false, false, false});
 		const int paged = before_page - area->verticalScrollBar()->value();
 		r.on_key({Qt::Key_Down, {}, false, false, false});
+		printf("info: PageUp scrolled %d pixels, %d rows (floor is five)\n",
+		       paged, paged / ch);
 		CHECK(paged >= 5 * ch,
 		      "PageUp scrolls five rows, not one");
 	}

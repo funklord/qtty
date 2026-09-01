@@ -386,6 +386,16 @@ int suite_graphics() {
 				}
 		CHECK(geometry && untouched_wrong == 0,
 		      "sixel round-trip: transparent source pixels stay unpainted (P2=1)");
+		// Printed because it sits exactly ON the tolerance, which is the shape
+		// worth checking rather than assuming: a limit that the code just
+		// meets is either a real bound or a number somebody raised until the
+		// check passed. Here it is a real bound. Sixel states a colour as
+		// three PERCENTAGES, so a channel round-trips through a scale of 101
+		// values -- 255/100 is 2.55 per step, and truncating rather than
+		// rounding puts the worst case at 3. It cannot do better without
+		// leaving sixel's own colour space.
+		printf("info: worst channel error in the mosaic is %d of a tolerated 3"
+		       " (sixel states colour in percent: 255/100 per step)\n", worst);
 		CHECK(geometry && painted_wrong == 0 && worst <= 3,
 		      "sixel round-trip: every opaque pixel within 3/255 of the source");
 
