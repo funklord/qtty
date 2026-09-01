@@ -208,5 +208,61 @@ int suite_cells() {
 		      "and its luminance is measured from the colour it resolves to");
 	}
 
+	// ---- controls and zero-width characters (section 5.2) ----
+	{
+		// Measured, not assumed: a probe rendered a QLabel holding each of
+		// these and printed the row. Qt's layout turned the carriage return
+		// into a space by itself and passed NUL, BEL and ESC through as
+		// themselves, and AnsiBackend writes Cell::ch to the wire unaltered
+		// -- so an application string could put an escape introducer into the
+		// terminal's stream and have the text after it read as a sequence.
+		CellBuffer b(6, 1);
+		b.text(0, 0, QStringLiteral("a\x1b" "b"), Color(), Color(), Attrs());
+		CHECK(b.at(1, 0).ch == QStringLiteral(" "),
+		      "an escape character reaches a cell as a space");
+		// The column is still spent, because Qt advanced by one laying it
+		// out. Dropping it here would put the buffer half a character out of
+		// step with the pixel positions Channel B measures against.
+		CHECK(b.at(2, 0).ch == QStringLiteral("b"),
+		      "and still costs the column Qt's layout gave it");
+		// Every control, not the one the probe happened to print: a check
+		// naming only ESC would pass with NUL and BEL still going out raw.
+		for (char32_t u : { char32_t(0x00), char32_t(0x07), char32_t(0x1b),
+		                    char32_t(0x7f), char32_t(0x9b) }) {
+			CellBuffer c(2, 1);
+			c.put_cluster(0, 0, QString(QChar(u)), Color(), Color(), Attrs());
+			if (c.at(0, 0).ch != QStringLiteral(" ")) {
+				printf("FAIL: control U+%04X reaches a cell as itself\n",
+				       unsigned(u));
+				++fails;
+			}
+		}
+		printf("PASS: no C0, C1 or DEL character reaches a cell as itself\n");
+	}
+	{
+		// A zero-width character was given a whole cell, which pushed
+		// everything after it one column right.
+		CHECK(cluster_width(QString(QChar(0x200b))) == 0,
+		      "a lone zero-width space occupies no column");
+		CellBuffer b(4, 1);
+		const int used = b.text(0, 0, QStringLiteral("a")
+		                        + QChar(0x200b) + QStringLiteral("b"),
+		                        Color(), Color(), Attrs());
+		CHECK(used == 2 && b.at(1, 0).ch == QStringLiteral("b"),
+		      "so the character after it keeps its column");
+		// Untouched, rather than blanked: the cell the dropped cluster would
+		// have landed on belongs to whatever was already there.
+		CellBuffer c(2, 1);
+		c.text(0, 0, QStringLiteral("z"), Color(), Color(), Attrs());
+		c.put_cluster(0, 0, QString(QChar(0xfeff)), Color(), Color(), Attrs());
+		CHECK(c.at(0, 0).ch == QStringLiteral("z"),
+		      "and writing one erases nothing");
+		// Only when the whole cluster is invisible. A joiner inside an emoji
+		// sequence belongs to a cluster that draws, and a rule reading the
+		// first character alone would have swallowed it.
+		CHECK(cluster_width(QString(QChar(0x200d)) + QStringLiteral("a")) == 1,
+		      "a joiner in front of a glyph does not make the glyph vanish");
+	}
+
 	return fails;
 }

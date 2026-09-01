@@ -15,9 +15,9 @@ open, and how to work in the tree. Where design.md holds the detail, this
 document states the substance in a sentence or two and cites the section
 number rather than restating it.
 
-## 0a. State, 2026-08-31
+## 0a. State, 2026-09-01
 
-720 checks, 0 failures, under three configurations: the offscreen
+727 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -710,6 +710,19 @@ fails, restore, confirm the count is zero. Two sabotages this session
 silently failed to apply -- their anchors matched twice -- and the green
 run that followed would have read as "the test does not discriminate" had
 the count not been checked.
+
+**Restore from a copy taken before the sabotage, never from `git
+checkout --`.** The obvious restore reverts to the *index*, and while the
+fix being defended is still uncommitted the index does not have it -- so
+the command that was supposed to undo one sabotaged line undid the whole
+change instead. That happened here between the first and second sabotage
+of the control-character fix: three helper functions, the width rule and
+the substitution were all gone, silently and with a clean exit status.
+Nothing was lost only because the edit had been made by a script that
+could be run again. `cp` the file to the scratch directory first, and
+`cp` it back; the same reasoning the global guidelines give for `git
+checkout --` in a shared tree applies with equal force to a session
+discarding its own work.
 
 ## 0e. What I would pick up next
 
@@ -4385,6 +4398,68 @@ What makes this a lens rather than three anecdotes is that the second and
 third were found by *asking the question*, not by meeting a symptom. The
 first was found by accident -- two copies of one rule disagreeing -- and
 the question is what it generalised to.
+
+**A fourth, of the same shape, on 2026-09-01: text a widget was given but
+nothing had ever put in a widget.** Every string in every fixture is
+printable. The probe rendered a `QLabel` holding each of nine awkward
+characters and printed the row -- tab, newline, carriage return, NUL,
+BEL, ESC, zero width space, right-to-left mark, an unassigned code point:
+
+    tab           [a_______b___]
+    newline       [a___________][b___________]
+    carriage ret  [a_b_________]
+    NUL           [a!b_________]
+    bell          [a!b_________]
+    escape        [a!b_________]
+    zero width    [a.b_________]
+    RTL mark      [a.b_________]
+
+(`_` a space, `!` a character below 0x20, `.` a character that shows
+nothing.) The width accounting was sound in all nine -- the widths of a
+row always summed to its column count, which is the invariant §5.2 rests
+on. Two other things were not.
+
+**Qt's layout is inconsistent with itself and the buffer inherited it.**
+A carriage return arrived as a space; NUL, BEL and ESC arrived as
+themselves and were stored in `Cell::ch` verbatim. `AnsiBackend` writes
+`Cell::ch.toUtf8()` to the wire unaltered, so `QLabel(QStringLiteral("a\x1bb"))`
+put an escape introducer into the terminal's stream and whatever followed
+it was read as a control sequence rather than as text. An application
+that displays a filename, a log line or a server's response -- none of
+which it wrote -- could steer the terminal through qtty. The fix
+substitutes a space for every C0, C1 and DEL character in
+`put_cluster()`, which is the single funnel every write passes through;
+a space is what the carriage return already became, and it keeps the
+column Qt's layout spent so Channel B's pixel positions stay in step.
+
+Substituted in the buffer rather than in the backend deliberately.
+`to_text()`, `to_snapshot()` and every fixture read `Cell::ch` directly,
+and a buffer holding an escape character is already wrong whichever
+backend writes it out -- a sanitising backend would leave the snapshots
+recording it and `NullBackend` passing it on.
+
+**A zero-width character was given a whole cell**, which pushed every
+character after it one column right. `cluster_width()` now returns 0 for
+a cluster whose characters are *all* zero width -- the soft hyphen, the
+U+200B..U+200F group, the bidi embedding, override and isolate controls,
+the word joiner group, and U+FEFF -- and `put_cluster()` returns without
+touching the cell. Judged on the whole cluster, not the first character:
+a joiner in front of a glyph is still a glyph, and a rule reading
+character zero alone would have swallowed it. Inside an emoji sequence a
+joiner belongs to its cluster and never arrives here alone.
+
+Dropping the bidi controls also takes away the display-spoofing trick
+that reorders text a reader trusts. That is a consequence, not the
+reason; the reason is that they are zero width, and it is the same reason
+as the rest of the list.
+
+`to_clusters()` advances by `cluster_width()` in both channels --
+`CellBuffer::text()` and `CellPaintEngine::drawTextItem()` both accumulate
+it rather than following Qt's per-glyph advances -- so a zero-width
+cluster costing nothing removes the shift rather than merely hiding the
+character. That was checked before the change, not after: if the engine
+had positioned each cluster from its own pixel x, dropping the cell would
+have left the shift in place and the fix would have been cosmetic.
 
 **The failure mode they share is a test suite selected to confirm correct
 behaviour.** Every check was written by someone who knew what the code

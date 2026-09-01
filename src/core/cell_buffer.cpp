@@ -26,11 +26,49 @@ static bool is_wide_codepoint(char32_t u) {
 	    || (u >= 0x20000 && u <= 0x3FFFD); // CJK Ext B+
 }
 
+// A character nothing can display and nothing should: the C0 controls, DEL,
+// and the C1 range. Qt's own text layout already turns a carriage return into
+// a space and leaves NUL, BEL and ESC as themselves, so three of them reached
+// Cell::ch verbatim -- and AnsiBackend writes Cell::ch to the wire unaltered.
+// An application putting an escape character in a QLabel was therefore
+// writing an escape introducer into the terminal's input stream, and whatever
+// text followed it was read as a control sequence rather than as text.
+//
+// A space is what the carriage return already became: one column, nothing
+// shown, and no meaning on the wire.
+static bool is_control(char32_t u) {
+	return u < 0x20 || u == 0x7f || (u >= 0x80 && u <= 0x9f);
+}
+
+// Characters meant to occupy no column at all. A lone one arrives as its own
+// grapheme cluster and was given a whole cell, which shifted every character
+// after it one column to the right. Inside an emoji sequence a joiner belongs
+// to its cluster and never reaches here alone, so this only ever sees the
+// stray ones.
+//
+// The bidi embedding, override and isolate controls are in the list for the
+// same reason as the rest -- they are zero width -- and dropping them also
+// takes away the display-spoofing trick that reorders text a reader trusts.
+static bool is_zero_width(char32_t u) {
+	return u == 0x00ad                     // soft hyphen
+	    || (u >= 0x200b && u <= 0x200f)    // ZWSP, ZWNJ, ZWJ, LRM, RLM
+	    || (u >= 0x202a && u <= 0x202e)    // bidi embedding and override
+	    || (u >= 0x2060 && u <= 0x2064)    // word joiner, invisible operators
+	    || (u >= 0x2066 && u <= 0x2069)    // bidi isolates
+	    || u == 0xfeff;                    // zero width no-break space
+}
+
 int cluster_width(QStringView cluster) {
 	if (cluster.isEmpty()) return 1;
 	char32_t first = cluster.at(0).unicode();
 	if (cluster.size() >= 2 && cluster.at(0).isHighSurrogate() && cluster.at(1).isLowSurrogate())
 		first = QChar::surrogateToUcs4(cluster.at(0), cluster.at(1));
+	// Every character zero width, and the cluster takes no column. One that
+	// merely starts with such a character does not qualify: a stray joiner
+	// followed by a real glyph is still a glyph.
+	bool all_zero = true;
+	for (QChar c : cluster) if (!is_zero_width(c.unicode())) { all_zero = false; break; }
+	if (all_zero) return 0;
 	if (is_wide_codepoint(first)) return 2;
 	// VS16 forces emoji presentation -> wide
 	for (QChar c : cluster) if (c.unicode() == 0xFE0F) return 2;
@@ -72,6 +110,15 @@ void CellBuffer::put_cluster(int x, int y, const QString &cluster,
                             Color fg, Color bg, Attrs attrs) {
 	if (x < 0 || y < 0 || x >= c_ || y >= r_) return;
 	const int w = cluster_width(cluster);
+	// Nothing to occupy: leave the cell exactly as it was, partner and all.
+	if (w == 0) return;
+	// A control never reaches a cell as itself. Substituted here rather than
+	// in the backend because to_text() and the snapshot fixtures read the
+	// buffer directly, and a buffer holding an escape character is already
+	// wrong whoever writes it out.
+	QString glyph = cluster;
+	if (!glyph.isEmpty() && is_control(glyph.at(0).unicode()))
+		glyph = QStringLiteral(" ");
 	// A width-2 cluster is a lead plus a continuation cell (section 5.2), and
 	// in the last column there is no continuation to have. Writing it anyway
 	// produced a cell claiming two columns in a one-column space: to_text()
@@ -97,7 +144,7 @@ void CellBuffer::put_cluster(int x, int y, const QString &cluster,
 	// A Default bg means "no opinion": glyphs written over a highlight fill
 	// keep it (selection rendering, section 17.2). Explicit backgrounds replace.
 	if (bg.kind() == Color::Default) bg = c.bg;
-	c.ch = cluster; c.fg = fg; c.bg = bg; c.attrs = attrs; c.width = quint8(w);
+	c.ch = glyph; c.fg = fg; c.bg = bg; c.attrs = attrs; c.width = quint8(w);
 	if (w == 2 && x + 1 < c_) {
 		Cell &cont = d_[y * c_ + x + 1];
 		cont = Cell{}; cont.ch.clear(); cont.width = 0;
