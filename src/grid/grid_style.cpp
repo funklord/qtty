@@ -341,18 +341,30 @@ static void draw_box(CellBuffer &b, const QRect &c, bool focused = false,
 	const QString tr = focused ? QStringLiteral("╗") : QStringLiteral("┐");
 	const QString bl = focused ? QStringLiteral("╚") : QStringLiteral("└");
 	const QString br = focused ? QStringLiteral("╝") : QStringLiteral("┘");
+	// Through writable(), because at() is the RAW accessor and is deliberately
+	// not clipped -- reads go through it too. Adding the buffer's clip and
+	// leaving this alone left every box in the library still unbounded, which
+	// a probe found immediately: a QGroupBox six cells wide and one row tall
+	// drew a complete twelve-cell box on the two rows BELOW itself, because
+	// subControlRect gives it a frame rect that needs a height it does not
+	// have. The clip caught the group box's title and not its frame.
+	auto put = [&](int x, int y, const QString &g) {
+		if (!b.writable(x, y)) return;
+		b.at(x, y).ch = g;
+		b.at(x, y).attrs |= a;
+	};
 	for (int x = c.left() + 1; x < c.right(); ++x) {
-		b.at(x, c.top()).ch = h;         b.at(x, c.top()).attrs |= a;
-		b.at(x, c.bottom()).ch = h;      b.at(x, c.bottom()).attrs |= a;
+		put(x, c.top(), h);
+		put(x, c.bottom(), h);
 	}
 	for (int y = c.top() + 1; y < c.bottom(); ++y) {
-		b.at(c.left(), y).ch = v;        b.at(c.left(), y).attrs |= a;
-		b.at(c.right(), y).ch = v;       b.at(c.right(), y).attrs |= a;
+		put(c.left(), y, v);
+		put(c.right(), y, v);
 	}
-	b.at(c.left(), c.top()).ch = tl;     b.at(c.left(), c.top()).attrs |= a;
-	b.at(c.right(), c.top()).ch = tr;    b.at(c.right(), c.top()).attrs |= a;
-	b.at(c.left(), c.bottom()).ch = bl;  b.at(c.left(), c.bottom()).attrs |= a;
-	b.at(c.right(), c.bottom()).ch = br; b.at(c.right(), c.bottom()).attrs |= a;
+	put(c.left(), c.top(), tl);
+	put(c.right(), c.top(), tr);
+	put(c.left(), c.bottom(), bl);
+	put(c.right(), c.bottom(), br);
 }
 
 GridStyle::GridStyle() : QProxyStyle(QStyleFactory::create(QStringLiteral("Fusion"))) {}

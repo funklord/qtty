@@ -15,9 +15,9 @@ open, and how to work in the tree. Where design.md holds the detail, this
 document states the substance in a sentence or two and cites the section
 number rather than restating it.
 
-## 0a. State, 2026-09-01
+## 0a. State, 2026-09-02
 
-740 checks, 0 failures, under three configurations: the offscreen
+743 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -3849,14 +3849,48 @@ the widget beside it; with the bound it truncates to "40", which is the
 honest rendering of a two-cell bar. The fixture's bar is three cells now,
 so the claim it makes is one it has room for.
 
-**Not fixed, and this is where it stops.** Four kinds still overdraw, all
-through **Channel B**: a check box's and a radio button's own label, a
-combo box, a group box (twelve cells at 6x1, the largest remaining), and
-a list view's frame. `CellPaintEngine` clips only when Qt sets a system
-clip, and Qt does not set one for a widget painting inside its own rect --
-it has no reason to, since on a pixel screen the widget's own backing
-store is the bound. That is the next piece of this, and it is the same
-sentence: *a control draws inside the widget it was given.*
+**The bound had a hole, and it was in `draw_box()`.** The clip caught
+`put_cluster()`, `text()` and `fill()` and not the box drawer, because
+that writes through `at()` -- the raw accessor, deliberately unclipped,
+since every read uses it too. So every frame in the library stayed
+unbounded, and reading *what* landed outside rather than counting it found
+this immediately: a `QGroupBox` six cells wide and **one row tall** drew a
+complete twelve-cell box on the two rows below itself, because
+`subControlRect` hands it a frame rect needing a height it does not have.
+The clip had caught that group box's title and not its frame.
+
+    group box 6x1, before: (2,3)'┌' (3,3)'─' (4,3)'─' (5,3)'─' (6,3)'─'
+                           (7,3)'┐' (2,4)'└' ... (7,4)'┘'
+    group box 6x1, after:  nothing
+
+**Print what leaked, not how much.** The count said "OUT12" and three
+different faults were hiding in one column of numbers. The cells said
+which was which in one reading.
+
+**What is left is two things, and neither is this fault.** Measured after
+the fix, the residue is exactly:
+
+- **One cell of text past the right edge**, on a check box, a radio
+  button, a combo box and a group box -- always exactly one, always the
+  next character of a label. That is `CellPaintEngine`'s own stated rule:
+  *"a cluster straddling the edge is kept whole, which draws at most one
+  cell more than allowed... under-clip rather than lose a glyph."* It is
+  a decision rather than an oversight, and the decision was taken before
+  anything knew the cell belongs to the widget next door. Worth
+  revisiting on that ground -- the style elides everywhere else, and
+  corrupting a neighbour is worse than truncating a label -- but it is a
+  reversal of a recorded choice and belongs in its own change.
+- **A child drawn outside its parent.** A `QListWidget` one row tall put
+  its horizontal scroll bar's `◀█▶` on the row *above* itself. Qt gives a
+  scroll bar a position its parent has no room for, and nothing clips a
+  child to its parent: on a pixel screen the window system does that, and
+  here `render(DrawChildren)` paints the whole tree in one pass with no
+  per-child bound. §7.8 has a check that a child eighteen cells wide
+  inside a six-cell parent arrives clipped, so the right and bottom edges
+  are covered and this one went the other way.
+
+Both are the same sentence as the rest -- *a control draws inside the
+widget it was given* -- and both are next.
 
 ### 7.3 Graphics tier (design.md §17.3)
 

@@ -2681,6 +2681,79 @@ int suite_widgets() {
 			printf("PASS: and none of them wrote a cell outside its own rectangle\n");
 	}
 
+
+	// ---- a frame that does not fit is not drawn somewhere it does ----
+	{
+		// The clip on CellBuffer bounded put_cluster(), text() and fill() and
+		// left draw_box() alone, because draw_box() writes through at() --
+		// the RAW accessor, deliberately unclipped, since reads use it too.
+		// So every box in the library stayed unbounded, and a probe found it
+		// at once: a QGroupBox six cells wide and one row TALL drew a
+		// complete twelve-cell box on the two rows below itself, because
+		// subControlRect hands it a frame rect needing a height it does not
+		// have. The clip had caught the group box's title and not its frame.
+		const int cols = 16, rows = 6;
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(cols, rows));
+		host.show();
+		QCoreApplication::processEvents();
+		CellBuffer empty(cols, rows);
+		render_once(host, empty);
+
+		auto *box = new QGroupBox(QStringLiteral("Box"), &host);
+		box->setMinimumSize(0, 0);
+		box->setGeometry(2 * GridMetrics::cw(), 2 * GridMetrics::ch(),
+		                 6 * GridMetrics::cw(), 1 * GridMetrics::ch());
+		box->show();
+		QCoreApplication::processEvents();
+		CellBuffer b(cols, rows);
+		render_once(host, b);
+
+		// Box-drawing characters specifically, on the rows the widget does
+		// not own. Counting every changed cell would fold in the one-cell
+		// text overhang that CellPaintEngine still produces by its own
+		// stated rule -- a different question, in section 7.2 -- and this
+		// check would then be about two things and diagnose neither.
+		int frame_outside = 0, frame_inside = 0;
+		for (int y = 0; y < rows; ++y)
+			for (int x = 0; x < cols; ++x) {
+				const QString &g = b.at(x, y).ch;
+				if (g.isEmpty()) continue;
+				const char32_t u = g.at(0).unicode();
+				if (u < 0x2500 || u > 0x257f) continue;      // Box Drawing
+				if (y == 2) ++frame_inside; else ++frame_outside;
+			}
+		CHECK(frame_outside == 0,
+		      "a group box too short for a frame draws none of it elsewhere");
+		// x() >= 0, not !isNull(): findText returns {-1,-1} when it finds
+		// nothing, and QPoint::isNull() asks whether both are ZERO -- so the
+		// obvious spelling is true whether the text is there or not.
+		CHECK(findText(b, QStringLiteral("Box")).x() >= 0,
+		      "and still says its name, which is the part that fits");
+		(void)frame_inside;
+
+		// The pairing, and the first attempt at it was not one. "Still says
+		// its name" survives draw_box() drawing nothing at all, because a
+		// group box's title comes through Channel B -- sabotaging draw_box
+		// to a no-op left that check green. What pairs with "no frame
+		// outside" is a frame INSIDE, at a size with room for one.
+		box->setGeometry(2 * GridMetrics::cw(), 2 * GridMetrics::ch(),
+		                 6 * GridMetrics::cw(), 3 * GridMetrics::ch());
+		QCoreApplication::processEvents();
+		CellBuffer tall(cols, rows);
+		render_once(host, tall);
+		int frame_seen = 0;
+		for (int y = 0; y < rows; ++y)
+			for (int x = 0; x < cols; ++x) {
+				const QString &g = tall.at(x, y).ch;
+				if (g.isEmpty()) continue;
+				const char32_t u = g.at(0).unicode();
+				if (u >= 0x2500 && u <= 0x257f) ++frame_seen;
+			}
+		CHECK(frame_seen >= 8, "while one with room for a frame draws one");
+	}
+
 	return fails;
 }
 
