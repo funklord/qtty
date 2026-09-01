@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-663 checks, 0 failures, under three configurations: the offscreen
+664 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -172,6 +172,16 @@ decision §8.1 records as open, so the axis is priced rather than taken.
 by transitive luck on a class Qt 6 moved between modules. That include is
 right on every version and is fixed.
 
+**A text selection is reverse video now, like every other selection in the
+program.** It was the desktop's `QPalette::Highlight` as a literal RGB,
+which `qtty/theme.h`'s own rule forbids -- the default theme keeps every
+role at `Color::Default` and marks emphasis with attrs, not colour -- and
+which made the commonest highlight in a program depend on which desktop
+launched it. That is the fifth §0b entry in a row whose answer was already
+in the tree. The engine also learned what `CellItemDelegate` already knew:
+**reverse is a property of the cell, not of whoever wrote it last**, so a
+glyph landing on a reversed cell keeps it.
+
 **`GridSnap` is on, and §7.8's decision is taken** -- design.md §7's Tier
 1 promise ("the same layout compacts automatically") is true now rather
 than nearly true. What settled it was measuring the effect on a real tree
@@ -271,7 +281,6 @@ Owned by the copyright holder:
 | Whether a one-row `QLineEdit` should be bracketed as the combo and spin box already are, at the measured cost of a second bracket inside each of those | §7.2, *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: a groove click setting the value where it landed | *the interaction sweep* |
 | How to tell an icon from a picture, so a wide short image can be a placement rather than a shaded block -- the 2x2 threshold promotes neither 8x1 nor the 2x1 an icon becomes | §7.2 |
-| Whether a text selection keeps the desktop's `QPalette::Highlight` RGB while an item view's selection is reverse video | §7.2, §7.7 |
 | The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
@@ -2738,17 +2747,40 @@ answers, exactly as the disabled item view did.
   glyph is the fault that branch exists to prevent. Telling an icon from a
   picture is a decision, not a threshold to pick in passing. **Owned by
   the copyright holder.**
-- **A text selection is the desktop's colour, and an item view's is
-  not.** Dragging across a `QLineEdit` highlights with `bg=#308cc6` --
-  measured, and equal to `QPalette::Highlight` on this machine -- while a
-  selected item view row is reverse video. Both are deliberate:
-  `fill_rectf()` matches the `Highlight` role, asks the theme, gets
-  `Color::Default`, and then falls back to the application's own RGB so
-  that a selection is visible under a theme that names nothing. The
-  consequence is that **the most common highlight in the program is
-  whatever the desktop's palette says**, and disagrees with the other
-  selection in the same program. It is OQ-7 and §7.7 arriving somewhere
-  that matters more than a gradient. **Owned by the copyright holder.**
+- ~~**A text selection is the desktop's colour, and an item view's is
+  not.**~~ **Fixed, and `qtty/theme.h` had already said so.** Dragging
+  across a `QLineEdit` highlighted with `bg=#308cc6` -- measured, and
+  equal to `QPalette::Highlight` on this machine -- while a selected item
+  view row was reverse video. Two visual languages for one concept,
+  confirmed side by side in a single frame.
+
+  The rule was written down before the defect: the default theme keeps
+  every role at `Color::Default` and **marks emphasis with attrs, not
+  colour**. `GridStyle` obeys it at the item view, the menu item and the
+  tab; one line in `fill_rectf()` did not. **A `Highlight` the theme has
+  not coloured is reverse video now.**
+
+  The fallback that produced the colour is right for what it was written
+  for, and this was not it. It exists for a colour with **no palette role
+  behind it** -- Channel B output, something the application coloured
+  itself -- and `Highlight` is a role, matched, whose themed answer was
+  "the terminal's own scheme". Taking the desktop's literal RGB overrode
+  the theme rather than standing in for it.
+
+  **The second half is the engine learning what the delegate already
+  knew.** Qt fills a selection and then draws the text over it as two
+  unrelated calls, so the fill's attribute was set and the text's write
+  replaced it -- the selection came out with no colour and no attribute at
+  all. `CellItemDelegate` carries the same rule for the row it draws and
+  says why: text written over a reverse-video cell must carry the
+  attribute too. `drawTextItem()` writes cluster by cluster now and keeps
+  a reverse that is already on the cell, because **reverse is a property
+  of the cell rather than of whoever wrote it last**.
+
+  Checked as an agreement rather than as two facts: both selections in one
+  frame, and their cells must match. Separately, either side could drift
+  and both checks would stay green.
+
 
 The sweep also found the clipping disagreement now recorded as §8.7,
 which is neither of the above: a header resized past its viewport puts a

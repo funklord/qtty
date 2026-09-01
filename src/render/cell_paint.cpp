@@ -248,7 +248,21 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 		text = visible;
 		if (text.isEmpty()) return;
 	}
-	dev_->buffer().text(col, row, text, pen_to_fg(pen_), Color(), a);
+	// Cluster by cluster, so that a glyph landing on a cell that is already
+	// reversed stays reversed. CellItemDelegate carries the same rule for the
+	// row it draws and says why: text written over a reverse-video cell must
+	// carry the attribute too, or the cell's own reverse video hides it.
+	//
+	// The engine has the same problem and had no answer. Qt fills a
+	// QLineEdit's selection and then draws the text over it as two unrelated
+	// calls, so the fill's attribute was set and the text's write replaced
+	// it. Reverse is a property of the CELL rather than of whoever wrote it
+	// last.
+	int x = col;
+	for (const QString &cl : to_clusters(text)) {
+		const Attrs had = dev_->buffer().at(x, row).attrs & Attrs(Attr::Reverse);
+		x += dev_->buffer().text(x, row, cl, pen_to_fg(pen_), Color(), a | had);
+	}
 }
 
 void CellPaintEngine::drawRects(const QRectF *r, int n) { for (int i = 0; i < n; ++i) fill_rectf(r[i]); }
@@ -376,19 +390,41 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 
 	Color bg = matched == QPalette::NoRole ? Color::rgb(col)
 	                                       : theme().background(matched);
+	Attrs mark;
 	if (bg.kind() == Color::Default) {
 		if (is_surface_role(matched)) {
 			if (!thin && c.width() > 1 && c.height() > 1) dev_->buffer().fill(c, Cell{});
 			return;
 		}
-		bg = Color::rgb(col);                       // unthemed selection etc.
+		// A HIGHLIGHT the theme has not coloured is reverse video, not the
+		// desktop's blue.
+		//
+		// qtty/theme.h states the rule this restores: the default theme keeps
+		// every role at Color::Default and "marks emphasis with attrs, not
+		// colour". GridStyle already obeys it -- State_Selected is
+		// Attr::Reverse at the item view, the menu item and the tab -- and
+		// this one line did not, so one program showed a selection two ways:
+		// measured side by side, a QLineEdit's came out bg=#308cc6 while the
+		// list beside it came out reverse.
+		//
+		// The fallback below is right for what it was written for and this is
+		// not it. It exists for a colour with NO palette role behind it --
+		// Channel B output, something the application coloured itself -- and
+		// Highlight is a role, matched, whose themed answer was "the
+		// terminal's own scheme". Taking the desktop's literal RGB overrode
+		// the theme rather than standing in for it, and made the most common
+		// highlight in the program depend on which desktop launched it.
+		if (matched == QPalette::Highlight) mark = Attr::Reverse;
+		else bg = Color::rgb(col);                  // unthemed fill, kept
 	}
-	Cell v; v.bg = bg;
+	Cell v;
+	v.bg = bg;
+	v.attrs = mark;
 	if (!thin) { dev_->buffer().fill(c, v); return; }
 	for (int y = c.top(); y <= c.bottom(); ++y)
 		for (int x = c.left(); x <= c.right(); ++x) {
 			Cell &cell = dev_->buffer().at(x, y);
-			if (cell.ch == QStringLiteral(" ")) cell.bg = bg;
+			if (cell.ch == QStringLiteral(" ")) { cell.bg = bg; cell.attrs |= mark; }
 		}
 }
 

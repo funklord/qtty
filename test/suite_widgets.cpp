@@ -400,7 +400,15 @@ int suite_widgets() {
 		render_once(split, b);
 		CHECK(buffer_contains(b, QStringLiteral("│")), "splitter handle renders");
 	}
-	// line edit: selection carries a background colour
+	// line edit: a selection is reverse video, the same as every other
+	// selection in the program.
+	//
+	// It used to be the desktop's QPalette::Highlight as a literal RGB, which
+	// qtty/theme.h's own rule forbids -- the default theme keeps every role at
+	// Color::Default and marks emphasis with attrs, not colour -- and which
+	// made the most common highlight in a program depend on which desktop
+	// launched it. Measured side by side before the change: a QLineEdit's
+	// selection came out bg=#308cc6 while a list's came out reverse.
 	{
 		QLineEdit edit;
 		edit.setText("hello");
@@ -411,8 +419,9 @@ int suite_widgets() {
 		render_once(edit, b);
 		QPoint h = findText(b, QStringLiteral("hello"));
 		CHECK(h.x() >= 0, "line edit text renders");
-		CHECK(h.x() >= 0 && b.at(h.x(), h.y()).bg.kind() != Color::Default,
-		      "selected text carries highlight background");
+		CHECK(h.x() >= 0 && (b.at(h.x(), h.y()).attrs & Attr::Reverse)
+		      && b.at(h.x(), h.y()).bg.kind() == Color::Default,
+		      "a text selection is reverse video, not the desktop's colour");
 	}
 	// menu: items, separator, shortcut, selected item highlight
 	{
@@ -737,6 +746,44 @@ int suite_widgets() {
 		for (int x = 0; same && x < 28; ++x)
 			same = on.at(x, at.y()).ch == off.at(x, at.y()).ch;
 		CHECK(same, "a table's grid leaves its labels' own spaces alone");
+	}
+
+
+	// The property that matters is the AGREEMENT, and it needs both selections
+	// in one frame: a text selection and an item view's must be the same
+	// thing, because they are the same thing to whoever is looking at the
+	// screen. Checked separately, either side could drift and both checks
+	// would stay green.
+	{
+		QWidget host;
+		auto *v = new QVBoxLayout(&host);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		auto *le = new QLineEdit(QStringLiteral("hello world"), &host);
+		le->setFrame(false);
+		le->setFixedHeight(GridMetrics::ch());
+		v->addWidget(le);
+		auto *list = new QListWidget(&host);
+		list->addItem(QStringLiteral("row one"));
+		list->setItemDelegate(new CellItemDelegate(list));
+		list->setFrameShape(QFrame::NoFrame);
+		list->setFixedHeight(GridMetrics::ch());
+		v->addWidget(list);
+		show(host, 24, 2);
+		le->setSelection(0, 5);
+		list->setCurrentRow(0);
+		QCoreApplication::processEvents();
+		CellBuffer b(26, 3);
+		render_once(host, b);
+		const QPoint text_sel = findText(b, QStringLiteral("hello"));
+		const QPoint item_sel = findText(b, QStringLiteral("row one"));
+		const bool same = text_sel.x() >= 0 && item_sel.x() >= 0
+		    && b.at(text_sel.x(), text_sel.y()).attrs
+		           == b.at(item_sel.x(), item_sel.y()).attrs
+		    && b.at(text_sel.x(), text_sel.y()).bg
+		           == b.at(item_sel.x(), item_sel.y()).bg;
+		CHECK(same && (b.at(text_sel.x(), text_sel.y()).attrs & Attr::Reverse),
+		      "a text selection and an item view's are the same thing");
 	}
 
 
