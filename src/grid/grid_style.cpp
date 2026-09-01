@@ -388,6 +388,15 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 	return r;
 }
 
+// One row for a title, none without one. A check box in the title takes the
+// same row, which is why this asks the option rather than the text alone.
+static int title_rows(const QStyleOptionComplex *opt) {
+	if (auto *gb = qstyleoption_cast<const QStyleOptionGroupBox *>(opt))
+		return (!gb->text.isEmpty()
+		        || (gb->subControls & QStyle::SC_GroupBoxCheckBox)) ? 1 : 0;
+	return 0;
+}
+
 QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *opt,
                                 SubControl sc, const QWidget *w) const {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
@@ -410,6 +419,42 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 			             cw, qMax(ch, r.height() / 2));
 		case SC_SpinBoxFrame:
 			return r;
+		default:
+			break;
+		}
+	}
+	if (cc == CC_GroupBox && opt) {
+		// Fusion answers a 25-pixel contents top -- a title's height in
+		// pixels -- and 25 is 1.3 cells. GridSnap rounds to NEAREST, so the
+		// first child inside the box rounded DOWN onto the frame's own top
+		// row and drew through it:
+		//
+		//     +[ ]-Option 0--------+   the frame's own top border
+		//     |                    |
+		//     +[ ]-Option 2--------+   and its bottom one
+		//
+		// Measured on a group box squeezed to five rows; at six it was fine,
+		// which is why it took a small terminal to see. This is the overlap
+		// section 7.8 named as the risk to measure before writing any
+		// snapping -- "whether closing a layout's gap can overlap two
+		// widgets" -- arriving in the wild, and the answer is not to change
+		// the rounding but to hand it rectangles it cannot round wrong.
+		//
+		// A titled box therefore spends one row on the title, one on the
+		// frame's top border, and starts its contents on the row after. An
+		// untitled one has no title row to spend.
+		const QRect r = opt->rect;
+		const int title = title_rows(opt);
+		switch (sc) {
+		case SC_GroupBoxLabel:
+			return title ? QRect(r.left(), r.top(), r.width(), ch) : QRect();
+		case SC_GroupBoxFrame:
+			return QRect(r.left(), r.top() + title * ch,
+			             r.width(), qMax(2 * ch, r.height() - title * ch));
+		case SC_GroupBoxContents:
+			return QRect(r.left() + cw, r.top() + (title + 1) * ch,
+			             qMax(cw, r.width() - 2 * cw),
+			             qMax(ch, r.height() - (title + 2) * ch));
 		default:
 			break;
 		}

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-696 checks, 0 failures, under three configurations: the offscreen
+697 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4539,17 +4539,41 @@ The hint is the dynamic property `"qtty.priority"`, which is what makes
 it a no-op in a GUI build the way design.md asks: nothing reads it there,
 and shared code neither links qtty nor branches on target to set it.
 
-**One thing this fixture showed that is NOT this feature's**, recorded
-because it is visible the moment a group box is on a small screen: a
-`QGroupBox`'s children land off the grid -- measured at `194x17+13+25`
-for a check box inside one -- and the indicators then draw *into* the
-frame rather than beside it:
+**One thing this fixture showed that is NOT this feature's**, and the
+first reading of it was wrong. It looked like a `QGroupBox`'s children
+landing off the grid -- `194x17+13+25` for a check box inside one, with
+the indicators drawing *into* the frame:
 
     ┌[ ]─Option 0────────┐
     │[ ] Option 1        │
 
-`PM_LayoutLeftMargin` and friends are gridded, but a group box's own
-contents rectangle is not. Its own item, and not touched here.
+Measured properly, **the children are on the grid**: `200x19+10+38`,
+aligned, after `GridSnap` corrected them. `GridGuard` warns about the
+geometry a layout ASKS for, and the snap then fixes it -- which is the
+two working as designed, not a defect. The `194x17` in the warning was
+never on screen.
+
+**The real fault was one layer up, and it is the one §7.8 said to watch
+for.** Fusion answers a 25-pixel contents top for a titled group box, and
+25 is 1.3 cells; `GridSnap` rounds to NEAREST, so a squeezed box rounded
+its first child **down onto the frame's own top row**. At six rows it
+rendered correctly and at five it collapsed, which is why it took a small
+terminal to see at all.
+
+That is exactly the risk this document named before any snapping was
+written -- "whether closing a layout's gap can overlap two widgets; one
+safe case is not a proof" -- arriving in the wild, and it says something
+about the shape of the answer. **The fix is not to change the rounding
+but to hand it rectangles it cannot round wrong.** `subControlRect()`
+answers `CC_GroupBox` in cells now: a titled box spends one row on the
+title and one on the frame's top border, and its contents start on the
+row after. Rounding to nearest is still the policy; what changed is that
+nothing is offered to it at 1.3 cells.
+
+The check is on the collision rather than the frame -- the row carrying
+the frame's top corner must carry nothing else -- because "the box
+renders" passes against the broken version, which is how this survived
+until a five-row terminal.
 
 **The decision is taken: `GridSnap` is installed by `Qtty::setup()`.**
 design.md §7's Tier 1 promise -- "style metrics differ, so the same layout

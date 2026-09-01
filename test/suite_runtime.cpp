@@ -785,5 +785,51 @@ int suite_runtime() {
 	}
 
 
+
+	// A group box's contents rectangle, which Fusion answers in pixels: 25 for
+	// the contents top, and 25 is 1.3 cells. GridSnap rounds to NEAREST, so a
+	// squeezed box rounded its first child DOWN onto the frame's own top row
+	// and drew through it:
+	//
+	//     +[ ]-Option 0--------+   the frame's own top border
+	//     |                    |
+	//     +[ ]-Option 2--------+   and its bottom one
+	//
+	// This is the overlap section 7.8 named as the risk to measure before
+	// writing any snapping, arriving in the wild. The answer is not to change
+	// the rounding but to hand it rectangles it cannot round wrong: a titled
+	// box spends one row on the title and one on the frame's top border, and
+	// starts its contents on the row after.
+	//
+	// Asserted where the two collide rather than on a whole frame: the row
+	// that carries the frame's top corner must carry nothing else. A check on
+	// "the box renders" passes against the broken version, which is exactly
+	// how this survived until a five-row terminal.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		auto *gb = new QGroupBox(QStringLiteral("Advanced"));
+		auto *gv = new QVBoxLayout(gb);
+		for (int i = 0; i < 3; ++i)
+			gv->addWidget(new QCheckBox(QStringLiteral("Option %1").arg(i)));
+		v->addWidget(gb);
+		win.resize(GridMetrics::cells(24, 5));
+		win.show();
+		QCoreApplication::processEvents();
+		CellBuffer b(24, 5);
+		render_once(win, b);
+		QString top, bottom;
+		for (const QString &line : b.to_text().split(QLatin1Char('\n'))) {
+			if (line.contains(QStringLiteral("┌"))) top = line;
+			if (line.contains(QStringLiteral("└"))) bottom = line;
+		}
+		CHECK(!top.isEmpty() && !top.contains(QLatin1Char('['))
+		      && !bottom.contains(QLatin1Char('[')),
+		      "a group box's frame carries no widget on its border rows");
+		GridGuard::reset();
+	}
+
+
 	return fails;
 }
