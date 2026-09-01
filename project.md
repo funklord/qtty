@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-01
 
-738 checks, 0 failures, under three configurations: the offscreen
+740 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -3793,6 +3793,70 @@ asserts that an **enabled** widget is at full brightness, without which a
 library that dimmed everything unconditionally would satisfy both. That
 half was verified rather than assumed: making `with_state()` return Dim
 always reddens it for all eleven widgets.
+
+**Channel A had no bound, and twelve widgets used it** (2026-09-01).
+Every widget kind rendered alone at six sizes -- 1x1, 2x1, 3x1, 1x2, 2x2
+and 6x1 -- two cells into an otherwise empty host, so an overdraw has
+somewhere to show on every side. Cells changed outside the widget's own
+rectangle:
+
+    push button  1x1:OUT3  2x1:OUT2  3x1:OUT1  1x2:OUT3  2x2:OUT2
+    group box    1x1:OUT1  2x1:OUT5  3x1:OUT6  2x2:OUT3  6x1:OUT12
+    tab bar      1x1:OUT7  2x1:OUT6  3x1:OUT5  1x2:OUT5  6x1:OUT4
+    combo box    1x1:OUT2  2x1:OUT1  1x2:OUT2  2x2:OUT1
+    spin box     1x1:OUT2  2x1:OUT1  1x2:OUT2  2x2:OUT1
+    progress     1x1:OUT2  2x1:OUT1  1x2:OUT2  2x2:OUT1
+    check box    OUT1 at every size, radio the same
+
+A one-cell `QPushButton` wrote `<OK>` and put three of those cells in
+whatever sat beside it. §7.7 already carried one instance of this,
+recorded as a fault in its own right -- *"a control drawing outside its
+own rectangle is a real fault, and on a real screen it would overwrite
+whatever sat beneath it"*. It is **one** fault, and it wanted a bound
+rather than a dozen corrections.
+
+`CellBuffer` now carries a clip rectangle that `put_cluster()`, `text()`,
+`fill()` and `clear_wide_partner()` obey; reads are never clipped, because
+`at()` is the raw accessor the snapshot, diff and test paths all use.
+`GridStyle` sets it from a scope guard at each of its three entry points.
+
+Three decisions inside that, each measured or reasoned rather than
+assumed:
+
+- **The widget's rectangle, not the option's.** A control is entitled to
+  draw over its own frame inset -- `CE_PushButtonLabel` already takes
+  `w->rect()` deliberately, to put its brackets where the bevel would be.
+  An option rect says where a part goes; the widget rect is the promise
+  about what belongs to somebody else.
+- **`clear_wide_partner()` is clipped too.** A wide cluster landing on the
+  clip's edge would otherwise reach past it to clear the partner cell --
+  the one thing the clip exists to stop, arriving by the one path that
+  does not look like a write. And the right edge of a clip gets the same
+  answer as the right edge of the buffer: a lead with no continuation is
+  the §5.2 corruption, so a blank is what fits.
+- **"Is there a clip" is a flag, not `QRect::isNull()`.** Found by a
+  sabotage: setting `QRect(0, 0, 0, 0)` should have blanked the screen and
+  the suite passed instead, because a zero-sized rectangle *is* null. A
+  widget resized to nothing produces exactly that rectangle, so the one
+  case with no room at all would have drawn unbounded. **The sabotage
+  found a hole in the fix, not in the check** -- which is what the
+  discipline is for.
+
+**One existing check went red, and it was the fixture.** A vertical
+`QProgressBar` two cells wide was asserted to say "40%" -- three
+characters. It only ever passed because the style wrote the third into
+the widget beside it; with the bound it truncates to "40", which is the
+honest rendering of a two-cell bar. The fixture's bar is three cells now,
+so the claim it makes is one it has room for.
+
+**Not fixed, and this is where it stops.** Four kinds still overdraw, all
+through **Channel B**: a check box's and a radio button's own label, a
+combo box, a group box (twelve cells at 6x1, the largest remaining), and
+a list view's frame. `CellPaintEngine` clips only when Qt sets a system
+clip, and Qt does not set one for a widget painting inside its own rect --
+it has no reason to, since on a pixel screen the widget's own backing
+store is the bound. That is the next piece of this, and it is the same
+sentence: *a control draws inside the widget it was given.*
 
 ### 7.3 Graphics tier (design.md §17.3)
 

@@ -4,6 +4,7 @@
 #include <qtty/delegate.h>
 #include <QtWidgets>
 #include <cstdio>
+#include <functional>
 
 using namespace Qtty;
 
@@ -2126,7 +2127,13 @@ int suite_widgets() {
 		known->setOrientation(Qt::Vertical);
 		known->setRange(0, 100);
 		known->setValue(40);
-		known->setGeometry(cw * 4, 0, cw * 2, ch * 6);
+		// Three cells, not two. "40%" is three characters, and at two the
+		// only reason this ever passed was that Channel A had no bound and
+		// wrote the third into the widget beside it. Bounding the style to
+		// its widget turned that into a truncated "40", which is the honest
+		// rendering of a two-cell bar -- so the fixture is what was wrong,
+		// and the claim it makes needs a bar wide enough to make it.
+		known->setGeometry(cw * 4, 0, cw * 3, ch * 6);
 		host.resize(GridMetrics::cells(8, 7));
 		host.show();
 		QCoreApplication::processEvents();
@@ -2576,6 +2583,102 @@ int suite_widgets() {
 		if (!bad_rgb)
 			printf("PASS: and disabling spends no true colour\n");
 		GridGuard::reset();
+	}
+
+
+	// ---- a control draws inside the widget it was given ----
+	{
+		// Measured 2026-09-01 over twelve widget kinds at six sizes each,
+		// with each widget's minimum cleared first so the rectangle asked
+		// for is the rectangle it got -- the first version of the probe did
+		// not clear it, and every overdraw it reported was setGeometry()
+		// clamping to the minimum and the probe comparing against the wrong
+		// rectangle.
+		//
+		// What it found: a one-cell QPushButton wrote "<OK>" and put three
+		// cells of it in whatever sat beside it, a one-row QGroupBox spent
+		// twelve cells outside itself, a QTabBar drew its tabs at their own
+		// widths whatever the bar's width was. Section 7.7 had one instance
+		// of this recorded as a fault in its own right; it is one fault, and
+		// CellBuffer's clip is the bound rather than a dozen corrections.
+		//
+		// These are the kinds Channel A alone draws, so the bound is the
+		// whole answer for them. Four others still overdraw through Channel
+		// B -- a check box's and a radio's own label, a combo box, a group
+		// box, and a list view's frame -- and section 7.8 carries that as
+		// the next piece rather than this check pretending otherwise.
+		const int cols = 24, rows = 8;
+		struct Case { const char *what; std::function<QWidget *()> make; };
+		QVector<Case> cases;
+		auto one = [&](const char *what, std::function<QWidget *()> make) {
+			cases.append(Case{ what, make });
+		};
+		one("push button", [] { return new QPushButton(QStringLiteral("OK")); });
+		one("line edit", [] { return new QLineEdit(QStringLiteral("text")); });
+		one("spin box", [] { return new QSpinBox; });
+		one("slider", [] { return new QSlider(Qt::Horizontal); });
+		one("progress", [] {
+			auto *p = new QProgressBar;
+			p->setValue(40);
+			return p;
+		});
+		one("scroll bar", [] { return new QScrollBar(Qt::Horizontal); });
+
+		const QVector<QSize> sizes = { QSize(1, 1), QSize(2, 1), QSize(3, 1),
+			                           QSize(1, 2), QSize(2, 2), QSize(6, 1) };
+		int leaked = 0, drew = 0;
+		for (const Case &c : cases) {
+			for (const QSize &sz : sizes) {
+				QWidget host;
+				host.setAttribute(Qt::WA_DontShowOnScreen);
+				host.resize(GridMetrics::cells(cols, rows));
+				host.show();
+				QCoreApplication::processEvents();
+				CellBuffer empty(cols, rows);
+				render_once(host, empty);
+
+				QWidget *w = c.make();
+				w->setParent(&host);
+				w->setMinimumSize(0, 0);
+				// Two cells in and two down, so an overdraw has room to show
+				// on every side rather than falling off the buffer, where
+				// CellBuffer would absorb it and the check would see nothing.
+				w->setGeometry(2 * GridMetrics::cw(), 2 * GridMetrics::ch(),
+				               sz.width() * GridMetrics::cw(),
+				               sz.height() * GridMetrics::ch());
+				w->show();
+				QCoreApplication::processEvents();
+				CellBuffer b(cols, rows);
+				render_once(host, b);
+
+				const QRect g = w->geometry();
+				const QRect own(g.x() / GridMetrics::cw(), g.y() / GridMetrics::ch(),
+				                g.width() / GridMetrics::cw(),
+				                g.height() / GridMetrics::ch());
+				int inside = 0, outside = 0;
+				for (int y = 0; y < rows; ++y)
+					for (int x = 0; x < cols; ++x) {
+						const Cell &n = b.at(x, y), &o = empty.at(x, y);
+						if (n.ch == o.ch && n.attrs == o.attrs) continue;
+						if (own.contains(QPoint(x, y))) ++inside; else ++outside;
+					}
+				if (outside) {
+					printf("FAIL: a %dx%d %s drew %d cell(s) outside itself\n",
+					       sz.width(), sz.height(), c.what, outside);
+					++leaked;
+				}
+				drew += inside;
+			}
+			GridGuard::reset();
+		}
+		fails += leaked;
+		// The paired half. Every one of these could satisfy "drew nothing
+		// outside itself" by drawing nothing at all, and three of the twelve
+		// kinds measured DO come out blank at some sizes -- so a check
+		// without this would be green on a style that had stopped working.
+		CHECK(drew >= 60, "the widgets that must not overdraw drew something");
+		if (!leaked)
+			printf("PASS: and none of them wrote a cell outside its own rectangle\n");
 	}
 
 	return fails;

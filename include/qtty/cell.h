@@ -65,6 +65,32 @@ public:
 	}
 	const Cell &at(int x, int y) const { return const_cast<CellBuffer *>(this)->at(x, y); }
 
+	// A write outside this rectangle is dropped; a null rectangle means no
+	// clip. READS are never clipped -- at() is the raw accessor and the
+	// snapshot, diff and test paths all go through it.
+	//
+	// It exists because Channel A had no bound at all. Measured across twelve
+	// widget kinds at six sizes each: a QPushButton one cell wide wrote
+	// "<OK>" and put three cells of it in the widget beside it; a QGroupBox
+	// one row tall spent twelve cells outside itself; a QTabBar's tabs were
+	// drawn at their own widths regardless of the bar's. Section 7.7 had one
+	// instance of this recorded as a fault of its own -- it is one fault,
+	// twelve times, and the fix is a bound rather than twelve corrections.
+	// "Is there a clip" is a flag of its own rather than QRect::isNull(),
+	// which a zero-sized rectangle also answers true to. A widget resized to
+	// nothing produces exactly that rectangle, and reading it as "no clip"
+	// would let the one case with no room at all draw without a bound --
+	// found by a sabotage that set QRect(0, 0, 0, 0) expecting everything to
+	// vanish and watched the suite pass.
+	void set_clip(const QRect &r) { clip_ = r; has_clip_ = true; }
+	void clear_clip() { has_clip_ = false; clip_ = QRect(); }
+	QRect clip() const { return clip_; }
+	bool has_clip() const { return has_clip_; }
+	bool writable(int x, int y) const {
+		return x >= 0 && y >= 0 && x < c_ && y < r_
+		    && (!has_clip_ || clip_.contains(QPoint(x, y)));
+	}
+
 	void fill(const QRect &r, const Cell &v);
 
 	// Write one grapheme cluster at (x,y), handling wide-cell continuation:
@@ -110,6 +136,8 @@ public:
 private:
 	void clear_wide_partner(int x, int y);
 	int c_, r_;
+	QRect clip_;
+	bool has_clip_ = false;
 	QVector<Cell> d_;
 };
 

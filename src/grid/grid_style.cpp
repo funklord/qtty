@@ -118,6 +118,41 @@ void set_focus_widget(QWidget *w) { s_focus = w; }
 // A line edit is deliberately not in the list: it has a real caret, which
 // says where typing goes as well as that typing goes here, and reversing the
 // field would hide it.
+// Every Channel A draw stays inside the widget it is drawing. Measured over
+// twelve widget kinds at six sizes each, with the widget's minimum cleared so
+// the rectangle asked for is the rectangle it got: a one-cell QPushButton put
+// three of "<OK>" outside itself, a one-row QGroupBox twelve cells, a QTabBar
+// drew its tabs at their own widths whatever the bar's width was. Section 7.7
+// had recorded one instance of this as a fault in its own right; it is one
+// fault, and this is the bound rather than a dozen separate corrections.
+//
+// The WIDGET's rectangle rather than the option's, because a control is
+// entitled to draw over its own frame inset -- CE_PushButtonLabel already
+// takes w->rect() deliberately, to put its brackets where the bevel would be.
+// An option rect is a hint about where the part goes; the widget rect is the
+// promise about what belongs to somebody else.
+//
+// Cut, not elided, which is the rule Channel B's clip already states: a clip
+// is not a shortage of room, and an ellipsis would be qtty inventing a
+// character nobody drew.
+class CellClip {
+public:
+	CellClip(CellPaintDevice *dev, const QRect &cells)
+	    : b_(dev->buffer()), had_(b_.has_clip()), saved_(b_.clip()) {
+		b_.set_clip(cells);
+	}
+	// Restores whether there WAS a clip as well as what it was, so a nested
+	// draw -- a style calling into another primitive -- leaves the outer one
+	// exactly as it found it.
+	~CellClip() { if (had_) b_.set_clip(saved_); else b_.clear_clip(); }
+	CellClip(const CellClip &) = delete;
+	CellClip &operator=(const CellClip &) = delete;
+private:
+	CellBuffer &b_;
+	bool had_;
+	QRect saved_;
+};
+
 static bool owns_focus(const QWidget *w) { return w && w == s_focus; }
 static Attrs focus_attrs(const QWidget *w) {
 	return owns_focus(w) ? Attrs(Attr::Reverse) : Attrs();
@@ -667,6 +702,7 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
                               const QWidget *w) const {
 	if (auto *dev = cell_target(p)) {
 		QRect c = cells_of(opt->rect, p, dev, w);
+		const CellClip bound(dev, w ? cells_of(w->rect(), p, dev, w) : c);
 		switch (pe) {
 		case PE_IndicatorCheckBox:
 			// Three states, three glyphs. A tristate box at PartiallyChecked
@@ -819,6 +855,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
                             const QWidget *w) const {
 	if (auto *dev = cell_target(p)) {
 		QRect c = cells_of(opt->rect, p, dev, w);
+		const CellClip bound(dev, w ? cells_of(w->rect(), p, dev, w) : c);
 		switch (ce) {
 		case CE_PushButtonBevel:
 			return;                                   // bevel is the label's brackets
@@ -1103,6 +1140,7 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
                                    QPainter *p, const QWidget *w) const {
 	if (auto *dev = cell_target(p)) {
 		QRect c = cells_of(opt->rect, p, dev, w);
+		const CellClip bound(dev, w ? cells_of(w->rect(), p, dev, w) : c);
 		switch (cc) {
 		case CC_ScrollBar:                             // section 16 F5: self-drawn whole
 			if (auto *sb = qstyleoption_cast<const QStyleOptionSlider *>(opt)) {

@@ -90,11 +90,16 @@ QVector<QString> to_clusters(const QString &text) {
 // ---- CellBuffer ------------------------------------------------------------
 void CellBuffer::fill(const QRect &r, const Cell &v) {
 	for (int y = r.top(); y <= r.bottom(); ++y)
-		for (int x = r.left(); x <= r.right(); ++x) at(x, y) = v;
+		for (int x = r.left(); x <= r.right(); ++x)
+			if (writable(x, y)) at(x, y) = v;
 }
 
 void CellBuffer::clear_wide_partner(int x, int y) {
-	if (x < 0 || y < 0 || x >= c_ || y >= r_) return;
+	// Clipped like any other write. Without this a wide cluster landing on
+	// the clip's edge would reach past it to clear the partner cell -- which
+	// is the one thing the clip exists to stop, arriving by the one path that
+	// does not look like a write.
+	if (!writable(x, y)) return;
 	Cell &c = d_[y * c_ + x];
 	if (c.width == 0 && x > 0) {                        // continuation: clear lead
 		Cell &lead = d_[y * c_ + x - 1];
@@ -108,7 +113,7 @@ void CellBuffer::clear_wide_partner(int x, int y) {
 
 void CellBuffer::put_cluster(int x, int y, const QString &cluster,
                             Color fg, Color bg, Attrs attrs) {
-	if (x < 0 || y < 0 || x >= c_ || y >= r_) return;
+	if (!writable(x, y)) return;
 	const int w = cluster_width(cluster);
 	// Nothing to occupy: leave the cell exactly as it was, partner and all.
 	if (w == 0) return;
@@ -129,7 +134,11 @@ void CellBuffer::put_cluster(int x, int y, const QString &cluster,
 	// same, and it keeps the invariant the whole cell model rests on -- a
 	// width-2 cell always has its partner -- instead of breaking it at exactly
 	// the edge nothing had tested.
-	if (w == 2 && x + 1 >= c_) {
+	// The same rule for the clip's right edge as for the buffer's: there is
+	// no continuation cell to be had, so a blank is what fits. A lead written
+	// without its partner is the corruption section 5.2 is built to prevent,
+	// and a clip boundary is a boundary like any other.
+	if (w == 2 && !writable(x + 1, y)) {
 		clear_wide_partner(x, y);
 		Cell &edge = d_[y * c_ + x];
 		edge = Cell{};
@@ -145,7 +154,7 @@ void CellBuffer::put_cluster(int x, int y, const QString &cluster,
 	// keep it (selection rendering, section 17.2). Explicit backgrounds replace.
 	if (bg.kind() == Color::Default) bg = c.bg;
 	c.ch = glyph; c.fg = fg; c.bg = bg; c.attrs = attrs; c.width = quint8(w);
-	if (w == 2 && x + 1 < c_) {
+	if (w == 2 && writable(x + 1, y)) {
 		Cell &cont = d_[y * c_ + x + 1];
 		cont = Cell{}; cont.ch.clear(); cont.width = 0;
 		cont.fg = fg; cont.bg = bg; cont.attrs = attrs;
