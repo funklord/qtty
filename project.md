@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-700 checks, 0 failures, under three configurations: the offscreen
+704 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -2780,6 +2780,34 @@ the hour** -- it was written for the modifiers and it caught an unrelated
 edit to a struct it merely uses, which is the argument for a check that
 goes through the real path rather than one that inspects a field.
 
+**A guard is only testable through a value that would do damage if
+obeyed**, and `qtty.cells` took two goes to learn it. The property is
+ignored when its size is not positive, and the check for that was
+written first as "the minimum is non-zero" -- which no `QWidget`'s
+default `minimumSize()` is, so it demanded a property the fixture never
+had and failed against correct code. Rewritten as "a `QSize(0, 0)`
+leaves the widget as if unannotated", it passed -- and passed just as
+happily with the guard removed, because `setMinimumSize(0, 0)` is what
+the widget already had. Two wrong checks, both caught by the sabotage
+rather than by review.
+
+The value that works is `QSize(-1, 2)`. Qt clamps a negative minimum to
+zero by itself, so the -1 is not the interesting part; what the guard
+actually buys is that **the 2 is refused with it**, so a widget cannot
+end up two cells tall because its width was misspelt. Writing the check
+forced the guard's real purpose to be stated, which it had not been.
+
+**And one about the instrument itself.** Two readings disagreed in the
+same minute: `make test` reported one failure while running the binary
+directly reported none, and a probe's `printf`s were absent from a
+binary built from a file that contained them. The cause was not the
+code -- **another session was building in the same tree**, rewriting
+`build-test/` underneath. The tree's own `BUILD_DIR` is the answer
+(`make BUILD_DIR=build-probe test`), and the general form is worth
+having: in a shared checkout, a build directory is shared state, and a
+measurement taken through one is only as trustworthy as the assumption
+that nobody else is writing it.
+
 **The menu bar drew no items at all, and the mnemonic fix had hidden two
 more instances of its own cause.** Both came from looking deliberately,
 after the beerssh session observed that a fix removing a symptom can hide
@@ -4167,12 +4195,14 @@ which is design.md §16's figure.
   The sweep's other two findings are elsewhere, because neither is the
   interface's: a scroll area not clipping is §8.7, and a build that did
   not rebuild is §9.5.
-- **design.md §7's Tier-2 hint system**, of which the `"qtty.cells"`
-  property is what remains, along with the CI check banning
-  `setContentsMargins`, `setSpacing`, `setFixedSize` and `setFixedWidth`
-  in shared UI code. `setCompact` is **deliberately not built** and §8.8
-  carries the argument: its effect is unconditional on a terminal, so the
-  hint would switch nothing. The rest is built: `GridSnap` does
+- **design.md §7's Tier-2 hint system** -- what remains is the CI check
+  banning `setContentsMargins`, `setSpacing`, `setFixedSize` and
+  `setFixedWidth` in shared UI code. The hints themselves are done:
+  `GridSnap` does what `CompactionPass` was for, `set_priority()` carries
+  `Priority::Optional`, `"qtty.cells"` sets a widget's minimum in cells,
+  and `setCompact` is **deliberately not built** -- §8.8 carries the
+  argument, that its effect is unconditional on a terminal, so the hint
+  would switch nothing. The rest is built: `GridSnap` does
   what `CompactionPass` was for, `set_priority()` carries
   `Priority::Optional`, and §7.8 records the small-terminal policy
   working in the order design.md names -- drop the optional widgets,
@@ -5350,7 +5380,34 @@ compaction mode ever appears that a GUI genuinely must not get, the hint
 is worth adding then and this paragraph is the argument for it.
 
 `w->setProperty("qtty.cells", QSize(20, 1))` is the third, and it is
-genuinely unbuilt -- nothing reads that property.
+built now -- **but not where design.md says it is read**, and the reason
+is a fact about Qt rather than a preference.
+
+§5.1 says the style reads it: "the style receives the `QWidget*`, so
+attached state is read there". It does -- for the widgets Qt asks it
+about. `QStyle::ContentsType` has **twenty-four values** and not one of
+them is a label, a text edit, a view, or an application's own `QWidget`
+subclass. There is no `CT_Label`. So a style-side reader would silently
+do nothing for most of a tree, including for the document's own example
+line, which is worse than not having the property at all -- an
+application would set it, see nothing, and have no way to tell whether
+it had spelled it wrong.
+
+It is read in `GridSnap`'s event filter instead, which sees every
+widget: on `Polish` for a property set at construction and on
+`DynamicPropertyChange` for one set later, so there is no moment where
+an application has asked and been ignored.
+
+**Applied as a minimum rather than a fixed size.** That is the
+non-destructive reading of "this field needs twenty columns" -- fewer
+makes it useless and more is fine -- so it composes with stretch instead
+of fighting it, and it feeds §7.8's small-terminal policy rather than
+bypassing it: a layout that cannot honour its minimums is exactly what
+makes the compositor drop and scroll.
+
+A non-positive size is ignored rather than obeyed, so a typo cannot pin
+a widget to nothing -- the same direction `priority_of()` takes for an
+out-of-range value.
 
 Two checks, both pairs, because "nothing drawn" passes any assertion about
 content failing to appear where it should not: the scrolled-out label must

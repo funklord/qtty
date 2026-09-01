@@ -1323,8 +1323,48 @@ int GridSnap::snapped() { return s_snapped; }
 void GridSnap::reset() { s_snapped = 0; }
 bool GridSnap::installed() { return s_snap != nullptr; }
 
+// design.md section 7's third Tier-2 hint: "qtty.cells" says how many cells a
+// widget needs, in the application's own words, without branching on target.
+// A no-op in a GUI build, where nothing reads the property.
+//
+// Applied as a MINIMUM rather than a fixed size, which is the non-destructive
+// reading of "this field needs twenty columns": fewer makes it useless and
+// more is fine, so it composes with stretch instead of fighting it, and it
+// feeds the small-terminal policy -- a layout that cannot honour its minimums
+// is exactly what makes section 7.8 drop and scroll.
+//
+// Read HERE rather than in the style, and that is a divergence from design.md
+// section 5.1, which says the style reads it because "the style receives the
+// QWidget*". It does -- but only for the widgets Qt asks it about, and
+// QStyle::ContentsType has **no entry for a label, a text edit, a view, or an
+// application's own QWidget subclass**. Twenty-four values and not one of
+// them is the case the document's own example uses. A style-side reader would
+// silently do nothing for most of the tree, which is worse than not having
+// the property. section 8.8 records it.
+static void apply_cells(QWidget *w) {
+	const QVariant v = w->property("qtty.cells");
+	if (!v.isValid()) return;
+	const QSize c = v.toSize();
+	// A typo must not be HALF obeyed, which is what this is for and what the
+	// check had to be rewritten twice to see. Qt clamps a negative minimum to
+	// zero by itself, so refusing -1 alone buys nothing; what this refuses is
+	// the rest of a size that carries one, so a widget cannot end up two
+	// cells tall because its width was misspelt. Same direction priority_of()
+	// takes for an out-of-range value.
+	if (c.width() <= 0 || c.height() <= 0) return;
+	w->setMinimumSize(c.width() * GridMetrics::cw(), c.height() * GridMetrics::ch());
+}
+
 bool GridSnap::eventFilter(QObject *obj, QEvent *event) {
 	if (s_snapping) return false;                // our own setGeometry coming back
+	// Polish catches a property set at construction, the property change
+	// catches one set later, and between them there is no moment where an
+	// application has asked and been ignored.
+	if (event->type() == QEvent::Polish
+	    || event->type() == QEvent::DynamicPropertyChange) {
+		if (QWidget *pw = qobject_cast<QWidget *>(obj)) apply_cells(pw);
+		return false;
+	}
 	if (event->type() != QEvent::Resize && event->type() != QEvent::Move)
 		return false;
 	QWidget *w = qobject_cast<QWidget *>(obj);

@@ -1862,6 +1862,71 @@ int suite_widgets() {
 	}
 
 
+
+	// design.md section 7's third Tier-2 hint: "qtty.cells" says how many
+	// cells a widget needs, in the application's own words, with no branch on
+	// target and no call into qtty. Applied as a MINIMUM, which is the
+	// non-destructive reading of "this field needs twenty columns" -- fewer
+	// makes it useless, more is fine -- so it composes with stretch and feeds
+	// the small-terminal policy rather than fighting either.
+	//
+	// The FIRST check is the one that decides where this is read. design.md
+	// section 5.1 says the style reads it, "the style receives the QWidget*".
+	// It does, but only for the widgets Qt asks it about, and
+	// QStyle::ContentsType has twenty-four values and no entry for a label, a
+	// text edit, a view, or an application's own QWidget subclass -- not even
+	// for the case the document's own example uses. A style-side reader would
+	// silently do nothing for most of a tree. It is read in GridSnap's filter
+	// instead, and section 8.8 records the divergence.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		QWidget d;
+		auto *v = new QVBoxLayout(&d);
+		auto *lab = new QLabel(QStringLiteral("a label"));
+		lab->setProperty("qtty.cells", QSize(20, 1));
+		auto *btn = new QPushButton(QStringLiteral("press"));
+		btn->setProperty("qtty.cells", QSize(12, 1));
+		auto *bad = new QLineEdit(QStringLiteral("edit"));
+		bad->setProperty("qtty.cells", QSize(-1, 2));   // half nonsense
+		auto *plain = new QLineEdit(QStringLiteral("plain"));   // no property
+		auto *late = new QLabel(QStringLiteral("later"));
+		v->addWidget(lab);
+		v->addWidget(btn);
+		v->addWidget(bad);
+		v->addWidget(plain);
+		v->addWidget(late);
+		d.setAttribute(Qt::WA_DontShowOnScreen);
+		d.resize(GridMetrics::cells(30, 12));
+		d.show();
+		QCoreApplication::processEvents();
+
+		CHECK(lab->minimumSize() == QSize(20 * cw, ch),
+		      "qtty.cells sizes a QLabel, which the style is never asked about");
+		CHECK(btn->minimumSize() == QSize(12 * cw, ch),
+		      "and a push button, which it is");
+		// A typo must not be half obeyed. The value here is -1 by 2, and the
+		// case that matters is not that the -1 is refused -- Qt clamps a
+		// negative minimum to zero by itself -- but that the 2 is refused
+		// WITH it, so a widget cannot end up two cells tall because its width
+		// was misspelt.
+		//
+		// Two goes at this check, and the sabotage caught both. The first
+		// asserted the minimum was non-zero, which no QWidget's default
+		// minimumSize() is. The second used QSize(0, 0), which is exactly
+		// what setMinimumSize() would have applied anyway -- so removing the
+		// guard changed nothing and the check could not see it. A guard is
+		// only testable through a value that would do damage if obeyed.
+		CHECK(bad->minimumSize() == plain->minimumSize(),
+		      "while a half-nonsense size is refused whole");
+		// Set after the widget is up, which is the case Polish alone misses.
+		late->setProperty("qtty.cells", QSize(8, 2));
+		QCoreApplication::processEvents();
+		CHECK(late->minimumSize() == QSize(8 * cw, 2 * ch),
+		      "and setting it later works too");
+		GridGuard::reset();
+	}
+
+
 	return fails;
 }
 
