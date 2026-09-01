@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-681 checks, 0 failures, under three configurations: the offscreen
+682 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -327,7 +327,6 @@ Owned by the copyright holder:
 | Question | Where |
 |---|---|
 | A message box's severity icon. The mechanism is now measured and has no open question -- a `QIconEngine` that registers each pixmap it mints, consulted through the `cacheKey()` the placement already carries. What is left is whether a warning triangle should become a glyph, taken against a mosaic that is **faithful and still unreadable** | *Qt's standard iconography* |
-| A dock widget's title buttons, which arrive with a 0x0 icon area -- a sizing fault rather than an iconography one | *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed -- measured, and the current behaviour is held by checks | *the interaction sweep* |
 | Whether the "too small to be a picture" rule moves to the backend, which knows whether the terminal can draw pictures -- it cannot be answered from the pixmap, and the cost is an upload per tiny icon | §7.2 |
 | The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work. The exposure is now **measured** and **guarded** rather than feared: 7 of 102 installed families give the 10x19 the fixtures assume, and a check names it | §7.9, §11 |
@@ -1811,16 +1810,59 @@ icon to a `QPixmap` before the style draws it**. Traced at
   mechanism, but **should a warning triangle become a glyph**. That is
   the holder's, and the legibility measurement above is what it should be
   taken against.
-- The dock buttons arrive as a **0x0 pixmap into a -2x-6 rectangle**.
+- ~~The dock buttons arrive as a **0x0 pixmap into a -2x-6 rectangle**.
   There is no icon area at all, so no iconography decision can put
-  anything in one. That is a sizing fault and a different question.
+  anything in one. That is a sizing fault and a different question.~~
+  **Fixed, and it was not an iconography question at all.** Two things
+  in that sentence were wrong and both mattered.
 
-So the entry splits, and the sentence in §0e that said the two symptoms
-are the same cause is withdrawn. Both are pinned by checks now, as
-results rather than gaps: the severity icon is a picture of at least two
-cells in each direction, and the dock buttons are empty brackets with no
-placement drawn. Either check goes red the day somebody fixes its half,
-which is what keeps this paragraph honest.
+  The **-2x-6 was qtty's own arithmetic, not Qt's**. The button is 18x14
+  pixels; `PM_ButtonMargin` is `cw`, which this style sets to 10; 18-20
+  and 14-20 are the numbers that were read as evidence of a Qt sizing
+  fault. Measured rather than inferred this time, and the path is not
+  even taken -- `CC_ToolButton` is drawn whole here and returns before
+  any of it.
+
+  And **the identity was there the whole time**. Both buttons carry Qt's
+  own object names, `qt_dockwidget_floatbutton` and
+  `qt_dockwidget_closebutton`. No icon name, no text, no tool tip -- but
+  a name on the widget, which is identity the style can read without a
+  picture. That is the same shape as the `arrowType` case in
+  `tool_button_label()`, which this tree already decided: **a button with
+  no text and no reachable icon gets a glyph chosen by the style, when
+  the widget itself says what it is.** The close mark is the one
+  `PE_IndicatorTabClose` had already chosen, for its own recorded reason
+  -- a button drawn as a pixmap that says nothing about what pressing it
+  does.
+
+  What was actually missing was **room**, and the fix is a rule the
+  rendering side already states in the other axis. Qt sizes these buttons
+  in pixels, at not quite two cells each; two cells hold `[]` and nothing
+  else, so the entire budget went on chrome and the result was a pair of
+  empty boxes. **A bracket goes where a bracket fits**: below three cells
+  the brackets are dropped and the content keeps the cells. The
+  one-row line edit keeps its two brackets for the opposite reason and
+  the same principle -- an empty box is not visibly a control either.
+
+      Panel                     ↗ ✕
+
+  Both halves are held by a check: one that the two buttons are told
+  apart, one that no empty bracket pair survives. **They do not separate
+  cleanly, and the sabotage is what showed that rather than hid it.**
+  Returning nothing from the object-name branch reddens the first alone,
+  which isolates it. Restoring the always-bracket threshold reddens
+  **both** -- because a bracketed two-cell button has no room left for
+  the glyph either. That is not a weak check; it is the two halves being
+  one fix, and the pair still says which half broke: only the first going
+  red means the glyph, both going red means the room.
+
+So the entry split, and the sentence in §0e that said the two symptoms
+are the same cause is withdrawn. Both were pinned by checks as results
+rather than gaps, with the note that either goes red the day somebody
+fixes its half -- **and the dock half has since gone red and been
+replaced**, which is the paragraph doing its job rather than a
+regression. What remains pinned as a result is the severity icon: a
+picture of at least two cells in each direction.
 
 What has not changed is whose the decision is. **The copyright holder's**,
 and the alternative measured and closed above -- returning themed icons so

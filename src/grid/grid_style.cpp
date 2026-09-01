@@ -47,6 +47,21 @@ static QString tool_button_label(const QStyleOptionToolButton *tb, const QWidget
 		default:             break;
 		}
 	}
+	// A dock widget's title buttons, which carry no text and no icon this
+	// style can reach -- so they came out as two identical empty brackets, a
+	// close and a float that could not be told apart. They DO carry Qt's own
+	// object names, which is identity read from the widget rather than from a
+	// picture: the same shape as the arrowType case above, and the reason this
+	// is not the iconography question it was filed as. The close mark is the
+	// one PE_IndicatorTabClose already chose for a button drawn as a pixmap
+	// that said nothing about what pressing it does.
+	if (w) {
+		const QString n = w->objectName();
+		if (n == QLatin1String("qt_dockwidget_closebutton"))
+			return QStringLiteral("✕");
+		if (n == QLatin1String("qt_dockwidget_floatbutton"))
+			return QStringLiteral("↗");
+	}
 	const QString text = strip_mnemonic(tb->text);
 	const QString glyph = glyph_for(w, tb->icon);
 	if (glyph.isEmpty()) return text;
@@ -985,8 +1000,20 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				const bool on = (tb->state & State_On)
 					             || (tb->state & State_Sunken)
 					             || (w && w == s_focus);
-				dev->buffer().put_cluster(c.left(), row, QStringLiteral("["));
-				dev->buffer().put_cluster(c.right(), row, QStringLiteral("]"));
+				// A bracket goes where a bracket fits, which is the rule the
+				// rendering side already states for a rule. Two cells hold
+				// "[]" and nothing else, so a dock widget's title buttons --
+				// which Qt sizes in pixels, at not quite two cells each --
+				// spent their whole budget on chrome and drew a pair of empty
+				// boxes. Below three cells the content wins and the brackets
+				// are dropped, for the reason the one-row line edit keeps its
+				// two: the control is still visibly a control, and an empty
+				// box is not one.
+				const bool bracket = c.width() >= 3;
+				if (bracket) {
+					dev->buffer().put_cluster(c.left(), row, QStringLiteral("["));
+					dev->buffer().put_cluster(c.right(), row, QStringLiteral("]"));
+				}
 				// A menu is an affordance or it is nothing: a tool button
 				// with a dropdown looked exactly like one without, so the
 				// only way to discover it was to press it. The base style
@@ -998,9 +1025,9 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				if (menu)
 					dev->buffer().put_cluster(c.right() - 1, row,
 						                      QStringLiteral("▾"));
-				const int inner = c.width() - 2 - (menu ? 2 : 0);
+				const int inner = c.width() - (bracket ? 2 : 0) - (menu ? 2 : 0);
 				if (inner > 0)
-					dev->buffer().text(c.left() + 1, row,
+					dev->buffer().text(c.left() + (bracket ? 1 : 0), row,
 						                   elide_to_cells(tool_button_label(tb, w), inner),
 						                   Color(), Color(),
 						                   label_attrs(opt, w, on ? Attrs(Attr::Reverse)

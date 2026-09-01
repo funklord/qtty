@@ -850,12 +850,27 @@ int suite_widgets() {
 		CellBuffer db(32, 9);
 		QVector<CellImage> dp;
 		render_once(win, db, &dp);
-		// Empty brackets, and no placement: the buttons are drawn and carry
-		// nothing. A check on "the title row contains []" would pass against a
-		// button that had a glyph in it, so the pair is the empty brackets AND
-		// the absence of any placement to have drawn.
-		CHECK(db.to_text().contains(QStringLiteral("[][]")) && dp.isEmpty(),
-		      "a dock widget's title buttons have no icon area to draw in");
+		// This used to assert "[][]", and it was right to: two identical empty
+		// brackets were what a close and a float rendered as, and the note here
+		// said the check would go red the day somebody fixed its half. It did.
+		//
+		// The fix was not iconography. Both buttons carry Qt's own object
+		// names, so the style can say which is which without any icon
+		// identity at all -- read from the widget, exactly as the arrowType
+		// case is. What was actually missing was room: Qt sizes these in
+		// pixels at not quite two cells each, and two cells hold "[]" and
+		// nothing else, so the whole budget went on chrome.
+		const QString title = db.to_text();
+		const int close = title.indexOf(QStringLiteral("✕"));
+		const int flt   = title.indexOf(QStringLiteral("↗"));
+		CHECK(close >= 0 && flt >= 0 && close != flt && dp.isEmpty(),
+		      "a dock widget's close and float buttons are told apart");
+		// And the rule that made room for them, which is the horizontal form
+		// of one the rendering side already states: chrome goes where chrome
+		// fits. Below three cells the brackets are dropped and the content
+		// keeps the cells -- so no empty pair survives anywhere in the frame.
+		CHECK(!title.contains(QStringLiteral("[]")),
+		      "a tool button too narrow to bracket spends its cells on content");
 		// A QMainWindow's dock layout puts three widgets off the grid, and
 		// they are Qt's own rather than this suite's to place -- the same
 		// category section 7.8 exempts by principle. Reset so the count this
@@ -1788,6 +1803,8 @@ int suite_widgets() {
 		CHECK(b->sizeHint().width() == GridMetrics::cw() * 3,
 		      "and is measured as one cell of arrow between its brackets");
 	}
+
+
 
 	return fails;
 }
