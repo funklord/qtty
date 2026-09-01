@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-714 checks, 0 failures, under three configurations: the offscreen
+718 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -60,9 +60,40 @@ tool-button size fallthrough, and **two orientations nothing renders** --
 the vertical indeterminate progress bar and the vertical slider, both of
 whose horizontal twins are tested.
 
-Those last two are the ones worth taking, and they are one shape: the
+~~Those last two are the ones worth taking, and they are one shape: the
 orientation nobody renders is the orientation the vertical-bar defect
-§0a opens with was found in. **The half-block compositor's translucent
+§0a opens with was found in.~~ **Taken, and the shape held: rendering
+them found a defect in one and confirmed the other.**
+
+**A vertical slider was drawn upside down.** `QSlider` sets the option's
+`upsideDown` to `!invertedAppearance()` for a vertical slider, so it is
+**true by default** and the minimum belongs at the BOTTOM. This style
+read the *orientation* and not the *flag*, and mapped value to row
+top-down. Measured against Qt's own `SC_SliderHandle` for the same
+widget:
+
+    value    drawn row    Qt wants y
+        0            0            84   (bottom)
+       50            2            42
+      100            5             0   (top)
+
+Every vertical slider in every application ran backwards, and the arrow
+keys moved the handle the wrong way on screen while the model was right.
+Reading the flag rather than the orientation fixes it, and a horizontal
+slider with `invertedAppearance` set is the same question with the same
+answer -- which is why the check covers that too.
+
+**The vertical indeterminate bar was already correct**, and now says so:
+it shades and shows no percentage, paired against a vertical bar whose
+length is known and still says 40%.
+
+**Two instrument notes from this pair**, both caught before anything was
+recorded. Asking Qt for the handle's rectangle with `upsideDown` set by
+hand answers the question you set rather than the one the widget asks --
+the first run of that probe reported y=0 for value 0 and would have said
+the drawing was right. And `"40%"` contains `"0%"`, so the first form of
+the indeterminate check searched the whole frame and failed against
+correct code; it reads the bar's own columns now. **The half-block compositor's translucent
 branch has left this list** -- the mosaic sweep in §7.3 reached it, which
 is what closing a coverage gap by rendering rather than by aiming at line
 numbers looks like.

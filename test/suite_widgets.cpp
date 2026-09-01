@@ -2056,6 +2056,99 @@ int suite_widgets() {
 	}
 
 
+
+	// The two orientations nothing rendered, which section 0a named as the
+	// coverage residue worth taking and which is the shape every defect in the
+	// last sweep had: a state that exists in the model and not on the screen.
+	//
+	// **A vertical slider was drawn upside down.** QSlider sets the option's
+	// `upsideDown` to !invertedAppearance() for a vertical slider, so it is
+	// true by default and the minimum belongs at the BOTTOM. This style read
+	// the orientation and not the flag, and mapped value to row top-down:
+	// measured against Qt's own SC_SliderHandle for the same widget, value 0
+	// wanted y=84 of a six-row slider and was drawn at row 0, and value 100
+	// wanted y=0 and was drawn at row 5. Every vertical slider ran backwards.
+	//
+	// The pair is the assertion. "The minimum is at the bottom" alone is
+	// satisfied by a slider that never moves.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		const auto thumb_row = [&](int value, Qt::Orientation o, bool inverted) {
+			QWidget h;
+			h.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *sl = new QSlider(o, &h);
+			sl->setRange(0, 100);
+			sl->setInvertedAppearance(inverted);
+			sl->setValue(value);
+			if (o == Qt::Vertical) sl->setGeometry(0, 0, cw, ch * 6);
+			else                   sl->setGeometry(0, 0, cw * 6, ch);
+			h.resize(GridMetrics::cells(8, 7));
+			h.show();
+			QCoreApplication::processEvents();
+			CellBuffer b(8, 7);
+			render_once(h, b);
+			const QStringList rows = b.to_text().split(QLatin1Char('\n'));
+			if (o == Qt::Vertical) {
+				for (int y = 0; y < rows.size(); ++y)
+					if (rows[y].startsWith(QStringLiteral("●"))) return y;
+			} else {
+				return int(rows.value(0).indexOf(QStringLiteral("●")));
+			}
+			return -1;
+		};
+		const int v_min = thumb_row(0, Qt::Vertical, false);
+		const int v_max = thumb_row(100, Qt::Vertical, false);
+		CHECK(v_min > v_max && v_max == 0,
+		      "a vertical slider puts its minimum at the bottom");
+		// The horizontal one is left alone, and inverting it is the same
+		// question with the same answer -- the flag, not the orientation.
+		const int h_min = thumb_row(0, Qt::Horizontal, false);
+		const int h_max = thumb_row(100, Qt::Horizontal, false);
+		const int h_inv_min = thumb_row(0, Qt::Horizontal, true);
+		CHECK(h_min < h_max && h_min == 0 && h_inv_min == h_max,
+		      "while a horizontal one runs left to right, or inverted if asked");
+		GridGuard::reset();
+	}
+
+	// A VERTICAL indeterminate progress bar, the other orientation section 0a
+	// named. Paired the way the horizontal check above is: against a bar whose
+	// length IS known, so "shows no percentage" is not satisfied by a style
+	// that never shows one.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *busy = new QProgressBar(&host);
+		busy->setOrientation(Qt::Vertical);
+		busy->setRange(0, 0);
+		busy->setGeometry(0, 0, cw * 2, ch * 6);
+		auto *known = new QProgressBar(&host);
+		known->setOrientation(Qt::Vertical);
+		known->setRange(0, 100);
+		known->setValue(40);
+		known->setGeometry(cw * 4, 0, cw * 2, ch * 6);
+		host.resize(GridMetrics::cells(8, 7));
+		host.show();
+		QCoreApplication::processEvents();
+		CellBuffer b(8, 7);
+		render_once(host, b);
+		const QString frame = b.to_text();
+		// The busy bar's OWN columns, not the whole frame: the first version
+		// asked that the frame does not contain "0%", and the bar beside it
+		// says "40%".
+		QString busy_col;
+		for (const QString &line : frame.split(QLatin1Char('\n')))
+			busy_col += line.left(2);
+		bool digit = false;
+		for (QChar ch2 : busy_col) if (ch2.isDigit()) digit = true;
+		CHECK(busy_col.contains(QStringLiteral("▒")) && !digit,
+		      "a vertical indeterminate bar shades and shows no percentage");
+		CHECK(frame.contains(QStringLiteral("40%")),
+		      "while one whose length is known still says it");
+		GridGuard::reset();
+	}
+
+
 	return fails;
 }
 

@@ -1157,8 +1157,23 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				const bool vert = sl->orientation == Qt::Vertical;
 				const int len = vert ? c.height() : c.width();
 				const int span = sl->maximum - sl->minimum;
-				const int pos = span > 0
+				int pos = span > 0
 				    ? (len - 1) * (sl->sliderPosition - sl->minimum) / span : 0;
+				// A vertical slider's minimum is at the BOTTOM, which the
+				// option says and this did not read: `upsideDown` is set by
+				// QSlider to !invertedAppearance() for a vertical one, so it
+				// is true by default. Drawn top-down, the whole control was
+				// upside down -- 0 at the top, 100 at the bottom, and the
+				// handle moving the wrong way under the arrow keys.
+				//
+				// Measured against Qt's own SC_SliderHandle for the same
+				// widget: value 0 at y=84 of a six-row slider and value 100
+				// at y=0, against this drawing's row 0 and row 5.
+				//
+				// The flag rather than the orientation, because a horizontal
+				// slider with invertedAppearance set is the same question and
+				// carries the same answer.
+				if (sl->upsideDown) pos = len - 1 - pos;
 				// The groove carries the state; the handle also says whether
 				// it is being held. Qt sets State_Sunken on a slider whose
 				// handle has been grabbed, and this style already spells
