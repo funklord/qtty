@@ -327,7 +327,8 @@ Owned by the copyright holder:
 | Question | Where |
 |---|---|
 | A message box's severity icon. The mechanism is now measured and has no open question -- a `QIconEngine` that registers each pixmap it mints, consulted through the `cacheKey()` the placement already carries. What is left is whether a warning triangle should become a glyph, taken against a mosaic that is **faithful and still unreadable** | *Qt's standard iconography* |
-| `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed -- measured, and the current behaviour is held by checks | *the interaction sweep* |
+| `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed. All four candidate behaviours are printed now -- and `Left\|Middle` **removes paging** rather than adding anything, unless `SH_Slider_PageSetButtons` moves it to the right button | *the interaction sweep* |
+| Whether an unrecognised mouse button should be dropped rather than delivered as a left click. `qt_button()` maps every unknown value to `Qt::LeftButton`, which its comment calls the harmless direction -- it was not harmless in the slider measurement, where it invented a behaviour and put it in a table | *the interaction sweep* |
 | Whether the "too small to be a picture" rule moves to the backend. Measured since: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()` rather than a structural change -- and no widget icon reaches the branch today | §7.2 |
 | The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work. The exposure is now **measured** and **guarded** rather than feared: 7 of 102 installed families give the 10x19 the fixtures assume, and a check names it | §7.9, §11 |
 
@@ -1700,8 +1701,57 @@ groove sets a tenth.
 
 **And the naive change costs the behaviour that works.** The hint is a
 set of buttons: returning `Qt::LeftButton` alone removes middle-click
-absolute set, which the two checks catch together. Whoever takes this
-decision wants `Qt::LeftButton | Qt::MiddleButton`, not a replacement.
+absolute set, which the two checks catch together.
+
+That much was reasoned from the hint's semantics. **Applied and printed,
+it is worse than reasoned and the recommended fix is not what it looked
+like.** The same four clicks under each candidate, with the hint
+temporarily answerable from the environment. Each cell is the value a
+click leaves, as left / middle / right:
+
+| cell | current | `LeftButton` | `Left\|Middle` | and `PageSetButtons` = right |
+|---|---|---|---|---|
+|  2 |  0 /  6 / 0 |  6 / 0 / 0 |  6 /  6 / 0 |  6 /  6 /  0 |
+|  5 | 10 / 24 / 0 | 24 / 0 / 0 | 24 / 24 / 0 | 24 / 24 / 10 |
+| 10 | 10 / 54 / 0 | 54 / 0 / 0 | 54 / 54 / 0 | 54 / 54 / 10 |
+| 15 | 10 / 83 / 0 | 83 / 0 / 0 | 83 / 83 / 0 | 83 / 83 / 10 |
+
+**`LeftButton` alone does not merely lose absolute set on the middle
+button -- it makes the middle button inert.** Middle goes to 0 at every
+cell: not paging, not setting, nothing. That is a stronger objection than
+the one recorded here, and it is measured rather than inferred.
+
+**And `Left|Middle` does not add a behaviour, it removes one.** Qt tests
+the absolute set first, so putting the left button in it takes the left
+button OUT of `SH_Slider_PageSetButtons` -- after which **no button pages
+at all**. The phrase "wants `Left|Middle`, not a replacement" reads as
+though everything is kept and something is gained; the third column is
+what that actually costs.
+
+**Which surfaces a third option the entry never named**, and it is the
+one that makes the trade avoidable. `SH_Slider_PageSetButtons` is a
+separate hint and can be answered separately: with it returning
+`Qt::RightButton`, the fourth column keeps absolute set on both the left
+and middle buttons AND keeps paging, on a button that currently does
+nothing at all on a slider. Whether paging is worth keeping is a
+different question -- this document already argues it is nearly useless
+on a terminal, since a click at three quarters of the groove sets a tenth
+and there is no repeat-on-hold -- but the holder should decide that
+knowing it need not be given up.
+
+Still the holder's. What has changed is that all four answers are
+printed, so the choice is between measured behaviours rather than between
+one measured and three imagined.
+
+**One instrument note, because it nearly went into the table above.** The
+first run of this measurement reported the right button paging like the
+left, which would have been a routing defect. It was the probe: qtty
+numbers buttons 1 left, 2 middle, **3 right**, and the probe passed 4.
+`qt_button()` maps anything unrecognised to `Qt::LeftButton` -- a
+fallback its own comment calls "the harmless direction to be wrong in".
+It was not harmless here: it invented a behaviour that does not exist and
+put it in a table, and only the fact that the previously recorded column
+disagreed caught it.
 
 **Qt's standard iconography has no route to a glyph, and that is a
 decision rather than a defect.** Three measurements, taken because a
