@@ -1,0 +1,24 @@
+[project]
+# The tests read snapshot fixtures out of the repository, so they have to
+# be told where it is. qmake spells it $$QTTY_ROOT, which is $$PWD from
+# qtty.pri; a relative path cannot serve, because a test binary does not
+# run from a fixed directory.
+defines = ['QTTY_SOURCE_DIR="$root"']
+
+# spike/ is the Phase 0 record -- the four spikes exactly as they were run,
+# which is what makes them evidence for design.md's measurements. Nothing
+# in the library builds them, and .style-gate.toml already exempts them for
+# the same reason.
+exclude = ["spike", "build-*"]
+
+# The tools ship with a qtty- prefix; fmake names a program after its root
+# TU, which gives the bare verb. tool/inspect/*.pro and its siblings are
+# the authority. example/chat keeps its own name, which already matches.
+[target.inspect]
+name = "qtty-inspect"
+
+[target.replay]
+name = "qtty-replay"
+
+[target.negotiate]
+name = "qtty-negotiate"

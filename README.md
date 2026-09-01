@@ -33,6 +33,21 @@ The `Makefile` at the root is the entry point:
     make check          # style + test — what must pass before committing
     make style          # the shared source gate
     make hooks          # install the commit-msg hook
+
+Or with [fmake](../fmake), which needs no build file and nothing beyond the
+Python standard library:
+
+    fmake               # qtty-inspect, qtty-replay, qtty-negotiate, chat
+
+`fmake.toml` beside it says three things fmake cannot read off the tree:
+that the tests find their snapshot fixtures through `QTTY_SOURCE_DIR`,
+which qmake spells `$$QTTY_ROOT` and fmake spells `$root`; that `spike/`
+is the Phase 0 record rather than something to build, the same exemption
+`.style-gate.toml` already makes; and the tools' names, since fmake calls
+a program after its root TU and these ship with a `qtty-` prefix.
+
+`make` remains the entry point: fmake builds the programs and not the
+library, and none of the gates.
     make help           # every target
 
 `make` drives qmake into `BUILD_DIR` (default `build/`), so a build never
