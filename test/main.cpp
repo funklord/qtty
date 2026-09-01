@@ -101,8 +101,10 @@ int main(int argc, char **argv) {
 		{"exec",       [&] { return suite_exec(); }},
 		{"budget",     [&] { return suite_budget(); }},
 	};
+	int ran = 0;
 	for (auto &s : suites) {
 		if (!only.isEmpty() && only != QLatin1String(s.name)) continue;
+		++ran;
 		printf("\n== %s ==\n", s.name);
 		Qtty::GridGuard::reset();
 		failures += s.run();
@@ -117,6 +119,19 @@ int main(int argc, char **argv) {
 			       "(see the qtty: warnings above)\n", off);
 			++failures;
 		}
+	}
+	// A name that matches no suite ran nothing, and a run over zero suites
+	// exits 0 and reads exactly like a pass -- the same shape the `test`
+	// target refuses for zero binaries. It cost an hour here:
+	// `make record R=widgets_gallery` names a FIXTURE where the argument is a
+	// SUITE, so it recorded nothing, printed OK, and left the snapshot it was
+	// asked to rewrite untouched.
+	if (!only.isEmpty() && ran == 0) {
+		printf("FAIL: '%s' names no suite, so nothing ran\n      suites:",
+		       qPrintable(only));
+		for (auto &s : suites) printf(" %s", s.name);
+		printf("\n");
+		++failures;
 	}
 	printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "OK",
 	       failures, failures == 1 ? "" : "s");

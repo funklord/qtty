@@ -172,6 +172,16 @@ decision §8.1 records as open, so the axis is priced rather than taken.
 by transitive luck on a class Qt 6 moved between modules. That include is
 right on every version and is fixed.
 
+**The tab pane's near-white block is gone**, which was §7.7's gradient
+finding: Fusion fills a pane with a gradient, the engine matched its stop
+colour against no role, and a true-colour background went behind every tab
+page. The two other answers recorded there were measured out -- a
+tolerance cannot separate a colour equidistant between two roles, and Qt
+exposes no way to ask which role produced a brush -- so the third stands:
+`PE_FrameTabWidget` was not in `GridStyle`'s list of frames, and adding it
+means the base style never runs. Ten rows of the fixture became no colour
+at all.
+
 **A one-row `QLineEdit` is bracketed**, like the combo box and the spin box
 whose rationale it borrows, so an empty field is no longer invisible. The
 cost this was deferred over -- a second closing bracket inside those two --
@@ -280,7 +290,6 @@ Owned by the copyright holder:
 | Question | Where |
 |---|---|
 | Whether a layout's one-row top and bottom margin is right on a terminal, where it costs two rows of twenty-four and two of three | §7.8 |
-| §7.7: gradient fills landing as literal RGB, which varies with the desktop palette | §7.7 |
 | OQ-7: the ANSI-16 fallback metric | §7.7 |
 | Whether `focusWidget()`/`setFocusWidget()` keep their camelCase exemption | §11 |
 | Whether frame output should be gated on `isatty(1)` as setup and teardown are | *the gate that decides whether to write* |
@@ -421,6 +430,17 @@ Three things it taught, which the next run should carry in:
   suspect is not only the temporary block you just wrote; a check that has
   been green for weeks can be answering a different question than its name
   says, and a sabotage run somewhere else in the file is what surfaces it.
+
+  **A ninth, in the tooling this session leaned on hardest: `make record
+  R=<fixture>` records nothing and says OK.** The argument is a SUITE
+  name, and `widgets_gallery` is a fixture -- so the filter matched no
+  suite, none ran, the binary exited 0, and the snapshot it was asked to
+  rewrite was left untouched. It reads exactly like "already up to date".
+  `test/main.cpp` refuses a filter that matches nothing now, the same way
+  the `test` target refuses a run over zero binaries and for the same
+  reason. The example in the Makefile's help is `R=render`, which happens
+  to be both a suite and a fixture, so the trap was invisible from the
+  documentation.
 
   **An eighth, and the cheapest to fall for: the same command run twice
   does not measure twice.** The Qt 5 error list was collected with
@@ -3862,12 +3882,40 @@ carries a near-white block behind its contents, and on a dark terminal
 that is exactly as bad as it sounds.
 
 The colour plane found this on its first run, which is the argument for
-having built it. The fix is a design question rather than a patch: match
-roles with a tolerance, ask the style for the role instead of
-reverse-engineering it from a colour, or suppress the fill for regions
-Channel A has already drawn as a box. Exact-colour matching is the shared
-cause and it is fragile for any style that paints a gradient, which is
-most of them.
+having built it. **Fixed, by the third of the three answers recorded here,
+and the other two were measured out rather than argued out.**
+
+- **Match roles with a tolerance** cannot work for the case that motivated
+  it. `#fbfbfb` is *equidistant* from `Base` (`#ffffff`) and
+  `AlternateBase` (`#f7f7f7`) -- four of 255 either way -- so no tolerance
+  chooses between them except by tie-break, and a tie-break here is a coin
+  toss about what a pane is.
+- **Ask the style for the role** has no route. Qt exposes no way to ask
+  which role produced a brush, and the paint engine sees only the painter.
+- **A gradient brush cannot be detected either**, which was the first
+  thing tried. Measured: the fill arrives with `Qt::SolidPattern`, not a
+  gradient pattern -- Fusion has already flattened its gradient to a stop
+  colour by the time the engine sees it. Three fills in the suite do carry
+  a real gradient brush, and their colour is black, which is its own
+  question and not this one.
+
+So: **suppress the fill for a region Channel A has already drawn as a
+box**, which needed no new mechanism at all. `PE_FrameTabWidget` was
+simply not in `GridStyle`'s list of frames -- it drew the tabs itself and
+let the base style draw the pane -- and adding the case label means Fusion
+never runs and there is no fill to classify.
+
+The fixture change is the measurement: **ten rows of `bg=#fbfbfb` across
+the whole tab pane become no colour at all**, the legend loses its
+near-white entry, and the glyph and attribute planes are untouched. The
+check is on the cells rather than on the fixture, because a fixture says
+what it looks like and a check says why.
+
+Exact-colour matching remains the shared cause and is still fragile for
+any style that paints a gradient. What has changed is that the one place
+it bit is no longer reached, and the next place will be a frame this style
+does not draw either -- which is a smaller and more findable thing than a
+matching rule.
 
 **`QTabWidget` paints one row below its own geometry.** Isolated with a
 probe: a window containing only a tab widget reproduces it. The widget

@@ -911,6 +911,39 @@ int suite_widgets() {
 	}
 
 
+	// A tab pane carries no background colour. Fusion fills one with a
+	// gradient, and the engine recovers a role by comparing the brush colour
+	// against each role's for exact equality -- so the stop colour #fbfbfb,
+	// which is no role, fell through to a true-colour background and put a
+	// near-white block behind every tab page. On a dark terminal that is
+	// exactly as bad as it sounds, and the gallery fixture carried ten rows
+	// of it.
+	//
+	// GridStyle draws the pane as the frame it is now, so the base style
+	// never runs and there is no fill to classify. The check is on the CELLS
+	// rather than on the fixture, because a fixture says "this is what it
+	// looks like" and this says why.
+	{
+		QWidget host;
+		auto *tabs = new QTabWidget(&host);
+		auto *page = new QWidget;
+		auto *pv = new QVBoxLayout(page);
+		pv->addWidget(new QLabel(QStringLiteral("body"), page));
+		tabs->addTab(page, QStringLiteral("One"));
+		tabs->setGeometry(0, 0, GridMetrics::cw() * 20, GridMetrics::ch() * 6);
+		show(host, 22, 7);
+		CellBuffer b(24, 8);
+		render_once(host, b);
+		int coloured = 0;
+		for (int y = 0; y < b.rows(); ++y)
+			for (int x = 0; x < b.cols(); ++x)
+				if (b.at(x, y).bg.kind() != Color::Default) ++coloured;
+		// Paired with the pane being drawn at all: "no colour" is also what an
+		// empty frame produces, and the box is what says the pane is there.
+		CHECK(coloured == 0 && buffer_contains(b, QStringLiteral("┌")),
+		      "a tab pane is a frame, not a near-white block");
+	}
+
 	// gallery snapshot: one window with the whole tier
 	{
 		QWidget win;

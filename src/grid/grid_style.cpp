@@ -519,6 +519,19 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 			return;
 		case PE_FrameWindow: case PE_Frame: case PE_FrameGroupBox:
 		case PE_PanelMenu: case PE_FrameMenu:
+		// A tab pane is a frame like the others, and letting the base style
+		// draw it was the whole of section 7.7's gradient finding. Fusion fills a
+		// pane with a gradient, and the engine recovers a role by comparing
+		// the brush colour against each role's for exact equality -- so the
+		// stop colour #fbfbfb, which is no role, fell through to a
+		// true-colour background and put a near-white block behind every tab
+		// page. On a dark terminal that is exactly as bad as it sounds.
+		//
+		// Drawing the box here means Fusion never runs and there is no fill
+		// to classify. That is the third of the three fixes 7.7 recorded --
+		// suppress the fill for a region Channel A has already drawn as a box
+		// -- and it needed no new mechanism, only this case label.
+		case PE_FrameTabWidget:
 			draw_box(dev->buffer(), c);
 			return;
 		// A one-row line edit is bracketed, the way the combo box and the spin

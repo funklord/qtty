@@ -34,24 +34,7 @@
 
 
 --- colours ---
-
-
-
-
-
-.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-
-
+(none)
 --- legend ---
 . fg=default bg=default
-a fg=default bg=#fbfbfb
 attrs: . none, g reverse
