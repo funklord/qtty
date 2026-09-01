@@ -426,8 +426,36 @@ int suite_runtime() {
 		      "the 1px-gap pair really is disjoint before snapping");
 	}
 	{
+		// setup() installs it, which is the decision section 7.8 records as
+		// taken. Asserted through its EFFECT and not only through
+		// installed(): a plain box layout, nothing explicit anywhere, must
+		// land its children on the grid because the library put the filter
+		// there. A check on installed() alone would pass against a filter
+		// that was installed and did nothing.
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *l = new QHBoxLayout(&h);
+		for (int i = 0; i < 4; ++i)
+			l->addWidget(new QPushButton(QStringLiteral("b%1").arg(i)));
+		h.resize(GridMetrics::cells(40, 12));
+		h.show();
+		QCoreApplication::processEvents();
+		l->activate();
+		QCoreApplication::processEvents();
+		int off = 0;
+		for (QObject *o : h.children())
+			if (auto *w = qobject_cast<QWidget *>(o))
+				if (!GridMetrics::is_aligned(w->geometry())) ++off;
+		CHECK(GridSnap::installed() && off == 0,
+		      "setup() installs GridSnap, so a plain layout lands on the grid");
+	}
+	{
 		// Inert unless installed (section 10.1's rule, which this has to obey
-		// as much as the paint filter does).
+		// as much as the paint filter does). setup() installs it now, so this
+		// half has to take it away first -- and putting it back is not
+		// optional, because every case after this one runs under the library
+		// as an application gets it.
+		GridSnap::remove();
 		QWidget h;
 		h.setAttribute(Qt::WA_DontShowOnScreen);
 		auto *l = new QHBoxLayout(&h);
@@ -491,6 +519,7 @@ int suite_runtime() {
 
 		GridSnap::remove();
 		CHECK(!GridSnap::installed(), "remove() uninstalls it");
+		GridSnap::install(*qApp);      // as setup() left it, for what follows
 	}
 	GridGuard::reset();      // the fixed-width button above is a reported one
 
@@ -525,6 +554,7 @@ int suite_runtime() {
 		some.render_now();
 		CHECK(sized.frame_count() == 1, "and one with cells still is");
 	}
+
 
 
 	return fails;

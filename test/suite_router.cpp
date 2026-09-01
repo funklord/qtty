@@ -682,8 +682,14 @@ int suite_router() {
 		// no check, so the splitter drag above carries the grab on its own --
 		// which the sabotage run confirms it does.
 	}
-	CHECK(GridGuard::violations() > 0,
-	      "a QSplitter lays its panes off the grid (section 7.8, not yet decided)");
+	// Still off the grid WITH GridSnap installed, which is the thing worth
+	// asserting now that setup() installs it. A splitter assigns its panes'
+	// geometry itself and re-asserts it, so the correction is fought rather
+	// than missed -- the same shape as a fixed size the snap cannot move, and
+	// the same division of labour: setSizes() in cell multiples is the
+	// application's to call. Section 7.8 carries it.
+	CHECK(GridSnap::installed() && GridGuard::violations() > 0,
+	      "a QSplitter lays its panes off the grid, and a snap does not move them");
 	GridGuard::reset();
 
 	{

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-662 checks, 0 failures, under three configurations: the offscreen
+663 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -172,6 +172,23 @@ decision §8.1 records as open, so the axis is priced rather than taken.
 by transitive luck on a class Qt 6 moved between modules. That include is
 right on every version and is fixed.
 
+**`GridSnap` is on, and §7.8's decision is taken** -- design.md §7's Tier
+1 promise ("the same layout compacts automatically") is true now rather
+than nearly true. What settled it was measuring the effect on a real tree
+instead of arguing the principle: with the filter installed for the whole
+suite, every check passes and **both fixtures are unmoved**, and the only
+two that change are the two written to assert the unsnapped state. The
+precedent decided the rest, one file away -- `setup()` already forces the
+font on every widget through a filter, for the reason written there: the
+pin is policy, the filter is the guarantee.
+
+**And a correction: the lost top row the odd-size sweep blamed on Qt's
+default margins is qtty's own.** `GridStyle` answers `ch` for
+`PM_LayoutTopMargin`, so every layout gets a one-row margin; nothing
+rounds and `GridSnap` neither causes it nor fixes it. That is a margin
+policy, it is now §0b's, and it is a smaller question than the one it was
+hiding inside.
+
 **Channel A clips, and §8.7 is closed.** It is design.md §432's fourth
 item and was the one of the four never implemented: a `QPainter` told to
 keep inside four cells filled twenty. **A `QScrollArea` no longer paints
@@ -245,7 +262,7 @@ Owned by the copyright holder:
 
 | Question | Where |
 |---|---|
-| §7.8: turn `GridSnap` on, at the measured price of off-grid geometry placing content a whole cell away | §7.8 |
+| Whether a layout's one-row top and bottom margin is right on a terminal, where it costs two rows of twenty-four and two of three | §7.8 |
 | §7.7: gradient fills landing as literal RGB, which varies with the desktop palette | §7.7 |
 | OQ-7: the ANSI-16 fallback metric | §7.7 |
 | Whether `focusWidget()`/`setFocusWidget()` keep their camelCase exemption | §11 |
@@ -3786,21 +3803,42 @@ automatically". It is not free for any layout with slack in it, which is
 most of them. Today an application must add a stretch and call
 `setSizes()` in cell multiples, and nothing tells it so except the guard.
 
-The two candidate answers, neither taken:
+**The decision is taken: `GridSnap` is installed by `Qtty::setup()`.**
+design.md §7's Tier 1 promise -- "style metrics differ, so the same layout
+compacts automatically" -- is true now rather than nearly true.
+
+The two answers that were open:
 
 - **Snap child geometry after layout activation**, which is what §7's
-  unbuilt `CompactionPass` is for. It would make Tier 1 genuinely free.
-  The risk is real and must be measured before it is written: snapping a
-  child's origin down can close a gap the layout meant to keep, and in
-  the worst case overlap two widgets. In the measured case it was safe --
-  33, 85, 137 became 19, 76, 133, each still a clear cell apart -- but
-  one case is not a proof.
-- **Leave it to the application and say so**, which means §7 Tier 1 is
-  narrower than the design claims and the document should say what an
-  application must do rather than promising it need do nothing.
+  `CompactionPass` is for, making Tier 1 genuinely free.
+- **Leave it to the application and say so**, narrowing §7 Tier 1 and
+  documenting what an application must do instead.
 
-Which of the two is right is a design decision and is recorded here
-rather than taken.
+**What settled it was measuring the effect on a real tree rather than
+arguing the principle.** With `GridSnap` installed for the whole suite:
+662 checks pass, **both snapshot fixtures included**, and the only checks
+that change are the two written to assert the UNSNAPPED state. Nothing
+else moved. The feared cost was not small, it was absent.
+
+The precedent decided the rest, and it is one file away. `setup()`
+already forces the font family and size on every widget through an event
+filter, and the reason written there is this one: **the pin is policy and
+can be overridden, the filter is the guarantee.** An invariant the grid
+depends on is the library's to hold, not a paragraph for every
+application to obey. `setup()` is also the call that makes a program a
+terminal program -- it installs `GridStyle` and restyles everything -- so
+a GUI build that never calls it is untouched, which is §10.1's inertness
+rule working rather than being bypassed.
+
+**Two limits, both measured and both the application's to fix.** A widget
+with a **fixed size** off the grid resists snapping, because Qt clamps
+`setGeometry` to size constraints. And a `QSplitter` assigns its panes'
+geometry itself and re-asserts it, so the snap is fought rather than
+missed: measured with the filter installed, its panes are still 205, 215
+and 225 pixels wide against a 10-pixel cell. `setSizes()` in cell
+multiples is the caller's, and the suite says so rather than leaving it
+to be found.
+
 
 **What off-grid geometry actually costs has now been measured, and it is
 worse than untidiness.** The lens came from two bugs of one shape -- a
@@ -3848,13 +3886,9 @@ four of those eight still had off-grid *children*, which is the slack
 this section is about, so the population needing a snap is real while the
 population at risk from one is not.
 
-**`GridSnap` is built, and it is off by default.** It is `GridGuard`'s
-other half -- same event, same exemptions, same install-once shape --
-and neither is installed by `Qtty::setup()`, so a program can have the
-report without the correction and a GUI build does nothing at all unless
-asked (§10.1's inertness rule). Building the mechanism is not taking the
-decision: whether §7 Tier 1 becomes free by turning it on is still the
-copyright holder's, and nothing turns it on.
+**`GridSnap` is `GridGuard`'s other half** -- same event, same exemptions,
+same install-once shape. `setup()` installs it; the guard stays a debug
+build's, so a release program is corrected without being reported at.
 
 `GridSnap::snap()` is public because the property that makes it safe is
 worth asserting on rectangles rather than only through a widget, and the
@@ -3882,21 +3916,23 @@ at 50. Without the control the run would have read as a clean bill for
 floor/ceil, which is the policy that is actually unsafe. That is the
 whole argument for a control that lives inside the probe.
 
-**The odd-size sweep gave this question its sharpest face, and it is not
-an abstraction about a cell.** A window laid out by a plain
-`QVBoxLayout` -- Qt's default nine-pixel margins, nothing else unusual --
-**loses its top row on a terminal**, because nine pixels is neither zero
-rows nor one and the first widget's content lands in row 1. On an
-80x1 terminal that means the frame is **entirely blank**: the menu bar,
-the label, everything, is one row below the only row there is. The
-control is what makes it a measurement rather than a guess: the same
-window with `setContentsMargins(0, 0, 0, 0)` shows `   File` at 80x1 and
-its label as well at 80x2.
+**A correction to what the odd-size sweep recorded here, because it named
+the wrong cause and the right one is a different question.** That sweep
+found a window laid out by a plain `QVBoxLayout` losing its top row, and
+wrote it up as Qt's default nine-pixel margins rounding badly. Measured
+since: the margin is **19 pixels**, exactly one cell, because
+`GridStyle::pixelMetric()` answers `ch` for `PM_LayoutTopMargin` and
+`PM_LayoutBottomMargin`. Nothing rounds and nothing is lost to slack --
+the first widget starts on row 1 because **qtty gives every layout a
+one-row margin**, and `GridSnap` neither causes that nor fixes it, which
+was checked both ways.
 
-So the price of leaving `GridSnap` off is not only "content lands a cell
-away"; on a short terminal it is the difference between a screen and a
-blank one, and the application did nothing unusual to earn it. It stays
-the copyright holder's question, with one more measurement under it.
+So the real question is a margin policy, and it is small and separate:
+**a one-row top and bottom margin costs two of a 24-row screen and two of
+a three-row one.** Most terminal programs use no outer margin at all. It
+is left open rather than changed here, because unlike the slack question
+it is a matter of taste with no invariant behind it -- and because the
+measurement that produced it was reported wrongly once already.
 
 Worth recording on its own, because it will bite whoever changes machine
 first. `Qtty::setup()` derives the cell size from the **locally installed**
@@ -4699,7 +4735,10 @@ not touch.
 
 Dependency-ordered:
 
-1. **Decide the layout-slack question (§7.8).** Either qtty snaps child
+1. ~~**Decide the layout-slack question (§7.8).**~~ **Taken**: `setup()`
+   installs `GridSnap`, and §7.8 records what settled it -- the whole
+   suite green with the filter on, both fixtures unmoved. What follows
+   was the reasoning while it was open: Either qtty snaps child
    geometry after layout activation -- design.md §7's unbuilt
    `CompactionPass`, which would make its Tier 1 promise true -- or §7 is
    narrowed to say what an application must do instead. It is first

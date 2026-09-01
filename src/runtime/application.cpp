@@ -192,6 +192,35 @@ void setup(QApplication &app) {
 #ifndef QT_NO_DEBUG
 	GridGuard::install(app);
 #endif
+
+	// design.md section 7 promises Tier 1 is free -- "style metrics differ, so the
+	// same layout compacts automatically" -- and it was not free for any
+	// layout with slack in it, which is most of them. QBoxLayout hands
+	// leftover space to its items in shares that are not cell multiples, and
+	// what that costs is not untidiness: measured across the suite, content
+	// under an off-grid coordinate lands a WHOLE CELL from where it belongs,
+	// 35 times.
+	//
+	// The policy is rounding each edge to the nearest cell, and that it
+	// cannot overlap two disjoint siblings is a proof rather than a sample:
+	// rounding is monotonic, so a.right + 1 <= b.left survives it. The one
+	// case where it does overlap is two widgets inside a single cell, which a
+	// cell renderer cannot draw whatever their geometry says.
+	//
+	// Turning it on was held open as a decision until the effect on a real
+	// tree was measured rather than argued. Measured: the whole suite passes
+	// with it installed, both snapshot fixtures included, and the only two
+	// checks that change are the two written to assert the UNSNAPPED state.
+	// Nothing else in 662 moved.
+	//
+	// It goes here rather than being left to applications for the reason the
+	// font enforcer above gives for itself: an invariant the grid depends on
+	// is the library's to hold, not a paragraph for every application to
+	// obey. setup() is already the call that makes a program a terminal
+	// program -- it installs GridStyle and restyles everything -- so a GUI
+	// build that never calls it is unaffected, which is section 10.1's
+	// inertness rule doing its job rather than being bypassed.
+	GridSnap::install(app);
 }
 
 void render_once(QWidget &win, CellBuffer &buf, QVector<CellImage> *placements) {
