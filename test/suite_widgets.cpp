@@ -2454,6 +2454,130 @@ int suite_widgets() {
 		      "and its cursor is in the field rather than on the bracket");
 	}
 
+
+	// ---- disabled looks disabled, and says so once ----
+	{
+		// Measured 2026-09-01, thirteen widgets disabled one at a time. Both
+		// channels marked the state and they marked it DIFFERENTLY: GridStyle
+		// wrote Attr::Dim and left the colour alone, while everything drawn
+		// through QPainter -- a label's text, a field's contents, a check
+		// box's own label, a list's rows -- came out as a hard 24-bit
+		// #bebebe with no attribute. role_of() asked the palette's current
+		// colour group only, so the Disabled group matched no role and fell
+		// through as "a colour the application chose".
+		//
+		// #bebebe is Fusion's grey for a light desktop: nearly invisible on a
+		// light terminal, brighter than ordinary text on a dark one, so
+		// "disabled" read as "emphasised" on half the terminals in use.
+		//
+		// The first version of this probe recorded the glyph and the Dim
+		// attribute and not the colour, and reported that a disabled QLabel
+		// and QLineEdit changed NOTHING. They changed colour. A signature
+		// that cannot see the field the bug is in reports the fixture.
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+
+		struct Row { const char *what; QWidget *w; };
+		QVector<Row> rows;
+		auto add = [&](const char *what, QWidget *w) {
+			v->addWidget(w);
+			rows.append(Row{ what, w });
+		};
+		add("push button", new QPushButton(QStringLiteral("OK")));
+		add("line edit",   new QLineEdit(QStringLiteral("text")));
+		auto *cb = new QCheckBox(QStringLiteral("Wrap"));
+		cb->setChecked(true);
+		add("check box",   cb);
+		add("radio",       new QRadioButton(QStringLiteral("One")));
+		auto *combo = new QComboBox;
+		combo->addItems({ QStringLiteral("one"), QStringLiteral("two") });
+		add("combo box",   combo);
+		add("spin box",    new QSpinBox);
+		auto *sl = new QSlider(Qt::Horizontal);
+		sl->setValue(40);
+		add("slider",      sl);
+		auto *pb = new QProgressBar;
+		pb->setValue(40);
+		add("progress",    pb);
+		auto *bar = new QScrollBar(Qt::Horizontal);
+		bar->setRange(0, 100);
+		add("scroll bar",  bar);
+		auto *tool = new QToolBar;
+		tool->addAction(QStringLiteral("Cut"));
+		add("tool bar",    tool);
+		auto *list = new QListWidget;
+		list->addItems({ QStringLiteral("alpha"), QStringLiteral("beta") });
+		list->setFixedHeight(3 * GridMetrics::ch());
+		add("list widget", list);
+
+		win.resize(GridMetrics::cells(24, 14));
+		win.show();
+		QCoreApplication::processEvents();
+
+		// glyphs, undimmed, true-coloured -- over the rows one widget owns.
+		auto survey = [&](const QRect &g, int *glyphs, int *undimmed, int *rgb) {
+			QCoreApplication::processEvents();
+			CellBuffer b(24, 14);
+			render_once(win, b);
+			*glyphs = *undimmed = *rgb = 0;
+			for (int y = g.top() / GridMetrics::ch();
+			     y <= g.bottom() / GridMetrics::ch() && y < b.rows(); ++y)
+				for (int x = 0; x < b.cols(); ++x) {
+					const Cell &c = b.at(x, y);
+					if (c.ch.isEmpty() || c.ch == QStringLiteral(" ")) continue;
+					++*glyphs;
+					if (!(c.attrs & Attr::Dim)) ++*undimmed;
+					if (c.fg.kind() == Color::Rgb) ++*rgb;
+				}
+		};
+
+		int bad_dim = 0, bad_rgb = 0, bad_enabled = 0;
+		for (const Row &r : rows) {
+			const QRect g(r.w->mapTo(&win, QPoint()), r.w->size());
+			int glyphs = 0, undimmed = 0, rgb = 0;
+
+			// The paired half: while it is ENABLED, nothing is dim. Without
+			// it, a library that dimmed everything unconditionally would
+			// satisfy every claim below.
+			survey(g, &glyphs, &undimmed, &rgb);
+			if (glyphs == 0 || undimmed != glyphs) {
+				printf("FAIL: an enabled %s is not drawn at full brightness"
+				       " (%d of %d glyphs dim)\n",
+				       r.what, glyphs - undimmed, glyphs);
+				++bad_enabled;
+			}
+
+			r.w->setEnabled(false);
+			survey(g, &glyphs, &undimmed, &rgb);
+			r.w->setEnabled(true);
+			if (glyphs == 0 || undimmed != 0) {
+				printf("FAIL: a disabled %s has %d of %d glyphs undimmed\n",
+				       r.what, undimmed, glyphs);
+				++bad_dim;
+			}
+			// The half that found the bug. Disabling must not turn a themed
+			// colour into a literal one: section 6 spends true colour only on
+			// a colour no palette role explains, and the Disabled group's
+			// grey has a role like any other.
+			if (rgb != 0) {
+				printf("FAIL: a disabled %s spends true colour on %d cells\n",
+				       r.what, rgb);
+				++bad_rgb;
+			}
+		}
+		fails += bad_enabled + bad_dim + bad_rgb;
+		if (!bad_enabled)
+			printf("PASS: an enabled widget is drawn at full brightness\n");
+		if (!bad_dim)
+			printf("PASS: and every cell of a disabled one is dim, both channels\n");
+		if (!bad_rgb)
+			printf("PASS: and disabling spends no true colour\n");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

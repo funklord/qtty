@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-01
 
-735 checks, 0 failures, under three configurations: the offscreen
+738 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -3737,6 +3737,62 @@ scoped to the rows the widget occupies, because moving focus away from
 the anchor button always changes *something* -- the anchor's own
 highlight -- and a whole-frame comparison would have passed no matter
 what the widget did.
+
+**Disabled was said twice, in two different languages** (2026-09-01).
+Thirteen widgets disabled one at a time, the whole frame compared cell by
+cell including attributes *and colour*. Both channels marked the state --
+and marked it differently:
+
+    Channel A   Attr::Dim, colour untouched (Color::Default)
+    Channel B   colour changed to a literal #bebebe, no attribute
+
+So a disabled `QCheckBox` came out with a dim `[x]` beside a label that
+was not dim but grey; a disabled `QLineEdit`'s brackets dimmed and its
+text went grey; a disabled `QLabel` changed colour and nothing else.
+
+The cause is one line. `role_of()` asked `pal.color(r)`, which reads the
+palette's **current colour group** -- Active, for the application palette.
+Qt paints a disabled widget in the **Disabled** group, so its colour
+matched no role and fell through the rule §6 states for a colour nobody
+can explain: pass it as true colour. The colour had a perfectly good
+role; the lookup was looking in one group of three.
+
+**The Channel B answer was the worse of the two on a terminal.** #bebebe
+is Fusion's grey for a light desktop. On a light terminal it is nearly
+invisible; on a dark one it is *brighter* than ordinary text, so
+"disabled" read as "emphasised" on half the terminals in use. It also
+spent a 24-bit sequence on a terminal that may have sixteen colours,
+which is the thing §6's rule exists to avoid.
+
+`role_of()` now searches Active first and Disabled second, and
+`text_style_for()` returns the role's ordinary colour together with
+`Attr::Dim` -- the same sentence `with_state()` has always written.
+Active first is deliberate: a palette whose two groups share a colour
+reads as enabled, and a missing Dim understates where a spurious one
+greys out a control the user can actually use.
+
+Three smaller gaps in Channel A, found by the same sweep and fixed with
+it. **`draw_box()` wrote the glyph and nothing else**, so a disabled
+list view's frame stayed at full brightness around dimmed contents -- the
+attributes are ORed rather than assigned, because a box drawn over a
+filled region has to keep the fill's reverse video. **A line edit's and
+a tool button's brackets** were written with default arguments, so `[Cut]`
+dimmed its word and not its brackets. And **the four bare arrow
+primitives** had no state either.
+
+The probe's own lesson is the one §0d keeps collecting. Its first
+signature recorded the glyph and the `Dim` attribute and **not the
+colour**, and it duly reported that a disabled `QLabel` and `QLineEdit`
+changed *nothing at all* -- the two widgets whose entire marking is the
+colour. A signature that cannot see the field the bug is in reports the
+fixture.
+
+The three checks left behind are paired. Two assert the disabled state --
+every glyph dim, and no cell spending true colour -- and the third
+asserts that an **enabled** widget is at full brightness, without which a
+library that dimmed everything unconditionally would satisfy both. That
+half was verified rather than assumed: making `with_state()` return Dim
+always reddens it for all eleven widgets.
 
 ### 7.3 Graphics tier (design.md §17.3)
 

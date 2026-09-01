@@ -277,10 +277,16 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	// after a left-aligned one -- is left alone.
 	if (row == last_row_ && q.x() >= last_x_ && col < last_end_col_)
 		col = last_end_col_;
+	// The pen carries the state as well as the colour. Qt paints a disabled
+	// widget with the palette's Disabled group, and text_style_for() now
+	// recognises that group and answers with the role's ordinary colour plus
+	// Attr::Dim -- the same sentence GridStyle writes through with_state(),
+	// where before this channel wrote a 24-bit grey and no attribute.
+	const TextStyle ts = text_style_for(pen_.color().rgba());
 	int x = col;
 	for (const QString &cl : to_clusters(text)) {
 		const Attrs had = dev_->buffer().at(x, row).attrs & Attrs(Attr::Reverse);
-		x += dev_->buffer().text(x, row, cl, pen_to_fg(pen_), Color(), a | had);
+		x += dev_->buffer().text(x, row, cl, ts.color, Color(), a | ts.attrs | had);
 	}
 	last_row_ = row;
 	last_end_col_ = x;

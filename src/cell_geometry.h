@@ -46,22 +46,60 @@ namespace Qtty {
 // Color() unconditionally, so the same red on a model's Qt::ForegroundRole
 // came out as nothing. Measured, in one program: three answers to one
 // question, and only one of them was the rule.
+//
+// The colour GROUP matters as well as the role, and this asked only the
+// palette's current one -- Active, for the application palette. Qt paints a
+// disabled widget in the Disabled group's colour, which therefore matched no
+// role and fell through as a colour the application chose. Measured on a form
+// of thirteen widgets, every one of them disabled in turn: GridStyle said
+// "disabled" with Attr::Dim and left the colour alone, while everything
+// drawn through QPainter -- a QLabel's text, a field's contents, a check
+// box's own label, an item view's rows -- came out as a hard 24-bit #bebebe.
+// One state, two answers.
+//
+// The Channel B answer is the worse of the two on a terminal. #bebebe is
+// Fusion's grey for a light desktop: on a light terminal it is nearly
+// invisible, on a dark one it is BRIGHTER than ordinary text, so "disabled"
+// read as "emphasised". It also spends a true-colour sequence on a terminal
+// that may have sixteen colours, which is the thing section 6's rule exists
+// to avoid -- and it did so for a colour that has a perfectly good role.
+//
+// Active is searched first, so a palette whose two groups share a colour
+// reads as enabled. That is the safe direction: a missing Dim understates,
+// a spurious one greys out a control the user can actually use.
 inline QPalette::ColorRole role_of(QRgb c,
-                                   std::initializer_list<QPalette::ColorRole> roles) {
+                                   std::initializer_list<QPalette::ColorRole> roles,
+                                   bool *disabled = nullptr) {
 	const QPalette &pal = QGuiApplication::palette();
+	if (disabled) *disabled = false;
 	for (QPalette::ColorRole r : roles)
-		if (pal.color(r).rgba() == c) return r;
+		if (pal.color(QPalette::Active, r).rgba() == c) return r;
+	for (QPalette::ColorRole r : roles)
+		if (pal.color(QPalette::Disabled, r).rgba() == c) {
+			if (disabled) *disabled = true;
+			return r;
+		}
 	return QPalette::NoRole;
 }
 
 // A text colour, by that rule. The role list is the one CellPaintEngine's pen
 // path uses, and is deliberately the same list rather than a similar one.
-inline Color fg_for(QRgb c) {
+// A text colour and the emphasis that belongs with it, by that rule. The
+// emphasis is the half that had nowhere to go: the role's own colour is what
+// the theme says text looks like, and "disabled" is Attr::Dim on top of it,
+// which is exactly what GridStyle's with_state() has always written.
+struct TextStyle { Color color; Attrs attrs; };
+inline TextStyle text_style_for(QRgb c) {
+	bool disabled = false;
 	const QPalette::ColorRole r = role_of(c, {QPalette::WindowText, QPalette::Text,
 		                                      QPalette::ButtonText,
-		                                      QPalette::HighlightedText});
-	return r == QPalette::NoRole ? Color::rgb(c) : theme().foreground(r);
+		                                      QPalette::HighlightedText},
+		                                  &disabled);
+	if (r == QPalette::NoRole) return TextStyle{ Color::rgb(c), Attrs() };
+	return TextStyle{ theme().foreground(r),
+		              disabled ? Attrs(Attr::Dim) : Attrs() };
 }
+inline Color fg_for(QRgb c) { return text_style_for(c).color; }
 
 // A background colour, by the same rule. A surface role the theme leaves at
 // Color::Default means "the terminal's own background", which is nothing to

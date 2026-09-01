@@ -293,7 +293,12 @@ void GridGuard::install(QCoreApplication &app) {
 // with glyphs rather than with an attribute matters here: the contents of a
 // focused list are already using reverse video to say which row is selected,
 // and a reversed border would be competing with them for the same signal.
-static void draw_box(CellBuffer &b, const QRect &c, bool focused = false) {
+// The attributes are ORed rather than assigned: a box drawn over a filled
+// region keeps the fill's reverse video, and this used to write the glyph and
+// nothing else -- so a disabled list view's frame stayed at full brightness
+// around dimmed contents.
+static void draw_box(CellBuffer &b, const QRect &c, bool focused = false,
+                     Attrs a = Attrs()) {
 	if (c.width() < 2 || c.height() < 2) return;
 	const QString h  = focused ? QStringLiteral("═") : QStringLiteral("─");
 	const QString v  = focused ? QStringLiteral("║") : QStringLiteral("│");
@@ -302,17 +307,17 @@ static void draw_box(CellBuffer &b, const QRect &c, bool focused = false) {
 	const QString bl = focused ? QStringLiteral("╚") : QStringLiteral("└");
 	const QString br = focused ? QStringLiteral("╝") : QStringLiteral("┘");
 	for (int x = c.left() + 1; x < c.right(); ++x) {
-		b.at(x, c.top()).ch = h;
-		b.at(x, c.bottom()).ch = h;
+		b.at(x, c.top()).ch = h;         b.at(x, c.top()).attrs |= a;
+		b.at(x, c.bottom()).ch = h;      b.at(x, c.bottom()).attrs |= a;
 	}
 	for (int y = c.top() + 1; y < c.bottom(); ++y) {
-		b.at(c.left(), y).ch = v;
-		b.at(c.right(), y).ch = v;
+		b.at(c.left(), y).ch = v;        b.at(c.left(), y).attrs |= a;
+		b.at(c.right(), y).ch = v;       b.at(c.right(), y).attrs |= a;
 	}
-	b.at(c.left(), c.top()).ch = tl;
-	b.at(c.right(), c.top()).ch = tr;
-	b.at(c.left(), c.bottom()).ch = bl;
-	b.at(c.right(), c.bottom()).ch = br;
+	b.at(c.left(), c.top()).ch = tl;     b.at(c.left(), c.top()).attrs |= a;
+	b.at(c.right(), c.top()).ch = tr;    b.at(c.right(), c.top()).attrs |= a;
+	b.at(c.left(), c.bottom()).ch = bl;  b.at(c.left(), c.bottom()).attrs |= a;
+	b.at(c.right(), c.bottom()).ch = br; b.at(c.right(), c.bottom()).attrs |= a;
 }
 
 GridStyle::GridStyle() : QProxyStyle(QStyleFactory::create(QStringLiteral("Fusion"))) {}
@@ -702,7 +707,7 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 			// The tab pane is in this group and never matches, because a
 			// QTabWidget hands focus to its tab bar through a focus proxy --
 			// which the bar's own case answers.
-			draw_box(dev->buffer(), c, owns_focus(w));
+			draw_box(dev->buffer(), c, owns_focus(w), with_state(opt));
 			return;
 		// A one-row line edit is bracketed, the way the combo box and the spin
 		// box below already are and for the reason written there: the control
@@ -720,11 +725,16 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 		// setFrame(false) answers false and is obeyed. The widget says
 		// whether it wants a boundary; this only asks.
 		case PE_PanelLineEdit: {
-			if (c.height() >= 2) { draw_box(dev->buffer(), c, owns_focus(w)); return; }
+			if (c.height() >= 2) {
+				draw_box(dev->buffer(), c, owns_focus(w), with_state(opt));
+				return;
+			}
 			const auto *le = qobject_cast<const QLineEdit *>(w);
 			if (le && le->hasFrame()) {
-				dev->buffer().put_cluster(c.left(), c.top(), QStringLiteral("["));
-				dev->buffer().put_cluster(c.right(), c.top(), QStringLiteral("]"));
+				dev->buffer().put_cluster(c.left(), c.top(), QStringLiteral("["),
+				                          Color(), Color(), with_state(opt));
+				dev->buffer().put_cluster(c.right(), c.top(), QStringLiteral("]"),
+				                          Color(), Color(), with_state(opt));
 			}
 			return;
 		}
@@ -783,10 +793,14 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 				    Color(), Color(), with_state(opt));
 			}
 			return;
-		case PE_IndicatorArrowDown:  dev->buffer().text(c.left(), c.top(), QStringLiteral("▾")); return;
-		case PE_IndicatorArrowUp:    dev->buffer().text(c.left(), c.top(), QStringLiteral("▴")); return;
-		case PE_IndicatorArrowLeft:  dev->buffer().text(c.left(), c.top(), QStringLiteral("◂")); return;
-		case PE_IndicatorArrowRight: dev->buffer().text(c.left(), c.top(), QStringLiteral("▸")); return;
+		case PE_IndicatorArrowDown:  dev->buffer().text(c.left(), c.top(), QStringLiteral("▾"),
+		                     Color(), Color(), with_state(opt)); return;
+		case PE_IndicatorArrowUp:    dev->buffer().text(c.left(), c.top(), QStringLiteral("▴"),
+		                     Color(), Color(), with_state(opt)); return;
+		case PE_IndicatorArrowLeft:  dev->buffer().text(c.left(), c.top(), QStringLiteral("◂"),
+		                     Color(), Color(), with_state(opt)); return;
+		case PE_IndicatorArrowRight: dev->buffer().text(c.left(), c.top(), QStringLiteral("▸"),
+		                     Color(), Color(), with_state(opt)); return;
 		// Suppress pixel-noise primitives; selection is handled semantically
 		// in CE_ItemViewItem, focus by the router-owned focus attr.
 		case PE_FrameFocusRect:
@@ -1140,7 +1154,7 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			const Attrs a = with_state(opt) | focus_attrs(w);
 			CellBuffer &b = dev->buffer();
 			if (c.height() >= 2) {
-				draw_box(b, c);
+				draw_box(b, c, false, a);
 			} else {
 				b.put_cluster(c.left(), row, QStringLiteral("["), Color(), Color(), a);
 				b.put_cluster(c.right(), row, QStringLiteral("]"), Color(), Color(), a);
@@ -1181,8 +1195,10 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				const QString label = tool_button_label(tb, w);
 				const bool bracket = c.width() >= 3 || label.isEmpty();
 				if (bracket) {
-					dev->buffer().put_cluster(c.left(), row, QStringLiteral("["));
-					dev->buffer().put_cluster(c.right(), row, QStringLiteral("]"));
+					dev->buffer().put_cluster(c.left(), row, QStringLiteral("["),
+					                          Color(), Color(), with_state(opt));
+					dev->buffer().put_cluster(c.right(), row, QStringLiteral("]"),
+					                          Color(), Color(), with_state(opt));
 				}
 				// A menu is an affordance or it is nothing: a tool button
 				// with a dropdown looked exactly like one without, so the
@@ -1194,7 +1210,8 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				const bool menu = tb->features & QStyleOptionToolButton::HasMenu;
 				if (menu)
 					dev->buffer().put_cluster(c.right() - 1, row,
-					                          QStringLiteral("▾"));
+					                          QStringLiteral("▾"),
+					                          Color(), Color(), with_state(opt));
 				const int inner = c.width() - (bracket ? 2 : 0) - (menu ? 2 : 0);
 				if (inner > 0)
 					dev->buffer().text(c.left() + (bracket ? 1 : 0), row,
@@ -1257,7 +1274,7 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			const Attrs a = with_state(opt) | focus_attrs(w);
 			CellBuffer &b = dev->buffer();
 			if (c.height() >= 2) {
-				draw_box(b, c);
+				draw_box(b, c, false, a);
 			} else {
 				b.put_cluster(c.left(), row, QStringLiteral("["), Color(), Color(), a);
 				b.put_cluster(c.right(), row, QStringLiteral("]"), Color(), Color(), a);
