@@ -230,7 +230,31 @@ void Compositor::compose(CellBuffer &out) {
 					break;
 				}
 		if (v.isValid()) {
-			QPoint g = cursor_origin + owner->mapTo(cursor_layer, v.toRect().topLeft());
+			// The HORIZONTAL CENTRE, not the left edge. What Qt returns is
+			// the caret's repaint rectangle rather than the caret: a
+			// QLineEdit inflates it five pixels either side so a redraw
+			// covers the glyph beside it, and taking topLeft() took the
+			// inflation as the position. Measured on a 10-pixel cell, with
+			// the caret walked along "abcdef" in a bracketed field whose
+			// text begins at column 1:
+			//
+			//   caret at 0   rect 10x20+7+1    left -> col 0   centre -> 1
+			//   caret at 1   rect 10x20+17+1   left -> col 1   centre -> 2
+			//   caret at 6   rect 10x20+67+1   left -> col 6   centre -> 7
+			//
+			// The left reading was one cell out every time, sitting ON the
+			// character before the caret instead of where typing goes -- and
+			// on a one-cell field it sat on the bracket. A QSpinBox showed
+			// the same fault from the other end: its editor answers
+			// 10x20+-3+0, a rectangle starting outside the widget, whose
+			// centre is the caret at +2.
+			//
+			// Vertically the top is right: the rectangle is the line's full
+			// height and its top is the caret's top.
+			const QRect cr = v.toRect();
+			QPoint g = cursor_origin
+			           + owner->mapTo(cursor_layer,
+			                          QPoint(cr.x() + cr.width() / 2, cr.y()));
 			QPoint cell(g.x() / cw, g.y() / ch);
 			if (cell.x() >= 0 && cell.y() >= 0
 			    && cell.x() < out.cols() && cell.y() < out.rows())

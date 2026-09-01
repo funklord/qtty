@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-01
 
-729 checks, 0 failures, under three configurations: the offscreen
+735 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -5780,15 +5780,40 @@ and matters for screen readers."* A caret in the middle of a slider is
 not a decoration, it is a claim that typing goes there, and a screen
 reader says it out loud.
 
-**Measured and not chased: the spin box's caret is two cells left of its
-field.** Qt answers `10x20+-3+0` -- a caret at x = -3, outside the widget
--- and the compositor's owner search maps that from the inner
-`QLineEdit`, giving column 0, which is the `[` rather than the digit. The
-compositor already carries a fix for a related fault in the same place
-(a spin box and its editor answering identically, so the rect had to be
-mapped from whichever returned it), and this is a different one. Recorded
-rather than fixed: it needs its own measurement, and the check added here
-asserts that a spin box gets a cursor, not where it lands.
+**And the rectangle's top-left is not the caret.** Recorded here first as
+a spin box oddity -- Qt answers `10x20+-3+0`, a caret at x = -3, outside
+the widget -- and the measurement that followed showed it was not a spin
+box fault at all. Every line edit had it. The caret walked along
+"abcdef" in a bracketed field whose text begins at column 1, on a
+10-pixel cell:
+
+    caret at 0   rect 10x20+7+1    left -> col 0   centre -> col 1
+    caret at 1   rect 10x20+17+1   left -> col 1   centre -> col 2
+    caret at 3   rect 10x20+37+1   left -> col 3   centre -> col 4
+    caret at 6   rect 10x20+67+1   left -> col 6   centre -> col 7
+
+**What Qt returns is the caret's REPAINT rectangle, not the caret.** A
+`QLineEdit` inflates it five pixels either side so a redraw covers the
+glyph beside it, and `topLeft()` takes the inflation as the position. The
+left reading was one cell out every time, sitting on the character
+*before* the caret rather than where typing goes; on the spin box, whose
+field starts at the bracket, it sat on the bracket itself. The horizontal
+centre is the caret, and it is the same answer for a `QTextEdit`, whose
+rectangle is one pixel wide and whose centre is therefore its left edge.
+Vertically the top is right: the rectangle is the line's full height.
+
+The spin box fixture could not have found this on its own. Its editor
+reports the same rectangle for "0", "7", "42" and "999" -- the caret sits
+at position 0 in all four -- so nothing in it says whether the rectangle
+tracks the caret at all. **A fixture whose variable does not vary is
+measuring the constant.** The plain line edit with the caret moved is
+what turned one strange number into a rule.
+
+The checks assert relationships rather than columns, because the absolute
+column depends on the bracket the style draws and on the font: the caret
+at the start of the text is on the first character's cell, at the end it
+is one cell past the last, and one character of movement is one cell of
+movement.
 
 
 ## 9. Build and repository conventions

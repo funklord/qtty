@@ -2359,6 +2359,101 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+
+	// ---- the terminal cursor sits where typing goes ----
+	{
+		// Measured 2026-09-01: it sat one cell to the LEFT of that, on the
+		// character before the caret, and on a spin box it sat on the
+		// bracket. What Qt returns from ImCursorRectangle is the caret's
+		// REPAINT rectangle rather than the caret -- a QLineEdit inflates it
+		// five pixels either side so a redraw covers the glyph beside it --
+		// and the compositor was reading its top-left corner.
+		//
+		// Asserted as relationships, because the absolute column depends on
+		// the bracket the style draws and on the font: the caret at the start
+		// of the text is on the first text cell, the caret at the end is one
+		// cell past the last, and each step of one character is one cell.
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		auto *le = new QLineEdit(QStringLiteral("abcdef"));
+		v->addWidget(le);
+		// One row exactly. At two, the layout has 38 pixels for a 19-pixel
+		// field whose vertical policy is Fixed, centres it at y = 9, and the
+		// grid guard reports the fixture rather than the code.
+		win.resize(GridMetrics::cells(12, 1));
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter router(&win);
+		Compositor comp(&win, &router);
+
+		QVector<int> col;
+		int first = -1, last = -1;
+		for (int at = 0; at <= 6; ++at) {
+			le->setCursorPosition(at);
+			le->setFocus();
+			set_focus_widget(win.focusWidget());
+			QCoreApplication::processEvents();
+			CellBuffer b(12, 1);
+			comp.compose(b);
+			if (at == 0)
+				for (int x = 0; x < b.cols(); ++x) {
+					const QString &g = b.at(x, 0).ch;
+					if (g == QStringLiteral("a")) first = x;
+					if (g == QStringLiteral("f")) last = x;
+				}
+			col.append(comp.cursor_cell() ? comp.cursor_cell()->x() : -1);
+		}
+		// The fixture has to have drawn the text, or every claim below is
+		// about a blank row. "abcdef" is six distinct letters for exactly
+		// this reason -- a repeated one would make "the last f" ambiguous.
+		CHECK(first >= 0 && last == first + 5,
+		      "the field drew its six characters before the caret was asked about");
+		CHECK(col.value(0) == first,
+		      "the caret at the start of the text is on the first character's cell");
+		CHECK(col.value(6) == last + 1,
+		      "and at the end it is one cell past the last, where typing goes");
+		bool step = true;
+		for (int i = 1; i < col.size(); ++i)
+			if (col[i] != col[i - 1] + 1) step = false;
+		CHECK(step, "and one character of movement is one cell of movement");
+	}
+	{
+		// A spin box reaches the same code by a different road: it forwards
+		// the query to its inner editor verbatim, so the rectangle arrives in
+		// the editor's coordinates and the compositor has to find which
+		// widget answered. Its editor reported 10x20+-3+0 -- a rectangle
+		// beginning three pixels outside the spin box -- and the left-corner
+		// reading put the cursor on the opening bracket.
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		auto *spin = new QSpinBox;
+		spin->setRange(0, 999);
+		spin->setValue(42);
+		v->addWidget(spin);
+		win.resize(GridMetrics::cells(12, 1));
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter router(&win);
+		Compositor comp(&win, &router);
+		spin->setFocus();
+		set_focus_widget(win.focusWidget());
+		QCoreApplication::processEvents();
+		CellBuffer b(12, 1);
+		comp.compose(b);
+		int digit = -1;
+		for (int x = 0; x < b.cols() && digit < 0; ++x)
+			if (b.at(x, 0).ch == QStringLiteral("4")) digit = x;
+		CHECK(digit > 0, "a spin box drew its value inside its brackets");
+		CHECK(comp.cursor_cell() && comp.cursor_cell()->x() == digit,
+		      "and its cursor is in the field rather than on the bracket");
+	}
+
 	return fails;
 }
 
