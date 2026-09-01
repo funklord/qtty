@@ -329,7 +329,7 @@ Owned by the copyright holder:
 | A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. Cheaper to answer after the picture-rule entry below, which is the same question seen from the other end | *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed. All four candidate behaviours are printed now -- and `Left\|Middle` **removes paging** rather than adding anything, unless `SH_Slider_PageSetButtons` moves it to the right button | *the interaction sweep* |
 | Whether the "too small to be a picture" rule moves to the backend. Nothing left unmeasured: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()`; no widget icon reaches the branch today; and the cost is **1.4 KB once per distinct icon, 35 bytes a frame after** -- eight of them together less than the one 48x48 icon the library already uploads | §7.2 |
-| The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work. The exposure is now **measured** and **guarded** rather than feared: 7 of 102 installed families give the 10x19 the fixtures assume, and a check names it | §7.9, §11 |
+| The bundled font -- but **not for the reason the entry gave**. Measured across 18 families from 7x16 to 32x16: pin `GridMetrics` and every frame is identical; leave it to the font and every frame differs. The fixtures depend on the **cell**, not the font, so reproducibility needs no licensed asset. What a font would still settle is R3's integrality and the running application's appearance | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
 
@@ -4943,6 +4943,47 @@ The check cannot substitute for the font. It is deliberately the
 opposite: it converts an unowned assumption into a named one, so that
 whoever does choose a font is choosing against a stated requirement
 instead of chasing a diff.
+
+**And then the exposure turned out to be narrower still, in the one way
+that matters for the entry.** The reason given for bundling a font is
+that it "would make the fixtures reproducible". Measured, **the font is
+not what the fixtures depend on -- the cell size is, and nothing else.**
+
+Eighteen fixed-pitch families were sampled, one per distinct natural
+cell, from a 7x16 to a 32x16. Each was made the application font, and a
+deliberately width-sensitive dialog -- an eliding label, a combo box
+sized to its longest item, a tab bar, a table with a wide column header
+-- was rendered and compared frame for frame:
+
+    GridMetrics pinned to 10x19   17 of 17 comparisons identical
+    GridMetrics left to the font  17 of 17 comparisons differ
+
+(Eighteen families, seventeen comparisons: the first is the reference.
+The control is the half that makes the result mean anything -- without
+it, "a font that never took effect" would look exactly like "the pin
+works".)
+
+The reason is structural rather than lucky. `sizeFromContents()` returns
+cell multiples and `elide_to_cells()` counts cells, so **no layout
+decision in this tree ever consults a glyph advance except through the
+cell**. A font with a 32-pixel advance lays a dialog out identically to
+one with 7, provided the cell is the same.
+
+So the entry narrows sharply. A bundled font would still settle R3's
+integrality and would fix what the *running application* looks like --
+but for **fixture reproducibility, which is the reason the entry gives,
+pinning `GridMetrics` in the test binary would do it, with no licensed
+asset involved at all.**
+
+That is left as a costed option rather than done, because it is a change
+to what the two fixtures MEAN and they are this tree's most-cited
+artefacts. The cost is real and is the argument against: a pinned cell
+makes the fixtures stop being an end-to-end check of the metric
+pipeline, so a machine whose font gives fractional metrics would render
+fixtures that pass. The tree has two other checks for exactly that --
+`grid_font_problem()` and the cell-size guard above -- which is what
+makes the option arguable rather than obviously wrong. **The holder's,
+and now a much smaller question than "which font".**
 
 ## 8. Where the document and the code disagree
 
