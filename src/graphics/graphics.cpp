@@ -398,10 +398,10 @@ void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_
 			if (X < 0 || Y < 0 || X >= frame.cols() || Y >= frame.rows()) continue;
 			// two vertical samples per cell (2x vertical resolution)
 			auto sample = [&](double fy) -> QRgb {
-			    int sx = qMin(int((cx + 0.5) * img.width() / cell_rect.width()), img.width() - 1);
-			    int sy = qMin(int((cy + fy) * img.height() / cell_rect.height()), img.height() - 1);
-			    return img.pixel(sx, sy);
-		    };
+				int sx = qMin(int((cx + 0.5) * img.width() / cell_rect.width()), img.width() - 1);
+				int sy = qMin(int((cy + fy) * img.height() / cell_rect.height()), img.height() - 1);
+				return img.pixel(sx, sy);
+			};
 			const QRgb top = sample(0.25), bot = sample(0.75);
 			const int alpha_top = qAlpha(top), alpha_bot = qAlpha(bot);
 			if (alpha_top < 40 && alpha_bot < 40) continue;                  // transparent: untouched
@@ -418,11 +418,11 @@ void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_
 				// keep whatever bg is behind the uncovered half
 				cell.attrs = {}; cell.width = 1;
 			} else {                                           // translucent: tint bg,
-			    const int a = qMax(alpha_top, alpha_bot);                    // glyph stays readable
-			    const QRgb under = cell.bg.kind() == Color::Rgb ? cell.bg.value()
-			                                                    : under_default;
-			    cell.bg = Color::rgb(blend(top, a, under));
-		    }
+				const int a = qMax(alpha_top, alpha_bot);                    // glyph stays readable
+				const QRgb under = cell.bg.kind() == Color::Rgb ? cell.bg.value()
+				                                                : under_default;
+				cell.bg = Color::rgb(blend(top, a, under));
+			}
 		}
 }
 
