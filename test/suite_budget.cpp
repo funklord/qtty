@@ -172,6 +172,18 @@ int suite_budget() {
 	// the cell plane -- so Qt's cursor blink timer cannot reach these
 	// numbers, and this check does not race a 1000 ms flash interval.
 	edit->setFocus(Qt::OtherFocusReason);
+	// And the view's delayed layout is run before the baseline rather than
+	// left pending. QAbstractItemView schedules relayout on a one-shot timer,
+	// so a fixture that renders twice and asserts the keystroke is the only
+	// difference has a second thing in the window that can change between
+	// them. The reasoning above lists only focus, and this is what it missed.
+	//
+	// Not offered as the explanation of anything: this check was seen to fail
+	// once in fifteen runs and then did not reproduce in sixty-three more,
+	// eighteen of them with six suites running at once. A pending timer in a
+	// fixture that compares two frames is wrong on its own terms, and the
+	// diagnostic below is what will name the cause if it happens again.
+	table->doItemsLayout();                       // the public form; execute... is protected
 	QCoreApplication::processEvents();
 	CellBuffer before(grid_cols, grid_rows), after(grid_cols, grid_rows);
 	render_once(win, before);
@@ -195,6 +207,30 @@ int suite_budget() {
 
 	const QRect edit_cells(edit->geometry().x() / cw, edit->geometry().y() / ch,
 	                       edit->geometry().width() / cw, edit->geometry().height() / ch);
+	// Named, not just counted. This check failed about one run in fifteen
+	// and the condition alone said only that a rectangle was not inside
+	// another one -- which is the shape of failure that costs an afternoon
+	// of hypotheses, and suite_cells' CHECK macro carries the same lesson.
+	if (!edit_cells.contains(typed_damage.boundingRect())) {
+		printf("info: damage %d,%d %dx%d is not inside edit %d,%d %dx%d\n",
+		       typed_damage.boundingRect().x(), typed_damage.boundingRect().y(),
+		       typed_damage.boundingRect().width(),
+		       typed_damage.boundingRect().height(),
+		       edit_cells.x(), edit_cells.y(),
+		       edit_cells.width(), edit_cells.height());
+		int shown = 0;
+		for (int y = 0; y < grid_rows && shown < 8; ++y)
+			for (int x = 0; x < grid_cols && shown < 8; ++x) {
+				if (edit_cells.contains(QPoint(x, y))) continue;
+				const Cell &a = after.at(x, y), &b = before.at(x, y);
+				if (a.ch == b.ch && a.attrs == b.attrs && a.fg == b.fg
+				    && a.bg == b.bg)
+					continue;
+				printf("info:   cell %d,%d was '%s' now '%s'\n", x, y,
+				       qPrintable(b.ch), qPrintable(a.ch));
+				++shown;
+			}
+	}
 	CHECK(edit_cells.contains(typed_damage.boundingRect()),
 	      "keystroke damage stays inside the widget that changed (section 11)");
 

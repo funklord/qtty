@@ -826,9 +826,23 @@ int suite_graphics() {
 			// The coalescing path, which render_now() bypasses. A frame ASKED
 			// for rather than taken is how every frame after the first one
 			// arrives, and it was the other half of this file's coverage gap.
+			//
+			// Waited on the total, not on rec.frames. A software tier calls
+			// present_pixels() and never present(), so `rec.frames < 2` was
+			// permanently true there: the loop always ran to its bound, and
+			// whatever the 16 ms coalescing timer and the 100 ms idle tick
+			// delivered while it spun landed in the counts asserted below.
+			// Measured -- with a wait long enough for the timers to fire, a
+			// software tier reported three pixel frames and KittyAlpha two
+			// overlays, against assertions demanding exactly one of each.
+			// Forty non-blocking passes usually finish inside 16 ms, so the
+			// checks passed most of the time and failed about one run in ten.
+			const int before = rec.frames + rec.pixels;
 			sched.request_frame();
-			for (int k = 0; k < 40 && rec.frames < 2; ++k)
-				QCoreApplication::processEvents();
+			QElapsedTimer waited;
+			waited.start();
+			while (waited.elapsed() < 200 && rec.frames + rec.pixels == before)
+				QCoreApplication::processEvents(QEventLoop::WaitForMoreEvents, 10);
 		};
 
 		QImage art(GridMetrics::cw() * 4, GridMetrics::ch() * 2,
@@ -846,7 +860,18 @@ int suite_graphics() {
 		// calls it the one native path.
 		Recorder alpha;
 		drive(Qtty::Capabilities::KittyAlpha, alpha);
-		CHECK(alpha.overlays == 1 && alpha.pixels == 0,
+		// How many frames arrive is a property of how many this fixture asked
+		// for and of when two timers fired; WHAT each one ships is the
+		// property under test. The discriminating half stays exact -- this
+		// tier ships no pixels at all, and the software tiers ship no overlay
+		// at all -- and only the count of the expected kind is relaxed.
+		// Two, not one, and not "at least one": the fixture takes one frame
+		// with render_now() and ASKS for a second through the coalescing
+		// timer, so a count below two would mean the wait gave up and the
+		// coalescing path -- the way every frame after the first one arrives
+		// -- went unexercised while the check still passed. More than two is
+		// the idle tick and is not a fault.
+		CHECK(alpha.overlays >= 2 && alpha.pixels == 0,
 		      "KittyAlpha ships the overlay to the terminal, unrasterised");
 		CHECK(alpha.last_cell == QPoint(1, 1) && alpha.last_z == 3,
 		      "with its own cell position and z");
@@ -861,7 +886,7 @@ int suite_graphics() {
 			// case leaves the placement half of it unrun.
 			soft.want_placement = true;
 			drive(mode, soft);
-			const bool ok = soft.pixels == 1 && soft.overlays == 0
+			const bool ok = soft.pixels >= 2 && soft.overlays == 0
 			             && soft.last_pixels.size()
 			                == QSize(20 * GridMetrics::cw(), 6 * GridMetrics::ch());
 			printf("%s: tier %d composites in software into one full frame\n",

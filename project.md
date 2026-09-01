@@ -703,6 +703,56 @@ Three things it taught, which the next run should carry in:
   configuration: a second Qt version (§0e), and whatever a real terminal
   says that offscreen does not.
 
+**And a check that passes is not a check that passes twice.** Two of these
+were found by accident on 2026-09-01, when the same binary -- byte for
+byte, no source change between the runs -- gave a different answer twice
+in about a dozen runs of `make check`. Both had gone unnoticed because
+the failures never repeated, and a green re-run reads as "it was
+nothing".
+
+The graphics one was diagnosable and is fixed. A fixture drove the
+frame scheduler and then waited:
+
+    for (int k = 0; k < 40 && rec.frames < 2; ++k)
+        QCoreApplication::processEvents();
+
+`rec.frames` counts `present()`. **A software graphics tier never calls
+`present()`** -- it calls `present_pixels()` -- so in exactly the modes
+the block was about, the exit condition was permanently true. The loop
+always ran its full forty passes, which on an idle machine take
+microseconds, and the assertions below it demanded `pixels == 1` and
+`overlays == 1`. Every frame the 16 ms coalescing timer or the 100 ms
+idle tick managed to deliver during those forty passes went into those
+counts.
+
+Proved rather than argued: replacing the forty passes with a wait long
+enough for the timers to fire made all four assertions fail, every time,
+and printed the counts -- three pixel frames for each software tier, two
+overlays for KittyAlpha. That is the same fault the fast path was hitting
+about one run in ten.
+
+Two things came out of the fix. **Wait on a counter the case under test
+actually increments** -- the wait is now on `frames + pixels` and stops
+at the first increase, which also stops it before the idle tick. And
+**assert the kind, not the count**: how many frames arrive is a property
+of how many the fixture asked for and of when two timers fired, while
+what each one ships is the property under test. The discriminating halves
+stay exact -- this tier ships no pixels at all, that one ships no overlay
+at all -- and the count of the expected kind is now "at least two",
+which still proves the coalesced frame arrived rather than letting the
+wait give up silently.
+
+The other one is **not fixed and is recorded as unreproduced**:
+"keystroke damage stays inside the widget that changed" failed once and
+then did not fail in sixty-three further runs, eighteen of them with six
+copies of the suite running at once. It now prints the damage rectangle
+and names up to eight changed cells outside the widget when it fails,
+because the condition alone said only that one rectangle was not inside
+another. Its fixture also no longer leaves `QAbstractItemView`'s
+one-shot relayout timer pending across the two renders -- which is wrong
+on its own terms in a check asserting the keystroke is the only
+difference, and is offered as housekeeping rather than as the diagnosis.
+
 **The sabotage discipline that goes with it**, because a passing new test
 is not evidence: break the code the test claims to defend, confirm the edit
 actually applied (`grep -c SABOTAGE`), run, confirm the *named* check
