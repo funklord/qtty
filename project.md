@@ -328,7 +328,7 @@ Owned by the copyright holder:
 |---|---|
 | A message box's severity icon. The mechanism is now measured and has no open question -- a `QIconEngine` that registers each pixmap it mints, consulted through the `cacheKey()` the placement already carries. What is left is whether a warning triangle should become a glyph, taken against a mosaic that is **faithful and still unreadable** | *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed -- measured, and the current behaviour is held by checks | *the interaction sweep* |
-| Whether the "too small to be a picture" rule moves to the backend, which knows whether the terminal can draw pictures -- it cannot be answered from the pixmap, and the cost is an upload per tiny icon | §7.2 |
+| Whether the "too small to be a picture" rule moves to the backend. Measured since: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()` rather than a structural change -- and no widget icon reaches the branch today | §7.2 |
 | The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work. The exposure is now **measured** and **guarded** rather than feared: 7 of 102 installed families give the 10x19 the fixtures assume, and a check names it | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
@@ -2557,6 +2557,27 @@ case where the two answers differ rather than from the case that confirms
 the right one, and the first where the sabotage caught it rather than
 review.
 
+**And it happened again on the picture rule, in the plainest form yet.**
+The claim to hold was "no widget degrades to a substitution block", and
+the obvious check was that the widgets gallery contains no such block. It
+passed. Sabotaging the threshold so that *every* image becomes a block
+reddened **nine** checks elsewhere and left that one green: the gallery
+contains no image at all, so no threshold could make a block appear in
+it. A check on the absence of a mark, in a fixture that has nothing which
+could produce that mark, is an assertion about the fixture rather than
+about the code.
+
+A replacement was written -- a bar of closable tabs and a sorted header,
+widgets that DO have icons -- and it was then thrown away too, for a
+second reason worth recording separately: **the property was already
+held.** The tab-close pair a few hundred lines up
+asserts the mark is present AND that the block is not, on a fixture that
+has the icon, and removing the interception reddens it. The replacement
+added only a "no placement either" clause that the same sabotage left
+green, which is a clause with nothing to say. Two checks were written
+before noticing that neither was needed; the census belongs in this
+document, not in an assertion.
+
 **The menu bar drew no items at all, and the mnemonic fix had hidden two
 more instances of its own cause.** Both came from looking deliberately,
 after the beerssh session observed that a fix removing a symptom can hide
@@ -3021,8 +3042,19 @@ answers, exactly as the disabled item view did.
 
   The substitution covers the cells the image occupies now. For the 1x1
   icon the rule was written for that is the same thing, which is why the
-  blast radius is nil: **the whole suite draws exactly two glyph
-  substitutions and both are 1x1**. The tab drag renders as eight shaded
+  blast radius is small. It was recorded as "exactly two glyph
+  substitutions and both are 1x1"; counted again with the branch
+  instrumented, the whole suite draws **seven**, and the shape of them
+  matters more than the number:
+
+      1 x  cells 8x1  px 80x19   the dragged tab            (render)
+      6 x  cells 1x1  px 10x19   pixmaps built at one cell  (4 suites)
+
+  Every one of the six is a test's own pixmap, made at exactly `cw x ch`.
+  **No widget icon reaches this branch at all** -- not the tab close, not
+  the sort indicator, not the branch expander, not the dock buttons --
+  because `GridStyle` answers Qt's standard iconography with a glyph
+  before a pixmap is ever drawn. The tab drag renders as eight shaded
   cells moving along the bar -- an honest "a picture is here" -- instead
   of a smear of stale label.
 
@@ -3045,10 +3077,42 @@ answers, exactly as the disabled item view did.
   and the question that CAN be answered is a different one: **can this
   terminal draw pictures at all** -- which `CellPaintEngine` does not know
   and the backend does. The rule is being applied where the information is
-  not. Moving it there is a structural change with a real cost (every tiny
-  icon becomes an upload) and it stays **the copyright holder's**; what
-  has changed is that it is now a question about where a decision lives
-  rather than about a threshold to pick.
+  not.
+
+  **"A structural change" was the wrong size, and the code already said
+  so.** The backend does not merely know whether the terminal can draw
+  pictures; it already acts on it. `AnsiBackend` composes every placement
+  as half-blocks whenever `!pixel_placements && !placeholders` -- the
+  fallback tier, running today for every terminal without a graphics
+  protocol. Nothing would have to be built. The change is one condition
+  in `drawPixmap()`, after which the existing path carries a tiny icon
+  the same way it carries a large one.
+
+  **And what the two answers actually look like at icon size, printed
+  rather than predicted.** A 16x16 status light, red and grey:
+
+      red   block: one cell, rgb(203,9,9)
+      red   mosaic: [▀ fg ff0000 bg ba0d0d] [▀ fg ba0d0d bg 000000]
+      grey  block: one cell, rgb(106,106,106)
+      grey  mosaic: [▀ fg 808080 bg 646464] [▀ fg 646464 bg 000000]
+
+  Both tell red from grey, so the colour fix (below) already bought the
+  thing that mattered most. The difference is resolution: the block
+  spends one colour on the icon's two cells, the mosaic spends four and
+  keeps the edge where the circle stops. On a graphics terminal the
+  placement would be real pixels and there is no contest.
+
+  **What the suite cannot price is the cost**, and that is worth stating
+  plainly rather than assuming either way. "Every tiny icon becomes an
+  upload" has no instance here to measure, because no widget icon reaches
+  the branch -- the census above is six test fixtures and a tab drag. An
+  application that puts a 16x16 pixmap in a `QLabel` would pay it, and
+  upload-once keys on `cacheKey()`, so the bill is per distinct image
+  rather than per sighting.
+
+  It stays **the copyright holder's**, and it is now a smaller question
+  than it was written as: not where to build a mechanism, but whether to
+  relax one condition, given that the tier below it already works.
 
   **One thing that was not a decision is fixed.** The substitution threw
   the image's colour away: a red status light and a grey one both drew a
