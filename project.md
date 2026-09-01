@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-743 checks, 0 failures, under three configurations: the offscreen
+744 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -3880,17 +3880,39 @@ the fix, the residue is exactly:
   revisiting on that ground -- the style elides everywhere else, and
   corrupting a neighbour is worse than truncating a label -- but it is a
   reversal of a recorded choice and belongs in its own change.
-- **A child drawn outside its parent.** A `QListWidget` one row tall put
-  its horizontal scroll bar's `◀█▶` on the row *above* itself. Qt gives a
-  scroll bar a position its parent has no room for, and nothing clips a
-  child to its parent: on a pixel screen the window system does that, and
-  here `render(DrawChildren)` paints the whole tree in one pass with no
-  per-child bound. §7.8 has a check that a child eighteen cells wide
-  inside a six-cell parent arrives clipped, so the right and bottom edges
-  are covered and this one went the other way.
+- **A child drawn outside its parent -- since fixed.** A `QListWidget`
+  one row tall put its horizontal scroll bar's `◀█▶` on the row *above*
+  itself. Measured rather than guessed at:
 
-Both are the same sentence as the rest -- *a control draws inside the
-widget it was given* -- and both are next.
+        list geometry 60x19+20+38 (cells 6x1 at 2,2)
+          QWidget    geom 30x19+10+-10   in host +30+28   rows 1..2
+          QScrollBar geom 30x19+0+0      in host +30+28   rows 1..2
+
+  **y = -10 inside the parent.** There is no room for a scroll bar in a
+  one-row list, so Qt's layout puts it above the top edge -- which is not
+  wrong of Qt: a scroll bar that does not fit has to go somewhere, and on
+  a screen the parent's clip makes the question moot. Nothing here
+  clipped it, because `render(DrawChildren)` paints the whole tree in one
+  pass and the bound added above was the widget's own rectangle, which
+  the scroll bar was inside.
+
+  The clip is now the widget's rectangle **cut down by every ancestor's**,
+  stopping at a window -- a dialog is not bounded by the widget that
+  opened it. An empty intersection means a child wholly outside its
+  parent, and it draws nothing, which is what a screen shows.
+
+**And it cost 1.1 ms until it was written properly.** The first version
+asked `mapTo()` once per ancestor; `mapTo()` walks the parent chain
+itself, so a per-level call is quadratic in the depth, and this runs on
+every style call. The 200x60 table render went **1.39 ms to 2.49 ms** --
+still inside the 16 ms budget, which is exactly why a benchmark that only
+asserts an order of magnitude has to be *read* rather than trusted to
+fail. Accumulating the offset on the way up instead brought it back to
+1.51 ms, so the clip itself costs about a tenth of a millisecond.
+
+Both remaining pieces were the same sentence as the rest -- *a control
+draws inside the widget it was given* -- and one is left: the engine's
+one-cell overhang, which is a reversal of a recorded decision.
 
 ### 7.3 Graphics tier (design.md §17.3)
 

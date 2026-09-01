@@ -2754,6 +2754,64 @@ int suite_widgets() {
 		CHECK(frame_seen >= 8, "while one with room for a frame draws one");
 	}
 
+
+	// ---- a child that does not fit is clipped by its parent ----
+	{
+		// On a pixel screen a parent clips its children; nothing here did.
+		// Measured on a QListWidget six cells wide and ONE ROW tall: Qt gives
+		// its horizontal scroll bar y = -10 inside the list -- there is no
+		// room, so the layout puts it above the top edge -- and its arrows
+		// and thumb landed on the row above, over whatever widget was there.
+		//
+		//   QWidget    geom 30x19+10+-10   in host +30+28   rows 1..2
+		//   QScrollBar geom 30x19+0+0      in host +30+28   rows 1..2
+		//
+		// Qt is not wrong to place it there. A scroll bar that does not fit
+		// has to go somewhere, and on a screen the parent's clip makes the
+		// question moot.
+		const int cols = 16, rows = 6;
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(cols, rows));
+		host.show();
+		QCoreApplication::processEvents();
+		CellBuffer empty(cols, rows);
+		render_once(host, empty);
+
+		auto *list = new QListWidget(&host);
+		list->addItems({ QStringLiteral("alpha"), QStringLiteral("beta") });
+		list->setMinimumSize(0, 0);
+		list->setGeometry(2 * GridMetrics::cw(), 2 * GridMetrics::ch(),
+		                  6 * GridMetrics::cw(), 1 * GridMetrics::ch());
+		list->show();
+		QCoreApplication::processEvents();
+		CellBuffer b(cols, rows);
+		render_once(host, b);
+
+		// Row 1 specifically -- the row the scroll bar reached -- rather than
+		// "anything outside", which would also count the one-cell text
+		// overhang CellPaintEngine produces by its own rule. A check that
+		// folds in two faults diagnoses neither.
+		int above = 0;
+		for (int x = 0; x < cols; ++x)
+			if (b.at(x, 1).ch != empty.at(x, 1).ch) ++above;
+		CHECK(above == 0, "a child with no room in its parent draws above it");
+
+		// Paired: with room, the same list DOES draw. Otherwise a style that
+		// had stopped drawing item views entirely would satisfy the above.
+		list->setGeometry(2 * GridMetrics::cw(), 2 * GridMetrics::ch(),
+		                  6 * GridMetrics::cw(), 3 * GridMetrics::ch());
+		QCoreApplication::processEvents();
+		CellBuffer room(cols, rows);
+		render_once(host, room);
+		int drew = 0;
+		for (int y = 0; y < rows; ++y)
+			for (int x = 0; x < cols; ++x)
+				if (room.at(x, y).ch != empty.at(x, y).ch) ++drew;
+		CHECK(drew >= 8, "while one with room draws itself");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

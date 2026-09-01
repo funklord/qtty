@@ -153,6 +153,37 @@ private:
 	QRect saved_;
 };
 
+// A widget's rectangle cut down by every ancestor's, in the widget's own
+// coordinates. On a pixel screen a parent clips its children and nothing here
+// did: measured on a QListWidget six cells wide and ONE ROW tall, Qt gives the
+// horizontal scroll bar y = -10 inside the list -- there is no room for it, so
+// the layout puts it above the top edge -- and its arrows and thumb were drawn
+// on the row above, over whatever widget was there.
+//
+// Qt is not wrong to place it there; a scroll bar that does not fit has to go
+// somewhere, and on a screen the parent's clip makes the question moot. This
+// is the clip.
+//
+// Stops at a window, because a top-level's logical parent is a different
+// top-level and does not clip it -- a dialog is not bounded by the widget that
+// opened it. An empty intersection means a child wholly outside its parent,
+// and it draws nothing, which is what a screen would show.
+// The offset is accumulated on the way up rather than asked for per ancestor.
+// mapTo() walks the parent chain itself, so calling it once per level makes
+// this quadratic in the depth -- and it runs on every style call. Measured:
+// the 200x60 table render went 1.39 ms to 2.49 ms with the mapTo version.
+static QRect visible_rect(const QWidget *w) {
+	QRect r = w->rect();
+	QPoint off;                        // w's origin, in the ancestor's frame
+	for (const QWidget *a = w; a && !a->isWindow(); a = a->parentWidget()) {
+		const QWidget *p = a->parentWidget();
+		if (!p) break;
+		off += a->pos();
+		r &= p->rect().translated(-off);
+	}
+	return r;
+}
+
 static bool owns_focus(const QWidget *w) { return w && w == s_focus; }
 static Attrs focus_attrs(const QWidget *w) {
 	return owns_focus(w) ? Attrs(Attr::Reverse) : Attrs();
@@ -714,7 +745,7 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
                               const QWidget *w) const {
 	if (auto *dev = cell_target(p)) {
 		QRect c = cells_of(opt->rect, p, dev, w);
-		const CellClip bound(dev, w ? cells_of(w->rect(), p, dev, w) : c);
+		const CellClip bound(dev, w ? cells_of(visible_rect(w), p, dev, w) : c);
 		switch (pe) {
 		case PE_IndicatorCheckBox:
 			// Three states, three glyphs. A tristate box at PartiallyChecked
@@ -867,7 +898,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
                             const QWidget *w) const {
 	if (auto *dev = cell_target(p)) {
 		QRect c = cells_of(opt->rect, p, dev, w);
-		const CellClip bound(dev, w ? cells_of(w->rect(), p, dev, w) : c);
+		const CellClip bound(dev, w ? cells_of(visible_rect(w), p, dev, w) : c);
 		switch (ce) {
 		case CE_PushButtonBevel:
 			return;                                   // bevel is the label's brackets
@@ -1152,7 +1183,7 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
                                    QPainter *p, const QWidget *w) const {
 	if (auto *dev = cell_target(p)) {
 		QRect c = cells_of(opt->rect, p, dev, w);
-		const CellClip bound(dev, w ? cells_of(w->rect(), p, dev, w) : c);
+		const CellClip bound(dev, w ? cells_of(visible_rect(w), p, dev, w) : c);
 		switch (cc) {
 		case CC_ScrollBar:                             // section 16 F5: self-drawn whole
 			if (auto *sb = qstyleoption_cast<const QStyleOptionSlider *>(opt)) {
