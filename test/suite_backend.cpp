@@ -1793,6 +1793,13 @@ int suite_backend() {
 					Recorder r;
 					b.set_event_sink(&r);
 					b.resume();
+					// A frame, between the two, because whether CONTENT is
+					// gated on isatty(1) is a separate question from whether
+					// CONTROL is -- and it is answered the other way. See
+					// below.
+					CellBuffer frame(4, 1);
+					frame.text(0, 0, QStringLiteral("hi"));
+					b.present(frame, QRegion(0, 0, 4, 1));
 					b.suspend();
 				}
 				fflush(stdout);
@@ -1829,8 +1836,20 @@ int suite_backend() {
 			      "and gets them all switched off again");
 			CHECK(!on_pipe.contains("\033[?1049h") && !on_pipe.contains("\033[?1006h"),
 			      "while a pipe is sent no mode it cannot be in");
-			CHECK(on_pipe.isEmpty(),
-			      "and is written nothing at all by resume and suspend");
+			// Content is NOT gated, and that is a decision the tree already
+			// took by building on it: `qtty-replay --ansi > corpus` drives
+			// this backend with stdout redirected to a file, and the whole
+			// point is the byte stream it captures -- doc/beerssh.md section
+			// 4's parser corpus. Measured: 1683 bytes from a two-line script.
+			// Gating present() would make that tool emit nothing.
+			//
+			// The line the tree draws is between a terminal's STATE and its
+			// CONTENT. Setting modes on a stream that is not a terminal
+			// changes something we do not own and cannot reset; writing the
+			// frame is what was asked for, and `program | cat` wants it as
+			// much as `program > recording` does.
+			CHECK(on_pipe.contains("hi") && !on_pipe.contains("\033[?1049h"),
+			      "a pipe is written the frame and none of the modes");
 		} else {
 			printf("FAIL: could not build the tty/pipe pair\n");
 			++fails;

@@ -172,6 +172,15 @@ decision §8.1 records as open, so the axis is priced rather than taken.
 by transitive luck on a class Qt 6 moved between modules. That include is
 right on every version and is fixed.
 
+**Frame output stays ungated on `isatty(1)`**, and the tree had already
+settled that by building on it: `qtty-replay --ansi > corpus` drives the
+real backend through a redirect and the byte stream is the point -- 1683
+bytes from a two-line script, measured. Gating `present()` would make a
+shipped tool emit nothing. The line is between a terminal's **state**,
+which a program that does not own it must not set, and its **content**,
+which is what was asked for. The pipe test asserts both halves in one run
+now.
+
 **The tab pane's near-white block is gone**, which was §7.7's gradient
 finding: Fusion fills a pane with a gradient, the engine matched its stop
 colour against no role, and a true-colour background went behind every tab
@@ -292,7 +301,6 @@ Owned by the copyright holder:
 | Whether a layout's one-row top and bottom margin is right on a terminal, where it costs two rows of twenty-four and two of three | §7.8 |
 | OQ-7: the ANSI-16 fallback metric | §7.7 |
 | Whether `focusWidget()`/`setFocusWidget()` keep their camelCase exemption | §11 |
-| Whether frame output should be gated on `isatty(1)` as setup and teardown are | *the gate that decides whether to write* |
 | A message box's severity icon: a glyph cannot travel inside a `QIcon`, so reaching one needs `QPixmap::cacheKey()` identity surviving rasterisation | *Qt's standard iconography* |
 | A dock widget's title buttons, which arrive with a 0x0 icon area -- a sizing fault rather than an iconography one | *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed -- measured, and the current behaviour is held by checks | *the interaction sweep* |
@@ -2144,22 +2152,35 @@ two calls run down a pty first and are asserted to produce the alternate
 screen and the reporting modes. One variable changes between the two runs.
 Removing the guard fails exactly the two pipe checks.
 
-**Open, and not settled here: the frame output is not gated by the same
-flag.** `present()`, `set_cursor()`, `present_pixels()`, `present_overlay()`
-and `clear_overlay()` all write whatever `isatty(1)` says, while setup,
-teardown and the geometry query do not. The setup comment says the two ends
-are deliberately independent -- "output can be a pipe while input is still a
-keyboard" -- so this may be intended.
+**Settled, and the tree had already settled it by building on it.** The
+frame output is deliberately not gated by that flag: `present()`,
+`set_cursor()`, `present_pixels()`, `present_overlay()` and
+`clear_overlay()` write whatever `isatty(1)` says, while setup, teardown
+and the geometry query do not.
 
-It reads both ways and the reasoning is worth keeping rather than deciding
-in passing. Under `program | cat` the escapes still reach a terminal
-through `cat`, so emitting frames is what makes that work at all -- and the
-modes being suppressed leaves it half-dressed, drawing over the scrollback
-with no mouse and no hidden cursor. Under `program > file` the frames are
-escape soup in a file, and a sixel or kitty upload is a binary blob in it.
-**Whose decision it is: the copyright holder's**, since it is a question
-about what the library promises a redirected stream, not about what the
-code currently does.
+**The line is between a terminal's STATE and its CONTENT.** Setting modes
+on a stream that is not a terminal changes something the program does not
+own and cannot reset -- `suspend()` must never turn off a mode it never
+turned on. Writing the frame is what was asked for.
+
+**`qtty-replay --ansi` is the proof, and it is a shipped tool.** It drives
+this backend with stdout redirected to a file, and the byte stream it
+captures is the whole point -- doc/beerssh.md §4's parser corpus is made
+that way. Measured here: a two-line script produces **1683 bytes** through
+a redirect. Gating `present()` would make that tool emit nothing, so what
+looked like the argument against -- "under `program > file` the frames are
+escape soup in a file" -- is the use case rather than the objection. A
+recording IS escape soup, and `qtty-replay` exists to make one.
+
+`program | cat` follows from the same rule and was the other half of the
+original doubt: the frames reach a terminal through `cat`, and the modes
+are correctly absent because this process is not the one that owns that
+terminal.
+
+The pipe test asserts both halves together now -- a frame written and no
+mode written, in one run -- so the day somebody tidies by adding the gate,
+the check names what it costs. Sabotaged with `if (!tty_out_) return;` at
+the top of `present()`: exactly that check goes red.
 
 **Four methods whose whole job is to emit had no wire test at all.** Once
 the keys were covered, `present_pixels()`, `present_overlay()`,
