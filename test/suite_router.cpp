@@ -1119,5 +1119,58 @@ int suite_router() {
 	}
 
 
+
+	// A VERTICAL scroll bar, which nothing had exercised: every slider and bar
+	// this suite drove was horizontal, and vertical is where a length metric
+	// meant for the other axis would go wrong.
+	//
+	// Its sub-control rectangles are all fractional -- the arrows are 10x10,
+	// **0.53 of a row**, and the thumb is 1.37 rows at 2.32 -- so the obvious
+	// expectation after the spin box was another unreachable control. It is
+	// not: a click lands at the CELL'S CENTRE, and with five sub-controls
+	// spread down six rows each centre falls in the right rectangle.
+	//
+	// Which sharpens the rule the last three fixes were converging on. The
+	// fault is not a fractional rectangle; it is **two sub-controls sharing a
+	// cell** -- the spin box's arrows -- or content overlapping a frame row --
+	// the group box, the popup. A fractional rectangle with one meaning per
+	// cell is harmless.
+	//
+	// It is harmless by arithmetic that nothing states, though, so this pins
+	// the behaviour rather than the rectangles: step, page, thumb, page, step.
+	{
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *sb = new QScrollBar(Qt::Vertical, &h);
+		sb->setRange(0, 100);
+		sb->setGeometry(0, 0, cw, ch * 6);
+		h.resize(GridMetrics::cells(8, 7));
+		h.show();
+		QCoreApplication::processEvents();
+		const auto click_row = [&](int y) {
+			sb->setValue(50);
+			InputRouter r2(&h);
+			MouseEvent m;
+			m.cell = QPoint(0, y);
+			m.button = 1;
+			m.press = true;
+			r2.on_mouse(m);
+			m.press = false;
+			m.release = true;
+			r2.on_mouse(m);
+			QCoreApplication::processEvents();
+			return sb->value();
+		};
+		const int top = click_row(0), up = click_row(1);
+		const int thumb = click_row(2), down = click_row(4), bottom = click_row(5);
+		// Relationships, not the numbers: a step is one, a page is more than
+		// one, the thumb moves nothing, and the two ends go opposite ways.
+		CHECK(top == 49 && bottom == 51, "a vertical scroll bar's arrow rows step by one");
+		CHECK(up < top && down > bottom, "its page rows move further than a step");
+		CHECK(thumb == 50, "and a click on the thumb moves nothing");
+		GridGuard::reset();
+	}
+
+
 	return fails;
 }

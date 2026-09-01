@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-711 checks, 0 failures, under three configurations: the offscreen
+714 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -5780,6 +5780,42 @@ The edit field gives up one column for it, and the glyphs are the ones
 `tool_button_label()` already uses for an `arrowType`. The check is the
 pair -- up gives 51 and down gives 49 from the same starting value --
 because "up increments" passed against the broken version.
+
+**Run once more at the vertical controls, the lead came back negative --
+and the negative is what finally states the rule.** Nothing had driven a
+VERTICAL scroll bar or slider; every one this suite exercised was
+horizontal, which is where a length metric meant for the other axis
+would show. A vertical scroll bar's sub-control rectangles are all
+fractional -- the arrows are 10x10, **0.53 of a row**, the thumb 1.37
+rows at 2.32 -- so after the spin box the expectation was another
+unreachable control.
+
+It is not. Every row does the right thing:
+
+    row 0  step up      row 3  thumb, no change
+    row 1  page up      row 4  page down
+    row 2  thumb        row 5  step down
+
+because a click lands at the **cell's centre**, and with five
+sub-controls spread down six rows each centre falls in the right
+rectangle.
+
+So the rule the five data points share is not "a fractional rectangle":
+
+- **a fractional rectangle with one meaning per cell is harmless** --
+  the vertical scroll bar, and the vertical slider's handle, which is 19
+  px wide at x=-5 on a 10-px widget and is still hit correctly;
+- **the fault is two meanings in one cell** -- the spin box's arrows --
+  **or content overlapping a frame row** -- the group box, the popup --
+  **or chrome that does not span what it encloses** -- the tab.
+
+That is a rule about cells rather than about pixels, and it is the one to
+carry forward.
+
+The vertical scroll bar's behaviour is pinned by three checks now,
+because it is correct by an arithmetic nothing states: sabotaging the
+router's cell-centre mapping to the cell's top-left reddens all three,
+and two older checks with them.
 
 **And the style gate refused the comment three times today**, always the
 same way: a glyph written into a prose comment is non-ASCII outside a
