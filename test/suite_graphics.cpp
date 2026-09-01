@@ -962,5 +962,39 @@ int suite_graphics() {
 	}
 
 
+	// An image too small to be a picture substitutes a block, and the block
+	// carries the image's colour. Two icons differing only in colour -- a red
+	// status light and a grey one -- came out as the same default-coloured
+	// smudge, so a row of them said nothing. The mosaic tier, which is the
+	// other path the same content takes on a terminal with no graphics
+	// protocol, carries colour; this one threw it away.
+	{
+		auto substitute = [](const QColor &fill, CellBuffer &b) {
+			QPixmap pm(GridMetrics::cw(), GridMetrics::ch());
+			pm.fill(fill);
+			CellPaintDevice dev(b);
+			QPainter p(&dev);
+			p.drawPixmap(QRect(0, 0, GridMetrics::cw(), GridMetrics::ch()), pm);
+			p.end();
+		};
+		CellBuffer red(2, 1), grey(2, 1);
+		substitute(QColor(220, 40, 40), red);
+		substitute(QColor(90, 90, 90), grey);
+		CHECK(red.at(0, 0).ch == QStringLiteral("▒")
+		      && grey.at(0, 0).ch == QStringLiteral("▒")
+		      && red.at(0, 0).fg.kind() == Color::Rgb
+		      && red.at(0, 0).fg != grey.at(0, 0).fg,
+		      "two icons of different colours substitute to different blocks");
+
+		// And nothing stands for nothing. A fully transparent pixmap drew a
+		// block that said a picture was there when none was -- which is the
+		// same shape as the null image above, one step along.
+		CellBuffer clear(2, 1);
+		substitute(QColor(0, 0, 0, 0), clear);
+		CHECK(clear.at(0, 0).ch == QStringLiteral(" "),
+		      "and a wholly transparent one substitutes nothing at all");
+	}
+
+
 	return fails;
 }

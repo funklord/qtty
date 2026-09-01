@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-672 checks, 0 failures, under three configurations: the offscreen
+674 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -287,7 +287,7 @@ Owned by the copyright holder:
 | A message box's severity icon: a glyph cannot travel inside a `QIcon`, so reaching one needs `QPixmap::cacheKey()` identity surviving rasterisation | *Qt's standard iconography* |
 | A dock widget's title buttons, which arrive with a 0x0 icon area -- a sizing fault rather than an iconography one | *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed -- measured, and the current behaviour is held by checks | *the interaction sweep* |
-| How to tell an icon from a picture, so a wide short image can be a placement rather than a shaded block -- the 2x2 threshold promotes neither 8x1 nor the 2x1 an icon becomes | §7.2 |
+| Whether the "too small to be a picture" rule moves to the backend, which knows whether the terminal can draw pictures -- it cannot be answered from the pixmap, and the cost is an upload per tiny icon | §7.2 |
 | The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
@@ -2826,15 +2826,38 @@ answers, exactly as the disabled item view did.
   cells moving along the bar -- an honest "a picture is here" -- instead
   of a smear of stale label.
 
-  **What is left open is real, smaller, and was hiding behind the other.**
-  Should a wide, short image be a *placement* rather than a glyph? 8x1 is
-  a perfectly good kitty placement and the mosaic tier has two vertical
-  samples per cell to draw it with. It is not taken here because relaxing
-  the threshold by area or by aspect would also promote the 2x1 that a
-  16x16 icon becomes, and an icon arriving as a shaded block rather than a
-  glyph is the fault that branch exists to prevent. Telling an icon from a
-  picture is a decision, not a threshold to pick in passing. **Owned by
-  the copyright holder.**
+  **What is left open is real, and the measurement moves it rather than
+  answering it.** Should a wide, short image be a *placement* rather than a
+  glyph? The entry asked how to tell an icon from a picture. Measured, that
+  is the wrong question to be asking here:
+
+  - A 16x16 warning triangle is **2 cells by 1**. An 82x19 tab grab is
+    **8 by 1**. Neither cell extent nor aspect separates them in the one
+    dimension that matters, and both are one cell tall.
+  - Composited as mosaics on a text-only terminal, the triangle is `▄▄`
+    and the tab is eight `▀`. **Neither is legible as a shape.** What a
+    mosaic carries at this size is colour, not content.
+  - On a graphics terminal both would be real pixels and both would look
+    right, which is how every terminal that can draw pictures shows a
+    16x16 icon.
+
+  So the classification the entry asks for cannot be made from the pixmap,
+  and the question that CAN be answered is a different one: **can this
+  terminal draw pictures at all** -- which `CellPaintEngine` does not know
+  and the backend does. The rule is being applied where the information is
+  not. Moving it there is a structural change with a real cost (every tiny
+  icon becomes an upload) and it stays **the copyright holder's**; what
+  has changed is that it is now a question about where a decision lives
+  rather than about a threshold to pick.
+
+  **One thing that was not a decision is fixed.** The substitution threw
+  the image's colour away: a red status light and a grey one both drew a
+  default-coloured block, so a row of them said nothing, while the mosaic
+  tier -- the other path the same content takes -- carries colour. The
+  block takes the image's alpha-weighted average now, which is the
+  application's own colour passing through, the rule `fg_for()` applies
+  everywhere else. And a wholly transparent pixmap draws nothing at all,
+  rather than a block claiming a picture is there.
 - ~~**A text selection is the desktop's colour, and an item view's is
   not.**~~ **Fixed, and `qtty/theme.h` had already said so.** Dragging
   across a `QLineEdit` highlighted with `bg=#308cc6` -- measured, and

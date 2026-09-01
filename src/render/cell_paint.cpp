@@ -310,8 +310,38 @@ void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &pm, const QRect
 		// promote the 2x1 that a 16x16 icon becomes, and that icon arriving
 		// as a shaded block rather than a glyph is the fault this branch
 		// exists to prevent.
+		// The colour goes with it. Two icons that differ only in colour --
+		// a red status light and a grey one -- substituted to the same
+		// default-coloured block, so a row of them was a row of identical
+		// smudges. The mosaic tier, which is the other path the same content
+		// takes when a terminal has no graphics protocol, carries colour;
+		// this one threw it away.
+		//
+		// An application's own colour, passed through, which is the rule
+		// cell_geometry.h's fg_for() applies to every colour no palette role
+		// explains. Averaged over the image and weighted by alpha, because
+		// that is what the half-block tier would show if the picture had room
+		// to be one. Strided so a large pixmap substituted into one cell
+		// costs a bounded scan rather than one per pixel.
+		const QImage img = pm.toImage();
+		qint64 r_sum = 0, g_sum = 0, b_sum = 0, a_sum = 0;
+		const int step_x = qMax(1, img.width() / 32), step_y = qMax(1, img.height() / 32);
+		for (int y = 0; y < img.height(); y += step_y)
+			for (int x = 0; x < img.width(); x += step_x) {
+				const QRgb px = img.pixel(x, y);
+				const int a = qAlpha(px);
+				r_sum += qint64(qRed(px)) * a;
+				g_sum += qint64(qGreen(px)) * a;
+				b_sum += qint64(qBlue(px)) * a;
+				a_sum += a;
+			}
+		// Nothing to stand for. A fully transparent pixmap drew a block that
+		// said a picture was there when none was.
+		if (a_sum == 0) return;
 		Cell v;
 		v.ch = QStringLiteral("▒");
+		v.fg = Color::rgb(qRgb(int(r_sum / a_sum), int(g_sum / a_sum),
+		                       int(b_sum / a_sum)));
 		dev_->buffer().fill(c, v);
 	}
 }
