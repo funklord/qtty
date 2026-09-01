@@ -334,6 +334,15 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 	// Icons are not drawn at all (see SH_ToolButtonStyle below), so reserving
 	// room for one spends cells on nothing.
 	case PM_ToolBarIconSize:                               return 0;
+	// The one metric in this switch that was never gridded, and it cost a
+	// message box half a cell of height it could not use: Fusion answers 48
+	// px, which is 2.53 rows and 4.8 columns, so the dialog came out 3.5
+	// cells tall. Two whole rows keeps it a PICTURE -- 4x2 cells, still above
+	// the "two cells in each direction" the placement rule wants -- and makes
+	// the dialog 3.0 cells. Whether it should be a glyph instead is a
+	// different question and the copyright holder's; this is the same
+	// rounding every other metric here already does.
+	case PM_MessageBoxIconSize:                            return 2 * ch;
 	case PM_DockWidgetSeparatorExtent:                     return cw;
 	case PM_HeaderMargin:                                  return 0;
 	case PM_HeaderGripMargin:                              return cw;

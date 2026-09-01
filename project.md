@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-688 checks, 0 failures, under three configurations: the offscreen
+689 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -326,7 +326,7 @@ Owned by the copyright holder:
 
 | Question | Where |
 |---|---|
-| A message box's severity icon. The mechanism is now measured and has no open question -- a `QIconEngine` that registers each pixmap it mints, consulted through the `cacheKey()` the placement already carries. What is left is whether a warning triangle should become a glyph, taken against a mosaic that is **faithful and still unreadable** | *Qt's standard iconography* |
+| A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. Cheaper to answer after the picture-rule entry below, which is the same question seen from the other end | *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed. All four candidate behaviours are printed now -- and `Left\|Middle` **removes paging** rather than adding anything, unless `SH_Slider_PageSetButtons` moves it to the right button | *the interaction sweep* |
 | Whether the "too small to be a picture" rule moves to the backend. Measured since: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()` rather than a structural change -- and no widget icon reaches the branch today | §7.2 |
 | The bundled font, which would make the fixtures reproducible -- a licensed asset, so a decision before it is work. The exposure is now **measured** and **guarded** rather than feared: 7 of 102 installed families give the 10x19 the fixtures assume, and a check names it | §7.9, §11 |
@@ -1940,6 +1940,43 @@ icon to a `QPixmap` before the style draws it**. Traced at
   mechanism, but **should a warning triangle become a glyph**. That is
   the holder's, and the legibility measurement above is what it should be
   taken against.
+
+  **What it costs is measured too, and it is a row.** Sweeping
+  `PM_MessageBoxIconSize` and printing the dialog at each size:
+
+  | icon px | dialog, cells | placement | what shows |
+  |---|---|---|---|
+  | 57 (3 rows) | 37.4 x 4.0 | 6x3 | mosaic |
+  | **48, Fusion's** | **36.5 x 3.5** | 5x3 | mosaic |
+  | **38 (2 rows)** | **35.5 x 3.0** | 4x2 | mosaic |
+  | 30 | 34.7 x 2.6 | 3x2 | mosaic |
+  | 20 | 33.7 x 2.1 | none | `▒▒` |
+  | 10 | 32.7 x 2.0 | none | `▒` |
+
+  Three things fall out. **Fusion's 48 is 2.53 rows and 4.8 columns**, so
+  the dialog asked for three and a half cells and the half was
+  unusable -- `PM_MessageBoxIconSize` was the one metric in `GridStyle`'s
+  switch that still answered in Fusion's pixels. It answers `2 * ch` now,
+  which keeps the icon a picture (4x2 cells, above the placement rule's
+  two-in-each-direction) and makes the dialog a whole 3.0 cells. That is
+  the rounding every other metric here already does, and it is not the
+  glyph decision.
+
+  **The icon costs exactly one row**, then: 3.0 cells with it against 2.0
+  without. That is the price a glyph would save, and it is worth knowing
+  before choosing, because on an 80x24 terminal a dialog is a large
+  object.
+
+  **And a small picture is not on the menu.** At 20 px and below the icon
+  stops being a placement and becomes the substitution block -- `▒▒`,
+  then `▒`. So a glyph would not be competing with a picture at that
+  size; it would be competing with a coloured smudge. Which is the same
+  observation the entry above reaches from the other end: **this decision
+  and the "too small to be a picture" one are one question seen twice.**
+  A glyph chosen in `GridStyle` is unconditional and costs a graphics
+  terminal its real icon; a glyph chosen where the terminal's capability
+  is known costs nothing. Answering where the rule lives first makes this
+  one cheap.
 - ~~The dock buttons arrive as a **0x0 pixmap into a -2x-6 rectangle**.
   There is no icon area at all, so no iconography decision can put
   anything in one. That is a sizing fault and a different question.~~

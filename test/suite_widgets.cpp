@@ -813,6 +813,13 @@ int suite_widgets() {
 		CHECK(placements.size() == 1 && placements[0].cell_rect.width() >= 2
 		      && placements[0].cell_rect.height() >= 2,
 		      "a message box's severity icon is a picture, not a glyph");
+		// And that the picture costs a whole number of rows. PM_MessageBoxIconSize
+		// was the one metric in GridStyle's switch that still answered Fusion's
+		// pixels -- 48, which is 2.53 rows -- so the dialog asked for 3.5 cells
+		// and the half was unusable. Two rows exactly keeps it a picture and
+		// makes the dialog 3.0.
+		CHECK(mb.sizeHint().height() % GridMetrics::ch() == 0,
+		      "and the dialog it sits in is a whole number of rows tall");
 
 		// And WHERE a key registry would have to mint, which is the part the
 		// recorded option got wrong. standardIcon() is not the mint point: one
@@ -1803,6 +1810,8 @@ int suite_widgets() {
 		CHECK(b->sizeHint().width() == GridMetrics::cw() * 3,
 		      "and is measured as one cell of arrow between its brackets");
 	}
+
+
 
 
 
