@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-08-31
 
-675 checks, 0 failures, under three configurations: the offscreen
+677 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -172,6 +172,16 @@ decision §8.1 records as open, so the axis is priced rather than taken.
 by transitive luck on a class Qt 6 moved between modules. That include is
 right on every version and is fixed.
 
+**OQ-7 is closed and the fallback stays RGB**, decided by an arbiter this
+project already had rather than by the screen the entry asked for.
+`has_minimum_contrast()` is qtty's own rule, and over 4374 saturated
+colours Lab-nearest leaves **1018** of them with no contrast against a
+black background where RGB-nearest leaves 470 -- more than double, on the
+ground terminals mostly have. The 256-colour answer does not transfer,
+and that is not a contradiction: among 240 candidates the perceptually
+nearest entry is close in every respect, and among sixteen it is often a
+dark chromatic one with no luminance left.
+
 **`setFocusWidget()` is `set_focus_widget()`**, and the tree's own rename
 filter is what decided it: an identifier is Qt's if it appears in Qt's
 headers, `focusWidget` does and keeps its spelling, `setFocusWidget`
@@ -308,7 +318,6 @@ Owned by the copyright holder:
 | Question | Where |
 |---|---|
 | Whether a layout's one-row top and bottom margin is right on a terminal, where it costs two rows of twenty-four and two of three | §7.8 |
-| OQ-7: the ANSI-16 fallback metric | §7.7 |
 | A message box's severity icon: a glyph cannot travel inside a `QIcon`, so reaching one needs `QPixmap::cacheKey()` identity surviving rasterisation | *Qt's standard iconography* |
 | A dock widget's title buttons, which arrive with a 0x0 icon area -- a sizing fault rather than an iconography one | *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed -- measured, and the current behaviour is held by checks | *the interaction sweep* |
@@ -893,25 +902,53 @@ Open:
 
 And one raised by the tree rather than by the design:
 
-- **OQ-7.** Which metric should the ANSI-16 *fallback* use? The primary
-  route is the hand-authored role table and design.md section 6 is
+- ~~**OQ-7.** Which metric should the ANSI-16 *fallback* use?~~ **Closed:
+  it stays RGB, and the arbiter turned out not to need a screen.** The
+  primary route is the hand-authored role table and design.md section 6 is
   emphatic that it should be; the fallback exists only for a colour with
-  no palette role behind it, which is Channel B output or a colour an
-  application chose itself. It matches in **RGB**, while `to_xterm256()`
-  was changed to match in **CIELAB** precisely because RGB nearest turns
-  a saturated green into a grey.
+  no palette role behind it. It matches in RGB, while `to_xterm256()` was
+  changed to CIELAB precisely because RGB nearest turns a saturated green
+  into a grey.
 
-  Measured before asking: over 24389 sampled colours the two metrics
-  disagree on **44.1%** of them, so this is not a rounding difference.
-  But which is *better* at sixteen colours is not obvious and the
-  measurement does not settle it -- Lab is the standard for perceptual
-  nearest, and on rgb(200,60,60) it picks the dark red where RGB picks
-  the bright one, which is arguably the worse answer for a foreground.
-  With no visual reference to arbitrate, changing 44% of fallback answers
-  on my judgement would be a guess wearing a measurement's clothes.
+  What blocked it was having nothing to arbitrate with: over 24389 sampled
+  colours the two disagree on 44.1%, and changing that many answers on
+  judgement would have been a guess wearing a measurement's clothes. This
+  entry said what would settle it -- "rendering a page of Channel B
+  colours both ways in a real terminal and looking".
 
-  Recorded rather than changed. What would settle it: rendering a page of
-  Channel B colours both ways in a real terminal and looking.
+  **qtty already had an arbiter that needs no terminal**:
+  `has_minimum_contrast()`, the section 6 rule the project treats as a
+  theme bug when violated. Over 4374 saturated colours (HSV saturation
+  above 0.5), counting those whose quantised result has no contrast
+  against the background:
+
+  | background | RGB nearest | Lab nearest |
+  |---|---|---|
+  | black | 470 | 1018 |
+  | white | 288 | 228 |
+
+  **Lab more than doubles the failures on a dark ground** and gains a
+  little on a light one, and terminals are mostly dark. So the answer is
+  the opposite of the 256-colour case, and that is not a contradiction:
+  among 240 candidates the perceptually nearest entry is close in every
+  respect, and among sixteen it is often a dark chromatic one with no
+  luminance left. The entry's own instinct -- that Lab "picks the dark red
+  where RGB picks the bright one, which is arguably the worse answer for a
+  foreground" -- was right, and is measured now rather than argued.
+
+  Two checks name it rather than asserting a threshold, because a count of
+  470 is this measurement's arithmetic and not a property to hold:
+  `rgb(0, 15, 195)` is a saturated blue that RGB sends to bright blue and
+  Lab to dark blue, and the second check says why that matters -- bright
+  blue clears the contrast rule against black and dark blue does not.
+  Sabotaged by rewriting the fallback to match in Lab, which is exactly
+  what this entry proposed: the first check goes red.
+
+  The Lab comparison was computed with the library's own palette --
+  `xterm256_rgb()` is public -- and the copied formula was proved rather
+  than trusted: all sixteen palette entries must quantise to themselves
+  under both metrics, and they do.
+
 
 - ~~**OQ-6.** Are PascalCase type names inside `namespace Qtty` a settled
   exception to the global style rule?~~ **Closed 2026-08-26 by the

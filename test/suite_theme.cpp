@@ -265,5 +265,41 @@ int suite_theme() {
 		      "and Button likewise, on the background side");
 	}
 
+	// OQ-7, closed: the ANSI-16 fallback matches in RGB and stays that way.
+	//
+	// to_xterm256() was changed to match in CIELAB because RGB nearest turns a
+	// saturated green into a grey, and the open question was whether the same
+	// change should be made at sixteen. What blocked it was having no arbiter
+	// -- "rendering a page of Channel B colours both ways in a real terminal
+	// and looking". qtty has an arbiter that needs no screen:
+	// has_minimum_contrast(), the section 6 rule it already treats as a theme
+	// bug when violated.
+	//
+	// Measured over 4374 saturated colours (HSV saturation > 0.5), counting
+	// those whose quantised result has no contrast against the background:
+	//
+	//     against black:  RGB 470   Lab 1018
+	//     against white:  RGB 288   Lab  228
+	//
+	// Lab more than doubles the failures on a dark ground and gains a little
+	// on a light one, and terminals are mostly dark. That is the opposite of
+	// the 256-colour case and it is not a contradiction: at 240 candidates the
+	// perceptually nearest entry is close in every respect, and at sixteen it
+	// is often a dark chromatic one with no luminance left.
+	//
+	// rgb(0, 15, 195) is the case named rather than a threshold asserted: a
+	// saturated blue, which RGB sends to bright blue and Lab to dark blue.
+	{
+		const int fallback = Color::rgb(qRgb(0, 15, 195)).to_ansi16();
+		CHECK(fallback == 12,
+		      "the ANSI-16 fallback matches in RGB, not in Lab (OQ-7)");
+		// And why 12 is the better answer, which is the half that would
+		// notice the contrast rule changing under the decision.
+		CHECK(has_minimum_contrast(Color::indexed(12), Color::indexed(0))
+		      && !has_minimum_contrast(Color::indexed(4), Color::indexed(0)),
+		      "and the answer it gives stays visible where Lab's would not");
+	}
+
+
 	return fails;
 }
