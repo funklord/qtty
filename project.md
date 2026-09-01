@@ -113,7 +113,31 @@ a left-aligned one is untouched.
 **The check had to be built from the fixture that reproduced it**, and a
 reduction to two widgets passed with the fix removed: the collision
 depends on where Qt puts each run, and that moves with the layout. A
-reduction that stops reproducing is not a reduction. The pair also
+reduction that stops reproducing is not a reduction.
+
+**And the same disagreement WRAPS text off the screen, which no code here
+can fix.** Wrapping is decided by the layout, in pixels, before anything
+reaches a cell. A 12-cell label holds six CJK clusters; Qt fits
+`120 / 16 = 7` on the line, and the seventh falls off the right edge:
+
+    text has 36 clusters, 31 reached cells       QLabel, word wrap
+    text has 36 clusters, 31 reached cells       QTextEdit, WidgetWidth
+
+Five lines, five characters lost, silently -- and **both paths lose the
+same five**, so `align_text_document()` does not cover it and this is not
+a QLabel quirk. The rendered rows show it plainly: each carries six
+clusters and continues one character later than the previous row ended.
+
+`drawTextItem()` cannot help: the layout has already put seven on the
+line. The two real answers are a font whose wide glyphs advance exactly
+two cells -- **which is the bundled font** -- or qtty second-guessing the
+layout by handing it a narrower width than the widget has, which is the
+kind of correction §7.8 refused for `GridSnap` when it could hand out
+rectangles instead.
+
+So the bundled font now has a **measured consequence**, and a better one
+than the reason §7.9 disproved: not "the fixtures would be reproducible"
+but **"wide text loses characters"**. §0b carries it. The pair also
 divides unevenly and the sabotage said which half works -- "every row
 still spans its full width" stayed green, because the overwrite replaces
 a lead cell with a one-cell glyph and leaves the stray continuation, so
@@ -393,7 +417,7 @@ Owned by the copyright holder:
 | A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. Cheaper to answer after the picture-rule entry below, which is the same question seen from the other end | *Qt's standard iconography* |
 | `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed. All four candidate behaviours are printed now -- and `Left\|Middle` **removes paging** rather than adding anything, unless `SH_Slider_PageSetButtons` moves it to the right button | *the interaction sweep* |
 | Whether the "too small to be a picture" rule moves to the backend. Nothing left unmeasured: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()`; no widget icon reaches the branch today; and the cost is **1.4 KB once per distinct icon, 35 bytes a frame after** -- eight of them together less than the one 48x48 icon the library already uploads | §7.2 |
-| The bundled font -- but **not for the reason the entry gave**. Measured across 18 families from 7x16 to 32x16: pin `GridMetrics` and every frame is identical; leave it to the font and every frame differs. The fixtures depend on the **cell**, not the font, so reproducibility needs no licensed asset. What a font would still settle is R3's integrality and the running application's appearance | §7.9, §11 |
+| The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
 
