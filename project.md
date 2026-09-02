@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-811 checks, 0 failures, under three configurations: the offscreen
+813 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4382,6 +4382,20 @@ stderr IS a terminal, pass them through when it is not.** A redirected
 stderr corrupts nothing, and that is the case every test run and every
 `2> log` invocation takes -- so the change is invisible to both, which is
 also why the suite could never have caught this.
+
+**The bound is on DISTINCT messages, and that was not the first
+version.** A repeated message is the normal case here rather than the
+exception: §6's contrast check runs on **every frame** and warns for up
+to eight cells each time, so one bad colour pair on a static screen emits
+the same sentence sixty times a second. A flat buffer filled in under a
+second, and everything after it became "and N further messages" --
+including the ones worth reading, the SIGWINCH pipe failing or a widget
+off the grid. Measured by sending five hundred copies of one message
+followed by one that mattered: without deduplication the last one was
+**lost**, which the paired check says rather than the comment claiming
+it. A repeat costs a counter now, and `(x500)` beside a warning is the
+more useful report anyway -- it says the colour pair is wrong on every
+frame, which the flat list said only by filling up.
 
 Deferred rather than suppressed: a diagnostic nobody ever sees is worse
 than one in the wrong place. `suspend()` flushes when it gives the

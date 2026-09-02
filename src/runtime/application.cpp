@@ -37,7 +37,20 @@ namespace Qtty {
 namespace {
 
 constexpr int kMaxDeferred = 256;
-QVector<QString> g_deferred;
+// Distinct messages, each with how many times it arrived. A repeated message
+// is the normal case rather than the exception here: the section 6 contrast
+// check runs on EVERY frame and warns for up to eight cells each time, so a
+// static screen with one bad colour pair emits the same sentence sixty times
+// a second. Storing them flat filled the buffer in under a second and turned
+// everything after it into "and N further messages" -- including the ones
+// worth reading, the SIGWINCH pipe failing or a widget off the grid.
+//
+// So the bound is on DISTINCT messages, and a repeat costs a counter. That is
+// also the more useful report: "(x420)" beside a contrast warning says the
+// colour pair is wrong on every frame, which the flat list said only by
+// filling up.
+struct Held { QString text; int count = 1; };
+QVector<Held> g_deferred;
 int g_dropped = 0;
 QtMessageHandler g_previous = nullptr;
 
@@ -47,21 +60,28 @@ void deferring_handler(QtMsgType type, const QMessageLogContext &ctx,
 		if (g_previous) g_previous(type, ctx, text);
 		return;
 	}
-	if (g_deferred.size() < kMaxDeferred) g_deferred.append(text);
+	for (Held &h : g_deferred)
+		if (h.text == text) { ++h.count; return; }
+	if (g_deferred.size() < kMaxDeferred) g_deferred.append(Held{text, 1});
 	else ++g_dropped;
 }
 
 } // namespace
 
 void flush_deferred_messages() {
-	const QVector<QString> held = g_deferred;
+	const QVector<Held> held = g_deferred;
 	const int dropped = g_dropped;
 	g_deferred.clear();
 	g_dropped = 0;
-	for (const QString &m : held) fprintf(stderr, "%s\n", qPrintable(m));
+	for (const Held &h : held) {
+		if (h.count > 1)
+			fprintf(stderr, "%s (x%d)\n", qPrintable(h.text), h.count);
+		else
+			fprintf(stderr, "%s\n", qPrintable(h.text));
+	}
 	if (dropped)
-		fprintf(stderr, "qtty: and %d further message(s) while the terminal"
-		                " was in use\n", dropped);
+		fprintf(stderr, "qtty: and %d further distinct message(s) while the"
+		                " terminal was in use\n", dropped);
 	fflush(stderr);
 }
 

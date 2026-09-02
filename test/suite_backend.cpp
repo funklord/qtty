@@ -2269,9 +2269,6 @@ int suite_exec() {
 			backend.suspend();          // gives the terminal back and flushes
 			fflush(stderr);
 			const QByteArray after = drain();
-			::dup2(saved_err, 2);
-			::close(saved_err);
-
 			CHECK(!during.contains("qtty-probe: held back"),
 			      "a warning while the terminal is in use does not reach it");
 			// The pair, and the reason this is deferral rather than
@@ -2279,6 +2276,32 @@ int suite_exec() {
 			// the wrong place.
 			CHECK(after.contains("qtty-probe: held back"),
 			      "and arrives once the terminal has been given back");
+
+			// A repeated message is the normal case, not the exception: the
+			// section 6 contrast check runs on every frame and warns for up
+			// to eight cells each time, so one bad colour pair on a static
+			// screen emits the same sentence sixty times a second. A flat
+			// buffer filled in under a second and turned everything after it
+			// into "and N further messages" -- including the ones worth
+			// reading.
+			::dup2(tty.slave, 2);
+			Qtty::AnsiBackend again;
+			again.resume();
+			for (int i = 0; i < 500; ++i) qWarning("qtty-probe: repeated");
+			qWarning("qtty-probe: the one that matters");
+			again.suspend();
+			fflush(stderr);
+			const QByteArray repeats = drain();
+			::dup2(saved_err, 2);
+
+			CHECK(repeats.contains("qtty-probe: repeated (x500)"),
+			      "five hundred of one message are held as one and a count");
+			// The half that says why: a message arriving after a flood is
+			// still readable. Five hundred flat would have overrun the cap
+			// and this one would have been a number instead of a sentence.
+			CHECK(repeats.contains("qtty-probe: the one that matters"),
+			      "and a later message is not drowned by them");
+			::close(saved_err);
 		}
 	}
 
