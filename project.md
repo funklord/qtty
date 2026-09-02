@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-813 checks, 0 failures, under three configurations: the offscreen
+815 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4540,6 +4540,35 @@ overflowed gives the clamp nothing to undo. It is the hysteresis now: the
 terminal grows under a dialog that has just scrolled three rows, and both
 ends of the form have to be back in the frame. That version reddens on
 the clamp sabotage and on nothing else.
+
+**Nothing had ever read the bytes qtty writes** (2026-09-02), and the
+first frame captured showed a fault. The pseudo-terminal fixture built
+for the raw-mode work made it possible; a frame whose last **cell** is
+coloured ends:
+
+    <ESC>[H<ESC>[0mab  <ESC>[0m<CR><CR><LF><ESC>[0m<ESC>[91m<ESC>[44m<ESC>[1mzzzz
+
+No trailing reset. **Every row is terminated with one except the last**,
+which has no terminator to carry it, so the terminal keeps bright red on
+blue, bold, for whatever is written next. That is an inconsistency rather
+than a decision, and four bytes a frame buys the guarantee that a frame
+ends where it started. The next frame does re-emit from its first cell --
+`cur` is fresh per `present()` -- so the cost falls on anything written
+*between* frames: a deferred diagnostic, an application's stray output,
+an image sequence emitted after the cell loop.
+
+**The first probe reported the fault for the wrong reason.** It coloured
+two cells of a four-cell row, and the trailing spaces emitted their own
+reset for free -- "ends with a reset: 0" was true, and had nothing to do
+with the last row's missing terminator. **A probe that does not create
+the condition it tests is measuring its own fixture**, and the check now
+asserts the premise -- that the last row really is coloured -- before it
+asserts anything about the tail.
+
+One reading artefact worth naming, since the next person to capture bytes
+will meet it: `<CR><CR><LF>` in that dump is **the pseudo-terminal's**,
+not qtty's. The code writes `\r\n`; ONLCR on the slave turns the LF into
+CR LF, giving two CRs. Harmless, and not a finding.
 
 ### 7.3 Graphics tier (design.md §17.3)
 

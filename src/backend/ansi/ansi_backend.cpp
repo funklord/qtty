@@ -663,6 +663,19 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 		}
 		if (y < composed.rows() - 1) out += "\033[0m\r\n", cur = Sgr{};
 	}
+	// And after the last row, which had no terminator to carry one. Measured
+	// on a frame whose last CELL was coloured: the bytes ended
+	// "...[91m[44m[1mzzzz" and the terminal kept bright red on blue, bold,
+	// for whatever was written next. Every other row was already left in a
+	// defined state and only the last was not, which makes this an
+	// inconsistency rather than a decision.
+	//
+	// Four bytes a frame for the guarantee that a frame ends where it
+	// started. The next frame does re-emit from its first cell -- `cur` is
+	// fresh per present() -- so the cost of NOT doing it falls on anything
+	// written BETWEEN frames: a deferred diagnostic, an application's own
+	// stray output, an image sequence emitted after the cell loop.
+	out += "\033[0m";
 	// section 6 contrast rule, applied after mapping -- the only point at which
 	// the emitted pairing is known. Reporting only, and never fatal; theme.cpp
 	// says why. The cost is one memoised lookup per glyph-bearing cell.

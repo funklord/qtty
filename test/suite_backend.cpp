@@ -14,6 +14,7 @@
 #include "src/backend/ansi/scroll_settle.h"
 #include <QtWidgets>
 #include <cstdio>
+#include <functional>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
@@ -2302,6 +2303,57 @@ int suite_exec() {
 			CHECK(repeats.contains("qtty-probe: the one that matters"),
 			      "and a later message is not drowned by them");
 			::close(saved_err);
+		}
+	}
+
+
+	// ---- a frame leaves the terminal where it found it ----
+	{
+		// Every row is terminated with a reset except the LAST, which had no
+		// terminator to carry one. Measured on a frame whose last cell was
+		// coloured: the bytes ended "...[91m[44m[1mzzzz" and the terminal
+		// kept bright red on blue, bold, for whatever came next.
+		//
+		// The first version of this probe coloured two cells of a four-cell
+		// row, and the trailing spaces emitted their own reset for free --
+		// it reported "no trailing reset" for a reason that had nothing to
+		// do with the fault. A probe that does not create the condition it
+		// tests is measuring its own fixture.
+		Tty tty;
+		if (!tty.ok()) {
+			printf("FAIL: no pseudo-terminal, so the frame-tail check says"
+			       " nothing\n");
+			++fails;
+		} else {
+			fcntl(tty.master, F_SETFL, O_NONBLOCK);
+			Qtty::AnsiBackend backend;
+			backend.resume();
+			fflush(stdout);
+			const int saved = ::dup(1);
+			::dup2(tty.slave, 1);
+			CellBuffer b(4, 2);
+			b.text(0, 0, QStringLiteral("ab"), Color(), Color(), Attrs());
+			b.text(0, 1, QStringLiteral("zzzz"), Color::indexed(9),
+			       Color::indexed(4), Attrs(Attr::Bold));
+			backend.present(b, QRegion());
+			fflush(stdout);
+			::dup2(saved, 1);
+			::close(saved);
+			QByteArray out;
+			char buf[8192];
+			for (;;) {
+				const ssize_t n = ::read(tty.master, buf, sizeof(buf));
+				if (n <= 0) break;
+				out.append(buf, int(n));
+			}
+			backend.suspend();
+			// The fixture's own premise: the last cell really did carry a
+			// colour, or "ends with a reset" is a claim about a frame that
+			// had nothing to reset.
+			CHECK(out.contains("\033[91m") && out.contains("\033[44m"),
+			      "the last row of this frame really is coloured");
+			CHECK(out.endsWith("\033[0m"),
+			      "and the frame ends by putting the terminal back to plain");
 		}
 	}
 
