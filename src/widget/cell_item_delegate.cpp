@@ -12,8 +12,6 @@
 
 namespace Qtty {
 
-
-
 // Display width, and elision to a cell budget. Cluster-aware because a cell is
 // a grapheme cluster and a wide one occupies two (section 5.2): counting
 // QChars would put a CJK label one cell past the column it was given.
@@ -22,7 +20,6 @@ static int text_cells(const QString &s) {
 	for (const QString &cluster : to_clusters(s)) n += cluster_width(cluster);
 	return n;
 }
-
 
 CellItemDelegate::CellItemDelegate(QObject *parent) : QStyledItemDelegate(parent) {}
 
@@ -78,9 +75,16 @@ void CellItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
 	// comes out bold, because that text goes through QPainter and
 	// CellPaintEngine reads the painter's font -- and a bold item came out
 	// plain.
-	const Attrs attrs = with_state(&opt, (opt.state & QStyle::State_Selected)
-	                                         ? Attrs(Attr::Reverse) : Attrs())
-	                    | attrs_for_font(opt.font);
+	//
+	// The current item's underline joins them for the same reason, and it is
+	// the half a fill alone cannot carry: the style underlines the whole item
+	// and this then writes the label over the middle of it, so without this
+	// the mark would appear everywhere on the row EXCEPT on the word the user
+	// is looking at.
+	Attrs mark = (opt.state & QStyle::State_Selected) ? Attrs(Attr::Reverse)
+	                                                  : Attrs();
+	if (item_view_current(&opt, widget)) mark |= Attr::Underline;
+	const Attrs attrs = with_state(&opt, mark) | attrs_for_font(opt.font);
 
 	// Qt::ForegroundRole and Qt::BackgroundRole, which reached nothing. Both
 	// arrive in the option -- the first as the palette's Text brush, the

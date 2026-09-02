@@ -137,6 +137,17 @@ inline Attrs with_state(const QStyleOption *opt, Attrs base = Attrs()) {
 	return base;
 }
 
+// Whether this item is the one the keys would act on: the view owns the
+// router's focus and the index is its current one. DECLARED here and defined
+// in grid_style.cpp, which is the compromise the two costs settle on -- the
+// definition needs QAbstractItemView, and this header is included by most of
+// the tree, so moving the body would buy symmetry with a compile-time bill in
+// every translation unit. The declaration is the half that matters: it is what
+// stops the style's fill and the delegate's label growing two answers, which
+// is exactly how with_state() came to draw one disabled row two ways at once
+// -- and that copy was in these same two files.
+bool item_view_current(const QStyleOptionViewItem *vi, const QWidget *w);
+
 // The emphasis a font carries, as cell attributes. A terminal has these four
 // and no others, which is why this is a translation rather than a rendering:
 // weight is bold or it is not, and a font's size, family and stretch have

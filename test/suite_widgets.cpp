@@ -702,6 +702,185 @@ int suite_widgets() {
 		      "and the style's own path answers the same with no delegate");
 	}
 
+	// A header's default SECTION size, which is where an item view's rows and
+	// columns come from. GridStyle overrode every other metric that shapes
+	// geometry and not these two, so Fusion's answers stood: 30 px for a row
+	// on a 19-px grid, and 100 px for a column.
+	//
+	// Both are asked at a SECOND cell size, and that is the check rather than
+	// thoroughness. 100 divides exactly by this machine's 10-px cell, so
+	// "the metric is a multiple of cw" is true of the BROKEN metric here and
+	// discriminates nothing; the horizontal half was aligned by luck and
+	// nothing on this machine could see it. A metric derived from the grid
+	// moves when the grid moves, and a constant does not.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		const auto metric = [](QStyle::PixelMetric m) {
+			return QApplication::style()->pixelMetric(m);
+		};
+		const int v_here = metric(QStyle::PM_HeaderDefaultSectionSizeVertical);
+		const int h_here = metric(QStyle::PM_HeaderDefaultSectionSizeHorizontal);
+		GridMetrics::set(cw + 3, ch + 5);
+		const int v_there = metric(QStyle::PM_HeaderDefaultSectionSizeVertical);
+		const int h_there = metric(QStyle::PM_HeaderDefaultSectionSizeHorizontal);
+		GridMetrics::set(cw, ch);
+		printf("info: header sections are %dx%d px on a %dx%d cell, %dx%d on a %dx%d one\n",
+		       h_here, v_here, cw, ch, h_there, v_there, cw + 3, ch + 5);
+		CHECK(v_here == ch && v_there == ch + 5,
+		      "a header section defaults to exactly one row, at either cell size");
+		CHECK(h_here > 0 && h_here % cw == 0 && h_there > 0 && h_there % (cw + 3) == 0,
+		      "and to a whole number of columns, at either cell size");
+	}
+
+	// What that metric costs on the screen. Nothing here is stated in cells:
+	// the default section size is the subject, so setting one -- which every
+	// other table in this file does -- would remove it.
+	//
+	// Measured before the fix, with the vertical header hidden: rows at pixel
+	// 0, 30, 60 and 90 landed on buffer rows 1, 3, 4 and 6, a blank line
+	// between the first pair and none between the second, and the selected
+	// row reversed two buffer rows rather than one.
+	{
+		QStandardItemModel m(4, 1);
+		for (int r = 0; r < 4; ++r)
+			m.setItem(r, 0, new QStandardItem(QStringLiteral("row%1").arg(r)));
+		m.setHorizontalHeaderLabels({QStringLiteral("Name")});
+		QTableView t;
+		t.setModel(&m);
+		t.setFrameShape(QFrame::NoFrame);
+		t.verticalHeader()->hide();
+		show(t, 20, 7);
+		t.selectRow(1);
+		QCoreApplication::processEvents();
+		CellBuffer b(22, 8);
+		render_once(t, b);
+		int y[4];
+		for (int r = 0; r < 4; ++r)
+			y[r] = findText(b, QStringLiteral("row%1").arg(r)).y();
+		printf("info: four default rows land on buffer rows %d %d %d %d\n",
+		       y[0], y[1], y[2], y[3]);
+		CHECK(y[0] >= 0 && y[1] == y[0] + 1 && y[2] == y[0] + 2 && y[3] == y[0] + 3,
+		      "a table's rows land one per buffer row, with none skipped");
+		// The pair, and it is not the same assertion twice. A view that
+		// reversed nothing at all would satisfy "the highlight does not reach
+		// the row below" on its own, which is what a check for the absence
+		// alone would be asking.
+		int reversed = 0;
+		for (int r = 0; r < b.rows(); ++r)
+			if (b.at(0, r).attrs & Attr::Reverse) ++reversed;
+		printf("info: a selected row reverses %d buffer row(s)\n", reversed);
+		CHECK(reversed == 1 && y[1] >= 0 && (b.at(0, y[1]).attrs & Attr::Reverse),
+		      "and a selected row's highlight is its own row and no other");
+		GridGuard::reset();
+	}
+
+	// A heading over its own column. CE_ItemViewItem indents an item's text by
+	// a cell and CE_HeaderLabel did not, so measured on a two-column table
+	// "Name" began at column 0 with "r0" at column 1 -- every heading one cell
+	// left of the data it names, which is the one thing a heading is for.
+	{
+		QStandardItemModel m(1, 2);
+		m.setItem(0, 0, new QStandardItem(QStringLiteral("aaa")));
+		m.setItem(0, 1, new QStandardItem(QStringLiteral("bbb")));
+		m.setHorizontalHeaderLabels({QStringLiteral("Name"), QStringLiteral("Value")});
+		QTableView t;
+		t.setModel(&m);
+		t.setFrameShape(QFrame::NoFrame);
+		t.verticalHeader()->hide();
+		show(t, 30, 5);
+		CellBuffer b(32, 6);
+		render_once(t, b);
+		const QPoint first = findText(b, QStringLiteral("Name"));
+		const QPoint under_first = findText(b, QStringLiteral("aaa"));
+		const QPoint second = findText(b, QStringLiteral("Value"));
+		const QPoint under_second = findText(b, QStringLiteral("bbb"));
+		printf("info: headings at columns %d and %d over data at %d and %d\n",
+		       first.x(), second.x(), under_first.x(), under_second.x());
+		CHECK(first.x() >= 0 && under_first.x() >= 0 && first.x() == under_first.x(),
+		      "a heading starts in the same column as the data under it");
+		// The second column as well, because the first alone is satisfied by a
+		// header offset applied once to the whole strip rather than to each
+		// section -- and because two columns is what makes it a table.
+		CHECK(second.x() > first.x() && under_second.x() >= 0
+		      && second.x() == under_second.x(),
+		      "and so does the next column's heading, at its own offset");
+		GridGuard::reset();
+	}
+
+	// The CURRENT item, which was drawn nowhere at all: measured with a full
+	// to_snapshot() so a colour-only difference could not hide, moving it
+	// through a three-item list changed ZERO cells. State_HasFocus is never
+	// set here (project.md F4) -- measured on every item of both frames -- so
+	// the mark is the router-owned focus and the view's own currentIndex,
+	// and it is an underline because reverse already means selected.
+	//
+	// NoSelection throughout, deliberately. It is the mode where the current
+	// item is the ONLY thing an arrow key changes, and it keeps the
+	// selection's reverse out of a picture that is about a different mark.
+	{
+		QStandardItemModel m;
+		for (int i = 0; i < 3; ++i)
+			m.appendRow(new QStandardItem(QStringLiteral("item%1").arg(i)));
+		// Both paths, because they write into the same cells: the style's own
+		// CE_ItemViewItem fills the item, and CellItemDelegate writes the
+		// label over the middle of that fill.
+		const auto render = [&](bool with_delegate, int current, bool focused,
+		                        CellBuffer &b) {
+			QListView v;
+			v.setModel(&m);
+			v.setFrameShape(QFrame::NoFrame);
+			v.setSelectionMode(QAbstractItemView::NoSelection);
+			if (with_delegate) v.setItemDelegate(new CellItemDelegate(&v));
+			show(v, 20, 5);
+			v.setCurrentIndex(m.index(current, 0));
+			QCoreApplication::processEvents();
+			Qtty::set_focus_widget(focused ? &v : nullptr);
+			render_once(v, b);
+			Qtty::set_focus_widget(nullptr);
+		};
+		CellBuffer at_first(22, 6), at_second(22, 6), keyless(22, 6), through_delegate(22, 6);
+		render(false, 0, true, at_first);
+		render(false, 1, true, at_second);
+		render(false, 1, false, keyless);
+		render(true, 1, true, through_delegate);
+
+		const int y0 = findText(at_first, QStringLiteral("item0")).y();
+		const int y1 = findText(at_first, QStringLiteral("item1")).y();
+		const auto marked = [](const CellBuffer &b, int row) {
+			int n = 0;
+			if (row < 0) return -1;
+			for (int x = 0; x < b.cols(); ++x)
+				if (b.at(x, row).attrs & Attr::Underline) ++n;
+			return n;
+		};
+		printf("info: the current item marks %d cells of its own row and %d of its neighbour\n",
+		       marked(at_second, y1), marked(at_second, y0));
+		CHECK(y0 >= 0 && y1 == y0 + 1
+		      && marked(at_first, y0) > 0 && marked(at_first, y1) == 0
+		      && marked(at_second, y1) > 0 && marked(at_second, y0) == 0,
+		      "the current item is marked, and the mark moves with it");
+		// Drawing nothing satisfies half of that by itself, so the frames have
+		// to differ AND the row that moved has to still be on the screen.
+		CHECK(at_second.diff_cells(at_first) > 0
+		      && findText(at_second, QStringLiteral("item1")).y() == y1,
+		      "moving the current item changes cells, and the item is still drawn");
+		// The other direction. A view without the keys marks nothing -- and
+		// still draws its items, which is what says the absence is a decision
+		// rather than an empty frame.
+		CHECK(marked(keyless, y0) == 0 && marked(keyless, y1) == 0
+		      && findText(keyless, QStringLiteral("item1")).y() == y1,
+		      "a view that does not own the keys marks no item, and still draws them");
+		// The two paths agreeing, cell for cell. A mark on the padding and not
+		// on the word is exactly the shape the disabled-item fault had, and it
+		// is what a check taken at the label alone cannot see.
+		const QPoint label = findText(through_delegate, QStringLiteral("item1"));
+		CHECK(label.x() > 0
+		      && (through_delegate.at(label.x(), label.y()).attrs & Attr::Underline)
+		      && (through_delegate.at(label.x() - 1, label.y()).attrs & Attr::Underline),
+		      "and the delegate's label carries the mark the style's fill does");
+		GridGuard::reset();
+	}
+
 
 	// A table's grid must not eat its labels' own spaces. Qt draws the grid
 	// itself, after the items, with QPainter::drawLine, and

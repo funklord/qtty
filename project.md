@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-794 checks, 0 failures, under three configurations: the offscreen
+804 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4440,6 +4440,47 @@ leaves `QMenuPrivate::causedPopup` unset, so `QMenu::keyPressEvent`'s
 bar traversal could never fire. `setActiveAction()` places it, sets the
 caused-by chain, and marks the bar -- and drops the hand-computed
 position, so the fix removes code.
+
+**A table's rows were 30 pixels on a 19-pixel grid** (2026-09-02).
+`PM_HeaderDefaultSectionSizeVertical` is Fusion's 30 and nothing
+overrode it, so only `QTableView` -- which takes its row height from the
+vertical header's default section -- put its rows off the grid:
+
+    rows at pixel 0/30/60/90  ->  buffer rows 1, 3, 4, 6
+
+A blank line between some pairs and none between others, and **a selected
+row's highlight covering two buffer rows**: the reverse fill spanned the
+next line, with a hole where that row's own label was written over it
+unhighlighted. `GridGuard` cannot see this at all -- `QHeaderView` is
+exempt by name.
+
+The horizontal metric was wrong in a way that hid itself: Fusion's 100
+divides exactly by *this machine's* 10-pixel cell, so `% cw == 0` is true
+of the broken value. The checks ask the metrics at **a second cell size**
+for that reason, and the sabotage proves it -- forcing 100 back reddens
+only the check that varies the cell.
+
+**And the current item was drawn nowhere.** In `ExtendedSelection` with
+Ctrl+arrow, and in `NoSelection` outright, the item the keys act on moved
+and `diff_cells` over a full `to_snapshot()` was **0**. Single selection
+hid it, because current and selected coincide there. Underline, not
+reverse: reverse already means "selected", and which item the keys would
+act on is a different fact from which items are chosen -- the tab bar
+settled that vocabulary first.
+
+One correction to what was expected, measured rather than assumed: the
+widget the style is handed at `CE_ItemViewItem` is the **view**, not the
+viewport. `QAbstractItemView` sets `option->widget` to itself and both
+delegates pass it straight through, so there is no parent to climb.
+
+`item_view_current()` is declared in `cell_geometry.h` and defined in
+`grid_style.cpp` -- the declaration shared because the style's fill and
+the delegate's label land in the **same cells**, and two answers to that
+question is exactly how `with_state()` once drew one disabled row two
+ways at once, in these same two files. The body stays put because it
+needs `QAbstractItemView` and that header is included by most of the
+tree. A sabotage of the delegate's half alone reddens one check and one
+only, which is what makes that check about the two paths agreeing.
 
 ### 7.3 Graphics tier (design.md §17.3)
 

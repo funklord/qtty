@@ -16,6 +16,7 @@
 #include <QStyleOptionButton>
 #include <QPainter>
 #include <QHash>
+#include <QAbstractItemView>
 #include <QLineEdit>
 #include <QToolButton>
 #include <QWidget>
@@ -199,6 +200,45 @@ static QRect visible_rect(const QWidget *w) {
 static bool owns_focus(const QWidget *w) { return w && w == s_focus; }
 static Attrs focus_attrs(const QWidget *w) {
 	return owns_focus(w) ? Attrs(Attr::Reverse) : Attrs();
+}
+
+// The CURRENT item of a view that has the keys -- the one an arrow key moves
+// and Space or Return acts on. It was drawn nowhere at all: measured with a
+// full to_snapshot() so that a colour-only difference could not hide, moving
+// the current item of a three-item QListView changed ZERO cells, in
+// ExtendedSelection with the selection cleared and in NoSelection, with the
+// list confirmed as Qtty::focusWidget() and with CellItemDelegate installed
+// and again without it. A user pressing an arrow key saw nothing move.
+//
+// Neither half of the question can be read off the option:
+//
+// - Qt sets State_HasFocus on the current item only when the view itself
+//   hasFocus(), and no window activates here (project.md F4), so it is never
+//   set. Measured on every item of both renders: hasfocus=0 throughout. The
+//   router-owned focus is the one that answers, exactly as it does for the
+//   push button, the tab bar and the scroll bar above.
+// - The option carries no "this one is current" flag, so it is asked of the
+//   view, which is why this needs a view at all.
+//
+// The widget a style is handed for an item is the VIEW, not its viewport:
+// measured, w == opt.widget == the QListView and the QTableView, on the
+// delegate's path and on the one Qt's own delegate takes. QAbstractItemView
+// sets option->widget to itself and both delegates pass that straight
+// through, so there is no viewport to climb out of and no parent to consult.
+//
+// Underline, not reverse, and the tab bar is the precedent: reverse already
+// means "selected", and which item the keys would act on is a different fact
+// from which items are chosen. A view with the keys shows its current item
+// underlined; the same item selected as well is underlined AND reversed.
+//
+// Not static: the style's fill and the delegate's label land in the SAME
+// cells, so they ask one function. Declared in cell_geometry.h beside
+// with_state(), defined here because the body needs QAbstractItemView and that
+// header is included by most of the tree.
+bool item_view_current(const QStyleOptionViewItem *vi, const QWidget *w) {
+	if (!vi || !vi->index.isValid() || !owns_focus(w)) return false;
+	const auto *view = qobject_cast<const QAbstractItemView *>(w);
+	return view && vi->index == view->currentIndex();
 }
 
 // ------------------------------------------------- font provisioning (5.3/R3)
@@ -511,6 +551,26 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 	case PM_DockWidgetSeparatorExtent:                     return cw;
 	case PM_HeaderMargin:                                  return 0;
 	case PM_HeaderGripMargin:                              return cw;
+	// A header's default SECTION size, which is where every row and column of
+	// an item view comes from: a QTableView takes its row height from the
+	// vertical header's default and its column width from the horizontal
+	// one's, whether or not either header is shown.
+	//
+	// Fusion answers 30 px for the vertical one. That is 1.58 rows at ch = 19,
+	// so a four-row table put its model rows on buffer rows 1, 3, 4 and 6 --
+	// a blank line between the first two and none between the next -- and a
+	// selected row reversed TWO buffer rows, its own and the top of the one
+	// below. Measured, with the section size left at the default: rows at
+	// pixel 0, 30, 60, 90 on a 19-pixel grid.
+	//
+	// The horizontal one is 100 px, and it is on the grid HERE only because
+	// this machine's cell happens to be 10 px wide. It is the same wrong
+	// number as the vertical one; nothing on this machine can see it, which
+	// is why the check that pins it asks at a second cell size rather than
+	// dividing this one by cw. Ten columns is the same default said in the
+	// unit the grid is measured in.
+	case PM_HeaderDefaultSectionSizeVertical:              return ch;
+	case PM_HeaderDefaultSectionSizeHorizontal:            return 10 * cw;
 	default:                                               return QProxyStyle::pixelMetric(m, o, w);
 	}
 }
@@ -1015,8 +1075,12 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 			return;
 		case CE_ItemViewItem:                          // list/table/tree cells
 			if (auto *vi = qstyleoption_cast<const QStyleOptionViewItem *>(opt)) {
-				const Attrs a = with_state(opt, (opt->state & State_Selected)
-				                                ? Attrs(Attr::Reverse) : Attrs());
+				Attrs mark = (opt->state & State_Selected) ? Attrs(Attr::Reverse)
+				                                           : Attrs();
+				// The current item, underlined, by the rule item_view_current()
+				// states and CellItemDelegate asks the same way.
+				if (item_view_current(vi, w)) mark |= Attr::Underline;
+				const Attrs a = with_state(opt, mark);
 				// Qt::FontRole arrives in the option, and reaches the label
 				// whether or not CellItemDelegate is installed. The fill
 				// stays state-only, as in a menu item.
@@ -1073,7 +1137,14 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 			return;                                    // no chrome; label only
 		case CE_HeaderLabel:
 			if (auto *h = qstyleoption_cast<const QStyleOptionHeader *>(opt)) {
-				dev->buffer().text(c.left(), c.top(), elide_to_cells(h->text, c.width()),
+				// One cell in, which is where CE_ItemViewItem starts an item's
+				// text. The two are read as a COLUMN and they did not line up:
+				// measured on a two-column table, "Name" began at column 0 and
+				// the "r0" under it at column 1, so every heading sat one cell
+				// to the left of the data it names. A header is only a label
+				// because of what is below it.
+				dev->buffer().text(c.left() + 1, c.top(),
+				                   elide_to_cells(h->text, c.width() - 1),
 				                   Color(), Color(),
 				                   label_attrs(opt, w, Attr::Bold));
 				return;
