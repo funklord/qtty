@@ -365,7 +365,30 @@ void AnsiBackend::resume() {
 	tty_out_ = isatty(1);
 	if (isatty(0) && tcgetattr(0, &saved_) == 0) {
 		termios t = saved_;
-		t.c_lflag &= ~(ICANON | ECHO);
+		// ISIG and IXON go too, and leaving them on was not a small thing.
+		// With ISIG set the terminal DRIVER turns Ctrl+C into SIGINT before
+		// any byte reaches read_input(), so InputRouter's quit keys -- which
+		// default to Ctrl+C, and which set_quit_keys() exists to change --
+		// could never see that chord from a real keyboard, and neither could
+		// the rule that makes Ctrl+C copy inside a text field. Two mechanisms
+		// for one key, and the one that ran was not the one the code reasons
+		// about.
+		//
+		// IXON is the same shape with a worse symptom: Ctrl+S is flow
+		// control, so a user who types it sees the application stop
+		// responding with no way to know why, and Ctrl+Q is spent unfreezing
+		// it rather than reaching the application.
+		//
+		// A full-screen program owns its keyboard; that is what taking the
+		// alternate screen means. The cost is that Ctrl+C no longer kills a
+		// program whose event loop has stopped -- a kill from another window
+		// still does, and so does the quit key once the loop is running.
+		//
+		// The translation flags are deliberately left alone. ICRNL and the
+		// rest decide what byte Enter arrives as, and the decoder was written
+		// against what they do now; changing them is a separate measurement.
+		t.c_lflag &= ~(ICANON | ECHO | ISIG);
+		t.c_iflag &= ~IXON;
 		t.c_cc[VMIN] = 1; t.c_cc[VTIME] = 0;
 		tcsetattr(0, TCSANOW, &t);
 		raw_ok_ = true;

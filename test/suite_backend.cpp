@@ -74,6 +74,40 @@ struct Feeder {
 	}
 };
 
+// A real pseudo-terminal on fd 0 and 1, because the raw-mode path is gated on
+// isatty() and the Feeder's pipe is not one -- so everything termios does was
+// untestable, which is why nobody had noticed what it left switched on.
+//
+// posix_openpt and friends rather than openpty(), which lives in libutil and
+// would put a link dependency in the test build for one fixture.
+//
+// STDIN ONLY. The first version put the pty on fd 1 as well, and stdout is
+// where this suite prints: four of its own checks wrote their PASS lines into
+// the pseudo-terminal and were never seen, while the count dropped by eleven
+// and the run still said "OK". A fixture that swallows the output of the
+// checks inside it is worse than no fixture -- it fails silently and looks
+// like a pass. Only isatty(0) gates the raw-mode path being tested here.
+struct Tty {
+	int master = -1, slave = -1, saved_in = -1;
+	Tty() {
+		master = posix_openpt(O_RDWR | O_NOCTTY);
+		if (master < 0) return;
+		if (grantpt(master) != 0 || unlockpt(master) != 0) return;
+		const char *name = ptsname(master);
+		if (!name) return;
+		slave = ::open(name, O_RDWR | O_NOCTTY);
+		if (slave < 0) return;
+		saved_in = ::dup(0);
+		::dup2(slave, 0);
+	}
+	bool ok() const { return slave >= 0; }
+	~Tty() {
+		if (saved_in >= 0) { ::dup2(saved_in, 0); ::close(saved_in); }
+		if (slave >= 0) ::close(slave);
+		if (master >= 0) ::close(master);
+	}
+};
+
 } // namespace
 
 int suite_backend() {
@@ -2100,6 +2134,53 @@ int suite_exec() {
 		      "and it puts the previous handlers back when it suspends");
 		CHECK(set_second == int(sizeof(fatal) / sizeof(fatal[0])),
 		      "so a second backend installs them again, as it must");
+	}
+
+	// ---- raw mode takes the keys the driver would have eaten ----
+	{
+		// Measured by reading, then confirmed here: the raw-mode setup
+		// cleared ICANON and ECHO and left ISIG and IXON alone. With ISIG on,
+		// the terminal DRIVER turns Ctrl+C into SIGINT before a byte reaches
+		// read_input() -- so InputRouter's quit keys, which default to
+		// Ctrl+C, and the rule that makes Ctrl+C copy inside a text field,
+		// could never see that chord from a real keyboard. With IXON on,
+		// Ctrl+S freezes the terminal and the application looks hung.
+		//
+		// This is the first check in the file to run against a real tty. The
+		// raw-mode path is gated on isatty(), and the pipe every other
+		// fixture uses is not one -- which is why what termios left switched
+		// on had never been looked at.
+		Tty tty;
+		if (!tty.ok()) {
+			printf("FAIL: a pseudo-terminal could not be opened, so the raw"
+			       " mode checks say nothing\n");
+			++fails;
+		} else {
+			termios before {};
+			tcgetattr(0, &before);
+			// The premise: a fresh pty has them ON, so the checks below are
+			// about this code turning them off rather than about a terminal
+			// that never had them.
+			CHECK((before.c_lflag & ISIG) && (before.c_iflag & IXON),
+			      "a fresh terminal signals on Ctrl+C and flow-controls on Ctrl+S");
+			{
+				Qtty::AnsiBackend backend;
+				backend.resume();
+				termios during {};
+				tcgetattr(0, &during);
+				CHECK(!(during.c_lflag & ISIG),
+				      "and a running backend takes Ctrl+C for itself");
+				CHECK(!(during.c_iflag & IXON),
+				      "and Ctrl+S, which would otherwise freeze the screen");
+				CHECK(!(during.c_lflag & (ICANON | ECHO)),
+				      "while still doing what it already did");
+				backend.suspend();
+			}
+			termios after {};
+			tcgetattr(0, &after);
+			CHECK((after.c_lflag & ISIG) && (after.c_iflag & IXON),
+			      "and gives them back when it suspends");
+		}
 	}
 
 	return fails;

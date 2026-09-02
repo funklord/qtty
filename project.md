@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-769 checks, 0 failures, under three configurations: the offscreen
+774 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4229,6 +4229,56 @@ And the block runs **two** backend cycles rather than inheriting evidence
 from suite order: install and restore are coupled by a "did I install"
 flag, so a broken restore shows up as a failure to install the second
 time, and that is what the sabotage actually reddens.
+
+**Raw mode was not raw, and it made an earlier fix unreachable.** The
+setup cleared `ICANON | ECHO` and nothing else. `ISIG` stayed on, so the
+terminal **driver** turns Ctrl+C into SIGINT before a byte reaches
+`read_input()` -- and `InputRouter`'s quit keys, which *default to
+Ctrl+C* and which `set_quit_keys()` exists to change, could never see
+that chord from a real keyboard. Nor could the rule added the same day
+that makes Ctrl+C copy inside a text field. **Two mechanisms for one key,
+and the one that ran was not the one the code reasons about.**
+
+That is a correction to what the copy commit claimed. The routing change
+is right and reachable through `on_key()` -- any backend that delivers
+the chord, and an application driving the router itself -- but on a real
+terminal it did nothing until this, and the commit message read as though
+a user would see it. Recorded rather than quietly fixed, because the
+claim was the part that was wrong.
+
+`IXON` was the same shape with a worse symptom: Ctrl+S is flow control,
+so a user who types it sees the application stop responding with no way
+to know why, and Ctrl+Q is spent unfreezing it rather than reaching the
+application. Both are cleared now. The translation flags are deliberately
+left alone -- `ICRNL` and the rest decide what byte Enter arrives as, and
+the decoder was written against what they do now.
+
+The cost is stated rather than hidden: Ctrl+C no longer kills a program
+whose event loop has stopped. A kill from another window still does, and
+so does the quit key once the loop is running. A full-screen program owns
+its keyboard, which is what taking the alternate screen means.
+
+**This is the first check in the suite to run against a real terminal.**
+The raw-mode path is gated on `isatty()` and every other fixture uses a
+pipe, which is why nothing termios did had ever been looked at. The
+fixture is `posix_openpt` rather than `openpty()`, which lives in libutil
+and would put a link dependency in the test build for one fixture.
+
+**And its first version swallowed the checks inside it.** It put the
+pseudo-terminal on fd 1 as well as fd 0, and fd 1 is where this suite
+prints: four of its own PASS lines went into the pty and were never seen,
+the count fell by eleven, and the run still said `OK (0 failures)`.
+**A fixture that eats the output of the checks inside it fails silently
+and looks like a pass** -- the only reason it was caught is that the
+count is read on every run. Only `isatty(0)` gates the path under test,
+so only fd 0 is redirected.
+
+**Still open, and named by `backend.h` itself:** `suspend()` is
+documented as being for *"SIGTSTP / shelling out"*, and nothing handles
+SIGTSTP. With `ISIG` cleared, Ctrl+Z is now a key rather than a signal --
+but `kill -TSTP` still stops the process with the terminal on the
+alternate screen, and nothing re-enters raw mode on SIGCONT. That is the
+next piece of this.
 
 ### 7.3 Graphics tier (design.md §17.3)
 
