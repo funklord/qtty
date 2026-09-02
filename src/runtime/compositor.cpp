@@ -43,6 +43,31 @@ QPoint placed_at(const QRect &g, int cols, int rows, int cw, int ch, bool flip) 
 	return QPoint((x / cw) * cw, (y / ch) * ch);          // snap the result to the grid
 }
 
+// The rectangle a layer has to keep inside the terminal, in the layer's own
+// coordinates, or nothing if it is not pointing at anything.
+//
+// A QMenu never calls setFocus() on anything: it tracks its current item in
+// QMenu::activeAction() and draws the highlight itself, so layer->focusWidget()
+// is null for every menu ever opened. Following the focus alone therefore left
+// a menu taller than the terminal frozen on its first screenful while Down
+// walked invisibly past the fold -- measured with a 30-item menu 608 px tall in
+// a 190 px terminal: after twenty Down presses the active item was "Item 19"
+// and the frame was byte-identical to the one before. Qt does not intervene,
+// because the offscreen QScreen is 800x800 and nothing tells it what the
+// terminal's size is.
+std::optional<QRect> follow_rect(QWidget *layer) {
+	if (auto *menu = qobject_cast<QMenu *>(layer)) {
+		if (QAction *a = menu->activeAction()) {
+			const QRect r = menu->actionGeometry(a);
+			if (!r.isNull()) return r;
+		}
+		return std::nullopt;
+	}
+	if (QWidget *fw = layer->focusWidget())
+		return QRect(fw->mapTo(layer, QPoint()), fw->size());
+	return std::nullopt;
+}
+
 } // namespace
 
 Compositor::Compositor(QWidget *window, InputRouter *router)
@@ -145,15 +170,19 @@ void Compositor::apply_priority(QWidget *layer, Layer &state, int cols, int rows
 // focused widget inside the terminal makes every widget reachable with the
 // keys the application already answers. The offset is clamped to what actually
 // overflows, so a layer that fits scrolls by nothing and this is invisible.
+//
+// What is followed is follow_rect()'s answer rather than focusWidget()
+// directly, because a menu has no focus widget and its current item is the
+// only thing a user moves in it.
 void Compositor::follow_focus(QWidget *layer, Layer &state, int cols, int rows) {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	const int max_x = qMax(0, (layer->width() + cw - 1) / cw - cols);
 	const int max_y = qMax(0, (layer->height() + ch - 1) / ch - rows);
-	if (QWidget *fw = layer->focusWidget()) {
-		const QPoint at = fw->mapTo(layer, QPoint());
+	if (const std::optional<QRect> r = follow_rect(layer)) {
+		const QPoint at = r->topLeft();
 		const int left = at.x() / cw, top = at.y() / ch;
-		const int right = (at.x() + fw->width() - 1) / cw;
-		const int bottom = (at.y() + fw->height() - 1) / ch;
+		const int right = (at.x() + r->width() - 1) / cw;
+		const int bottom = (at.y() + r->height() - 1) / ch;
 		if (left < state.scroll.x())                   state.scroll.setX(left);
 		else if (right > state.scroll.x() + cols - 1)  state.scroll.setX(right - cols + 1);
 		if (top < state.scroll.y())                    state.scroll.setY(top);
@@ -265,10 +294,74 @@ void Compositor::compose(CellBuffer &out) {
 
 	// popups last: always the top of the stack, and flipped rather than slid.
 	const auto popups = router_ ? router_->popups() : QVector<QWidget *>{};
+	// The popup that owns input, which is the top of the stack and not the
+	// whole of it: section 7's policy belongs to the layer input goes to, the
+	// same rule the modal branch above follows. A menu with a submenu open is
+	// not the layer being driven, so it does not scroll.
+	QWidget *top_popup = nullptr;
+	for (QWidget *pop : popups)
+		if (is_compositable(pop)) top_popup = pop;
+	if (top_popup != popup_layer_) {
+		for (const QPointer<QWidget> &w : std::as_const(popup_.dropped))
+			if (w) w->show();
+		popup_ = Layer();
+		popup_layer_ = top_popup;
+	}
+
+	QHash<QWidget *, PopupPlace> anchors;
 	for (QWidget *pop : popups) {
 		if (!is_compositable(pop)) continue;
-		draw(pop, place(pop, true));
+		// Where the popup ASKED to be. A popup is MOVED to where it is drawn
+		// rather than drawn at an offset -- InputRouter::on_mouse() hit-tests
+		// it against its own geometry() and only the ROOT's offset is shared
+		// with the router, so a popup drawn somewhere its geometry does not
+		// say would take every click on the wrong item. That is the modal
+		// branch's reason verbatim. But moving it destroys the answer to
+		// "where does this belong", and a root that scrolls again while the
+		// popup is up would then compound the offset instead of replacing it.
+		// So the anchor is remembered, and `placed` is what tells a popup that
+		// moved ITSELF -- a submenu following its parent -- from one this
+		// function moved.
+		const PopupPlace known = popup_place_.value(pop);
+		const QPoint anchor = known.placed == pop->geometry().topLeft()
+		    ? known.anchor : pop->geometry().topLeft();
+
+		// A popup anchored inside the ROOT moves with it. The root is the one
+		// layer compose() does not move to where it draws it -- it is drawn at
+		// -scroll -- so a popup left at its own geometry stays beside the
+		// widget that used to be there. Measured 2026-09-02 with a menu that
+		// fits exactly where it was opened, so that neither the clamp nor the
+		// flip can explain it: the root scrolled four rows and the menu did
+		// not, so it sat four rows below the widget it was opened at.
+		//
+		// A popup opened from a modal needs nothing: the modal IS moved to
+		// where it is drawn, so a position mapped through it is already a
+		// screen position.
+		const bool in_root = !pop->parentWidget()
+		    || pop->parentWidget()->window() == win_;
+		const QPoint origin = in_root
+		    ? anchor - QPoint(root_.scroll.x() * cw, root_.scroll.y() * ch)
+		    : anchor;
+
+		QPoint at = placed_at(QRect(origin, pop->size()), out.cols(), out.rows(),
+		                      cw, ch, true);
+		if (pop == top_popup) {
+			// section 7's policy on the layer that owns input, which the popup
+			// layer never got. A menu taller than the terminal is the case
+			// with no way out at all: there is no Tab away from it, and Qt
+			// will not paginate it either, because the offscreen QScreen is
+			// 800x800 and nothing tells Qt how big the terminal is.
+			apply_priority(pop, popup_, out.cols(), out.rows());
+			follow_focus(pop, popup_, out.cols(), out.rows());
+			at -= QPoint(popup_.scroll.x() * cw, popup_.scroll.y() * ch);
+		}
+		if (at != pop->geometry().topLeft()) pop->move(at);
+		anchors.insert(pop, PopupPlace{anchor, at});
+		draw(pop, at);
 	}
+	// Only what is still open: a closed popup's anchor is meaningless, and the
+	// pointer would dangle if a menu were destroyed while this remembered it.
+	popup_place_ = anchors;
 
 	dev.origin = QPoint();
 	out.images = dev.placements;

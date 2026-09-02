@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-815 checks, 0 failures, under three configurations: the offscreen
+823 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4569,6 +4569,39 @@ One reading artefact worth naming, since the next person to capture bytes
 will meet it: `<CR><CR><LF>` in that dump is **the pseudo-terminal's**,
 not qtty's. The code writes `\r\n`; ONLCR on the slave turns the LF into
 CR LF, giving two CRs. Harmless, and not a finding.
+
+**The popup layer was the last one outside the policy** (2026-09-02),
+and it needed a different question asked. Measured on a 40x10 terminal:
+
+    menu geometry 150x608+0+0, terminal 190 px tall; frame shows Items 0-8
+    after 20 Downs: active action 'Item 19'; frames identical: YES
+
+`follow_focus()` tracks `layer->focusWidget()` -- and **a QMenu calls
+`setFocus()` on nothing**. It tracks `actionGeometry(activeAction())`
+instead, so the rule is now "the rectangle this layer is steering by",
+which is a focus widget for a window and an active action for a menu.
+
+A popup anchored in the root also did not move when the root scrolled
+under it, so it sat beside the wrong widget. It is **moved** to its
+translated position rather than drawn at an offset -- the router
+hit-tests popups against `geometry()`, and drawing at an offset is the
+fault that cost four builds earlier the same day. The sabotage that
+removes the move reddens the click check *and three pre-existing
+popup-geometry checks*: the wrong fix is caught by the suite now, which
+it would not have been this morning.
+
+Moving destroys the anchor, so where each popup **asked** to be is
+remembered per frame, with a flag distinguishing a popup that moved
+itself from one the compositor moved.
+
+**A control check was replaced because it could not fail.** "A menu that
+fits does not scroll at all" survived seven sabotages: the offset is
+clamped to what overflows, and a menu that fits overflows by nothing, so
+the sentence is true whatever the follow rule does. Two that can fail
+took its place -- a menu that has *already* scrolled with the terminal
+grown under it, and one asserting it scrolls by what overflows and no
+further. **A check no single mistake can redden is not a control, it is a
+sentence.**
 
 ### 7.3 Graphics tier (design.md §17.3)
 

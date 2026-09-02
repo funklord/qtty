@@ -4,6 +4,7 @@
 #pragma once
 #include <QObject>
 #include <QPointer>
+#include <QHash>
 #include <QElapsedTimer>
 #include <functional>
 #include <QTimer>
@@ -141,12 +142,28 @@ private:
 	// layer's focused widget is inside a cols x rows terminal.
 	void follow_focus(QWidget *layer, Layer &state, int cols, int rows);
 
+	// Where a popup asked to be, and where compose() last put it. A popup is
+	// MOVED to the position it is drawn at rather than drawn at an offset --
+	// InputRouter::on_mouse() hit-tests it against its own geometry() -- so
+	// its geometry stops being the position it was opened at, and an offset
+	// applied to that geometry a second time would compound rather than
+	// replace. `anchor` is the answer to "where does this belong"; `placed` is
+	// how a popup that moved ITSELF is told apart from one compose() moved.
+	struct PopupPlace { QPoint anchor, placed; };
+
 	Layer root_;
 	// The modal that owns input, and the state the policy keeps for it. Reset
 	// when the layer changes, because what one layer hid must not outlive the
 	// reason for hiding it.
 	QPointer<QWidget> input_layer_;
 	Layer input_;
+	// The same pair for the popup stack, whose top owns input above any modal
+	// (section 5.5's routing order). A menu is the worst case section 7 has:
+	// one taller than the terminal cannot be Tabbed away from, and Qt will not
+	// paginate it because the offscreen QScreen is 800x800.
+	QPointer<QWidget> popup_layer_;
+	Layer popup_;
+	QHash<QWidget *, PopupPlace> popup_place_;
 	QWidget *win_;
 	InputRouter *router_;
 	std::optional<QPoint> cursor_;

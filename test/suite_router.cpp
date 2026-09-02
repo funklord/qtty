@@ -1738,5 +1738,94 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// ---- and a click on a POPUP over a scrolled root ----
+	{
+		// A popup anchored inside the root moves with the root now, and this
+		// is the check that says the frame and the hit test still agree about
+		// where it went. on_mouse() finds a popup by testing the press against
+		// the popup's own geometry(), and only the ROOT's offset is shared
+		// with the router -- so a popup DRAWN at an offset while its geometry
+		// stayed put would take every click on the wrong item, or on nothing
+		// at all. compose() moves it for exactly that reason, which is the
+		// rule the modal branch already followed.
+		//
+		// This is the fault that cost this tree four builds in one day, in
+		// the other layer: the scroll made the screen right and the mouse
+		// wrong, and nothing noticed because no check clicked at a scrolled
+		// root. So the position clicked is read out of the FRAME. Recomputing
+		// it from the menu's geometry the way the compositor does would agree
+		// with the compositor however wrong the compositor was.
+		//
+		// Compositor::compose() walks EVERY top-level and the cases above
+		// leave theirs alive and visible, so this takes the screen for the
+		// length of the check and gives it back.
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		for (int i = 0; i < 13; ++i)
+			v->addWidget(new QLabel(QStringLiteral("row%1").arg(i)));
+		auto *bottom = new QPushButton(QStringLiteral("Bottom"));
+		v->addWidget(bottom);
+		win.show();
+		win.resize(GridMetrics::cells(30, 14));
+		QCoreApplication::processEvents();
+
+		Qtty::InputRouter router(&win);
+		Qtty::Compositor comp(&win, &router);
+		bottom->setFocus();
+		Qtty::set_focus_widget(win.focusWidget());
+		QCoreApplication::processEvents();
+
+		QMenu menu(&win);
+		QAction *cut = menu.addAction(QStringLiteral("Cut"));
+		QAction *copy = menu.addAction(QStringLiteral("Copy"));
+		int cut_hits = 0, copy_hits = 0;
+		QObject::connect(cut, &QAction::triggered, [&cut_hits] { ++cut_hits; });
+		QObject::connect(copy, &QAction::triggered, [&copy_hits] { ++copy_hits; });
+		menu.popup(QPoint(15 * cw, 5 * ch));
+		QCoreApplication::processEvents();
+
+		Qtty::CellBuffer b(30, 10);
+		comp.compose(b);
+		QPoint seen(-1, -1);
+		for (int y = 0; y < b.rows() && seen.x() < 0; ++y)
+			for (int x = 0; x + 3 <= b.cols(); ++x)
+				if (b.at(x, y).ch == QStringLiteral("C")
+				    && b.at(x + 1, y).ch == QStringLiteral("u")
+				    && b.at(x + 2, y).ch == QStringLiteral("t")) {
+					seen = QPoint(x, y);
+					break;
+				}
+		if (seen.x() < 0)
+			printf("info: no 'Cut' in the frame; it holds:\n%s",
+			       qPrintable(b.to_text()));
+		// The pair. "The item fired" is satisfied by a menu that was never
+		// moved at all, so the first half says the frame really did put it
+		// somewhere the root's scroll had moved it to.
+		CHECK(seen.x() >= 0 && !b.to_text().contains(QStringLiteral("row0")),
+		      "the menu's first item is on screen over a root that scrolled");
+		if (seen.x() >= 0) {
+			router.on_mouse({ QPoint(seen.x(), seen.y()), 1, true, false, false,
+			                  0, 0, false, false, false });
+			router.on_mouse({ QPoint(seen.x(), seen.y()), 1, false, true, false,
+			                  0, 0, false, false, false });
+			QCoreApplication::processEvents();
+		}
+		CHECK(cut_hits == 1 && copy_hits == 0,
+		      "and clicking it where it is drawn fires that item, not the "
+		      "one below it");
+		menu.close();
+		win.hide();
+		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	return fails;
 }

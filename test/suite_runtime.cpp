@@ -1146,5 +1146,246 @@ int suite_runtime() {
 		GridGuard::reset();
 	}
 
+	// design.md section 7's policy on the POPUP layer, which is the layer it
+	// never reached -- and a menu is the case with no way out of it at all.
+	// There is no Tab away from an open menu the way there is from the root,
+	// and Qt will not paginate one either: the offscreen QScreen is 800x800,
+	// so nothing tells Qt how tall the terminal is.
+	//
+	// Measured 2026-09-02 before the fix: a 30-item menu is 608 px in a 190 px
+	// terminal, and after twenty Down presses the active item was "Item 19"
+	// while the frame was byte-identical to the one taken before them. Two
+	// things were wrong at once. placed_at() clamps y to 0, so nothing below
+	// the fold could ever be drawn; and follow_focus() tracked
+	// layer->focusWidget(), which is null for every menu ever opened -- a
+	// QMenu keeps its current item in QMenu::activeAction() and calls
+	// setFocus() on nothing.
+	//
+	// The pair is the one the root's check and the modal's both use, because
+	// either half alone is satisfied by a bug: "Item 19 is on screen" passes
+	// against a frame showing everything, and "Item 0 is gone" passes against
+	// a frame showing nothing at all.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		OnlyTopLevel only(&win);
+		win.show();
+		win.resize(GridMetrics::cells(40, 10));
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+
+		QMenu menu(&win);
+		for (int i = 0; i < 30; ++i)
+			menu.addAction(QStringLiteral("Item %1").arg(i));
+		menu.popup(QPoint(0, 0));
+		QCoreApplication::processEvents();
+		CellBuffer before(40, 10);
+		c.compose(before);
+		for (int i = 0; i < 20; ++i)
+			r.on_key({Qt::Key_Down, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CellBuffer after(40, 10);
+		c.compose(after);
+		printf("info: a %d px menu in a %d px terminal, active item '%s'\n",
+		       menu.height(), 10 * ch,
+		       menu.activeAction() ? qPrintable(menu.activeAction()->text())
+		                           : "(none)");
+		CHECK(before.to_text().contains(QStringLiteral("Item 0"))
+		      && !before.to_text().contains(QStringLiteral("Item 19"))
+		      && after.to_text().contains(QStringLiteral("Item 19"))
+		      && !after.to_text().contains(QStringLiteral("Item 0")),
+		      "a menu taller than the terminal scrolls to its active item");
+
+		// The first control, and it is the modal's verbatim: the terminal grows
+		// under a menu that has ALREADY scrolled, and the offset has to come
+		// back to nothing of its own accord. It has to be a menu that scrolled,
+		// because the follow rule only ever moves the offset for an item
+		// outside the viewport -- on a menu that always fitted this passes
+		// against every version of the code, sabotaged or not. Paired at both
+		// ends, so that neither a blank frame nor one showing only the tail
+		// satisfies it.
+		CellBuffer roomy(40, 40);
+		c.compose(roomy);
+		CHECK(roomy.to_text().contains(QStringLiteral("Item 0"))
+		      && roomy.to_text().contains(QStringLiteral("Item 29")),
+		      "and a menu that fits again scrolls by nothing");
+		menu.close();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
+	// And the second control. It is NOT "a menu that fits does not scroll" --
+	// that one was written first and REPLACED, because no sabotage could
+	// redden it. The offset is clamped to what overflows and a menu that fits
+	// overflows by nothing, so the sentence is true whatever the follow rule
+	// does: it stayed green through every sabotage that reddened the check it
+	// was supposed to be controlling, which is the whole of the argument
+	// against it.
+	//
+	// What can go wrong is scrolling too FAR. A rule that puts the active item
+	// at the top of the terminal rather than merely inside it walks the last
+	// item of a menu to the top row with nine blank rows under it, and the
+	// scrolling check passes against that -- the item it names is on the
+	// screen either way. So the control is that the offset is exactly what
+	// overflows: standing on the last item, the nine above it are on the
+	// screen too.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		OnlyTopLevel only(&win);
+		win.show();
+		win.resize(GridMetrics::cells(40, 10));
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+
+		QMenu menu(&win);
+		for (int i = 0; i < 30; ++i)
+			menu.addAction(QStringLiteral("Item %1").arg(i));
+		menu.popup(QPoint(0, 0));
+		QCoreApplication::processEvents();
+		for (int i = 0; i < 30; ++i)          // the first Down selects Item 0
+			r.on_key({Qt::Key_Down, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CellBuffer b(40, 10);
+		c.compose(b);
+		printf("info: standing on '%s', the frame holds:\n%s",
+		       menu.activeAction() ? qPrintable(menu.activeAction()->text())
+		                           : "(none)",
+		       qPrintable(b.to_text()));
+		CHECK(b.to_text().contains(QStringLiteral("Item 29"))
+		      && b.to_text().contains(QStringLiteral("Item 20"))
+		      && !b.to_text().contains(QStringLiteral("Item 19")),
+		      "and it scrolls by what overflows and no further");
+		menu.close();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
+	// A popup anchored inside the root has to move WITH the root. compose()
+	// draws the root at -scroll rather than moving it, so a popup left at its
+	// own geometry stays beside the widget that used to be at that screen row.
+	//
+	// Measured 2026-09-02 with a menu that fits exactly where it was opened,
+	// so that neither placed_at()'s clamp nor its flip can explain the result:
+	// the root scrolled and the menu did not, and it sat beside the wrong
+	// widget.
+	//
+	// Read out of the FRAME rather than recomputed. The whole fault is that
+	// window coordinates and screen coordinates have come apart, so a check
+	// that derives the expected position the way the compositor does would
+	// agree with the compositor whatever the compositor did.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		OnlyTopLevel only(&win);
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		for (int i = 0; i < 13; ++i)
+			v->addWidget(new QLabel(QStringLiteral("row%1").arg(i)));
+		auto *bottom = new QPushButton(QStringLiteral("Bottom"));
+		v->addWidget(bottom);
+		win.show();
+		win.resize(GridMetrics::cells(30, 14));
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+		bottom->setFocus();
+		QCoreApplication::processEvents();
+
+		// Opened beside "row5" and clear of its text, and small enough to fit
+		// on the screen at its own unscrolled position too -- so the clamp
+		// never fires and the only thing that can move it is the root.
+		QMenu menu(&win);
+		menu.addAction(QStringLiteral("Cut"));
+		menu.addAction(QStringLiteral("Copy"));
+		menu.popup(QPoint(15 * cw, 5 * ch));
+		QCoreApplication::processEvents();
+		CellBuffer b(30, 10);
+		c.compose(b);
+		const auto rows_of = [](const CellBuffer &buf, const QString &text) {
+			const auto lines = buf.to_text().split(QLatin1Char('\n'));
+			for (int i = 0; i < lines.size(); ++i)
+				if (lines.at(i).contains(text)) return i;
+			return -1;
+		};
+		const int row5 = rows_of(b, QStringLiteral("row5"));
+		const int cut = rows_of(b, QStringLiteral("Cut"));
+		printf("info: over a scrolled root, 'row5' is on frame row %d and the"
+		       " menu's first item on %d\n", row5, cut);
+		if (row5 < 0 || cut != row5 + 1)
+			printf("info: the frame holds:\n%s", qPrintable(b.to_text()));
+		// Paired with "the root really did scroll", because a root that never
+		// moved satisfies the relation for the wrong reason -- and that is
+		// exactly the state this check was written against.
+		CHECK(!b.to_text().contains(QStringLiteral("row0"))
+		      && row5 >= 0 && cut == row5 + 1,
+		      "a popup anchored in the root is drawn beside the widget it was "
+		      "opened at, over a root that has scrolled");
+
+		// Composing again must not move it again. The popup is MOVED to where
+		// it is drawn (the router hit-tests it against its own geometry), so
+		// its geometry stops being the position it was opened at -- and an
+		// implementation that subtracts the scroll from the geometry every
+		// frame walks the menu off the top of the screen one frame at a time.
+		CellBuffer twice(30, 10);
+		c.compose(twice);
+		CHECK(twice.to_text() == b.to_text(),
+		      "and composing the same frame again does not move it further");
+		menu.close();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
+	// The control for the pair above: the same fixture on a terminal big
+	// enough that the root does not scroll at all. Without it, a compositor
+	// that subtracts a fixed offset from every popup passes the check above --
+	// the menu would be beside "row5" for a reason that has nothing to do with
+	// the root's position.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		OnlyTopLevel only(&win);
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		for (int i = 0; i < 13; ++i)
+			v->addWidget(new QLabel(QStringLiteral("row%1").arg(i)));
+		auto *bottom = new QPushButton(QStringLiteral("Bottom"));
+		v->addWidget(bottom);
+		win.show();
+		win.resize(GridMetrics::cells(30, 14));
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+		bottom->setFocus();
+		QCoreApplication::processEvents();
+
+		QMenu menu(&win);
+		menu.addAction(QStringLiteral("Cut"));
+		menu.addAction(QStringLiteral("Copy"));
+		menu.popup(QPoint(15 * cw, 5 * ch));
+		QCoreApplication::processEvents();
+		CellBuffer b(30, 14);
+		c.compose(b);
+		const auto lines = b.to_text().split(QLatin1Char('\n'));
+		int row5 = -1, cut = -1;
+		for (int i = 0; i < lines.size(); ++i) {
+			if (lines.at(i).contains(QStringLiteral("row5"))) row5 = i;
+			if (lines.at(i).contains(QStringLiteral("Cut"))) cut = i;
+		}
+		printf("info: over an unscrolled root, 'row5' is on frame row %d and"
+		       " the menu's first item on %d\n", row5, cut);
+		CHECK(b.to_text().contains(QStringLiteral("row0"))
+		      && row5 == 5 && cut == 6,
+		      "and a popup over a root that has not scrolled stays exactly "
+		      "where it was opened");
+		menu.close();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	return fails;
 }
