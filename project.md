@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-804 checks, 0 failures, under three configurations: the offscreen
+811 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4481,6 +4481,51 @@ ways at once, in these same two files. The body stays put because it
 needs `QAbstractItemView` and that header is included by most of the
 tree. A sabotage of the delegate's half alone reddens one check and one
 only, which is what makes that check about the two paths agreeing.
+
+**The small-terminal policy did half of what it says** (2026-09-02).
+§7.8's oldest open finding, measured three ways:
+
+    20x3 terminal: window stayed 200x133 px against a minimum the drop
+                   had brought to 57; 2 of 6 optional widgets still up
+    20x1 terminal: the frame was entirely blank
+    a modal:       "Accept" reached the frame in the ROOT at 30x6 and
+                   30x3, and in the MODAL at neither
+
+Three separate faults. `on_resize()` resizes **before** the drop, so the
+layout refuses the new size; `apply_priority()` then hides widgets, which
+lowers the minimum, and **nothing re-issues the resize** -- the surviving
+content stays laid out in the old, larger rectangle. The drop loop's
+`findChildren` is recursive over the QObject tree, so it reached into a
+dialog parented to the window, where hiding things cannot make the root
+fit. And the policy only ever ran on the root: a modal got neither the
+drop nor the scroll, which is worse there than anywhere, because a modal
+owns input and there is no Tab away to a window that does scroll.
+
+The policy is now per-layer, with its own dropped set and scroll offset
+for whichever layer owns input. The modal is **moved** to its scrolled
+position rather than drawn at an offset, because `on_mouse()` hit-tests a
+modal against its own `geometry()` and only the root's offset is shared
+with the router -- moving it keeps the mouse right, which is the fault
+this same day taught (see the scroll entry above).
+
+**Two things went differently from the brief, and both were argued from
+a measurement rather than followed.** The instruction was to re-resize
+"when anything was dropped **and the window now fits**" -- and that guard
+leaves the 20x1 blank frame unfixed, because nothing makes a 19-pixel
+screen hold a 19-pixel label inside its margins, so `fits()` is
+permanently false there and the resize is never asked for. `on_resize()`
+does not test `fits()` either: it asks, and the layout refuses the last
+few pixels. Asking gets the window to 19 px and the one row that is shown
+now carries something.
+
+And the control check written as the direct mirror of the root's -- "a
+modal that fits does not scroll at all" -- **survived a sabotage that
+turned nine other checks red**, because the focus rule only moves the
+offset for a widget outside the viewport, so a dialog that never
+overflowed gives the clamp nothing to undo. It is the hysteresis now: the
+terminal grows under a dialog that has just scrolled three rows, and both
+ends of the form have to be back in the frame. That version reddens on
+the clamp sabotage and on nothing else.
 
 ### 7.3 Graphics tier (design.md §17.3)
 

@@ -48,50 +48,119 @@ QPoint placed_at(const QRect &g, int cols, int rows, int cw, int ch, bool flip) 
 Compositor::Compositor(QWidget *window, InputRouter *router)
     : win_(window), router_(router) {}
 
-// Hide the widgets the application marked Priority::Optional when the window's
+void Compositor::apply_priority(int cols, int rows) {
+	apply_priority(win_, root_, cols, rows);
+}
+
+// Hide the widgets the application marked Priority::Optional when the layer's
 // layout minimum does not fit the terminal, and show them again when it does.
 //
 // Re-evaluated from scratch on every frame rather than latched, so a terminal
 // that grows brings the content back with no separate path to get wrong.
-void Compositor::apply_priority(int cols, int rows) {
+void Compositor::apply_priority(QWidget *layer, Layer &state, int cols, int rows) {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	const QSize term(cols * cw, rows * ch);
 	const auto fits = [&] {
-		const QSize m = win_->minimumSizeHint();
+		const QSize m = layer->minimumSizeHint();
 		return m.width() <= term.width() && m.height() <= term.height();
 	};
 
 	// Put back first, then measure: a screen that fits ONLY because something
 	// is hidden must not stay hidden for ever. Showing what this pass hid and
-	// re-asking is the whole of the hysteresis, and it is why `dropped_` holds
-	// what we hid rather than what is hidden.
-	bool restored = false;
-	for (const QPointer<QWidget> &w : std::as_const(dropped_)) {
-		if (w) { w->show(); restored = true; }
+	// re-asking is the whole of the hysteresis, and it is why `state.dropped`
+	// holds what we hid rather than what is hidden.
+	bool changed = false;
+	for (const QPointer<QWidget> &w : std::as_const(state.dropped)) {
+		if (w) { w->show(); changed = true; }
 	}
-	dropped_.clear();
-	if (restored && win_->layout()) win_->layout()->activate();
-	if (fits()) return;
+	state.dropped.clear();
+	if (changed && layer->layout()) layer->layout()->activate();
 
-	// The focused widget is never dropped, nor is any ancestor of it. Hiding
-	// the widget that owns input moves focus somewhere the application did not
-	// choose, and on a terminal there is no pointer to put it back with.
-	const QWidget *const focus = win_->focusWidget();
-	const auto owns_focus = [&](const QWidget *w) {
-		for (const QWidget *f = focus; f; f = f->parentWidget())
-			if (f == w) return true;
-		return false;
-	};
+	if (!fits()) {
+		// The focused widget is never dropped, nor is any ancestor of it.
+		// Hiding the widget that owns input moves focus somewhere the
+		// application did not choose, and on a terminal there is no pointer to
+		// put it back with.
+		const QWidget *const focus = layer->focusWidget();
+		const auto owns_focus = [&](const QWidget *w) {
+			for (const QWidget *f = focus; f; f = f->parentWidget())
+				if (f == w) return true;
+			return false;
+		};
 
-	const auto all = win_->findChildren<QWidget *>();
-	for (QWidget *w : all) {
-		if (priority_of(w) != Priority::Optional) continue;
-		if (!w->isVisible() || owns_focus(w)) continue;
-		w->hide();
-		dropped_.append(w);
-		if (win_->layout()) win_->layout()->activate();
-		if (fits()) break;                 // enough is enough: stop dropping
+		const auto all = layer->findChildren<QWidget *>();
+		for (QWidget *w : all) {
+			// findChildren() is recursive over the QObject TREE, not over this
+			// window, so a dialog parented to the layer arrives in the list
+			// along with everything inside it. Hiding content in another
+			// top-level cannot make THIS one fit -- fits() asks this layer for
+			// its own minimum -- so the drop was pure damage. Measured
+			// 2026-09-02: a widget inside a child dialog went dark while the
+			// root's minimum stayed at 95 px against a 57 px terminal.
+			if (w->window() != layer->window()) continue;
+			if (priority_of(w) != Priority::Optional) continue;
+			if (!w->isVisible() || owns_focus(w)) continue;
+			w->hide();
+			state.dropped.append(w);
+			changed = true;
+			if (layer->layout()) layer->layout()->activate();
+			if (fits()) break;                 // enough is enough: stop dropping
+		}
 	}
+
+	// Dropping lowers the layout minimum, which is the whole point of it --
+	// but the resize that provoked the drop was REFUSED before anything was
+	// hidden, and nothing re-issues it. InputRouter::on_resize() resizes the
+	// window and returns; the drop happens later, inside compose(). Measured
+	// 2026-09-02 at a 20x3 terminal: the window stayed 200x133 px with two
+	// optional widgets of six still up, against a minimum that had come down
+	// to 57 and would have fitted -- and one row of the three carried
+	// anything. At 20x1 the frame came out blank. So ask again, now that the
+	// minimum has moved.
+	//
+	// Clamped to the terminal rather than set to it: a dialog smaller than the
+	// screen must not be inflated to fill it, and a layer only ever needs to
+	// come DOWN here, since a terminal that grows arrives through on_resize().
+	//
+	// Asked for whenever the pass changed something, not only when the layer
+	// now fits, and that is deliberate. on_resize() does not test fits()
+	// either -- it asks, and a layout that cannot go that small refuses the
+	// last few pixels and keeps the rest. The one-row terminal is the case
+	// that separates the two: nothing can make a 19-pixel screen hold a
+	// 19-pixel label inside nine-pixel margins, so a fits() test would decline
+	// to ask at all and leave a 133-pixel window on a 19-pixel screen, which
+	// is the blank frame measured 2026-09-02. Asking gets 37 px -- still too
+	// tall, and the row it does show now carries the label.
+	const QSize want(qMin(layer->width(), term.width()),
+	                 qMin(layer->height(), term.height()));
+	if (changed && want != layer->size()) {
+		layer->resize(want);
+		if (layer->layout()) layer->layout()->activate();
+	}
+}
+
+// design.md section 7's second half, for one layer. Follow the focus rather
+// than binding a key: arrow keys belong to the focused widget and a chord
+// would have to be learned, but Tab already walks the form -- so keeping the
+// focused widget inside the terminal makes every widget reachable with the
+// keys the application already answers. The offset is clamped to what actually
+// overflows, so a layer that fits scrolls by nothing and this is invisible.
+void Compositor::follow_focus(QWidget *layer, Layer &state, int cols, int rows) {
+	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+	const int max_x = qMax(0, (layer->width() + cw - 1) / cw - cols);
+	const int max_y = qMax(0, (layer->height() + ch - 1) / ch - rows);
+	if (QWidget *fw = layer->focusWidget()) {
+		const QPoint at = fw->mapTo(layer, QPoint());
+		const int left = at.x() / cw, top = at.y() / ch;
+		const int right = (at.x() + fw->width() - 1) / cw;
+		const int bottom = (at.y() + fw->height() - 1) / ch;
+		if (left < state.scroll.x())                   state.scroll.setX(left);
+		else if (right > state.scroll.x() + cols - 1)  state.scroll.setX(right - cols + 1);
+		if (top < state.scroll.y())                    state.scroll.setY(top);
+		else if (bottom > state.scroll.y() + rows - 1) state.scroll.setY(bottom - rows + 1);
+	}
+	state.scroll.setX(qBound(0, state.scroll.x(), max_x));
+	state.scroll.setY(qBound(0, state.scroll.y(), max_y));
 }
 
 void Compositor::compose(CellBuffer &out) {
@@ -126,35 +195,15 @@ void Compositor::compose(CellBuffer &out) {
 	// application said is optional FIRST, and only then scroll what is left.
 	// Dropping can make a screen fit; scrolling never does, it only makes the
 	// rest reachable.
-	apply_priority(out.cols(), out.rows());
+	apply_priority(win_, root_, out.cols(), out.rows());
+	follow_focus(win_, root_, out.cols(), out.rows());
 
-	// Follow the focus rather than binding a key. Arrow keys belong to the
-	// focused widget and a chord would have to be learned, but Tab already
-	// walks the form -- so keeping the focused widget inside the terminal
-	// makes every widget reachable with the keys the application already
-	// answers. The offset is clamped to what actually overflows, so a window
-	// that fits scrolls by nothing and this is invisible.
-	const int max_x = qMax(0, (win_->width() + cw - 1) / cw - out.cols());
-	const int max_y = qMax(0, (win_->height() + ch - 1) / ch - out.rows());
-	if (QWidget *fw = win_->focusWidget()) {
-		const QPoint at = fw->mapTo(win_, QPoint());
-		const int left = at.x() / cw, top = at.y() / ch;
-		const int right = (at.x() + fw->width() - 1) / cw;
-		const int bottom = (at.y() + fw->height() - 1) / ch;
-		if (left < scroll_.x())                     scroll_.setX(left);
-		else if (right > scroll_.x() + out.cols() - 1) scroll_.setX(right - out.cols() + 1);
-		if (top < scroll_.y())                      scroll_.setY(top);
-		else if (bottom > scroll_.y() + out.rows() - 1) scroll_.setY(bottom - out.rows() + 1);
-	}
-	scroll_.setX(qBound(0, scroll_.x(), max_x));
-	scroll_.setY(qBound(0, scroll_.y(), max_y));
-
-	const QPoint root_at(-scroll_.x() * cw, -scroll_.y() * ch);
+	const QPoint root_at(-root_.scroll.x() * cw, -root_.scroll.y() * ch);
 	// The router maps a click from a screen cell to a window position, and
 	// the root is not drawn at the screen's origin once this scrolls. Told
 	// here rather than asked for, because compose() is the only place that
 	// knows -- and because the Compositor already holds the router.
-	if (router_) router_->set_root_scroll(scroll_);
+	if (router_) router_->set_root_scroll(root_.scroll);
 	draw(win_, root_at);
 	QWidget *cursor_layer = win_;
 	QPoint cursor_origin = root_at;
@@ -173,10 +222,43 @@ void Compositor::compose(CellBuffer &out) {
 	// WA_DontShowOnScreen by the router and then drawn by nobody -- invisible
 	// while still holding input, which is the worst of both.
 	QWidget *const active_modal = QApplication::activeModalWidget();
+	// A different layer owns input, so what the old one lost goes back. Hiding
+	// is this class's doing and must not outlive the reason for it -- the same
+	// hysteresis apply_priority() runs every frame, applied to a layer it is
+	// not going to be called for again.
+	if (active_modal != input_layer_) {
+		for (const QPointer<QWidget> &w : std::as_const(input_.dropped))
+			if (w) w->show();
+		input_ = Layer();
+		input_layer_ = active_modal;
+	}
 	if (active_modal && modals.removeAll(active_modal))
 		modals.append(active_modal);                      // the active one is topmost
 	for (QWidget *w : std::as_const(modals)) {
-		const QPoint at = place(w, false);                // a dialog is not anchored
+		QPoint at;
+		if (w == active_modal) {
+			// design.md section 7's policy runs on the layer that OWNS INPUT,
+			// not on the root. A modal owns input while it is up (section
+			// 8.3), so a modal too big for the terminal is the WORSE of the
+			// two cases: there is no Tab away to a window that does scroll.
+			// Measured 2026-09-02 with the same eight-field form built twice
+			// -- in the root it dropped and scrolled and "Accept" reached the
+			// frame at 30x6 and at 30x3, and in a modal it did neither.
+			apply_priority(w, input_, out.cols(), out.rows());
+			follow_focus(w, input_, out.cols(), out.rows());
+			// MOVED to the scrolled position rather than merely drawn at it.
+			// InputRouter::on_mouse() hit-tests a modal against its own
+			// geometry() and maps the press through it, and only the ROOT's
+			// offset is shared with the router -- so a modal drawn somewhere
+			// its geometry does not say would take every click on the wrong
+			// widget. Moving it keeps the place that reads the position and
+			// the place that draws it saying the same thing.
+			at = placed_at(w->geometry(), out.cols(), out.rows(), cw, ch, false)
+			     - QPoint(input_.scroll.x() * cw, input_.scroll.y() * ch);
+			if (at != w->geometry().topLeft()) w->move(at);
+		} else {
+			at = place(w, false);                         // a dialog is not anchored
+		}
 		draw(w, at);
 		if (w == active_modal) { cursor_layer = w; cursor_origin = at; }
 	}

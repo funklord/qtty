@@ -108,24 +108,45 @@ class Compositor {
 public:
 	Compositor(QWidget *window, InputRouter *router);
 	void compose(CellBuffer &out);                        // fills out + out.images
-	// design.md section 7's small-terminal policy, first half. Public so the
-	// behaviour can be exercised without a terminal; compose() calls it.
+	// design.md section 7's small-terminal policy, first half, on the ROOT.
+	// Public so the behaviour can be exercised without a terminal; compose()
+	// calls it, and calls it again for whichever layer owns input.
 	void apply_priority(int cols, int rows);
 	std::optional<QPoint> cursor_cell() const;             // after compose()
 
 private:
-	// Where the root layer is scrolled to, in cells. A layout refuses to
-	// shrink below its minimum, so on a terminal smaller than that the window
-	// keeps its size and the frame simply stops -- measured on a nine-cell
-	// dialog in a six-row terminal, which showed six fields and neither the
-	// last two nor the button that closes it. design.md section 7 names the
-	// policy: drop the optional widgets, then scroll the root. This is the
-	// second half, which needs no annotation from the application.
-	QPoint scroll_;
-	// The widgets THIS pass hid, so that growing the terminal back shows
-	// exactly those and no others. A widget the application hid for its own
-	// reasons must stay hidden, and it is not in here.
-	QVector<QPointer<QWidget>> dropped_;
+	// What section 7's policy remembers about ONE layer. It belongs to the
+	// layer that owns input rather than to the root: a modal owns input while
+	// it is up (section 8.3), and two layers cannot share either half of this
+	// without one of them scrolling to the other's focus or showing widgets
+	// the other hid.
+	struct Layer {
+		// Where the layer is scrolled to, in cells. A layout refuses to
+		// shrink below its minimum, so on a terminal smaller than that the
+		// layer keeps its size and the frame simply stops -- measured on a
+		// nine-cell dialog in a six-row terminal, which showed six fields and
+		// neither the last two nor the button that closes it. design.md
+		// section 7 names the policy: drop the optional widgets, then scroll.
+		// This is the second half, which needs no annotation from the
+		// application.
+		QPoint scroll;
+		// The widgets THIS pass hid, so that growing the terminal back shows
+		// exactly those and no others. A widget the application hid for its
+		// own reasons must stay hidden, and it is not in here.
+		QVector<QPointer<QWidget>> dropped;
+	};
+
+	void apply_priority(QWidget *layer, Layer &state, int cols, int rows);
+	// Section 7's second half for one layer: move `state.scroll` so that the
+	// layer's focused widget is inside a cols x rows terminal.
+	void follow_focus(QWidget *layer, Layer &state, int cols, int rows);
+
+	Layer root_;
+	// The modal that owns input, and the state the policy keeps for it. Reset
+	// when the layer changes, because what one layer hid must not outlive the
+	// reason for hiding it.
+	QPointer<QWidget> input_layer_;
+	Layer input_;
 	QWidget *win_;
 	InputRouter *router_;
 	std::optional<QPoint> cursor_;

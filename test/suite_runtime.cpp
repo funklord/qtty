@@ -876,5 +876,275 @@ int suite_runtime() {
 	}
 
 
+	// Compositor::compose() walks EVERY visible top-level (section 5.4 step
+	// 3), and the cases above leave theirs alive and visible -- so a frame
+	// composed below carries widgets this fixture never built, and an
+	// assertion about what is on the screen answers partly for somebody
+	// else's window. Reaping the deferred deletes is not enough, because
+	// nothing here is deleted; the other top-levels are HIDDEN for the length
+	// of a case and shown again when it ends.
+	struct OnlyTopLevel {
+		QVector<QPointer<QWidget>> hid;
+		explicit OnlyTopLevel(QWidget *keep) {
+			const auto tops = QApplication::topLevelWidgets();
+			for (QWidget *w : tops) {
+				if (w == keep || !w->isVisible()) continue;
+				w->hide();
+				hid.append(w);
+			}
+		}
+		~OnlyTopLevel() {
+			for (const QPointer<QWidget> &w : std::as_const(hid))
+				if (w) w->show();
+		}
+	};
+
+	// Dropping the optional widgets lowers the layout minimum, and that is the
+	// only thing in section 7's policy that can make a screen FIT -- scrolling
+	// never does, it only makes the rest reachable. But the resize that
+	// provoked the drop was REFUSED before anything was hidden, and nothing
+	// re-issued it: InputRouter::on_resize() resizes and returns, and the drop
+	// happens a frame later inside compose().
+	//
+	// Measured 2026-09-02 at a 20x3 terminal: the window stayed 200x133 px
+	// against a minimum that the drop had brought down to 57, two of six
+	// optional widgets were still up, and exactly one of the three rows
+	// carried anything.
+	//
+	// Paired with the content, because "the window is small enough" is
+	// satisfied by a window shrunk to nothing and by a frame with nothing in
+	// it. The required label has to still be on the screen afterwards.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		OnlyTopLevel only(&win);
+		auto *v = new QVBoxLayout(&win);
+		auto *keep = new QLabel(QStringLiteral("Required"));
+		v->addWidget(keep);
+		for (int i = 0; i < 6; ++i) {
+			auto *l = new QLabel(QStringLiteral("Extra %1").arg(i));
+			set_priority(l, Priority::Optional);
+			v->addWidget(l);
+		}
+		win.show();
+		keep->setFocus();
+		win.resize(GridMetrics::cells(20, 12));
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+		CellBuffer roomy(20, 12);
+		c.compose(roomy);
+
+		win.resize(GridMetrics::cells(20, 3));
+		QCoreApplication::processEvents();
+		CellBuffer three(20, 3);
+		c.compose(three);
+		printf("info: at a 20x3 terminal the window comes down to %d px"
+		       " of a terminal's %d\n", win.height(), 3 * ch);
+		CHECK(win.height() <= 3 * ch
+		      && three.to_text().contains(QStringLiteral("Required")),
+		      "dropping the optional widgets brings the window down to the terminal");
+
+		// One row is the case a fits() test cannot serve: nothing makes a
+		// 19-pixel screen hold a 19-pixel label inside nine-pixel margins, so
+		// asking whether the window fits before re-issuing the resize declines
+		// to ask at all and leaves 133 pixels of window on 19 pixels of
+		// terminal -- which showed as an entirely blank frame.
+		win.resize(GridMetrics::cells(20, 1));
+		QCoreApplication::processEvents();
+		CellBuffer one(20, 1);
+		c.compose(one);
+		printf("info: at a 20x1 terminal it comes down to %d px, and the"
+		       " layout refuses below %d\n", win.height(),
+		       win.minimumSizeHint().height());
+		CHECK(one.to_text().contains(QStringLiteral("Required")),
+		      "and a one-row terminal is not left blank");
+		GridGuard::reset();
+	}
+
+	// The drop pass asked findChildren() for the widgets to consider, which is
+	// recursive over the QObject TREE rather than over this window -- so a
+	// dialog parented to the root arrived in the list along with everything
+	// inside it. Hiding content in another top-level cannot make this one fit,
+	// because fits() measures the ROOT's minimumSizeHint(): measured
+	// 2026-09-02, a widget inside a child dialog went dark while the root's
+	// minimum stayed at 95 px against a 57 px terminal.
+	//
+	// Paired, because "nothing was dropped anywhere" satisfies the half that
+	// matters. The root's own optional widget has to be gone in the same pass
+	// that leaves the dialog's alone.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		OnlyTopLevel only(&win);
+		auto *v = new QVBoxLayout(&win);
+		auto *keep = new QLabel(QStringLiteral("Required"));
+		v->addWidget(keep);
+		auto *root_extra = new QLabel(QStringLiteral("Root extra"));
+		set_priority(root_extra, Priority::Optional);
+		v->addWidget(root_extra);
+		for (int i = 0; i < 4; ++i)
+			v->addWidget(new QLabel(QStringLiteral("Pad %1").arg(i)));
+		win.show();
+		keep->setFocus();
+		win.resize(GridMetrics::cells(20, 12));
+		QCoreApplication::processEvents();
+
+		QDialog dlg(&win);
+		dlg.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *dv = new QVBoxLayout(&dlg);
+		auto *dialog_extra = new QLabel(QStringLiteral("Dialog extra"));
+		set_priority(dialog_extra, Priority::Optional);
+		dv->addWidget(dialog_extra);
+		dlg.show();
+		QCoreApplication::processEvents();
+
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+		win.resize(GridMetrics::cells(20, 3));
+		QCoreApplication::processEvents();
+		c.apply_priority(20, 3);
+		CHECK(dialog_extra->isVisible() && !root_extra->isVisible(),
+		      "the drop pass never reaches into another top-level");
+		dlg.hide();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
+	// Section 7's policy belongs to the layer that OWNS INPUT, and a modal
+	// owns input while it is up (section 8.3). It was only ever run on the
+	// root, and the follow-the-focus scroll was root-only too, so a modal
+	// bigger than the terminal was merely clamped inside it and the rest was
+	// unreachable -- which is worse in a modal than in the root, because there
+	// is no Tab away to a window that does scroll.
+	//
+	// Measured 2026-09-02 with a control that separates the layer from the
+	// fixture: the same eight-field form built once in the root and once in a
+	// modal. In the root "Accept" reached the frame at 30x6 and at 30x3; in
+	// the modal it reached neither.
+	//
+	// The pair is the same one the root's check uses, because either half
+	// alone is satisfied by a bug: "the button is visible" passes against a
+	// frame showing everything, and "the first field is gone" passes against a
+	// frame showing nothing at all.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		OnlyTopLevel only(&win);
+		win.resize(GridMetrics::cells(30, 6));
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+
+		QDialog dlg(&win);
+		dlg.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&dlg);
+		QVector<QLabel *> fields;
+		for (int i = 0; i < 8; ++i) {
+			auto *l = new QLabel(QStringLiteral("Field %1").arg(i));
+			fields.append(l);
+			v->addWidget(l);
+		}
+		auto *accept = new QPushButton(QStringLiteral("Accept"));
+		v->addWidget(accept);
+		dlg.setModal(true);
+		dlg.show();
+		dlg.resize(GridMetrics::cells(30, 9));
+		QCoreApplication::processEvents();
+		CHECK(QApplication::activeModalWidget() == &dlg,
+		      "the dialog this case is about really is the active modal");
+
+		fields.first()->setFocus();
+		QCoreApplication::processEvents();
+		CellBuffer top(30, 6);
+		c.compose(top);
+		const QString at_top = top.to_text();
+		accept->setFocus();
+		QCoreApplication::processEvents();
+		CellBuffer bottom(30, 6);
+		c.compose(bottom);
+		const QString at_bottom = bottom.to_text();
+		CHECK(at_top.contains(QStringLiteral("Field 0"))
+		      && !at_top.contains(QStringLiteral("Accept"))
+		      && at_bottom.contains(QStringLiteral("Accept"))
+		      && !at_bottom.contains(QStringLiteral("Field 0")),
+		      "a modal taller than the terminal scrolls to its focus");
+
+		// The control, and it is the same one the root's scroll needed:
+		// without it the check above is satisfied by a compositor that scrolls
+		// whenever it likes, and every ordinary dialog would wander under the
+		// Tab key. It has to be a modal that has ALREADY scrolled, though. A
+		// dialog that never overflowed gives a clamp nothing to undo -- the
+		// focus rule only moves the offset for a widget outside the viewport,
+		// so a check on a dialog that always fitted passes against every
+		// version of this code, sabotaged or not. Here the terminal grows
+		// under the dialog that just scrolled three rows, and the frame has to
+		// come back to the top of its own accord.
+		//
+		// Paired at both ends, so that neither a blank frame nor one showing
+		// only the button satisfies it.
+		CellBuffer roomy(30, 12);
+		c.compose(roomy);
+		const QString grown = roomy.to_text();
+		CHECK(grown.contains(QStringLiteral("Field 0"))
+		      && grown.contains(QStringLiteral("Accept")),
+		      "and a modal that fits again scrolls by nothing");
+		dlg.hide();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
+	// And the other half of the policy on the same layer: a modal drops its
+	// own optional widgets. Its own fixture rather than the one above, so that
+	// the root is deliberately small enough to fit -- which makes the root's
+	// optional label the control. It is not dropped by the root's pass,
+	// because the root has room, and it must not be dropped by the modal's
+	// either, because it is not the modal's to lose.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		OnlyTopLevel only(&win);
+		auto *rv = new QVBoxLayout(&win);
+		auto *root_extra = new QLabel(QStringLiteral("Root extra"));
+		set_priority(root_extra, Priority::Optional);
+		rv->addWidget(root_extra);
+		win.resize(GridMetrics::cells(20, 8));
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+
+		QDialog dlg(&win);
+		dlg.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&dlg);
+		auto *keep = new QLabel(QStringLiteral("Keep me"));
+		v->addWidget(keep);
+		QVector<QLabel *> optional;
+		for (int i = 0; i < 6; ++i) {
+			auto *l = new QLabel(QStringLiteral("Spare %1").arg(i));
+			set_priority(l, Priority::Optional);
+			optional.append(l);
+			v->addWidget(l);
+		}
+		dlg.setModal(true);
+		dlg.show();
+		keep->setFocus();
+		QCoreApplication::processEvents();
+
+		CellBuffer b(20, 3);
+		c.compose(b);
+		int hidden = 0;
+		for (QLabel *l : std::as_const(optional))
+			if (!l->isVisible()) ++hidden;
+		printf("info: the modal dropped %d of %d optional widgets\n",
+		       hidden, int(optional.size()));
+		CHECK(hidden > 0 && keep->isVisible() && root_extra->isVisible(),
+		      "and a modal drops its own optional widgets, not the root's");
+		dlg.hide();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	return fails;
 }
