@@ -339,6 +339,8 @@ static Qt::MouseButton qt_button(int button) {
 	}
 }
 
+void InputRouter::set_root_scroll(QPoint cells) { root_scroll_ = cells; }
+
 void InputRouter::on_mouse(const MouseEvent &m) {
 	const QPoint px(m.cell.x() * GridMetrics::cw() + GridMetrics::cw() / 2,
 	                m.cell.y() * GridMetrics::ch() + GridMetrics::ch() / 2);
@@ -364,7 +366,23 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 			top = win_;
 		}
 	}
-	const QPoint local = top->mapFromGlobal(px);   // offscreen: global == root coords
+	// The ROOT is drawn at -scroll cells when the terminal is too small for
+	// the window (section 7's policy), and nothing shared that offset with
+	// this function: a click on the button the user could SEE was delivered
+	// to whatever sat at the same screen cell in an unscrolled window.
+	// Measured on a 30x4 terminal scrolled four rows -- the visible button
+	// was hit as the QLabel four rows above it.
+	//
+	// Only the root. A popup, a modal and a plain top-level are drawn at
+	// their own geometry, and the hit test above already compares against
+	// that geometry, so shifting them would break what works. (That a popup
+	// anchored inside the root does not move WITH the root is a separate
+	// fault, recorded rather than fixed here.)
+	const QPoint screen = top == win_
+	    ? px + QPoint(root_scroll_.x() * GridMetrics::cw(),
+	                  root_scroll_.y() * GridMetrics::ch())
+	    : px;
+	const QPoint local = top->mapFromGlobal(screen); // offscreen: global == root coords
 	QWidget *child = top->childAt(local);
 	QWidget *target = child ? child : top;
 
@@ -383,7 +401,13 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 	// release clears it.
 	if (!grab_.isNull() && (m.motion || m.release)) target = grab_;
 
-	const QPoint pos = target->mapFromGlobal(px);
+	// From `screen`, not from `px`. The first version of the scroll fix
+	// corrected the hit test and left this line alone, so the right widget
+	// received an event whose own position was five rows above itself --
+	// QAbstractButton checks rect().contains() on the release before it
+	// emits clicked(), so the press landed and the click did not. Two
+	// derivations of one position, and only one of them was fixed.
+	const QPoint pos = target->mapFromGlobal(screen);
 
 	if (m.wheel || m.wheel_x) {
 		// Up the parent chain until something takes it. Qt propagates an
@@ -431,7 +455,7 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 			                && m.button == last_press_button_;
 			QMouseEvent ev(again ? QEvent::MouseButtonDblClick
 			                     : QEvent::MouseButtonPress,
-			               QPointF(pos), QPointF(px), btn, btn, mods);
+			               QPointF(pos), QPointF(screen), btn, btn, mods);
 			QApplication::sendEvent(target, &ev);
 			// A third click starts again rather than chaining into another
 			// double, which is what a platform does.
@@ -451,7 +475,7 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 			// drag from a hover, so a move sent with Qt::NoButton while
 			// grabbed would arrive as the pointer merely passing over.
 			const auto held = grab_.isNull() ? Qt::NoButton : Qt::MouseButtons(btn);
-			QMouseEvent ev(QEvent::MouseMove, QPointF(pos), QPointF(px),
+			QMouseEvent ev(QEvent::MouseMove, QPointF(pos), QPointF(screen),
 			               Qt::NoButton, held, mods);
 			QApplication::sendEvent(target, &ev);
 		}
@@ -462,11 +486,11 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 			// here, so every policy -- default, custom, actions -- starts
 			// working at once. On the press rather than the release, which is
 			// the X11 convention and so the one a terminal user expects.
-			QContextMenuEvent ev(QContextMenuEvent::Mouse, pos, px, mods);
+			QContextMenuEvent ev(QContextMenuEvent::Mouse, pos, screen, mods);
 			QApplication::sendEvent(target, &ev);
 		}
 		if (m.release) {
-			QMouseEvent ev(QEvent::MouseButtonRelease, QPointF(pos), QPointF(px),
+			QMouseEvent ev(QEvent::MouseButtonRelease, QPointF(pos), QPointF(screen),
 			               btn, Qt::NoButton, mods);
 			QApplication::sendEvent(target, &ev);
 			grab_ = nullptr;

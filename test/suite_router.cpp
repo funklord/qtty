@@ -1511,5 +1511,90 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// ---- a click lands on the widget the user can see ----
+	{
+		// The root is drawn at -scroll cells when the terminal is too small
+		// for the window, and nothing shared that offset with on_mouse().
+		// Measured on a 30x4 terminal scrolled four rows: the button the user
+		// could see was hit as the label four rows above it.
+		//
+		// This is the cost of a feature added earlier in the same session --
+		// the scroll that keeps the focused widget on screen. It made the
+		// screen right and the mouse wrong, and nothing noticed because no
+		// check drove a click at a scrolled root.
+		// Compositor::compose() walks EVERY top-level, and earlier cases in
+		// this file leave theirs alive and visible -- the first version of
+		// this check composed somebody else's window and reported that its
+		// own button was missing. Reaping deferred deletes was not enough;
+		// those widgets are not dying, they are simply still there. So this
+		// takes the screen for the length of the check and gives it back.
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		auto *top = new QPushButton(QStringLiteral("Top"));
+		v->addWidget(top);
+		for (int i = 0; i < 6; ++i)
+			v->addWidget(new QLabel(QStringLiteral("pad%1").arg(i)));
+		auto *bottom = new QPushButton(QStringLiteral("Bottom"));
+		v->addWidget(bottom);
+		int top_hits = 0, bottom_hits = 0;
+		QObject::connect(top, &QPushButton::clicked, [&] { ++top_hits; });
+		QObject::connect(bottom, &QPushButton::clicked, [&] { ++bottom_hits; });
+		win.resize(GridMetrics::cells(20, 8));
+		win.show();
+		QCoreApplication::processEvents();
+
+		Qtty::InputRouter router(&win);
+		Qtty::Compositor comp(&win, &router);
+
+		// Small enough that the window cannot fit, with the focus at the
+		// bottom so the compositor scrolls to it.
+		bottom->setFocus();
+		Qtty::set_focus_widget(win.focusWidget());
+		Qtty::CellBuffer b(20, 3);
+		comp.compose(b);
+
+		// Where the button actually is ON SCREEN, read from the frame rather
+		// than assumed -- the whole point is that screen and window
+		// coordinates have come apart.
+		// findText lives in suite_widgets; the same three lines here rather
+		// than a header for one caller.
+		QPoint seen(-1, -1);
+		for (int y = 0; y < b.rows() && seen.x() < 0; ++y)
+			for (int x = 0; x + 6 <= b.cols(); ++x)
+				if (b.at(x, y).ch == QStringLiteral("B")
+				    && b.at(x + 1, y).ch == QStringLiteral("o")
+				    && b.at(x + 2, y).ch == QStringLiteral("t")) {
+					seen = QPoint(x, y);
+					break;
+				}
+		if (seen.x() < 0) {
+			// Say what was there instead. A check that only reports "not
+			// found" costs an afternoon of guessing; suite_cells' CHECK macro
+			// carries the same lesson.
+			printf("info: no 'Bot' in the frame; it holds:\n%s",
+			       qPrintable(b.to_text()));
+		}
+		CHECK(seen.x() >= 0, "the bottom button is on screen after the scroll");
+		if (seen.x() >= 0) {
+			router.on_mouse({ QPoint(seen.x(), seen.y()), 1, true, false, false,
+			                  0, 0, false, false, false });
+			router.on_mouse({ QPoint(seen.x(), seen.y()), 1, false, true, false,
+			                  0, 0, false, false, false });
+		}
+		CHECK(bottom_hits == 1 && top_hits == 0,
+		      "and clicking where it is drawn presses it, not the widget above");
+		win.hide();
+		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	return fails;
 }

@@ -172,6 +172,18 @@ private:
 // mapTo() walks the parent chain itself, so calling it once per level makes
 // this quadratic in the depth -- and it runs on every style call. Measured:
 // the 200x60 table render went 1.39 ms to 2.49 ms with the mapTo version.
+// Whoever is actually being painted, which is not always the widget the style
+// was handed. QComboMenuDelegate::paint() passes the COMBO BOX while painting
+// into the drop-down's own view, so clipping to the style's `w` clipped a
+// popup to the one-row combo that opened it -- measured, a four-item
+// drop-down drew its first item and three blank lines. The paint device knows,
+// and cells_of() has always asked it; the clip has to ask the same question or
+// the two disagree about which widget the drawing belongs to.
+static const QWidget *painted_widget(QPainter *p, const QWidget *w) {
+	const QWidget *from_device = dynamic_cast<QWidget *>(p->device());
+	return from_device ? from_device : w;
+}
+
 static QRect visible_rect(const QWidget *w) {
 	QRect r = w->rect();
 	QPoint off;                        // w's origin, in the ancestor's frame
@@ -745,7 +757,8 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
                               const QWidget *w) const {
 	if (auto *dev = cell_target(p)) {
 		QRect c = cells_of(opt->rect, p, dev, w);
-		const CellClip bound(dev, w ? cells_of(visible_rect(w), p, dev, w) : c);
+		const QWidget *pw = painted_widget(p, w);
+		const CellClip bound(dev, pw ? cells_of(visible_rect(pw), p, dev, pw) : c);
 		switch (pe) {
 		case PE_IndicatorCheckBox:
 			// Three states, three glyphs. A tristate box at PartiallyChecked
@@ -898,7 +911,8 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
                             const QWidget *w) const {
 	if (auto *dev = cell_target(p)) {
 		QRect c = cells_of(opt->rect, p, dev, w);
-		const CellClip bound(dev, w ? cells_of(visible_rect(w), p, dev, w) : c);
+		const QWidget *pw = painted_widget(p, w);
+		const CellClip bound(dev, pw ? cells_of(visible_rect(pw), p, dev, pw) : c);
 		switch (ce) {
 		case CE_PushButtonBevel:
 			return;                                   // bevel is the label's brackets
@@ -1183,7 +1197,8 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
                                    QPainter *p, const QWidget *w) const {
 	if (auto *dev = cell_target(p)) {
 		QRect c = cells_of(opt->rect, p, dev, w);
-		const CellClip bound(dev, w ? cells_of(visible_rect(w), p, dev, w) : c);
+		const QWidget *pw = painted_widget(p, w);
+		const CellClip bound(dev, pw ? cells_of(visible_rect(pw), p, dev, pw) : c);
 		switch (cc) {
 		case CC_ScrollBar:                             // section 16 F5: self-drawn whole
 			if (auto *sb = qstyleoption_cast<const QStyleOptionSlider *>(opt)) {

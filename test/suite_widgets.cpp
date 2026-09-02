@@ -2831,6 +2831,59 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// ---- a drop-down draws every item, not just the first ----
+	{
+		// A regression introduced the same day, by the clip that bounds a
+		// style's drawing to the widget it was given. QComboMenuDelegate
+		// paints the drop-down's items and hands the style the COMBO BOX --
+		// not the popup it is painting into -- so a one-row combo clipped its
+		// own four-row drop-down to one row. Measured: three blank lines
+		// where "two", "three" and "four" should have been.
+		//
+		// The clip now asks the paint device which widget is being painted,
+		// the same question cells_of() has always asked. Nothing checked a
+		// drop-down's contents before, which is why the clip could break it
+		// and the suite stay green.
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		auto *combo = new QComboBox;
+		combo->addItems({ QStringLiteral("one"), QStringLiteral("two"),
+			              QStringLiteral("three"), QStringLiteral("four") });
+		v->addWidget(combo);
+		win.resize(GridMetrics::cells(20, 8));
+		win.show();
+		QCoreApplication::processEvents();
+
+		Qtty::InputRouter router(&win);
+		Qtty::Compositor comp(&win, &router);
+		combo->showPopup();
+		QCoreApplication::processEvents();
+		CellBuffer b(20, 8);
+		comp.compose(b);
+		const QString frame = b.to_text();
+		int seen = 0;
+		for (const QString &item : { QStringLiteral("two"),
+			                         QStringLiteral("three"),
+			                         QStringLiteral("four") })
+			if (frame.contains(item)) ++seen;
+		// "one" is in the closed combo as well as the popup, so the three
+		// that are only ever in the popup are what the count is over.
+		CHECK(seen == 3, "an open drop-down draws the items below the first");
+		combo->hidePopup();
+		QCoreApplication::processEvents();
+		win.hide();
+		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

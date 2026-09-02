@@ -150,6 +150,11 @@ void Compositor::compose(CellBuffer &out) {
 	scroll_.setY(qBound(0, scroll_.y(), max_y));
 
 	const QPoint root_at(-scroll_.x() * cw, -scroll_.y() * ch);
+	// The router maps a click from a screen cell to a window position, and
+	// the root is not drawn at the screen's origin once this scrolls. Told
+	// here rather than asked for, because compose() is the only place that
+	// knows -- and because the Compositor already holds the router.
+	if (router_) router_->set_root_scroll(scroll_);
 	draw(win_, root_at);
 	QWidget *cursor_layer = win_;
 	QPoint cursor_origin = root_at;

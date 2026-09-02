@@ -55,6 +55,12 @@ public:
 	// Set by FrameScheduler: called after each handled input batch.
 	std::function<void()> frame_requested;
 
+	// Where the Compositor has scrolled the ROOT layer, in cells. Set by
+	// compose(); a click carries a screen position and the root may not be
+	// drawn at the screen's origin, so the two have to agree about the offset
+	// or every press lands on the wrong widget.
+	void set_root_scroll(QPoint cells);
+
 private:
 	bool match_shortcut(const KeyEvent &);
 	// Alt-<letter> against the `&` markers in action text (section 17.2). A
@@ -81,6 +87,7 @@ private:
 	// it QWidget::underMouse() is permanently false and no application's
 	// enterEvent() or leaveEvent() ever runs.
 	QPointer<QWidget> hovered_;
+	QPoint root_scroll_;
 	void update_hover(QWidget *now, const QPoint &window_pos);
 	// The last press, for recognising a double click. The platform layer
 	// does this too, from QApplication::doubleClickInterval(); with no

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-778 checks, 0 failures, under three configurations: the offscreen
+781 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4303,6 +4303,64 @@ bytes as `suspend()`, and now the continue path needed the same bytes as
 §0d warns about -- a rule arrived at by measurement, copied. Both are
 named constants now, and `resume()`, `suspend()` and the handlers all
 write those.
+
+**The scroll made the screen right and the mouse wrong** (2026-09-02).
+`compose()` draws the root at `-scroll * cell` when the terminal is too
+small for the window -- §7's policy, added earlier the same day -- and
+`on_mouse()` maps a screen cell straight to a window position with no
+offset at all. Measured on a 30x4 terminal scrolled four rows:
+
+    fits:     BotBtn on row 11; a click there gave childAt QPushButton/BotBtn
+    scrolled: BotBtn on row 3;  a click there gave childAt QLabel/Pad 2
+
+**Every press landed `scroll` cells away from the widget the user could
+see**, and `update_hover()` had the same fault by the same route. Nothing
+noticed because no check had ever driven a click at a scrolled root: the
+feature was tested by what it *drew*.
+
+The offset is pushed from `compose()` to the router rather than pulled,
+because `compose()` is the only place that knows it and the Compositor
+already holds the router. Only the root is corrected: a popup, a modal
+and a plain top-level are drawn at their own geometry and the hit test
+already compares against that.
+
+**This is what a feature costs when only half of it is swept.** The
+scroll was added, checked by rendering, and the input side was never
+asked. The check left behind reads the button's position *out of the
+frame* and clicks there, so it cannot pass by agreeing with the same
+arithmetic twice.
+
+**And the first fix corrected one of two derivations.** `on_mouse()`
+computes the hit-test point and, twenty lines later, the event's own
+local position -- `target->mapFromGlobal(px)` -- from the same `px`.
+Correcting only the first sent the right widget an event whose position
+was five rows above itself, and `QAbstractButton` checks
+`rect().contains()` on the release before it emits `clicked()`: the press
+landed and the click did not. **One quantity, two derivations, and a fix
+that found one of them.**
+
+Four builds went into finding that, and three of the four were spent on
+the fixture rather than the code: the frame under test turned out to be
+somebody else's window, because `compose()` walks **every** visible
+top-level and earlier cases in the same file leave theirs alive. Reaping
+deferred deletes was not enough -- those widgets are not dying, they are
+still there. The check takes the screen for its own length and gives it
+back. **What ended it was printing `childAt` at the corrected point**: it
+said `QPushButton`, which proved the target was right and moved the
+question to what the event carried.
+
+**A regression from the same day, found by a sweep and not by the
+suite.** The clip that bounds a style's drawing to its widget (§7.2) used
+the widget the style was *handed*. `QComboMenuDelegate::paint()` hands it
+the **combo box** while painting into the drop-down's own view, so a
+one-row combo clipped its own four-row drop-down to one row -- three
+blank lines where "two", "three" and "four" should have been. The clip
+now asks the paint device which widget is being painted, which is the
+question `cells_of()` has always asked; the two had to agree or they
+disagree about whose drawing it is.
+
+Nothing checked a drop-down's *contents* before, which is exactly why the
+clip could break it and the suite stay green. There is a check now.
 
 ### 7.3 Graphics tier (design.md §17.3)
 
