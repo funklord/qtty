@@ -312,8 +312,18 @@ void AnsiBackend::read_winch() {
 // of failure that only happens on the day something has already gone wrong.
 namespace {
 
+// The two sequences, named once. resume() and suspend() write them, and so do
+// the signal handlers below -- three places for the enter and three for the
+// leave, which is exactly the shape this tree distrusts: a second copy of a
+// rule arrived at by measurement is the kind that drifts.
+const char kEnter[] = "\033[?1049h\033[?25l\033[?1006h\033[?1002h"
+                      "\033[?2004h\033[?1004h";
+const char kLeave[] = "\033[?1004l\033[?2004l\033[?1002l\033[?1006l"
+                      "\033[0m\033[?1049l\033[?25h";
+
 struct Restore {
-	struct termios saved {};
+	struct termios saved {};      // as the terminal was before qtty
+	struct termios raw_mode {};   // as qtty wants it, to put back on SIGCONT
 	volatile sig_atomic_t armed = 0;
 	int raw = 0, tty = 0;
 };
@@ -324,29 +334,67 @@ Restore g_restore;
 const int g_fatal[] = { SIGINT, SIGTERM, SIGHUP, SIGQUIT,
                         SIGSEGV, SIGABRT, SIGBUS, SIGFPE, SIGILL };
 struct sigaction g_prev[sizeof(g_fatal) / sizeof(g_fatal[0])];
+struct sigaction g_prev_tstp, g_prev_cont;
 bool g_installed = false;
 
-void emergency_restore() {
+// Give the terminal back. Does NOT disarm: SIGTSTP hands it back and SIGCONT
+// takes it again, any number of times, and only the fatal path is once.
+void leave_terminal() {
 	if (!g_restore.armed) return;
-	g_restore.armed = 0;                 // once, however many signals arrive
-	// The same sequence suspend() writes, in the same order and for the same
-	// reason: the reporting modes go off before the alternate screen does.
-	static const char seq[] = "\033[?1004l\033[?2004l\033[?1002l\033[?1006l"
-	                          "\033[0m\033[?1049l\033[?25h";
 	if (g_restore.tty) {
-		const ssize_t n = ::write(STDOUT_FILENO, seq, sizeof(seq) - 1);
+		const ssize_t n = ::write(STDOUT_FILENO, kLeave, sizeof(kLeave) - 1);
 		(void)n;                         // nothing useful to do in a handler
 	}
 	if (g_restore.raw) tcsetattr(0, TCSANOW, &g_restore.saved);
 }
 
+// And take it back, after a stop. The mirror of the above, in the mirror
+// order: the terminal's modes before the screen, because the screen is what
+// the user sees change.
+void enter_terminal() {
+	if (!g_restore.armed) return;
+	if (g_restore.raw) tcsetattr(0, TCSANOW, &g_restore.raw_mode);
+	if (g_restore.tty) {
+		const ssize_t n = ::write(STDOUT_FILENO, kEnter, sizeof(kEnter) - 1);
+		(void)n;
+	}
+}
+
 extern "C" void qtty_fatal_handler(int sig) {
-	emergency_restore();
+	leave_terminal();
+	g_restore.armed = 0;                 // once, however many signals arrive
 	// Back to the default and re-raise, so the exit status, the core dump and
 	// whatever the shell reports are what they would have been. Restoring the
 	// terminal is the only thing this adds; it does not swallow the failure.
 	signal(sig, SIG_DFL);
 	raise(sig);
+}
+
+// Ctrl+Z is a key now that ISIG is cleared, but `kill -TSTP` still arrives --
+// and backend.h has named this case from the start: suspend() is documented
+// as being for "SIGTSTP / shelling out". Nothing implemented it, so a stopped
+// program left its shell looking at the alternate screen, in raw mode, with
+// the cursor hidden and mouse reporting on. The user's next keystroke went
+// nowhere visible.
+extern "C" void qtty_stop_handler(int sig) {
+	leave_terminal();
+	// Stop for real, with the default action, then put the handler back so
+	// the next Ctrl+Z or kill behaves the same. Execution resumes here when
+	// SIGCONT arrives.
+	signal(sig, SIG_DFL);
+	raise(sig);
+	signal(sig, qtty_stop_handler);
+}
+
+// And take the terminal back when the job is resumed. The repaint is not done
+// here -- a handler cannot compose a frame -- it is asked for through the
+// SIGWINCH pipe, which already exists and already means "look at the terminal
+// again". That is not a trick: a terminal genuinely may have been resized
+// while the program was stopped, so re-measuring is the correct thing to do
+// as well as the convenient one.
+extern "C" void qtty_cont_handler(int) {
+	enter_terminal();
+	qtty_winch_handler(SIGWINCH);
 }
 
 } // namespace
@@ -391,6 +439,7 @@ void AnsiBackend::resume() {
 		t.c_iflag &= ~IXON;
 		t.c_cc[VMIN] = 1; t.c_cc[VTIME] = 0;
 		tcsetattr(0, TCSANOW, &t);
+		g_restore.raw_mode = t;
 		raw_ok_ = true;
 	}
 	// Alternate screen and hidden cursor, then the three reporting modes the
@@ -408,8 +457,7 @@ void AnsiBackend::resume() {
 	//         typing.
 	//   1004  focus in/out, which is how a TUI knows to dim its selection.
 	if (tty_out_) {
-		printf("\033[?1049h\033[?25l\033[?1006h\033[?1002h"
-		       "\033[?2004h\033[?1004h");
+		fputs(kEnter, stdout);
 		fflush(stdout);
 	}
 
@@ -479,6 +527,17 @@ void AnsiBackend::resume() {
 		sa.sa_flags = SA_RESETHAND;    // belt as well as braces on re-entry
 		for (size_t i = 0; i < sizeof(g_fatal) / sizeof(g_fatal[0]); ++i)
 			sigaction(g_fatal[i], &sa, &g_prev[i]);
+		// Job control, which does not end the process and so is not in that
+		// list: hand the terminal back on a stop and take it again on a
+		// continue. SA_RESTART on both, so a read() in read_input() is not
+		// broken by being suspended and resumed.
+		struct sigaction job {};
+		sigemptyset(&job.sa_mask);
+		job.sa_flags = SA_RESTART;
+		job.sa_handler = qtty_stop_handler;
+		sigaction(SIGTSTP, &job, &g_prev_tstp);
+		job.sa_handler = qtty_cont_handler;
+		sigaction(SIGCONT, &job, &g_prev_cont);
 		g_installed = true;
 	}
 	active_ = true;
@@ -491,8 +550,7 @@ void AnsiBackend::suspend() {
 	// writes an escape burst into the user's shell on every click, for the
 	// rest of that shell's life. Reset in the reverse order they were set.
 	if (tty_out_) {
-		printf("\033[?1004l\033[?2004l\033[?1002l\033[?1006l"
-		       "\033[0m\033[?1049l\033[?25h");
+		fputs(kLeave, stdout);
 		fflush(stdout);
 	}
 	if (raw_ok_) tcsetattr(0, TCSANOW, &saved_);
@@ -503,6 +561,8 @@ void AnsiBackend::suspend() {
 	if (g_installed) {
 		for (size_t i = 0; i < sizeof(g_fatal) / sizeof(g_fatal[0]); ++i)
 			sigaction(g_fatal[i], &g_prev[i], nullptr);
+		sigaction(SIGTSTP, &g_prev_tstp, nullptr);
+		sigaction(SIGCONT, &g_prev_cont, nullptr);
 		g_installed = false;
 	}
 	active_ = false;

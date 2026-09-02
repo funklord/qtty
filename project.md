@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-774 checks, 0 failures, under three configurations: the offscreen
+778 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4273,12 +4273,36 @@ and looks like a pass** -- the only reason it was caught is that the
 count is read on every run. Only `isatty(0)` gates the path under test,
 so only fd 0 is redirected.
 
-**Still open, and named by `backend.h` itself:** `suspend()` is
-documented as being for *"SIGTSTP / shelling out"*, and nothing handles
-SIGTSTP. With `ISIG` cleared, Ctrl+Z is now a key rather than a signal --
-but `kill -TSTP` still stops the process with the terminal on the
-alternate screen, and nothing re-enters raw mode on SIGCONT. That is the
-next piece of this.
+**And the case `backend.h` had named from the start.** `suspend()` is
+documented as being for *"SIGTSTP / shelling out"*, and nothing handled
+SIGTSTP: a stopped program left its shell looking at the alternate
+screen, in raw mode, cursor hidden, mouse reporting on, and the user's
+next keystroke went nowhere visible. With `ISIG` cleared Ctrl+Z is a key,
+but `kill -TSTP` still arrives.
+
+The stop handler gives the terminal back, re-raises with the default so
+the process really stops, and re-installs itself on the way out --
+execution resumes there when SIGCONT comes. The continue handler takes
+the terminal back and asks for a repaint **through the SIGWINCH pipe**,
+which already exists and already means "look at the terminal again". That
+is not a trick: a terminal genuinely may have been resized while the
+program was stopped, so re-measuring is the correct thing to do as well
+as the convenient one.
+
+**SIGCONT is checked by raising it**, which a running process simply
+handles -- so the check is of the effect and not of the disposition: the
+terminal is put back to canonical mode by hand, `raise(SIGCONT)` follows,
+and every raw-mode flag has to be back. SIGTSTP cannot be checked that
+way, because raising it would stop the suite, and a suite that suspends
+itself to make a point is a worse trade than checking what is installed.
+
+**A second copy of the escape sequences had appeared, and this removed
+it.** The signal work added an emergency restore that wrote the same
+bytes as `suspend()`, and now the continue path needed the same bytes as
+`resume()`. Three writers each for enter and leave is exactly the shape
+§0d warns about -- a rule arrived at by measurement, copied. Both are
+named constants now, and `resume()`, `suspend()` and the handlers all
+write those.
 
 ### 7.3 Graphics tier (design.md §17.3)
 

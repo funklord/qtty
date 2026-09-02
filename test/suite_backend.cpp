@@ -2180,6 +2180,54 @@ int suite_exec() {
 			tcgetattr(0, &after);
 			CHECK((after.c_lflag & ISIG) && (after.c_iflag & IXON),
 			      "and gives them back when it suspends");
+
+			// ---- job control ----
+			// backend.h documents suspend() as being for "SIGTSTP / shelling
+			// out" and nothing implemented it, so `kill -TSTP` stopped the
+			// program with its shell looking at the alternate screen, in raw
+			// mode, cursor hidden, mouse reporting on. Ctrl+Z is a key now
+			// that ISIG is cleared, but the signal still arrives from
+			// elsewhere.
+			//
+			// SIGCONT is checked by RAISING it, which a running process
+			// simply handles -- so this is the effect and not just the
+			// disposition. SIGTSTP cannot be: raising it would stop the test
+			// suite, and a suite that suspends itself to make a point is a
+			// worse trade than checking what is installed.
+			{
+				Qtty::AnsiBackend backend;
+				backend.resume();
+				struct sigaction tstp {}, cont {};
+				sigaction(SIGTSTP, nullptr, &tstp);
+				sigaction(SIGCONT, nullptr, &cont);
+				CHECK(tstp.sa_handler != SIG_DFL && cont.sa_handler != SIG_DFL,
+				      "a running backend answers a stop and a continue");
+
+				// Hand the terminal back by hand, as a stop would, then let
+				// the continue handler take it again.
+				termios plain {};
+				tcgetattr(0, &plain);
+				plain.c_lflag |= (ICANON | ECHO | ISIG);
+				plain.c_iflag |= IXON;
+				tcsetattr(0, TCSANOW, &plain);
+				termios given_back {};
+				tcgetattr(0, &given_back);
+				// The premise, so the claim below is about the handler and
+				// not about a terminal that was never given back.
+				CHECK(given_back.c_lflag & ISIG,
+				      "and the terminal really is plain before the continue");
+
+				raise(SIGCONT);
+				termios resumed {};
+				tcgetattr(0, &resumed);
+				CHECK(!(resumed.c_lflag & ISIG) && !(resumed.c_iflag & IXON)
+				      && !(resumed.c_lflag & (ICANON | ECHO)),
+				      "and SIGCONT puts raw mode back, every flag of it");
+				backend.suspend();
+				sigaction(SIGTSTP, nullptr, &tstp);
+				CHECK(tstp.sa_handler == SIG_DFL,
+				      "while suspending gives the stop signal back too");
+			}
 		}
 	}
 
