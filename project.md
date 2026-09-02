@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-758 checks, 0 failures, under three configurations: the offscreen
+763 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4112,6 +4112,42 @@ button that ignores it. A sabotage taking the exemption always left it
 green. It counts the widget's key events now, and is paired with one
 saying the same widget does receive other keys, so "no key arrived"
 cannot be satisfied by a widget that receives nothing at all.
+
+**And Tab was taken from every widget that wanted it.** The same shape
+once more, found by reading `on_key()`'s order after the quit key fell
+out of it. Tab was intercepted before dispatch and drove the focus chain
+unconditionally. Measured:
+
+    QTextEdit tabChangesFocus default: 0     -- Qt says it wants the key
+    Tab in a text edit: text unchanged, focus moved to the next button
+    Tab in a 2x2 table: current cell still 0,0
+
+`deliver_key()` already had the right pattern for the arrow keys --
+offer them to the focus widget, and fall back to scrolling a scroll area
+only if the press was **not accepted** -- which is Qt's own arrangement
+for Tab too: `QWidget::event()` offers it to `keyPressEvent()` and calls
+`focusNextPrevChild()` only when nothing took it. Tab now does the same.
+
+The fallback compares the focus widget as well as the accepted flag,
+because Qt's own default handler may move focus **and** accept: driving
+the chain on top of that would skip a widget. A check says so -- two tabs
+from the first button must land on the text edit, not past it.
+
+**Two sabotages, and one of them found a dependency in the fix.**
+Removing the send reddened four checks rather than the expected two,
+because **a `QKeyEvent` starts accepted**: with nothing to send to, the
+event would still read as handled and the chain would never move. The
+sabotage was aimed at the check and found the code.
+
+**The first fix for that was wrong, and the gates said so.** Calling
+`ignore()` on the event before offering it looked equivalent and broke
+three focus checks that had been passing -- Qt's own `QWidget::event()`
+reaches its Tab branch by a path the flag's starting value takes part in.
+The no-target case is tested for directly instead. Worth recording
+because the reasoning was clean and the answer was still no: **a green
+suite before the change and a red one after is the whole argument**, and
+it beat two paragraphs of correct-sounding derivation about Qt's event
+handling.
 
 **Whether hover should be RENDERED is not settled here.** The state is
 now reachable, and `State_MouseOver` will arrive on options for the first

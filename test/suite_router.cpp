@@ -1388,5 +1388,66 @@ int suite_router() {
 		      "and a read-only field has nothing to copy, so it quits too");
 	}
 
+
+	// ---- Tab reaches the widget that wants it ----
+	{
+		// This drove the focus chain unconditionally, so every widget that
+		// WANTS a tab lost it. Measured: QTextEdit reports tabChangesFocus()
+		// false -- Qt saying it wants the key -- and a tab typed into one
+		// moved focus to the next button instead, while a 2x2 QTableWidget's
+		// current cell stayed at 0,0. The same shape as the quit key: an
+		// interception before dispatch takes a key from the widget that had a
+		// use for it.
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		auto *edit = new QTextEdit;
+		edit->setPlainText(QStringLiteral("x"));
+		v->addWidget(edit);
+		auto *b1 = new QPushButton(QStringLiteral("One"));
+		v->addWidget(b1);
+		auto *b2 = new QPushButton(QStringLiteral("Two"));
+		v->addWidget(b2);
+		win.resize(GridMetrics::cells(20, 6));
+		win.show();
+		QCoreApplication::processEvents();
+		Qtty::InputRouter router(&win);
+		auto tab = [&] {
+			router.on_key({ Qt::Key_Tab, QStringLiteral("\t"), false, false, false });
+		};
+
+		// The premise, stated rather than assumed: Qt says this widget wants
+		// the key. If a future Qt changed the default, the checks below would
+		// be asserting something else entirely.
+		CHECK(!edit->tabChangesFocus(),
+		      "Qt says a text edit wants Tab for itself");
+		edit->setFocus();
+		Qtty::set_focus_widget(win.focusWidget());
+		edit->moveCursor(QTextCursor::End);
+		tab();
+		CHECK(edit->toPlainText().contains(QLatin1Char('\t')),
+		      "so a tab typed into it is a tab, not a change of focus");
+		CHECK(win.focusWidget() == edit,
+		      "and focus stays where it was");
+
+		// The half the interception existed for, which must still work: on a
+		// widget that does NOT want the key, Tab moves along the chain.
+		b1->setFocus();
+		Qtty::set_focus_widget(win.focusWidget());
+		tab();
+		CHECK(win.focusWidget() == b2,
+		      "while on a button it still moves to the next widget");
+		// Exactly one widget along, not two. Qt's own default handler may
+		// move focus and accept, so driving the chain on top of that would
+		// skip one -- which is why the code compares the focus widget as well
+		// as the accepted flag.
+		tab();
+		CHECK(win.focusWidget() == edit,
+		      "one widget at a time, not two");
+		GridGuard::reset();
+	}
+
 	return fails;
 }

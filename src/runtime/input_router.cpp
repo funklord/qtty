@@ -252,10 +252,43 @@ void InputRouter::on_key(const KeyEvent &k) {
 			return;
 		}
 	if (k.qt_key == Qt::Key_Tab && !k.ctrl) {
-		// Focus chain works without an active window (F4); drive it directly.
+		// The widget first, and only then the focus chain. This drove the
+		// chain unconditionally, so every widget that WANTS a tab lost it:
+		// measured, a QTextEdit reports tabChangesFocus() false -- Qt saying
+		// it wants the key -- and a tab typed into one moved focus to the
+		// next button instead, while a 2x2 QTableWidget's current cell stayed
+		// at 0,0 where Tab should have moved it. The same shape as the quit
+		// key above: an interception before dispatch takes a key from the one
+		// widget that had a use for it.
+		//
+		// Qt's own arrangement is this order -- QWidget::event() offers a Tab
+		// to keyPressEvent() and only calls focusNextPrevChild() if nothing
+		// accepted it -- and deliver_key() already uses it for the arrow
+		// keys, falling back to scrolling a scroll area when the focus widget
+		// did not want them.
+		//
+		// The focus widget is compared as well as the accepted flag, because
+		// Qt's own default handler may move focus AND accept: driving the
+		// chain again on top of that would skip a widget.
 		QWidget *scope = input_scope();
-		struct Probe : QWidget { using QWidget::focusNextPrevChild; };
-		static_cast<Probe *>(scope)->focusNextPrevChild(!k.shift);
+		QWidget *before = scope->focusWidget();
+		const Qt::KeyboardModifiers mods = qt_modifiers(k.ctrl, k.alt, k.shift);
+		QKeyEvent press(QEvent::KeyPress, k.qt_key, mods, k.text);
+		QWidget *target = key_target();
+		if (target) QApplication::sendEvent(target, &press);
+		// A QKeyEvent starts ACCEPTED, so with no target to offer it to the
+		// event would read as handled and the chain would never move. The
+		// no-target case is tested for directly rather than by calling
+		// ignore() first: that was the first fix, and it broke three focus
+		// checks that had been passing -- Qt's own QWidget::event() reaches
+		// its Tab branch by a path the flag's starting value takes part in,
+		// and the measurement is the authority over the reasoning.
+		if ((!target || !press.isAccepted()) && scope->focusWidget() == before) {
+			// Focus chain works without an active window (F4); drive it
+			// directly.
+			struct Probe : QWidget { using QWidget::focusNextPrevChild; };
+			static_cast<Probe *>(scope)->focusNextPrevChild(!k.shift);
+		}
 		set_focus_widget(scope->focusWidget());
 	} else if (!match_shortcut(k) && !match_mnemonic(k)) {
 		deliver_key(key_target(), k);
