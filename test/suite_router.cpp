@@ -1306,5 +1306,87 @@ int suite_router() {
 		      "while two clicks in different cells are two presses");
 	}
 
+
+	// ---- copy does not end the application ----
+	{
+		// Measured with the whole of a QLineEdit selected: Ctrl+X cut it to
+		// the clipboard, Ctrl+V pasted, Ctrl+A selected all -- and Ctrl+C
+		// reached nothing, because the quit-key loop is the first thing in
+		// on_key(). Cut and paste worked and copy ended the application: the
+		// one clipboard operation that changes nothing was the one that
+		// destroyed the most.
+		//
+		// QClipboard itself is fine under this platform, which the round trip
+		// below says before anything else is claimed about it -- a check on
+		// copy would otherwise be a check on whether the platform has a
+		// clipboard at all.
+		QClipboard *cb = QApplication::clipboard();
+		cb->setText(QStringLiteral("round trip"));
+		CHECK(cb->text() == QStringLiteral("round trip"),
+		      "the platform has a working clipboard to test against");
+
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		auto *edit = new QLineEdit(QStringLiteral("hello"));
+		v->addWidget(edit);
+		// Counts the keys it is given, because "the clipboard did not change"
+		// does not separate "the key quit" from "the key reached a widget
+		// that ignores it". The first version asserted the clipboard and a
+		// sabotage that took the exemption ALWAYS left it green -- the key
+		// went to the button, the button did not copy, and the check saw
+		// exactly what it saw when the quit path ran.
+		struct Keys : QWidget {
+			int keys = 0;
+			using QWidget::QWidget;
+			void keyPressEvent(QKeyEvent *) override { ++keys; }
+		};
+		auto *button = new Keys;
+		button->setFocusPolicy(Qt::StrongFocus);
+		v->addWidget(button);
+		win.resize(GridMetrics::cells(20, 2));
+		win.show();
+		QCoreApplication::processEvents();
+		Qtty::InputRouter router(&win);
+
+		edit->setFocus();
+		Qtty::set_focus_widget(win.focusWidget());
+		edit->selectAll();
+		cb->setText(QString());
+		router.on_key({ Qt::Key_C, QStringLiteral("c"), true, false, false });
+		CHECK(cb->text() == QStringLiteral("hello"),
+		      "Ctrl+C in a text field copies rather than quitting");
+
+		// The escape hatch, which is the half that makes the exemption narrow
+		// rather than a removal. A form is mostly buttons and lists, and the
+		// key still ends the application from all of them.
+		button->setFocus();
+		Qtty::set_focus_widget(win.focusWidget());
+		button->keys = 0;
+		router.on_key({ Qt::Key_C, QStringLiteral("c"), true, false, false });
+		// The key was consumed before dispatch, which is what the quit path
+		// does and what reaching the widget does not.
+		CHECK(button->keys == 0,
+		      "while from a plain widget it never reaches one, being the quit key");
+		// And the same widget DOES see other keys, or the line above is a
+		// claim about a widget that receives nothing at all.
+		router.on_key({ Qt::Key_F1, QString(), false, false, false });
+		CHECK(button->keys == 1,
+		      "though that widget is reachable by any key that is not one");
+
+		// Read-only is the case the attribute gets right and a class list
+		// would not: there is nothing to copy, so the key should quit.
+		edit->setReadOnly(true);
+		edit->setFocus();
+		Qtty::set_focus_widget(win.focusWidget());
+		edit->selectAll();
+		cb->setText(QStringLiteral("still here"));
+		router.on_key({ Qt::Key_C, QStringLiteral("c"), true, false, false });
+		CHECK(cb->text() == QStringLiteral("still here"),
+		      "and a read-only field has nothing to copy, so it quits too");
+	}
+
 	return fails;
 }

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-753 checks, 0 failures, under three configurations: the offscreen
+758 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4075,6 +4075,43 @@ to send them, what else? Measured on a widget with a tooltip set:
   `WA_Hover`: the parts are there and the event that would use them
   cannot arrive. Whether a terminal should pop a tooltip at all is the
   hover question again, and §0b carries it.
+
+**Cut and paste worked; copy ended the application.** The same question a
+third time, and the answer was not a missing event but an ordering.
+Measured with the whole of a `QLineEdit` selected:
+
+    QClipboard round trip: 'round trip'      -- the platform's is fine
+    Ctrl+V into an empty field: 'pasted'
+    Ctrl+X: text '', clipboard 'cut me'
+    Ctrl+A: selected 'select me'
+    Ctrl+C with all selected: clipboard '', and the app quits
+
+`on_key()` checks the quit keys **first**, before shortcuts, before the
+modal scope, before anything -- and Ctrl+C is one of the two defaults. So
+the one clipboard operation that changes nothing was the one that
+destroyed the most, in the one place a user is most certain what the
+chord means.
+
+The exemption is `WA_InputMethodEnabled`, the same attribute that decides
+where the terminal's cursor goes (§8.9): it is set by exactly the widgets
+that edit text, and Qt clears it on a read-only line edit -- which has
+nothing to copy and should still quit. A class list would have to name
+`QLineEdit`, `QTextEdit`, `QPlainTextEdit` and every application's own
+editor, and would be wrong about the last.
+
+**The escape hatch survives where it matters.** A form is mostly buttons,
+lists and tables, and Ctrl+C quits from all of them; only a caret in a
+field takes the key. `set_quit_keys()` was already there for an
+application that wants otherwise, and an empty list disables quitting
+entirely.
+
+**And the check for the escape hatch did not discriminate at first.** It
+asserted that the clipboard did not change when the key arrived with a
+button focused -- which is true whether the key quits *or* reaches a
+button that ignores it. A sabotage taking the exemption always left it
+green. It counts the widget's key events now, and is paired with one
+saying the same widget does receive other keys, so "no key arrived"
+cannot be satisfied by a widget that receives nothing at all.
 
 **Whether hover should be RENDERED is not settled here.** The state is
 now reachable, and `State_MouseOver` will arrive on options for the first

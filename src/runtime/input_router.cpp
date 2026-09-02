@@ -221,6 +221,33 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 void InputRouter::on_key(const KeyEvent &k) {
 	for (const KeyEvent &q : std::as_const(quit_keys_))
 		if (q.qt_key == k.qt_key && q.ctrl == k.ctrl && q.alt == k.alt) {
+			// ...unless a text field has focus, where the same chord is copy
+			// on every desktop there is. Measured: with the whole of a
+			// QLineEdit selected, Ctrl+X cut it and put it on the clipboard,
+			// Ctrl+V pasted, Ctrl+A selected all -- and Ctrl+C reached
+			// nothing, because this loop is the first thing in the function.
+			// Cut and paste worked and copy ended the application: the one
+			// clipboard operation that changes nothing was the one that
+			// destroyed the most.
+			//
+			// WA_InputMethodEnabled is the test, the same one that decides
+			// where the terminal's cursor goes: it is set by exactly the
+			// widgets that edit text, and Qt clears it on a read-only line
+			// edit, which has nothing to copy from and should still quit.
+			// A class list would have to name QLineEdit, QTextEdit,
+			// QPlainTextEdit and every application's own editor, and would be
+			// wrong about the last one.
+			//
+			// The escape hatch survives where it matters. A form is mostly
+			// buttons, lists and tables, and Ctrl+C quits from all of them;
+			// only a caret sitting in a field takes the key away, which is
+			// the one place a user means copy. An application that wants the
+			// old behaviour has set_quit_keys(), and one that wants no quit
+			// key at all passes an empty list.
+			const QWidget *fw = key_target();
+			if (k.qt_key == Qt::Key_C && k.ctrl && fw
+			    && fw->testAttribute(Qt::WA_InputMethodEnabled))
+				break;
 			qApp->quit();
 			return;
 		}
