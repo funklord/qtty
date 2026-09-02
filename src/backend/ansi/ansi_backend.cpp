@@ -292,6 +292,65 @@ void AnsiBackend::read_winch() {
 	if (sink_) sink_->on_resize(cells_);
 }
 
+// ---- restoring the terminal when nothing gets to run ----------------------
+// suspend() undoes everything resume() did, and it runs from the destructor.
+// A destructor is not reached by a signal, and it is not reached by exit()
+// either. Measured: before this, SIGINT, SIGTERM, SIGHUP, SIGQUIT, SIGSEGV and
+// SIGABRT were all at their default disposition with the backend running --
+// so a kill from another window, a crash, or a hangup left the terminal in
+// raw mode, on the alternate screen, with mouse reporting on and the cursor
+// hidden.
+//
+// suspend()'s own comment says what that costs: "a terminal left in mouse
+// mode writes an escape burst into the user's shell on every click, for the
+// rest of that shell's life." The happy path was defended and nothing else
+// was.
+//
+// Everything here is async-signal-safe. write(2) and tcsetattr are on POSIX's
+// list; printf and fflush, which suspend() uses, are not -- a handler that
+// called them could deadlock on stdio's own lock, which is exactly the kind
+// of failure that only happens on the day something has already gone wrong.
+namespace {
+
+struct Restore {
+	struct termios saved {};
+	volatile sig_atomic_t armed = 0;
+	int raw = 0, tty = 0;
+};
+Restore g_restore;
+
+// The signals that end a process without unwinding. SIGWINCH and SIGPIPE are
+// not here: they have handlers of their own and do not terminate.
+const int g_fatal[] = { SIGINT, SIGTERM, SIGHUP, SIGQUIT,
+                        SIGSEGV, SIGABRT, SIGBUS, SIGFPE, SIGILL };
+struct sigaction g_prev[sizeof(g_fatal) / sizeof(g_fatal[0])];
+bool g_installed = false;
+
+void emergency_restore() {
+	if (!g_restore.armed) return;
+	g_restore.armed = 0;                 // once, however many signals arrive
+	// The same sequence suspend() writes, in the same order and for the same
+	// reason: the reporting modes go off before the alternate screen does.
+	static const char seq[] = "\033[?1004l\033[?2004l\033[?1002l\033[?1006l"
+	                          "\033[0m\033[?1049l\033[?25h";
+	if (g_restore.tty) {
+		const ssize_t n = ::write(STDOUT_FILENO, seq, sizeof(seq) - 1);
+		(void)n;                         // nothing useful to do in a handler
+	}
+	if (g_restore.raw) tcsetattr(0, TCSANOW, &g_restore.saved);
+}
+
+extern "C" void qtty_fatal_handler(int sig) {
+	emergency_restore();
+	// Back to the default and re-raise, so the exit status, the core dump and
+	// whatever the shell reports are what they would have been. Restoring the
+	// terminal is the only thing this adds; it does not swallow the failure.
+	signal(sig, SIG_DFL);
+	raise(sig);
+}
+
+} // namespace
+
 void AnsiBackend::resume() {
 	if (active_) return;
 	// Terminal control goes to a terminal and nowhere else. Emitting it
@@ -385,6 +444,20 @@ void AnsiBackend::resume() {
 		QObject::connect(winch_notifier_, &QSocketNotifier::activated,
 		                 this, [this] { read_winch(); });
 	}
+	// Armed only once the state it would restore is known.
+	g_restore.saved = saved_;
+	g_restore.raw = raw_ok_ ? 1 : 0;
+	g_restore.tty = tty_out_ ? 1 : 0;
+	g_restore.armed = 1;
+	if (!g_installed) {
+		struct sigaction sa {};
+		sa.sa_handler = qtty_fatal_handler;
+		sigemptyset(&sa.sa_mask);
+		sa.sa_flags = SA_RESETHAND;    // belt as well as braces on re-entry
+		for (size_t i = 0; i < sizeof(g_fatal) / sizeof(g_fatal[0]); ++i)
+			sigaction(g_fatal[i], &sa, &g_prev[i]);
+		g_installed = true;
+	}
 	active_ = true;
 }
 
@@ -400,6 +473,15 @@ void AnsiBackend::suspend() {
 		fflush(stdout);
 	}
 	if (raw_ok_) tcsetattr(0, TCSANOW, &saved_);
+	// The handlers go with it: a program that suspends to shell out has a
+	// terminal it did not take over, and a crash in the shell is not this
+	// library's to tidy after.
+	g_restore.armed = 0;
+	if (g_installed) {
+		for (size_t i = 0; i < sizeof(g_fatal) / sizeof(g_fatal[0]); ++i)
+			sigaction(g_fatal[i], &g_prev[i], nullptr);
+		g_installed = false;
+	}
 	active_ = false;
 }
 

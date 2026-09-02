@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-765 checks, 0 failures, under three configurations: the offscreen
+769 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4185,6 +4185,50 @@ time. Whether a terminal control should light up under the pointer is a
 question about what a TUI is, in the same class as the message box's
 severity glyph -- §0b carries it. What this fixes is Qt's own contract:
 an application could not ask where the pointer was, and now it can.
+
+**Nothing put the terminal back if the program did not exit normally**
+(2026-09-02). `suspend()` undoes everything `resume()` did, and it runs
+from the destructor. A destructor is not reached by a signal, and not by
+`exit()` either. Measured with the backend running:
+
+    SIGINT=dfl SIGTERM=dfl SIGHUP=dfl SIGQUIT=dfl
+    SIGSEGV=dfl SIGABRT=dfl   (SIGPIPE=ign, SIGWINCH=SET)
+
+So a kill from another window, a hangup, or a crash left the terminal in
+raw mode, on the alternate screen, with mouse reporting on and the cursor
+hidden. **`suspend()`'s own comment says what that costs** -- *"a terminal
+left in mouse mode writes an escape burst into the user's shell on every
+click, for the rest of that shell's life"* -- so the cost was understood
+and only the happy path was defended.
+
+A handler now restores and re-raises with the default disposition, so the
+exit status, the core dump and whatever the shell reports are unchanged:
+restoring the terminal is the only thing it adds, and it does not swallow
+the failure. Everything in it is async-signal-safe -- `write(2)` and
+`tcsetattr` are on POSIX's list, and `printf`/`fflush`, which `suspend()`
+uses, are **not**. A handler calling those could deadlock on stdio's own
+lock, which is the kind of failure that only happens on a day when
+something has already gone wrong.
+
+The handlers are removed again on `suspend()`: a program that shells out
+has given the terminal back, and a crash in the shell is not this
+library's to tidy after.
+
+**The check had to be given a baseline before it could say anything.**
+The first version recorded "whatever the environment had" before creating
+a backend -- and an earlier backend in the same suite leaves handlers
+installed when the restore is broken, so *before* and *after* moved
+together and a sabotage of the restore reddened the wrong check. **Two
+numbers that move together cannot separate anything.** It now forces
+`SIG_DFL` for the nine signals, measures against that, and puts the
+harness's own dispositions back -- QtTest installs a stack-dump handler,
+and a test that took it away permanently would change how every later
+crash reports.
+
+And the block runs **two** backend cycles rather than inheriting evidence
+from suite order: install and restore are coupled by a "did I install"
+flag, so a broken restore shows up as a failure to install the second
+time, and that is what the sabotage actually reddens.
 
 ### 7.3 Graphics tier (design.md §17.3)
 

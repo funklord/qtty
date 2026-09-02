@@ -2011,5 +2011,96 @@ int suite_exec() {
 	      "and the TUI flag is set for the run and cleared after it");
 	CHECK(got == QStringLiteral("hi"),
 	      "and a byte typed during the run reaches the widget");
+
+	// ---- a signal restores the terminal ----
+	{
+		// suspend() undoes everything resume() did and runs from the
+		// destructor, which a signal does not reach. Measured before this,
+		// with the backend running:
+		//
+		//   SIGINT=dfl SIGTERM=dfl SIGHUP=dfl SIGQUIT=dfl
+		//   SIGSEGV=dfl SIGABRT=dfl
+		//
+		// So a kill from another window, a hangup, or a crash left the
+		// terminal in raw mode, on the alternate screen, with mouse
+		// reporting on -- and suspend()'s own comment says what that costs:
+		// an escape burst into the user's shell on every click for the rest
+		// of that shell's life.
+		//
+		// The disposition is what is checked rather than the effect. Sending
+		// a real SIGSEGV to the test process to watch the bytes come out
+		// would mean forking, and a suite that kills itself to make a point
+		// is a worse trade than asking the kernel what is installed.
+		auto disposition = [](int sig) {
+			struct sigaction old {};
+			sigaction(sig, nullptr, &old);
+			return old.sa_handler;
+		};
+		const int fatal[] = { SIGINT, SIGTERM, SIGHUP, SIGQUIT,
+			                  SIGSEGV, SIGABRT, SIGBUS, SIGFPE, SIGILL };
+
+		// A known baseline, saved and put back. "Whatever the environment
+		// had" was the first version and it does not work: an earlier
+		// backend in this same suite leaves handlers installed if the
+		// restore is broken, so "before" and "after" move together and a
+		// sabotage of the restore reddened the wrong check. Two numbers that
+		// move together cannot separate anything.
+		//
+		// The harness's own dispositions are saved and restored around the
+		// block rather than clobbered: QtTest installs a stack-dump handler,
+		// and a test that takes it away permanently would change how every
+		// later crash reports.
+		struct sigaction outer[sizeof(fatal) / sizeof(fatal[0])];
+		for (size_t i = 0; i < sizeof(fatal) / sizeof(fatal[0]); ++i) {
+			struct sigaction def {};
+			def.sa_handler = SIG_DFL;
+			sigemptyset(&def.sa_mask);
+			sigaction(fatal[i], &def, &outer[i]);
+		}
+		int set_before = 0;
+		for (int sig : fatal)
+			if (disposition(sig) != SIG_DFL) ++set_before;
+
+		int set_during = 0, still_set_after = 0;
+		{
+			Feeder feeder;
+			Qtty::AnsiBackend backend;
+			backend.resume();
+			for (int sig : fatal)
+				if (disposition(sig) != SIG_DFL) ++set_during;
+			backend.suspend();
+			for (int sig : fatal)
+				if (disposition(sig) != SIG_DFL) ++still_set_after;
+		}
+		// A second cycle, in this block rather than relying on an earlier
+		// one somewhere else in the suite. Install and restore are coupled by
+		// a "did I install" flag, so a broken restore shows up as a failure
+		// to install the SECOND time -- and that is what a sabotage of the
+		// restore actually reddens. Saying it here makes the block test its
+		// own claim instead of inheriting the evidence from suite order.
+		int set_second = 0;
+		{
+			Feeder feeder;
+			Qtty::AnsiBackend backend;
+			backend.resume();
+			for (int sig : fatal)
+				if (disposition(sig) != SIG_DFL) ++set_second;
+			backend.suspend();
+		}
+		for (size_t i = 0; i < sizeof(fatal) / sizeof(fatal[0]); ++i)
+			sigaction(fatal[i], &outer[i], nullptr);
+		CHECK(set_during == int(sizeof(fatal) / sizeof(fatal[0])),
+		      "a running backend handles every signal that ends a process");
+		// Paired both ways: it was not already so, and it does not stay so.
+		// A backend that suspends has given the terminal back, and a crash
+		// after that is not its to tidy after.
+		CHECK(set_before == 0,
+		      "which it was not before the backend existed");
+		CHECK(still_set_after == 0,
+		      "and it puts the previous handlers back when it suspends");
+		CHECK(set_second == int(sizeof(fatal) / sizeof(fatal[0])),
+		      "so a second backend installs them again, as it must");
+	}
+
 	return fails;
 }
