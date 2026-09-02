@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-783 checks, 0 failures, under three configurations: the offscreen
+794 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4390,6 +4390,56 @@ application that takes the screen some other way. The buffer is bounded
 at 256 and counts the rest, because a resize storm is exactly when this
 fires and an unbounded buffer would turn a screenful of noise into a leak
 that only shows on a bad day.
+
+**A click on a menu item dismissed the menu instead of firing it**
+(2026-09-02), and the reason had been recorded as somebody else's fault.
+A comment in the suite said *"a QMenu under the offscreen platform has no
+popup grab and does not activate from a synthetic press"*, which filed it
+under Qt and stopped anyone looking. Measured:
+
+    motions 0..6   nothing highlights; the press dismisses the menu
+    motions 7      the item highlights and the press lands
+
+`QMenuPrivate::hasMouseMoved()` gates `mousePressEvent()`, and its two
+halves are `motions > 6` and a distance from
+`QGuiApplicationPrivate::lastCursorPosition` -- which **only the
+platform's own events update**, so the distance half is dead here and the
+count is the only half a terminal can satisfy. A terminal never satisfies
+it: the backend asks for `\033[?1002h`, which reports presses, releases
+and drags and *not* bare motion, so a real click arrives with nothing in
+front of it. `QMenu::enterEvent()` sets `motions` to -1, so a menu just
+entered needs eight. The router sends them -- Qt's constant plus the
+entry, derived rather than tuned.
+
+Seeding the motion was chosen over resolving `actionAt()` and triggering
+directly, for the reason this file already gives for Enter, Leave and
+`QContextMenuEvent`: **the missing piece is the platform's, not the
+menu's.** Triggering by hand would have to re-implement submenu opening,
+the checkable toggle, the sync action and the close of the caused-by
+chain, all of which QMenu does correctly once the press lands.
+
+**And the Enter/Leave work added earlier the same day was breaking it.**
+`update_hover()` ran *after* the press was dispatched, so the Enter it
+sends reset `motions` to -1 **between the press and the release**: the
+item highlighted, the menu stayed up, and the release fired nothing. It
+runs before the press now, which is also the order a real platform uses.
+Two fixes from one day meeting in one function, and only a check that
+drove a whole click could see it.
+
+**A click outside an open popup was delivered through it.** The popup
+stack was hit-tested, and a point outside every popup fell through to the
+window behind -- which received the press while the popup stayed up and
+kept the keyboard. Measured: a `QPushButton` behind an open menu emitted
+`clicked()` with the menu still visible. The modal rule one branch below
+was the shape it was missing; a press outside now closes the stack from
+the top and is consumed, with `grab_` excepted so a drag begun inside a
+popup keeps its release.
+
+**A menu opened by a mnemonic was not attached to its bar.** `popup()`
+leaves `QMenuPrivate::causedPopup` unset, so `QMenu::keyPressEvent`'s
+bar traversal could never fire. `setActiveAction()` places it, sets the
+caused-by chain, and marks the bar -- and drops the hand-computed
+position, so the fix removes code.
 
 ### 7.3 Graphics tier (design.md §17.3)
 

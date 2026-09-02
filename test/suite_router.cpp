@@ -817,25 +817,23 @@ int suite_router() {
 		CHECK(after_show > 0, "a popup appearing asks for a frame");
 		CHECK(r.popups().size() == 1, "and is tracked while it is up");
 
-		// A click INSIDE the popup, which nothing had ever sent: every mouse
-		// test here clicks the window under one, so the branch that finds a
-		// popup by hit test had never been taken.
-		// Asserted by the ACTION firing, not by the popup still being
-		// tracked: a menu that handled the click closes itself, so the first
-		// draft's "still one popup" could not tell delivery from the click
-		// passing through and dismissing it. The two look identical from
-		// outside and only one of them is the feature.
 		// A click INSIDE a popup goes to the popup, which nothing had ever
 		// sent: every mouse test here clicks the window under one, so the
 		// branch that finds a popup by hit test had never been taken.
 		//
-		// Asserted by what does NOT receive it. The obvious assertion --
-		// that the menu's action fires -- cannot be made here, and the
-		// control says why: sending the same press straight to the QMenu,
-		// with the router bypassed entirely, does not fire it either. A
-		// QMenu under the offscreen platform has no popup grab and does not
-		// activate from a synthetic press, so that probe measures Qt rather
-		// than this router.
+		// What used to stand here was a MISDIAGNOSIS, and it is worth
+		// keeping the correction visible because it kept a defect of this
+		// project's filed as Qt's for as long as it stood: "a QMenu under
+		// the offscreen platform has no popup grab and does not activate
+		// from a synthetic press". The platform has nothing to do with it,
+		// and there is no grab involved. QMenuPrivate::hasMouseMoved()
+		// counts the mouse MOTIONS a menu has received and refuses a press
+		// until there are more than six; a terminal in \033[?1002h reports
+		// no bare motion at all, so the count was zero and the press
+		// dismissed the menu. The router synthesises that motion now, the
+		// same way it synthesises Enter, Leave and QContextMenuEvent, and
+		// the assertion the old comment said could not be made is the first
+		// one below.
 		struct Catcher : QWidget {
 			using QWidget::QWidget;
 			int presses = 0;
@@ -853,12 +851,14 @@ int suite_router() {
 		r.on_mouse({hc, 1, false, true, false, 0});
 		QCoreApplication::processEvents();
 		const int through = under->presses;
+		const bool fired_by_click = fired;
 
-		// A FRESH menu for the close, never clicked. The press above already
-		// dismissed the first one -- a QMenu closes on a synthetic press
-		// rather than activating -- so closing it again removed nothing and
-		// the hide branch never ran. The assertion failed with the code
-		// correct, which is the useful direction for it to fail in.
+		// A FRESH menu for the close, never clicked. The click above is gone
+		// by now either way -- it used to dismiss the menu and now it fires
+		// its item, and an item that fires closes the menu it is in -- so
+		// closing this one again removes nothing and the hide branch never
+		// runs. The assertion failed with the code correct, which is the
+		// useful direction for it to fail in.
 		menu.close();
 		QCoreApplication::processEvents();
 		QMenu again(&h);
@@ -883,11 +883,107 @@ int suite_router() {
 		r.on_mouse({hc, 1, true, false, false, 0});
 		r.on_mouse({hc, 1, false, true, false, 0});
 		QCoreApplication::processEvents();
+		CHECK(fired_by_click,
+		      "a click on a menu item triggers it");
 		CHECK(through == 0 && under->presses > 0,
 		      "a click inside a popup does not fall through to the window");
 		CHECK(after_close > before_close,
 		      "and a popup going away asks for a frame of its own");
 		CHECK(r.popups().isEmpty(), "and stops being tracked");
+	}
+
+	{
+		// A click OUTSIDE an open popup. The hit test walks the popup stack
+		// and, finding nothing that contains the point, used to fall through
+		// to the modal-or-window branch -- so the click went to whatever sat
+		// behind the popup while the popup stayed up and kept the keyboard.
+		// Measured twice before the fix: a catcher widget took the press,
+		// and a QPushButton behind an open QMenu emitted clicked() with the
+		// menu still visible, still the one entry in popups(), and still
+		// what key_target() named.
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *behind = new QPushButton(QStringLiteral("Behind"), &h);
+		behind->setGeometry(0, ch * 6, cw * 10, ch);
+		int hits = 0;
+		QObject::connect(behind, &QPushButton::clicked, [&hits] { ++hits; });
+		h.resize(GridMetrics::cells(30, 10));
+		h.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&h);
+
+		QMenu menu(&h);
+		menu.addAction(QStringLiteral("Cut"));
+		menu.popup(QPoint(0, 0));
+		QCoreApplication::processEvents();
+
+		const QPoint c = behind->geometry().center();
+		const QPoint cell(c.x() / cw, c.y() / ch);
+		const QPoint px(cell.x() * cw + cw / 2, cell.y() * ch + ch / 2);
+		// That the cell is outside the menu, asserted rather than assumed. A
+		// menu tall enough to cover the button would make every check below
+		// pass for the opposite reason, and the height of a menu is the
+		// style's business rather than this fixture's.
+		CHECK(!menu.geometry().contains(px),
+		      "the cell this clicks is outside the open menu");
+
+		r.on_mouse({cell, 1, true, false, false, 0});
+		r.on_mouse({cell, 1, false, true, false, 0});
+		QCoreApplication::processEvents();
+		CHECK(hits == 0,
+		      "a click outside an open popup does not reach the window behind");
+		CHECK(!menu.isVisible() && r.popups().isEmpty(),
+		      "and closes the popup stack instead");
+
+		// The pair, and without it both of those pass for a router that
+		// delivers no click anywhere: the SAME cell, with the popup gone,
+		// must press the button.
+		r.on_mouse({cell, 1, true, false, false, 0});
+		r.on_mouse({cell, 1, false, true, false, 0});
+		QCoreApplication::processEvents();
+		CHECK(hits == 1, "and the same cell presses it once the popup is gone");
+		GridGuard::reset();
+	}
+
+	{
+		// WHICH item a click activates. The check above says a click on a
+		// menu item fires it; this one varies the row and nothing else, so a
+		// router that fired the menu's first action -- or all of them --
+		// stops passing.
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		h.resize(GridMetrics::cells(30, 10));
+		h.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&h);
+
+		QMenu menu(&h);
+		QAction *cut = menu.addAction(QStringLiteral("Cut"));
+		QAction *copy = menu.addAction(QStringLiteral("Copy"));
+		int cut_fired = 0, copy_fired = 0;
+		QObject::connect(cut, &QAction::triggered, [&cut_fired] { ++cut_fired; });
+		QObject::connect(copy, &QAction::triggered, [&copy_fired] { ++copy_fired; });
+		menu.popup(QPoint(0, 0));
+		QCoreApplication::processEvents();
+
+		const QPoint top = menu.mapToGlobal(menu.actionGeometry(cut).center());
+		const QPoint low = menu.mapToGlobal(menu.actionGeometry(copy).center());
+		// A terminal addresses a cell, not a pixel, so two items that share
+		// a row are one item as far as this check can tell.
+		CHECK(top.y() / ch != low.y() / ch,
+		      "the two menu items occupy different terminal rows");
+		printf("info: the menu's items are on rows %d and %d\n",
+		       top.y() / ch, low.y() / ch);
+
+		const QPoint cell(low.x() / cw, low.y() / ch);
+		r.on_mouse({cell, 1, true, false, false, 0});
+		r.on_mouse({cell, 1, false, true, false, 0});
+		QCoreApplication::processEvents();
+		CHECK(copy_fired == 1, "a click on the second menu item fires that item");
+		CHECK(cut_fired == 0, "and not the one above it");
+		CHECK(!menu.isVisible() && r.popups().isEmpty(),
+		      "and the menu goes away when its item fires");
+		GridGuard::reset();
 	}
 
 	{
@@ -921,6 +1017,52 @@ int suite_router() {
 		      "at the corner of the widget that owns it, not at the origin");
 		sub->close();
 		QCoreApplication::processEvents();
+	}
+
+	{
+		// And the menu-bar branch of the same code, which is about
+		// ATTACHMENT rather than about position. match_mnemonic() used to
+		// call QMenu::popup() at a point it worked out from the bar's
+		// actionGeometry(); that puts the menu in the right place and leaves
+		// QMenuPrivate::causedPopup unset, so the menu does not know which
+		// bar opened it and the bar does not know it is open.
+		//
+		// Nothing looked wrong, which is why it stood: the menu drew, the
+		// keys reached it, and its items fired. What could not happen was
+		// everything Qt hangs off causedPopup -- QMenu::keyPressEvent's
+		// menu-bar traversal tests qobject_cast<QMenuBar *>(topCausedWidget())
+		// and could never fire, and QMenu::hideEvent's matching clean-up
+		// could not either. Measured: activeAction() stayed null and Right
+		// did nothing at all.
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *bar = new QMenuBar(&h);
+		bar->setGeometry(0, 0, cw * 30, ch);
+		QMenu *file = bar->addMenu(QStringLiteral("&File"));
+		file->addAction(QStringLiteral("Open"));
+		QMenu *edit = bar->addMenu(QStringLiteral("&Edit"));
+		edit->addAction(QStringLiteral("Undo"));
+		h.resize(GridMetrics::cells(30, 8));
+		h.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&h);
+
+		r.on_key({0, QStringLiteral("f"), false, true, false});
+		QCoreApplication::processEvents();
+		CHECK(file->isVisible() && bar->activeAction() == file->menuAction(),
+		      "a mnemonic opens its menu through the bar, which marks it active");
+
+		// The pair, and the whole reason the attachment is worth having:
+		// Qt's own menu-bar traversal, which no key could reach while
+		// causedPopup was unset.
+		r.on_key({Qt::Key_Right, {}, false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(!file->isVisible() && edit->isVisible(),
+		      "and Right walks the bar from File to Edit");
+		file->close();
+		edit->close();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
 	}
 
 	{

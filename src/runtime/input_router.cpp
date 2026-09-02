@@ -141,20 +141,39 @@ bool InputRouter::match_mnemonic(const KeyEvent &k) {
 		if (!a->isEnabled() || a->isSeparator()) continue;
 		if (mnemonic_of(a->text()) != want) continue;
 		if (QMenu *sub = a->menu()) {
-			// A menu opens rather than triggers. Positioned under the item it
-			// belongs to when that item is in a menu bar, which is where a
-			// reader expects it; anywhere else, at the widget's own corner.
+			// A menu opens rather than triggers.
 			QWidget *owner = a->associatedObjects().isEmpty()
 			    ? nullptr
 			    : qobject_cast<QWidget *>(a->associatedObjects().first());
-			QPoint at(0, 0);
 			if (auto *bar = qobject_cast<QMenuBar *>(owner)) {
-				const QRect g = bar->actionGeometry(a);
-				at = bar->mapToGlobal(QPoint(g.left(), g.bottom() + 1));
-			} else if (owner) {
-				at = owner->mapToGlobal(QPoint(0, 0));
+				// The BAR opens it, rather than this function calling
+				// popup() at a position it worked out itself. The position
+				// was the visible half and the smaller half: popup() leaves
+				// QMenuPrivate::causedPopup unset, so the menu does not know
+				// which bar it belongs to and the bar does not know it is
+				// open. QMenu::keyPressEvent's menu-bar traversal tests
+				// qobject_cast<QMenuBar *>(topCausedWidget()) and could
+				// therefore never fire, and QMenu::hideEvent's matching
+				// clean-up could not either.
+				//
+				// Measured, Alt-F against a bar holding File and Edit:
+				// with popup(), activeAction() stayed null, the bar drew
+				// "File" no differently from "Edit", and Right did nothing.
+				// With setActiveAction() the bar reports &File, draws it
+				// marked, and Right closes File and opens Edit.
+				//
+				// QMenuBarPrivate::popupAction() does the placing, under the
+				// item the menu belongs to, which is the same position the
+				// hand-computed one aimed at -- so this drops code rather
+				// than adding it.
+				bar->setActiveAction(a);
+				return true;
 			}
-			sub->popup(at);
+			// Anywhere else there is no bar to ask, so the widget's own
+			// corner it is: a submenu at the terminal's origin -- which is
+			// what a null owner gives -- appears with nothing beside it to
+			// say what it belongs to.
+			sub->popup(owner ? owner->mapToGlobal(QPoint(0, 0)) : QPoint(0, 0));
 			return true;
 		}
 		a->trigger();
@@ -341,6 +360,56 @@ static Qt::MouseButton qt_button(int button) {
 
 void InputRouter::set_root_scroll(QPoint cells) { root_scroll_ = cells; }
 
+// The motion a pointer would have made crossing a menu on its way to the item
+// it clicks. A terminal never makes it: the backend asks for \033[?1002h,
+// which reports presses, releases and drags and NOT bare motion, so a real
+// click on a menu item arrives with nothing in front of it.
+//
+// QMenu refuses such a click. QMenuPrivate::hasMouseMoved() gates
+// mousePressEvent(), mouseMoveEvent() and mouseReleaseEvent() alike, and its
+// two halves are `motions > 6` and a distance from the cursor position the
+// menu was popped at. The distance half is dead here -- measured false
+// throughout, because it is compared against
+// QGuiApplicationPrivate::lastCursorPosition, which only the platform's own
+// mouse events update -- so the motion count is the only half a terminal can
+// satisfy. A press that fails the gate calls hideUpToMenuBar(): the menu
+// vanishes and the item does not fire, which is exactly what a user saw.
+//
+// Measured, sending the motion straight to the menu and then clicking "Cut":
+//
+//     motions   0..6      nothing highlights, the press dismisses the menu
+//     motions   7         the item highlights and the press lands
+//
+// and QMenu::enterEvent() sets motions to -1 -- "ignore the move the platform
+// generates on entry" -- so a menu the pointer has just entered needs EIGHT.
+// That is where the count below comes from; it is Qt's constant plus the
+// entry, not a number raised until something passed.
+//
+// The alternative was to resolve QMenu::actionAt() and trigger the action
+// directly, and it is worse for the reason this file already gives for Enter,
+// Leave and QContextMenuEvent: the missing piece is the platform's, not the
+// menu's. Triggering by hand would have to re-implement the submenu opening,
+// the checkable toggle, the sync action and the close of the whole caused-by
+// chain -- all of which QMenu does correctly the moment the press lands.
+static void prime_menu_motion(QWidget *target, const QPoint &screen,
+                              Qt::KeyboardModifiers mods) {
+	QWidget *w = target;
+	while (w && !qobject_cast<QMenu *>(w)) w = w->parentWidget();
+	QMenu *menu = qobject_cast<QMenu *>(w);
+	if (!menu) return;
+	const QPointF local(menu->mapFromGlobal(screen));
+	// Unconditional, rather than stopping as soon as the item highlights. A
+	// menu whose current item was set by the KEYBOARD is already highlighting
+	// the one about to be clicked, so an early exit would send nothing, leave
+	// the count at -1 and dismiss the menu -- the very fault this is here to
+	// remove, surviving in the one case a user reaches by typing first.
+	for (int i = 0; i < 8; ++i) {
+		QMouseEvent ev(QEvent::MouseMove, local, QPointF(screen), Qt::NoButton,
+		               Qt::NoButton, mods);
+		QApplication::sendEvent(menu, &ev);
+	}
+}
+
 void InputRouter::on_mouse(const MouseEvent &m) {
 	const QPoint px(m.cell.x() * GridMetrics::cw() + GridMetrics::cw() / 2,
 	                m.cell.y() * GridMetrics::ch() + GridMetrics::ch() / 2);
@@ -351,6 +420,38 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 	const auto ps = popups();
 	for (auto it = ps.rbegin(); it != ps.rend(); ++it)
 		if ((*it)->geometry().contains(px)) { top = *it; break; }
+	if (!top && !ps.isEmpty() && grab_.isNull()) {
+		// A popup owns the pointer for as long as it is up, the same way
+		// section 8.3's modal owns it and for the same reason: the grab that
+		// enforces that on the desktop lives in the platform layer this
+		// runtime bypasses. Without the rule the hit test above simply failed
+		// to find a popup and control fell through to the window branch, so
+		// the click was delivered THROUGH the open popup.
+		//
+		// Measured twice before this existed. A catcher widget under an open
+		// QMenu received the press; and a QPushButton behind one emitted
+		// clicked() with the menu still visible, still the only entry in
+		// popups(), and still what key_target() named. The menu kept the
+		// keyboard while the window behind it took the mouse.
+		//
+		// Dropped rather than redirected, which is the modal branch's rule
+		// below verbatim -- a click on what a popup is covering means
+		// nothing, and handing it to the popup would invent a press. The one
+		// thing a popup does that a modal does not is go away, so a PRESS
+		// also closes the stack, from the top down: a submenu must not
+		// outlive the menu that opened it.
+		//
+		// grab_ is the exception and not an oversight. A press that landed
+		// INSIDE a popup owns everything up to its release (section 5.5), and
+		// a slider dragged off the edge of the menu it sits in would lose the
+		// rest of the drag to this rule.
+		if (m.press) {
+			for (auto it = ps.rbegin(); it != ps.rend(); ++it) (*it)->close();
+			QCoreApplication::processEvents();
+			if (frame_requested) frame_requested();
+		}
+		return;
+	}
 	if (!top) {
 		if (QWidget *modal = QApplication::activeModalWidget()) {
 			// section 8.3: input outside activeModalWidget() is dropped before
@@ -433,7 +534,17 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 		}
 	} else {
 		const auto btn = qt_button(m.button);
+		// BEFORE the press, not after it, which is where this line used to
+		// stand. A pointer arrives at a widget and only then presses, and the
+		// order was not cosmetic: QMenu::enterEvent() resets the motion count
+		// that prime_menu_motion() above is entirely about, so an Enter sent
+		// AFTER a press undid what let the press land, and the release then
+		// dismissed the menu instead of firing its item. Measured -- with the
+		// enter arriving after the press, the item highlighted, the menu
+		// stayed up, and the release fired nothing at all.
+		update_hover(target, pos);
 		if (m.press) {
+			prime_menu_motion(target, screen, mods);
 			grab_ = target;
 			// A second press on the same cell with the same button, inside
 			// the interval Qt itself publishes, is a double click -- and it
@@ -469,7 +580,6 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 				last_press_button_ = m.button;
 			}
 		}
-		update_hover(target, pos);
 		if (m.motion) {
 			// Held-button state matters: a widget reads buttons() to tell a
 			// drag from a hover, so a move sent with Qt::NoButton while
