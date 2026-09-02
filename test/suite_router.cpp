@@ -1449,5 +1449,67 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+
+	// ---- an ignored arrow scrolls the area the focus is inside ----
+	{
+		// This began as a suspected defect and the probe corrected it. The
+		// fallback in deliver_key() said it scrolls "the nearest scroll
+		// area" and asks findChild() for the scope's FIRST one, which are
+		// different whenever there are two. Measured with the focus on a
+		// key-ignoring widget inside the SECOND of two areas: the second
+		// scrolled, the first did not, and findChild() returns the first --
+		// so the fallback never ran at all. Qt propagates an unaccepted key
+		// press up the parent chain and the enclosing QScrollArea took it.
+		//
+		// The behaviour is right and qtty does not implement it. That is
+		// exactly what to pin: nothing here would notice if a future change
+		// made deliver_key() consume the press before it could propagate,
+		// and the symptom would be arrow keys going dead inside every scroll
+		// area in every application.
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		auto make_area = [&] {
+			auto *area = new QScrollArea;
+			auto *inner = new QWidget;
+			inner->setFixedSize(GridMetrics::cw() * 10, GridMetrics::ch() * 40);
+			area->setWidget(inner);
+			area->setFixedHeight(GridMetrics::ch() * 3);
+			v->addWidget(area);
+			return area;
+		};
+		auto *first = make_area();
+		auto *second = make_area();
+		struct Deaf : QWidget {
+			using QWidget::QWidget;
+			void keyPressEvent(QKeyEvent *e) override { e->ignore(); }
+		};
+		auto *deaf = new Deaf(second->widget());
+		deaf->setFocusPolicy(Qt::StrongFocus);
+		deaf->setGeometry(0, 0, GridMetrics::cw() * 4, GridMetrics::ch());
+		win.resize(GridMetrics::cells(20, 8));
+		win.show();
+		QCoreApplication::processEvents();
+		Qtty::InputRouter router(&win);
+
+		deaf->setFocus();
+		Qtty::set_focus_widget(win.focusWidget());
+		const int f0 = first->verticalScrollBar()->value();
+		const int s0 = second->verticalScrollBar()->value();
+		router.on_key({ Qt::Key_Down, QString(), false, false, false });
+		const int moved_second = second->verticalScrollBar()->value() - s0;
+		const int moved_first = first->verticalScrollBar()->value() - f0;
+		CHECK(moved_second > 0,
+		      "an arrow a widget ignores scrolls the area it sits inside");
+		// The paired half, and the one that would have failed if the
+		// suspicion had been right: the OTHER area, which findChild() names,
+		// must not move.
+		CHECK(moved_first == 0,
+		      "and not the first one in the window, which is a different area");
+		GridGuard::reset();
+	}
+
 	return fails;
 }

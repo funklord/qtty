@@ -203,8 +203,22 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 	QKeyEvent release(QEvent::KeyRelease, k.qt_key, mods, k.text);
 	QApplication::sendEvent(target, &release);
 
-	// Arrow keys a focus widget ignored fall back to scrolling the nearest
-	// scroll area -- the TUI convention (section 5.5).
+	// Arrow keys nothing wanted fall back to scrolling a scroll area -- the
+	// TUI convention (section 5.5).
+	//
+	// "The nearest" is what this used to claim, and it is not what happens.
+	// Measured with two scroll areas and the focus on a widget INSIDE the
+	// second that ignores every key: the second scrolled and this code never
+	// ran, because Qt propagates an unaccepted key press up the parent chain
+	// and the enclosing QScrollArea took it. findChild() returns the FIRST
+	// area in the scope, which would have been the wrong one -- so the wrong
+	// lookup was harmless only because the case it would get wrong is the
+	// case that never reaches it.
+	//
+	// What is left for this branch is a focus widget with no scroll area
+	// above it at all, and then there is no "nearest" to speak of: the
+	// scope's first is as good an answer as any, and picking it is the
+	// convention rather than a resolution of ambiguity.
 	if (!press.isAccepted() && (k.qt_key == Qt::Key_Up || k.qt_key == Qt::Key_Down
 	                            || k.qt_key == Qt::Key_PageUp || k.qt_key == Qt::Key_PageDown)) {
 		if (auto *area = input_scope()->findChild<QAbstractScrollArea *>()) {

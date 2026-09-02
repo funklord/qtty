@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-763 checks, 0 failures, under three configurations: the offscreen
+765 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4148,6 +4148,36 @@ because the reasoning was clean and the answer was still no: **a green
 suite before the change and a red one after is the whole argument**, and
 it beat two paragraphs of correct-sounding derivation about Qt's event
 handling.
+
+**A suspected defect that the probe turned down.** `deliver_key()`'s
+arrow fallback said it scrolls *"the nearest scroll area"* and asks
+`findChild()` for the scope's **first** one -- different answers whenever
+a window has two, and the same comment-versus-code shape as the
+tolerances in §0d. Measured, with the focus on a key-ignoring widget
+inside the *second* of two scroll areas:
+
+    focus inside 'second': first moved 0, second moved 20
+    findChild returns 'first'
+
+**The second scrolled and this code never ran.** Qt propagates an
+unaccepted key press up the parent chain and the enclosing `QScrollArea`
+took it. The wrong lookup was harmless because the case it would get
+wrong is the case that never reaches it: what is left for the fallback is
+a focus widget with no scroll area above it at all, and then there is no
+"nearest" to speak of.
+
+So: no fix, a corrected comment, and **a check on behaviour qtty does not
+implement**. Nothing would have noticed if a change made `deliver_key()`
+consume the press before it could propagate, and the symptom would be
+arrow keys going dead inside every scroll area in every application. Its
+pair -- the other area must *not* move -- is the assertion the suspicion
+would have failed, and a sabotage removing the fallback's
+`!isAccepted()` guard reddens exactly it.
+
+**Worth keeping as a result rather than a non-event.** Three findings in
+a row came from reading this function's order, and the fourth read the
+same way and was not one. The probe is what separated them, and it cost
+one build.
 
 **Whether hover should be RENDERED is not settled here.** The state is
 now reachable, and `State_MouseOver` will arrive on options for the first
