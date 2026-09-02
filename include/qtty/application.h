@@ -23,6 +23,16 @@ void prepare_environment();
 // construction: the shared UI derives its metrics from the application font.
 void setup(QApplication &app);
 
+// Write out any diagnostics that were held back while qtty owned the terminal,
+// and stop holding them. setup() installs a message handler that buffers
+// instead of writing when stderr is a terminal, because that terminal is the
+// one the frame is on: a qWarning lands in the middle of the drawing, and
+// nothing repaints over it because the cell plane never changed.
+//
+// It is called for you when the backend gives the terminal back. An
+// application that takes the screen some other way can call it itself.
+void flush_deferred_messages();
+
 // Run `win` on `backend` until quit. The backend is L1's seam (section 5.1):
 // a legacy adapter, termpaint, or NullBackend under test all drive the same
 // runtime through it. This overload is what makes the seam real -- until it

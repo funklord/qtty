@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <csignal>
+#include "qtty/application.h"
 #include <fcntl.h>
 #include <cstdio>
 #include <cstring>
@@ -566,6 +567,8 @@ void AnsiBackend::suspend() {
 		g_installed = false;
 	}
 	active_ = false;
+	// The terminal is the user's again, so anything held back can be said.
+	flush_deferred_messages();
 }
 
 // ---- output ----------------------------------------------------------------

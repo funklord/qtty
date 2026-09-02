@@ -2231,5 +2231,56 @@ int suite_exec() {
 		}
 	}
 
+	// ---- a diagnostic does not land on the frame ----
+	{
+		// Nothing installed a message handler, and qtty emits qWarning from
+		// four places of its own -- the grid guard once per off-grid widget,
+		// the contrast check once per offending cell. Qt adds more: a resize
+		// below the layout minimum produced over a hundred
+		// propagateSizeHints lines in one run. Measured with stderr on a
+		// pseudo-terminal and the backend running: the warning's text
+		// arrived on that terminal, in the middle of the frame, where
+		// nothing repaints over it because the cell plane never changed.
+		Tty tty;
+		if (!tty.ok()) {
+			printf("FAIL: no pseudo-terminal, so the diagnostic checks say"
+			       " nothing\n");
+			++fails;
+		} else {
+			fcntl(tty.master, F_SETFL, O_NONBLOCK);
+			auto drain = [&] {
+				QByteArray got;
+				char buf[4096];
+				for (;;) {
+					const ssize_t n = ::read(tty.master, buf, sizeof(buf));
+					if (n <= 0) break;
+					got.append(buf, int(n));
+				}
+				return got;
+			};
+			fflush(stderr);
+			const int saved_err = ::dup(2);
+			::dup2(tty.slave, 2);
+			Qtty::AnsiBackend backend;
+			backend.resume();
+			qWarning("qtty-probe: held back");
+			fflush(stderr);
+			const QByteArray during = drain();
+			backend.suspend();          // gives the terminal back and flushes
+			fflush(stderr);
+			const QByteArray after = drain();
+			::dup2(saved_err, 2);
+			::close(saved_err);
+
+			CHECK(!during.contains("qtty-probe: held back"),
+			      "a warning while the terminal is in use does not reach it");
+			// The pair, and the reason this is deferral rather than
+			// suppression: a diagnostic nobody ever sees is worse than one in
+			// the wrong place.
+			CHECK(after.contains("qtty-probe: held back"),
+			      "and arrives once the terminal has been given back");
+		}
+	}
+
 	return fails;
 }

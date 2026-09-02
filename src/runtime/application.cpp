@@ -7,8 +7,64 @@
 #include "qtty/theme.h"
 #include "../backend/ansi/ansi_backend.h"
 #include <QtWidgets>
+#include <unistd.h>
 
 namespace Qtty {
+
+// ---- diagnostics do not go on the screen the frame is on -------------------
+// Nothing installed a message handler, and qtty emits qWarning from four
+// places of its own -- the grid guard once per off-grid widget, the section 6
+// contrast check once per offending cell, the graphics tier and the SIGWINCH
+// pipe. Qt adds its own: a resize below the layout minimum produced over a
+// hundred "This plugin does not support propagateSizeHints()" lines in a
+// single run. All of it goes to stderr, and stderr is the terminal the frame
+// is being drawn on.
+//
+// Measured: with the backend running and stderr on a pseudo-terminal, a
+// qWarning put its text on that terminal -- in the middle of the frame, where
+// nothing will repaint over it, because the cell plane never changed and the
+// next diff has nothing to say about a region qtty did not write.
+//
+// The rule is the one that needs no coupling to the backend's state: hold
+// them while stderr IS a terminal, pass them straight through when it is not.
+// A redirected stderr corrupts nothing, and that is also the case every test
+// run and every `2>log` invocation takes, so this changes nothing for either.
+//
+// Bounded, because a resize storm is exactly when this fires: after the cap
+// the messages are counted rather than kept, and the count is reported when
+// they are flushed. An unbounded buffer would turn a screenful of noise into
+// a memory leak that only shows up on a bad day.
+namespace {
+
+constexpr int kMaxDeferred = 256;
+QVector<QString> g_deferred;
+int g_dropped = 0;
+QtMessageHandler g_previous = nullptr;
+
+void deferring_handler(QtMsgType type, const QMessageLogContext &ctx,
+                       const QString &text) {
+	if (!isatty(2)) {                       // nothing to protect
+		if (g_previous) g_previous(type, ctx, text);
+		return;
+	}
+	if (g_deferred.size() < kMaxDeferred) g_deferred.append(text);
+	else ++g_dropped;
+}
+
+} // namespace
+
+void flush_deferred_messages() {
+	const QVector<QString> held = g_deferred;
+	const int dropped = g_dropped;
+	g_deferred.clear();
+	g_dropped = 0;
+	for (const QString &m : held) fprintf(stderr, "%s\n", qPrintable(m));
+	if (dropped)
+		fprintf(stderr, "qtty: and %d further message(s) while the terminal"
+		                " was in use\n", dropped);
+	fflush(stderr);
+}
+
 
 void prepare_environment() {
 	// Offscreen is FORCED and not merely preferred, and the difference
@@ -119,6 +175,10 @@ public:
 } // namespace
 
 void setup(QApplication &app) {
+	// Held from here on, and released by the backend when it gives the
+	// terminal back. Installed in setup() rather than in the backend because
+	// a warning emitted before the first frame is on the same screen.
+	g_previous = qInstallMessageHandler(deferring_handler);
 	// Bundled-font provisioning (section 5.3) is later Phase-2 work; DejaVu Sans
 	// Mono is the interim source of integral metrics, asserted as designed.
 	QFont f(QStringLiteral("DejaVu Sans Mono"));

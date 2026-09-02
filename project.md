@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-02
 
-781 checks, 0 failures, under three configurations: the offscreen
+783 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4361,6 +4361,35 @@ disagree about whose drawing it is.
 
 Nothing checked a drop-down's *contents* before, which is exactly why the
 clip could break it and the suite stay green. There is a check now.
+
+**Diagnostics went onto the screen the frame was on** (2026-09-02).
+Nothing installed a Qt message handler, and qtty emits `qWarning` from
+four places of its own -- the grid guard once per off-grid widget, §6's
+contrast check once per offending cell, the graphics tier, and the
+SIGWINCH pipe. Qt adds its own: a resize below the layout minimum
+produced **over a hundred** `propagateSizeHints` lines in a single run.
+All of it goes to stderr, and stderr is the terminal the frame is on.
+
+Measured with stderr on a pseudo-terminal and the backend running: a
+`qWarning`'s text arrived on that terminal, 45 bytes of it, in the middle
+of the frame. **Nothing repaints over it**, either -- the cell plane never
+changed, so the next diff has nothing to say about a region qtty did not
+write. The damage stays until something else happens to touch those
+cells.
+
+The rule needs no coupling to the backend's state: **hold them while
+stderr IS a terminal, pass them through when it is not.** A redirected
+stderr corrupts nothing, and that is the case every test run and every
+`2> log` invocation takes -- so the change is invisible to both, which is
+also why the suite could never have caught this.
+
+Deferred rather than suppressed: a diagnostic nobody ever sees is worse
+than one in the wrong place. `suspend()` flushes when it gives the
+terminal back, and `flush_deferred_messages()` is public for an
+application that takes the screen some other way. The buffer is bounded
+at 256 and counts the rest, because a resize storm is exactly when this
+fires and an unbounded buffer would turn a screenful of noise into a leak
+that only shows on a bad day.
 
 ### 7.3 Graphics tier (design.md §17.3)
 
