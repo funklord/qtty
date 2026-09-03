@@ -805,16 +805,36 @@ at all -- and the count of the expected kind is now "at least two",
 which still proves the coalesced frame arrived rather than letting the
 wait give up silently.
 
-The other one is **not fixed and is recorded as unreproduced**:
-"keystroke damage stays inside the widget that changed" failed once and
-then did not fail in sixty-three further runs, eighteen of them with six
-copies of the suite running at once. It now prints the damage rectangle
-and names up to eight changed cells outside the widget when it fails,
-because the condition alone said only that one rectangle was not inside
-another. Its fixture also no longer leaves `QAbstractItemView`'s
-one-shot relayout timer pending across the two renders -- which is wrong
-on its own terms in a check asserting the keystroke is the only
-difference, and is offered as housekeeping rather than as the diagnosis.
+The other one was **recorded as unreproduced**: "keystroke damage stays
+inside the widget that changed" failed once and then did not fail in
+sixty-three further runs. It now prints the damage rectangle and names up
+to eight changed cells outside the widget when it fails, because the
+condition alone said only that one rectangle was not inside another. Its
+fixture also no longer leaves `QAbstractItemView`'s one-shot relayout
+timer pending across the two renders -- which is wrong on its own terms
+in a check asserting the keystroke is the only difference, and was
+offered as housekeeping rather than as the diagnosis.
+
+**Hunted properly on 2026-09-03, and sixty-three runs was not a search.**
+The suite's budget case runs in 0.23 s on its own, so the question is
+cheap to ask at a scale that means something:
+
+    2000 runs, sequential                       0 failures
+    1800 runs, six concurrent streams of 300    0 failures
+
+**3800 clean runs, and that settles the rate rather than the cause.** A
+one-in-sixty-four event does not survive 3800 attempts -- the chance of
+seeing none is `e^-59` -- so whatever produced the single failure is
+either far rarer than the one observation suggested, or it is gone. The
+housekeeping above is the only change that fixture has had since, which
+makes **the pending relayout timer the leading explanation** rather than
+a tidy-up that happened to be nearby.
+
+So this stops being a hunt. If it ever fails again the diagnosis is
+already in the check -- the rectangle and the offending cells print
+themselves -- and that output is worth more than another thousand runs.
+The scripts are not kept: two bounded loops over one binary are three
+lines each, and the numbers above are what a reader needs.
 
 **The sabotage discipline that goes with it**, because a passing new test
 is not evidence: break the code the test claims to defend, confirm the edit
