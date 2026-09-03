@@ -5138,7 +5138,16 @@ well-formed and wrong passes.~~ **Closed, and the round trip is the
 strongest thing in that file**: `suite_graphics.cpp` opens a section
 headed *"round trip: decode what the encoders emit, independently"*, with
 its own `decode_sixel()` written against the specification rather than
-against the encoder. §0a counts 68 checks there.
+against the encoder. The suite runs **97** checks.
+
+(That number was written as 68 in the first draft of this correction,
+quoted from a comment in `suite_backend.cpp` -- and misattributed to §0a
+-- without being counted. **Correcting a stale count by citing an
+unchecked one** is the same fault one level up, and one command settled
+it. The comment is fixed too, and its count removed rather than updated:
+**a number describing another file's present state cannot be maintained
+from where it is written**, which is why it was thirty out and why
+nothing noticed.)
 
 Missing:
 

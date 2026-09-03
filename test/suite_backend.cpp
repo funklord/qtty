@@ -1098,11 +1098,18 @@ int suite_backend() {
 					      && moved.contains(QByteArray("\xe2\x96\x80")),
 					      "and a moved one degrades to the mosaic instead");
 					// iTerm2, the one tier whose emission nothing asserted.
-					// 68 checks in suite_graphics round-trip the encoders --
-					// the parse half is the strongest in that file -- and
-					// sixel and kitty are each checked on the wire above,
-					// while OSC 1337 appeared in no test at all. Third
-					// application of the search key, third find.
+					// suite_graphics round-trips the encoders and its parse
+					// half is the strongest thing in that file; sixel and
+					// kitty are each checked on the wire above, while OSC
+					// 1337 appeared in no test at all. Third application of
+					// the search key, third find.
+					//
+					// That sentence carried a count of suite_graphics'
+					// checks until 2026-09-03, and the count was wrong by
+					// thirty. A number describing ANOTHER file's present
+					// state cannot be maintained from here and nothing was
+					// checking it -- and it propagated, into a project.md
+					// entry written to correct a different stale claim.
 					fflush(stdout);
 					::dup2(slave, 1);          // present() must write to the pty
 					qputenv("QTTY_GRAPHICS", "iterm2");
