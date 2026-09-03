@@ -1030,6 +1030,26 @@ in the suite went through a menu. It has one now, and disabling
 `a->trigger()` reddens it while the older menu check stays green, which
 is the gap made visible.
 
+**So the most-quoted number in this document carries a proof now.** §0a
+opens with "N checks, 0 failures", and that figure is cited through the
+document and in nearly every commit message -- and nothing held it to
+anything. `make count-check` compares it against what the suite actually
+runs and fails naming both numbers, which is the shape the peer sweep
+identified as the one that goes stale: **a claim that names something
+countable**. A limit or a judgement cannot rot the same way; a count can,
+and a count is exactly what a tool can check.
+
+Verified in both directions, because a gate that reads a file and a
+binary can agree by reading neither: moving the document to 846 fails
+with *"project.md says 846 checks, the suite runs 847"*, and putting it
+back passes. It is in `make check`, and it costs the two seconds the
+suite already takes.
+
+That closes the loop on this session's own arithmetic, which drifted
+three times in a day -- 843, 845, 847, each correct when written -- and
+on the four stale claims below, which are the same fault with the number
+spelled out in words.
+
 **Four claims in this document asserted gaps that had been closed**
 (2026-09-03), found by a peer session sweeping every tree for gap
 language and reported with its own caveat that most of its hits were this

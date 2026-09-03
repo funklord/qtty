@@ -22,6 +22,7 @@
 #   make test-valgrind -- the suite under valgrind memcheck
 #   make test-tools   -- the shipped tools and the example, RUN not just built
 #   make test-install -- install into a scratch root and check what landed
+#   make count-check  -- project.md's stated check count against the real one
 #   make coverage F=x -- line coverage for src/**/x.cpp
 #   make check        -- style + test; what must pass before committing
 #   make style        -- the shared source gate and the project.md checks
@@ -600,7 +601,7 @@ record: tests-build
 # arms is that a configuration nobody runs is not a configuration that passed.
 # The shipped tools and the example were built by every one of these runs and
 # executed by none of them.
-check: style layout version-check test test-tools test-install
+check: style layout version-check count-check test test-tools test-install
 
 # -----------------------------------------------------------------------------
 # Gates
@@ -642,6 +643,35 @@ layout:
 # answer.
 style-docs:
 	python3 tool/style_gate.py docs
+
+# project.md opens with "N checks, 0 failures", and that number is cited all
+# through the document and in nearly every commit message. It is the most
+# quoted claim the project makes and nothing was holding it to anything.
+#
+# This is the shape a peer sweep turned up as the one that goes stale: a claim
+# that names something COUNTABLE. Four of those in project.md had outlived
+# their subject -- a class said not to exist, a widget said never to be
+# exercised -- and each was one grep from being caught, with nothing pointing
+# at it. A limit or a judgement cannot go stale the same way; a count can, and
+# so a count should carry its proof.
+#
+# 2>/dev/null is not tidiness, and section 0c says why: the offscreen platform
+# writes to stderr, and in a merged stream it lands mid-line and cuts a PASS
+# line in half. Two runs of one binary counted 744 and 745 for that reason.
+count-check: tests-build
+	@stated=$$(sed -n 's/^\([0-9][0-9]*\) checks, 0 failures.*/\1/p' \
+		project.md | head -1); \
+	actual=$$($(TEST_ENV) timeout $(TEST_TIMEOUT) $(TEST_BIN) 2>/dev/null \
+		| grep -c '^PASS:'); \
+	if [ -z "$$stated" ]; then \
+		echo "count-check: project.md states no check count" >&2; exit 1; \
+	fi; \
+	if [ "$$stated" != "$$actual" ]; then \
+		echo "count-check: project.md says $$stated checks, the suite runs" >&2; \
+		echo "             $$actual. One of them is out of date." >&2; \
+		exit 1; \
+	fi; \
+	echo "count-check: project.md and the suite agree at $$actual checks"
 
 # The commit-msg hook lives in the tree so it is reviewable, survives a clone,
 # and can be kept in sync. .git/hooks is untracked, so a hook that exists only
@@ -786,5 +816,5 @@ distclean: veryclean
 help:
 	@sed -n '/^# TARGETS/,/^#$$/p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
-.PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install tests-build coverage record check style style-source style-docs layout hooks \
+.PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks \
         version-check run install uninstall clean veryclean distclean help FORCE
