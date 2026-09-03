@@ -2074,11 +2074,24 @@ int suite_backend() {
 		// runs qtty_fatal_handler(), which leaves the alternate screen and
 		// takes the sentence with it. That is what 2746 bytes and no sentence
 		// were.
+		// The frame is PRESENTED rather than run through exec(), and that is
+		// not a simplification -- it is what makes this check able to run at
+		// all. Under xcb the first version killed the whole suite: a forked
+		// child inherits the X connection, and one that creates widgets makes
+		// requests on the parent's socket. Measured on a virtual display,
+		//
+		//     qt.qpa.xcb: xcb_shm_create_segment() failed for size 60800
+		//     The X11 connection broke (error 7). Did the X11 server die?
+		//
+		// and the two suites after this one never ran. A frame on the
+		// terminal needs a backend and a CellBuffer; it does not need a
+		// widget, and the widget was the only thing reaching for a display.
 		const QByteArray said = fatal_child(true, [] {
-			QWidget win;
-			QTimer::singleShot(0, [] { qFatal("qtty-check: the last words"); });
 			Qtty::AnsiBackend backend;
-			Qtty::exec(*qApp, win, backend);
+			Qtty::CellBuffer frame(20, 5);
+			frame.text(0, 0, QStringLiteral("a frame is on the screen"));
+			backend.present(frame, QRegion());
+			qFatal("qtty-check: the last words");
 		});
 		const int words = said.indexOf("qtty-check: the last words");
 		const int leave = said.lastIndexOf("\033[?1049l");

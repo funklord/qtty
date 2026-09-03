@@ -20,10 +20,15 @@ number rather than restating it.
 843 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
-been part of it. The 627 and the `test-platforms` run are today's, taken
-from a second account; **xcb is the previous session's measurement and
-was not re-taken**, because that account has no display, and a
-configuration nobody ran is not a configuration that passed.
+been part of it.
+
+**xcb is today's, and it is part of `make test-platforms` now.** It had
+been the previous session's measurement, unrepeatable from this account
+for want of a display, and this document said what that meant: *a
+configuration nobody ran is not a configuration that passed*. `Xvfb` is
+installed, which removes the whole objection -- a virtual display needs no
+watcher and touches nobody's screen -- so the recipe runs it and the
+summary line says `2 platform(s) + 1 hostile environment`.
 
 **A fourth axis was added to that list, and it found a defect that
 stopped the program from starting at all: the fontconfig hint style.**
@@ -835,6 +840,42 @@ already in the check -- the rectangle and the offending cells print
 themselves -- and that output is worth more than another thousand runs.
 The scripts are not kept: two bounded loops over one binary are three
 lines each, and the numbers above are what a reader needs.
+
+**And the configuration nobody ran found a defect on its first run**
+(2026-09-03), which is the second time that sentence belongs in this
+document -- the first was the second account, and the hinting fault.
+Under xcb the suite did not fail a check so much as **die**:
+
+    == exec ==
+    qt.qpa.xcb: xcb_shm_create_segment() failed for size 60800
+    The X11 connection broke (error 7). Did the X11 server die?
+
+805 PASS lines against 843, two failures, and **two whole suites that
+never ran** -- `budget` and `exec` -- because the process was gone.
+
+The cause was a fixture written the same morning. The fatal-message
+checks **fork**, which they must: `qFatal()` aborts the process that
+prints, so no check inside that process can watch it. One of the children
+created a `QWidget` and ran `Qtty::exec()` -- and a forked child inherits
+the X connection, so its requests went out on the parent's socket and
+broke it. Offscreen cannot see that, because there is no connection to
+break.
+
+**The fix made the check simpler rather than more careful.** A frame on
+the terminal needs a backend and a `CellBuffer`; the widget was the only
+thing reaching for a display, and it was never what the check was about.
+The child presents a frame directly now. 843 of 843 under both platforms,
+and the sabotage still discriminates -- the fixture changed, so it was
+re-verified rather than assumed.
+
+**So `make test-platforms` runs xcb under `Xvfb`.** The Makefile's own
+reason for leaving it out was that it "needs a display and puts windows
+on it -- run it when there is somebody to watch", and a virtual display
+answers both halves. It is skipped with a note where `xvfb-run` is
+absent, the way the hostile theme is, and `QTEST_DISABLE_STACK_DUMP` goes
+with it because QtTest forks gdb on a fatal signal -- which is how this
+workspace once lost 15 GB of resident memory to a run nobody was
+watching.
 
 **The sabotage discipline that goes with it**, because a passing new test
 is not evidence: break the code the test claims to defend, confirm the edit

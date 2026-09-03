@@ -206,8 +206,11 @@ TEST_ENV = QTTY_QPA_PLATFORM=$(TEST_PLATFORM) $(TEST_CRASH_ENV)
 # a dialog reserved width for an icon no cell renderer can draw and its button
 # row moved two cells. GridStyle pins that hint now.
 #
-# It is deliberately not the default anyway, because it needs a display and
-# puts windows on it. Run it when there is somebody to watch:
+# It stays out of TEST_PLATFORMS because that list is platforms run directly,
+# and xcb needs a display. It is no longer a configuration nobody runs: the
+# recipe below runs it under Xvfb when Xvfb is installed, which is the whole
+# of what "needs a display and puts windows on it" was an objection to. Run it
+# against a real one when there is somebody to watch:
 #
 #     make test-platforms TEST_PLATFORMS="offscreen xcb"
 TEST_PLATFORMS ?= offscreen
@@ -263,10 +266,21 @@ test: tests-build
 TEST_HOSTILE_THEME ?= gtk3
 QT_PLUGIN_PATH_FOR_CHECK = $(shell $(QMAKE) -query QT_INSTALL_PLUGINS 2>/dev/null)
 
-# The same suite under each platform in TEST_PLATFORMS, then once more with a
-# hostile theme in the environment. A pass under one platform says the code is
-# right for that platform's assumptions and nothing more; this is what makes an
-# assumption visible instead of load-bearing.
+# The same suite under each platform in TEST_PLATFORMS, then under xcb on a
+# virtual display, then once more with a hostile theme in the environment. A
+# pass under one platform says the code is right for that platform's
+# assumptions and nothing more; this is what makes an assumption visible
+# instead of load-bearing.
+#
+# The xcb arm is here rather than in TEST_PLATFORMS because it needs a display
+# and Xvfb supplies one -- no watcher, nobody's screen. It earned its place the
+# first time it ran: a check that forks had a child creating widgets on the
+# parent's X connection, which broke the connection and took the two suites
+# after it with it, and offscreen could not see any of that.
+#
+# QTEST_DISABLE_STACK_DUMP because QtTest forks gdb on a fatal signal, and a
+# crash handler that attaches a debugger is how this workspace once lost 15 GB
+# of resident memory to a test run nobody was watching.
 test-platforms: tests-build
 	@failed=0; ran=0; \
 	for platform in $(TEST_PLATFORMS); do \
@@ -276,6 +290,17 @@ test-platforms: tests-build
 			timeout $(TEST_TIMEOUT) $(TEST_BIN) > /dev/null 2>&1 \
 			&& echo "    ok" || { echo "    FAILED"; failed=$$((failed + 1)); }; \
 	done; \
+	if command -v xvfb-run >/dev/null 2>&1; then \
+		echo "--- $(TEST_BIN) on xcb, under Xvfb"; \
+		xvfb-run -a -s "-screen 0 1280x1024x24" \
+			env QTTY_QPA_PLATFORM=xcb QTEST_DISABLE_STACK_DUMP=1 \
+			timeout $(TEST_TIMEOUT) $(TEST_BIN) > /dev/null 2>&1 \
+			&& { echo "    ok"; ran=$$((ran + 1)); } \
+			|| { echo "    FAILED"; failed=$$((failed + 1)); ran=$$((ran + 1)); }; \
+	else \
+		echo "    note: xvfb-run is absent, so the xcb configuration is not" >&2; \
+		echo "          run and only $(TEST_PLATFORMS) was tested." >&2; \
+	fi; \
 	plugin="$(QT_PLUGIN_PATH_FOR_CHECK)/platformthemes/libq$(TEST_HOSTILE_THEME).so"; \
 	hostile="QT_SCALE_FACTOR=2 QT_SCREEN_SCALE_FACTORS=2"; \
 	if [ -f "$$plugin" ]; then \
