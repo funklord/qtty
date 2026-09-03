@@ -11,6 +11,7 @@
 // use. Including what the file uses is right on every version and is not a
 // position on which versions are supported (section 8.1).
 #include <QAction>
+#include <QFontDatabase>
 #include <QStyleFactory>
 #include <QStyleOption>
 #include <QStyleOptionButton>
@@ -247,12 +248,32 @@ QString grid_font_substitution(const QFont &font) {
 	const QFontInfo info(font);
 	if (info.family().compare(font.family(), Qt::CaseInsensitive) == 0)
 		return QString();
-	return QStringLiteral("'%1' is not installed; '%2' was used instead")
+	// What is tested here is "Qt resolved this to a different name", and the
+	// first version of this sentence said "is not installed" -- a cause it
+	// never asked about. Under the `minimal` platform, which ships no font
+	// database, an INSTALLED DejaVu Sans Mono resolves to '' and the message
+	// sent the reader to install a font they already had. The count is the
+	// part that separates the two: nothing resolves when there is nothing to
+	// resolve against.
+	if (info.family().isEmpty())
+		return QStringLiteral("'%1' resolved to no font at all; the font"
+		                      " database offers %2 families")
+		       .arg(font.family()).arg(QFontDatabase::families().size());
+	return QStringLiteral("'%1' resolved to '%2', which is not the family"
+	                      " asked for")
 	       .arg(font.family(), info.family());
 }
 
 QString grid_font_problem(const QFont &font) {
 	const QFontInfo info(font);
+	// Asked before fixed-pitch, because "which is not fixed pitch" about an
+	// empty family is a statement about nothing: fixedPitch() is false for a
+	// font that was never resolved, so the message accused a font of being
+	// proportional when none had been found.
+	if (info.family().isEmpty())
+		return QStringLiteral("'%1' resolved to no font at all; the font"
+		                      " database offers %2 families")
+		       .arg(font.family()).arg(QFontDatabase::families().size());
 	if (!info.fixedPitch())
 		return QStringLiteral("'%1' resolved to '%2', which is not fixed pitch")
 		       .arg(font.family(), info.family());

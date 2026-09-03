@@ -58,14 +58,33 @@ inline int check_snapshot(const QString &root, const QString &name,
 				       qPrintable(a.value(i)), qPrintable(b.value(i)));
 			}
 		}
+		// Both results read, and that is not pedantry: with open()'s dropped
+		// the write returned -1 on an unwritable path, this printed "new
+		// fixture <path>" and returned 0, and the reader who had just been
+		// told to "run with --record" got the same failure next run with a
+		// success message in between.
 		QFile f(path);
-		f.open(QIODevice::WriteOnly | QIODevice::Truncate);
-		f.write(got.toUtf8());
+		if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)
+		    || f.write(got.toUtf8()) < 0) {
+			fprintf(stderr, "FAIL: fixture %s could not be written: %s\n",
+			        qPrintable(path), qPrintable(f.errorString()));
+			return 1;
+		}
 		return 0;
 	}
 	QFile f(path);
 	if (!f.open(QIODevice::ReadOnly)) {
-		fprintf(stderr, "FAIL: fixture %s missing; run with --record\n", qPrintable(path));
+		// "missing" was a cause this never tested. open() fails just as
+		// readily for a mode-000 file or a directory at that path, and
+		// --record is no remedy for either -- it would fail to write for the
+		// same reason. So existence is asked about, and the advice is given
+		// only to the case it is advice for.
+		if (!QFile::exists(path))
+			fprintf(stderr, "FAIL: fixture %s does not exist;"
+			        " run with --record\n", qPrintable(path));
+		else
+			fprintf(stderr, "FAIL: fixture %s exists but could not be read:"
+			        " %s\n", qPrintable(path), qPrintable(f.errorString()));
 		return 1;
 	}
 	const QString want = QString::fromUtf8(f.readAll());

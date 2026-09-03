@@ -49,8 +49,11 @@ QString grid_font_problem(const QFont &font);
 // 828 checks, nothing anywhere saying a different font was in use. Every other
 // ambient lever this library inherits is pinned (platform, platform theme,
 // scaling) or asked for outright (hinting); the family cannot be pinned,
-// because a font that is not installed cannot be conjured. So it is announced
-// instead, which is the weakest thing that is still honest.
+// because a font Qt does not resolve cannot be conjured. So it is announced
+// instead, which is the weakest thing that is still honest -- and it says what
+// it TESTED, which is that the name came back different. "Is not installed"
+// was the first wording and named a cause this never asks about: under a
+// platform with no font database an installed family resolves to '' too.
 QString grid_font_substitution(const QFont &font);
 
 // section 5.3, and the design calls this "the highest value-per-line component

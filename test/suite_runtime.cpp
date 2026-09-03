@@ -174,7 +174,7 @@ int suite_runtime() {
 		absent.setPixelSize(16);
 		const QString said = grid_font_substitution(absent);
 		CHECK(!said.isEmpty(),
-		      "and a family that is not installed is reported, not accepted");
+		      "and a family Qt resolves elsewhere is reported, not accepted");
 		CHECK(said.contains(QStringLiteral("No Such Family At All"))
 		      && said.contains(QFontInfo(absent).family()),
 		      "naming both what was asked for and what arrived");

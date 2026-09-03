@@ -1,7 +1,10 @@
 // suite_render -- Gate-1 regression as a snapshot (section 9).
 #include <qtty/qtty.h>
 #include <QtWidgets>
+#include <QTemporaryDir>
 #include <cstdio>
+#include <fcntl.h>
+#include <unistd.h>
 
 using Qtty::GridMetrics;
 
@@ -708,6 +711,113 @@ int suite_render(bool record) {
 		else {
 			printf("FAIL: text in an unthemed colour still lands in its cell\n");
 			++r;
+		}
+	}
+
+	// -- the snapshot harness's own failure paths ----------------------------
+	// check_snapshot() writes a fixture and reads one, and both halves
+	// answered with a sentence they had not tested. Recording dropped
+	// open()'s result, so on a path it could not write it printed
+	// "new fixture <path>" and returned 0 having written nothing -- to a
+	// reader who had just been told by the other half to run with --record.
+	// And that other half called every open() failure "missing", which covers
+	// a mode-000 file and a directory at the path just as well, neither of
+	// which --record can fix.
+	//
+	// The helper prints its diagnosis to stderr, and a literal "FAIL:" line
+	// from a check that is passing would read as a failure to anything
+	// grepping this log -- so stderr is captured for the length of each call,
+	// which is also what makes the sentence itself assertable.
+	{
+		QTemporaryDir tmp;
+		QString said;
+		const auto run = [&](const QString &root, const QString &name,
+		                     const QString &got, bool record) {
+			const QByteArray log = tmp.filePath(QStringLiteral("err.txt")).toUtf8();
+			fflush(stderr);
+			const int saved = ::dup(2);
+			const int to = ::open(log.constData(),
+			                      O_WRONLY | O_CREAT | O_TRUNC, 0600);
+			if (to >= 0) ::dup2(to, 2);
+			const int rc = Qtty::test::check_snapshot(root, name, got, record);
+			fflush(stderr);
+			if (to >= 0) { ::dup2(saved, 2); ::close(to); }
+			::close(saved);
+			QFile f(QString::fromUtf8(log));
+			said = f.open(QIODevice::ReadOnly)
+			     ? QString::fromUtf8(f.readAll()) : QString();
+			return rc;
+		};
+
+		if (!tmp.isValid()) {
+			printf("SKIP: no temporary directory, so the harness's own"
+			       " failure paths are untested\n");
+		} else {
+			QDir(tmp.path()).mkpath(QStringLiteral("test/snapshot"));
+			const QString fixture =
+			    tmp.filePath(QStringLiteral("test/snapshot/probe.txt"));
+
+			// The control. Without it the two refusals below would pass
+			// against a helper that had simply stopped writing anything.
+			const int wrote = run(tmp.path(), QStringLiteral("probe"),
+			                      QStringLiteral("one\ntwo\n"), true);
+			QFile made(fixture);
+			const bool exact = made.open(QIODevice::ReadOnly)
+			                && QString::fromUtf8(made.readAll())
+			                   == QStringLiteral("one\ntwo\n");
+			made.close();
+			if (wrote == 0 && exact)
+				printf("PASS: recording a fixture writes what it was handed\n");
+			else {
+				printf("FAIL: recording a fixture writes what it was handed\n"
+				       "      rc %d, bytes match %d\n", wrote, int(exact));
+				++r;
+			}
+
+			if (run(QStringLiteral("/no/such/root"), QStringLiteral("probe"),
+			        QStringLiteral("x"), true) == 1)
+				printf("PASS: and recording where nothing can be written"
+				       " fails instead of claiming success\n");
+			else {
+				printf("FAIL: and recording where nothing can be written"
+				       " fails instead of claiming success\n");
+				++r;
+			}
+
+			const int absent = run(tmp.path(),
+			                       QStringLiteral("never-recorded"),
+			                       QStringLiteral("x"), false);
+			if (absent == 1 && said.contains(QStringLiteral("does not exist")))
+				printf("PASS: a fixture that is not there is diagnosed as"
+				       " not being there\n");
+			else {
+				printf("FAIL: a fixture that is not there is diagnosed as"
+				       " not being there\n      rc %d, said: %s\n",
+				       absent, qPrintable(said.trimmed()));
+				++r;
+			}
+
+			// The other cause, which must NOT be called absence. Skipped for
+			// a user who can read anything, since the fixture would open.
+			QFile::setPermissions(fixture, QFileDevice::Permissions());
+			if (::geteuid() == 0 || QFile(fixture).open(QIODevice::ReadOnly)) {
+				printf("SKIP: this user can read a mode-000 file, so the"
+				       " unreadable-fixture message is untested\n");
+			} else {
+				const int unreadable =
+				    run(tmp.path(), QStringLiteral("probe"),
+				        QStringLiteral("x"), false);
+				if (unreadable == 1
+				    && said.contains(QStringLiteral("could not be read")))
+					printf("PASS: while one that cannot be read is not"
+					       " called missing\n");
+				else {
+					printf("FAIL: while one that cannot be read is not"
+					       " called missing\n      rc %d, said: %s\n",
+					       unreadable, qPrintable(said.trimmed()));
+					++r;
+				}
+			}
 		}
 	}
 

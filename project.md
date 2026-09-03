@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-831 checks, 0 failures, under three configurations: the offscreen
+835 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -6387,7 +6387,7 @@ the fixtures depend on the cell and not the font, measured this time by
 changing the font rather than by pinning the metrics.
 
 A family cannot be pinned the way the platform, the theme, the scaling
-and the hinting are: a font that is not installed cannot be conjured. So
+and the hinting are: a font Qt does not resolve cannot be conjured. So
 it is **announced** -- `grid_font_substitution()` beside the guard, and a
 warning at `setup()` naming both what was asked for and what arrived. It
 is said BEFORE the refusal, because a font the grid rejects is often not
@@ -6399,7 +6399,7 @@ derivations: three checks in the suite, sabotaged both ways (always
 report, never report, one control reddening each), and separately a
 program run on a real terminal with the font removed, which prints
 
-    qtty: 'DejaVu Sans Mono' is not installed; 'Noto Mono' was used instead
+    qtty: 'DejaVu Sans Mono' resolved to 'Noto Mono', which is not the family asked for
 
 after the alternate screen is given back, and prints nothing at all when
 the font is there.
@@ -6409,6 +6409,54 @@ reaches a program that calls `exec()` -- the backend flushes when it
 gives the terminal back -- and is lost by one that calls `setup()` and
 then exits without ever taking a screen. That is the deferral's
 pre-existing shape rather than something this added.
+
+**And the first wording of that warning named a cause it never tested**,
+which is the fault this document had just finished describing, committed
+an hour later in the sentence written to avoid it. `"'%1' is not
+installed"` tests nothing about installation: what it asks is whether Qt
+returned a different name. Under the `minimal` platform, which ships no
+font database, an **installed** DejaVu Sans Mono resolves to `''`:
+
+    qtty: 'DejaVu Sans Mono' is not installed; '' was used instead
+    qtty: the grid needs a font with integral metrics: 'DejaVu Sans Mono'
+          resolved to '', which is not fixed pitch
+
+Both lines are wrong in the same way, and the second is worse: `!info.
+fixedPitch()` is **false for a font that was never resolved**, so it
+accused a font of being proportional when none had been found. Both say
+what they tested now, and both carry the number that separates the two
+causes -- `the font database offers 0 families`, which is a fact the code
+can measure rather than a cause it can guess:
+
+    qtty: 'DejaVu Sans Mono' resolved to no font at all; the font database
+          offers 0 families
+
+Reported by the same peer sweep, one message it had already read in this
+tree's own commit.
+
+**And the snapshot harness said "missing" about a fixture that was
+there, then failed silently to make one.** `check_snapshot()` treated
+every `open()` failure as absence -- a mode-000 file and a directory at
+the path both fail it -- and told the reader to run with `--record`. The
+record path then dropped `open()`'s result and kept only `write()`'s,
+which it also ignored, so on a path it could not write it printed
+`new fixture <path>` and returned **0** having written nothing. A reader
+sent by the first message to the second got a success line and the same
+failure next run. Both results are read now, and existence is asked about
+rather than assumed, so the advice goes only to the case it is advice
+for.
+
+Four checks, in a temporary directory the run makes and removes: a
+recording that works and whose bytes are the ones handed over (the
+control -- without it the two refusals pass against a helper that simply
+stopped writing), a recording into a root that cannot be written, a
+fixture that is not there, and one that cannot be read. The helper writes
+its diagnosis to stderr, so each call is made with fd 2 pointed at a
+file: a literal `FAIL:` line from a passing check would read as a failure
+to anything grepping the log, which is the same trap the pseudo-terminal
+fixture in `suite_backend` records. Sabotaged both ways -- the write
+result discarded again reddens only the second, and every failure called
+absence again reddens only the fourth.
 
 **And a correction to the entry above, which changes one of the two
 answers §0a offers for wide text.** The reason recorded for a bundled
