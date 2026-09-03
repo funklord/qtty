@@ -205,11 +205,44 @@ bool InputRouter::match_shortcut(const KeyEvent &k) {
 	QList<QAction *> actions = scope->actions();
 	const auto children = scope->findChildren<QWidget *>();
 	for (QWidget *c : children) actions += c->actions();
+	// A popup owns input while it is up (section 5.5), and on the desktop a
+	// shortcut does not fire from behind an open menu. Measured against Qt
+	// itself, with a real popup and no router involved:
+	//
+	//     menu closed, Ctrl+S to the window   the action triggered
+	//     menu open,   Ctrl+S to the menu     nothing, and NOT accepted
+	//     menu open,   bare 's' to the menu   triggered it and closed the menu
+	//
+	// So the chord is SWALLOWED here rather than passed on, which is the
+	// middle row: Qt answers such a key by doing nothing and not accepting it.
+	//
+	// Swallowing rather than merely standing down is deliberate, and the
+	// reason is one condition away from being invisible. A first version of
+	// this comment claimed that delivering the chord onward would let Qt's own
+	// QShortcutMap fire it -- measured in a probe, and the probe was wrong
+	// about the runtime: its window was an ordinary one. Qt's map gates on the
+	// widget's window being ACTIVE, and no window activates here because every
+	// one carries WA_DontShowOnScreen. The same program, same keys:
+	//
+	//     ordinary window       Ctrl+S sent to it triggered the action
+	//     WA_DontShowOnScreen   nothing, and activeWindow() is null
+	//
+	// So passing the chord on would be harmless only for as long as that
+	// holds, and this does not depend on it.
+	//
+	// Only a chord that MATCHES is swallowed. A bare letter matches no
+	// shortcut, falls through, and reaches QMenu::keyPressEvent, which is
+	// where the desktop answers it from.
+	const bool popup_owns_input = !popups().isEmpty();
 	for (QAction *a : std::as_const(actions)) {
 		if (!a->isEnabled()) continue;
 		const auto shortcuts = a->shortcuts();
 		for (const QKeySequence &s : shortcuts)
-			if (!s.isEmpty() && s == pressed) { a->trigger(); return true; }
+			if (!s.isEmpty() && s == pressed) {
+				if (popup_owns_input) return true;   // swallowed, not fired
+				a->trigger();
+				return true;
+			}
 	}
 	return false;
 }
@@ -323,8 +356,30 @@ void InputRouter::on_key(const KeyEvent &k) {
 			static_cast<Probe *>(scope)->focusNextPrevChild(!k.shift);
 		}
 		set_focus_widget(scope->focusWidget());
-	} else if (!match_shortcut(k) && !match_mnemonic(k)) {
-		deliver_key(key_target(), k);
+	} else {
+		// The tables do not run while a popup owns input. Section 5.5's order
+		// is popup > modal > window, and key_target() already applies it to
+		// keys; a shortcut firing from behind an open menu breaks the rule
+		// input_scope() refuses to break for a modal, one layer up.
+		//
+		// Measured with a File menu open, before this:
+		//
+		//     Ctrl+W   triggered a WINDOW action
+		//     Ctrl+S   triggered the menu's own Save, menu still on screen
+		//     Alt+O    triggered Open, menu still on screen
+		//
+		// The last is the one a user sees: an item fired and the menu it came
+		// from stayed up, because nothing in the mnemonic path knows a menu is
+		// involved. The key goes to the popup instead, which is where the
+		// desktop answers from -- a bare letter already reaches
+		// QMenu::keyPressEvent, which triggers the item AND closes the menu,
+		// measured as the popup stack going 1 to 0.
+		//
+		// The same predicate key_target() uses, deliberately: whatever owns
+		// keys owns shortcuts, so the two cannot disagree about who is on top.
+		const bool popup_owns_input = !popups().isEmpty();
+		if (!match_shortcut(k) && (popup_owns_input || !match_mnemonic(k)))
+			deliver_key(key_target(), k);
 		set_focus_widget(input_scope()->focusWidget());
 	}
 	QCoreApplication::processEvents();

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-835 checks, 0 failures, under three configurations: the offscreen
+839 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -6873,6 +6873,62 @@ nothing satisfied the pair. It asserts the frame arrived as well.
 **The general form, which is worth more than either fix:** an absence is
 only evidence when something establishes that there was an occasion for
 it. Two absences over one stream are two sentences, not a pair.
+
+**A shortcut fired from behind an open menu** (2026-09-03), which was the
+menu work's own recorded open question -- *"Ctrl+S fires while a menu is
+open and no control was built"* -- and turned out to be three behaviours
+rather than one. Measured against **Qt itself** first, with a real popup
+and no router involved, because the question is what a desktop does:
+
+    menu closed, Ctrl+S to the window   the action triggered
+    menu open,   Ctrl+S to the menu     nothing, and NOT accepted
+    menu open,   bare 's' to the menu   triggered it and closed the menu
+
+and then against this router, with a File menu open:
+
+    Ctrl+W   triggered a WINDOW action
+    Ctrl+S   triggered the menu's own Save, menu still on screen
+    Alt+O    triggered Open, and the menu STAYED UP
+
+The third is the one a user sees. Nothing in the mnemonic path knows a
+menu is involved: it searched the window's actions, found the item, fired
+it, and left the menu it came from on the screen.
+
+One rule covers all three, and it is the rule `input_scope()` already
+applies one layer up for a modal: **§5.5's routing order is popup > modal
+> window, and the tables the router owns must obey it.** The mnemonic
+table stands down while a popup owns input, so Alt+O is answered by
+`QMenu::keyPressEvent` -- which triggers the item AND closes the menu.
+The shortcut table **swallows** a matching chord instead of standing
+down, which is the middle row above: Qt answers such a key by doing
+nothing and not accepting it. Only a chord that matches is taken, so a
+bare letter still falls through to the menu.
+
+**A probe measured something a real application cannot do, and it nearly
+became the reason for the fix.** The first version of the comment said
+that delivering the chord onward would let Qt's own `QShortcutMap` fire
+it -- observed, in a probe whose window was an ordinary one. Qt's map
+gates on the widget's window being ACTIVE, and no window activates in
+this runtime because every one carries `WA_DontShowOnScreen`. The same
+program, the same keys:
+
+    ordinary window       Ctrl+S sent to it triggered the action
+    WA_DontShowOnScreen   nothing, and activeWindow() is null
+
+which also **confirms F3/F4's finding rather than contradicting it**: the
+reason this library owns a shortcut table at all is that Qt's cannot fire
+here. The swallow stays, because it gives the same answer whether or not
+that holds, and the accident is not the thing to build on.
+
+**And the change reddened a check that had been passing on the defect.**
+*"Down then Return fires the menu's item"* was written when an item fired
+by Alt+O left its menu open, so the two keys after it inherited an open
+menu from the bug. The fixture reopens the menu explicitly now, which is
+what it always meant to be doing. Four new checks, each sabotage-verified
+one at a time: removing the swallow reddens the shortcut half, restoring
+the mnemonic table reddens the Alt half, and swallowing unconditionally
+reddens the control -- *"a window shortcut fires with no menu open"* --
+along with F3's own.
 
 **And `make hooks` refused in exactly the trees the work happens in.**
 `test -d .git` is false in a linked worktree, where `.git` is a

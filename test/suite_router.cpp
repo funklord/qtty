@@ -359,10 +359,20 @@ int suite_router() {
 		CHECK(mr.key_target() == file || file->isAncestorOf(mr.key_target()),
 		      "an open menu is what keys are aimed at");
 
-		// Alt-O inside the open menu finds the menu's own item, not the
-		// window behind it.
+		// Alt-O inside the open menu fires the menu's own item, not the
+		// window behind it. It reaches the item through the MENU now rather
+		// than through the router's mnemonic table -- the table stands down
+		// while a popup owns input, for the reasons at the end of this suite
+		// -- and the outcome asserted here is the same either way.
 		mr.on_key({0, QStringLiteral("o"), false, true, false});
 		CHECK(opened == 1, "Alt with an item's mnemonic triggers that item");
+
+		// Reopened, and that is a consequence of the line above rather than
+		// tidying: an item fired from a menu CLOSES it now. These lines were
+		// written when it did not, so they inherited an open menu from the
+		// defect and would otherwise be sending Down and Return at the window.
+		mr.on_key({0, QStringLiteral("f"), false, true, false});
+		QCoreApplication::processEvents();
 
 		// And the keyboard actually drives it: Down then Return fires the
 		// highlighted item. design.md section 16's gate 2 declared popups
@@ -1823,6 +1833,79 @@ int suite_router() {
 		menu.close();
 		win.hide();
 		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
+	{
+		// A shortcut does not fire from behind an open menu. That is section
+		// 5.5's routing order -- popup > modal > window -- applied to the
+		// table this router owns, and it is the same argument input_scope()
+		// already makes one layer up for a modal.
+		//
+		// Measured against Qt itself first, with a real popup and no router
+		// involved:
+		//
+		//     menu closed, Ctrl+S to the window   the action triggered
+		//     menu open,   Ctrl+S to the menu     nothing, and NOT accepted
+		//     menu open,   bare 's' to the menu   triggered it, closed the menu
+		//
+		// and against this router, before the fix, with a File menu open:
+		// Ctrl+W triggered a WINDOW action, Ctrl+S triggered the menu's own
+		// Save without closing the menu, and Alt+O triggered Open and left
+		// the menu on screen.
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *bar = new QMenuBar(&h);
+		bar->setGeometry(0, 0, cw * 30, ch);
+		QMenu *file = bar->addMenu(QStringLiteral("&File"));
+		int opened = 0, elsewhere = 0;
+		QAction *open = file->addAction(QStringLiteral("&Open"));
+		QObject::connect(open, &QAction::triggered, [&opened] { ++opened; });
+		QAction *away = new QAction(QStringLiteral("away"), &h);
+		away->setShortcut(QKeySequence(QStringLiteral("Ctrl+W")));
+		QObject::connect(away, &QAction::triggered,
+		                 [&elsewhere] { ++elsewhere; });
+		h.addAction(away);
+		h.resize(GridMetrics::cells(30, 8));
+		h.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&h);
+
+		// The control first, or everything below passes against a shortcut
+		// table that never fires at all.
+		r.on_key({Qt::Key_W, QStringLiteral("w"), true, false, false});
+		QCoreApplication::processEvents();
+		CHECK(elsewhere == 1, "a window shortcut fires with no menu open");
+
+		r.on_key({0, QStringLiteral("f"), false, true, false});
+		QCoreApplication::processEvents();
+		const int was = elsewhere;
+		r.on_key({Qt::Key_W, QStringLiteral("w"), true, false, false});
+		QCoreApplication::processEvents();
+		CHECK(file->isVisible() && elsewhere == was,
+		      "and does not fire from behind an open menu, which still stands");
+
+		// Selective, and this is the half that keeps the swallow honest: only
+		// a chord that MATCHES a shortcut is taken. A bare letter matches
+		// none, falls through, and reaches QMenu::keyPressEvent -- which is
+		// where the desktop answers it from.
+		r.on_key({Qt::Key_O, QStringLiteral("o"), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(opened == 1 && !file->isVisible(),
+		      "while a bare letter still reaches the menu and closes it");
+
+		// The mnemonic table stands down for the same reason, so Alt+letter
+		// is answered by the menu rather than by a global search that fires
+		// an item and leaves the menu on screen.
+		r.on_key({0, QStringLiteral("f"), false, true, false});
+		QCoreApplication::processEvents();
+		const int before_alt = opened;
+		r.on_key({Qt::Key_O, QStringLiteral("o"), false, true, false});
+		QCoreApplication::processEvents();
+		CHECK(opened == before_alt + 1 && !file->isVisible(),
+		      "and Alt+letter is answered by the menu, which closes");
+		h.hide();
 		QCoreApplication::processEvents();
 		GridGuard::reset();
 	}
