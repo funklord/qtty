@@ -20,6 +20,7 @@
 #   make test-platforms -- the suite under each QPA in TEST_PLATFORMS
 #   make test-sanitize -- the suite under ASan, UBSan and the leak detector
 #   make test-valgrind -- the suite under valgrind memcheck
+#   make test-tools   -- the shipped tools and the example, RUN not just built
 #   make coverage F=x -- line coverage for src/**/x.cpp
 #   make check        -- style + test; what must pass before committing
 #   make style        -- the shared source gate and the project.md checks
@@ -389,6 +390,53 @@ test-sanitize:
 	@QTTY_TEST_TIMEOUT=900 ASAN_OPTIONS=detect_leaks=1 \
 		$(MAKE) test BUILD_DIR=$(SAN_BUILD_DIR) SANITIZE=1
 
+# The three shipped tools and the example, run rather than merely built.
+# `make install` puts all four in $$(PREFIX)/bin, and until now the only thing
+# holding them to anything was the compiler: a tool that aborted at startup
+# would have shipped, and the example -- which exists to show one view codebase
+# serving both targets -- was never once seen to draw.
+#
+# Each assertion is on what the thing is FOR rather than on its exit status: a
+# program that prints nothing and exits 0 satisfies a status check, which is
+# this document's oldest complaint about gates.
+#
+# The example needs a terminal, so it gets a pseudo-terminal from `script` and
+# a Ctrl-D on stdin to leave by. Skipped with a note where `script` is absent,
+# the way the hostile theme and the xcb arm are.
+test-tools: all
+	@fail=0; \
+	out=$$($(INSPECT) < /dev/null 2>/dev/null); \
+	case "$$out" in \
+	*"widget tree"*aligned*"Enable telemetry"*) echo "    inspect: ok";; \
+	*) echo "    inspect: FAILED -- it did not dump a tree"; fail=1;; \
+	esac; \
+	out=$$(printf 'text hi\nframe\n' | $(REPLAY) 2>/dev/null); \
+	case "$$out" in \
+	*"--- frame 0 ---"*hi*) echo "    replay: ok";; \
+	*) echo "    replay: FAILED -- a script produced no frame"; fail=1;; \
+	esac; \
+	out=$$($(NEGOTIATE) < /dev/null 2>/dev/null); \
+	case "$$out" in \
+	*graphics*Halfblocks*"bracketed paste"*no*) echo "    negotiate: ok";; \
+	*) echo "    negotiate: FAILED -- a pipe was not reported as a pipe"; fail=1;; \
+	esac; \
+	if command -v script >/dev/null 2>&1; then \
+		printf '\004' > $(BUILD_DIR)/chat.in; \
+		script -qec "$(EXAMPLE)" $(BUILD_DIR)/chat.out \
+			< $(BUILD_DIR)/chat.in > /dev/null 2>&1; \
+		case "$$(tr -d '\000' < $(BUILD_DIR)/chat.out)" in \
+		*"did the release build pass"*) echo "    example: ok";; \
+		*) echo "    example: FAILED -- it drew no frame"; fail=1;; \
+		esac; \
+		rm -f $(BUILD_DIR)/chat.in $(BUILD_DIR)/chat.out; \
+	else \
+		echo "    note: script(1) is absent, so the example is not run" >&2; \
+	fi; \
+	[ "$$fail" -eq 0 ] || { \
+		echo "test-tools: a shipped program did not do its job" >&2; exit 1; \
+	}; \
+	echo "test-tools: 3 tool(s) and the example, 0 failed"
+
 # The suite under valgrind's memcheck, which catches what the sanitizers do not:
 # a READ of memory that was never written. That is not a hypothetical gap --
 # it found three fixtures in this tree handing QImage(w, h, fmt), whose pixels
@@ -460,7 +508,12 @@ record: tests-build
 # reachable only by typing its name, so the version consistency it enforces
 # and the copyright line it now checks were both unguarded in practice. It is
 # pure sed and grep and costs nothing.
-check: style layout version-check test
+# test-tools is in here rather than left as a target somebody remembers,
+# because it is seconds and because the whole lesson of this Makefile's other
+# arms is that a configuration nobody runs is not a configuration that passed.
+# The shipped tools and the example were built by every one of these runs and
+# executed by none of them.
+check: style layout version-check test test-tools
 
 # -----------------------------------------------------------------------------
 # Gates
@@ -636,5 +689,5 @@ distclean: veryclean
 help:
 	@sed -n '/^# TARGETS/,/^#$$/p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
-.PHONY: all test test-platforms test-sanitize test-valgrind tests-build coverage record check style style-source style-docs layout hooks \
+.PHONY: all test test-platforms test-sanitize test-valgrind test-tools tests-build coverage record check style style-source style-docs layout hooks \
         version-check run install uninstall clean veryclean distclean help FORCE

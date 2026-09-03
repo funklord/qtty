@@ -1030,6 +1030,33 @@ in the suite went through a menu. It has one now, and disabling
 `a->trigger()` reddens it while the older menu check stays green, which
 is the gap made visible.
 
+**And then the four programs this project SHIPS, which were built by
+every run above and executed by none of them.** `make install` puts
+`qtty-inspect`, `qtty-replay`, `qtty-negotiate` and the chat example into
+`$PREFIX/bin`; the only thing holding any of them to anything was the
+compiler. A tool that aborted at startup would have shipped, and the
+example -- which exists to show one view codebase serving both targets --
+had never once been seen to draw.
+
+`make test-tools` runs them, and each assertion is on what the thing is
+FOR rather than on its exit status, since a program that prints nothing
+and exits 0 satisfies a status check:
+
+    inspect     a widget tree, every row "aligned", and the rendering
+    replay      a two-line script produces "--- frame 0 ---" with the text in it
+    negotiate   a pipe reported as Halfblocks/Ansi16 and "no" to the rest
+    example     a pseudo-terminal from script(1), Ctrl-D to leave by, and
+                its own seeded message in the frame
+
+All four passed first time, which is the honest result: nothing was
+broken, and nothing had been checking. Sabotaging `qtty-replay`'s frame
+print reddens **only** the replay arm and leaves the suite green -- which
+is the point of the target, since 845 checks could not see it.
+
+It is in `make check` rather than left as a target somebody remembers. It
+costs seconds, and the whole lesson of the other arms is that a
+configuration nobody runs is not a configuration that passed.
+
 **The sabotage discipline that goes with it**, because a passing new test
 is not evidence: break the code the test claims to defend, confirm the edit
 actually applied (`grep -c SABOTAGE`), run, confirm the *named* check
