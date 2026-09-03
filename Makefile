@@ -21,6 +21,7 @@
 #   make test-sanitize -- the suite under ASan, UBSan and the leak detector
 #   make test-valgrind -- the suite under valgrind memcheck
 #   make test-tools   -- the shipped tools and the example, RUN not just built
+#   make test-install -- install into a scratch root and check what landed
 #   make coverage F=x -- line coverage for src/**/x.cpp
 #   make check        -- style + test; what must pass before committing
 #   make style        -- the shared source gate and the project.md checks
@@ -390,6 +391,71 @@ test-sanitize:
 	@QTTY_TEST_TIMEOUT=900 ASAN_OPTIONS=detect_leaks=1 \
 		$(MAKE) test BUILD_DIR=$(SAN_BUILD_DIR) SANITIZE=1
 
+# What `make install` actually lays down, and what `make uninstall` takes back.
+# Neither had ever been run by anything: a packaging target is exactly the kind
+# that is exercised once by hand and then not again until it matters.
+#
+# The expected list is NAMED while the install rule GLOBS, and that polarity is
+# deliberate. `install` copies `include/qtty/*.h`, so a new public header ships
+# the moment it exists; naming them here means that becomes a failure to be
+# waved through deliberately rather than a thing that happened.
+#
+# Everything happens under $(BUILD_DIR)/stage, which this target creates and
+# removes -- a DESTDIR is the one variable in a packaging rule that must never
+# be allowed to be empty, and the guard below is why.
+INSTALLED_HEADERS = application.h \
+	                  backend.h \
+	                  cell.h \
+	                  color.h \
+	                  delegate.h \
+	                  graphics.h \
+	                  grid.h \
+	                  overlay.h \
+	                  paint.h \
+	                  qtty.h \
+	                  runtime.h \
+	                  testing.h \
+	                  theme.h \
+	                  version.h
+
+INSTALLED_FILES = usr/bin/qtty-inspect usr/bin/qtty-replay usr/lib/libqtty.a \
+                  $(patsubst %,usr/include/qtty/%,$(INSTALLED_HEADERS))
+
+test-install: $(LIB) $(INSPECT) $(REPLAY)
+	@test -n "$(strip $(BUILD_DIR))" || { \
+		echo "test-install: BUILD_DIR is empty, refusing to stage" >&2; exit 1; \
+	}
+	@stage="$(BUILD_DIR)/stage"; \
+	rm -rf "$$stage"; \
+	$(MAKE) --no-print-directory install DESTDIR="$$PWD/$$stage" PREFIX=/usr \
+		> /dev/null || exit 1; \
+	missing=0; \
+	for f in $(INSTALLED_FILES); do \
+		[ -s "$$stage/$$f" ] || { echo "    missing or empty: $$f"; missing=1; }; \
+	done; \
+	for f in usr/bin/qtty-inspect usr/bin/qtty-replay; do \
+		[ -x "$$stage/$$f" ] || { echo "    not executable: $$f"; missing=1; }; \
+	done; \
+	for f in $$(cd "$$stage" && find . -type f | sed 's|^\./||'); do \
+		case " $(INSTALLED_FILES) " in \
+		*" $$f "*) ;; \
+		*) echo "    installed but not named in the list: $$f"; missing=1;; \
+		esac; \
+	done; \
+	$(MAKE) --no-print-directory uninstall DESTDIR="$$PWD/$$stage" PREFIX=/usr \
+		> /dev/null || exit 1; \
+	left=$$(cd "$$stage" && find . -type f | wc -l); \
+	[ "$$left" -eq 0 ] || { \
+		echo "    uninstall left $$left file(s) behind:"; \
+		(cd "$$stage" && find . -type f) ; missing=1; \
+	}; \
+	rm -rf "$$stage"; \
+	[ "$$missing" -eq 0 ] || { \
+		echo "test-install: the packaging rules do not agree with the list" >&2; \
+		exit 1; \
+	}; \
+	echo "test-install: $(words $(INSTALLED_FILES)) file(s) installed and removed"
+
 # The three shipped tools and the example, run rather than merely built.
 # `make install` puts all four in $$(PREFIX)/bin, and until now the only thing
 # holding them to anything was the compiler: a tool that aborted at startup
@@ -401,34 +467,48 @@ test-sanitize:
 # this document's oldest complaint about gates.
 #
 # The example needs a terminal, so it gets a pseudo-terminal from `script` and
-# a Ctrl-D on stdin to leave by. Skipped with a note where `script` is absent,
-# the way the hostile theme and the xcb arm are.
+# a Ctrl-D to leave by. Skipped with a note where `script` is absent, the way
+# the hostile theme and the xcb arm are.
+#
+# The Ctrl-D is sent SIX TIMES, and every run here is under `timeout`, both
+# because the first version of this hung `make check`. A single Ctrl-D written
+# before the program is listening is a Ctrl-D nobody reads: AnsiBackend's
+# constructor spends 100 ms in collect_caps() reading stdin for a terminal's
+# replies, and a keystroke arriving in that window is consumed as one. That is
+# a race for a scripted driver and invisible to a human, and it is also why
+# qtty-replay exists -- it drives the router directly rather than through a
+# terminal.
+#
+# The timeout is the part that is not optional. A gate that can hang is worse
+# than no gate: it does not fail, it stops, and `make check` waits for it.
 test-tools: all
 	@fail=0; \
-	out=$$($(INSPECT) < /dev/null 2>/dev/null); \
+	out=$$(timeout $(TEST_TIMEOUT) $(INSPECT) < /dev/null 2>/dev/null); \
 	case "$$out" in \
 	*"widget tree"*aligned*"Enable telemetry"*) echo "    inspect: ok";; \
 	*) echo "    inspect: FAILED -- it did not dump a tree"; fail=1;; \
 	esac; \
-	out=$$(printf 'text hi\nframe\n' | $(REPLAY) 2>/dev/null); \
+	out=$$(printf 'text hi\nframe\n' \
+		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null); \
 	case "$$out" in \
 	*"--- frame 0 ---"*hi*) echo "    replay: ok";; \
 	*) echo "    replay: FAILED -- a script produced no frame"; fail=1;; \
 	esac; \
-	out=$$($(NEGOTIATE) < /dev/null 2>/dev/null); \
+	out=$$(timeout $(TEST_TIMEOUT) $(NEGOTIATE) < /dev/null 2>/dev/null); \
 	case "$$out" in \
 	*graphics*Halfblocks*"bracketed paste"*no*) echo "    negotiate: ok";; \
 	*) echo "    negotiate: FAILED -- a pipe was not reported as a pipe"; fail=1;; \
 	esac; \
 	if command -v script >/dev/null 2>&1; then \
-		printf '\004' > $(BUILD_DIR)/chat.in; \
-		script -qec "$(EXAMPLE)" $(BUILD_DIR)/chat.out \
-			< $(BUILD_DIR)/chat.in > /dev/null 2>&1; \
+		( i=0; while [ $$i -lt 6 ]; do sleep 0.4; printf '\004'; \
+		  i=$$((i + 1)); done ) \
+		| timeout $(TEST_TIMEOUT) script -qec "$(EXAMPLE)" \
+			$(BUILD_DIR)/chat.out > /dev/null 2>&1; \
 		case "$$(tr -d '\000' < $(BUILD_DIR)/chat.out)" in \
 		*"did the release build pass"*) echo "    example: ok";; \
 		*) echo "    example: FAILED -- it drew no frame"; fail=1;; \
 		esac; \
-		rm -f $(BUILD_DIR)/chat.in $(BUILD_DIR)/chat.out; \
+		rm -f $(BUILD_DIR)/chat.out; \
 	else \
 		echo "    note: script(1) is absent, so the example is not run" >&2; \
 	fi; \
@@ -513,7 +593,7 @@ record: tests-build
 # arms is that a configuration nobody runs is not a configuration that passed.
 # The shipped tools and the example were built by every one of these runs and
 # executed by none of them.
-check: style layout version-check test test-tools
+check: style layout version-check test test-tools test-install
 
 # -----------------------------------------------------------------------------
 # Gates
@@ -689,5 +769,5 @@ distclean: veryclean
 help:
 	@sed -n '/^# TARGETS/,/^#$$/p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
-.PHONY: all test test-platforms test-sanitize test-valgrind test-tools tests-build coverage record check style style-source style-docs layout hooks \
+.PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install tests-build coverage record check style style-source style-docs layout hooks \
         version-check run install uninstall clean veryclean distclean help FORCE

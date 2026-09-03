@@ -1030,11 +1030,16 @@ in the suite went through a menu. It has one now, and disabling
 `a->trigger()` reddens it while the older menu check stays green, which
 is the gap made visible.
 
-**And then the four programs this project SHIPS, which were built by
-every run above and executed by none of them.** `make install` puts
-`qtty-inspect`, `qtty-replay`, `qtty-negotiate` and the chat example into
-`$PREFIX/bin`; the only thing holding any of them to anything was the
-compiler. A tool that aborted at startup would have shipped, and the
+**And then the four programs this project BUILDS, which were built by
+every run above and executed by none of them.** The only thing holding
+any of them to anything was the compiler.
+
+(That sentence said "the four programs this project SHIPS ... `make
+install` puts all four into `$PREFIX/bin`", and so did its commit
+message. **Both were wrong**, and reading the install rule an hour later
+is what said so: it installs `qtty-inspect` and `qtty-replay` and neither
+`qtty-negotiate` nor the example. The correction is here rather than in a
+rewritten commit, and the disagreement it uncovered is below.) A tool that aborted at startup would have shipped, and the
 example -- which exists to show one view codebase serving both targets --
 had never once been seen to draw.
 
@@ -1056,6 +1061,34 @@ is the point of the target, since 845 checks could not see it.
 It is in `make check` rather than left as a target somebody remembers. It
 costs seconds, and the whole lesson of the other arms is that a
 configuration nobody runs is not a configuration that passed.
+
+**Then the packaging rules, which nothing had ever run either.** `make
+install` and `make uninstall` are the pair a distributor uses and a
+project sees exercised once, by hand, long before it matters. Staged into
+a scratch root:
+
+    17 files -- 14 headers, libqtty.a, qtty-inspect, qtty-replay
+    uninstall leaves 0 files and the empty directories, which are the
+    packager's
+
+`make test-install` asserts that, and **the expected list is named while
+the install rule globs**. That polarity is the point: `install` copies
+`include/qtty/*.h`, so a new public header ships the moment it exists, and
+naming them here turns that into something waved through deliberately
+rather than something that happened. Sabotaged both ways -- a header
+dropped from the copy, and a line dropped from `uninstall` -- and each
+names the file at fault.
+
+**And it found a disagreement between the Makefile and itself.** The help
+line said `make install` installs "headers, library, tools and the
+example"; it installs two of the three tools and no example.
+`qtty-negotiate` is built, shipped in the tree, and named in
+`doc/beerssh.md` as a thing to run against a terminal -- and it does not
+get installed. The help line is corrected to what the code does, and
+**whether the negotiator belongs in `$PREFIX/bin` is left flagged rather
+than resolved**: it is a diagnostic users are told to run, which argues
+yes, and it is one more installed name, which argues for deciding rather
+than drifting. §8 is where it sits.
 
 **The sabotage discipline that goes with it**, because a passing new test
 is not evidence: break the code the test claims to defend, confirm the edit
@@ -6774,6 +6807,29 @@ it in either direction.** Which one is wrong is a real question with a
 real answer, and the person who knows it is usually not the one who
 noticed. Each item below states what design.md claims and what the code
 does, and stops there.
+
+### 8.0 `qtty-negotiate` is built and not installed
+
+**The Makefile says:** `make install` installs "headers, library, tools
+and the example" -- said until 2026-09-03, when it was corrected to what
+the rule does.
+
+**The code does:** installs the headers, `libqtty.a`, `qtty-inspect` and
+`qtty-replay`. `qtty-negotiate` and the chat example are built and left
+where they were built.
+
+The example being absent is ordinary. The negotiator is the question:
+`doc/beerssh.md` tells a reader to run
+`qtty-negotiate --probes` against a terminal, and §7.4 records it as the
+tool that answers "what did the terminal actually say" -- which is a
+thing a user does on a machine where qtty misbehaves, not a thing a
+developer does in a source tree. That argues for installing it. Against:
+every installed name is a name a distribution has to carry and a
+collision it has to avoid, and this one is a diagnostic rather than part
+of the library's contract.
+
+Flagged, not resolved. `make test-install` names what is installed today,
+so whichever way this goes it is a change somebody makes on purpose.
 
 ### 8.1 Build system and Qt version
 
