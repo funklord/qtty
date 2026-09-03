@@ -8,6 +8,7 @@
 #include "qtty/theme.h"
 #include "../backend/ansi/ansi_backend.h"
 #include <QtWidgets>
+#include <cstdlib>
 #include <unistd.h>
 
 namespace Qtty {
@@ -240,6 +241,18 @@ void setup(QApplication &app) {
 	// terminal back. Installed in setup() rather than in the backend because
 	// a warning emitted before the first frame is on the same screen.
 	g_previous = qInstallMessageHandler(deferring_handler);
+	// And said at exit, because a program that never takes a screen never
+	// calls suspend() and would otherwise drop them. Measured: a program that
+	// calls setup(), warns about a substituted font and returns from main
+	// printed nothing at all -- the warning was held for a terminal it never
+	// took, and the deferral has no other end.
+	//
+	// atexit rather than qAddPostRoutine, because the flush has to happen for
+	// a plain exit(3) too and not only for QCoreApplication teardown.
+	// g_deferred is constructed before this runs, so it is destroyed after --
+	// the handler cannot be reading a dead vector. _exit(2) still skips it,
+	// which is the abrupt path and is what the control check asserts.
+	std::atexit(flush_deferred_messages);
 	// Bundled-font provisioning (section 5.3) is later Phase-2 work; DejaVu Sans
 	// Mono is the interim source of integral metrics, asserted as designed.
 	QFont f(QStringLiteral("DejaVu Sans Mono"));

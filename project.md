@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-842 checks, 0 failures, under three configurations: the offscreen
+843 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -6420,11 +6420,25 @@ program run on a real terminal with the font removed, which prints
 after the alternate screen is given back, and prints nothing at all when
 the font is there.
 
-**One residue, stated:** the warning is held like any other, so it
-reaches a program that calls `exec()` -- the backend flushes when it
-gives the terminal back -- and is lost by one that calls `setup()` and
-then exits without ever taking a screen. That is the deferral's
-pre-existing shape rather than something this added.
+~~**One residue, stated:** the warning is held like any other... and is
+lost by one that calls `setup()` and then exits without ever taking a
+screen.~~ **Closed the same day, and it was the deferral missing its
+other end.** A program that never takes a screen never calls `suspend()`,
+so nothing ever flushed: `setup()`, a warning, a return from `main`, and
+**nothing printed at all**. `setup()` registers `std::atexit(flush_
+deferred_messages)` now -- `atexit` rather than `qAddPostRoutine`, because
+it has to cover a plain `exit(3)` and not only `QCoreApplication`
+teardown, and `g_deferred` is constructed before the handler is registered
+so it is destroyed after it runs.
+
+`_exit(2)` still skips it, which is the abrupt path and is exactly what
+keeps the control check honest: *"an ordinary warning is still kept off
+the screen"* uses `_exit`, the new one uses `exit`, and the sabotage
+reddens only the second. Confirmed end to end as well, which is the same
+program that printed nothing this morning:
+
+    qtty: 'DejaVu Sans Mono' resolved to 'Noto Mono', which is not the
+          family asked for
 
 **And the first wording of that warning named a cause it never tested**,
 which is the fault this document had just finished describing, committed

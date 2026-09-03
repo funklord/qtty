@@ -2054,6 +2054,19 @@ int suite_backend() {
 		});
 		CHECK(!quiet.contains("qtty-check: this one was held back"),
 		      "while an ordinary warning is still kept off the screen");
+
+		// ...until the program ends, which is the other end the deferral was
+		// missing. A program that never takes a screen never calls suspend(),
+		// so nothing flushed: setup(), a warning, and a return from main
+		// printed nothing at all. The control above still holds because
+		// _exit(2) skips atexit handlers, which is exactly the difference
+		// between the two.
+		const QByteArray at_exit = fatal_child(false, [] {
+			qWarning("qtty-check: this one was held back");
+			::exit(0);
+		});
+		CHECK(at_exit.contains("qtty-check: this one was held back"),
+		      "and is said when the program ends, rather than dropped");
 	}
 	{
 		// With a frame up the screen has to go back FIRST. A message printed
