@@ -40,9 +40,13 @@
 // 6 MB -- and the model is 5000 rows; paying for either per check would
 // dominate the very numbers this suite exists to report.
 #include <qtty/qtty.h>
+#include "src/backend/ansi/ansi_backend.h"
 #include <QtWidgets>
 #include <QElapsedTimer>
+#include <QTemporaryDir>
 #include <cstdio>
+#include <fcntl.h>
+#include <unistd.h>
 
 using namespace Qtty;
 
@@ -263,6 +267,94 @@ int suite_budget() {
 	CHECK(run_damage.rectCount() == 1
 	      && run_damage.boundingRect() == QRect(30, 12, 5, 1),
 	      "a changed run is one rect spanning the run, not the row");
+
+	// ------------------------------------------- what a frame costs the WIRE
+	// The other half of section 11's budget, and the half nothing measured.
+	// Everything above is what a frame costs to RENDER, in milliseconds, which
+	// moves with the machine and is therefore printed. This is what it costs
+	// to SEND, in bytes, which does not move at all -- so it is asserted.
+	//
+	// Measured, on a screen of text in two colours:
+	//
+	//      80x24    1920 cells    5425 bytes   one-cell change   5453
+	//     200x60   12000 cells   33361 bytes   one-cell change  33389
+	//
+	// A keystroke costs a whole screen. present() takes a damage region and
+	// ignores it -- "full-frame emission: measured cheap; damage-limited
+	// output arrives with DEC 2026 bracketing in later polish" is the comment
+	// it opens with -- while the diff that would have avoided it is computed
+	// and asserted three checks up, at one cell. The change is 28 bytes LARGER
+	// than the frame it edits, because the changed cell breaks an SGR run.
+	//
+	// This is a CHARACTERISATION check and is meant to go red the day
+	// damage-limited output lands. It exists because the gap was invisible
+	// from inside the tree: project.md's own next-steps list proposed an
+	// assertion comparing "damage-limited work against full-redraw work", and
+	// there is no damage-limited work to compare against.
+	{
+		QTemporaryDir tmp;
+		if (!tmp.isValid()) {
+			printf("SKIP: no temporary directory, so the wire cost of a"
+			       " frame is untested\n");
+		} else {
+			const QByteArray whole =
+			    tmp.filePath(QStringLiteral("full.bin")).toUtf8();
+			const QByteArray edited =
+			    tmp.filePath(QStringLiteral("typed.bin")).toUtf8();
+			// stdout goes to a FILE, and it is redirected BEFORE the backend
+			// is constructed. Two reasons, and both were paid for elsewhere
+			// in this tree: AnsiBackend takes the terminal in its constructor
+			// when both ends are one, and a suite that grabs the screen
+			// halfway through is one nobody can watch run; and a full 200x60
+			// frame is 33 KB, which would block on a pipe or a pseudo-terminal
+			// that nobody is draining.
+			fflush(stdout);
+			const int saved = ::dup(1);
+			const int f1 = ::open(whole.constData(),
+			                      O_WRONLY | O_CREAT | O_TRUNC, 0600);
+			int f2 = -1;
+			if (f1 >= 0) {
+				::dup2(f1, 1);
+				AnsiBackend wire;
+				wire.present(after, QRegion());
+				fflush(stdout);
+				f2 = ::open(edited.constData(),
+				            O_WRONLY | O_CREAT | O_TRUNC, 0600);
+				if (f2 >= 0) ::dup2(f2, 1);
+				wire.present(one_changed, QRegion());
+				fflush(stdout);
+			}
+			::dup2(saved, 1);
+			::close(saved);
+			if (f1 >= 0) ::close(f1);
+			if (f2 >= 0) ::close(f2);
+			const qint64 full =
+			    QFileInfo(QString::fromUtf8(whole)).size();
+			const qint64 typed =
+			    QFileInfo(QString::fromUtf8(edited)).size();
+			printf("info: 200x60 on the wire: %lld bytes, and %lld after a"
+			       " one-cell change\n", (long long)full, (long long)typed);
+			// The premise, because a ratio between two empty files is 1 and
+			// would satisfy the check below without anything having been sent.
+			CHECK(full > qint64(grid_cols) * grid_rows,
+			      "a full frame on the wire is bigger than its cell count");
+			// An absolute floor as well as the ratio, and the sabotage is
+			// what put it there: truncating every frame to 120 bytes -- a
+			// stand-in for the damage-limited output this is watching for --
+			// reddened the premise above and left the ratio GREEN, because it
+			// shrank both sides equally. A ratio between two numbers from the
+			// same code path cannot see a uniform change.
+			//
+			// 1000 bytes is twenty times what one cell can possibly need: a
+			// cursor address, an SGR, a cluster and a reset come to under
+			// fifty. So this says what it means -- the wire carries orders of
+			// magnitude more than the damage does.
+			CHECK(typed > 1000 && typed > full / 2
+			      && one_changed.diff_cells(after) == 1,
+			      "and a one-cell change still costs a whole frame, the"
+			      " damage region being ignored");
+		}
+	}
 
 	// ---------------------------------------- the 5000 rows are not painted
 	// Why a 5000-row model is affordable at all: the view asks the model only

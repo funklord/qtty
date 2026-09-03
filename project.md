@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-839 checks, 0 failures, under three configurations: the offscreen
+841 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -880,11 +880,16 @@ In the order I would take them, and none is blocked:
    no decision at all**, and this machine has only one -- which is what
    keeps the beerssh exposure (a probe that passed on 6.10 and failed on
    6.4.2) an unmeasured one here rather than a clean bill.
-6. **`suite_budget` prints and does not assert**, deliberately, because the
-   same binary rendered the same fixture in 1.35 ms and 2.41 ms minutes
-   apart. If a stable assertion is ever wanted it has to be a
-   *relationship* -- damage-limited work against full-redraw work, in cells
-   rather than milliseconds -- not a threshold on a clock.
+6. ~~**`suite_budget` prints and does not assert**, deliberately... if a
+   stable assertion is ever wanted it has to be a *relationship* --
+   damage-limited work against full-redraw work.~~ **Taken, and the item
+   was wrong about what there is to compare.** Durations are still
+   printed, for the reason it gives -- the same binary rendered the same
+   fixture in 1.35 ms and 2.41 ms minutes apart. What is assertable is
+   what a frame costs on the **wire**, in bytes, which does not move with
+   load at all. And there is no damage-limited work to compare against:
+   `AnsiBackend::present()` takes a damage region and ignores it, which
+   §7.1 now carries with the price.
 
 ## 0. What this is
 
@@ -6929,6 +6934,50 @@ one at a time: removing the swallow reddens the shortcut half, restoring
 the mnemonic table reddens the Alt half, and swallowing unconditionally
 reddens the control -- *"a window shortcut fires with no menu open"* --
 along with F3's own.
+
+**A keystroke costs a whole screen, and nothing had measured it**
+(2026-09-03). §0e's sixth item asked for a stable assertion in
+`suite_budget` shaped as *"damage-limited work against full-redraw
+work"* -- and there is no damage-limited work. `AnsiBackend::present()`
+takes a `QRegion` of damage and ignores it, which its own first comment
+says plainly:
+
+    // Full-frame emission: measured cheap (section 16.1 F9);
+    // damage-limited output arrives with DEC 2026 bracketing in later polish.
+
+**That sentence is in the code and was nowhere in this document**, which
+is how the next-steps list came to propose comparing against something
+that does not exist. So the deferral is priced rather than left as a
+comment. Measured on a screen of text in two colours, and on this suite's
+own 200x60 fixture:
+
+     80x24    1920 cells    5425 bytes   one-cell change   5453
+    200x60   12000 cells   33361 bytes   one-cell change  33389
+    200x60 table fixture   13927 bytes   one-cell change  13927
+
+The diff finds **one cell** and the wire carries the whole screen. The
+edited frame is 28 bytes *larger* than the one it edits, because the
+changed cell breaks an SGR run. At 20 frames a second over the 50 ms
+link §11 names, a dense 200x60 screen is **660 KB/s of mostly unchanged
+text**; a single cell needs under fifty bytes.
+
+Rendering is not the constraint this measures. §11's budget is stated in
+milliseconds of render and the render is fast; what a slow link pays for
+is bytes, and that half had one measurement in the whole tree -- 1683
+bytes from a two-line script -- and none at screen scale.
+
+Two checks hold it, and they are **characterisation** rather than
+approval: they are meant to go red the day damage-limited output lands.
+The first is the premise, that a full frame is bigger than its cell
+count, because a ratio between two empty files is 1.
+
+**And the sabotage rewrote the second one.** Truncating every frame to
+120 bytes -- a stand-in for exactly the damage-limited output this
+watches for -- reddened the premise and left the ratio **green**, because
+it shrank both sides equally. *A ratio between two numbers from the same
+code path cannot see a uniform change.* An absolute floor went in beside
+it: 1000 bytes, twenty times what one cell can possibly need. Both
+sabotages redden both checks now.
 
 **And `make hooks` refused in exactly the trees the work happens in.**
 `test -d .git` is false in a linked worktree, where `.git` is a
