@@ -1030,6 +1030,27 @@ in the suite went through a menu. It has one now, and disabling
 `a->trigger()` reddens it while the older menu check stays green, which
 is the gap made visible.
 
+**And the day's own lesson landed on me, in the commit that closed the
+last gap** (2026-09-03). `make check` came back **EXIT=2** and I committed
+anyway: I had grepped its output for `^OK|FAILED|count-check` and read
+what came back rather than the exit status sitting in the same lines. The
+failure was the style gate, on a `§` in a new comment -- the same
+non-ASCII rule that caught a block-drawing character earlier the same
+day.
+
+Two faults, and the second is the one worth keeping. I had run the style
+gate on that file before building, in a command that also launched a
+background job -- and **the gate's output went to the terminal with the
+job's start message and never reached me.** I recorded it as run. A gate
+whose output nobody reads is the same thing as a gate that was not run,
+which is this document's oldest sentence, and it arrived here as silence
+rather than as a pass.
+
+Fixed forward within the minute, and the check is green. The rule that
+comes out of it is procedural and small: **read the exit status, not a
+grep of the output** -- a pattern chosen before the run cannot match a
+failure the run did not expect.
+
 **The same detector, pointed at the code, found three more and cleared
 two** (2026-09-03). Comments carry counts here too, and the sweep is one
 grep for a number beside a noun:

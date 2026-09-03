@@ -3064,7 +3064,7 @@ int suite_widgets() {
 	}
 
 	{
-		// Partial-line scrolling, which §7.2 listed as the one thing about
+		// Partial-line scrolling, which section 7.2 listed as the one thing
 		// text widgets that nothing exercised. It does the right thing, and
 		// this records what that is: content moves in WHOLE CELLS, and a
 		// scroll of part of a line shows the same frame as the line it is
