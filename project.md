@@ -17,10 +17,11 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-843 checks, 0 failures, under four configurations: the offscreen
-platform, xcb, the hostile environment `make test-platforms` builds, and
-a build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
-detector.
+843 checks, 0 failures, under five configurations: the offscreen
+platform, xcb, the hostile environment `make test-platforms` builds, a
+build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
+detector, and a **debug** build -- which is not the same code, `setup()`
+installing `GridGuard` itself under `!QT_NO_DEBUG`.
 `make check` is green and now includes `version-check`, which had never
 been part of it.
 
@@ -912,6 +913,21 @@ recipe in this file for the reason the xcb arm is: a configuration that
 lives only in a document is one nobody runs. The sanitized run costs 3.6
 seconds against 1.8 once built, so re-running it is not a decision
 anybody has to weigh.
+
+**And a debug build, which is not the same code.** `DEBUG=1` is the other
+documented flag with no recorded run, and it differs from release in a
+way that matters here rather than only in optimisation: `setup()`
+installs `GridGuard` itself under `!QT_NO_DEBUG`, so the guard goes in
+BEFORE `GridSnap` and Qt's event filters run last-installed-first. In
+release the guard is installed by `main.cpp` after `setup()` and runs
+first.
+
+It failed on its first run -- `make test BUILD_DIR=build-dbg DEBUG=1`,
+one check, *"a QSplitter lays its panes off the grid, and a snap does not
+move them"* -- and the failure was the check's rather than the code's.
+§7.2's splitter entry carries the whole of it: a tripwire that read a
+counter of assignments stayed green through the change it was set for,
+and the debug build is what made the same counter say the opposite thing.
 
 **The sabotage discipline that goes with it**, because a passing new test
 is not evidence: break the code the test claims to defend, confirm the edit
@@ -3331,15 +3347,39 @@ code changed is only honest if the diff is the change.
   a splitter test at all revealed. `GridGuard` reported 36 violations the
   moment one existed.
 
-  It is not fixed here, because fixing it means snapping child geometry,
-  which is exactly §7.8's open question and the copyright holder's to
-  decide. What is done instead is to **assert the count**: the suite
-  checks that nothing before the splitter left the grid, then that the
-  splitter block does. The day snapping lands, that second check goes red
-  and this entry has to be brought up to date -- which is better than a
-  paragraph nobody re-reads. Aligned splits do exist for this geometry
-  (140/150 sums to the same 290), so the decision is not blocked by
-  arithmetic.
+  ~~It is not fixed here... what is done instead is to **assert the
+  count**... the day snapping lands, that second check goes red and this
+  entry has to be brought up to date.~~ **Snapping landed, and the
+  tripwire did not fire** -- which is the part worth keeping.
+
+  `GridSnap` is on by default now (§0a), and the check written to notice
+  that read `GridGuard::violations()`, a counter of geometry
+  **assignments**. A splitter assigns off-grid and the snap corrects it,
+  over and over, so the counter kept rising and the tripwire stayed green
+  through the very change it was set for.
+
+  **A debug build is what exposed it**, by making the same counter say the
+  opposite thing. `setup()` installs the guard itself under `!QT_NO_DEBUG`
+  while release leaves that to `main.cpp` after `setup()` -- so the guard
+  runs before `GridSnap` in one build and after it in the other, and sees
+  the raw assignment or the corrected result accordingly. The identical
+  check passed in release and failed under `DEBUG=1` with nothing about
+  the splitter different in either.
+
+  Measured after a drag, in both builds:
+
+      pane 0    230x76+0+0     on the grid
+      pane 1     60x76+240+0   on the grid
+      splitter  300x76, handle 10 px = one cell
+      32 snaps, 24 guard violations
+
+  So the panes are **not** left off the grid: the snap wins, and the 24
+  are the assignments it corrected. The check reads the panes now, with
+  `snapped() > 0` beside it so that a splitter which never left the grid
+  could not satisfy it, and it says the same thing in both builds.
+  Aligned splits do exist for this geometry (140/150 sums to the same
+  290), which is what made the correction possible rather than a
+  compromise.
 - ~~The `QTextEdit` interaction layer is absent.~~ **It works, and
   needed no code** -- which makes it the fourth gap in this document that
   was an obstruction rather than an absence. F8 had already measured that

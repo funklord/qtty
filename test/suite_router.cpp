@@ -778,6 +778,7 @@ int suite_router() {
 		QSplitterHandle *handle = sp->handle(1);
 		const int hcell = handle ? handle->mapTo(&h, QPoint(0, 0)).x() / cw : -1;
 		InputRouter r(&h);
+		GridSnap::reset();                   // so the count below is this drag's
 		r.on_mouse({QPoint(hcell, 1), 1, true, false, false, 0});
 		for (int x = hcell; x <= 22; ++x) r.on_mouse({QPoint(x, 1), 1, false, false, true, 0});
 		r.on_mouse({QPoint(22, 1), 1, false, true, false, 0});
@@ -789,15 +790,42 @@ int suite_router() {
 		// check that cannot fail for the reason it was written is worse than
 		// no check, so the splitter drag above carries the grab on its own --
 		// which the sabotage run confirms it does.
+
+		// Still off the grid WITH GridSnap installed, which is the thing
+		// worth asserting now that setup() installs it. A splitter assigns
+		// its panes' geometry itself and re-asserts it, so the correction is
+		// fought rather than missed -- the same shape as a fixed size the
+		// snap cannot move, and the same division of labour: setSizes() in
+		// cell multiples is the application's to call. Section 7.8 carries
+		// it.
+		//
+		// And the snap WINS, which is not what the sentence here used to
+		// say. Measured after the drag:
+		//
+		//     pane 0    230x76+0+0     on the grid
+		//     pane 1     60x76+240+0   on the grid
+		//     splitter  300x76, handle 10 px = one cell
+		//     32 snaps, and 24 guard violations
+		//
+		// The 24 are the ASSIGNMENTS the guard saw before the snap corrected
+		// them, not a lasting state -- and the check that stood here read
+		// exactly that counter, so it was reporting a property of the HARNESS
+		// rather than of the splitter. The guard sees pre-snap geometry only
+		// when it is installed after GridSnap; a debug build swaps the two,
+		// because setup() installs the guard itself under !QT_NO_DEBUG while
+		// in release main.cpp installs it after setup() has installed the
+		// snap. Measured: the identical check passed in release and failed
+		// under DEBUG=1, with nothing about the splitter different in either.
+		//
+		// So it reads the panes. `snapped() > 0` is the other half: without
+		// it, a splitter that never left the grid would satisfy `off == 0`
+		// and the check would say nothing about snapping at all.
+		int off = 0;
+		for (int i = 0; i < sp->count(); ++i)
+			if (!GridMetrics::is_aligned(sp->widget(i)->geometry())) ++off;
+		CHECK(GridSnap::installed() && off == 0 && GridSnap::snapped() > 0,
+		      "a QSplitter's panes are dragged off the grid and snapped back");
 	}
-	// Still off the grid WITH GridSnap installed, which is the thing worth
-	// asserting now that setup() installs it. A splitter assigns its panes'
-	// geometry itself and re-asserts it, so the correction is fought rather
-	// than missed -- the same shape as a fixed size the snap cannot move, and
-	// the same division of labour: setSizes() in cell multiples is the
-	// application's to call. Section 7.8 carries it.
-	CHECK(GridSnap::installed() && GridGuard::violations() > 0,
-	      "a QSplitter lays its panes off the grid, and a snap does not move them");
 	GridGuard::reset();
 
 	{
