@@ -1055,6 +1055,22 @@ The bytes wait in the decoder's buffer until `set_event_sink()` is
 called, because `decode_one()` clears the buffer when there is no sink --
 so draining any earlier would throw away exactly what was just saved.
 
+**And the residue has a consequence, found by trying to collect on it.**
+`make test-tools` drives the example with six Ctrl-Ds, which had been a
+workaround for the hang this defect caused; with the defect fixed the
+repetition looked unnecessary, so it was cut to one and the arm passed
+three times. **Then the sabotage was run against it and the arm stayed
+green** -- so the single Ctrl-D was not exercising the fix at all. It is
+forwarded by `script` at a time nobody controls, and a byte that lands
+midway through the reply window falls in exactly the gap this fix
+deliberately does not close. Three passing runs were luck.
+
+The six are back, and the comment now says which reason each is for.
+**A workaround removed on the strength of a fix is a claim, and the way
+to test it is the sabotage that proves the fix** -- not three green runs.
+The suite's own checks do exercise the fix, because they write to the
+pseudo-terminal before the fork rather than hoping about timing.
+
 Two checks, both directions: a child whose pty is written to before the
 fork, and one whose is not. Without the second, a decoder that invented a
 keystroke would pass. Removing the retention reddens the first and leaves

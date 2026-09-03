@@ -470,14 +470,21 @@ test-install: $(LIB) $(INSPECT) $(REPLAY)
 # a Ctrl-D to leave by. Skipped with a note where `script` is absent, the way
 # the hostile theme and the xcb arm are.
 #
-# The Ctrl-D is sent SIX TIMES, and every run here is under `timeout`, both
-# because the first version of this hung `make check`. A single Ctrl-D written
-# before the program is listening is a Ctrl-D nobody reads: AnsiBackend's
-# constructor spends 100 ms in collect_caps() reading stdin for a terminal's
-# replies, and a keystroke arriving in that window is consumed as one. That is
-# a race for a scripted driver and invisible to a human, and it is also why
-# qtty-replay exists -- it drives the router directly rather than through a
-# terminal.
+# The Ctrl-D is sent SIX TIMES, and that is not superstition. The first
+# version of this hung `make check`, which turned out to be a real defect --
+# collect_caps() read the terminal's replies and dropped everything else in the
+# buffer, so a keystroke arriving before the program had drawn was one nobody
+# saw. That is fixed.
+#
+# The repetition was then tried at ONE, on the theory that the fix made it
+# unnecessary, and the theory was wrong: the fix keeps the bytes that arrive
+# BEFORE the first ESC, and a byte `script` forwards midway through the reply
+# window still falls in the gap the fix deliberately does not close. Sabotaging
+# the retention left this arm green, which is what said so -- three passing
+# runs at one Ctrl-D were luck, not evidence.
+#
+# So six, and the comment says which of the two reasons each is for: one lands
+# before the window and one after it, and the arm no longer depends on which.
 #
 # The timeout is the part that is not optional. A gate that can hang is worse
 # than no gate: it does not fail, it stops, and `make check` waits for it.
