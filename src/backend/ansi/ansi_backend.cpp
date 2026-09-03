@@ -1,4 +1,5 @@
 #include "ansi_backend.h"
+#include "../../runtime/terminal_owner.h"
 #include "qtty/graphics.h"
 #include "qtty/grid.h"
 #include "qtty/theme.h"
@@ -542,6 +543,11 @@ void AnsiBackend::resume() {
 		g_installed = true;
 	}
 	active_ = true;
+	// From here the screen is this backend's, which the fatal-message path
+	// needs to know: it gives the terminal back before printing, and until
+	// this line only exec() knew, so an application driving its own frame
+	// loop printed onto a frame about to be torn down (terminal_owner.h).
+	set_terminal_owner(this);
 }
 
 void AnsiBackend::suspend() {
@@ -567,6 +573,7 @@ void AnsiBackend::suspend() {
 		g_installed = false;
 	}
 	active_ = false;
+	set_terminal_owner(nullptr);                 // and it is nobody's again
 	// The terminal is the user's again, so anything held back can be said.
 	flush_deferred_messages();
 }

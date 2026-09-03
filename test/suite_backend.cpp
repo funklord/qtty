@@ -2074,6 +2074,26 @@ int suite_backend() {
 		CHECK(leave >= 0 && words > leave,
 		      "and arrives after the alternate screen was given back");
 	}
+	{
+		// The same thing through the seam an application drives ITSELF.
+		// backend.h supports a custom frame loop, and while the owner was
+		// registered by exec() that application was the one case left out:
+		// exec() was the only thing that knew who had the screen, so a
+		// program driving a backend directly printed its last words onto a
+		// frame about to be torn down. resume() and suspend() are where that
+		// actually changes, and they say so now (terminal_owner.h).
+		//
+		// No exec() here, and no widget: the backend is taken and the process
+		// dies, which is the whole of the case.
+		const QByteArray said = fatal_child(true, [] {
+			Qtty::AnsiBackend backend;          // its constructor resumes
+			qFatal("qtty-check: the last words");
+		});
+		const int words = said.indexOf("qtty-check: the last words");
+		const int leave = said.lastIndexOf("\033[?1049l");
+		CHECK(words >= 0 && leave >= 0 && words > leave,
+		      "and so does one from a frame loop the application drives");
+	}
 
 	return fails;
 }

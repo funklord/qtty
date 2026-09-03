@@ -1,6 +1,7 @@
 // src/runtime/application.cpp -- L6 entry points (section 5.6), wired to the real
 // section 5 architecture: AnsiBackend -> InputRouter -> Compositor -> FrameScheduler.
 #include "qtty/application.h"
+#include "terminal_owner.h"
 #include "qtty/grid.h"
 #include "qtty/paint.h"
 #include "qtty/runtime.h"
@@ -53,9 +54,10 @@ struct Held { QString text; int count = 1; };
 QVector<Held> g_deferred;
 int g_dropped = 0;
 QtMessageHandler g_previous = nullptr;
-// The backend that has the screen, while exec() is running. A fatal message
-// has to be printed where somebody can read it, and the alternate screen is
-// not that place -- see below.
+// The backend that has the screen. Set by the backend itself, in resume() and
+// suspend() -- see terminal_owner.h for why those two and not exec(). A fatal
+// message has to be printed where somebody can read it, and the alternate
+// screen is not that place: see below.
 ITerminalBackend *g_backend = nullptr;
 
 void deferring_handler(QtMsgType type, const QMessageLogContext &ctx,
@@ -102,6 +104,10 @@ void deferring_handler(QtMsgType type, const QMessageLogContext &ctx,
 }
 
 } // namespace
+
+// terminal_owner.h: the backend says when it has the screen and when it does
+// not. Defined here because the handler that asks is here.
+void set_terminal_owner(ITerminalBackend *owner) { g_backend = owner; }
 
 void flush_deferred_messages() {
 	const QVector<Held> held = g_deferred;
@@ -367,8 +373,6 @@ Capabilities capabilities() { return s_caps; }
 int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	s_tuiActive = true;
 	s_caps = backend.capabilities();
-	// Who to ask for the screen back if this run dies with a qFatal.
-	g_backend = &backend;
 
 	const QSize cells = backend.size();
 	win.setAttribute(Qt::WA_DontShowOnScreen);
@@ -398,7 +402,6 @@ int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	const int rc = app.exec();
 	s_tuiActive = false;
 	s_caps = Capabilities{};
-	g_backend = nullptr;                         // it is about to go out of scope
 	return rc;
 }
 

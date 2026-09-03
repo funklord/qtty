@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-841 checks, 0 failures, under three configurations: the offscreen
+842 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4453,13 +4453,24 @@ child that draws a frame draws a small one -- a fresh pseudo-terminal is
 0x0, which `FrameScheduler` refuses, and an inherited size would make how
 much the child writes depend on the window the suite happens to run in.
 
-**The residue, stated rather than fixed:** the pointer is taken in
+~~**The residue, stated rather than fixed:** the pointer is taken in
 `exec()`, so an application driving a backend through its own frame loop
--- which `backend.h` explicitly supports -- has no backend registered and
-gets the message onto the alternate screen. That is the state everything
-was in before today rather than a regression, and closing it means
-registering in `resume()`/`suspend()` instead, which is where "who has the
-screen" actually changes.
+has no backend registered.~~ **Closed the same day**, and the fix is the
+one the sentence named: the pointer is set by the BACKEND, in `resume()`
+and `suspend()`, which are the two calls where "who has the screen"
+actually changes. `exec()` never sees a frame loop an application drives
+itself, and `backend.h` exists to support exactly that.
+
+One declaration in `src/runtime/terminal_owner.h`, internal for the reason
+`cell_geometry.h` gives for being internal, and **one writer**: `exec()`
+does not set it any more, because two places answering "who has the
+screen" is the parallel-copy hazard with a pointer instead of a rule.
+
+The check drives the seam rather than `exec()` -- a backend constructed, a
+`qFatal`, and nothing else -- and the sabotage is what makes it worth
+having: **restoring the previous arrangement leaves the `exec()` check
+green and reddens only this one.** That is the residue reproduced rather
+than remembered.
 
 **A click on a menu item dismissed the menu instead of firing it**
 (2026-09-02), and the reason had been recorded as somebody else's fault.
