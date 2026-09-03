@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-850 checks, 0 failures, under six configurations: the offscreen
+852 checks, 0 failures, under six configurations: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
 detector, a **debug** build -- which is not the same code, `setup()`
@@ -1169,6 +1169,21 @@ The bytes wait in the decoder's buffer until `set_event_sink()` is
 called, because `decode_one()` clears the buffer when there is no sink --
 so draining any earlier would throw away exactly what was just saved.
 
+**And re-taking coverage found a path nothing was exercising**
+(2026-09-04), which is what the declined item above turned into.
+`97.77%, 2675 of 2736`, and reading the uncovered lines rather than the
+percentage is what paid: two of them, `application.cpp:104` and `:125`,
+are the deferral's **cap** -- the branch that stops keeping distinct
+messages and starts counting them, and the line that reports the count.
+Unlike the abort paths around them, nothing was reaching those. §6's
+contrast check warns per cell per frame, so a resize storm is exactly
+when they fire.
+
+Two checks now: three hundred distinct warnings from a forked child, and
+the report must appear; and the first messages must be the ones kept, not
+the last. Raising `kMaxDeferred` past the test reddens both -- the second
+because with nothing dropped, message 299 is there too.
+
 **Both heavyweight instruments were re-run over the day's changes**
 (2026-09-04), because neither had seen `strip_escapes()` -- a byte
 scanner written by hand, with index arithmetic, which is precisely what
@@ -1382,11 +1397,16 @@ In the order I would take them:
    named there: a typed arrow or function key inside the query window is
    still lost.
 
-4. **Eleven covered lines that gcov does not count.** They run only in
-   processes that die by `abort()` -- the fatal-message branch, its
-   signal handlers, the `minimal` refusal -- and `.gcda` is written only
-   on a normal exit. `__gcov_dump()` before `_exit` in the fork fixture
-   would count them. Worth it only when the coverage figure next matters.
+4. ~~**Eleven covered lines that gcov does not count.**~~ **Looked at
+   and declined, 2026-09-04, with the reason recorded rather than the
+   item dropped.** Every recoverable line is on an abort path, so
+   `__gcov_dump()` before `_exit` recovers none of them; it would need a
+   `SIGABRT` handler doing work that is not async-signal-safe. And the
+   lines are already held by checks that redden when they break, which is
+   **stronger evidence than a counter** -- the machinery would only make
+   a proxy agree with a proof this tree already has. Re-taken coverage
+   led somewhere better instead: two of the uncovered lines were not an
+   instrument artefact at all.
 
 5. ~~**Partial-line scrolling**, the one gap §7.2 still claims that this
    session could not verify either way.~~ **Taken the same day**: it was

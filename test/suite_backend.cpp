@@ -2080,6 +2080,27 @@ int suite_backend() {
 		CHECK(without.contains("TYPED[]"),
 		      "and nothing is invented when nothing was typed");
 
+		// The deferral's CAP, which nothing had reached. The buffer holds 256
+		// distinct messages and counts the rest, and a resize storm is
+		// exactly when that fires -- section 6's contrast check warns per
+		// cell, per frame. Coverage is what pointed here: the two lines that
+		// drop and then report were the only ones in the handler that no run
+		// had entered, and unlike the abort paths around them they are not an
+		// instrument artefact. Nothing was exercising them.
+		//
+		// exit(0) rather than _exit(0), because the atexit flush is what
+		// prints the report.
+		const QByteArray many = fatal_child(false, [] {
+			for (int i = 0; i < 300; ++i)
+				qWarning("qtty-check: distinct message %d", i);
+			::exit(0);
+		});
+		CHECK(many.contains("further distinct message(s)"),
+		      "past its cap the deferral counts what it drops");
+		CHECK(many.contains("qtty-check: distinct message 0")
+		      && !many.contains("qtty-check: distinct message 299"),
+		      "and keeps the first ones rather than the last");
+
 		// Interleaved, which is the case the first version of this fix left
 		// open: it kept only what arrived before the first ESC. Over a slow
 		// link the reply window is at its longest and a key pressed then
