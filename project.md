@@ -6826,6 +6826,54 @@ that pass having examined nothing, and each was confirmed here before
 being taken -- which is the right order for a report that arrives with
 its own provenance caveat attached.
 
+**So the same lens was turned on this suite's own checks**, since a
+report from outside had found one and the question "how many more"
+deserved an answer rather than a hope. Two mechanical passes over every
+`CHECK` in `test/`, both printing candidates rather than verdicts:
+
+- **conditions containing a subexpression that cannot be false.** 43
+  candidates, and **42 are the sentinel idiom** -- `findText(...).x() >= 0`
+  and `indexOf(...) >= 0` mean "found", because both return -1 when they
+  do not. The one that was not is the one the peer reported. So that
+  shape has been swept and is clear, which is worth recording precisely
+  because it is a negative result: the tautology was one instance and not
+  a habit.
+- **checks that assert ONLY an absence**, §0d's hazard -- "nothing drawn"
+  satisfies most assertions about absence. 70 candidates, and nearly all
+  are paired the way the tree asks: the positive half sits in the CHECK
+  immediately before, on the same buffer or the same byte stream, which a
+  per-check reader cannot see. One of them, `suite_widgets`' unframed
+  line edit, already carries a comment saying it cannot fail against this
+  code, why it stays, and that sabotage confirmed it -- which is the
+  model for the whole class.
+
+**Two were not paired, and one of them was hiding a fixture fault.**
+`"and a moved one degrades to the mosaic instead"` asserted only that the
+frame carried no sixel. Printed rather than assumed, the moved frame was:
+
+    ESC[H ESC[0m <20 spaces> ESC[0m ... six rows, 186 bytes, nothing else
+
+**An empty screen, and the check was green over it.** The cause was the
+fixture, not the policy: `QImage(8, 8, QImage::Format_ARGB32)` **does not
+initialise its pixels**, and on this machine they came out fully
+transparent, so `compose_halfblocks()` correctly composed nothing. With
+the image filled, the same frame carries what `scroll_settle.h` promises
+-- `ESC[91m ESC[101m` and four upper-half blocks at the rows the
+placement moved to. The check asserts both halves now, and removing the
+`compose_halfblocks()` call reddens it where the old form stayed green.
+
+That fixture is also the flake nobody had seen: undefined pixels are a
+frame whose content changes with the heap. There were two such images in
+`suite_backend` and both are filled now.
+
+The other, `"and gets no bracket at all, rather than a claim over bare
+frames"`, sat beside a second absence -- so a `present()` that wrote
+nothing satisfied the pair. It asserts the frame arrived as well.
+
+**The general form, which is worth more than either fix:** an absence is
+only evidence when something establishes that there was an occasion for
+it. Two absences over one stream are two sentences, not a pair.
+
 **And `make hooks` refused in exactly the trees the work happens in.**
 `test -d .git` is false in a linked worktree, where `.git` is a
 67-byte regular file holding a pointer -- and this tree has two, used for

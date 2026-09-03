@@ -1053,8 +1053,9 @@ int suite_backend() {
 					CellImage ci;
 					ci.key = 77;
 					ci.cell_rect = QRect(0, 0, 4, 2);
-					ci.pixmap = QPixmap::fromImage(
-					    QImage(8, 8, QImage::Format_ARGB32));
+					QImage probe_img(8, 8, QImage::Format_ARGB32);
+					probe_img.fill(QColor(255, 0, 0));
+					ci.pixmap = QPixmap::fromImage(probe_img);
 					f.images.append(ci);
 
 					const auto emit_frame = [&](const QRect &at) {
@@ -1073,7 +1074,20 @@ int suite_backend() {
 					::dup2(keep_out, 1);
 					CHECK(still.contains("\033P0;1;0q"),
 					      "a still placement is emitted as real sixel");
-					CHECK(!moved.contains("\033P0;1;0q"),
+					// BOTH halves, and the second is the one this was
+					// missing: "degrades to the mosaic" was asserted only as
+					// the ABSENCE of sixel, which an empty frame satisfies --
+					// and an empty frame is exactly what the fixture used to
+					// produce. QImage(8, 8, ARGB32) does not initialise its
+					// pixels, and on this machine they came out fully
+					// transparent, so the mosaic composed nothing and the
+					// check passed over a blank screen. With an opaque image
+					// the frame carries what the policy promises: a red pair
+					// of SGRs and four upper-half-block cells at the rows the
+					// placement moved to. The block is matched by its UTF-8
+					// bytes because this file is ASCII.
+					CHECK(!moved.contains("\033P0;1;0q")
+					      && moved.contains(QByteArray("\xe2\x96\x80")),
 					      "and a moved one degrades to the mosaic instead");
 					// iTerm2, the one tier whose emission nothing asserted.
 					// 68 checks in suite_graphics round-trip the encoders --
@@ -1200,7 +1214,11 @@ int suite_backend() {
 					fflush(stdout);
 					::dup2(keep_out, 1);
 					CHECK(!nosy_claims, "a terminal answering 0 is not reported as synchronised");
-					CHECK(!nosyout.contains("\033[?2026"),
+					// Paired with the frame itself arriving, because two
+					// absences over an empty stream are two sentences: a
+					// present() that wrote nothing would satisfy both.
+					CHECK(!nosyout.contains("\033[?2026")
+					      && nosyout.startsWith("\033[H"),
 					      "and gets no bracket at all, rather than a claim over bare frames");
 
 					// The wide-cluster model reaching the WIRE. suite_cells
@@ -1335,8 +1353,12 @@ int suite_backend() {
 						CellBuffer uf(20, 6);
 						CellImage uci;
 						uci.cell_rect = QRect(0, 0, 2, 2);
-						uci.pixmap = QPixmap::fromImage(
-						    QImage(8, 8, QImage::Format_ARGB32));
+						// Filled, like the one above: QImage(w, h, fmt)
+						// leaves its pixels undefined, so an unfilled fixture
+						// is a frame whose content changes with the heap.
+						QImage upload_img(8, 8, QImage::Format_ARGB32);
+						upload_img.fill(QColor(0, 0, 255));
+						uci.pixmap = QPixmap::fromImage(upload_img);
 						uf.images.append(uci);
 						QByteArray uout;
 						// Drained after every frame rather than at the end:
