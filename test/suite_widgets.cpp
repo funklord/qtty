@@ -3063,6 +3063,54 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	{
+		// Partial-line scrolling, which §7.2 listed as the one thing about
+		// text widgets that nothing exercised. It does the right thing, and
+		// this records what that is: content moves in WHOLE CELLS, and a
+		// scroll of part of a line shows the same frame as the line it is
+		// part of. Measured on a 12x5 edit with a 19-pixel cell, the
+		// scrollbar counting pixels with a 20-pixel step:
+		//
+		//     scroll 0        line0..line4
+		//     scroll 1        unchanged -- a pixel is not a cell
+		//     scroll 20       line1..line5
+		//     scroll 21,26,29 unchanged from 20
+		//     scroll 33       line2..line6
+		//
+		// Nothing tears and no row is lost; the flip happens once the offset
+		// passes the half cell, which is the rounding rule the clip and the
+		// snap both use.
+		QTextEdit edit;
+		edit.setAttribute(Qt::WA_DontShowOnScreen);
+		edit.setFrameShape(QFrame::NoFrame);
+		QString doc;
+		for (int i = 0; i < 20; ++i) doc += QStringLiteral("line%1\n").arg(i);
+		edit.setPlainText(doc);
+		edit.resize(GridMetrics::cells(12, 5));
+		edit.show();
+		QCoreApplication::processEvents();
+		QScrollBar *sb = edit.verticalScrollBar();
+
+		const auto rows = [&] {
+			CellBuffer b(12, 5);
+			render_once(edit, b);
+			return b.to_text();
+		};
+		const QString top = rows();
+		sb->setValue(sb->singleStep());
+		QCoreApplication::processEvents();
+		const QString line = rows();
+		// The control, and it is the half that matters: without it, "a part
+		// of a line changes nothing" passes against an edit that does not
+		// scroll at all.
+		CHECK(line != top, "a whole line scrolls a text edit");
+		sb->setValue(sb->singleStep() + 1);
+		QCoreApplication::processEvents();
+		CHECK(rows() == line,
+		      "and a scroll of part of a line shows the same cells");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

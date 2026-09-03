@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-847 checks, 0 failures, under six configurations: the offscreen
+849 checks, 0 failures, under six configurations: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
 detector, a **debug** build -- which is not the same code, `setup()`
@@ -1325,9 +1325,11 @@ In the order I would take them:
    on a normal exit. `__gcov_dump()` before `_exit` in the fork fixture
    would count them. Worth it only when the coverage figure next matters.
 
-5. **Partial-line scrolling**, the one gap §7.2 still claims that this
-   session could not verify either way. Everything else on that list was
-   closed and unstruck; this one may be real.
+5. ~~**Partial-line scrolling**, the one gap §7.2 still claims that this
+   session could not verify either way.~~ **Taken the same day**: it was
+   genuinely untested and it is genuinely correct. §7.2 carries the
+   measurement and two checks now hold it. The list is shorter by one and
+   nothing replaced it, which is the honest outcome.
 
 6. **§0b's questions are the holder's** and are not work to pick up: RTL
    scope, the bundled font, tooltips and hover, the severity glyph,
@@ -3729,8 +3731,24 @@ code changed is only honest if the diff is the change.
   §17.2's nought-to-four-day estimate was for the case where display had
   not come free. **Selecting text with the mouse works**, and is
   covered since the grab landed (§7.1): it needed no text-widget code at
-  all, only motion events that carry the held button. What is genuinely
-  untested is partial-line scrolling.
+  all, only motion events that carry the held button. ~~What is genuinely
+  untested is partial-line scrolling.~~ **Tested 2026-09-03, and it is
+  right.** Content moves in whole cells, and a scroll of part of a line
+  shows the same frame as the line it is part of. Measured on a 12x5 edit
+  with a 19-pixel cell, the scrollbar counting pixels with a 20-pixel
+  step:
+
+      scroll 0          line0..line4
+      scroll 1          unchanged -- a pixel is not a cell
+      scroll 20         line1..line5
+      scroll 21, 26, 29 unchanged from 20
+      scroll 33         line2..line6
+
+  Nothing tears and no row is lost; the flip comes once the offset passes
+  the half cell, which is the rounding rule the clip and the snap both
+  use. Two checks, and the control is the one that matters -- without "a
+  whole line scrolls a text edit", the other passes against an edit that
+  does not scroll at all.
 - **The editable `QComboBox` takes typed text**, non-ASCII included. It
   was untested rather than unhandled. Testing it is what found the
   missing `subControlRect` in §7.1: the combo's internal `QLineEdit` sat
