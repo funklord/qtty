@@ -1031,6 +1031,61 @@ int suite_runtime() {
 		GridGuard::reset();
 	}
 
+	{
+		// What a layer hid must not outlive the layer. compose() drops a
+		// modal's optional widgets on a terminal too small for them and puts
+		// them back when the modal goes away -- and nothing exercised the
+		// second half. Coverage is what said so: both restores, the modal's
+		// and the popup's, had no caller in a whole run.
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->addWidget(new QLabel(QStringLiteral("Root")));
+		win.resize(GridMetrics::cells(20, 6));
+		win.show();
+		QCoreApplication::processEvents();
+
+		QDialog dlg(&win);
+		dlg.setAttribute(Qt::WA_DontShowOnScreen);
+		dlg.setModal(true);
+		auto *dv = new QVBoxLayout(&dlg);
+		auto *keep = new QLabel(QStringLiteral("Required"));
+		dv->addWidget(keep);
+		auto *extra = new QLabel(QStringLiteral("Dialog extra"));
+		set_priority(extra, Priority::Optional);
+		dv->addWidget(extra);
+		for (int i = 0; i < 6; ++i)
+			dv->addWidget(new QLabel(QStringLiteral("Pad %1").arg(i)));
+		dlg.resize(GridMetrics::cells(18, 10));
+		dlg.show();
+		keep->setFocus();
+		QCoreApplication::processEvents();
+
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+		CellBuffer b(20, 4);
+		c.compose(b);
+		const bool dropped = !extra->isVisible();
+		dlg.hide();
+		QCoreApplication::processEvents();
+		c.compose(b);                                // the restore happens here
+		// isHidden(), not isVisible(): the widget's parent is a closed dialog,
+		// so isVisible() is false for a reason that has nothing to do with the
+		// restore. The first version of this check asked the wrong one and
+		// reported a defect that was not there -- the compositor had put the
+		// widget back correctly all along.
+		const bool unhidden = !extra->isHidden();
+		dlg.show();                                  // and the user's question
+		QCoreApplication::processEvents();
+		CHECK(dropped,
+		      "a modal too big for the terminal drops its optional widgets");
+		CHECK(unhidden && extra->isVisible(),
+		      "and they are back when it opens again");
+		win.hide();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	// Section 7's policy belongs to the layer that OWNS INPUT, and a modal
 	// owns input while it is up (section 8.3). It was only ever run on the
 	// root, and the follow-the-focus scroll was root-only too, so a modal

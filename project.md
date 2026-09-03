@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-852 checks, 0 failures, under six configurations: the offscreen
+854 checks, 0 failures, under six configurations: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
 detector, a **debug** build -- which is not the same code, `setup()`
@@ -1168,6 +1168,27 @@ program. That residue is stated rather than hidden.
 The bytes wait in the decoder's buffer until `set_event_sink()` is
 called, because `decode_one()` clears the buffer when there is no sink --
 so draining any earlier would throw away exactly what was just saved.
+
+**Reading the rest of the uncovered list found the policy's other half**
+(2026-09-04). §7's drop-optional pass is run for the layer that owns
+input, and what a layer hid must not outlive the layer -- so `compose()`
+puts the widgets back when a different layer takes over. Both restores,
+the modal's and the popup's, had **no caller in a whole run**.
+
+They do now, and the check took two goes. The first asked
+`extra->isVisible()` after closing the dialog and reported a defect: the
+widget was still invisible. **It was the question, not the code.** A
+child of a closed dialog is invisible for a reason that has nothing to do
+with the restore, and the probe said so --
+
+    after the restoring compose   visible=0  hidden=0
+    dialog reopened               visible=1  hidden=0
+
+-- the explicit hide had been lifted all along. `isHidden()` is what the
+restore controls, and reopening the dialog is what a user would notice,
+so the check asks both. **Fourth instrument fault of the day, and the
+same shape as the other three: the first reading measured something
+adjacent to the question.**
 
 **And re-taking coverage found a path nothing was exercising**
 (2026-09-04), which is what the declined item above turned into.
