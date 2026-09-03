@@ -6826,6 +6826,29 @@ that pass having examined nothing, and each was confirmed here before
 being taken -- which is the right order for a report that arrives with
 its own provenance caveat attached.
 
+**And `make hooks` refused in exactly the trees the work happens in.**
+`test -d .git` is false in a linked worktree, where `.git` is a
+67-byte regular file holding a pointer -- and this tree has two, used for
+isolated agent work. Measured in
+`.claude/worktrees/agent-a28b25cb0976d1f79`:
+
+    .git                        a regular file, 67 bytes
+    rev-parse --is-inside-work-tree   true
+    .git/hooks                  not a directory
+    rev-parse --git-common-dir  /home/funk/src/qtty/.git, whose hooks/ exists
+
+**Repairing only the guard would have been worse than the refusal**, and
+that is the part worth keeping: `[ -e .git ]` and `--is-inside-work-tree`
+both pass there, and the install then writes into a path that does not
+exist while printing that it succeeded. `--git-common-dir` answers the
+question actually being asked, because hooks are **shared across a
+repository's worktrees** and live in the main `.git`. `respec` and
+`beerssh` had both been doing this for the same reason, so the form was
+in the workspace the whole time; `beerssh`'s also checks that git is
+installed before asking it anything, which this now does. Exercised in
+all three states: the main tree, a linked worktree, and a directory that
+is not a repository at all.
+
 `w->setProperty("qtty.cells", QSize(20, 1))` is the third hint, and it is
 built now -- **but not where design.md says it is read**, and the reason
 is a fact about Qt rather than a preference.

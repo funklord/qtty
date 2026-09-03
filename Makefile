@@ -392,10 +392,35 @@ style-docs:
 # The commit-msg hook lives in the tree so it is reviewable, survives a clone,
 # and can be kept in sync. .git/hooks is untracked, so a hook that exists only
 # there enforces a rule nobody can see and vanishes silently on a fresh clone.
+#
+# `git rev-parse --git-common-dir` rather than `test -d .git`, and the
+# difference is not pedantry: in a LINKED WORKTREE -- which this tree has two
+# of, used for isolated agent work -- `.git` is a regular FILE holding a
+# pointer, so the directory test is false and this target refused in exactly
+# the trees the work is being done in.
+#
+# Repairing only the guard would be worse than the refusal. `[ -e .git ]` and
+# `rev-parse --is-inside-work-tree` both pass in a worktree, and `.git/hooks`
+# there is not a directory -- measured in
+# .claude/worktrees/agent-a28b25cb0976d1f79 -- so a guard fixed that way
+# installs into a path that does not exist and says it succeeded.
+# `--git-common-dir` answers with where hooks actually live: they are shared
+# across a repository's worktrees and belong to the main `.git`.
 hooks:
-	@test -d .git || { echo "hooks: not a git repository" >&2; exit 1; }
-	@install -m 0755 tool/hooks/commit-msg .git/hooks/commit-msg
-	@echo "hooks: commit-msg installed from tool/hooks/"
+	@command -v git >/dev/null 2>&1 || { \
+		echo "hooks: git is not installed, so there is nowhere to" >&2; \
+		echo "       install to." >&2; \
+		exit 1; \
+	}
+	@dir=$$(git rev-parse --git-common-dir 2>/dev/null); \
+	if [ -z "$$dir" ]; then \
+		echo "hooks: not a git repository, so there is nowhere to" >&2; \
+		echo "       install to." >&2; \
+		exit 1; \
+	fi; \
+	mkdir -p "$$dir/hooks"; \
+	install -m 0755 tool/hooks/commit-msg "$$dir/hooks/commit-msg"; \
+	echo "hooks: commit-msg installed into $$dir/hooks/"
 
 # One version, in one file. qtty.pri must still read VERSION rather than state
 # a number, and include/qtty/version.h -- which is a public header and cannot
