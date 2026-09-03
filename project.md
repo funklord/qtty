@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-845 checks, 0 failures, under six configurations: the offscreen
+847 checks, 0 failures, under six configurations: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
 detector, a **debug** build -- which is not the same code, `setup()`
@@ -1029,6 +1029,36 @@ rather than opening a menu, had no caller either -- every mnemonic check
 in the suite went through a menu. It has one now, and disabling
 `a->trigger()` reddens it while the older menu check stays green, which
 is the gap made visible.
+
+**A key pressed before a qtty program has drawn was thrown away**
+(2026-09-03), and the `make test-tools` work is what pointed at it: the
+example arm hung because a single Ctrl-D sent at startup was never read.
+That looked like a fixture race and was a defect.
+
+`AnsiBackend`'s constructor asks the terminal what it is, and
+`collect_caps()` reads for up to 100 ms, scans the buffer for replies --
+and **returns, dropping everything else in it.** Type-ahead is in that
+buffer. Measured on a pseudo-terminal, one byte written before the child
+was even forked and a second 300 ms later:
+
+    before the fix   the edit held "y"
+    after            the edit held "xy"
+
+**Only the bytes before the first ESC are kept**, and that is the whole
+rule: they cannot be part of an escape-sequence reply, so keeping them
+cannot feed a terminal's answer to an application as input. Bytes typed
+*between* replies are still dropped -- telling a typed escape from an
+answered one there is guesswork, and guessing wrong types garbage into a
+program. That residue is stated rather than hidden.
+
+The bytes wait in the decoder's buffer until `set_event_sink()` is
+called, because `decode_one()` clears the buffer when there is no sink --
+so draining any earlier would throw away exactly what was just saved.
+
+Two checks, both directions: a child whose pty is written to before the
+fork, and one whose is not. Without the second, a decoder that invented a
+keystroke would pass. Removing the retention reddens the first and leaves
+the second green.
 
 **And then the four programs this project BUILDS, which were built by
 every run above and executed by none of them.** The only thing holding

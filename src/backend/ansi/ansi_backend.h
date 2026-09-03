@@ -39,7 +39,14 @@ public:
 	QSize size() const override;
 	void present(const CellBuffer &frame, const QRegion &damage) override;
 	void set_cursor(std::optional<QPoint> cell, CursorShape shape) override;
-	void set_event_sink(ITerminalEventSink *s) override { sink_ = s; }
+	// Setting the sink drains whatever is already buffered, because the
+	// constructor may have put TYPE-AHEAD there -- keys pressed before the
+	// program drew. decode_one() clears the buffer when there is no sink, so
+	// the draining cannot happen any earlier than this.
+	void set_event_sink(ITerminalEventSink *s) override {
+		sink_ = s;
+		while (!pending_.isEmpty()) { if (!decode_one()) break; }
+	}
 	void suspend() override;
 	void resume() override;
 

@@ -328,8 +328,16 @@ bool caps_complete(const QByteArray &buf) {
 	return probe.answered;
 }
 
-TermCaps collect_caps(int in_fd, int out_fd, int timeout_ms, QByteArray *raw) {
+TermCaps collect_caps(int in_fd, int out_fd, int timeout_ms, QByteArray *raw,
+                      QByteArray *typed) {
 	TermCaps caps;
+	// See term_caps.h: everything before the first ESC is type-ahead, because
+	// a reply cannot begin anywhere else.
+	const auto keep_typed = [&typed](const QByteArray &buf) {
+		if (!typed) return;
+		const int esc = buf.indexOf('\033');
+		*typed = esc < 0 ? buf : buf.left(esc);
+	};
 	// Wrapped inside tmux, or the query is answered by tmux itself: it is a
 	// terminal too, and it answers device attributes while knowing nothing
 	// about what it is sitting in. That reply would arrive as a measured
@@ -359,10 +367,12 @@ TermCaps collect_caps(int in_fd, int out_fd, int timeout_ms, QByteArray *raw) {
 		buf.append(chunk, int(got));
 		if (!caps_complete(buf)) continue;
 		if (raw) *raw = buf;
+		keep_typed(buf);
 		scan_caps(buf, caps);
 		return caps;
 	}
 	if (raw) *raw = buf;
+	keep_typed(buf);
 	scan_caps(buf, caps);                         // whatever arrived still counts
 	return caps;
 }

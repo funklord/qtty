@@ -160,7 +160,7 @@ AnsiBackend::AnsiBackend() {
 	// answer, and the query would be written into whatever is reading and the
 	// caller's own input eaten waiting for a reply that cannot arrive.
 	if (raw_ok_ && tty_out_)
-		caps_ = collect_caps(0, 1, 100);
+		caps_ = collect_caps(0, 1, 100, nullptr, &pending_);
 
 	mode_ = negotiate_graphics(caps_);
 	depth_ = negotiate_color(caps_);

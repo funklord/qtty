@@ -118,8 +118,21 @@ bool caps_complete(const QByteArray &buf);
 // feature off silences the ANSWER rather than only the behaviour. A terminal
 // that still replies while ignoring the payload is worse than one that never
 // claimed the feature, because the reply is then cached as a lie.
+//
+// `typed`, when given, receives the TYPE-AHEAD: bytes that arrived in the same
+// read and are not part of any reply. Until this existed they were read into
+// the scan buffer and dropped, so a key pressed before a qtty program had
+// drawn was a key nobody ever saw -- measured on a pseudo-terminal, a byte
+// written before the child started never reached the widget while the same
+// byte written 300 ms later did.
+//
+// Only the bytes BEFORE the first ESC are kept, and that is the whole rule:
+// they cannot be part of an escape-sequence reply, so keeping them cannot
+// feed a terminal's answer to the application as input. Bytes typed BETWEEN
+// replies are still dropped -- telling a typed escape from an answered one
+// there is guesswork, and guessing wrong types garbage into a program.
 TermCaps collect_caps(int in_fd, int out_fd, int timeout_ms,
-                      QByteArray *raw = nullptr);
+                      QByteArray *raw = nullptr, QByteArray *typed = nullptr);
 
 } // namespace Qtty
 

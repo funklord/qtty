@@ -126,7 +126,8 @@ struct Tty {
 // file, or every run of these checks leaves one behind; the parent waits at
 // most a second before SIGKILL; and the read stops at the first short read of
 // a non-blocking master.
-QByteArray fatal_child(bool screen, const std::function<void()> &body) {
+QByteArray fatal_child(bool screen, const std::function<void()> &body,
+                       const QByteArray &preload = QByteArray()) {
 	const int master = posix_openpt(O_RDWR | O_NOCTTY);
 	if (master < 0) return QByteArray();
 	int slave = -1;
@@ -142,6 +143,13 @@ QByteArray fatal_child(bool screen, const std::function<void()> &body) {
 	// the kill below.
 	const struct winsize ws { 5, 20, 0, 0 };
 	ioctl(master, TIOCSWINSZ, &ws);
+
+	// Written BEFORE the fork, so it is already sitting in the terminal when
+	// the child starts -- which is what "typed before the program drew" means.
+	if (!preload.isEmpty()) {
+		const ssize_t w = ::write(master, preload.constData(), preload.size());
+		(void)w;
+	}
 
 	fflush(stdout);
 	fflush(stderr);
@@ -2026,6 +2034,41 @@ int suite_backend() {
 			printf("FAIL: could not build the tty/pipe pair\n");
 			++fails;
 		}
+	}
+
+	// -- type-ahead, which was being thrown away ------------------------------
+	// A key pressed before a qtty program has drawn arrives in the same read
+	// as the terminal's answers to the capability query, and collect_caps()
+	// scanned that buffer for replies and dropped the rest. Measured on a
+	// pseudo-terminal: a byte written before the child started never reached
+	// the widget, while the same byte written 300 ms later did.
+	//
+	// Both directions, because a check that only looks for the byte would pass
+	// against a decoder that invented one.
+	{
+		const QByteArray with = fatal_child(true, [] {
+			Qtty::AnsiBackend backend;
+			Recorder rec;
+			backend.set_event_sink(&rec);       // this is what drains it
+			QString got;
+			for (const KeyEvent &k : rec.keys) got += k.text;
+			fprintf(stderr, "\nTYPED[%s]\n", qPrintable(got));
+			::_exit(0);
+		}, QByteArrayLiteral("x"));
+		CHECK(with.contains("TYPED[x]"),
+		      "a key typed before the program drew is not thrown away");
+
+		const QByteArray without = fatal_child(true, [] {
+			Qtty::AnsiBackend backend;
+			Recorder rec;
+			backend.set_event_sink(&rec);
+			QString got;
+			for (const KeyEvent &k : rec.keys) got += k.text;
+			fprintf(stderr, "\nTYPED[%s]\n", qPrintable(got));
+			::_exit(0);
+		});
+		CHECK(without.contains("TYPED[]"),
+		      "and nothing is invented when nothing was typed");
 	}
 
 	// -- what a dying program says, and who hears it -------------------------
