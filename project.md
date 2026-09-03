@@ -17,8 +17,10 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-843 checks, 0 failures, under three configurations: the offscreen
-platform, xcb, and the hostile environment `make test-platforms` builds.
+843 checks, 0 failures, under four configurations: the offscreen
+platform, xcb, the hostile environment `make test-platforms` builds, and
+a build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
+detector.
 `make check` is green and now includes `version-check`, which had never
 been part of it.
 
@@ -529,11 +531,20 @@ Add `{print "  " $2 ": " $3}` to the `#####` branch to name the uncovered
 lines. `gcov -f <file>.cpp` is what separates a `D0` destructor from a `D2`
 and is why the residue is what it is.
 
-**The third configuration.** `make test-platforms` covers offscreen and the
-hostile environment; xcb is run directly, and needs the stack dump off
-because QtTest forks gdb on a fatal signal:
+**The third configuration.** `make test-platforms` covers offscreen, xcb
+under `Xvfb`, and the hostile environment. Against a REAL display it is
+run directly, and needs the stack dump off because QtTest forks gdb on a
+fatal signal:
 
     QTTY_QPA_PLATFORM=xcb QTEST_DISABLE_STACK_DUMP=1 ./build-test/qtty-tests
+
+**The sanitizers** are `make test-sanitize`, and the instrument check
+that makes a clean run mean anything is two probes and a grep:
+
+    grep -o '\-fsanitize=[a-z,]*' <build log>      # the flag was used
+    nm -C build-san-test/qtty-tests | grep __asan  # it reached the binary
+    # then a program that overflows a heap buffer, and one that leaks,
+    # compiled with the same flags: both must be reported.
 
 **The fontconfig hint style**, which is the axis §7.9's last finding
 turned on and has no environment variable. It is varied with a
@@ -876,6 +887,31 @@ absent, the way the hostile theme is, and `QTEST_DISABLE_STACK_DUMP` goes
 with it because QtTest forks gdb on a fatal signal -- which is how this
 workspace once lost 15 GB of resident memory to a run nobody was
 watching.
+
+**And the sanitizers, which had never been run.** `SANITIZE=1` has been
+in the Makefile's documented flags all along and this document recorded
+no run under it -- which by the rule above means there had not been one.
+There is now, and it is `make test-sanitize`:
+
+    843 checks, 0 failures
+    AddressSanitizer          nothing
+    UndefinedBehaviorSanitizer nothing
+    LeakSanitizer             nothing, not even Qt's usual noise
+
+**The instrument was verified rather than trusted, three ways**, because
+a clean sanitizer run over a binary that was never instrumented looks
+exactly like a real one -- which is this document's oldest lesson wearing
+new clothes. `-fsanitize=address,undefined` appears in the build log; the
+test binary carries `__asan` symbols and links `libasan`; and a probe
+with a deliberate heap-buffer-overflow and a deliberate signed overflow
+was caught by the same flags, as was a deliberate leak under the same
+`detect_leaks=1`.
+
+A negative result, then, and a real one. It is a **target** rather than a
+recipe in this file for the reason the xcb arm is: a configuration that
+lives only in a document is one nobody runs. The sanitized run costs 3.6
+seconds against 1.8 once built, so re-running it is not a decision
+anybody has to weigh.
 
 **The sabotage discipline that goes with it**, because a passing new test
 is not evidence: break the code the test claims to defend, confirm the edit

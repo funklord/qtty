@@ -18,6 +18,7 @@
 #   make              -- build the library, the tools and the example
 #   make test         -- build and run the test suite
 #   make test-platforms -- the suite under each QPA in TEST_PLATFORMS
+#   make test-sanitize -- the suite under ASan, UBSan and the leak detector
 #   make coverage F=x -- line coverage for src/**/x.cpp
 #   make check        -- style + test; what must pass before committing
 #   make style        -- the shared source gate and the project.md checks
@@ -325,6 +326,28 @@ test-platforms: tests-build
 	fi; \
 	[ "$$failed" -eq 0 ]
 
+# The suite under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
+# detector, in its own build directory so the ordinary one is not disturbed.
+#
+# Leaks are ON. The first run of this axis reported none at all -- not even
+# Qt's usual noise -- and a detector left switched off is one nobody notices
+# going quiet.
+#
+# The instrument was verified rather than trusted, because a clean sanitizer
+# run over a binary that was never instrumented looks exactly like a real one:
+# -fsanitize=address,undefined appears in the build log, the binary carries
+# __asan symbols and links libasan, and a deliberate heap-buffer-overflow and
+# a signed overflow were both caught by the same flags.
+#
+# The suite carries its own watchdog, and a sanitized run is about twice as
+# slow -- 3.6 s against 1.8 s here -- so the raised limit is generous rather
+# than necessary.
+SAN_BUILD_DIR ?= build-san
+
+test-sanitize:
+	@QTTY_TEST_TIMEOUT=900 ASAN_OPTIONS=detect_leaks=1 \
+		$(MAKE) test BUILD_DIR=$(SAN_BUILD_DIR) SANITIZE=1
+
 # Line coverage for one source, measured rather than asserted -- and measured
 # for THAT SOURCE, which is not what gcov's summary reports.
 #
@@ -547,5 +570,5 @@ distclean: veryclean
 help:
 	@sed -n '/^# TARGETS/,/^#$$/p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
-.PHONY: all test test-platforms tests-build coverage record check style style-source style-docs layout hooks \
+.PHONY: all test test-platforms test-sanitize tests-build coverage record check style style-source style-docs layout hooks \
         version-check run install uninstall clean veryclean distclean help FORCE
