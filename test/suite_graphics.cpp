@@ -683,7 +683,18 @@ int suite_graphics() {
 
 		// The transmit is quiet, or the terminal answers into whatever host
 		// application the placeholders are being printed through.
-		const QImage art(2, 2, QImage::Format_ARGB32);
+		// Filled, and valgrind is what asked for it: QImage(w, h, fmt) leaves
+		// its pixels undefined, and encode_kitty_virtual() PNG-encodes them,
+		// so the payload of this transmit was whatever the heap held. The
+		// assertions below are about the header and passed either way, which
+		// is precisely why nothing noticed.
+		//
+		// Two of these were already fixed this morning by a grep for
+		// `QImage([0-9]` -- which matches a temporary and not a DECLARATION,
+		// so it walked straight past `QImage art(2, 2, ...)`. Searching for
+		// one spelling of a fault is not searching for the fault.
+		QImage art(2, 2, QImage::Format_ARGB32);
+		art.fill(QColor(0, 128, 255));
 		const QByteArray tx = Qtty::encode_kitty_virtual(42, art, 2, 2);
 		CHECK(tx.startsWith("\033_Ga=T,U=1,q=2,"),
 		      "the transmit creates a virtual placement quietly");

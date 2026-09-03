@@ -102,15 +102,17 @@ bool InputRouter::eventFilter(QObject *o, QEvent *e) {
 	return false;                                                  // observe only
 }
 
-// The actions a mnemonic may reach right now. A popup owns the keyboard while
-// it is up, so Alt-O inside an open File menu must find that menu's Open and
-// not a like-lettered action on the window behind it.
-static QList<QAction *> mnemonic_actions(QWidget *scope,
-                                        const InputRouter *router) {
-	// The router's stack, for the reason key_target() gives: Qt's
-	// activePopupWidget() is null for a stamped popup.
-	if (router && !router->popups().isEmpty())
-		scope = router->popups().last();
+// The actions a mnemonic may reach right now.
+//
+// It used to take the router as well, and prefer the topmost popup when one
+// was open -- so that Alt-O inside an open File menu found that menu's Open
+// rather than a like-lettered action on the window behind it. That branch is
+// gone because it became unreachable: on_key() no longer consults this table
+// at all while a popup owns input, the menu answering Alt-O itself through
+// QMenu::keyPressEvent, which also closes it. Coverage is what said so -- the
+// line had no caller in a whole run -- and a branch whose comment describes a
+// policy the code has moved elsewhere is worse than no branch.
+static QList<QAction *> mnemonic_actions(QWidget *scope) {
 	QList<QAction *> actions = scope->actions();
 	const auto children = scope->findChildren<QWidget *>();
 	for (QWidget *c : children) actions += c->actions();
@@ -137,7 +139,7 @@ bool InputRouter::match_mnemonic(const KeyEvent &k) {
 	const QChar want = k.text.at(0).toLower();
 	if (!want.isLetterOrNumber()) return false;
 
-	for (QAction *a : mnemonic_actions(input_scope(), this)) {
+	for (QAction *a : mnemonic_actions(input_scope())) {
 		if (!a->isEnabled() || a->isSeparator()) continue;
 		if (mnemonic_of(a->text()) != want) continue;
 		if (QMenu *sub = a->menu()) {

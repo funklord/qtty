@@ -1933,6 +1933,21 @@ int suite_router() {
 		QCoreApplication::processEvents();
 		CHECK(opened == before_alt + 1 && !file->isVisible(),
 		      "and Alt+letter is answered by the menu, which closes");
+
+		// With no popup up, the same key reaches a plain action on the
+		// window. Coverage is what asked for this: every other mnemonic
+		// check in this suite either opens a menu or is answered by one
+		// already open, so the branch that TRIGGERS an action rather than
+		// opening a menu had no caller in a whole run.
+		int plain = 0;
+		QAction *reload = new QAction(QStringLiteral("&Reload"), &h);
+		QObject::connect(reload, &QAction::triggered, [&plain] { ++plain; });
+		h.addAction(reload);
+		CHECK(!file->isVisible(), "no menu is open for the next case");
+		r.on_key({0, QStringLiteral("r"), false, true, false});
+		QCoreApplication::processEvents();
+		CHECK(plain == 1,
+		      "and Alt+letter triggers a plain action when no menu is open");
 		h.hide();
 		QCoreApplication::processEvents();
 		GridGuard::reset();

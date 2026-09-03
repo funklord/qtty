@@ -17,11 +17,12 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-843 checks, 0 failures, under five configurations: the offscreen
+845 checks, 0 failures, under six configurations: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
-detector, and a **debug** build -- which is not the same code, `setup()`
-installing `GridGuard` itself under `!QT_NO_DEBUG`.
+detector, a **debug** build -- which is not the same code, `setup()`
+installing `GridGuard` itself under `!QT_NO_DEBUG` -- and **valgrind's
+memcheck**, which catches the one thing the sanitizers do not.
 `make check` is green and now includes `version-check`, which had never
 been part of it.
 
@@ -974,6 +975,60 @@ That also turned up a real parallel copy: the sentence was written out in
 `grid_font_substitution()` and again in `grid_font_problem()`. One helper
 now, for the reason `cell_geometry.h` gives -- and the drift was not
 hypothetical, it was the thing hiding the sabotage.
+
+**Then valgrind, for the one thing the sanitizers cannot see: a READ of
+memory that was never written.** ASan, UBSan and LSan had all come back
+clean; memcheck came back with **109 errors from 26 contexts**, and the
+origin was a fixture:
+
+    Conditional jump depends on uninitialised value(s)
+      png_write_row ... QImage::save ... Qtty::encode_kitty_virtual
+      suite_graphics.cpp:687
+    Uninitialised value was created by a heap allocation
+      QImage::QImage(int, int, Format)  suite_graphics.cpp:686
+
+**A third `QImage(w, h, fmt)` with undefined pixels**, handed to the PNG
+encoder. The assertions around it are about the escape's header, so they
+passed over whatever the heap held.
+
+**And the two I fixed this morning were found by a grep that could not
+have found this one.** The pattern was `QImage([0-9]` -- which matches a
+temporary, `QImage(8, 8, ...)`, and walks straight past a declaration,
+`QImage art(2, 2, ...)`. Searching for one spelling of a fault is not
+searching for the fault; valgrind found it by behaviour, which is what an
+instrument is for. Filled, and memcheck is **0 errors from 0 contexts**
+across the main process and every forked child.
+
+`make test-valgrind` runs it, against the DEBUG build -- valgrind reports
+addresses without one, and a stack trace of hexadecimal is a finding
+nobody can act on. `QTTY_UNDER_VALGRIND` makes `suite_budget` skip its
+single wall-clock assertion, with a printed reason: under an instrument
+twenty times slower that ceiling measures the instrument. Said out loud
+rather than silently widened, because a threshold relaxed quietly for one
+environment stops being a threshold anywhere.
+
+**Two instrument faults of my own on the way, and the second is the one
+to carry.** The first: valgrind's slowdown is exactly the
+order-of-magnitude regression that ceiling exists to catch, so its
+failure there was honest and the skip is the right answer rather than a
+relaxation. The second: a check appeared to fail *only* under valgrind,
+then *only* when its suite ran alone -- two hypotheses, an order
+dependency and a timing race, and both were wrong. **I had restored a
+sabotaged file and measured without rebuilding.** The binary still
+carried the sabotage. Restore-then-measure is not a step; restore, then
+BUILD, then measure.
+
+**And coverage asked for two things the same day.** `mnemonic_actions()`
+carried a branch preferring the topmost popup -- written so that Alt-O in
+an open File menu found that menu's item -- and this session's shortcut
+work made `on_key()` stop consulting that table while a popup owns input
+at all. So the branch had no caller in a whole run, and its comment
+described a policy the code had moved elsewhere. Gone. Its neighbour is
+the opposite case: `a->trigger()`, the branch that fires a plain action
+rather than opening a menu, had no caller either -- every mnemonic check
+in the suite went through a menu. It has one now, and disabling
+`a->trigger()` reddens it while the older menu check stays green, which
+is the gap made visible.
 
 **The sabotage discipline that goes with it**, because a passing new test
 is not evidence: break the code the test claims to defend, confirm the edit

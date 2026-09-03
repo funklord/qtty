@@ -408,8 +408,20 @@ int suite_budget() {
 	// the kind that would put a full-frame render outside the budget on any
 	// machine, can trip it. A tighter number would be a truer statement of
 	// the budget and a test that goes red for reasons that are not the code's.
-	CHECK(render_ms < 160.0,
-	      "a full 200x60 frame renders inside ten times the local budget");
+	// The one duration that is asserted, and it is skipped under an
+	// instrument that multiplies durations. Valgrind runs this suite about
+	// twenty times slower, which is exactly the order-of-magnitude regression
+	// the ceiling was chosen to catch -- so under it the check measures
+	// valgrind and nothing else. Said out loud rather than silently relaxed:
+	// a threshold quietly widened for one environment stops being a threshold
+	// anywhere.
+	if (!qEnvironmentVariableIsEmpty("QTTY_UNDER_VALGRIND")) {
+		printf("SKIP: the frame-budget ceiling measures the instrument under"
+		       " valgrind, not the code\n");
+	} else {
+		CHECK(render_ms < 160.0,
+		      "a full 200x60 frame renders inside ten times the local budget");
+	}
 
 	return fails;
 }

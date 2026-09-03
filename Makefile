@@ -19,6 +19,7 @@
 #   make test         -- build and run the test suite
 #   make test-platforms -- the suite under each QPA in TEST_PLATFORMS
 #   make test-sanitize -- the suite under ASan, UBSan and the leak detector
+#   make test-valgrind -- the suite under valgrind memcheck
 #   make coverage F=x -- line coverage for src/**/x.cpp
 #   make check        -- style + test; what must pass before committing
 #   make style        -- the shared source gate and the project.md checks
@@ -382,10 +383,36 @@ test-platforms: tests-build
 # slow -- 3.6 s against 1.8 s here -- so the raised limit is generous rather
 # than necessary.
 SAN_BUILD_DIR ?= build-san
+DBG_BUILD_DIR ?= build-dbg
 
 test-sanitize:
 	@QTTY_TEST_TIMEOUT=900 ASAN_OPTIONS=detect_leaks=1 \
 		$(MAKE) test BUILD_DIR=$(SAN_BUILD_DIR) SANITIZE=1
+
+# The suite under valgrind's memcheck, which catches what the sanitizers do not:
+# a READ of memory that was never written. That is not a hypothetical gap --
+# it found three fixtures in this tree handing QImage(w, h, fmt), whose pixels
+# are undefined, to code that encodes them.
+#
+# The debug build, because valgrind reports addresses without it and a stack
+# trace of hexadecimal is a finding nobody can act on. QTTY_UNDER_VALGRIND
+# tells the suite to skip the one wall-clock assertion, which under a
+# twenty-times-slower instrument measures the instrument.
+#
+# --error-exitcode makes an error a failure rather than a paragraph scrolling
+# past. It is slow -- minutes rather than seconds -- which is why it is its own
+# target and not part of `check`.
+test-valgrind:
+	@command -v valgrind >/dev/null 2>&1 || { \
+		echo "test-valgrind: valgrind is not installed" >&2; exit 1; \
+	}
+	$(MAKE) tests-build BUILD_DIR=$(DBG_BUILD_DIR) DEBUG=1
+	@QTTY_UNDER_VALGRIND=1 QTTY_TEST_TIMEOUT=3000 \
+		valgrind --tool=memcheck --track-origins=yes --num-callers=25 \
+		--error-exitcode=99 --log-file=$(DBG_BUILD_DIR)-test/valgrind.log \
+		$(DBG_BUILD_DIR)-test/qtty-tests \
+	|| { echo "test-valgrind: see $(DBG_BUILD_DIR)-test/valgrind.log" >&2; exit 1; }
+	@echo "test-valgrind: clean"
 
 # Line coverage for one source, measured rather than asserted -- and measured
 # for THAT SOURCE, which is not what gcov's summary reports.
@@ -609,5 +636,5 @@ distclean: veryclean
 help:
 	@sed -n '/^# TARGETS/,/^#$$/p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
-.PHONY: all test test-platforms test-sanitize tests-build coverage record check style style-source style-docs layout hooks \
+.PHONY: all test test-platforms test-sanitize test-valgrind tests-build coverage record check style style-source style-docs layout hooks \
         version-check run install uninstall clean veryclean distclean help FORCE
