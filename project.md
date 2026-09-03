@@ -1030,6 +1030,26 @@ in the suite went through a menu. It has one now, and disabling
 `a->trigger()` reddens it while the older menu check stays green, which
 is the gap made visible.
 
+**And the rule sharpens once more, which is what made the next two
+findable.** A countable claim rots only in the PRESENT tense. "It
+reported 83 misaligned geometries across five suites on its first run" is
+a record of a measurement and cannot go stale -- the run happened, the
+number was five. "The `CHECK` macro, copied identically into ten suites"
+is a claim about the tree as it stands, and the tree has twelve. Same
+noun, same shape, opposite behaviour.
+
+So the detector is not gap language at all. It is **present-tense
+countable claims about the tree's own shape**, and a sweep for those
+found two more here in one pass: `ten suites` for twelve, and "a plain
+`make` builds the library, the two tools and the example" for three --
+`qtty-negotiate` was added and the sentence was not. Both corrected.
+
+That also explains why a gap-language sweep returned 26 noise hits out of
+30 against this file: **a project log is written in the past tense**, and
+the phrase "nothing exercises X" is the opening line of every entry that
+then fixes X. The tense is not a filter to bolt onto that detector; it is
+the whole signal, pointed at a different target.
+
 **So the most-quoted number in this document carries a proof now.** §0a
 opens with "N checks, 0 failures", and that figure is cited through the
 document and in nearly every commit message -- and nothing held it to
@@ -3058,7 +3078,7 @@ probe looking in the wrong place, which were precisely the three hypotheses
 it generated. **A message that cannot separate the hypotheses it will
 generate guarantees the guessing.**
 
-The `CHECK` macro, copied identically into ten suites, now prints the
+The `CHECK` macro, copied identically into twelve suites, now prints the
 condition that was false as well as the sentence. Mechanical, so it carries
 a proof: the 552 PASS lines are byte-identical before and after, and the
 failure path was then exercised deliberately, because a change that only
@@ -7688,7 +7708,7 @@ the same reason `-Og` exists.
 ### 9.4 Tests are built by the test target, and only by it
 
 `test/` is deliberately not a `SUBDIRS` entry in `qtty.pro`. A plain
-`make` builds the library, the two tools and the example; `make test`
+`make` builds the library, the three tools and the example; `make test`
 runs qmake on `test/test.pro` into `$(BUILD_DIR)-test` and builds the
 suite there. That is `build-and-commit.md`'s rule, and it was paid for
 here within an hour of the Makefile being written.
