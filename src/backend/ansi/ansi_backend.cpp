@@ -387,9 +387,35 @@ extern "C" void qtty_stop_handler(int sig) {
 	// Stop for real, with the default action, then put the handler back so
 	// the next Ctrl+Z or kill behaves the same. Execution resumes here when
 	// SIGCONT arrives.
-	signal(sig, SIG_DFL);
+	//
+	// The signal is UNBLOCKED around the raise, and that is the whole of the
+	// difference between this and a livelock. A handler runs with its own
+	// signal blocked, so raise() only makes it PENDING: it is delivered when
+	// the handler returns -- by which time the line below has put this handler
+	// back, so it arrives here again, and again. Measured on a pseudo-terminal
+	// before the fix: the child never returned from raise(), and wrote the
+	// leave sequence four hundred times until the test killed it.
+	//
+	// Unblocked, the raise stops the process HERE. Execution resumes on the
+	// continue, after which the mask and the handler are restored -- in that
+	// order, so nothing arrives between them.
+	//
+	// The loop was blamed on an orphaned process group before it was measured,
+	// on the theory that the stop was being discarded. It was not: with this
+	// fix the same child stops and its parent sees it stop. The livelock was
+	// the whole cause, and the environment was innocent -- which is worth the
+	// line, because the wrong explanation was the more comfortable one.
+	struct sigaction dfl {}, prev_action {};
+	dfl.sa_handler = SIG_DFL;
+	sigemptyset(&dfl.sa_mask);
+	sigaction(sig, &dfl, &prev_action);
+	sigset_t just_this, prev_mask;
+	sigemptyset(&just_this);
+	sigaddset(&just_this, sig);
+	sigprocmask(SIG_UNBLOCK, &just_this, &prev_mask);
 	raise(sig);
-	signal(sig, qtty_stop_handler);
+	sigprocmask(SIG_SETMASK, &prev_mask, nullptr);
+	sigaction(sig, &prev_action, nullptr);
 }
 
 // And take the terminal back when the job is resumed. The repaint is not done

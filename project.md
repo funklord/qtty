@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-854 checks, 0 failures, under six configurations: the offscreen
+857 checks, 0 failures, under six configurations: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
 detector, a **debug** build -- which is not the same code, `setup()`
@@ -1168,6 +1168,34 @@ program. That residue is stated rather than hidden.
 The bytes wait in the decoder's buffer until `set_event_sink()` is
 called, because `decode_one()` clears the buffer when there is no sink --
 so draining any earlier would throw away exactly what was just saved.
+
+**A stop signal made the program spin instead of stopping** (2026-09-04),
+which is the largest defect this document has recorded in some time and
+was found by reading an uncovered line rather than by anything going
+wrong. `qtty_stop_handler()` had no caller in a whole run, because the
+suite could not raise `SIGTSTP` without stopping itself -- a constraint
+its own comment recorded, and one the fork fixture built for the
+fatal-message checks had quietly removed.
+
+Raised in a child, the handler **livelocked**:
+
+    four hundred leave sequences, 31 KB, until the fixture killed it
+    the child never returned from raise(), and never stopped
+
+The mechanism is the classic one. A handler runs with its own signal
+blocked, so `raise(sig)` only makes it PENDING; it is delivered when the
+handler returns -- by which time `signal(sig, qtty_stop_handler)` has put
+the handler back, so it arrives at the handler again, forever. The
+default action never gets a turn. Unblocking the signal around the raise
+is the fix: the stop takes effect **inside** the handler, and the mask and
+disposition are restored afterwards, in that order.
+
+**And the first explanation was wrong in the comfortable direction.** I
+blamed an orphaned process group discarding the stop -- true POSIX, and
+it would have made the symptom somebody else's. Measurement disproved it:
+with the handler fixed, the same child in the same environment stops, and
+its parent sees it stop. The environment was innocent. The check asserts
+that now rather than printing it.
 
 **Reading the rest of the uncovered list found the policy's other half**
 (2026-09-04). §7's drop-optional pass is run for the layer that owns

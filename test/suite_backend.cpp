@@ -127,7 +127,8 @@ struct Tty {
 // most a second before SIGKILL; and the read stops at the first short read of
 // a non-blocking master.
 QByteArray fatal_child(bool screen, const std::function<void()> &body,
-                       const QByteArray &preload = QByteArray()) {
+                       const QByteArray &preload = QByteArray(),
+                       bool *stopped = nullptr) {
 	const int master = posix_openpt(O_RDWR | O_NOCTTY);
 	if (master < 0) return QByteArray();
 	int slave = -1;
@@ -167,7 +168,16 @@ QByteArray fatal_child(bool screen, const std::function<void()> &body,
 	::close(slave);
 	int status = 0;
 	for (int i = 0; i < 1000; ++i) {
-		if (::waitpid(pid, &status, WNOHANG) == pid) break;
+		// WUNTRACED, because a child may STOP rather than exit -- a test of
+		// job control raises SIGTSTP on purpose. Without it such a child sits
+		// stopped until the kill below, and the run reads as a hang.
+		const pid_t got = ::waitpid(pid, &status, WNOHANG | WUNTRACED);
+		if (got == pid && WIFSTOPPED(status)) {
+			if (stopped) *stopped = true;
+			::kill(pid, SIGCONT);
+			continue;
+		}
+		if (got == pid) break;
 		if (i == 999) { ::kill(pid, SIGKILL); ::waitpid(pid, &status, 0); break; }
 		usleep(1000);
 	}
@@ -2118,6 +2128,41 @@ int suite_backend() {
 		}, QByteArrayLiteral("x\033[Ay"));
 		CHECK(split.contains("TYPED[xy]"),
 		      "and keys on both sides of an escape survive it");
+	}
+
+	// -- a stop and a continue, end to end -----------------------------------
+	// The block further down checks that a running backend ANSWERS SIGTSTP and
+	// SIGCONT, and says plainly why it cannot raise the stop: "a suite that
+	// suspends itself to make a point is a worse trade". That was true while
+	// there was no way to run anything in another process. There is now -- the
+	// fork fixture arrived for the fatal-message checks -- so the stop can be
+	// raised where it costs nothing, and the EFFECT checked rather than the
+	// disposition.
+	//
+	// The stream a correct run produces is enter, leave, enter, leave: taken
+	// at construction, given back by the stop, taken again by the continue,
+	// given back by suspend().
+	{
+		// Both signals are raised BY THE CHILD, so that both handlers run
+		// wherever the suite does; the parent's job is to watch. The child
+		// really does stop -- and it did not, before the handler was fixed:
+		// qtty_stop_handler() looped, writing the leave sequence four hundred
+		// times until this fixture killed it. That is what the check found,
+		// and the first explanation offered for it was an orphaned process
+		// group discarding the stop, which measurement then disproved.
+		bool stopped = false;
+		const QByteArray said = fatal_child(true, [] {
+			Qtty::AnsiBackend backend;              // takes the terminal
+			::raise(SIGTSTP);                       // must give it back
+			::raise(SIGCONT);                       // and take it again
+			backend.suspend();
+			::_exit(0);
+		}, QByteArray(), &stopped);
+		const int leave = said.indexOf("\033[?1049l");
+		const int again = leave < 0 ? -1 : said.indexOf("\033[?1049h", leave);
+		CHECK(stopped, "a stop signal stops a program that owns the terminal");
+		CHECK(leave >= 0, "and the alternate screen is given back as it stops");
+		CHECK(again > leave, "and a continue takes it again");
 	}
 
 	// -- what a dying program says, and who hears it -------------------------
