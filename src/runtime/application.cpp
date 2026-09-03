@@ -53,9 +53,44 @@ struct Held { QString text; int count = 1; };
 QVector<Held> g_deferred;
 int g_dropped = 0;
 QtMessageHandler g_previous = nullptr;
+// The backend that has the screen, while exec() is running. A fatal message
+// has to be printed where somebody can read it, and the alternate screen is
+// not that place -- see below.
+ITerminalBackend *g_backend = nullptr;
 
 void deferring_handler(QtMsgType type, const QMessageLogContext &ctx,
                        const QString &text) {
+	// A fatal message is the process's LAST words. qFatal() aborts as soon as
+	// this returns, so there is no later flush to hold it for, and holding it
+	// is the same as deleting it. Measured on a pseudo-terminal, before this:
+	//
+	//     stderr a pipe        the font refusal printed, exit 134
+	//     stderr a terminal    NOTHING printed, exit 134
+	//     with a frame up      2746 bytes of screen, no sentence in them
+	//
+	// which is to say the one diagnostic that explains why a program will not
+	// start was invisible to everybody who runs it in a terminal -- and a TUI
+	// is run in a terminal. That is section 7.9's own failure with its
+	// explanation removed: `grid_font_problem()` refuses correctly and says so
+	// to nobody.
+	//
+	// The screen goes back FIRST where a backend has it, because a message
+	// printed onto the alternate screen dies with the alternate screen: the
+	// SIGABRT that follows runs qtty_fatal_handler(), which leaves it. That is
+	// what the 2746-byte measurement is -- the frame, and then the switch
+	// back, taking the sentence with it. suspend() is the call a Ctrl+Z takes
+	// and it flushes on its way out, so the held messages go too.
+	//
+	// g_previous is Qt's own handler and is measured non-null: Qt 6 installs
+	// qDefaultMessageHandler explicitly rather than leaving the pointer empty,
+	// so qInstallMessageHandler() returns something to fall back to. The guard
+	// matches the one below rather than asserting that.
+	if (type == QtFatalMsg) {
+		if (g_backend) g_backend->suspend();
+		flush_deferred_messages();
+		if (g_previous) g_previous(type, ctx, text);
+		return;
+	}
 	if (!isatty(2)) {                       // nothing to protect
 		if (g_previous) g_previous(type, ctx, text);
 		return;
@@ -325,6 +360,8 @@ Capabilities capabilities() { return s_caps; }
 int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	s_tuiActive = true;
 	s_caps = backend.capabilities();
+	// Who to ask for the screen back if this run dies with a qFatal.
+	g_backend = &backend;
 
 	const QSize cells = backend.size();
 	win.setAttribute(Qt::WA_DontShowOnScreen);
@@ -354,6 +391,7 @@ int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	const int rc = app.exec();
 	s_tuiActive = false;
 	s_caps = Capabilities{};
+	g_backend = nullptr;                         // it is about to go out of scope
 	return rc;
 }
 

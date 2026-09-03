@@ -15,9 +15,9 @@ open, and how to work in the tree. Where design.md holds the detail, this
 document states the substance in a sentence or two and cites the section
 number rather than restating it.
 
-## 0a. State, 2026-09-02
+## 0a. State, 2026-09-03
 
-823 checks, 0 failures, under three configurations: the offscreen
+828 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -4404,6 +4404,57 @@ application that takes the screen some other way. The buffer is bounded
 at 256 and counts the rest, because a resize storm is exactly when this
 fires and an unbounded buffer would turn a screenful of noise into a leak
 that only shows on a bad day.
+
+**And the one message that has no "later" was deferred with the rest**
+(2026-09-03), which is the same sentence pointed the other way: a
+diagnostic nobody ever sees is worse than one in the wrong place, and
+holding a **fatal** message is not deferring it but deleting it. `qFatal()`
+aborts as soon as the handler returns. There is no flush after that.
+
+Measured on a pseudo-terminal, with the two things a user actually runs
+into:
+
+    stderr a pipe        the font refusal printed, exit 134
+    stderr a terminal    NOTHING printed, exit 134
+    with a frame up      2746 bytes of screen, no sentence in them
+
+So §7.9's finding had its explanation removed. `grid_font_problem()`
+refuses a font that cannot carry the grid and says why -- to nobody,
+because a TUI is run in a terminal and that is precisely the branch that
+holds. A user whose fontconfig lacks the font gets an exit status and a
+blank screen.
+
+The frame case needed a second half. A message printed onto the alternate
+screen dies with the alternate screen: the `SIGABRT` that follows runs
+`qtty_fatal_handler()`, which leaves it and takes the sentence along --
+which is what 2746 bytes of frame and no words are. So the screen goes
+back **first** where a backend has it, through the `suspend()` a Ctrl+Z
+already takes, and that flushes what was held on its way out.
+
+**Five checks, and the control is the one that matters**: a handler that
+simply stopped deferring anything would satisfy every assertion about the
+fatal message arriving. The third check is an ordinary warning that must
+still be held. Sabotaged one at a time -- the branch made unreachable
+(four red, the control green), the flush removed (one red), the
+`suspend()` removed (only the ordering check red) -- and nothing else in
+828 moved either way.
+
+Watching a fatal message needs a seat outside the process that prints it,
+so the checks **fork**, hand the child a pseudo-terminal on fd 2, and read
+what arrived. Bounded three ways, because a child that hangs hangs the
+suite: `RLIMIT_CORE` at zero or every run leaves a core file, a
+SIGKILL after one second, and a 20x5 window size set on the master so a
+child that draws a frame draws a small one -- a fresh pseudo-terminal is
+0x0, which `FrameScheduler` refuses, and an inherited size would make how
+much the child writes depend on the window the suite happens to run in.
+
+**The residue, stated rather than fixed:** the pointer is taken in
+`exec()`, so an application driving a backend through its own frame loop
+-- which `backend.h` explicitly supports -- has no backend registered and
+gets the message onto the alternate screen. That is the state everything
+was in before today rather than a regression, and closing it means
+registering in `resume()`/`suspend()` instead, which is where "who has the
+screen" actually changes.
 
 **A click on a menu item dismissed the menu instead of firing it**
 (2026-09-02), and the reason had been recorded as somebody else's fault.

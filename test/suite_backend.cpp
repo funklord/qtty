@@ -21,6 +21,8 @@
 #include <pty.h>
 #include <fcntl.h>
 #include <csignal>
+#include <sys/wait.h>
+#include <sys/resource.h>
 
 using namespace Qtty;
 
@@ -108,6 +110,70 @@ struct Tty {
 		if (master >= 0) ::close(master);
 	}
 };
+
+// Runs `body` in a forked child whose fd 2 -- and fd 0 and 1 too when `screen`
+// is set -- is a pseudo-terminal, and returns everything the child wrote to it.
+// The child is not expected to come back: `body` aborts, and the _exit after
+// it covers the case where it does not.
+//
+// A forked child is the only seat from which a fatal message can be watched.
+// qFatal() aborts the process that prints it, so nothing inside this binary
+// can assert what it said -- and the deferring handler holds messages only
+// while isatty(2), so a pipe would exercise the one branch that was never
+// broken.
+//
+// Bounded three ways, because a child that hangs would hang the suite: no core
+// file, or every run of these checks leaves one behind; the parent waits at
+// most a second before SIGKILL; and the read stops at the first short read of
+// a non-blocking master.
+QByteArray fatal_child(bool screen, const std::function<void()> &body) {
+	const int master = posix_openpt(O_RDWR | O_NOCTTY);
+	if (master < 0) return QByteArray();
+	int slave = -1;
+	if (grantpt(master) == 0 && unlockpt(master) == 0)
+		if (const char *name = ptsname(master))
+			slave = ::open(name, O_RDWR | O_NOCTTY);
+	if (slave < 0) { ::close(master); return QByteArray(); }
+	// A size, so that a child which draws a frame draws a SMALL one. A fresh
+	// pseudo-terminal is 0x0, which FrameScheduler refuses -- and an inherited
+	// size would make how much the child writes depend on the window the suite
+	// happens to be running in. The parent does not read until the child has
+	// died, so a frame larger than the terminal's buffer would deadlock until
+	// the kill below.
+	const struct winsize ws { 5, 20, 0, 0 };
+	ioctl(master, TIOCSWINSZ, &ws);
+
+	fflush(stdout);
+	fflush(stderr);
+	const pid_t pid = ::fork();
+	if (pid < 0) { ::close(slave); ::close(master); return QByteArray(); }
+	if (pid == 0) {
+		const struct rlimit no_core { 0, 0 };
+		setrlimit(RLIMIT_CORE, &no_core);
+		::close(master);
+		::dup2(slave, 2);
+		if (screen) { ::dup2(slave, 0); ::dup2(slave, 1); }
+		body();
+		::_exit(0);
+	}
+	::close(slave);
+	int status = 0;
+	for (int i = 0; i < 1000; ++i) {
+		if (::waitpid(pid, &status, WNOHANG) == pid) break;
+		if (i == 999) { ::kill(pid, SIGKILL); ::waitpid(pid, &status, 0); break; }
+		usleep(1000);
+	}
+	fcntl(master, F_SETFL, O_NONBLOCK);
+	QByteArray out;
+	char buf[4096];
+	for (;;) {
+		const ssize_t n = ::read(master, buf, sizeof(buf));
+		if (n <= 0) break;
+		out.append(buf, int(n));
+	}
+	::close(master);
+	return out;
+}
 
 } // namespace
 
@@ -1938,6 +2004,53 @@ int suite_backend() {
 			printf("FAIL: could not build the tty/pipe pair\n");
 			++fails;
 		}
+	}
+
+	// -- what a dying program says, and who hears it -------------------------
+	// A fatal message is the last thing a process says, and it was held back
+	// like any other. Measured before the fix, with stderr on a
+	// pseudo-terminal: a program whose font cannot carry the grid printed
+	// NOTHING and exited 134, and one that died with a frame up left 2746
+	// bytes of screen with no sentence in them. Both are one fault -- qFatal()
+	// aborts as soon as the handler returns, so a message the handler holds is
+	// a message nobody will ever read.
+	{
+		const QByteArray said = fatal_child(false, [] {
+			qWarning("qtty-check: this one was held back");
+			qFatal("qtty-check: the last words");
+		});
+		CHECK(said.contains("qtty-check: the last words"),
+		      "a fatal message reaches a terminal rather than being held");
+		CHECK(said.contains("qtty-check: this one was held back"),
+		      "and takes what was held before it out with it");
+
+		// The control, and it is the half that keeps the fix honest: a handler
+		// that simply stopped deferring anything would pass both checks above.
+		const QByteArray quiet = fatal_child(false, [] {
+			qWarning("qtty-check: this one was held back");
+			::_exit(0);
+		});
+		CHECK(!quiet.contains("qtty-check: this one was held back"),
+		      "while an ordinary warning is still kept off the screen");
+	}
+	{
+		// With a frame up the screen has to go back FIRST. A message printed
+		// onto the alternate screen dies with it: the SIGABRT that follows
+		// runs qtty_fatal_handler(), which leaves the alternate screen and
+		// takes the sentence with it. That is what 2746 bytes and no sentence
+		// were.
+		const QByteArray said = fatal_child(true, [] {
+			QWidget win;
+			QTimer::singleShot(0, [] { qFatal("qtty-check: the last words"); });
+			Qtty::AnsiBackend backend;
+			Qtty::exec(*qApp, win, backend);
+		});
+		const int words = said.indexOf("qtty-check: the last words");
+		const int leave = said.lastIndexOf("\033[?1049l");
+		CHECK(words >= 0,
+		      "a fatal message reaches a terminal that has a frame on it");
+		CHECK(leave >= 0 && words > leave,
+		      "and arrives after the alternate screen was given back");
 	}
 
 	return fails;
