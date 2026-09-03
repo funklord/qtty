@@ -1093,10 +1093,13 @@ than drifting. §8 is where it sits.
 **An anchor that is a substring of a longer anchor is a silent partial
 edit** (2026-09-03). Every mechanical edit in this tree is "find this
 exact text, replace it, assert it occurred once". That assertion is the
-proof, and it fails the moment the tree grows a longer string containing
-the shorter one: `install: $(LIB)` became ambiguous the hour this
-Makefile gained `test-install: $(LIB) $(INSPECT) $(REPLAY)`, and the same
-edit then had two matches and no way to know which was meant.
+proof, and the sharpest way to say why it is needed is that **uniqueness
+is a property of the file at the moment of the edit, not of the string**:
+`install: $(LIB)` was unique when the habit of anchoring on it formed,
+and stopped being unique the hour this Makefile gained `test-install:
+$(LIB) $(INSPECT) $(REPLAY)` -- with nobody touching the edit that used
+it. That is what moves the count out of the author's judgement and into
+the tool.
 
 It cost three attempts and, worse, a wrong conclusion: two edits were
 missing from a file, the mtime said something had written it after I did,
@@ -1106,7 +1109,11 @@ thirteen trees its pass touched, qtty not among them, and one commit here
 touching one unrelated file, which `git show --stat` confirms. **Reading
 an mtime and naming an author is the same fault as reading a counter and
 naming a cause**, which this document had spent the same afternoon
-writing up about a splitter.
+writing up about a splitter. And the discriminating evidence was there
+before the accusation and had not been read: every session here commits
+under one git identity, so authorship distinguishes nothing -- but `git
+show --stat` per candidate commit does, and so does the literal path list
+a sweep was pointed at. Asking an mtime instead is asking a proxy.
 
 Two things survive it. Anchor on a string that cannot be contained by
 another -- the newline is usually enough. And: **reading a file back
