@@ -1169,6 +1169,29 @@ The bytes wait in the decoder's buffer until `set_event_sink()` is
 called, because `decode_one()` clears the buffer when there is no sink --
 so draining any earlier would throw away exactly what was just saved.
 
+**Both heavyweight instruments were re-run over the day's changes**
+(2026-09-04), because neither had seen `strip_escapes()` -- a byte
+scanner written by hand, with index arithmetic, which is precisely what
+they are for. ASan, UBSan and the leak detector: clean. Valgrind: clean,
+**at the second attempt**, and the first attempt is the part worth
+recording.
+
+`make test-valgrind` failed, and the reason was not memory:
+
+    valgrind: Cannot create log file '.../valgrind.log': Permission denied
+
+A log from a run four hours earlier, owned by another user, could not be
+overwritten. **And that stale log said "0 errors from 0 contexts"** --
+which is what I read first, and nearly reported as this run's result. The
+mtime is what caught it.
+
+So the target removes the log before running and treats its absence
+afterwards as a failure, with a message that says valgrind did not run
+rather than that it found nothing. `evidence.md` names this exactly: an
+artefact from a previous run is not this run's result, and a gate that
+cannot tell them apart invites the reading. Clean at the second attempt
+means clean; nine processes, zero errors, zero contexts.
+
 **The residue is closed, and the rule that closed it is the opposite of
 the one proposed** (2026-09-04). The plan recorded here was a scanner
 that removes RECOGNISED replies and keeps everything else. That is the

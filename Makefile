@@ -538,17 +538,36 @@ test-tools: all
 # --error-exitcode makes an error a failure rather than a paragraph scrolling
 # past. It is slow -- minutes rather than seconds -- which is why it is its own
 # target and not part of `check`.
+#
+# The log is removed before the run and its absence afterwards is a failure,
+# both because of the same incident: a stale log from an earlier run, owned by
+# another user, could not be overwritten -- valgrind refused with "Permission
+# denied" and the target reported a failure while the four-hour-old log sat
+# there reading "0 errors from 0 contexts". An artefact from a previous run is
+# not this run's result, and a target that cannot tell them apart invites
+# exactly that reading.
 test-valgrind:
 	@command -v valgrind >/dev/null 2>&1 || { \
 		echo "test-valgrind: valgrind is not installed" >&2; exit 1; \
 	}
 	$(MAKE) tests-build BUILD_DIR=$(DBG_BUILD_DIR) DEBUG=1
-	@QTTY_UNDER_VALGRIND=1 QTTY_TEST_TIMEOUT=3000 \
+	@log="$(DBG_BUILD_DIR)-test/valgrind.log"; \
+	rm -f "$$log" || { \
+		echo "test-valgrind: cannot replace $$log" >&2; exit 1; \
+	}; \
+	QTTY_UNDER_VALGRIND=1 QTTY_TEST_TIMEOUT=3000 \
 		valgrind --tool=memcheck --track-origins=yes --num-callers=25 \
-		--error-exitcode=99 --log-file=$(DBG_BUILD_DIR)-test/valgrind.log \
-		$(DBG_BUILD_DIR)-test/qtty-tests \
-	|| { echo "test-valgrind: see $(DBG_BUILD_DIR)-test/valgrind.log" >&2; exit 1; }
-	@echo "test-valgrind: clean"
+		--error-exitcode=99 --log-file="$$log" \
+		$(DBG_BUILD_DIR)-test/qtty-tests; \
+	rc=$$?; \
+	if [ ! -s "$$log" ]; then \
+		echo "test-valgrind: valgrind wrote no log, so it did not run --" >&2; \
+		echo "               this is not a clean result" >&2; exit 1; \
+	fi; \
+	[ "$$rc" -eq 0 ] || { \
+		echo "test-valgrind: exit $$rc; see $$log" >&2; exit 1; \
+	}; \
+	echo "test-valgrind: clean"
 
 # Line coverage for one source, measured rather than asserted -- and measured
 # for THAT SOURCE, which is not what gcov's summary reports.
