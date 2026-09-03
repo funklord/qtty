@@ -164,7 +164,9 @@ int suite_runtime() {
 		// The guard above is about metrics, and a substitute satisfies it
 		// whenever its own happen to be whole numbers. Measured with DejaVu
 		// Sans Mono taken out of the font list: qtty ran on Noto Mono, same
-		// 10x19 cell, and all 828 checks passed without a word about it. A
+		// 10x19 cell, and the whole suite passed without a word about it --
+		// 828 checks that day, dated because it records a run rather than
+		// describing this one. A
 		// family cannot be pinned the way the platform, the theme, the scaling
 		// and the hinting are -- a font that is not installed cannot be
 		// conjured -- so it is announced.

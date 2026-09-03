@@ -1030,6 +1030,31 @@ in the suite went through a menu. It has one now, and disabling
 `a->trigger()` reddens it while the older menu check stays green, which
 is the gap made visible.
 
+**The same detector, pointed at the code, found three more and cleared
+two** (2026-09-03). Comments carry counts here too, and the sweep is one
+grep for a number beside a noun:
+
+    "the decoder has 33 checks here and the router has 20 of its own"
+        sub-counts of two files' present state, from a third. Removed:
+        unmaintainable AND uncheckable, since neither is a whole suite.
+    "three places for the enter and three for the leave"
+        two each. resume()/suspend() and the two helpers the signal
+        handlers call, counted rather than remembered.
+    "same 828 checks"  (twice)
+        correct, and RECORDS rather than claims -- both are past tense
+        about a run that happened. Dated now, because a bare figure of
+        the same kind section 0a states as current invites a reader to
+        compare them.
+
+    "qtty emits qWarning from four places of its own"      four, correct
+    "three places need the same answer" (cell_geometry.h)  enumerated
+
+**Two of the five held**, which is the part worth reporting: a sweep that
+only lists what it breaks teaches nothing about where the rot lives. It
+lives in counts of OTHER files, and it does not live in counts a comment
+enumerates beside the number or in measurements written in the past
+tense.
+
 **And the rule sharpens once more, which is what made the next two
 findable.** A countable claim rots only in the PRESENT tense. "It
 reported 83 misaligned geometries across five suites on its first run" is

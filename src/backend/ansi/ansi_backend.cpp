@@ -314,10 +314,14 @@ void AnsiBackend::read_winch() {
 // of failure that only happens on the day something has already gone wrong.
 namespace {
 
-// The two sequences, named once. resume() and suspend() write them, and so do
-// the signal handlers below -- three places for the enter and three for the
-// leave, which is exactly the shape this tree distrusts: a second copy of a
-// rule arrived at by measurement is the kind that drifts.
+// The two sequences, named once. Each is written from two places -- resume()
+// and suspend() for the ordinary path, and enter_terminal()/leave_terminal()
+// below for the signal handlers, which cannot call into Qt. Naming them once
+// is the point: a second copy of a rule arrived at by measurement is the kind
+// that drifts.
+//
+// This comment said "three places for the enter and three for the leave"
+// until 2026-09-03, when they were counted. Two each.
 const char kEnter[] = "\033[?1049h\033[?25l\033[?1006h\033[?1002h"
                       "\033[?2004h\033[?1004h";
 const char kLeave[] = "\033[?1004l\033[?2004l\033[?1002l\033[?1006l"

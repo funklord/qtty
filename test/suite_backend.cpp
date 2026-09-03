@@ -554,8 +554,11 @@ int suite_backend() {
 		}
 	}
 
-	// Bytes on stdin becoming text in a widget. The decoder has 33 checks
-	// here and the router has 20 of its own; NOTHING ran a byte through both.
+	// Bytes on stdin becoming text in a widget. The decoder is exhaustively
+	// checked here and the router on its own side; NOTHING ran a byte through
+	// both. (Both halves carried a count of the other's checks until
+	// 2026-09-03. A number describing another file's present state cannot be
+	// maintained from here, and one of them was thirty out.)
 	// Every test on this side stops at a recording sink, and every test on
 	// that side starts from a hand-built event -- both halves exhaustively
 	// covered and the chain between them covered nowhere, which is the one

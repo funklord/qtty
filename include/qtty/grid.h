@@ -45,8 +45,10 @@ QString grid_font_problem(const QFont &font);
 //
 // The guard above is about METRICS, and a substitute satisfies it whenever its
 // own metrics happen to be whole numbers. Measured: with DejaVu Sans Mono
-// removed from the font list, qtty ran on Noto Mono -- same 10x19 cell, same
-// 828 checks, nothing anywhere saying a different font was in use. Every other
+// removed from the font list, qtty ran on Noto Mono -- same 10x19 cell, the
+// whole suite green (828 checks on 2026-09-03, and the figure is dated
+// because it is a record of that run and not a claim about this one),
+// nothing anywhere saying a different font was in use. Every other
 // ambient lever this library inherits is pinned (platform, platform theme,
 // scaling) or asked for outright (hinting); the family cannot be pinned,
 // because a font Qt does not resolve cannot be conjured. So it is announced
