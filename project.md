@@ -1090,6 +1090,31 @@ than resolved**: it is a diagnostic users are told to run, which argues
 yes, and it is one more installed name, which argues for deciding rather
 than drifting. §8 is where it sits.
 
+**An anchor that is a substring of a longer anchor is a silent partial
+edit** (2026-09-03). Every mechanical edit in this tree is "find this
+exact text, replace it, assert it occurred once". That assertion is the
+proof, and it fails the moment the tree grows a longer string containing
+the shorter one: `install: $(LIB)` became ambiguous the hour this
+Makefile gained `test-install: $(LIB) $(INSPECT) $(REPLAY)`, and the same
+edit then had two matches and no way to know which was meant.
+
+It cost three attempts and, worse, a wrong conclusion: two edits were
+missing from a file, the mtime said something had written it after I did,
+and I reported a concurrent writer to a peer session before excluding my
+own tooling. The peer answered with a checkable alibi -- a named list of
+thirteen trees its pass touched, qtty not among them, and one commit here
+touching one unrelated file, which `git show --stat` confirms. **Reading
+an mtime and naming an author is the same fault as reading a counter and
+naming a cause**, which this document had spent the same afternoon
+writing up about a splitter.
+
+Two things survive it. Anchor on a string that cannot be contained by
+another -- the newline is usually enough. And: **reading a file back
+proves the write landed at that instant and nothing more.** It does not
+prove the bytes are there a minute later, which is what a shared tree
+puts in question; the only durable answer is to commit, which is why the
+91 lines this happened to were committed before the cause was known.
+
 **The sabotage discipline that goes with it**, because a passing new test
 is not evidence: break the code the test claims to defend, confirm the edit
 actually applied (`grep -c SABOTAGE`), run, confirm the *named* check
