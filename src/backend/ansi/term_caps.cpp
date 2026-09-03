@@ -328,15 +328,59 @@ bool caps_complete(const QByteArray &buf) {
 	return probe.answered;
 }
 
+// Everything in `buf` that is not part of an escape sequence.
+//
+// This is the type-ahead rule, and it replaced a narrower one that kept only
+// the bytes BEFORE the first ESC. That was safe and left the case this exists
+// for: over a slow link the reply window is at its longest, which is exactly
+// when somebody types ahead, and their keys arrive INTERLEAVED with the
+// terminal's answers rather than in front of them.
+//
+// Escapes are dropped whether or not they are recognised, and that asymmetry
+// is deliberate. Keeping an unrecognised escape would mean a terminal's reply
+// -- or half of one, split across two reads -- reaching the application as
+// input, which types garbage into somebody's document. Dropping it costs a
+// typed arrow or function key in the few milliseconds of the query, which is
+// the smaller loss and is stated rather than hidden. An incomplete sequence at
+// the end of the buffer is dropped for the same reason.
+static QByteArray strip_escapes(const QByteArray &buf) {
+	QByteArray out;
+	int i = 0;
+	while (i < buf.size()) {
+		const unsigned char c = buf[i];
+		if (c != 0x1b) { out += char(c); ++i; continue; }
+		if (i + 1 >= buf.size()) break;            // a lone trailing ESC
+		const char kind = buf[i + 1];
+		int j = i + 2;
+		if (kind == '[') {                         // CSI: ... final 0x40..0x7e
+			while (j < buf.size() && (uchar(buf[j]) < 0x40 || uchar(buf[j]) > 0x7e))
+				++j;
+			if (j >= buf.size()) break;            // not all here yet
+			i = j + 1;
+		} else if (kind == ']' || kind == 'P' || kind == '_' || kind == '^'
+		           || kind == 'X') {               // OSC/DCS/APC/PM/SOS: ... ST
+			while (j < buf.size()) {
+				if (uchar(buf[j]) == 0x07) break;              // BEL
+				if (uchar(buf[j]) == 0x1b && j + 1 < buf.size()
+				    && buf[j + 1] == '\\') { ++j; break; }     // ESC backslash
+				++j;
+			}
+			if (j >= buf.size()) break;
+			i = j + 1;
+		} else {
+			i = i + 2;                             // SS3, or Alt and a letter
+		}
+	}
+	return out;
+}
+
 TermCaps collect_caps(int in_fd, int out_fd, int timeout_ms, QByteArray *raw,
                       QByteArray *typed) {
 	TermCaps caps;
 	// See term_caps.h: everything before the first ESC is type-ahead, because
 	// a reply cannot begin anywhere else.
 	const auto keep_typed = [&typed](const QByteArray &buf) {
-		if (!typed) return;
-		const int esc = buf.indexOf('\033');
-		*typed = esc < 0 ? buf : buf.left(esc);
+		if (typed) *typed = strip_escapes(buf);
 	};
 	// Wrapped inside tmux, or the query is answered by tmux itself: it is a
 	// terminal too, and it answers device attributes while knowing nothing

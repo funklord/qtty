@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-849 checks, 0 failures, under six configurations: the offscreen
+850 checks, 0 failures, under six configurations: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
 detector, a **debug** build -- which is not the same code, `setup()`
@@ -1169,6 +1169,25 @@ The bytes wait in the decoder's buffer until `set_event_sink()` is
 called, because `decode_one()` clears the buffer when there is no sink --
 so draining any earlier would throw away exactly what was just saved.
 
+**The residue is closed, and the rule that closed it is the opposite of
+the one proposed** (2026-09-04). The plan recorded here was a scanner
+that removes RECOGNISED replies and keeps everything else. That is the
+dangerous direction: an unrecognised escape, or half of one split across
+two reads, would reach the application as input and type garbage into
+somebody's document. The scanner drops **every** escape instead,
+recognised or not, and keeps what is not one -- so a plain key typed
+anywhere in the window survives, and no answer can ever be mistaken for a
+keystroke.
+
+    preloaded "x\033[Ay"    before   TYPED[x]
+                            after    TYPED[xy]
+
+which is the check, and reverting to the old prefix rule reddens exactly
+it while the other two type-ahead checks stay green. **The cost is
+stated: a typed arrow or function key inside the query window is still
+lost** -- the smaller loss, and the one whose failure mode is a missing
+keystroke rather than a corrupted document.
+
 **And the residue has a consequence, found by trying to collect on it.**
 `make test-tools` drives the example with six Ctrl-Ds, which had been a
 workaround for the hang this defect caused; with the defect fixed the
@@ -1333,12 +1352,12 @@ In the order I would take them:
    exposure (a probe that passed on 6.10 and failed on 6.4.2) is the
    reason to want it.
 
-3. **The type-ahead residue.** Keys arriving BEFORE the first ESC are
+3. ~~**The type-ahead residue.** Keys arriving BEFORE the first ESC are
    kept now; keys arriving between the terminal's replies are still
-   dropped, because telling a typed escape from an answered one there is
-   guesswork. Closing it means a scanner that removes recognised replies
-   and keeps the rest -- tractable, and the risk is the opposite one:
-   a malformed reply kept as input types garbage into an application.
+   dropped.~~ **Closed 2026-09-04**, and by dropping escapes rather than
+   by recognising replies -- see §7.1. What is left is narrower and is
+   named there: a typed arrow or function key inside the query window is
+   still lost.
 
 4. **Eleven covered lines that gcov does not count.** They run only in
    processes that die by `abort()` -- the fatal-message branch, its

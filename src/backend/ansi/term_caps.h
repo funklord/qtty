@@ -126,11 +126,17 @@ bool caps_complete(const QByteArray &buf);
 // written before the child started never reached the widget while the same
 // byte written 300 ms later did.
 //
-// Only the bytes BEFORE the first ESC are kept, and that is the whole rule:
-// they cannot be part of an escape-sequence reply, so keeping them cannot
-// feed a terminal's answer to the application as input. Bytes typed BETWEEN
-// replies are still dropped -- telling a typed escape from an answered one
-// there is guesswork, and guessing wrong types garbage into a program.
+// Everything that is not part of an escape sequence is kept, and escapes are
+// dropped whether or not they are recognised. Keeping an unrecognised one
+// would mean a terminal's reply -- or half of one, split across two reads --
+// reaching the application as input, which types garbage into somebody's
+// document; dropping it costs a typed arrow or function key in the few
+// milliseconds of the query. The smaller loss, and stated rather than hidden.
+//
+// This started narrower, keeping only the bytes before the first ESC, which
+// left the case it exists for: over a slow link the reply window is longest,
+// which is exactly when somebody types ahead, and their keys arrive
+// interleaved with the answers rather than in front of them.
 TermCaps collect_caps(int in_fd, int out_fd, int timeout_ms,
                       QByteArray *raw = nullptr, QByteArray *typed = nullptr);
 

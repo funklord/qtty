@@ -2079,6 +2079,24 @@ int suite_backend() {
 		});
 		CHECK(without.contains("TYPED[]"),
 		      "and nothing is invented when nothing was typed");
+
+		// Interleaved, which is the case the first version of this fix left
+		// open: it kept only what arrived before the first ESC. Over a slow
+		// link the reply window is at its longest and a key pressed then
+		// lands BETWEEN the terminal's answers. The escape here stands in for
+		// one of those answers; both plain bytes must survive it, and the
+		// escape itself must not become a keystroke.
+		const QByteArray split = fatal_child(true, [] {
+			Qtty::AnsiBackend backend;
+			Recorder rec;
+			backend.set_event_sink(&rec);
+			QString got;
+			for (const KeyEvent &k : rec.keys) got += k.text;
+			fprintf(stderr, "\nTYPED[%s]\n", qPrintable(got));
+			::_exit(0);
+		}, QByteArrayLiteral("x\033[Ay"));
+		CHECK(split.contains("TYPED[xy]"),
+		      "and keys on both sides of an escape survive it");
 	}
 
 	// -- what a dying program says, and who hears it -------------------------
