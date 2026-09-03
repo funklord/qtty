@@ -268,8 +268,9 @@ QT_PLUGIN_PATH_FOR_CHECK = $(shell $(QMAKE) -query QT_INSTALL_PLUGINS 2>/dev/nul
 # right for that platform's assumptions and nothing more; this is what makes an
 # assumption visible instead of load-bearing.
 test-platforms: tests-build
-	@failed=0; \
+	@failed=0; ran=0; \
 	for platform in $(TEST_PLATFORMS); do \
+		ran=$$((ran + 1)); \
 		echo "--- $(TEST_BIN) on $$platform"; \
 		QTTY_QPA_PLATFORM=$$platform $(TEST_CRASH_ENV) \
 			timeout $(TEST_TIMEOUT) $(TEST_BIN) > /dev/null 2>&1 \
@@ -288,7 +289,15 @@ test-platforms: tests-build
 		timeout $(TEST_TIMEOUT) $(TEST_BIN) > /dev/null 2>&1 \
 		&& echo "    ok (the pins absorbed it)" \
 		|| { echo "    FAILED"; failed=$$((failed + 1)); }; \
-	echo "test-platforms: $(words $(TEST_PLATFORMS)) platform(s) + 1 hostile environment, $$failed failed"; \
+	echo "test-platforms: $$ran platform(s) + 1 hostile environment, $$failed failed"; \
+	if [ "$$ran" -eq 0 ]; then \
+		echo "test-platforms: TEST_PLATFORMS is empty, so the suite ran under" >&2; \
+		echo "                no platform at all. The hostile-environment run" >&2; \
+		echo "                above still happened, which is what makes this" >&2; \
+		echo "                worth refusing: it prints a green summary for a" >&2; \
+		echo "                target whose whole subject was skipped." >&2; \
+		exit 1; \
+	fi; \
 	[ "$$failed" -eq 0 ]
 
 # Line coverage for one source, measured rather than asserted -- and measured
@@ -359,7 +368,19 @@ style-source:
 # arithmetic a check asserts is arithmetic and not a layout's opinion.
 LAYOUT_SRC = $(wildcard example/*/*.h example/*/*.cpp tool/*/*.h tool/*/*.cpp)
 
+#
+# The wildcard is the exposure, not the gate: a moved directory or a renamed
+# file makes it match nothing, `layout_gate.py` with no paths prints its usage,
+# and a `make style` that checked nothing looks exactly like one that passed.
+# So the list is required to be non-empty here, and the gate reports how many
+# files and call sites it actually judged.
 layout:
+	@test -n "$(strip $(LAYOUT_SRC))" || { \
+		echo "layout: LAYOUT_SRC matched no files, so the gate would read" >&2; \
+		echo "        nothing and exit 0 -- that reads like a pass and is" >&2; \
+		echo "        not one. Check the wildcard against the tree." >&2; \
+		exit 1; \
+	}
 	python3 tool/layout_gate.py $(LAYOUT_SRC)
 
 # project.md is authoritative, so it is held to the tree: a heading that

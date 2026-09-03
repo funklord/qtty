@@ -6717,6 +6717,67 @@ both targets, and the tools' own windows. Deliberately **not** `test/`: a
 fixture is built at an exact size on purpose, so that the cell arithmetic
 a check asserts is arithmetic rather than a layout's opinion.
 
+**And the ban was escapable by pressing Enter** (2026-09-03). `arguments()`
+searched **one line**, so a call split across two was not judged, not
+counted and not required to carry the reason the rule is built around:
+
+    l->setContentsMargins(8, 8, 8, 8);      flagged
+    l->setContentsMargins(
+        8, 8, 8, 8);                        silently clean
+
+Latent rather than live -- the five gated files hold four call sites, all
+on one line -- and a gate whose ban depends on formatting is one nobody
+can rely on. It reads the whole file now, with the pairing tightened at
+the same time: only whitespace may separate a call's name from its `(`,
+because over a whole file a looser search would pair a mention in a
+comment with some later call's parentheses. The fixture that proves it
+carries both forms, the zero case, `setFixedWidth(20 * cw)`, a wrapped
+call with an allow comment, and `setFixedSize(QSize(20, 1))` -- the
+conservative rule the docstring promises -- and only the two non-zero
+literals are flagged.
+
+**Two green runs that meant nothing are refused now, and they are the
+same shape.** `layout_gate.py` printed nothing on success, so a run that
+read five files and one that read none looked identical -- and the file
+list is a `wildcard`, which is exactly the thing that stops matching when
+a directory moves. It reports its population (`5 file(s), 4 call site(s)
+judged`) the way `style_gate.py` does, `make layout` refuses an empty
+list, and `make test-platforms` -- which had no counter at all where
+`make test` refuses a run over zero binaries in so many words -- refuses
+an empty `TEST_PLATFORMS`. That one is worth stating precisely: the
+hostile-environment run still happens, so an empty list is not "nothing
+ran" but "the target's whole subject was skipped while it printed a green
+summary".
+
+**And a check written to close this exact hazard was itself a
+tautology.** In `suite_grid`, above the counter checks, the comment says
+*"zero snaps with the filter off is not evidence that nothing needed
+snapping"* -- and under it stood
+
+    CHECK(!GridSnap::installed() || GridSnap::snapped() >= 0, ...)
+
+where `s_snapped` starts at zero and only ever increments, so the right
+operand cannot be false and the sentence passes for every state of both.
+Removing `GridSnap::install()` from `setup()` left it green. It is a
+check that shows the counter **counting** now -- the four-button layout
+`suite_runtime` uses is known to land its children off the grid with the
+filter removed -- and the same sabotage reddens it.
+
+Taking it turned up a fact about the harness worth keeping: `main.cpp`
+installs `GridGuard` **after** `Qtty::setup()`, so in the test binary the
+guard is the most recently installed filter, runs first, and sees the
+geometry a layout assigned rather than the one `GridSnap` corrects it to.
+An application installs the guard inside `setup()`, ahead of the snap,
+and reads the corrected geometry. That is why one deliberate block in
+`suite_grid` has to discard eight violations and no equivalent block
+later does -- everything after `suite_runtime` re-installs `GridSnap`
+runs in the other order.
+
+All three were reported by a peer session sweeping every tree for gates
+that pass having examined nothing, and each was confirmed here before
+being taken -- which is the right order for a report that arrives with
+its own provenance caveat attached.
+
 `w->setProperty("qtty.cells", QSize(20, 1))` is the third hint, and it is
 built now -- **but not where design.md says it is read**, and the reason
 is a fact about Qt rather than a preference.

@@ -216,9 +216,41 @@ int suite_grid() {
 		CHECK(Qtty::GridSnap::snapped() == 0, "the snap counter starts, and resets, at zero");
 		// Its installed() state is what says whether the count means
 		// anything -- zero snaps with the filter off is not evidence that
-		// nothing needed snapping.
-		CHECK(!Qtty::GridSnap::installed() || Qtty::GridSnap::snapped() >= 0,
-		      "and reports whether the filter is installed at all");
+		// nothing needed snapping. That sentence was here already and the
+		// check under it closed nothing: `!installed() || snapped() >= 0` is
+		// true for every state of both, because s_snapped starts at zero and
+		// only ever increments, so the right operand cannot be false.
+		// Removing GridSnap::install() from setup() left it green. Reported
+		// by a peer session sweeping every tree for gates that pass having
+		// examined nothing, and confirmed here before being taken.
+		//
+		// So the counter is shown COUNTING instead. The same four-button
+		// layout suite_runtime uses is known to leave its children off the
+		// grid with the filter removed, which is what makes a non-zero count
+		// here mean the filter did the moving.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *row = new QHBoxLayout(&host);
+		for (int i = 0; i < 4; ++i)
+			row->addWidget(new QPushButton(QStringLiteral("b%1").arg(i)));
+		host.resize(GridMetrics::cells(40, 12));
+		host.show();
+		QCoreApplication::processEvents();
+		row->activate();
+		QCoreApplication::processEvents();
+		CHECK(Qtty::GridSnap::installed() && Qtty::GridSnap::snapped() > 0,
+		      "and counts the geometries the installed filter moved");
+		// The eight violations that layout just produced are deliberate and
+		// are discarded here, the way suite_router discards a splitter's.
+		// They exist because of an ORDER that is the test binary's and not the
+		// library's: main.cpp installs GridGuard AFTER Qtty::setup(), so the
+		// guard is the most recently installed filter and runs FIRST -- it
+		// sees what the layout assigned, before GridSnap moves it. In an
+		// application the guard goes in inside setup(), ahead of GridSnap, and
+		// reads the corrected geometry instead. Which is also why this is the
+		// only place in the suite that has to say so: everything after
+		// suite_runtime re-installs GridSnap runs in the other order.
+		Qtty::GridGuard::reset();
 	}
 
 	return fails;
