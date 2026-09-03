@@ -28,7 +28,7 @@
 #   make hooks        -- install tool/hooks/commit-msg into .git/hooks
 #   make version-check -- VERSION, qtty.pri and version.h still agree
 #   make run          -- build and run the chat example in TUI mode
-#   make install      -- install headers, library, tools and the example
+#   make install      -- headers, the library, qtty-inspect and qtty-replay
 #   make uninstall    -- remove what install put there
 #   make clean        -- remove build intermediates, leaving the tree alone
 #   make veryclean    -- clean, plus the build directories
@@ -712,6 +712,16 @@ version-check:
 run: $(LIB)
 	$(EXAMPLE) --tui
 
+# What this lays down is asserted by `make test-install`, which names every
+# file and then checks that `uninstall` takes all of them back.
+#
+# TWO PROGRAMS ARE NOT HERE, and this comment is the flag rather than the fix.
+# `qtty-negotiate` is built, shipped in the source tree, and documented in
+# doc/beerssh.md as a thing to run against a terminal -- and it is not
+# installed. The chat example is not either, which is ordinary for an example.
+# The help line above said "tools and the example" until 2026-09-03 and was
+# wrong about both. Whether the negotiator belongs in $(PREFIX)/bin is the
+# copyright holder's call, and project.md section 8.0 carries it.
 install: $(LIB)
 	install -d $(DESTDIR)$(PREFIX)/include/qtty
 	install -m 0644 include/qtty/*.h $(DESTDIR)$(PREFIX)/include/qtty/
