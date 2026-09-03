@@ -1030,6 +1030,34 @@ in the suite went through a menu. It has one now, and disabling
 `a->trigger()` reddens it while the older menu check stays green, which
 is the gap made visible.
 
+**Four claims in this document asserted gaps that had been closed**
+(2026-09-03), found by a peer session sweeping every tree for gap
+language and reported with its own caveat that most of its hits were this
+file's METHOD rather than its findings -- which was true of 26 of the 30.
+The other four were real, and stale:
+
+    "No CellItemDelegate class exists"      the class is in the build,
+                                            and suite_widgets names it 16 times
+    "QTableView is never exercised at all"  8 uses across three suites, and the
+                                            200x60 benchmark fixture IS a table
+    "what is still untested is QMessageBox" suite_widgets exercises it, and the
+                                            dialog sweep rendered seven
+    "no test decodes anything, and there    suite_graphics has a section headed
+     is no round-trip"                      exactly that, with its own decoder
+
+Each is struck with what closed it. **A gap claim that outlives its gap
+does harm rather than nothing**, and the harm here is measured rather
+than argued: it sent somebody else's sweep at work that was already done.
+The peer had the same shape in another tree, where an entry saying a
+layer could not be tested was followed nine minutes later, by the same
+session, with the suite that tested it -- and nobody went back.
+
+The check on a claim like this costs one grep. The reason none was run is
+that nothing points at them: they sit in a living section, they are true
+when written, and the commit that closes them touches code and not the
+sentence. That is an argument for striking as you close, which this
+document mostly does and did not here.
+
 **A key pressed before a qtty program has drawn was thrown away**
 (2026-09-03), and the `make test-tools` work is what pointed at it: the
 example arm hung because a single Ctrl-D sent at startup was never read.
@@ -3639,10 +3667,20 @@ code changed is only honest if the diff is the change.
   test written to cover something else.
 - ~~`QDialog`/`QMessageBox` is blocked by the compositor gap.~~
   **Unblocked** (§7.1): a modal is composited, holds input exclusively,
-  and takes the cursor. What is still untested is `QMessageBox`
-  specifically, and a dialog's own layout under the grid.
-- **No `CellItemDelegate` class exists**, so item views have no Channel A
-  role coverage; `QTableView` is never exercised at all.
+  and takes the cursor. ~~What is still untested is `QMessageBox`
+  specifically, and a dialog's own layout under the grid.~~ **Also
+  closed**: `suite_widgets` exercises `QMessageBox`, and the
+  dialogs-beyond-the-standard-three sweep in §0a rendered seven of them
+  including the message box, which is where the severity-icon finding
+  came from.
+- ~~**No `CellItemDelegate` class exists**, so item views have no Channel
+  A role coverage; `QTableView` is never exercised at all.~~ **All three
+  are false and have been for a long time** (corrected 2026-09-03).
+  `include/qtty/delegate.h` and `src/widget/cell_item_delegate.cpp` are
+  in the tree and in the build; `suite_widgets` names the delegate 16
+  times; and `QTableView`/`QTableWidget` appear 8 times across
+  `suite_budget`, `suite_router` and `suite_widgets` -- the 200x60
+  benchmark fixture is a table.
 - **`ICellPainted` and its `Q_DECLARE_INTERFACE` do not exist**, though
   that pair is R5's stated mitigation and F5's suggested remedy.
 - ~~Menus draw a submenu indicator but nothing opens or routes a
@@ -5054,9 +5092,13 @@ implemented in `src/graphics/graphics.cpp`, `src/graphics/overlay.cpp`
 and `src/backend/ansi/ansi_backend.cpp`, and structurally tested by
 `test/suite_graphics.cpp` and `test/suite_placements.cpp`.
 
-**But the encoders are tested for byte structure only.** No test decodes
-anything, and there is no round-trip. A sixel stream that is
-well-formed and wrong passes.
+~~**But the encoders are tested for byte structure only.** No test
+decodes anything, and there is no round-trip. A sixel stream that is
+well-formed and wrong passes.~~ **Closed, and the round trip is the
+strongest thing in that file**: `suite_graphics.cpp` opens a section
+headed *"round trip: decode what the encoders emit, independently"*, with
+its own `decode_sixel()` written against the specification rather than
+against the encoder. §0a counts 68 checks there.
 
 Missing:
 
