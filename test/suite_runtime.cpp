@@ -161,6 +161,24 @@ int suite_runtime() {
 		CHECK(grid_font_problem(mono).isEmpty(),
 		      "the grid font passes the integral-metrics check");
 
+		// The guard above is about metrics, and a substitute satisfies it
+		// whenever its own happen to be whole numbers. Measured with DejaVu
+		// Sans Mono taken out of the font list: qtty ran on Noto Mono, same
+		// 10x19 cell, and all 828 checks passed without a word about it. A
+		// family cannot be pinned the way the platform, the theme, the scaling
+		// and the hinting are -- a font that is not installed cannot be
+		// conjured -- so it is announced.
+		CHECK(grid_font_substitution(mono).isEmpty(),
+		      "the grid font is the one that was asked for");
+		QFont absent(QStringLiteral("No Such Family At All"));
+		absent.setPixelSize(16);
+		const QString said = grid_font_substitution(absent);
+		CHECK(!said.isEmpty(),
+		      "and a family that is not installed is reported, not accepted");
+		CHECK(said.contains(QStringLiteral("No Such Family At All"))
+		      && said.contains(QFontInfo(absent).family()),
+		      "naming both what was asked for and what arrived");
+
 		// The check this replaced compared the advance of 'i' with that of
 		// 'M', which a proportional font fails on the same pair -- but it was
 		// an assert, so it did nothing in a release build. This one is a

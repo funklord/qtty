@@ -281,6 +281,13 @@ void setup(QApplication &app) {
 	// R3's mitigation at all. qFatal is deliberate -- every column the grid
 	// computes from here is wrong, and failing at the point of cause is worth
 	// more than a screen that degrades a little further with each column.
+	// Said BEFORE the refusal below, and that order is the point: a font the
+	// grid rejects is often not the font that was asked for, and a message
+	// naming the requested family sends the reader to fix something that is
+	// not wrong. Both sentences arrive now that a fatal message flushes what
+	// was held.
+	if (const QString subst = grid_font_substitution(f); !subst.isEmpty())
+		qWarning("qtty: %s", qPrintable(subst));
 	if (const QString problem = grid_font_problem(f); !problem.isEmpty()) {
 		qFatal("qtty: the grid needs a font with integral metrics: %s",
 		       qPrintable(problem));

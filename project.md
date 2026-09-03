@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-828 checks, 0 failures, under three configurations: the offscreen
+831 checks, 0 failures, under three configurations: the offscreen
 platform, xcb, and the hostile environment `make test-platforms` builds.
 `make check` is green and now includes `version-check`, which had never
 been part of it. The 627 and the `test-platforms` run are today's, taken
@@ -6355,6 +6355,73 @@ fixtures that pass. The tree has two other checks for exactly that --
 `grid_font_problem()` and the cell-size guard above -- which is what
 makes the option arguable rather than obviously wrong. **The holder's,
 and now a much smaller question than "which font".**
+
+**A fifth ambient lever, found by finishing §0e's second-account
+item** (2026-09-03). That item said the cheapest axis left was anything
+derived from the *user's* configuration rather than the environment's,
+and that fontconfig was unlikely to be the only such thing. Twelve
+configurations were run -- an Arabic and a Hebrew locale, `LC_ALL=C`, a
+German `LC_NUMERIC`, `QT_STYLE_OVERRIDE`, `QT_FONT_DPI=192`,
+`QT_SCALE_FACTOR=2`, `QT_LOGGING_RULES=*.debug=true`, `QT_ACCESSIBILITY`,
+`QT_IM_MODULE`, an absent `XDG_CONFIG_HOME`, `QT_USE_PHYSICAL_DPI` --
+and **every one rendered the same frame**, which is the pins in
+`prepare_environment()` doing their job and is recorded as a result
+rather than a gap. Three things came out of it anyway.
+
+**An RTL locale does not make the program RTL.** Under `LANG=ar_SA.UTF-8`
+the layout direction stayed `LeftToRight`: Qt takes it from a loaded
+translation, not from the locale, so the half-mirrored rendering §0b
+records is reachable only by an application that asks for it. That
+lowers the urgency of that entry without answering it. What the locale
+*does* reach is numbers -- a spin box showed `١٫٥٠` and a progress bar
+`٤٠%`, correctly, and both are one cell wide as the width table says.
+
+**And qtty runs on a font it did not ask for.** With DejaVu Sans Mono
+taken out of the font list, `QFontInfo` reported **Noto Mono**,
+`exactMatch()` was false, the cell was still 10x19 -- and the whole suite
+passed, 823 of 823. `grid_font_problem()` asks about METRICS, so a
+substitute satisfies it whenever its own happen to be whole numbers,
+which on this machine is all 102 fixed-pitch families. The suite passing
+on a different font is itself the corroboration of the paragraph above --
+the fixtures depend on the cell and not the font, measured this time by
+changing the font rather than by pinning the metrics.
+
+A family cannot be pinned the way the platform, the theme, the scaling
+and the hinting are: a font that is not installed cannot be conjured. So
+it is **announced** -- `grid_font_substitution()` beside the guard, and a
+warning at `setup()` naming both what was asked for and what arrived. It
+is said BEFORE the refusal, because a font the grid rejects is often not
+the font that was asked for and a message naming the requested family
+sends the reader to fix something that is not wrong.
+
+Verified twice over, which is the rule about one quantity and two
+derivations: three checks in the suite, sabotaged both ways (always
+report, never report, one control reddening each), and separately a
+program run on a real terminal with the font removed, which prints
+
+    qtty: 'DejaVu Sans Mono' is not installed; 'Noto Mono' was used instead
+
+after the alternate screen is given back, and prints nothing at all when
+the font is there.
+
+**One residue, stated:** the warning is held like any other, so it
+reaches a program that calls `exec()` -- the backend flushes when it
+gives the terminal back -- and is lost by one that calls `setup()` and
+then exits without ever taking a screen. That is the deferral's
+pre-existing shape rather than something this added.
+
+**And a correction to the entry above, which changes one of the two
+answers §0a offers for wide text.** The reason recorded for a bundled
+font is that it would make wide glyphs advance exactly two cells.
+Measured: **DejaVu Sans Mono contains no CJK at all** -- neither U+65E5
+nor U+4E00 is in its cmap, read out of the file rather than inferred --
+so the 16.0-pixel advance §0a records is not the grid font's. It comes
+from a fallback fontconfig picks per user (TakaoPGothic here, with Noto
+Sans CJK behind it), and the measurement is identical under the
+substituted font for exactly that reason. Bundling the family qtty asks
+for therefore does not close the wide-text loss: Qt would still reach
+past it into a chain the bundle does not control. The question stays the
+holder's; one of its two stated answers does not work as stated.
 
 ## 8. Where the document and the code disagree
 

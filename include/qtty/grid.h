@@ -40,6 +40,19 @@ public:
 // not in place in any shipping build.
 QString grid_font_problem(const QFont &font);
 
+// What `font` actually resolved to, when that is not what was asked for.
+// Empty when the family Qt found is the family requested.
+//
+// The guard above is about METRICS, and a substitute satisfies it whenever its
+// own metrics happen to be whole numbers. Measured: with DejaVu Sans Mono
+// removed from the font list, qtty ran on Noto Mono -- same 10x19 cell, same
+// 828 checks, nothing anywhere saying a different font was in use. Every other
+// ambient lever this library inherits is pinned (platform, platform theme,
+// scaling) or asked for outright (hinting); the family cannot be pinned,
+// because a font that is not installed cannot be conjured. So it is announced
+// instead, which is the weakest thing that is still honest.
+QString grid_font_substitution(const QFont &font);
+
 // section 5.3, and the design calls this "the highest value-per-line component
 // in the project": an event filter that checks every widget geometry against
 // the grid as it is assigned, so a misalignment is reported where it happens

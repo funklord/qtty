@@ -243,6 +243,14 @@ bool item_view_current(const QStyleOptionViewItem *vi, const QWidget *w) {
 
 // ------------------------------------------------- font provisioning (5.3/R3)
 
+QString grid_font_substitution(const QFont &font) {
+	const QFontInfo info(font);
+	if (info.family().compare(font.family(), Qt::CaseInsensitive) == 0)
+		return QString();
+	return QStringLiteral("'%1' is not installed; '%2' was used instead")
+	       .arg(font.family(), info.family());
+}
+
 QString grid_font_problem(const QFont &font) {
 	const QFontInfo info(font);
 	if (!info.fixedPitch())
