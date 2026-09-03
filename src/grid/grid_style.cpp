@@ -244,6 +244,17 @@ bool item_view_current(const QStyleOptionViewItem *vi, const QWidget *w) {
 
 // ------------------------------------------------- font provisioning (5.3/R3)
 
+// One sentence, one place. Both the announcement and the refusal below have to
+// say this and they used to carry a copy each -- which is the parallel-copy
+// hazard code-style.md names, and it showed itself immediately: sabotaging one
+// copy left `make test-platforms`' minimal arm green, because the other was
+// still printing it.
+static QString no_font_at_all(const QFont &font) {
+	return QStringLiteral("'%1' resolved to no font at all; the font database"
+	                      " offers %2 families")
+	       .arg(font.family()).arg(QFontDatabase::families().size());
+}
+
 QString grid_font_substitution(const QFont &font) {
 	const QFontInfo info(font);
 	if (info.family().compare(font.family(), Qt::CaseInsensitive) == 0)
@@ -255,10 +266,7 @@ QString grid_font_substitution(const QFont &font) {
 	// sent the reader to install a font they already had. The count is the
 	// part that separates the two: nothing resolves when there is nothing to
 	// resolve against.
-	if (info.family().isEmpty())
-		return QStringLiteral("'%1' resolved to no font at all; the font"
-		                      " database offers %2 families")
-		       .arg(font.family()).arg(QFontDatabase::families().size());
+	if (info.family().isEmpty()) return no_font_at_all(font);
 	return QStringLiteral("'%1' resolved to '%2', which is not the family"
 	                      " asked for")
 	       .arg(font.family(), info.family());
@@ -270,10 +278,7 @@ QString grid_font_problem(const QFont &font) {
 	// empty family is a statement about nothing: fixedPitch() is false for a
 	// font that was never resolved, so the message accused a font of being
 	// proportional when none had been found.
-	if (info.family().isEmpty())
-		return QStringLiteral("'%1' resolved to no font at all; the font"
-		                      " database offers %2 families")
-		       .arg(font.family()).arg(QFontDatabase::families().size());
+	if (info.family().isEmpty()) return no_font_at_all(font);
 	if (!info.fixedPitch())
 		return QStringLiteral("'%1' resolved to '%2', which is not fixed pitch")
 		       .arg(font.family(), info.family());

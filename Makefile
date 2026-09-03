@@ -282,6 +282,25 @@ QT_PLUGIN_PATH_FOR_CHECK = $(shell $(QMAKE) -query QT_INSTALL_PLUGINS 2>/dev/nul
 # QTEST_DISABLE_STACK_DUMP because QtTest forks gdb on a fatal signal, and a
 # crash handler that attaches a debugger is how this workspace once lost 15 GB
 # of resident memory to a test run nobody was watching.
+#
+# `minimal` is here as the one configuration where PASSING means the program
+# stopped. It ships no font database, so the grid font resolves to nothing and
+# there is no cell to derive from it -- and the library's job there is to say
+# so and stop, not to draw a screen it cannot get right. This file has
+# described that in a comment since the platform was first tried; the arm
+# below asserts it.
+#
+# Both halves, because either alone passes for the wrong reason: the run must
+# FAIL, and its message must name what was actually tested. A crash with no
+# explanation satisfies the first; a clean start that happens to print the
+# sentence satisfies the second.
+#
+# The pattern anchors on the REFUSAL's own words rather than on the sentence
+# alone, and that is not fussiness -- it is what makes the arm discriminate.
+# The same sentence is printed twice, once as setup()'s warning and once
+# inside the refusal, so a pattern matching either passed a build where the
+# refusal had been broken and only the warning survived. Measured: sabotaging
+# grid_font_problem()'s empty-family branch left the arm green.
 test-platforms: tests-build
 	@failed=0; ran=0; \
 	for platform in $(TEST_PLATFORMS); do \
@@ -302,6 +321,26 @@ test-platforms: tests-build
 		echo "    note: xvfb-run is absent, so the xcb configuration is not" >&2; \
 		echo "          run and only $(TEST_PLATFORMS) was tested." >&2; \
 	fi; \
+	minimal="$(QT_PLUGIN_PATH_FOR_CHECK)/platforms/libqminimal.so"; \
+	if [ -f "$$minimal" ]; then \
+		echo "--- $(TEST_BIN) on minimal, which must REFUSE (the abort below is the point)"; \
+		err="$(dir $(TEST_BIN))minimal.err"; \
+		( QTTY_QPA_PLATFORM=minimal $(TEST_CRASH_ENV) \
+			timeout $(TEST_TIMEOUT) $(TEST_BIN) >/dev/null 2>"$$err" \
+		) 2>/dev/null; \
+		minrc=$$?; \
+		minout=$$(cat "$$err"); rm -f "$$err"; \
+		case "$$minrc:$$minout" in \
+		0:*) echo "    FAILED: it started, with no font database to start on"; \
+		     failed=$$((failed + 1));; \
+		*"the grid needs a font"*"resolved to no font at all"*) \
+		     echo "    ok (refused, and said why)";; \
+		*)   echo "    FAILED: it refused without naming the cause"; \
+		     echo "    got: $$minout" >&2; failed=$$((failed + 1));; \
+		esac; \
+	else \
+		echo "    note: $$minimal is absent, so the refusal is not tested." >&2; \
+	fi; \
 	plugin="$(QT_PLUGIN_PATH_FOR_CHECK)/platformthemes/libq$(TEST_HOSTILE_THEME).so"; \
 	hostile="QT_SCALE_FACTOR=2 QT_SCREEN_SCALE_FACTORS=2"; \
 	if [ -f "$$plugin" ]; then \
@@ -315,7 +354,7 @@ test-platforms: tests-build
 		timeout $(TEST_TIMEOUT) $(TEST_BIN) > /dev/null 2>&1 \
 		&& echo "    ok (the pins absorbed it)" \
 		|| { echo "    FAILED"; failed=$$((failed + 1)); }; \
-	echo "test-platforms: $$ran platform(s) + 1 hostile environment, $$failed failed"; \
+	echo "test-platforms: $$ran platform(s), 1 refusal and 1 hostile environment, $$failed failed"; \
 	if [ "$$ran" -eq 0 ]; then \
 		echo "test-platforms: TEST_PLATFORMS is empty, so the suite ran under" >&2; \
 		echo "                no platform at all. The hostile-environment run" >&2; \

@@ -43,20 +43,42 @@ derives everything from was an *account setting*, not a property of the
 font, and `setup()` now asks for the hinting that makes it so rather than
 inheriting whatever the desktop supplies.
 
-Whole-tree line coverage **98.74%, 2199 of 2227**, re-taken with the
-command in §0c into a build directory removed first.
+Whole-tree line coverage **97.65%, 2655 of 2719**, re-taken with the
+command in §0c into a build directory removed first -- **and taken twice,
+from two fresh builds, which returned the identical pair.** A single
+coverage figure says nothing about its own stability; two do.
 
-**That number is not comparable to the 98.87% (2105 of 2129) recorded
-this morning, and the difference is the denominator rather than the
-work.** 76 executable lines appeared in a tree whose only C++ change
-since was one line, so the two runs measured different file sets. This
-one's is verified complete -- 13 `.cpp.gcov` for the 13 sources `make`
-compiles, listed rather than assumed -- and the earlier one's cannot be
-recovered. §0c now says to delete the build directory first, which is a
-second lesson from the same re-take: run in a reused one, `.gcda` from
-previous runs merge, and the same tree measured 2179 covered instead of
-2175. Coverage is the one number here that a stale directory moves in the
-flattering direction.
+**And a baseline was taken beside it, on the same day and with the same
+recipe, because a percentage with nothing to compare against is not a
+measurement of anything.** The tree as it stood before this session's
+first commit, in a throwaway worktree:
+
+    19b810e^   815 checks   2610 of 2662   98.05%
+    HEAD       843 checks   2655 of 2719   97.65%
+
+So this session added **57 executable lines and covered 45 of them**, and
+the twelve that are not covered are named below. The 0.40 points are that
+and nothing else.
+
+**The 2227 recorded earlier cannot be compared to either**, and now there
+is evidence rather than suspicion: the same recipe on the same machine
+gives 2662 for a tree that differs from the recorded one by nothing at
+all. §0c already warned that a reused build directory merges `.gcda` and
+flatters the result; whatever produced 2227, it was not this. A figure
+without a same-day baseline taken the same way should be read as a
+reading, not as a rate.
+
+The residue is 64 lines, and most of it is the same residue as before --
+`D0` deleting destructors, the `qFatal` that aborts, the inert SIGWINCH
+path, the font-guard branches unreachable on this engine. **Twelve are
+this session's, and eleven of those are a property of the instrument
+rather than of the code:** they run in processes that die by `abort()` --
+the fatal-message branch, the signal handlers it goes through, the
+`minimal` refusal -- and `gcov` writes nothing for a process that does
+not exit normally. They are exercised, and by checks that fail when they
+break; they are simply not counted. The twelfth is `setup()`'s
+substitution warning, which needs a font that is missing rather than
+merely different.
 
 The residue is 28 lines. §7.9 accounts for most of it -- `D0` deleting
 destructors for classes only ever stack-allocated, a `qFatal` that
@@ -928,6 +950,30 @@ move them"* -- and the failure was the check's rather than the code's.
 §7.2's splitter entry carries the whole of it: a tripwire that read a
 counter of assignments stayed green through the change it was set for,
 and the debug build is what made the same counter say the opposite thing.
+
+**And `minimal` is a configuration now rather than a paragraph.** The
+Makefile has said since the platform was first tried that it "cannot host
+the suite: it ships no font database, so DejaVu Sans Mono resolves to ''
+and `grid_font_problem()` refuses at startup -- correctly". That was
+prose about a failure path nobody ran. `make test-platforms` runs it, and
+it is the one arm where **passing means the program stopped**:
+
+    --- build-test/qtty-tests on minimal, which must REFUSE
+        ok (refused, and said why)
+
+Both halves are asserted, because either alone passes for the wrong
+reason: the run must fail, and the message must name what was tested. And
+the pattern anchors on the **refusal's** own words, which took two
+attempts. The first matched the sentence alone -- and that sentence is
+printed twice, once as `setup()`'s warning and once inside the refusal,
+so sabotaging the refusal left the arm green on the strength of the
+warning. **A gate that accepts either of two witnesses cannot tell you
+which one spoke.**
+
+That also turned up a real parallel copy: the sentence was written out in
+`grid_font_substitution()` and again in `grid_font_problem()`. One helper
+now, for the reason `cell_geometry.h` gives -- and the drift was not
+hypothetical, it was the thing hiding the sabotage.
 
 **The sabotage discipline that goes with it**, because a passing new test
 is not evidence: break the code the test claims to defend, confirm the edit
