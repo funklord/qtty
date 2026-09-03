@@ -1284,57 +1284,63 @@ discarding its own work.
 
 ## 0e. What I would pick up next
 
-In the order I would take them, and none is blocked:
+**Rewritten 2026-09-03**, because the list it replaced was six items of
+which five were struck and one was wrong about what there was to compare.
+A handover list that records its own history is a handover list nobody
+can read; the closed items are described where the work is, in §0a and
+§7.
 
-1. ~~**Run the probe method at the item-view roles.**~~ and
-   ~~**carry a font's emphasis to every site that writes into the
-   buffer.**~~ **Both done**, and §7.2 records them: ten configurations,
-   six already right, two defects fixed, two questions raised, and then
-   the general form of the second defect fixed at every site `GridStyle`
-   writes a label. The residue is the two questions -- what a literal
-   `QColor` becomes, and what a table's grid is on a cell grid -- which
-   are the copyright holder's and are in §0b.
-2. ~~**Sweep what is drawn during a drag.**~~ **Done**, and §7.2 records
-   it: eight configurations, five tracking correctly, three defects fixed
-   as one fault, two questions raised, and §8.7 -- Channel A not clipping
-   -- found on the way. The next unswept surface named by §0d is dialogs
-   beyond the standard three.
-3. ~~**The `QStyle::StandardPixmap` question**, once decided, closes the
-   dock title buttons and the message-box severity together.~~ **Withdrawn:
-   they are not the same cause and one table closes neither.** Measured --
-   `standardIcon()` is consulted for both, and a glyph returned that way
-   never reaches the cells because Qt rasterises an icon before the style
-   draws it. The severity icon arrives as 48x48 pixels with no identity;
-   the dock buttons arrive with a 0x0 icon area, which is a sizing fault.
-   §7.2 carries both, each pinned by a check.
-4. **A second account, which cost nothing and is already spent.** Running
-   the suite as a different user on the same machine is the cheapest
-   configuration axis in this list -- no second machine, no second Qt, no
-   container -- and it found the hinting defect in §7.9 on the first run,
-   as a program that would not start. Anything else derived from the
-   *user's* configuration rather than the environment's is reachable the
-   same way, and fontconfig is unlikely to be the only such thing.
-5. **A second Qt version, and it is now priced rather than open.** Qt
-   5.15.15 is installed beside 6.8.2 and the build was tried against it:
-   the public headers compile clean, and the library needs **three
-   conditionals in two files** -- §8.1 names them. Writing those three is
-   the decision §8.1 records as open, so the axis is reachable and not
-   free. It is also the wrong axis for what this item wanted: a version
-   sweep finds assumptions at run time, and Qt 5 cannot run the suite
-   without the port. **A second Qt 6 point release would answer it with
-   no decision at all**, and this machine has only one -- which is what
-   keeps the beerssh exposure (a probe that passed on 6.10 and failed on
-   6.4.2) an unmeasured one here rather than a clean bill.
-6. ~~**`suite_budget` prints and does not assert**, deliberately... if a
-   stable assertion is ever wanted it has to be a *relationship* --
-   damage-limited work against full-redraw work.~~ **Taken, and the item
-   was wrong about what there is to compare.** Durations are still
-   printed, for the reason it gives -- the same binary rendered the same
-   fixture in 1.35 ms and 2.41 ms minutes apart. What is assertable is
-   what a frame costs on the **wire**, in bytes, which does not move with
-   load at all. And there is no damage-limited work to compare against:
-   `AnsiBackend::present()` takes a damage region and ignores it, which
-   §7.1 now carries with the price.
+In the order I would take them:
+
+1. **Damage-limited output, which is priced and not taken.**
+   `AnsiBackend::present()` accepts a damage region and ignores it -- its
+   own first comment says so -- and the cost is measured: a one-cell
+   change costs a whole screen, 13,927 bytes for this suite's 200x60
+   fixture and 33,361 for a dense one, against the fifty a single cell
+   needs. At 20 frames a second over the 50 ms link §11 names, that is
+   **660 KB/s of mostly unchanged text**. Two characterisation checks in
+   `suite_budget` pin the present behaviour and are written to go red the
+   day this lands. It is the largest measured gap between what the tree
+   does and what §11 claims, and it is the copyright holder's to
+   authorise because it is a body of work rather than a fix.
+
+2. **A second Qt 6 point release**, still the cheapest untaken
+   configuration and still absent from this machine. Qt 5.15 is here and
+   is a port rather than an axis -- §8.1 prices it at three conditionals
+   in two files. What a second 6.x would answer, with no decision at all,
+   is whether anything here depends on 6.8.2's particulars; the beerssh
+   exposure (a probe that passed on 6.10 and failed on 6.4.2) is the
+   reason to want it.
+
+3. **The type-ahead residue.** Keys arriving BEFORE the first ESC are
+   kept now; keys arriving between the terminal's replies are still
+   dropped, because telling a typed escape from an answered one there is
+   guesswork. Closing it means a scanner that removes recognised replies
+   and keeps the rest -- tractable, and the risk is the opposite one:
+   a malformed reply kept as input types garbage into an application.
+
+4. **Eleven covered lines that gcov does not count.** They run only in
+   processes that die by `abort()` -- the fatal-message branch, its
+   signal handlers, the `minimal` refusal -- and `.gcda` is written only
+   on a normal exit. `__gcov_dump()` before `_exit` in the fork fixture
+   would count them. Worth it only when the coverage figure next matters.
+
+5. **Partial-line scrolling**, the one gap §7.2 still claims that this
+   session could not verify either way. Everything else on that list was
+   closed and unstruck; this one may be real.
+
+6. **§0b's questions are the holder's** and are not work to pick up: RTL
+   scope, the bundled font, tooltips and hover, the severity glyph,
+   `SH_Slider_AbsoluteSetButtons`, the picture rule, the layout top
+   margin, and now whether `qtty-negotiate` belongs in `$PREFIX/bin`
+   (§8.0).
+
+**And a standing one that is method rather than work.** The claims in
+this document that rot are the countable ones written in the present
+tense about the tree's own shape -- seven were found and corrected in one
+day, in a document nobody thought was drifting. `make count-check` holds
+the headline figure. The rest is a grep for a number beside a noun, and
+it is worth running whenever this file is read seriously.
 
 ## 0. What this is
 
