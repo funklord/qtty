@@ -5755,12 +5755,26 @@ other way round.
   cursor and leave no handle, so a partial update is an addressed cursor
   and a cropped encode -- no lifecycle, and the tier keeps working
   unchanged if the region is the whole screen.
-- **Kitty is not.** That path is `kitty_delete_all()` followed by
-  re-placing the whole screen as one image, so a partial update cannot
-  simply skip the delete: placements would accumulate one per frame.
-  Making it partial needs a placement lifecycle for SCREEN images, which
-  is what `uploaded_`/`upload_order_` do for cell placements and would
-  have to be reinvented here.
+- **Kitty is not, and it is the only piece left.** That path is
+  `kitty_delete_all()` followed by re-placing the whole screen as one
+  image, so a partial update cannot simply skip the delete: placements
+  would accumulate one per frame.
+
+  **And it cannot free them either, which is the constraint that makes
+  this a decision rather than a fix.** Deleting a placement in the kitty
+  protocol REMOVES IT FROM THE SCREEN -- that is what `clear_overlay()`
+  uses `a=d` for here -- so a partial placement cannot be released while
+  its pixels are still wanted. Partials therefore accumulate until a full
+  frame clears the lot, and the scheme needs a policy: how many partial
+  updates before a full redraw. That number is a trade between placement
+  count and bytes on the wire, it wants measuring on a real terminal
+  rather than choosing, and picking one here would be inventing a
+  parameter nobody had asked for.
+
+  Reasoned from the protocol as this tree uses it, not measured against
+  a kitty terminal -- there is none on this machine, which is the same
+  reason the graphics tiers are exercised by their encoders rather than
+  by a screen.
 - ~~**And nothing can supply the damage from what is kept.**~~ **Done:
   `prev_overlays_`.** The reasoning is kept because it names the wrong
   turn, which is still available to anybody editing this. The frame
