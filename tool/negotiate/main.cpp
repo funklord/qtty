@@ -59,6 +59,29 @@ int main(int argc, char **argv) {
 		// which is what the first version of this did, while the ordinary
 		// output in the same run negotiated Kitty. A report that says
 		// "silent" when the terminal answered is worse than no report.
+		// Only when BOTH ends are a terminal, which is the rule AnsiBackend
+		// states and this tool was breaking: "down a pipe there is nobody to
+		// answer, and the query would be written into whatever is reading".
+		// Measured -- `qtty-negotiate --probes | cat` put the whole query
+		// into the pipe and then waited 200 ms for a reply that cannot come.
+		//
+		// The intended use has stdout on a terminal (doc/beerssh.md runs it
+		// with QTTY_NEGOTIATE_OUT so the report goes elsewhere), but
+		// `--probes > report.txt` is the obvious thing to type and it
+		// corrupted the report with control bytes.
+		//
+		// Said out loud rather than skipped quietly: a probe report that
+		// silently shows every probe as silent is the failure this tool's own
+		// comment calls worse than no report.
+		if (!isatty(1)) {
+			fprintf(stderr, "qtty-negotiate: stdout is not a terminal, so the"
+			                " probes were not sent.\n");
+			fprintf(stderr, "                Nothing can answer them down a"
+			                " pipe, and asking would put the query in it.\n");
+			probes = false;
+		}
+	}
+	if (probes) {
 		termios saved{};
 		const bool tty = isatty(0) && tcgetattr(0, &saved) == 0;
 		if (tty) {

@@ -467,6 +467,16 @@ test-install: $(LIB) $(INSPECT) $(REPLAY)
 # program that prints nothing and exits 0 satisfies a status check, which is
 # this document's oldest complaint about gates.
 #
+# `--version` is checked against the VERSION file, which `version-check` cannot
+# do: that target holds VERSION, qtty.pri and version.h to each other, and this
+# is the only thing that asks the SHIPPED BINARY what it thinks it is.
+#
+# `--probes` down a pipe must not send the query. AnsiBackend states the rule --
+# "down a pipe there is nobody to answer, and the query would be written into
+# whatever is reading" -- and this tool was breaking it, so `--probes >
+# report.txt` filled the report with control bytes and then waited 200 ms for
+# an answer that cannot come.
+#
 # The replay snapshot arm asserts BOTH halves of why that command exists: a
 # selection must change the snapshot, and must NOT change the text frame.
 # `frame` prints glyphs, so `ctrl a` -- and `click`, and `key Tab` -- leave it
@@ -527,6 +537,21 @@ test-tools: all
 	case "$$out" in \
 	*graphics*Halfblocks*"bracketed paste"*no*) echo "    negotiate: ok";; \
 	*) echo "    negotiate: FAILED -- a pipe was not reported as a pipe"; fail=1;; \
+	esac; \
+	out=$$(timeout $(TEST_TIMEOUT) $(NEGOTIATE) --version 2>/dev/null); \
+	case "$$out" in \
+	*"$(VERSION)"*) echo "    negotiate --version: ok";; \
+	*) echo "    negotiate --version: FAILED -- the binary does not say $(VERSION)"; \
+	   fail=1;; \
+	esac; \
+	esc=$$(printf '\033'); \
+	out=$$(timeout $(TEST_TIMEOUT) $(NEGOTIATE) --probes < /dev/null 2>/dev/null); \
+	case "$$out" in \
+	*"$$esc"*) echo "    negotiate --probes: FAILED -- it wrote the query into"; \
+	           echo "                        a pipe nothing can answer from"; \
+	           fail=1;; \
+	*graphics*) echo "    negotiate --probes: ok";; \
+	*) echo "    negotiate --probes: FAILED -- no report"; fail=1;; \
 	esac; \
 	if command -v script >/dev/null 2>&1; then \
 		( i=0; while [ $$i -lt 6 ]; do sleep 0.4; printf '\004'; \

@@ -1482,6 +1482,31 @@ fork, and one whose is not. Without the second, a decoder that invented a
 keystroke would pass. Removing the retention reddens the first and leaves
 the second green.
 
+**And the same question of the negotiator found it breaking a rule the
+library states** (2026-09-04). `qtty-negotiate` has three documented
+interfaces beyond its default -- `--version`, `--probes`, and
+`QTTY_NEGOTIATE_OUT` -- and `make test-tools` ran the bare command.
+Driving them:
+
+    --probes | cat    the whole capability query went into the pipe,
+                      then a 200 ms wait for a reply that cannot come
+
+`AnsiBackend` states the rule and guards on it: *"down a pipe there is
+nobody to answer, and the query would be written into whatever is
+reading"*. The tool called `collect_caps()` unconditionally. The intended
+use has stdout on a terminal -- `doc/beerssh.md` runs it with
+`QTTY_NEGOTIATE_OUT` so the report goes elsewhere -- but `--probes >
+report.txt` is the obvious thing to type, and it filled the report with
+control bytes.
+
+It refuses now, **out loud on stderr rather than quietly**: a probe
+report that silently shows every probe as silent is the failure this
+tool's own comment calls worse than no report.
+
+`--version` is checked too, against the `VERSION` file. `version-check`
+holds VERSION, `qtty.pri` and `version.h` to each other; nothing asked
+the **shipped binary** what it thinks it is.
+
 **A shipped tool could not show the states its own commands produce**
 (2026-09-04). `qtty-replay` exists to make bug reports reproducible, and
 its script has five commands: `text`, `key`, `ctrl`, `click`, `frame`.
