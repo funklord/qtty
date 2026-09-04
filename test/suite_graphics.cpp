@@ -524,6 +524,41 @@ int suite_graphics() {
 		      "half-block carries the overlay colour");
 	}
 
+	// ---- rasterising only what changed gives the same picture ----
+	// The relationship, not either image: a frame rendered wholly, and the
+	// previous frame's image brought up to date over the changed cells, must
+	// be pixel-for-pixel the same. That is what lets the frame loop keep one
+	// image and repaint a corner of it, which is the only thing that would
+	// bring the software-composite path inside section 11 -- rasterising
+	// 200x60 measures 18.4 ms against a 16 ms budget.
+	{
+		CellBuffer a(12, 4), b(12, 4);
+		a.text(0, 0, QStringLiteral("hello there"));
+		a.text(0, 1, QStringLiteral("second row.."));
+		a.text(0, 2, QStringLiteral("third row..."));
+		b = a;
+		b.text(3, 1, QStringLiteral("XY"));           // the only difference
+		const QRect changed(3, 1, 2, 1);
+
+		const QFont font = QGuiApplication::font();
+		const QImage whole_b = rasterize(b, font);
+		QImage incremental = rasterize(a, font);
+		rasterize_into(incremental, b, font, changed);
+		CHECK(!whole_b.isNull() && incremental == whole_b,
+		      "a frame repainted over its changed cells equals one rendered"
+		      " whole");
+
+		// The pair, and it is not decoration: an implementation that ignored
+		// the rectangle and repainted everything would satisfy the line above
+		// perfectly while saving nothing. Given a region that does NOT cover
+		// the change, the result must still differ.
+		QImage missed = rasterize(a, font);
+		rasterize_into(missed, b, font, QRect(8, 3, 2, 1));
+		CHECK(missed != whole_b,
+		      "and a region that misses the change does not, so the rectangle"
+		      " is obeyed");
+	}
+
 	// ---- what the PIXEL path must repaint ----
 	// The cell diff is NOT the damage for a rasterised frame: an overlay
 	// that MOVES changes pixels under cells that did not change, so a region

@@ -223,16 +223,28 @@ QByteArray encode_iterm2(const QImage &img, int w_cells, int h_cells) {
 }
 
 // ---- rasterizer ------------------------------------------------------------
-QImage rasterize(const CellBuffer &frame, const QFont &font) {
+void rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
+                    const QRect &cells) {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
-	QImage img(frame.cols() * cw, frame.rows() * ch,
-	           QImage::Format_ARGB32_Premultiplied);
+	if (dst.isNull()) return;
+	QRect r = cells.intersected(QRect(0, 0, frame.cols(), frame.rows()));
+	if (r.isEmpty()) return;
+	// Leftwards to the start of a wide cluster the rect cuts in half. The
+	// continuation cell carries no glyph, so a region beginning there paints
+	// nothing and leaves the previous frame showing through -- the one way a
+	// smaller repaint can be WRONG rather than merely partial.
+	int from = r.left();
+	for (int y = r.top(); y <= r.bottom(); ++y)
+		while (from > 0 && frame.at(from, y).width == 0) --from;
+	r.setLeft(from);
+
 	const QRgb default_bg = qRgb(16, 20, 24), default_fg = qRgb(215, 218, 220);
-	img.fill(default_bg);
-	QPainter p(&img);
+	QPainter p(&dst);
 	QFontMetrics fm(font);
-	for (int y = 0; y < frame.rows(); ++y)
-		for (int x = 0; x < frame.cols(); ++x) {
+	p.fillRect(r.x() * cw, r.y() * ch, r.width() * cw, r.height() * ch,
+	           QColor::fromRgb(default_bg));
+	for (int y = r.top(); y <= r.bottom(); ++y)
+		for (int x = r.left(); x <= r.right(); ++x) {
 			const Cell &c = frame.at(x, y);
 			if (c.width == 0) continue;
 			QRgb fg = c.fg.kind() == Color::Rgb ? c.fg.value() : default_fg;
@@ -251,6 +263,14 @@ QImage rasterize(const CellBuffer &frame, const QFont &font) {
 			}
 		}
 	p.end();
+}
+
+QImage rasterize(const CellBuffer &frame, const QFont &font) {
+	QImage img(frame.cols() * GridMetrics::cw(),
+	           frame.rows() * GridMetrics::ch(),
+	           QImage::Format_ARGB32_Premultiplied);
+	img.fill(qRgb(16, 20, 24));
+	rasterize_into(img, frame, font, QRect(0, 0, frame.cols(), frame.rows()));
 	return img;
 }
 

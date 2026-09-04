@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-892 checks, 0 failures, under six configurations, all six re-run
+894 checks, 0 failures, under six configurations, all six re-run
 2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -5788,8 +5788,40 @@ asserting a full-size image, and nothing about the seam moves. What it
 needs is a `rasterize` that paints into an existing image at an offset
 rather than returning a new one.
 
-Not done, and not started. Recorded because the obvious design is the
-one with the hazard in it.
+**The rasteriser it needs exists now** (2026-09-04). `rasterize_into()`
+paints a cell rectangle into an image that already exists, and
+`rasterize()` is that function over the whole frame -- one
+implementation, so the two cannot disagree about what a cell looks like,
+which is the rule `sync_frames()` states and which three other places in
+that file were caught breaking today.
+
+It carries the wide-cluster rule the text path needed, for the same
+reason: a continuation cell holds no glyph, so a region beginning
+mid-cluster paints nothing and leaves the previous frame showing
+through. The left edge is pulled to the leftmost cluster start across
+all the rows in the rectangle rather than per row -- **a superset is
+safe**, and the worst case is one extra column.
+
+**Checked as a relationship, which is what makes it checkable at all
+without a screen.** A frame rendered wholly, and the previous frame's
+image brought up to date over the changed cells, must be pixel-for-pixel
+identical. The concern that image work fails silently here dissolves:
+the full render is the oracle.
+
+    sabotage              incremental == whole   region obeyed
+    ignore the rectangle  PASS                   FAIL
+
+The second check is the load-bearing one and the sabotage says why: an
+implementation that ignored the rectangle and repainted everything
+satisfies the first perfectly while saving nothing. Third appearance of
+that shape today, in a third subsystem -- which is why the negative half
+was written first this time rather than after being caught.
+
+**Not wired in.** The frame loop still calls `rasterize()` per frame.
+Doing it needs the persistent image described above and its invalidation
+when the grid resizes, and that is where the remaining risk sits.
+
+Recorded because the obvious design is the one with the hazard in it.
 
 **The sabotage matrix is the argument for the second check:**
 

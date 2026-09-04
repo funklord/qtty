@@ -46,6 +46,22 @@ QByteArray encode_iterm2(const QImage &img, int w_cells, int h_cells);
 // a sixel/iTerm2 terminal is sent after overlays are blended on top.
 QImage rasterize(const CellBuffer &frame, const QFont &font);
 
+// The same, painted into an image that already exists and only over the cells
+// named. What it is for: the software-composite path rasterises the whole
+// screen every frame, measured at 18.4 ms for 200x60 against section 11's 16 ms
+// budget, so the render is the dominant cost there and damage-limiting the
+// TRANSMISSION saved none of it.
+//
+// `cells` is expanded leftwards to the start of any wide cluster it cuts,
+// because a continuation cell carries no glyph: a region beginning there would
+// paint no character and leave the previous frame's pixels showing through.
+// The same rule the text path needs, for the same reason.
+//
+// rasterize() is this function over the whole frame, so the two cannot
+// disagree about what a cell looks like.
+void rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
+                    const QRect &cells);
+
 // ---- fallback tier ---------------------------------------------------------
 // Composite an alpha image into cells at cell_rect (colour half-blocks, two
 // vertical samples per cell). Translucent regions tint the cell background
