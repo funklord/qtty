@@ -620,7 +620,33 @@ record: tests-build
 # arms is that a configuration nobody runs is not a configuration that passed.
 # The shipped tools and the example were built by every one of these runs and
 # executed by none of them.
-check: style layout version-check count-check test test-tools test-install
+# The parts, and then `check` runs them through a sub-make so that it can
+# record the verdict either way. A prerequisite list cannot: when a
+# prerequisite fails the recipe never runs, so there is nowhere to write down
+# that it failed -- and the whole point of the stamp is the FAILING case.
+#
+# tool/hooks/pre-commit reads it and refuses a commit whose content is known
+# to fail. That hook exists because the same mistake happened three times in
+# one day: run this target, print its exit status, commit in the same command
+# without reading it. Writing the rule down twice did not stop it.
+#
+# The identity is HEAD plus every uncommitted change to tracked files, which
+# is what `git diff HEAD` gives and is unchanged by staging.
+CHECK_PARTS = style layout version-check count-check test test-tools test-install
+CHECK_STAMP = $(shell git rev-parse --git-common-dir 2>/dev/null)/qtty-check-stamp
+
+check:
+	@rm -f "$(CHECK_STAMP)" 2>/dev/null || true
+	@id=$$( { git rev-parse HEAD 2>/dev/null; git diff HEAD --binary 2>/dev/null; } \
+	        | sha1sum | cut -d' ' -f1 ); \
+	if $(MAKE) --no-print-directory $(CHECK_PARTS); then \
+		echo "PASS $$id" > "$(CHECK_STAMP)" 2>/dev/null || true; \
+	else \
+		echo "FAIL $$id" > "$(CHECK_STAMP)" 2>/dev/null || true; \
+		echo "check: FAILED -- and the stamp says so, so a commit of this" >&2; \
+		echo "       content is refused until it is fixed." >&2; \
+		exit 1; \
+	fi
 
 # -----------------------------------------------------------------------------
 # Gates
@@ -723,7 +749,8 @@ hooks:
 	fi; \
 	mkdir -p "$$dir/hooks"; \
 	install -m 0755 tool/hooks/commit-msg "$$dir/hooks/commit-msg"; \
-	echo "hooks: commit-msg installed into $$dir/hooks/"
+	install -m 0755 tool/hooks/pre-commit "$$dir/hooks/pre-commit"; \
+	echo "hooks: commit-msg and pre-commit installed into $$dir/hooks/"
 
 # One version, in one file. qtty.pri must still read VERSION rather than state
 # a number, and include/qtty/version.h -- which is a public header and cannot

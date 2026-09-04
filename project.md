@@ -1179,6 +1179,33 @@ answer rounded up to a whole cell. The check failed, which is a check
 finding the reader's mistake rather than the code's, and it holds the
 invariant the function exists for instead.
 
+**So the discipline was mechanised, because writing it down twice did not
+work** (2026-09-04). `make check` now records its verdict, and
+`tool/hooks/pre-commit` refuses a commit whose content is KNOWN to fail:
+
+    check fails    stamp "FAIL <id>"   the hook refuses, naming why
+    check passes   stamp "PASS <id>"   the hook allows
+    content moved  stamp is stale      the hook allows
+
+**Narrow on purpose.** It answers "you were told this is broken", not
+"prove it works": no stamp, or a stamp for other content, and the commit
+proceeds untouched. A fresh clone, a first commit and a tree nobody has
+run the gate on are none of its business, and `--no-verify` remains the
+deliberate way past. The identity is HEAD plus every uncommitted change
+to tracked files, which is what `git diff HEAD` gives and is unchanged by
+staging -- so `git add` does not invalidate a verdict.
+
+`check` had to stop being a prerequisite list to do it. When a
+prerequisite fails the recipe never runs, so there is nowhere to write
+down that it failed -- and the failing case is the whole point.
+
+**All three states were verified rather than assumed**, and the first
+attempt at verifying them failed instructively: the "violation" I planted
+was a space-indented declaration at file scope, which this gate does not
+consider one, so `check` passed and proved nothing. A non-ASCII mark
+inside a function is a violation it certainly catches, and with that the
+stamp read `FAIL` and the hook refused.
+
 **And the commit that said so went in on a red gate**, which is the third
 time today and the second with the same cause: I printed `make check`'s
 exit status and committed in the same command, without reading what I had
