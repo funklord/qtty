@@ -17,7 +17,8 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-869 checks, 0 failures, under six configurations: the offscreen
+869 checks, 0 failures, under six configurations, all six re-run
+2026-09-04 after two checks were added: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
 detector, a **debug** build -- which is not the same code, `setup()`
@@ -559,6 +560,31 @@ a merged stream it lands mid-line and cuts a `PASS:` line in half -- two
 runs of one binary counted 744 and 745 for that reason alone. A
 measurement taken through a stream somebody else is writing to is not a
 measurement of the thing.
+
+**And the obvious test for whether it happened does not work** -- learnt
+2026-09-04, after being caught by this twice in an hour. Counting
+`PASS:` at a line start against `PASS:` anywhere in the line finds
+nothing, because the splice does not leave a stray prefix. It lands
+wherever the write lands:
+
+    PASS: and a mqtty: QWidget '' geometry 640x480+0+0 is off the...
+    S: and the button was measured with the glyph in it
+    wo icons of different colours substitute to different blocks
+
+The first is a message cut in half by a warning; the second and third
+have had `PAS` and `PASS: t` **eaten**, so they are not counted and
+nothing about them says a line is missing. Two clean-looking runs of the
+same binary differ by an integer and every line looks well formed.
+
+What answers it is the **message set**, not any count: sort the text
+after `PASS: ` from a clean run and from the suspect one and take the
+difference. That is what showed the valgrind log's four apparently
+unreached sites to be two deliberate skips and eight lines mangled into
+six. All 869 were reached.
+
+So the rule is stronger than "pass `2>/dev/null`": **a merged log cannot
+be repaired by being read carefully.** Either separate the streams when
+producing it, or compare against a run that did.
 
 **Whole-tree coverage.** `make coverage` answers for one file; this is the
 tree. **Delete the build directory first** -- `.gcda` files accumulate
