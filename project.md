@@ -1140,6 +1140,43 @@ enumeration is there, without the enumeration being read. A list beside a
 number is only protection if somebody checks the list. Both copies of the
 sentence now name the four that exist.
 
+**The same sweep pointed at the SOURCE found the more expensive kind**
+(2026-09-04). `input_router.cpp` carried a parenthesis saying that a
+popup anchored inside the root does not move with the root -- "a separate
+fault, recorded rather than fixed here". It was fixed the day it was
+written: the Compositor translates such a popup by the root's scroll and
+**moves** it there, so its geometry is already a screen position by the
+time the hit test reads it, which is why that function needs no case for
+it. §7 records the fix, with the sabotage that reddens four checks.
+
+A count that rots wastes a reader's minute. **A gap claim that outlives
+its gap sends the next reader at work already done**, and this one sat in
+the file whose function would have to change if the claim were true. It
+is the falsifier problem in `evidence.md`: the commit that closed it
+touched `compositor.cpp`, so nothing brought the two together.
+
+**Two lenses run to exhaustion, and both empty, which is worth recording
+because an empty sweep is a measurement only if its method is.**
+
+    "one place decides" claims in src/ and include/     4 checked, all held
+      is_popup_layer()      one definition, two callers, no open-coded
+                            Qt::Popup test anywhere else
+      tool_button_label()   reached from both CT_ToolButton and
+                            CC_ToolButton
+      cell_geometry.h       cell_target()/cells_of() in one header, three
+                            includers; the cw()/ch() arithmetic elsewhere
+                            is not the rule it protects
+      sync_frames()         the one that did NOT hold -- see §7.4
+
+    gap and impossibility language in the source        5 hits, 4 past
+      "was not implemented", "had recorded", "were recorded as gaps" are
+      records of closed gaps and cannot rot; compositor.cpp's "only what
+      is still open" is about popups being open, which is the
+      untested-idea/untested-code ambiguity wearing another word.
+
+So the lens that found three faults today is spent on this tree, and the
+next one is not a wider search of the same kind.
+
 **And both dropped the number**, which is the part that is not just a
 correction. The obvious response was a `count-check` arm holding the
 stated count against `grep -c 'qWarning('` in `src/`. That arm would have

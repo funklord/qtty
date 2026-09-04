@@ -533,9 +533,15 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 	//
 	// Only the root. A popup, a modal and a plain top-level are drawn at
 	// their own geometry, and the hit test above already compares against
-	// that geometry, so shifting them would break what works. (That a popup
-	// anchored inside the root does not move WITH the root is a separate
-	// fault, recorded rather than fixed here.)
+	// that geometry, so shifting them would break what works.
+	//
+	// A popup anchored inside the root DOES move with the root, and the
+	// reason this function needs no case for it is that the Compositor
+	// translates such a popup by the root's scroll and MOVES it there, so
+	// its geometry is already a screen position by the time the hit test
+	// above reads it. This comment said that was an open fault until
+	// 2026-09-04; it was closed the day it was written, in the same pass
+	// that taught follow_focus() to steer a menu by its active action.
 	const QPoint screen = top == win_
 	    ? px + QPoint(root_scroll_.x() * GridMetrics::cw(),
 	                  root_scroll_.y() * GridMetrics::ch())
