@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-859 checks, 0 failures, under six configurations: the offscreen
+863 checks, 0 failures, under six configurations: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
 detector, a **debug** build -- which is not the same code, `setup()`
@@ -1168,6 +1168,28 @@ program. That residue is stated rather than hidden.
 The bytes wait in the decoder's buffer until `set_event_sink()` is
 called, because `decode_one()` clears the buffer when there is no sink --
 so draining any earlier would throw away exactly what was just saved.
+
+**Two more Channel B branches with no caller** (2026-09-04), from the
+same reading. A rectangle painted through `QPainter` into a cell device
+draws its sides from `top + 1` to `bottom - 1` -- so **only a box three
+rows tall has any** -- and every frame the suite drew came through
+`GridStyle`'s Channel A box instead. Measured:
+
+    |┌────┐  |
+    |│    │  |     the two lines coverage said nothing reached
+    |│    │  |
+    |└────┘  |
+
+Checked with the corners beside them, because a box that stopped being
+drawn at all would satisfy neither -- and because the corners are exactly
+what survived the framed-scroll-area defect while the rules did not.
+
+The other is a **fill in a colour matching no palette role**, which is
+what an application paints for itself. The one case that used to reach it
+was the tab pane's gradient, and that was closed by giving the frame a
+role rather than by letting it fall through -- so the branch has been
+caller-less ever since the fix. It keeps the application's colour and
+stops at the rectangle it was given.
 
 **How a snapshot spells a true colour had never been printed**
 (2026-09-04). `colour_name()`'s `Color::Rgb` branch had no caller in a

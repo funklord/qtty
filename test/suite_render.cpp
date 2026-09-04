@@ -714,6 +714,77 @@ int suite_render(bool record) {
 		}
 	}
 
+	{
+		// A rectangle taller than two rows, which is the only kind that has
+		// SIDES: the loop drawing them runs from top+1 to bottom-1, and
+		// coverage showed those two lines with no caller in a whole run.
+		// Every frame the suite drew came through GridStyle's Channel A box;
+		// this is the Channel B path, an application painting its own
+		// rectangle into a cell device.
+		Qtty::CellBuffer buf(8, 4);
+		Qtty::CellPaintDevice dev(buf);
+		{
+			QPainter p(&dev);
+			p.setPen(QColor(3, 250, 137));
+			p.drawRect(0, 0, GridMetrics::cw() * 6 - 1,
+			           GridMetrics::ch() * 4 - 1);
+		}
+		const QStringList rows = buf.to_text().split(QLatin1Char('\n'));
+		const bool sides = rows.value(1).left(6) == QStringLiteral("\u2502    \u2502")
+		                && rows.value(2).left(6) == QStringLiteral("\u2502    \u2502");
+		// Paired with the corners, because a box that stopped being drawn at
+		// all would satisfy neither -- and because the corners are what
+		// survived the framed-scroll-area defect while the rules did not.
+		const bool ends = rows.value(0).left(6) == QStringLiteral("\u250c\u2500\u2500\u2500\u2500\u2510")
+		               && rows.value(3).left(6) == QStringLiteral("\u2514\u2500\u2500\u2500\u2500\u2518");
+		if (ends)
+			printf("PASS: a painted rectangle draws its corners and rules\n");
+		else {
+			printf("FAIL: a painted rectangle draws its corners and rules\n"
+			       "      row0 [%s] row3 [%s]\n",
+			       qPrintable(rows.value(0)), qPrintable(rows.value(3)));
+			++r;
+		}
+		if (sides)
+			printf("PASS: and its sides, which only a box three rows tall has\n");
+		else {
+			printf("FAIL: and its sides, which only a box three rows tall has\n"
+			       "      row1 [%s]\n", qPrintable(rows.value(1)));
+			++r;
+		}
+	}
+
+	{
+		// A fill in a colour matching no palette role -- what an application
+		// paints for itself. The themed path is everywhere in this suite and
+		// this branch had no caller: the one case that used to reach it was
+		// the tab pane's gradient, and that was fixed by giving the frame a
+		// role rather than by letting it fall through.
+		Qtty::CellBuffer buf(6, 3);
+		Qtty::CellPaintDevice dev(buf);
+		{
+			QPainter p(&dev);
+			p.fillRect(QRect(0, 0, GridMetrics::cw() * 4, GridMetrics::ch() * 2),
+			           QColor(3, 250, 137));
+		}
+		const bool filled = buf.at(0, 0).bg.kind() == Qtty::Color::Rgb
+		                 && buf.at(3, 1).bg.kind() == Qtty::Color::Rgb;
+		const bool bounded = buf.at(4, 0).bg.kind() == Qtty::Color::Default
+		                  && buf.at(0, 2).bg.kind() == Qtty::Color::Default;
+		if (filled)
+			printf("PASS: an unthemed fill keeps the application's own colour\n");
+		else {
+			printf("FAIL: an unthemed fill keeps the application's own colour\n");
+			++r;
+		}
+		if (bounded)
+			printf("PASS: and stops at the rectangle it was given\n");
+		else {
+			printf("FAIL: and stops at the rectangle it was given\n");
+			++r;
+		}
+	}
+
 	// -- the snapshot harness's own failure paths ----------------------------
 	// check_snapshot() writes a fixture and reads one, and both halves
 	// answered with a sentence they had not tested. Recording dropped
