@@ -5849,6 +5849,25 @@ region, since they composite over cells that may have changed under
 them. A resized grid discards the buffer and repaints everything, that
 being the one event which makes every pixel wrong at once.
 
+**Swept for the same shape elsewhere, and the suite is clean.** If one
+check family pinned size and counts without ever looking at content,
+others might. Eleven checks in the suite have a condition that is a lone
+size or count comparison; every one read is the PREMISE of content
+assertions immediately beside it -- the palette's sixteen entries are
+followed by two exact colours, `pl.size() == 1` by the placement's rect
+and its cacheKey, `popups().size() == 2` by which widget is on top. The
+tier checks were the exception and they are fixed.
+
+**The first detector returned 191 and its whole sample was false.** It
+looked for conditions mentioning a size or count and not mentioning
+content, and "content" was a list of spellings that did not include
+`.key`, `.button` or `.cell` -- so `CHECK(rec.keys.size() == 1 &&
+rec.keys[0].key == Qt::Key_Up, ...)` came back as shape-only. Narrowing
+it to *the condition is a lone size comparison and nothing else* gave
+eleven, which is a population somebody can read. **An over-reporting
+probe is the right kind to have and the wrong kind to wade through**:
+narrow it until it answers the question rather than reading its output.
+
 **Nothing asserted the picture's CONTENT until the clip made it matter.**
 Applying the standing item to this change -- re-run the sabotages near
 what you touched -- found that the three tier checks pin the image's SIZE
