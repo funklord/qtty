@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-877 checks, 0 failures, under six configurations, all six re-run
+878 checks, 0 failures, under six configurations, all six re-run
 2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -5594,6 +5594,60 @@ The check drives the seam rather than `exec()` -- a backend constructed, a
 having: **restoring the previous arrangement leaves the `exec()` check
 green and reddens only this one.** That is the residue reproduced rather
 than remembered.
+
+**The emergency restore had the same fault, four lines away, and the
+count fix did not cover it** (2026-09-04). `g_restore` is what puts the
+terminal back when the process is KILLED -- the case where `suspend()`
+never runs -- and both ends of it were per-instance:
+
+- **Disarm.** `g_restore.armed = 0` sat outside the block the count
+  guards, so an inner backend going out of scope disarmed the restore
+  while the outer was still drawing. A kill after that left the user raw
+  and on the alternate screen with nothing to put them back: the exact
+  damage the mechanism exists to prevent, removed by the object that was
+  not using it.
+- **Arm.** A nested `resume()` re-armed with ITS `saved_`, which is the
+  terminal as the outer backend left it -- so even when it fired it would
+  have restored the terminal to the state it needed rescuing from.
+
+Both now happen with the handler group: armed by the first, disarmed by
+the last.
+
+**And that broke `SIGCONT`, which found something better.** `fork()`
+copies the count and not the terminal. The suite forks onto a pty to
+watch a process die, so the child inherited a non-zero count, concluded
+it was not the first, installed nothing and armed nothing -- and its
+`SIGCONT` handler returned early at `if (!g_restore.armed)`. Not a test
+artefact: **a child that takes a backend of its own is the first one in
+its process however many its parent holds**, and a program that forks
+after taking the terminal would have met it as a child whose crash left
+its terminal broken. The count is kept with the pid that made it, and a
+`resume()` from another pid resets it. The fix for the nested case had
+made every forked child look nested.
+
+**The check's assertion was backwards, and measuring both configurations
+is what said so** rather than reasoning about it:
+
+    with the fix    646 bytes, 2 leaves, first at 544, words at 558
+    without it      596 bytes, 1 leave,  first at 544, words at 558
+
+The first leave is the inner backend's own suspend and is there either
+way, so asserting on it is satisfied by a crash path that never ran. The
+discriminator is the SECOND leave. Sabotaging the disarm reddens this
+check alone; *and so does one from a frame loop the application drives*,
+the single-backend restore check, stays green -- which is the
+measurement of what it cannot see.
+
+**A third instance of the shape is recorded rather than fixed.** The
+inverted ordering above is why: `suspend()` also clears the terminal
+OWNER per instance, so once the inner backend goes the fatal-message
+handler has nobody to suspend, the message lands on the frame and the
+restore arrives from the `SIGABRT` path after it -- which is the defect
+§7.4's deferring handler exists to prevent, reachable again by this
+route. Unlike the count it is not a one-line change: the outer backend
+has to RECLAIM ownership, and simply not clearing the pointer leaves it
+dangling at a destroyed object. A stack or a re-assert, and which one is
+a design question with a real trade-off rather than a phrase.
 
 **The handlers are released by a count, not a flag** (2026-09-04), which
 closes the item the entry below opened the same day.

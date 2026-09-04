@@ -2405,6 +2405,52 @@ int suite_backend() {
 		      "and so does one from a frame loop the application drives");
 	}
 
+	{
+		// The emergency restore with a SECOND backend created and destroyed
+		// first, which is the case the check above cannot reach. It is what
+		// puts the terminal back when the process is KILLED -- suspend()
+		// never runs then -- and it was armed and disarmed per instance
+		// while the thing it guards is the process's one terminal. So an
+		// inner backend going out of scope disarmed it while the outer one
+		// was still drawing, and a crash after that left the user raw and on
+		// the alternate screen with nothing to put them back: the exact
+		// damage the mechanism exists to prevent, removed by the object that
+		// was not using it.
+		//
+		// Found beside the handler release rather than by looking for it --
+		// same shape, same function, four lines apart, and the fix for one
+		// did not cover the other.
+		const QByteArray nested = fatal_child(true, [] {
+			Qtty::AnsiBackend outer;         // its constructor resumes
+			{ Qtty::AnsiBackend inner; }     // and this one suspends on the way out
+			qFatal("qtty-check: after the inner one went");
+		});
+		// TWO leaves, and the assertion is the second one. The first is the
+		// inner backend's own suspend, which happens before the message and
+		// is present either way -- asserting on it would be satisfied by a
+		// crash path that never ran. Measured, with the disarm moved back
+		// out of the last-suspend block:
+		//
+		//     with the fix       646 bytes, 2 leaves, first at 544
+		//     without it         596 bytes, 1 leave,  first at 544
+		//
+		// The ordering is the other way round from the single-backend check
+		// above, and the reason is worth knowing: there the fatal handler
+		// suspends the backend and then prints, so the leave precedes the
+		// words. Here the terminal OWNER was cleared by the inner backend's
+		// suspend, so that handler has nobody to suspend, the message goes
+		// out first and the restore arrives from the SIGABRT path after it.
+		// That is a third instance of the same shape and it is recorded in
+		// project.md rather than fixed: unlike the count, it needs the outer
+		// backend to reclaim ownership, and simply not clearing the pointer
+		// would leave it dangling at a destroyed object.
+		const int nwords = nested.indexOf("qtty-check: after the inner one went");
+		const int nfirst = nested.indexOf("\033[?1049l");
+		const int nlast = nested.lastIndexOf("\033[?1049l");
+		CHECK(nwords >= 0 && nfirst >= 0 && nfirst < nwords && nlast > nwords,
+		      "and a crash after an inner backend closed still restores");
+	}
+
 	return fails;
 }
 

@@ -386,7 +386,16 @@ bool g_winch_saved = false;
 // one backend exists.
 // How many backends are active. The handlers are installed on the first and
 // restored on the last.
+//
+// Kept with the pid that counted them, because fork() copies the number and
+// not the terminal. A child that takes a backend of its own is the FIRST one
+// in its process however many its parent holds, and without this it inherits
+// a non-zero count, installs nothing and arms nothing -- so a crash in the
+// child leaves the child's terminal broken. Found by the suite, which forks
+// onto a pty to watch a process die; the fix for the nested case had made
+// every forked child look nested.
 int g_owners = 0;
+pid_t g_owner_pid = 0;
 
 // Give the terminal back. Does NOT disarm: SIGTSTP hands it back and SIGCONT
 // takes it again, any number of times, and only the fatal path is once.
@@ -586,12 +595,25 @@ void AnsiBackend::resume() {
 		QObject::connect(winch_notifier_, &QSocketNotifier::activated,
 		                 this, [this] { read_winch(); });
 	}
-	// Armed only once the state it would restore is known.
-	g_restore.saved = saved_;
-	g_restore.raw = raw_ok_ ? 1 : 0;
-	g_restore.tty = tty_out_ ? 1 : 0;
-	g_restore.armed = 1;
+	if (g_owner_pid != ::getpid()) {   // a fork: the parent's count is not ours
+		g_owners = 0;
+		g_winch_saved = false;
+		g_owner_pid = ::getpid();
+	}
 	if (g_owners++ == 0) {
+		// Armed only once the state it would restore is known, and only by
+		// the FIRST backend, which is the one holding the terminal as the
+		// user left it. A nested resume would re-arm with what the outer
+		// backend left behind -- raw mode, alternate screen -- so a crash
+		// would "restore" the terminal to the state it needed rescuing
+		// from. Same fault as the handler release below and found beside
+		// it: the arm and the disarm were both per-instance where the
+		// thing they guard is process-wide.
+		g_restore.saved = saved_;
+		g_restore.raw = raw_ok_ ? 1 : 0;
+		g_restore.tty = tty_out_ ? 1 : 0;
+		g_restore.armed = 1;
+
 		// SIGWINCH with the rest, now that there is something that knows
 		// when the last one leaves. The pipe it writes to is process-wide
 		// and made once; the HANDLER belongs to the span in which a backend
@@ -645,8 +667,14 @@ void AnsiBackend::suspend() {
 	// The handlers go with it: a program that suspends to shell out has a
 	// terminal it did not take over, and a crash in the shell is not this
 	// library's to tidy after.
-	g_restore.armed = 0;
 	if (g_owners > 0 && --g_owners == 0) {
+		// Disarmed with the handlers rather than before them. An inner
+		// backend going out of scope used to disarm the emergency restore
+		// while the outer one was still drawing, so a kill after that left
+		// the terminal raw and on the alternate screen with nothing to put
+		// it back -- exactly the damage this mechanism exists to prevent,
+		// removed by the object that was not using it.
+		g_restore.armed = 0;
 		for (size_t i = 0; i < sizeof(g_fatal) / sizeof(g_fatal[0]); ++i)
 			sigaction(g_fatal[i], &g_prev[i], nullptr);
 		sigaction(SIGTSTP, &g_prev_tstp, nullptr);
