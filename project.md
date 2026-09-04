@@ -5879,10 +5879,32 @@ is what fixed tiles are for. **Reasoned, then read, then measured** --
 and the measurement is the first of the three that could have been wrong
 and shown it.
 
-The method, so it is not lost with this session: build the image with
-PIL, display it inside `xvfb-run -a -s "-screen 0 900x600x24" kitty
-sh -c '...'`, capture the root window with `import` from inside the same
-Xvfb, and count colours with PIL.
+**`make test-screen` runs it**, so the method is a target rather than a
+paragraph -- the same fix the `wine` proof needed, which existed once in
+somebody's session and left only its conclusion behind. `tool/screen-check`
+builds an image with PIL, displays it in kitty under Xvfb, captures the
+root window with `import` from inside that Xvfb, and counts the colour.
+
+All three states exercised:
+
+    kitty draws it              9600 px of 9600, exit 0
+    a colour nothing drew       FAILED, 0 px of 9600, exit 2
+    a prerequisite absent       says so, exit 0
+
+**Out of `check` deliberately.** It starts a GUI process under a virtual
+display and takes seconds where `check` takes milliseconds, and `check`
+is what runs before every commit. It skips rather than fails where
+kitty, Xvfb, ImageMagick or PIL are missing, for the reason
+`test-platforms` skips without `xvfb-run`: a machine without a terminal
+emulator is not a machine with a broken renderer.
+
+**And the other claims of unverifiability were swept rather than
+assumed.** Two remain and both are correct: *the kept buffer really is
+kept* still cannot be observed, because a persistent buffer and a full
+re-render put identical pixels on the screen -- an oracle does not help
+where the two outcomes are equal -- and the relationship check for
+`rasterize_into()` is genuinely independent of having a screen, which is
+what made it usable before there was one.
 
 **The kitty tier has an independent witness at last** (2026-09-04).
 kitty 0.41.1 is installed, and everything qtty had been concluding from

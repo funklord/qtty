@@ -1,0 +1,64 @@
+#!/bin/sh
+# A screen check: what a real terminal DRAWS, not what qtty emitted.
+#
+# Every graphics tier in this tree is exercised by its encoder. That leaves
+# the question a user actually has -- is the picture right -- answered by
+# nobody, and project.md said several times that it could not be answered
+# here. It can: kitty renders under Xvfb and `import` reads the pixels back
+# exactly, measured at 9600 of 9600 for a 120x80 image.
+#
+# Skips rather than fails where the pieces are missing, the way
+# test-platforms skips without xvfb-run: a machine without kitty is not a
+# machine with a broken renderer.
+#
+# Bounded three ways, because this starts a GUI process: a timeout around
+# the whole run, kitty given a command that exits, and the Xvfb display
+# taken down with it.
+set -e
+for need in xvfb-run kitty import python3; do
+	command -v "$need" >/dev/null 2>&1 || {
+		echo "screen-check: $need is absent, so nothing was drawn or read" >&2
+		exit 0
+	}
+done
+python3 -c "import PIL" 2>/dev/null || {
+	echo "screen-check: python3-pil is absent, so the capture cannot be read" >&2
+	exit 0
+}
+
+dir=$(mktemp -d)
+trap 'rm -rf "$dir"' EXIT INT TERM
+w=120; h=80
+python3 -c "
+from PIL import Image
+Image.new('RGB',($w,$h),(220,30,40)).save('$dir/in.png')"
+
+timeout 120 xvfb-run -a -s "-screen 0 900x600x24" sh -c "
+	kitty --title qtty-screen-check sh -c 'kitty +kitten icat --align left $dir/in.png; sleep 6' &
+	sleep 5
+	import -window root $dir/out.png
+	wait" >"$dir/log" 2>&1 || true
+
+[ -s "$dir/out.png" ] || {
+	echo "screen-check: FAILED -- nothing was captured" >&2
+	sed -n '1,5p' "$dir/log" >&2
+	exit 1
+}
+
+python3 - "$dir/out.png" "$w" "$h" <<'PY'
+import sys
+from PIL import Image
+shot, w, h = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+im = Image.open(shot).convert("RGB")
+want = (220, 30, 40)
+n = sum(1 for p in im.getdata() if p == want)
+# Both directions. "Some red is on screen" is satisfied by a terminal that
+# scaled the image to the whole window, and "not the whole window" by one
+# that drew nothing at all.
+if n == w * h:
+	print("screen-check: kitty drew the image at its own size, %d px" % n)
+	sys.exit(0)
+print("screen-check: FAILED -- %d px of the test colour, wanted %d (%dx%d)"
+	% (n, w * h, w, h), file=sys.stderr)
+sys.exit(1)
+PY

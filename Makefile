@@ -20,6 +20,7 @@
 #   make test-platforms -- the suite under each QPA in TEST_PLATFORMS
 #   make test-sanitize -- the suite under ASan, UBSan and the leak detector
 #   make test-valgrind -- the suite under valgrind memcheck
+#   make test-screen  -- what a real terminal DRAWS, captured and counted
 #   make test-tools   -- the shipped tools and the example, RUN not just built
 #   make test-install -- install into a scratch root and check what landed
 #   make count-check  -- project.md's stated check count against the real one
@@ -330,6 +331,21 @@ QT_PLUGIN_PATH_FOR_CHECK = $(shell $(QMAKE) -query QT_INSTALL_PLUGINS 2>/dev/nul
 # check that correctly declined. The question here is "was this check site
 # reached", and a SKIP answers it as well as a PASS does. A block that bailed
 # early loses both, which is the thing being caught.
+# What a terminal DRAWS, rather than what qtty emitted. Every graphics tier
+# here is exercised by its encoder, which leaves the question a user actually
+# has -- is the picture right -- answered by nobody. project.md said several
+# times that it could not be answered on this machine; it can, and the note
+# was about what the suite reaches for rather than about the machine.
+#
+# Kept out of `check` deliberately. It starts a GUI process under a virtual
+# display and takes seconds rather than milliseconds, and `check` is the thing
+# run before every commit. It skips rather than fails where kitty, Xvfb,
+# ImageMagick or PIL are missing, for the reason test-platforms skips without
+# xvfb-run: a machine without a terminal emulator is not a machine with a
+# broken renderer.
+test-screen:
+	@./tool/screen-check
+
 test-platforms: tests-build
 	@failed=0; ran=0; expect=; \
 	out=$(dir $(TEST_BIN))platform.out; \
