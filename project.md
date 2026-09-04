@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-875 checks, 0 failures, under six configurations, all six re-run
+877 checks, 0 failures, under six configurations, all six re-run
 2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -5608,6 +5608,45 @@ The check drives the seam rather than `exec()` -- a backend constructed, a
 having: **restoring the previous arrangement leaves the `exec()` check
 green and reddens only this one.** That is the residue reproduced rather
 than remembered.
+
+**The handlers are released by a count, not a flag** (2026-09-04), which
+closes the item the entry below opened the same day.
+
+The flag guarding the release answered *did anybody install*; the
+question is *is anybody still using it*. Process-wide state let go on a
+per-instance event, so a second backend going out of scope handed the
+first one's handlers away while it was still active and still owned the
+terminal. `resume()` takes a reference and installs on the first,
+`suspend()` drops one and restores on the last, both guarded by
+`active_` so a repeated call moves nothing.
+
+**No policy changed, and that is the whole correction to what was
+recorded an hour earlier.** "An ownership model" is a bigger phrase than
+the thing needed, and the phrase is what made this look like a decision
+for the holder rather than a fix. The documented behaviour was already
+"the handlers go with the terminal"; the count is what makes that
+sentence true when more than one backend exists.
+
+So `SIGWINCH` joins the group and the library stops taking the host
+application's handler permanently -- a limitation that was recorded
+rather than fixed two entries ago. The fatal signals and the job-control
+pair were under the same flag with the same latent fault, so one
+mechanism serves three. `read_winch()` keeps its `active_` guard, which
+covers what no restored handler can: a byte already in the pipe when
+`suspend()` runs.
+
+**The nested case is the check, and the existing block could not express
+it.** Two cycles there run one backend at a time, where "did anybody
+install" and "is anybody still using it" behave identically. Paired,
+because *still installed* is satisfied by a release that never fires.
+
+Sabotaging the release rule back to the flag reddens four checks --
+the new one, both resize checks and `SIGCONT` -- while *a running
+backend handles every signal that ends a process* and *it puts the
+previous handlers back when it suspends* stay green. **That is the
+measurement of what the sequential checks cannot see**, and it is also
+why the original fault needed the resize-while-suspended check to find
+it: with `SIGWINCH` outside the group, none of these four could.
 
 **A resize while suspended wrote into the terminal it had handed back**
 (2026-09-04). `suspend()` returns the terminal -- its own comment says "a

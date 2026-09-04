@@ -2587,6 +2587,32 @@ int suite_exec() {
 				if (disposition(sig) != SIG_DFL) ++set_second;
 			backend.suspend();
 		}
+		// NESTED, which is the case the two cycles above cannot see: they
+		// run one backend at a time, so a release keyed on "did anybody
+		// install" and one keyed on "is anybody still using it" behave
+		// identically. With one backend inside another the two separate,
+		// and the flag this used to be gave the OUTER backend's handlers
+		// away when the inner one went out of scope -- it was still active
+		// and still owned the terminal. Found by trying to move SIGWINCH
+		// into this group; the fatal handlers had the same latent fault and
+		// nothing here could express it.
+		int set_with_inner_gone = 0, set_after_both = 0;
+		{
+			Feeder feeder;
+			Qtty::AnsiBackend outer_backend;
+			outer_backend.resume();
+			{
+				Qtty::AnsiBackend inner;
+				inner.resume();
+				inner.suspend();
+			}
+			for (int sig : fatal)
+				if (disposition(sig) != SIG_DFL) ++set_with_inner_gone;
+			outer_backend.suspend();
+			for (int sig : fatal)
+				if (disposition(sig) != SIG_DFL) ++set_after_both;
+		}
+
 		for (size_t i = 0; i < sizeof(fatal) / sizeof(fatal[0]); ++i)
 			sigaction(fatal[i], &outer[i], nullptr);
 		CHECK(set_during == int(sizeof(fatal) / sizeof(fatal[0])),
@@ -2598,6 +2624,13 @@ int suite_exec() {
 		      "which it was not before the backend existed");
 		CHECK(still_set_after == 0,
 		      "and it puts the previous handlers back when it suspends");
+		// Both directions again, and the second is what makes the first mean
+		// anything: "still installed" is satisfied by a release that never
+		// fires at all.
+		CHECK(set_with_inner_gone == int(sizeof(fatal) / sizeof(fatal[0])),
+		      "an inner backend suspending leaves the outer one's handlers");
+		CHECK(set_after_both == 0,
+		      "and the last one out still puts them back");
 		CHECK(set_second == int(sizeof(fatal) / sizeof(fatal[0])),
 		      "so a second backend installs them again, as it must");
 	}

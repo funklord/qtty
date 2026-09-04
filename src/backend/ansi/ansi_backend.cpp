@@ -358,28 +358,35 @@ Restore g_restore;
 const int g_fatal[] = { SIGINT, SIGTERM, SIGHUP, SIGQUIT,
                         SIGSEGV, SIGABRT, SIGBUS, SIGFPE, SIGILL };
 struct sigaction g_prev[sizeof(g_fatal) / sizeof(g_fatal[0])];
-struct sigaction g_prev_tstp, g_prev_cont;
-// SIGWINCH is NOT in this group, and the attempt to put it there is worth
-// recording because it failed for a reason that would catch the next person.
+struct sigaction g_prev_tstp, g_prev_cont, g_prev_winch;
+bool g_winch_saved = false;
+// SIGWINCH is in this group now, and getting it here took two tries.
 //
 // suspend() says the handlers go with the terminal -- "a program that suspends
-// to shell out has a terminal it did not take over" -- and SIGWINCH is
+// to shell out has a terminal it did not take over" -- and SIGWINCH was
 // installed once, with nullptr for the old action, so the host application's
-// own handler is taken permanently. Restoring it on suspend() looks like the
-// obvious fix and reddened an existing check: the handler is PROCESS-WIDE
-// state and suspend() is PER-INSTANCE, so a second backend going out of scope
-// takes the handler away from the first, which is still active and still
-// owns the terminal. The suite creates nested backends, so it noticed at
-// once. The fatal handlers above have the same shape -- their install and
-// restore ARE asserted, sequentially, which is why nothing there objects.
+// own handler was taken permanently. Restoring it on suspend() is the obvious
+// fix and it reddened an existing check, because the flag it was guarded by
+// answers "did anybody install" and the question is "is anybody still using
+// it": PROCESS-WIDE state released on a PER-INSTANCE event, so a second
+// backend going out of scope took the handler from the first, which was still
+// active and still owned the terminal.
 //
-// Doing it properly needs an ownership model this file does not have -- one
-// that knows a suspend is the LAST one -- and inventing one here is a design
-// decision rather than a fix. So the handler stays installed, and the damage
-// it could do is stopped where it is expressible: read_winch() refuses when
-// this backend is not active.
-bool g_winch_installed = false;
-bool g_installed = false;
+// A count answers the real question. resume() takes a reference and installs
+// on the first, suspend() drops one and restores on the last -- both guarded
+// by `active_`, so a repeated resume or suspend on one backend moves nothing.
+// The fatal handlers and the job-control pair were under the same flag and
+// had the same latent fault; they share the count, so the fix is one
+// mechanism rather than three.
+//
+// What made it look like a design decision the first time is that "an
+// ownership model" is a bigger phrase than the thing needed. No policy
+// changes here: the documented behaviour is already "the handlers go with the
+// terminal", and the count is what makes that sentence true when more than
+// one backend exists.
+// How many backends are active. The handlers are installed on the first and
+// restored on the last.
+int g_owners = 0;
 
 // Give the terminal back. Does NOT disarm: SIGTSTP hands it back and SIGCONT
 // takes it again, any number of times, and only the fatal path is once.
@@ -573,16 +580,6 @@ void AnsiBackend::resume() {
 			// poor way to take the lesson.
 		}
 	}
-	// Installed once, beside the pipe it writes to, and see the note above
-	// for why it is not restored on suspend.
-	if (s_winch_pipe[0] >= 0 && !g_winch_installed) {
-		struct sigaction sa{};
-		sa.sa_handler = qtty_winch_handler;
-		sigemptyset(&sa.sa_mask);
-		sa.sa_flags = SA_RESTART;          // do not break the read() in read_input()
-		sigaction(SIGWINCH, &sa, nullptr);
-		g_winch_installed = true;
-	}
 	if (s_winch_pipe[0] >= 0 && !winch_notifier_) {
 		winch_notifier_ = new QSocketNotifier(s_winch_pipe[0],
 		                                     QSocketNotifier::Read, this);
@@ -594,7 +591,20 @@ void AnsiBackend::resume() {
 	g_restore.raw = raw_ok_ ? 1 : 0;
 	g_restore.tty = tty_out_ ? 1 : 0;
 	g_restore.armed = 1;
-	if (!g_installed) {
+	if (g_owners++ == 0) {
+		// SIGWINCH with the rest, now that there is something that knows
+		// when the last one leaves. The pipe it writes to is process-wide
+		// and made once; the HANDLER belongs to the span in which a backend
+		// owns the terminal.
+		if (s_winch_pipe[0] >= 0) {
+			struct sigaction wa{};
+			wa.sa_handler = qtty_winch_handler;
+			sigemptyset(&wa.sa_mask);
+			wa.sa_flags = SA_RESTART;   // do not break the read() in read_input()
+			sigaction(SIGWINCH, &wa, &g_prev_winch);
+			g_winch_saved = true;
+		}
+
 		struct sigaction sa {};
 		sa.sa_handler = qtty_fatal_handler;
 		sigemptyset(&sa.sa_mask);
@@ -612,7 +622,6 @@ void AnsiBackend::resume() {
 		sigaction(SIGTSTP, &job, &g_prev_tstp);
 		job.sa_handler = qtty_cont_handler;
 		sigaction(SIGCONT, &job, &g_prev_cont);
-		g_installed = true;
 	}
 	active_ = true;
 	// From here the screen is this backend's, which the fatal-message path
@@ -637,12 +646,15 @@ void AnsiBackend::suspend() {
 	// terminal it did not take over, and a crash in the shell is not this
 	// library's to tidy after.
 	g_restore.armed = 0;
-	if (g_installed) {
+	if (g_owners > 0 && --g_owners == 0) {
 		for (size_t i = 0; i < sizeof(g_fatal) / sizeof(g_fatal[0]); ++i)
 			sigaction(g_fatal[i], &g_prev[i], nullptr);
 		sigaction(SIGTSTP, &g_prev_tstp, nullptr);
 		sigaction(SIGCONT, &g_prev_cont, nullptr);
-		g_installed = false;
+		if (g_winch_saved) {
+			sigaction(SIGWINCH, &g_prev_winch, nullptr);
+			g_winch_saved = false;
+		}
 	}
 
 	active_ = false;
