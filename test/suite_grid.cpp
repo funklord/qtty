@@ -174,6 +174,23 @@ int suite_grid() {
 		      "focusWidget() answers with whatever set_focus_widget() was last given");
 		Qtty::set_focus_widget(nullptr);
 		CHECK(Qtty::focusWidget() == nullptr, "and with nothing when there is nothing");
+
+		// And with nothing when the widget is DESTROYED, which is a different
+		// question from the line above and the one a bare pointer gets wrong.
+		// This state is process-wide and refreshed only on input, so the gap
+		// it must survive is a widget destroyed by something that is not
+		// input -- a timer, a reply, an application closing its own dialog --
+		// and FrameScheduler's idle tick renders in exactly that window. It
+		// never crashed, because every internal use is a comparison; what a
+		// stale pointer buys is a NEW widget at the same address comparing
+		// equal and drawing itself focused while focus is elsewhere. Qt
+		// reuses heap addresses freely.
+		auto *gone = new QWidget;
+		Qtty::set_focus_widget(gone);
+		const bool held = Qtty::focusWidget() == gone;
+		delete gone;
+		CHECK(held && Qtty::focusWidget() == nullptr,
+		      "and with nothing once the widget it named is destroyed");
 	}
 	{
 		// The two style hints this style pins for a reason, asserted at the

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-871 checks, 0 failures, under six configurations, all six re-run
+872 checks, 0 failures, under six configurations, all six re-run
 2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -5649,6 +5649,44 @@ resize while suspended writes nothing. The negative failed against the
 unfixed library with the ten bytes in its message; the positive is there
 because "wrote nothing" is satisfied by a backend that has stopped
 watching resizes at all.
+
+**A destroyed widget could keep the focus mark** (2026-09-04).
+`grid_style.cpp` held `s_focus` as a bare `QWidget *`, and the tree
+already knows this hazard: `InputRouter` keeps `grab_` and `hovered_` as
+`QPointer` because "a press can destroy its own target". Same shape,
+without the protection.
+
+**It never crashed, which is why it stayed**: every internal use is a
+comparison, never a dereference, so the failure it buys is quieter. Qt
+reuses heap addresses, so a new widget landing where the destroyed one
+was compares EQUAL and draws itself reverse-video while focus is
+elsewhere. The pointer is refreshed on input, so the window is a widget
+destroyed by something that is NOT input -- a timer, a reply, an
+application closing its own dialog -- and `FrameScheduler`'s idle tick
+exists to render in exactly that window.
+
+A `QPointer` now, which also makes the public accessor honest:
+`focusWidget()` answers null once the widget is gone rather than a
+pointer its caller must not follow. The check asserts the pair -- held
+while alive, null once destroyed -- and the `held &&` half is not
+decoration: without it the assertion is satisfied by an accessor that
+returns null unconditionally. Restoring the bare pointer reddens it.
+
+**The whole sweep, since an empty result is only a measurement if its
+method is recorded.** Four file-scope statics in the library point at
+objects:
+
+    s_focus       grid_style.cpp    UNSAFE -> QPointer
+    s_active      cell_paint.cpp    RAII: the constructor pushes and the
+                                    destructor restores the outer device
+    s_guard       grid_style.cpp    singleton parented to qApp, made once
+    s_snap        grid_style.cpp    singleton with a clear path
+
+The lens was derived from the SIGWINCH finding above -- process-wide
+state whose lifetime does not match the objects it names -- and it found
+one real instance out of four. `g_previous`, the message handler, is the
+same class as the SIGWINCH limitation and is taken without being given
+back for the same unresolved reason.
 
 **A click on a menu item dismissed the menu instead of firing it**
 (2026-09-02), and the reason had been recorded as somebody else's fault.

@@ -10,6 +10,7 @@
 // where nothing here drags it in and the type is incomplete at the point of
 // use. Including what the file uses is right on every version and is not a
 // position on which versions are supported (section 8.1).
+#include <QPointer>
 #include <QAction>
 #include <QFontDatabase>
 #include <QStyleFactory>
@@ -97,8 +98,21 @@ int GridMetrics::cw() { return s_cw; }
 int GridMetrics::ch() { return s_ch; }
 void GridMetrics::set(int cw, int ch) { s_cw = cw; s_ch = ch; }
 
-static QWidget *s_focus = nullptr;
-QWidget *focusWidget() { return s_focus; }
+// A QPointer, for the reason InputRouter gives for `grab_` and `hovered_`: a
+// widget can be destroyed while something still points at it. This is
+// process-wide state refreshed only on input, so the gap it has to survive is
+// a widget destroyed by something that is NOT input -- a timer, a network
+// reply, an application closing a dialog of its own accord -- and
+// FrameScheduler's idle tick exists precisely to render in that window. A
+// bare pointer never crashed here, because every use is a comparison rather
+// than a dereference; what it could do is quieter, and worse for being
+// quiet. Qt reuses heap addresses, so a new widget landing where the old one
+// was compares EQUAL and draws itself focused while focus is elsewhere.
+//
+// It also makes the public accessor honest: focusWidget() answers null once
+// the widget is gone, rather than a pointer its caller must not follow.
+static QPointer<QWidget> s_focus;
+QWidget *focusWidget() { return s_focus.data(); }
 void set_focus_widget(QWidget *w) { s_focus = w; }
 
 // Reverse video on the control that owns focus. design.md F10 settled this in
@@ -198,7 +212,7 @@ static QRect visible_rect(const QWidget *w) {
 	return r;
 }
 
-static bool owns_focus(const QWidget *w) { return w && w == s_focus; }
+static bool owns_focus(const QWidget *w) { return w && w == s_focus.data(); }
 static Attrs focus_attrs(const QWidget *w) {
 	return owns_focus(w) ? Attrs(Attr::Reverse) : Attrs();
 }
@@ -1023,7 +1037,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// direction. A checkable button that is checked was equally
 				// invisible, and Qt reports both in the same option.
 				bool foc = (opt->state & (State_HasFocus | State_Sunken | State_On))
-				           || (w && w == s_focus);
+				           || (w && w == s_focus.data());
 				dev->buffer().text(bc.left(), bc.top(),
 				                   QLatin1Char('<') + strip_mnemonic(b->text)
 				                       + QLatin1Char('>'),
@@ -1376,7 +1390,7 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				dev->buffer().fill(c, Cell{});
 				const bool on = (tb->state & State_On)
 				                 || (tb->state & State_Sunken)
-				                 || (w && w == s_focus);
+				                 || (w && w == s_focus.data());
 				// A bracket goes where a bracket fits, which is the rule the
 				// rendering side already states for a rule. Two cells hold
 				// "[]" and nothing else, so a dock widget's title buttons --
