@@ -15,10 +15,10 @@ open, and how to work in the tree. Where design.md holds the detail, this
 document states the substance in a sentence or two and cites the section
 number rather than restating it.
 
-## 0a. State, 2026-09-04
+## 0a. State, 2026-09-05
 
-906 checks, 0 failures, under six configurations, all six re-run
-2026-09-04: the offscreen
+909 checks, 0 failures, under six configurations, all six re-run
+2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
 detector, a **debug** build -- which is not the same code, `setup()`
@@ -6105,6 +6105,140 @@ nothing below is conclusive. The tool was honest throughout -- it printed
 SILENT and fell back to the environment, which is the asymmetry rule
 working -- and a reader still has to be told that an inconclusive report
 is inconclusive, because I read past it myself.
+
+**The sixel encoder was throwing away colour it did not have to**
+(2026-09-05), found while drawing the screen probe under xterm. The
+marker went out as (40,200,90) and came back (0,215,95) -- xterm-256 entry 41. That is not xterm
+quantising: `encode_sixel()` snapped every pixel to the 256-colour cube
+before emitting. **A sixel colour register carries arbitrary RGB.** The
+cube is a constraint the TEXT path has and this one does not.
+
+Measured against the real quantiser, not modelled:
+
+    default Qt palette   10 colours, 6 exact, worst 48, mean 5.5
+    sRGB sampled by 8    32768 colours, 7 exact, worst 96, mean 28.6
+
+The worst in the palette is `QPalette::Highlight`, which is what every
+selection in every widget is drawn in. It fits in 256 registers with 246
+to spare and was being sent 48 off per channel.
+
+So the encoder now sends the image's own colours where the image has no
+more than 256 of them, and falls back to the cube where it has more. The
+residual is then DEC's percent scale alone: max over all 256 levels of
+`|v - (v * 100 / 255) * 255 / 100|` is 3, which is the bound the existing
+mosaic check had already derived for cube entries and now holds for every
+colour.
+
+**The existing round-trip check could not have found this, and that is
+measured rather than argued.** Its fixture is built from exact cube
+entries, so the palette step is lossless for it -- its own comment says a
+colour off the cube "would need about 47". Under the sabotage:
+
+    sabotage                        the new check   the mosaic check
+    return to the cube              FAIL (48)       pass (3 of 3)
+
+A fixture chosen so that one step is lossless is a fixture that cannot
+see that step. The new check uses colours deliberately off the cube --
+`Highlight`, the probe's marker, and two others -- and reports 3.
+
+**And the first fix was right about the colour and wrong about the cost,
+which the budget fixture said the moment it was run.** Sending every
+image's own colours took the sixel frame from 284652 bytes to 484965, and
+one damaged cell from 651 to 955. That is the pairing rule earning its
+place: an optimisation needs a check that it is still CORRECT and a check
+that it is still an OPTIMISATION, and neither implies the other -- here
+the correctness check went green while a measured budget property moved
+47% the wrong way.
+
+Where the bytes went is not where it looks. Measured on three images,
+exact against the cube:
+
+    antialiased text        206 colours ->  26 cubed   +87%
+    flat widget rectangles    3 colours ->   3 cubed    +0%
+    one selected row          1 colour  ->   1 cubed    +1%
+
+**The gradient is the cheap one and the text is the expensive one**,
+which inverts the intuition. 51200 colours fall back to the cube and
+compress into long runs; antialiased text has 206 near-identical greys
+that all fit in the registers, so each one is kept and every switch
+between them pays a colour change. The cost lands exactly where the
+fidelity gain is invisible, and the gain lands where the cost is nil.
+
+So the encoder now asks two questions rather than one.
+
+**First, the wire's own scale, which is free.** Sixel states a colour as
+three PERCENTAGES, so two pixels that round to the same triple are one
+colour on the wire whatever they were in the source. Collapsing to that
+first discards only precision the format cannot carry: text goes from 206
+distinct colours to 82 and from 128444 bytes to 95862, losing nothing at
+all.
+
+**Second, what the cube is DOING to them.** Where it merges many colours
+into few it is compressing a dense cluster, and its error is
+correspondingly small; where it merges none it is introducing error and
+saving nothing. Text collapses 82 to 26 and is sent through the cube;
+three flat widget colours collapse to three and are sent exactly. The
+test is one line -- the cube is used where it at least halves the
+register count -- and it regresses neither case, which "always exact" and
+"always the cube" each fail at one end.
+
+**That the discriminator is the collapse RATIO rather than the colour
+count is the part worth keeping.** A count is the obvious criterion and
+it is the wrong one: 3 colours and 206 colours differ by two orders of
+magnitude, but so would 40 flat themed colours and 40 antialiased greys,
+and only the second wants quantising. What separates them is whether a
+quantiser finds anything to merge.
+
+**The result is cheaper than the code it replaced, on every fixture.**
+Not the trade it looked like at the start:
+
+                            before   exact always   now
+    200x60 pixel frame      284652       484965     279348
+    one damaged cell           651          955        575
+    antialiased text         68738       128444      68758
+    flat widget rectangles    1101         1103       1103
+    gradient                 26989        26989      26643
+
+The two flat cases now carry their own colours for two bytes; text and
+the gradient are within a fraction of a percent of the cube, and the
+frame is smaller than it was this morning. That last part is not the
+palette: it is the register table being packed densely, so the numbers a
+band's colour switches carry are one and two digits instead of the
+cube's three.
+
+**The two checks catch opposite things and neither catches both**, which
+is what the pairing rule says to expect and is worth having measured
+rather than assumed:
+
+    sabotage                  off-cube colours   dense cluster
+    never send exactly        FAIL (48)          pass
+    always send exactly       pass               FAIL (79 registers)
+
+The budget fixture passes under both. Its assertion is relative -- a
+damaged frame against a whole one -- so a change that inflates every
+sixel frame by 60% moves both sides together and it says nothing. The
+byte figures were PRINTED there and a human read them; the check that
+refuses is the register count.
+
+**And one of these sabotages was a no-op wearing a sabotage's clothes.**
+Setting `bool exact = false` at the declaration marked, compiled and
+changed nothing, because the block below it assigns `exact`
+unconditionally when the palette fits. The marker count said 1, the
+build succeeded, and the suite stayed green -- which reads exactly like
+a check that cannot fail. It is the case this project has already
+recorded once and met again: **a sabotage that applies is not thereby a
+sabotage**, and what tells them apart is asking which line decides the
+behaviour, not which line names it.
+
+**The register cap is load-bearing and now has a check that reaches it.**
+There are 256 registers and `used[]` is 256 entries, so an image with
+more colours than that must fall back rather than keep allocating. A
+1024-colour gradient is the fixture; raising the cap to 4096 does not
+fail the check, it **segfaults the suite**, which is the strongest form
+of "this fixture reaches the hazard" available. That branch is the one a
+photograph takes and nothing had exercised it -- every other sixel
+fixture in the suite is small enough to fit exactly.
+
 
 **A hole in the overlay one cell wide, found by reading the day's diff**
 (2026-09-04). `rasterize_into()` widens its rectangle leftwards to the

@@ -424,6 +424,123 @@ int suite_graphics() {
 		      "sixel round-trip: band-boundary stripes stay on rows 5 and 6");
 	}
 
+	// ---- sixel colours OFF the xterm-256 cube ----
+	//
+	// The fixture above is built from exact cube entries, which makes the
+	// palette step lossless for it -- so it cannot see a quantiser at all,
+	// and its own comment says a colour off the cube "would need about 47".
+	// That is a real cost and it was being paid: the encoder snapped every
+	// colour to the cube, which the TEXT path must do and this one need not,
+	// a sixel register carrying arbitrary RGB. Measured against the real
+	// quantiser before the change: over the default Qt palette, Highlight --
+	// what every selection is drawn in -- came back 48 off per channel, and
+	// over sRGB sampled every 8 the mean error was 28.6 and the worst 96.
+	//
+	// The tolerance is 3 and is the same bound the mosaic derives, now
+	// covering EVERY colour rather than the cube's own: with the image's
+	// colours in the registers the only lossy step left is DEC's percent
+	// scale, and max over all 256 levels of |v - (v*100/255)*255/100| is 3.
+	// So this check discriminates -- 3 passes with exact registers and
+	// cannot pass with the cube, which puts these colours 24 to 48 out.
+	{
+		QImage src(8, 8, QImage::Format_ARGB32);
+		const QRgb off_cube[] = { qRgb(0x30, 0x8c, 0xc6),   // QPalette::Highlight
+		                          qRgb(0x28, 0xc8, 0x5a),   // the screen probe's marker
+		                          qRgb(0x7f, 0x40, 0x11),
+		                          qRgb(0xef, 0xef, 0xef) }; // QPalette::Window
+		for (int y = 0; y < 8; ++y)
+			for (int x = 0; x < 8; ++x)
+				src.setPixel(x, y, off_cube[(x / 2) & 3]);
+
+		const SixelImage dec = decode_sixel(encode_sixel(src));
+		int worst_off = 0;
+		if (dec.ok)
+			for (int y = 0; y < 8; ++y)
+				for (int x = 0; x < 8; ++x) {
+					const QRgb want = src.pixel(x, y), got = dec.at(x, y);
+					worst_off = qMax(worst_off,
+					    qMax(qAbs(qRed(want)   - qRed(got)),
+					    qMax(qAbs(qGreen(want) - qGreen(got)),
+					         qAbs(qBlue(want)  - qBlue(got)))));
+				}
+		printf("info: worst channel error for off-cube colours is %d"
+		       " (the cube put these 24 to 48 out)\n", worst_off);
+		CHECK(dec.ok && worst_off <= 3,
+		      "sixel: colours off the xterm-256 cube survive, registers being"
+		      " arbitrary RGB");
+	}
+
+	// The other branch. There are 256 registers, so an image with more
+	// colours than that cannot be sent exactly and falls back to the cube --
+	// which is the branch a photograph takes, and the one that would
+	// otherwise go unexercised, the fixtures above all being small. The
+	// bound here is the cube's own worst case rather than the percent
+	// scale's: 96, measured over sRGB sampled every 8. What is being checked
+	// is that the fallback still produces a well-formed stream covering
+	// every pixel, not that it is precise -- it is not, and 96 says so.
+	{
+		QImage src(32, 32, QImage::Format_ARGB32);
+		int distinct = 0;
+		QSet<QRgb> seen;
+		for (int y = 0; y < 32; ++y)
+			for (int x = 0; x < 32; ++x) {
+				const QRgb v = qRgb(x * 8, y * 8, (x * y) % 256);
+				src.setPixel(x, y, v);
+				seen.insert(v);
+			}
+		distinct = seen.size();
+
+		const SixelImage dec = decode_sixel(encode_sixel(src));
+		int unpainted = 0, worst_many = 0;
+		if (dec.ok && dec.w == 32 && dec.h == 32)
+			for (int y = 0; y < 32; ++y)
+				for (int x = 0; x < 32; ++x) {
+					const QRgb want = src.pixel(x, y), got = dec.at(x, y);
+					if (qAlpha(got) == 0) { ++unpainted; continue; }
+					worst_many = qMax(worst_many,
+					    qMax(qAbs(qRed(want)   - qRed(got)),
+					    qMax(qAbs(qGreen(want) - qGreen(got)),
+					         qAbs(qBlue(want)  - qBlue(got)))));
+				}
+		printf("info: %d distinct colours falls back to the cube,"
+		       " worst channel error %d\n", distinct, worst_many);
+		CHECK(distinct > 256 && dec.ok && dec.w == 32 && dec.h == 32
+		      && unpainted == 0 && worst_many <= 96,
+		      "sixel: more colours than registers falls back to the cube,"
+		      " every pixel still painted");
+	}
+
+	// The other half of the pair. The check above proves the encoder is
+	// still CORRECT about colour; this one proves it is still an
+	// OPTIMISATION, and neither implies the other -- the first version of
+	// this fix sent every image's own colours, passed every correctness
+	// check, and took the sixel frame from 284652 bytes to 484965.
+	//
+	// A dense cluster of near-identical greys is what antialiased text is
+	// made of, and it is where sending the colours exactly costs most and
+	// gains least. The encoder is meant to notice: where the cube at least
+	// halves the register count it is compressing rather than merely
+	// erring, and it is taken. So the stream must define far fewer
+	// registers than the image has colours the wire could tell apart.
+	{
+		QImage grey(200, 60, QImage::Format_ARGB32);
+		QSet<QRgb> wire;
+		for (int y = 0; y < 60; ++y)
+			for (int x = 0; x < 200; ++x) {
+				const int v = 40 + ((x / 2) % 101) * 2;
+				grey.setPixel(x, y, qRgb(v, v, v));
+				// what the wire itself can tell apart: three percentages
+				wire.insert(qRgb(v * 100 / 255, v * 100 / 255, v * 100 / 255));
+			}
+		const QByteArray six = encode_sixel(grey);
+		const int defined = six.count(";2;");   // one per register definition
+		printf("info: %d greys the wire can separate, sent in %d register(s)\n",
+		       int(wire.size()), defined);
+		CHECK(wire.size() > 40 && defined > 0 && defined * 2 < wire.size(),
+		      "sixel: a dense colour cluster is quantised rather than sent"
+		      " one register per shade");
+	}
+
 	// ---- round trip: kitty ----
 	{
 		const QImage src = round_trip_fixture();
