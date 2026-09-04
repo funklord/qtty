@@ -1938,17 +1938,16 @@ had just committed.
 
 In the order I would take them:
 
-1. **Kitty's share of damage-limited pixels, blocked on a number rather
-   than on effort.** Sixel and iTerm2 crop to their damage and the frame
+1. **Kitty's share of damage-limited pixels -- implementation, and no
+   longer blocked.** Sixel and iTerm2 crop to their damage and the frame
    loop keeps its picture, so that path meets both halves of §11 for a
-   small change. Kitty still sends the whole screen: deleting a placement
-   removes it from the display, so a partial one cannot be freed while
-   its pixels are wanted, and partials accumulate until a full redraw.
-   The scheme needs a policy -- how many partial updates before a full
-   frame -- and that trades placement count against bytes, wants
-   measuring against a real kitty terminal, and there is none here. §7.4
-   carries the reasoning and says it is reasoned from the protocol rather
-   than measured.
+   small change. Kitty still sends the whole screen. This item said it
+   was blocked on a policy number; kitty's own protocol document says
+   placements with a reused id REPLACE rather than accumulate, naming it
+   as the way to move one without flicker, so there is nothing to
+   measure. Transmit the damaged sub-image, place it with a reused image
+   and placement id, let each frame replace the last. §7.4 carries the
+   correction and how the wrong constraint was arrived at.
 
 2. **A second Qt 6 point release**, still the cheapest untaken
    configuration and still absent from this machine. Qt 5.15 is here and
@@ -6022,26 +6021,36 @@ other way round.
   cursor and leave no handle, so a partial update is an addressed cursor
   and a cropped encode -- no lifecycle, and the tier keeps working
   unchanged if the region is the whole screen.
-- **Kitty is not, and it is the only piece left.** That path is
-  `kitty_delete_all()` followed by re-placing the whole screen as one
-  image, so a partial update cannot simply skip the delete: placements
-  would accumulate one per frame.
+- ~~**Kitty is not, and it is the only piece left.**~~ **The constraint
+  was invented and the reference documentation says so** (2026-09-04).
+  This entry read: a partial placement cannot be freed while its pixels
+  are wanted, so partials accumulate until a full redraw, so the scheme
+  needs a policy -- how many before a full frame -- which wants measuring
+  on a real terminal.
 
-  **And it cannot free them either, which is the constraint that makes
-  this a decision rather than a fix.** Deleting a placement in the kitty
-  protocol REMOVES IT FROM THE SCREEN -- that is what `clear_overlay()`
-  uses `a=d` for here -- so a partial placement cannot be released while
-  its pixels are still wanted. Partials therefore accumulate until a full
-  frame clears the lot, and the scheme needs a policy: how many partial
-  updates before a full redraw. That number is a trade between placement
-  count and bytes on the wire, it wants measuring on a real terminal
-  rather than choosing, and picking one here would be inventing a
-  parameter nobody had asked for.
+  **None of that is true.** kitty's own protocol document, installed at
+  `/usr/share/doc/kitty/html/_sources/graphics-protocol.rst.txt`, says:
 
-  Reasoned from the protocol as this tree uses it, not measured against
-  a kitty terminal -- there is none on this machine, which is the same
-  reason the graphics tiers are exercised by their encoders rather than
-  by a screen.
+      If you send two placements with the same image id and placement id
+      the second one will replace the first. This can be used to resize
+      or move placements around the screen, without flicker.
+
+  Reusing a placement id replaces rather than accumulates, and the
+  document names this as the mechanism for exactly qtty's case. There is
+  no policy number, and there never was one to measure.
+
+  **The cause is in the sentence that closed the old entry**: "reasoned
+  from the protocol as this tree uses it, not measured against a kitty
+  terminal". That treats qtty's own encoder as the authority on somebody
+  else's protocol and waits for a terminal, when the SPECIFICATION was on
+  the disk the whole time. `evidence.md` has the rule -- cite the owner's
+  constant rather than deriving one -- and the owner here is kitty. **I
+  looked for something to measure and never asked what the protocol
+  says.**
+
+  What is left is implementation, not a decision: transmit the damaged
+  sub-image, place it at the damaged cells with a reused image and
+  placement id, and let each frame replace the last.
 - ~~**And nothing can supply the damage from what is kept.**~~ **Done:
   `prev_overlays_`.** The reasoning is kept because it names the wrong
   turn, which is still available to anybody editing this. The frame
