@@ -2425,30 +2425,66 @@ int suite_backend() {
 			{ Qtty::AnsiBackend inner; }     // and this one suspends on the way out
 			qFatal("qtty-check: after the inner one went");
 		});
-		// TWO leaves, and the assertion is the second one. The first is the
-		// inner backend's own suspend, which happens before the message and
-		// is present either way -- asserting on it would be satisfied by a
-		// crash path that never ran. Measured, with the disarm moved back
-		// out of the last-suspend block:
+		// TWO leaves, and the message after both. The first leave is the
+		// inner backend's own suspend and is present however broken the
+		// crash path is, so asserting on it alone is satisfied by a crash
+		// path that never ran; the second is the emergency restore. And the
+		// message must come last, which is what says the fatal handler found
+		// a backend to suspend rather than printing onto a live frame.
 		//
-		//     with the fix       646 bytes, 2 leaves, first at 544
-		//     without it         596 bytes, 1 leave,  first at 544
+		// Three measurements, each a different fault:
 		//
-		// The ordering is the other way round from the single-backend check
-		// above, and the reason is worth knowing: there the fatal handler
-		// suspends the backend and then prints, so the leave precedes the
-		// words. Here the terminal OWNER was cleared by the inner backend's
-		// suspend, so that handler has nobody to suspend, the message goes
-		// out first and the restore arrives from the SIGABRT path after it.
-		// That is a third instance of the same shape and it is recorded in
-		// project.md rather than fixed: unlike the count, it needs the outer
-		// backend to reclaim ownership, and simply not clearing the pointer
-		// would leave it dangling at a destroyed object.
+		//   as it stands            646 bytes, 2 leaves at 544 and 594,
+		//                           words at 608
+		//   disarm per instance     596 bytes, 1 leave -- the emergency
+		//                           restore was switched off by the inner
+		//                           backend and never ran
+		//   owner as one pointer    646 bytes, 2 leaves at 544 and 632,
+		//                           words at 558 -- the handler had nobody
+		//                           to suspend, so the message went onto the
+		//                           frame and the restore arrived after it
+		//                           from the SIGABRT path
+		//
+		// The ORDER catches the owner stack. It does NOT catch the disarm,
+		// and the first version of this comment claimed it did -- measured
+		// wrong within minutes of being written. Once the handler can find
+		// the outer backend it suspends it, and THAT writes the second
+		// leave, so the emergency restore being switched off changes nothing
+		// observable here. The two mechanisms overlap on this path; the
+		// check below reaches the one where they do not.
 		const int nwords = nested.indexOf("qtty-check: after the inner one went");
-		const int nfirst = nested.indexOf("\033[?1049l");
+		const int nleaves = int(nested.count("\033[?1049l"));
 		const int nlast = nested.lastIndexOf("\033[?1049l");
-		CHECK(nwords >= 0 && nfirst >= 0 && nfirst < nwords && nlast > nwords,
-		      "and a crash after an inner backend closed still restores");
+		CHECK(nwords >= 0 && nleaves >= 2 && nwords > nlast,
+		      "and a crash after an inner backend closed restores before it"
+		      " speaks");
+	}
+
+	{
+		// The emergency restore ON ITS OWN, which needs a signal the Qt
+		// message handler never sees. qFatal goes through that handler, and
+		// the handler suspends the backend -- so it restores the terminal
+		// whether or not g_restore is armed, which is exactly why the check
+		// above stopped discriminating the disarm once the owner stack
+		// landed. A raw SIGSEGV reaches qtty_signal_restore and nothing
+		// else, so here g_restore is the only thing that can give the
+		// screen back.
+		//
+		// Nested, because the fault is an inner backend disarming it for an
+		// outer one that is still drawing.
+		const QByteArray killed = fatal_child(true, [] {
+			Qtty::AnsiBackend outer;         // its constructor resumes
+			{ Qtty::AnsiBackend inner; }     // and this one suspends on the way out
+			::raise(SIGSEGV);
+		});
+		// Two leaves: the inner backend's own suspend, then the emergency
+		// restore. One means the restore never ran. Paired with the first,
+		// because a child that died before taking the screen writes neither
+		// and would satisfy a bare "the second is missing" test.
+		const int kleaves = int(killed.count("\033[?1049l"));
+		CHECK(killed.contains("\033[?1049h") && kleaves >= 2,
+		      "and a signal the message handler never sees is restored by"
+		      " the emergency path");
 	}
 
 	return fails;

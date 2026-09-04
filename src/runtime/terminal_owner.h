@@ -20,6 +20,17 @@ namespace Qtty {
 
 class ITerminalBackend;
 
-void set_terminal_owner(ITerminalBackend *owner);
+// A STACK rather than a pointer, because "who has the screen" is not a single
+// answer while one backend is constructed inside another's lifetime. The
+// single pointer was cleared by whichever backend suspended, so an inner one
+// going out of scope said the screen was nobody's while the outer was still
+// drawing on it -- and the fatal handler then had nothing to suspend, so the
+// message it exists to rescue landed on the frame after all.
+//
+// take/release rather than set(nullptr): release removes a specific backend
+// wherever it sits, so backends destroyed out of order leave the right one on
+// top and no entry can dangle at a destroyed object.
+void take_terminal(ITerminalBackend *owner);
+void release_terminal(ITerminalBackend *owner);
 
 } // namespace Qtty

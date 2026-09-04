@@ -60,7 +60,8 @@ QtMessageHandler g_previous = nullptr;
 // suspend() -- see terminal_owner.h for why those two and not exec(). A fatal
 // message has to be printed where somebody can read it, and the alternate
 // screen is not that place: see below.
-ITerminalBackend *g_backend = nullptr;
+ITerminalBackend *g_backend = nullptr;         // the top of the stack below
+QVector<ITerminalBackend *> g_owners;
 
 void deferring_handler(QtMsgType type, const QMessageLogContext &ctx,
                        const QString &text) {
@@ -109,7 +110,15 @@ void deferring_handler(QtMsgType type, const QMessageLogContext &ctx,
 
 // terminal_owner.h: the backend says when it has the screen and when it does
 // not. Defined here because the handler that asks is here.
-void set_terminal_owner(ITerminalBackend *owner) { g_backend = owner; }
+void take_terminal(ITerminalBackend *owner) {
+	if (owner && !g_owners.contains(owner)) g_owners.append(owner);
+	g_backend = g_owners.isEmpty() ? nullptr : g_owners.last();
+}
+
+void release_terminal(ITerminalBackend *owner) {
+	g_owners.removeAll(owner);
+	g_backend = g_owners.isEmpty() ? nullptr : g_owners.last();
+}
 
 void flush_deferred_messages() {
 	const QVector<Held> held = g_deferred;

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-882 checks, 0 failures, under six configurations, all six re-run
+883 checks, 0 failures, under six configurations, all six re-run
 2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -5718,16 +5718,43 @@ backend doing its job; that nesting makes the result odd is the design
 saying qtty owns the terminal exclusively (§5.1), not a bug in
 `suspend()`.
 
-**A third instance of the shape is recorded rather than fixed.** The
-inverted ordering above is why: `suspend()` also clears the terminal
-OWNER per instance, so once the inner backend goes the fatal-message
-handler has nobody to suspend, the message lands on the frame and the
-restore arrives from the `SIGABRT` path after it -- which is the defect
-§7.4's deferring handler exists to prevent, reachable again by this
-route. Unlike the count it is not a one-line change: the outer backend
-has to RECLAIM ownership, and simply not clearing the pointer leaves it
-dangling at a destroyed object. A stack or a re-assert, and which one is
-a design question with a real trade-off rather than a phrase.
+**The third instance was fixed the same evening, and the framing that
+deferred it was wrong twice over.** `suspend()` cleared the terminal
+OWNER per instance, so once the inner backend went the fatal-message
+handler had nobody to suspend and the message landed on the frame -- the
+defect the deferring handler exists to prevent, reachable again by that
+route. It was recorded as needing a design decision because "the outer
+backend has to reclaim ownership, and not clearing the pointer dangles".
+Both are true and neither is a decision: **a stack answers both.**
+`take_terminal` pushes, `release_terminal` removes a specific backend
+wherever it sits, so a destroyed one leaves the right owner on top and
+no entry can point at an object that is gone.
+
+Measured on the crash fixture, same bytes reordered:
+
+    one pointer   2 leaves at 544 and 632, message at 558
+    a stack       2 leaves at 544 and 594, message at 608
+
+The message now arrives after the restore rather than onto the frame.
+
+**And the fix silently removed the only coverage the DISARM had, which
+is the part worth carrying.** With the handler able to find the outer
+backend it suspends it, and that suspend writes the second leave -- so
+switching the emergency restore off changes nothing observable on a
+`qFatal` path. The check written an hour earlier for the disarm went on
+passing while covering nothing, and its comment claimed one assertion
+caught both faults. Re-running the sabotage is what said otherwise:
+
+    sabotage                  qFatal check   SIGSEGV check
+    owner as one pointer      FAIL           pass
+    disarm per instance       pass           FAIL
+
+The second check reaches what the first cannot. `qFatal` goes through
+the message handler, which restores the terminal whether or not
+`g_restore` is armed; a raw `SIGSEGV` reaches `qtty_signal_restore` and
+nothing else. **A check can stop discriminating because something ELSE
+improved**, and nothing announces it -- only re-running the sabotage
+after a related change does.
 
 **The handlers are released by a count, not a flag** (2026-09-04), which
 closes the item the entry below opened the same day.

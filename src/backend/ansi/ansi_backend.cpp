@@ -650,7 +650,7 @@ void AnsiBackend::resume() {
 	// needs to know: it gives the terminal back before printing, and until
 	// this line only exec() knew, so an application driving its own frame
 	// loop printed onto a frame about to be torn down (terminal_owner.h).
-	set_terminal_owner(this);
+	take_terminal(this);
 }
 
 void AnsiBackend::suspend() {
@@ -686,7 +686,7 @@ void AnsiBackend::suspend() {
 	}
 
 	active_ = false;
-	set_terminal_owner(nullptr);                 // and it is nobody's again
+	release_terminal(this);          // and the outer one, if any, has it again
 	// The terminal is the user's again, so anything held back can be said.
 	flush_deferred_messages();
 }
