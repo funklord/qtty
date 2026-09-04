@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-863 checks, 0 failures, under six configurations: the offscreen
+865 checks, 0 failures, under six configurations: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
 detector, a **debug** build -- which is not the same code, `setup()`
@@ -1182,8 +1182,22 @@ which is why the checks passed whatever that branch did.
 They were removed rather than reworded. **A check whose sabotage leaves
 it green is a sentence**, and this document has spent the day saying so
 about other people's; a passing line that names the wrong mechanism is
-worse than the gap it pretends to close. The line stays uncovered and is
-now described correctly, which is what the next reader needs.
+worse than the gap it pretends to close.
+
+**And then the branch was reached properly**, which is what the
+withdrawal was for. It needs TWO modals: with one, the active-layer path
+takes it every time. Two of similar size hide the finding rather than
+show it -- the one behind is drawn and completely covered -- so the one
+behind is deliberately the wider, and its ends appear on either side of
+the one in front:
+
+    |           BBBB               |
+    |  AAAAAAAA        AAAAAAAA    |
+
+**The sabotage that defeated the withdrawn pair now reddens the new
+check, and only it**: the "active modal on top" half stays green. That is
+the difference between a check about a mechanism and a check that happens
+to observe its result.
 
 **Two more Channel B branches with no caller** (2026-09-04), from the
 same reading. A rectangle painted through `QPainter` into a cell device

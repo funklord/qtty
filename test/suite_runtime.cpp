@@ -1086,6 +1086,62 @@ int suite_runtime() {
 		GridGuard::reset();
 	}
 
+	{
+		// TWO modals at once, which is what reaches compose()'s branch for a
+		// modal that is not the ACTIVE one. Nothing had: with a single modal
+		// the active-layer path takes it every time, and coverage showed the
+		// other branch with no caller in a whole run.
+		//
+		// The first attempt at this check used a MODELESS dialog, on a
+		// misreading of which loop the branch belongs to, and passed with the
+		// branch sabotaged two different ways. Sizes matter too: two modals
+		// of similar size cover each other completely, so the one behind is
+		// drawn and invisible. The one behind is deliberately the WIDER here,
+		// and its ends show on either side of the one in front:
+		//
+		//     |           BBBB               |
+		//     |  AAAAAAAA        AAAAAAAA    |
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->addWidget(new QLabel(QStringLiteral("RootLabel")));
+		win.resize(GridMetrics::cells(30, 8));
+		win.show();
+		QCoreApplication::processEvents();
+
+		const auto modal = [&win](const QString &text, int cols, int rows) {
+			auto *d = new QDialog(&win);
+			d->setAttribute(Qt::WA_DontShowOnScreen);
+			d->setModal(true);
+			auto *dv = new QVBoxLayout(d);
+			dv->addWidget(new QLabel(text));
+			d->resize(GridMetrics::cells(cols, rows));
+			d->show();
+			QCoreApplication::processEvents();
+			return d;
+		};
+		QDialog *behind = modal(QStringLiteral("AAAAAAAAAAAAAAAAAAAAAAAA"), 26, 5);
+		QDialog *front = modal(QStringLiteral("BBBB"), 8, 3);
+
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+		CellBuffer b(30, 8);
+		c.compose(b);
+		int widest = 0;
+		for (const QString &row : b.to_text().split(QLatin1Char('\n')))
+			widest = qMax(widest, int(row.count(QLatin1Char('A'))));
+		CHECK(QApplication::activeModalWidget() == front
+		      && b.to_text().contains(QStringLiteral("BBBB")),
+		      "the newest modal is the active one and is drawn on top");
+		CHECK(widest >= 8,
+		      "and the modal behind it is drawn too, not left to nobody");
+		front->hide();
+		behind->hide();
+		win.hide();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	// Section 7's policy belongs to the layer that OWNS INPUT, and a modal
 	// owns input while it is up (section 8.3). It was only ever run on the
 	// root, and the follow-the-focus scroll was root-only too, so a modal
