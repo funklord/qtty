@@ -1169,6 +1169,22 @@ The bytes wait in the decoder's buffer until `set_event_sink()` is
 called, because `decode_one()` clears the buffer when there is no sink --
 so draining any earlier would throw away exactly what was just saved.
 
+**And one attempt that was withdrawn, which is the more useful half of
+the same reading.** `compositor.cpp`'s unanchored-placement branch has no
+caller, and it was read as "a modeless dialog is placed here". Two checks
+were written for that, both passed -- and **neither sabotage reddened
+them**: not moving the dialog a thousand cells off the frame, and not
+skipping its draw entirely. The branch belongs to the loop over MODALS,
+so it is reached by a modal that is not the ACTIVE one, and a modeless
+dialog never goes near it; it is drawn by the top-level walk instead,
+which is why the checks passed whatever that branch did.
+
+They were removed rather than reworded. **A check whose sabotage leaves
+it green is a sentence**, and this document has spent the day saying so
+about other people's; a passing line that names the wrong mechanism is
+worse than the gap it pretends to close. The line stays uncovered and is
+now described correctly, which is what the next reader needs.
+
 **Two more Channel B branches with no caller** (2026-09-04), from the
 same reading. A rectangle painted through `QPainter` into a cell device
 draws its sides from `top + 1` to `bottom - 1` -- so **only a box three
