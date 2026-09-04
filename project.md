@@ -1125,6 +1125,35 @@ grep for a number beside a noun:
     "qtty emits qWarning from four places of its own"      four, correct
     "three places need the same answer" (cell_geometry.h)  enumerated
 
+**And "four, correct" was half an answer, found by re-taking it**
+(2026-09-04). Four is the right number; one of the four names was wrong.
+The sentence lists the graphics tier, which emits none -- its only
+`qWarning` is the word inside a comment -- and omits the font
+substitution warning, which is emitted **in the same file the sentence is
+a comment in**, twelve lines above the `qFatal` that file exists to
+discuss.
+
+So the sweep verified the count and skipped the list beside it, which is
+the mistake §"counts a comment enumerates beside the number" was written
+to license: an enumerated count was called safe **because** the
+enumeration is there, without the enumeration being read. A list beside a
+number is only protection if somebody checks the list. Both copies of the
+sentence now name the four that exist.
+
+**And both dropped the number**, which is the part that is not just a
+correction. The obvious response was a `count-check` arm holding the
+stated count against `grep -c 'qWarning('` in `src/`. That arm would have
+passed every day this sentence was wrong: **four was never the error.** A
+gate over the count, beside a list that rots, is this document's own
+recurring failure -- a right-looking answer to a question nobody asked --
+built deliberately this time.
+
+The number was carrying one real load, a contrast with the *hundreds* Qt
+emits in one run, and the list carries that by being short. So the
+sentence lists and does not count, in the source comment and here. **A
+countable claim you can delete cannot rot, and deleting it beats gating
+it** where the count was never the thing a reader needed.
+
 **Two of the five held**, which is the part worth reporting: a sweep that
 only lists what it breaks teaches nothing about where the rot lives. It
 lives in counts of OTHER files, and it does not live in counts a comment
@@ -1136,14 +1165,37 @@ findable.** A countable claim rots only in the PRESENT tense. "It
 reported 83 misaligned geometries across five suites on its first run" is
 a record of a measurement and cannot go stale -- the run happened, the
 number was five. "The `CHECK` macro, copied identically into ten suites"
-is a claim about the tree as it stands, and the tree has twelve. Same
-noun, same shape, opposite behaviour.
+is a claim about the tree as it stands. Same noun, same shape, opposite
+behaviour.
 
 So the detector is not gap language at all. It is **present-tense
 countable claims about the tree's own shape**, and a sweep for those
 found two more here in one pass: `ten suites` for twelve, and "a plain
 `make` builds the library, the two tools and the example" for three --
 `qtty-negotiate` was added and the sentence was not. Both corrected.
+
+**And one of those two corrections was itself wrong, found the next day
+by re-taking it** (2026-09-04). The claim is about **the files carrying
+the macro**; the correction counted `ls test/*.cpp`, which is twelve and
+is a different set. It includes `main.cpp`, which is the runner and not a
+suite, and `suite_render.cpp`, which does not use `CHECK` at all. Ten
+files define it, byte-identical.
+
+That is the sweep's own failure mode, in the one place that should have
+been proof against it: **a countable claim was re-measured against a
+directory listing instead of against the thing the sentence names.** The
+number moved, the sentence stayed wrong, and it read as corrected --
+which is worse than the stale count it replaced, because a corrected
+figure carries a date and looks checked. The fix for a count is not a
+fresh count: it is `grep -l` for the noun in the sentence.
+
+`suite_render.cpp` turns out to be the interesting half of the miss.
+It does not use `CHECK` because its failures are hand-written to print
+**observed values** rather than the condition text -- twenty of its
+thirty-three do -- which is what §"a message that cannot separate the
+hypotheses it will generate" asks for and strictly better than `#c`. So
+the outlier the miscount hid was not a suite left behind by the
+mechanical change. It was the suite that had already gone further.
 
 That also explains why a gap-language sweep returned 26 noise hits out of
 30 against this file: **a project log is written in the past tense**, and
@@ -3481,7 +3533,7 @@ probe looking in the wrong place, which were precisely the three hypotheses
 it generated. **A message that cannot separate the hypotheses it will
 generate guarantees the guessing.**
 
-The `CHECK` macro, copied identically into twelve suites, now prints the
+The `CHECK` macro, copied identically into ten suites, now prints the
 condition that was false as well as the sentence. Mechanical, so it carries
 a proof: the 552 PASS lines are byte-identical before and after, and the
 failure path was then exercised deliberately, because a change that only
@@ -5241,10 +5293,10 @@ Nothing checked a drop-down's *contents* before, which is exactly why the
 clip could break it and the suite stay green. There is a check now.
 
 **Diagnostics went onto the screen the frame was on** (2026-09-02).
-Nothing installed a Qt message handler, and qtty emits `qWarning` from
-four places of its own -- the grid guard once per off-grid widget, §6's
-contrast check once per offending cell, the graphics tier, and the
-SIGWINCH pipe. Qt adds its own: a resize below the layout minimum
+Nothing installed a Qt message handler, and qtty emits `qWarning` of its
+own -- the grid guard once per off-grid widget, §6's contrast check once
+per offending cell, the font substitution warning in `application.cpp`
+itself, and the SIGWINCH pipe. Qt adds its own: a resize below the layout minimum
 produced **over a hundred** `propagateSizeHints` lines in a single run.
 All of it goes to stderr, and stderr is the terminal the frame is on.
 

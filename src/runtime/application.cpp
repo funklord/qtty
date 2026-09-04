@@ -14,10 +14,11 @@
 namespace Qtty {
 
 // ---- diagnostics do not go on the screen the frame is on -------------------
-// Nothing installed a message handler, and qtty emits qWarning from four
-// places of its own -- the grid guard once per off-grid widget, the section 6
-// contrast check once per offending cell, the graphics tier and the SIGWINCH
-// pipe. Qt adds its own: a resize below the layout minimum produced over a
+// Nothing installed a message handler, and qtty emits qWarning of its own --
+// the grid guard once per off-grid widget, the section 6 contrast check once
+// per offending cell, the font substitution named below, and the SIGWINCH
+// pipe. Listed rather than counted: a count here was right and its list was
+// wrong for a day, and the list is the half a reader can act on. Qt adds its own: a resize below the layout minimum produced over a
 // hundred "This plugin does not support propagateSizeHints()" lines in a
 // single run. All of it goes to stderr, and stderr is the terminal the frame
 // is being drawn on.
