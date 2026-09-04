@@ -1901,11 +1901,11 @@ discarding its own work.
 
 ## 0e. What I would pick up next
 
-**Rewritten 2026-09-03**, because the list it replaced was six items of
-which five were struck and one was wrong about what there was to compare.
-A handover list that records its own history is a handover list nobody
-can read; the closed items are described where the work is, in §0a and
-§7.
+**Rewritten 2026-09-04**, for the reason the version it replaces gave for
+rewriting the one before it: three of its six items had been struck in a
+day, and a list that records its own history is a list nobody reads. The
+closed ones are described where the work is -- the type-ahead residue in
+§7.1, the coverage decision and partial-line scrolling in §7.2.
 
 In the order I would take them:
 
@@ -1921,7 +1921,20 @@ In the order I would take them:
    does and what §11 claims, and it is the copyright holder's to
    authorise because it is a body of work rather than a fix.
 
-2. **A second Qt 6 point release**, still the cheapest untaken
+2. **An ownership model for the process-wide state the library takes.**
+   New on 2026-09-04 and the only item here that came out of a defect.
+   qtty installs a `SIGWINCH` handler and a Qt message handler and gives
+   neither back, while `suspend()` -- whose own comment says the handlers
+   go with the terminal -- restores the other four. Restoring them was
+   tried and reverted the same hour: the handlers are **process-wide**
+   and `suspend()` is **per-instance**, so a second backend going out of
+   scope takes them from the first, and an existing check said so at
+   once. What is missing is a way to know a suspend is the LAST one. The
+   damage is stopped where it was expressible (`read_winch()` refuses
+   when inactive), so this is a design gap rather than a live fault --
+   and the fatal handlers have the same shape with nothing testing it.
+
+3. **A second Qt 6 point release**, still the cheapest untaken
    configuration and still absent from this machine. Qt 5.15 is here and
    is a port rather than an axis -- §8.1 prices it at three conditionals
    in two files. What a second 6.x would answer, with no decision at all,
@@ -1929,42 +1942,26 @@ In the order I would take them:
    exposure (a probe that passed on 6.10 and failed on 6.4.2) is the
    reason to want it.
 
-3. ~~**The type-ahead residue.** Keys arriving BEFORE the first ESC are
-   kept now; keys arriving between the terminal's replies are still
-   dropped.~~ **Closed 2026-09-04**, and by dropping escapes rather than
-   by recognising replies -- see §7.1. What is left is narrower and is
-   named there: a typed arrow or function key inside the query window is
-   still lost.
-
-4. ~~**Eleven covered lines that gcov does not count.**~~ **Looked at
-   and declined, 2026-09-04, with the reason recorded rather than the
-   item dropped.** Every recoverable line is on an abort path, so
-   `__gcov_dump()` before `_exit` recovers none of them; it would need a
-   `SIGABRT` handler doing work that is not async-signal-safe. And the
-   lines are already held by checks that redden when they break, which is
-   **stronger evidence than a counter** -- the machinery would only make
-   a proxy agree with a proof this tree already has. Re-taken coverage
-   led somewhere better instead: two of the uncovered lines were not an
-   instrument artefact at all.
-
-5. ~~**Partial-line scrolling**, the one gap §7.2 still claims that this
-   session could not verify either way.~~ **Taken the same day**: it was
-   genuinely untested and it is genuinely correct. §7.2 carries the
-   measurement and two checks now hold it. The list is shorter by one and
-   nothing replaced it, which is the honest outcome.
-
-6. **§0b's questions are the holder's** and are not work to pick up: RTL
+4. **§0b's questions are the holder's** and are not work to pick up: RTL
    scope, the bundled font, tooltips and hover, the severity glyph,
    `SH_Slider_AbsoluteSetButtons`, the picture rule, the layout top
-   margin, and now whether `qtty-negotiate` belongs in `$PREFIX/bin`
-   (§8.0).
+   margin, and whether `qtty-negotiate` belongs in `$PREFIX/bin` (§8.0).
 
-**And a standing one that is method rather than work.** The claims in
-this document that rot are the countable ones written in the present
-tense about the tree's own shape -- seven were found and corrected in one
-day, in a document nobody thought was drifting. `make count-check` holds
-the headline figure. The rest is a grep for a number beside a noun, and
-it is worth running whenever this file is read seriously.
+**And two standing ones that are method rather than work.**
+
+The claims in this document that rot are the countable ones written in
+the present tense about the tree's own shape. `make count-check` holds
+the headline figure and `make test-platforms` now holds it per
+configuration; the rest is a grep for a number beside a noun, and §0c
+records the one instrument that does NOT work for it.
+
+**Derive the next lens from the last defect, and finish it.** Every fault
+found on 2026-09-04 came from a lens the previous fault suggested rather
+than from a list decided in advance -- a stated rule obeyed in some
+places, a flag keyed to the wrong end, process-wide state with an
+instance lifetime, a documented contract nothing writes down. Each was
+run to exhaustion and the empty part recorded, which is what makes the
+next one derivable instead of a guess.
 
 ## 0. What this is
 
@@ -5690,6 +5687,15 @@ in `src/` and should not, being for applications and the harness -- and
 turned up this instead: not an unwired function but an unwired
 *contract*. The lens was wrong about what it would find and right about
 where to look.
+
+**The obvious follow-up was run rather than assumed.** The library reads
+three application-facing dynamic properties, and the other two were
+already asserted through their literal names -- `qtty.glyph` on a widget
+and on the `QAction` behind a tool button, `qtty.cells` including the
+half-nonsense `QSize(-1, 2)` its own comment exists for. `qtty.priority`
+was the only one of the three whose name nothing wrote down, so this is
+one instance rather than a family, and the next reader does not have to
+re-derive that.
 
 **A destroyed widget could keep the focus mark** (2026-09-04).
 `grid_style.cpp` held `s_focus` as a bare `QWidget *`, and the tree
