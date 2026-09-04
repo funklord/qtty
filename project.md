@@ -1921,7 +1921,8 @@ In the order I would take them:
 1. **A second Qt 6 point release**, still the cheapest untaken
    configuration and still absent from this machine. Qt 5.15 is here and
    is a port rather than an axis -- §8.1 prices it at three conditionals
-   in two files. What a second 6.x would answer, with no decision at all,
+   in three files, plus one usage with a portable spelling that needs no
+   conditional at all. What a second 6.x would answer, with no decision at all,
    is whether anything here depends on 6.8.2's particulars; the beerssh
    exposure (a probe that passed on 6.10 and failed on 6.4.2) is the
    reason to want it.
@@ -8042,13 +8043,41 @@ Makefile's own `QMAKE=` override is all it takes:
 **The public headers are clean.** A translation unit that includes
 `qtty/qtty.h` and nothing else compiles under Qt 5.15 with no errors, so
 an application on Qt 5 could include qtty today. What does not compile is
-three usages in two implementation files:
+**four usages in three implementation files** -- three when this was
+first written, and the fourth is the point:
 
 | Usage | Where | Qt 5 equivalent |
 |---|---|---|
 | `QPalette::Accent` | `src/core/theme.cpp` | absent before Qt 6.6 |
 | `QAction::associatedObjects()` | `src/runtime/input_router.cpp`, twice | `associatedWidgets()` |
 | `QKeyCombination` | `src/runtime/input_router.cpp` | the older combined `int` |
+| `QFontDatabase::families()` | `src/grid/grid_style.cpp` | an instance: the class became static-only in Qt 6 |
+
+**The fourth arrived two days after the price was recorded, and nothing
+connected the two.** This section was written on 2026-09-01 saying three
+usages in two files; `git log -S` dates the `QFontDatabase::families()`
+call to 2026-09-03, in `no_font_at_all()` -- a helper written to remove a
+parallel copy of a diagnostic, by a commit with no reason to think about
+Qt 5. Re-measured 2026-09-04 by the command above, which is why the
+method is recorded beside the number: **a countable claim about the
+tree's own shape, falsified by a commit nobody would connect to it**, and
+the only thing that finds it is somebody running the method again.
+
+**It is also the one of the four that needs no decision.** The other
+three need a conditional, which is the choice this section reserves.
+This one has a portable spelling -- `QFontDatabase().families()`,
+constructing an instance -- and the cost of it was measured rather than
+assumed:
+
+    QFontDatabase().families()    Qt 6.8: 0 warnings   Qt 5.15: 0 warnings
+    QFontDatabase::families()     Qt 6.8: compiles     Qt 5.15: error
+
+`-Wall -Wextra -Wdeprecated-declarations` on both. Qt 6 keeps the
+constructor and does not deprecate it, so the portable form costs
+nothing on the version this project actually builds. **Still not changed
+here**, because it is a change to working code for a version nobody has
+adopted -- but it is priced now, and unlike the other three it commits
+the project to nothing.
 
 That is the whole of it for the library. **None of it is fixed here**,
 because writing those three conditionals *is* the decision this section
