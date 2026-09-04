@@ -105,7 +105,20 @@ int main(int argc, char **argv) {
 		t.c_cc[VMIN] = 0;
 		t.c_cc[VTIME] = 0;
 		tcsetattr(0, TCSANOW, &t);
-		probed = collect_caps(0, 1, 200, &raw);
+		// The wait is overridable, because 200 ms is a local number. A
+		// terminal that has not finished starting answers nothing within
+		// it -- measured against kitty under Xvfb, where every probe read
+		// SILENT until the terminal had been up three seconds -- and so
+		// does one at the end of the 50 ms link section 11 names, where a
+		// round trip plus the terminal's own handling can spend most of
+		// the budget. Both produce a report identical to a terminal that
+		// ignores the questions.
+		int wait_ms = 200;
+		if (const char *env = getenv("QTTY_PROBE_MS")) {
+			const int v = atoi(env);
+			if (v > 0 && v <= 60000) wait_ms = v;
+		}
+		probed = collect_caps(0, 1, wait_ms, &raw);
 		tcsetattr(0, TCSANOW, &saved);
 	}
 
@@ -149,7 +162,11 @@ int main(int argc, char **argv) {
 		// means anything, because a missing answer cannot be told from a slow
 		// one until the terminal has answered SOMETHING.
 		fprintf(out, "DA1 fence            %s\n",
-		        probed.answered ? "answered" : "SILENT (nothing below is conclusive)");
+		        probed.answered
+		            ? "answered"
+		            : "SILENT -- nothing below is conclusive; the terminal"
+		              " may not have finished starting, so re-run or raise"
+		              " QTTY_PROBE_MS");
 		fprintf(out, "kitty a=q            %s\n", probed.kitty ? "OK" : "no OK reply");
 		fprintf(out, "DA1 attribute 4      %s\n", probed.sixel ? "present" : "absent");
 		fprintf(out, "XTGETTCAP RGB/Tc     %s\n", probed.truecolor ? "confirmed" : "not confirmed");

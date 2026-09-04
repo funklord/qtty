@@ -5849,6 +5849,44 @@ region, since they composite over cells that may have changed under
 them. A resized grid discards the buffer and repaints everything, that
 being the one event which makes every pixel wrong at once.
 
+**The kitty tier has an independent witness at last** (2026-09-04).
+kitty 0.41.1 is installed, and everything qtty had been concluding from
+`TERM` and `COLORTERM` is now measured against the implementation whose
+behaviour defines the protocol:
+
+    graphics   KittyAlpha    kitty a=q -> OK
+    colour     TrueColor     XTGETTCAP RGB/Tc confirmed
+    cell size  9x18          CSI 16t answered
+    background #000000       OSC 11 answered
+    palette    16 entries    OSC 4 answered
+    mouse, bracketed paste   DECRQM 1006/2004 -> 2 (reset)
+    DA1 attribute 4 absent   kitty advertises no sixel
+
+They agree. **That is worth more than agreement with beerssh**, which
+this workspace wrote: two siblings reading one specification the same way
+are one witness, and `evidence.md` says so.
+
+**The first run reported the exact opposite and would have been
+published.** Every probe read SILENT, `raw reply 0 bytes` -- and the only
+difference in the second run is `sleep 3` before probing. kitty under
+Xvfb with software GL is not ready to answer inside the tool's 200 ms
+window, and a report of total silence is indistinguishable from a
+terminal that ignores every question.
+
+**Then the timeout was measured rather than adjusted.** Against a
+SETTLED kitty the fence is answered at 200, 50, 20, 10 and even 5 ms --
+the reply is effectively immediate, so the wait was never about latency
+and forty times the necessary margin bought nothing. **The failure mode
+is readiness, not slowness**, which is a different thing to guard.
+
+So the wait is overridable (`QTTY_PROBE_MS`) because it made that
+measurement possible and because a 50 ms link is a case this machine
+cannot test, and the fence line now says what to do rather than only that
+nothing below is conclusive. The tool was honest throughout -- it printed
+SILENT and fell back to the environment, which is the asymmetry rule
+working -- and a reader still has to be told that an inconclusive report
+is inconclusive, because I read past it myself.
+
 **A hole in the overlay one cell wide, found by reading the day's diff**
 (2026-09-04). `rasterize_into()` widens its rectangle leftwards to the
 start of a wide cluster; the frame loop clipped its placement and overlay
