@@ -587,6 +587,36 @@ fatal signal:
 
     QTTY_QPA_PLATFORM=xcb QTEST_DISABLE_STACK_DUMP=1 ./build-test/qtty-tests
 
+**A soak**, which is the one fault class no fixture in this suite can
+see: every check here is short, and accumulation needs length. Taken
+2026-09-04, 5000 frames driving a real `AnsiBackend` with a changing
+label, a changing table cell, and a picture whose identity changes every
+fifty frames -- a hundred distinct upload keys against a cache capped at
+sixteen, which is the mechanism that leaked once before:
+
+    frame     0  rss  42028 kB
+    frame  1000  rss  42028 kB
+    frame  2000  rss  42028 kB
+    frame  3000  rss  42028 kB
+    frame  4999  rss  42028 kB
+    growth after warm-up: 0 kB over 4800 frames
+
+**Flat to the kilobyte, which is exactly flat enough to be suspicious**,
+so the reader was tested before the result was believed: touching 60 MB
+moves it to 63020 and freeing returns it to 1576. The instrument
+responds; the flatness is the program's.
+
+It is a recipe here rather than a target, like coverage and unlike the
+sanitizers: it costs minutes, it asserts nothing on its own, and RSS
+granularity means a few-kilobyte leak would not show. What it does cover
+is the shape that actually bit -- a per-frame allocation nobody frees --
+and it says that shape is absent.
+
+    build a window, then per frame: change a label and a table item,
+    render_once into a fresh CellBuffer, append a CellImage whose key is
+    i/50, present() through an AnsiBackend with stdout on a file, and
+    sample resident pages from /proc/self/statm every thousand frames.
+
 **The sanitizers** are `make test-sanitize`, and the instrument check
 that makes a clean run mean anything is two probes and a grep:
 
