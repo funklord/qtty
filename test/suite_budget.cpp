@@ -374,6 +374,71 @@ int suite_budget() {
 			// wrong glyph, weighs the same. The edit is 'X' at cell (7,3),
 			// so the bytes must carry an address for ROW 4 -- one-based --
 			// and the character itself.
+			// The PIXEL path's half of the same question, and it was
+			// untested: present_pixels() took a damage region and ignored
+			// it, so the software-composite tier encoded the whole screen
+			// every frame. It crops for the positional tiers now -- sixel
+			// and iTerm2 paint at the cursor and leave no handle, so a
+			// partial update is an address and a smaller encode.
+			//
+			// Driven directly rather than through the frame loop, because
+			// the loop still passes the full region: this fixes the callee,
+			// and the caller cannot compute the region until it remembers
+			// where the overlays WERE. section 7.4 scopes that.
+			{
+				const QByteArray gfx_was = qgetenv("QTTY_GRAPHICS");
+				qputenv("QTTY_GRAPHICS", "sixel");
+				const QByteArray whole_px =
+				    tmp.filePath(QStringLiteral("px-full.bin")).toUtf8();
+				const QByteArray part_px =
+				    tmp.filePath(QStringLiteral("px-part.bin")).toUtf8();
+				const QImage screen = rasterize(after, QGuiApplication::font());
+				fflush(stdout);
+				const int keep = ::dup(1);
+				const int p1 = ::open(whole_px.constData(),
+				                      O_WRONLY | O_CREAT | O_TRUNC, 0600);
+				int p2 = -1;
+				if (p1 >= 0) {
+					::dup2(p1, 1);
+					AnsiBackend px;
+					px.present_pixels(screen, QRegion());
+					fflush(stdout);
+					p2 = ::open(part_px.constData(),
+					            O_WRONLY | O_CREAT | O_TRUNC, 0600);
+					if (p2 >= 0) ::dup2(p2, 1);
+					px.present_pixels(screen, QRegion(7, 3, 1, 1));
+					fflush(stdout);
+				}
+				::dup2(keep, 1);
+				::close(keep);
+				if (p1 >= 0) ::close(p1);
+				if (p2 >= 0) ::close(p2);
+				if (gfx_was.isEmpty()) qunsetenv("QTTY_GRAPHICS");
+				else                   qputenv("QTTY_GRAPHICS", gfx_was);
+
+				const qint64 px_full =
+				    QFileInfo(QString::fromUtf8(whole_px)).size();
+				const qint64 px_part =
+				    QFileInfo(QString::fromUtf8(part_px)).size();
+				printf("info: a %dx%d pixel frame: %lld bytes whole, %lld for"
+				       " one cell\n", grid_cols, grid_rows,
+				       (long long)px_full, (long long)px_part);
+				// Both directions. "Smaller" alone is satisfied by a tier
+				// that emitted nothing, and "the whole screen is big" alone
+				// says nothing about the crop.
+				CHECK(px_full > 0 && px_part > 0 && px_part * 10 < px_full,
+				      "a damaged pixel frame is an order of magnitude smaller"
+				      " than the whole screen");
+				QFile pf(QString::fromUtf8(part_px));
+				QByteArray pbytes;
+				if (pf.open(QIODevice::ReadOnly)) pbytes = pf.readAll();
+				// Small is not right, the same lesson as the text path: a
+				// crop at the wrong place weighs the same. The damage names
+				// cell (7,3), so the bytes address row 4, column 8.
+				CHECK(pbytes.startsWith("\033[4;8H"),
+				      "and it is addressed at the damaged cell, not at home");
+			}
+
 			QFile got(QString::fromUtf8(limited));
 			QByteArray bytes;
 			if (got.open(QIODevice::ReadOnly)) bytes = got.readAll();

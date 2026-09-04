@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-883 checks, 0 failures, under six configurations, all six re-run
+885 checks, 0 failures, under six configurations, all six re-run
 2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -5698,9 +5698,37 @@ frame. **Recorded here rather than in a footnote because "damage-limited
 output" without a qualifier reads as finished**, and a reader would take
 §11's claim as honoured on every tier.
 
-**Scoped by reading the code rather than left as a phrase, because
-twice today a deferral under a grand name turned out to be fifteen
-lines.** This one is not, and the reason is specific:
+**The CALLEE honours it now** (2026-09-04), which is the half that could
+be verified. Sixel and iTerm2 address the cursor and encode a cropped
+image; the frame loop still passes the whole screen, so nothing changed
+in behaviour and the new path is driven directly by two checks:
+
+    a 200x60 sixel frame       284,652 bytes
+    the same, one cell damaged        651 bytes
+
+437 times less, and the absolute win is far larger than the text path's
+because a sixel screen is enormous to begin with.
+
+**The sabotage matrix is the argument for the second check:**
+
+    sabotage                    size    address
+    ignore the region           FAIL    FAIL
+    crop but address home       PASS    FAIL
+
+Cropping to the right SIZE and painting it at the wrong PLACE -- the
+damaged cell's pixels drawn at the top-left corner -- weighs exactly what
+the correct output weighs. Only the address sees it. Same lesson the text
+path taught two hours earlier, and it had to be re-learned here because
+the first draft of these checks measured bytes alone.
+
+**A superset of the damage is always safe**, so the bounding rectangle is
+taken rather than each rectangle in turn: repainting more than changed is
+slow, repainting less is wrong. That removes a class of off-by-one from
+the crop at the cost of some redundant pixels.
+
+**What remains is the caller, and it is the half that resisted testing**,
+which is why it was not done in the same commit -- shipping an untestable
+change beside a tested one hides it inside a green suite:
 
 - **Sixel and iTerm2 are purely positional.** They paint pixels at the
   cursor and leave no handle, so a partial update is an addressed cursor

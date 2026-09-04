@@ -955,9 +955,36 @@ void AnsiBackend::retire_uploads(const CellBuffer &frame, QByteArray &out) {
 	}
 }
 
-void AnsiBackend::present_pixels(const QImage &frame, const QRegion &) {
-	QByteArray out = "\033[H";
+void AnsiBackend::present_pixels(const QImage &frame, const QRegion &damage) {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+	// A SUPERSET of the damage is always safe -- repainting more than
+	// changed is slow, repainting less is wrong -- so the bounding rectangle
+	// is taken rather than each rectangle in turn. An empty region means the
+	// whole screen, as it does for present().
+	const QRect all(0, 0, frame.width() / cw, frame.height() / ch);
+	QRect cells = damage.isEmpty() ? all : damage.boundingRect().intersected(all);
+	if (cells.isEmpty()) return;
+
+	// Only the positional tiers crop. Sixel and iTerm2 paint at the cursor
+	// and leave no handle, so a partial update is an address and a smaller
+	// encode. Kitty deletes every placement and re-places the screen as one
+	// image: skipping the delete would accumulate a placement per frame, and
+	// a lifecycle for SCREEN images is a different piece of work -- section 7.4
+	// scopes it. So kitty keeps the whole frame, and says so here rather
+	// than looking like an oversight.
+	const bool positional = mode_ == Capabilities::Sixel
+	                     || mode_ == Capabilities::ITerm2;
+	const QImage part = (positional && cells != all)
+	    ? frame.copy(QRect(cells.x() * cw, cells.y() * ch,
+	                       cells.width() * cw, cells.height() * ch))
+	    : frame;
+
+	QByteArray out;
+	if (positional && cells != all)
+		out = "\033[" + QByteArray::number(cells.y() + 1) + ";"
+		    + QByteArray::number(cells.x() + 1) + "H";
+	else
+		out = "\033[H";
 	switch (mode_) {
 	case Capabilities::Kitty:
 	case Capabilities::KittyAlpha:
@@ -965,10 +992,10 @@ void AnsiBackend::present_pixels(const QImage &frame, const QRegion &) {
 		out += encode_kitty_image(0xFFFFFF0u, frame);
 		break;
 	case Capabilities::Sixel:
-		out += encode_sixel(frame);
+		out += encode_sixel(part);
 		break;
 	case Capabilities::ITerm2:
-		out += encode_iterm2(frame, frame.width() / cw, frame.height() / ch);
+		out += encode_iterm2(part, part.width() / cw, part.height() / ch);
 		break;
 	default:
 		return;                                      // no pixel path
