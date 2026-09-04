@@ -264,5 +264,24 @@ int suite_cells() {
 		      "a joiner in front of a glyph does not make the glyph vanish");
 	}
 
+	{
+		// How a snapshot spells a TRUE-COLOUR cell, which no fixture has ever
+		// contained: coverage showed the branch with no caller in a whole
+		// run. Snapshots are this tree's most-cited artefacts, so a legend
+		// entry nobody has read is worth one check -- and the comment beside
+		// the code makes a claim precise enough to hold: six digits and not
+		// eight, because the alpha byte would print a constant 00 in every
+		// fixture and read as colour.
+		CellBuffer b(3, 1);
+		b.text(0, 0, QStringLiteral("x"), Color::rgb(qRgb(255, 0, 0)),
+		       Color::rgb(qRgb(0, 128, 255)), Attrs());
+		const QString snap = b.to_snapshot();
+		CHECK(snap.contains(QStringLiteral("#ff0000"))
+		      && snap.contains(QStringLiteral("#0080ff")),
+		      "a snapshot spells a true-colour cell as six hex digits");
+		CHECK(!snap.contains(QStringLiteral("ffff0000")),
+		      "and masks the alpha byte off rather than printing eight");
+	}
+
 	return fails;
 }

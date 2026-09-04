@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-857 checks, 0 failures, under six configurations: the offscreen
+859 checks, 0 failures, under six configurations: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
 detector, a **debug** build -- which is not the same code, `setup()`
@@ -1168,6 +1168,15 @@ program. That residue is stated rather than hidden.
 The bytes wait in the decoder's buffer until `set_event_sink()` is
 called, because `decode_one()` clears the buffer when there is no sink --
 so draining any earlier would throw away exactly what was just saved.
+
+**How a snapshot spells a true colour had never been printed**
+(2026-09-04). `colour_name()`'s `Color::Rgb` branch had no caller in a
+whole run: every fixture in the tree is themed or indexed, so no legend
+entry has ever carried a `#rrggbb`. Snapshots are this tree's most-cited
+artefacts, and the comment beside that branch makes a claim precise
+enough to hold -- **six digits and not eight, because the alpha byte
+would print a constant `00` in every fixture and read as colour**. Two
+checks hold it now, and printing eight reddens both.
 
 **A stop signal made the program spin instead of stopping** (2026-09-04),
 which is the largest defect this document has recorded in some time and
