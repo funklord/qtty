@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-878 checks, 0 failures, under six configurations, all six re-run
+880 checks, 0 failures, under six configurations, all six re-run
 2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -1918,19 +1918,7 @@ had just committed.
 
 In the order I would take them:
 
-1. **Damage-limited output, which is priced and not taken.**
-   `AnsiBackend::present()` accepts a damage region and ignores it -- its
-   own first comment says so -- and the cost is measured: a one-cell
-   change costs a whole screen, 13,927 bytes for this suite's 200x60
-   fixture and 33,361 for a dense one, against the fifty a single cell
-   needs. At 20 frames a second over the 50 ms link §11 names, that is
-   **660 KB/s of mostly unchanged text**. Two characterisation checks in
-   `suite_budget` pin the present behaviour and are written to go red the
-   day this lands. It is the largest measured gap between what the tree
-   does and what §11 claims, and it is the copyright holder's to
-   authorise because it is a body of work rather than a fix.
-
-2. **A second Qt 6 point release**, still the cheapest untaken
+1. **A second Qt 6 point release**, still the cheapest untaken
    configuration and still absent from this machine. Qt 5.15 is here and
    is a port rather than an axis -- §8.1 prices it at three conditionals
    in two files. What a second 6.x would answer, with no decision at all,
@@ -1938,7 +1926,7 @@ In the order I would take them:
    exposure (a probe that passed on 6.10 and failed on 6.4.2) is the
    reason to want it.
 
-3. **§0b's questions are the holder's** and are not work to pick up: RTL
+2. **§0b's questions are the holder's** and are not work to pick up: RTL
    scope, the bundled font, tooltips and hover, the severity glyph,
    `SH_Slider_AbsoluteSetButtons`, the picture rule, the layout top
    margin, and whether `qtty-negotiate` belongs in `$PREFIX/bin` (§8.0).
@@ -5594,6 +5582,50 @@ The check drives the seam rather than `exec()` -- a backend constructed, a
 having: **restoring the previous arrangement leaves the `exec()` check
 green and reddens only this one.** That is the residue reproduced rather
 than remembered.
+
+**Damage-limited output, measured** (2026-09-04). `present()` took a
+damage region and ignored it; it emits one addressed run per damaged row
+now, and the same edit costs:
+
+    a one-cell change, no damage region    13,927 bytes
+    the same edit, damage region given         19 bytes
+
+19 is what the characterisation check's own comment predicted a cell
+should need -- "a cursor address, an SGR, a cluster and a reset come to
+under fifty" -- and it is 733 times less than the frame it replaces. §11's
+660 KB/s of mostly unchanged text was the cost of not doing this.
+
+**An empty region means EVERYTHING, and that was not a choice.** It is
+what every existing caller means by one: the compositor passes an empty
+region when only an image moved, and the suite writes `present(f,
+QRegion())` throughout. Reading it as "nothing changed" would have
+silently blanked those paths.
+
+**Two rules the emission has to obey, and both are ways a smaller write
+can be WRONG rather than merely partial.** `cur` is reset before every
+run, because a cursor jump breaks the SGR run and carrying the state
+across one colours a cell by whatever preceded it somewhere else on the
+screen. And a run backs up to the start of a wide cluster its rect cuts
+in half: the continuation cell carries no glyph, so a run beginning there
+writes nothing and leaves the stale character.
+
+**The check written to announce this did not fire, and that is the
+honest outcome rather than a miss.** `suite_budget` carried a
+characterisation check "meant to go red the day damage-limited output
+lands". It stayed green, because the fixture passes `QRegion()` and that
+path still exists and is still correct. **A landing signal keyed on a
+check going red is keyed on the OLD path disappearing**, and it did not.
+A green suite would have let this be reported as landed with nothing in
+the tree exercising it.
+
+What the entry was actually waiting for is stated in its own words --
+"project.md's own next-steps list proposed an assertion comparing
+damage-limited work against full-redraw work, and there is no
+damage-limited work to compare against". There is now, beside it: the
+same backend, the same two frames, one argument different. Both
+directions, because *small* is satisfied by a `present()` that wrote
+nothing at all. Ignoring the region again puts both at 13,927 and reddens
+them.
 
 **The emergency restore had the same fault, four lines away, and the
 count fix did not cover it** (2026-09-04). `g_restore` is what puts the

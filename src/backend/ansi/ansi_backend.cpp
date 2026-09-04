@@ -706,9 +706,11 @@ static void emit_sgr(QByteArray &out, const Cell &c, Sgr &cur,
 	cur = {c.fg, c.bg, c.attrs, true};                 // the three depths
 }
 
-void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
-	// Full-frame emission: measured cheap (section 16.1 F9); damage-limited output
-	// arrives with DEC 2026 bracketing in later polish.
+void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
+	// Damage-limited where the caller says what changed, whole-frame where it
+	// does not. An EMPTY region means "everything", which is what every
+	// existing caller means by it: the compositor passes one when only an
+	// image moved, and the suite writes present(f, QRegion()) throughout.
 	CellBuffer composed = frame;
 	// Sixel and iTerm2 have no placement handles, so moving an image means
 	// re-emitting it -- on a slow link that is the whole frame budget spent
@@ -781,16 +783,47 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 	// this file has available and would be nobody's first hypothesis.
 	const bool sync = sync_frames();
 	if (sync) out += "\033[?2026h";
-	out += uploads + "\033[H";
+	out += uploads;
 	Sgr cur;
-	for (int y = 0; y < composed.rows(); ++y) {
-		for (int x = 0; x < composed.cols(); ++x) {
+	const auto emit_run = [&](int y, int from, int to) {
+		for (int x = from; x < to; ++x) {
 			const Cell &c = composed.at(x, y);
 			if (c.width == 0) continue;              // continuation of wide cell
 			emit_sgr(out, c, cur, depth_);
 			out += c.ch.toUtf8();
 		}
-		if (y < composed.rows() - 1) out += "\033[0m\r\n", cur = Sgr{};
+	};
+	if (damage.isEmpty()) {
+		out += "\033[H";
+		for (int y = 0; y < composed.rows(); ++y) {
+			emit_run(y, 0, composed.cols());
+			if (y < composed.rows() - 1) out += "\033[0m\r\n", cur = Sgr{};
+		}
+	} else {
+		// One addressed run per damaged row. `cur` is reset before each,
+		// because a cursor jump breaks the SGR run: carrying the state across
+		// one would colour a cell by whatever happened to precede it
+		// somewhere else on the screen.
+		for (const QRect &r : damage) {
+			const int y0 = qMax(0, r.top());
+			const int y1 = qMin(composed.rows() - 1, r.bottom());
+			const int to = qMin(composed.cols(), r.right() + 1);
+			for (int y = y0; y <= y1; ++y) {
+				// Back up to the start of a wide cluster the rect cuts in
+				// half. Its continuation cell carries no glyph, so a run
+				// beginning there would write nothing and leave the stale
+				// character on screen -- the one way a smaller write can be
+				// WRONG rather than merely partial.
+				int from = qMax(0, r.left());
+				while (from > 0 && composed.at(from, y).width == 0) --from;
+				out += "\033[" + QByteArray::number(y + 1) + ";"
+				     + QByteArray::number(from + 1) + "H";
+				cur = Sgr{};
+				emit_run(y, from, to);
+				out += "\033[0m";
+				cur = Sgr{};
+			}
+		}
 	}
 	// And after the last row, which had no terminator to carry one. Measured
 	// on a frame whose last CELL was coloured: the bytes ended

@@ -286,11 +286,19 @@ int suite_budget() {
 	// and asserted three checks up, at one cell. The change is 28 bytes LARGER
 	// than the frame it edits, because the changed cell breaks an SGR run.
 	//
-	// This is a CHARACTERISATION check and is meant to go red the day
-	// damage-limited output lands. It exists because the gap was invisible
-	// from inside the tree: project.md's own next-steps list proposed an
-	// assertion comparing "damage-limited work against full-redraw work", and
-	// there is no damage-limited work to compare against.
+	// It was written as a CHARACTERISATION check "meant to go red the day
+	// damage-limited output lands". That day was 2026-09-04 and it did not go
+	// red, which is worth recording rather than quietly editing: an empty
+	// region still means the whole frame, because that is what every caller
+	// meant by one, so this fixture measures a path that is still there and
+	// still correct. A landing signal keyed on a check going red is keyed on
+	// the old path DISAPPEARING, and it did not.
+	//
+	// What the entry was really waiting for is the sibling below: project.md's
+	// next-steps list proposed an assertion comparing "damage-limited work
+	// against full-redraw work" and there was no damage-limited work to
+	// compare against. There is now, and the two live side by side -- the
+	// same backend, the same two frames, one argument different.
 	{
 		QTemporaryDir tmp;
 		if (!tmp.isValid()) {
@@ -301,6 +309,8 @@ int suite_budget() {
 			    tmp.filePath(QStringLiteral("full.bin")).toUtf8();
 			const QByteArray edited =
 			    tmp.filePath(QStringLiteral("typed.bin")).toUtf8();
+			const QByteArray limited =
+			    tmp.filePath(QStringLiteral("damaged.bin")).toUtf8();
 			// stdout goes to a FILE, and it is redirected BEFORE the backend
 			// is constructed. Two reasons, and both were paid for elsewhere
 			// in this tree: AnsiBackend takes the terminal in its constructor
@@ -312,7 +322,7 @@ int suite_budget() {
 			const int saved = ::dup(1);
 			const int f1 = ::open(whole.constData(),
 			                      O_WRONLY | O_CREAT | O_TRUNC, 0600);
-			int f2 = -1;
+			int f2 = -1, f3 = -1;
 			if (f1 >= 0) {
 				::dup2(f1, 1);
 				AnsiBackend wire;
@@ -323,17 +333,41 @@ int suite_budget() {
 				if (f2 >= 0) ::dup2(f2, 1);
 				wire.present(one_changed, QRegion());
 				fflush(stdout);
+				// The same edit again, this time SAYING what changed, which
+				// is what the frame loop does. Same backend, same two
+				// frames, one argument different.
+				f3 = ::open(limited.constData(),
+				            O_WRONLY | O_CREAT | O_TRUNC, 0600);
+				if (f3 >= 0) ::dup2(f3, 1);
+				wire.present(one_changed, one_changed.diff(after));
+				fflush(stdout);
 			}
 			::dup2(saved, 1);
 			::close(saved);
 			if (f1 >= 0) ::close(f1);
 			if (f2 >= 0) ::close(f2);
+			if (f3 >= 0) ::close(f3);
 			const qint64 full =
 			    QFileInfo(QString::fromUtf8(whole)).size();
 			const qint64 typed =
 			    QFileInfo(QString::fromUtf8(edited)).size();
+			const qint64 damaged =
+			    QFileInfo(QString::fromUtf8(limited)).size();
 			printf("info: 200x60 on the wire: %lld bytes, and %lld after a"
 			       " one-cell change\n", (long long)full, (long long)typed);
+			printf("info: the same change with the damage region: %lld"
+			       " byte(s)\n", (long long)damaged);
+			// The pair the characterisation check above was written waiting
+			// for. Both directions, because "small" is satisfied by a
+			// present() that wrote nothing at all -- which is exactly what an
+			// empty region would produce if it meant "nothing changed"
+			// instead of "everything".
+			CHECK(damaged > 0 && damaged < 1000,
+			      "a one-cell change with its damage region costs one addressed"
+			      " run, not a screen");
+			CHECK(damaged * 10 < typed,
+			      "and an order of magnitude less than the same edit without"
+			      " one");
 			// The premise, because a ratio between two empty files is 1 and
 			// would satisfy the check below without anything having been sent.
 			CHECK(full > qint64(grid_cols) * grid_rows,
@@ -351,8 +385,8 @@ int suite_budget() {
 			// magnitude more than the damage does.
 			CHECK(typed > 1000 && typed > full / 2
 			      && one_changed.diff_cells(after) == 1,
-			      "and a one-cell change still costs a whole frame, the"
-			      " damage region being ignored");
+			      "and a one-cell change costs a whole frame when the caller"
+			      " names no damage");
 		}
 	}
 
