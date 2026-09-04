@@ -5723,20 +5723,33 @@ for the whole. The three tier checks in `suite_graphics` say
 correct -- they assert the IMAGE handed to `present_pixels()`, which is
 still the whole screen.
 
-**And the half that was not touched is the expensive one.** That
+**And the half that was not touched was the expensive one.** That
 sentence said "nothing here has measured whether it is worth making", so
 it was measured (best of 20, offscreen, this machine):
 
-    render 200x60 cells        3.411 ms
-    diff 200x60                0.149 ms
-    rasterize 200x60 to pixels  18.389 ms
+    render 200x60 cells         3.411 ms
+    diff 200x60                 0.149 ms
+    rasterize 200x60 to pixels  18.389 ms   whole
+                                 0.016 ms   one damaged cell
 
-**The rasterise alone exceeds §11's whole 16 ms local budget**, before a
-byte is encoded or sent, and it is a floor rather than an average. So
-damage-limiting the rasterise is not a refinement of the work above: on
-the software-composite path it is the dominant cost, and the crop that
-saved 437x on the wire saved none of it. The path is over budget on CPU
-whenever an overlay is up.
+**The full rasterise alone exceeds §11's whole 16 ms local budget**,
+before a byte is encoded or sent, and it is a floor rather than an
+average. That is what the frame loop paid every frame until the
+composited picture was kept between them; it pays it now on the first
+frame and on a resize, and 0.016 ms for a damaged one -- **1134 times
+less**.
+
+So the software-composite path meets both halves of §11 now: 0.016 ms to
+render a small change against 16 ms, and 651 bytes to send it against a
+284,652-byte screen.
+
+**The second number exists because the first went stale without moving.**
+The comment beside it said "the frame loop rasterises the whole screen
+every frame", which stopped being true an hour after it was written, and
+18 ms then reads as the per-frame cost when it is the first-frame cost.
+A measurement whose CLAIM has moved is the same rot as a countable claim
+about the tree, and harder to see, because re-running it reproduces the
+number exactly.
 
 Printed beside the other three durations rather than asserted, for the
 reason that section already gives about load -- but it changes the

@@ -511,18 +511,26 @@ int suite_budget() {
 	printf("info: diff  200x60: %.3f ms (best of 50)\n", diff_ms);
 	printf("info: render 80x24 dialog: %.3f ms (best of 20; design.md F9 says 0.16)\n",
 	       dialog_ms);
-	// The pixel path's render cost, which damage-limited output did NOT
-	// touch: the frame loop rasterises the whole screen and paints every
-	// placement and overlay onto it before the backend crops. The crop saved
-	// bytes on the wire and nothing here. Printed rather than asserted, like
-	// the three above, and printed at all because the entry recording that
-	// work says nothing has measured whether damage-limiting the RASTERISE
-	// is worth doing. Now something has.
+	// The pixel path's render cost. The full rasterise is what the frame
+	// loop pays on its FIRST frame and whenever the grid resizes; it paid it
+	// every frame until the picture was kept between them, and this number
+	// is why -- 18 ms against section 11's 16 ms budget, before a byte is
+	// encoded.
+	//
+	// The second number is what a damaged frame costs now: the same
+	// rasteriser over one cell of an image that already exists. The pair is
+	// the point, since the first alone reads as the per-frame cost and has
+	// not been that since the buffer was kept.
 	const double raster_ms =
 	    best_milliseconds(20, [&] { rasterize(after, QGuiApplication::font()); });
-	printf("info: rasterize 200x60 to pixels: %.3f ms (best of 20)\n", raster_ms);
+	QImage kept = rasterize(after, QGuiApplication::font());
+	const double raster_cell_ms = best_milliseconds(20, [&] {
+		rasterize_into(kept, after, QGuiApplication::font(), QRect(7, 3, 1, 1));
+	});
+	printf("info: rasterize 200x60 to pixels: %.3f ms whole, %.3f ms for one"
+	       " damaged cell (best of 20)\n", raster_ms, raster_cell_ms);
 	printf("info: section 11 budget is 16 ms local, 50 ms over ssh -- read the "
-	       "four numbers above against it\n");
+	       "five numbers above against it\n");
 
 	// The one duration that is asserted, and the ceiling is deliberately
 	// absurd: ten times the whole 16 ms local frame budget, and roughly two
