@@ -12,11 +12,24 @@
 # out of somebody's judgement and into a tool.
 #
 # NARROW ON PURPOSE. It refuses only when there is positive evidence: a stamp
-# from a `make check` that FAILED, for exactly this content. No stamp, or a
-# stamp for different content, and the commit proceeds untouched -- a fresh
-# clone, a first commit, or a tree nobody has run the gate on is not this
-# hook's business. It answers "you were told this is broken", not "prove it
-# works".
+# for exactly this content saying the gate FAILED, or saying it is still
+# RUNNING. No stamp, or a stamp for different content, and the commit proceeds
+# untouched -- a fresh clone, a first commit, or a tree nobody has run the gate
+# on is not this hook's business. It answers "you were told this is broken",
+# not "prove it works".
+#
+# RUNNING is here because the FAIL-only version stood aside for the fourth
+# instance of the failure it was built to stop (2026-09-04): the gate was
+# started in the background, its output was read while it was still printing,
+# and the commit went in before the verdict existed. There was no stamp for
+# that content, so the hook was right by its own rule and useless in practice.
+# The run happened to pass. A gate you did not wait for is not evidence, and
+# the state "you asked and the answer has not arrived" is as positive as a
+# FAIL: the stamp is written before the work rather than only after it.
+#
+# A run that is killed leaves RUNNING behind and keeps refusing. That is the
+# honest reading -- nobody ever got an answer for this content -- and `make
+# check` clears it at the start of the next run.
 #
 # Content identity is HEAD plus every uncommitted change to tracked files, so
 # staging a file does not invalidate a stamp: `git diff HEAD` is the same
@@ -32,9 +45,17 @@ now=$( { git rev-parse HEAD 2>/dev/null; git diff HEAD --binary 2>/dev/null; } \
 was=$(cut -d' ' -f2 < "$stamp")
 verdict=$(cut -d' ' -f1 < "$stamp")
 
-[ "$verdict" = "FAIL" ] || exit 0
 [ "$now" = "$was" ] || exit 0
 
-echo "pre-commit: the last \`make check\` on exactly this content FAILED." >&2
-echo "            Fix it, or commit deliberately with --no-verify." >&2
-exit 1
+case "$verdict" in
+FAIL)
+	echo "pre-commit: the last \`make check\` on exactly this content FAILED." >&2
+	echo "            Fix it, or commit deliberately with --no-verify." >&2
+	exit 1 ;;
+RUNNING)
+	echo "pre-commit: a \`make check\` on exactly this content was started and" >&2
+	echo "            has not reported. Wait for it and read what it says, or" >&2
+	echo "            commit deliberately with --no-verify." >&2
+	exit 1 ;;
+esac
+exit 0

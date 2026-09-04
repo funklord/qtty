@@ -685,6 +685,7 @@ check:
 	@rm -f "$(CHECK_STAMP)" 2>/dev/null || true
 	@id=$$( { git rev-parse HEAD 2>/dev/null; git diff HEAD --binary 2>/dev/null; } \
 	        | sha1sum | cut -d' ' -f1 ); \
+	echo "RUNNING $$id" > "$(CHECK_STAMP)" 2>/dev/null || true; \
 	if $(MAKE) --no-print-directory $(CHECK_PARTS); then \
 		echo "PASS $$id" > "$(CHECK_STAMP)" 2>/dev/null || true; \
 	else \

@@ -1290,6 +1290,7 @@ invariant the function exists for instead.
 work** (2026-09-04). `make check` now records its verdict, and
 `tool/hooks/pre-commit` refuses a commit whose content is KNOWN to fail:
 
+    check starts   stamp "RUNNING"     the hook refuses, naming why
     check fails    stamp "FAIL <id>"   the hook refuses, naming why
     check passes   stamp "PASS <id>"   the hook allows
     content moved  stamp is stale      the hook allows
@@ -1301,6 +1302,38 @@ run the gate on are none of its business, and `--no-verify` remains the
 deliberate way past. The identity is HEAD plus every uncommitted change
 to tracked files, which is what `git diff HEAD` gives and is unchanged by
 staging -- so `git add` does not invalidate a verdict.
+
+**`RUNNING` was not in the first version, and its absence let the same
+failure happen a fourth time** (2026-09-04, hours after the hook was
+written). The gate takes minutes, so it is run in the background. I read
+its log while it was still printing -- `inspect: ok`, `replay: ok`, which
+is neither of the two lines that end it -- and committed in the next
+breath. There was no stamp for that content, because the run had not
+finished writing one, so the hook stood aside exactly as designed. The
+run passed. **Nothing about that commit was checked; it was correct by
+luck**, and the control built that morning to stop precisely this had no
+opinion at all.
+
+The hole is in what "positive evidence" was taken to mean. FAIL and PASS
+are answers; the state the hook could not see is **the question already
+asked and not yet answered**, which is the only state a backgrounded gate
+spends its whole duration in. The stamp is written before the work now as
+well as after it, and `RUNNING` for this content refuses the commit with
+"wait for it and read what it says".
+
+Verified against a live run rather than a hand-made stamp: with `make
+check` genuinely in flight the stamp read `RUNNING <id>` for exactly the
+working tree's id and the hook exited 1, and the three hand-made states
+(`PASS`, `FAIL`, `RUNNING` for other content) behave as the table says. A
+killed run leaves `RUNNING` behind and keeps refusing, which is the
+honest reading -- nobody ever got an answer for this content -- and the
+next `make check` clears it.
+
+**The general shape is worth more than the fix.** A gate that refuses
+only on a verdict is silent for the entire window in which the work is
+being done, and moving slow work into the background widens that window
+from nothing to the whole run. Every such control needs to know the
+difference between "no" and "not yet".
 
 `check` had to stop being a prerequisite list to do it. When a
 prerequisite fails the recipe never runs, so there is nowhere to write
