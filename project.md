@@ -1945,9 +1945,12 @@ In the order I would take them:
    was blocked on a policy number; kitty's own protocol document says
    placements with a reused id REPLACE rather than accumulate, naming it
    as the way to move one without flicker, so there is nothing to
-   measure. Transmit the damaged sub-image, place it with a reused image
-   and placement id, let each frame replace the last. §7.4 carries the
-   correction and how the wrong constraint was arrived at.
+   measure, provided the placement RECTANGLE repeats -- which means fixed
+   tiles, each with a permanent placement id, redrawn when the damage
+   touches them. The parameter is the tile size, trading wasted pixels
+   per tile against placements per screen. §7.4 carries the correction,
+   how the wrong constraint was arrived at, and how the correction itself
+   overshot.
 
 2. **A second Qt 6 point release**, still the cheapest untaken
    configuration and still absent from this machine. Qt 5.15 is here and
@@ -6048,9 +6051,28 @@ other way round.
   looked for something to measure and never asked what the protocol
   says.**
 
-  What is left is implementation, not a decision: transmit the damaged
-  sub-image, place it at the damaged cells with a reused image and
-  placement id, and let each frame replace the last.
+  **And that correction overshot, which is worth catching before it is
+  built on.** Replacing a placement VACATES the old rectangle -- the
+  document says the mechanism is for moving one "without flicker", and a
+  move is exactly a vacate-and-draw. So reusing one id for a patch that
+  lands somewhere new each frame erases the previous patch and reveals
+  whatever is underneath, which is the stale full-screen image. The
+  replacement rule removes accumulation only where the RECTANGLE repeats.
+
+  What makes it repeat is fixed tiles: divide the screen into tiles of a
+  chosen size, map each damage region to the tiles it touches, give every
+  tile a permanent placement id, and redraw the tiles that changed. The
+  placement count is then bounded by the tile count rather than by
+  frames, nothing accumulates, and nothing is ever deleted.
+
+  So there IS a parameter -- the tile size -- and it is a far less
+  delicate one than "how many frames before a full redraw": it trades
+  wasted pixels per tile against placements per screen, both of which are
+  arithmetic rather than terminal behaviour. **A correction that
+  overshoots is worse than the error it fixes**, because it arrives with
+  the authority of having been checked, so this says what the document
+  settles (no accumulation is possible) and what it does not (that
+  reusing one id is enough).
 - ~~**And nothing can supply the damage from what is kept.**~~ **Done:
   `prev_overlays_`.** The reasoning is kept because it names the wrong
   turn, which is still available to anybody editing this. The frame
