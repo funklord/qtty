@@ -843,8 +843,9 @@ int suite_graphics() {
 			void set_event_sink(Qtty::ITerminalEventSink *) override {}
 			void resume() override {}
 			void suspend() override {}
-			void present_pixels(const QImage &f, const QRegion &) override {
-				++pixels; last_pixels = f;
+			QRegion last_damage;
+			void present_pixels(const QImage &f, const QRegion &d) override {
+				++pixels; last_pixels = f; last_damage = d;
 			}
 			void present_overlay(int, const QImage &i, QPoint c, int z) override {
 				++overlays; last_overlay = i; last_cell = c; last_z = z;
@@ -932,6 +933,13 @@ int suite_graphics() {
 		CHECK(alpha.last_cell == QPoint(1, 1) && alpha.last_z == 3,
 		      "with its own cell position and z");
 
+		// The placement the fixture creates is three cells by two at the
+		// origin, and a region that swallowed the screen would satisfy the
+		// first half of this while costing the whole frame.
+		const auto rec_damage_ok = [](const QRegion &d) {
+			return d.contains(QRect(0, 0, 3, 2)) && !d.contains(QPoint(19, 5));
+		};
+
 		// Sixel, iTerm2 and plain Kitty cannot blend over text, so the plane
 		// composites in software and hands over one finished frame.
 		for (auto mode : {Qtty::Capabilities::Sixel, Qtty::Capabilities::ITerm2,
@@ -948,6 +956,31 @@ int suite_graphics() {
 			printf("%s: tier %d composites in software into one full frame\n",
 			       ok ? "PASS" : "FAIL", int(mode));
 			if (!ok) ++fails;
+			// The region covers the placement's cells and is not the whole
+			// screen. Both halves are real -- a region that returned
+			// everything would satisfy the first and undo the crop entirely,
+			// silently, with every correctness assertion still green.
+			//
+			// **It does NOT test that placements are in the union**, and the
+			// first version of this comment claimed it did. Measured: the
+			// damage here is three rectangles across rows 0 to 2, and taking
+			// placements OUT of the union leaves this green, because the
+			// cell diff already covers those cells -- the fixture's
+			// PixelSurface is a child widget whose own painting changes
+			// them.
+			//
+			// The case the union exists for is a placement whose cells do
+			// NOT change while it moves, which cell_paint's drawPixmap makes
+			// possible: at two cells or more it appends a placement and
+			// writes no cell content, so a surface that paints only pixels
+			// leaves the cells to whatever is behind it. This fixture cannot
+			// reach that, and project.md records it as uncovered rather than
+			// letting a green line stand in for it.
+			const bool covered = rec_damage_ok(soft.last_damage);
+			printf("%s: tier %d damages the placement's cells, and not the"
+			       " screen\n",
+			       covered ? "PASS" : "FAIL", int(mode));
+			if (!covered) ++fails;
 		}
 
 		// NoGraphics and Halfblocks: a pure L2 transform, so the overlay

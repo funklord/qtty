@@ -179,11 +179,16 @@ private:
 class FrameScheduler : public QObject {
 public:
 	FrameScheduler(ITerminalBackend *backend, Compositor *compositor, QWidget *window);
-	// What the PIXEL path has to repaint, which is not the cell diff. An
-	// overlay that MOVES changes pixels under cells that did not change, so
-	// the region is the diff united with the overlay rectangles from before
-	// and after. Passing the cell diff straight through looks correct,
-	// compiles, and leaves stale pixels wherever an overlay moved.
+	// What the PIXEL path has to repaint, which is not the cell diff.
+	// Anything composited OVER the cells -- an overlay, a placement -- that
+	// MOVES changes pixels under cells that did not change, so the region is
+	// the diff united with those rectangles from before and after. Passing
+	// the cell diff straight through looks correct, compiles, and leaves a
+	// ghost wherever one of them moved.
+	//
+	// `was` and `now` are both kinds together. Overlays needed new state
+	// (`prev_overlays_`); placements did not, because `prev_` is the previous
+	// CellBuffer and carries its own images.
 	//
 	// Static and public so it can be tested without a frame loop: the union
 	// is the part that can be wrong, and the wiring is one call.

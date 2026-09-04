@@ -540,10 +540,17 @@ void FrameScheduler::render_now() {
 			            o->image());
 		}
 		p.end();
-		QVector<QRect> now_overlays;
-		for (Overlay *o : overlays) now_overlays.append(overlay_cell_rect(o));
-		gfx->present_pixels(px, pixel_damage(damage, prev_overlays_,
-		                                     now_overlays));
+		// Everything composited OVER the cells, not the overlays alone. A
+		// placement that moves changes pixels under cells that need not have
+		// changed -- exactly the overlay fault, and it was left in when that
+		// one was fixed. The previous placement rectangles need no new state:
+		// prev_ is the previous CellBuffer and carries its own images.
+		QVector<QRect> now_over, was_over = prev_overlays_;
+		for (Overlay *o : overlays) now_over.append(overlay_cell_rect(o));
+		for (const CellImage &ci : frame.images) now_over.append(ci.cell_rect);
+		if (prev_)
+			for (const CellImage &ci : prev_->images) was_over.append(ci.cell_rect);
+		gfx->present_pixels(px, pixel_damage(damage, was_over, now_over));
 	} else if (!damage.isEmpty() || images_changed || !prev_ || !overlays.isEmpty()) {
 		backend_->present(frame, damage);
 		if (gmode == Capabilities::KittyAlpha && gfx) {   // terminal-blended alpha

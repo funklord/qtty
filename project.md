@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-889 checks, 0 failures, under six configurations, all six re-run
+892 checks, 0 failures, under six configurations, all six re-run
 2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -5742,6 +5742,34 @@ Printed beside the other three durations rather than asserted, for the
 reason that section already gives about load -- but it changes the
 question from "is it worth doing" to "this path does not meet §11 today
 and only this would fix it".
+
+**A placement moving is the same fault as an overlay moving, and the
+union missed it** (2026-09-04). The software path's painter draws
+`frame.images` as well as the overlays; the union covered only the
+overlays, three lines above the loop that draws both. Placements needed
+no new state -- `prev_` is the previous `CellBuffer` and carries its own
+images -- so only overlays ever required remembering.
+
+**Justified by reading and NOT demonstrated, which is the part to carry.**
+Three checks were written for it and the sabotage passed: taking
+placements back out of the union leaves them green. Probed rather than
+argued about -- the damage in that fixture is three rectangles across
+rows 0 to 2, and the placement's rectangle is already inside them,
+because the fixture's `PixelSurface` is a child widget whose own painting
+changes those cells. The cell diff covers it either way.
+
+The case the union exists for is a placement whose cells do NOT change
+while it moves, and `cell_paint`'s `drawPixmap` makes that reachable: at
+two cells or more it appends a placement and writes no cell content, so a
+surface painting only pixels leaves the cells to whatever is behind it.
+**No fixture here can construct that**, so the checks now say what they
+do test -- the region covers the placement's cells and is not the whole
+screen -- and disclaim the rest.
+
+**An hour of this entry called it "a real defect in the code I
+committed".** That was accurate as a reading of the code and is not
+something that was shown. The fix stays, because the reasoning stands and
+it costs nothing; the claim does not.
 
 **And there is a shape that avoids a seam change, which is the
 non-obvious part.** The tempting design is for the frame loop to
