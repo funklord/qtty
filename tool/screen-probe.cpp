@@ -14,6 +14,7 @@
 #include <QApplication>
 #include <QImage>
 #include <QPainter>
+#include <QPixmap>
 #include <unistd.h>
 #include <cstdio>
 
@@ -58,7 +59,27 @@ int main(int argc, char **argv) {
 	        cw, ch, term.width(), term.height(),
 	        22 * term.width(), 4 * term.width());
 	fflush(stderr);
-	backend.present_pixels(px, QRegion());
+	// Two paths, because they are two different pieces of code and only one
+	// of them has a pixel frame at all. present_pixels() serves the tiers
+	// that transmit an image -- sixel, iTerm2, kitty -- and returns without
+	// drawing on the others, which is correct rather than a gap: halfblocks
+	// composites a PLACEMENT into cells inside present(), so the tier a
+	// terminal with no graphics protocol falls back to is reached only
+	// through the cell path. Asking present_pixels() for it draws nothing
+	// and looks exactly like a broken renderer.
+	if (qgetenv("QTTY_SCREEN_PATH") == "cells") {
+		Qtty::CellBuffer frame(cols, rows);
+		Qtty::CellImage place;
+		QPixmap pm = QPixmap::fromImage(
+		    px.copy(22 * cw, 5 * ch, 4 * cw, 4 * ch));
+		place.key = quint64(pm.cacheKey());
+		place.cell_rect = QRect(22, 5, 4, 4);
+		place.pixmap = pm;
+		frame.images.append(place);
+		backend.present(frame, QRegion());
+	} else {
+		backend.present_pixels(px, QRegion());
+	}
 	::fflush(stdout);
 	::sleep(4);                       // the capture happens in here
 	backend.suspend();

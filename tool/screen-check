@@ -71,6 +71,14 @@ from PIL import Image
 tol = int(sys.argv[2])
 im = Image.open(sys.argv[1]).convert("RGB")
 def near(p):
+	# A negative tolerance asks for the marker by ELIMINATION rather than by
+	# colour: anything that is neither the terminal's background nor its
+	# foreground. The halfblocks tier draws through the terminal's own
+	# palette, so its green is whatever that terminal has -- (0,205,0) in
+	# xterm here -- and a colour test wide enough to admit that would admit
+	# most of the screen.
+	if tol < 0:
+		return p != (0, 0, 0) and p != (255, 255, 255)
 	return (abs(p[0] - 40) <= tol and abs(p[1] - 200) <= tol
 	        and abs(p[2] - 90) <= tol)
 sys.exit(0 if any(near(p) for p in im.getdata()) else 1)
@@ -112,6 +120,8 @@ im = Image.open(shot).convert("RGB")
 w, h = im.size
 px = im.load()
 def near(p):
+	if tol < 0:
+		return p != (0, 0, 0) and p != (255, 255, 255)
 	return (abs(p[0] - 40) <= tol and abs(p[1] - 200) <= tol
 	        and abs(p[2] - 90) <= tol)
 xs = [x for y in range(h) for x in range(w) if near(px[x, y])]
@@ -153,6 +163,21 @@ GEOM
 			    "-xrm 'XTerm*allowWindowOps: true'" \
 			    "-e sh -c 'sleep 2; QTTY_GRAPHICS=sixel $dir/probe 2>$dir/xpred'"
 			python3 "$dir/geom.py" "$dir/xterm.png" "$dir/xpred" 4 6 xterm
+
+			# And the tier a terminal with no graphics protocol falls
+			# back to, which is reached through a different function.
+			# present_pixels() serves the tiers that transmit an image
+			# and returns without drawing on the others; halfblocks
+			# composites a placement into CELLS inside present(). So the
+			# probe drives the cell path here, and the first run of this
+			# through present_pixels() drew nothing and looked exactly
+			# like a broken renderer.
+			capture "$dir/hb.png" -1 \
+			    "xterm -geometry 90x30+0+0" \
+			    "-xrm 'XTerm*allowWindowOps: true'" \
+			    "-e sh -c 'sleep 2; QTTY_SCREEN_PATH=cells" \
+			    "QTTY_GRAPHICS=halfblocks $dir/probe 2>$dir/hpred'"
+			python3 "$dir/geom.py" "$dir/hb.png" "$dir/hpred" -1 6 halfblocks
 		else
 			echo "screen-check: xterm is absent, so the sixel tier was not" >&2
 			echo "              drawn -- the kitty tier above still ran" >&2

@@ -6149,6 +6149,42 @@ What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
 
+**And the tier a plain terminal actually gets** (2026-09-05). Two of the
+three phases drive `present_pixels()`, which serves the tiers that
+transmit an image and RETURNS without drawing on the others. That is
+correct rather than a gap -- halfblocks composites a placement into
+CELLS, inside `present()` -- but it means the fallback tier, the one a
+terminal with no graphics protocol uses, was the one no picture had ever
+been taken of.
+
+Asked through `present_pixels()` it draws nothing, and a capture with no
+marker in it reads exactly like a broken renderer. The probe drives the
+cell path now, under `QTTY_SCREEN_PATH=cells`, and the answer is the
+interesting part:
+
+    sixel        x 135..158, w 24, h 52
+    halfblocks   x 135..158, w 24, h 52
+
+**Identical.** Two entirely different pieces of code -- one scaling and
+transmitting an image, one compositing a pixmap into character cells --
+put the marker in the same place to the pixel, which is what agreeing
+about a cell grid means and is not visible from either one alone.
+
+**The colour is not checked there and the reason is a rule rather than a
+concession.** Halfblocks draws through the terminal's own palette, so
+xterm renders the marker as (0,205,0) -- its green, not qtty's. A colour
+tolerance wide enough to admit that would admit most of a screen, so that
+phase asks for the marker by ELIMINATION instead: the one colour that is
+neither the terminal's background nor its foreground. Colour fidelity on
+that tier is the terminal's palette's business; the geometry is qtty's,
+and the geometry is what is asserted.
+
+    sabotage                          kitty   sixel   halfblocks
+    place the composite 8 cells left  pass    pass    FAIL (87)
+
+Each phase sees its own path and no other, which is what makes three
+phases worth having rather than one repeated.
+
 **The sixel encoder was throwing away colour it did not have to**
 (2026-09-05), found while drawing the screen probe under xterm. The
 marker went out as (40,200,90) and came back (0,215,95) -- xterm-256 entry 41. That is not xterm
