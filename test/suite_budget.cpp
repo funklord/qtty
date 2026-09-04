@@ -44,6 +44,7 @@
 #include <QtWidgets>
 #include <QElapsedTimer>
 #include <QTemporaryDir>
+#include <QFile>
 #include <cstdio>
 #include <fcntl.h>
 #include <unistd.h>
@@ -368,6 +369,20 @@ int suite_budget() {
 			CHECK(damaged * 10 < typed,
 			      "and an order of magnitude less than the same edit without"
 			      " one");
+			// SMALL is not RIGHT, and the two checks above only measure
+			// small. A run that addressed the wrong row, or emitted the
+			// wrong glyph, weighs the same. The edit is 'X' at cell (7,3),
+			// so the bytes must carry an address for ROW 4 -- one-based --
+			// and the character itself.
+			QFile got(QString::fromUtf8(limited));
+			QByteArray bytes;
+			if (got.open(QIODevice::ReadOnly)) bytes = got.readAll();
+			// The column is not pinned: a run backs up to the start of a
+			// wide cluster, so the address may legitimately name an earlier
+			// column than the changed cell. The ROW cannot move.
+			CHECK(bytes.contains("\033[4;") && bytes.contains("X"),
+			      "and it addresses the changed cell's row and carries its"
+			      " glyph");
 			// The premise, because a ratio between two empty files is 1 and
 			// would satisfy the check below without anything having been sent.
 			CHECK(full > qint64(grid_cols) * grid_rows,

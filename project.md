@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-880 checks, 0 failures, under six configurations, all six re-run
+881 checks, 0 failures, under six configurations, all six re-run
 2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -5626,6 +5626,22 @@ same backend, the same two frames, one argument different. Both
 directions, because *small* is satisfied by a `present()` that wrote
 nothing at all. Ignoring the region again puts both at 13,927 and reddens
 them.
+
+**And small is not right, which needed a third check written against the
+first two.** An off-by-one in the row address -- `y` where `y + 1`
+belongs, painting every run one row too high and corrupting the screen --
+leaves **both byte counts green**:
+
+    a one-cell change with its damage region costs one addressed run  PASS
+    and an order of magnitude less than the same edit without one     PASS
+    and it addresses the changed cell's row and carries its glyph     FAIL
+
+A wrong run weighs exactly what a right one does. The third check asserts
+the row the edit is on and the glyph it wrote; the COLUMN is deliberately
+not pinned, because a run backs up to the start of a wide cluster and may
+legitimately address an earlier one. **The check written to prove a fix
+had the fix's own blind spot**, which is this document's recurring
+finding aimed at itself.
 
 **The emergency restore had the same fault, four lines away, and the
 count fix did not cover it** (2026-09-04). `g_restore` is what puts the
