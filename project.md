@@ -5709,6 +5709,22 @@ in behaviour and the new path is driven directly by two checks:
 437 times less, and the absolute win is far larger than the text path's
 because a sixel screen is enormous to begin with.
 
+**Of the WIRE, and not of the render, which this entry would otherwise
+imply.** The frame loop still calls `rasterize()` over the whole screen
+and paints every placement and overlay onto it before handing one full
+image over; the crop happens inside the backend. So the CPU cost of a
+frame is unchanged and only the bytes shrank. §11's budget has two
+halves and this addressed one of them.
+
+That is the same shape as measuring a frame's SIZE and calling it right:
+a true number about one half, reported in a sentence a reader will take
+for the whole. The three tier checks in `suite_graphics` say
+`composites in software into one full frame` and are still exactly
+correct -- they assert the IMAGE handed to `present_pixels()`, which is
+still the whole screen. Damage-limiting the rasterise would be a
+different change again, and nothing here has measured whether it is
+worth making.
+
 **The sabotage matrix is the argument for the second check:**
 
     sabotage                    size    address
