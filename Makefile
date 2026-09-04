@@ -305,22 +305,72 @@ QT_PLUGIN_PATH_FOR_CHECK = $(shell $(QMAKE) -query QT_INSTALL_PLUGINS 2>/dev/nul
 # inside the refusal, so a pattern matching either passed a build where the
 # refusal had been broken and only the warning survived. Measured: sabotaging
 # grid_font_problem()'s empty-family branch left the arm green.
+#
+# Each arm also COUNTS what it ran, and the first configuration sets the
+# number the rest must match. Reading only the exit status is right -- that is
+# the status channel, and grepping a log for success words is how a check goes
+# quiet -- but a status alone cannot tell a configuration that ran the whole
+# suite from one where a fixture bailed early and took a block of checks with
+# it. Both print `ok`. `count-check` holds the number for the offscreen run
+# and nothing held it for the other configurations, so this is that gate
+# arriving where the suite is actually re-run under something different.
+#
+# Counted from stdout with stderr dropped, because offscreen's stderr
+# interleaves and cuts those lines in half -- a counter over the merged streams
+# undercounts, which is the failure this rule exists to catch, manufactured by
+# the rule itself. The `minimal` arm is deliberately outside it: that one must
+# refuse before running anything, so its check count is zero by design and it
+# carries its own assertion.
+#
+# PASS, FAIL and SKIP together, not PASS alone, and the difference decides
+# whether this gate is usable. Six checks in the suite stand down rather than
+# assert -- no temporary directory, no proportional font resolved, a user who
+# can read a mode-000 file -- and font resolution in particular can differ
+# between one QPA plugin and another, so a PASS-only count would go red for a
+# check that correctly declined. The question here is "was this check site
+# reached", and a SKIP answers it as well as a PASS does. A block that bailed
+# early loses both, which is the thing being caught.
 test-platforms: tests-build
-	@failed=0; ran=0; \
+	@failed=0; ran=0; expect=; \
+	out=$(dir $(TEST_BIN))platform.out; \
+	cnt() { grep -cE '^(PASS|FAIL|SKIP):' "$$1" || true; }; \
+	agree() { \
+		n=$$(cnt "$$1"); \
+		if [ -z "$$expect" ]; then \
+			if [ "$$n" -eq 0 ]; then \
+				echo "    FAILED: no checks ran at all" >&2; \
+				echo; return 1; \
+			fi; \
+			echo "$$n"; return 0; \
+		fi; \
+		if [ "$$n" != "$$expect" ]; then \
+			echo "    FAILED: $$n checks, where the first configuration" >&2; \
+			echo "            ran $$expect. A configuration that silently" >&2; \
+			echo "            runs fewer is green on the exit status alone." >&2; \
+			echo "$$expect"; return 1; \
+		fi; \
+		echo "$$expect"; \
+	}; \
 	for platform in $(TEST_PLATFORMS); do \
 		ran=$$((ran + 1)); \
 		echo "--- $(TEST_BIN) on $$platform"; \
-		QTTY_QPA_PLATFORM=$$platform $(TEST_CRASH_ENV) \
-			timeout $(TEST_TIMEOUT) $(TEST_BIN) > /dev/null 2>&1 \
-			&& echo "    ok" || { echo "    FAILED"; failed=$$((failed + 1)); }; \
+		if QTTY_QPA_PLATFORM=$$platform $(TEST_CRASH_ENV) \
+		     timeout $(TEST_TIMEOUT) $(TEST_BIN) > "$$out" 2>/dev/null; then \
+			if expect=$$(agree "$$out"); \
+			then echo "    ok ($$(cnt "$$out") checks)"; \
+			else failed=$$((failed + 1)); fi; \
+		else echo "    FAILED"; failed=$$((failed + 1)); fi; \
 	done; \
 	if command -v xvfb-run >/dev/null 2>&1; then \
 		echo "--- $(TEST_BIN) on xcb, under Xvfb"; \
-		xvfb-run -a -s "-screen 0 1280x1024x24" \
-			env QTTY_QPA_PLATFORM=xcb QTEST_DISABLE_STACK_DUMP=1 \
-			timeout $(TEST_TIMEOUT) $(TEST_BIN) > /dev/null 2>&1 \
-			&& { echo "    ok"; ran=$$((ran + 1)); } \
-			|| { echo "    FAILED"; failed=$$((failed + 1)); ran=$$((ran + 1)); }; \
+		ran=$$((ran + 1)); \
+		if xvfb-run -a -s "-screen 0 1280x1024x24" \
+		     env QTTY_QPA_PLATFORM=xcb QTEST_DISABLE_STACK_DUMP=1 \
+		     timeout $(TEST_TIMEOUT) $(TEST_BIN) > "$$out" 2>/dev/null; then \
+			if expect=$$(agree "$$out"); \
+			then echo "    ok ($$(cnt "$$out") checks)"; \
+			else failed=$$((failed + 1)); fi; \
+		else echo "    FAILED"; failed=$$((failed + 1)); fi; \
 	else \
 		echo "    note: xvfb-run is absent, so the xcb configuration is not" >&2; \
 		echo "          run and only $(TEST_PLATFORMS) was tested." >&2; \
@@ -354,10 +404,13 @@ test-platforms: tests-build
 		echo "          environment is not applied and only scaling is tested." >&2; \
 	fi; \
 	echo "--- $(TEST_BIN) with a hostile environment: $$hostile"; \
-	env $$hostile $(TEST_CRASH_ENV) \
-		timeout $(TEST_TIMEOUT) $(TEST_BIN) > /dev/null 2>&1 \
-		&& echo "    ok (the pins absorbed it)" \
-		|| { echo "    FAILED"; failed=$$((failed + 1)); }; \
+	if env $$hostile $(TEST_CRASH_ENV) \
+	     timeout $(TEST_TIMEOUT) $(TEST_BIN) > "$$out" 2>/dev/null; then \
+		if expect=$$(agree "$$out"); \
+		then echo "    ok, the pins absorbed it ($$(cnt "$$out") checks)"; \
+		else failed=$$((failed + 1)); fi; \
+	else echo "    FAILED"; failed=$$((failed + 1)); fi; \
+	rm -f "$$out"; \
 	echo "test-platforms: $$ran platform(s), 1 refusal and 1 hostile environment, $$failed failed"; \
 	if [ "$$ran" -eq 0 ]; then \
 		echo "test-platforms: TEST_PLATFORMS is empty, so the suite ran under" >&2; \

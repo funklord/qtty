@@ -1007,6 +1007,85 @@ move them"* -- and the failure was the check's rather than the code's.
 counter of assignments stayed green through the change it was set for,
 and the debug build is what made the same counter say the opposite thing.
 
+**Every arm counts what it ran, and the first sets the number**
+(2026-09-04). Reading only the exit status is right -- that is the status
+channel, and grepping a log for success words is how a check goes quiet
+-- but a status cannot separate a configuration that ran the whole suite
+from one where a fixture bailed early and took a block of checks with it.
+Both print `ok`. `count-check` held the number for the offscreen run and
+**nothing held it for the other five configurations**, which are exactly
+the runs where a fixture is most likely to find the ground missing.
+
+Measured:
+
+    --- qtty-tests on offscreen                  ok (869 checks)
+    --- qtty-tests on xcb, under Xvfb            ok (869 checks)
+    --- qtty-tests on minimal, which must REFUSE ok (refused, and said why)
+    --- qtty-tests with a hostile environment    ok, the pins absorbed
+                                                 it (869 checks)
+
+which answers the question that started this: the two checks added today
+did run under xcb and under the hostile environment, and before this the
+target could not say.
+
+**Sabotaged in place, because the crafted-file control proves the helper
+and not the wiring.** Truncating the xcb arm's output after a successful
+run -- a configuration that reached fewer check sites, with its exit
+status untouched -- gives `FAILED: 184 checks, where the first
+configuration ran 869`, `failed` reaches 1 and the target exits 2.
+
+That run also found a wording fault worth more than it cost. The `ok`
+was printed before the count was judged, so the arm read
+
+    ok (184 checks)
+    FAILED: 184 checks, where the first configuration
+
+-- a green word directly above the refusal for the same arm, which is
+what a reader skimming finds first. The `ok` follows the verdict now, so
+an arm says one thing or the other and never both.
+
+Found while re-running the configurations after adding two checks, on the
+question of whether the new ones had actually executed under xcb. The
+log said nothing either way, because the arms send stdout to `/dev/null`
+-- correctly -- and that is the moment the gap is visible: **the target
+was built to answer "did it pass" and I was asking "did it run".**
+
+Counted from stdout with stderr dropped, for the reason §0c gives: the
+streams interleave and cut those lines in half, so a counter over the
+merged output undercounts -- the exact failure this rule exists to catch,
+manufactured by the rule itself. `minimal` is outside it, because that
+arm must refuse before running anything and its count is zero by design.
+
+**The design note caught its own author within the hour.** The
+sanitizer run finished green and its log gave 867 check lines against
+offscreen's 869, which is exactly the finding this rule exists to
+surface -- a configuration reaching two fewer check sites. Re-run with
+the streams separated it is 869 and nothing is missing:
+
+    merged stdout and stderr    867 check lines
+    stdout alone                869, 0 skips
+
+The two were `PASS:` lines cut in half by interleaved stderr. The log had
+`2>&1` because the build errors were wanted in it, and that one
+convenience turned a green configuration into a phantom finding -- read
+and believed for a minute by the session that had just written down why
+the counter drops stderr.
+
+**PASS, FAIL and SKIP together, and the first draft counted PASS alone.**
+Six checks in this suite stand down rather than assert -- no temporary
+directory, no proportional font resolved, a user who can read a mode-000
+file, and two that valgrind cannot observe -- and **font resolution can
+differ between one QPA plugin and another**, so a PASS-only rule would
+have gone red for a check that correctly declined. That is a gate
+somebody silences, which is worse than none.
+
+The question the rule asks is "was this check site reached", and a SKIP
+answers it exactly as well as a PASS. A block that bailed early loses
+both, which is the thing being caught. Caught before the gate ever ran,
+by asking which of the checks it counts are conditional -- the same
+question that would have to be asked the first time it went red, asked
+while the answer could still change the design.
+
 **And `minimal` is a configuration now rather than a paragraph.** The
 Makefile has said since the platform was first tried that it "cannot host
 the suite: it ships no font database, so DejaVu Sans Mono resolves to ''
