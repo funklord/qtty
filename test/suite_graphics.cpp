@@ -1086,6 +1086,28 @@ int suite_graphics() {
 			// leaves the cells to whatever is behind it. This fixture cannot
 			// reach that, and project.md records it as uncovered rather than
 			// letting a green line stand in for it.
+			// The overlay is IN the picture. Nothing asserted the image's
+			// CONTENT -- the checks above pin its size and the counts, so a
+			// composite that silently dropped the overlay would pass all of
+			// them -- and the clip introduced with the persistent buffer is
+			// exactly the kind of change that could drop it. The overlay is
+			// opaque red at cells (1,1) 4x2, so its middle must be red.
+			const QImage &img = soft.last_pixels;
+			const QPoint mid((1 + 2) * GridMetrics::cw(),
+			                 (1 + 1) * GridMetrics::ch());
+			const QRgb at_overlay = img.isNull() ? 0u : img.pixel(mid);
+			const bool painted = !img.isNull()
+			    && qRed(at_overlay) > 150 && qGreen(at_overlay) < 100
+			    && qBlue(at_overlay) < 100;
+			printf("%s: tier %d paints the overlay into the picture\n",
+			       painted ? "PASS" : "FAIL", int(mode));
+			if (!painted) {
+				printf("      condition: pixel at %d,%d is %d,%d,%d\n",
+				       mid.x(), mid.y(), qRed(at_overlay), qGreen(at_overlay),
+				       qBlue(at_overlay));
+				++fails;
+			}
+
 			const bool covered = rec_damage_ok(soft.last_damage);
 			printf("%s: tier %d damages the placement's cells, and not the"
 			       " screen\n",

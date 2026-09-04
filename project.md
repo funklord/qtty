@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-895 checks, 0 failures, under six configurations, all six re-run
+898 checks, 0 failures, under six configurations, all six re-run
 2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -5848,6 +5848,22 @@ placements and overlays are drawn every frame but CLIPPED to the same
 region, since they composite over cells that may have changed under
 them. A resized grid discards the buffer and repaints everything, that
 being the one event which makes every pixel wrong at once.
+
+**Nothing asserted the picture's CONTENT until the clip made it matter.**
+Applying the standing item to this change -- re-run the sabotages near
+what you touched -- found that the three tier checks pin the image's SIZE
+and the call counts and never look at a pixel. A composite that silently
+dropped the overlay passed all of them. Measured by clipping the painter
+to one cell:
+
+    tier N paints the overlay into the picture     FAIL
+    tier N composites in software into one frame   pass
+
+and the failure names the pixel and its colour, `pixel at 30,38 is
+16,20,24`, which is the default background: nothing was painted there at
+all. The clip introduced with the persistent buffer is exactly the kind
+of change that could drop an overlay, and until this it would have done
+so in silence.
 
 **Three legs, and only two of them could be proven.** `rasterize_into()`
 is checked against a full render as its oracle, `pixel_damage()` against
