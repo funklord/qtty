@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QHash>
+#include <QImage>
 #include <QRegion>
 #include <QVector>
 #include <QElapsedTimer>
@@ -211,6 +212,13 @@ private:
 	// Where the overlays were last frame, in cells. Kept because nothing
 	// else remembers it and pixel_damage() cannot be computed without it.
 	QVector<QRect> prev_overlays_;
+	// The composited picture, kept between frames so only the damaged cells
+	// have to be rasterised into it. Rasterising 200x60 measures 18.4 ms
+	// against section 11's 16 ms budget, so on the software-composite path
+	// the render is the cost and damage-limiting the TRANSMISSION saved none
+	// of it. Discarded when the grid resizes, which is the one thing that
+	// makes every pixel in it wrong at once.
+	QImage pixels_;
 };
 
 } // namespace Qtty

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-894 checks, 0 failures, under six configurations, all six re-run
+895 checks, 0 failures, under six configurations, all six re-run
 2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -5817,9 +5817,40 @@ satisfies the first perfectly while saving nothing. Third appearance of
 that shape today, in a third subsystem -- which is why the negative half
 was written first this time rather than after being caught.
 
-**Not wired in.** The frame loop still calls `rasterize()` per frame.
-Doing it needs the persistent image described above and its invalidation
-when the grid resizes, and that is where the remaining risk sits.
+**Wired in** (2026-09-04). The frame loop keeps the composited picture
+between frames and rasterises only the damaged cells into it; the
+placements and overlays are drawn every frame but CLIPPED to the same
+region, since they composite over cells that may have changed under
+them. A resized grid discards the buffer and repaints everything, that
+being the one event which makes every pixel wrong at once.
+
+**Three legs, and only two of them could be proven.** `rasterize_into()`
+is checked against a full render as its oracle, `pixel_damage()` against
+what moved, and the invalidation by a resize check. The fourth property
+-- that the kept buffer really is kept -- **cannot be observed from
+outside**: on a static scene a persistent buffer and a full re-render
+produce identical images, so any assertion passes either way. Recorded
+rather than papered over with a check that would prove nothing.
+
+**The resize check failed twice for the wrong reason, and the second
+time is the lesson.** First hypothesis: the fixture had no visible
+overlay, and `software_composite` is gated on one. Wrong -- adding one
+changed nothing. Second: **the grid size comes from the BACKEND**, and
+the fixture's fake returns a hardcoded 20x6, so resizing the widget left
+the composed frame the same size and both halves of the assertion failed
+together.
+
+What made that two guesses instead of none is my own check. It put two
+`QSize` comparisons behind one boolean, so the failure printed the
+condition and not the sizes -- and this suite's `CHECK` macro was
+extended two days earlier precisely because *a message that cannot
+separate the hypotheses it will generate guarantees the guessing*. With
+the sizes printed, the sabotage says it in one line:
+
+    condition: before 200x114 (want 200x114), after 200x114 (want 300x152)
+
+The first render was right; the second kept the old size. No hypotheses
+to choose between.
 
 Recorded because the obvious design is the one with the hazard in it.
 

@@ -529,9 +529,34 @@ void FrameScheduler::render_now() {
 	const bool images_changed = !prev_ || frame.images != prev_->images;
 
 	if (software_composite) {
-		// one finished picture: rasterise cells, blend placements + overlays
-		QImage px = rasterize(frame, QGuiApplication::font());
+		// One finished picture, kept between frames and repainted only where
+		// the damage says. The placements and overlays are drawn every frame
+		// but CLIPPED to the same region: they are composited over cells that
+		// may have changed under them, and clipping is what stops that
+		// costing the whole screen.
+		const QSize want(frame.cols() * cw, frame.rows() * ch);
+		QVector<QRect> now_over, was_over = prev_overlays_;
+		for (Overlay *o : overlays) now_over.append(overlay_cell_rect(o));
+		for (const CellImage &ci : frame.images) now_over.append(ci.cell_rect);
+		if (prev_)
+			for (const CellImage &ci : prev_->images) was_over.append(ci.cell_rect);
+		QRegion pix = pixel_damage(damage, was_over, now_over);
+		// A resized grid makes every pixel wrong at once, and there is no
+		// previous image to repair -- so the region becomes everything and
+		// the buffer is made afresh.
+		if (pixels_.size() != want) {
+			pixels_ = QImage(want, QImage::Format_ARGB32_Premultiplied);
+			pixels_.fill(qRgb(16, 20, 24));
+			pix = QRegion(0, 0, frame.cols(), frame.rows());
+		}
+		const QRect cells_r = pix.isEmpty()
+		    ? QRect(0, 0, frame.cols(), frame.rows())
+		    : pix.boundingRect();
+		rasterize_into(pixels_, frame, QGuiApplication::font(), cells_r);
+		QImage &px = pixels_;
 		QPainter p(&px);
+		p.setClipRect(QRect(cells_r.x() * cw, cells_r.y() * ch,
+		                    cells_r.width() * cw, cells_r.height() * ch));
 		for (const CellImage &ci : frame.images)
 			p.drawPixmap(ci.cell_rect.x() * cw, ci.cell_rect.y() * ch, ci.pixmap);
 		for (Overlay *o : overlays) {
@@ -540,17 +565,7 @@ void FrameScheduler::render_now() {
 			            o->image());
 		}
 		p.end();
-		// Everything composited OVER the cells, not the overlays alone. A
-		// placement that moves changes pixels under cells that need not have
-		// changed -- exactly the overlay fault, and it was left in when that
-		// one was fixed. The previous placement rectangles need no new state:
-		// prev_ is the previous CellBuffer and carries its own images.
-		QVector<QRect> now_over, was_over = prev_overlays_;
-		for (Overlay *o : overlays) now_over.append(overlay_cell_rect(o));
-		for (const CellImage &ci : frame.images) now_over.append(ci.cell_rect);
-		if (prev_)
-			for (const CellImage &ci : prev_->images) was_over.append(ci.cell_rect);
-		gfx->present_pixels(px, pixel_damage(damage, was_over, now_over));
+		gfx->present_pixels(px, pix);
 	} else if (!damage.isEmpty() || images_changed || !prev_ || !overlays.isEmpty()) {
 		backend_->present(frame, damage);
 		if (gmode == Capabilities::KittyAlpha && gfx) {   // terminal-blended alpha

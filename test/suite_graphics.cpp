@@ -871,7 +871,11 @@ int suite_graphics() {
 			QImage last_pixels, last_overlay;
 			QPoint last_cell;
 			int last_z = 0;
-			QSize size() const override { return QSize(20, 6); }
+			// The GRID size comes from the backend, not from the window --
+			// which is why resizing the widget alone left the composed frame
+			// at 20x6 and the resize check failing with both halves wrong.
+			QSize grid = QSize(20, 6);
+			QSize size() const override { return grid; }
 			Qtty::Capabilities capabilities() const override { return caps; }
 			void present(const Qtty::CellBuffer &, const QRegion &) override { ++frames; }
 			void set_cursor(std::optional<QPoint>, Qtty::CursorShape) override {}
@@ -967,6 +971,77 @@ int suite_graphics() {
 		      "KittyAlpha ships the overlay to the terminal, unrasterised");
 		CHECK(alpha.last_cell == QPoint(1, 1) && alpha.last_z == 3,
 		      "with its own cell position and z");
+
+		// The composited picture is kept between frames now, so only the
+		// damaged cells are rasterised into it. The one event that makes
+		// every pixel in it wrong at once is a RESIZE, and the buffer is
+		// discarded then -- untested until here, and the leg of that change
+		// least covered by anything else: rasterize_into() is proven against
+		// a full render, and pixel_damage() against what moved, but nothing
+		// asked what happens when the grid changes shape under a buffer that
+		// outlives frames.
+		//
+		// Asserted on the SIZE handed over, which a stale buffer cannot get
+		// right. Both sizes, because "it is 30x8 at the end" is satisfied by
+		// a run that was never 20x6.
+		{
+			// An overlay of its own: software_composite is gated on one
+			// being visible, so without it this path is never taken and the
+			// check fails for the wrong reason. It did, on the first run --
+			// and the paired `before ==` half is what said so, by reporting
+			// that the FIRST render never produced a 20x6 image either.
+			QImage art(4 * GridMetrics::cw(), 2 * GridMetrics::ch(),
+			           QImage::Format_ARGB32);
+			art.fill(QColor(40, 200, 40, 255));
+			Overlay rov;
+			rov.set_image(art);
+			rov.set_rect(QRectF(1, 1, 4, 2));
+			rov.show();
+
+			Recorder rs;
+			rs.caps.graphics = Qtty::Capabilities::Sixel;
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(20, 6));
+			win.show();
+			QCoreApplication::processEvents();
+			Qtty::InputRouter router(&win);
+			Qtty::Compositor comp(&win, &router);
+			Qtty::FrameScheduler sched(&rs, &comp, &win);
+			auto *plot = new Qtty::PixelSurface(&win);
+			plot->setGeometry(0, 0, GridMetrics::cw() * 3, GridMetrics::ch() * 2);
+			plot->show();
+			QCoreApplication::processEvents();
+			sched.render_now();
+			const QSize before = rs.last_pixels.size();
+			rs.grid = QSize(30, 8);          // the terminal, not the widget
+			win.resize(GridMetrics::cells(30, 8));
+			QCoreApplication::processEvents();
+			sched.render_now();
+			// The sizes are PRINTED on failure, not just the condition. Two
+			// QSize comparisons behind one boolean cannot separate "the
+			// first render never happened" from "the second kept the old
+			// size" from "the grid never changed" -- and this check was
+			// diagnosed by guessing twice before that mattered enough to
+			// fix.
+			const QSize want_before(20 * GridMetrics::cw(), 6 * GridMetrics::ch());
+			const QSize want_after(30 * GridMetrics::cw(), 8 * GridMetrics::ch());
+			if (before == want_before && rs.last_pixels.size() == want_after)
+				printf("PASS: a resized grid discards the kept picture and"
+				       " rebuilds it\n");
+			else {
+				printf("FAIL: a resized grid discards the kept picture and"
+				       " rebuilds it\n"
+				       "      condition: before %dx%d (want %dx%d),"
+				       " after %dx%d (want %dx%d)\n",
+				       before.width(), before.height(),
+				       want_before.width(), want_before.height(),
+				       rs.last_pixels.size().width(),
+				       rs.last_pixels.size().height(),
+				       want_after.width(), want_after.height());
+				++fails;
+			}
+		}
 
 		// The placement the fixture creates is three cells by two at the
 		// origin, and a region that swallowed the screen would satisfy the
