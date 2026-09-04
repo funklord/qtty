@@ -34,8 +34,15 @@
 # check` clears it at the start of the next run.
 #
 # Content identity is HEAD plus every uncommitted change to tracked files, so
-# staging a file does not invalidate a stamp: `git diff HEAD` is the same
-# before and after `git add`.
+# editing a staged file does not invalidate a stamp: `git diff HEAD` is the
+# same before and after `git add` for a file git already knows.
+#
+# A file git does NOT know is outside that identity while it is untracked --
+# but it cannot be committed without being staged, and staging puts it inside
+# `git diff HEAD`. So a new file changes the identity at exactly the moment it
+# starts to matter, and the note fires. Measured 2026-09-04, on the commit that
+# added tool/screen-check: `make check` had run without it and the note said
+# so.
 set -e
 
 dir=$(git rev-parse --git-common-dir 2>/dev/null) || exit 0

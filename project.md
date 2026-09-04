@@ -1445,6 +1445,16 @@ deliberate way past. The identity is HEAD plus every uncommitted change
 to tracked files, which is what `git diff HEAD` gives and is unchanged by
 staging -- so `git add` does not invalidate a verdict.
 
+**The note earned itself on a case it was not written for** (2026-09-04).
+It was added for "checked, then edited, then committed"; it also fired on
+"checked, then a NEW FILE appeared", when `tool/screen-check` was
+committed. The identity is HEAD plus every uncommitted change to tracked
+files, so an untracked file sits outside it -- but a file cannot be
+committed without being staged, and staging puts it inside `git diff
+HEAD`. **The identity changes at exactly the moment the file starts to
+mattering, so what looked like a second hole is not one.** The note was
+right, the content was checked afterwards, and it passed.
+
 **And the stale-stamp row now prints a note, after the same failure
 happened a fifth time** (2026-09-04, an hour after `RUNNING` landed). The
 gate passed; I edited `project.md` again; I committed. The content hash
