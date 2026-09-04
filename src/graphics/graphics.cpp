@@ -209,6 +209,18 @@ CroppedPlacement crop_placement(const QRect &cell_rect, QSize image, QSize grid)
 	return {visible, source};
 }
 
+QByteArray encode_kitty_tile(quint32 id, quint32 placement, const QImage &src) {
+	const QImage img = src.convertToFormat(QImage::Format_RGBA8888);
+	QByteArray raw(reinterpret_cast<const char *>(img.constBits()),
+	               int(img.sizeInBytes()));
+	const QByteArray ctrl = "a=T,f=32,q=2"
+	    ",i=" + QByteArray::number(id)
+	    + ",p=" + QByteArray::number(placement)
+	    + ",s=" + QByteArray::number(img.width())
+	    + ",v=" + QByteArray::number(img.height());
+	return kitty_chunks(ctrl, raw.toBase64());
+}
+
 QVector<QRect> dirty_tiles(const QRegion &damage, const QSize &grid, int tile) {
 	QVector<QRect> out;
 	if (tile <= 0 || grid.isEmpty() || damage.isEmpty()) return out;

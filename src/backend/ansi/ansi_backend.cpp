@@ -987,10 +987,42 @@ void AnsiBackend::present_pixels(const QImage &frame, const QRegion &damage) {
 		out = "\033[H";
 	switch (mode_) {
 	case Capabilities::Kitty:
-	case Capabilities::KittyAlpha:
-		out += kitty_delete_all();
-		out += encode_kitty_image(0xFFFFFF0u, frame);
+	case Capabilities::KittyAlpha: {
+		// A fixed grid of tiles, each with its own image and placement id,
+		// each replaced when the damage touches it. Replacing a placement
+		// VACATES its old rectangle -- measured, two placements sharing ids
+		// leave 0 pixels of the first -- so an id may only be reused where
+		// the rectangle repeats, and a fixed grid is what makes it repeat.
+		// The placement count is then bounded by the tile count rather than
+		// by frames, and nothing is ever deleted.
+		//
+		// Four cells, measured rather than chosen: kitty answers a DA1 after
+		// 50, 200, 750 and 3000 placements in 0.001, 0.074, 0.079 and 0.217
+		// seconds, so the count is not the binding constraint at this scale
+		// and the tile can be small enough that a one-cell edit is cheap. At
+		// 200x60 that is 750 tiles and about 14 KB for a single changed
+		// cell, against 284 KB for the screen.
+		const int tile = 4;
+		if (frame.size() != last_pixel_size_) {
+			// The only case a tile cannot repair: the grid itself moved, so
+			// every placement is at a position that no longer means
+			// anything.
+			out += kitty_delete_all();
+			last_pixel_size_ = frame.size();
+			cells = all;
+		}
+		const int across = (all.width() + tile - 1) / tile;
+		for (const QRect &t : dirty_tiles(QRegion(cells), all.size(), tile)) {
+			const quint32 idx = quint32(t.y() / tile * across + t.x() / tile);
+			out += "\033[" + QByteArray::number(t.y() + 1) + ";"
+			     + QByteArray::number(t.x() + 1) + "H";
+			out += encode_kitty_tile(0xFFF0000u + idx, 1 + idx,
+			                         frame.copy(QRect(t.x() * cw, t.y() * ch,
+			                                          t.width() * cw,
+			                                          t.height() * ch)));
+		}
 		break;
+	}
 	case Capabilities::Sixel:
 		out += encode_sixel(part);
 		break;

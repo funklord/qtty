@@ -89,6 +89,11 @@ private:
 	// was also upload-forever: see retire_uploads().
 	QList<quint64> upload_order_;
 	void retire_uploads(const CellBuffer &frame, QByteArray &out);
+	// The pixel frame's size when the kitty path last ran. A resize changes
+	// the tile grid, so the placements from the old one would linger at
+	// positions that no longer mean anything -- the only case where the
+	// whole screen has to be delete_all'd rather than replaced tile by tile.
+	QSize last_pixel_size_;
 	bool raw_ok_ = false;
 	bool tty_out_ = false;               // stdout is a terminal
 	bool active_ = false;

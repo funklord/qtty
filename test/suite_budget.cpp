@@ -416,6 +416,61 @@ int suite_budget() {
 				if (gfx_was.isEmpty()) qunsetenv("QTTY_GRAPHICS");
 				else                   qputenv("QTTY_GRAPHICS", gfx_was);
 
+				// The same for kitty, which does it by tiles rather than by
+				// cropping: a placement may only reuse an id where its
+				// rectangle repeats, so the screen is a fixed grid and the
+				// damaged tiles are replaced. Cell (7,3) with four-cell
+				// tiles is the tile at (4,0), so the run addresses row 1,
+				// column 5 -- the tile's corner, not the cell's.
+				qputenv("QTTY_GRAPHICS", "kitty");
+				const QByteArray kw =
+				    tmp.filePath(QStringLiteral("k-full.bin")).toUtf8();
+				const QByteArray kp =
+				    tmp.filePath(QStringLiteral("k-part.bin")).toUtf8();
+				fflush(stdout);
+				const int kkeep = ::dup(1);
+				const int k1 = ::open(kw.constData(),
+				                      O_WRONLY | O_CREAT | O_TRUNC, 0600);
+				int k2 = -1;
+				if (k1 >= 0) {
+					::dup2(k1, 1);
+					AnsiBackend kx;
+					kx.present_pixels(screen, QRegion());
+					fflush(stdout);
+					k2 = ::open(kp.constData(),
+					            O_WRONLY | O_CREAT | O_TRUNC, 0600);
+					if (k2 >= 0) ::dup2(k2, 1);
+					kx.present_pixels(screen, QRegion(7, 3, 1, 1));
+					fflush(stdout);
+				}
+				::dup2(kkeep, 1);
+				::close(kkeep);
+				if (k1 >= 0) ::close(k1);
+				if (k2 >= 0) ::close(k2);
+				const qint64 k_full = QFileInfo(QString::fromUtf8(kw)).size();
+				const qint64 k_part = QFileInfo(QString::fromUtf8(kp)).size();
+				printf("info: a kitty pixel frame: %lld bytes whole, %lld for"
+				       " one damaged tile\n",
+				       (long long)k_full, (long long)k_part);
+				CHECK(k_full > 0 && k_part > 0 && k_part * 10 < k_full,
+				      "a damaged kitty frame is an order of magnitude smaller"
+				      " than the whole screen");
+				QFile kf(QString::fromUtf8(kp));
+				QByteArray kbytes;
+				if (kf.open(QIODevice::ReadOnly)) kbytes = kf.readAll();
+				// Small is not right, and a tile addressed at the cell
+				// rather than at its own corner would be off by three. Both
+				// directions: the tile's corner present AND the cell's own
+				// address absent, because a run that addressed both would
+				// satisfy a bare contains(). The frame still opens with a
+				// bare home, which is why this is contains() and not
+				// startsWith().
+				CHECK(kbytes.contains("\033[1;5H")
+				      && !kbytes.contains("\033[4;8H")
+				      && kbytes.contains(",p="),
+				      "and it addresses the tile's corner and carries a"
+				      " placement id, which is what lets it be replaced");
+
 				const qint64 px_full =
 				    QFileInfo(QString::fromUtf8(whole_px)).size();
 				const qint64 px_part =

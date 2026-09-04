@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-904 checks, 0 failures, under six configurations, all six re-run
+906 checks, 0 failures, under six configurations, all six re-run
 2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -5860,6 +5860,46 @@ placements and overlays are drawn every frame but CLIPPED to the same
 region, since they composite over cells that may have changed under
 them. A resized grid discards the buffer and repaints everything, that
 being the one event which makes every pixel wrong at once.
+
+**The kitty tier crops too, by tiles** (2026-09-04), which is the last
+piece of the pixel path and the largest saving in it:
+
+    a kitty pixel frame   12,225,842 bytes whole
+                              16,300 bytes for one damaged tile
+
+**750 times less.** A full kitty frame is raw RGBA in base64, so it is
+enormous by construction -- 2.28M pixels at four bytes, encoded -- which
+is exactly why this tier had the most to gain and why sending it every
+frame was the worst of the three.
+
+**The tile size was measured rather than chosen.** A placement may only
+reuse its id where the rectangle repeats, so the screen is a fixed grid,
+and the question is how fine. kitty answers a DA1 after:
+
+    50 placements    0.001 s
+    200              0.074 s
+    750              0.079 s
+    3000             0.217 s
+
+Sub-linear, no cliff, so the placement COUNT is not the binding
+constraint at any scale this reaches, and the tile can be small enough
+that one changed cell is cheap. Four cells gives 750 tiles at 200x60.
+**Guessing would have gone the other way**: hundreds of placements sound
+expensive, and a sixteen-cell tile costs 220 KB to update one cell --
+barely better than sending everything.
+
+`encode_kitty_image()` sends no placement id, which is precisely what
+makes repeated calls accumulate; `encode_kitty_tile()` sends `p=`. A
+resize is the one thing a tile cannot repair -- the grid moves, so every
+placement is at a position that no longer means anything -- and it is
+the only case still calling `kitty_delete_all()`.
+
+**And the check's first assertion was wrong in the direction that looks
+right.** It asserted the bytes START with the tile's address; they open
+with a bare home from the shared preamble, so it failed on a correct
+implementation. It asserts the tile corner is present AND the cell's own
+address is absent now, which is what separates addressing the tile from
+addressing the cell.
 
 **`QRegion::contains(QRect)` is not a containment test, and four checks
 written today rested on believing it was** (2026-09-04). Measured:

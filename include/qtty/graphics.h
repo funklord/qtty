@@ -36,6 +36,12 @@ QByteArray encode_kitty_image(quint32 id, const QImage &img, int z = 0);
 // next full sighting would show the cropped one.
 QByteArray kitty_place(quint32 id, int z = 0, const QRect &source = QRect());
 // Delete all visible kitty placements (start-of-frame reset).
+// Transmit and display one tile, with an image id and a PLACEMENT id, so a
+// later tile at the same ids replaces it instead of adding to it.
+// encode_kitty_image() sends no placement id, which is what makes repeated
+// calls accumulate.
+QByteArray encode_kitty_tile(quint32 id, quint32 placement, const QImage &img);
+
 QByteArray kitty_delete_all();
 
 // The tiles a damage region touches, in cells, aligned to a fixed grid and
