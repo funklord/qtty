@@ -5694,12 +5694,37 @@ entry may leave out.** `present_pixels()` takes a damage region and
 ignores it -- the same unnamed parameter, four hundred lines down -- so
 the software-composite tier, which is what runs when an overlay is up on
 Sixel, iTerm2 or kitty, rasterises the whole screen and encodes it every
-frame. Damage-limiting that is a different piece of work from this one:
-it needs per-tier partial placement, and kitty placing a sub-image at a
-cell offset has nothing in common with sixel needing a cursor address and
-a smaller encode. **Recorded here rather than in a footnote because
-"damage-limited output" without a qualifier reads as finished**, and a
-reader would take §11's claim as honoured on every tier.
+frame. **Recorded here rather than in a footnote because "damage-limited
+output" without a qualifier reads as finished**, and a reader would take
+§11's claim as honoured on every tier.
+
+**Scoped by reading the code rather than left as a phrase, because
+twice today a deferral under a grand name turned out to be fifteen
+lines.** This one is not, and the reason is specific:
+
+- **Sixel and iTerm2 are purely positional.** They paint pixels at the
+  cursor and leave no handle, so a partial update is an addressed cursor
+  and a cropped encode -- no lifecycle, and the tier keeps working
+  unchanged if the region is the whole screen.
+- **Kitty is not.** That path is `kitty_delete_all()` followed by
+  re-placing the whole screen as one image, so a partial update cannot
+  simply skip the delete: placements would accumulate one per frame.
+  Making it partial needs a placement lifecycle for SCREEN images, which
+  is what `uploaded_`/`upload_order_` do for cell placements and would
+  have to be reinvented here.
+- **And the compositor cannot supply the damage from what it has.** It
+  holds the cell diff, and the cell diff is NOT the damage for this
+  path: an overlay that MOVES changes pixels under cells that did not
+  change, so the region has to be the cell diff united with the overlay
+  rectangles both before and after. **The previous overlay geometry is
+  not kept anywhere**, and that missing input is the actual size of this
+  item -- not the encoding, which is easy.
+
+So the honest shape is: two tiers are a small change gated on one new
+piece of compositor state, and the third is a design question about
+image handles. What must not happen is the cell diff being passed
+straight through, which looks correct, compiles, and leaves stale
+pixels wherever an overlay moved.
 
 **And small is not right, which needed a third check written against the
 first two.** An off-by-one in the row address -- `y` where `y + 1`
