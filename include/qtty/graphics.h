@@ -38,6 +38,21 @@ QByteArray kitty_place(quint32 id, int z = 0, const QRect &source = QRect());
 // Delete all visible kitty placements (start-of-frame reset).
 QByteArray kitty_delete_all();
 
+// The tiles a damage region touches, in cells, aligned to a fixed grid and
+// clipped to the screen.
+//
+// Why a fixed grid rather than the damage itself: replacing a kitty placement
+// VACATES its old rectangle -- measured, two placements sharing an image and
+// placement id leave 0 pixels of the first -- so a patch that lands somewhere
+// new each frame erases the last one and reveals whatever is underneath.
+// Reusing an id is only safe where the rectangle repeats, and a fixed tile
+// grid is what makes it repeat. The placement count is then bounded by the
+// tile count instead of by frames.
+//
+// `tile` trades wasted pixels per tile against placements per screen. Both
+// are arithmetic; neither is terminal behaviour.
+QVector<QRect> dirty_tiles(const QRegion &damage, const QSize &grid, int tile);
+
 // iTerm2 inline image (OSC 1337), sized in cells.
 QByteArray encode_iterm2(const QImage &img, int w_cells, int h_cells);
 

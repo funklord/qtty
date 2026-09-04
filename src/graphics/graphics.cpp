@@ -209,6 +209,20 @@ CroppedPlacement crop_placement(const QRect &cell_rect, QSize image, QSize grid)
 	return {visible, source};
 }
 
+QVector<QRect> dirty_tiles(const QRegion &damage, const QSize &grid, int tile) {
+	QVector<QRect> out;
+	if (tile <= 0 || grid.isEmpty() || damage.isEmpty()) return out;
+	const int cols = (grid.width() + tile - 1) / tile;
+	const int rows = (grid.height() + tile - 1) / tile;
+	for (int ty = 0; ty < rows; ++ty)
+		for (int tx = 0; tx < cols; ++tx) {
+			const QRect t = QRect(tx * tile, ty * tile, tile, tile)
+			                    .intersected(QRect(QPoint(0, 0), grid));
+			if (!t.isEmpty() && damage.intersects(t)) out.append(t);
+		}
+	return out;
+}
+
 QByteArray kitty_delete_all() { return "\033_Ga=d,d=a,q=2;\033\\"; }
 
 // ---- iTerm2 ----------------------------------------------------------------

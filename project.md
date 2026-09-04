@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-899 checks, 0 failures, under six configurations, all six re-run
+904 checks, 0 failures, under six configurations, all six re-run
 2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -5860,6 +5860,40 @@ placements and overlays are drawn every frame but CLIPPED to the same
 region, since they composite over cells that may have changed under
 them. A resized grid discards the buffer and repaints everything, that
 being the one event which makes every pixel wrong at once.
+
+**`QRegion::contains(QRect)` is not a containment test, and four checks
+written today rested on believing it was** (2026-09-04). Measured:
+
+    QRegion(QRect(5,3,1,1)).contains(QRect(4,0,4,4))   -> true
+
+A one-cell region "contains" a 4x4 tile around it, because Qt returns
+true for a rect that merely OVERLAPS -- X11's `RectInRegion` answering
+`RectanglePart` as well as `RectangleIn`. So *the tiles cover the
+damage*, *a moved overlay damages where it was*, *an overlay that stayed
+put is still repainted* and *damages the placement's cells* asserted
+overlap while claiming coverage, and each would have passed on a region
+clipping one corner.
+
+`covers(r, want)` is the real question -- subtract the region from the
+rect and ask whether anything is left:
+
+    tiles              contains()   covers()
+    one of the two     true         false
+    both               true         true
+
+**The tell was a sabotage that failed to fire.** Swapping `intersects`
+for `contains` in the tiler changed nothing, for the same reason: on a
+rect the two are equivalent in Qt. **A sabotage can apply and still not
+be a sabotage** -- the marker was in the file and the file was compiled,
+and the semantic change was nil. Another session filed that exact
+observation to `claude-guidelines` the same afternoon, from another tree.
+
+Concluding "the check must be fine, then" was available and would have
+left four weak checks standing. A real sabotage -- return only the first
+dirty tile -- now reddens the count AND the coverage; with the old
+predicate it reddened only the count.
+
+Swept: no other use of `QRegion::contains(QRect)` in the tree.
 
 **And there is a screen oracle, which every note here saying otherwise
 was wrong about** (2026-09-04). This document says in several places that

@@ -9,6 +9,18 @@
 using namespace Qtty;
 
 static int fails = 0;
+
+// QRegion::contains(QRect) is NOT a containment test in Qt: it returns true
+// for a rect that merely OVERLAPS the region -- measured, a one-cell region
+// "contains" a 4x4 tile around it. Four checks written today used it meaning
+// coverage and asserted far less than their wording claimed; the tell was a
+// sabotage that failed to fire.
+//
+// Subtracting the region from the rect and asking whether anything is left is
+// the real question.
+static bool covers(const QRegion &r, const QRect &want) {
+	return (QRegion(want) - r).isEmpty();
+}
 // The failure carries the condition that was false, not only the sentence.
 // A message that cannot separate the hypotheses it will generate guarantees
 // the guessing: twice in one day an assertion here had to be diagnosed by
@@ -559,6 +571,45 @@ int suite_graphics() {
 		      " is obeyed");
 	}
 
+	// ---- the tiles a damage region touches ----
+	// The kitty path cannot place a patch wherever the damage happens to
+	// fall: replacing a placement vacates its old rectangle, measured at 0
+	// pixels of the first image, so a patch that moves erases the last one.
+	// A fixed tile grid makes the rectangle repeat, which is what lets an id
+	// be reused, which is what bounds the placement count by the tile count
+	// rather than by frames.
+	{
+		const QSize grid(20, 12);
+		// One cell, and the tile it falls in -- not the cell.
+		const QVector<QRect> one = dirty_tiles(QRegion(QRect(5, 3, 1, 1)), grid, 4);
+		CHECK(one.size() == 1 && one[0] == QRect(4, 0, 4, 4),
+		      "a one-cell damage dirties the tile it lands in");
+
+		// Across a boundary: two tiles, and the pair is the point -- a
+		// quantiser that returned one tile would lose half the damage, and
+		// one that returned every tile would cost the screen.
+		const QVector<QRect> pair = dirty_tiles(QRegion(QRect(3, 1, 2, 1)), grid, 4);
+		CHECK(pair.size() == 2, "damage across a boundary dirties both tiles");
+
+		// The union COVERS the damage, which is the property the picture
+		// depends on, asserted rather than inferred from the counts above.
+		QRegion covered;
+		for (const QRect &t : pair) covered += t;
+		CHECK(covers(covered, QRect(3, 1, 2, 1)),
+		      "and the tiles it returns cover the damage");
+
+		// Clipped at the edge: a 20x12 grid in tiles of 8 has a 4-wide
+		// column and a 4-tall row left over, and a tile running off the
+		// screen would place pixels nobody can see.
+		const QVector<QRect> edge = dirty_tiles(QRegion(QRect(19, 11, 1, 1)), grid, 8);
+		CHECK(edge.size() == 1 && edge[0] == QRect(16, 8, 4, 4),
+		      "and a tile at the edge is clipped to the screen");
+
+		CHECK(dirty_tiles(QRegion(), grid, 4).isEmpty()
+		      && dirty_tiles(QRegion(QRect(0, 0, 4, 4)), grid, 0).isEmpty(),
+		      "no damage and no tile size are both nothing to redraw");
+	}
+
 	// ---- the rasteriser says what it painted ----
 	// It widens the rectangle leftwards to the start of a wide cluster,
 	// because a continuation cell carries no glyph and a region beginning
@@ -604,8 +655,8 @@ int suite_graphics() {
 		// Both positions, and the cell that changed. The OLD one is the
 		// half a diff-only region misses, and it is the half that leaves a
 		// ghost of the overlay behind.
-		CHECK(moved.contains(QRect(10, 10, 4, 2))
-		      && moved.contains(QRect(20, 20, 4, 2))
+		CHECK(covers(moved, QRect(10, 10, 4, 2))
+		      && covers(moved, QRect(20, 20, 4, 2))
 		      && moved.contains(QPoint(2, 2)),
 		      "a moved overlay damages where it was as well as where it is");
 		// And it does not swallow the screen: a union that returned
@@ -614,7 +665,7 @@ int suite_graphics() {
 		      "and nothing it did not touch");
 
 		const QRegion still = FrameScheduler::pixel_damage(diff, was, was);
-		CHECK(still.contains(QRect(10, 10, 4, 2)) && still.contains(QPoint(2, 2)),
+		CHECK(covers(still, QRect(10, 10, 4, 2)) && still.contains(QPoint(2, 2)),
 		      "an overlay that stayed put is still repainted, being composited"
 		      " over cells that changed under it");
 		CHECK(FrameScheduler::pixel_damage(QRegion(), {}, {}).isEmpty(),
@@ -1074,7 +1125,7 @@ int suite_graphics() {
 		// origin, and a region that swallowed the screen would satisfy the
 		// first half of this while costing the whole frame.
 		const auto rec_damage_ok = [](const QRegion &d) {
-			return d.contains(QRect(0, 0, 3, 2)) && !d.contains(QPoint(19, 5));
+			return covers(d, QRect(0, 0, 3, 2)) && !d.contains(QPoint(19, 5));
 		};
 
 		// Sixel, iTerm2 and plain Kitty cannot blend over text, so the plane
