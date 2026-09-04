@@ -5857,6 +5857,36 @@ region, since they composite over cells that may have changed under
 them. A resized grid discards the buffer and repaints everything, that
 being the one event which makes every pixel wrong at once.
 
+**The screen oracle's first real use found a defect no byte-level check
+could see** (2026-09-04). A probe drew a four-cell green square through
+`present_pixels()` inside kitty and the capture was measured rather than
+eyeballed:
+
+    expected (qtty's grid, 10x19)   40 x 76 px at x=20
+    drawn                           36 x 72 px at x=20
+                                    36 = 4x9, 72 = 4x18
+
+**Those are KITTY's cells, not qtty's.** The terminal reports 9x18 --
+`qtty-negotiate` prints it, and the backend stores it in
+`caps_.cell_px` -- while `GridMetrics` takes its cell from the FONT this
+build resolved, 10x19 here. The pixel path assumes the two agree. They
+need not, and when they differ every tile is transmitted about a tenth
+too large, lands on more terminal cells than qtty thinks, and overlaps
+its neighbours. No blended edges in the capture, so this is overdrawing
+rather than scaling.
+
+**It is not new tonight.** The whole-screen kitty path had it too: a
+400x228 image placed on a 9x18 grid spans 45 columns by 13 rows, not the
+40 by 12 qtty believes. Tiling made it visible by drawing many small
+images instead of one big one, and the oracle made it measurable.
+
+The rule it wants is one sentence -- **an image destined for the
+terminal is sized in the TERMINAL's cells** -- and the change is not one
+line, because `GridMetrics` is what the whole widget tree is laid out
+in. Text does not care: a cell is a cell whatever its pixels. Only the
+pixel tiers do. Recorded rather than fixed at the end of a long session,
+with the measurement attached so nobody has to take it on trust.
+
 **The kitty tier crops too, by tiles** (2026-09-04), which is the last
 piece of the pixel path and the largest saving in it:
 
