@@ -1940,6 +1940,16 @@ the headline figure and `make test-platforms` now holds it per
 configuration; the rest is a grep for a number beside a noun, and §0c
 records the one instrument that does NOT work for it.
 
+**Re-run the sabotage for checks NEAR what you changed, not only for the
+check you added.** A fix can make a neighbouring check stop
+discriminating, and nothing announces it: the check goes on passing, its
+message goes on describing a fault it can no longer see, and it is
+quoted afterwards as coverage. Measured 2026-09-04 -- the terminal-owner
+stack removed the only coverage the emergency restore's disarm had,
+within an hour of that coverage being written, because the improved path
+now restores the terminal by a route that does not need it. The tell was
+not available by reading; only re-running the older sabotage found it.
+
 **Derive the next lens from the last defect, and finish it.** Every fault
 found on 2026-09-04 came from a lens the previous fault suggested rather
 than from a list decided in advance -- a stated rule obeyed in some
