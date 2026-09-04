@@ -1857,6 +1857,70 @@ int suite_backend() {
 				}
 			}
 
+			// A resize while SUSPENDED must write nothing. suspend() hands
+			// the terminal back -- its own comment says "a program that
+			// suspends to shell out has a terminal it did not take over" --
+			// and read_winch() calls query_geometry(), which writes
+			// \033[14t\033[16t. Measured before the fix: 10 bytes went into
+			// the terminal an editor had just been given, and the terminal's
+			// reply arrives at the editor as keystrokes.
+			//
+			// Paired with the active case, because "wrote nothing" is
+			// satisfied by a backend that has stopped watching resizes
+			// altogether.
+			{
+				fflush(stdout);
+				::dup2(slave, 0);
+				::dup2(slave, 1);
+				QByteArray after;
+				bool live_seen = false;
+				{
+					AnsiBackend b;
+					Recorder rec;
+					b.set_event_sink(&rec);
+					b.resume();
+					char d[4096];
+					while (::read(master, d, sizeof(d)) > 0) { }
+
+					// Active: the resize is seen.
+					ws.ws_col = 66;
+					ws.ws_row = 18;
+					::ioctl(slave, TIOCSWINSZ, &ws);
+					::raise(SIGWINCH);
+					for (int i = 0; i < 60; ++i) QCoreApplication::processEvents();
+					while (::read(master, d, sizeof(d)) > 0) { }
+					live_seen = !rec.resizes.isEmpty();
+
+					b.suspend();
+					while (::read(master, d, sizeof(d)) > 0) { }
+					ws.ws_col = 77;
+					ws.ws_row = 21;
+					::ioctl(slave, TIOCSWINSZ, &ws);
+					::raise(SIGWINCH);
+					for (int i = 0; i < 60; ++i) QCoreApplication::processEvents();
+					ssize_t n;
+					while ((n = ::read(master, d, sizeof(d))) > 0)
+						after.append(d, int(n));
+				}
+				fflush(stdout);
+				::dup2(keep_out, 1);
+				CHECK(live_seen,
+				      "a resize reaches the backend while it owns the terminal");
+				if (after.isEmpty())
+					printf("PASS: and a resize while suspended writes nothing"
+					       " to the terminal it handed back\n");
+				else {
+					printf("FAIL: and a resize while suspended writes nothing"
+					       " to the terminal it handed back\n"
+					       "      condition: %d byte(s), %s\n",
+					       after.size(),
+					       after.toPercentEncoding().constData());
+					++fails;
+				}
+				fflush(stdout);
+				::dup2(slave, 1);
+			}
+
 			// Stdin a terminal, stdout NOT -- `app > out.txt` typed at a
 			// shell, which is the one configuration where the two ends
 			// disagree. resume() writes the mode-enabling sequence only when

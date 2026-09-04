@@ -284,6 +284,15 @@ void AnsiBackend::query_geometry() {
 void AnsiBackend::read_winch() {
 	char drain[64];
 	while (::read(s_winch_pipe[0], drain, sizeof drain) > 0) { }
+	// Drained first, then refused. This is where the whole defect lives: the
+	// handler stays installed across a suspend (see the note beside
+	// g_prev_tstp), so a resize while suspended reached query_geometry() and
+	// put \033[14t\033[16t into a terminal an editor had just been handed,
+	// whose reply then arrives at the editor as keystrokes. Measured at 10
+	// bytes. It also closes the window a restored handler could not: a byte
+	// written by a resize that arrived just BEFORE suspend() is already in
+	// the pipe.
+	if (!active_) return;
 	winsize ws{};
 	// ws_row as well as ws_col, for the reason the constructor now gives:
 	// this refused a zero column count and accepted a zero row count, and the
@@ -350,6 +359,25 @@ const int g_fatal[] = { SIGINT, SIGTERM, SIGHUP, SIGQUIT,
                         SIGSEGV, SIGABRT, SIGBUS, SIGFPE, SIGILL };
 struct sigaction g_prev[sizeof(g_fatal) / sizeof(g_fatal[0])];
 struct sigaction g_prev_tstp, g_prev_cont;
+// SIGWINCH is NOT in this group, and the attempt to put it there is worth
+// recording because it failed for a reason that would catch the next person.
+//
+// suspend() says the handlers go with the terminal -- "a program that suspends
+// to shell out has a terminal it did not take over" -- and SIGWINCH is
+// installed once, with nullptr for the old action, so the host application's
+// own handler is taken permanently. Restoring it on suspend() looks like the
+// obvious fix and reddened an existing check: the handler is PROCESS-WIDE
+// state and suspend() is PER-INSTANCE, so a second backend going out of scope
+// takes the handler away from the first, which is still active and still
+// owns the terminal. The suite creates nested backends, so it noticed at
+// once; the fatal handlers above have the same shape and nothing tests it.
+//
+// Doing it properly needs an ownership model this file does not have -- one
+// that knows a suspend is the LAST one -- and inventing one here is a design
+// decision rather than a fix. So the handler stays installed, and the damage
+// it could do is stopped where it is expressible: read_winch() refuses when
+// this backend is not active.
+bool g_winch_installed = false;
 bool g_installed = false;
 
 // Give the terminal back. Does NOT disarm: SIGTSTP hands it back and SIGCONT
@@ -542,13 +570,17 @@ void AnsiBackend::resume() {
 			// and leave the backend in a state suspend() declines to undo.
 			// Fixing one inert failure path by writing another would be a
 			// poor way to take the lesson.
-		} else {
-			struct sigaction sa{};
-			sa.sa_handler = qtty_winch_handler;
-			sigemptyset(&sa.sa_mask);
-			sa.sa_flags = SA_RESTART;      // do not break the read() in read_input()
-			sigaction(SIGWINCH, &sa, nullptr);
 		}
+	}
+	// Installed once, beside the pipe it writes to, and see the note above
+	// for why it is not restored on suspend.
+	if (s_winch_pipe[0] >= 0 && !g_winch_installed) {
+		struct sigaction sa{};
+		sa.sa_handler = qtty_winch_handler;
+		sigemptyset(&sa.sa_mask);
+		sa.sa_flags = SA_RESTART;          // do not break the read() in read_input()
+		sigaction(SIGWINCH, &sa, nullptr);
+		g_winch_installed = true;
 	}
 	if (s_winch_pipe[0] >= 0 && !winch_notifier_) {
 		winch_notifier_ = new QSocketNotifier(s_winch_pipe[0],
@@ -611,6 +643,7 @@ void AnsiBackend::suspend() {
 		sigaction(SIGCONT, &g_prev_cont, nullptr);
 		g_installed = false;
 	}
+
 	active_ = false;
 	set_terminal_owner(nullptr);                 // and it is nobody's again
 	// The terminal is the user's again, so anything held back can be said.
@@ -697,7 +730,16 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 	// through that shows a torn one. Begun before the uploads so an image and
 	// the text referencing it land together.
 	QByteArray out;
-	if (sync_frames()) out += "\033[?2026h";
+	// Asked ONCE and held, because the two halves of a bracket must not be
+	// able to disagree. They cannot today -- caps_ is written in exactly one
+	// place, the constructor -- but backend.h says of the cell size that the
+	// terminal "may answer LATER: the reply arrives on stdin like everything
+	// else", and the day caps_ learns to take a late reply, a bracket opened
+	// under one answer and closed under another leaves 2026 SET. The symptom
+	// of that is a terminal that stops repainting, which is the worst failure
+	// this file has available and would be nobody's first hypothesis.
+	const bool sync = sync_frames();
+	if (sync) out += "\033[?2026h";
 	out += uploads + "\033[H";
 	Sgr cur;
 	for (int y = 0; y < composed.rows(); ++y) {
@@ -794,7 +836,7 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &) {
 	// pixels the picture is part of the frame, and ending the bracket before
 	// it would leave exactly the tear this exists to prevent -- the text
 	// updated and the image arriving separately.
-	if (sync_frames()) out += "\033[?2026l";
+	if (sync) out += "\033[?2026l";
 	fwrite(out.constData(), 1, out.size(), stdout);
 	fflush(stdout);
 }

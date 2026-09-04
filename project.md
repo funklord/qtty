@@ -17,8 +17,8 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-869 checks, 0 failures, under six configurations, all six re-run
-2026-09-04 after two checks were added: the offscreen
+871 checks, 0 failures, under six configurations, all six re-run
+2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
 detector, a **debug** build -- which is not the same code, `setup()`
@@ -5601,6 +5601,54 @@ The check drives the seam rather than `exec()` -- a backend constructed, a
 having: **restoring the previous arrangement leaves the `exec()` check
 green and reddens only this one.** That is the residue reproduced rather
 than remembered.
+
+**A resize while suspended wrote into the terminal it had handed back**
+(2026-09-04). `suspend()` returns the terminal -- its own comment says "a
+program that suspends to shell out has a terminal it did not take over"
+-- and it restores the fatal handlers, `SIGTSTP` and `SIGCONT`.
+`SIGWINCH` was installed once, with `nullptr` for the old action, and
+never given back. So a resize still reached `read_winch()`, which calls
+`query_geometry()`:
+
+    after suspend, a resize wrote 10 bytes: \033[14t\033[16t
+
+into the terminal an editor had just been given, whose reply then arrives
+at the editor as keystrokes. That is the failure the paragraph two lines
+above `suspend()` exists to prevent, arriving by the one route it does
+not cover.
+
+**Found by the enter/leave symmetry lens**, derived from the day's
+wrong-descriptor bug: what does this code turn on, and does the same code
+turn it off. `kEnter` and `kLeave` are exactly paired and the 2026
+bracket is built into one buffer so it cannot be half-written -- three
+handlers saved and restored and a fourth not was the only asymmetry in
+the file.
+
+**The obvious fix is wrong, and the suite said so within a minute.**
+Restoring `SIGWINCH` in `suspend()` reddened *a terminal resize reaches
+the window, signal to geometry*: the handler is **process-wide** state
+and `suspend()` is **per-instance**, so a second backend going out of
+scope takes the handler from the first, which is still active and still
+owns the terminal. The suite creates nested backends, so it noticed at
+once. **The fatal handlers have the same shape and nothing tests it.**
+
+Doing it properly needs an ownership model that knows a suspend is the
+LAST one, and this file does not have one; inventing it is a design
+decision rather than a fix. So the guard lives where the damage is
+expressible -- `read_winch()` refuses when the backend is not active --
+which closes the whole measured defect and also the window a restored
+handler could not: a byte written by a resize arriving just BEFORE
+`suspend()` is already in the pipe.
+
+**What is left open is recorded rather than quietly dropped**: qtty still
+takes the host application's `SIGWINCH` permanently. It is a written
+limitation with its reason now, where before it was an absence.
+
+The pair: a resize reaches the backend while it owns the terminal, and a
+resize while suspended writes nothing. The negative failed against the
+unfixed library with the ten bytes in its message; the positive is there
+because "wrote nothing" is satisfied by a backend that has stopped
+watching resizes at all.
 
 **A click on a menu item dismissed the menu instead of firing it**
 (2026-09-02), and the reason had been recorded as somebody else's fault.
