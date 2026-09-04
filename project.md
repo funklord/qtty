@@ -1179,6 +1179,16 @@ answer rounded up to a whole cell. The check failed, which is a check
 finding the reader's mistake rather than the code's, and it holds the
 invariant the function exists for instead.
 
+**And the commit that said so went in on a red gate**, which is the third
+time today and the second with the same cause: I printed `make check`'s
+exit status and committed in the same command, without reading what I had
+just printed. The failure was the style gate -- 21 indentation
+violations, because the block had been inserted into the middle of
+another one. It passed when checked on its own a few minutes earlier,
+which is the part worth keeping: **a file-scoped gate run before the
+final edit is not the gate**. Moved to the end of the function, and the
+whole gate is green.
+
 What is left uncovered is now four kinds, each named rather than
 counted: deleting destructors, the numeric font-guard branches measured
 unreachable on this rasteriser, the inert SIGWINCH failure path, and the

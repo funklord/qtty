@@ -250,6 +250,10 @@ int suite_grid() {
 		// reads the corrected geometry instead. Which is also why this is the
 		// only place in the suite that has to say so: everything after
 		// suite_runtime re-installs GridSnap runs in the other order.
+
+		Qtty::GridGuard::reset();
+	}
+
 	{
 		// CT_ToolButton handed an option that is NOT a QStyleOptionToolButton.
 		// Qt always passes the subclass, so this is the defensive tail of that
@@ -270,9 +274,6 @@ int suite_grid() {
 		// exists for.
 		CHECK(got.width() % GridMetrics::cw() == 0,
 		      "and answers a whole number of cells wide");
-	}
-
-		Qtty::GridGuard::reset();
 	}
 
 	return fails;
