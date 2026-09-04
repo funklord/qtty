@@ -5638,6 +5638,25 @@ check alone; *and so does one from a frame loop the application drives*,
 the single-backend restore check, stays green -- which is the
 measurement of what it cannot see.
 
+**The line these three fixes draw, because the next reader will ask why
+`suspend()` was half changed.** It writes `kLeave`, restores the termios
+and flushes the held messages, all per instance and all left alone,
+while the handler group and `g_restore` moved to the count. The
+difference is not arbitrary:
+
+    process-wide GUARDS    must outlast every backend, because the
+                           terminal is still someone's -- handlers,
+                           the emergency restore
+    terminal ACTIONS       belong to whoever is suspending, because
+                           handing the screen back is what suspend()
+                           IS -- kLeave, the termios, the flush
+
+A guard released early leaves the terminal unprotected while it is still
+in use, which is a fault. An action taken by an inner backend is that
+backend doing its job; that nesting makes the result odd is the design
+saying qtty owns the terminal exclusively (§5.1), not a bug in
+`suspend()`.
+
 **A third instance of the shape is recorded rather than fixed.** The
 inverted ordering above is why: `suspend()` also clears the terminal
 OWNER per instance, so once the inner backend goes the fatal-message
