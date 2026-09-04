@@ -5806,6 +5806,33 @@ whole sweep:
                                            winding rules do not survive
                                            cell granularity
 
+**The four paint virtuals nothing overrides all work, and the probe that
+said otherwise was measuring the wrong thing** (2026-09-04). Derived from
+the `drawPixmap` defect above: if a parameter can be accepted and
+ignored, a whole VIRTUAL can be left unimplemented, and Qt's default may
+draw nothing. `CellPaintEngine` overrides ten of QPaintEngine's virtuals
+and leaves four drawing ones alone:
+
+    drawEllipse      6 changed cells   reaches drawPath -> bounding box
+    drawPoints       3 changed cells   three points, three cells
+    drawImage        1 placement       converts and reaches drawPixmap
+    drawTiledPixmap  2 placements      tiles into placements
+
+All four reach the engine and produce output. Nothing to fix, and the
+sweep is recorded because an empty result is a measurement only when its
+method is.
+
+**The first version of that probe reported two of them as drawing
+nothing.** It counted cells carrying a GLYPH, and `fill_rectf()` colours
+a background without writing a character -- so every fill reads as
+"nothing drawn". `drawEllipse` and `drawPoints` are exactly the two that
+fill rather than write, and both would have been filed as silent gaps
+and possibly "fixed". Counting cells that differ from a fresh buffer
+answers the question actually asked. **The instrument's error was in the
+direction that manufactures findings**, which is the one a sweep is least
+likely to catch: a false absence looks like diligence, a false presence
+looks like work.
+
 **A resize while suspended wrote into the terminal it had handed back**
 (2026-09-04). `suspend()` returns the terminal -- its own comment says "a
 program that suspends to shell out has a terminal it did not take over"
