@@ -35,3 +35,10 @@ compile_commands.json
 # fmake.toml beside it, is rebuilt from source, and is therefore output --
 # but fmake appends the bare line itself, so this says why.
 .fmake/
+
+# Harness state: agent worktrees and session scratch. Untracked and, until
+# now, unignored -- so `git status --porcelain`, which is the one thing this
+# project reads before every commit, opened with `?? .claude/` covering four
+# checked-out worktrees and 31 MB. A line nobody can explain is the whole
+# warning you get, and this one was 31 MB of somebody else's branches.
+.claude/
