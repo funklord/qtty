@@ -1938,7 +1938,19 @@ had just committed.
 
 In the order I would take them:
 
-1. **A second Qt 6 point release**, still the cheapest untaken
+1. **Kitty's share of damage-limited pixels, blocked on a number rather
+   than on effort.** Sixel and iTerm2 crop to their damage and the frame
+   loop keeps its picture, so that path meets both halves of §11 for a
+   small change. Kitty still sends the whole screen: deleting a placement
+   removes it from the display, so a partial one cannot be freed while
+   its pixels are wanted, and partials accumulate until a full redraw.
+   The scheme needs a policy -- how many partial updates before a full
+   frame -- and that trades placement count against bytes, wants
+   measuring against a real kitty terminal, and there is none here. §7.4
+   carries the reasoning and says it is reasoned from the protocol rather
+   than measured.
+
+2. **A second Qt 6 point release**, still the cheapest untaken
    configuration and still absent from this machine. Qt 5.15 is here and
    is a port rather than an axis -- §8.1 prices it at three conditionals
    in two files, the fourth usage having been closed without one. What a second 6.x would answer, with no decision at all,
@@ -1946,7 +1958,7 @@ In the order I would take them:
    exposure (a probe that passed on 6.10 and failed on 6.4.2) is the
    reason to want it.
 
-2. **§0b's questions are the holder's** and are not work to pick up: RTL
+3. **§0b's questions are the holder's** and are not work to pick up: RTL
    scope, the bundled font, tooltips and hover, the severity glyph,
    `SH_Slider_AbsoluteSetButtons`, the picture rule, the layout top
    margin, and whether `qtty-negotiate` belongs in `$PREFIX/bin` (§8.0).
