@@ -1608,6 +1608,49 @@ int suite_backend() {
 							pump();
 							ovoff = eout;
 						}
+						// The same overlay to a terminal whose cell is NOT
+						// this build's font. Everything else in this block
+						// answers CSI 16t with 10x19, which is exactly what
+						// GridMetrics measures here -- so the fixture sits on
+						// the one configuration where no scaling can happen,
+						// and the path that scales was unreachable from it.
+						//
+						// present_pixels() converts what it sends into the
+						// terminal's units and present_overlay() did not, one
+						// function away in the same file. Measured on a screen
+						// capture in kitty: in a single frame the base went out
+						// at 36 px and the overlay over it at 40.
+						//
+						// The size is derived from the font rather than
+						// written down, so the two cannot agree by accident on
+						// a machine whose metrics differ from this one's.
+						QByteArray ovscaled;
+						const int tcw = icw + 3, tch = ich + 5;
+						{
+							const QByteArray reply =
+							    "\033_Gi=31;OK\033\\"
+							    "\033[?2026;1$y"
+							    "\033P1+r524742=38\033\\"
+							    "\033]11;rgb:1c1c/1c1c/1c1c\033\\"
+							    "\033[6;" + QByteArray::number(tch) + ";"
+							    + QByteArray::number(tcw) + "t"
+							    "\033[?62;4;22c";
+							const ssize_t w6 = ::write(master, reply.constData(),
+							                           reply.size());
+							(void)w6;
+							AnsiBackend ov2;
+							Recorder ov2_rec;
+							ov2.set_event_sink(&ov2_rec);
+							const bool moved = ov2.capabilities().cell_px
+							                 == QSize(tcw, tch);
+							(void)moved;
+							while (::read(master, drain, sizeof(drain)) > 0) { }
+							eout.clear();
+							ov2.present_overlay(9, art, QPoint(2, 1), 3);
+							pump();
+							ovscaled = eout;
+						}
+
 						const QByteArray ovid =
 						    "i=" + QByteArray::number(0xFFFFE00u + 7u);
 
@@ -1626,6 +1669,15 @@ int suite_backend() {
 						      "present_overlay transmits in the overlay id space");
 						CHECK(ovoff.contains("a=d,d=i") && ovoff.contains(ovid),
 						      "and clear_overlay deletes the same id");
+						// The RELATIONSHIP, not either number: two cells go
+						// out as two of the TERMINAL's, whatever this build's
+						// font measures. Without the conversion it is two of
+						// the font's, which on this machine is 20x38 against
+						// a wanted 26x48.
+						CHECK(ovscaled.contains("s=" + QByteArray::number(2 * tcw))
+						      && ovscaled.contains("v=" + QByteArray::number(2 * tch)),
+						      "present_overlay sends in the terminal's cell, not"
+						      " the font's");
 						fflush(stdout);
 						::dup2(slave, 1);
 						if (had_gfx4.isEmpty()) qunsetenv("QTTY_GRAPHICS");

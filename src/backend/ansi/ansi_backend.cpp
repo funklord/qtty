@@ -955,6 +955,37 @@ void AnsiBackend::retire_uploads(const CellBuffer &frame, QByteArray &out) {
 	}
 }
 
+// qtty's pixel units into the terminal's. GridMetrics measures the font qtty
+// laid the widgets out in; the terminal answers CSI 16t with its own, and on
+// kitty here those are 10x19 and 9x18. An image sized in the first lands on
+// more cells than qtty thinks in the second, so every placement overlaps its
+// neighbour -- measured on a screen capture, which is the only thing that
+// could see it.
+//
+// Scaled at the point of transmission rather than by rasterising differently:
+// the frame loop lays out in GridMetrics and every other consumer of that
+// image expects those units. Only what goes on the wire has to speak the
+// terminal's.
+//
+// A named method rather than a lambda inside present_pixels, because that is
+// how the fix came to reach one of the two functions that transmit an image
+// and not the other. present_overlay() went on sending at qtty's size for as
+// long as the lambda was out of its reach: measured in one frame on screen,
+// the base scaled to 36 px and the overlay over it did not, at 40. The ratio
+// is written out rather than a cell count because an overlay is not
+// necessarily a whole number of cells; for the crops that are, it is the
+// same arithmetic.
+QImage AnsiBackend::for_terminal(const QImage &img) const {
+	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+	if (cw <= 0 || ch <= 0) return img;
+	if (!caps_.cell_px.isValid() || caps_.cell_px.width() <= 0
+	    || caps_.cell_px.height() <= 0 || caps_.cell_px == QSize(cw, ch))
+		return img;
+	return img.scaled(img.width()  * caps_.cell_px.width()  / cw,
+	                  img.height() * caps_.cell_px.height() / ch,
+	                  Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+}
+
 void AnsiBackend::present_pixels(const QImage &frame, const QRegion &damage) {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	// A SUPERSET of the damage is always safe -- repainting more than
@@ -972,16 +1003,6 @@ void AnsiBackend::present_pixels(const QImage &frame, const QRegion &damage) {
 	// differently: the frame loop lays out in GridMetrics and every other
 	// consumer of that image expects those units. Only what goes on the wire
 	// has to speak the terminal's.
-	const bool rescale = caps_.cell_px.isValid() && caps_.cell_px.width() > 0
-	                  && caps_.cell_px.height() > 0
-	                  && caps_.cell_px != QSize(cw, ch);
-	const auto for_wire = [&](const QImage &img, int cells_w, int cells_h) {
-		return rescale ? img.scaled(cells_w * caps_.cell_px.width(),
-		                            cells_h * caps_.cell_px.height(),
-		                            Qt::IgnoreAspectRatio,
-		                            Qt::SmoothTransformation)
-		               : img;
-	};
 	const QRect all(0, 0, frame.width() / cw, frame.height() / ch);
 	QRect cells = damage.isEmpty() ? all : damage.boundingRect().intersected(all);
 	if (cells.isEmpty()) return;
@@ -999,8 +1020,7 @@ void AnsiBackend::present_pixels(const QImage &frame, const QRegion &damage) {
 	    ? frame.copy(QRect(cells.x() * cw, cells.y() * ch,
 	                       cells.width() * cw, cells.height() * ch))
 	    : frame;
-	const QRect part_cells = (positional && cells != all) ? cells : all;
-	const QImage part = for_wire(cropped, part_cells.width(), part_cells.height());
+	const QImage part = for_terminal(cropped);
 
 	QByteArray out;
 	if (positional && cells != all)
@@ -1041,9 +1061,9 @@ void AnsiBackend::present_pixels(const QImage &frame, const QRegion &damage) {
 			     + QByteArray::number(t.x() + 1) + "H";
 			out += encode_kitty_tile(
 			    0xFFF0000u + idx, 1 + idx,
-			    for_wire(frame.copy(QRect(t.x() * cw, t.y() * ch,
-			                              t.width() * cw, t.height() * ch)),
-			             t.width(), t.height()));
+			    for_terminal(frame.copy(QRect(t.x() * cw, t.y() * ch,
+			                                  t.width() * cw,
+			                                  t.height() * ch))));
 		}
 		break;
 	}
@@ -1063,7 +1083,8 @@ void AnsiBackend::present_pixels(const QImage &frame, const QRegion &damage) {
 void AnsiBackend::present_overlay(int id, const QImage &rgba, QPoint cell, int z) {
 	if (mode_ != Capabilities::KittyAlpha) return;
 	QByteArray out = moveTo(cell);
-	out += encode_kitty_image(0xFFFFE00u + quint32(id), rgba, z > 0 ? z : 1);
+	out += encode_kitty_image(0xFFFFE00u + quint32(id), for_terminal(rgba),
+	                          z > 0 ? z : 1);
 	fwrite(out.constData(), 1, out.size(), stdout);
 	fflush(stdout);
 }

@@ -67,7 +67,25 @@ int main(int argc, char **argv) {
 	// terminal with no graphics protocol falls back to is reached only
 	// through the cell path. Asking present_pixels() for it draws nothing
 	// and looks exactly like a broken renderer.
-	if (qgetenv("QTTY_SCREEN_PATH") == "cells") {
+	if (qgetenv("QTTY_SCREEN_PATH") == "overlay") {
+		// The KittyAlpha overlay path, which is a different function from
+		// the pixel one and had never had a picture taken of it. The base
+		// frame is black so that the only colour on the screen is the
+		// overlay, and the marker's geometry is therefore the overlay's.
+		QImage base(cols * cw, rows * ch, QImage::Format_ARGB32_Premultiplied);
+		base.fill(QColor(0, 0, 0));
+		{
+			// A control in the same capture: if this blue appears and the
+			// overlay's green does not, the pixel path drew and the overlay
+			// path did not. Without it a blank screen cannot tell a broken
+			// overlay from a probe that never ran.
+			QPainter bp(&base);
+			bp.fillRect(4 * cw, 5 * ch, 4 * cw, 4 * ch, QColor(60, 90, 220));
+		}
+		backend.present_pixels(base, QRegion());
+		backend.present_overlay(1, px.copy(22 * cw, 5 * ch, 4 * cw, 4 * ch),
+		                        QPoint(22, 5), 1);
+	} else if (qgetenv("QTTY_SCREEN_PATH") == "cells") {
 		Qtty::CellBuffer frame(cols, rows);
 		Qtty::CellImage place;
 		QPixmap pm = QPixmap::fromImage(

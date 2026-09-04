@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-910 checks, 0 failures, under six configurations, all six re-run
+911 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6148,6 +6148,58 @@ there. `make` first, then judge.
 What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
+
+**The cell-size conversion reached one of the two functions that transmit
+an image** (2026-09-05). `present_pixels()` scales what it sends into the
+terminal's units; `present_overlay()`, forty lines below it in the same
+file, sent `rgba` straight to the encoder. On this machine kitty's cell is
+9x18 and this build's font 10x19, so every KittyAlpha overlay went out
+about 11% too large and spilled over its neighbours.
+
+Measured in a single frame, the base drawn through the pixel path and the
+overlay over it:
+
+    kitty       / pixels     marker 36   -
+    kitty-alpha / pixels     marker 36   -
+    kitty       / overlay    -           control 36   (the tier gates it)
+    kitty-alpha / overlay    marker 40   control 36
+
+The third row is correct behaviour, not a second fault: `present_overlay`
+returns unless the tier is KittyAlpha. The fourth is the defect, and it is
+the same fault this project already found and fixed once, one function
+away.
+
+**Why the suite could not see it, and this is the sharper half.** The pty
+fixture answers CSI 16t with `\033[6;19;10t` -- 10x19, which is exactly
+what `GridMetrics` measures here. So every check in that block runs on the
+one configuration where the terminal's cell and the font AGREE, and a
+conversion between them is unobservable by construction. The hazard was
+named in the code and the fixture sat on the safe side of it.
+
+The fix is one named method, `for_terminal()`, reachable by both. It was
+a lambda inside `present_pixels()` before, which is precisely how it came
+to serve one caller and not the other -- and the ratio is written out
+rather than a cell count, because an overlay need not be a whole number of
+cells while a tile crop always is.
+
+    sabotage                          the suite   test-screen
+    send the overlay unconverted      FAIL        FAIL
+
+Both, now. The unit check feeds a cell size derived from the font --
+`icw + 3` by `ich + 5` -- so it cannot agree with the font by accident on
+a machine whose metrics differ from this one's, and it asserts the
+relationship rather than either number: two cells go out as two of the
+TERMINAL's, whatever the font measures. The screen phase adds what bytes
+cannot, that a real kitty accepts and draws the thing.
+
+**And it drew a blue control through the pixel path in the same frame**,
+because three readings in a row said "no overlay" when the truth was that
+nothing had been drawn at all -- once because the tier was wrong, once
+because the capture came after `suspend()` gave the screen back, and once
+because my wait-for-it loop stopped on the terminal's own cursor. A
+capture with no marker cannot tell a broken path from a run that never
+happened, and each of those three would have been publishable as a
+finding.
 
 **A second terminal was asked what qtty concludes about it, and the
 answer needed a pty** (2026-09-05). Negotiation decides everything

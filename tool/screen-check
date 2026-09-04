@@ -111,6 +111,14 @@ import re, sys
 from PIL import Image
 shot, pred, tol, slack, who = sys.argv[1:6]
 tol, slack = int(tol), int(slack)
+# An optional CONTROL colour that must also be on the screen. Without one, a
+# capture with no marker in it cannot tell a path that drew nothing from a
+# run that never drew at all -- which cost three wrong readings while the
+# overlay phase was being written, each of them looking like a broken
+# renderer.
+control = None
+if len(sys.argv) > 6:
+	control = tuple(int(v) for v in sys.argv[6].split(","))
 m = re.search(r"predict left=(\d+) width=(\d+)", open(pred).read())
 if not m:
 	print("screen-check: FAILED -- %s's probe printed no prediction" % who,
@@ -126,8 +134,15 @@ def near(p):
 	        and abs(p[2] - 90) <= tol)
 xs = [x for y in range(h) for x in range(w) if near(px[x, y])]
 if not xs:
-	print("screen-check: FAILED -- the probe drew nothing in %s" % who,
-	      file=sys.stderr)
+	if control is not None:
+		seen = any(px[x, y] == control for y in range(h) for x in range(w))
+		print("screen-check: FAILED -- nothing at all was drawn in %s"
+		      % who if not seen else
+		      "screen-check: FAILED -- %s drew its control and not its marker"
+		      % who, file=sys.stderr)
+	else:
+		print("screen-check: FAILED -- the probe drew nothing in %s" % who,
+		      file=sys.stderr)
 	sys.exit(1)
 left, width = min(xs), max(xs) - min(xs) + 1
 # The slack is named rather than assumed, and it differs per terminal. In
@@ -147,6 +162,17 @@ GEOM
 		capture "$dir/geom.png" 0 \
 		    "kitty sh -c 'sleep 2; QTTY_GRAPHICS=kitty $dir/probe 2>$dir/pred'"
 		python3 "$dir/geom.py" "$dir/geom.png" "$dir/pred" 0 1 kitty
+
+		# The KittyAlpha overlay, which is a THIRD function that transmits
+		# an image and the last one with no picture of it. The probe draws a
+		# blue control through the pixel path in the same frame, so a
+		# missing overlay is told apart from a run that drew nothing -- the
+		# distinction that cost three wrong readings when the cell-size
+		# conversion was found missing here.
+		capture "$dir/ov.png" 0 \
+		    "kitty sh -c 'sleep 2; QTTY_GRAPHICS=kitty-alpha" \
+		    "QTTY_SCREEN_PATH=overlay $dir/probe 2>$dir/opred'"
+		python3 "$dir/geom.py" "$dir/ov.png" "$dir/opred" 0 1 overlay 60,90,220
 
 		# xterm needs three things said out loud, all of them learned by
 		# getting them wrong. -ti vt340 for sixel at all. allowWindowOps so

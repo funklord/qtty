@@ -53,6 +53,11 @@ public:
 	// IGraphicsOutput (section 5.7): pixel tiers for capable terminals.
 	void present_pixels(const QImage &frame, const QRegion &cell_region) override;
 	void present_overlay(int id, const QImage &rgba, QPoint cell, int z) override;
+
+	// qtty's pixel units into the terminal's, for anything about to go on
+	// the wire. Named rather than local because both functions that transmit
+	// an image need it and only one of them used to have it.
+	QImage for_terminal(const QImage &img) const;
 	void clear_overlay(int id) override;
 
 private:
