@@ -5893,11 +5893,30 @@ rather than scaling.
 images instead of one big one, and the oracle made it measurable.
 
 The rule it wants is one sentence -- **an image destined for the
-terminal is sized in the TERMINAL's cells** -- and the change is not one
-line, because `GridMetrics` is what the whole widget tree is laid out
-in. Text does not care: a cell is a cell whatever its pixels. Only the
-pixel tiers do. Recorded rather than fixed at the end of a long session,
-with the measurement attached so nobody has to take it on trust.
+terminal is sized in the TERMINAL's cells** -- and it is obeyed at the
+point of TRANSMISSION rather than by rasterising differently. The frame
+loop lays out in `GridMetrics` and every other consumer of that image
+expects those units; only what goes on the wire has to speak the
+terminal's. So `present_pixels()` scales each crop to `caps_.cell_px`
+when the two differ, and does nothing at all when they agree.
+
+**Verified on screen, and the first attempt at verifying it could not
+have failed.** The probe put its marker at cell 20, which is exactly a
+tile boundary -- so its left edge is the tile's cursor address, in cells
+and identical either way, and its right edge is clipped to the same
+place by the next tile's overdraw. Both hypotheses predicted the same
+pixels for different reasons, and reverting the fix changed nothing.
+
+Two cells of offset was the whole difference:
+
+    marker at cell 22, tile origin x=180
+    with the fix       green x 199..233   (2x9 = 18 in, blended edge)
+    without            green x 200..235   (2x10 = 20 in, hard edge)
+
+**A non-discriminating fixture is often one placement choice away from a
+discriminating one**, which is a cheaper thing to learn than it looks:
+the instinct is to distrust the instrument, and the instrument was fine.
+The marker was in the one position where the answer is the same.
 
 **The kitty tier crops too, by tiles** (2026-09-04), which is the last
 piece of the pixel path and the largest saving in it:

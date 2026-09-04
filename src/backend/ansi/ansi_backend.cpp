@@ -961,6 +961,27 @@ void AnsiBackend::present_pixels(const QImage &frame, const QRegion &damage) {
 	// changed is slow, repainting less is wrong -- so the bounding rectangle
 	// is taken rather than each rectangle in turn. An empty region means the
 	// whole screen, as it does for present().
+	// The TERMINAL's cell, not this build's font. GridMetrics measures the
+	// font qtty laid the widgets out in; the terminal answers CSI 16t with
+	// its own, and on kitty here those are 10x19 and 9x18. An image sized in
+	// the first lands on more cells than qtty thinks in the second, so every
+	// tile overlaps its neighbour -- measured on a screen capture, which is
+	// the only thing that could see it.
+	//
+	// Scaled at the point of transmission rather than by rasterising
+	// differently: the frame loop lays out in GridMetrics and every other
+	// consumer of that image expects those units. Only what goes on the wire
+	// has to speak the terminal's.
+	const bool rescale = caps_.cell_px.isValid() && caps_.cell_px.width() > 0
+	                  && caps_.cell_px.height() > 0
+	                  && caps_.cell_px != QSize(cw, ch);
+	const auto for_wire = [&](const QImage &img, int cells_w, int cells_h) {
+		return rescale ? img.scaled(cells_w * caps_.cell_px.width(),
+		                            cells_h * caps_.cell_px.height(),
+		                            Qt::IgnoreAspectRatio,
+		                            Qt::SmoothTransformation)
+		               : img;
+	};
 	const QRect all(0, 0, frame.width() / cw, frame.height() / ch);
 	QRect cells = damage.isEmpty() ? all : damage.boundingRect().intersected(all);
 	if (cells.isEmpty()) return;
@@ -974,10 +995,12 @@ void AnsiBackend::present_pixels(const QImage &frame, const QRegion &damage) {
 	// than looking like an oversight.
 	const bool positional = mode_ == Capabilities::Sixel
 	                     || mode_ == Capabilities::ITerm2;
-	const QImage part = (positional && cells != all)
+	const QImage cropped = (positional && cells != all)
 	    ? frame.copy(QRect(cells.x() * cw, cells.y() * ch,
 	                       cells.width() * cw, cells.height() * ch))
 	    : frame;
+	const QRect part_cells = (positional && cells != all) ? cells : all;
+	const QImage part = for_wire(cropped, part_cells.width(), part_cells.height());
 
 	QByteArray out;
 	if (positional && cells != all)
@@ -1016,10 +1039,11 @@ void AnsiBackend::present_pixels(const QImage &frame, const QRegion &damage) {
 			const quint32 idx = quint32(t.y() / tile * across + t.x() / tile);
 			out += "\033[" + QByteArray::number(t.y() + 1) + ";"
 			     + QByteArray::number(t.x() + 1) + "H";
-			out += encode_kitty_tile(0xFFF0000u + idx, 1 + idx,
-			                         frame.copy(QRect(t.x() * cw, t.y() * ch,
-			                                          t.width() * cw,
-			                                          t.height() * ch)));
+			out += encode_kitty_tile(
+			    0xFFF0000u + idx, 1 + idx,
+			    for_wire(frame.copy(QRect(t.x() * cw, t.y() * ch,
+			                              t.width() * cw, t.height() * ch)),
+			             t.width(), t.height()));
 		}
 		break;
 	}
