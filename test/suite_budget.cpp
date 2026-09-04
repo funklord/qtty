@@ -511,8 +511,18 @@ int suite_budget() {
 	printf("info: diff  200x60: %.3f ms (best of 50)\n", diff_ms);
 	printf("info: render 80x24 dialog: %.3f ms (best of 20; design.md F9 says 0.16)\n",
 	       dialog_ms);
+	// The pixel path's render cost, which damage-limited output did NOT
+	// touch: the frame loop rasterises the whole screen and paints every
+	// placement and overlay onto it before the backend crops. The crop saved
+	// bytes on the wire and nothing here. Printed rather than asserted, like
+	// the three above, and printed at all because the entry recording that
+	// work says nothing has measured whether damage-limiting the RASTERISE
+	// is worth doing. Now something has.
+	const double raster_ms =
+	    best_milliseconds(20, [&] { rasterize(after, QGuiApplication::font()); });
+	printf("info: rasterize 200x60 to pixels: %.3f ms (best of 20)\n", raster_ms);
 	printf("info: section 11 budget is 16 ms local, 50 ms over ssh -- read the "
-	       "three numbers above against it\n");
+	       "four numbers above against it\n");
 
 	// The one duration that is asserted, and the ceiling is deliberately
 	// absurd: ten times the whole 16 ms local frame budget, and roughly two

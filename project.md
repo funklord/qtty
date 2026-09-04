@@ -5721,9 +5721,27 @@ a true number about one half, reported in a sentence a reader will take
 for the whole. The three tier checks in `suite_graphics` say
 `composites in software into one full frame` and are still exactly
 correct -- they assert the IMAGE handed to `present_pixels()`, which is
-still the whole screen. Damage-limiting the rasterise would be a
-different change again, and nothing here has measured whether it is
-worth making.
+still the whole screen.
+
+**And the half that was not touched is the expensive one.** That
+sentence said "nothing here has measured whether it is worth making", so
+it was measured (best of 20, offscreen, this machine):
+
+    render 200x60 cells        3.411 ms
+    diff 200x60                0.149 ms
+    rasterize 200x60 to pixels  18.389 ms
+
+**The rasterise alone exceeds §11's whole 16 ms local budget**, before a
+byte is encoded or sent, and it is a floor rather than an average. So
+damage-limiting the rasterise is not a refinement of the work above: on
+the software-composite path it is the dominant cost, and the crop that
+saved 437x on the wire saved none of it. The path is over budget on CPU
+whenever an overlay is up.
+
+Printed beside the other three durations rather than asserted, for the
+reason that section already gives about load -- but it changes the
+question from "is it worth doing" to "this path does not meet §11 today
+and only this would fix it".
 
 **The sabotage matrix is the argument for the second check:**
 
