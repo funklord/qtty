@@ -75,7 +75,16 @@ looking current.
 ## Silence, and the one place it is the wrong answer
 
 **Measured 2026-08-31 with `qtty-negotiate --probes`**, which reports each
-probe as answered or silent rather than reporting what qtty concluded. The
+probe as answered or silent rather than reporting what qtty concluded.
+
+**Both ends must be a terminal to re-take this**, and since 2026-09-04 the
+tool enforces it rather than trying: `--probes` refuses, and says so on
+stderr, unless stdout is a terminal and stdin can be put in raw mode. So
+`-e qtty-negotiate --probes` inside beerssh is the way to run it and
+`... > capture.txt` is not -- redirecting stdout used to put the whole
+query into the file and then wait 200 ms for a reply that could not come.
+Capture the report with `QTTY_NEGOTIATE_OUT=<path>`, which writes it to a
+file while the probes still go to the terminal. The
 ordinary output cannot answer this question: under the asymmetry rule an
 unverifiable signal may only say yes, so "no reply" and "a reply saying no"
 reach the same conclusion there, deliberately -- and they are exactly the
