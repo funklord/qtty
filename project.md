@@ -1948,21 +1948,7 @@ had just committed.
 
 In the order I would take them:
 
-1. **Kitty's share of damage-limited pixels -- implementation, and no
-   longer blocked.** Sixel and iTerm2 crop to their damage and the frame
-   loop keeps its picture, so that path meets both halves of §11 for a
-   small change. Kitty still sends the whole screen. This item said it
-   was blocked on a policy number; kitty's own protocol document says
-   placements with a reused id REPLACE rather than accumulate, naming it
-   as the way to move one without flicker, so there is nothing to
-   measure, provided the placement RECTANGLE repeats -- which means fixed
-   tiles, each with a permanent placement id, redrawn when the damage
-   touches them. The parameter is the tile size, trading wasted pixels
-   per tile against placements per screen. §7.4 carries the correction,
-   how the wrong constraint was arrived at, and how the correction itself
-   overshot.
-
-2. **A second Qt 6 point release**, still the cheapest untaken
+1. **A second Qt 6 point release**, still the cheapest untaken
    configuration and still absent from this machine. Qt 5.15 is here and
    is a port rather than an axis -- §8.1 prices it at three conditionals
    in two files, the fourth usage having been closed without one. What a second 6.x would answer, with no decision at all,
@@ -1970,10 +1956,20 @@ In the order I would take them:
    exposure (a probe that passed on 6.10 and failed on 6.4.2) is the
    reason to want it.
 
-3. **§0b's questions are the holder's** and are not work to pick up: RTL
+2. **§0b's questions are the holder's** and are not work to pick up: RTL
    scope, the bundled font, tooltips and hover, the severity glyph,
    `SH_Slider_AbsoluteSetButtons`, the picture rule, the layout top
    margin, and whether `qtty-negotiate` belongs in `$PREFIX/bin` (§8.0).
+
+**One thing the pixel work leaves open, and it is a CHECK rather than a
+decision.** All three tiers are verified by their emitted bytes -- sizes,
+addresses, placement ids -- and none by what a terminal draws, although
+`make test-screen` proves that can now be done. Closing it needs a small
+driver that presents a frame through `AnsiBackend` inside kitty so the
+capture has something of qtty's to look at; the suite's fake backend
+cannot, and the shipped tools do not emit pixels. Named here because the
+oracle exists and the gap is now a missing fixture rather than a missing
+instrument.
 
 **And two standing ones that are method rather than work.**
 
