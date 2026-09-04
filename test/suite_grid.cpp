@@ -250,6 +250,28 @@ int suite_grid() {
 		// reads the corrected geometry instead. Which is also why this is the
 		// only place in the suite that has to say so: everything after
 		// suite_runtime re-installs GridSnap runs in the other order.
+	{
+		// CT_ToolButton handed an option that is NOT a QStyleOptionToolButton.
+		// Qt always passes the subclass, so this is the defensive tail of that
+		// case -- and it was the last uncovered line in the file. What it must
+		// not do is fall back to a PIXEL height: the contract of every metric
+		// here is a cell-high answer whatever it was handed.
+		QStyle *style = QApplication::style();
+		QStyleOption plain;
+		const QSize got = style->sizeFromContents(QStyle::CT_ToolButton, &plain,
+		                                          QSize(37, 91), nullptr);
+		CHECK(got.height() == GridMetrics::ch(),
+		      "an unrecognised tool-button option still measures one cell tall");
+		// Not "the width it was given": `width` there is the PROXIED answer
+		// rounded up to a whole cell, not the caller's contents size. The
+		// first version of this check asserted the pass-through and failed,
+		// which is the check finding the reader's mistake rather than the
+		// code's. The invariant worth holding is the one the whole function
+		// exists for.
+		CHECK(got.width() % GridMetrics::cw() == 0,
+		      "and answers a whole number of cells wide");
+	}
+
 		Qtty::GridGuard::reset();
 	}
 

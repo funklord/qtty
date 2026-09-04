@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-03
 
-865 checks, 0 failures, under six configurations: the offscreen
+867 checks, 0 failures, under six configurations: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
 detector, a **debug** build -- which is not the same code, `setup()`
@@ -1168,6 +1168,22 @@ program. That residue is stated rather than hidden.
 The bytes wait in the decoder's buffer until `set_event_sink()` is
 called, because `decode_one()` clears the buffer when there is no sink --
 so draining any earlier would throw away exactly what was just saved.
+
+**The uncovered list is now accounted for, line by line** (2026-09-04).
+The last unexamined one was `CT_ToolButton`'s defensive tail, taken when
+the option is not a `QStyleOptionToolButton` -- which Qt never does, so it
+guards against a caller that does. It is checked directly now, and the
+first version of that check **asserted the wrong thing**: that the width
+passed straight through. It does not; `width` there is the proxied
+answer rounded up to a whole cell. The check failed, which is a check
+finding the reader's mistake rather than the code's, and it holds the
+invariant the function exists for instead.
+
+What is left uncovered is now four kinds, each named rather than
+counted: deleting destructors, the numeric font-guard branches measured
+unreachable on this rasteriser, the inert SIGWINCH failure path, and the
+lines that run only in processes that abort, which gcov cannot record at
+all. **Nothing remains that is merely unexamined.**
 
 **And one attempt that was withdrawn, which is the more useful half of
 the same reading.** `compositor.cpp`'s unanchored-placement branch has no
