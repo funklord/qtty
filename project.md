@@ -1907,6 +1907,15 @@ day, and a list that records its own history is a list nobody reads. The
 closed ones are described where the work is -- the type-ahead residue in
 §7.1, the coverage decision and partial-line scrolling in §7.2.
 
+**And it lost an item within the hour, which is worth one sentence
+because of what the item was.** "An ownership model for the process-wide
+state the library takes" was written here as the holder's, and it was a
+counter: `resume()` takes a reference, `suspend()` restores on the last.
+The phrase was doing the deferring, not the problem -- see §7.4. **A
+question deferred under a grander name than it deserves is one nobody
+comes back to**, which is the failure mode this list exists to avoid and
+had just committed.
+
 In the order I would take them:
 
 1. **Damage-limited output, which is priced and not taken.**
@@ -1921,30 +1930,7 @@ In the order I would take them:
    does and what §11 claims, and it is the copyright holder's to
    authorise because it is a body of work rather than a fix.
 
-2. **An ownership model for the process-wide state the library takes.**
-   New on 2026-09-04 and the only item here that came out of a defect.
-   qtty installs a `SIGWINCH` handler and a Qt message handler and gives
-   neither back, while `suspend()` -- whose own comment says the handlers
-   go with the terminal -- restores the other four. Restoring them was
-   tried and reverted the same hour: the handlers are **process-wide**
-   and `suspend()` is **per-instance**, so a second backend going out of
-   scope takes them from the first, and an existing check said so at
-   once. What is missing is a way to know a suspend is the LAST one. The
-   damage is stopped where it was expressible (`read_winch()` refuses
-   when inactive), so this is a design gap rather than a live fault.
-
-   **Corrected within the hour: "the fatal handlers have the same shape
-   with nothing testing it" was wrong**, and wrong in the direction that
-   sends a reader at work already done -- the same fault this session
-   fixed in `input_router.cpp` this morning. Their install and restore
-   are asserted three ways, with a second cycle in the same block
-   precisely so it does not inherit its evidence from suite order. What
-   they share is the SHAPE, and what is untested is the case the
-   SIGWINCH attempt ran into: **nested** backends, where an inner one's
-   `suspend()` takes handlers from an outer one still using them. That
-   block creates its backends sequentially, so it cannot see it.
-
-3. **A second Qt 6 point release**, still the cheapest untaken
+2. **A second Qt 6 point release**, still the cheapest untaken
    configuration and still absent from this machine. Qt 5.15 is here and
    is a port rather than an axis -- §8.1 prices it at three conditionals
    in two files. What a second 6.x would answer, with no decision at all,
@@ -1952,7 +1938,7 @@ In the order I would take them:
    exposure (a probe that passed on 6.10 and failed on 6.4.2) is the
    reason to want it.
 
-4. **§0b's questions are the holder's** and are not work to pick up: RTL
+3. **§0b's questions are the holder's** and are not work to pick up: RTL
    scope, the bundled font, tooltips and hover, the severity glyph,
    `SH_Slider_AbsoluteSetButtons`, the picture rule, the layout top
    margin, and whether `qtty-negotiate` belongs in `$PREFIX/bin` (§8.0).
