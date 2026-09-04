@@ -48,6 +48,12 @@ timeout 120 xvfb-run -a -s "-screen 0 900x600x24" sh -c "
 # Second phase: qtty's OWN pixel path, not just the terminal's renderer.
 # Skipped rather than failed when the library is not built, since a tree
 # nobody has compiled is not a tree with a broken backend.
+#
+# Two terminals and two protocols, because agreement between them is worth
+# more than either alone: kitty over the kitty protocol, xterm over sixel.
+# They share nothing but this tree -- different implementations, different
+# authors, different wire formats -- so a geometry both of them draw is not
+# a property of one renderer.
 lib="${1:-build}/lib/libqtty.a"
 if [ -f "$lib" ] && command -v g++ >/dev/null 2>&1 \
    && command -v pkg-config >/dev/null 2>&1; then
@@ -55,6 +61,21 @@ if [ -f "$lib" ] && command -v g++ >/dev/null 2>&1 \
 	     -I include -I . $(pkg-config --cflags Qt6Widgets) \
 	     -L "${1:-build}/lib" -lqtty $(pkg-config --libs Qt6Widgets) \
 	     -lutil 2>"$dir/cc"; then
+
+		# Is the marker on screen yet? A tolerance, because sixel states
+		# colour as three PERCENTAGES: 40,200,90 goes out as 15,78,35 and
+		# comes back about 38,199,89. The kitty path is exact and passes 0.
+		cat > "$dir/seen.py" <<'SEEN'
+import sys
+from PIL import Image
+tol = int(sys.argv[2])
+im = Image.open(sys.argv[1]).convert("RGB")
+def near(p):
+	return (abs(p[0] - 40) <= tol and abs(p[1] - 200) <= tol
+	        and abs(p[2] - 90) <= tol)
+sys.exit(0 if any(near(p) for p in im.getdata()) else 1)
+SEEN
+
 		# Captured on a CONDITION rather than after a duration. The first
 		# version slept eight seconds and drew nothing on a loaded machine
 		# -- a fixed wait is a guess about somebody else's build queue, and
@@ -62,49 +83,80 @@ if [ -f "$lib" ] && command -v g++ >/dev/null 2>&1 \
 		# reason is worse than no check. It re-captures until the marker
 		# appears, with a bound so it still terminates when nothing ever
 		# draws.
-		timeout 200 xvfb-run -a -s "-screen 0 900x600x24" sh -c "
-			kitty sh -c 'sleep 2; QTTY_GRAPHICS=kitty $dir/probe 2>$dir/pred' &
-			n=0
-			while [ \$n -lt 25 ]; do
-				sleep 1
-				import -window root $dir/geom.png 2>/dev/null || true
-				if [ -s $dir/geom.png ] && python3 -c \"
-import sys
-from PIL import Image
-im = Image.open('$dir/geom.png').convert('RGB')
-sys.exit(0 if any(p == (40, 200, 90) for p in im.getdata()) else 1)\" 2>/dev/null
-				then break; fi
-				n=\$((n + 1))
-			done
-			wait" >>"$dir/log" 2>&1 || true
-		python3 - "$dir/geom.png" "$dir/pred" <<'GEOM'
+		capture() {
+			shot=$1; tol=$2; shift 2
+			timeout 200 xvfb-run -a -s "-screen 0 900x600x24" sh -c "
+				$* &
+				n=0
+				while [ \$n -lt 25 ]; do
+					sleep 1
+					import -window root $shot 2>/dev/null || true
+					if [ -s $shot ] && python3 $dir/seen.py $shot $tol
+					then break; fi
+					n=\$((n + 1))
+				done
+				wait" >>"$dir/log" 2>&1 || true
+		}
+
+		cat > "$dir/geom.py" <<'GEOM'
 import re, sys
 from PIL import Image
-shot, pred = sys.argv[1], sys.argv[2]
+shot, pred, tol, slack, who = sys.argv[1:6]
+tol, slack = int(tol), int(slack)
 m = re.search(r"predict left=(\d+) width=(\d+)", open(pred).read())
 if not m:
-	print("screen-check: FAILED -- the probe printed no prediction",
+	print("screen-check: FAILED -- %s's probe printed no prediction" % who,
 	      file=sys.stderr); sys.exit(1)
 want_l, want_w = int(m.group(1)), int(m.group(2))
 im = Image.open(shot).convert("RGB")
 w, h = im.size
 px = im.load()
-xs = [x for y in range(h) for x in range(w) if px[x, y] == (40, 200, 90)]
+def near(p):
+	return (abs(p[0] - 40) <= tol and abs(p[1] - 200) <= tol
+	        and abs(p[2] - 90) <= tol)
+xs = [x for y in range(h) for x in range(w) if near(px[x, y])]
 if not xs:
-	print("screen-check: FAILED -- the probe drew nothing", file=sys.stderr)
+	print("screen-check: FAILED -- the probe drew nothing in %s" % who,
+	      file=sys.stderr)
 	sys.exit(1)
 left, width = min(xs), max(xs) - min(xs) + 1
-# One pixel of slack, and the reason is named rather than assumed: scaling
-# to the terminal's cell uses a smooth transform, so the outermost column
-# is blended and no longer matches the colour exactly. Both numbers are
-# PRINTED, because a tolerance is only honest when the value inside it is
-# visible.
-ok = abs(left - want_l) <= 1 and abs(width - want_w) <= 1
-print("screen-check: qtty's pixel path drew left=%d width=%d,"
-	" predicted %d and %d" % (left, width, want_l, want_w),
+# The slack is named rather than assumed, and it differs per terminal. In
+# kitty it is one pixel: scaling to the cell uses a smooth transform, so
+# the outermost column is blended and no longer matches exactly. In xterm
+# it is the window's own inset, measured at 3 px on both axes and allowed
+# 6 -- which still separates a 6 px cell from a 10 px one by a wide
+# margin, the two predictions being 132 and 220. Both numbers are PRINTED,
+# because a tolerance is only honest when the value inside it is visible.
+ok = abs(left - want_l) <= slack and abs(width - want_w) <= slack
+print("screen-check: %s drew left=%d width=%d, predicted %d and %d"
+	% (who, left, width, want_l, want_w),
 	file=sys.stderr if not ok else sys.stdout)
 sys.exit(0 if ok else 1)
 GEOM
+
+		capture "$dir/geom.png" 0 \
+		    "kitty sh -c 'sleep 2; QTTY_GRAPHICS=kitty $dir/probe 2>$dir/pred'"
+		python3 "$dir/geom.py" "$dir/geom.png" "$dir/pred" 0 1 kitty
+
+		# xterm needs three things said out loud, all of them learned by
+		# getting them wrong. -ti vt340 for sixel at all. allowWindowOps so
+		# that CSI 16t is ANSWERED -- its default is off, and without it
+		# qtty gets silence, falls back to its own font metrics and draws
+		# at 10x19 where the terminal's cell is 6x13, so the scaling this
+		# check exists for is never exercised. And no -fa/-fs: asking for a
+		# TrueType font by name left xterm unable to start at all under
+		# Xvfb, and a capture of 540000 black pixels reads exactly like a
+		# renderer that drew nothing.
+		if command -v xterm >/dev/null 2>&1; then
+			capture "$dir/xterm.png" 4 \
+			    "xterm -ti vt340 -geometry 90x30+0+0" \
+			    "-xrm 'XTerm*allowWindowOps: true'" \
+			    "-e sh -c 'sleep 2; QTTY_GRAPHICS=sixel $dir/probe 2>$dir/xpred'"
+			python3 "$dir/geom.py" "$dir/xterm.png" "$dir/xpred" 4 6 xterm
+		else
+			echo "screen-check: xterm is absent, so the sixel tier was not" >&2
+			echo "              drawn -- the kitty tier above still ran" >&2
+		fi
 	else
 		echo "screen-check: the probe did not build, so the pixel path was" >&2
 		sed -n '1,3p' "$dir/cc" >&2

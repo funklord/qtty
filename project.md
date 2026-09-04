@@ -6106,6 +6106,49 @@ SILENT and fell back to the environment, which is the asymmetry rule
 working -- and a reader still has to be told that an inconclusive report
 is inconclusive, because I read past it myself.
 
+**A second terminal and a second protocol, and they agree** (2026-09-05).
+The kitty witness above is one implementation reading one specification.
+xterm 398 has sixel compiled in and is installed, so the screen probe was
+run again in xterm with `QTTY_GRAPHICS=sixel` -- a different terminal, a
+different protocol, and a different code path through `present_pixels()`.
+
+    predicted   left=132 width=24        (22 and 4 cells of a 6x13 cell)
+    observed    x 135..158, w 24, h 52   (4 x 6 by 4 x 13)
+
+Exact in both dimensions, and offset by a constant 3 px on both axes,
+which is xterm's own window inset rather than anything qtty computes. So
+the cell-size scaling committed for kitty is confirmed by an
+implementation that had no part in its design.
+
+**xterm does not answer CSI 16t unless `allowWindowOps` is on**, and that
+is the finding a user meets rather than a curiosity. Its default is off,
+for good reasons of its own, so on a stock xterm qtty asks for the cell
+size, gets silence, and falls back to its own font metrics -- 10x19 here
+against xterm's real 6x13. The image is then drawn at nearly twice the
+intended size. Nothing is wrong with the fallback, which is the only
+answer available, but the gap between `terminal 6x13` and `terminal
+10x19` in the probe's own output is exactly how much a terminal's silence
+costs, and it is worth a reader knowing that the flag exists.
+
+**Three false starts, and each was an instrument fault rather than a
+finding.** Recorded because all three would have been publishable as
+"qtty's sixel does not render":
+
+    -fa Monospace -fs 12    xterm never started; the capture was 540000 px of black
+    exact colour match      the marker is quantised; (40,200,90) never appears
+    stale build/lib         judged a screen result from a library make had not rebuilt
+
+The third is the one this tree already has a rule against and I did it
+anyway. `build/lib` was last written by a `make test-screen` run with a
+sabotage in place; the probe was then compiled against it by hand. The
+result -- a marker at 40x76 where 24x52 was predicted -- looked exactly
+like the cell-size fix failing, and it was the sabotage still being
+there. `make` first, then judge.
+
+What separated the first from a real finding was a control: a plain
+`xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
+white pixels. xterm draws under Xvfb; my invocation was what did not.
+
 **The sixel encoder was throwing away colour it did not have to**
 (2026-09-05), found while drawing the screen probe under xterm. The
 marker went out as (40,200,90) and came back (0,215,95) -- xterm-256 entry 41. That is not xterm
