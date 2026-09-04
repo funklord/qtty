@@ -467,6 +467,15 @@ bool FrameScheduler::eventFilter(QObject *o, QEvent *e) {
 	return false;
 }
 
+QRegion FrameScheduler::pixel_damage(const QRegion &cells,
+                                     const QVector<QRect> &was,
+                                     const QVector<QRect> &now) {
+	QRegion out = cells;
+	for (const QRect &r : was) out += r;
+	for (const QRect &r : now) out += r;
+	return out;
+}
+
 void FrameScheduler::request_frame() {
 	// 16 ms local budget (section 11); coalesce bursts into one frame.
 	const int wait = qMax(0, 16 - int(since_last_.elapsed()));
@@ -531,7 +540,10 @@ void FrameScheduler::render_now() {
 			            o->image());
 		}
 		p.end();
-		gfx->present_pixels(px, QRegion(0, 0, frame.cols(), frame.rows()));
+		QVector<QRect> now_overlays;
+		for (Overlay *o : overlays) now_overlays.append(overlay_cell_rect(o));
+		gfx->present_pixels(px, pixel_damage(damage, prev_overlays_,
+		                                     now_overlays));
 	} else if (!damage.isEmpty() || images_changed || !prev_ || !overlays.isEmpty()) {
 		backend_->present(frame, damage);
 		if (gmode == Capabilities::KittyAlpha && gfx) {   // terminal-blended alpha
@@ -545,6 +557,10 @@ void FrameScheduler::render_now() {
 	backend_->set_cursor(comp_->cursor_cell(),
 	                    comp_->cursor_cell() ? CursorShape::Bar : CursorShape::Hidden);
 	prev_ = std::make_unique<CellBuffer>(frame);
+	// Beside prev_, and for the same reason: the next frame's damage cannot
+	// be computed from this one's geometry alone.
+	prev_overlays_.clear();
+	for (Overlay *o : overlays) prev_overlays_.append(overlay_cell_rect(o));
 	since_last_.restart();
 }
 

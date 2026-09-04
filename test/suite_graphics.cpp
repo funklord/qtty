@@ -524,6 +524,41 @@ int suite_graphics() {
 		      "half-block carries the overlay colour");
 	}
 
+	// ---- what the PIXEL path must repaint ----
+	// The cell diff is NOT the damage for a rasterised frame: an overlay
+	// that MOVES changes pixels under cells that did not change, so a region
+	// computed from the diff alone leaves the overlay's old position on
+	// screen. Nothing else remembers where it was, which is why
+	// FrameScheduler keeps prev_overlays_ beside prev_.
+	//
+	// Tested as a pure function rather than through the frame loop: the
+	// union is the part that can be wrong, and the wiring is one call.
+	{
+		const QRegion diff(QRect(2, 2, 1, 1));
+		const QVector<QRect> was { QRect(10, 10, 4, 2) };
+		const QVector<QRect> now { QRect(20, 20, 4, 2) };
+
+		const QRegion moved = FrameScheduler::pixel_damage(diff, was, now);
+		// Both positions, and the cell that changed. The OLD one is the
+		// half a diff-only region misses, and it is the half that leaves a
+		// ghost of the overlay behind.
+		CHECK(moved.contains(QRect(10, 10, 4, 2))
+		      && moved.contains(QRect(20, 20, 4, 2))
+		      && moved.contains(QPoint(2, 2)),
+		      "a moved overlay damages where it was as well as where it is");
+		// And it does not swallow the screen: a union that returned
+		// everything would satisfy the line above and cost the whole frame.
+		CHECK(!moved.contains(QPoint(60, 40)),
+		      "and nothing it did not touch");
+
+		const QRegion still = FrameScheduler::pixel_damage(diff, was, was);
+		CHECK(still.contains(QRect(10, 10, 4, 2)) && still.contains(QPoint(2, 2)),
+		      "an overlay that stayed put is still repainted, being composited"
+		      " over cells that changed under it");
+		CHECK(FrameScheduler::pixel_damage(QRegion(), {}, {}).isEmpty(),
+		      "and no cells and no overlays is nothing to repaint");
+	}
+
 	// ---- Overlay API + registry ----
 	{
 		// The overlay's GUI twin is a top-level widget placed against the

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-885 checks, 0 failures, under six configurations, all six re-run
+889 checks, 0 failures, under six configurations, all six re-run
 2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -5726,11 +5726,32 @@ taken rather than each rectangle in turn: repainting more than changed is
 slow, repainting less is wrong. That removes a class of off-by-one from
 the crop at the cost of some redundant pixels.
 
-**What remains is the caller, and it is the half that resisted testing**,
-which is why it was not done in the same commit -- shipping an untestable
-change beside a tested one hides it inside a green suite:
+**And the caller followed, once the untestable part was made testable.**
+The risk was never the wiring; it was the UNION, which is the one thing
+that can be silently wrong. So the union is a pure static function --
+`FrameScheduler::pixel_damage(cells, was, now)`, public for no reason but
+that a test can reach it without a window, a backend, an overlay and a
+frame loop -- and the wiring is one call. `prev_overlays_` sits beside
+`prev_` and is updated in the same place, because the next frame's damage
+cannot be computed from this frame's geometry alone.
 
-- **Sixel and iTerm2 are purely positional.** They paint pixels at the
+Four checks, and the sabotage matrix says why each is there:
+
+    sabotage             moved   untouched   empty
+    forget `was`         FAIL    pass        pass
+    damage everything    pass    FAIL        FAIL
+
+Forgetting where an overlay WAS is the fault that leaves a ghost of it on
+screen, and only the first check sees it. **Damaging everything is the
+opposite fault and is invisible except as slowness** -- it satisfies
+every correctness assertion about damage perfectly, which is why "and
+nothing it did not touch" had to be written. That is the same shape as
+asserting a frame is SMALL without asserting it is RIGHT, pointed the
+other way round.
+
+**What was scoped and is still not done:**
+
+- ~~**Sixel and iTerm2 are purely positional.**~~ **Done.** They paint pixels at the
   cursor and leave no handle, so a partial update is an addressed cursor
   and a cropped encode -- no lifecycle, and the tier keeps working
   unchanged if the region is the whole screen.
@@ -5740,7 +5761,9 @@ change beside a tested one hides it inside a green suite:
   Making it partial needs a placement lifecycle for SCREEN images, which
   is what `uploaded_`/`upload_order_` do for cell placements and would
   have to be reinvented here.
-- **And nothing can supply the damage from what is kept.** The frame
+- ~~**And nothing can supply the damage from what is kept.**~~ **Done:
+  `prev_overlays_`.** The reasoning is kept because it names the wrong
+  turn, which is still available to anybody editing this. The frame
   loop holds the cell diff, and the cell diff is NOT the damage for this
   path: an overlay that MOVES changes pixels under cells that did not
   change, so the region has to be the cell diff united with the overlay

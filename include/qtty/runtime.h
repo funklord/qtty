@@ -5,6 +5,8 @@
 #include <QObject>
 #include <QPointer>
 #include <QHash>
+#include <QRegion>
+#include <QVector>
 #include <QElapsedTimer>
 #include <functional>
 #include <QTimer>
@@ -177,6 +179,18 @@ private:
 class FrameScheduler : public QObject {
 public:
 	FrameScheduler(ITerminalBackend *backend, Compositor *compositor, QWidget *window);
+	// What the PIXEL path has to repaint, which is not the cell diff. An
+	// overlay that MOVES changes pixels under cells that did not change, so
+	// the region is the diff united with the overlay rectangles from before
+	// and after. Passing the cell diff straight through looks correct,
+	// compiles, and leaves stale pixels wherever an overlay moved.
+	//
+	// Static and public so it can be tested without a frame loop: the union
+	// is the part that can be wrong, and the wiring is one call.
+	static QRegion pixel_damage(const QRegion &cells,
+	                            const QVector<QRect> &was,
+	                            const QVector<QRect> &now);
+
 	void request_frame();                                   // coalesced
 	void render_now();                                      // immediate (initial frame)
 	bool eventFilter(QObject *, QEvent *) override;        // UpdateRequest watcher
@@ -189,6 +203,9 @@ private:
 	QTimer idle_;
 	QElapsedTimer since_last_;
 	std::unique_ptr<CellBuffer> prev_;
+	// Where the overlays were last frame, in cells. Kept because nothing
+	// else remembers it and pixel_damage() cannot be computed without it.
+	QVector<QRect> prev_overlays_;
 };
 
 } // namespace Qtty
