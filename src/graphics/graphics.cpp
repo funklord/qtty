@@ -223,12 +223,12 @@ QByteArray encode_iterm2(const QImage &img, int w_cells, int h_cells) {
 }
 
 // ---- rasterizer ------------------------------------------------------------
-void rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
-                    const QRect &cells) {
+QRect rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
+                     const QRect &cells) {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
-	if (dst.isNull()) return;
+	if (dst.isNull()) return QRect();
 	QRect r = cells.intersected(QRect(0, 0, frame.cols(), frame.rows()));
-	if (r.isEmpty()) return;
+	if (r.isEmpty()) return QRect();
 	// Leftwards to the start of a wide cluster the rect cuts in half. The
 	// continuation cell carries no glyph, so a region beginning there paints
 	// nothing and leaves the previous frame showing through -- the one way a
@@ -263,6 +263,7 @@ void rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
 			}
 		}
 	p.end();
+	return r;
 }
 
 QImage rasterize(const CellBuffer &frame, const QFont &font) {

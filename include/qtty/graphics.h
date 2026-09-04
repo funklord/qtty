@@ -59,8 +59,15 @@ QImage rasterize(const CellBuffer &frame, const QFont &font);
 //
 // rasterize() is this function over the whole frame, so the two cannot
 // disagree about what a cell looks like.
-void rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
-                    const QRect &cells);
+//
+// Returns the rectangle it ACTUALLY painted, which is `cells` after that
+// expansion. A caller that draws anything over the cells -- the frame loop
+// paints placements and overlays -- has to clip to the same rectangle: clip
+// to the narrower one and the expanded column gets fresh cell pixels with no
+// overlay repainted over them, which is a hole in the overlay exactly one
+// cell wide. Returning it is what stops the rule being written twice.
+QRect rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
+                     const QRect &cells);
 
 // ---- fallback tier ---------------------------------------------------------
 // Composite an alpha image into cells at cell_rect (colour half-blocks, two

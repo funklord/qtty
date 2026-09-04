@@ -552,11 +552,19 @@ void FrameScheduler::render_now() {
 		const QRect cells_r = pix.isEmpty()
 		    ? QRect(0, 0, frame.cols(), frame.rows())
 		    : pix.boundingRect();
-		rasterize_into(pixels_, frame, QGuiApplication::font(), cells_r);
+		// Clipped to what the rasteriser actually painted, not to what it
+		// was asked for. It widens the rectangle leftwards to the start of a
+		// wide cluster, and clipping to the narrower one would give that
+		// column fresh cell pixels with no overlay drawn back over them -- a
+		// hole in the overlay one cell wide, on a wide glyph at the left
+		// edge of the damage. Asking for the rectangle back is what stops
+		// the expansion rule being written in two places.
+		const QRect painted =
+		    rasterize_into(pixels_, frame, QGuiApplication::font(), cells_r);
 		QImage &px = pixels_;
 		QPainter p(&px);
-		p.setClipRect(QRect(cells_r.x() * cw, cells_r.y() * ch,
-		                    cells_r.width() * cw, cells_r.height() * ch));
+		p.setClipRect(QRect(painted.x() * cw, painted.y() * ch,
+		                    painted.width() * cw, painted.height() * ch));
 		for (const CellImage &ci : frame.images)
 			p.drawPixmap(ci.cell_rect.x() * cw, ci.cell_rect.y() * ch, ci.pixmap);
 		for (Overlay *o : overlays) {

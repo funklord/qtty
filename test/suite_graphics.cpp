@@ -559,6 +559,33 @@ int suite_graphics() {
 		      " is obeyed");
 	}
 
+	// ---- the rasteriser says what it painted ----
+	// It widens the rectangle leftwards to the start of a wide cluster,
+	// because a continuation cell carries no glyph and a region beginning
+	// there would paint nothing. The frame loop clips its placement and
+	// overlay painter to the SAME rectangle -- clip to the narrower one and
+	// that column gets fresh cell pixels with no overlay drawn back over
+	// them, a hole one cell wide. Returning the rectangle is what keeps the
+	// expansion rule in one place instead of two.
+	{
+		CellBuffer wide(8, 2);
+		wide.text(0, 0, QStringLiteral("ab"));
+		wide.put_cluster(2, 0, QString(QChar(0x6f22)));   // two columns
+		wide.text(4, 0, QStringLiteral("cd"));
+		const QFont font = QGuiApplication::font();
+		QImage img = rasterize(wide, font);
+
+		// Asked for the continuation cell alone; must report the cluster's
+		// start. Paired with a request that needs no widening, because
+		// "returns something starting at 2" is also true of a function that
+		// always returns the whole frame.
+		const QRect got = rasterize_into(img, wide, font, QRect(3, 0, 1, 1));
+		const QRect plain = rasterize_into(img, wide, font, QRect(5, 0, 1, 1));
+		CHECK(got.left() == 2 && plain.left() == 5,
+		      "the rasteriser widens to a wide cluster's start and says so,"
+		      " and does not widen what needs no widening");
+	}
+
 	// ---- what the PIXEL path must repaint ----
 	// The cell diff is NOT the damage for a rasterised frame: an overlay
 	// that MOVES changes pixels under cells that did not change, so a region

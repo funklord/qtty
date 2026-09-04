@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-898 checks, 0 failures, under six configurations, all six re-run
+899 checks, 0 failures, under six configurations, all six re-run
 2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -5848,6 +5848,30 @@ placements and overlays are drawn every frame but CLIPPED to the same
 region, since they composite over cells that may have changed under
 them. A resized grid discards the buffer and repaints everything, that
 being the one event which makes every pixel wrong at once.
+
+**A hole in the overlay one cell wide, found by reading the day's diff**
+(2026-09-04). `rasterize_into()` widens its rectangle leftwards to the
+start of a wide cluster; the frame loop clipped its placement and overlay
+painter to the rectangle it ASKED for. So on a wide glyph at the left
+edge of the damage, that extra column got fresh cell pixels and no
+overlay drawn back over it.
+
+It returns the rectangle it painted now, and the caller clips to that.
+The alternative -- expanding in the caller too -- writes the cluster rule
+in two places, which is the hazard `sync_frames()` states and which three
+places in `ansi_backend.cpp` were caught breaking today. **Asking for the
+answer back is what keeps it in one place.**
+
+    sabotage                        the new check   the overlay content check
+    report `cells`, not `painted`   FAIL            pass
+
+The content check cannot see it: its fixture has no wide cluster at the
+damage's edge. **Nothing in the suite reached this**, and nothing would
+have -- it needs a wide cluster at the left edge of a damaged region with
+an overlay over the cell before it, which is narrow enough that no
+fixture builds it and real enough to punch a hole in a user's overlay.
+Found by reading a 466-line diff, not by a failing test, which is the one
+instrument the rest of today did not use.
 
 **Swept for the same shape elsewhere, and the suite is clean.** If one
 check family pinned size and counts without ever looking at content,
