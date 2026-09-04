@@ -5743,6 +5743,26 @@ reason that section already gives about load -- but it changes the
 question from "is it worth doing" to "this path does not meet §11 today
 and only this would fix it".
 
+**And there is a shape that avoids a seam change, which is the
+non-obvious part.** The tempting design is for the frame loop to
+rasterise only the damaged rectangle and hand a SMALLER image over --
+which moves the crop from the backend to the caller, so both ends have
+to agree about who has already cropped. Two places answering that is the
+parallel-copy hazard this tree keeps meeting, and a disagreement paints
+the damage at the wrong place.
+
+The alternative needs no agreement at all: **keep a persistent
+full-size image in the frame loop and rasterise only the damaged cells
+INTO it**, leaving the rest of the pixels from the previous frame. The
+image handed over stays whole, `present_pixels()` goes on cropping it
+for the wire exactly as it does now, the three tier checks go on
+asserting a full-size image, and nothing about the seam moves. What it
+needs is a `rasterize` that paints into an existing image at an offset
+rather than returning a new one.
+
+Not done, and not started. Recorded because the obvious design is the
+one with the hazard in it.
+
 **The sabotage matrix is the argument for the second check:**
 
     sabotage                    size    address
