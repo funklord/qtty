@@ -15,9 +15,9 @@ open, and how to work in the tree. Where design.md holds the detail, this
 document states the substance in a sentence or two and cites the section
 number rather than restating it.
 
-## 0a. State, 2026-09-03
+## 0a. State, 2026-09-04
 
-867 checks, 0 failures, under six configurations: the offscreen
+869 checks, 0 failures, under six configurations: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
 detector, a **debug** build -- which is not the same code, `setup()`
@@ -6250,6 +6250,59 @@ whether anything ever calls it.
   gives `2026;0` and they are not.
 
   `title` is still false -- there is no OSC emitter.
+
+  **And the rule that one function decides was stated here and obeyed in
+  one of the three places** (2026-09-04). `sync_frames()` is written
+  `tty_out_ && mode_usable(...)`; `mouse` and `bracketed_paste` were keyed
+  to `raw_ok_` alone, which is a fact about **stdin**, while the sequence
+  that enables them is written by `resume()` only when **stdout** is a
+  terminal. So with the two ends disagreeing the modes were never
+  requested and both were reported anyway:
+
+      stdin a pty, stdout a file    mouse yes, bracketed paste yes
+      both a pipe (the control)     mouse no,  bracketed paste no
+
+  The control says no only because `raw_ok_` is false there, so the flag
+  was keyed to the wrong end rather than merely being generous.
+  `qtty-app > out.txt` typed at a shell reaches it, and `qtty-negotiate`
+  is the consumer -- doc/beerssh.md reads that report.
+
+  **Neither flag was asserted anywhere**, which is why a rule written down
+  four lines away went unfollowed for as long as it liked. Both halves are
+  checks now: the existing pty fixture asserts they ARE claimed with both
+  ends a terminal, and a new one with stdout on `/dev/null` asserts they
+  are not. The negative failed before the fix and passes after; without
+  the positive, "nothing claimed" would satisfy it on its own.
+
+- **A bound the parent enforces is gone when the parent is killed**
+  (2026-09-04). `fatal_child()` kills a child that overstays after a
+  scaled patience, and that is the parent's loop -- so a run stopped from
+  outside, which is a kill rather than a signal, leaves the child with
+  nothing to stop it. The children get `PR_SET_PDEATHSIG` now, with a
+  `getppid()` re-check for the window between fork and prctl, because the
+  kernel is the only party still present.
+
+  **Recorded with what is and is not established, because the obvious
+  story does not survive its own evidence.** Two processes were found
+  orphaned to init, state R, four hours old with an hour and fifty-five
+  minutes of CPU each, stdio on ptys whose master had closed -- the
+  running-code.md incident shape exactly. They were **not** the suite:
+  `lsof` gives their image as a scratch probe of mine in `/tmp`, of the
+  same fork-onto-a-pty shape, so what is measured is the SHAPE leaking and
+  not this fixture leaking.
+
+  Trying to make the fixture leak on demand failed. Three timed kills of a
+  real run gave zero orphans with the guard and **zero with the guard
+  deliberately removed**, and a fourth that waited for a live child before
+  killing the parent saw the child die anyway. Zero on both sides
+  discriminates nothing: the kills never landed in the window that
+  matters.
+
+  So the mechanism is proven -- a probe's child survives a killed parent
+  without the signal and dies with it -- the incident is real, and the
+  link between them is not. The guard stays as hardening on a shape that
+  has bitten this workspace before, which is a different claim from a
+  reproduced fault, and this entry says which one it is.
 - **`test/suite_backend.cpp` covers the decoder**, which had no test at
   all -- which is how the fixed-width reader survived long after the
   runtime grew sinks it could not feed.

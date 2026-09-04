@@ -203,8 +203,17 @@ Capabilities AnsiBackend::capabilities() const {
 	// terminal understands, so it is now only the ASSUMPTION -- what to
 	// believe when the terminal did not answer. A definite "not recognised"
 	// from DECRQM overrides it; silence leaves it alone.
-	c.mouse = mode_usable(caps_, 1006, raw_ok_);
-	c.bracketed_paste = mode_usable(caps_, 2004, raw_ok_);
+	//
+	// And gated on tty_out_, which is the half this got wrong. resume()
+	// writes the enabling sequence only when stdout is a terminal, so with
+	// stdout redirected -- `app > out.txt`, typed at a shell -- the modes are
+	// never requested and nothing can report a press or bracket a paste.
+	// Keying them to raw mode alone claimed both anyway, for the same reason
+	// sync_frames() below is written with tty_out_ in front of it: this
+	// function and the one that writes the sequence must not be able to
+	// disagree.
+	c.mouse = tty_out_ && mode_usable(caps_, 1006, raw_ok_);
+	c.bracketed_paste = tty_out_ && mode_usable(caps_, 2004, raw_ok_);
 	c.unicode_wide = true;                           // L2 measures width itself
 
 	// DEC 2026 is NOT claimed. section 11 wants synchronised output to

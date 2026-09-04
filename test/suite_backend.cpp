@@ -20,6 +20,7 @@
 #include <sys/ioctl.h>
 #include <pty.h>
 #include <fcntl.h>
+#include <sys/prctl.h>
 #include <csignal>
 #include <sys/wait.h>
 #include <sys/resource.h>
@@ -154,9 +155,23 @@ QByteArray fatal_child(bool screen, const std::function<void()> &body,
 
 	fflush(stdout);
 	fflush(stderr);
+	const pid_t parent = ::getpid();
 	const pid_t pid = ::fork();
 	if (pid < 0) { ::close(slave); ::close(master); return QByteArray(); }
 	if (pid == 0) {
+		// The patience below is the PARENT's bound, and a bound the parent
+		// enforces is gone the moment the parent is KILLED rather than
+		// exiting -- which is what a background run stopped from outside
+		// does. Measured 2026-09-04: two children of killed runs were found
+		// orphaned to init, state R, four hours old with an hour and
+		// fifty-five minutes of CPU each, stdio on ptys whose master had
+		// closed. Ask the kernel, which is the only party still present.
+		//
+		// The getppid() re-check closes the window between fork and prctl: a
+		// parent that died in it has already sent the signal nobody was
+		// listening for.
+		prctl(PR_SET_PDEATHSIG, SIGKILL);
+		if (::getppid() != parent) ::_exit(0);
 		const struct rlimit no_core { 0, 0 };
 		setrlimit(RLIMIT_CORE, &no_core);
 		::close(master);
@@ -1055,6 +1070,12 @@ int suite_backend() {
 				      "and so is its background");
 				CHECK(live.size() == QSize(80, 24),
 				      "and the size came from the terminal, not the fallback");
+				// The positive half of the pair below. Neither was asserted
+				// anywhere, and an unasserted pair is how a flag keyed to
+				// the wrong descriptor survives: "nothing claimed" satisfies
+				// the negative on its own.
+				CHECK(c.mouse && c.bracketed_paste,
+				      "and with both ends a terminal the modes are claimed");
 
 				// The resize half, which is the reason this is tied to input
 				// at all: a font change moves the pixel geometry without
@@ -1835,6 +1856,41 @@ int suite_backend() {
 					live.set_event_sink(&live_rec);
 				}
 			}
+
+			// Stdin a terminal, stdout NOT -- `app > out.txt` typed at a
+			// shell, which is the one configuration where the two ends
+			// disagree. resume() writes the mode-enabling sequence only when
+			// stdout is a terminal, so here it is never written and nothing
+			// can report a mouse press or bracket a paste. capabilities()
+			// keyed both flags to raw mode, a fact about STDIN, and claimed
+			// them anyway.
+			//
+			// sync_frames() had the answer beside it the whole time and says
+			// why: present() and capabilities() must not be able to disagree,
+			// because a field claiming a mode while the frames go out bare is
+			// invisible from inside.
+			{
+				const int devnull = ::open("/dev/null", O_WRONLY);
+				if (devnull < 0) {
+					printf("FAIL: could not open /dev/null\n");
+					++fails;
+				} else {
+					fflush(stdout);
+					::dup2(devnull, 1);
+					Capabilities half;
+					{
+						AnsiBackend out_is_a_file;
+						half = out_is_a_file.capabilities();
+					}
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					::close(devnull);
+					CHECK(!half.mouse && !half.bracketed_paste,
+					      "with stdout redirected neither mode is claimed, "
+					      "because neither was requested");
+				}
+			}
+
 			fflush(stdout);
 			::dup2(keep_in, 0);
 			::dup2(keep_out, 1);
