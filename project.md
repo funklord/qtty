@@ -44,9 +44,15 @@ derives everything from was an *account setting*, not a property of the
 font, and `setup()` now asks for the hinting that makes it so rather than
 inheriting whatever the desktop supplies.
 
-Whole-tree line coverage **97.65%, 2655 of 2719**, re-taken with the
-command in §0c into a build directory removed first -- **and taken twice,
-from two fresh builds, which returned the identical pair.** A single
+Whole-tree line coverage **97.77%, 2675 of 2736 when last taken, on
+2026-09-04**, with the command in §0c into a build directory removed
+first. **The date is part of the claim**: checks have been added since,
+so this is a reading and not a property of the tree -- which is this
+document's own rule about countable claims, applied to the number it is
+most tempted to state flatly.
+
+An earlier reading the same day, `97.65%, 2655 of 2719`, was **taken
+twice from two fresh builds and returned the identical pair.** A single
 coverage figure says nothing about its own stability; two do.
 
 **And a baseline was taken beside it, on the same day and with the same
@@ -491,6 +497,25 @@ Owned elsewhere, and signalled rather than fixed here:
   may be tab-indented **or** column-aligned and both are legal, so the fix
   must accept both rather than choose. 764 findings across eleven trees
   turn on it.
+- **Leading whitespace at structure depth 0 is unchecked by
+  `style_gate.py`**, found 2026-09-04 and **latent here**: qtty has 58
+  space-led lines and every one is a continuation aligned under an
+  opening paren, which is the convention and is correctly accepted.
+  Measured on three fixtures:
+
+      inside a function, spaces      1 violation -- caught
+      at file scope, spaces          PASSES
+      inside a function, space+tab   2 violations -- caught
+
+  Inside braces the gate compares tabs against structure; at depth 0 the
+  expected count is zero, so "no tabs" matches whatever spaces precede
+  the token. It cost a wasted verification cycle -- a deliberate
+  violation planted to test a new pre-commit hook was this shape, the
+  gate passed it, and the test proved nothing -- which is the same
+  failure the gate exists to prevent, one layer down. The peer session
+  that owns the shared copy has ended, so this is the signal; a fix has
+  to keep continuation lines legal, the same constraint the lexer fault
+  above runs into.
 - **§9.8's two compensating regions** in `src/graphics/graphics.cpp` -- the
   lambda body near 254-257 and the final `else` near 274-278 -- are bent
   around the still-open lambda fault and **must go red when it is fixed**.
