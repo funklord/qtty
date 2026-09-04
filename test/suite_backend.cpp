@@ -2655,11 +2655,23 @@ int suite_exec() {
 				if (disposition(sig) != SIG_DFL) ++still_set_after;
 		}
 		// A second cycle, in this block rather than relying on an earlier
-		// one somewhere else in the suite. Install and restore are coupled by
-		// a "did I install" flag, so a broken restore shows up as a failure
-		// to install the SECOND time -- and that is what a sabotage of the
-		// restore actually reddens. Saying it here makes the block test its
-		// own claim instead of inheriting the evidence from suite order.
+		// one somewhere else in the suite. It asserts that a backend
+		// installs the handlers again after another has given them back,
+		// which is a property in its own right.
+		//
+		// It USED to catch a broken restore as well, and that claim is
+		// withdrawn. Install and release were coupled by a "did I install"
+		// flag, so a restore that never happened left the flag set and the
+		// second backend installed nothing. They are coupled by a COUNT now
+		// (2026-09-04), which returns to zero on suspend whether or not the
+		// handlers were put back -- so this cycle installs either way and
+		// the sabotage that used to redden it leaves it green.
+		//
+		// Measured by re-running that sabotage after the count landed, which
+		// is the only thing that could have shown it: removing the restore
+		// reddens "puts the previous handlers back" and "the last one out
+		// still puts them back", and nothing else. The direct checks carry
+		// it alone now.
 		int set_second = 0;
 		{
 			Feeder feeder;

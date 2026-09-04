@@ -1950,6 +1950,38 @@ within an hour of that coverage being written, because the improved path
 now restores the terminal by a route that does not need it. The tell was
 not available by reading; only re-running the older sabotage found it.
 
+**Applied once and it found a second instance immediately.** The handler
+COUNT blinded the check written to catch a broken restore. That check's
+comment said install and restore were coupled by a "did I install" flag,
+so a restore that never happened left the flag set and a second backend
+installed nothing -- true of the flag, false of the count, which returns
+to zero on suspend either way. Re-running the old sabotage after the
+count landed is what showed it: removing the restore now reddens the two
+direct checks and nothing else. The comment is withdrawn rather than
+quietly deleted, because it named a mechanism a reader would otherwise
+still believe.
+
+**Two instances in one evening, from two unrelated fixes**, which is what
+makes this a standing item rather than an anecdote: an improvement that
+makes a fault unreachable by one route silently retires whatever was
+watching that route.
+
+**And both sat in the same cluster, which says where to spend the
+re-runs.** The other four fixes of that evening could not blind
+anything, and reading says why rather than guessing: damage-limited
+`present()` leaves every test caller on the unchanged path, since they
+pass an empty region explicitly; the `drawPixmap` crop could only reach
+a check that passes a source rectangle, and a probe measured that none
+does; the focus `QPointer` needs a check that depends on a stale pointer
+surviving, and none constructs that; the pid reset was re-run live and
+still reddens `SIGCONT`.
+
+So the risk concentrates on a fix that changes **how shared state is
+owned or released** -- both instances were exactly that -- and a fix to
+a local computation cannot retire a neighbouring check, because nothing
+else was reaching the fault through it. Re-run the sabotages whose
+subject shares state with what changed, rather than all of them.
+
 **Derive the next lens from the last defect, and finish it.** Every fault
 found on 2026-09-04 came from a lens the previous fault suggested rather
 than from a list decided in advance -- a stated rule obeyed in some
