@@ -467,6 +467,12 @@ test-install: $(LIB) $(INSPECT) $(REPLAY)
 # program that prints nothing and exits 0 satisfies a status check, which is
 # this document's oldest complaint about gates.
 #
+# The replay snapshot arm asserts BOTH halves of why that command exists: a
+# selection must change the snapshot, and must NOT change the text frame.
+# `frame` prints glyphs, so `ctrl a` -- and `click`, and `key Tab` -- leave it
+# byte-identical, which is a bug report missing the very state it was made to
+# show. The suite hit the same thing and answered it the same way.
+#
 # The example needs a terminal, so it gets a pseudo-terminal from `script` and
 # a Ctrl-D to leave by. Skipped with a note where `script` is absent, the way
 # the hostile theme and the xcb arm are.
@@ -502,6 +508,21 @@ test-tools: all
 	*"--- frame 0 ---"*hi*) echo "    replay: ok";; \
 	*) echo "    replay: FAILED -- a script produced no frame"; fail=1;; \
 	esac; \
+	plain=$$(printf 'text hi\nsnapshot\n' \
+		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null); \
+	picked=$$(printf 'text hi\nctrl a\nsnapshot\n' \
+		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null); \
+	flat=$$(printf 'text hi\nframe\n' \
+		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null); \
+	flatpicked=$$(printf 'text hi\nctrl a\nframe\n' \
+		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null); \
+	if [ "$$plain" != "$$picked" ] && [ "$$flat" = "$$flatpicked" ]; then \
+		echo "    replay snapshot: ok"; \
+	else \
+		echo "    replay snapshot: FAILED -- a selection must change the"; \
+		echo "                     snapshot and must not change the frame"; \
+		fail=1; \
+	fi; \
 	out=$$(timeout $(TEST_TIMEOUT) $(NEGOTIATE) < /dev/null 2>/dev/null); \
 	case "$$out" in \
 	*graphics*Halfblocks*"bracketed paste"*no*) echo "    negotiate: ok";; \

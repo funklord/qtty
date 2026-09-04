@@ -1482,6 +1482,33 @@ fork, and one whose is not. Without the second, a decoder that invented a
 keystroke would pass. Removing the retention reddens the first and leaves
 the second green.
 
+**A shipped tool could not show the states its own commands produce**
+(2026-09-04). `qtty-replay` exists to make bug reports reproducible, and
+its script has five commands: `text`, `key`, `ctrl`, `click`, `frame`.
+Only two were exercised by anything. Driving the other three found no
+defect in them -- and found that **`frame` cannot show what they do**:
+
+    text hi / frame / ctrl a / frame     the two frames are byte-identical
+
+`ctrl a` selects the whole field; `frame` prints `to_text()`, which is
+glyphs. So a report built with this tool omits precisely the selection,
+focus and highlight its `ctrl`, `click` and `key Tab` commands exist to
+produce. **The suite hit this exact wall and answered it already** --
+§9's snapshots carry attributes because "a frame that stopped drawing a
+selection compared equal to one that drew it" -- and the tool never got
+the answer.
+
+A `snapshot` command now prints `to_snapshot()`. Added rather than
+swapped: `frame` keeps its format, because something may be reading it.
+The same script through it:
+
+    attrs (none)     before        attrs .gg     after
+
+`make test-tools` asserts **both halves**: a selection must change the
+snapshot, and must not change the frame. The second is not decoration --
+it is the reason the first exists, and printing `to_text()` from the new
+command reddens the arm.
+
 **And then the four programs this project BUILDS, which were built by
 every run above and executed by none of them.** The only thing holding
 any of them to anything was the compiler.

@@ -8,6 +8,7 @@
 //   ctrl <letter>     e.g. "ctrl s"
 //   click <col> <row> mouse press+release at cell
 //   frame             print the composed frame between markers
+//   snapshot          the same, with attributes -- what `frame` cannot show
 //
 // --ansi: emit the raw ANSI/graphics byte stream through the real
 // AnsiBackend instead of text frames -- a deterministic corpus for terminal
@@ -107,6 +108,26 @@ int main(int argc, char **argv) {
 			} else {
 				printf("--- frame %d ---\n%s--- end ---\n", frame_no++, qPrintable(buf.to_text()));
 			}
+		} else if (cmd == QLatin1String("snapshot")) {
+			// The same frame with its ATTRIBUTES, which `frame` cannot show.
+			// to_text() is glyphs only, so a selection, a focus mark and a
+			// highlight are all invisible in it -- measured here: `text hi`
+			// then `ctrl a` then two frames come out byte-identical, and the
+			// second one has the whole field in reverse video.
+			//
+			// That matters for the one thing this tool is for. A bug report
+			// built from `frame` output omits exactly the states its own
+			// `click`, `ctrl` and `key Tab` commands produce. The suite hit
+			// this and fixed it the same way: section 9's snapshots carry
+			// attributes because "a frame that stopped drawing a selection
+			// compared equal to one that drew it".
+			//
+			// Added rather than swapped: `frame` keeps its format, because
+			// something may be reading it.
+			CellBuffer buf(48, 14);
+			comp.compose(buf);
+			printf("--- snapshot %d ---\n%s--- end ---\n",
+			       frame_no++, qPrintable(buf.to_snapshot()));
 		} else {
 			fprintf(stderr, "qtty-replay: unknown command '%s'\n", qPrintable(cmd));
 		}
