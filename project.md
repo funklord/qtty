@@ -1435,7 +1435,7 @@ work** (2026-09-04). `make check` now records its verdict, and
     check starts   stamp "RUNNING"     the hook refuses, naming why
     check fails    stamp "FAIL <id>"   the hook refuses, naming why
     check passes   stamp "PASS <id>"   the hook allows
-    content moved  stamp is stale      the hook allows
+    content moved  stamp is stale      the hook allows, and says so
 
 **Narrow on purpose.** It answers "you were told this is broken", not
 "prove it works": no stamp, or a stamp for other content, and the commit
@@ -1444,6 +1444,26 @@ run the gate on are none of its business, and `--no-verify` remains the
 deliberate way past. The identity is HEAD plus every uncommitted change
 to tracked files, which is what `git diff HEAD` gives and is unchanged by
 staging -- so `git add` does not invalidate a verdict.
+
+**And the stale-stamp row now prints a note, after the same failure
+happened a fifth time** (2026-09-04, an hour after `RUNNING` landed). The
+gate passed; I edited `project.md` again; I committed. The content hash
+had moved, so there was no stamp for it and the hook was silent -- which
+is what "narrow on purpose" says it will do, and it is right that it does
+not REFUSE, since a stamp about other content is not evidence about this
+one. But it is worth a line, because that is the shape which gets past
+every version of this hook, and the note cannot fire on the ordinary
+cycle where the stamp matches.
+
+All four states were exercised: a matching `PASS` is silent, a stamp for
+other content prints the note and allows, `FAIL` and `RUNNING` for this
+content refuse. **The first run of that test measured the OLD hook** --
+the script that was to edit it asserted on a second anchor, failed, and
+aborted before writing anything, so the file was unchanged and the note
+did not appear. Reading "the note did not print" as a bug in the note
+would have been the natural next step; checking that the edit had landed
+is what this tree's rule about confirming a sabotage applied is for, and
+it applies to the fix as much as to the sabotage.
 
 **`RUNNING` was not in the first version, and its absence let the same
 failure happen a fourth time** (2026-09-04, hours after the hook was

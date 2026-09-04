@@ -16,7 +16,9 @@
 # RUNNING. No stamp, or a stamp for different content, and the commit proceeds
 # untouched -- a fresh clone, a first commit, or a tree nobody has run the gate
 # on is not this hook's business. It answers "you were told this is broken",
-# not "prove it works".
+# not "prove it works" -- and it says so out loud when the stamp it finds
+# belongs to different content, because that is the shape which gets past it:
+# a check run, the tree edited, the commit made before anything looked.
 #
 # RUNNING is here because the FAIL-only version stood aside for the fourth
 # instance of the failure it was built to stop (2026-09-04): the gate was
@@ -45,7 +47,22 @@ now=$( { git rev-parse HEAD 2>/dev/null; git diff HEAD --binary 2>/dev/null; } \
 was=$(cut -d' ' -f2 < "$stamp")
 verdict=$(cut -d' ' -f1 < "$stamp")
 
-[ "$now" = "$was" ] || exit 0
+if [ "$now" != "$was" ]; then
+	# A stamp for OTHER content. The commit proceeds -- this hook refuses
+	# only on positive evidence, and "somebody checked something else" is
+	# not evidence about this -- but it is worth one line, because the case
+	# it usually means is the one that got past every earlier version of
+	# this hook: a check was run, the tree was edited, and the commit went
+	# in before anything looked at the edit. Measured 2026-09-04, on the
+	# session that had written the RUNNING state four commits earlier.
+	#
+	# It cannot fire on the ordinary cycle, where the stamp matches, so it
+	# is silent except in the case worth naming.
+	echo "pre-commit: note -- the last \`make check\` was for DIFFERENT" >&2
+	echo "            content than this commit. Nothing has checked what" >&2
+	echo "            you are about to commit." >&2
+	exit 0
+fi
 
 case "$verdict" in
 FAIL)
