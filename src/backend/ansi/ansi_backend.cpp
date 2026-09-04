@@ -370,7 +370,8 @@ struct sigaction g_prev_tstp, g_prev_cont;
 // state and suspend() is PER-INSTANCE, so a second backend going out of scope
 // takes the handler away from the first, which is still active and still
 // owns the terminal. The suite creates nested backends, so it noticed at
-// once; the fatal handlers above have the same shape and nothing tests it.
+// once. The fatal handlers above have the same shape -- their install and
+// restore ARE asserted, sequentially, which is why nothing there objects.
 //
 // Doing it properly needs an ownership model this file does not have -- one
 // that knows a suspend is the LAST one -- and inventing one here is a design

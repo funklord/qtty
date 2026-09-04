@@ -1931,8 +1931,18 @@ In the order I would take them:
    scope takes them from the first, and an existing check said so at
    once. What is missing is a way to know a suspend is the LAST one. The
    damage is stopped where it was expressible (`read_winch()` refuses
-   when inactive), so this is a design gap rather than a live fault --
-   and the fatal handlers have the same shape with nothing testing it.
+   when inactive), so this is a design gap rather than a live fault.
+
+   **Corrected within the hour: "the fatal handlers have the same shape
+   with nothing testing it" was wrong**, and wrong in the direction that
+   sends a reader at work already done -- the same fault this session
+   fixed in `input_router.cpp` this morning. Their install and restore
+   are asserted three ways, with a second cycle in the same block
+   precisely so it does not inherit its evidence from suite order. What
+   they share is the SHAPE, and what is untested is the case the
+   SIGWINCH attempt ran into: **nested** backends, where an inner one's
+   `suspend()` takes handlers from an outer one still using them. That
+   block creates its backends sequentially, so it cannot see it.
 
 3. **A second Qt 6 point release**, still the cheapest untaken
    configuration and still absent from this machine. Qt 5.15 is here and
