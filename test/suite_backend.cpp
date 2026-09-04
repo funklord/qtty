@@ -123,9 +123,9 @@ struct Tty {
 // broken.
 //
 // Bounded three ways, because a child that hangs would hang the suite: no core
-// file, or every run of these checks leaves one behind; the parent waits at
-// most a second before SIGKILL; and the read stops at the first short read of
-// a non-blocking master.
+// file, or every run of these checks leaves one behind; the parent waits a
+// bounded time before SIGKILL, scaled for valgrind below; and the read stops
+// at the first short read of a non-blocking master.
 QByteArray fatal_child(bool screen, const std::function<void()> &body,
                        const QByteArray &preload = QByteArray(),
                        bool *stopped = nullptr) {
@@ -166,8 +166,20 @@ QByteArray fatal_child(bool screen, const std::function<void()> &body,
 		::_exit(0);
 	}
 	::close(slave);
+	// A second is enough for a child that only has to die, and thin for one
+	// that has to construct a Qt application and take a terminal under an
+	// instrument running everything twenty times slower. The bound stays a
+	// bound; the number is scaled.
+	//
+	// It was raised while chasing the job-control check's failure under
+	// valgrind, and it was NOT the cause -- a minute changed nothing, because
+	// valgrind does not hand the default stop action through at all. Kept
+	// anyway, on its own merits: the other children pass here only because
+	// they die quickly.
+	const int patience = qEnvironmentVariableIsEmpty("QTTY_UNDER_VALGRIND")
+	                   ? 1000 : 60000;
 	int status = 0;
-	for (int i = 0; i < 1000; ++i) {
+	for (int i = 0; i < patience; ++i) {
 		// WUNTRACED, because a child may STOP rather than exit -- a test of
 		// job control raises SIGTSTP on purpose. Without it such a child sits
 		// stopped until the kill below, and the run reads as a hang.
@@ -178,7 +190,9 @@ QByteArray fatal_child(bool screen, const std::function<void()> &body,
 			continue;
 		}
 		if (got == pid) break;
-		if (i == 999) { ::kill(pid, SIGKILL); ::waitpid(pid, &status, 0); break; }
+		if (i == patience - 1) {
+			::kill(pid, SIGKILL); ::waitpid(pid, &status, 0); break;
+		}
 		usleep(1000);
 	}
 	fcntl(master, F_SETFL, O_NONBLOCK);
@@ -2160,7 +2174,20 @@ int suite_backend() {
 		}, QByteArray(), &stopped);
 		const int leave = said.indexOf("\033[?1049l");
 		const int again = leave < 0 ? -1 : said.indexOf("\033[?1049h", leave);
-		CHECK(stopped, "a stop signal stops a program that owns the terminal");
+		// Valgrind emulates signal delivery and does not hand the default
+		// stop action through, so under it the child never appears stopped
+		// however long the parent waits -- raising the fixture's patience to
+		// a minute changed nothing. The two assertions below are about what
+		// the HANDLERS wrote and are unaffected, which is why only this one
+		// stands down. Skipped with the reason printed, the way
+		// suite_budget's wall-clock ceiling is.
+		if (!qEnvironmentVariableIsEmpty("QTTY_UNDER_VALGRIND")) {
+			printf("SKIP: valgrind does not deliver the default stop action,"
+			       " so the stop itself is not observable here\n");
+		} else {
+			CHECK(stopped,
+			      "a stop signal stops a program that owns the terminal");
+		}
 		CHECK(leave >= 0, "and the alternate screen is given back as it stops");
 		CHECK(again > leave, "and a continue takes it again");
 	}

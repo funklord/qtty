@@ -1190,6 +1190,23 @@ default action never gets a turn. Unblocking the signal around the raise
 is the fix: the stop takes effect **inside** the handler, and the mask and
 disposition are restored afterwards, in that order.
 
+**The whole battery was then run over it**, since the fix touches signal
+handling: `test-platforms` and `test-sanitize` green, and valgrind green
+at the second attempt with one assertion standing down. **Valgrind does
+not hand the default stop action through**, so under it the child never
+appears stopped however long the parent waits -- measured, by raising the
+fixture's patience to a minute and watching nothing change. The two
+assertions about what the handlers WROTE are unaffected and still run;
+only the one about the process actually stopping is skipped, with the
+reason printed, the way `suite_budget`'s wall-clock ceiling is.
+
+The raised patience was kept even though it fixed nothing here, on its
+own merits: a second is thin for a child that builds a Qt application
+under an instrument running everything twenty times slower, and the other
+children pass only because they die quickly. **Recorded as not the cause,
+because a change kept for a reason it did not serve is how a fix becomes
+folklore.**
+
 **And the first explanation was wrong in the comfortable direction.** I
 blamed an orphaned process group discarding the stop -- true POSIX, and
 it would have made the symptom somebody else's. Measurement disproved it:
