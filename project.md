@@ -2799,9 +2799,14 @@ few tabs and no alignment spaces is invisible to it. Over-indentation is
 caught; **under-indentation is not**, and a file with no tabs at all passed
 while printing that it conformed.
 
-The copy here is synced, and the message now says what was verified:
+The copy here is synced, and the message said what was verified:
 `61 file(s) pass: whitespace, and indentation except under-indentation,
-which is not checked`. Nothing else changed -- the source gate was run
+which is not checked`. **Quoted as it read on 2026-08-31**, because both
+halves have moved since: the population is 65 files, and the caveat was
+retired on 2026-09-01 when the converter learnt to record the level it
+declined to write, so the gate now checks under-indentation instead of
+disclaiming it. A quotation is a record and cannot rot; `now says` around
+it can, and did. Nothing else changed -- the source gate was run
 against this tree before syncing, per the rule that a tool fix which
 reveals findings is applied with the source first, and it reported the same
 61 files with nothing new.
