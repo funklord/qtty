@@ -266,7 +266,16 @@ bool item_view_current(const QStyleOptionViewItem *vi, const QWidget *w) {
 static QString no_font_at_all(const QFont &font) {
 	return QStringLiteral("'%1' resolved to no font at all; the font database"
 	                      " offers %2 families")
-	       .arg(font.family()).arg(QFontDatabase::families().size());
+	       // Through an instance rather than statically. Qt 6 made
+	       // QFontDatabase static-only and keeps the constructor without
+	       // deprecating it, so this spelling compiles clean on both -- 0
+	       // warnings under -Wall -Wextra -Wdeprecated-declarations on 6.8
+	       // and on 5.15 alike, measured. It is NOT a version conditional,
+	       // which is why it does not settle the question section 8.1
+	       // reserves: it takes no position on which Qt versions are
+	       // supported, it just stops being one of the things that would
+	       // have to change if the answer were ever "both".
+	       .arg(font.family()).arg(QFontDatabase().families().size());
 }
 
 QString grid_font_substitution(const QFont &font) {
