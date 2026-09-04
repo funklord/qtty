@@ -5851,6 +5851,39 @@ region, since they composite over cells that may have changed under
 them. A resized grid discards the buffer and repaints everything, that
 being the one event which makes every pixel wrong at once.
 
+**And there is a screen oracle, which every note here saying otherwise
+was wrong about** (2026-09-04). This document says in several places that
+image work cannot be checked because the suite sees encoders and not
+pictures. That is a limit of what the suite reaches for, not of this
+machine: `xvfb-run`, `kitty`, `import` and PIL are all installed, and a
+capture reads back exactly what was drawn.
+
+    a 120x80 image displayed in kitty under Xvfb
+    captured with `import -window root`
+    -> 9600 pixels of (220,30,40), and 120 x 80 = 9600
+
+Pixel-exact, first try. **The instrument was available for every
+"unverifiable" claim made tonight.**
+
+**Used at once to settle a question that had been reasoned about twice.**
+Two placements with the same image id and placement id, at different
+positions:
+
+    red  (220,30,40)     0 px
+    blue (30,80,220)  2400 px      one image is 2400 px
+
+The first is gone. Replacing a placement vacates its old rectangle, so
+the correction above is right and the correction to the correction is
+right: accumulation is avoidable only where the rectangle repeats, which
+is what fixed tiles are for. **Reasoned, then read, then measured** --
+and the measurement is the first of the three that could have been wrong
+and shown it.
+
+The method, so it is not lost with this session: build the image with
+PIL, display it inside `xvfb-run -a -s "-screen 0 900x600x24" kitty
+sh -c '...'`, capture the root window with `import` from inside the same
+Xvfb, and count colours with PIL.
+
 **The kitty tier has an independent witness at last** (2026-09-04).
 kitty 0.41.1 is installed, and everything qtty had been concluding from
 `TERM` and `COLORTERM` is now measured against the implementation whose
