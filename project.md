@@ -1961,14 +1961,6 @@ In the order I would take them:
    `SH_Slider_AbsoluteSetButtons`, the picture rule, the layout top
    margin, and whether `qtty-negotiate` belongs in `$PREFIX/bin` (§8.0).
 
-**The screen check is a probe, not yet a gate.** `make test-screen`
-proves a terminal draws an image at its own size; the geometry
-measurements that found and then verified the cell-size defect were run
-by hand with `tool/screen-probe.cpp`. Turning those into assertions --
-marker off a tile boundary, expected left edge from `caps_.cell_px` --
-is the obvious next step and needs no new instrument, only the patience
-to write the arithmetic down.
-
 **One thing the pixel work leaves open, and it is a CHECK rather than a
 decision.** All three tiers are verified by their emitted bytes -- sizes,
 addresses, placement ids -- and none by what a terminal draws, although
@@ -5913,6 +5905,20 @@ Two cells of offset was the whole difference:
 discriminating one**, which is a cheaper thing to learn than it looks:
 the instinct is to distrust the instrument, and the instrument was fine.
 The marker was in the one position where the answer is the same.
+
+**It is a gate now rather than a measurement somebody ran.**
+`make test-screen` compiles the probe against the built library, draws
+through `present_pixels()` inside kitty, captures, and compares:
+
+    with the fix       drew left=199 width=35, predicted 198 and 36   pass
+    reverted           drew left=200 width=36, predicted 198 and 36   FAIL
+
+**The prediction is computed by the PROBE**, which is the only place that
+knows qtty's cell and the terminal's at once; deriving it in the checker
+would be the parallel copy this tree keeps meeting. One pixel of slack,
+because scaling to the terminal's cell blends the outermost column away
+from an exact colour match -- and both numbers are printed, since a
+tolerance is only honest when the value inside it is visible.
 
 **The kitty tier crops too, by tiles** (2026-09-04), which is the last
 piece of the pixel path and the largest saving in it:

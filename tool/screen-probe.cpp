@@ -41,11 +41,23 @@ int main(int argc, char **argv) {
 	// two sizings -- 2*9 against 2*10. On a tile boundary both agree and the
 	// measurement cannot tell them apart, which is how the first version of
 	// this probe failed to discriminate.
-	fprintf(stderr, "screen-probe: grid %dx%d, marker at cell 22,5;"
-	                " tile origin x=180, so 198 if sized in the terminal's"
-	                " cells and 200 if in qtty's\n", cw, ch);
-	fflush(stderr);
 	Qtty::AnsiBackend backend;
+	// The prediction, computed HERE because this is the only place that knows
+	// both cell sizes: qtty's from the font and the terminal's from CSI 16t. A
+	// checker outside cannot derive it, and duplicating the arithmetic there
+	// would be the parallel copy this tree keeps meeting.
+	//
+	// Cell 22 is two cells INTO the tile starting at 20, and that offset is
+	// the whole discriminator: on a tile boundary the two sizings agree,
+	// because the left edge is then the cursor address and that is in cells.
+	const QSize probed = backend.capabilities().cell_px;
+	const QSize term = probed.isValid() && probed.width() > 0
+	                 ? probed : QSize(cw, ch);
+	fprintf(stderr, "screen-probe: qtty %dx%d terminal %dx%d"
+	                " predict left=%d width=%d\n",
+	        cw, ch, term.width(), term.height(),
+	        22 * term.width(), 4 * term.width());
+	fflush(stderr);
 	backend.present_pixels(px, QRegion());
 	::fflush(stdout);
 	::sleep(4);                       // the capture happens in here

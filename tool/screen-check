@@ -45,6 +45,59 @@ timeout 120 xvfb-run -a -s "-screen 0 900x600x24" sh -c "
 	exit 1
 }
 
+# Second phase: qtty's OWN pixel path, not just the terminal's renderer.
+# Skipped rather than failed when the library is not built, since a tree
+# nobody has compiled is not a tree with a broken backend.
+lib="${1:-build}/lib/libqtty.a"
+if [ -f "$lib" ] && command -v g++ >/dev/null 2>&1 \
+   && command -v pkg-config >/dev/null 2>&1; then
+	if g++ -fPIC -Os -std=gnu++17 -o "$dir/probe" tool/screen-probe.cpp \
+	     -I include -I . $(pkg-config --cflags Qt6Widgets) \
+	     -L "${1:-build}/lib" -lqtty $(pkg-config --libs Qt6Widgets) \
+	     -lutil 2>"$dir/cc"; then
+		timeout 150 xvfb-run -a -s "-screen 0 900x600x24" sh -c "
+			kitty sh -c 'sleep 3; QTTY_GRAPHICS=kitty $dir/probe 2>$dir/pred' &
+			sleep 8
+			import -window root $dir/geom.png
+			wait" >>"$dir/log" 2>&1 || true
+		python3 - "$dir/geom.png" "$dir/pred" <<'GEOM'
+import re, sys
+from PIL import Image
+shot, pred = sys.argv[1], sys.argv[2]
+m = re.search(r"predict left=(\d+) width=(\d+)", open(pred).read())
+if not m:
+	print("screen-check: FAILED -- the probe printed no prediction",
+	      file=sys.stderr); sys.exit(1)
+want_l, want_w = int(m.group(1)), int(m.group(2))
+im = Image.open(shot).convert("RGB")
+w, h = im.size
+px = im.load()
+xs = [x for y in range(h) for x in range(w) if px[x, y] == (40, 200, 90)]
+if not xs:
+	print("screen-check: FAILED -- the probe drew nothing", file=sys.stderr)
+	sys.exit(1)
+left, width = min(xs), max(xs) - min(xs) + 1
+# One pixel of slack, and the reason is named rather than assumed: scaling
+# to the terminal's cell uses a smooth transform, so the outermost column
+# is blended and no longer matches the colour exactly. Both numbers are
+# PRINTED, because a tolerance is only honest when the value inside it is
+# visible.
+ok = abs(left - want_l) <= 1 and abs(width - want_w) <= 1
+print("screen-check: qtty's pixel path drew left=%d width=%d,"
+	" predicted %d and %d" % (left, width, want_l, want_w),
+	file=sys.stderr if not ok else sys.stdout)
+sys.exit(0 if ok else 1)
+GEOM
+	else
+		echo "screen-check: the probe did not build, so the pixel path was" >&2
+		sed -n '1,3p' "$dir/cc" >&2
+		exit 1
+	fi
+else
+	echo "screen-check: no built library, so qtty's own pixel path was not" >&2
+	echo "              drawn -- the terminal check above still ran" >&2
+fi
+
 python3 - "$dir/out.png" "$w" "$h" <<'PY'
 import sys
 from PIL import Image
