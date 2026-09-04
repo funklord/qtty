@@ -5712,13 +5712,22 @@ lines.** This one is not, and the reason is specific:
   Making it partial needs a placement lifecycle for SCREEN images, which
   is what `uploaded_`/`upload_order_` do for cell placements and would
   have to be reinvented here.
-- **And the compositor cannot supply the damage from what it has.** It
-  holds the cell diff, and the cell diff is NOT the damage for this
+- **And nothing can supply the damage from what is kept.** The frame
+  loop holds the cell diff, and the cell diff is NOT the damage for this
   path: an overlay that MOVES changes pixels under cells that did not
   change, so the region has to be the cell diff united with the overlay
   rectangles both before and after. **The previous overlay geometry is
   not kept anywhere**, and that missing input is the actual size of this
   item -- not the encoding, which is easy.
+
+  The state belongs beside `prev_` in **`FrameScheduler`**, which is
+  where the diff, the overlay query and the `present_pixels()` call all
+  are. This entry said "the compositor" when first written, and that is
+  wrong: `render_now()` lives in `compositor.cpp` but is the frame
+  scheduler's, and `Compositor` has no `prev_` at all. Corrected on
+  reading the file rather than the memory of it -- a wrong class name
+  sends the next reader to the wrong header, which costs more than a
+  vague sentence would have.
 
 So the honest shape is: two tiers are a small change gated on one new
 piece of compositor state, and the third is a design question about
