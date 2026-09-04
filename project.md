@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-909 checks, 0 failures, under six configurations, all six re-run
+910 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6148,6 +6148,59 @@ there. `make` first, then judge.
 What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
+
+**A second terminal was asked what qtty concludes about it, and the
+answer needed a pty** (2026-09-05). Negotiation decides everything
+downstream -- which tier, how many colours, whether a placement can be
+addressed -- and it had been confirmed against kitty alone. xterm is a
+separate arrival, and it has a property kitty does not: its capabilities
+can be turned on and off from the command line, so what qtty reports can
+be moved deliberately rather than only observed.
+
+    -ti vt340                 Sixel        without it     Halfblocks
+    TERM=xterm-256color       Xterm256     TERM=xterm     Ansi16
+    window ops allowed        cell 6x13    refused        not reported
+
+Four discriminations, all correct, and `make test-negotiate` runs them.
+They are asserted as DIFFERENCES rather than values: that xterm's cell is
+6x13 is a fact about this machine's fonts, while that qtty reports a cell
+size when the terminal is allowed to answer and none when it is not is a
+fact about qtty.
+
+**The first run of this reported that xterm answered nothing at all, and
+that was my redirect.** Sending the tool's stdout to a file means its
+questions go to the file, so every field read "not reported" -- which is
+indistinguishable from a terminal that ignores everything, and is the
+same shape as the kitty run that reported total silence for want of three
+seconds. `script -q -c` puts a pty back in the path. The tell, both
+times, is that EVERY probe failed at once: a terminal that genuinely
+lacks a capability fails one.
+
+**Then the gate had to earn its place, and three sabotages said it had
+not.** Breaking the sixel attribute, breaking the DA1 query, and breaking
+the parse were each caught by the suite -- two, four and two checks
+respectively. A gate whose every demonstrable fault is already covered is
+not worth a minute of anybody's build.
+
+**The fourth found the class it does own.** Make the parser require the
+first DA1 parameter to be 62, which every fixture in the suite happens to
+say:
+
+    sabotage                          the suite      test-negotiate
+    only trust sixel from a VT220     OK, 909 pass   FAIL
+
+That is a fixture and a parser agreeing with each other rather than with
+a terminal, and it is the one fault no amount of unit testing can see,
+because both halves were written by the same hand. It is also the reason
+the gate is worth its minute.
+
+**And the sabotage was true of the tree.** xterm answers
+`\033[?63;1;2;4;6;9;15;16;22;28c` -- a VT320 -- while every DA1 fixture
+in `suite_backend` opens with 62, the VT220 the specification's example
+shows. Nothing is wrong with the code, which ignores the device class on
+purpose; that is exactly why nobody noticed that no fixture carried a
+reply any installed terminal actually sends. That capture is now a check
+of its own, byte for byte.
 
 **And the tier a plain terminal actually gets** (2026-09-05). Two of the
 three phases drive `present_pixels()`, which serves the tiers that

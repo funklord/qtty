@@ -419,6 +419,17 @@ int suite_backend() {
 		//    matches the 4 inside 14, the DEC national-replacement-character
 		//    attribute, and reports sixel on a terminal that has none.
 		CHECK(caps_of("\033[?62;4;22c").sixel, "DA attribute 4 means sixel");
+		// Captured from xterm 398 under `-ti vt340`, byte for byte, rather
+		// than composed here. Every other DA1 fixture in this file opens
+		// with 62 -- a VT220, which is what the specification's example
+		// shows -- and no terminal installed on this machine says that:
+		// xterm answers 63, a VT320. Nothing is wrong with the code, which
+		// ignores the device class on purpose, and that is exactly why it
+		// went unnoticed. A suite whose fixtures were all written from the
+		// specification agrees with the specification, and a stand-in
+		// reproduces the half of a tool its author has seen.
+		CHECK(caps_of("\033[?63;1;2;4;6;9;15;16;22;28c").sixel,
+		      "and a real xterm's own answer is read the same way");
 		CHECK(!caps_of("\033[?62;14;22c").sixel,
 		      "but the 4 inside 14 does not (parsed as a list, not searched)");
 		CHECK(caps_of("\033[?62;14;22c").answered, "either way DA1 is the fence");

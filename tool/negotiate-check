@@ -1,0 +1,105 @@
+#!/bin/sh
+# Ask a SECOND terminal what qtty concludes about it.
+#
+# Everything downstream depends on negotiation -- which graphics tier, how
+# many colours, whether a placement can be addressed -- and until now it had
+# been confirmed against kitty alone. kitty and this tree are two readings of
+# one specification, and evidence.md says two readings are one witness unless
+# they arrived separately. xterm is a separate arrival: a different
+# implementation by different people, and one whose capabilities can be
+# TURNED ON AND OFF from the command line, which is what makes it useful
+# here.
+#
+# So this asserts RELATIONSHIPS rather than values. That xterm's cell is 6x13
+# is a fact about one machine's fonts and would be a fixture nobody could
+# reproduce; that qtty reports a cell size when the terminal is allowed to
+# answer and none when it is not is a fact about qtty.
+#
+# Skips rather than fails where the pieces are missing, as tool/screen-check
+# does: a machine without xterm is not a machine with broken negotiation.
+#
+# Bounded: a timeout around each run, xterm given a command that exits, and
+# the Xvfb display taken down with it.
+set -e
+for need in xvfb-run xterm script; do
+	command -v "$need" >/dev/null 2>&1 || {
+		echo "negotiate-check: $need is absent, so nothing was asked" >&2
+		exit 0
+	}
+done
+tool="${1:-build}/tool/negotiate/qtty-negotiate"
+[ -x "$tool" ] || {
+	echo "negotiate-check: $tool is not built, so nothing was asked" >&2
+	exit 0
+}
+tool=$(cd "$(dirname "$tool")" && pwd)/$(basename "$tool")
+
+dir=$(mktemp -d)
+trap 'rm -rf "$dir"' EXIT INT TERM
+
+# One run. `script` is not decoration: qtty asks its questions only when
+# stdout is a terminal, so redirecting the tool's output to a file makes
+# every probe report "not reported" -- which reads exactly like a terminal
+# that ignores every question. It cost one wrong measurement here before it
+# was noticed, and the tell was that EVERY line said not-reported at once.
+ask() {
+	out="$dir/$1"; shift
+	term="$1"; shift
+	timeout 120 xvfb-run -a -s "-screen 0 900x600x24" sh -c "
+		xterm $* -geometry 100x30+0+0 \
+		    -e env TERM=$term sh -c 'sleep 3; script -q -c $tool $out; sleep 2' &
+		sleep 10
+		wait" >>"$dir/log" 2>&1 || true
+	[ -s "$out" ] || { echo "negotiate-check: $1 produced nothing" >&2; exit 1; }
+}
+
+# The escape sequences the tool wrote on its way out share a line with the
+# first answer, so the field is read anywhere in the file rather than
+# anchored.
+field() {
+	sed 's/\r$//' "$dir/$1" | grep -aoE "$2 +[A-Za-z0-9x]+" | head -1 \
+	    | sed -E "s/$2 +//"
+}
+
+ask sixel_on   xterm-256color -ti vt340 -xrm "'XTerm*allowWindowOps: true'"
+ask sixel_off  xterm-256color -xrm "'XTerm*allowWindowOps: true'"
+ask ansi16     xterm -xrm "'XTerm*allowWindowOps: true'"
+ask no_winops  xterm-256color -ti vt340
+
+g_on=$(field sixel_on graphics);    g_off=$(field sixel_off graphics)
+c_256=$(field sixel_on colour);     c_16=$(field ansi16 colour)
+cell=$(field sixel_on "cell size"); nocell=$(field no_winops "cell size")
+
+printf 'negotiate-check: -ti vt340 -> %s, without it -> %s\n' "$g_on" "$g_off"
+printf 'negotiate-check: TERM=xterm-256color -> %s, TERM=xterm -> %s\n' \
+	"$c_256" "$c_16"
+printf 'negotiate-check: window ops on -> cell %s, off -> %s\n' \
+	"$cell" "${nocell:-none}"
+
+fail=0
+# Each is a DIFFERENCE, so a probe that always says the same thing fails
+# rather than passing twice. A pair that agreed would mean the answer came
+# from somewhere other than the terminal.
+[ "$g_on" = "Sixel" ] && [ "$g_off" = "Halfblocks" ] || {
+	echo "negotiate-check: FAILED -- the terminal id did not move the tier" >&2
+	fail=1
+}
+[ "$c_256" = "Xterm256" ] && [ "$c_16" = "Ansi16" ] || {
+	echo "negotiate-check: FAILED -- TERM did not move the colour depth" >&2
+	fail=1
+}
+case "$cell" in
+	*[0-9]x[0-9]*) ;;
+	*) echo "negotiate-check: FAILED -- no cell size where xterm answers" >&2
+	   fail=1 ;;
+esac
+# "not reported" is a word to the extractor above, so the question is
+# whether a SIZE came back rather than whether anything did.
+case "$nocell" in
+	*[0-9]x[0-9]*)
+		echo "negotiate-check: FAILED -- a cell size with window ops" \
+		     "refused" >&2
+		fail=1 ;;
+esac
+[ "$fail" -eq 0 ] || exit 1
+echo "negotiate-check: xterm agrees with qtty on all four"

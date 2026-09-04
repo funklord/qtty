@@ -20,6 +20,7 @@
 #   make test-platforms -- the suite under each QPA in TEST_PLATFORMS
 #   make test-sanitize -- the suite under ASan, UBSan and the leak detector
 #   make test-valgrind -- the suite under valgrind memcheck
+#   make test-negotiate -- ask a second terminal what qtty concludes
 #   make test-screen  -- what a real terminal DRAWS, captured and counted
 #   make test-tools   -- the shipped tools and the example, RUN not just built
 #   make test-install -- install into a scratch root and check what landed
@@ -351,6 +352,13 @@ QT_PLUGIN_PATH_FOR_CHECK = $(shell $(QMAKE) -query QT_INSTALL_PLUGINS 2>/dev/nul
 # correctly and confusingly.
 test-screen: $(LIB)
 	@./tool/screen-check $(BUILD_DIR)
+
+# The negotiation the screen check depends on, asked of a second terminal.
+# Out of `check` for the same reason test-screen is: it starts terminals
+# under a virtual display and takes a minute, where `check` takes
+# milliseconds and runs before every commit.
+test-negotiate: $(NEGOTIATE)
+	@./tool/negotiate-check $(BUILD_DIR)
 
 test-platforms: tests-build
 	@failed=0; ran=0; expect=; \
@@ -996,4 +1004,5 @@ help:
 	@sed -n '/^# TARGETS/,/^#$$/p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
 .PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks \
-        version-check run install uninstall clean veryclean distclean help FORCE
+        version-check run install uninstall clean veryclean distclean help \
+        test-screen test-negotiate FORCE
