@@ -343,8 +343,14 @@ QT_PLUGIN_PATH_FOR_CHECK = $(shell $(QMAKE) -query QT_INSTALL_PLUGINS 2>/dev/nul
 # ImageMagick or PIL are missing, for the reason test-platforms skips without
 # xvfb-run: a machine without a terminal emulator is not a machine with a
 # broken renderer.
-test-screen:
-	@./tool/screen-check
+# Depends on the library, for the reason build-and-commit.md gives about
+# never judging a test from a binary the build did not rebuild: this one
+# compiles a probe AGAINST that library, so a stale one is a screen check of
+# code nobody is running. Measured -- with an out-of-date build/ it reported
+# left=220 against a prediction of 198, which is the old font-sized path,
+# correctly and confusingly.
+test-screen: $(LIB)
+	@./tool/screen-check $(BUILD_DIR)
 
 test-platforms: tests-build
 	@failed=0; ran=0; expect=; \

@@ -55,10 +55,27 @@ if [ -f "$lib" ] && command -v g++ >/dev/null 2>&1 \
 	     -I include -I . $(pkg-config --cflags Qt6Widgets) \
 	     -L "${1:-build}/lib" -lqtty $(pkg-config --libs Qt6Widgets) \
 	     -lutil 2>"$dir/cc"; then
-		timeout 150 xvfb-run -a -s "-screen 0 900x600x24" sh -c "
-			kitty sh -c 'sleep 3; QTTY_GRAPHICS=kitty $dir/probe 2>$dir/pred' &
-			sleep 8
-			import -window root $dir/geom.png
+		# Captured on a CONDITION rather than after a duration. The first
+		# version slept eight seconds and drew nothing on a loaded machine
+		# -- a fixed wait is a guess about somebody else's build queue, and
+		# this file already argues that a check which fails for the wrong
+		# reason is worse than no check. It re-captures until the marker
+		# appears, with a bound so it still terminates when nothing ever
+		# draws.
+		timeout 200 xvfb-run -a -s "-screen 0 900x600x24" sh -c "
+			kitty sh -c 'sleep 2; QTTY_GRAPHICS=kitty $dir/probe 2>$dir/pred' &
+			n=0
+			while [ \$n -lt 25 ]; do
+				sleep 1
+				import -window root $dir/geom.png 2>/dev/null || true
+				if [ -s $dir/geom.png ] && python3 -c \"
+import sys
+from PIL import Image
+im = Image.open('$dir/geom.png').convert('RGB')
+sys.exit(0 if any(p == (40, 200, 90) for p in im.getdata()) else 1)\" 2>/dev/null
+				then break; fi
+				n=\$((n + 1))
+			done
 			wait" >>"$dir/log" 2>&1 || true
 		python3 - "$dir/geom.png" "$dir/pred" <<'GEOM'
 import re, sys

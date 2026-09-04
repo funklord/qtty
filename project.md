@@ -5920,6 +5920,25 @@ because scaling to the terminal's cell blends the outermost column away
 from an exact colour match -- and both numbers are printed, since a
 tolerance is only honest when the value inside it is visible.
 
+**Two faults in the gate itself, both found by running it rather than
+reading it.** It took no `BUILD_DIR`, so it looked for a library in
+`build/` whatever the caller asked for -- and then silently skipped its
+own second phase, which is the failure this whole file is about. It
+takes the directory now and depends on `$(LIB)`, for the reason
+`build-and-commit.md` gives about never judging a test from a binary the
+build did not rebuild: with a stale `build/` it reported `left=220`
+against a prediction of 198, correctly describing code nobody is
+running.
+
+And it slept eight seconds before capturing, which drew nothing at all
+on a loaded machine. **A fixed wait is a guess about somebody else's
+build queue.** It re-captures until the marker appears now, with a bound
+so it still terminates when nothing ever draws -- the same shape as
+waiting on a condition rather than a duration, which the suite's frame
+fixtures learned the hard way. Re-verified in both directions after the
+change, because a gate that has been edited is a gate whose failure has
+not been seen.
+
 **The kitty tier crops too, by tiles** (2026-09-04), which is the last
 piece of the pixel path and the largest saving in it:
 
