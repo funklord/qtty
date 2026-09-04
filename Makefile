@@ -554,6 +554,17 @@ test-tools: all
 	*) echo "    negotiate --probes: FAILED -- no report"; fail=1;; \
 	esac; \
 	if command -v script >/dev/null 2>&1; then \
+		timeout $(TEST_TIMEOUT) script -qec "$(NEGOTIATE) --probes \
+			< /dev/null" $(BUILD_DIR)/neg.out > /dev/null 2>&1; \
+		n=$$(tr -cd '\033' < $(BUILD_DIR)/neg.out | wc -c); \
+		case "$$n:$$(cat $(BUILD_DIR)/neg.out)" in \
+		13:*"stdin is not a terminal"*) \
+			echo "    negotiate --probes, stdout only: ok";; \
+		*) echo "    negotiate --probes, stdout only: FAILED -- $$n escape"; \
+		   echo "                        sequence(s) on a terminal nothing"; \
+		   echo "                        can answer from"; fail=1;; \
+		esac; \
+		rm -f $(BUILD_DIR)/neg.out; \
 		( i=0; while [ $$i -lt 6 ]; do sleep 0.4; printf '\004'; \
 		  i=$$((i + 1)); done ) \
 		| timeout $(TEST_TIMEOUT) script -qec "$(EXAMPLE)" \

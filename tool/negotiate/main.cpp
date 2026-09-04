@@ -73,6 +73,12 @@ int main(int argc, char **argv) {
 		// Said out loud rather than skipped quietly: a probe report that
 		// silently shows every probe as silent is the failure this tool's own
 		// comment calls worse than no report.
+		// BOTH, and the first version of this guard read only stdout --
+		// which is the same defect one end along. Measured with stdout on a
+		// pty and stdin on /dev/null: 45 escape sequences went to the user's
+		// terminal, nothing could answer because the replies arrive on a
+		// descriptor this process is not reading, and they are left in the
+		// terminal's own input for whatever runs next.
 		if (!isatty(1)) {
 			fprintf(stderr, "qtty-negotiate: stdout is not a terminal, so the"
 			                " probes were not sent.\n");
@@ -81,18 +87,26 @@ int main(int argc, char **argv) {
 			probes = false;
 		}
 	}
+	termios saved{};
+	// Raw is part of the condition, not a preparation for it: AnsiBackend
+	// probes on `raw_ok_ && tty_out_`, and a cooked stdin holds every reply
+	// until a newline that is never coming.
+	const bool tty_in = probes && isatty(0) && tcgetattr(0, &saved) == 0;
+	if (probes && !tty_in) {
+		fprintf(stderr, "qtty-negotiate: stdin is not a terminal in raw mode,"
+		                " so the probes were not sent.\n");
+		fprintf(stderr, "                The query would go to the terminal"
+		                " and its replies to somebody else.\n");
+		probes = false;
+	}
 	if (probes) {
-		termios saved{};
-		const bool tty = isatty(0) && tcgetattr(0, &saved) == 0;
-		if (tty) {
-			termios t = saved;
-			t.c_lflag &= ~(ICANON | ECHO);
-			t.c_cc[VMIN] = 0;
-			t.c_cc[VTIME] = 0;
-			tcsetattr(0, TCSANOW, &t);
-		}
+		termios t = saved;
+		t.c_lflag &= ~(ICANON | ECHO);
+		t.c_cc[VMIN] = 0;
+		t.c_cc[VTIME] = 0;
+		tcsetattr(0, TCSANOW, &t);
 		probed = collect_caps(0, 1, 200, &raw);
-		if (tty) tcsetattr(0, TCSANOW, &saved);
+		tcsetattr(0, TCSANOW, &saved);
 	}
 
 	Capabilities c;

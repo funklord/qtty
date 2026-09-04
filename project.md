@@ -1592,6 +1592,31 @@ tool's own comment calls worse than no report.
 holds VERSION, `qtty.pri` and `version.h` to each other; nothing asked
 the **shipped binary** what it thinks it is.
 
+**And the guard was wrong at the other end, found the same day by
+re-reading the rule it was copied from.** `AnsiBackend` probes on
+`raw_ok_ && tty_out_` -- both ends -- and the fix had guarded on stdout
+alone. Measured with stdout on a pty and stdin on `/dev/null`:
+
+    stdin /dev/null, stdout a pty    45 escape sequences to the terminal
+    after the fix                    13, which are the backend's own
+                                     alt-screen enter and leave
+
+Nothing can answer, because the replies arrive on a descriptor this
+process is not reading -- so they are left in the **terminal's** input
+for whatever runs next. The pipe case corrupts a file; this one hands a
+shell somebody else's escape sequences.
+
+Raw mode is part of the condition rather than a preparation for it, which
+is the part the first version got wrong: it set `VMIN`/`VTIME` when it
+could and probed either way, and a cooked stdin holds every reply until a
+newline a terminal answering a query never sends.
+
+**Two arms, because one cannot see both ends.** The pipe arm asserts no
+escape byte reaches stdout; the pty arm asserts exactly the backend's
+thirteen and the refusal on stderr. Sabotaging the stdin guard reddens
+the second at 45 and leaves the first green, which is what makes them two
+checks rather than one written twice.
+
 **A shipped tool could not show the states its own commands produce**
 (2026-09-04). `qtty-replay` exists to make bug reports reproducible, and
 its script has five commands: `text`, `key`, `ctrl`, `click`, `frame`.
