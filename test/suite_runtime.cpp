@@ -771,6 +771,58 @@ int suite_runtime() {
 		GridGuard::reset();
 	}
 
+	// The DOCUMENTED contract is the PROPERTY, not the setter, and every
+	// check above goes through the setter. grid.h says the whole point of a
+	// dynamic property is that an application "does not have to link qtty or
+	// branch on target to set it" and that it "can equally be set from a .ui
+	// file" -- so the path applications actually use is setProperty(), and
+	// nothing exercised it. Rename the constant in set_priority() and
+	// priority_of() together and the suite stays green while every
+	// application that followed the documentation breaks.
+	//
+	// The value is asserted as a literal too, because a .ui file carries a
+	// number and not an enumerator: reordering Priority would move it under
+	// a suite that never looks.
+	{
+		CHECK(int(Priority::Optional) == 1,
+		      "the priority a .ui file writes as 1 is the optional one");
+
+		QWidget probe;
+		probe.setProperty("qtty.priority", 1);
+		QWidget typo;
+		typo.setProperty("qtty.priority", 99);
+		CHECK(priority_of(&probe) == Priority::Optional
+		          && priority_of(&typo) == Priority::Required,
+		      "the property is read under its documented name, and a bad"
+		      " value stays required");
+
+		// End to end, with the property-marked widget the ONLY optional one
+		// and the terminal far too small -- the lesson of the focused-widget
+		// fixture below: a pass that stops as soon as the screen fits lets a
+		// widget survive because it was never reached.
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		auto *keep = new QLabel(QStringLiteral("Required"));
+		v->addWidget(keep);
+		auto *by_property = new QLabel(QStringLiteral("Optional"));
+		by_property->setProperty("qtty.priority", 1);
+		v->addWidget(by_property);
+		win.show();
+		keep->setFocus();
+		QCoreApplication::processEvents();
+
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+		win.resize(GridMetrics::cells(20, 1));
+		QCoreApplication::processEvents();
+		CellBuffer tiny(20, 1);
+		c.compose(tiny);
+		CHECK(!by_property->isVisible() && keep->isVisible(),
+		      "and a widget marked optional by property alone is dropped");
+		GridGuard::reset();
+	}
+
 	// The focused widget is never dropped, whatever its priority: hiding the
 	// widget that owns input moves focus somewhere the application did not
 	// choose, and a terminal has no pointer to put it back with.

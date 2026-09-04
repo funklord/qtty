@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-872 checks, 0 failures, under six configurations, all six re-run
+875 checks, 0 failures, under six configurations, all six re-run
 2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -5649,6 +5649,47 @@ resize while suspended writes nothing. The negative failed against the
 unfixed library with the ten bytes in its message; the positive is there
 because "wrote nothing" is satisfied by a backend that has stopped
 watching resizes at all.
+
+**The documented way to mark a widget optional was untested**
+(2026-09-04). `grid.h` is explicit that the dynamic property IS the
+interface: an application "does not have to link qtty or branch on target
+to set it", and it "can equally be set from a `.ui` file". Every one of
+the eight existing checks went through `set_priority()` instead, so the
+suite and the code agreed by construction about the property's name --
+`evidence.md`'s "a test that calls the helper it is verifying cannot see
+a wrong caller", with the caller being every application.
+
+**The control is the finding.** Renaming `k_priority` to `qtty.renamed`,
+so the setter and the reader still agree:
+
+    the property is read under its documented name        FAIL
+    a widget marked optional by property alone is dropped FAIL
+    and one without room drops them                       PASS
+    but never a required one                              PASS
+    and a terminal that grows back shows them again       PASS
+
+Before today that rename lands green while every application that
+followed the documentation stops working.
+
+Three checks, each a different half. The name, read literally. The
+**value** as a literal 1, because a `.ui` file carries a number and not
+an enumerator, so reordering `Priority` would move the contract under a
+suite that never looks. And a bad value staying `Required`, which is the
+safe direction the implementation's own comment claims and nothing
+asked.
+
+The end-to-end one makes the property-marked widget the ONLY optional
+one in a terminal far too small, taking the lesson from the
+focused-widget fixture below it: a pass that stops as soon as the screen
+fits lets a widget survive because it was never reached rather than
+because a rule saved it.
+
+**Found by sweeping the public API for functions nothing calls**, which
+found no dead ones -- `snapshot_of` and `set_icon_glyph` have no caller
+in `src/` and should not, being for applications and the harness -- and
+turned up this instead: not an unwired function but an unwired
+*contract*. The lens was wrong about what it would find and right about
+where to look.
 
 **A destroyed widget could keep the focus mark** (2026-09-04).
 `grid_style.cpp` held `s_focus` as a bare `QWidget *`, and the tree
