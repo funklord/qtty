@@ -1948,19 +1948,7 @@ had just committed.
 
 In the order I would take them:
 
-1. **An image for the terminal is sized in the TERMINAL's cells, and is
-   not.** `GridMetrics` takes its cell from the font this build resolved;
-   the terminal reports its own with CSI 16t and the backend stores it in
-   `caps_.cell_px`. Measured against kitty: qtty's 10x19 against the
-   terminal's 9x18, so every pixel tile goes out about a tenth too large,
-   covers more terminal cells than qtty believes and overlaps its
-   neighbours. Not introduced by the tiling -- the whole-screen path had
-   it too -- and invisible to every byte-level check, which is why it
-   waited for a screen. The rule is one sentence and the change is not
-   one line, because the widget tree is laid out in `GridMetrics`. §7.4
-   carries the capture.
-
-2. **A second Qt 6 point release**, still the cheapest untaken
+1. **A second Qt 6 point release**, still the cheapest untaken
    configuration and still absent from this machine. Qt 5.15 is here and
    is a port rather than an axis -- §8.1 prices it at three conditionals
    in two files, the fourth usage having been closed without one. What a second 6.x would answer, with no decision at all,
@@ -1968,10 +1956,18 @@ In the order I would take them:
    exposure (a probe that passed on 6.10 and failed on 6.4.2) is the
    reason to want it.
 
-3. **§0b's questions are the holder's** and are not work to pick up: RTL
+2. **§0b's questions are the holder's** and are not work to pick up: RTL
    scope, the bundled font, tooltips and hover, the severity glyph,
    `SH_Slider_AbsoluteSetButtons`, the picture rule, the layout top
    margin, and whether `qtty-negotiate` belongs in `$PREFIX/bin` (§8.0).
+
+**The screen check is a probe, not yet a gate.** `make test-screen`
+proves a terminal draws an image at its own size; the geometry
+measurements that found and then verified the cell-size defect were run
+by hand with `tool/screen-probe.cpp`. Turning those into assertions --
+marker off a tile boundary, expected left edge from `caps_.cell_px` --
+is the obvious next step and needs no new instrument, only the patience
+to write the arithmetic down.
 
 **One thing the pixel work leaves open, and it is a CHECK rather than a
 decision.** All three tiers are verified by their emitted bytes -- sizes,
