@@ -322,7 +322,19 @@ void CellPaintEngine::drawPath(const QPainterPath &path) {
 	fill_rectf(path.boundingRect(), /*outline_only=*/brush_.style() == Qt::NoBrush);
 }
 
-void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &pm, const QRectF &) {
+void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &whole,
+                                 const QRectF &sr) {
+	// The SOURCE rectangle, which this accepted and ignored. Qt passes the
+	// whole pixmap for the two-argument forms, so nothing in this tree ever
+	// exercised it -- measured, every drawPixmap the suite produces arrives
+	// with `source 0,0 WxH` for a WxH pixmap. The gap belongs to an
+	// application drawing one sprite out of an atlas: it got the ATLAS
+	// placed, at the right size and silently, which is a wrong picture
+	// rather than a missing one.
+	const QRect src = sr.toRect();
+	const QPixmap pm = (src.isValid() && src != whole.rect() && !whole.isNull())
+	                 ? whole.copy(src)
+	                 : whole;
 	QRect c = to_cells(r);
 	if (!c.isValid()) return;
 	// Wholly outside the clip is nothing to draw. A partly-clipped placement

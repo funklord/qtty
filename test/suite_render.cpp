@@ -97,6 +97,64 @@ int suite_render(bool record) {
 	// Measured on a tab being dragged: Qt moves a movable tab by grabbing it
 	// into a pixmap 82x19 px here, which is 8 cells by 1, so it fails "two
 	// cells in each direction" and takes this branch. Driven at the engine
+	// The SOURCE rectangle of drawPixmap(target, pixmap, source), which the
+	// engine accepted and ignored: an application drawing one sprite out of
+	// an atlas got the whole atlas placed, at the right size and silently.
+	// Nothing in this tree exercises it -- every drawPixmap the suite
+	// produces arrives with the full rect, measured with a probe -- so the
+	// check has to construct the case rather than find it.
+	//
+	// Paired, because "the placement carries the right half" is also true of
+	// an engine that crops unconditionally and would then wreck every
+	// ordinary drawPixmap, which is the far commoner call.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		Qtty::CellBuffer buf(8, 4);
+		QPixmap atlas(cw * 4, ch * 2);      // two halves, told apart by colour
+		{
+			QPainter ap(&atlas);
+			ap.fillRect(0, 0, cw * 2, ch * 2, Qt::red);
+			ap.fillRect(cw * 2, 0, cw * 2, ch * 2, Qt::blue);
+		}
+		QPixmap placed_part, placed_whole;
+		{
+			Qtty::CellPaintDevice dev(buf);
+			QPainter p(&dev);
+			p.drawPixmap(QRectF(0, 0, cw * 2, ch * 2), atlas,
+			             QRectF(cw * 2, 0, cw * 2, ch * 2));   // the blue half
+			p.end();
+			if (!dev.placements.isEmpty()) placed_part = dev.placements.first().pixmap;
+		}
+		{
+			Qtty::CellPaintDevice dev(buf);
+			QPainter p(&dev);
+			p.drawPixmap(QRect(0, 0, cw * 4, ch * 2), atlas);   // no source rect
+			p.end();
+			if (!dev.placements.isEmpty()) placed_whole = dev.placements.first().pixmap;
+		}
+		const QImage part = placed_part.toImage();
+		const QImage all = placed_whole.toImage();
+		const bool part_right = !part.isNull()
+		    && part.size() == QSize(cw * 2, ch * 2)
+		    && QColor(part.pixel(1, 1)) == QColor(Qt::blue);
+		const bool whole_right = !all.isNull()
+		    && all.size() == QSize(cw * 4, ch * 2)
+		    && QColor(all.pixel(1, 1)) == QColor(Qt::red);
+		if (part_right && whole_right)
+			printf("PASS: a source rectangle places that part of the pixmap,"
+			       " and no source rectangle places all of it\n");
+		else {
+			printf("FAIL: a source rectangle places that part of the pixmap,"
+			       " and no source rectangle places all of it\n"
+			       "      condition: part %dx%d %s, whole %dx%d %s\n",
+			       part.width(), part.height(),
+			       part.isNull() ? "none" : qPrintable(QColor(part.pixel(1, 1)).name()),
+			       all.width(), all.height(),
+			       all.isNull() ? "none" : qPrintable(QColor(all.pixel(1, 1)).name()));
+			++r;
+		}
+	}
+
 	// rather than through QTabBar, because the widget doing the grabbing is
 	// private to Qt and the rule under test is the engine's.
 	{

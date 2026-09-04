@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-04
 
-881 checks, 0 failures, under six configurations, all six re-run
+882 checks, 0 failures, under six configurations, all six re-run
 2026-09-04: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -5584,8 +5584,8 @@ having: **restoring the previous arrangement leaves the `exec()` check
 green and reddens only this one.** That is the residue reproduced rather
 than remembered.
 
-**Damage-limited output, measured** (2026-09-04). `present()` took a
-damage region and ignored it; it emits one addressed run per damaged row
+**Damage-limited output for the TEXT path, measured** (2026-09-04).
+`present()` took a damage region and ignored it; it emits one addressed run per damaged row
 now, and the same edit costs:
 
     a one-cell change, no damage region    13,927 bytes
@@ -5627,6 +5627,18 @@ same backend, the same two frames, one argument different. Both
 directions, because *small* is satisfied by a `present()` that wrote
 nothing at all. Ignoring the region again puts both at 13,927 and reddens
 them.
+
+**The pixel path still sends everything, and that is not a detail this
+entry may leave out.** `present_pixels()` takes a damage region and
+ignores it -- the same unnamed parameter, four hundred lines down -- so
+the software-composite tier, which is what runs when an overlay is up on
+Sixel, iTerm2 or kitty, rasterises the whole screen and encodes it every
+frame. Damage-limiting that is a different piece of work from this one:
+it needs per-tier partial placement, and kitty placing a sub-image at a
+cell offset has nothing in common with sixel needing a cursor address and
+a smaller encode. **Recorded here rather than in a footnote because
+"damage-limited output" without a qualifier reads as finished**, and a
+reader would take §11's claim as honoured on every tier.
 
 **And small is not right, which needed a third check written against the
 first two.** An off-by-one in the row address -- `y` where `y + 1`
@@ -5755,6 +5767,44 @@ previous handlers back when it suspends* stay green. **That is the
 measurement of what the sequential checks cannot see**, and it is also
 why the original fault needed the resize-while-suspended check to find
 it: with `SIGWINCH` outside the group, none of these four could.
+
+**A source rectangle was accepted and discarded** (2026-09-04).
+`CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &pm, const
+QRectF &)` -- the third parameter unnamed, which is the compiler-visible
+form of "I know I am ignoring this". An application drawing one sprite
+out of an atlas got **the whole atlas** placed, at the right size and
+with no error: a wrong picture rather than a missing one.
+
+**Probed before it was fixed, and the probe is what bounds the claim.**
+Every `drawPixmap` the suite produces arrives with `source 0,0 WxH` for a
+WxH pixmap, because Qt passes the full rect for the two-argument forms.
+So nothing in this tree exercised it, the gap was invisible from inside,
+and the check had to CONSTRUCT the case rather than find it.
+
+**Paired for a reason particular to this fix:** "the placement carries
+the right half" is equally true of an engine that crops
+*unconditionally*, which would wreck every ordinary `drawPixmap` -- much
+the commoner call. The two halves also go through different overloads on
+purpose, `QRectF` with a source and `QRect` without, because that is how
+an application reaches each path; routing both through the
+three-argument form would have exercised one code path twice.
+
+Ignoring the source rectangle again gives `part 40x38 #ff0000` where the
+blue 20x38 half was asked for -- the sabotage prints the wrong size and
+the wrong colour together.
+
+**Found by a lens the previous fix suggested: a parameter accepted and
+ignored.** `-Wunused-parameter` is already on, so a NAMED unused
+parameter cannot survive here; an unnamed one is invisible to it by
+construction. The library has exactly three, and reading them is the
+whole sweep:
+
+    present_pixels()  const QRegion &      a real gap, above
+    drawPixmap()      const QRectF &       this defect
+    drawPolygon()     PolygonDrawMode      genuinely irrelevant: the fill
+                                           is a bounding-box outline, and
+                                           winding rules do not survive
+                                           cell granularity
 
 **A resize while suspended wrote into the terminal it had handed back**
 (2026-09-04). `suspend()` returns the terminal -- its own comment says "a
