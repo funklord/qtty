@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-932 checks, 0 failures, under six configurations, all six re-run
+933 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6148,6 +6148,30 @@ there. `make` first, then judge.
 What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
+
+**An item's check box was live one cell to the left of where it is
+drawn** (2026-09-05). Both drawing paths -- `CE_ItemViewItem` here and
+`CellItemDelegate` -- put `[x]` after one cell of indent, so cells 1, 2
+and 3 of the item. Qt's `SE_ItemViewItemCheckIndicator` is built by
+`QCommonStyle` from `PM_IndicatorWidth`, which this style answers
+correctly at three cells, and a margin of `PM_FocusFrameHMargin + 1` --
+one PIXEL. So the live rectangle starts at the item's left edge plus a
+pixel and covers cells 0, 1 and 2.
+
+    cells                0     1     2     3
+    drawn                .     [     x     ]
+    toggled, before      yes   yes   yes   no
+    toggled, after       no    yes   yes   yes
+
+So clicking the blank indent toggled the item and clicking the box's own
+closing bracket did nothing. **One cell apart at every cell size** --
+unlike the scroll bar's arrows, which worked here only because 19 is odd,
+this one is a constant offset and was wrong on every machine.
+
+The rectangle is the drawn cells now, at the item's full height: those
+columns hold nothing else, the text starting after them, so a click in
+them means the box -- and demanding the exact row would derive it twice
+more, once in each drawing path.
 
 **A wheel notch scrolled nothing** (2026-09-05). `QWheelEvent`'s fourth
 argument is `angleDelta`, which Qt defines in EIGHTHS OF A DEGREE with

@@ -679,6 +679,28 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
                                 const QWidget *w) const {
 	QRect r = QProxyStyle::subElementRect(se, opt, w);
+	// The cells the check box is DRAWN in. Both CE_ItemViewItem here and
+	// CellItemDelegate put "[x]" at one cell of indent, so cells 1, 2 and 3
+	// of the item. QCommonStyle builds this rectangle from PM_IndicatorWidth
+	// -- which this style answers correctly, three cells -- and a margin of
+	// PM_FocusFrameHMargin + 1, i.e. one PIXEL, so it lands at cells 0, 1
+	// and 2. One cell apart from the picture at every cell size, which is
+	// not the parity accident the scroll bar's arrows had.
+	//
+	// Measured before this: clicking the blank indent cell toggled the item
+	// and clicking the box's own closing bracket did nothing.
+	//
+	// Full item height on purpose. The box is drawn on one row and the item
+	// may be taller, but those columns hold nothing else -- the text starts
+	// after them -- so a click anywhere in them means the box, and demanding
+	// the exact row would mean deriving it twice, once here and once in each
+	// of the two drawing paths.
+	if (se == SE_ItemViewItemCheckIndicator && opt) {
+		const int cw = GridMetrics::cw();
+		if (r.isValid())
+			return QRect(opt->rect.left() + cw, opt->rect.top(),
+			             3 * cw, opt->rect.height());
+	}
 	if (se == SE_TabBarTabRightButton || se == SE_TabBarTabLeftButton) {
 		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 		r.moveLeft(qRound(double(r.left()) / cw) * cw);

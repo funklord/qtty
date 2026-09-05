@@ -1593,6 +1593,56 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// An item's check box is drawn at cells 1..3 -- one cell of indent, then
+	// "[x]" -- by both the style and the delegate. Qt's hit rectangle for it
+	// is SE_ItemViewItemCheckIndicator, which QCommonStyle builds from
+	// PM_IndicatorWidth and a one-PIXEL margin, so it starts at the item's
+	// left edge plus one pixel and spans three cells' worth: cells 0, 1 and
+	// 2. The drawn box and the live rectangle are one cell apart, at every
+	// cell size -- not a parity accident like the scroll bar's arrows.
+	{
+		QWidget ch_host;
+		ch_host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *lv = new QListView(&ch_host);
+		auto *im = new QStandardItemModel(&ch_host);
+		auto *it = new QStandardItem(QStringLiteral("item"));
+		it->setCheckable(true);
+		it->setCheckState(Qt::Unchecked);
+		im->appendRow(it);
+		lv->setModel(im);
+		lv->setFrameShape(QFrame::NoFrame);
+		lv->setGeometry(0, 0, cw * 12, ch * 3);
+		ch_host.resize(GridMetrics::cells(12, 3));
+		ch_host.show();
+		QCoreApplication::processEvents();
+
+		const auto click_cell = [&](int x) {
+			it->setCheckState(Qt::Unchecked);
+			InputRouter rc(&ch_host);
+			MouseEvent m;
+			m.cell = QPoint(x, 0);
+			m.button = 1;
+			m.press = true;
+			rc.on_mouse(m);
+			m.press = false;
+			m.release = true;
+			rc.on_mouse(m);
+			QCoreApplication::processEvents();
+			return it->checkState() == Qt::Checked;
+		};
+		const bool indent = click_cell(0), open_b = click_cell(1);
+		const bool mark = click_cell(2), close_b = click_cell(3);
+		printf("info: check box cells 0..3 toggle: %d %d %d %d\n",
+		       int(indent), int(open_b), int(mark), int(close_b));
+		// The three cells the box is DRAWN in toggle it, and the blank
+		// indent cell beside it does not. Asserting both halves, because
+		// "cell 3 works" is satisfied by a rectangle covering the whole row.
+		CHECK(!indent && open_b && mark && close_b,
+		      "the cells an item's check box is drawn in are the cells that"
+		      " toggle it");
+		GridGuard::reset();
+	}
+
 	// ---- the pointer enters and leaves ----
 	{
 		// Nothing sent Enter or Leave. QApplicationPrivate does it from the
