@@ -134,3 +134,11 @@ find = "\t\t\t\tif (len <= 0) return;"
 into = "\t\t\t\tif (len < 2) return;"
 count = 1
 check = "a one-cell scroll bar says a bar is there"
+
+[[sabotage]]
+name = "a progress bar invents a percentage Qt refused to name"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tif (pb->textVisible && !no_progress) {"
+into = "\t\t\t\tif (pb->textVisible) {"
+count = 1
+check = "one with no value yet writes no percentage at all"

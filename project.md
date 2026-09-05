@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-976 checks, 0 failures, under six configurations, all six re-run
+978 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6591,6 +6591,24 @@ The check was kept for the behaviour it does pin -- Tab reaching a widget
 when nothing has focus, which nothing covered -- with its claim corrected
 and what was tried written down. The fallback remains unreached.
 
+**A progress bar nobody has set a value on wrote `-1%` across itself**
+(2026-09-06), found by checking design.md 8.4's own list rather than
+hunting outside it -- the matrix declares eighteen widgets "style-drawn,
+reviewed, snapshot-tested", and that is a claim a probe can re-derive.
+
+Qt constructs a `QProgressBar` with value **-1** against a minimum of 0,
+and `QProgressBar::text()` returns an EMPTY string for any value below
+the minimum. That empty string is Qt saying *there is no percentage to
+show*. `CE_ProgressBar` read it as *nobody supplied text, so compute one*
+and wrote `-1%`. The fallback is kept for the case it was written for --
+an option built by hand with no text, which is how this style is driven
+from a `QStyleOption` directly -- and Qt's own refusal is now separated
+out. A fresh or reset bar draws its empty trough and no number.
+
+The bar itself was always right: the fill is `qRound(frac * extent)` with
+a negative fraction, which is zero cells. Only the label was wrong, which
+is why nothing looked broken enough to notice.
+
 **What is left, recorded rather than fixed:**
 
 **All three were measured on 2026-09-05, and two of the three readings
@@ -11171,6 +11189,46 @@ column depends on the bracket the style draws and on the font: the caret
 at the start of the text is on the first character's cell, at the end it
 is one cell past the last, and one character of movement is one cell of
 movement.
+
+
+### 8.10 The support matrix promises a placeholder nothing draws
+
+design.md 8.4 classifies every widget into four kinds and says of the
+last: **Unsupported -- `QGraphicsView`, OpenGL widgets, `QWebEngineView`
+-- Renders a labelled placeholder box.**
+
+Nothing in `src/` or `include/` draws one. Measured 2026-09-06: a
+`QGraphicsView` 18x5 cells renders 42 glyphs, and all 42 are its own
+`QFrame` border -- an empty box with no label, which is what any framed
+widget with no content draws. The word "placeholder" appears in this tree
+only in the kitty image code, which is unrelated.
+
+**And the matrix does not classify every widget.** `QDial` is in none of
+the four rows. Measured at the same size: **0 glyphs** with its default
+settings, and with a value and notches turned on, 19 glyphs of `-`
+fragments carrying neither the value nor the position. It is a
+Qt-provided widget drawn by the style through `CC_Dial`, which this style
+does not answer, so Fusion draws arcs into a cell device and nothing
+survives. It is not a custom `paintEvent` widget, so the **Generic
+(Channel B)** row's promise -- "renders legibly, no guarantees" -- is the
+nearest thing to it and is not met either.
+
+The other declared rows were checked at the same time and hold. All
+eighteen **Native** widgets render, and the three **Replaced** ones do.
+Two of the eighteen came back at 0 glyphs on the first pass -- `QSplitter`
+and `QMenuBar` -- and both were the probe's own fault rather than the
+tree's: an empty splitter has nothing to split and an empty menu bar has
+no menus. With children and with menus they render correctly. **The
+fixture was on the safe side of its own question**, which is this
+document's most-recorded cause arriving in the instrument rather than in
+the code.
+
+Flagged and not resolved, because the two available answers are a
+feature and a document edit and neither is a worker's to pick: either the
+placeholder box is built, or 8.4 is narrowed to say what actually
+happens. `QDial` is the same question -- classify it, replace it, or
+answer `CC_Dial` -- and the row it belongs in is the copyright holder's
+to choose.
 
 
 ## 9. Build and repository conventions

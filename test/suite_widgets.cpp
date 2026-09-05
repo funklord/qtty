@@ -584,6 +584,34 @@ int suite_widgets() {
 			      "and a menu bar item does not write past its own cells");
 		}
 
+		// A progress bar nobody has set a value on. Qt constructs one with
+		// value -1 against a minimum of 0, and QProgressBar::text() returns
+		// an EMPTY string for a value below the minimum -- that empty string
+		// is Qt saying "there is no percentage to show", and the style read
+		// it as "nobody supplied text, so make one up". A fresh or reset bar
+		// wrote -1% across itself.
+		//
+		// The CONTROL is the same bar with a value: the number must still be
+		// written, or this would be "fixed" by never labelling anything.
+		{
+			const auto bar_text = [&](bool set_value) {
+				QProgressBar pb;
+				if (set_value) pb.setValue(40);
+				pb.setFixedSize(cw * 18, ch);
+				show(pb, 20, 2);
+				CellBuffer b(20, 2);
+				render_once(pb, b);
+				return b.to_text().trimmed();
+			};
+			const QString fresh = bar_text(false), set = bar_text(true);
+			printf("info: a fresh progress bar reads [%s]; one at 40 reads"
+			       " [%s]\n", qPrintable(fresh), qPrintable(set));
+			CHECK(set.contains(QStringLiteral("40%")),
+			      "a progress bar with a value writes it");
+			CHECK(!fresh.contains(QStringLiteral("-1")),
+			      "and one with no value yet writes no percentage at all");
+		}
+
 		// A scroll bar squeezed to ONE cell. The control returned without
 		// drawing anything at all below two cells, so the cell was blank and
 		// nothing said the view scrolls.

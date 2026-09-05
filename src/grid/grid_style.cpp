@@ -1659,7 +1659,19 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 						dev->buffer().put_cluster(c.left(), c.top() + i, g,
 						                          Color(), Color(), bar);
 				}
-				if (pb->textVisible) {
+				// A value BELOW the minimum is Qt's "no progress yet", and a
+				// freshly constructed QProgressBar is in it -- value -1
+				// against a minimum of 0. QProgressBar::text() returns an
+				// empty string for exactly that case, and the fallback below
+				// read the empty string as "nobody supplied text, so compute
+				// one": a fresh or reset bar wrote -1% across itself.
+				//
+				// The fallback is kept for the case it was written for, an
+				// option built by hand with no text in it, which is how this
+				// style is driven from a QStyleOption directly. What is
+				// separated out is Qt's own refusal to name a percentage.
+				const bool no_progress = pb->progress < pb->minimum;
+				if (pb->textVisible && !no_progress) {
 					const QString label = pb->text.isEmpty()
 					    ? QStringLiteral("%1%").arg(qRound(frac * 100)) : pb->text;
 					dev->buffer().text(c.center().x() - label.size() / 2, c.top(),
