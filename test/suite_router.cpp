@@ -1432,11 +1432,62 @@ int suite_router() {
 		};
 		const int top = click_row(0), up = click_row(1);
 		const int thumb = click_row(2), down = click_row(4), bottom = click_row(5);
+		// Row 3, which this fixture used to skip. The thumb is drawn in row
+		// 2 and rows 3 and 4 are both drawn as track, so both must page.
+		const int gap = click_row(3);
 		// Relationships, not the numbers: a step is one, a page is more than
 		// one, the thumb moves nothing, and the two ends go opposite ways.
 		CHECK(top == 49 && bottom == 51, "a vertical scroll bar's arrow rows step by one");
 		CHECK(up < top && down > bottom, "its page rows move further than a step");
 		CHECK(thumb == 50, "and a click on the thumb moves nothing");
+		printf("info: rows 0..5 give %d %d %d %d %d %d\n",
+		       top, up, thumb, gap, down, bottom);
+		CHECK(gap > 50 && gap == down,
+		      "and every row drawn as track pages, including the one below"
+		      " the thumb");
+
+		// At a cell whose height is EVEN, which is the case the old
+		// behaviour could not survive. Fusion's arrow button is
+		// PM_ScrollBarExtent along the axis -- cw -- while a click lands at
+		// ch/2, so the top arrow was hit only where cw > ch/2. At 10x19 that
+		// is 10 > 9, true by one pixel because 19 is odd; at 8x16 it is
+		// 8 > 8, false, and the arrow paged instead of stepping. The cells
+		// come from the drawing now, so the question does not arise -- and
+		// this is the check that says so rather than the arithmetic.
+		{
+			const int was_cw = GridMetrics::cw(), was_ch = GridMetrics::ch();
+			GridMetrics::set(8, 16);
+			QWidget h2;
+			h2.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *sb2 = new QScrollBar(Qt::Vertical, &h2);
+			sb2->setRange(0, 100);
+			sb2->setGeometry(0, 0, 8, 16 * 6);
+			h2.resize(GridMetrics::cells(8, 7));
+			h2.show();
+			QCoreApplication::processEvents();
+			const auto click2 = [&](int y) {
+				sb2->setValue(50);
+				InputRouter r3(&h2);
+				MouseEvent m;
+				m.cell = QPoint(0, y);
+				m.button = 1;
+				m.press = true;
+				r3.on_mouse(m);
+				m.press = false;
+				m.release = true;
+				r3.on_mouse(m);
+				QCoreApplication::processEvents();
+				return sb2->value();
+			};
+			const int t2 = click2(0), b2 = click2(5);
+			GridMetrics::set(was_cw, was_ch);
+			printf("info: on an 8x16 cell the arrow rows give %d and %d\n",
+			       t2, b2);
+			CHECK(t2 == 49 && b2 == 51,
+			      "and the arrow rows still step by one where the cell height"
+			      " is even");
+			GridGuard::reset();
+		}
 		GridGuard::reset();
 	}
 

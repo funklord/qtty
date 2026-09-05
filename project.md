@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-927 checks, 0 failures, under six configurations, all six re-run
+929 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6148,6 +6148,39 @@ there. `make` first, then judge.
 What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
+
+**A scroll bar row drawn as track hit-tested as the thumb** (2026-09-05).
+`GridStyle` draws the bar whole in cells and left `subControlRect` to
+Fusion, which answers in pixels from `PM_ScrollBarExtent`. Measured on a
+six-row vertical bar at 50 of 100, clicking the centre of each drawn row:
+
+    row      0    1    2    3    4    5
+    value   49   40   50   50   60   51
+    drawn    v  page thumb track track  ^
+
+Row 3 is drawn as track and did nothing. Fusion's thumb is
+`PM_ScrollBarSliderMin`, 26 px, which is 1.37 rows, so it covered a row
+the picture called track. **The fixture that pinned this behaviour
+clicked rows 0, 1, 2, 4 and 5 and skipped 3** -- the third fixture this
+week found sitting exactly beside the case it could not see.
+
+`subControlRect` handles the bar now, and the arithmetic is COPIED from
+the drawing on purpose: `thumb_len` and `thumb_pos` are the same
+expressions, because the hit test has to agree with the picture and two
+derivations of one layout is what put this file's spin box arrows in the
+same cell.
+
+**And it cured a second defect nobody had reported, which the sweep
+predicted from the arithmetic.** Fusion's arrow button is
+`PM_ScrollBarExtent` -- `cw` -- along the axis, while a click lands at
+`ch/2`. So the top arrow was hit only where `cw > ch/2`: at 10x19 that is
+10 > 9, true by one pixel because 19 is odd. Measured at 8x16 with the
+fix reverted, the top arrow gives 40 -- a page, not a step. **The bar's
+arrows worked on this machine because of a parity accident**, and there
+is a check at 8x16 now that says so rather than the arithmetic saying it.
+
+    sabotage                     row 3        the 8x16 arrows
+    leave the hit test to Fusion  50 (dead)   40 (pages)
 
 **One function honoured the terminal's palette and the next, applied to
 its output, contradicted it** (2026-09-05). `to_ansi16()` matches a

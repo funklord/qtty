@@ -715,6 +715,61 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 			break;
 		}
 	}
+	// The scroll bar is drawn whole in cells and its hit test was left to
+	// Fusion, which answers in pixels from PM_ScrollBarExtent. The two
+	// disagreed about the one thing a user does with a scroll bar.
+	//
+	// Measured on a six-row vertical bar at value 50 of 100, clicking the
+	// centre of each drawn row: 49, 40, 50, 50, 60, 51. Row 3 is drawn as
+	// track and did nothing -- Fusion's thumb is PM_ScrollBarSliderMin, 26
+	// px, which is 1.37 rows, so it covered a row the picture said was
+	// track. The fixture that pinned this behaviour clicked rows 0, 1, 2, 4
+	// and 5 and skipped 3.
+	//
+	// The arithmetic below is the DRAWING's, deliberately: thumb_len and
+	// thumb_pos are copied from drawComplexControl's CC_ScrollBar arm
+	// because the hit test has to agree with the picture, and two
+	// derivations of one layout is what put this file's spin box arrows in
+	// the same cell.
+	if (cc == CC_ScrollBar && opt) {
+		if (auto *sb = qstyleoption_cast<const QStyleOptionSlider *>(opt)) {
+			const QRect r = opt->rect;
+			const bool vert = sb->orientation == Qt::Vertical;
+			const int cell = vert ? ch : cw;
+			const int len = (vert ? r.height() : r.width()) / qMax(1, cell);
+			if (len >= 2) {
+				const int track = len - 2;
+				const int span = sb->maximum - sb->minimum;
+				int thumb_len = 1, thumb_pos = 0;
+				if (span > 0 && track > 0) {
+					thumb_len = qBound(1, track * sb->pageStep
+					                     / qMax(1, span + sb->pageStep), track);
+					thumb_pos = (track - thumb_len)
+					          * (sb->sliderPosition - sb->minimum) / span;
+				}
+				// A run of whole cells along the axis, full width across it.
+				const auto band = [&](int first, int count) {
+					if (count <= 0) return QRect();
+					return vert
+					    ? QRect(r.left(), r.top() + first * ch, r.width(), count * ch)
+					    : QRect(r.left() + first * cw, r.top(), count * cw, r.height());
+				};
+				switch (sc) {
+				case SC_ScrollBarSubLine: return band(0, 1);
+				case SC_ScrollBarAddLine: return band(len - 1, 1);
+				case SC_ScrollBarSlider:  return band(1 + thumb_pos, thumb_len);
+				case SC_ScrollBarSubPage: return band(1, thumb_pos);
+				case SC_ScrollBarAddPage:
+					return band(1 + thumb_pos + thumb_len,
+					            track - thumb_pos - thumb_len);
+				case SC_ScrollBarGroove:  return band(1, track);
+				case SC_ScrollBarFirst:
+				case SC_ScrollBarLast:    return QRect();
+				default: break;
+				}
+			}
+		}
+	}
 	if (cc == CC_GroupBox && opt) {
 		// Fusion answers a 25-pixel contents top -- a title's height in
 		// pixels -- and 25 is 1.3 cells. GridSnap rounds to NEAREST, so the
