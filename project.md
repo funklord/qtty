@@ -6149,6 +6149,47 @@ What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
 
+**Nothing checked that the library could be USED** (2026-09-05). The tree
+had `install` and `test-install`, which prove the files land and are
+removed again -- and no statement anywhere that the files are usable
+together. They were not, quite.
+
+There was no pkg-config file at all, and the one file naming the include
+path and the C++ standard, `qtty.pri`, is not installed and is
+source-tree-relative. So a consumer had to reverse-engineer the link line
+from `example/chat/chat.pro`, which points back into this tree. The
+README documented how to build qtty and never mentioned `make install`.
+
+`qtty.pc` is generated and installed now, and `make test-consume` builds
+a program against a TEMPORARY prefix using nothing but `pkg-config` --
+then runs it under a pty and asserts it took the alternate screen and
+drew its own label. 3365 bytes of it.
+
+**The .pc was wrong the first time it was installed, and only running
+pkg-config found it.** The rule depended on `VERSION` and `Makefile`, and
+`PREFIX` is neither -- it is a variable. So a file generated once for one
+prefix was handed to every later install: staged with `PREFIX=/usr` by
+`test-install`, then installed elsewhere, and the installed `.pc` still
+said `prefix=/usr`. pkg-config then dropped `-I/usr/include` as a system
+path and produced a compile line with **no qtty headers in it at all**,
+which is a wrong answer that looks like a working one. `FORCE` is a
+prerequisite now, and the check greps its own prefix out of `--cflags`.
+
+**The generated file is deliberate rather than tracked.** Everything in it
+is stated somewhere else already -- the version in `VERSION`, the prefix
+in `PREFIX`, the flags in what the library needs -- and a second copy is a
+second thing to be wrong. `Libs.private` is empty because `openpty` is a
+TEST dependency only; `grep` says so, and `test/test.pro` is where
+`-lutil` is added.
+
+**And a public header said the opposite of what the code does.**
+`grid.h` claimed "Neither is installed by `Qtty::setup()`: both are
+opt-in" while `setup()` installs `GridSnap` unconditionally and
+`GridGuard` in a debug build. An adopter trusting the header would not
+understand why their geometry was being rewritten. It now says what
+`setup()` does and why the explicit `install()` still exists -- a library
+that must be inert in a GUI build never calls `setup()` and gets neither.
+
 **An item view wrote its labels over the widget beside it**
 (2026-09-05). Every write `CellItemDelegate` makes goes straight into the
 buffer, so nothing bounded them: the budget is the ITEM's rectangle, and

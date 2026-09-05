@@ -20,6 +20,7 @@
 #   make test-platforms -- the suite under each QPA in TEST_PLATFORMS
 #   make test-sanitize -- the suite under ASan, UBSan and the leak detector
 #   make test-valgrind -- the suite under valgrind memcheck
+#   make test-consume  -- build a program against the installed library
 #   make test-negotiate -- ask a second terminal what qtty concludes
 #   make test-screen  -- what a real terminal DRAWS, captured and counted
 #   make test-tools   -- the shipped tools and the example, RUN not just built
@@ -360,6 +361,13 @@ test-screen: $(LIB)
 test-negotiate: $(NEGOTIATE)
 	@./tool/negotiate-check $(BUILD_DIR)
 
+# The adoption path: a program built against the INSTALLED library, with
+# nothing from this tree. Out of `check` because it installs into a temporary
+# prefix and compiles a Qt program, which takes seconds where `check` takes
+# milliseconds -- and `check` is what runs before every commit.
+test-consume:
+	@./tool/consume-check
+
 test-platforms: tests-build
 	@failed=0; ran=0; expect=; \
 	out=$(dir $(TEST_BIN))platform.out; \
@@ -503,6 +511,7 @@ INSTALLED_HEADERS = application.h \
 	                  version.h
 
 INSTALLED_FILES = usr/bin/qtty-inspect usr/bin/qtty-replay usr/lib/libqtty.a \
+                  usr/lib/pkgconfig/qtty.pc \
                   $(patsubst %,usr/include/qtty/%,$(INSTALLED_HEADERS))
 
 test-install: $(LIB) $(INSPECT) $(REPLAY)
@@ -946,11 +955,47 @@ run: $(LIB)
 # The help line above said "tools and the example" until 2026-09-03 and was
 # wrong about both. Whether the negotiator belongs in $(PREFIX)/bin is the
 # copyright holder's call, and project.md section 8.0 carries it.
-install: $(LIB)
+# The pkg-config file is GENERATED rather than tracked, because everything in
+# it is already stated somewhere else and a second copy is a second thing to
+# be wrong: the version comes from VERSION, the prefix from PREFIX, and the
+# flags from what the library actually needs. Written into BUILD_DIR so a
+# `make clean` takes it and the source tree stays free of build output.
+#
+# Cflags carries -std=c++17 because qtty.pri is not installed and a consumer
+# has nowhere else to learn the standard. Libs.private is empty on purpose:
+# the static library needs nothing beyond Qt, `openpty` being a TEST
+# dependency only -- grep says so, and test/test.pro is where -lutil is
+# added.
+# FORCE, not just VERSION and Makefile: PREFIX is a variable rather than a
+# file, so a build that made this once for one prefix would hand the next
+# install a file naming the old one. Measured -- staged with PREFIX=/usr by
+# `test-install`, then installed elsewhere, and the installed .pc still said
+# prefix=/usr, so pkg-config dropped the include path as a system one and a
+# consumer got a compile line with no qtty headers in it. Regenerating costs
+# a printf.
+$(BUILD_DIR)/qtty.pc: VERSION Makefile FORCE
+	@mkdir -p $(dir $@)
+	@printf '%s\n' \
+	    'prefix=$(PREFIX)' \
+	    'exec_prefix=$${prefix}' \
+	    'libdir=$${prefix}/lib' \
+	    'includedir=$${prefix}/include' \
+	    '' \
+	    'Name: qtty' \
+	    'Description: Qt Widgets rendered into a terminal' \
+	    'Version: $(VERSION)' \
+	    'Requires: Qt6Widgets' \
+	    'Cflags: -I$${includedir} -std=c++17' \
+	    'Libs: -L$${libdir} -lqtty' \
+	    > $@
+
+install: $(LIB) $(BUILD_DIR)/qtty.pc
 	install -d $(DESTDIR)$(PREFIX)/include/qtty
 	install -m 0644 include/qtty/*.h $(DESTDIR)$(PREFIX)/include/qtty/
 	install -d $(DESTDIR)$(PREFIX)/lib
 	install -m 0644 $(LIB) $(DESTDIR)$(PREFIX)/lib/
+	install -d $(DESTDIR)$(PREFIX)/lib/pkgconfig
+	install -m 0644 $(BUILD_DIR)/qtty.pc $(DESTDIR)$(PREFIX)/lib/pkgconfig/
 	install -d $(DESTDIR)$(PREFIX)/bin
 	install -m 0755 $(INSPECT) $(REPLAY) $(DESTDIR)$(PREFIX)/bin/
 
@@ -960,6 +1005,7 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/qtty-inspect
 	rm -f $(DESTDIR)$(PREFIX)/bin/qtty-replay
 	rm -f $(DESTDIR)$(PREFIX)/lib/libqtty.a
+	rm -f $(DESTDIR)$(PREFIX)/lib/pkgconfig/qtty.pc
 	rm -rf $(DESTDIR)$(PREFIX)/include/qtty
 
 # -----------------------------------------------------------------------------
@@ -1005,4 +1051,4 @@ help:
 
 .PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks \
         version-check run install uninstall clean veryclean distclean help \
-        test-screen test-negotiate FORCE
+        test-screen test-negotiate test-consume FORCE

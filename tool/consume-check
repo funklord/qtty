@@ -1,0 +1,91 @@
+#!/bin/sh
+# Build a program against the INSTALLED library, the way a project adopting
+# qtty would: nothing from the source tree, no qtty.pri, no include path
+# anybody typed by hand. Just pkg-config and the headers `make install` laid
+# down.
+#
+# This exists because the adoption path was the one thing nothing checked.
+# The tree had `install` and `test-install` -- which prove the files land and
+# are removed again -- and no statement that the files are USABLE. They were
+# not, quite: there was no pkg-config file at all, and the one file naming
+# the include path and the C++ standard, qtty.pri, is not installed. A
+# consumer had to reverse-engineer the link line from the example's .pro,
+# which points back into the source tree.
+#
+# Bounded: a temporary prefix removed by the trap, a timeout on the compile
+# and another on the run, and the program itself is given a terminal that
+# goes away.
+set -e
+for need in pkg-config g++ script; do
+	command -v "$need" >/dev/null 2>&1 || {
+		echo "consume-check: $need is absent, so nothing was built" >&2
+		exit 0
+	}
+done
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+dir=$(mktemp -d)
+trap 'rm -rf "$dir"' EXIT INT TERM
+
+# A prefix of its own, so this never touches a real one and never depends on
+# what is already installed there.
+make -C "$root" install PREFIX="$dir/prefix" >"$dir/install.log" 2>&1 || {
+	echo "consume-check: FAILED -- install did not run" >&2
+	tail -5 "$dir/install.log" >&2
+	exit 1
+}
+
+export PKG_CONFIG_PATH="$dir/prefix/lib/pkgconfig"
+pkg-config --exists qtty || {
+	echo "consume-check: FAILED -- pkg-config cannot see qtty after install" >&2
+	exit 1
+}
+# The include path must survive. It did not once: the .pc was generated for
+# whichever PREFIX built it first, so an install elsewhere shipped a file
+# naming the old prefix and pkg-config dropped -I/usr/include as a system
+# path, handing the consumer a compile line with no qtty headers in it.
+pkg-config --cflags qtty | grep -q -- "-I$dir/prefix/include" || {
+	echo "consume-check: FAILED -- the .pc does not name this prefix:" >&2
+	pkg-config --cflags qtty >&2
+	exit 1
+}
+
+cat > "$dir/consumer.cpp" <<'CONSUMER'
+#include <qtty/qtty.h>
+#include <QApplication>
+#include <QLabel>
+
+int main(int argc, char **argv) {
+	Qtty::prepare_environment();
+	QApplication app(argc, argv);
+	Qtty::setup(app);
+	QLabel w(QStringLiteral("hello from a consumer"));
+	return Qtty::exec(app, w);
+}
+CONSUMER
+
+timeout 300 g++ -o "$dir/consumer" "$dir/consumer.cpp" \
+    $(pkg-config --cflags --libs qtty) 2>"$dir/cc.log" || {
+	echo "consume-check: FAILED -- a consumer does not compile against the" >&2
+	echo "               installed headers" >&2
+	head -5 "$dir/cc.log" >&2
+	exit 1
+}
+
+# And it has to RUN. Linking proves the symbols are there; only running
+# proves setup() finds a font and the backend takes a terminal. `script`
+# gives it a pty, because everything qtty emits is gated on stdout being one.
+timeout 60 script -q -c "timeout 6 $dir/consumer" "$dir/out" >/dev/null 2>&1 || true
+python3 - "$dir/out" <<'PY'
+import sys
+d = open(sys.argv[1], "rb").read()
+alt = b"\x1b[?1049h" in d
+label = b"hello from a consumer" in d
+if alt and label:
+	print("consume-check: a consumer built from the installed prefix drew its"
+	      " own label, %d bytes" % len(d))
+	sys.exit(0)
+msg = "consume-check: FAILED -- alternate screen %s, label %s, %d bytes"
+print(msg % (alt, label, len(d)), file=sys.stderr)
+sys.exit(1)
+PY

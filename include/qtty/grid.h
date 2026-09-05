@@ -88,10 +88,19 @@ public:
 //
 // GridSnap is GridGuard's other half. The guard measures and reports; this
 // corrects, using the same exemptions, the same event, and the same
-// install-once shape. Neither is installed by Qtty::setup(): both are opt-in,
-// so a program that wants the report without the correction can have it, and
-// so that a library which must behave normally in a GUI build (section 10.1)
-// does nothing at all unless asked.
+// install-once shape.
+//
+// What Qtty::setup() does with them, which this said the opposite of until
+// 2026-09-05: it installs GridSnap unconditionally, and GridGuard in a debug
+// build only -- the guard is an assertion and is compiled out of release, as
+// section 9 asks. So a program calling setup() has both in a debug build and
+// the correction alone in a release one.
+//
+// They keep the explicit install() because setup() is not the only way in.
+// A library that must behave normally in a GUI build (section 10.1) never
+// calls setup() and gets neither, which is the inertness rule doing its job;
+// and a program that wants the report without the correction, or the
+// correction in a release build, installs the one it wants itself.
 //
 // **Round each edge to the nearest cell, and nothing else.** The policy is not
 // a preference. Rounding is monotonic, so if one widget's right edge is at or

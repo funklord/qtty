@@ -69,6 +69,63 @@ maintenance: `make record R=render` rewrites the render snapshot after a
 reviewed change. The example runs with `make run`, or directly as
 `build/example/chat/chat --tui`.
 
+## Using it from another project
+
+    make install PREFIX=/usr/local     # headers, libqtty.a, qtty.pc, tools
+
+Then, in a qmake project:
+
+    CONFIG += link_pkgconfig
+    PKGCONFIG += qtty
+
+or anywhere else:
+
+    g++ myapp.cpp $(pkg-config --cflags --libs qtty)
+
+`qtty.pc` names the include path, the C++ standard and `Qt6Widgets`, so
+nothing else has to be repeated. `make test-consume` builds and runs a
+program this way against a temporary prefix, so the recipe above is checked
+rather than described.
+
+The call sequence, which is the one sharp edge:
+
+```cpp
+#include <qtty/qtty.h>
+
+int main(int argc, char **argv) {
+    Qtty::prepare_environment();          // BEFORE QApplication
+    QApplication app(argc, argv);
+    Qtty::setup(app);                     // BEFORE any widget: font + style
+    MyWindow win;                         // ordinary Qt widgets
+    return Qtty::exec(app, win);
+}
+```
+
+`prepare_environment()` pins the platform to `offscreen` and turns High-DPI
+scaling off; `setup()` installs the font, the style, the theme and the grid
+snapper. Both must run in that order and before the widgets exist —
+`include/qtty/application.h` says why, and `example/chat/` is a complete
+program that does it.
+
+Nothing else is required. A widget tree written against ordinary Qt renders
+into the terminal as it is; `example/chat/chat.h` is deliberately free of
+qtty types to show that.
+
+What an application may ask for on top, none of it automatic:
+`Qtty::set_priority()` for what to drop first on a small terminal,
+`Qtty::CellItemDelegate` for item views with check states and icons,
+`Qtty::set_icon_glyph()` to name a glyph for an icon, `Qtty::Overlay` for a
+picture over the cells, and the `qtty.cells` widget property to state a size
+in cells. Each is documented in its own header.
+
+**Known limits, so they are not a surprise.** The library is a static
+`libqtty.a`; there is no shared build and no CMake package file. The font is
+resolved by `setup()` and must be monospace with integral metrics — see the
+build requirements above. A progress bar cannot be made one cell tall by the
+style alone, so an application that wants one calls
+`setFixedHeight(GridMetrics::ch())` itself. And the API is pre-alpha: see the
+status note at the top.
+
 ## Layout
 
     include/qtty/     public headers (§10)
