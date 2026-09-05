@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-911 checks, 0 failures, under six configurations, all six re-run
+914 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6148,6 +6148,65 @@ there. `make` first, then judge.
 What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
+
+**There were not two functions that transmit an image, there were
+eight** (2026-09-05), and the conversion had reached two of them. Found
+by taking the shape of the last defect as the next lens: a value serving
+one caller and not its siblings.
+
+    site                             states size as   before
+    present_pixels, kitty tiles      pixels           converted
+    present_pixels, sixel            pixels           converted
+    present_pixels, iTerm2           pixels + CELLS   cells derived wrongly
+    present_overlay                  pixels           unconverted
+    present(), kitty placement       pixels           unconverted
+    present(), sixel placement       pixels           unconverted
+    present(), iTerm2 placement      CELLS            correct
+    present(), kitty placeholders    CELLS            correct
+
+**The two that were right were right for a structural reason rather than
+by care: they state the size in CELLS and let the terminal scale.** Every
+path that put raw pixels on the wire was wrong until it was converted.
+That is the generalisation worth keeping, and it predicts where to look
+in any future tier: whatever says "this many cells" cannot have this bug,
+and whatever says "this many pixels" can.
+
+**The kitty placement was measured on screen at 40 px where the
+terminal's four cells are 36**, the same 11% as the overlay, through a
+different function. It is 36 now.
+
+**The iTerm2 one is the subtlest and was invisible even to a reader.**
+That path scales the image AND states a cell count, and the cell count
+was recovered by dividing the CONVERTED width by this build's cell --
+which asks a different question. On a terminal whose cell is 9 where the
+font is 10, a four-cell crop was announced as three. Forty lines above
+it, the placement path passes cell counts and its comment says exactly
+why; this was the one site that derived them instead.
+
+    a four-cell crop, cell 10 -> 9
+      converted pixels   40 * 9 / 10  = 36
+      cells announced    36 / 10      = 3     wanted 4
+
+**A variable this project deleted as dead was the fix.** `part_cells`
+held those counts and stopped being read when the scaling lambda became a
+named method; the compiler called it unused and it was removed. It was
+unused because the one site that should have read it was reading
+something else.
+
+**Two harness faults, both worth the entry.** The first check written for
+the placement HUNG the whole suite rather than failing it: the pty holds
+a few kilobytes, nothing drains it until `pump()` runs, and a full-sized
+upload plus a frame of text fills it, so the write blocks for ever. One
+cell and a six-column frame fit. The second is that the pty is one queue
+-- a block that leaves a reply unread is read by the next backend as its
+own answer, which failed the overlay check from three blocks away. New
+blocks go last, and each writes its own reply immediately before it
+reads.
+
+    sabotage                              the check that fails
+    iTerm2 cells from converted pixels    "told the size in cells"
+    kitty placement unconverted           "converts as the pixel path does"
+    sixel placement unconverted           "says the converted size"
 
 **The cell-size conversion reached one of the two functions that transmit
 an image** (2026-09-05). `present_pixels()` scales what it sends into the

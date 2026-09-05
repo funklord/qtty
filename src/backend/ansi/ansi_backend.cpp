@@ -869,12 +869,16 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 				// the full image's cache key, and the next unclipped sighting
 				// would show the crop.
 				const bool whole = cp.source == QRect(QPoint(0, 0), img.size());
+				// In the terminal's pixels, both of them. What is stored is
+				// what the source rectangle indexes, so they convert together
+				// or the crop selects the wrong part.
+				const QRect src = for_terminal(cp.source);
 				if (!uploaded_.contains(ci.key)) {
 					uploaded_.insert(ci.key);
-					out += encode_kitty_image(id, img);
-					if (!whole) out += kitty_place(id, 0, cp.source);
+					out += encode_kitty_image(id, for_terminal(img));
+					if (!whole) out += kitty_place(id, 0, src);
 				} else {
-					out += kitty_place(id, 0, whole ? QRect() : cp.source);
+					out += kitty_place(id, 0, whole ? QRect() : src);
 				}
 			}
 		} else if (mode_ == Capabilities::Sixel) {
@@ -887,7 +891,7 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 				// No source-rectangle mechanism here, so the image itself is
 				// cropped. Safe: sixel is re-encoded every frame and cached by
 				// nothing, so there is no stored copy to poison.
-				out += encode_sixel(img.copy(cp.source));
+				out += encode_sixel(for_terminal(img.copy(cp.source)));
 			}
 		} else if (mode_ == Capabilities::ITerm2) {
 			for (const CellImage &ci : frame.images) {
@@ -975,6 +979,21 @@ void AnsiBackend::retire_uploads(const CellBuffer &frame, QByteArray &out) {
 // is written out rather than a cell count because an overlay is not
 // necessarily a whole number of cells; for the crops that are, it is the
 // same arithmetic.
+// The same conversion for a rectangle INTO such an image. kitty's placement
+// selects a source rectangle out of the stored picture, so scaling the
+// picture without scaling the selection crops the wrong part of it -- the two
+// have to move together or neither may move.
+QRect AnsiBackend::for_terminal(const QRect &r) const {
+	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+	if (cw <= 0 || ch <= 0 || r.isNull()) return r;
+	if (!caps_.cell_px.isValid() || caps_.cell_px.width() <= 0
+	    || caps_.cell_px.height() <= 0 || caps_.cell_px == QSize(cw, ch))
+		return r;
+	const int tw = caps_.cell_px.width(), th = caps_.cell_px.height();
+	return QRect(r.x() * tw / cw, r.y() * th / ch,
+	             r.width() * tw / cw, r.height() * th / ch);
+}
+
 QImage AnsiBackend::for_terminal(const QImage &img) const {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	if (cw <= 0 || ch <= 0) return img;
@@ -1020,6 +1039,14 @@ void AnsiBackend::present_pixels(const QImage &frame, const QRegion &damage) {
 	    ? frame.copy(QRect(cells.x() * cw, cells.y() * ch,
 	                       cells.width() * cw, cells.height() * ch))
 	    : frame;
+	// The size in CELLS, kept beside the converted pixels rather than
+	// recovered from them. iTerm2 states an image's size in cells, and
+	// dividing the CONVERTED width by this build's cell answers a different
+	// question: on a terminal whose cell is 9 where the font is 10, a
+	// four-cell crop came back as three. The placement path forty lines
+	// above already passes cell counts and says why; this is the same rule,
+	// and it was the one site that derived them instead.
+	const QRect part_cells = (positional && cells != all) ? cells : all;
 	const QImage part = for_terminal(cropped);
 
 	QByteArray out;
@@ -1071,7 +1098,7 @@ void AnsiBackend::present_pixels(const QImage &frame, const QRegion &damage) {
 		out += encode_sixel(part);
 		break;
 	case Capabilities::ITerm2:
-		out += encode_iterm2(part, part.width() / cw, part.height() / ch);
+		out += encode_iterm2(part, part_cells.width(), part_cells.height());
 		break;
 	default:
 		return;                                      // no pixel path

@@ -58,6 +58,7 @@ public:
 	// the wire. Named rather than local because both functions that transmit
 	// an image need it and only one of them used to have it.
 	QImage for_terminal(const QImage &img) const;
+	QRect  for_terminal(const QRect &r) const;
 	void clear_overlay(int id) override;
 
 private:

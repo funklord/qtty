@@ -1624,6 +1624,26 @@ int suite_backend() {
 						// The size is derived from the font rather than
 						// written down, so the two cannot agree by accident on
 						// a machine whose metrics differ from this one's.
+						// A terminal cell DOUBLE the font's, so that a cell
+						// count recovered by dividing converted pixels by the
+						// font differs from the true one by a whole cell
+						// rather than by a rounding. At icw + 3 the truncation
+						// happened to give the right answer, which would have
+						// been a check that could not fail.
+						const auto answer_cell = [&](int w, int h) {
+							const QByteArray reply =
+							    "\033_Gi=31;OK\033\\"
+							    "\033[?2026;1$y"
+							    "\033P1+r524742=38\033\\"
+							    "\033]11;rgb:1c1c/1c1c/1c1c\033\\"
+							    "\033[6;" + QByteArray::number(h) + ";"
+							    + QByteArray::number(w) + "t"
+							    "\033[?62;4;22c";
+							const ssize_t wn = ::write(master, reply.constData(),
+							                          reply.size());
+							(void)wn;
+						};
+
 						QByteArray ovscaled;
 						const int tcw = icw + 3, tch = ich + 5;
 						{
@@ -1649,6 +1669,88 @@ int suite_backend() {
 							ov2.present_overlay(9, art, QPoint(2, 1), 3);
 							pump();
 							ovscaled = eout;
+						}
+
+						// The pixel path on iTerm2, whose size is stated in
+						// CELLS. It derived them from the converted image and
+						// this build's cell, which is a different question:
+						// two cells came back as four.
+						QByteArray iscaled;
+						{
+							qputenv("QTTY_GRAPHICS", "iterm2");
+							answer_cell(icw * 2, ich * 2);
+							AnsiBackend ip;
+							Recorder ip_rec;
+							ip.set_event_sink(&ip_rec);
+							(void)ip.capabilities();
+							while (::read(master, drain, sizeof(drain)) > 0) { }
+							eout.clear();
+							ip.present_pixels(art, QRegion());
+							pump();
+							iscaled = eout;
+						}
+
+						// And a PLACEMENT on kitty, which goes out through
+						// present() rather than present_pixels() -- a third
+						// function that transmits an image, and the third
+						// found sending at the font's size. Measured on a
+						// screen capture before the fix: 40 px wide where the
+						// terminal's four cells are 36.
+						//
+						// One cell and a six-column frame, deliberately. The
+						// pty holds a few kilobytes and nothing drains it
+						// until pump() runs, so a full-sized upload plus a
+						// frame of text fills it and the write blocks for
+						// ever -- which is a hung suite rather than a failing
+						// one, and took a bisect to find.
+						QByteArray kplaced;
+						{
+							qputenv("QTTY_GRAPHICS", "kitty");
+							answer_cell(icw * 2, ich * 2);
+							AnsiBackend kp;
+							Recorder kp_rec;
+							kp.set_event_sink(&kp_rec);
+							(void)kp.capabilities();
+							while (::read(master, drain, sizeof(drain)) > 0) { }
+							CellBuffer kframe(6, 3);
+							CellImage kplace;
+							QPixmap kpm =
+							    QPixmap::fromImage(art.copy(0, 0, icw, ich));
+							kplace.key = quint64(kpm.cacheKey());
+							kplace.cell_rect = QRect(1, 1, 1, 1);
+							kplace.pixmap = kpm;
+							kframe.images.append(kplace);
+							eout.clear();
+							kp.present(kframe, QRegion());
+							pump();
+							kplaced = eout;
+						}
+
+						// The same placement on sixel, which crops the image
+						// itself rather than selecting from a stored one. Its
+						// raster attributes carry the size, so the conversion
+						// is readable straight out of the header.
+						QByteArray splaced;
+						{
+							qputenv("QTTY_GRAPHICS", "sixel");
+							answer_cell(icw * 2, ich * 2);
+							AnsiBackend sp;
+							Recorder sp_rec;
+							sp.set_event_sink(&sp_rec);
+							(void)sp.capabilities();
+							while (::read(master, drain, sizeof(drain)) > 0) { }
+							CellBuffer sframe(6, 3);
+							CellImage splace;
+							QPixmap spm =
+							    QPixmap::fromImage(art.copy(0, 0, icw, ich));
+							splace.key = quint64(spm.cacheKey());
+							splace.cell_rect = QRect(1, 1, 1, 1);
+							splace.pixmap = spm;
+							sframe.images.append(splace);
+							eout.clear();
+							sp.present(sframe, QRegion());
+							pump();
+							splaced = eout;
 						}
 
 						const QByteArray ovid =
@@ -1678,6 +1780,18 @@ int suite_backend() {
 						      && ovscaled.contains("v=" + QByteArray::number(2 * tch)),
 						      "present_overlay sends in the terminal's cell, not"
 						      " the font's");
+						CHECK(iscaled.contains("width=2") && iscaled.contains("height=2"),
+						      "and iTerm2 is told the size in cells rather than"
+						      " in converted pixels over the font");
+						CHECK(kplaced.contains("s=" + QByteArray::number(icw * 2))
+						      && kplaced.contains("v=" + QByteArray::number(ich * 2)),
+						      "and a placement through present() converts as the"
+						      " pixel path does");
+						CHECK(splaced.contains("\"1;1;" + QByteArray::number(icw * 2)
+						      + ";" + QByteArray::number(ich * 2)),
+						      "and a sixel placement says the converted size in"
+						      " its raster attributes");
+
 						fflush(stdout);
 						::dup2(slave, 1);
 						if (had_gfx4.isEmpty()) qunsetenv("QTTY_GRAPHICS");
