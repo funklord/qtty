@@ -387,15 +387,29 @@ void render_once(QWidget &win, CellBuffer &buf, QVector<CellImage> *placements) 
 static bool s_tuiActive = false;
 bool is_tui_active() { return s_tuiActive; }
 
-// Taken from the backend when a run starts and cleared when it ends, rather
-// than kept as a pointer: a stale answer after exec() returns would be worse
-// than none, because a caller cannot tell one from a current one.
-static Capabilities s_caps;
-Capabilities capabilities() { return s_caps; }
+// Asked of the backend while a run is in progress, and nothing outside one.
+//
+// This was a COPY taken at the top of exec(), on the reasoning that a stale
+// answer after exec() returns is worse than none. The second half of that is
+// right and is why the pointer is cleared below; the first half made the
+// answer stale DURING the run as well, which is the case the reasoning was
+// not about. `cell_px` is re-read on every SIGWINCH -- read_winch() asks for
+// the geometry unconditionally, because a font-size change moves the cell
+// without moving the cell COUNT -- so a snapshot taken before the loop
+// answered with the size the terminal had at startup for the rest of the
+// session, while the transmit path two files away used the new one.
+//
+// A caller still cannot be handed a stale answer: outside a run the pointer
+// is null and the answer is the empty Capabilities, which is what "nothing
+// was measured" means everywhere else.
+static ITerminalBackend *s_backend = nullptr;
+Capabilities capabilities() {
+	return s_backend ? s_backend->capabilities() : Capabilities{};
+}
 
 int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	s_tuiActive = true;
-	s_caps = backend.capabilities();
+	s_backend = &backend;
 
 	const QSize cells = backend.size();
 	win.setAttribute(Qt::WA_DontShowOnScreen);
@@ -424,7 +438,7 @@ int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	scheduler.render_now();                      // initial frame
 	const int rc = app.exec();
 	s_tuiActive = false;
-	s_caps = Capabilities{};
+	s_backend = nullptr;
 	return rc;
 }
 

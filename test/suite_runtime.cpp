@@ -34,9 +34,17 @@ int suite_runtime() {
 		// default that happens to look plausible.
 		struct TellingBackend : NullBackend {
 			using NullBackend::NullBackend;
+			// Mutable, so the run can be asked TWICE and the second answer
+			// shown to be the current one. A real terminal moves this: a
+			// font-size change is reported as a new cell without the cell
+			// COUNT moving, which is why read_winch() asks for the geometry
+			// unconditionally. An application reading a value taken once
+			// before the loop would size every image for the rest of the
+			// session by the cell the terminal had at startup.
+			QSize cell{7, 13};
 			Capabilities capabilities() const override {
 				Capabilities c = NullBackend::capabilities();
-				c.cell_px = QSize(7, 13);
+				c.cell_px = cell;
 				c.background_known = true;
 				c.background = QColor(1, 2, 3);
 				c.color = Capabilities::TrueColor;
@@ -68,8 +76,20 @@ int suite_runtime() {
 		bool asked_during = false;
 		QTimer quitter;
 		quitter.setInterval(10);
+		Capabilities after_move;
+		bool asked_again = false;
 		QObject::connect(&quitter, &QTimer::timeout, qApp, [&] {
-			if (!asked_during) { seen = Qtty::capabilities(); asked_during = true; }
+			if (!asked_during) {
+				seen = Qtty::capabilities();
+				asked_during = true;
+				// The terminal's font changes under the running program.
+				backend.cell = QSize(8, 16);
+				return;                       // ask again on the next tick
+			}
+			if (!asked_again) {
+				after_move = Qtty::capabilities();
+				asked_again = true;
+			}
 			QCoreApplication::quit();
 		});
 		quitter.start();
@@ -87,6 +107,12 @@ int suite_runtime() {
 		      "an application can read the negotiated capabilities during a run");
 		CHECK(seen.color == Capabilities::TrueColor,
 		      "and they are the backend's, not a plausible default");
+		printf("info: read %dx%d during the run, then %dx%d after the cell"
+		       " moved\n", seen.cell_px.width(), seen.cell_px.height(),
+		       after_move.cell_px.width(), after_move.cell_px.height());
+		CHECK(asked_again && after_move.cell_px == QSize(8, 16),
+		      "and a later read gets the current answer, not the one taken"
+		      " when the run began");
 		// Cleared afterwards, because a stale answer is worse than none: a
 		// caller cannot tell one from a current one.
 		CHECK(!Qtty::capabilities().cell_px.isValid(),

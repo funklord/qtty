@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-930 checks, 0 failures, under six configurations, all six re-run
+931 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6148,6 +6148,27 @@ there. `make` first, then judge.
 What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
+
+**`Qtty::capabilities()` answered with the terminal the session started
+with** (2026-09-05). It was a COPY taken at the top of `exec()`, on the
+reasoning -- written in the comment beside it -- that a stale answer
+after `exec()` returns is worse than none.
+
+The second half of that is right and is why the pointer is cleared at the
+end. The first half made the answer stale DURING the run as well, which
+is the case the reasoning was not about. `cell_px` is re-read on every
+SIGWINCH, because a font-size change moves the cell without moving the
+cell COUNT, so an application sizing an image by
+`Qtty::capabilities().cell_px` used the startup value for the rest of the
+session while the transmit path two files away used the new one.
+
+    read during the run    7x13
+    the cell then moves    8x16
+    read again             7x13 before, 8x16 after
+
+**The fixture's backend reported a constant**, which is why nothing saw
+it: a value that never changes cannot show whether it is being re-read.
+It is mutable now and the run asks twice.
 
 **A vertical slider could not be moved by mouse at all** (2026-09-05),
 at the width Qt's own size hint gives it. Same shape as the scroll bar
