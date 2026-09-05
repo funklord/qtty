@@ -151,23 +151,10 @@ void set_focus_widget(QWidget *w) { s_focus = w; }
 // Cut, not elided, which is the rule Channel B's clip already states: a clip
 // is not a shortage of room, and an ellipsis would be qtty inventing a
 // character nobody drew.
-class CellClip {
-public:
-	CellClip(CellPaintDevice *dev, const QRect &cells)
-	    : b_(dev->buffer()), had_(b_.has_clip()), saved_(b_.clip()) {
-		b_.set_clip(cells);
-	}
-	// Restores whether there WAS a clip as well as what it was, so a nested
-	// draw -- a style calling into another primitive -- leaves the outer one
-	// exactly as it found it.
-	~CellClip() { if (had_) b_.set_clip(saved_); else b_.clear_clip(); }
-	CellClip(const CellClip &) = delete;
-	CellClip &operator=(const CellClip &) = delete;
-private:
-	CellBuffer &b_;
-	bool had_;
-	QRect saved_;
-};
+// CellClip, painted_widget() and visible_rect() live in cell_geometry.h
+// now: CellItemDelegate needs the same clip, and it was reachable only
+// from this file. The comments that record why each is shaped as it is
+// moved with them.
 
 // A widget's rectangle cut down by every ancestor's, in the widget's own
 // coordinates. On a pixel screen a parent clips its children and nothing here
@@ -195,22 +182,7 @@ private:
 // drop-down drew its first item and three blank lines. The paint device knows,
 // and cells_of() has always asked it; the clip has to ask the same question or
 // the two disagree about which widget the drawing belongs to.
-static const QWidget *painted_widget(QPainter *p, const QWidget *w) {
-	const QWidget *from_device = dynamic_cast<QWidget *>(p->device());
-	return from_device ? from_device : w;
-}
 
-static QRect visible_rect(const QWidget *w) {
-	QRect r = w->rect();
-	QPoint off;                        // w's origin, in the ancestor's frame
-	for (const QWidget *a = w; a && !a->isWindow(); a = a->parentWidget()) {
-		const QWidget *p = a->parentWidget();
-		if (!p) break;
-		off += a->pos();
-		r &= p->rect().translated(-off);
-	}
-	return r;
-}
 
 static bool owns_focus(const QWidget *w) { return w && w == s_focus.data(); }
 static Attrs focus_attrs(const QWidget *w) {

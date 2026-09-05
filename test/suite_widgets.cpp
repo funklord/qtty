@@ -490,6 +490,59 @@ int suite_widgets() {
 		CellBuffer b(32, 7);
 		render_once(table, b);
 
+		// An item wider than the view it is in. Every write the delegate
+		// makes goes straight into the buffer, so nothing bounds them: the
+		// budget is the ITEM's rectangle, and an item is entitled to be
+		// wider than the view showing it. GridStyle installs a clip on each
+		// of its three entry points; the drawControl() the delegate calls
+		// installs and tears down its own before returning, so it does not
+		// cover the delegate's own writes.
+		//
+		// Four things had to be true at once for this to be visible, which
+		// is why no existing fixture sees it: the buffer must be wider than
+		// the view (or CellBuffer::at() absorbs the overdraw into its junk
+		// cell), a column must exceed the viewport, the text must be RIGHT
+		// aligned so the whole label lands past the edge, and something must
+		// own the cells it lands in so the damage is not blank-on-blank.
+		{
+			QWidget host;
+			auto *narrow = new QTableView(&host);
+			auto *m2 = new QStandardItemModel(1, 2, &host);
+			m2->setItem(0, 0, new QStandardItem(QStringLiteral("alpha")));
+			auto *wide = new QStandardItem(QStringLiteral("TOTAL"));
+			wide->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+			m2->setItem(0, 1, wide);
+			narrow->setModel(m2);
+			narrow->setFrameShape(QFrame::NoFrame);
+			narrow->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+			narrow->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+			narrow->horizontalHeader()->setFixedHeight(ch);
+			narrow->horizontalHeader()->setDefaultSectionSize(12 * cw);
+			narrow->verticalHeader()->setFixedWidth(2 * cw);
+			narrow->verticalHeader()->setDefaultSectionSize(ch);
+			narrow->setItemDelegate(new CellItemDelegate(narrow));
+			narrow->setGeometry(0, 0, 16 * cw, 6 * ch);
+			// The cells to the right belong to somebody else.
+			auto *sib = new QLabel(QStringLiteral("....................."), &host);
+			sib->setGeometry(16 * cw, 0, 20 * cw, ch);
+			show(host, 40, 6);
+			CellBuffer wideb(40, 7);
+			render_once(host, wideb);
+
+			const int view_right = 16;
+			const QPoint spill = findText(wideb, QStringLiteral("TOTAL"));
+			const QPoint kept = findText(wideb, QStringLiteral("alpha"));
+			printf("info: TOTAL at x=%d, alpha at x=%d, view ends at %d\n",
+			       spill.x(), kept.x(), view_right);
+			// Both halves. "Nothing outside" alone is satisfied by a
+			// delegate that draws nothing at all, which is the failure the
+			// suite's other item-view checks exist to catch.
+			CHECK(kept.x() >= 0 && kept.x() < view_right,
+			      "an item view still draws the labels that fit");
+			CHECK(spill.x() < 0 || spill.x() < view_right,
+			      "and writes none of them past the edge of the view");
+		}
+
 		const QPoint on = findText(b, QStringLiteral("[x]"));
 		const QPoint off = findText(b, QStringLiteral("[ ]"));
 		CHECK(on.x() >= 0 && off.x() >= 0, "table draws check state as [x] and [ ]");

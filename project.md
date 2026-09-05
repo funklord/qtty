@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-934 checks, 0 failures, under six configurations, all six re-run
+936 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6148,6 +6148,44 @@ there. `make` first, then judge.
 What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
+
+**An item view wrote its labels over the widget beside it**
+(2026-09-05). Every write `CellItemDelegate` makes goes straight into the
+buffer, so nothing bounded them: the budget is the ITEM's rectangle, and
+an item is entitled to be wider than the view showing it. `GridStyle`
+installs a clip on each of its three entry points, and the
+`drawControl()` the delegate calls installs and tears down its own before
+returning -- so it did not cover the delegate's own writes.
+
+Measured: a right-aligned label in a twelve-cell column inside a
+sixteen-cell view was written at cell 21, over a sibling widget. It is
+nowhere now, and the label that fits is still at cell 3.
+
+**Four things had to be true at once for it to be visible**, which is
+why no existing fixture saw it, and the new one arranges all four
+deliberately:
+
+    the buffer wider than the view   or CellBuffer::at() absorbs the
+                                     overdraw into its junk cell
+    a column wider than the viewport or no item rect ever leaves
+    the text RIGHT aligned           or a short label never reaches the
+                                     edge
+    something owning those cells     or the damage is blank on blank
+
+`CellClip`, `visible_rect()` and `painted_widget()` moved to
+`cell_geometry.h`, which is the header that exists for exactly this --
+its own opening comment says these rules "were file-static in
+grid_style.cpp and were copied into cell_item_delegate.cpp when that
+arrived". The clip is the VIEWPORT via `painted_widget()`, not
+`opt.widget`: the latter would clip a combo box's drop-down to the
+one-row combo, which is the fault recorded beside `visible_rect()`.
+
+**The elision budget is deliberately not clipped with the writes.** It is
+the item's rectangle, which is what Qt elides to on a pixel screen -- a
+partially scrolled item shows a partial label rather than a re-elided
+one, and shrinking it would move a right-aligned label the moment a
+scroll bar appeared. The existing check that pins a right-aligned number
+to its column's far edge still passes, which is what says so.
 
 **A tool button's menu opened from the wrong cell** (2026-09-05).
 It draws `▾` in the cell before its closing bracket -- the affordance

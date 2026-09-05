@@ -311,4 +311,40 @@ inline QString strip_mnemonic(const QString &s) {
 	return out;
 }
 
+inline const QWidget *painted_widget(QPainter *p, const QWidget *w) {
+	const QWidget *from_device = dynamic_cast<QWidget *>(p->device());
+	return from_device ? from_device : w;
+}
+
+inline QRect visible_rect(const QWidget *w) {
+	QRect r = w->rect();
+	QPoint off;                        // w's origin, in the ancestor's frame
+	for (const QWidget *a = w; a && !a->isWindow(); a = a->parentWidget()) {
+		const QWidget *p = a->parentWidget();
+		if (!p) break;
+		off += a->pos();
+		r &= p->rect().translated(-off);
+	}
+	return r;
+}
+
+class CellClip {
+public:
+	CellClip(CellPaintDevice *dev, const QRect &cells)
+	    : b_(dev->buffer()), had_(b_.has_clip()), saved_(b_.clip()) {
+		b_.set_clip(cells);
+	}
+	// Restores whether there WAS a clip as well as what it was, so a nested
+	// draw -- a style calling into another primitive -- leaves the outer one
+	// exactly as it found it.
+	~CellClip() { if (had_) b_.set_clip(saved_); else b_.clear_clip(); }
+	CellClip(const CellClip &) = delete;
+	CellClip &operator=(const CellClip &) = delete;
+private:
+	CellBuffer &b_;
+	bool had_;
+	QRect saved_;
+};
+
+
 } // namespace Qtty

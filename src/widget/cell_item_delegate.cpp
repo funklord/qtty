@@ -53,6 +53,30 @@ void CellItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
 	const QRect c = cells_of(opt.rect, painter, dev, widget);
 	CellBuffer &buffer = dev->buffer();
 
+	// Every write below goes straight into the buffer, so nothing else
+	// bounds them: the budget is the ITEM's rectangle, and an item is
+	// entitled to be wider than the view showing it. GridStyle installs this
+	// same clip on each of its three entry points -- but the drawControl()
+	// above installs and tears down its own before returning, so it does not
+	// cover this. Measured: a right-aligned label in a twelve-cell column
+	// inside a sixteen-cell view was written at cell 21, over the widget
+	// beside it.
+	//
+	// The VIEWPORT, through painted_widget(): a view's paintEvent paints
+	// into it, so it is what the painter's device answers and what cells_of()
+	// already measures against. Using opt.widget instead would clip a
+	// combo box's drop-down to the one-row combo, which is the fault
+	// recorded beside visible_rect().
+	//
+	// The elision budget is deliberately NOT clipped with the writes. It is
+	// the item's rectangle, which is what Qt elides to on a pixel screen: a
+	// partially scrolled item shows a partial label rather than a re-elided
+	// one, and shrinking it would move a right-aligned label the moment a
+	// scroll bar appeared.
+	const QWidget *pw = painted_widget(painter, widget);
+	const CellClip bound(dev, pw ? cells_of(visible_rect(pw), painter, dev, pw)
+	                             : c);
+
 	// The one place this does have to agree with the style rather than defer
 	// to it: text written over a row the style has already filled must carry
 	// the same attributes, or the fill and the text disagree about what the
