@@ -6149,6 +6149,42 @@ What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
 
+**The upload cache outlived the cell size it was scaled for**
+(2026-09-05). `caps_.cell_px` acquired a mid-run write path when
+`read_winch()` began asking for the geometry on every SIGWINCH -- a
+font-size change moves the cell without moving the cell COUNT, which is
+exactly what that query is for -- and nothing caching a derivative of it
+was told.
+
+`uploaded_` is keyed on the source pixmap's cache key, a qtty-side
+quantity that does not move when the terminal's cell does. So after a
+font change a hit re-places a picture scaled by the OLD cell, and worse:
+the crop rectangle is computed at the NEW one, so it indexes the wrong
+pixels of it. The caches are cleared when the reported cell changes.
+
+**The check for it could not be built in this harness, and that is
+recorded rather than papered over.** It needs two things at once --
+drive the DECODER, so a cell-size report arrives mid-session, and capture
+what the backend then writes. The block with a feeder and an event loop
+does not redirect stdout; the block that captures stdout hangs when
+`processEvents()` is run inside it. What would settle it is a fixture
+that owns both ends of the pty with a reader draining continuously, which
+is a harness change rather than a check.
+
+**A related claim was verified and is NOT a defect**, which is worth as
+much as the one that was. `last_pixel_size_` compares `frame.size()`, a
+pure GridMetrics quantity that also cannot notice a cell change -- but it
+is guarding grid GEOMETRY, not scale, and its guarded action is
+`kitty_delete_all()`. Widening it would have been the wrong repair.
+Clearing it alongside the upload cache, which is what the fix does, gets
+the re-place for free without changing what it guards.
+
+**And a third was verified as literally true and harmless.** The section
+6 contrast warning is compiled out under `QT_NO_DEBUG`, which is every
+build `check` produces -- but the tests assert the violation COUNT, which
+is computed outside the guard, so the coverage is configuration
+independent. True, and not a finding.
+
 **One arrow key scrolled nineteen rows** (2026-09-05). The keyboard
 fallback for an arrow the focused widget ignores did
 `bar->setValue(value + dir * GridMetrics::ch())` -- a cell height, in

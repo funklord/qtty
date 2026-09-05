@@ -1356,8 +1356,22 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 		// bytes and this arrived as parsed parameters. One parser, one set of
 		// rules about which field is height.
 		if (what == 4 || what == 6) {
+			const QSize was = caps_.cell_px;
 			scan_caps(QStringLiteral("\033[%1;%2;%3t").arg(what)
 			              .arg(param(1, 0)).arg(param(2, 0)).toLatin1(), caps_);
+			// Everything already uploaded was scaled by the OLD cell. The
+			// upload cache is keyed on the source pixmap, which does not
+			// move when the terminal's cell does, so a hit would re-place a
+			// picture at the old scale -- and worse, the crop rectangle is
+			// computed at the new one, so it would index the wrong pixels of
+			// it. read_winch() asks for the geometry on every SIGWINCH
+			// precisely because a font-size change moves this without moving
+			// the cell COUNT, so this is the arrival it was asking for.
+			if (caps_.cell_px.isValid() && caps_.cell_px != was) {
+				uploaded_.clear();
+				upload_order_.clear();
+				last_pixel_size_ = QSize();
+			}
 			return true;
 		}
 		return true;
