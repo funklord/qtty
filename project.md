@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-915 checks, 0 failures, under six configurations, all six re-run
+916 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6149,104 +6149,65 @@ What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
 
-**The unicode-placeholder path does not run inside tmux here, and a
-screen phase written to test it was testing something else**
-(2026-09-05). tmux is installed, so qtty inside tmux inside kitty is a
-third stack this machine can actually build, and placeholders are the
-mode that stack exists for -- the image is uploaded once and the
-placement becomes ordinary text cells a multiplexer is free to move.
+**The unicode-placeholder mode could not engage anywhere, and the cause
+was one unanswered probe** (2026-09-05). It exists only for the case
+where a multiplexer sits between qtty and the terminal, and inside tmux
+it never ran. Found because a screen phase written to test it was testing
+something else, and fixed the same evening.
 
-The picture lands correctly, at 198 and 36, which is kitty's real cell.
-It is drawn by the HALF-BLOCK composite. Four configurations, and the
-tier never moves:
+**The mechanism, measured.** Three probes in one process inside tmux
+answer 0, 1, 1 -- the first gets nothing at all and the next gets
+everything, immediately, including the cell size. The backend probes once
+at construction, so it always took the failing attempt: `caps.kitty`
+stayed false, `use_placeholders()` therefore returned false, and the mode
+was unreachable in the one place it is for. Half-blocks are drawn instead
+-- correct as a fallback, and coarse where an exact picture was
+available.
 
-    tmux -f /dev/null                              halfblocks, placeholders no
-    + allow-passthrough on                         halfblocks, placeholders no
-    + terminal-features RGB                        halfblocks, placeholders no
-    + a 1000 ms window, edited into the source     halfblocks, placeholders no
+It is READINESS rather than latency, which is why a 1000 ms window
+changed nothing and a second 100 ms one changes everything. The same
+shape this project already recorded for kitty under Xvfb, where a report
+of total silence was cured by three seconds rather than by a longer
+window.
 
-**The fourth row first read `QTTY_PROBE_MS=1500` and measured nothing at
-all**, because the backend did not read that variable -- only
-`qtty-negotiate` did, and it was the tool that printed the advice to
-raise it. So the row was a knob turned on a device not connected to
-anything, and it is the third instrument fault in this one
-investigation, after a redirect that sent the tool's questions to a file
-and a wait loop that stopped on the terminal's cursor. **Every one of the
-three changed what it was measuring rather than measuring it.** The row
-above is the re-taken measurement, with the window edited into the source
-so it certainly applied, and the answer is the same: timing is not the
-cause.
+**The fix asks again, once, and only where it can help**: inside tmux,
+and only when nothing at all answered. Outside tmux nothing changes.
+Measured after it:
 
-**The proof is a sabotage that changes nothing.** Translating
-`compose_kitty_placeholders()` by six cells leaves the picture exactly
-where it was; translating `compose_halfblocks()` by eight moves it to
-126. The placeholder code does not run.
+    backend, no retry     graphics=halfblocks  cell=-1x-1  placeholders=0
+    backend, with retry   graphics=kitty       cell=9x18   placeholders=1
 
-**Two of the three preconditions are satisfied, which is what makes this
-worth leaving open rather than closing.** `use_placeholders()` wants
-`inside_tmux()`, `caps.kitty`, and TrueColor -- the id travels in the
-foreground colour and needs all 24 bits. The probe reports `tmux=yes`
-and `colour=truecolor` from inside that session, so by elimination
-`caps.kitty` is false at the moment the tier is chosen.
+**And the sabotage of the placeholder composer moves the picture now**,
+where before it did nothing at all -- which is what a fix reaching the
+code it was aimed at looks like, and what the previous entry here could
+not say.
 
-**And `qtty-negotiate --probes` reports `kitty a=q OK` from inside the
-same tmux.** So the reply can come back and the query is wrapped for
-passthrough as it should be -- `caps_query()` is `tmux_wrap`ped when
-`inside_tmux()`. What is not established is why the probe the BACKEND
-runs does not see what the tool's re-probe does. It is recorded as
-measured and unexplained rather than attributed, because the comfortable
-story here -- "tmux does not forward APC replies" -- is contradicted by
-the tool's own output, and an explanation that survives only until
-somebody reads the next line is worse than none.
+**Getting there cost four instrument faults, all of the same family: the
+measurement changed what it was measuring.** They are worth listing
+because none of them looked like an instrument fault at the time.
 
-**The disagreement is inside ONE process, which is the sharpest form of
-it available.** `qtty-negotiate` calls `collect_caps()` directly and then
-builds an `AnsiBackend`, which probes again; inside tmux the first
-reports `kitty a=q OK` and the second settles on half-blocks. Both are in
-the same session, against the same terminal, seconds apart.
+    the tool's stdout redirected to a file   every probe read "not reported"
+    a wait loop keyed on any colour          stopped on the terminal's cursor
+    QTTY_PROBE_MS set for the backend        the backend did not read it
+    `[ -t 1 ]` inside a redirected group     answered about the redirection
 
-What is excluded: timing, by the 1000 ms run above; the probe's own gate,
-since `[ -t 0 ]` and `[ -t 1 ]` are both true inside that pane, measured
-without redirecting either -- the first two attempts at that measurement
-redirected the descriptor they were testing and answered about the
-redirection; and the query reaching the terminal at all, since it is
-`tmux_wrap`ped when `inside_tmux()` and the first probe's reply proves
-the round trip works.
+The third is the one with a fix in the tree: `qtty-negotiate` printed
+advice to raise a variable the library ignored, so the knob was connected
+to nothing. It reaches the backend now.
 
-What is left is whatever differs about the SECOND query inside tmux, and
-that is where the next person should start rather than at the window.
+**And the phase that started it is two phases.** tmux with no
+configuration does not forward the capability query at all, so
+half-blocks remain the honest answer there and that phase checks the
+fallback lands on the right cell. A second phase turns
+`allow-passthrough` on, which is the configuration where placeholders
+engage, and asserts the tier from the probe's own report rather than from
+the picture -- both modes put the marker on the same cell, which is
+exactly how the first phase came to be written as a placeholder test and
+not be one.
 
-**`QTTY_PROBE_MS` reaches the backend now**, which came out of the
-investigation rather than the other way round: the tool reads it, the
-tool prints "re-run or raise QTTY_PROBE_MS" when the fence goes
-unanswered, and the library it is diagnosing ignored it. **A knob named
-in a diagnostic that the diagnosed code does not read is worse than no
-knob**, because it sends the next person to change something that cannot
-affect the result -- which is precisely what it did here. 100 ms remains
-the default; it is a readiness budget rather than a latency one, a
-settled terminal answering the fence at 5 ms.
-
-Its check is a LOWER bound and that is deliberate. An upper bound is a
-wall-clock assertion on a machine other people build on, which this suite
-declines elsewhere; a lower bound cannot fail from load, because load
-only makes it longer. Nothing is written to the pty, so the probe waits
-its whole window: 601 ms against a bound of 400, and 100 with the
-variable ignored again.
-
-**What the phase actually checks is real and checked nowhere else**: that
-the fallback inside a multiplexer still puts the picture on the right
-cell. It cannot compare against the probe's prediction, because tmux does
-not forward CSI 16t either, so the probe predicts 220 and 40 from its own
-font while the picture lands at 198 and 36. So it asserts a relationship
-needing no cell size at all -- the marker sits at cell 22 and is four
-cells wide, so left over 22 and width over 4 are the same number whatever
-that number is. Sabotaged, they read 5.73 and 9.00.
-
-**The probe prints the tier it used now**, which is the change that
-matters more than the phase. A phase named for a code path is a claim
-about which code ran, and nothing was checking it: this one was written,
-run, and passed for a week's worth of confidence before the sabotage
-showed it had never touched the path in its name.
+    sabotage                    the phase that fails
+    remove the retry            "the placeholder path did not engage"
+    remove the retry            the timed check, at 300 ms against 601
 
 **And the rest of `TermCaps` was swept for the same shape, which is what
 makes the one finding worth anything.** Ten fields, each checked for a

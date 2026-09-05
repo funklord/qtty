@@ -177,20 +177,19 @@ GEOM
 		# A multiplexer between qtty and the terminal, which is a third
 		# stack rather than a third tier: qtty inside tmux inside kitty.
 		#
-		# This was WRITTEN as a test of the unicode-placeholder path and is
-		# not one, which is why the probe now prints the tier it used.
-		# Inside tmux qtty negotiates half-blocks and reports
-		# placeholders=no, under every tmux configuration tried here --
-		# with and without allow-passthrough, with and without RGB
-		# advertised, and with the probe window at 1500 ms. Sabotaging the
-		# placeholder composer does not move the picture, which is the
-		# proof: that code does not run. project.md has the measurements
-		# and what is still unexplained.
+		# This one is the FALLBACK: tmux with no configuration does not
+		# forward the capability query, so qtty gets no confirmation and
+		# half-blocks are the honest answer. The phase below it turns
+		# passthrough on and is the placeholder path.
 		#
-		# What it does check is real and is checked nowhere else: that the
+		# It was written as a placeholder test and was not one, which is
+		# why the probe prints the tier it used: both modes put the marker
+		# on the same cell, so nothing in the picture could have said so.
+		#
+		# What it checks is real and is checked nowhere else: that the
 		# fallback inside a multiplexer still puts the picture on the right
 		# cell. It cannot compare against the probe's prediction, because
-		# tmux does not forward CSI 16t and the probe therefore predicts
+		# tmux forwards no CSI 16t either and the probe therefore predicts
 		# from its own font -- 220 and 40, where the picture lands at 198
 		# and 36, kitty's real cell.
 		#
@@ -238,6 +237,40 @@ CELLS
 			capture "$dir/tmux.png" 6 "kitty $dir/inner.sh"
 			tmux -S "$sock" kill-server >/dev/null 2>&1 || true
 			python3 "$dir/cells.py" "$dir/tmux.png"
+
+			# And the same stack with allow-passthrough on, which is what
+			# lets the capability query reach the terminal underneath. That
+			# is the configuration where the unicode-placeholder path
+			# actually engages, and until the probe learned to ask twice it
+			# never did anywhere: the backend probes once, the first attempt
+			# inside tmux goes unanswered, so caps.kitty stayed false and
+			# the mode that exists only for multiplexers was unreachable.
+			#
+			# The tier is asserted from the probe's own report rather than
+			# from the picture, because half-blocks and placeholders put the
+			# marker on the same cell -- which is exactly how the phase
+			# above was written as a placeholder test and was not one.
+			echo "set -g allow-passthrough on" > "$dir/tmux.conf"
+			sock2=$dir/tmux2.sock
+			cat > "$dir/inner2.sh" <<INNER2
+#!/bin/sh
+sleep 2
+tmux -S $sock2 -f $dir/tmux.conf new-session -- \
+    sh -c "QTTY_SCREEN_PATH=cells $dir/probe 2>$dir/ppred"
+INNER2
+			chmod +x "$dir/inner2.sh"
+			capture "$dir/ph.png" 6 "kitty $dir/inner2.sh"
+			tmux -S "$sock2" kill-server >/dev/null 2>&1 || true
+			if grep -q "placeholders=yes" "$dir/ppred" 2>/dev/null; then
+				echo "screen-check: with passthrough the placeholder path" \
+				     "engages, and:"
+				python3 "$dir/cells.py" "$dir/ph.png"
+			else
+				echo "screen-check: FAILED -- with allow-passthrough on the" >&2
+				echo "              placeholder path did not engage:" >&2
+				sed -n '1,2p' "$dir/ppred" >&2
+				exit 1
+			fi
 		else
 			echo "screen-check: tmux is absent, so the placeholder path was" >&2
 			echo "              not drawn" >&2

@@ -180,6 +180,29 @@ AnsiBackend::AnsiBackend() {
 			if (v > 0 && v <= 60000) wait_ms = v;
 		}
 		caps_ = collect_caps(0, 1, wait_ms, nullptr, &pending_);
+		// Inside a multiplexer, ask again when the first attempt was met
+		// with silence. Measured in kitty: three probes in one process
+		// inside tmux answer 0, 1, 1 -- the first gets nothing at all and
+		// the next gets everything, immediately. It is READINESS rather
+		// than latency, which is why a 1000 ms window changed nothing and
+		// a second 100 ms one changes everything, and it is the same shape
+		// this project already recorded for kitty under Xvfb.
+		//
+		// The consequence was not cosmetic. The backend probes once, at
+		// construction, so inside tmux it always took the failing attempt:
+		// caps.kitty stayed false, use_placeholders() therefore returned
+		// false, and the unicode-placeholder mode -- which exists ONLY for
+		// the multiplexer case -- could never engage anywhere. A whole
+		// subsystem was unreachable in the one place it is for.
+		//
+		// Bounded and targeted: only inside tmux, only when nothing at all
+		// answered, and only once. Outside tmux nothing changes, and where
+		// no terminal is ever going to answer the cost is one more window.
+		if (!caps_.answered && inside_tmux()) {
+			QByteArray more;
+			caps_ = collect_caps(0, 1, wait_ms, nullptr, &more);
+			pending_ += more;
+		}
 	}
 
 	mode_ = negotiate_graphics(caps_);

@@ -1765,6 +1765,33 @@ int suite_backend() {
 						// which it was until this commit, while the tool told
 						// people to raise it -- the wait is the built-in 100 ms
 						// and the elapsed time lands far below the bound.
+						// And inside a multiplexer it asks TWICE when the
+						// first attempt is met with silence, which is the
+						// whole of why the placeholder mode was unreachable:
+						// measured in kitty, three probes in one process
+						// inside tmux answer 0, 1, 1. Timed rather than
+						// observed, for want of a way to make the pty answer
+						// the second query and not the first, and a lower
+						// bound again -- two 300 ms windows cannot come back
+						// under 500 unless only one of them happened.
+						qint64 twice_ms = 0;
+						{
+							const QByteArray had_term = qgetenv("TERM");
+							qputenv("TERM", "tmux-256color");
+							qputenv("QTTY_PROBE_MS", "300");
+							QElapsedTimer t;
+							t.start();
+							AnsiBackend mux;
+							Recorder mux_rec;
+							mux.set_event_sink(&mux_rec);
+							(void)mux.capabilities();
+							twice_ms = t.elapsed();
+							qunsetenv("QTTY_PROBE_MS");
+							if (had_term.isEmpty()) qunsetenv("TERM");
+							else qputenv("TERM", had_term);
+							while (::read(master, drain, sizeof(drain)) > 0) { }
+						}
+
 						qint64 waited = 0;
 						{
 							qputenv("QTTY_PROBE_MS", "600");
@@ -1822,6 +1849,12 @@ int suite_backend() {
 						CHECK(waited >= 400,
 						      "the backend honours QTTY_PROBE_MS, which only the"
 						      " tool used to read");
+						printf("info: silence inside tmux took %lld ms over two"
+						       " 300 ms windows\n",
+						       static_cast<long long>(twice_ms));
+						CHECK(twice_ms >= 500,
+						      "and asks a second time inside a multiplexer, where"
+						      " the first attempt is met with silence");
 
 						fflush(stdout);
 						::dup2(slave, 1);
