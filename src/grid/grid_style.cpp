@@ -1,5 +1,6 @@
 // src/grid/grid_style.cpp -- GridMetrics, GridStyle, focus ownership (sections 5.3-5.5).
 #include "qtty/grid.h"
+#include "qtty/delegate.h"
 #include "qtty/paint.h"
 #include "../cell_geometry.h"
 // QAction, which this file uses through QToolButton::defaultAction() and had
@@ -951,6 +952,26 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 		}
 		return QSize(width, ch);
 
+	// Measured from the row CE_ItemViewItem DRAWS, the way CT_TabBarTab and
+	// CT_ToolButton above are: one cell of indent, four more for "[x] " when
+	// there is an indicator, then the label in clusters. Fusion's answer
+	// absorbs the indicator's two-pixel margin in the ceiling, so a
+	// CHECKABLE item came out a cell short -- measured at nine cells for a
+	// row this style draws in ten -- and a column sized to its contents
+	// elided the last character. A plain item was already right, which is
+	// why the derived width is taken with qMax rather than outright: it
+	// widens the case that is short and moves nothing else, including a
+	// decorated item, whose icon CellItemDelegate draws and this does not.
+	case CT_ItemViewItem:
+		if (auto *vi = qstyleoption_cast<const QStyleOptionViewItem *>(o)) {
+			int cells = CellItemDelegate::indent_cells();
+			if (vi->features & QStyleOptionViewItem::HasCheckIndicator)
+				cells += CellItemDelegate::check_cells();
+			for (const QString &cl : to_clusters(vi->text))
+				cells += cluster_width(cl);
+			return QSize(qMax(width, cells * cw), snapped);
+		}
+		return QSize(width, snapped);
 	case CT_HeaderSection:
 	case CT_ProgressBar:
 	case CT_Slider:
@@ -989,7 +1010,6 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 	// These genuinely carry more than a line -- an item view row with a
 	// multi-line delegate, a group box around other widgets, a whole menu --
 	// so the snap-up is the right rule and the only one that cannot clip.
-	case CT_ItemViewItem:
 	case CT_GroupBox:
 	case CT_Menu:
 	case CT_MdiControls:

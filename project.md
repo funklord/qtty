@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-938 checks, 0 failures, under six configurations, all six re-run
+940 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6181,6 +6181,31 @@ checkable `QGroupBox` starts CHECKED, so it draws `[x]`, and a fixture
 searching for `[ ]` found neither that nor the title and failed for two
 reasons at once. Dumping the buffer took one run and showed the answer;
 guessing at the fixture would have taken several.
+
+**A checkable item was measured a cell narrower than it is drawn**
+(2026-09-05). `CT_ItemViewItem` sat in the snap-up group, which ceilings
+Fusion's answer -- and Fusion absorbs the check indicator's two-pixel
+margin in that ceiling. Measured against the row `CE_ItemViewItem` draws:
+
+    checkable   9 cells measured, 10 drawn
+    plain       6 cells measured,  6 drawn
+
+So a column sized to its contents elided the last character of every
+checkable row. `CellItemDelegate::sizeHint()` derives it correctly, so it
+bit only where the delegate is absent and the style draws the row itself.
+
+**The plain case was already right, and the sweep predicted it was not.**
+Its arithmetic said the missing cell was the INDENT, which both cases
+have; the measurement says the deficit is the indicator's margin alone.
+The check asserts both anyway -- a fix written as a check-box special
+case would have left a plain row short if the sweep had been right, and
+asserting both is what tells the two apart.
+
+The width is derived from the drawn row now, using
+`CellItemDelegate::indent_cells()` and `check_cells()` rather than
+repeating 1 and 4, and taken with `qMax` against Fusion's: it widens the
+case that is short and moves nothing else, including a decorated item
+whose icon the delegate draws and this does not.
 
 **`NullBackend` is a public header now** (2026-09-05), because the
 README advertised "deterministic snapshot testing with no tty

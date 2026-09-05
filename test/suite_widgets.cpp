@@ -543,6 +543,41 @@ int suite_widgets() {
 			      "and writes none of them past the edge of the view");
 		}
 
+		// What the style MEASURES an item as, against the row it DRAWS.
+		// CT_ItemViewItem fell to the default arm, which ceilings Fusion's
+		// answer -- and Fusion's omits the cell of indent this style draws
+		// and absorbs the indicator's two-pixel margin in the ceiling. So a
+		// column sized to its contents came out one cell short and the last
+		// character elided. CellItemDelegate::sizeHint derives it correctly,
+		// so this bites only where the delegate is absent and the style
+		// draws the row itself.
+		//
+		// The plain case is asserted as well as the checkable one: the
+		// missing cell is the INDENT, which both have, and a fix written as
+		// a check-box special case would leave the plain row short.
+		{
+			QStyleOptionViewItem vo;
+			vo.features = QStyleOptionViewItem::HasDisplay
+			            | QStyleOptionViewItem::HasCheckIndicator;
+			vo.text = QStringLiteral("label");
+			QStyle *st = QApplication::style();
+			const int checkable =
+			    st->sizeFromContents(QStyle::CT_ItemViewItem, &vo, QSize(),
+			                         nullptr).width();
+			vo.features &= ~QStyleOptionViewItem::HasCheckIndicator;
+			const int plain =
+			    st->sizeFromContents(QStyle::CT_ItemViewItem, &vo, QSize(),
+			                         nullptr).width();
+			printf("info: an item measures %d cell(s) checkable and %d plain,"
+			       " for a five-cell label\n", checkable / cw, plain / cw);
+			// 1 indent + 4 for "[x] " + 5 label, and 1 + 5 without.
+			CHECK(checkable == (1 + 4 + 5) * cw,
+			      "a checkable item is measured for the indent it is drawn"
+			      " with");
+			CHECK(plain == (1 + 5) * cw,
+			      "and so is a plain one");
+		}
+
 		// A CHECKABLE group box, which is a different drawing from a plain
 		// one: CC_GroupBox is not drawn by this style, so QCommonStyle draws
 		// the title and then the indicator, in that order. The title goes
