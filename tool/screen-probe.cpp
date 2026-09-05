@@ -54,10 +54,23 @@ int main(int argc, char **argv) {
 	const QSize probed = backend.capabilities().cell_px;
 	const QSize term = probed.isValid() && probed.width() > 0
 	                 ? probed : QSize(cw, ch);
+	// The tier it ACTUALLY used, said out loud. A phase named for a path is
+	// a claim about which code ran, and nothing was checking it: the tmux
+	// phase was written as a placeholder test and draws through the
+	// half-block composite, which no output would have contradicted because
+	// both land in the same cell.
+	static const char *const tier[] = { "none", "halfblocks", "sixel",
+	                                    "iterm2", "kitty", "kitty-alpha" };
+	const Qtty::Capabilities caps = backend.capabilities();
 	fprintf(stderr, "screen-probe: qtty %dx%d terminal %dx%d"
-	                " predict left=%d width=%d\n",
+	                " predict left=%d width=%d tier=%s placeholders=%s\n",
 	        cw, ch, term.width(), term.height(),
-	        22 * term.width(), 4 * term.width());
+	        22 * term.width(), 4 * term.width(),
+	        tier[int(caps.graphics)], caps.unicode_placements ? "yes" : "no");
+	static const char *const depth[] = { "mono", "ansi16", "xterm256",
+	                                     "truecolor" };
+	fprintf(stderr, "screen-probe: colour=%s tmux=%s\n",
+	        depth[int(caps.color)], qgetenv("TMUX").isEmpty() ? "no" : "yes");
 	fflush(stderr);
 	// Two paths, because they are two different pieces of code and only one
 	// of them has a pixel frame at all. present_pixels() serves the tiers

@@ -174,6 +174,75 @@ GEOM
 		    "QTTY_SCREEN_PATH=overlay $dir/probe 2>$dir/opred'"
 		python3 "$dir/geom.py" "$dir/ov.png" "$dir/opred" 0 1 overlay 60,90,220
 
+		# A multiplexer between qtty and the terminal, which is a third
+		# stack rather than a third tier: qtty inside tmux inside kitty.
+		#
+		# This was WRITTEN as a test of the unicode-placeholder path and is
+		# not one, which is why the probe now prints the tier it used.
+		# Inside tmux qtty negotiates half-blocks and reports
+		# placeholders=no, under every tmux configuration tried here --
+		# with and without allow-passthrough, with and without RGB
+		# advertised, and with the probe window at 1500 ms. Sabotaging the
+		# placeholder composer does not move the picture, which is the
+		# proof: that code does not run. project.md has the measurements
+		# and what is still unexplained.
+		#
+		# What it does check is real and is checked nowhere else: that the
+		# fallback inside a multiplexer still puts the picture on the right
+		# cell. It cannot compare against the probe's prediction, because
+		# tmux does not forward CSI 16t and the probe therefore predicts
+		# from its own font -- 220 and 40, where the picture lands at 198
+		# and 36, kitty's real cell.
+		#
+		# So it asserts a RELATIONSHIP that needs no cell size: the marker
+		# sits at cell 22 and is four cells wide, so its left edge over 22
+		# and its width over 4 are the same number whatever that number is.
+		if command -v tmux >/dev/null 2>&1; then
+			# The socket lives in the scratch directory the trap
+			# removes, rather than in tmux's shared one: a -L name
+			# leaves a dead socket file behind after kill-server, and
+			# a gate that litters /tmp on every run is a gate somebody
+			# eventually has to sweep up after.
+			sock=$dir/tmux.sock
+			cat > "$dir/inner.sh" <<INNER
+#!/bin/sh
+sleep 2
+tmux -S $sock -f /dev/null new-session -- \
+    sh -c "QTTY_SCREEN_PATH=cells $dir/probe 2>$dir/tpred"
+INNER
+			chmod +x "$dir/inner.sh"
+			cat > "$dir/cells.py" <<'CELLS'
+import sys
+from PIL import Image
+im = Image.open(sys.argv[1]).convert("RGB")
+w, h = im.size
+px = im.load()
+def near(p):
+	return (abs(p[0] - 40) <= 6 and abs(p[1] - 200) <= 6
+	        and abs(p[2] - 90) <= 6)
+xs = [x for y in range(h) for x in range(w) if near(px[x, y])]
+if not xs:
+	print("screen-check: FAILED -- nothing was drawn through tmux",
+	      file=sys.stderr)
+	sys.exit(1)
+left, width = min(xs), max(xs) - min(xs) + 1
+# Cell 22, four cells wide. Both divisions give the terminal's cell width
+# if the placement is right, and neither needs it to be known in advance.
+by_left, by_width = left / 22.0, width / 4.0
+ok = abs(by_left - by_width) <= 1.0
+print("screen-check: through tmux drew left=%d width=%d, implying a cell of"
+	" %.2f and %.2f" % (left, width, by_left, by_width),
+	file=sys.stderr if not ok else sys.stdout)
+sys.exit(0 if ok else 1)
+CELLS
+			capture "$dir/tmux.png" 6 "kitty $dir/inner.sh"
+			tmux -S "$sock" kill-server >/dev/null 2>&1 || true
+			python3 "$dir/cells.py" "$dir/tmux.png"
+		else
+			echo "screen-check: tmux is absent, so the placeholder path was" >&2
+			echo "              not drawn" >&2
+		fi
+
 		# xterm needs three things said out loud, all of them learned by
 		# getting them wrong. -ti vt340 for sixel at all. allowWindowOps so
 		# that CSI 16t is ANSWERED -- its default is off, and without it

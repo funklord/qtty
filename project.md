@@ -6149,6 +6149,80 @@ What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
 
+**The unicode-placeholder path does not run inside tmux here, and a
+screen phase written to test it was testing something else**
+(2026-09-05). tmux is installed, so qtty inside tmux inside kitty is a
+third stack this machine can actually build, and placeholders are the
+mode that stack exists for -- the image is uploaded once and the
+placement becomes ordinary text cells a multiplexer is free to move.
+
+The picture lands correctly, at 198 and 36, which is kitty's real cell.
+It is drawn by the HALF-BLOCK composite. Four configurations, and the
+tier never moves:
+
+    tmux -f /dev/null                              halfblocks, placeholders no
+    + allow-passthrough on                         halfblocks, placeholders no
+    + terminal-features RGB                        halfblocks, placeholders no
+    + QTTY_PROBE_MS=1500                           halfblocks, placeholders no
+
+**The proof is a sabotage that changes nothing.** Translating
+`compose_kitty_placeholders()` by six cells leaves the picture exactly
+where it was; translating `compose_halfblocks()` by eight moves it to
+126. The placeholder code does not run.
+
+**Two of the three preconditions are satisfied, which is what makes this
+worth leaving open rather than closing.** `use_placeholders()` wants
+`inside_tmux()`, `caps.kitty`, and TrueColor -- the id travels in the
+foreground colour and needs all 24 bits. The probe reports `tmux=yes`
+and `colour=truecolor` from inside that session, so by elimination
+`caps.kitty` is false at the moment the tier is chosen.
+
+**And `qtty-negotiate --probes` reports `kitty a=q OK` from inside the
+same tmux.** So the reply can come back and the query is wrapped for
+passthrough as it should be -- `caps_query()` is `tmux_wrap`ped when
+`inside_tmux()`. What is not established is why the probe the BACKEND
+runs does not see what the tool's re-probe does. It is recorded as
+measured and unexplained rather than attributed, because the comfortable
+story here -- "tmux does not forward APC replies" -- is contradicted by
+the tool's own output, and an explanation that survives only until
+somebody reads the next line is worse than none.
+
+**What the phase actually checks is real and checked nowhere else**: that
+the fallback inside a multiplexer still puts the picture on the right
+cell. It cannot compare against the probe's prediction, because tmux does
+not forward CSI 16t either, so the probe predicts 220 and 40 from its own
+font while the picture lands at 198 and 36. So it asserts a relationship
+needing no cell size at all -- the marker sits at cell 22 and is four
+cells wide, so left over 22 and width over 4 are the same number whatever
+that number is. Sabotaged, they read 5.73 and 9.00.
+
+**The probe prints the tier it used now**, which is the change that
+matters more than the phase. A phase named for a code path is a claim
+about which code ran, and nothing was checking it: this one was written,
+run, and passed for a week's worth of confidence before the sabotage
+showed it had never touched the path in its name.
+
+**And the rest of `TermCaps` was swept for the same shape, which is what
+makes the one finding worth anything.** Ten fields, each checked for a
+consumer outside the parser:
+
+    answered kitty sixel truecolor bg_known bg cell_px palette16   read
+    dec_modes                            read through mode_usable()
+    text_px                              read by nothing
+
+So the family is swept and `text_px` is the only member. The lens: a
+field the terminal fills in that no decision depends on. What it would
+have found is a capability being negotiated and then ignored, which is
+how a terminal ends up answering questions nobody acts on.
+
+**The first pass of that sweep reported `dec_modes` as unread too, and
+that was the instrument.** It is read through `dec_mode()` and
+`mode_usable()`, which live in the same file the sweep excluded to avoid
+counting the parser's own writes. A grep for field names cannot see a
+field reached through an accessor, and excluding the file that defines
+the accessors is what hid it -- a false absence produced by the filter
+that was meant to remove noise.
+
 **`text_px` is parsed, printed and read by nothing** (2026-09-05), which
 is the least-used-method shape again. CSI 14t reports the text AREA in
 pixels, and the one use it could have is real: where CSI 16t goes
