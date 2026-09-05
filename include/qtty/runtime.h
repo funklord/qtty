@@ -212,6 +212,11 @@ private:
 	// Where the overlays were last frame, in cells. Kept because nothing
 	// else remembers it and pixel_damage() cannot be computed without it.
 	QVector<QRect> prev_overlays_;
+	// How many overlay ids the terminal is currently holding. Overlay ids
+	// are indices into the z-sorted visible list, so when that list shrinks
+	// the tail has to be deleted explicitly -- nothing about a smaller list
+	// removes the placements the terminal already has.
+	int live_overlay_ids_ = 0;
 	// The composited picture, kept between frames so only the damaged cells
 	// have to be rasterised into it. Rasterising 200x60 measures 18.4 ms
 	// against section 11's 16 ms budget, so on the software-composite path

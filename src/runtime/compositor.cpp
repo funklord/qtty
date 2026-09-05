@@ -527,6 +527,12 @@ void FrameScheduler::render_now() {
 	// stayed innocent, the compositor having built the right frame and
 	// present() being correct about writing one it was never handed.
 	const bool images_changed = !prev_ || frame.images != prev_->images;
+	// An overlay that went away leaves nothing behind in the CELLS, so it
+	// produces no damage and, on its own, would not even reach the branch
+	// that talks to the terminal -- while its picture is still on the
+	// screen. The count is therefore part of what makes a frame worth
+	// sending.
+	const bool overlays_retired = int(overlays.size()) < live_overlay_ids_;
 
 	if (software_composite) {
 		// One finished picture, kept between frames and repainted only where
@@ -574,7 +580,8 @@ void FrameScheduler::render_now() {
 		}
 		p.end();
 		gfx->present_pixels(px, pix);
-	} else if (!damage.isEmpty() || images_changed || !prev_ || !overlays.isEmpty()) {
+	} else if (!damage.isEmpty() || images_changed || !prev_
+	           || !overlays.isEmpty() || overlays_retired) {
 		backend_->present(frame, damage);
 		if (gmode == Capabilities::KittyAlpha && gfx) {   // terminal-blended alpha
 			int id = 0;
@@ -582,6 +589,17 @@ void FrameScheduler::render_now() {
 				gfx->present_overlay(id++, o->image(),
 				                    overlay_cell_rect(o).topLeft(),
 				                    qMax(1, o->z()));
+			// And retire the ids that are no longer used. The id IS the
+			// index in the z-sorted list, so a shrinking list leaves a tail
+			// of placements the terminal is still showing -- measured on a
+			// screen capture: an overlay presented and then dropped stayed
+			// on the terminal at full size for as long as the program ran.
+			// clear_overlay() has existed since the tier was written and
+			// had no caller anywhere, which is the shape this project has
+			// now met three times.
+			for (int stale = id; stale < live_overlay_ids_; ++stale)
+				gfx->clear_overlay(stale);
+			live_overlay_ids_ = id;
 		}
 	}
 	backend_->set_cursor(comp_->cursor_cell(),

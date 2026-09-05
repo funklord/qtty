@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-917 checks, 0 failures, under six configurations, all six re-run
+918 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6148,6 +6148,47 @@ there. `make` first, then judge.
 What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
+
+**A hidden overlay never left the terminal** (2026-09-05), and
+`clear_overlay()` had been implemented, overridden and called by nothing
+since the tier was written. **The third instance of this shape in two
+days**, after the placeholder mode and the cell conversion that reached
+two of eight transmitters.
+
+Measured on a screen capture before the fix: present an overlay, then
+present a later frame without it -- which is what hiding one does -- and
+2592 px of it are still there, exactly as much as the control drawn
+through the pixel path.
+
+Two things were missing and only one is obvious. The tier arm transmits
+overlays with ids 0..n-1 and never deleted the tail, so a shrinking list
+left placements the terminal still shows. **And the arm was not even
+reached**: an overlay that goes away leaves nothing in the CELLS, so it
+produces no damage, and the branch that talks to the terminal is entered
+only when something else changed. The count is part of what makes a frame
+worth sending, and it was not.
+
+**The escape hatch works, which was worth checking rather than
+assuming**, since the fix now depends on it: `clear_overlay()` on a real
+kitty removes the picture -- 0 px of marker against 2592 px of control
+still showing.
+
+    sabotage                              the check that fails
+    retire nothing in the frame loop      the suite, 1 transmitted 0 retired
+    do not call clear_overlay at all      the screen phase
+
+**The screen phase's first failure message was misleading and that is
+worth its own line.** It reported "the marker is 0 px and the control 0",
+which reads like the pass it is not -- zero of both is a capture of an
+empty screen, which is what the wait loop leaves when its condition is
+never met. Three outcomes, not two, and the message now names which.
+
+**Found by a fan-out sweep rather than by reading**, and two of the four
+lenses reported it independently: one enumerating public methods for
+callers, one enumerating consumers of "which overlays exist". Two
+independent detectors agreeing is worth more than either, and this
+project's own rule says why -- they were pointed at different populations
+and met in the same place.
 
 **The unicode-placeholder mode could not engage anywhere, and the cause
 was one unanswered probe** (2026-09-05). It exists only for the case

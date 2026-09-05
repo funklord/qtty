@@ -1320,6 +1320,50 @@ int suite_graphics() {
 
 		ov.hide();
 		CHECK(Overlay::visible_overlays().isEmpty(), "and it deregisters on hide");
+
+		// An overlay that goes away has to be RETIRED from the terminal.
+		// Overlay ids are indices into the z-sorted visible list, so a
+		// shrinking list leaves a tail of placements the terminal is still
+		// showing, and nothing about a smaller list removes them.
+		// clear_overlay() had existed since the tier was written with no
+		// caller anywhere in src/ -- the same shape as the unicode
+		// placeholder mode, found the same way.
+		//
+		// Measured on a screen capture before the fix: an overlay presented
+		// and then dropped stayed on the terminal at full size, 2592 px of
+		// it, for as long as the program ran.
+		//
+		// One scheduler across two frames, deliberately. `drive()` builds a
+		// fresh one per call, so its `live_overlay_ids_` starts at zero
+		// every time and the retire path is unreachable from it.
+		{
+			Recorder rec;
+			rec.caps.graphics = Qtty::Capabilities::KittyAlpha;
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(20, 6));
+			win.show();
+			QCoreApplication::processEvents();
+			Qtty::InputRouter router(&win);
+			Qtty::Compositor comp(&win, &router);
+			Qtty::FrameScheduler sched(&rec, &comp, &win);
+
+			Overlay going;
+			going.set_image(art);
+			going.set_rect(QRectF(1, 1, 4, 2));
+			going.set_z(3);
+			going.show();
+			sched.render_now();
+			const int sent = rec.overlays, cleared_before = rec.cleared;
+
+			going.hide();
+			sched.render_now();
+
+			printf("info: %d overlay(s) transmitted, %d retired after the"
+			       " hide\n", sent, rec.cleared - cleared_before);
+			CHECK(sent >= 1 && cleared_before == 0 && rec.cleared >= 1,
+			      "an overlay that goes away is retired from the terminal");
+		}
 	}
 
 	// The mosaic tier in the three configurations nothing reached, found by

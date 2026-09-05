@@ -90,7 +90,29 @@ int main(int argc, char **argv) {
 	// terminal with no graphics protocol falls back to is reached only
 	// through the cell path. Asking present_pixels() for it draws nothing
 	// and looks exactly like a broken renderer.
-	if (qgetenv("QTTY_SCREEN_PATH") == "overlay") {
+	if (qgetenv("QTTY_SCREEN_PATH") == "overlay-gone") {
+		// Show an overlay, then present a later frame WITHOUT it -- which is
+		// what hiding one does. If the picture is still on screen after
+		// that, nothing removed it.
+		QImage base(cols * cw, rows * ch, QImage::Format_ARGB32_Premultiplied);
+		base.fill(QColor(0, 0, 0));
+		{
+			QPainter bp(&base);
+			bp.fillRect(4 * cw, 5 * ch, 4 * cw, 4 * ch, QColor(60, 90, 220));
+		}
+		backend.present_pixels(base, QRegion());
+		backend.present_overlay(1, px.copy(22 * cw, 5 * ch, 4 * cw, 4 * ch),
+		                        QPoint(22, 5), 1);
+		::fflush(stdout);
+		::sleep(2);
+		// Retiring it is what the frame loop now does when the visible list
+		// shrinks. Measured without this call: the picture stays on the
+		// terminal at full size for as long as the program runs, which is
+		// the premise the loop's fix depends on and is worth checking on a
+		// real terminal rather than assuming.
+		backend.clear_overlay(1);
+		backend.present_pixels(base, QRegion());
+	} else if (qgetenv("QTTY_SCREEN_PATH") == "overlay") {
 		// The KittyAlpha overlay path, which is a different function from
 		// the pixel one and had never had a picture taken of it. The base
 		// frame is black so that the only colour on the screen is the

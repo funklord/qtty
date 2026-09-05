@@ -174,6 +174,74 @@ GEOM
 		    "QTTY_SCREEN_PATH=overlay $dir/probe 2>$dir/opred'"
 		python3 "$dir/geom.py" "$dir/ov.png" "$dir/opred" 0 1 overlay 60,90,220
 
+		# And that retiring one actually removes it. The frame loop deletes
+		# the tail of the overlay id list when the visible list shrinks, and
+		# that is only worth doing if the escape hatch works -- measured
+		# without the call, the picture stays on the terminal at full size,
+		# 2592 px of it, for as long as the program runs.
+		#
+		# Two-sided, because an absence on its own is the vacuous pass: the
+		# control drawn through the pixel path must still be there, or a
+		# capture of an empty screen would report success.
+		cat > "$dir/gone.py" <<'GONE'
+import sys
+from PIL import Image
+im = Image.open(sys.argv[1]).convert("RGB")
+w, h = im.size
+px = im.load()
+def count(t):
+	return sum(1 for y in range(h) for x in range(w)
+	           if all(abs(px[x, y][i] - t[i]) <= 6 for i in range(3)))
+control, marker = count((60, 90, 220)), count((40, 200, 90))
+# Three outcomes, not two. Zero marker with zero control is a capture of a
+# screen with nothing on it -- which is what the wait loop leaves behind when
+# its condition is never met -- and reporting that as "the marker is 0 px"
+# reads like the pass it is not.
+if control == 0:
+	print("screen-check: FAILED -- nothing was on screen when it was"
+	      " captured, so the retirement was not observed", file=sys.stderr)
+	sys.exit(1)
+if marker:
+	print("screen-check: FAILED -- %d px of the overlay survived"
+	      " clear_overlay, against a control of %d" % (marker, control),
+	      file=sys.stderr)
+	sys.exit(1)
+print("screen-check: after clear_overlay the marker is gone and the control"
+	" still shows %d px" % control)
+sys.exit(0)
+GONE
+		# Its own loop rather than capture(), because capture() waits for
+		# the marker to APPEAR and here it has to be gone: waiting on the
+		# green would photograph the two seconds before the clear and call
+		# the leak a pass. The condition is the verdict itself, which is
+		# only satisfiable after the clear -- before it both colours are on
+		# screen, and before the probe draws neither is.
+		cat > "$dir/seen_gone.py" <<'SEENGONE'
+import sys
+from PIL import Image
+im = Image.open(sys.argv[1]).convert("RGB")
+w, h = im.size
+px = im.load()
+def count(t):
+	return sum(1 for y in range(h) for x in range(w)
+	           if all(abs(px[x, y][i] - t[i]) <= 6 for i in range(3)))
+sys.exit(0 if count((60, 90, 220)) > 0 and count((40, 200, 90)) == 0 else 1)
+SEENGONE
+		timeout 200 xvfb-run -a -s "-screen 0 900x600x24" sh -c "
+			kitty sh -c 'sleep 2; QTTY_GRAPHICS=kitty-alpha \
+			    QTTY_SCREEN_PATH=overlay-gone $dir/probe 2>$dir/gpred' &
+			n=0
+			while [ \$n -lt 25 ]; do
+				sleep 1
+				import -window root $dir/gone.png 2>/dev/null || true
+				if [ -s $dir/gone.png ] \
+				   && python3 $dir/seen_gone.py $dir/gone.png
+				then break; fi
+				n=\$((n + 1))
+			done
+			wait" >>"$dir/log" 2>&1 || true
+		python3 "$dir/gone.py" "$dir/gone.png"
+
 		# A multiplexer between qtty and the terminal, which is a third
 		# stack rather than a third tier: qtty inside tmux inside kitty.
 		#
