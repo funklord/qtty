@@ -231,8 +231,10 @@ QRect CellPaintEngine::to_cells(const QRectF &r) const {
 // no authored ANSI-16 index because no role authored one.
 // The rule itself is fg_for() in cell_geometry.h now, because CellItemDelegate
 // and GridStyle's CE_ItemViewItem need the same answer and were each giving a
-// different one.
-static Color pen_to_fg(const QPen &pen) { return fg_for(pen.color().rgba()); }
+// different one -- and the wrapper that used to stand here went with it, its
+// last caller having moved to text_style_for(). The comment stays because it
+// records where the rule LIVES, which is the thing a reader of this file
+// needs; the function was one indirection to the same place.
 
 void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	QPointF q = xf_.map(p) + QPointF(dev_->origin);
@@ -469,12 +471,18 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 	}
 
 	const QRgb col = brush_.color().rgba();
-	const QPalette &pal = QGuiApplication::palette();
-	QPalette::ColorRole matched = QPalette::NoRole;
-	for (QPalette::ColorRole role : {QPalette::Window, QPalette::Base,
-		                             QPalette::Button, QPalette::AlternateBase,
-		                             QPalette::Highlight, QPalette::ToolTipBase})
-		if (pal.color(role).rgba() == col) { matched = role; break; }
+	// role_of(), not a copy of its list. This carried the same six roles in
+	// the same order and asked `pal.color(role)` -- the palette's CURRENT
+	// group, Active for the application palette -- so a disabled widget's
+	// fill, which Qt takes from the Disabled group, matched no role and fell
+	// through as a hard 24-bit colour. That is the #bebebe incident
+	// cell_geometry.h records, and the pen path here was moved to the shared
+	// helper for it while the fill path was left behind: three places giving
+	// three answers, fixed in two.
+	const QPalette::ColorRole matched =
+	    role_of(col, {QPalette::Window, QPalette::Base, QPalette::Button,
+	                  QPalette::AlternateBase, QPalette::Highlight,
+	                  QPalette::ToolTipBase});
 
 	Color bg = matched == QPalette::NoRole ? Color::rgb(col)
 	                                       : theme().background(matched);

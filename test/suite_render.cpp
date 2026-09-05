@@ -232,6 +232,88 @@ int suite_render(bool record) {
 		Qtty::CellBuffer clipped(20, 2), open(20, 2);
 		fill_with(true, clipped);
 		fill_with(false, open);
+
+		// A DISABLED widget's fill. Qt takes a disabled widget's brush from
+		// the palette's Disabled group, and this engine matched the brush
+		// against the Active group only -- its own copy of the role list,
+		// without the fallback role_of() performs. So a disabled field's
+		// background matched no role and went out as a hard 24-bit colour,
+		// which is the #bebebe incident cell_geometry.h records, in the one
+		// path that had not been moved to the shared helper.
+		//
+		// The partition is asserted first: on a palette where the two groups
+		// agree for Base this fixture cannot discriminate, and saying so is
+		// better than passing for the wrong reason.
+		{
+			const QPalette &pal = QGuiApplication::palette();
+			// HIGHLIGHT, and the choice is measured rather than convenient.
+			// Of the six roles this engine matches, five have a Disabled
+			// colour that coincides with some ACTIVE role -- Window, Base
+			// and Button are all #efefef disabled, which is Active Window --
+			// so the old Active-only loop still found *a* role for them and
+			// wrote no true colour. Only Highlight's #919191 matches no
+			// active role at all, so it is the one fill on this palette
+			// where the missing fallback is observable. A fixture on any of
+			// the other five passes with the defect in place; the first
+			// version of this check used Base and did exactly that.
+			const QPalette::ColorRole probe = QPalette::Highlight;
+			const QColor act = pal.color(QPalette::Active, probe);
+			const QColor dis = pal.color(QPalette::Disabled, probe);
+			bool coincides = false;
+			for (QPalette::ColorRole r : {QPalette::Window, QPalette::Base,
+			                              QPalette::Button,
+			                              QPalette::AlternateBase,
+			                              QPalette::Highlight,
+			                              QPalette::ToolTipBase})
+				if (pal.color(QPalette::Active, r) == dis) coincides = true;
+			printf("info: Highlight is %s active, %s disabled%s\n",
+			       qPrintable(act.name()), qPrintable(dis.name()),
+			       coincides ? " (which some active role also has)" : "");
+			if (act != dis && !coincides)
+				printf("PASS: the disabled Highlight is a colour no active"
+				       " role has, so this fixture can discriminate\n");
+			else {
+				printf("FAIL: the disabled Highlight is a colour no active"
+				       " role has, so this fixture can discriminate\n"
+				       "      condition: active %s, disabled %s, coincides"
+				       " with an active role: %s\n", qPrintable(act.name()),
+				       qPrintable(dis.name()), coincides ? "yes" : "no");
+				++r;
+			}
+
+			Qtty::CellBuffer greyed(20, 2), invented(20, 2);
+			auto paint = [&](Qtty::CellBuffer &b, const QColor &c) {
+				Qtty::CellPaintDevice dev(b);
+				QPainter p(&dev);
+				p.fillRect(QRect(0, 0, cw * 4, ch), c);
+				p.end();
+			};
+			auto rgb_cells = [](const Qtty::CellBuffer &b) {
+				int n = 0;
+				for (int x = 0; x < b.cols(); ++x)
+					if (b.at(x, 0).bg.kind() == Qtty::Color::Rgb) ++n;
+				return n;
+			};
+			paint(greyed, dis);
+			// The control, and it is what stops this being an assertion that
+			// the engine simply never writes an Rgb background: a colour no
+			// role explains still has to pass through as true colour.
+			paint(invented, QColor(203, 17, 89));
+			printf("info: %d rgb cell(s) from the disabled Highlight, %d from"
+			       " a colour no role explains\n",
+			       rgb_cells(greyed), rgb_cells(invented));
+			if (rgb_cells(greyed) == 0 && rgb_cells(invented) > 0)
+				printf("PASS: a disabled widget's fill is matched to its role,"
+				       " while an unexplained colour is not\n");
+			else {
+				printf("FAIL: a disabled widget's fill is matched to its role,"
+				       " while an unexplained colour is not\n"
+				       "      condition: %d rgb from the disabled Highlight,"
+				       " %d from the unexplained colour\n",
+				       rgb_cells(greyed), rgb_cells(invented));
+				++r;
+			}
+		}
 		// Four, exactly. The clip is QRect(0, 0, cw * 4, ch) -- pixels 0..39
 		// on a ten-pixel cell, which is four whole cells with nothing
 		// part-covered, so outward rounding has nothing to round.

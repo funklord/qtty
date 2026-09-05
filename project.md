@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-923 checks, 0 failures, under six configurations, all six re-run
+925 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6148,6 +6148,45 @@ there. `make` first, then judge.
 What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
+
+**A disabled widget's fill went out as a hard 24-bit colour**
+(2026-09-05). `CellPaintEngine`'s fill path carried its own copy of the
+six-role list and asked `pal.color(role)` -- the palette's CURRENT group,
+Active for the application palette. Qt takes a disabled widget's brush
+from the DISABLED group, so it matched no role and fell through as a
+colour the application chose. That is the `#bebebe` incident
+`cell_geometry.h` records; the PEN path in the same file was moved to the
+shared `role_of()` for it and the fill path was left behind. Three places
+giving three answers, fixed in two.
+
+**The check took three attempts and the first two were the same
+mistake.** A pure-function check on `role_of()` passes before and after --
+`role_of()` was always right, the copy was the fault. And a fill fixture
+using the disabled BASE colour passes with the defect in place, because
+five of the six roles have a Disabled colour that coincides with some
+ACTIVE one. Measured on this palette:
+
+    Window Base Button   disabled #efefef   which is ACTIVE Window
+    AlternateBase        disabled #f7f7f7   which is ACTIVE AlternateBase
+    ToolTipBase          disabled #ffffdc   which is ACTIVE ToolTipBase
+    Highlight            disabled #919191   matches no active role
+
+So Highlight is the one fill on this palette where the missing fallback
+is observable at all, and the fixture asserts that before asserting
+anything else. With the defect restored it writes four true-colour cells
+where it should write none.
+
+**The scope statement matters as much as the fix.** The defect is latent
+for every other role here -- which is why nobody saw it, and why a
+fixture chosen for convenience would have gone on not seeing it. A
+palette whose Disabled Window differs from its Active Window makes all of
+them live at once.
+
+**And a dead wrapper came out with it.** `pen_to_fg()` had no callers --
+`drawTextItem` went to `text_style_for()` directly and left it behind --
+which the compiler had never said because that file had not been
+recompiled in a long time. Its comment stays, because it records where
+the rule LIVES, which is what a reader of that file needs.
 
 **A mode the terminal permanently refused was used anyway**
 (2026-09-05). `mode_usable()` was `v != 0`, and DECRPM's value 4 is
