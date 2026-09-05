@@ -1643,6 +1643,56 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// A tool button with a drop-down draws a down-arrow glyph in the cell before its
+	// closing bracket, which is the affordance saying a menu is there. Qt
+	// asks SC_ToolButtonMenu whether a press was in the menu area, and
+	// QCommonStyle builds that from PM_MenuButtonIndicator -- 12 px,
+	// ungridded -- so the live band was the last 12 px of the button. At a
+	// ten-pixel cell that is the closing BRACKET and not the arrow, and
+	// pressing the arrow fired the default action instead.
+	//
+	// Asserted on the RECTANGLE rather than by pressing. The behavioural
+	// form was written first and had to be withdrawn: with the fix in place
+	// the press genuinely opens a QMenu, and a real popup under the
+	// offscreen platform took the suite down with it. The rectangle is what
+	// QToolButton::mousePressEvent tests, so this asks the same question
+	// without a popup -- and the cell centres are what a terminal click
+	// becomes, per on_mouse().
+	{
+		QWidget tb_host;
+		tb_host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *tb = new QToolButton(&tb_host);
+		auto *act = new QAction(QStringLiteral("Cut"), tb);
+		tb->setDefaultAction(act);
+		auto *menu = new QMenu(tb);
+		menu->addAction(QStringLiteral("More"));
+		tb->setMenu(menu);
+		tb->setPopupMode(QToolButton::MenuButtonPopup);
+		tb->setGeometry(0, 0, cw * 8, ch);
+		tb_host.resize(GridMetrics::cells(10, 3));
+		tb_host.show();
+		QCoreApplication::processEvents();
+
+		QStyleOptionToolButton o;
+		o.initFrom(tb);
+		o.rect = tb->rect();
+		o.features = QStyleOptionToolButton::MenuButtonPopup;
+		const QRect band = tb->style()->subControlRect(
+		    QStyle::CC_ToolButton, &o, QStyle::SC_ToolButtonMenu, tb);
+		// Cell 6 is the arrow on an eight-cell button, cell 7 the bracket.
+		const QPoint arrow(6 * cw + cw / 2, ch / 2);
+		const QPoint bracket(7 * cw + cw / 2, ch / 2);
+		const QPoint label(1 * cw + cw / 2, ch / 2);
+		printf("info: the menu band is %d..%d px; arrow %d bracket %d"
+		       " label %d\n", band.left(), band.right(),
+		       int(band.contains(arrow)), int(band.contains(bracket)),
+		       int(band.contains(label)));
+		CHECK(band.contains(arrow) && !band.contains(label),
+		      "a tool button's menu opens from the cell its arrow is drawn"
+		      " in");
+		GridGuard::reset();
+	}
+
 	// ---- the pointer enters and leaves ----
 	{
 		// Nothing sent Enter or Leave. QApplicationPrivate does it from the

@@ -754,6 +754,26 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 			break;
 		}
 	}
+	// The tool button's menu area. It draws a down-arrow glyph in the cell before its
+	// closing bracket -- the affordance that says a menu is there -- and Qt
+	// asked SC_ToolButtonMenu, which QCommonStyle builds from
+	// PM_MenuButtonIndicator: 12 px, ungridded. At a ten-pixel cell the live
+	// band is the last 12 px, which is the closing BRACKET and not the
+	// arrow. Measured: pressing the arrow cell fired the default action and
+	// opened nothing.
+	//
+	// The arrow's cell, and only that. The bracket is the button's own
+	// frame, drawn for a button with no menu as well, so it belongs to the
+	// button -- one meaning per cell, which is the rule the spin box's two
+	// arrows established here.
+	if (cc == CC_ToolButton && sc == SC_ToolButtonMenu && opt) {
+		if (auto *tb = qstyleoption_cast<const QStyleOptionToolButton *>(opt)) {
+			if (tb->features & QStyleOptionToolButton::MenuButtonPopup) {
+				const QRect r = opt->rect;
+				return QRect(r.right() + 1 - 2 * cw, r.top(), cw, r.height());
+			}
+		}
+	}
 	// The scroll bar is drawn whole in cells and its hit test was left to
 	// Fusion, which answers in pixels from PM_ScrollBarExtent. The two
 	// disagreed about the one thing a user does with a scroll bar.

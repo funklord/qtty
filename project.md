@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-933 checks, 0 failures, under six configurations, all six re-run
+934 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6148,6 +6148,52 @@ there. `make` first, then judge.
 What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
+
+**A tool button's menu opened from the wrong cell** (2026-09-05).
+It draws `▾` in the cell before its closing bracket -- the affordance
+saying a menu is there -- and Qt asks `SC_ToolButtonMenu` whether a press
+was in the menu area. `QCommonStyle` builds that from
+`PM_MenuButtonIndicator`: 12 px, ungridded. On an eight-cell button the
+live band was 68..79, which is the BRACKET; the arrow is 60..69.
+
+    pressing the arrow cell   fired the default action, opened nothing
+
+So the one cell drawn to say "there is a menu here" was the one cell that
+did not open it.
+
+**The behavioural check was written first and withdrawn.** With the fix
+in place the press genuinely opens a `QMenu`, and a real popup under the
+offscreen platform took the suite down -- 226 checks in, with the plugin
+complaining about `raise()`. The rectangle is what
+`QToolButton::mousePressEvent` tests, so asserting it asks the same
+question with no popup at all. **A check that cannot run is worth less
+than a narrower one that can**, and the narrower one still moves from
+68..79 to 60..69 under the sabotage.
+
+**The rest of that sweep's list, verified by reading and not yet fixed.**
+It enumerated every control drawn whole in cells and asked which geometry
+function Qt consults for each, then did the arithmetic at two cell sizes:
+
+    tree expander        PM_TreeViewIndentation is 20 px, ungridded.
+                         Works at 10x19 because 10 divides 20; at 8x16
+                         the glyph cell falls outside the band and the
+                         expander cannot be clicked at all.
+    frame inset          PM_DefaultFrameWidth is cw, applied vertically
+                         too. Agrees at 10x19 and 8x16; on any cell with
+                         cw/ch < 0.5 row 0 lands on the box's own border.
+    group box title      QCommonStyle centres it and then writes the
+                         check box over cells 1..3 of the same row.
+    CT_ItemViewItem      one cell short of what CE_ItemViewItem draws, so
+                         the last character elides in the style-drawn
+                         path. CellItemDelegate::sizeHint is correct.
+    CE_MenuItem          label budget is one cell short of its siblings
+                         and can overwrite the right-aligned shortcut.
+
+**And the sweep's own control is worth keeping**: it listed fourteen
+controls it checked and found to AGREE, with the arithmetic for each --
+including four that agree only by coincidence at these cell sizes and are
+named as such. An empty result is a measurement only if its method is
+recorded, and that list is the method.
 
 **An item's check box was live one cell to the left of where it is
 drawn** (2026-09-05). Both drawing paths -- `CE_ItemViewItem` here and
