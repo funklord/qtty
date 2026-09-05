@@ -502,6 +502,7 @@ INSTALLED_HEADERS = application.h \
 	                  delegate.h \
 	                  graphics.h \
 	                  grid.h \
+	                  null_backend.h \
 	                  overlay.h \
 	                  paint.h \
 	                  qtty.h \

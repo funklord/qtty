@@ -1,7 +1,7 @@
 // suite_runtime -- L6 (section 5.6): the backend seam, the font provisioning
 // check (section 5.3, risk R3), and GridGuard (section 5.3, section 9).
 #include <qtty/qtty.h>
-#include "src/backend/null/null_backend.h"
+#include <qtty/null_backend.h>
 #include <QtWidgets>
 #include <cstdio>
 

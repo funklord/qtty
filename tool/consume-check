@@ -51,15 +51,34 @@ pkg-config --cflags qtty | grep -q -- "-I$dir/prefix/include" || {
 }
 
 cat > "$dir/consumer.cpp" <<'CONSUMER'
+// Both halves of what an adopter does: run in a terminal, and test without
+// one. The second is why NullBackend is a public header -- exec(app, win,
+// backend) is the seam a consumer's own tests drive, and it was reachable
+// only from inside qtty's tree while the README advertised the capability.
 #include <qtty/qtty.h>
 #include <QApplication>
 #include <QLabel>
+#include <QTimer>
+#include <cstdio>
 
 int main(int argc, char **argv) {
 	Qtty::prepare_environment();
 	QApplication app(argc, argv);
 	Qtty::setup(app);
 	QLabel w(QStringLiteral("hello from a consumer"));
+
+	if (argc > 1 && QString::fromLatin1(argv[1]) == QStringLiteral("--headless")) {
+		Qtty::NullBackend backend(QSize(40, 6));
+		QTimer quit;
+		quit.setInterval(10);
+		QObject::connect(&quit, &QTimer::timeout, qApp,
+		                 &QCoreApplication::quit);
+		quit.start();
+		Qtty::exec(app, w, backend);
+		std::printf("frames=%d\n%s\n", backend.frame_count(),
+		            qPrintable(backend.last_frame()));
+		return 0;
+	}
 	return Qtty::exec(app, w);
 }
 CONSUMER
@@ -89,3 +108,20 @@ msg = "consume-check: FAILED -- alternate screen %s, label %s, %d bytes"
 print(msg % (alt, label, len(d)), file=sys.stderr)
 sys.exit(1)
 PY
+
+# And the same program driven through the seam, with no terminal at all --
+# which is what a consumer's test suite does. This needs no pty: the point is
+# that NullBackend captures the frame.
+timeout 60 "$dir/consumer" --headless > "$dir/headless" 2>&1 || {
+	echo "consume-check: FAILED -- the headless run did not finish" >&2
+	head -3 "$dir/headless" >&2
+	exit 1
+}
+if grep -q "hello from a consumer" "$dir/headless"; then
+	echo "consume-check: and captured its own frame through NullBackend," \
+	     "$(sed -n 's/^frames=//p' "$dir/headless") frame(s)"
+else
+	echo "consume-check: FAILED -- NullBackend captured no such frame:" >&2
+	head -4 "$dir/headless" >&2
+	exit 1
+fi

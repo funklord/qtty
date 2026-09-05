@@ -1,5 +1,12 @@
-// src/backend/null/null_backend.h -- CI backend (section 9): captures frames so
+// qtty/null_backend.h -- the harness backend (section 9): captures frames so
 // snapshot tests run with no tty attached.
+//
+// Public because it is half of what exec(app, win, backend) is for. That
+// overload is the seam a test drives, and it was reachable only from inside
+// this tree while the README advertised "deterministic snapshot testing with
+// no tty (NullBackend)" to everybody else -- a documented capability an
+// adopter could not reach, which is the same shape as a method with no
+// caller.
 #pragma once
 #include "qtty/backend.h"
 

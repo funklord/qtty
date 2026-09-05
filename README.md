@@ -73,6 +73,14 @@ reviewed change. The example runs with `make run`, or directly as
 
     make install PREFIX=/usr/local     # headers, libqtty.a, qtty.pc, tools
 
+Testing without a terminal, which is what `NullBackend` is for:
+
+```cpp
+Qtty::NullBackend backend({80, 24});
+Qtty::exec(app, win, backend);          // the seam
+QCOMPARE(backend.last_frame().contains("Ready"), true);
+```
+
 Then, in a qmake project:
 
     CONFIG += link_pkgconfig
@@ -141,6 +149,12 @@ status note at the top.
     Makefile          the entry point; qtty.pro and qtty.pri are the qmake side
     VERSION           the one place the version number is stated
     project.md        design and intent; code-style.md, .style-gate.toml
+
+**One caution about `doc/design.md`.** Its API chapter (section 5.6)
+describes a `qtty::Application` class that was never built: the shipped
+surface is the free functions in `include/qtty/application.h`, in namespace
+`Qtty`. Read design.md for the reasoning and the headers for the API.
+`project.md` section 8.2 records the disagreement and whose decision it is.
 
 ## Naming
 

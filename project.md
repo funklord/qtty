@@ -6182,6 +6182,22 @@ searching for `[ ]` found neither that nor the title and failed for two
 reasons at once. Dumping the buffer took one run and showed the answer;
 guessing at the fixture would have taken several.
 
+**`NullBackend` is a public header now** (2026-09-05), because the
+README advertised "deterministic snapshot testing with no tty
+(`NullBackend`, text fixtures)" to everybody while the class lived under
+`src/` and shipped with nothing. `exec(app, win, backend)` -- the overload
+`application.h` calls "what makes the seam real" -- had no backend an
+adopter could pass, so the seam was public and unusable. The same shape
+as a method with no caller, one layer out.
+
+It cost four lines: the header moved, `src.pro` and one test include
+followed, and it joined the installed list and the umbrella header.
+
+`make test-consume` drives it: the consumer it builds against a temporary
+prefix now runs twice, once in a pty and once `--headless` through
+`NullBackend`, and asserts the captured frame holds its own label. With
+the header withheld from the install, the consumer does not compile.
+
 **Nothing checked that the library could be USED** (2026-09-05). The tree
 had `install` and `test-install`, which prove the files land and are
 removed again -- and no statement anywhere that the files are usable

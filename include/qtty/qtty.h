@@ -7,6 +7,7 @@
 #include "cell.h"
 #include "theme.h"
 #include "backend.h"
+#include "null_backend.h"
 #include "grid.h"
 #include "paint.h"
 #include "graphics.h"
