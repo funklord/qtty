@@ -131,7 +131,10 @@ in cells. Each is documented in its own header.
 resolved by `setup()` and must be monospace with integral metrics — see the
 build requirements above. A progress bar cannot be made one cell tall by the
 style alone, so an application that wants one calls
-`setFixedHeight(GridMetrics::ch())` itself. And the API is pre-alpha: see the
+`setFixedHeight(GridMetrics::ch())` itself. A click on a slider sets the
+value where it landed rather than paging — deliberate, because a cell is a
+coarse target and a terminal slider has few of them, but it differs from
+desktop Qt, where that is the middle button's job. And the API is pre-alpha: see the
 status note at the top.
 
 ## Layout

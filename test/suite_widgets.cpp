@@ -543,6 +543,141 @@ int suite_widgets() {
 			      "and writes none of them past the edge of the view");
 		}
 
+		// Two labels written with no budget at all. The push button's is
+		// cut by its own clip, so a long label loses its closing bracket
+		// with nothing to say it was cut -- the tab's fault again, in
+		// another control. The menu bar item's clip is the whole BAR, not
+		// the item, so an over-long title is not cut at all: it writes into
+		// the next item's cells.
+		{
+			const auto draw_into = [&](CellBuffer &b, QStyle::ControlElement ce,
+			                           const QStyleOption &o) {
+				Qtty::CellPaintDevice d(b);
+				QPainter p(&d);
+				QApplication::style()->drawControl(ce, &o, &p, nullptr);
+				p.end();
+				return b.to_text().split(QLatin1Char('\n')).value(0);
+			};
+
+			CellBuffer bb(10, 1);
+			QStyleOptionButton bo;
+			bo.rect = QRect(0, 0, 8 * cw, ch);
+			bo.state = QStyle::State_Enabled;
+			bo.text = QStringLiteral("Save Changes");
+			const QString btn = draw_into(bb, QStyle::CE_PushButtonLabel, bo);
+
+			CellBuffer mb(16, 1);
+			QStyleOptionMenuItem mo;
+			mo.rect = QRect(0, 0, 6 * cw, ch);
+			mo.state = QStyle::State_Enabled;
+			mo.menuItemType = QStyleOptionMenuItem::Normal;
+			mo.text = QStringLiteral("Formatting");
+			const QString mbi = draw_into(mb, QStyle::CE_MenuBarItem, mo);
+
+			printf("info: a squeezed button is [%s] and a menu bar item"
+			       " [%s]\n", qPrintable(btn.trimmed()),
+			       qPrintable(mbi.trimmed()));
+			CHECK(btn.contains(QLatin1Char('>')),
+			      "a button too narrow for its label keeps its closing"
+			      " bracket");
+			CHECK(mbi.trimmed().size() <= 6,
+			      "and a menu bar item does not write past its own cells");
+		}
+
+		// A tab bar with more tabs than fit. Qt gives it two scroll
+		// QToolButtons sized from PM_TabBarScrollButtonWidth -- 16 px,
+		// which is 1.6 columns here -- and those two widgets are exempt
+		// from BOTH GridGuard and GridSnap (a QToolButton child of a
+		// QTabBar, by name). So they are the one class of off-grid widget
+		// nothing reports and nothing repairs, and they are clickable.
+		{
+			QWidget host;
+			auto *bar = new QTabBar(&host);
+			for (int i = 0; i < 12; ++i)
+				bar->addTab(QStringLiteral("Tab %1").arg(i));
+			bar->setGeometry(0, 0, 20 * cw, ch);
+			show(host, 22, 4);
+			// VISIBLE ones. QTabBar constructs both scroll buttons in its
+			// init() unconditionally -- before it reads the hint -- and the
+			// hint decides only whether they are shown and positioned. A
+			// check counting children therefore finds two either way and
+			// cannot fail.
+			int off_grid = 0, buttons = 0;
+			for (QObject *o : bar->children()) {
+				auto *b = qobject_cast<QWidget *>(o);
+				if (!b || !qobject_cast<QToolButton *>(b) || b->isHidden())
+					continue;
+				++buttons;
+				const QRect g = b->geometry();
+				if (g.x() % cw || g.width() % cw || g.y() % ch
+				    || g.height() % ch)
+					++off_grid;
+			}
+			printf("info: an overflowing tab bar has %d tool button(s), %d"
+			       " off the grid\n", buttons, off_grid);
+			CHECK(off_grid == 0,
+			      "an overflowing tab bar puts no off-grid widget on the"
+			      " screen");
+		}
+
+		// A VERTICAL closable tab bar. CT_TabBarTab's West/East branch
+		// rebuilds the width from the text and the two brackets, discarding
+		// the proxied width -- which is where Qt reserves room for the close
+		// button. So the button has nowhere of its own to go, and
+		// SE_TabBarTabRightButton snaps it onto a neighbouring tab's row.
+		{
+			QWidget host;
+			auto *bar = new QTabBar(&host);
+			bar->setShape(QTabBar::RoundedWest);
+			bar->setTabsClosable(true);
+			bar->addTab(QStringLiteral("General"));
+			bar->addTab(QStringLiteral("Advanced"));
+			// The HINT is what this asserts, below; the render uses the
+			// size the bar asks for. Squeezed to one row per tab the button
+			// has nowhere to go and the defect returns -- which is true of
+			// any widget below its hint, and is why the hint is the thing
+			// to fix.
+			bar->setGeometry(0, 0, 14 * cw, bar->sizeHint().height());
+			show(host, 16, 6);
+			CellBuffer vb(16, 6);
+			render_once(host, vb);
+			const QStringList rows = vb.to_text().split(QLatin1Char('\n'));
+			for (int i = 0; i < qMin(4, int(rows.size())); ++i)
+				printf("info: vertical tab row %d [%s]\n", i,
+				       qPrintable(rows.value(i)));
+			// The close glyph must not land inside a word. Asserted as: no
+			// row carries the glyph with a letter immediately either side of
+			// it, which is what "drawn into the neighbour's label" looks
+			// like and holds however many tabs there are.
+			bool inside_a_word = false;
+			for (const QString &row : rows) {
+				const int x = row.indexOf(QChar(0x2715));
+				if (x > 0 && x + 1 < row.size()
+				    && row.at(x - 1).isLetter() && row.at(x + 1).isLetter())
+					inside_a_word = true;
+			}
+			CHECK(!inside_a_word,
+			      "a vertical tab's close button is not drawn inside a"
+			      " neighbouring label");
+
+			// And the measurement that makes it so, which is what a squeezed
+			// bar cannot show: a vertical tab carrying a close button is
+			// measured for a row to put it in.
+			QStyleOptionTab vt;
+			vt.shape = QTabBar::RoundedWest;
+			vt.text = QStringLiteral("General");
+			const int plain_h = QApplication::style()->sizeFromContents(
+			    QStyle::CT_TabBarTab, &vt, QSize(), nullptr).height();
+			vt.rightButtonSize = QSize(cw, ch);
+			const int with_button = QApplication::style()->sizeFromContents(
+			    QStyle::CT_TabBarTab, &vt, QSize(), nullptr).height();
+			printf("info: a vertical tab is %d row(s), and %d with a close"
+			       " button\n", plain_h / ch, with_button / ch);
+			CHECK(plain_h == ch && with_button == 2 * ch,
+			      "and a vertical tab with one is measured for the row it"
+			      " needs");
+		}
+
 		// A tab pads its label to the width of the tab, and it counted the
 		// padding in QCHARS while the room is in CELLS. A wide cluster is
 		// one QChar and two cells, so a tab titled with one CJK character
@@ -675,6 +810,24 @@ int suite_widgets() {
 			       " cell sizes\n", mark_here, mark_there);
 			CHECK(mark_here == cw && mark_there == cw + 3,
 			      "a header's sort mark is one column, at either cell size");
+
+			// A menu's tearoff and scroller strips, the same shape again:
+			// both are heights QCommonStyle answers as 10 px, and each is
+			// added to the y-origin of every item below it.
+			const auto strip = [](QStyle::PixelMetric m) {
+				return QApplication::style()->pixelMetric(m);
+			};
+			const int tear_here = strip(QStyle::PM_MenuTearoffHeight);
+			const int scroll_here = strip(QStyle::PM_MenuScrollerHeight);
+			GridMetrics::set(cw + 3, ch + 5);
+			const int tear_there = strip(QStyle::PM_MenuTearoffHeight);
+			GridMetrics::set(cw, ch);
+			printf("info: a menu's tearoff is %d px and %d px; its scroller"
+			       " %d px\n", tear_here, tear_there, scroll_here);
+			CHECK(tear_here == ch && tear_there == ch + 5
+			      && scroll_here == ch,
+			      "a menu's tearoff and scroller are one row, at either cell"
+			      " size");
 		}
 
 		// A menu row, drawn straight rather than through a QMenu. QMenu only
@@ -1436,6 +1589,66 @@ int suite_widgets() {
 		// layer keeps that promise.
 		CHECK(!row(3).contains(QLatin1Char('[')),
 		      "and setFrame(false) is obeyed, so a bare field stays bare");
+
+		// Where a one-row field puts its TEXT, which is a second consumer of
+		// PM_DefaultFrameWidth: QLineEdit hands that number to lineWidth and
+		// QCommonStyle insets by it on all four sides, so a one-row field's
+		// contents rect is a column wide and 19 - 2 * 10 = -1 pixels tall.
+		// QRect calls that invalid, and Qt hands it to setClipRect() and to
+		// the vertical-alignment arithmetic without ever asking.
+		//
+		// Centred text survives it by cancellation -- a symmetric inset drops
+		// out of the centring formula exactly -- which is why nothing above
+		// this ever noticed. AlignTop and AlignBottom read the rect's own y
+		// and height instead, so they are where the invalid rect is
+		// expressible. The centred case is the CONTROL: it must keep passing,
+		// or a blank field would only prove the fixture was broken.
+		{
+			const auto text_row = [&](Qt::Alignment va) {
+				QLineEdit f(QStringLiteral("abcdef"));
+				f.setAlignment(Qt::AlignLeft | va);
+				f.setFixedHeight(ch);
+				show(f, 14, 1);
+				CellBuffer fb(16, 2);
+				render_once(f, fb);
+				return findText(fb, QStringLiteral("abcdef")).y();
+			};
+			const int mid = text_row(Qt::AlignVCenter);
+			const int top = text_row(Qt::AlignTop);
+			const int bot = text_row(Qt::AlignBottom);
+			printf("info: a one-row field draws centred text on row %d, top on"
+			       " %d, bottom on %d\n", mid, top, bot);
+			CHECK(mid == 0, "a one-row field draws centred text on its own row");
+			CHECK(top == 0 && bot == 0,
+			      "and draws top- and bottom-aligned text there too");
+		}
+
+		// And what the fix above uncovered. Qt draws a selected field's text
+		// TWICE at the same origin -- once clipped to the selection, once for
+		// the rest -- and the engine's wide-cluster guard read the second as a
+		// run CONSECUTIVE with the first, pushing it right by the first's
+		// width. A field holding "hi" with everything selected rendered
+		// "hihi".
+		//
+		// It could not be reached while the contents rect was invalid: the
+		// empty clip dropped Qt's selected run entirely, so the two defects
+		// held each other up and correcting either alone shows the other. The
+		// check is on the GLYPHS, because that is what was wrong -- a
+		// selection is an attribute and must not add characters.
+		{
+			QLineEdit f(QStringLiteral("hi"));
+			f.setFixedHeight(ch);
+			show(f, 14, 1);
+			f.selectAll();
+			CellBuffer sb(16, 2);
+			render_once(f, sb);
+			const QString got =
+			    sb.to_text().section(QLatin1Char('\n'), 0, 0).trimmed();
+			printf("info: a fully selected field renders [%s]\n",
+			       qPrintable(got));
+			CHECK(got.count(QStringLiteral("hi")) == 1,
+			      "selecting a field's text does not draw it twice");
+		}
 
 		// The sibling question in the same entry, answered by the same rule:
 		// an empty field was invisible until tabbed through, and a form of

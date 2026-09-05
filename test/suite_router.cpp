@@ -534,11 +534,11 @@ int suite_router() {
 		QCoreApplication::processEvents();
 		CHECK(fired == 1, "Return in the submenu fires its item, not the parent's");
 	}
-	// What a click on a slider's GROOVE does, held rather than decided.
-	// section 0b records whether SH_Slider_AbsoluteSetButtons should include
-	// the left button as the copyright holder's, because it changes what a
-	// click means rather than what it looks like. These two hold the current
-	// answer so that changing it is visible rather than silent.
+	// What a click on a slider's GROOVE does. section 0b carried this as the
+	// copyright holder's question, because it changes what a click means
+	// rather than what it looks like; it was settled on 2026-09-05 in favour
+	// of the left button setting the value. The pair below holds the answer
+	// so that changing it again is visible rather than silent.
 	//
 	// Asserted as RELATIONSHIPS, not values: the numbers depend on the
 	// groove's geometry and on pageStep, and a check on 24 or 83 would be
@@ -560,19 +560,22 @@ int suite_router() {
 			QCoreApplication::processEvents();
 			return sl->value();
 		};
-		// Middle-click sets the value where it landed, and always has: Fusion
-		// answers Qt::MiddleButton for the hint and qtty's mouse routing
-		// carries the button. Nothing exercised it until now, so a change to
-		// the hint could have taken it away unnoticed.
-		const int m5 = click_with(2, 5), m10 = click_with(2, 10), m15 = click_with(2, 15);
-		CHECK(m5 < m10 && m10 < m15 && m5 > 0 && m15 < 100,
-		      "a middle click sets a slider to where it landed");
-		// A left click pages, so it lands in the same place wherever it is
-		// clicked -- which is the behaviour the open question is about. The
-		// pair is what says it: middle tracks the click, left does not.
-		const int l5 = click_with(1, 5), l15 = click_with(1, 15);
-		CHECK(l5 == l15 && l5 > 0,
-		      "and a left click pages, landing in the same place either way");
+		// A left click sets the value where it landed. Under QCommonStyle's
+		// defaults this was the MIDDLE button's job and the left one paged --
+		// close to unusable on a terminal, where the middle button is usually
+		// spent on paste, so the cells this style makes addressable were
+		// reachable only by dragging.
+		const int l5 = click_with(1, 5), l10 = click_with(1, 10), l15 = click_with(1, 15);
+		CHECK(l5 < l10 && l10 < l15 && l5 > 0 && l15 < 100,
+		      "a left click sets a slider to where it landed");
+		// And the middle button pages, so it lands in the same place wherever
+		// it is clicked. The pair is what says it: one tracks the click and
+		// the other does not, which is what makes either assertion mean
+		// anything -- a slider that ignored the button entirely would satisfy
+		// the first alone.
+		const int m5 = click_with(2, 5), m15 = click_with(2, 15);
+		CHECK(m5 == m15 && m5 > 0,
+		      "and a middle click pages, landing in the same place either way");
 	}
 
 

@@ -637,6 +637,20 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 	// -- it needs the mark to land on a half column -- which is exactly why
 	// the metric rather than a rendering is what is asserted.
 	case PM_HeaderMarkSize:                                return cw;
+	// A menu's two strips, both of which QCommonStyle answers as 10 px --
+	// no whole number of rows at either cell size. They are HEIGHTS, and
+	// each is added to the y-origin of every item below it, so an ungridded
+	// one displaces the whole menu rather than just itself.
+	//
+	// The tearoff is reachable today: QMenu::setTearOffEnabled(true) puts it
+	// into base_y for every item. The scroller is not -- a menu scrolls only
+	// under SH_Menu_Scrollable, which nothing here turns on, and a combo's
+	// popup is never shortened because every qtty window carries
+	// WA_DontShowOnScreen, so Qt does not bound it to a screen. Answered
+	// anyway, because the two are the same number in the same arithmetic and
+	// fixing one while leaving the other is how a pair drifts.
+	case PM_MenuScrollerHeight:
+	case PM_MenuTearoffHeight:                             return ch;
 	case PM_HeaderDefaultSectionSizeHorizontal:            return 10 * cw;
 	default:                                               return QProxyStyle::pixelMetric(m, o, w);
 	}
@@ -699,6 +713,37 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 		    && opt->rect.height() >= 3 * ch)
 			return QRect(r.left(), opt->rect.top() + ch,
 			             r.width(), opt->rect.height() - 2 * ch);
+	}
+	// The VERTICAL half of a line edit's inset, from the same number and for
+	// the same reason. QLineEdit puts PM_DefaultFrameWidth into lineWidth and
+	// QCommonStyle insets by it on all four sides, so a one-row field's
+	// contents rect comes out 19 - 2 * 10 = -1 pixels tall. QRect calls that
+	// invalid, and Qt then hands it to setClipRect() and to the alignment
+	// arithmetic without asking.
+	//
+	// Centred text survived it by cancellation -- a symmetric inset drops out
+	// of the centring formula exactly -- which is why nothing noticed. Top-
+	// and bottom-aligned text reads the rect's own y and height instead, and
+	// landed a row outside the clip: measured, a one-row field with
+	// AlignTop rendered BLANK, all six characters of it.
+	//
+	// The HORIZONTAL inset is kept and is not incidental: PE_PanelLineEdit
+	// writes '[' at the first cell and ']' at the last, so a column each side
+	// is exactly what the drawing reserves. Only the second axis needs
+	// saying, as PM_MenuVMargin already does for PM_MenuPanelWidth.
+	//
+	// No isValid() guard here, deliberately: r is invalid in precisely the
+	// case being fixed, and copying the one above would make this a no-op at
+	// one row -- the whole of the defect. The frameless test is
+	// r.top() > opt->rect.top(), which is false exactly when lineWidth is 0,
+	// so a combo's and a spin box's inner editors are untouched by
+	// construction rather than by a class list.
+	if (se == SE_LineEditContents && opt && r.top() > opt->rect.top()) {
+		const int ch = GridMetrics::ch();
+		// Nothing below three rows, as above: two borders and a content row.
+		const int v = opt->rect.height() >= 3 * ch ? ch : 0;
+		return QRect(r.left(), opt->rect.top() + v,
+		             r.width(), opt->rect.height() - 2 * v);
 	}
 	// The cells the check box is DRAWN in. Both CE_ItemViewItem here and
 	// CellItemDelegate put "[x]" at one cell of indent, so cells 1, 2 and 3
@@ -995,7 +1040,22 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 				int cells = 0;
 				for (const QString &cl : to_clusters(strip_mnemonic(t->text)))
 					cells += cluster_width(cl);
-				return QSize((cells + 2) * cw, ch);   // + the two brackets
+				// A ROW for a close button, where the tab carries one. This
+				// branch rebuilds the size from the text and so discards the
+				// proxied one -- which is where Qt reserves room for the
+				// button -- and the button then has nowhere of its own:
+				// SE_TabBarTabRightButton centres it over the label and
+				// snaps it to the next row, which on a one-row tab is the
+				// NEXT TAB. Measured on a squeezed West bar: the second tab
+				// rendered "[Adva" then the close glyph then "ced".
+				//
+				// A row rather than a column because that is where Qt puts
+				// it once there is room: given two rows a vertical tab draws
+				// its label on the first and its button on the second, which
+				// is what this now asks for.
+				const int rows = (t->rightButtonSize.isValid()
+				                  || t->leftButtonSize.isValid()) ? 2 : 1;
+				return QSize((cells + 2) * cw, rows * ch);   // + two brackets
 			}
 		}
 		return QSize(width, ch);
@@ -1253,8 +1313,16 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// invisible, and Qt reports both in the same option.
 				bool foc = (opt->state & (State_HasFocus | State_Sunken | State_On))
 				           || (w && w == s_focus.data());
+				// Elided to the room BETWEEN the brackets, so the closing
+				// one survives. This wrote the whole label and let the clip
+				// cut it: a button squeezed below its label rendered
+				// "<Save Ch" -- no bracket, no ellipsis, nothing to say it
+				// had been cut. Same fault the tab had, in another control,
+				// and the bracket is what says where the button ends.
 				dev->buffer().text(bc.left(), bc.top(),
-				                   QLatin1Char('<') + strip_mnemonic(b->text)
+				                   QLatin1Char('<')
+				                       + elide_to_cells(strip_mnemonic(b->text),
+				                                        qMax(0, bc.width() - 2))
 				                       + QLatin1Char('>'),
 				                   Color(), Color(),
 				                   label_attrs(opt, w, foc ? Attrs(Attr::Reverse)
@@ -1355,7 +1423,16 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// stood here turned "A && B" into "A  B" rather than
 				// "A & B", because it did not know that a doubled ampersand
 				// is a literal one. One spelling of the rule, in one place.
-				const QString label = strip_mnemonic(mi->text);
+				// Budgeted, like every sibling in this function. This wrote
+				// the label whole and relied on the clip -- and a menu bar
+				// item's clip is the BAR, not the item, so an over-long
+				// title is not cut at all: it writes into the next item's
+				// cells. Qt sizes the items to fit, so it takes an imposed
+				// width to reach; the rule is applied here anyway rather
+				// than left as the one unbudgeted write among four.
+				const QString label =
+				    elide_to_cells(strip_mnemonic(mi->text),
+				                   qMax(0, c.width() - 1));
 				dev->buffer().text(c.left() + 1, c.top(), label, Color(), Color(),
 				                   label_attrs(opt, w, mi->font,
 				                               hot ? Attrs(Attr::Reverse) : Attrs()));
@@ -1816,6 +1893,34 @@ int GridStyle::styleHint(StyleHint hint, const QStyleOption *opt, const QWidget 
 		// exactly what the hint is for: an application that sets a style on
 		// its toolbar explicitly still wins.
 		return Qt::ToolButtonTextOnly;
+	// No scroll arrows on a tab bar that overflows. Qt gives it two
+	// QToolButtons sized from PM_TabBarScrollButtonWidth -- 16 px, which is
+	// no whole number of columns at either cell size -- and those two are
+	// exempt from BOTH GridGuard and GridSnap, a QToolButton child of a
+	// QTabBar being on is_exempt's list. So they were the one class of
+	// off-grid widget nothing reports and nothing repairs, and they are
+	// clickable. Measured: an overflowing bar carried two of them, both off
+	// the grid on both axes.
+	//
+	// Refusing them costs the mouse a way to page the bar and leaves
+	// elision, which is what a terminal tab bar does anyway; the keyboard
+	// reaches every tab regardless. Two cells of arrow that cannot be
+	// addressed in cells are worth less than that.
+	case SH_TabBar_PreferNoArrows:                         return 1;
+	// A click on a slider goes to the cell clicked. QCommonStyle gives the
+	// absolute set to the MIDDLE button and paging to the left one, which on
+	// a terminal is close to unusable: the middle button is usually spent on
+	// paste, so the cells this style went to the trouble of making
+	// addressable -- SC_SliderHandle is exactly the cell the handle is drawn
+	// in -- were reachable only by dragging.
+	//
+	// Settled by the copyright holder 2026-09-05; section 0b carried it as
+	// an open question. A cell is a coarse target and a terminal slider has
+	// few of them, so "go where I pointed" is the behaviour a reader
+	// expects from a picture made of cells, and paging by a fraction of a
+	// six-cell range is not.
+	case SH_Slider_AbsoluteSetButtons:                     return Qt::LeftButton;
+	case SH_Slider_PageSetButtons:                         return Qt::MiddleButton;
 	case SH_LineEdit_PasswordCharacter:
 		// Same shape: U+25CF under offscreen, U+2022 under gtk3, so what a
 		// password field showed depended on the desktop. Both are one cell

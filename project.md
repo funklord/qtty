@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-950 checks, 0 failures, under six configurations, all six re-run
+959 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -483,7 +483,6 @@ Owned by the copyright holder:
 | Question | Where |
 |---|---|
 | A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. Cheaper to answer after the picture-rule entry below, which is the same question seen from the other end | *Qt's standard iconography* |
-| `SH_Slider_AbsoluteSetButtons`: whether the LEFT button joins the middle one, which already sets a slider where the click landed. All four candidate behaviours are printed now -- and `Left\|Middle` **removes paging** rather than adding anything, unless `SH_Slider_PageSetButtons` moves it to the right button | *the interaction sweep* |
 | Whether the "too small to be a picture" rule moves to the backend. Nothing left unmeasured: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()`; no widget icon reaches the branch today; and the cost is **1.4 KB once per distinct icon, 35 bytes a frame after** -- eight of them together less than the one 48x48 icon the library already uploads | §7.2 |
 | **Right-to-left: does qtty support it at all?** design.md never says, and nothing in the tree mentions it -- so this is a scope question rather than a defect. Measured: under `Qt::RightToLeft` a check box mirrors and a combo box's text does, while its arrow, a progress bar's fill, a label's alignment and a line edit's text do not. §7.2 has the rendered pair | *undesigned* |
 | **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism | §7.2 |
@@ -1957,9 +1956,12 @@ In the order I would take them:
    reason to want it.
 
 2. **§0b's questions are the holder's** and are not work to pick up: RTL
-   scope, the bundled font, tooltips and hover, the severity glyph,
-   `SH_Slider_AbsoluteSetButtons`, the picture rule, the layout top
-   margin, and whether `qtty-negotiate` belongs in `$PREFIX/bin` (§8.0).
+   scope, the bundled font, tooltips and hover, the severity glyph, the
+   picture rule, the layout top margin, and whether `qtty-negotiate`
+   belongs in `$PREFIX/bin` (§8.0). `SH_Slider_AbsoluteSetButtons` was on
+   this list and was answered on 2026-09-05 -- the left button sets the
+   value -- which is why the pointer is corrected here rather than left to
+   send a reader at a decision already taken.
 
 3. **Four things an adopting project meets that are decisions rather than
    defects.** Added 2026-09-05 after the library was made installable and
@@ -3168,13 +3170,18 @@ this style's, and naming them stops the next sweep re-investigating:
   default adds `pageStep`, which on a 0..10 range with the default step
   lands on the maximum however near the low end the click was.
 
-The second is a real question for a terminal, and it is still the
-holder's: `SH_Slider_AbsoluteSetButtons` would make a click set the value
-where it landed, which suits a device with no fine pointer control. It
-changes what a click MEANS rather than what it looks like, and this tree
-already draws that line: `SH_DialogButtonLayout` is pinned with the note
-that "changing it would be the decision, and this is not that". Pinning a
-hint so the desktop cannot move it is not the same act as moving it.
+The second was a real question for a terminal and was the holder's, who
+**settled it on 2026-09-05**: `SH_Slider_AbsoluteSetButtons` is
+`Qt::LeftButton` and `SH_Slider_PageSetButtons` is the middle one, so a
+click sets the value where it landed and paging moves to the button a
+terminal user rarely has. The reasoning that made it worth asking stands
+and is why the answer went this way -- a cell is a coarse target, a
+terminal slider has few of them, and paging by a fraction of a six-cell
+range is not what a picture made of cells suggests. It changed what a
+click MEANS rather than what it looks like, which is exactly why it was
+not decided while doing something else; `SH_DialogButtonLayout` is still
+pinned with the note that "changing it would be the decision, and this is
+not that", and that remains true of the hints nobody has asked about.
 
 **What was missing was the measurement, and it is here now.** A 0..100
 slider over a 20-cell groove, clicked at four positions:
@@ -6385,35 +6392,107 @@ prefix now runs twice, once in a pty and once `--headless` through
 `NullBackend`, and asserts the captured frame holds its own label. With
 the header withheld from the install, the consumer does not compile.
 
-**What four more sweeps found and I did not fix** (2026-09-05), recorded
-so the next reader has the list rather than the lenses. Each was verified
-by reading; none has been measured by me.
+**What four more sweeps found, all six of them now fixed** (2026-09-05).
+The list was recorded first and read-verified only; the copyright holder
+then asked for the six, so each was measured before it was touched. Three
+of the six were not what the reading said, and those corrections are worth
+more than the fixes.
 
-    vertical closable tab   CT_TabBarTab's West/East branch rebuilds the
-                            width from the text and reserves nothing for
-                            the close button, so the X is drawn into the
-                            NEIGHBOURING tab's label. Reachable now.
-    tab scroll arrows       PM_TabBarScrollButtonWidth is 16 px, and
-                            those two QToolButtons are exempt from BOTH
+    vertical closable tab   CT_TabBarTab's West/East branch rebuilt the
+                            width from the text and reserved nothing for
+                            the close button, so the X was drawn into the
+                            NEIGHBOURING tab's label. Fixed: the vertical
+                            branch reserves a row when rightButtonSize or
+                            leftButtonSize is valid.
+    tab scroll arrows       Two QToolButtons at 16 px, exempt from BOTH
                             GridGuard and GridSnap -- the one class of
-                            off-grid widget nothing reports and nothing
-                            repairs. SH_TabBar_PreferNoArrows would
-                            remove them outright.
-    combo popup scrollers   PM_MenuScrollerHeight is 10 px on a widget
-                            whose class name carries Private, so GridSnap
-                            skips it and every item below shifts.
-    unelided labels         CE_PushButtonLabel, CE_MenuBarItem and
-                            Fusion's CE_ComboBoxLabel write without a
-                            budget; the clip cuts them with no ellipsis,
-                            and CE_MenuBarItem's clip is the whole BAR,
-                            so it damages a neighbour.
-    SE_LineEditContents     the second consumer of PM_DefaultFrameWidth,
-                            not covered by the SE_FrameContents fix; its
-                            rect is negative-height on a one-cell edit
-                            and drives click-to-caret.
-    SH_Slider_AbsoluteSetButtons  clicking a slider cell pages rather
-                            than jumping to it. Already one of section 0b's
-                            questions, so it is the holder's.
+                            off-grid widget nothing reported and nothing
+                            repaired. SH_TabBar_PreferNoArrows returns 1
+                            now, and the bar wraps instead.
+    combo popup scrollers   PM_MenuScrollerHeight is 10 px, and the
+                            reading called it live. It is NOT: a menu
+                            scrolls only under SH_Menu_Scrollable, which
+                            nothing turns on, and a combo's popup is never
+                            shortened because every qtty window carries
+                            WA_DontShowOnScreen, so Qt does not bound it to
+                            a screen. What the sweep missed is the strip
+                            beside it -- PM_MenuTearoffHeight is the same
+                            10 px, enters the y-origin of every item, and
+                            IS reachable today through
+                            QMenu::setTearOffEnabled(). Both answer ch.
+    unelided labels         CE_PushButtonLabel and CE_MenuBarItem wrote
+                            with no budget. Measured, a button squeezed
+                            below its label rendered "<Save Ch" -- no
+                            bracket, no ellipsis, nothing to say it had
+                            been cut. Both take elide_to_cells() now.
+                            CE_MenuBarItem's over-run into a neighbour
+                            could not be reproduced: Qt sizes the items to
+                            fit, so it takes an imposed width to reach, and
+                            the rule is applied there rather than left as
+                            the one unbudgeted write among four.
+    SE_LineEditContents     The second consumer of PM_DefaultFrameWidth.
+                            QLineEdit hands it to lineWidth and
+                            QCommonStyle insets by it on all four sides, so
+                            a one-row field's contents rect is -1 pixels
+                            tall -- QRect calls that invalid and Qt hands
+                            it to setClipRect() without asking. The
+                            reading blamed click-to-caret and was wrong:
+                            the hit test reads only the rect's x, so draw
+                            and hit are self-consistent by construction.
+                            What actually broke is vertical alignment,
+                            which reads the y and the height. Measured, a
+                            one-row field with AlignTop rendered BLANK.
+                            Only the second axis is corrected; the
+                            horizontal inset is what reserves the brackets.
+    SH_Slider_AbsoluteSetButtons  Clicking a slider cell paged rather than
+                            jumping to it, and this was section 0b's
+                            question rather than mine. Settled by the
+                            copyright holder 2026-09-05: the left button
+                            sets the value, the middle one pages. The pair
+                            of checks that held the old answer is inverted
+                            rather than deleted, so the next change is
+                            visible too.
+
+**And the line-edit fix uncovered a second defect it had been masking.**
+`make test-tools` went red on an arm that had been green for weeks: a
+selection must change `qtty-replay`'s snapshot and must NOT change its
+text frame, and after the fix a field holding "hi" with everything
+selected rendered **`hihi`**.
+
+The cause is in the other channel entirely. `CellPaintEngine::drawTextItem`
+carries a guard for wide clusters -- Qt positions runs by the font's
+advance, a CJK character advances 16 px where its two cells are 20, so a
+following run starts on top of the previous one's cells -- and it fired on
+
+    if (row == last_row_ && q.x() >= last_x_ && col < last_end_col_)
+
+Qt draws a selected field's text **twice at the same origin**, once
+clipped to the selection and once for the rest. `>=` admits equality, and
+equality is exactly the overdraw case, so the second draw was read as a
+run consecutive with the first and pushed right by its width. It is `>`
+now: a genuinely consecutive run always advances, and a zero-advance run
+is empty and returns above, so nothing the guard exists for is lost.
+
+**Neither defect was reachable while the other stood.** The invalid
+contents rect made the clip an empty region, so Qt's selected run was
+dropped before it ever reached the engine; the engine's guard then had
+nothing to misread. Correcting either one alone is what shows the other,
+which is why the pairing was invisible to both sweeps. Both directions
+are now sabotage-verified: restoring `>=` renders `hihi`, and removing
+the guard entirely reddens the CJK check that pays for it -- the guard is
+still load-bearing, and narrowing it removed a false positive rather than
+the guard.
+
+**Three of six were mis-diagnosed by reading, and the direction is the
+same in all three: the reading named a consequence that does not exist
+and missed one that does.** The scroller was called live and is latent
+while its twin was never looked at; the line edit was blamed for
+click-to-caret, which is correct by construction, while alignment -- the
+one place the invalid rect is expressible -- went unnamed; the menu bar
+over-run could not be reached at all. A read-verified finding is a
+hypothesis about where to point an instrument, and the instrument
+disagreed with half of them. What survived unaltered is the *location*:
+all six named the right function.
 
 **The two sweeps that came back mostly clean are worth as much as the
 finds.** One enumerated every text-room computation in the drawing code

@@ -295,7 +295,20 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	// and the new run's pixel origin at or right of the previous one's. Text
 	// drawn leftwards after text drawn rightwards -- a right-aligned label
 	// after a left-aligned one -- is left alone.
-	if (row == last_row_ && q.x() >= last_x_ && col < last_end_col_)
+	//
+	// STRICTLY right of, not at or right of. Qt draws a selected field's text
+	// TWICE at the same origin -- once clipped to the selection, once for the
+	// rest -- and `>=` read the second as a run consecutive with the first,
+	// pushing it right by the width of the first. A QLineEdit holding "hi"
+	// with everything selected rendered "hihi".
+	//
+	// It was invisible until the SE_LineEditContents fix, because the invalid
+	// contents rect made the clip an empty region and Qt's selected run was
+	// dropped entirely: two defects holding each other up, and correcting
+	// either one alone shows the other. A genuinely consecutive run always
+	// advances -- a zero-advance run is empty and returns above -- so nothing
+	// this guard exists for is lost by demanding it.
+	if (row == last_row_ && q.x() > last_x_ && col < last_end_col_)
 		col = last_end_col_;
 	// The pen carries the state as well as the colour. Qt paints a disabled
 	// widget with the palette's Disabled group, and text_style_for() now
