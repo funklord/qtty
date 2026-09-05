@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-919 checks, 0 failures, under six configurations, all six re-run
+921 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6184,6 +6184,30 @@ the re-place for free without changing what it guards.
 build `check` produces -- but the tests assert the violation COUNT, which
 is computed outside the guard, so the coverage is configuration
 independent. True, and not a finding.
+
+**A wheel event on a scrolled root arrived 76 px above the widget that
+got it** (2026-09-05). `on_mouse()` carries a comment reading "two
+derivations of one position, and only one of them was fixed" -- and the
+wheel was a THIRD, still reading the unscrolled cell. The target is found
+through the scrolled position, so the right widget received an event
+whose own `position()` was the root's scroll away from itself.
+
+    press at 35,9      wheel at 35,-67
+
+Negative, i.e. outside the widget entirely. Anything acting on
+`QWheelEvent::position()` -- a plot picking a point, a view zooming about
+the cursor -- acted on that.
+
+**Nothing tested the root scroll at all.** `set_root_scroll()` had no
+caller outside the Compositor, so the whole offset was measured by hand
+once -- "a 30x4 terminal scrolled four rows", in the comment recording
+the original fix -- and never became a check. That is how a third
+derivation went unnoticed while a comment counted two.
+
+The check asserts the two derivations AGREE rather than either number,
+which makes it independent of the font: a press and a wheel sent to the
+same cell must arrive at the same place, and both must land inside the
+widget the user can see there.
 
 **One arrow key scrolled nineteen rows** (2026-09-05). The keyboard
 fallback for an arrow the focused widget ignores did

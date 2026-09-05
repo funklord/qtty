@@ -603,7 +603,16 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 		// and the same shape as both: an event correctly parsed, delivered
 		// somewhere that cannot act on it.
 		for (QWidget *w = target; w; w = w->parentWidget()) {
-			QWheelEvent ev(QPointF(w->mapFromGlobal(px)), QPointF(px), QPoint(),
+			// From `screen`, for the same reason `pos` above is. The comment
+			// there says "two derivations of one position, and only one of
+			// them was fixed" -- this was a THIRD, and it was still reading
+			// the unscrolled cell. The target is found through `screen`, so
+			// the right widget received an event whose own position was the
+			// root's scroll away from itself, and anything acting on
+			// QWheelEvent::position() -- a plot picking a point, a view
+			// zooming about the cursor -- acted on the wrong one.
+			QWheelEvent ev(QPointF(w->mapFromGlobal(screen)), QPointF(screen),
+			               QPoint(),
 			               QPoint(m.wheel_x * GridMetrics::cw(),
 			                      m.wheel * GridMetrics::ch()),
 			               Qt::NoButton, mods, Qt::NoScrollPhase, false);

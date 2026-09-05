@@ -100,6 +100,62 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// The ROOT SCROLL, which nothing in this suite touched at all --
+	// set_root_scroll() had no caller outside the Compositor, so the whole
+	// offset was measured by hand once ("a 30x4 terminal scrolled four
+	// rows", in the comment that records the fix) and never became a check.
+	// That is how a THIRD derivation of the position went on using the
+	// unscrolled cell: the comment in on_mouse() says "two derivations of
+	// one position, and only one of them was fixed", and the wheel was
+	// neither of the two it counted.
+	{
+		struct Spy : QWidget {
+			QPoint press_at, wheel_at;
+			bool got_press = false, got_wheel = false;
+			using QWidget::QWidget;
+			void mousePressEvent(QMouseEvent *e) override {
+				press_at = e->position().toPoint(); got_press = true;
+				e->accept();
+			}
+			void wheelEvent(QWheelEvent *e) override {
+				wheel_at = e->position().toPoint(); got_wheel = true;
+				e->accept();
+			}
+		};
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		QWidget scrolled;
+		scrolled.setAttribute(Qt::WA_DontShowOnScreen);
+		scrolled.resize(GridMetrics::cells(30, 12));
+		auto *spy = new Spy(&scrolled);
+		spy->setGeometry(0, 6 * ch, 10 * cw, 2 * ch);
+		scrolled.show();
+		QCoreApplication::processEvents();
+
+		InputRouter r2(&scrolled);
+		r2.set_root_scroll(QPoint(0, 4));      // the root is drawn four rows up
+
+		// Screen row 2 is window row 6, which is the spy's first row. Both
+		// events are sent to the same cell, so the two derivations have to
+		// agree -- and the assertion is that agreement rather than either
+		// number, which is what makes it independent of the font.
+		MouseEvent click; click.cell = QPoint(3, 2); click.button = 1;
+		click.press = true;
+		r2.on_mouse(click);
+		MouseEvent turn; turn.cell = QPoint(3, 2); turn.wheel = -1;
+		r2.on_mouse(turn);
+
+		printf("info: scrolled root: press at %d,%d and wheel at %d,%d\n",
+		       spy->press_at.x(), spy->press_at.y(),
+		       spy->wheel_at.x(), spy->wheel_at.y());
+		CHECK(spy->got_press && spy->got_wheel
+		      && spy->press_at == spy->wheel_at,
+		      "a wheel on a scrolled root arrives where a click on the same"
+		      " cell does");
+		CHECK(spy->got_press && spy->press_at.y() >= 0
+		      && spy->press_at.y() < 2 * ch,
+		      "and both land inside the widget the user can see there");
+	}
+
 	// Tab walks the focus chain
 	router.on_key({Qt::Key_Tab, QString(), false, false, false});
 	CHECK(win.focusWidget() == btn, "Tab advances focus chain");
