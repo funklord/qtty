@@ -200,8 +200,20 @@ AnsiBackend::AnsiBackend() {
 		// no terminal is ever going to answer the cost is one more window.
 		if (!caps_.answered && inside_tmux()) {
 			QByteArray more;
-			caps_ = collect_caps(0, 1, wait_ms, nullptr, &more);
+			const TermCaps again =
+			    collect_caps(0, 1, wait_ms, nullptr, &more);
 			pending_ += more;
+			// Only when it learned something. `collect_caps()` builds a
+			// fresh TermCaps, so assigning it unconditionally throws away
+			// whatever the first attempt DID gather -- and the first
+			// attempt is not necessarily empty just because the fence went
+			// unanswered. A terminal that answers CSI 16t promptly and
+			// DA1 slowly gives exactly that shape, and the cell size it
+			// reported would have been discarded by the retry meant to
+			// improve on it. Found by reading the diff rather than by a
+			// failing test, which is the instrument the rest of this
+			// change did not use.
+			if (again.answered) caps_ = again;
 		}
 	}
 

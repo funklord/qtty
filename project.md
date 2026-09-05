@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-916 checks, 0 failures, under six configurations, all six re-run
+917 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6176,6 +6176,26 @@ Measured after it:
 
     backend, no retry     graphics=halfblocks  cell=-1x-1  placeholders=0
     backend, with retry   graphics=kitty       cell=9x18   placeholders=1
+
+**The retry then threw away what the first attempt had learned, and that
+was found by reading the diff rather than by any test.** `collect_caps()`
+builds a fresh `TermCaps`, so assigning the second call's result
+unconditionally discards the first -- and the first is not necessarily
+empty just because the fence went unanswered. A terminal that answers
+CSI 16t promptly and DA1 slowly gives exactly that shape, and the cell
+size it reported would have been dropped by the retry meant to improve
+matters. The second result is taken only when it answered.
+
+Its check is deterministic rather than timed: a cell-size reply with no
+device attributes after it leaves `answered` false, so the retry fires
+and finds an empty pty. Keeping the first attempt yields the cell size,
+discarding it yields nothing, and the two are one `CHECK` apart.
+
+**This is the third defect this month found by reading a diff**, after
+the one-cell hole in the overlay clip. It is worth naming as an
+instrument: everything else in this change had a sabotage behind it and
+none of them could have caught this, because the fault is in a branch
+that only a terminal with a particular answering order would reach.
 
 **And the sabotage of the placeholder composer moves the picture now**,
 where before it did nothing at all -- which is what a fix reaching the

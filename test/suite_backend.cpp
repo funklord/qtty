@@ -1774,6 +1774,35 @@ int suite_backend() {
 						// the second query and not the first, and a lower
 						// bound again -- two 300 ms windows cannot come back
 						// under 500 unless only one of them happened.
+						// And the retry must not throw away what the first
+						// attempt learned. A cell-size reply with NO device
+						// attributes after it leaves answered false, so the
+						// retry fires -- and finds nothing, the pty being
+						// empty. Assigning its result unconditionally would
+						// discard the cell size that did arrive. A terminal
+						// answering CSI 16t promptly and DA1 slowly is
+						// exactly this shape.
+						QSize kept;
+						{
+							const QByteArray had_term = qgetenv("TERM");
+							qputenv("TERM", "tmux-256color");
+							qputenv("QTTY_PROBE_MS", "120");
+							const QByteArray partial =
+							    "\033[6;" + QByteArray::number(ich + 5) + ";"
+							    + QByteArray::number(icw + 3) + "t";
+							const ssize_t wp = ::write(master, partial.constData(),
+							                          partial.size());
+							(void)wp;
+							AnsiBackend keep;
+							Recorder keep_rec;
+							keep.set_event_sink(&keep_rec);
+							kept = keep.capabilities().cell_px;
+							qunsetenv("QTTY_PROBE_MS");
+							if (had_term.isEmpty()) qunsetenv("TERM");
+							else qputenv("TERM", had_term);
+							while (::read(master, drain, sizeof(drain)) > 0) { }
+						}
+
 						qint64 twice_ms = 0;
 						{
 							const QByteArray had_term = qgetenv("TERM");
@@ -1855,6 +1884,9 @@ int suite_backend() {
 						CHECK(twice_ms >= 500,
 						      "and asks a second time inside a multiplexer, where"
 						      " the first attempt is met with silence");
+						CHECK(kept == QSize(icw + 3, ich + 5),
+						      "and the second attempt does not discard what the"
+						      " first one learned");
 
 						fflush(stdout);
 						::dup2(slave, 1);
