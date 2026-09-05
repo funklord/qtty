@@ -6209,6 +6209,19 @@ not be one.
     remove the retry            "the placeholder path did not engage"
     remove the retry            the timed check, at 300 ms against 601
 
+**The same lens over the mode-gated capabilities came back clean**, which
+is worth recording because the lens had just found a dead subsystem and
+an empty result from it licenses something. Asked of two real terminals,
+through the probe rather than by reading:
+
+    kitty    graphics=kitty-alpha  sync=1  mouse=1  paste=1
+    xterm    graphics=halfblocks   sync=0  mouse=1  paste=1
+
+xterm's zero is the honest answer rather than a dead path: it implements
+no DEC 2026, so nothing to engage. The probe prints these now, so the
+question "negotiated but never engages" is answered by running it rather
+than by reading the negotiation and hoping.
+
 **And the rest of `TermCaps` was swept for the same shape, which is what
 makes the one finding worth anything.** Ten fields, each checked for a
 consumer outside the parser:

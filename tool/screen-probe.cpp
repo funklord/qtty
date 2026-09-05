@@ -67,10 +67,20 @@ int main(int argc, char **argv) {
 	        cw, ch, term.width(), term.height(),
 	        22 * term.width(), 4 * term.width(),
 	        tier[int(caps.graphics)], caps.unicode_placements ? "yes" : "no");
+	// The mode-gated capabilities too, so that "negotiated but never
+	// engages" is answerable by running this rather than by reading. That
+	// question found the placeholder mode dead in the one place it exists
+	// for, and the same sweep over the rest came back clean: on kitty,
+	// sync, mouse and paste are all 1; on xterm, sync is 0 because it
+	// implements no DEC 2026, which is the honest answer rather than a
+	// dead path.
 	static const char *const depth[] = { "mono", "ansi16", "xterm256",
 	                                     "truecolor" };
-	fprintf(stderr, "screen-probe: colour=%s tmux=%s\n",
-	        depth[int(caps.color)], qgetenv("TMUX").isEmpty() ? "no" : "yes");
+	fprintf(stderr, "screen-probe: colour=%s tmux=%s sync=%d mouse=%d"
+	                " paste=%d\n",
+	        depth[int(caps.color)], qgetenv("TMUX").isEmpty() ? "no" : "yes",
+	        int(caps.synchronised_output), int(caps.mouse),
+	        int(caps.bracketed_paste));
 	fflush(stderr);
 	// Two paths, because they are two different pieces of code and only one
 	// of them has a pixel frame at all. present_pixels() serves the tiers
