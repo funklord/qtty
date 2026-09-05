@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-940 checks, 0 failures, under six configurations, all six re-run
+942 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6181,6 +6181,33 @@ checkable `QGroupBox` starts CHECKED, so it draws `[x]`, and a fixture
 searching for `[ ]` found neither that nor the title and failed for two
 reasons at once. Dumping the buffer took one run and showed the answer;
 guessing at the fixture would have taken several.
+
+**A menu item rendered as a different command** (2026-09-05). Two faults
+in three lines, and the second is the one worth the entry.
+
+The label's budget was `c.right() - label_at`, one cell short of the room
+it has -- the item-view path one case down says the same thing with
+`- text_at + 1`. So an eleven-cell label in eleven cells came out
+`Preferenc...`.
+
+And the shortcut is written AFTER the label, so it landed on the label's
+tail INCLUDING its ellipsis. `"Save As\tCtrl+S"` in twelve cells rendered:
+
+    SaveCtrl+S
+
+which reads as a complete item called "Save", not a truncated "Save As".
+**A menu that lies about which command it is offering is worse than one
+that elides**, and nothing about the output said it had been cut. It is
+`Sav...Ctrl+S` now.
+
+**A QMenu fixture cannot reproduce either half**, which is why neither
+was found by using one. `QMenu` only ever GROWS a column -- it takes the
+maximum of every item's hint and floors it -- so an auto-sized menu
+always has slack and the budget never binds. The reachable narrow case in
+a real program is a non-editable `QComboBox` popup, whose items are drawn
+at the combo's own width. The check calls `drawControl` directly, which
+asks the same question without a popup, and the eleven-in-twelve fixture
+is chosen because one character shorter fits either way.
 
 **A checkable item was measured a cell narrower than it is drawn**
 (2026-09-05). `CT_ItemViewItem` sat in the snap-up group, which ceilings

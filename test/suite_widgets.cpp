@@ -543,6 +543,48 @@ int suite_widgets() {
 			      "and writes none of them past the edge of the view");
 		}
 
+		// A menu row, drawn straight rather than through a QMenu. QMenu only
+		// ever GROWS a column -- it takes the maximum of every item's hint
+		// and floors it -- so an auto-sized menu always has slack and the
+		// budget never binds. The narrow case that is reachable in a real
+		// program is a non-editable QComboBox popup, whose items are drawn
+		// at the combo's own width. Calling drawControl directly asks the
+		// same question without the popup.
+		{
+			const auto menu_row = [&](const QString &text, int cells) {
+				CellBuffer mb(cells, 1);
+				Qtty::CellPaintDevice mdev(mb);
+				QPainter mp(&mdev);
+				QStyleOptionMenuItem mi;
+				mi.rect = QRect(0, 0, cells * cw, ch);
+				mi.state = QStyle::State_Enabled;
+				mi.menuItemType = QStyleOptionMenuItem::Normal;
+				mi.checkType = QStyleOptionMenuItem::NotCheckable;
+				mi.text = text;
+				QApplication::style()->drawControl(QStyle::CE_MenuItem, &mi,
+				                                   &mp, nullptr);
+				mp.end();
+				return mb.to_text().trimmed();
+			};
+			// Eleven characters in a twelve-cell row: one cell of indent and
+			// eleven of label is exactly the row. One shorter and it fits
+			// either way, which is a fixture that proves nothing.
+			const QString full = menu_row(QStringLiteral("Preferences"), 12);
+			// And a label that does NOT fit beside its shortcut. The
+			// shortcut is written after the label, so it lands on the
+			// label's own tail -- and on its ellipsis, which is what makes a
+			// truncated item read as a complete shorter one.
+			const QString tight = menu_row(QStringLiteral("Save As\tCtrl+S"), 12);
+			printf("info: menu rows are [%s] and [%s]\n",
+			       qPrintable(full), qPrintable(tight));
+			CHECK(full == QStringLiteral("Preferences"),
+			      "a menu label may use the last cell of its own row");
+			CHECK(tight.contains(QStringLiteral("Ctrl+S"))
+			      && tight.contains(QChar(0x2026)),
+			      "and a label that does not fit beside its shortcut is"
+			      " elided rather than overwritten");
+		}
+
 		// What the style MEASURES an item as, against the row it DRAWS.
 		// CT_ItemViewItem fell to the default arm, which ceilings Fusion's
 		// answer -- and Fusion's omits the cell of indent this style draws

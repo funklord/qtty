@@ -1257,8 +1257,24 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				const QStringList parts = mi->text.split(QLatin1Char('\t'));
 				QString label = parts.value(0);
 				label.remove(QLatin1Char('&'));       // mnemonic markers
+				// The last cell the label may use. The row ends at
+				// c.right() -- the item-view path one case down says the
+				// same with `- text_at + 1` -- less the arrow cell a submenu
+				// spends, and less the shortcut and one cell of gap.
+				//
+				// Both halves were wrong. The budget was one short, so an
+				// eleven-cell label in eleven cells of room lost its
+				// last character to an ellipsis. And the shortcut, written AFTER the label,
+				// landed on the label's tail including its ellipsis: "Save
+				// As\tCtrl+S" in twelve cells rendered "SaveCtrl+S", which
+				// reads as a complete item called "Save" rather than a
+				// truncated one. A menu that lies about which command it is
+				// offering is worse than one that elides.
+				int last = c.right();
+				if (mi->menuItemType == QStyleOptionMenuItem::SubMenu) --last;
+				if (parts.size() > 1) last -= parts[1].size() + 1;
 				dev->buffer().text(label_at, c.top(),
-				                   elide_to_cells(label, c.right() - label_at),
+				                   elide_to_cells(label, last - label_at + 1),
 				                   Color(), Color(), la);
 				if (parts.size() > 1) {               // right-aligned shortcut
 					const QString sc = parts[1];
