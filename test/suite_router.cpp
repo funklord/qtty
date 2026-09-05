@@ -534,6 +534,47 @@ int suite_router() {
 		QCoreApplication::processEvents();
 		CHECK(fired == 1, "Return in the submenu fires its item, not the parent's");
 	}
+	// Tab when NOTHING has focus yet, which is the state a window is in the
+	// moment it opens. Every other focus check here sets focus first, so this
+	// arrangement had none at all.
+	//
+	// It was written believing it would exercise on_key()'s
+	// focusNextPrevChild() fallback, which coverage reports as never run.
+	// SABOTAGE SAYS OTHERWISE: with that call replaced by nothing, this check
+	// still passes, because Qt's own QWidget::event() reaches its Tab branch,
+	// accepts the event and moves the focus first. So the fallback stays
+	// unreached and this pins the BEHAVIOUR instead -- which is worth pinning
+	// on its own, and is all this claims.
+	//
+	// What was tried and did not reach the fallback: no focus widget at all
+	// (here), which Qt handles. Reaching it needs a scope where the press is
+	// refused AND the focus does not move, and no arrangement of ordinary
+	// widgets found here does both. Recorded so the next person does not
+	// spend the same hour.
+	{
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&h);
+		auto *one = new QPushButton(QStringLiteral("one"), &h);
+		auto *two = new QPushButton(QStringLiteral("two"), &h);
+		v->addWidget(one);
+		v->addWidget(two);
+		h.resize(GridMetrics::cells(20, 4));
+		h.show();
+		QCoreApplication::processEvents();
+		set_focus_widget(nullptr);
+		InputRouter r(&h);
+		const QWidget *before = h.focusWidget();
+		r.on_key({Qt::Key_Tab, QStringLiteral("\t"), false, false, false});
+		QCoreApplication::processEvents();
+		const QWidget *after = h.focusWidget();
+		printf("info: Tab from no focus moved focus from %s to %s\n",
+		       before ? before->metaObject()->className() : "(none)",
+		       after ? after->metaObject()->className() : "(none)");
+		CHECK(after != nullptr && (after == one || after == two),
+		      "Tab reaches a widget when nothing has focus yet");
+	}
+
 	// What a click on a slider's GROOVE does. section 0b carried this as the
 	// copyright holder's question, because it changes what a click means
 	// rather than what it looks like; it was settled on 2026-09-05 in favour

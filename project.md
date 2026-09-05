@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-971 checks, 0 failures, under six configurations, all six re-run
+972 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6543,6 +6543,53 @@ sentinel was checked with rects that had a size. `scan_osc11` was checked
 with well-formed replies. **Fixtures on the safe side of the hazard is
 now the most-recorded cause in this document**, and the four here were
 found by four different lenses, none of which was looking for it.
+
+**`make coverage` cannot see the code whose failure costs most, and the
+obvious fix recovers nothing** (2026-09-05). The lens was the shape four
+of the last five findings shared -- a fixture on the safe side of the
+hazard -- so the tree's own coverage target was pointed at every source
+file to enumerate the population mechanically rather than query for it.
+
+Fifty-nine uncovered lines in the whole library. Twenty-nine of them are
+in `ansi_backend.cpp`, and they are `leave_terminal()`,
+`qtty_fatal_handler()`, `qtty_stop_handler()` and the re-raise -- the
+terminal-restore path, whose failure leaves a user's shell in raw mode on
+the alternate screen. **Every one of them is tested.** `suite_backend`
+forks onto a pseudo-terminal, raises the real signal, and reads the
+escape bytes that come back.
+
+Counters are written when a process EXITS, and those children end by
+`_exit()` or by a signal. Neither writes one.
+
+**Calling `__gcov_dump()` in the child before its `_exit()` was tried and
+recovered NOTHING** -- the number did not move. No child that returns
+normally reaches any of those lines; they all die. A child killed by a
+signal reaches no code of ours after the raise and cannot report at all.
+The plumbing was reverted and the paragraph in the Makefile kept, which
+is the whole of what the experiment bought.
+
+**The first attempt at that measurement was vacuous, which is the part
+worth carrying.** The number was unchanged and the conclusion nearly
+drawn -- but the generated test Makefile is only created when absent
+(`test -e Makefile || qmake`), so qmake never re-ran with the new define
+and the object never contained the call. Confirmed by `nm`, which found
+no `__gcov_dump` in it. **A change that did not compile in and a change
+that made no difference are indistinguishable from the number**, which is
+the sabotage rule arriving in a place nobody was looking for it. The
+coverage trees were removed by name and it was measured again, with `nm`
+confirming the call was there the second time.
+
+**Two smaller results from the same sweep, both honest and neither a
+find.** The numeric branches of `grid_font_problem()` are uncovered and
+were already recorded as deliberately so, with the six things that were
+tried to reach them -- the sweep confirmed a documented gap rather than
+finding one. And a check was written for `on_key()`'s
+`focusNextPrevChild()` fallback, believing it would reach it. **Sabotage
+said otherwise:** with the call replaced by nothing the check still
+passed, because Qt's own `QWidget::event()` reaches its Tab branch first.
+The check was kept for the behaviour it does pin -- Tab reaching a widget
+when nothing has focus, which nothing covered -- with its claim corrected
+and what was tried written down. The fallback remains unreached.
 
 **What is left, recorded rather than fixed:**
 

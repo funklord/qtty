@@ -766,6 +766,32 @@ test-valgrind:
 # It exists because "fully covered" is a claim with a short shelf life: the
 # capability parser was written to be at 100% and the only thing that will
 # notice a new uncovered branch is a command somebody can run.
+#
+# WHAT IT CANNOT SEE, which matters more here than the number does. Counters
+# are written when a process EXITS, and this suite forks a great deal --
+# forking onto a pseudo-terminal is how a terminal library watches a process
+# die. Every one of those children ends by _exit() or by a signal, and
+# neither writes a counter, so everything they exercise reads as uncovered.
+#
+# Measured 2026-09-05, because "it would read as uncovered" is a guess until
+# somebody looks. ansi_backend.cpp reports 29 uncovered lines, and they are
+# leave_terminal(), qtty_fatal_handler(), qtty_stop_handler() and the
+# re-raise -- the terminal-restore path, which is the code in this library
+# whose failure costs a user the most: a shell left in raw mode on the
+# alternate screen. Every one of them IS tested. suite_backend forks onto a
+# pty, raises the real signal, and reads the escape bytes that come back.
+#
+# Calling __gcov_dump() in the child before its _exit() was tried, and
+# RECOVERED NOTHING: the number did not move, because no child that returns
+# normally reaches any of those lines -- they all die. A child killed by a
+# signal cannot report, since it reaches no code of ours after the raise. So
+# the plumbing was reverted and this paragraph kept, which is the whole of
+# what the experiment bought.
+#
+# The consequence for a reader: pointing this target at ansi_backend.cpp and
+# concluding the crash path is untested is being misled by the instrument,
+# and "improving" the number there would mean deleting the checks that are
+# doing the work.
 COV_DIR = build-cov
 coverage:
 	@test -n "$(F)" || { echo "coverage: name the file, e.g. make coverage F=term_caps" >&2; exit 1; }
