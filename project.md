@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-948 checks, 0 failures, under six configurations, all six re-run
+950 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6214,6 +6214,35 @@ searching for `[ ]` found neither that nor the title and failed for two
 reasons at once. Dumping the buffer took one run and showed the answer;
 guessing at the fixture would have taken several.
 
+**A menu item too narrow for both showed only its accelerator**
+(2026-09-05). Reserving room for the shortcut can leave the label a
+budget of zero or less, and `elide_to_cells` returns nothing for that. So
+`"Save As\tCtrl+S"` in eight cells rendered:
+
+    Ctrl+S
+
+The name gone entirely. **Same damage as the twelve-cell case fixed
+hours earlier, reached at a width that fix did not cover** -- which is
+what a cliff at zero looks like when the check for the fix stopped at a
+width where the budget was merely small.
+
+The shortcut is dropped rather than allowed to take the row. A command's
+NAME is what identifies it and the accelerator is redundant beside it, so
+the name wins the room: it renders `Save As` now.
+
+**And the header's sort mark was the last ungridded metric of the class**
+(2026-09-05). QCommonStyle answers `fontMetrics.height() * 5 / 8`, a
+pixel count that need not be a whole column -- and `SE_HeaderLabel` and
+`SE_HeaderArrow` are derived from it by INDEPENDENT roundings, so where
+it lands on a half column the arrow takes the label's last cell. That
+cell is the ellipsis whenever the label was elided, so a truncated column
+would read as a complete one that happens to be sorted.
+
+**It is not reachable at 10x19 or at the 8x16 default**, which is why the
+check asserts the METRIC at two cell sizes rather than a rendering: the
+mark must land on a half column, and neither shipping size does that. It
+read 16 and 16 before -- a constant -- and 10 and 13 after.
+
 **A tab that fitted looked truncated** (2026-09-05). `CE_TabBarTab` pads
 its label out to the width of the tab, and counted the padding in QCHARS
 while the room is in CELLS. A wide cluster is one QChar and two cells, so
@@ -6355,6 +6384,43 @@ followed, and it joined the installed list and the umbrella header.
 prefix now runs twice, once in a pty and once `--headless` through
 `NullBackend`, and asserts the captured frame holds its own label. With
 the header withheld from the install, the consumer does not compile.
+
+**What four more sweeps found and I did not fix** (2026-09-05), recorded
+so the next reader has the list rather than the lenses. Each was verified
+by reading; none has been measured by me.
+
+    vertical closable tab   CT_TabBarTab's West/East branch rebuilds the
+                            width from the text and reserves nothing for
+                            the close button, so the X is drawn into the
+                            NEIGHBOURING tab's label. Reachable now.
+    tab scroll arrows       PM_TabBarScrollButtonWidth is 16 px, and
+                            those two QToolButtons are exempt from BOTH
+                            GridGuard and GridSnap -- the one class of
+                            off-grid widget nothing reports and nothing
+                            repairs. SH_TabBar_PreferNoArrows would
+                            remove them outright.
+    combo popup scrollers   PM_MenuScrollerHeight is 10 px on a widget
+                            whose class name carries Private, so GridSnap
+                            skips it and every item below shifts.
+    unelided labels         CE_PushButtonLabel, CE_MenuBarItem and
+                            Fusion's CE_ComboBoxLabel write without a
+                            budget; the clip cuts them with no ellipsis,
+                            and CE_MenuBarItem's clip is the whole BAR,
+                            so it damages a neighbour.
+    SE_LineEditContents     the second consumer of PM_DefaultFrameWidth,
+                            not covered by the SE_FrameContents fix; its
+                            rect is negative-height on a one-cell edit
+                            and drives click-to-caret.
+    SH_Slider_AbsoluteSetButtons  clicking a slider cell pages rather
+                            than jumping to it. Already one of section 0b's
+                            questions, so it is the holder's.
+
+**The two sweeps that came back mostly clean are worth as much as the
+finds.** One enumerated every text-room computation in the drawing code
+and found three of the four elide budgets correct and one wrong; the
+other listed fourteen complex controls whose hit tests agree with their
+pictures, with the arithmetic for each. An empty result is a measurement
+only if its method is recorded, and those two lists are the method.
 
 **Nothing checked that the library could be USED** (2026-09-05). The tree
 had `install` and `test-install`, which prove the files land and are

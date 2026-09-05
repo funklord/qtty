@@ -626,6 +626,17 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 	// level. Two columns, which is the same 20 px on this machine said in
 	// the unit the grid is measured in, so nothing here moves.
 	case PM_TreeViewIndentation:                           return 2 * cw;
+	// The sort indicator's cell. QCommonStyle answers `fontMetrics.height()
+	// * 5 / 8`, a pixel count that need not be a whole column -- and both
+	// SE_HeaderLabel and SE_HeaderArrow are derived from it by INDEPENDENT
+	// roundings, so where it lands on a half cell the arrow takes the
+	// label's last cell. That cell is the ellipsis whenever the label was
+	// elided, so a truncated column would read as a complete one that
+	// happens to be sorted. One column, which no rounding can disagree
+	// about. Not reachable at this machine's 10x19 or at the 8x16 default
+	// -- it needs the mark to land on a half column -- which is exactly why
+	// the metric rather than a rendering is what is asserted.
+	case PM_HeaderMarkSize:                                return cw;
 	case PM_HeaderDefaultSectionSizeHorizontal:            return 10 * cw;
 	default:                                               return QProxyStyle::pixelMetric(m, o, w);
 	}
@@ -1309,11 +1320,24 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// offering is worse than one that elides.
 				int last = c.right();
 				if (mi->menuItemType == QStyleOptionMenuItem::SubMenu) --last;
-				if (parts.size() > 1) last -= parts[1].size() + 1;
+				// The shortcut is dropped rather than allowed to take the
+				// whole row. Reserving room for it can leave the label a
+				// budget of zero or less, and elide_to_cells returns nothing
+				// for that -- so the accelerator alone became the item's
+				// name. Measured: "Save As\tCtrl+S" in eight cells rendered
+				// "Ctrl+S". A command's NAME is what identifies it and the
+				// accelerator is redundant beside it, so the name wins the
+				// room and the shortcut goes.
+				bool room_for_shortcut = parts.size() > 1;
+				if (room_for_shortcut) {
+					const int reserved = last - parts[1].size() - 1;
+					if (reserved - label_at + 1 > 0) last = reserved;
+					else                             room_for_shortcut = false;
+				}
 				dev->buffer().text(label_at, c.top(),
 				                   elide_to_cells(label, last - label_at + 1),
 				                   Color(), Color(), la);
-				if (parts.size() > 1) {               // right-aligned shortcut
+				if (room_for_shortcut) {              // right-aligned shortcut
 					const QString sc = parts[1];
 					dev->buffer().text(c.right() - sc.size(), c.top(), sc,
 					                   Color(), Color(), la | Attr::Dim);

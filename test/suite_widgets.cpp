@@ -655,6 +655,26 @@ int suite_widgets() {
 			       " %d-wide one\n", here, cw, there, cw + 3);
 			CHECK(here == 2 * cw && there == 2 * (cw + 3),
 			      "a tree's indent is two columns, at either cell size");
+
+			// The header's sort mark, for the same reason and by the same
+			// method. QCommonStyle answers a fraction of the font height,
+			// which need not be a whole column -- and SE_HeaderLabel and
+			// SE_HeaderArrow are derived from it by independent roundings,
+			// so where it lands on a half column the arrow takes the
+			// label's last cell, which is its ellipsis whenever the label
+			// was elided.
+			const auto mark = [] {
+				return QApplication::style()->pixelMetric(
+				    QStyle::PM_HeaderMarkSize);
+			};
+			const int mark_here = mark();
+			GridMetrics::set(cw + 3, ch + 5);
+			const int mark_there = mark();
+			GridMetrics::set(cw, ch);
+			printf("info: a header's sort mark is %d px and %d px at the two"
+			       " cell sizes\n", mark_here, mark_there);
+			CHECK(mark_here == cw && mark_there == cw + 3,
+			      "a header's sort mark is one column, at either cell size");
 		}
 
 		// A menu row, drawn straight rather than through a QMenu. QMenu only
@@ -697,6 +717,18 @@ int suite_widgets() {
 			      && tight.contains(QChar(0x2026)),
 			      "and a label that does not fit beside its shortcut is"
 			      " elided rather than overwritten");
+			// And narrower still, where there is no room for both at all.
+			// elide_to_cells returns nothing for a budget of zero or less,
+			// so the label contributed no cells and the shortcut alone
+			// became the item's name -- the same damage as the twelve-cell
+			// case, reached at a width the fix for it did not cover. A
+			// command's NAME is what identifies it; the accelerator is
+			// redundant beside it, so the name wins the room.
+			const QString narrow = menu_row(QStringLiteral("Save As\tCtrl+S"), 8);
+			printf("info: the same item in eight cells is [%s]\n",
+			       qPrintable(narrow));
+			CHECK(narrow.contains(QStringLiteral("Sa")),
+			      "a menu item too narrow for both keeps its own name");
 		}
 
 		// What the style MEASURES an item as, against the row it DRAWS.
