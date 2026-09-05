@@ -509,6 +509,23 @@ int suite_backend() {
 		                               "\033[?2026;0$y");
 		CHECK(dec_mode(modes, 1006) == 1, "DECRPM set is read");
 		CHECK(dec_mode(modes, 2004) == 2, "DECRPM reset is read, and is not zero");
+		// 4 is "permanently reset" -- the terminal saying it will never
+		// honour the mode -- and every non-zero value used to read as
+		// usable. For DEC 2026 that answer decides what goes on the wire, so
+		// a refused mode got a set/reset pair around every frame. 3,
+		// "permanently set", stays usable: that is the mode working.
+		{
+			TermCaps perm;
+			scan_caps("\033[?2026;4$y", perm);
+			TermCaps always;
+			scan_caps("\033[?2026;3$y", always);
+			CHECK(dec_mode(perm, 2026) == 4
+			      && !mode_usable(perm, 2026, true),
+			      "permanently reset is a definite no, like not recognised");
+			CHECK(dec_mode(always, 2026) == 3
+			      && mode_usable(always, 2026, false),
+			      "while permanently set is the mode working");
+		}
 		CHECK(dec_mode(modes, 2026) == 0, "and not-recognised is read as zero");
 		CHECK(dec_mode(modes, 1004) == -1,
 		      "a mode the terminal said nothing about is unknown, not absent");

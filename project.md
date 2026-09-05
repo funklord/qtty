@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-921 checks, 0 failures, under six configurations, all six re-run
+923 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6148,6 +6148,17 @@ there. `make` first, then judge.
 What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
+
+**A mode the terminal permanently refused was used anyway**
+(2026-09-05). `mode_usable()` was `v != 0`, and DECRPM's value 4 is
+"permanently reset" -- the terminal saying it will never honour the mode.
+For DEC 2026 that answer decides what goes on the wire, so a refused
+terminal got a set/reset pair wrapped around every frame for the session.
+3, "permanently set", stays usable: that is the mode working. The bytes
+were inert, so the cost was small; what makes it worth fixing is that
+`term_caps.h` opens by stating the opposite rule -- never turn on
+something emitted blind -- and value 4 was the one reply that defeated
+it.
 
 **The upload cache outlived the cell size it was scaled for**
 (2026-09-05). `caps_.cell_px` acquired a mid-run write path when

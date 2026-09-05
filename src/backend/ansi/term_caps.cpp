@@ -236,7 +236,13 @@ int dec_mode(const TermCaps &caps, int mode) {
 bool mode_usable(const TermCaps &caps, int mode, bool assumed) {
 	const int v = dec_mode(caps, mode);
 	if (v < 0) return assumed;                    // silence: learned nothing
-	return v != 0;                                // 0 is the only definite no
+	// 4 is DECRPM's "permanently reset": the terminal saying it will never
+	// honour the mode. Treating every non-zero value as usable made that a
+	// yes, and for DEC 2026 the answer decides what goes on the wire -- a
+	// set/reset pair around every frame, in a mode the terminal has refused.
+	// 3, "permanently set", stays usable: it is on and cannot be turned off,
+	// which is the mode working.
+	return v != 0 && v != 4;                                // 0 is the only definite no
 }
 
 
