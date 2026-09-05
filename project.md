@@ -1961,6 +1961,38 @@ In the order I would take them:
    `SH_Slider_AbsoluteSetButtons`, the picture rule, the layout top
    margin, and whether `qtty-negotiate` belongs in `$PREFIX/bin` (§8.0).
 
+3. **Four things an adopting project meets that are decisions rather than
+   defects.** Added 2026-09-05 after the library was made installable and
+   a consumer was built against it -- see the adoption entries above.
+   Every one of these is reachable, understood, and waiting on somebody's
+   judgement rather than on work:
+
+   - **`set_quit_keys()` cannot be reached through `exec()`.** The router
+     is constructed on `exec()`'s own stack and nothing hands it out, so
+     an application cannot change Ctrl-C and Ctrl-D without reimplementing
+     the whole of `exec()`. Fixing it means adding API -- an overload, a
+     setter, or handing back the router -- which is a shape decision.
+   - **The font is hardcoded and fatal.** `setup()` installs DejaVu Sans
+     Mono at 16 px and `qFatal()`s when the metrics are not integral.
+     There is no override, so a machine without that font cannot run a
+     qtty program at all. §0b's bundled-font question is the other end of
+     this.
+   - **An application's own `QStyle` is discarded.** `GridStyle` is
+     constructed on a hardwired Fusion base, and design.md section 12
+     promises the opposite: "an app's custom style is not lost -- it
+     becomes GridStyle's proxy base". Flagged rather than resolved, per
+     the rule: which of the two is wrong is not mine to pick.
+   - **`luminance()` assumes a dark ground for a Default colour.** The
+     terminal's real background is asked for and stored; using it needs a
+     second piece of global state beside the palette and a decision about
+     what the FOREGROUND of an unstated Default is.
+
+4. **The licence is the one thing that blocks distribution**, and it is
+   the holder's alone. Recorded here once, as a blocker rather than as a
+   suggestion: a project outside this workspace cannot take a dependency
+   on qtty until its terms exist. Nothing else in this list stops
+   somebody using it inside the workspace today.
+
 **One thing the pixel work leaves open, and it is a CHECK rather than a
 decision.** All three tiers are verified by their emitted bytes -- sizes,
 addresses, placement ids -- and none by what a terminal draws, although
