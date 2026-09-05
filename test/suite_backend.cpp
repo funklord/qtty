@@ -1753,6 +1753,32 @@ int suite_backend() {
 							splaced = eout;
 						}
 
+						// The probe window is overridable now, and the check
+						// is a LOWER bound on purpose. An upper bound is a
+						// wall-clock assertion on a machine other people are
+						// building on, which this suite declines elsewhere for
+						// good reason; a lower bound cannot fail from load,
+						// because load only makes it longer.
+						//
+						// Nothing is written to the pty here, so the probe
+						// waits its whole window. With the variable ignored --
+						// which it was until this commit, while the tool told
+						// people to raise it -- the wait is the built-in 100 ms
+						// and the elapsed time lands far below the bound.
+						qint64 waited = 0;
+						{
+							qputenv("QTTY_PROBE_MS", "600");
+							QElapsedTimer t;
+							t.start();
+							AnsiBackend slow;
+							Recorder slow_rec;
+							slow.set_event_sink(&slow_rec);
+							(void)slow.capabilities();
+							waited = t.elapsed();
+							qunsetenv("QTTY_PROBE_MS");
+							while (::read(master, drain, sizeof(drain)) > 0) { }
+						}
+
 						const QByteArray ovid =
 						    "i=" + QByteArray::number(0xFFFFE00u + 7u);
 
@@ -1791,6 +1817,11 @@ int suite_backend() {
 						      + ";" + QByteArray::number(ich * 2)),
 						      "and a sixel placement says the converted size in"
 						      " its raster attributes");
+						printf("info: a 600 ms probe window waited %lld ms\n",
+						       static_cast<long long>(waited));
+						CHECK(waited >= 400,
+						      "the backend honours QTTY_PROBE_MS, which only the"
+						      " tool used to read");
 
 						fflush(stdout);
 						::dup2(slave, 1);

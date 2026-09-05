@@ -1,4 +1,5 @@
 #include "ansi_backend.h"
+#include <cstdlib>
 #include "../../runtime/terminal_owner.h"
 #include "qtty/graphics.h"
 #include "qtty/grid.h"
@@ -159,8 +160,27 @@ AnsiBackend::AnsiBackend() {
 	// Only when both ends are a terminal. Down a pipe there is nobody to
 	// answer, and the query would be written into whatever is reading and the
 	// caller's own input eaten waiting for a reply that cannot arrive.
-	if (raw_ok_ && tty_out_)
-		caps_ = collect_caps(0, 1, 100, nullptr, &pending_);
+	//
+	// The window is overridable, and it was not. `qtty-negotiate` reads
+	// QTTY_PROBE_MS and, when the fence goes unanswered, PRINTS advice to
+	// raise it -- advice nobody could follow for the library, because this
+	// call ignored the variable and the tool was the only reader. A knob
+	// named in a diagnostic that the diagnosed code does not read is worse
+	// than no knob: it sends the next person to change something that
+	// cannot affect the result. The bounds are the tool's, so the two agree
+	// about what the variable means.
+	//
+	// 100 ms is kept as the default. It is not a latency budget -- a settled
+	// terminal answers the fence at 5 ms, measured -- it is a readiness one,
+	// and raising it costs every startup where nothing is going to answer.
+	if (raw_ok_ && tty_out_) {
+		int wait_ms = 100;
+		if (const char *env = ::getenv("QTTY_PROBE_MS")) {
+			const int v = ::atoi(env);
+			if (v > 0 && v <= 60000) wait_ms = v;
+		}
+		caps_ = collect_caps(0, 1, wait_ms, nullptr, &pending_);
+	}
 
 	mode_ = negotiate_graphics(caps_);
 	depth_ = negotiate_color(caps_);

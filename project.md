@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-914 checks, 0 failures, under six configurations, all six re-run
+915 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6163,7 +6163,19 @@ tier never moves:
     tmux -f /dev/null                              halfblocks, placeholders no
     + allow-passthrough on                         halfblocks, placeholders no
     + terminal-features RGB                        halfblocks, placeholders no
-    + QTTY_PROBE_MS=1500                           halfblocks, placeholders no
+    + a 1000 ms window, edited into the source     halfblocks, placeholders no
+
+**The fourth row first read `QTTY_PROBE_MS=1500` and measured nothing at
+all**, because the backend did not read that variable -- only
+`qtty-negotiate` did, and it was the tool that printed the advice to
+raise it. So the row was a knob turned on a device not connected to
+anything, and it is the third instrument fault in this one
+investigation, after a redirect that sent the tool's questions to a file
+and a wait loop that stopped on the terminal's cursor. **Every one of the
+three changed what it was measuring rather than measuring it.** The row
+above is the re-taken measurement, with the window edited into the source
+so it certainly applied, and the answer is the same: timing is not the
+cause.
 
 **The proof is a sabotage that changes nothing.** Translating
 `compose_kitty_placeholders()` by six cells leaves the picture exactly
@@ -6186,6 +6198,40 @@ measured and unexplained rather than attributed, because the comfortable
 story here -- "tmux does not forward APC replies" -- is contradicted by
 the tool's own output, and an explanation that survives only until
 somebody reads the next line is worse than none.
+
+**The disagreement is inside ONE process, which is the sharpest form of
+it available.** `qtty-negotiate` calls `collect_caps()` directly and then
+builds an `AnsiBackend`, which probes again; inside tmux the first
+reports `kitty a=q OK` and the second settles on half-blocks. Both are in
+the same session, against the same terminal, seconds apart.
+
+What is excluded: timing, by the 1000 ms run above; the probe's own gate,
+since `[ -t 0 ]` and `[ -t 1 ]` are both true inside that pane, measured
+without redirecting either -- the first two attempts at that measurement
+redirected the descriptor they were testing and answered about the
+redirection; and the query reaching the terminal at all, since it is
+`tmux_wrap`ped when `inside_tmux()` and the first probe's reply proves
+the round trip works.
+
+What is left is whatever differs about the SECOND query inside tmux, and
+that is where the next person should start rather than at the window.
+
+**`QTTY_PROBE_MS` reaches the backend now**, which came out of the
+investigation rather than the other way round: the tool reads it, the
+tool prints "re-run or raise QTTY_PROBE_MS" when the fence goes
+unanswered, and the library it is diagnosing ignored it. **A knob named
+in a diagnostic that the diagnosed code does not read is worse than no
+knob**, because it sends the next person to change something that cannot
+affect the result -- which is precisely what it did here. 100 ms remains
+the default; it is a readiness budget rather than a latency one, a
+settled terminal answering the fence at 5 ms.
+
+Its check is a LOWER bound and that is deliberate. An upper bound is a
+wall-clock assertion on a machine other people build on, which this suite
+declines elsewhere; a lower bound cannot fail from load, because load
+only makes it longer. Nothing is written to the pty, so the probe waits
+its whole window: 601 ms against a bound of 400, and 100 with the
+variable ignored again.
 
 **What the phase actually checks is real and checked nowhere else**: that
 the fallback inside a multiplexer still puts the picture on the right
