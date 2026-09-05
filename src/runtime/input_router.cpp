@@ -611,10 +611,28 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 			// root's scroll away from itself, and anything acting on
 			// QWheelEvent::position() -- a plot picking a point, a view
 			// zooming about the cursor -- acted on the wrong one.
+			// 120 to a NOTCH, which is what the fourth argument means.
+			// QWheelEvent's angleDelta is in eighths of a degree and every
+			// consumer divides by 120 -- QAbstractSlider accumulates the
+			// remainder and ignores the event until it reaches one. This
+			// passed a cell height, so a notch claimed to be 19/120 of one:
+			// measured on a QListView, one notch moved NOTHING and three
+			// moved a single row.
+			//
+			// It read plausibly because the fixtures were all QScrollArea,
+			// whose bar is in pixels and whose singleStep is large enough
+			// that three notches moved it a little -- and the check asked
+			// only that it moved. The unit was wrong for every widget; the
+			// one class tested hid it best.
+			//
+			// pixelDelta stays empty on purpose. A terminal reports a
+			// discrete notch, which is exactly what a wheel mouse sends and
+			// what angleDelta alone describes; supplying a pixel count as
+			// well would ask a per-ITEM scroll bar to move by pixels, which
+			// is the confusion this is fixing one field along.
 			QWheelEvent ev(QPointF(w->mapFromGlobal(screen)), QPointF(screen),
 			               QPoint(),
-			               QPoint(m.wheel_x * GridMetrics::cw(),
-			                      m.wheel * GridMetrics::ch()),
+			               QPoint(m.wheel_x * 120, m.wheel * 120),
 			               Qt::NoButton, mods, Qt::NoScrollPhase, false);
 			QApplication::sendEvent(w, &ev);
 			if (ev.isAccepted()) break;

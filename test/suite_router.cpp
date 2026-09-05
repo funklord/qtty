@@ -776,6 +776,53 @@ int suite_router() {
 		CHECK(area->verticalScrollBar()->value() > start,
 		      "a wheel event scrolls the area under the pointer");
 
+		// HOW FAR, and on the widget class an application actually scrolls.
+		// Every wheel fixture here is a bare QScrollArea, whose bar is in
+		// pixels; a QAbstractItemView's is in ITEM INDICES by default, which
+		// is the same unit confusion the arrow-key fallback had. And the
+		// fourth argument of QWheelEvent is angleDelta, which Qt defines in
+		// EIGHTHS OF A DEGREE with 120 to a notch -- so a cell height put
+		// there claims a notch is 19/120 of one.
+		{
+			QWidget wv;
+			wv.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *lv = new QListView(&wv);
+			auto *lm = new QStringListModel(&wv);
+			QStringList many;
+			for (int i = 0; i < 200; ++i) many << QStringLiteral("row %1").arg(i);
+			lm->setStringList(many);
+			lv->setModel(lm);
+			lv->setFrameShape(QFrame::NoFrame);
+			lv->setGeometry(0, 0, cw * 20, ch * 6);
+			wv.resize(GridMetrics::cells(20, 6));
+			wv.show();
+			QCoreApplication::processEvents();
+			InputRouter rv(&wv);
+			QScrollBar *bar = lv->verticalScrollBar();
+			bar->setValue(0);
+			MouseEvent notch;
+			notch.cell = QPoint(2, 2);
+			notch.wheel = -1;
+			rv.on_mouse(notch);
+			const int one = bar->value();
+			bar->setValue(0);
+			for (int i = 0; i < 3; ++i) rv.on_mouse(notch);
+			const int three = bar->value();
+			// EXACTLY what a notch means, not "some". A per-item bar has a
+			// singleStep of one row, so Qt scrolls it by
+			// QApplication::wheelScrollLines() per notch -- the same number
+			// a desktop mouse produces. Naming it rather than writing 3
+			// keeps the check honest on a machine configured differently.
+			const int lines = QApplication::wheelScrollLines();
+			printf("info: on an item view, one notch moves %d row(s) and"
+			       " three move %d, against %d line(s) per notch\n",
+			       one, three, lines);
+			CHECK(one == lines && three == 3 * lines,
+			      "a wheel notch scrolls a notch's worth of rows on an item"
+			      " view");
+			GridGuard::reset();
+		}
+
 		// A wheel is neither a press nor a release, which is why the backend
 		// sets neither: delivering it as a press would leave a button stuck
 		// down for the rest of the session.

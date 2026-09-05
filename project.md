@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-931 checks, 0 failures, under six configurations, all six re-run
+932 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6148,6 +6148,36 @@ there. `make` first, then judge.
 What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
+
+**A wheel notch scrolled nothing** (2026-09-05). `QWheelEvent`'s fourth
+argument is `angleDelta`, which Qt defines in EIGHTHS OF A DEGREE with
+120 to a notch -- every consumer divides by 120 and `QAbstractSlider`
+accumulates the remainder, ignoring the event until it reaches one. The
+router passed a cell height there, so a notch claimed to be 19/120 of
+one. Measured on a `QListView`:
+
+    one notch     0 rows
+    three notches 1 row
+
+So a user spun the wheel three times to move a single row. It is 120 per
+notch now, and one notch moves `QApplication::wheelScrollLines()` rows --
+three here, which is what a desktop mouse produces.
+
+**Two lenses found this independently and neither was looking for it.**
+One was sweeping for assertions too weak to see a magnitude; the other
+for fixtures sitting on the safe side. They met here because the defect
+needed both to hide: every wheel fixture in the suite is a bare
+`QScrollArea`, whose bar is in PIXELS and whose `singleStep` is large
+enough that three notches moved it a little -- and the assertion was
+`value() > start`, a direction. The unit was wrong for every widget; the
+one class tested hid it best.
+
+**It is the third instance of one confusion in one function.** The arrow
+fallback applied a cell height to an item-index bar; the wheel applied a
+cell height to an angle. `input_router.cpp` now asks the mode in one
+place and speaks notches in the other, and the check names
+`wheelScrollLines()` rather than writing 3, so it stays honest on a
+machine configured differently.
 
 **`Qtty::capabilities()` answered with the terminal the session started
 with** (2026-09-05). It was a COPY taken at the top of `exec()`, on the
