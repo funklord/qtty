@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-918 checks, 0 failures, under six configurations, all six re-run
+919 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6148,6 +6148,75 @@ there. `make` first, then judge.
 What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
+
+**One arrow key scrolled nineteen rows** (2026-09-05). The keyboard
+fallback for an arrow the focused widget ignores did
+`bar->setValue(value + dir * GridMetrics::ch())` -- a cell height, in
+pixels, applied to whatever the first `QAbstractScrollArea` in the input
+scope happens to be. `QAbstractItemView` defaults to `ScrollPerItem`,
+where the bar's value is an ITEM INDEX. Measured with the fix reverted:
+
+    Down       19 rows
+    PageDown   86 rows, which is the whole range
+
+So on any list, table or tree nobody had switched to pixel scrolling, the
+arrow keys were unusable. It asks the mode now, and in item units it asks
+the bar what a page is -- that is the number of visible rows, which is
+what a reader expects and what cannot be got wrong by assuming a unit.
+
+**The check that covered this could not have seen it, in two independent
+ways, and both are patterns this project has already paid for.** Its
+fixture sets `ScrollPerPixel` -- not what an application gets, Qt's
+default being the other one -- so it ran on the one configuration where
+the units happen to be pixels. And its assertion was
+`value() > before`: a DIRECTION, which passes at 1 and at 19 alike. A
+fixture on the safe side of a hazard and an assertion too weak to see it,
+in the same four lines.
+
+**The triage of the sweep that found it.** Four read-only lenses were run
+in parallel over the tree, each enumerating a population rather than
+searching for a shape: diagnostics nothing produces, public methods with
+no caller, guards that cannot be true, and values whose consumers may
+have drifted apart. What follows is what they returned, with MY status
+against each rather than theirs -- verified means I read the code or
+measured it, reported means I have not.
+
+    verified and fixed
+      clear_overlay had no caller               (two lenses, independently)
+      arrow keys scrolled in the wrong unit
+
+    verified by reading, not yet fixed
+      wheel events carry the UNSCROLLED position, so a scrolled root
+        gives QWheelEvent a position off by the scroll  input_router.cpp
+      `msb >= KITTY_DIACRITIC_COUNT` cannot ever be true: msb is masked
+        to 0..255 and the count is 297             graphics.cpp:424
+      a second `pending_.size() < 2` inside the block the first one
+        opened                                  ansi_backend.cpp:1474
+
+    reported by the sweep, NOT verified by me
+      mode_usable() treats DECRPM 4 -- permanently reset -- as usable,
+        so a mode the terminal has refused would still be used
+      the contrast check judges Default colours against a hardcoded dark
+        luminance, and under Ansi16 against a hardcoded system table,
+        so on a light terminal it measures the wrong ground
+      CellItemDelegate writes cells with no CellClip, budgeted by the
+        item rect rather than the viewport
+      CC_ScrollBar and CC_Slider draw in cells but do not override
+        subControlRect, so hit-testing and drawing disagree
+      cell_paint.cpp carries its own copy of the palette-role list
+        without role_of()'s Disabled fallback
+      Qtty::capabilities() snapshots caps once before exec(), while
+        cell_px is re-read on every SIGWINCH
+      the upload cache and last_pixel_size_ are keyed on qtty-side
+        quantities, so neither is invalidated if the terminal's cell
+        changes
+      the section 6 contrast warning is compiled out under QT_NO_DEBUG,
+        which is every build `check` produces
+
+**The list is the finding, not any one line of it.** A query answers
+about the shape you described; an enumeration answers about the thing --
+and three of these are the same shape as defects already fixed this week,
+which is what a lens derived from the last bug is supposed to produce.
 
 **A hidden overlay never left the terminal** (2026-09-05), and
 `clear_overlay()` had been implemented, overridden and called by nothing

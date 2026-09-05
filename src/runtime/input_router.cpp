@@ -276,12 +276,28 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 	if (!press.isAccepted() && (k.qt_key == Qt::Key_Up || k.qt_key == Qt::Key_Down
 	                            || k.qt_key == Qt::Key_PageUp || k.qt_key == Qt::Key_PageDown)) {
 		if (auto *area = input_scope()->findChild<QAbstractScrollArea *>()) {
-			int step = GridMetrics::ch();
-			if (k.qt_key == Qt::Key_PageUp || k.qt_key == Qt::Key_PageDown)
-				step *= 5;
+			// A scroll bar's value is not always pixels, and this asked for
+			// a cell height regardless. QAbstractItemView defaults to
+			// ScrollPerItem, where the value is an ITEM INDEX -- so one
+			// arrow key scrolled nineteen rows and a page key ninety-five,
+			// on any list, table or tree that had not been switched to
+			// pixel scrolling. Ask the mode rather than assume the unit.
+			const bool page = k.qt_key == Qt::Key_PageUp
+			               || k.qt_key == Qt::Key_PageDown;
+			QScrollBar *bar = area->verticalScrollBar();
+			bool per_item = false;
+			if (auto *view = qobject_cast<QAbstractItemView *>(area))
+				per_item = view->verticalScrollMode()
+				         == QAbstractItemView::ScrollPerItem;
+			// In item units the bar already knows what a page is -- it is
+			// the number of visible rows, which is what a reader expects
+			// PageDown to move. In pixels there is nothing to ask, so the
+			// cell height stands and five of them make a page.
+			int step;
+			if (per_item) step = page ? qMax(1, bar->pageStep()) : 1;
+			else          step = page ? GridMetrics::ch() * 5 : GridMetrics::ch();
 			const int dir = (k.qt_key == Qt::Key_Up || k.qt_key == Qt::Key_PageUp) ? -1 : 1;
-			area->verticalScrollBar()->setValue(
-			    area->verticalScrollBar()->value() + dir * step);
+			bar->setValue(bar->value() + dir * step);
 		}
 	}
 }

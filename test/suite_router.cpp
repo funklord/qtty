@@ -69,6 +69,37 @@ int suite_router() {
 	CHECK(list->verticalScrollBar()->value() > before,
 	      "ignored Down scrolls the scroll area");
 
+	// BY HOW MUCH, and in Qt's own default mode. The fixture above switches
+	// the view to ScrollPerPixel, which is not what an application gets: a
+	// QAbstractItemView defaults to ScrollPerItem, where the bar's value is
+	// an ITEM INDEX. A cell height applied to that scrolled nineteen rows
+	// for one arrow key and ninety-five for a page, on any list, table or
+	// tree nobody had switched over -- and the check above could not see it,
+	// asserting a direction rather than a distance on the one configuration
+	// where the units happen to be pixels.
+	{
+		list->setVerticalScrollMode(QAbstractItemView::ScrollPerItem);
+		QCoreApplication::processEvents();
+		QScrollBar *bar = list->verticalScrollBar();
+		bar->setValue(0);
+		router.on_key({Qt::Key_Down, QString(), false, false, false});
+		const int one = bar->value();
+		bar->setValue(0);
+		router.on_key({Qt::Key_PageDown, QString(), false, false, false});
+		const int page = bar->value();
+		printf("info: per-item Down moves %d row(s), PageDown %d, of %d\n",
+		       one, page, bar->maximum());
+		// One row for an arrow. For a page, whatever the bar says a page is
+		// -- that is the number of visible rows, which is what a reader
+		// expects and what this cannot get wrong by assuming a unit.
+		CHECK(one == 1 && page == qMax(1, bar->pageStep()) && page > 1,
+		      "and in item-scrolling mode it moves rows, not pixels-worth of"
+		      " them");
+		list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+		bar->setValue(before);
+		QCoreApplication::processEvents();
+	}
+
 	// Tab walks the focus chain
 	router.on_key({Qt::Key_Tab, QString(), false, false, false});
 	CHECK(win.focusWidget() == btn, "Tab advances focus chain");
