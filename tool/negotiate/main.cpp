@@ -138,11 +138,27 @@ int main(int argc, char **argv) {
 	fprintf(out, "graphics             %s\n", graphics[c.graphics]);
 	fprintf(out, "colour               %s\n", depth[c.color]);
 	fprintf(out, "unicode placements   %s\n", c.unicode_placements ? "yes" : "no");
+	// What the silence COSTS, not just that there was silence. Every image
+	// this library transmits is sized in the terminal's cell where it is
+	// known and in the font's where it is not, so an unanswered CSI 16t is
+	// the difference between a picture that lands on its cells and one drawn
+	// at whatever this build's font happens to measure -- 10x19 against
+	// kitty's 9x18 here, an 11% oversize that spills onto the neighbours.
+	//
+	// The xterm note is measured rather than guessed: its allowWindowOps
+	// resource defaults to off, so a stock xterm answers neither this nor
+	// CSI 14t, and a reader who sees "not reported" has no way to know that
+	// the terminal COULD answer and was told not to.
 	fprintf(out, "cell size            %s\n",
 	        c.cell_px.isValid()
 	            ? qPrintable(QStringLiteral("%1x%2").arg(c.cell_px.width())
 	                             .arg(c.cell_px.height()))
 	            : "not reported");
+	if (!c.cell_px.isValid())
+		fprintf(out, "                     images will be sized with this"
+		             " build's font instead;\n"
+		             "                     xterm answers this only with"
+		             " allowWindowOps on\n");
 	fprintf(out, "background           %s\n",
 	        c.background_known ? qPrintable(c.background.name()) : "not reported");
 	// The palette is not on Capabilities: it is consumed by the colour model

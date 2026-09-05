@@ -6149,6 +6149,56 @@ What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
 
+**`text_px` is parsed, printed and read by nothing** (2026-09-05), which
+is the least-used-method shape again. CSI 14t reports the text AREA in
+pixels, and the one use it could have is real: where CSI 16t goes
+unanswered, dividing the text area by the grid would give the cell size
+the whole conversion above depends on.
+
+It was not built, because the case cannot occur on anything installed
+here. Both are window operations, and both terminals answer them
+together:
+
+    kitty    CSI 16t answered   CSI 14t answered
+    xterm    CSI 16t answered   CSI 14t answered      allowWindowOps on
+    xterm    both silent                              allowWindowOps off
+
+So the derivation would be code no terminal here can reach, and a
+fallback that has never run is a fallback nobody should trust. Recorded
+instead, with what would change the answer: a terminal that answers 14t
+and not 16t.
+
+**What DID come out of it is that the tool said "not reported" and never
+said what that costs.** An unanswered CSI 16t is the difference between a
+picture that lands on its cells and one drawn at whatever this build's
+font measures -- 10x19 against kitty's 9x18, the 11% oversize three
+functions were shipping until today. `qtty-negotiate` now says so, and
+names allowWindowOps, because a reader who sees "not reported" has no way
+to know the terminal COULD answer and was told not to.
+
+**The obvious hardening was tried and does not work, which is worth more
+than the hardening would have been.** The cause of all four defects is
+one fixture: the pty answers CSI 16t with this build's own cell, so every
+check in that block sits where converting is unobservable. The fix looks
+like one line -- derive the fixture's cell from `GridMetrics` and double
+it, so the conversion is exercised on any machine.
+
+It hangs the suite. Doubling the cell quadruples every transmitted image,
+and the pty holds a few kilobytes with nothing draining it until `pump()`
+runs, so the write blocks for ever. **The payload a shared fixture can
+carry is bounded by the pipe, and that bound is what decides where the
+discrimination can live**: in per-check replies with small images, which
+is what the four new blocks do, rather than in one fixture everything
+shares.
+
+A smaller offset fits and does not discriminate. At `cw + 1` the iTerm2
+cell count divides back to the right answer by truncation --
+`2 * 11 / 10` is 2, which is correct -- so the check would pass against
+the defect it exists for. **The offset has to be large enough to move a
+whole cell and small enough to fit the pipe, and for a two-cell image on
+this machine those two conditions do not overlap.** Hence one reply per
+check.
+
 **There were not two functions that transmit an image, there were
 eight** (2026-09-05), and the conversion had reached two of them. Found
 by taking the shape of the last defect as the next lens: a value serving
