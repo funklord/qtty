@@ -1493,6 +1493,59 @@ int suite_router() {
 
 
 
+	// A slider is drawn as one handle cell over the whole length, and its
+	// hit test was left to Fusion, which places a THREE-cell handle over
+	// `length - 3 cells`. Two different mappings of value to position, so a
+	// click on the handle the user can see misses it whenever the two
+	// disagree -- and on a vertical slider the miss does not even reach the
+	// groove, Fusion centring a seven-pixel groove that no cell centre falls
+	// inside. The press is then ignored entirely.
+	{
+		QWidget sh;
+		sh.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *sl = new QSlider(Qt::Vertical, &sh);
+		sl->setRange(0, 100);
+		// TWO cells wide, which is what QSlider's own size hint gives for a
+		// vertical one: PM_SliderThickness is a cell, and Qt snaps the hint
+		// up. It is also the width where the old hit test failed hardest --
+		// Fusion centres a seven-pixel groove on the widget's centre, so at
+		// 20 px it spans 6..12 and NEITHER cell centre, 5 nor 15, is inside
+		// it. A click that missed the handle then reached nothing at all.
+		sl->setGeometry(0, 0, cw * 2, ch * 6);
+		sh.resize(GridMetrics::cells(8, 7));
+		sh.show();
+		QCoreApplication::processEvents();
+		const auto click_at = [&](int y) {
+			sl->setValue(50);
+			InputRouter r4(&sh);
+			MouseEvent m;
+			m.cell = QPoint(0, y);
+			m.button = 1;
+			m.press = true;
+			r4.on_mouse(m);
+			m.press = false;
+			m.release = true;
+			r4.on_mouse(m);
+			QCoreApplication::processEvents();
+			return sl->value();
+		};
+		int v[6];
+		for (int i = 0; i < 6; ++i) v[i] = click_at(i);
+		printf("info: slider rows 0..5 from 50 give %d %d %d %d %d %d\n",
+		       v[0], v[1], v[2], v[3], v[4], v[5]);
+		// A vertical slider's maximum is at the TOP -- upsideDown is true by
+		// default, which the drawing reads. So a click above the handle
+		// raises the value and one below lowers it, and the assertion is
+		// that ORDER rather than any number: whatever the page step is, the
+		// rows have to be monotonic in the direction the picture implies.
+		bool monotonic = true;
+		for (int i = 1; i < 6; ++i)
+			if (v[i] > v[i - 1]) monotonic = false;
+		CHECK(monotonic && v[0] > 50 && v[5] < 50,
+		      "a click on a vertical slider moves it toward the row clicked");
+		GridGuard::reset();
+	}
+
 	// ---- the pointer enters and leaves ----
 	{
 		// Nothing sent Enter or Leave. QApplicationPrivate does it from the

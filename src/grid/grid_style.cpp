@@ -509,6 +509,15 @@ static void draw_box(CellBuffer &b, const QRect &c, bool focused = false,
 
 GridStyle::GridStyle() : QProxyStyle(QStyleFactory::create(QStringLiteral("Fusion"))) {}
 
+// Which way a slider runs, for the metrics that measure along its axis. A
+// null option means no slider is asking -- Qt queries these metrics without
+// one -- and horizontal is the answer that matches what those callers expect.
+static bool slider_vertical(const QStyleOption *opt) {
+	if (auto *sl = qstyleoption_cast<const QStyleOptionSlider *>(opt))
+		return sl->orientation == Qt::Vertical;
+	return false;
+}
+
 int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *w) const {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	switch (m) {
@@ -580,8 +589,16 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 	case PM_TabBarTabShiftHorizontal:
 	case PM_TabBarTabShiftVertical:                        return 0;
 	case PM_ProgressBarChunkWidth:                         return cw;
-	case PM_SliderThickness: case PM_SliderControlThickness: return ch;
-	case PM_SliderLength:                                  return 3 * cw;
+	// Along the axis and across it, which these did not distinguish. Qt
+	// treats PM_SliderLength as the handle's size ALONG the slider, so
+	// 3 * cw for a vertical one is 30 px against a 19 px row -- 1.58 rows,
+	// fractional on the axis it measures. The drawing paints a handle ONE
+	// cell long, so that is what the metric says, and the thickness is the
+	// cell across the axis.
+	case PM_SliderThickness: case PM_SliderControlThickness:
+		return slider_vertical(o) ? cw : ch;
+	case PM_SliderLength:
+		return slider_vertical(o) ? ch : cw;
 	case PM_CheckBoxLabelSpacing:
 	case PM_RadioButtonLabelSpacing:                       return cw;
 	case PM_ToolBarItemMargin: case PM_ToolBarItemSpacing: return 0;
@@ -765,6 +782,42 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 				case SC_ScrollBarGroove:  return band(1, track);
 				case SC_ScrollBarFirst:
 				case SC_ScrollBarLast:    return QRect();
+				default: break;
+				}
+			}
+		}
+	}
+	// The slider is drawn as ONE handle cell over the whole length, and Qt
+	// maps a THREE-cell handle over `length - 3 cells`. Two mappings of value
+	// to position, so a click on the handle the user can see misses it
+	// wherever they disagree -- and the miss does not reach the groove
+	// either: Fusion centres a seven-pixel groove on the widget, which at the
+	// hint width of two cells spans 6..12 and contains neither cell centre,
+	// 5 nor 15. Measured at that width, every row of a six-row vertical
+	// slider left the value at 50. The control could not be moved by mouse
+	// at all.
+	//
+	// The arithmetic is the drawing's, including the upsideDown flip, for
+	// the reason the scroll bar's is: the hit test has to agree with the
+	// picture.
+	if (cc == CC_Slider && opt) {
+		if (auto *sl = qstyleoption_cast<const QStyleOptionSlider *>(opt)) {
+			const QRect r = opt->rect;
+			const bool vert = sl->orientation == Qt::Vertical;
+			const int cell = vert ? ch : cw;
+			const int len = (vert ? r.height() : r.width()) / qMax(1, cell);
+			if (len >= 1) {
+				const int span = sl->maximum - sl->minimum;
+				int pos = span > 0
+				    ? (len - 1) * (sl->sliderPosition - sl->minimum) / span : 0;
+				if (sl->upsideDown) pos = len - 1 - pos;
+				pos = qBound(0, pos, len - 1);
+				switch (sc) {
+				case SC_SliderHandle:
+					return vert
+					    ? QRect(r.left(), r.top() + pos * ch, r.width(), ch)
+					    : QRect(r.left() + pos * cw, r.top(), cw, r.height());
+				case SC_SliderGroove: return r;
 				default: break;
 				}
 			}

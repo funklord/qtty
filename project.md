@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-929 checks, 0 failures, under six configurations, all six re-run
+930 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6148,6 +6148,39 @@ there. `make` first, then judge.
 What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
+
+**A vertical slider could not be moved by mouse at all** (2026-09-05),
+at the width Qt's own size hint gives it. Same shape as the scroll bar
+below and worse in effect.
+
+The drawing paints ONE handle cell spread over the whole length; Qt maps
+a THREE-cell handle over `length - 3 cells`. Two mappings of value to
+position, so a click on the handle the user can see misses it wherever
+they disagree. And the miss reaches nothing: Fusion centres a
+seven-pixel groove on the widget, which at two cells wide spans 6..12 and
+contains NEITHER cell centre, 5 nor 15. `hitTestComplexControl` returns
+`SC_None` and `QSlider` ignores the press.
+
+    six rows, value 50, clicking each row
+      before   50 50 50 50 50 50
+      after    60 60 60 50 40 40
+
+Row 3 is where the handle is drawn at 50, and leaving it alone is
+correct: clicking a handle grabs it.
+
+**The first fixture passed and was on the safe side, for the fourth time
+this week.** A one-cell-wide slider puts the cell centre at 5, and a
+groove centred on 5 spans 2..8 and contains it -- so the control works
+there and the check said so. The hint width is two cells, which is what
+an application gets, and that is where it fails. The fixture says why it
+uses that width now.
+
+**`PM_SliderLength` was measured along the wrong axis**, which is the
+same class as the rest and was invisible for the same reason. Qt treats
+it as the handle's size ALONG the slider, and it returned `3 * cw` for
+both orientations -- 30 px against a 19 px row on a vertical one, 1.58
+rows, fractional on the very axis it measures. It answers per
+orientation now, and says one cell, which is what the drawing paints.
 
 **A scroll bar row drawn as track hit-tested as the thumb** (2026-09-05).
 `GridStyle` draws the bar whole in cells and left `subControlRect` to
