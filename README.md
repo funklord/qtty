@@ -37,7 +37,7 @@ The `Makefile` at the root is the entry point:
 Or with [fmake](../fmake), which needs no build file and nothing beyond the
 Python standard library:
 
-    python3 ~/src/fmake/fmake    # qtty-inspect, qtty-replay, qtty-negotiate, chat
+    python3 ~/src/fmake/fmake    # the four tools, the probe and the example
 
 **Not `/usr/bin/fmake`.** The packaged one predates `$root` and leaves the
 reference in the value as text, so the build succeeds and the binary
@@ -51,6 +51,12 @@ which qmake spells `$$QTTY_ROOT` and fmake spells `$root`; that `spike/`
 is the Phase 0 record rather than something to build, the same exemption
 `.style-gate.toml` already makes; and the tools' names, since fmake calls
 a program after its root TU and these ship with a `qtty-` prefix.
+
+It writes its objects into `.fmake/` and leaves the programs at the
+repository root -- `chat`, `qtty-inspect`, `qtty-negotiate`, `qtty-replay`
+and `screen-probe`. All five are in `.gitignore`; the list was four until
+`screen-probe` arrived with the screen gate, which is why the line above
+no longer counts them.
 
 `make` remains the entry point: fmake builds the programs and not the
 library, and none of the gates.

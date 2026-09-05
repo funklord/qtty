@@ -24,6 +24,9 @@
 #include <csignal>
 #include <sys/wait.h>
 #include <sys/resource.h>
+#include <atomic>
+#include <chrono>
+#include <thread>
 
 using namespace Qtty;
 
@@ -853,6 +856,53 @@ int suite_backend() {
 		const TermCaps silent = ask(QByteArray(), 120, nullptr);
 		CHECK(!silent.answered && !silent.kitty && !silent.sixel,
 		      "a silent terminal yields nothing and returns");
+
+		// A terminal that DRIBBLES. Every check above writes one burst and
+		// then goes quiet, which is the safe side of the hazard: the budget
+		// was a counter decremented only where poll() returned nothing, so
+		// a silent peer charges it correctly and a talkative one never
+		// charges it at all.
+		//
+		// Three bytes every 20 ms is the shape of a held key repeating,
+		// under the collector's 50 ms slice. Measured against the old code
+		// through a socketpair, three bytes every 30 ms held a 100 ms probe
+		// for 41.9 SECONDS -- bounded by the 4096-byte cap rather than by
+		// the timeout, so raising the timeout does not help.
+		//
+		// The bound asserted is deliberately loose. section 11's own
+		// benchmark refuses wall-clock assertions on a shared machine, and
+		// this one is safe only because the gap is three orders of
+		// magnitude: 100 ms against 41900. A second is generous for the
+		// first and impossible for the second.
+		{
+			int fds[2];
+			if (::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0) {
+				std::atomic<bool> stop{false};
+				// Terminates two ways, and needs both: the flag when the
+				// collector returns, and the count if it never does.
+				std::thread dribble([&] {
+					for (int i = 0; i < 100 && !stop.load(); ++i) {
+						const ssize_t w = ::write(fds[1], "\033[A", 3);
+						(void)w;
+						std::this_thread::sleep_for(
+						    std::chrono::milliseconds(20));
+					}
+				});
+				QElapsedTimer clock;
+				clock.start();
+				const TermCaps chatty = collect_caps(fds[0], fds[0], 100);
+				const qint64 took = clock.elapsed();
+				stop.store(true);
+				dribble.join();
+				::close(fds[0]);
+				::close(fds[1]);
+				printf("info: a 100 ms probe against a dribbling terminal"
+				       " took %lld ms\n", static_cast<long long>(took));
+				CHECK(took < 1000 && !chatty.answered,
+				      "a probe honours its timeout while bytes keep"
+				      " arriving");
+			}
+		}
 
 		// A terminal that has gone away. This one found a real fault rather
 		// than testing one: writing the query to a socket whose peer had

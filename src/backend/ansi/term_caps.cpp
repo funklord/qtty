@@ -5,6 +5,8 @@
 #include <poll.h>
 #include <unistd.h>
 
+#include <QElapsedTimer>
+
 namespace Qtty {
 namespace {
 
@@ -402,15 +404,36 @@ TermCaps collect_caps(int in_fd, int out_fd, int timeout_ms, QByteArray *raw,
 	}
 
 	QByteArray buf;
-	int remaining = timeout_ms;
-	while (remaining > 0 && buf.size() < 4096) {
+	// Charged against a CLOCK rather than against the slices that happened
+	// to expire. This budget was a counter decremented ONLY where poll()
+	// returned nothing, so every slice that found bytes advanced the wall
+	// clock and cost the budget nothing -- and the header's promise, "for at
+	// most timeout_ms", was kept only while the terminal was silent.
+	//
+	// Measured through a socketpair: three bytes every 30 ms, which is the
+	// shape of a held key repeating, held a 100 ms probe for **41.9
+	// seconds**. Raising the timeout does not help, because the timeout was
+	// never what bounded it -- the 4096-byte cap was, and it is reached one
+	// slice at a time.
+	//
+	// What a user sees is worse than a slow start. This runs after resume(),
+	// so the terminal is already in raw mode on the alternate screen with
+	// nothing drawn, and ISIG is cleared -- so the screen is blank, and
+	// Ctrl-C is not a signal while it lasts. It needs a terminal that does
+	// not answer the fence, which this tree has already measured inside
+	// tmux, plus any input arriving faster than the slice.
+	QElapsedTimer clock;
+	clock.start();
+	while (buf.size() < 4096) {
+		const qint64 left = qint64(timeout_ms) - clock.elapsed();
+		if (left <= 0) break;
 		pollfd p{};
 		p.fd = in_fd;
 		p.events = POLLIN;
-		const int slice = remaining < 50 ? remaining : 50;
+		const int slice = left < 50 ? int(left) : 50;
 		const int r = ::poll(&p, 1, slice);
 		if (r < 0) break;
-		if (r == 0) { remaining -= slice; continue; }
+		if (r == 0) continue;
 		char chunk[512];
 		const ssize_t got = ::read(in_fd, chunk, sizeof(chunk));
 		if (got <= 0) break;

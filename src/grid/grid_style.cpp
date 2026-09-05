@@ -704,15 +704,57 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 	// -- QRect calls it invalid, and QFrame derives its four widths from it.
 	// Below that the frame keeps Fusion's answer, which is wrong by less
 	// than an empty viewport is.
-	if ((se == SE_FrameContents || se == SE_ShapedFrameContents) && opt
-	    && r.isValid()) {
+	if ((se == SE_FrameContents || se == SE_ShapedFrameContents) && opt) {
 		const int ch = GridMetrics::ch();
 		const int fw = pixelMetric(PM_DefaultFrameWidth, opt, w);
 		if (r.top() - opt->rect.top() == fw
-		    && opt->rect.bottom() - r.bottom() == fw
-		    && opt->rect.height() >= 3 * ch)
-			return QRect(r.left(), opt->rect.top() + ch,
-			             r.width(), opt->rect.height() - 2 * ch);
+		    && opt->rect.bottom() - r.bottom() == fw) {
+			// Below three rows there is no room for two border rows AND a
+			// content row, so the content takes the whole rectangle. This
+			// used to keep Fusion's answer instead, with an r.isValid()
+			// guard above and a `height() >= 3 * ch` floor here, and the
+			// comment said Fusion's was "wrong by less than an empty
+			// viewport is".
+			//
+			// Measured, Fusion's answer IS an empty viewport: it insets by
+			// PM_DefaultFrameWidth on all four sides, which at two rows
+			// leaves nearly nothing and at one row is NEGATIVE. A
+			// QListWidget two rows tall drew its frame, drew its scroll
+			// bar, and drew no items at all -- 14 of 840 calls in the suite
+			// returned an invalid base rect and 229 more took the floor.
+			//
+			// The isValid() guard was the worse half, and it is the same
+			// mistake SE_LineEditContents below says in as many words that
+			// it refused to copy: r is invalid in precisely the case that
+			// needs correcting, so guarding on it declines exactly there.
+			if (opt->rect.height() >= 3 * ch)
+				return QRect(r.left(), opt->rect.top() + ch,
+				             r.width(), opt->rect.height() - 2 * ch);
+			// Below that, override ONLY where Qt's own answer is smaller
+			// than a single row -- which is where it stops being a viewport
+			// at all. The frame's border rows are given up rather than the
+			// content, because a list that shows its items inside a broken
+			// border is usable and a perfect border around nothing is not.
+			//
+			// Both halves of the condition are load-bearing. `r.height() <
+			// ch` is what separates a real shortage from a frame that is
+			// merely tight; the height being a whole number of rows is what
+			// keeps this away from a widget that has not been laid out yet.
+			//
+			// That second half is the one that had to be measured. Qt asks
+			// a widget about its frame before anything has sized it, at
+			// QWidget's default 100x30 -- and 30 px is not a whole number of
+			// 19 px rows, while every laid-out height in this style is,
+			// because GridSnap put it there. Without the test, a combo
+			// box's popup answered that question about its own unlaid-out
+			// self, collapsed its margins, and the collapse shrank it and
+			// kept it collapsed: measured, 76 px became 56, which is three
+			// rows less one pixel and no longer a whole number of anything.
+			if (opt->rect.height() > 0 && opt->rect.height() % ch == 0
+			    && r.height() < ch)
+				return QRect(r.left(), opt->rect.top(),
+				             r.width(), opt->rect.height());
+		}
 	}
 	// The VERTICAL half of a line edit's inset, from the same number and for
 	// the same reason. QLineEdit puts PM_DefaultFrameWidth into lineWidth and

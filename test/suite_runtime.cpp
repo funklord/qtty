@@ -963,6 +963,8 @@ int suite_runtime() {
 			if (line.contains(QStringLiteral("┌"))) top = line;
 			if (line.contains(QStringLiteral("└"))) bottom = line;
 		}
+		printf("info: popup height %d px, ch %d, remainder %d\n",
+		       h, GridMetrics::ch(), h % GridMetrics::ch());
 		CHECK(h > 0 && h % GridMetrics::ch() == 0,
 		      "a popup is a whole number of rows tall");
 		CHECK(!top.isEmpty() && !bottom.isEmpty()

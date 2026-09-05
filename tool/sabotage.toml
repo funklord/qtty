@@ -1,0 +1,88 @@
+# The sabotage spec: deliberate breakages, each naming the check that must
+# go red when it is applied.
+#
+# Every entry here was performed by hand first, and the check named is the
+# one that was watched failing. What this file adds is that nobody has to
+# remember: a check that quietly stops discriminating is caught by the next
+# `make sabotage` rather than by somebody happening to try it.
+#
+# `find` must appear exactly `count` times, and the run refuses when it does
+# not -- an anchor that has stopped being unique, or one retyped rather than
+# read out of the file, applies to the wrong place or to nothing at all, and
+# both look exactly like a check that cannot fail.
+#
+# `check` is matched against the suite's own FAIL line, so it is the check's
+# text rather than a line number. A line number in a spec is a fact with a
+# shelf life measured in commits.
+
+[[sabotage]]
+name = "text runs at the same origin are consecutive"
+file = "src/render/cell_paint.cpp"
+find = "if (row == last_row_ && q.x() > last_x_ && col < last_end_col_)"
+into = "if (row == last_row_ && q.x() >= last_x_ && col < last_end_col_)"
+count = 1
+check = "selecting a field's text does not draw it twice"
+
+[[sabotage]]
+name = "no wide-cluster overlap guard at all"
+file = "src/render/cell_paint.cpp"
+find = "if (row == last_row_ && q.x() > last_x_ && col < last_end_col_)"
+into = "if (false && row == last_row_ && q.x() > last_x_ && col < last_end_col_)"
+count = 1
+check = "a line edit keeps every one of them"
+
+[[sabotage]]
+name = "a menu's strips take QCommonStyle's ten pixels"
+file = "src/grid/grid_style.cpp"
+find = "\tcase PM_MenuTearoffHeight:                             return ch;"
+into = "\tcase PM_MenuTearoffHeight:                             return 10;"
+count = 1
+check = "a menu's tearoff and scroller are one row"
+
+[[sabotage]]
+name = "an overflowing tab bar keeps its scroll arrows"
+file = "src/grid/grid_style.cpp"
+find = "\tcase SH_TabBar_PreferNoArrows:                         return 1;"
+into = "\tcase SH_TabBar_PreferNoArrows:                         return 0;"
+count = 1
+check = "an overflowing tab bar puts no off-grid widget on the screen"
+
+[[sabotage]]
+name = "a line edit keeps QCommonStyle's four-sided inset"
+file = "src/grid/grid_style.cpp"
+find = "\tif (se == SE_LineEditContents && opt && r.top() > opt->rect.top()) {"
+into = "\tif (false && se == SE_LineEditContents && opt && r.top() > opt->rect.top()) {"
+count = 1
+check = "draws top- and bottom-aligned text there too"
+
+[[sabotage]]
+name = "a button's label is written with no budget"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t                       + elide_to_cells(strip_mnemonic(b->text),\n\t\t\t\t                                        qMax(0, bc.width() - 2))"
+into = "\t\t\t\t                       + strip_mnemonic(b->text)"
+count = 1
+check = "a button too narrow for its label keeps its closing bracket"
+
+[[sabotage]]
+name = "a slider click pages instead of setting"
+file = "src/grid/grid_style.cpp"
+find = "\tcase SH_Slider_AbsoluteSetButtons:                     return Qt::LeftButton;"
+into = "\tcase SH_Slider_AbsoluteSetButtons:                     return Qt::MiddleButton;"
+count = 1
+check = "a left click sets a slider to where it landed"
+
+[[sabotage]]
+name = "a short framed list keeps Qt's empty viewport"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t    && r.height() < ch)"
+into = "\t\t\t    && r.height() < 0)"
+count = 1
+check = "a framed list two rows tall shows it too"
+
+[[sabotage]]
+name = "the probe's budget is charged only while the terminal is silent"
+file = "src/backend/ansi/term_caps.cpp"
+find = "\t\tbuf.append(chunk, int(got));\n\t\tif (!caps_complete(buf)) continue;"
+into = "\t\tbuf.append(chunk, int(got));\n\t\tclock.start();\n\t\tif (!caps_complete(buf)) continue;"
+count = 1
+check = "a probe honours its timeout while bytes keep arriving"

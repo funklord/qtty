@@ -584,6 +584,43 @@ int suite_widgets() {
 			      "and a menu bar item does not write past its own cells");
 		}
 
+		// A framed scroll area shorter than three rows. SE_FrameContents
+		// insets by PM_DefaultFrameWidth on all four sides, so at two rows
+		// QCommonStyle's answer is a viewport of nearly nothing and at one
+		// row it is NEGATIVE -- and this style declined to correct either,
+		// because the branch carried an r.isValid() guard and a
+		// three-row floor. The comment said Fusion's answer was "wrong by
+		// less than an empty viewport is"; measured, Fusion's answer IS an
+		// empty viewport.
+		//
+		// Asserted on the ITEM TEXT rather than on the rectangle, because
+		// the rectangle being right is not the claim -- the claim is that
+		// a list two rows tall shows a list.
+		{
+			const auto rows_of = [&](int cells_tall) {
+				QListWidget lw;
+				lw.addItem(QStringLiteral("one"));
+				lw.addItem(QStringLiteral("two"));
+				lw.setFixedSize(6 * cw, cells_tall * ch);
+				show(lw, 8, cells_tall + 1);
+				CellBuffer b(8, cells_tall + 1);
+				render_once(lw, b);
+				return b.to_text();
+			};
+			const QString two = rows_of(2), four = rows_of(4);
+			printf("info: a 2-row list shows [%s]; a 4-row list shows"
+			       " [%s]\n",
+			       qPrintable(two.simplified()),
+			       qPrintable(four.simplified()));
+			// The 4-row case is the CONTROL: it must show an item either
+			// way, or a blank 2-row result would only prove the fixture
+			// was broken.
+			CHECK(four.contains(QStringLiteral("one")),
+			      "a framed list four rows tall shows its first item");
+			CHECK(two.contains(QStringLiteral("one")),
+			      "and a framed list two rows tall shows it too");
+		}
+
 		// A tab bar with more tabs than fit. Qt gives it two scroll
 		// QToolButtons sized from PM_TabBarScrollButtonWidth -- 16 px,
 		// which is 1.6 columns here -- and those two widgets are exempt

@@ -26,6 +26,7 @@
 #   make test-tools   -- the shipped tools and the example, RUN not just built
 #   make test-install -- install into a scratch root and check what landed
 #   make count-check  -- project.md's stated check count against the real one
+#   make sabotage     -- break the code on purpose; every check must go red
 #   make coverage F=x -- line coverage for src/**/x.cpp
 #   make check        -- style + test; what must pass before committing
 #   make style        -- the shared source gate and the project.md checks
@@ -360,6 +361,29 @@ test-screen: $(LIB)
 # milliseconds and runs before every commit.
 test-negotiate: $(NEGOTIATE)
 	@./tool/negotiate-check $(BUILD_DIR)
+
+# Every check in the suite, put to the question it cannot answer about
+# itself: would it have SPOKEN if the code had been wrong. tool/sabotage.toml
+# names deliberate breakages and, for each, the check that must go red.
+#
+# It is a target rather than a convention because a convention is obeyed
+# when somebody remembers. Every entry in that spec was performed by hand
+# once, watched failing, and then would have been forgotten -- and a check
+# that quietly stops discriminating looks exactly like a clean tree, which
+# is the one thing no green run can tell you.
+#
+# Out of `check` for the plainest reason: it rebuilds and re-runs the suite
+# once per entry, so it costs minutes where `check` costs milliseconds, and
+# `check` runs before every commit. Run it after touching a check, after
+# touching the code a check defends, and before believing a green suite that
+# has been green for a long time.
+#
+# It refuses on a dirty src/, test/ or include/, and that is not tidiness:
+# it edits source files and puts them back, and in a tree more than one
+# session works in, the file it would restore may be somebody else's work in
+# progress. --dirty-ok is there for the case where every line is yours.
+sabotage:
+	@python3 tool/sabotage.py $(SABOTAGE_ARGS)
 
 # The adoption path: a program built against the INSTALLED library, with
 # nothing from this tree. Out of `check` because it installs into a temporary
@@ -1052,4 +1076,4 @@ help:
 
 .PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks \
         version-check run install uninstall clean veryclean distclean help \
-        test-screen test-negotiate test-consume FORCE
+        test-screen test-negotiate test-consume sabotage FORCE

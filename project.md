@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-959 checks, 0 failures, under six configurations, all six re-run
+962 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6391,6 +6391,148 @@ followed, and it joined the installed list and the umbrella header.
 prefix now runs twice, once in a pty and once `--headless` through
 `NullBackend`, and asserts the captured frame holds its own label. With
 the header withheld from the install, the consumer does not compile.
+
+**`make sabotage` exists now** (2026-09-05), and it is the answer to a
+question this tree kept asking by hand. Every check here has been proved
+by breaking the code it defends and watching it go red -- and every one of
+those proofs was performed once, by whoever wrote the check, and then
+lost. A check that quietly stops discriminating looks exactly like a clean
+tree, which is the one thing no green run can tell you.
+
+`tool/sabotage.toml` names nine deliberate breakages and, for each, the
+check that must fail when it is applied. `tool/sabotage.py` applies them
+one at a time, rebuilds, runs the suite, and reports. It refuses rather
+than reports in three cases, each of which is a way a run of it could
+lie:
+
+- **The substitution did not land.** A sabotage that did not apply and a
+  check that cannot fail are indistinguishable from the output -- both
+  give a green suite -- so the anchor's occurrence count is asserted
+  before anything is written and read back after. An anchor that has
+  stopped being unique applies to the wrong place; one retyped rather
+  than read out of the file applies to nothing.
+- **The named check was already failing.** Then its failure says nothing
+  about the sabotage, so the baseline run must have it passing, exactly
+  once.
+- **The tree is dirty.** It edits source files and puts them back, and in
+  a tree more than one session works in the file it would restore may be
+  somebody else's work in progress. `--dirty-ok` is there for the case
+  where every line is yours.
+
+**It was made to fail before it was believed**, which is the rule it
+exists to enforce applied to itself: a check was weakened to `CHECK(true,
+...)` on purpose, the sabotage applied, and the harness reported *the code
+was broken and nothing noticed*. `--only` exists so that control is
+affordable -- a full sweep is one build and one suite run per entry.
+
+Two things it caught immediately, neither of them a sabotage. It read the
+build's status before judging the suite, so a `libqtty.a` left
+inconsistent by a concurrent build in another session became a refusal
+rather than a phantom test failure. And its dirty-tree refusal fired on a
+tree another session was mid-edit in -- the case it was written for,
+arriving within the hour.
+
+**What two more sweeps found, both fixed** (2026-09-05). Each lens was
+derived from the previous day's defect rather than chosen from a list,
+which is the practice `working-practice.md` asks for, and both paid out.
+
+**From the `>=` that admitted an overdraw: a probe that ignores its own
+timeout.** `collect_caps()` promised in its header to gather replies "for
+at most `timeout_ms`", and charged its budget with `remaining -= slice`
+in exactly one place -- the branch where `poll()` returned NOTHING. Every
+slice that found bytes advanced the wall clock and cost the budget
+nothing, so the only real bound was the 4096-byte cap, reached one slice
+at a time. Measured through a socketpair: **three bytes every 30 ms, the
+shape of a held key repeating, held a 100 ms probe for 41.9 seconds.**
+Raising `QTTY_PROBE_MS` does not help, because the timeout was never what
+bounded it.
+
+What that costs a user is worse than a slow start. The probe runs after
+`resume()`, so the terminal is already in raw mode on the alternate
+screen with nothing drawn and `ISIG` cleared: the screen is blank and
+Ctrl-C is not a signal while it lasts. It needs a terminal that does not
+answer the fence -- which this tree has already measured inside tmux, and
+which is why the retry exists -- plus any input arriving faster than the
+50 ms slice. It is charged against a `QElapsedTimer` now.
+
+**The suite could not have caught it, and the reason is the recurring
+one.** All four existing `collect_caps` checks write one burst and then go
+quiet, and a silent peer charges the old budget correctly. Every one was
+on the safe side of the hazard. The new check dribbles.
+
+**From the empty clip that masked a defect: a framed list that shows no
+list.** `SE_FrameContents` insets by `PM_DefaultFrameWidth` on all four
+sides, so a scroll area two rows tall got a viewport of 18 px -- less than
+one row -- and one row tall got a NEGATIVE one. This style declined to
+correct either, because its branch carried an `r.isValid()` guard and a
+three-row floor, and the comment beside it said Fusion's answer was
+"wrong by less than an empty viewport is". Measured, **Fusion's answer IS
+an empty viewport**: a `QListWidget` two rows tall drew its frame, drew
+its scroll bar, and drew no items at all. 14 of 840 calls in one suite run
+returned an invalid base rect and 229 more took the floor.
+
+**The `isValid()` guard is the sharper half, because it declines exactly
+where the correction is needed** -- and it is the same mistake
+`SE_LineEditContents` says in as many words, forty lines below, that it
+refused to copy: *"r is invalid in precisely the case being fixed, and
+copying the one above would make this a no-op at one row."* The one above
+was still there, written by the session that wrote the sentence.
+
+The fix gives up the frame's border rows rather than the content, and is
+narrowed twice. `r.height() < ch` separates a real shortage from a frame
+that is merely tight. And **the height must be a whole number of rows**,
+which had to be measured: Qt asks a widget about its frame before
+anything has sized it, at QWidget's default 100x30, and 30 px is not a
+whole number of 19 px rows while every laid-out height here is, because
+GridSnap put it there. Without that test a combo box's popup answered the
+question about its own unlaid-out self, collapsed its margins, and the
+collapse shrank it and kept it collapsed -- 76 px became 56, three rows
+less one pixel. The popup check caught it, which is the second time in
+two days that fixing one geometry fault has been caught by another's
+check.
+
+**What those sweeps found and I did NOT fix**, recorded so the next
+reader has the list rather than the lenses:
+
+    crop_placement          graphics.cpp computes px_w as an integer
+                            division of image width by cell width, so a
+                            picture stretched over more cells than it has
+                            source pixels gets px_w = 0, an empty source
+                            rect, and all three transmitters read that as
+                            "wholly off screen". Measured at unit level: a
+                            7x3 px image over 8x3 cells is visible at rest
+                            and GONE once one cell leaves the screen. The
+                            drop counter fired 0 times in the suite, so
+                            the path is untested; the route to it is named
+                            but was not driven end to end.
+    Overlay::set_rect       QRectF::isNull() is width and height both
+                            zero, and overlay_cell_rect() reads null as
+                            "the whole terminal". So set_rect(5,5,0,0)
+                            gives a full-screen overlay and set_rect(
+                            5,5,8,0) gives silence -- one pixel of
+                            arithmetic apart, and neither says anything.
+                            Both measured; neither counter fires in the
+                            suite.
+    a one-cell scroll bar   drawComplexControl returns without drawing
+                            anything when the groove is under two cells,
+                            which is 45 of 147 scroll-bar draws in the
+                            suite. Defensible -- there is nothing sensible
+                            to put in one cell -- but worth knowing, and
+                            it compounded the framed-list fault above.
+    render_now              rasterize_into() can return a null rect and
+                            the caller feeds it to setClipRect() without
+                            looking, which would drop every image and
+                            overlay from the software composite and ship
+                            stale pixels. Measured that the expression
+                            does clip everything away; measured that it
+                            never happens today, 0 of 60 calls.
+    scan_osc11              returns where its sibling scan_osc4 continues,
+                            abandoning the search for a later OSC 11 reply
+                            in the same buffer. Read, not measured.
+    encode_kitty_virtual    appears to emit continuation chunks with a
+                            leading comma where kitty_chunks does not.
+                            Read, not measured, and not checked against
+                            the kitty specification.
 
 **What four more sweeps found, all six of them now fixed** (2026-09-05).
 The list was recorded first and read-verified only; the copyright holder

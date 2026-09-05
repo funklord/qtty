@@ -36,6 +36,22 @@ compile_commands.json
 # but fmake appends the bare line itself, so this says why.
 .fmake/
 
+# And the PROGRAMS that build produces, which land at the repository root
+# because fmake names a program after its root TU and puts it beside the
+# tree. The object cache above was ignored and these were not, so a reader
+# following the README's fmake line ended up with five untracked binaries
+# at the root -- exactly the build output a blanket `git add` sweeps in,
+# and the reason staging here is by name. Measured 2026-09-05 by running it.
+#
+# Named rather than globbed: the list is knowable, it is the same list
+# fmake prints when it finishes, and a glob at a repository root is a
+# promise about the future nobody checked.
+/chat
+/qtty-inspect
+/qtty-negotiate
+/qtty-replay
+/screen-probe
+
 # Harness state: agent worktrees and session scratch. Untracked and, until
 # now, unignored -- so `git status --porcelain`, which is the one thing this
 # project reads before every commit, opened with `?? .claude/` covering four
