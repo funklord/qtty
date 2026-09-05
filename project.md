@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-972 checks, 0 failures, under six configurations, all six re-run
+976 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6593,24 +6593,80 @@ and what was tried written down. The fallback remains unreached.
 
 **What is left, recorded rather than fixed:**
 
-    a one-cell scroll bar   drawComplexControl returns without drawing
-                            anything when the groove is under two cells,
-                            which is 45 of 147 scroll-bar draws in the
-                            suite. Defensible -- there is nothing sensible
-                            to put in one cell -- but worth knowing, and
-                            it compounded the framed-list fault above.
-    render_now              rasterize_into() can return a null rect and
-                            the caller feeds it to setClipRect() without
-                            looking, which would drop every image and
-                            overlay from the software composite and ship
-                            stale pixels. Measured that the expression
-                            does clip everything away; measured that it
-                            never happens today, 0 of 60 calls.
-    InputRouter::on_mouse   geometry().contains() is false for every point
-                            when the geometry is empty, which for a modal
-                            would swallow every click while the dialog
-                            still holds input. Read, not measured, and
-                            flagged as a candidate rather than a finding.
+**All three were measured on 2026-09-05, and two of the three readings
+were wrong in the direction the brief predicted.** Two are fixed; the
+third is corrected in place rather than fixed, because the harm recorded
+for it does not follow.
+
+    an empty modal          FIXED. The rule that drops a click outside
+                            activeModalWidget() met a rectangle that
+                            contains no point at all, so a dialog with an
+                            empty geometry swallowed every click on every
+                            cell -- measured, 0 of 640 landed anywhere --
+                            while is_compositable() refused to draw it.
+                            Invisible and holding the pointer, which the
+                            compositor's own modal comment calls the worst
+                            of both. With a plain modal QWidget there is
+                            no reject() and so no way out at all.
+
+                            The reading called this an application's bug
+                            faithfully reproduced. It is qtty's: measured
+                            under xcb on a real X server, Qt does NOT
+                            register such a window as modal when it has a
+                            platform window, so the clicks get through. It
+                            is modal here only because every qtty window
+                            carries WA_DontShowOnScreen. The same
+                            application code is harmless on the desktop
+                            and locks a terminal.
+
+                            The MOUSE only. key_target() has the same
+                            divergence, and keys reaching the empty modal
+                            are what let Escape close a QDialog.
+    a one-cell scroll bar   FIXED, and the premise recorded for leaving it
+                            was wrong. "There is nothing sensible to put
+                            in one cell" already fails a cell higher up:
+                            at TWO cells the control draws both arrow
+                            heads and no position at all, so the guard was
+                            not withholding position information, only the
+                            last "a bar is here". It is reached by qtty's
+                            OWN documented hint -- setting "qtty.cells" to
+                            1x1 is how an application asks for a one-cell
+                            control, and asking produced an invisible one
+                            -- and by a table with both bars in a two-row
+                            slot. One glyph now says which end the view is
+                            at, or that it is between. CC_ToolButton
+                            settles the same question three arms away in
+                            the same function and the other way round.
+    render_now              LEFT, and the entry that stood here was wrong
+                            twice. It said the null rect never happens:
+                            that was a measurement of the SUITE, and it is
+                            reachable through the public API -- exec() on
+                            a kitty terminal with an Overlay set wholly
+                            off the grid produces it on every frame from
+                            the third. And it said the consequence is that
+                            every image and overlay is dropped and stale
+                            pixels shipped: that cannot occur. The clipped
+                            rect is the bounding box of a union containing
+                            exactly the rectangles the clip then gates, so
+                            it can miss the grid only when all of them do;
+                            measured with an on-grid placement present, 13
+                            frames and never null. present_pixels()
+                            intersects the region back to the grid and
+                            sends nothing. The cost is a wasted compose,
+                            not a wrong screen.
+
+                            What would make it matter, so the next person
+                            knows what to watch: a CellImage whose pixmap
+                            is larger than its cell_rect, or anything new
+                            drawn under that clip which pixel_damage()
+                            does not see.
+
+**Both wrong readings failed the same way, and it is the way this
+document keeps recording.** One named a consequence and missed that
+qtty's own stamping creates the condition, so it read as somebody else's
+bug. The other named a consequence that cannot occur while calling
+reachable code unreachable. Neither was careless; both were read rather
+than run.
 
 **What four more sweeps found, all six of them now fixed** (2026-09-05).
 The list was recorded first and read-verified only; the copyright holder

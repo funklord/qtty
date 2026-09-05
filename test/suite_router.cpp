@@ -534,6 +534,54 @@ int suite_router() {
 		QCoreApplication::processEvents();
 		CHECK(fired == 1, "Return in the submenu fires its item, not the parent's");
 	}
+	// A modal with an EMPTY geometry. The rule above drops every click
+	// outside the modal, and an empty rectangle contains no point at all --
+	// so such a dialog swallows every click on every cell of the terminal
+	// while Compositor::is_compositable() refuses to draw it. Invisible and
+	// holding the pointer, which the compositor's own modal comment calls
+	// the worst of both.
+	//
+	// What makes it qtty's rather than the application's: Qt does NOT make
+	// such a window modal on the desktop -- activeModalWidget() is null and
+	// the clicks get through. It becomes modal only under
+	// WA_DontShowOnScreen, which qtty stamps on every window. The same
+	// application code is harmless with a platform window and locks a
+	// terminal without one.
+	//
+	// The CONTROL is the ordinary modal beside it: real modality must still
+	// block, or this would be "fixed" by not blocking at all.
+	{
+		const auto clicks_through = [&](bool empty) {
+			QWidget h;
+			h.setAttribute(Qt::WA_DontShowOnScreen);
+			int fired = 0;
+			auto *b = new QPushButton(QStringLiteral("root"), &h);
+			b->setGeometry(0, 0, cw * 6, ch);
+			QObject::connect(b, &QPushButton::clicked, [&] { ++fired; });
+			h.resize(GridMetrics::cells(20, 6));
+			h.show();
+			QWidget d(&h, Qt::Dialog);
+			d.setAttribute(Qt::WA_DontShowOnScreen);
+			d.setWindowModality(Qt::ApplicationModal);
+			if (empty) d.setFixedSize(0, 0);
+			else d.setGeometry(cw * 8, ch * 2, cw * 8, ch * 2);
+			d.show();
+			QCoreApplication::processEvents();
+			InputRouter r(&h);
+			r.on_mouse({QPoint(1, 0), 1, true, false, false, 0});
+			r.on_mouse({QPoint(1, 0), 1, false, true, false, 0});
+			QCoreApplication::processEvents();
+			return fired;
+		};
+		const int blocked = clicks_through(false);
+		const int empty = clicks_through(true);
+		printf("info: a click under a modal fires the button %d time(s);"
+		       " under an EMPTY modal %d\n", blocked, empty);
+		CHECK(blocked == 0, "a real modal blocks a click on the window under it");
+		CHECK(empty == 1,
+		      "and one with no geometry blocks nothing, being on no screen");
+	}
+
 	// Tab when NOTHING has focus yet, which is the state a window is in the
 	// moment it opens. Every other focus check here sets focus first, so this
 	// arrangement had none at all.

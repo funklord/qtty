@@ -1700,7 +1700,41 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			if (auto *sb = qstyleoption_cast<const QStyleOptionSlider *>(opt)) {
 				const bool vert = sb->orientation == Qt::Vertical;
 				const int len = vert ? c.height() : c.width();
-				if (len < 2) return;
+				if (len <= 0) return;
+				// ONE cell says a bar is there, which is more than a blank
+				// cell says. This returned below two, so an application
+				// using qtty's own "qtty.cells" hint to ask for a one-cell
+				// scroll bar got an invisible control -- and so did a table
+				// with both bars in a two-row slot, the horizontal one
+				// taking the vertical one's second row.
+				//
+				// The premise that nothing sensible fits already fails a
+				// cell higher up: at TWO cells the loop below draws both
+				// arrow heads and no position at all, so the guard was not
+				// withholding position, only the last "a bar is here".
+				// CC_ToolButton settles the same question three arms away
+				// and the other way -- two cells of [] say a button is here
+				// and nothing else, and that is more than two blank cells
+				// say.
+				//
+				// The glyph carries what one cell can: which end the view
+				// is at, or that it is somewhere between.
+				if (len == 1) {
+					const int range = sb->maximum - sb->minimum;
+					QString g;
+					if (range <= 0)
+						g = QStringLiteral("░");
+					else if (sb->sliderPosition <= sb->minimum)
+						g = vert ? QStringLiteral("▼") : QStringLiteral("▶");
+					else if (sb->sliderPosition >= sb->maximum)
+						g = vert ? QStringLiteral("▲") : QStringLiteral("◀");
+					else
+						g = QStringLiteral("█");
+					dev->buffer().put_cluster(c.left(), c.top(), g, Color(),
+					                          Color(),
+					                          with_state(opt) | focus_attrs(w));
+					return;
+				}
 				const int track = len - 2;
 				const int span = sb->maximum - sb->minimum;
 				int thumb_len = 1, thumb_pos = 0;

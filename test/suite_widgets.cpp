@@ -584,6 +584,43 @@ int suite_widgets() {
 			      "and a menu bar item does not write past its own cells");
 		}
 
+		// A scroll bar squeezed to ONE cell. The control returned without
+		// drawing anything at all below two cells, so the cell was blank and
+		// nothing said the view scrolls.
+		//
+		// It is reached by qtty's own documented hint: setting the
+		// "qtty.cells" property to 1x1 is how an application says a control
+		// needs one cell, and saying it produced an invisible control. A
+		// table with both bars in a two-row slot reaches it too, the
+		// horizontal bar taking the vertical one's second row.
+		//
+		// The two-cell CONTROL is what makes this mean anything: at two
+		// cells the arrows are drawn and no position at all, so the guard
+		// was not withholding position information -- it was withholding
+		// the last "a bar is here". The same argument CC_ToolButton settles
+		// three arms away in this function, the other way round: "two cells
+		// of [] say a button is here and nothing else, and that is more
+		// than two blank cells say".
+		{
+			const auto bar_cells = [&](int rows) {
+				QScrollBar sb(Qt::Vertical);
+				sb.setRange(0, 100);
+				sb.setValue(50);
+				sb.setFixedSize(cw, rows * ch);
+				show(sb, 3, rows + 1);
+				CellBuffer b(3, rows + 1);
+				render_once(sb, b);
+				return b.to_text().trimmed();
+			};
+			const QString one = bar_cells(1), two = bar_cells(2);
+			printf("info: a scroll bar draws [%s] at one cell and [%s] at"
+			       " two\n", qPrintable(one.simplified()),
+			       qPrintable(two.simplified()));
+			CHECK(!two.isEmpty(), "a two-cell scroll bar draws something");
+			CHECK(!one.isEmpty(),
+			      "and a one-cell scroll bar says a bar is there");
+		}
+
 		// A framed scroll area shorter than three rows. SE_FrameContents
 		// insets by PM_DefaultFrameWidth on all four sides, so at two rows
 		// QCommonStyle's answer is a viewport of nearly nothing and at one

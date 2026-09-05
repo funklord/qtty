@@ -526,7 +526,26 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 		return;
 	}
 	if (!top) {
-		if (QWidget *modal = QApplication::activeModalWidget()) {
+		// A modal with an EMPTY geometry is not on the screen -- compose()'s
+		// is_compositable() refuses to draw it -- so it does not own the
+		// pointer either. Without this test the two rules disagreed: one said
+		// the layer was not drawn, the other said it owned every click, and
+		// the rectangle below contains no point at all. Measured, every click
+		// on every cell of the terminal was dropped and reached nothing.
+		//
+		// It is qtty's to fix rather than the application's. Qt does not
+		// register such a window as modal when it has a platform window --
+		// activeModalWidget() is null on the desktop and the clicks get
+		// through -- and it does here only because every qtty window carries
+		// WA_DontShowOnScreen. Falling through is what the same application
+		// already does everywhere else.
+		//
+		// Deliberately the MOUSE only. key_target() has the same divergence,
+		// and keys reaching the empty modal are what let Escape close a
+		// QDialog; redirecting those too would take away the one way out.
+		QWidget *const active = QApplication::activeModalWidget();
+		if (QWidget *modal = (active && !active->geometry().isEmpty())
+		                         ? active : nullptr) {
 			// section 8.3: input outside activeModalWidget() is dropped before
 			// dispatch. key_target() already gives keys to the modal, but a
 			// click carries a position and had no such rule, so it went to

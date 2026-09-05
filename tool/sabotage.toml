@@ -118,3 +118,19 @@ find = "\treturn kitty_chunks(ctrl, b64);"
 into = "\tQByteArray out;\n\tconst int chunk = 4096;\n\tfor (int off = 0; off < b64.size(); off += chunk) {\n\t\tconst QByteArray part = b64.mid(off, chunk);\n\t\tconst bool more = off + chunk < b64.size();\n\t\tout += off == 0 ? QByteArray(\"\\033_G\") + ctrl : QByteArray(\"\\033_G\");\n\t\tout += \",m=\" + QByteArray::number(more ? 1 : 0) + ';' + part + \"\\033\\\\\";\n\t}\n\treturn out;"
 count = 1
 check = "no chunk's control data opens with an empty item"
+
+[[sabotage]]
+name = "an empty modal still owns the pointer"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (QWidget *modal = (active && !active->geometry().isEmpty())\n\t\t                         ? active : nullptr) {"
+into = "\t\tif (QWidget *modal = active) {"
+count = 1
+check = "one with no geometry blocks nothing, being on no screen"
+
+[[sabotage]]
+name = "a one-cell scroll bar draws nothing"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tif (len <= 0) return;"
+into = "\t\t\t\tif (len < 2) return;"
+count = 1
+check = "a one-cell scroll bar says a bar is there"
