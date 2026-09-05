@@ -160,10 +160,21 @@ int Color::luminance(bool is_foreground) const {
 	case Default: return is_foreground ? 210 : 20;        // conventional dark theme
 	case Rgb:     return (qRed(rgb_) * 299 + qGreen(rgb_) * 587 + qBlue(rgb_) * 114) / 1000;
 	case Indexed: {
-		if (index_ < 16) {
-			// The system colours are the terminal's to re-map, so their
-			// luminance is a judgement about what terminals actually show
-			// rather than arithmetic on the table above.
+		if (index_ < 16 && s_palette.isEmpty()) {
+			// The system colours are the terminal's to re-map, so where it
+			// has NOT said what they are, their luminance is a judgement
+			// about what terminals actually show rather than arithmetic on
+			// the table above. Note it is not that arithmetic: index 12 is
+			// listed at 96 where the formula on 0x0000ff gives 29, which is
+			// deliberate and is why the table stays for the unasked case.
+			//
+			// Where the terminal HAS answered OSC 4, its own scheme is the
+			// better answer and the table is a guess about a machine that is
+			// standing right there. to_ansi16() already consults it -- one
+			// function honouring the reported palette and the other, applied
+			// to its output, not. It bit hardest at Ansi16, where quantise()
+			// turns every colour into an index below 16, so the whole
+			// contrast check ran on a table the terminal had contradicted.
 			static const int system_luminance[16] = {0,32,80,96,32,48,80,192,
 				                           128,96,180,220,96,150,200,255};
 			return system_luminance[index_];

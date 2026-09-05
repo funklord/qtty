@@ -237,6 +237,29 @@ int suite_theme() {
 		CHECK(fresh.to_ansi16() != xterm_answer,
 		      "which is a different answer, or this proves nothing");
 
+		// And luminance follows the same answer, which it did not. That
+		// function kept its own table for indices below 16 -- so one
+		// function honoured the reported palette and the other, applied to
+		// its OUTPUT, contradicted it. It bites hardest at Ansi16, where
+		// quantise() turns every colour into an index below 16 and the whole
+		// contrast check therefore ran on a table the terminal had answered
+		// against.
+		//
+		// In this scheme index 1 is that mid-blue and index 7 is near-white,
+		// so the pair is legible; the built-in table calls index 1 red at 32
+		// and index 7 at 192. The assertion is the RELATIONSHIP -- the
+		// judgement follows the scheme the terminal stated -- rather than
+		// either number.
+		printf("info: with the scheme, index 1 reads %d and index 7 %d\n",
+		       Color::indexed(1).luminance(false),
+		       Color::indexed(7).luminance(true));
+		CHECK(Color::indexed(1).luminance(false)
+		          == Color::rgb(qRgb(40, 40, 200)).luminance(false)
+		      && Color::indexed(7).luminance(true)
+		          == Color::rgb(qRgb(200, 200, 200)).luminance(true),
+		      "an indexed colour's luminance is the terminal's own, where it"
+		      " said what it is");
+
 		// Cleared, and the built-in table stands again -- which is what a
 		// terminal that never answered gets, and what this assumed before it
 		// could ask.
@@ -244,6 +267,13 @@ int suite_theme() {
 		CHECK(Qtty::terminal_palette().isEmpty() &&
 		      Color::rgb(qRgb(40, 40, 200)).to_ansi16() == xterm_answer,
 		      "and clearing it restores the built-in table");
+		// Including for luminance, whose table is NOT arithmetic on the
+		// built-in colours -- index 12 is listed at 96 where the formula on
+		// 0x0000ff gives 29 -- so this also pins that the judgement, rather
+		// than a computation, is what a terminal that never answered gets.
+		CHECK(Color::indexed(12).luminance(false) == 96,
+		      "and an unasked terminal keeps the judged table, not the"
+		      " arithmetic");
 
 		// A short answer is refused rather than padded: half a user's scheme
 		// and half xterm's is a palette no terminal has.

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-925 checks, 0 failures, under six configurations, all six re-run
+927 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6148,6 +6148,36 @@ there. `make` first, then judge.
 What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
+
+**One function honoured the terminal's palette and the next, applied to
+its output, contradicted it** (2026-09-05). `to_ansi16()` matches a
+colour against the sixteen the terminal reported through OSC 4 -- pinned
+by a check that says so -- and `luminance()` then judged the resulting
+index against a hardcoded table.
+
+It bites hardest exactly where the whole check runs: under `Ansi16`,
+`quantise()` turns every colour into an index below 16, so every contrast
+verdict was measured against a table the terminal had already
+contradicted. Both error directions occur, and neither is visible from
+inside the function.
+
+    with the terminal's scheme   index 1 reads 58, index 7 reads 200
+    with the built-in table      index 1 reads 32, index 7 reads 192
+
+The table stays for a terminal that never answered, and the check pins
+that too -- it is deliberately NOT arithmetic on the built-in colours
+(index 12 is listed at 96 where the formula on 0x0000ff gives 29), so
+falling back to computation would have been a different answer, not the
+same one.
+
+**The other half of that finding was verified and left alone.**
+`luminance()` for a `Default` colour returns a hardcoded pair, 210 and
+20, assuming a dark ground -- and on a light terminal that inverts. The
+data exists: OSC 11 is asked, `bg_known` is set, and the image compositor
+already uses it. It is not fixed here because it needs a second piece of
+global state beside the palette and a decision about what the FOREGROUND
+of an unstated Default is, which is a design question rather than a
+one-condition repair. Recorded with what would settle it.
 
 **A disabled widget's fill went out as a hard 24-bit colour**
 (2026-09-05). `CellPaintEngine`'s fill path carried its own copy of the
