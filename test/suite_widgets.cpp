@@ -543,6 +543,43 @@ int suite_widgets() {
 			      "and writes none of them past the edge of the view");
 		}
 
+		// A CHECKABLE group box, which is a different drawing from a plain
+		// one: CC_GroupBox is not drawn by this style, so QCommonStyle draws
+		// the title and then the indicator, in that order. The title goes
+		// into SC_GroupBoxLabel -- the whole top row here, with nothing
+		// reserved -- and QCommonStyle forces AlignHCenter, which beats
+		// QGroupBox's AlignLeft. The indicator then lands at eight PIXELS
+		// in, which rounds to cell 1, and overwrites the centred title's
+		// first letters.
+		//
+		// Fourteen cells, and the width is the discriminating part: the
+		// title is centred, so it only reaches the indicator's cells when
+		// the box is narrow enough. "Advanced" is eight cells, so a box of
+		// 24 renders correctly today and would prove nothing.
+		{
+			QWidget host;
+			auto *box = new QGroupBox(QStringLiteral("Advanced"), &host);
+			box->setCheckable(true);
+			box->setMinimumSize(0, 0);
+			box->setGeometry(2 * cw, 1 * ch, 14 * cw, 4 * ch);
+			show(host, 20, 7);
+			CellBuffer gb(20, 7);
+			render_once(host, gb);
+
+			const QPoint title = findText(gb, QStringLiteral("Advanced"));
+			// [x], not [ ]: a checkable QGroupBox starts checked.
+			const QPoint mark = findText(gb, QStringLiteral("[x]"));
+			printf("info: a checkable group box puts its indicator at %d,%d and its"
+			       " title at %d,%d\n", mark.x(), mark.y(),
+			       title.x(), title.y());
+
+			CHECK(title.x() >= 0,
+			      "a checkable group box's title survives its own check box");
+			CHECK(mark.x() >= 0 && title.x() >= 0 && mark.y() == title.y()
+			      && title.x() > mark.x() + 2,
+			      "and begins after the indicator rather than under it");
+		}
+
 		const QPoint on = findText(b, QStringLiteral("[x]"));
 		const QPoint off = findText(b, QStringLiteral("[ ]"));
 		CHECK(on.x() >= 0 && off.x() >= 0, "table draws check state as [x] and [ ]");

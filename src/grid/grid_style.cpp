@@ -859,9 +859,25 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		// untitled one has no title row to spend.
 		const QRect r = opt->rect;
 		const int title = title_rows(opt);
+		const bool checkable = opt->subControls & SC_GroupBoxCheckBox;
 		switch (sc) {
-		case SC_GroupBoxLabel:
-			return title ? QRect(r.left(), r.top(), r.width(), ch) : QRect();
+		// The indicator's own cells. QCommonStyle places it at eight PIXELS
+		// in -- cell 1 at a ten-pixel cell, cell 2 at a four-pixel one --
+		// and draws it AFTER the title, so it overwrote whatever the title
+		// had put there. Measured on a fourteen-cell box titled "Advanced":
+		// the buffer read "[x]anced".
+		case SC_GroupBoxCheckBox:
+			return checkable ? QRect(r.left(), r.top(), 3 * cw, ch) : QRect();
+		// And the title starts after it. Reserving the cells is the half
+		// that makes the fix sound at any cell size: moving the indicator
+		// alone would leave the title centred across it again on a box
+		// narrow enough, which is exactly the case this was found in.
+		case SC_GroupBoxLabel: {
+			const int in = checkable ? 4 * cw : 0;
+			return title ? QRect(r.left() + in, r.top(),
+			                     qMax(cw, r.width() - in), ch)
+			             : QRect();
+		}
 		case SC_GroupBoxFrame:
 			return QRect(r.left(), r.top() + title * ch,
 			             r.width(), qMax(2 * ch, r.height() - title * ch));

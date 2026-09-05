@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-936 checks, 0 failures, under six configurations, all six re-run
+938 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6148,6 +6148,39 @@ there. `make` first, then judge.
 What separated the first from a real finding was a control: a plain
 `xterm -bg white -e sh -c 'echo HELLO'` in the same harness drew 32575
 white pixels. xterm draws under Xvfb; my invocation was what did not.
+
+**A checkable group box wrote its indicator over its own title**
+(2026-09-05). `CC_GroupBox` is not drawn by this style, so QCommonStyle
+draws it -- the title first, into `SC_GroupBoxLabel`, then the indicator.
+The label rect here was the WHOLE top row with nothing reserved, and
+QCommonStyle forces `AlignHCenter`, which beats `QGroupBox`'s own
+`AlignLeft`. The indicator then lands at eight PIXELS in, which rounds to
+cell 1, and overwrites whatever the centred title had put there.
+
+Measured on a fourteen-cell box titled "Advanced", the buffer read:
+
+    [x]anced
+
+The first three letters gone. It is `[x] Advanced` now -- indicator at
+cell 2, title at cell 6.
+
+**Both halves were needed and the reason is the interesting part.** Giving
+the indicator its own cells is not enough: the title is still centred
+across the whole row and lands on it again on a box narrow enough, which
+is exactly the case this was found in. Reserving four cells in the label
+rect is what makes the fix hold at any cell size, since the indicator's
+column is `qRound(8/cw)` -- 0 at a twenty-pixel cell, 1 at ten, 2 at four.
+
+**The width is the discriminating part of the fixture.** The title is
+centred, so it only reaches the indicator's cells when the box is narrow:
+"Advanced" is eight cells, and a box of 24 renders correctly today. The
+check uses 14 and says so.
+
+**And the first version of the check looked for the wrong glyph.** A
+checkable `QGroupBox` starts CHECKED, so it draws `[x]`, and a fixture
+searching for `[ ]` found neither that nor the title and failed for two
+reasons at once. Dumping the buffer took one run and showed the answer;
+guessing at the fixture would have taken several.
 
 **Nothing checked that the library could be USED** (2026-09-05). The tree
 had `install` and `test-install`, which prove the files land and are
