@@ -244,6 +244,43 @@ int suite_runtime() {
 		}
 	}
 
+	// Where Qt puts a menu on a terminal WIDER than the offscreen QScreen.
+	// QMenu::popup() clamps its result into screen()->availableGeometry(),
+	// and the offscreen platform's screen is a fixed 800x800 -- which at a
+	// 10x19 cell is 80 columns by 42 rows. A maximised terminal on an
+	// ordinary display is around 200x55, so the clamp is not an edge case:
+	// it is where most users are.
+	//
+	// The compositor takes a popup's own geometry as the anchor, so a menu
+	// Qt has already moved is drawn where Qt moved it -- detached from the
+	// item that opened it, by as many columns as the terminal is wide.
+	//
+	// Asserted as the RELATIONSHIP between where it was asked for and where
+	// it went, not as a column number, which would be measuring this test's
+	// arithmetic.
+	{
+		QMenu m(QStringLiteral("Wide"));
+		m.addAction(QStringLiteral("Item"));
+		// 100 columns by 26 rows, which is (1000, 494) px. Chosen to sit
+		// beyond the 800x800 default and inside the 1280x1024 Xvfb screen
+		// the xcb arm runs on, so the check discriminates the fix on BOTH
+		// platforms rather than asserting a property only true where qtty
+		// owns the screen. The first version asked for column 150, which is
+		// off a real 1280-pixel display -- so it failed under xcb, and it
+		// was right to: a real screen genuinely has an edge.
+		const QPoint asked(100 * cw, 26 * ch);
+		m.popup(asked);
+		QCoreApplication::processEvents();
+		const QPoint got = m.geometry().topLeft();
+		printf("info: a menu asked for px (%d,%d) was placed at (%d,%d)\n",
+		       asked.x(), asked.y(), got.x(), got.y());
+		m.close();
+		QCoreApplication::processEvents();
+		CHECK(got == asked,
+		      "a menu opens where it was asked to, past the 80 columns the"
+		      " offscreen platform defaults to");
+	}
+
 	// ------------------------------------------------------ GridGuard (5.3/9)
 	{
 		GridGuard::install(*qApp);

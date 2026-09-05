@@ -155,7 +155,51 @@ void prepare_environment() {
 	// The override is therefore a qtty-specific variable, which no desktop
 	// sets by accident and no user has already exported for another reason.
 	const QByteArray want = qgetenv("QTTY_QPA_PLATFORM");
-	qputenv("QT_QPA_PLATFORM", want.isEmpty() ? QByteArray("offscreen") : want);
+	QByteArray platform = want.isEmpty() ? QByteArray("offscreen") : want;
+
+	// And the offscreen platform is given a SCREEN nothing can exceed.
+	//
+	// Its default is 800x800, which at a 10x19 cell is 80 columns by 42
+	// rows -- and Qt clamps a menu, a completer popup and a modal dialog's
+	// centring into screen()->availableGeometry(). A maximised terminal on
+	// an ordinary display is around 200x55, so the clamp is not an edge
+	// case, it is where most users are. Measured: a menu asked for column
+	// 150 was placed at column 66, and the compositor anchors a popup at
+	// its own geometry, so it was DRAWN detached from the item that opened
+	// it. Nothing in this library saw the move; Qt had already made it.
+	//
+	// A screen nothing can exceed puts every placement decision back here,
+	// which is where the flipping and pagination already live and the
+	// regime they were measured in.
+	//
+	// Attached whenever the platform IS offscreen, which is the condition
+	// that matters -- not whether this library chose it. QTTY_QPA_PLATFORM
+	// is the escape hatch for running under xcb, where an offscreen option
+	// would be nonsense; but the suite sets that same variable to
+	// "offscreen", and a fix the suite cannot reach is one nothing holds.
+	// A value carrying options of its own is left exactly as given.
+	//
+	// The plugin qFATALS on a configfile it cannot read, so the file is
+	// written first and the option appended only if that worked -- a
+	// temporary file this process cannot create must degrade to the small
+	// screen, not take the program down. It is a function-local static so
+	// it lives as long as the process: the plugin reads it inside the
+	// QApplication constructor, which has not run yet.
+	if (platform == "offscreen") {
+		static QTemporaryFile *config = [] () -> QTemporaryFile * {
+			auto *f = new QTemporaryFile(
+			    QDir::tempPath() + QStringLiteral("/qtty-screen-XXXXXX.json"));
+			if (!f->open()) { delete f; return nullptr; }
+			f->write("{\"screens\":[{\"name\":\"qtty\",\"x\":0,\"y\":0,"
+			         "\"width\":10000,\"height\":10000,"
+			         "\"logicalDpi\":96,\"logicalBaseDpi\":96,\"dpr\":1}]}");
+			if (!f->flush()) { delete f; return nullptr; }
+			return f;
+		}();
+		if (config)
+			platform += ":configfile=" + QFile::encodeName(config->fileName());
+	}
+	qputenv("QT_QPA_PLATFORM", platform);
 
 	// The platform THEME is pinned for the same reason and by the same rule,
 	// and this is the fix rather than the three that preceded it. A theme

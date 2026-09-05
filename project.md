@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-978 checks, 0 failures, under six configurations, all six re-run
+983 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6590,6 +6590,79 @@ passed, because Qt's own `QWidget::event()` reaches its Tab branch first.
 The check was kept for the behaviour it does pin -- Tab reaching a widget
 when nothing has focus, which nothing covered -- with its claim corrected
 and what was tried written down. The fallback remains unreached.
+
+**Two lenses derived from the last two defects, and both paid out**
+(2026-09-06). One asked where qtty's own platform stamping changes a Qt
+DECISION -- the empty-modal lock-up was that shape. The other asked which
+guards state a REASON that is not true -- the scroll bar's "nothing
+sensible fits in one cell" was that shape. Between them they found more
+than the two rounds before, which is the practice in `working-practice.md`
+working as written.
+
+**Qt was moving menus before this library ever saw them.** The offscreen
+platform's QScreen is 800x800 unless it is told otherwise, and Qt clamps
+a menu, a completer popup and a modal dialog's centring into
+`screen()->availableGeometry()`. At a 10x19 cell that screen is **80
+columns by 42 rows** -- and a maximised terminal on an ordinary display is
+around 200x55, so the clamp is not an edge case, it is where most users
+are. Measured: a menu asked for column 150 was placed at column 66, and
+the compositor anchors a popup at its own geometry, so it was DRAWN
+detached from the item that opened it by 84 columns.
+
+`prepare_environment()` now writes a screen config and hands the plugin a
+10000x10000 screen, which puts every placement decision back in this
+library -- where the flipping and pagination already live, and the regime
+they were measured in, `follow_rect()` having only ever been tested below
+the 800-pixel limit. The suite passes unchanged either way, which is the
+uncomfortable half: **nothing here could see this defect**, and the
+existing checks score the same on both screens.
+
+Three things had to be got right and two of them were got wrong first. The
+plugin `qFatal`s on a configfile it cannot read, so the file is written
+before the option is appended and a failure degrades to the small screen
+rather than taking the program down. And the option is attached whenever
+the platform IS offscreen rather than when this library CHOSE it -- the
+first version guarded on `QTTY_QPA_PLATFORM` being unset, which is
+precisely the variable the suite sets, so the fix was real and the suite
+could not reach it.
+
+And the check asked for a menu at column 150, which passed under the
+offscreen platform and **failed `test-platforms`' xcb arm** -- correctly,
+because that arm runs on a real 1280x1024 Xvfb display and column 150 is
+off it. A real screen genuinely has an edge; the property being fixed is
+that the screen qtty CHOOSES has none a terminal can reach. It asks for
+100 columns by 26 rows now, which is beyond the 800-pixel default and
+inside the Xvfb screen, so it discriminates the fix on both platforms
+rather than asserting something true only where qtty owns the screen.
+**The gate caught a check that was measuring the platform rather than the
+code**, which is the second time in this document that a fix to one
+geometry fault has been caught by another gate.
+
+**A fill wider than 400 cells coloured nothing at all.** `fill_rectf`
+carried `c.width() > 400 || c.height() > 200` with no stated reason
+anywhere, applied to the UNCLIPPED cell rect -- so it needed not a huge
+terminal but a huge LAYER, which is the ordinary state of a window whose
+layout minimum exceeds the screen and which section 7 then scrolls.
+Measured on an 80-column buffer: a fill 400 cells wide coloured all 80
+visible cells, one 401 wide coloured **none**. Channel A keeps drawing
+either way, so past the cliff a user got text on the terminal's own ground
+with every application colour, themed surface and selection fill gone --
+a partial render, worse than either extreme. It is bounded by the buffer
+now, and the fill loops are clamped to it, which is what the cap can only
+ever have been for.
+
+**And the one-cell scroll bar's HIT TEST had not been taught what its
+drawing was taught the day before.** `subControlRect` fell through to
+Fusion below two cells, in a block whose own comment says "the hit test
+has to agree with the picture, and two derivations of one layout is what
+put this file's spin box arrows in the same cell". The fall-through was
+ASYMMETRIC, which is the tell: a single cell's centre falls inside one of
+Fusion's arrow rectangles horizontally and between them vertically, so a
+one-cell horizontal bar always stepped and a one-cell vertical bar never
+did. Reached with no hint at all -- a `QTableWidget` four rows tall lays
+its vertical bar out at exactly one cell. **A fix that teaches one half of
+a pair is half a fix, and this document had recorded the pairing rule
+before making the same mistake against it.**
 
 **A progress bar nobody has set a value on wrote `-1%` across itself**
 (2026-09-06), found by checking design.md 8.4's own list rather than

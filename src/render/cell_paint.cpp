@@ -456,7 +456,25 @@ bool CellPaintEngine::is_thin(const QRectF &r) const {
 // the default theme, and how Channel B output reaches them at all.
 void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 	QRect c = to_cells(r);
-	if (!c.isValid() || c.width() > 400 || c.height() > 200) return;
+	// Bounded by the BUFFER rather than by a pair of literals. The 400x200
+	// cap that stood here carried no reason anywhere and was applied to the
+	// UNCLIPPED cell rect, before the clip narrowed it -- so it needed not a
+	// huge terminal but a huge LAYER, which is the ordinary state of a
+	// window whose layout minimum exceeds the screen and which section 7
+	// then scrolls.
+	//
+	// The cliff was exact and the failure total: measured on an 80-column
+	// buffer, a fill 400 cells wide coloured all 80 visible cells and one
+	// 401 wide coloured none. Channel A keeps drawing either way, so what a
+	// user got past the cliff was text on the terminal's own ground with
+	// every application colour, themed surface and selection fill gone.
+	//
+	// Whatever the cap was for, it can only have been the cost of the loops
+	// below, and the buffer bounds those exactly -- nothing outside it can
+	// be written. So the test is whether the rectangle reaches the buffer at
+	// all, which is the same question asked correctly.
+	const QRect bounds(0, 0, dev_->buffer().cols(), dev_->buffer().rows());
+	if (!c.isValid() || !c.intersects(bounds)) return;
 	const std::optional<QRect> clip = clip_cells();
 	if (clip && clip->isEmpty()) return;
 
@@ -477,7 +495,18 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 	// A box keeps its shape and loses the cells outside the clip, rather than
 	// being shrunk to fit: a smaller complete rectangle is a different frame,
 	// and dropping the whole thing loses a border that is mostly visible.
+	// box() keeps the UNCLAMPED rectangle deliberately: it draws borders at
+	// the rectangle's own edges, and clamping first would move a border to
+	// the buffer's edge and draw a frame the widget does not have.
 	if (outline_only || brush_.style() == Qt::NoBrush) { box(c, clip); return; }
+	// The fill path is clamped, and that is what pays for removing the
+	// literal cap above. CellBuffer::fill() tests every write, so it was
+	// never unsafe -- but it LOOPS the whole rectangle, and a layer wider
+	// than the terminal is now the ordinary case rather than one the cap
+	// refused. Bounded here, the loops below cost the buffer and not the
+	// layer.
+	c &= bounds;
+	if (c.isEmpty()) return;
 	if (clip) {
 		c &= *clip;
 		if (c.isEmpty()) return;

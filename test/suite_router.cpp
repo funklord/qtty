@@ -534,6 +534,48 @@ int suite_router() {
 		QCoreApplication::processEvents();
 		CHECK(fired == 1, "Return in the submenu fires its item, not the parent's");
 	}
+	// A ONE-CELL scroll bar's hit test. Its drawing learned about one cell;
+	// subControlRect did not, so it fell through to Fusion's pixel
+	// rectangles below two cells -- which is exactly what the comment above
+	// that block forbids: "the hit test has to agree with the picture, and
+	// two derivations of one layout is what put this file's spin box arrows
+	// in the same cell."
+	//
+	// The fall-through was also asymmetric, which is the tell. Fusion's
+	// SubLine and AddLine rectangles are computed in pixels, and a single
+	// cell's centre falls inside one of them horizontally and between them
+	// vertically -- so a one-cell horizontal bar always stepped and a
+	// one-cell vertical bar never did. The two axes are asserted together
+	// for that reason.
+	//
+	// Reached with no hint at all: a QTableWidget four rows tall lays its
+	// vertical bar out at exactly one cell, the horizontal bar below taking
+	// the other row.
+	{
+		const auto step = [&](Qt::Orientation o) {
+			QWidget h;
+			h.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *sb = new QScrollBar(o, &h);
+			sb->setRange(0, 100);
+			sb->setValue(0);                       // at the minimum: draws a
+			sb->setGeometry(0, 0, cw, ch);         // step-forward arrow
+			h.resize(GridMetrics::cells(6, 3));
+			h.show();
+			QCoreApplication::processEvents();
+			InputRouter r(&h);
+			r.on_mouse({QPoint(0, 0), 1, true, false, false, 0});
+			r.on_mouse({QPoint(0, 0), 1, false, true, false, 0});
+			QCoreApplication::processEvents();
+			return sb->value();
+		};
+		const int v = step(Qt::Vertical), hz = step(Qt::Horizontal);
+		printf("info: clicking a one-cell scroll bar at its minimum gives"
+		       " %d vertical, %d horizontal\n", v, hz);
+		CHECK(v > 0 && hz > 0,
+		      "a one-cell scroll bar steps when its cell is clicked");
+		CHECK(v == hz, "and both axes agree about how far");
+	}
+
 	// A modal with an EMPTY geometry. The rule above drops every click
 	// outside the modal, and an empty rectangle contains no point at all --
 	// so such a dialog swallows every click on every cell of the terminal

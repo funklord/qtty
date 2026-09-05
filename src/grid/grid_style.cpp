@@ -904,6 +904,28 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 			const bool vert = sb->orientation == Qt::Vertical;
 			const int cell = vert ? ch : cw;
 			const int len = (vert ? r.height() : r.width()) / qMax(1, cell);
+			// ONE cell, matching what drawComplexControl puts in it. That
+			// arm learned about a one-cell bar and this one did not, so it
+			// fell through to Fusion's pixel rectangles -- which is exactly
+			// what the paragraph above forbids, and it went wrong
+			// ASYMMETRICALLY, which is the tell: a single cell's centre
+			// falls inside one of Fusion's arrow rectangles horizontally and
+			// between them vertically, so a one-cell horizontal bar always
+			// stepped and a one-cell vertical bar never did.
+			//
+			// The cell carries the glyph's meaning. At the minimum it is
+			// drawn as a step-forward arrow, so it IS the add line; at the
+			// maximum it is the sub line; between the two it is the thumb,
+			// which a click does not move.
+			if (len == 1) {
+				const bool at_min = sb->sliderPosition <= sb->minimum;
+				const bool at_max = sb->sliderPosition >= sb->maximum;
+				const SubControl mine = at_min ? SC_ScrollBarAddLine
+				                      : at_max ? SC_ScrollBarSubLine
+				                               : SC_ScrollBarSlider;
+				if (sc == mine || sc == SC_ScrollBarGroove) return r;
+				return QRect();
+			}
 			if (len >= 2) {
 				const int track = len - 2;
 				const int span = sb->maximum - sb->minimum;

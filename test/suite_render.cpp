@@ -341,6 +341,54 @@ int suite_render(bool record) {
 			++r;
 		}
 
+		// A fill WIDER than the cap this engine used to carry. The literal
+		// 400x200 was applied to the UNCLIPPED cell rect, before the clip
+		// narrowed it -- so it does not need a huge terminal, only a huge
+		// LAYER, which is the ordinary state of a window whose layout
+		// minimum exceeds the screen and which section 7 then scrolls.
+		//
+		// The cliff was exact and the failure total: at 400 cells the whole
+		// visible run was coloured, at 401 nothing was. Channel A keeps
+		// drawing, so what a user got was text on the terminal's own ground
+		// with every application colour, themed surface and selection fill
+		// gone -- a partial render, which is worse than either extreme.
+		//
+		// The pair is what says it. A check on the wide case alone would
+		// pass against an engine that filled nothing at all.
+		{
+			const auto coloured = [&](int wide) {
+				Qtty::CellBuffer b(80, 2);
+				{
+					Qtty::CellPaintDevice dev(b);
+					QPainter p(&dev);
+					p.fillRect(QRect(0, 0, wide * cw, ch), QColor(200, 30, 30));
+					p.end();
+				}
+				int n = 0;
+				for (int x = 0; x < b.cols(); ++x)
+					if (b.at(x, 0).bg != Qtty::Color()) ++n;
+				return n;
+			};
+			const int narrow = coloured(400), wide = coloured(401);
+			printf("info: a fill 400 cells wide colours %d of 80 visible"
+			       " cells; one 401 wide colours %d\n", narrow, wide);
+			if (narrow == 80)
+				printf("PASS: a wide fill colours the cells it covers\n");
+			else {
+				printf("FAIL: a wide fill colours the cells it covers\n"
+				       "      condition: %d of 80 at 400 cells\n", narrow);
+				++r;
+			}
+			if (wide == 80)
+				printf("PASS: and a wider one does not stop colouring them\n");
+			else {
+				printf("FAIL: and a wider one does not stop colouring them\n"
+				       "      condition: %d of 80 at 401 cells, %d at 400\n",
+				       wide, narrow);
+				++r;
+			}
+		}
+
 		// Outward, and this is the half that cost an afternoon. to_cells()
 		// rounds each edge to the NEAREST cell, so a clip thinner than a cell
 		// rounds to nothing -- and read as "a clip that admits nothing" it

@@ -142,3 +142,27 @@ find = "\t\t\t\tif (pb->textVisible && !no_progress) {"
 into = "\t\t\t\tif (pb->textVisible) {"
 count = 1
 check = "one with no value yet writes no percentage at all"
+
+[[sabotage]]
+name = "the offscreen screen keeps its 800x800 default"
+file = "src/runtime/application.cpp"
+find = "\t\t\t         \"\\\"width\\\":10000,\\\"height\\\":10000,\""
+into = "\t\t\t         \"\\\"width\\\":800,\\\"height\\\":800,\""
+count = 1
+check = "a menu opens where it was asked to, past the 80 columns"
+
+[[sabotage]]
+name = "a one-cell scroll bar's hit test falls through to Fusion"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\tif (len == 1) {\n\t\t\t\tconst bool at_min = sb->sliderPosition <= sb->minimum;"
+into = "\t\t\tif (false) {\n\t\t\t\tconst bool at_min = sb->sliderPosition <= sb->minimum;"
+count = 1
+check = "a one-cell scroll bar steps when its cell is clicked"
+
+[[sabotage]]
+name = "a wide fill is refused by a literal cap"
+file = "src/render/cell_paint.cpp"
+find = "\tif (!c.isValid() || !c.intersects(bounds)) return;"
+into = "\tif (!c.isValid() || c.width() > 400 || c.height() > 200) return;"
+count = 1
+check = "and a wider one does not stop colouring them"
