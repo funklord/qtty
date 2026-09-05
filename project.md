@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-942 checks, 0 failures, under six configurations, all six re-run
+945 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6181,6 +6181,48 @@ checkable `QGroupBox` starts CHECKED, so it draws `[x]`, and a fixture
 searching for `[ ]` found neither that nor the title and failed for two
 reasons at once. Dumping the buffer took one run and showed the answer;
 guessing at the fixture would have taken several.
+
+**A framed view's viewport started part-way down a row** (2026-09-05).
+`PM_DefaultFrameWidth` is `cw` -- a WIDTH -- and `QFrame` insets its
+contents, and `QAbstractScrollArea` its VIEWPORT, by that number on all
+four sides. On the vertical axis `cw` is not a row, so a view's first
+model row sat ten pixels down a nineteen-pixel one. Measured: the
+viewport's origin was 10,10.
+
+At 10x19 the paint and the click round the same way, so this machine sees
+only the consequence below; at 8x16 they do not, and a click on the cell
+showing row 0 selects row 1. Same fault and same remedy as
+`PM_MenuVMargin`, which exists because `PM_MenuPanelWidth` could not say
+the vertical half either.
+
+**The fix costs a row, and that row was never real.** A framed widget
+spends one on each border, so a four-row editor has TWO rows of content
+-- it used to appear to have three by drawing one of them over its own
+bottom border. An existing check saw the difference immediately: with two
+rows and the cursor at the end, the first line scrolled off and the text
+it asserts on was gone. The fixture asks for five rows now and says why.
+
+**Twenty-seven fixtures in this tree call `setFrameShape(NoFrame)`**,
+which is why nothing had ever exercised the default. The new check uses
+the default frame deliberately, and asserts the RULE rather than a
+coordinate -- the viewport's origin is a whole number of cells in both
+axes -- so it holds at any cell size. Its second half refuses a fix that
+simply removes the frame.
+
+**A tree's indent was a hardcoded twenty pixels** (2026-09-05).
+`PM_TreeViewIndentation` was not in this style's switch, so QCommonStyle
+answered 20 regardless of the cell. That band is both the expander's
+picture and its hit target -- `drawBranches` and `itemDecorationRect`
+build the same rectangle -- so it is a whole number of cells only where
+`cw` divides 20. At `cw = 8` it rounds to three cells, the glyph lands in
+a cell whose centre is past the band's right edge, and **the expander
+cannot be clicked at any level**.
+
+Two columns now, which is the same 20 px on this machine, so nothing here
+moves. The check asks at two cell sizes for exactly that reason: 20 is a
+multiple of 10, so "the metric is a multiple of cw" is true of the broken
+value and discriminates nothing. It read 20 and 20 before, 20 and 26
+after.
 
 **A menu item rendered as a different command** (2026-09-05). Two faults
 in three lines, and the second is the one worth the entry.

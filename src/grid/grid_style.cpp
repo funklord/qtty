@@ -617,6 +617,15 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 	// dividing this one by cw. Ten columns is the same default said in the
 	// unit the grid is measured in.
 	case PM_HeaderDefaultSectionSizeVertical:              return ch;
+	// A tree's indent band is both the expander's picture and its hit
+	// target: QTreeView::drawBranches and itemDecorationRect build the same
+	// rectangle from this. QCommonStyle answers a hardcoded 20 px, so the
+	// band is a whole number of cells only where cw divides 20 -- at cw = 8
+	// it rounds to three cells, the glyph is drawn in a cell whose centre is
+	// past the band's right edge, and the expander cannot be clicked at any
+	// level. Two columns, which is the same 20 px on this machine said in
+	// the unit the grid is measured in, so nothing here moves.
+	case PM_TreeViewIndentation:                           return 2 * cw;
 	case PM_HeaderDefaultSectionSizeHorizontal:            return 10 * cw;
 	default:                                               return QProxyStyle::pixelMetric(m, o, w);
 	}
@@ -652,6 +661,29 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
                                 const QWidget *w) const {
 	QRect r = QProxyStyle::subElementRect(se, opt, w);
+	// The vertical half of a framed widget's inset, which
+	// PM_DefaultFrameWidth cannot supply: it is one number and a cell is not
+	// square. QFrame insets its contents -- and QAbstractScrollArea its
+	// VIEWPORT -- by that number on all four sides, so a view's first model
+	// row sat ten pixels down a nineteen-pixel row. Measured: the viewport's
+	// origin was 10,10. Same fault and same remedy as PM_MenuVMargin, which
+	// exists because PM_MenuPanelWidth could not say the vertical half
+	// either.
+	//
+	// Only an inset this style produced: a Box or Panel frame is inset by
+	// its own lineWidth and is not ours to move, and NoFrame has none. And
+	// nothing below two rows, for draw_box's reason -- there is no room for
+	// a border and a content row both.
+	if ((se == SE_FrameContents || se == SE_ShapedFrameContents) && opt
+	    && r.isValid()) {
+		const int ch = GridMetrics::ch();
+		const int fw = pixelMetric(PM_DefaultFrameWidth, opt, w);
+		if (r.top() - opt->rect.top() == fw
+		    && opt->rect.bottom() - r.bottom() == fw
+		    && opt->rect.height() >= 2 * ch)
+			return QRect(r.left(), opt->rect.top() + ch,
+			             r.width(), opt->rect.height() - 2 * ch);
+	}
 	// The cells the check box is DRAWN in. Both CE_ItemViewItem here and
 	// CellItemDelegate put "[x]" at one cell of indent, so cells 1, 2 and 3
 	// of the item. QCommonStyle builds this rectangle from PM_IndicatorWidth

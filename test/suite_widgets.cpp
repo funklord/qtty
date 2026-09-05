@@ -543,6 +543,63 @@ int suite_widgets() {
 			      "and writes none of them past the edge of the view");
 		}
 
+		// A framed view's viewport, which is inset by PM_DefaultFrameWidth on
+		// ALL FOUR sides -- and that metric is cw, a width. On the vertical
+		// axis cw is not a row, so the viewport starts part-way down a cell
+		// and every model row is offset by the remainder. At 10x19 the paint
+		// and the click happen to round the same way; at 8x16 they do not,
+		// and a click on the cell showing row 0 selects row 1.
+		//
+		// Asserted as the RULE rather than a coordinate, so it holds at any
+		// cell: the viewport's origin is a whole number of cells in both
+		// axes. The second half refuses a fix that removes the frame.
+		//
+		// The DEFAULT frame, deliberately. Twenty-seven fixtures in this
+		// tree call setFrameShape(NoFrame), which is why nothing had ever
+		// exercised this.
+		{
+			QWidget host;
+			auto *lw = new QListWidget(&host);
+			lw->addItem(QStringLiteral("r0"));
+			lw->addItem(QStringLiteral("r1"));
+			lw->setGeometry(0, 0, 12 * cw, 5 * ch);
+			show(host, 14, 6);
+			const QPoint off = lw->viewport()->mapTo(lw, QPoint(0, 0));
+			printf("info: a framed view's viewport sits at %d,%d on a %dx%d"
+			       " cell\n", off.x(), off.y(), cw, ch);
+			CHECK(off.x() % cw == 0 && off.y() % ch == 0,
+			      "a framed view's viewport starts on a cell in both axes");
+			CHECK(off.y() > 0,
+			      "and it still has a frame above it");
+		}
+
+		// A tree's indent band is both the expander's picture and its hit
+		// target: QTreeView::drawBranches and itemDecorationRect build the
+		// same rectangle from PM_TreeViewIndentation. QCommonStyle answers a
+		// hardcoded 20 px, so the band is a whole number of cells only where
+		// cw divides 20 -- at cw = 8 it rounds to three cells, the glyph is
+		// drawn in a cell whose centre is past the band's right edge, and
+		// the expander cannot be clicked at any level.
+		//
+		// Asked at TWO cell sizes, which is the whole of the check: 20 is a
+		// multiple of this machine's 10, so "the metric is a multiple of cw"
+		// is true of the broken value and discriminates nothing. Only the
+		// second size separates a constant from a derived one.
+		{
+			const auto indent = [] {
+				return QApplication::style()->pixelMetric(
+				    QStyle::PM_TreeViewIndentation);
+			};
+			const int here = indent();
+			GridMetrics::set(cw + 3, ch + 5);
+			const int there = indent();
+			GridMetrics::set(cw, ch);
+			printf("info: a tree indents %d px on a %d-wide cell and %d on a"
+			       " %d-wide one\n", here, cw, there, cw + 3);
+			CHECK(here == 2 * cw && there == 2 * (cw + 3),
+			      "a tree's indent is two columns, at either cell size");
+		}
+
 		// A menu row, drawn straight rather than through a QMenu. QMenu only
 		// ever GROWS a column -- it takes the maximum of every item's hint
 		// and floors it -- so an auto-sized menu always has slack and the
@@ -1431,10 +1488,16 @@ int suite_widgets() {
 		auto *combo = new QComboBox(&host);
 		combo->setEditable(true);
 		combo->addItems({QStringLiteral("alpha")});
+		// Five rows and four, not four and three. A framed widget spends a
+		// row on each border, so a four-row editor has TWO rows of content
+		// -- it used to appear to have three by drawing one of them over its
+		// own bottom border, which is the fault the viewport inset fixes.
+		// With two rows and the cursor at the end, the first line scrolls
+		// off and this check could not see the text it is about.
 		auto *doc = new QPlainTextEdit(&host);
-		doc->setFixedHeight(GridMetrics::ch() * 4);
+		doc->setFixedHeight(GridMetrics::ch() * 5);
 		auto *rich = new QTextEdit(&host);
-		rich->setFixedHeight(GridMetrics::ch() * 3);
+		rich->setFixedHeight(GridMetrics::ch() * 4);
 		v->addWidget(combo);
 		v->addWidget(doc);
 		v->addWidget(rich);
