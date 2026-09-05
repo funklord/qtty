@@ -671,16 +671,21 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 	// either.
 	//
 	// Only an inset this style produced: a Box or Panel frame is inset by
-	// its own lineWidth and is not ours to move, and NoFrame has none. And
-	// nothing below two rows, for draw_box's reason -- there is no room for
-	// a border and a content row both.
+	// its own lineWidth and is not ours to move, and NoFrame has none.
+	//
+	// And nothing below THREE rows. Two borders and a content row is the
+	// smallest thing this can describe: at exactly two rows the subtraction
+	// gives a height of zero, which is not a rectangle Qt should be handed
+	// -- QRect calls it invalid, and QFrame derives its four widths from it.
+	// Below that the frame keeps Fusion's answer, which is wrong by less
+	// than an empty viewport is.
 	if ((se == SE_FrameContents || se == SE_ShapedFrameContents) && opt
 	    && r.isValid()) {
 		const int ch = GridMetrics::ch();
 		const int fw = pixelMetric(PM_DefaultFrameWidth, opt, w);
 		if (r.top() - opt->rect.top() == fw
 		    && opt->rect.bottom() - r.bottom() == fw
-		    && opt->rect.height() >= 2 * ch)
+		    && opt->rect.height() >= 3 * ch)
 			return QRect(r.left(), opt->rect.top() + ch,
 			             r.width(), opt->rect.height() - 2 * ch);
 	}
@@ -1430,7 +1435,21 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				QString inner = strip_mnemonic(t->text);
 				const int room = qMax(0, c.width() - 2);
 				inner = elide_to_cells(inner, room);
-				inner += QString(qMax(0, room - int(inner.size())), QLatin1Char(' '));
+				// Padded in CELLS, which is the unit `room` is in.
+				// `inner.size()` counts QChars: a wide cluster is one QChar
+				// and two cells, so a tab titled with a single CJK character
+				// was padded as though it were one cell wide, the label
+				// overran the tab, and the outer elide below dropped the
+				// CLOSING BRACKET for an ellipsis. Measured on a tab whose
+				// one-character CJK title fits it exactly: the bracket came
+				// back as an ellipsis. A tab that is not
+				// truncated then looks as though it is, and the bracket is
+				// what says where a tab ends -- which the comment above
+				// argues at length and this arithmetic then undid.
+				int shown = 0;
+				for (const QString &cl : to_clusters(inner))
+					shown += cluster_width(cl);
+				inner += QString(qMax(0, room - shown), QLatin1Char(' '));
 				const QString label = QLatin1Char('[') + inner + QLatin1Char(']');
 				// Underline rather than reverse, because reverse is taken:
 				// the selected tab already carries it, and the tab bar owning

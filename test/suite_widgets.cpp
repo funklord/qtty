@@ -543,6 +543,30 @@ int suite_widgets() {
 			      "and writes none of them past the edge of the view");
 		}
 
+		// A tab pads its label to the width of the tab, and it counted the
+		// padding in QCHARS while the room is in CELLS. A wide cluster is
+		// one QChar and two cells, so a tab titled with one CJK character
+		// was padded as though it were one cell wide -- the label then
+		// overran the tab and the outer elide dropped the closing bracket
+		// for an ellipsis. A tab that is not truncated then looks as though
+		// it is, and the bracket is what says where a tab ENDS.
+		{
+			QWidget host;
+			auto *bar = new QTabBar(&host);
+			bar->addTab(QString::fromUtf8("\u4e2d"));
+			bar->setGeometry(0, 0, 8 * cw, ch);
+			show(host, 12, 3);
+			CellBuffer tb(12, 3);
+			render_once(host, tb);
+			const QString row = tb.to_text().split(QLatin1Char('\n')).value(0);
+			printf("info: a tab titled with one wide cluster renders [%s]\n",
+			       qPrintable(row.trimmed()));
+			CHECK(row.contains(QLatin1Char(']')),
+			      "a tab that fits keeps its closing bracket");
+			CHECK(!row.contains(QChar(0x2026)),
+			      "and is not elided when it did not need to be");
+		}
+
 		// A framed view's viewport, which is inset by PM_DefaultFrameWidth on
 		// ALL FOUR sides -- and that metric is cw, a width. On the vertical
 		// axis cw is not a row, so the viewport starts part-way down a cell
@@ -571,6 +595,39 @@ int suite_widgets() {
 			      "a framed view's viewport starts on a cell in both axes");
 			CHECK(off.y() > 0,
 			      "and it still has a frame above it");
+
+			// And the smallest thing the inset can describe is three rows:
+			// two borders and one of content. At exactly two the
+			// subtraction gives a height of zero, which QRect calls invalid
+			// and QFrame derives its four widths from.
+			//
+			// Asked of subElementRect directly rather than through a
+			// widget. The first version built a two-row QListWidget and
+			// asserted its viewport was valid -- and passed with the guard
+			// removed, because a widget that small never reaches this
+			// branch at all: Fusion's own inset is not the one the guard
+			// recognises. A check that cannot fail is worse than none, so
+			// this asks the function the question instead.
+			// A QStyleOptionFrame with a lineWidth, which is what
+			// QCommonStyle needs to answer SE_FrameContents at all: asked
+			// with a bare QStyleOption it returns an empty rect and the
+			// check reads 0x0 whatever the guard says.
+			QStyleOptionFrame fo;
+			fo.lineWidth = QApplication::style()->pixelMetric(
+			    QStyle::PM_DefaultFrameWidth);
+			fo.frameShape = QFrame::StyledPanel;
+			fo.rect = QRect(0, 0, 12 * cw, 2 * ch);
+			const QRect tinyc = QApplication::style()->subElementRect(
+			    QStyle::SE_FrameContents, &fo, nullptr);
+			fo.rect = QRect(0, 0, 12 * cw, 3 * ch);
+			const QRect okc = QApplication::style()->subElementRect(
+			    QStyle::SE_FrameContents, &fo, nullptr);
+			printf("info: frame contents are %dx%d at two rows and %dx%d at"
+			       " three\n", tinyc.width(), tinyc.height(),
+			       okc.width(), okc.height());
+			CHECK(tinyc.height() > 0 && okc.height() == ch,
+			      "a frame too short for the inset keeps a contents rect,"
+			      " and a taller one gets its row");
 		}
 
 		// A tree's indent band is both the expander's picture and its hit

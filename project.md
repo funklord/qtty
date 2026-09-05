@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-945 checks, 0 failures, under six configurations, all six re-run
+948 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6213,6 +6213,38 @@ checkable `QGroupBox` starts CHECKED, so it draws `[x]`, and a fixture
 searching for `[ ]` found neither that nor the title and failed for two
 reasons at once. Dumping the buffer took one run and showed the answer;
 guessing at the fixture would have taken several.
+
+**A tab that fitted looked truncated** (2026-09-05). `CE_TabBarTab` pads
+its label out to the width of the tab, and counted the padding in QCHARS
+while the room is in CELLS. A wide cluster is one QChar and two cells, so
+a tab titled with a single CJK character was padded as though it were one
+cell wide, the label overran the tab, and the outer elide dropped the
+CLOSING BRACKET for an ellipsis:
+
+    [中    ...     before
+    [中    ]       after
+
+The comment above that line argues at length that "the bracket is what
+says where a tab ends" -- and the arithmetic three lines down undid it.
+**A tab that is not truncated then looks as though it is**, which is the
+same class as the menu item reading as a different command: output that
+is wrong and plausible.
+
+**And reading my own diff found a degenerate case in the frame inset**
+committed an hour earlier. The guard admitted a widget exactly two rows
+tall, where the subtraction gives a contents height of ZERO -- a rectangle
+`QRect` calls invalid and `QFrame` derives its four widths from. Three
+rows is the smallest thing the inset can describe: two borders and one of
+content.
+
+**Its first check could not fail and its second could not run.** A
+two-row `QListWidget` passed with the guard removed, because a widget that
+small never reaches the branch -- Fusion's own inset is not the one the
+guard recognises. Asking `subElementRect` directly then returned 0x0 for
+every height, because `QCommonStyle` answers `SE_FrameContents` only for
+a `QStyleOptionFrame` with a `lineWidth`, and a bare `QStyleOption` gets
+nothing. With the right option it reads 100x18 and 100x19, and 100x0 with
+the guard reverted.
 
 **A framed view's viewport started part-way down a row** (2026-09-05).
 `PM_DefaultFrameWidth` is `cw` -- a WIDTH -- and `QFrame` insets its
