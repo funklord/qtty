@@ -273,16 +273,42 @@ CroppedPlacement crop_placement(const QRect &cell_rect, QSize image, QSize grid)
 	// image placed into N cells is N cells wide whatever the cell size is,
 	// and taking the ratio here keeps this function testable without a
 	// configured grid.
-	const int px_w = image.width()  / cell_rect.width();
-	const int px_h = image.height() / cell_rect.height();
-	QRect source((visible.left() - cell_rect.left()) * px_w,
-	             (visible.top()  - cell_rect.top())  * px_h,
-	             visible.width()  * px_w,
-	             visible.height() * px_h);
-	// Integer division above can leave a remainder, so the last visible cell
-	// would ask for pixels past the edge. Clamp rather than round, because
-	// asking a terminal for a source rectangle outside the image is a
-	// protocol error on kitty and a crash risk in QImage::copy.
+	// Map each cell EDGE to a pixel, rather than multiplying a per-cell
+	// pixel size. The per-cell form divided pixels by cells first, so an
+	// image with fewer source pixels than the cells it is stretched over got
+	// a cell size of ZERO, an empty source rectangle, and a return all three
+	// transmitters read as "wholly off screen".
+	//
+	// Measured: a 7x3 pixel image over 8x3 cells is drawn while it sits
+	// wholly on the grid -- the uncropped path returns early and never
+	// divides -- and vanishes the moment one cell leaves it. Not cropped
+	// wrong; absent, and indistinguishable from a placement that really is
+	// off screen.
+	//
+	// Mapping edges keeps the remainder in one place instead of multiplying
+	// it by the cell count, so it also answers the question the clamp below
+	// was covering for.
+	const auto px_x = [&](int cell) {
+		return int(qint64(cell - cell_rect.left()) * image.width()
+		           / cell_rect.width());
+	};
+	const auto px_y = [&](int cell) {
+		return int(qint64(cell - cell_rect.top()) * image.height()
+		           / cell_rect.height());
+	};
+	const int x0 = px_x(visible.left()), y0 = px_y(visible.top());
+	// At least one pixel per axis. An image narrower in pixels than the span
+	// of cells it covers can still map two adjacent cell edges to the same
+	// pixel, and a zero-width source is the very thing this is fixing --
+	// one pixel stretched over a cell is what the terminal is being asked
+	// for, and is what the uncropped path already does.
+	QRect source(x0, y0,
+	             qMax(1, px_x(visible.right() + 1) - x0),
+	             qMax(1, px_y(visible.bottom() + 1) - y0));
+	// The last visible cell can still ask for a pixel past the edge. Clamp
+	// rather than round, because asking a terminal for a source rectangle
+	// outside the image is a protocol error on kitty and a crash risk in
+	// QImage::copy.
 	source = source.intersected(QRect(QPoint(0, 0), image));
 	if (source.isEmpty()) return {QRect(), QRect()};
 	return {visible, source};
@@ -399,18 +425,24 @@ QByteArray encode_kitty_virtual(quint32 id, const QImage &img, int cols, int row
 	buf.close();
 	const QByteArray b64 = png.toBase64();
 
-	QByteArray head = "\033_Ga=T,U=1,q=2,f=100,i=" + QByteArray::number(id)
-	                + ",c=" + QByteArray::number(cols)
-	                + ",r=" + QByteArray::number(rows);
-	QByteArray out;
-	const int chunk = 4096;
-	for (int off = 0; off < b64.size(); off += chunk) {
-		const QByteArray part = b64.mid(off, chunk);
-		const bool more = off + chunk < b64.size();
-		out += off == 0 ? head : QByteArray("\033_G");
-		out += ",m=" + QByteArray::number(more ? 1 : 0) + ';' + part + "\033\\";
-	}
-	return out;
+	// Chunked by kitty_chunks(), like every other transmitter here, rather
+	// than by a second loop of its own. The second loop wrote each
+	// continuation as "\033_G" followed by ",m=" -- a LEADING COMMA, so the
+	// control data opened with an empty item where kitty reads a
+	// comma-separated list of key=value.
+	//
+	// It could not be seen from the only fixture that existed: a 2x2 image
+	// PNG-compresses far under one chunk, so the continuation branch was
+	// never taken. Measured with 200x200 of noise, a transmit came out as
+	// three chunks with two of them opening on a comma.
+	//
+	// Sharing the one chunker is the fix rather than repairing the spelling,
+	// because two emitters of one wire format are two things to be wrong and
+	// only one of them was being exercised.
+	const QByteArray ctrl = "a=T,U=1,q=2,f=100,i=" + QByteArray::number(id)
+	                      + ",c=" + QByteArray::number(cols)
+	                      + ",r=" + QByteArray::number(rows);
+	return kitty_chunks(ctrl, b64);
 }
 
 void compose_kitty_placeholders(CellBuffer &frame, quint32 id, const QRect &cell_rect) {

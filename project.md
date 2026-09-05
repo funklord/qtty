@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-962 checks, 0 failures, under six configurations, all six re-run
+971 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6491,28 +6491,61 @@ less one pixel. The popup check caught it, which is the second time in
 two days that fixing one geometry fault has been caught by another's
 check.
 
-**What those sweeps found and I did NOT fix**, recorded so the next
-reader has the list rather than the lenses:
+**What those sweeps found beyond the two above: four more fixed, and the
+read-only half of the list did not survive measurement unchanged.**
 
-    crop_placement          graphics.cpp computes px_w as an integer
-                            division of image width by cell width, so a
-                            picture stretched over more cells than it has
-                            source pixels gets px_w = 0, an empty source
-                            rect, and all three transmitters read that as
-                            "wholly off screen". Measured at unit level: a
-                            7x3 px image over 8x3 cells is visible at rest
-                            and GONE once one cell leaves the screen. The
-                            drop counter fired 0 times in the suite, so
-                            the path is untested; the route to it is named
-                            but was not driven end to end.
-    Overlay::set_rect       QRectF::isNull() is width and height both
-                            zero, and overlay_cell_rect() reads null as
-                            "the whole terminal". So set_rect(5,5,0,0)
-                            gives a full-screen overlay and set_rect(
-                            5,5,8,0) gives silence -- one pixel of
-                            arithmetic apart, and neither says anything.
-                            Both measured; neither counter fires in the
-                            suite.
+    crop_placement          The ratio was an integer division of image
+                            pixels by cells, so a picture stretched over
+                            more cells than it has source pixels got a
+                            cell size of ZERO, an empty source rect, and a
+                            return all three transmitters read as "wholly
+                            off screen". Measured: a 7x3 image over 8x3
+                            cells is drawn while it sits wholly on the
+                            grid -- the uncropped path returns early and
+                            never divides -- and vanishes the moment one
+                            cell leaves. Cell EDGES are mapped to pixels
+                            now, which keeps the remainder in one place
+                            instead of multiplying it by the cell count.
+    Overlay::set_rect       QRectF::isNull() is width and height both zero
+                            and says nothing about position, so a rect an
+                            application COMPUTED as 0x0 at (5,5) asked for
+                            a sheet over the whole terminal while the same
+                            arithmetic producing 8x0 asked for silence.
+                            The sentinel is an explicit flag now, set only
+                            by a default-constructed rect, which is how a
+                            caller resets it and what the header always
+                            documented. An empty-but-positioned rect draws
+                            nothing and says so once.
+    scan_osc11              Returned from the whole scan when a prefix it
+                            found did not parse, where its sibling
+                            scan_osc4 goes on looking. Measured: a good
+                            background reply after a truncated one was not
+                            read at all -- and bg_known is what decides
+                            whether the terminal is dark, so the cost is a
+                            scheme chosen against the wrong ground.
+    encode_kitty_virtual    Chunked itself in a second loop that wrote
+                            each continuation as an APC opener followed by
+                            ",m=" -- a leading comma, so the control data
+                            began with an empty item where kitty reads a
+                            comma-separated list of key=value. Measured
+                            with 200x200 of noise: three chunks, two of
+                            them opening on a comma. It shares
+                            kitty_chunks() now, because two emitters of
+                            one wire format are two things to be wrong and
+                            only one of them was exercised.
+
+**Every one of those four was invisible to the fixture that existed, and
+in the same way.** The kitty transmit was checked with a 2x2 image, whose
+PNG compresses far under the 4096-byte chunk, so the continuation branch
+was never taken. `crop_placement` was checked with an image larger in
+pixels than in cells, where the division cannot collapse. The overlay's
+sentinel was checked with rects that had a size. `scan_osc11` was checked
+with well-formed replies. **Fixtures on the safe side of the hazard is
+now the most-recorded cause in this document**, and the four here were
+found by four different lenses, none of which was looking for it.
+
+**What is left, recorded rather than fixed:**
+
     a one-cell scroll bar   drawComplexControl returns without drawing
                             anything when the groove is under two cells,
                             which is 45 of 147 scroll-bar draws in the
@@ -6526,13 +6559,11 @@ reader has the list rather than the lenses:
                             stale pixels. Measured that the expression
                             does clip everything away; measured that it
                             never happens today, 0 of 60 calls.
-    scan_osc11              returns where its sibling scan_osc4 continues,
-                            abandoning the search for a later OSC 11 reply
-                            in the same buffer. Read, not measured.
-    encode_kitty_virtual    appears to emit continuation chunks with a
-                            leading comma where kitty_chunks does not.
-                            Read, not measured, and not checked against
-                            the kitty specification.
+    InputRouter::on_mouse   geometry().contains() is false for every point
+                            when the geometry is empty, which for a modal
+                            would swallow every click while the dialog
+                            still holds input. Read, not measured, and
+                            flagged as a candidate rather than a finding.
 
 **What four more sweeps found, all six of them now fixed** (2026-09-05).
 The list was recorded first and read-verified only; the copyright holder

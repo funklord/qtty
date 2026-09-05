@@ -502,7 +502,7 @@ void FrameScheduler::render_now() {
 	auto *gfx = dynamic_cast<IGraphicsOutput *>(backend_);
 
 	auto overlay_cell_rect = [&](Overlay *o) {
-		return o->cell_rect().isNull()
+		return o->covers_terminal()
 		    ? QRect(0, 0, frame.cols(), frame.rows())
 		    : QRect(int(o->cell_rect().x()), int(o->cell_rect().y()),
 		            int(o->cell_rect().width()), int(o->cell_rect().height()));

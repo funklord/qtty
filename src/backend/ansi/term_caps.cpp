@@ -149,7 +149,17 @@ void scan_osc11(const QByteArray &b, TermCaps &out) {
 		if (b.mid(i, prefix.size()) != prefix) continue;
 		int j = i + prefix.size();
 		unsigned char rgb[3];
-		for (int c = 0; c < 3; ++c) {
+		// A prefix that does not parse abandons THIS candidate and not the
+		// search. These were returns, which gave up on the whole buffer --
+		// so one truncated reply, or the literal text of one arriving as
+		// type-ahead, hid every later reply behind it. Measured: a good
+		// reply after a truncated one was not read, and bg_known is what
+		// decides whether the terminal is dark.
+		//
+		// scan_osc4 below already looks on, which is what said this was a
+		// slip rather than a rule.
+		bool ok = true;
+		for (int c = 0; c < 3 && ok; ++c) {
 			long v = 0;
 			int digits = 0;
 			while (j < b.size() && hex_digit(b[j]) >= 0 && digits < 4) {
@@ -157,14 +167,15 @@ void scan_osc11(const QByteArray &b, TermCaps &out) {
 				++j;
 				++digits;
 			}
-			if (digits == 0) return;
+			if (digits == 0) { ok = false; break; }
 			const long span = (1L << (4 * digits)) - 1;
 			rgb[c] = (unsigned char)((v * 255 + span / 2) / span);
 			if (c < 2) {
-				if (j >= b.size() || b[j] != '/') return;
+				if (j >= b.size() || b[j] != '/') { ok = false; break; }
 				++j;
 			}
 		}
+		if (!ok) continue;
 		out.bg_known = true;
 		out.bg[0] = rgb[0]; out.bg[1] = rgb[1]; out.bg[2] = rgb[2];
 		return;

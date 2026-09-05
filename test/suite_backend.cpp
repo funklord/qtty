@@ -857,6 +857,32 @@ int suite_backend() {
 		CHECK(!silent.answered && !silent.kitty && !silent.sixel,
 		      "a silent terminal yields nothing and returns");
 
+		// A malformed background reply BEFORE a good one. scan_osc11
+		// returns from the whole scan when a prefix it found does not
+		// parse, where its sibling scan_osc4 goes on looking -- so one
+		// truncated reply, or the literal text of one arriving as
+		// type-ahead, hides every later reply in the same buffer.
+		//
+		// The pair is what says it: the good reply alone must be read, and
+		// must still be read with the bad one in front of it. A check on
+		// the second alone would pass against a scanner that read neither.
+		{
+			const QByteArray fence = "\033[?62;4;22c";
+			const TermCaps clean = ask("\033]11;rgb:f/f/f\033\\" + fence,
+			                           200, nullptr);
+			// Truncated after the prefix: a colon and then the terminator,
+			// which is what a reply cut off mid-flight looks like.
+			const TermCaps after = ask("\033]11;rgb:\033\\"
+			                           "\033]11;rgb:f/f/f\033\\" + fence,
+			                           200, nullptr);
+			printf("info: background known -- alone %d, after a truncated"
+			       " reply %d\n", int(clean.bg_known), int(after.bg_known));
+			CHECK(clean.bg_known && clean.bg[0] == 255,
+			      "a background reply is read");
+			CHECK(after.bg_known && after.bg[0] == 255,
+			      "and is still read when a truncated one precedes it");
+		}
+
 		// A terminal that DRIBBLES. Every check above writes one burst and
 		// then goes quiet, which is the safe side of the hazard: the budget
 		// was a counter decremented only where poll() returned nothing, so

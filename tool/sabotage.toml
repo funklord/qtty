@@ -86,3 +86,35 @@ find = "\t\tbuf.append(chunk, int(got));\n\t\tif (!caps_complete(buf)) continue;
 into = "\t\tbuf.append(chunk, int(got));\n\t\tclock.start();\n\t\tif (!caps_complete(buf)) continue;"
 count = 1
 check = "a probe honours its timeout while bytes keep arriving"
+
+[[sabotage]]
+name = "the placement ratio divides pixels by cells first"
+file = "src/graphics/graphics.cpp"
+find = "\t\treturn int(qint64(cell - cell_rect.left()) * image.width()\n\t\t           / cell_rect.width());"
+into = "\t\treturn (cell - cell_rect.left()) * (image.width() / cell_rect.width());"
+count = 1
+check = "and is still drawn when part of it leaves the grid"
+
+[[sabotage]]
+name = "an overlay's whole-terminal sentinel ignores position"
+file = "src/graphics/overlay.cpp"
+find = "\twhole_ = cell_rect == QRectF();"
+into = "\twhole_ = cell_rect.isNull();"
+count = 1
+check = "and one placed at a point with no size does not"
+
+[[sabotage]]
+name = "a malformed background reply abandons the whole scan"
+file = "src/backend/ansi/term_caps.cpp"
+find = "\t\tif (!ok) continue;\n\t\tout.bg_known = true;"
+into = "\t\tif (!ok) return;\n\t\tout.bg_known = true;"
+count = 1
+check = "and is still read when a truncated one precedes it"
+
+[[sabotage]]
+name = "the virtual transmit chunks itself with a leading comma"
+file = "src/graphics/graphics.cpp"
+find = "\treturn kitty_chunks(ctrl, b64);"
+into = "\tQByteArray out;\n\tconst int chunk = 4096;\n\tfor (int off = 0; off < b64.size(); off += chunk) {\n\t\tconst QByteArray part = b64.mid(off, chunk);\n\t\tconst bool more = off + chunk < b64.size();\n\t\tout += off == 0 ? QByteArray(\"\\033_G\") + ctrl : QByteArray(\"\\033_G\");\n\t\tout += \",m=\" + QByteArray::number(more ? 1 : 0) + ';' + part + \"\\033\\\\\";\n\t}\n\treturn out;"
+count = 1
+check = "no chunk's control data opens with an empty item"

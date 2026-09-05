@@ -863,6 +863,63 @@ int suite_graphics() {
 		      "a placement past the right edge keeps only the visible columns");
 
 		// Wholly off screen: nothing to draw at all.
+		// What an overlay's rectangle means when it is empty. The sentinel
+		// for "the whole terminal" was QRectF::isNull(), which is width and
+		// height both zero and says nothing about POSITION -- so a rect an
+		// application COMPUTED as 0x0 at (5,5) asked for a sheet over the
+		// entire terminal, while the same arithmetic producing 8x0 asked
+		// for silence. One pixel apart, and neither said anything.
+		//
+		// Three states, asserted together, because the sentinel only means
+		// something against the two cases it has to be told apart from.
+		{
+			Overlay fresh, positioned, sized;
+			positioned.set_rect(QRectF(5, 5, 0, 0));
+			sized.set_rect(QRectF(1, 2, 8, 4));
+			printf("info: overlay covers_terminal: fresh %d, computed-empty"
+			       " %d, sized %d\n", int(fresh.covers_terminal()),
+			       int(positioned.covers_terminal()),
+			       int(sized.covers_terminal()));
+			CHECK(fresh.covers_terminal(),
+			      "an overlay nobody has placed covers the terminal");
+			CHECK(!positioned.covers_terminal(),
+			      "and one placed at a point with no size does not");
+			CHECK(!sized.covers_terminal()
+			      && sized.cell_rect() == QRectF(1, 2, 8, 4),
+			      "and an ordinary rectangle is kept as it was given");
+		}
+
+		// An image with FEWER SOURCE PIXELS THAN CELLS. The ratio here is
+		// an integer division of pixels by cells, so an image stretched
+		// over more cells than it has pixels gives a zero-pixel cell, an
+		// empty source rectangle, and a return all three transmitters read
+		// as "wholly off screen".
+		//
+		// The pair is what says it: the same tiny image is drawn when it
+		// sits entirely on the grid and must still be drawn when one cell
+		// of it leaves. A check on the cropped case alone would pass
+		// against a function that returned nothing for both.
+		{
+			const QSize tiny(7, 3);
+			const CroppedPlacement on = crop_placement(QRect(0, 0, 8, 3), tiny, grid);
+			const CroppedPlacement off = crop_placement(QRect(16, 0, 8, 3), tiny, grid);
+			printf("info: a 7x3 image over 8x3 cells: whole %s, half off %s"
+			       " source %dx%d\n",
+			       on.cells.isEmpty() ? "dropped" : "drawn",
+			       off.cells.isEmpty() ? "dropped" : "drawn",
+			       off.source.width(), off.source.height());
+			CHECK(!on.cells.isEmpty(),
+			      "an image smaller in pixels than in cells is drawn");
+			// The RECTANGLE, not merely that there is one. Four of the
+			// eight cells are visible, so the source is the left half of
+			// seven pixels: 4 * 7 / 8 = 3. Asserting only that it is
+			// non-empty would pass against a one-pixel floor covering for
+			// a ratio that had already collapsed to zero.
+			CHECK(off.cells == QRect(16, 0, 4, 3)
+			      && off.source == QRect(0, 0, 3, 3),
+			      "and is still drawn when part of it leaves the grid");
+		}
+
 		CHECK(crop_placement(QRect(2, 30, 4, 4), art.size(), grid).cells.isEmpty(),
 		      "a placement entirely off the grid is dropped");
 
@@ -965,6 +1022,38 @@ int suite_graphics() {
 		      "the transmit creates a virtual placement quietly");
 		CHECK(tx.contains(",c=2,r=2"), "sized in cells, not pixels");
 		CHECK(tx.endsWith("\033\\"), "and is a well-formed APC string");
+
+		// An image big enough to be CHUNKED. The one above is 2x2, whose
+		// PNG is far under the 4096-byte chunk, so it takes the first-chunk
+		// branch and the continuation branch has never been looked at --
+		// the safe side of the hazard again, in the encoder this time.
+		//
+		// Noise rather than a fill, because a PNG of a solid colour
+		// compresses to nothing and would leave the fixture exactly where
+		// the 2x2 one is. The assertion is on every chunk's CONTROL DATA:
+		// kitty reads it as a comma-separated list of key=value, and a
+		// chunk beginning with a comma opens with an empty item.
+		QImage noise(200, 200, QImage::Format_ARGB32);
+		for (int y = 0; y < noise.height(); ++y)
+			for (int x = 0; x < noise.width(); ++x)
+				noise.setPixel(x, y, qRgb((x * 37 + y * 91) % 256,
+				                          (x * 53 + y * 17) % 256,
+				                          (x * 11 + y * 73) % 256));
+		const QByteArray big = Qtty::encode_kitty_virtual(7, noise, 4, 4);
+		const QList<QByteArray> parts = big.split('\033');
+		int chunks = 0, leading_comma = 0;
+		for (const QByteArray &part : parts) {
+			if (!part.startsWith('_')) continue;
+			++chunks;
+			// past the "_G", the control data up to the ';'
+			const QByteArray ctrl = part.mid(2, part.indexOf(';') - 2);
+			if (ctrl.startsWith(',')) ++leading_comma;
+		}
+		printf("info: a chunked virtual transmit has %d chunk(s), %d opening"
+		       " with a comma\n", chunks, leading_comma);
+		CHECK(chunks > 1, "a big image is sent in more than one chunk");
+		CHECK(leading_comma == 0,
+		      "and no chunk's control data opens with an empty item");
 	}
 
 	// The other half of section 5.7's pair: an image in the TEXT FLOW must be

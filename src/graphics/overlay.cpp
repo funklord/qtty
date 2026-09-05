@@ -31,7 +31,26 @@ Overlay::~Overlay() {
 }
 
 void Overlay::set_image(const QImage &rgba) { img_ = rgba; sync_gui_twin(); }
-void Overlay::set_rect(const QRectF &cell_rect) { rect_ = cell_rect; sync_gui_twin(); }
+// The sentinel for "the whole terminal" is a DEFAULT-CONSTRUCTED rect, not
+// any empty one. It used to be QRectF::isNull(), which ignores position, so
+// an application whose arithmetic produced 0x0 at (5,5) got a sheet over the
+// entire terminal, while the same arithmetic producing 8x0 got silence --
+// one pixel apart, and neither saying anything. Passing QRectF() still means
+// the whole terminal, because that is how a caller resets it and is what the
+// header has always documented.
+//
+// The empty-but-positioned case draws nothing, which is the honest reading,
+// and says so once. qtty installs a message handler that keeps a warning off
+// the drawn frame, so this is safe to emit from a library.
+void Overlay::set_rect(const QRectF &cell_rect) {
+	rect_ = cell_rect;
+	whole_ = cell_rect == QRectF();
+	if (!whole_ && cell_rect.isEmpty())
+		qWarning("qtty: overlay rect %gx%g at (%g,%g) is empty, so nothing "
+		         "will be drawn", cell_rect.width(), cell_rect.height(),
+		         cell_rect.x(), cell_rect.y());
+	sync_gui_twin();
+}
 void Overlay::set_opacity(qreal o) { opacity_ = qBound(0.0, o, 1.0); sync_gui_twin(); }
 void Overlay::set_z(int z) { z_ = z; }
 void Overlay::show() { visible_ = true; sync_gui_twin(); }
@@ -84,7 +103,7 @@ void Overlay::sync_gui_twin() {
 	}
 	if (base) {
 		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
-		QRect target = rect_.isNull()
+		QRect target = whole_
 		    ? base->geometry()
 		    : QRect(base->geometry().topLeft()
 		                + QPoint(int(rect_.x() * cw), int(rect_.y() * ch)),
