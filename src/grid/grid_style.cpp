@@ -356,8 +356,14 @@ QString grid_font_problem(const QFont &font) {
 static int s_violations = 0;
 static GridGuard *s_guard = nullptr;
 
+static int s_forgiven = 0;
+
 int GridGuard::violations() { return s_violations; }
-void GridGuard::reset() { s_violations = 0; }
+int GridGuard::forgiven() { return s_forgiven; }
+// Counts what it discards. See the header for why: without this the tally a
+// run ends with says nothing about the run, only about whatever happened
+// after the last caller stopped looking.
+void GridGuard::reset() { s_forgiven += s_violations; s_violations = 0; }
 
 bool GridGuard::is_exempt(const QWidget *w) {
 	// Widgets Qt builds for itself, which the application never constructs

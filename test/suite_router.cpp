@@ -327,8 +327,13 @@ int suite_router() {
 	QCoreApplication::processEvents();
 	CellBuffer walk_frame(40, 16);
 	comp.compose(walk_frame);
-	CHECK(walk_frame.to_text().contains(QStringLiteral("SECONDWIN"))
-	      || Qtty::window_tabs().size() == 2,
+	// Named in the strip, rather than "either drawn OR two tabs exist".
+	// That disjunction was written when tabs were added and its first arm is
+	// DEAD -- measured, the second window's contents are never in this frame
+	// now, because only the current window is drawn -- so the whole check
+	// rested on a global COUNT that any other visible top-level moves. It
+	// asks for this window by identity instead.
+	CHECK(Qtty::window_tabs().contains(&second),
 	      "a second top-level joins the frame (section 5.4 step 3)");
 	// And selecting it shows it, which is the half that says the strip is an
 	// affordance rather than a label. The FIRST window's contents must be

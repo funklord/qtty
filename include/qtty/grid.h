@@ -72,6 +72,21 @@ public:
 	static void install(QCoreApplication &app);
 	static int violations();          // count since the last reset
 	static void reset();
+	// Everything reset() has thrown away, for the life of the process.
+	//
+	// reset() exists so a fixture can disown violations it caused on
+	// purpose, and that is legitimate -- but it made the tally at the end of
+	// a run meaningless, because whatever came before the LAST reset is
+	// gone. Measured 2026-09-06: a suite emitting 136 off-grid warnings
+	// reported zero violations and passed "every widget geometry landed on
+	// the grid". The same deliberate violation passed or failed depending
+	// only on which side of an unrelated later reset() it sat.
+	//
+	// So the discarded count is kept. A run asserts the total it forgives
+	// against a pinned number, the way this project already pins its check
+	// count: an off-grid widget appearing anywhere moves it, wherever the
+	// resets fall.
+	static int forgiven();
 	// Widgets whose class self-sizes and cannot be gridded from the style
 	// (measured F5). Named rather than silently skipped, so the exemption is
 	// reviewable and does not quietly grow.

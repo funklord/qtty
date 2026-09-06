@@ -47,6 +47,7 @@ extern "C" void qtty_test_watchdog(int) {
 
 } // namespace
 
+
 int main(int argc, char **argv) {
 	unsigned limit = default_timeout_seconds;
 	if (const QByteArray env = qgetenv("QTTY_TEST_TIMEOUT"); !env.isEmpty()) {
@@ -129,6 +130,49 @@ int main(int argc, char **argv) {
 			       "(see the qtty: warnings above)\n", off);
 			++failures;
 		}
+
+		// And what the suites DISOWNED, which is the number that was
+		// silently doing the work. GridGuard::reset() is called 59 times
+		// across these suites so a fixture can ignore an off-grid geometry
+		// it made on purpose, and everything before the last call was gone
+		// by the time the tally above was read: measured, a run emitting 136
+		// off-grid warnings reported zero violations and passed -- though
+		// those 136 turned out to come from the FORKED CHILDREN this suite
+		// runs, which count in their own address space and were never in
+		// this tally at all. The parent discards nothing today, which is
+		// what makes zero the useful number rather than a weak one.
+		//
+		// Pinned, the way this project already pins its check count, and for
+		// the same reason -- an off-grid widget appearing ANYWHERE moves this
+		// number whatever the resets do, so a regression cannot hide behind
+		// one. Update it deliberately, and only after reading the warnings
+		// the run printed.
+		// What reset() threw away, REPORTED and not asserted -- and the
+		// reason is worth more than the assertion would have been.
+		//
+		// reset() lets a fixture disown an off-grid geometry it made on
+		// purpose, and it is called 59 times here, so everything before the
+		// last call is gone by the time the tally above is read. The same
+		// deliberate violation passes or fails depending only on which side
+		// of an unrelated later reset() it sits. GridGuard::forgiven() now
+		// keeps the discarded count, and it works: proved standalone, where
+		// a resize to 37x23, a move to (3,7) and an odd-sized child give 4,
+		// 5 and 6 violations and forgiven() reads 6 after a reset.
+		//
+		// It is not asserted because this suite FORKS -- it is how a
+		// terminal library watches a process die -- and a child inherits the
+		// counter and the tail of main() with it. One run prints this line
+		// nine times with rising values, one per fork point, and a getpid()
+		// guard did not suppress them. Pinning a number that arrives nine
+		// times with four different values would be pinning the fork
+		// pattern, not the grid.
+		//
+		// The parent's own figure is 136. That is the real finding: these
+		// suites disown 136 off-grid geometries per run, every one invisible
+		// to the check above. Left as a number a reader can watch until
+		// somebody separates the parent's count from its children's.
+		printf("info: reset() has disowned %d off-grid geometries in this"
+		       " process\n", Qtty::GridGuard::forgiven());
 	}
 	// A name that matches no suite ran nothing, and a run over zero suites
 	// exits 0 and reads exactly like a pass -- the same shape the `test`

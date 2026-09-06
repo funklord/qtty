@@ -6663,6 +6663,47 @@ which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
 
+**What `GridGuard::reset()` throws away is counted now** (2026-09-06).
+`reset()` exists so a fixture can disown an off-grid geometry it made on
+purpose, and it is called 59 times across these suites -- so whatever
+happened before the LAST call was gone by the time the run read the tally.
+The same deliberate violation passed or failed depending only on which side
+of an unrelated later `reset()` it sat, which makes the guarantee this
+project is built on -- every widget on the grid -- an assertion about the
+end of the run rather than about the run.
+
+`GridGuard::forgiven()` keeps the discarded count now, and the run REPORTS
+it rather than asserting it. **The number is 136**: these suites disown 136
+off-grid geometries per run, every one of them invisible to the check that
+reads the tally at the end.
+
+**Why it is reported and not pinned is the more useful half.** This suite
+forks -- it is how a terminal library watches a process die -- and a child
+inherits the counter and the tail of `main()` with it. One run prints the
+line NINE times with rising values, 8, 8, 38, 103, 103 and 136 four times,
+one per fork point, and a `getpid()` guard did not suppress them. Pinning a
+number that arrives nine times with four different values would be pinning
+the fork pattern rather than the grid.
+
+The counter itself is proved standalone: with the guard installed directly,
+a resize to 37x23, a move to (3,7) and an odd-sized child give 4, 5 and 6
+violations, and `forgiven()` reads 6 after a reset.
+
+**Two wrong readings on the way, both mine and both from a stale binary.**
+I first measured `forgiven()` as zero and wrote that the 136 warnings must
+come from forked children counting in their own address space; they do not,
+and the parent's own figure is 136. And I concluded an off-grid widget
+could not be produced in-process because GridSnap corrects it -- also from
+the stale build. `make tests-build` is what rebuilds the suite here, plain
+`make` does not, and that is the **third** time in this session the same
+trap produced a confident wrong sentence.
+
+**And a check I wrote yesterday rested on a global count.** "A second
+top-level joins the frame" was `drawn OR window_tabs().size() == 2`, and
+its first arm is dead now that only the current window is drawn -- so the
+whole check rode on a count any other visible top-level moves. It asks for
+that window by identity.
+
 **A sweep for checks that depend on state they do not own** (2026-09-06),
 the lens the last four defects shared. It found more than the lens that
 produced it, and four of its findings are fixed here.
