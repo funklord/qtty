@@ -13344,26 +13344,46 @@ seen what the frame does to content. Put text in it and the lines double-space:
      └                                             └
 
 **It needs both the label and the frame.** Either alone renders the lines
-consecutively; together, every log line gets a blank row after it. A log
-viewer showing half as many entries as the terminal has room for is not a
-decoration problem, and we called it one because our fixture was empty.
+consecutively; together, every log line gets a blank row after it.
 
-**Our own fixture is the reason we got it wrong**, and it is the part worth
-carrying: `entries_text()` was right throughout -- the widget held three lines
-and the screen spread them over five -- so nothing that asked the widget could
-have seen it. The same shape as the fingerprint defect, in the same session,
-found the same way and missed for one more round because the first render had
-nothing in it.
-
-**Fuzznet's side is fixed by not asking for the frame**, which we would defend
-even if this changes: a generic widget should not impose chrome, and a
-consumer wanting a border can put a `QGroupBox` around the whole thing. So
-nothing here is blocked for us. The report stands because the interaction is
-still yours and somebody else will meet it.
-
-Reproduction for that half: the same widget, `setPlainText("one\ntwo")` in the
+Reproduction: the same widget, `setPlainText("one\ntwo")` in the
 `QPlainTextEdit`, snapshot at 60x8; then again with
 `setFrameShape(QFrame::NoFrame)`, which renders correctly.
+
+### And correcting that correction, which is where the useful fact is
+
+**The paragraph above is right about the reproduction and wrong about the
+verdict**, and we would rather hand you the third measurement than the second.
+It said the doubling was "not a decoration problem". For OUR widget it is not
+a problem at all, because **the doubling is font-dependent** and our editor
+has carried a monospace hint since long before any of this.
+
+Measured one setting at a time, against the three our log view sets:
+
+    default (our reproduction's case)   rows 2, 4
+    monospace only                      rows 2, 3
+    readOnly only                       rows 2, 4
+    NoWrap only                         rows 2, 4
+    all three (our log view)            rows 2, 3
+
+`readOnly` and `NoWrap` make no difference; **the font makes all of it**. So a
+proportional font in a framed editor under a label double-spaces, and a
+monospace one does not -- which sounds like cell-height rounding somewhere,
+and is a sharper thing to hand you than either of the two verdicts that
+preceded it.
+
+**How we caught our own wrong verdict** is the part we would want told to us:
+we had already written the fix up as "the frame was costing content", and then
+put the frame back to prove the new guard caught it. It did not. The guard was
+green with the frame and without it, because the property we had asserted was
+never the one that changed. Chasing the surviving sabotage rather than
+believing the tidy story is what produced the table above.
+
+**Nothing is blocked for us either way.** Our side is fixed by not asking for
+the frame -- a generic widget should not impose chrome, and a consumer wanting
+a border can put a `QGroupBox` around the whole thing -- which we would defend
+even if this changes at your end. The report stands because the interaction is
+yours and somebody with a proportional font will meet it.
 
 ### What fuzznet now runs, so a change here has a consumer that will notice
 
