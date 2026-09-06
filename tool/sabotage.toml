@@ -331,3 +331,19 @@ find = "\t\tsigaction(SIGTSTP, &g_prev_tstp, nullptr);"
 into = "\t\t;"
 count = 1
 check = "while suspending gives the stop signal back too"
+
+[[sabotage]]
+name = "a transparent brush paints its RGB bytes"
+file = "src/render/cell_paint.cpp"
+find = "\tif (alpha == 0) return;"
+into = "\t;"
+count = 1
+check = "a fully transparent fill leaves the cell alone"
+
+[[sabotage]]
+name = "alpha is discarded and a wash paints opaque"
+file = "src/render/cell_paint.cpp"
+find = "\tif (!thin && alpha < 255) {"
+into = "\tif (false) {"
+count = 1
+check = "a translucent fill is neither its ground nor its own colour"

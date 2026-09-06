@@ -84,9 +84,20 @@ def run(cmd, timeout, cwd=ROOT):
 	env = dict(os.environ)
 	env["QTEST_DISABLE_STACK_DUMP"] = "1"
 	try:
+		# stderr is captured SEPARATELY, not merged. Qt writes warnings
+		# there while the suite writes results to stdout, and merging the
+		# two lets a warning land inside a result line:
+		#
+		#     PASS: a This plugin does not support propagateSizeHints()
+		#
+		# That is a real line from a real run. A corrupted PASS reads as a
+		# check that did not pass, and a corrupted FAIL reads as a check
+		# that did not fail -- which this harness reports as "the code was
+		# broken and nothing noticed", the one alarm it exists to raise.
+		# Parsing a stream nobody else writes to removes the whole class.
 		return subprocess.run(cmd, cwd=cwd, env=env, timeout=timeout,
 		                      stdout=subprocess.PIPE,
-		                      stderr=subprocess.STDOUT,
+		                      stderr=subprocess.PIPE,
 		                      text=True, errors="replace")
 	except subprocess.TimeoutExpired:
 		return None
@@ -103,7 +114,7 @@ def build_and_test():
 	if b is None:
 		return None, "the build timed out"
 	if b.returncode != 0:
-		return None, "the build failed:\n" + b.stdout[-2000:]
+		return None, "the build failed:\n" + (b.stdout + b.stderr)[-2000:]
 	t = run(["make", "test"], TEST_TIMEOUT)
 	if t is None:
 		return None, "the suite timed out"

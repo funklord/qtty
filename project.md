@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1042 checks, 0 failures, under six configurations, all six re-run
+1045 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6662,6 +6662,75 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.13 bbq-predictor's own graph, hosted (2026-09-06)
+
+The survey in 8.11 was done by rendering representative widgets. This is
+the real thing: **bbq-predictor's `bbq_forecast_graph`, their code,
+unmodified, linked against qtty and rendered into an 80x24 buffer.** Their
+tree was read and not written; the harness lives in scratch.
+
+**It builds and it draws.** The dependency closure is seven of their source
+files, their headers compile against qtty's without a complaint, and the
+frame carries the temperature curve as diagonals, the day dividers, the
+grid, the axis labels, Weather Underground's measured red for temperature
+and blue for rain. 8.11 recorded that this widget's "temperature curve,
+rain area, wind traces, sample dots and cursor readout all vanish" -- 1,229
+lines of `paintEvent` rendering nothing. That is closed, and this is the
+evidence for it that a synthetic fixture could not give.
+
+**What it then found is alpha, which this engine discarded entirely.** Two
+defects, failing in opposite directions:
+
+    fillRect(r, Qt::transparent)     drew SOLID BLACK
+    fillRect(r, QColor(...,  80))    drew fully OPAQUE
+
+The first is the sharper one. `brush_cell()` took `brush_.color().rgba()`,
+matched no palette role, and `Color::rgb()` kept the bytes -- which for
+`Qt::transparent` are zero. So the ordinary way of saying "leave this
+alone" blacked the cells out.
+
+The second replaces what it was drawn to shade. A translucent fill is
+blended per cell against what the cell already holds now, so one wash over
+two grounds gives two answers; where the ground is not a concrete colour
+the shade is laid down opaque as before, so nothing looks worse than it
+did.
+
+**And the reading that prompted it was WRONG, which is worth more than the
+fix.** Seeing a solid orange block over the curve, I recorded that
+bbq-predictor's grill window -- `QColor(0xff, 0x8b, 0x33, 80)`, a 31% wash
+-- was erasing the temperature curve behind it. Diffing the frame before
+and after the blend: **identical.** The curve is painted after the band and
+is opaque, so it was visible all along. The alpha work is right and its
+motivating case was not one, and the blend branch had NO demonstrated
+consumer until a fixture was built for it deliberately. **A fix that
+changes nothing in the case that suggested it is a fix looking for its
+evidence**, and the honest order is to find the case first.
+
+**The sabotage harness then refused to redden the check** for the blend,
+and was right to. Written against whole `QRgb` values, it compared
+`0x50ff8b33` against `0xffff8b33` -- equal in every byte that draws,
+different in the one that does not, so it passed against a fill that had
+stopped blending. Two things came out of that:
+
+- **The check compares visible channels**, which says what is meant.
+- **`Color` no longer stores the alpha byte at all.** A terminal has no
+  alpha channel, so carrying it made two cells of one visible colour
+  compare unequal whenever their brushes differed in transparency -- which
+  the frame diff reads as a change and retransmits.
+
+**A third finding, in the harness itself: it merged stderr into the stream
+it parses.** Qt writes warnings there while the suite writes results to
+stdout, and a warning lands inside a result line:
+
+    PASS: a This plugin does not support propagateSizeHints()
+
+A corrupted PASS reads as a check that did not pass; a corrupted FAIL reads
+as a check that did not fail, which this harness reports as "the code was
+broken and nothing noticed" -- **a false alarm on the one signal it
+exists to give.** Captured separately now. The baseline it reports moved
+from 1031 to 1034 unique checks, which is three that were being lost to
+interleaving on every run anybody has ever done.
 
 **The pty gate's report was blind to 13 of its 1042 results, and they
 were the 13 it exists for** (2026-09-06). Found by pointing the skip sweep

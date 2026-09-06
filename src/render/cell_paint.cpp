@@ -739,9 +739,59 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 		if (c.isEmpty()) return;
 	}
 
+	// Alpha, which this engine discarded entirely until it was measured
+	// against a real application's overlay.
+	//
+	// A FULLY TRANSPARENT brush drew solid BLACK. brush_cell() takes
+	// brush_.color().rgba(), which matches no palette role, and Color::rgb()
+	// keeps the RGB bytes -- and for Qt::transparent those are zero. So
+	// fillRect(r, Qt::transparent), an ordinary way of saying "leave this
+	// alone", blacked the cells out instead.
+	const int alpha = brush_.color().alpha();
+	if (alpha == 0) return;
+
 	const FillCell f = brush_cell();
 	if (f.erase) {
 		if (!thin && c.width() > 1 && c.height() > 1) dev_->buffer().fill(c, Cell{});
+		return;
+	}
+	// A TRANSLUCENT brush drew opaque, which is worse than it sounds: an
+	// overlay exists to shade what is under it, so discarding the alpha
+	// REPLACES the thing the overlay was drawn for. Measured against
+	// bbq-predictor's grill window -- QColor(0xff, 0x8b, 0x33, 80), a 31%
+	// wash the pixel version shows the temperature curve through -- which
+	// came out here as a solid orange block with the curve gone underneath.
+	//
+	// Blended per cell against what the cell already holds, so one wash over
+	// two different grounds gives two different answers. That is what makes
+	// a shaded curve legible rather than uniform, and it is the whole
+	// behaviour being restored.
+	//
+	// The glyph and its colour are left alone. A cell holds one character;
+	// tinting the text as well costs contrast and buys nothing, and a wash
+	// that ERASED text would be the same defect one layer along.
+	//
+	// Where the ground is not a concrete colour -- a Default background is
+	// the terminal's own and this layer does not know it -- the shade is
+	// laid down opaque, as it was before. That keeps it visible rather than
+	// dropping it, and leaves nothing looking worse than it did.
+	if (!thin && alpha < 255) {
+		const QColor src = brush_.color();
+		auto mix = [alpha](int s, int d) {
+			return (s * alpha + d * (255 - alpha)) / 255;
+		};
+		for (int y = c.top(); y <= c.bottom(); ++y)
+			for (int x = c.left(); x <= c.right(); ++x) {
+				Cell &cell = dev_->buffer().at(x, y);
+				if (cell.bg.kind() != Color::Rgb) {
+					cell.bg = f.cell.bg;
+					continue;
+				}
+				const QRgb d = cell.bg.value();
+				cell.bg = Color::rgb(qRgb(mix(src.red(), qRed(d)),
+				                          mix(src.green(), qGreen(d)),
+				                          mix(src.blue(), qBlue(d))));
+			}
 		return;
 	}
 	if (!thin) { dev_->buffer().fill(c, f.cell); return; }
@@ -772,8 +822,17 @@ CellPaintEngine::FillCell CellPaintEngine::brush_cell() const {
 	                  QPalette::AlternateBase, QPalette::Highlight,
 	                  QPalette::ToolTipBase});
 
-	Color bg = matched == QPalette::NoRole ? Color::rgb(col)
-	                                       : theme().background(matched);
+	// Normalised to OPAQUE rgb, because a Color is a terminal colour and a
+	// terminal has no alpha channel. Storing the byte anyway made two cells
+	// of the same visible colour compare unequal whenever their brushes
+	// differed in transparency -- which the frame diff reads as a change and
+	// retransmits -- and it let a check comparing whole QRgb values pass
+	// against a fill that had stopped blending, the difference being in the
+	// one byte nothing draws. Found by the sabotage harness refusing to make
+	// that check fail.
+	Color bg = matched == QPalette::NoRole
+	               ? Color::rgb(qRgb(qRed(col), qGreen(col), qBlue(col)))
+	               : theme().background(matched);
 	Attrs mark;
 	if (bg.kind() == Color::Default) {
 		if (is_surface_role(matched)) return FillCell{Cell{}, true};

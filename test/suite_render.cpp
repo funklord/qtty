@@ -233,6 +233,82 @@ int suite_render(bool record) {
 		fill_with(true, clipped);
 		fill_with(false, open);
 
+		// ALPHA, which this engine discarded until a real application's
+		// overlay was rendered through it.
+		//
+		// Both halves are asserted because they fail in opposite
+		// directions and a fixture that catches one says nothing about
+		// the other: a fully transparent brush drew SOMETHING (solid
+		// black, the RGB bytes of Qt::transparent kept after the alpha
+		// was dropped), and a translucent brush drew EVERYTHING (opaque,
+		// replacing the very thing the overlay existed to shade).
+		{
+			auto ground_of = [&](QColor over) {
+				Qtty::CellBuffer b(4, 1);
+				Qtty::CellPaintDevice dev(b);
+				QPainter p(&dev);
+				p.fillRect(QRect(0, 0, cw * 4, ch), QColor(0xd5, 0x20, 0x2a));
+				p.fillRect(QRect(0, 0, cw * 4, ch), over);
+				p.end();
+				return b.at(1, 0).bg;
+			};
+			const Qtty::Color plain = ground_of(QColor(0xd5, 0x20, 0x2a));
+			const Qtty::Color washed = ground_of(QColor(0xff, 0x8b, 0x33, 80));
+			const Qtty::Color opaque = ground_of(QColor(0xff, 0x8b, 0x33));
+
+			// Transparent over an EMPTY cell, so "left alone" is
+			// Default and cannot be confused with the ground below.
+			Qtty::CellBuffer clear_buf(4, 1);
+			{
+				Qtty::CellPaintDevice dev(clear_buf);
+				QPainter p(&dev);
+				p.fillRect(QRect(0, 0, cw * 4, ch), Qt::transparent);
+				p.end();
+			}
+			if (clear_buf.at(1, 0).bg.kind() == Qtty::Color::Default)
+				printf("PASS: a fully transparent fill leaves the cell alone\n");
+			else {
+				printf("FAIL: a fully transparent fill leaves the cell alone\n");
+				++r;
+			}
+
+			// The relationship, not the value: a wash is neither of its
+			// two operands. Pinning the blended constant would pass just
+			// as well against a fill that had simply stopped, and would
+			// go stale the moment the arithmetic is tuned.
+			//
+			// Compared on the VISIBLE channels. Written against whole
+			// QRgb values this check passed with blending disabled,
+			// because the opaque path then stored the brush's alpha byte
+			// and the two differed in the one byte nothing draws. The
+			// engine normalises that away now, and comparing channels
+			// says what is meant either way.
+			if (washed.kind() == Qtty::Color::Rgb
+			    && (washed.value() & 0xffffff)
+			           != (plain.value() & 0xffffff)
+			    && (washed.value() & 0xffffff)
+			           != (opaque.value() & 0xffffff))
+				printf("PASS: a translucent fill is neither its ground nor its own colour\n");
+			else {
+				printf("FAIL: a translucent fill is neither its ground nor its own colour\n");
+				++r;
+			}
+
+			// And it lies BETWEEN them per channel, which is what makes
+			// it a blend rather than merely a third colour.
+			const QRgb w = washed.value(), g = plain.value(),
+			           o = opaque.value();
+			if (qRed(w) > qMin(qRed(g), qRed(o))
+			    && qRed(w) < qMax(qRed(g), qRed(o))
+			    && qGreen(w) > qMin(qGreen(g), qGreen(o))
+			    && qGreen(w) < qMax(qGreen(g), qGreen(o)))
+				printf("PASS: and sits between the two it was blended from\n");
+			else {
+				printf("FAIL: and sits between the two it was blended from\n");
+				++r;
+			}
+		}
+
 		// A DISABLED widget's fill. Qt takes a disabled widget's brush from
 		// the palette's Disabled group, and this engine matched the brush
 		// against the Active group only -- its own copy of the role list,
