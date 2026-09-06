@@ -534,6 +534,77 @@ int suite_router() {
 		QCoreApplication::processEvents();
 		CHECK(fired == 1, "Return in the submenu fires its item, not the parent's");
 	}
+	// What Qt tells a widget when focus LEAVES it. Qt delivers a QFocusEvent
+	// only for an ACTIVE window, and no qtty window ever activates -- every
+	// one carries WA_DontShowOnScreen -- so focusInEvent() and
+	// focusOutEvent() never ran anywhere, and neither did anything Qt builds
+	// on them.
+	//
+	// The one that costs an application most is QLineEdit::editingFinished(),
+	// which Qt emits from focusOutEvent: a form only ever heard about a field
+	// the user pressed Return in. The CONTROL is Return, which goes through a
+	// different path and always worked -- so the pair separates "focus does
+	// not notify" from "the signal is broken".
+	{
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *one = new QLineEdit(&h);
+		auto *two = new QLineEdit(&h);
+		one->setGeometry(0, 0, cw * 8, ch);
+		two->setGeometry(0, ch, cw * 8, ch);
+		int finished = 0;
+		QObject::connect(one, &QLineEdit::editingFinished, [&] { ++finished; });
+		h.resize(GridMetrics::cells(10, 3));
+		h.show();
+		one->setFocus();
+		set_focus_widget(one);
+		QCoreApplication::processEvents();
+		InputRouter r(&h);
+		// Typed into, and that is not decoration. Qt 6 gates
+		// editingFinished on the field having actually been EDITED, so an
+		// untouched one emits nothing on focus-out and would have made this
+		// check pass against the defect for the wrong reason -- which it
+		// did, on the first attempt.
+		for (const QChar c : QStringLiteral("hi"))
+			r.on_key({0, QString(c), false, false, false});
+		QCoreApplication::processEvents();
+		r.on_key({Qt::Key_Tab, QStringLiteral("\t"), false, false, false});
+		QCoreApplication::processEvents();
+		const int on_tab = finished;
+
+		int by_return = 0;
+		QLineEdit solo;
+		solo.setText(QStringLiteral("x"));
+		QObject::connect(&solo, &QLineEdit::editingFinished, [&] { ++by_return; });
+		solo.setFocus();
+		QKeyEvent ret(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+		QCoreApplication::sendEvent(&solo, &ret);
+		QCoreApplication::processEvents();
+
+		printf("info: editingFinished fired %d time(s) on Tab, %d on"
+		       " Return\n", on_tab, by_return);
+		CHECK(by_return == 1, "Return finishes editing a field");
+		CHECK(on_tab == 1, "and so does moving the focus off it");
+	}
+
+	// A second consumer was tried here and is NOT fixed, which is worth a
+	// sentence rather than a silent absence. QAbstractItemView closes an
+	// inline editor when the editor loses focus, and an editor still does
+	// not close: measured, one open after editItem() and one still open
+	// after the focus moved.
+	//
+	// The reason is that this fix reaches only focus qtty ITSELF moves.
+	// QAbstractItemView::edit() calls setFocus() on the editor directly, so
+	// s_focus never learns the editor has it, and the FocusOut goes to
+	// whatever qtty last recorded instead. Closing that gap means noticing
+	// Qt-initiated focus changes -- a filter on QEvent::FocusIn, or a
+	// connection to QApplication::focusChanged, neither of which fires here
+	// for the same reason this whole entry exists.
+	//
+	// Recorded in project.md; not attempted in passing, because a second
+	// authority for focus is exactly the kind of thing this tree has
+	// already been bitten by keeping two of.
+
 	// A ONE-CELL scroll bar's hit test. Its drawing learned about one cell;
 	// subControlRect did not, so it fell through to Fusion's pixel
 	// rectangles below two cells -- which is exactly what the comment above

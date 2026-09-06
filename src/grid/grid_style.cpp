@@ -12,6 +12,7 @@
 // use. Including what the file uses is right on every version and is not a
 // position on which versions are supported (section 8.1).
 #include <QPointer>
+#include <QFocusEvent>
 #include <QAction>
 #include <QFontDatabase>
 #include <QStyleFactory>
@@ -114,7 +115,47 @@ void GridMetrics::set(int cw, int ch) { s_cw = cw; s_ch = ch; }
 // the widget is gone, rather than a pointer its caller must not follow.
 static QPointer<QWidget> s_focus;
 QWidget *focusWidget() { return s_focus.data(); }
-void set_focus_widget(QWidget *w) { s_focus = w; }
+// Setting focus DELIVERS the two events Qt's platform layer would have
+// delivered, because nothing else will. Qt sends a QFocusEvent only for an
+// ACTIVE window and no qtty window ever activates -- every one carries
+// WA_DontShowOnScreen (F4) -- so focusInEvent() and focusOutEvent() never ran
+// anywhere, and neither did anything Qt builds on them.
+//
+// The one that costs an application most is QLineEdit::editingFinished(),
+// which Qt emits from focusOutEvent: measured, a form only ever heard about a
+// field the user pressed Return in, because Return reaches the signal by
+// another path. An item view's inline editor is the same fault with a worse
+// ending -- QAbstractItemView closes an editor when it loses focus, so the
+// editor stayed open on a row the user had left and the edit was never
+// committed.
+//
+// This is the same sentence runtime.h already writes about this library:
+// InputRouter owns everything the platform layer would normally own. Focus
+// was on that list and only half of it was being done -- the model was kept
+// and the notifications were not.
+//
+// THE LIMIT, which is real and is better written here than rediscovered: this
+// restores DELIVERY, not the predicate. QWidget::hasFocus() reads Qt's own
+// focus_widget, which is only set for an active window, so it still answers
+// false inside a synthetic focusInEvent(). Qtty::focusWidget() is the answer
+// to "who has focus" and remains so.
+//
+// s_focus is assigned BEFORE the events go out, so a handler that moves focus
+// again re-enters with the new value already in place and the equality guard
+// above stops the recursion rather than the stack.
+void set_focus_widget(QWidget *w) {
+	QWidget *const before = s_focus.data();
+	if (before == w) return;
+	s_focus = w;
+	if (before) {
+		QFocusEvent out(QEvent::FocusOut, Qt::OtherFocusReason);
+		QCoreApplication::sendEvent(before, &out);
+	}
+	if (w) {
+		QFocusEvent in(QEvent::FocusIn, Qt::OtherFocusReason);
+		QCoreApplication::sendEvent(w, &in);
+	}
+}
 
 // Reverse video on the control that owns focus. design.md F10 settled this in
 // the spike -- "moving focus to a button changes exactly the button's cells to

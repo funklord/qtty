@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-983 checks, 0 failures, under six configurations, all six re-run
+993 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6591,6 +6591,43 @@ The check was kept for the behaviour it does pin -- Tab reaching a widget
 when nothing has focus, which nothing covered -- with its claim corrected
 and what was tried written down. The fallback remains unreached.
 
+**The focus events Qt's platform layer would have sent** (2026-09-06).
+Qt delivers a `QFocusEvent` only for an ACTIVE window, and no qtty window
+ever activates -- every one carries `WA_DontShowOnScreen` (F4) -- so
+`focusInEvent()` and `focusOutEvent()` never ran anywhere, and neither
+did anything Qt builds on them. Measured: a `QLineEdit` typed into and
+Tabbed away from emitted `editingFinished()` **zero** times, where Return
+emitted it once. A form only ever heard about a field the user pressed
+Return in.
+
+`set_focus_widget()` sends the pair now. It is the one choke point every
+focus change goes through, and `runtime.h` already says this library owns
+everything the platform layer would normally own -- focus was on that
+list and only half of it was being done, the model kept and the
+notifications not.
+
+**The limit is real and is written beside it**: this restores DELIVERY,
+not the predicate. `QWidget::hasFocus()` reads Qt's own focus widget,
+which is set only for an active window, so it still answers false inside
+a synthetic `focusInEvent()`.
+
+**And a second consumer is NOT fixed, which is why the entry says so.**
+An item view closes an inline editor when the editor loses focus, and an
+editor still does not close: `QAbstractItemView::edit()` calls
+`setFocus()` on the editor directly, so `s_focus` never learns the editor
+has it and the FocusOut goes to whatever qtty last recorded. Closing that
+gap means noticing Qt-INITIATED focus changes, which is a second
+authority for focus -- exactly the kind of thing this tree has been
+bitten by keeping two of -- so it is recorded rather than attempted in
+passing.
+
+**The check for it was on the safe side twice before it discriminated.**
+Qt 6 gates `editingFinished` on the field having actually been edited, so
+the first version -- which never typed -- passed against the defect. And
+the item-editor half asserted `0 == 0` until the fixture set
+`Qt::ItemIsEditable`, which a `QListWidgetItem` does not carry by
+default.
+
 **Two lenses derived from the last two defects, and both paid out**
 (2026-09-06). One asked where qtty's own platform stamping changes a Qt
 DECISION -- the empty-modal lock-up was that shape. The other asked which
@@ -11263,6 +11300,119 @@ at the start of the text is on the first character's cell, at the end it
 is one cell past the last, and one character of movement is one cell of
 movement.
 
+
+### 8.11 What seven sibling GUIs would need, surveyed 2026-09-06
+
+The copyright holder asked what qtty is missing to host the other private
+projects' GUIs. Seven have Qt Widgets front ends and all seven were
+surveyed by measurement -- widgets rendered through `render_once()` into a
+CellBuffer and the cells read back -- rather than by reading their source.
+
+**The shell is not the problem, and that is the headline.** A
+`QMainWindow` with a menu bar, tool bar, dock widget, central widget and
+status bar renders correctly. So do `QMessageBox`, `QWizard`, `QToolBar`,
+`QCalendarWidget`, `QTabWidget`, `QSplitter`, item views, every spin box
+variant, and the modal stack. netcfgd -- 47 files, 8,982 lines, 25 widget
+classes, zero `paintEvent` overrides -- would host **essentially as it
+stands**, and is the closest thing in the workspace to this library's
+design target. raidcfgd's status window likewise.
+
+**The boundary is DRAWING, and it is sharp.** Measured on a custom
+`paintEvent`:
+
+    horizontal line    renders as a rule
+    vertical line      renders as a rule
+    diagonal line      NOTHING
+    polyline, curve    NOTHING
+    filled ellipse     NOTHING
+
+`line()` has exactly two branches, `|dy| < ch/2` and `|dx| < cw/2`; a
+diagonal matches neither and falls off the end of the function.
+`drawPath()` and `drawPolygon()` both reduce to `fill_rectf()` of the
+bounding rectangle. So a chart is not degraded, it is **replaced by its
+own bounding box** -- and a flat curve, whose bounding box collapses,
+renders zero cells.
+
+That single gap is the whole of bbq-predictor: 1,229 lines of
+`paintEvent` whose temperature curve, rain area, wind traces, sample dots
+and cursor readout all vanish, in an application whose every widget
+otherwise works. It is also fuzzypickles' compass, whose cardinal letters
+survive and whose needle does not.
+
+**`PixelSurface` is the escape hatch and it works** -- measured, a sine
+curve harvested as one placement at 300x95 px, full resolution -- but it
+is opt-in per widget and yields PIXELS, so it needs a graphics tier and
+falls back to a half-block mosaic elsewhere.
+
+**A second measured gap: an image under two cells becomes one averaged
+block.** raidcfgd's tray icons encode state as SHAPE deliberately, its
+header recording that "around one man in twelve cannot reliably tell the
+amber from the green" -- and every one of them renders as `▒▒`, distinct
+only by hue. The accessibility property the design was built around is
+exactly what the substitution removes.
+
+**What is qtty's to fix, ordered by how many projects it blocks:**
+
+    diagonals and curves    bbq-predictor entirely, fuzzypickles' compass.
+                            The honest minimum is a Bresenham walk in
+                            line(); the ambitious answer is sub-cell
+                            rasterisation into braille or sextants.
+    a sub-2-cell image tier  raidcfgd's whole purpose, fuzzypickles'
+                            delivery marks. One averaged colour is not a
+                            picture.
+    the style contract      An application calling setStyle() after
+                            setup() REPLACES GridStyle and deletes
+                            Channel A program-wide, silently. hydra does
+                            this today. Measured fix is one line on the
+                            application side -- QProxyStyle wrapping
+                            GridStyle rather than replacing it -- but
+                            there is no documented contract saying so.
+    clipboard out           No OSC 52 anywhere. beerssh has twelve
+                            QClipboard uses; hydra three. Paste in works.
+    drag and drop           QDrag::exec() returns IgnoreAction under
+                            offscreen. hydra's tab tree and beerssh's tab
+                            tear-out are both inert.
+    several top-levels      The compositor stacks every visible non-modal
+                            top-level on one screen. A torn-out window
+                            overlaps its parent.
+
+**Fixed the same day: the function keys.** Neither F1 to F12 nor a bare
+Escape existed in the decoder, and both surveyed applications bind them.
+The F keys are in now, in both forms -- SS3 for F1 to F4 and CSI `<n>~`
+for the rest, with xterm's modifier parameter. **SS3 was worse than
+missing**: `ESC O P` fell through to the Alt branch, so pressing F1
+delivered Alt-O to the application. An unmapped key is silence; a
+mis-mapped one fires somebody's menu. **Bare Escape is still absent** and
+is a harder problem -- ESC prefixes every sequence, so telling a lone one
+apart needs a timeout, which is a policy rather than a table.
+
+**And one finding lands on a trade made here yesterday.** Removing the
+tab bar's off-grid scroll arrows left an overflowing bar with no MOUSE
+affordance: fuzzypickles' eleven tabs need 96 columns and at 80 the last
+two cannot be clicked. Measured today, the keyboard still reaches them --
+the bar scrolls to whatever tab becomes current -- so the trade is
+defensible in a terminal and is recorded rather than reversed.
+
+**Two projects answer the question rather than posing it.** raidcfgd is a
+tray application, and a terminal has no notification area; nothing qtty
+builds can produce one. But raidcfgd already gates on
+`isSystemTrayAvailable()` -- false under this platform -- and falls back
+to showing its status window as the whole UI. **That fallback is the
+terminal port**, already written and already tested. hembygd is a game
+whose renderer links no Qt at all and hands over a framebuffer; its
+`drawImage` funnels correctly to a placement today, but a half-block
+backend written against its own `Fb` would be less code and better
+output than going through Qt to reach the same cells.
+
+**And beerssh is the one to decline.** Its terminal view is already a
+cell renderer with the same model as `CellBuffer` -- clusters, the same
+six attributes, the same three colour kinds -- so the honest port is
+`ICellPainted`, not Channel B. Through Channel B it was measured to
+LOSE WHOLE LINES of shell output whenever its font's line height differs
+from qtty's cell height, which is one font-size setting away. And
+nesting three cell grids in series degrades every feature beerssh exists
+for to the outer terminal's floor. `doc/beerssh.md` is a contract for the
+opposite direction, and that is the direction with a payoff.
 
 ### 8.10 The support matrix promises a placeholder nothing draws
 

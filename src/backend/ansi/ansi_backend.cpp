@@ -1396,6 +1396,19 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 		return true;
 	}
 
+	// One place that turns a function key and xterm's modifier parameter into
+	// an event, because there are twelve of them and twelve copies of three
+	// lines is twelve chances to get one wrong. The mask is the same 1 + bits
+	// the cursor keys below use.
+	const auto emit_function_key = [&](int key, int mods) {
+		KeyEvent k;
+		k.qt_key = key;
+		k.shift = mods & 1;
+		k.alt   = mods & 2;
+		k.ctrl  = mods & 4;
+		sink_->on_key(k);
+	};
+
 	if (final == '~') {
 		switch (param(0, 0)) {
 		case 200: in_paste_ = true;  paste_.clear(); return true;
@@ -1410,6 +1423,23 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 		case 4: case 8:  sink_->on_key({Qt::Key_End, {}, false, false, false}); return true;
 		case 5:          sink_->on_key({Qt::Key_PageUp, {}, false, false, false}); return true;
 		case 6:          sink_->on_key({Qt::Key_PageDown, {}, false, false, false}); return true;
+		// The function keys, in the numbering every terminal since the VT220
+		// has used. The gaps are real and are not typos: 16, 22 and 25 were
+		// never assigned. F1 to F4 usually arrive as SS3 instead -- see the
+		// ESC O branch -- but xterm sends this form under some settings and
+		// the linux console sends 11 to 14 always.
+		case 11: emit_function_key(Qt::Key_F1,  param(1, 1) - 1); return true;
+		case 12: emit_function_key(Qt::Key_F2,  param(1, 1) - 1); return true;
+		case 13: emit_function_key(Qt::Key_F3,  param(1, 1) - 1); return true;
+		case 14: emit_function_key(Qt::Key_F4,  param(1, 1) - 1); return true;
+		case 15: emit_function_key(Qt::Key_F5,  param(1, 1) - 1); return true;
+		case 17: emit_function_key(Qt::Key_F6,  param(1, 1) - 1); return true;
+		case 18: emit_function_key(Qt::Key_F7,  param(1, 1) - 1); return true;
+		case 19: emit_function_key(Qt::Key_F8,  param(1, 1) - 1); return true;
+		case 20: emit_function_key(Qt::Key_F9,  param(1, 1) - 1); return true;
+		case 21: emit_function_key(Qt::Key_F10, param(1, 1) - 1); return true;
+		case 23: emit_function_key(Qt::Key_F11, param(1, 1) - 1); return true;
+		case 24: emit_function_key(Qt::Key_F12, param(1, 1) - 1); return true;
 		default:         return true;             // consumed, unmapped
 		}
 	}
@@ -1483,6 +1513,36 @@ bool AnsiBackend::decode_one() {
 			if (n == 0) { pending_.remove(0, 1); return true; }   // over the cap
 			scan_caps(pending_.left(n), caps_);
 			pending_.remove(0, n);
+			return true;
+		}
+		// SS3: ESC O <final>. F1 to F4 arrive this way from xterm and from
+		// most of what imitates it, and the cursor keys do too when the
+		// terminal is in APPLICATION mode -- which a full-screen program can
+		// put it in without qtty asking.
+		//
+		// It had to go in front of the Alt branch below, and that is the
+		// whole of why these keys were worse than missing: ESC O P fell
+		// through to "Alt held with the character O", so pressing F1
+		// delivered Alt-O to the application. An unmapped key is silence; a
+		// MIS-mapped one fires somebody's menu.
+		if (pending_[1] == 'O') {
+			if (pending_.size() < 3) return false;      // still arriving
+			KeyEvent k;
+			switch (pending_[2]) {
+			case 'P': k.qt_key = Qt::Key_F1; break;
+			case 'Q': k.qt_key = Qt::Key_F2; break;
+			case 'R': k.qt_key = Qt::Key_F3; break;
+			case 'S': k.qt_key = Qt::Key_F4; break;
+			case 'A': k.qt_key = Qt::Key_Up; break;
+			case 'B': k.qt_key = Qt::Key_Down; break;
+			case 'C': k.qt_key = Qt::Key_Right; break;
+			case 'D': k.qt_key = Qt::Key_Left; break;
+			case 'H': k.qt_key = Qt::Key_Home; break;
+			case 'F': k.qt_key = Qt::Key_End; break;
+			default:  pending_.remove(0, 3); return true;   // consumed
+			}
+			pending_.remove(0, 3);
+			sink_->on_key(k);
 			return true;
 		}
 		if (pending_.size() < 2) return false;

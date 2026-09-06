@@ -166,3 +166,27 @@ find = "\tif (!c.isValid() || !c.intersects(bounds)) return;"
 into = "\tif (!c.isValid() || c.width() > 400 || c.height() > 200) return;"
 count = 1
 check = "and a wider one does not stop colouring them"
+
+[[sabotage]]
+name = "moving focus notifies nobody"
+file = "src/grid/grid_style.cpp"
+find = "\t\tQCoreApplication::sendEvent(before, &out);"
+into = "\t\t(void)out;"
+count = 1
+check = "and so does moving the focus off it"
+
+[[sabotage]]
+name = "SS3 falls through to the Alt branch"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tif (pending_[1] == 'O') {"
+into = "\t\tif (false) {"
+count = 1
+check = "SS3 P decodes as F1"
+
+[[sabotage]]
+name = "the function keys are consumed and unmapped"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tcase 15: emit_function_key(Qt::Key_F5,  param(1, 1) - 1); return true;"
+into = "\t\tcase 15: return true;"
+count = 1
+check = "CSI 15~ decodes as F5"

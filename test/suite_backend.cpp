@@ -256,6 +256,45 @@ int suite_backend() {
 	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Delete,
 	      "CSI 3~ decodes as Delete");
 
+	// The FUNCTION KEYS, which this decoder did not have at all. Two forms,
+	// and both are ordinary rather than exotic: xterm and most of what
+	// imitates it send F1 to F4 as SS3, ESC O P through S, and F5 upward as
+	// CSI <n> ~ in the numbering every terminal since the VT220 has used.
+	//
+	// SS3 is the one that mattered, and it was worse than missing. ESC O P
+	// fell through to the Alt branch, so pressing F1 delivered ALT-O to the
+	// application -- an unmapped key is silence, a mis-mapped one fires
+	// somebody's menu. That is what the second assertion below pins.
+	feed("\033OP");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_F1,
+	      "SS3 P decodes as F1");
+	CHECK(rec.keys.size() == 1 && !rec.keys[0].alt
+	      && rec.keys[0].text.isEmpty(),
+	      "and not as Alt held with the letter O");
+	feed("\033OS");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_F4,
+	      "SS3 S decodes as F4");
+	feed("\033[15~");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_F5,
+	      "CSI 15~ decodes as F5");
+	feed("\033[24~");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_F12,
+	      "CSI 24~ decodes as F12");
+	// The gaps at 16, 22 and 25 are real: those numbers were never
+	// assigned, and a decoder that mapped them would be inventing keys.
+	feed("\033[16~");
+	CHECK(rec.keys.isEmpty(), "and 16~ is consumed without inventing a key");
+	// The modifier parameter reaches a function key too, by the same 1 + bits
+	// mask the cursor keys use.
+	feed("\033[15;5~");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_F5
+	      && rec.keys[0].ctrl, "CSI 15;5~ decodes as Ctrl-F5");
+	// Application cursor mode, which a full-screen program can turn on
+	// without qtty asking: the arrows arrive as SS3 too.
+	feed("\033OA");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Up,
+	      "SS3 A decodes as Up, for a terminal in application mode");
+
 	// -- SGR 1006 mouse. Unreachable before: the backend never enabled the
 	//    mode and the decoder had no branch for it.
 	feed("\033[<0;34;12M");
