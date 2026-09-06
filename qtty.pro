@@ -8,12 +8,14 @@
 # source tree. `qmake6 ../qtty.pro && make` in a directory of your own works
 # too, and is what the Makefile does.
 TEMPLATE = subdirs
-SUBDIRS = src tool_inspect tool_replay tool_negotiate example_chat
+SUBDIRS = src tool_inspect tool_replay tool_negotiate tool_tray example_chat
 tool_inspect.subdir  = tool/inspect
 tool_replay.subdir   = tool/replay
 tool_negotiate.subdir = tool/negotiate
+tool_tray.subdir     = tool/tray
 example_chat.subdir  = example/chat
 tool_inspect.depends = src
 tool_replay.depends  = src
 tool_negotiate.depends = src
+tool_tray.depends    = src
 example_chat.depends = src

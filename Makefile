@@ -27,6 +27,7 @@
 #   make test-install -- install into a scratch root and check what landed
 #   make count-check  -- project.md's stated check count against the real one
 #   make sabotage     -- break the code on purpose; every check must go red
+#   make test-tray    -- publish a real tray icon on a private D-Bus session
 #   make coverage F=x -- line coverage for src/**/x.cpp
 #   make check        -- style + test; what must pass before committing
 #   make style        -- the shared source gate and the project.md checks
@@ -355,6 +356,22 @@ QT_PLUGIN_PATH_FOR_CHECK = $(shell $(QMAKE) -query QT_INSTALL_PLUGINS 2>/dev/nul
 test-screen: $(LIB)
 	@./tool/screen-check $(BUILD_DIR)
 
+# The system tray, which needs a SESSION BUS and therefore cannot live in the
+# suite: `make check` has to pass on a machine that has none -- a build
+# server, a container, and this project's own sanitizer and valgrind arms all
+# run without one. dbus-run-session supplies a private bus for the length of
+# the run, so the gate depends on nothing that is already there and leaves
+# nothing behind.
+#
+# It is a real end-to-end exercise rather than a unit check: the program
+# stands in for the desktop's StatusNotifierWatcher, publishes an icon
+# against it, reads the properties back over the bus the way a panel would,
+# calls Activate the way a click does, and hides it again.
+TRAY_CHECK = $(BUILD_DIR)/tool/tray/qtty-tray-check
+test-tray: all
+	@command -v dbus-run-session >/dev/null 2>&1 || { 		echo "    tray: SKIPPED -- dbus-run-session is not installed"; exit 0; }
+	@dbus-run-session -- $(TRAY_CHECK)
+
 # The negotiation the screen check depends on, asked of a second terminal.
 # Out of `check` for the same reason test-screen is: it starts terminals
 # under a virtual display and takes a minute, where `check` takes
@@ -532,6 +549,7 @@ INSTALLED_HEADERS = application.h \
 	                  qtty.h \
 	                  runtime.h \
 	                  testing.h \
+	                  tray.h \
 	                  theme.h \
 	                  version.h
 
@@ -1035,7 +1053,7 @@ $(BUILD_DIR)/qtty.pc: VERSION Makefile FORCE
 	    'Name: qtty' \
 	    'Description: Qt Widgets rendered into a terminal' \
 	    'Version: $(VERSION)' \
-	    'Requires: Qt6Widgets' \
+	    'Requires: Qt6Widgets Qt6DBus' \
 	    'Cflags: -I$${includedir} -std=c++17' \
 	    'Libs: -L$${libdir} -lqtty' \
 	    > $@
@@ -1102,4 +1120,4 @@ help:
 
 .PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks \
         version-check run install uninstall clean veryclean distclean help \
-        test-screen test-negotiate test-consume sabotage FORCE
+        test-screen test-negotiate test-consume test-tray sabotage FORCE

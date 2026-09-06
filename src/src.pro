@@ -4,7 +4,7 @@ include(../qtty.pri)
 TEMPLATE = lib
 TARGET = qtty
 CONFIG += staticlib
-QT += widgets
+QT += widgets dbus
 DESTDIR = $$QTTY_LIB_DIR
 
 HEADERS += \
@@ -22,6 +22,7 @@ HEADERS += \
     ../include/qtty/testing.h \
     ../include/qtty/graphics.h \
     ../include/qtty/overlay.h \
+    ../include/qtty/tray.h \
     backend/ansi/ansi_backend.h \
     backend/ansi/term_caps.h \
     backend/ansi/scroll_settle.h \
@@ -37,6 +38,7 @@ SOURCES += \
     runtime/input_router.cpp \
     runtime/compositor.cpp \
     runtime/application.cpp \
+    runtime/tray.cpp \
     graphics/graphics.cpp \
     graphics/overlay.cpp \
     backend/ansi/ansi_backend.cpp \

@@ -11301,6 +11301,98 @@ is one cell past the last, and one character of movement is one cell of
 movement.
 
 
+### 8.12 A TUI can own a real system tray icon, measured
+
+Asked by the copyright holder 2026-09-06: could a terminal program create
+a system tray icon through Qt, and can qtty be mixed with ordinary Qt for
+the parts that are not display? **Both yes, and the second is why the
+first works.**
+
+**Ordinary Qt is untouched.** qtty replaces the display layer and nothing
+else. Measured inside a program under `Qtty::setup()` on the offscreen
+platform: the D-Bus session bus connects, `QSettings` is writable, and
+`QTimer` fires through `exec()`. Nothing in QtDBus, QtNetwork, QtSql, the
+model classes or the thread classes depends on a QPA plugin.
+
+**`QSystemTrayIcon` does NOT work, and the reason is specific.**
+`isSystemTrayAvailable()` answers false even with a
+`StatusNotifierWatcher` present on the bus, because the tray comes from
+`QPlatformTheme::createPlatformSystemTrayIcon()` and the offscreen
+platform supplies none. Qt then falls back to its legacy XEmbed path,
+which announces itself:
+
+    QObject::connect: No such signal
+    QPlatformNativeInterface::systemTrayWindowChanged(QScreen*)
+
+So the failure is not "a terminal has no tray". It is that Qt asks the
+PLATFORM for one, and qtty's platform is a stub.
+
+**But a modern tray is not a window -- it is a D-Bus object**, and that
+is reachable. The full StatusNotifierItem handshake was performed from a
+qtty program against a stand-in watcher, on a private bus:
+
+    published object/service : 1/1
+    watcher accepted         : 1
+    desktop received the icon: 1
+    tray host reads ToolTip  : "md0 degraded"
+
+The item was published, the desktop's tray registered it, and a host read
+its properties back over the bus. Activation is a slot on the same
+object, so a click in the panel reaches the program.
+
+**What this changes.** The earlier reading -- that raidcfgd's tray "is
+not hostable by anyone, ever" -- was wrong, and wrong in the way this
+document keeps recording: it took a limit of the INSTRUMENT (Qt's
+offscreen platform theme) for a limit of the medium. A terminal has no
+notification area of its OWN, which is true and irrelevant; the tray
+belongs to the desktop the terminal is running on, and a program in that
+terminal can put an icon in it.
+
+**Settled by the copyright holder 2026-09-06: add the QtDBus dependency
+and build it.** `Qtty::SystemTrayIcon` publishes StatusNotifierItem and
+carries `QSystemTrayIcon`'s API as far as it goes, so an application
+writes one class and gets a tray in a windowed build and a terminal build
+alike. `make test-tray` is the gate: it stands in for the desktop's
+watcher, publishes an icon, reads the properties back over the bus the
+way a panel does, calls `Activate` the way a click does, and hides it
+again. Eight checks, and both halves were sabotaged by hand to watch them
+fail.
+
+**Making `QSystemTrayIcon` ITSELF work is still not done and would be a
+different thing** -- it needs a platform theme, which means shipping a
+QPA plugin rather than a library. Recorded so the shortfall is visible:
+an application must name `Qtty::SystemTrayIcon` rather than getting a
+tray for free.
+
+**D-Bus does not pull in systemd, asked and measured.** `libqt6dbus6`
+depends on libc6, libdbus-1-3 and Qt core; `libdbus-1-3` depends on libc6
+alone; and `dbus-daemon`'s whole recursive dependency chain contains zero
+systemd packages. This machine is the proof -- it runs Devuan, dbus
+1.16.2-2devuan2, no systemd anywhere. `dbus-x11` supplies a session bus
+through `dbus-launch`; `dbus-user-session` is the systemd-flavoured
+alternative rather than a requirement. And `qt6-base-dev` already depends
+on `libqt6dbus6`, so `QT += dbus` added no new BUILD dependency at all.
+
+**The icon question answered itself.** An SNI item carries a themed icon
+NAME, so the desktop draws it and the picture never passes through a cell
+grid -- which sidesteps the sub-2-cell rendering gap entirely, and is
+exactly the gap that made raidcfgd's shape-encoded states unreadable. A
+pixmap form is implemented too, in ARGB32 network byte order as the
+specification asks, for a program that draws its own.
+
+**What is NOT in it, said here rather than left to be found:** no
+context menu, because a menu is a second specification
+(`com.canonical.dbusmenu`) and `ItemIsMenu` is false so the desktop sends
+`Activate` instead; and no `showMessage`, because a desktop notification
+is `org.freedesktop.Notifications`, a third one.
+
+**And the gate cannot join the sabotage spec**, because `sabotage.py`
+reads `make test` and this needs a session bus that `make check` must not
+require -- the suite has to pass on a build server, in a container, and
+under this project's own sanitizer and valgrind arms. It is sabotaged by
+hand instead, and that is a real gap in the mechanisation rather than a
+decision.
+
 ### 8.11 What seven sibling GUIs would need, surveyed 2026-09-06
 
 The copyright holder asked what qtty is missing to host the other private
