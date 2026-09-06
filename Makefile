@@ -375,9 +375,22 @@ test-screen: $(LIB)
 # Out of `check` because it needs `script` and takes as long as the suite
 # does twice over. Skipped with a note where `script` is absent, the way the
 # tray and negotiation gates are.
+#
+# The report is matched UNANCHORED, and that is not a loosening. A backend
+# that owns the terminal writes its setup sequence with no trailing newline,
+# so the next check's result lands after it on the same line:
+#
+#     ESC[?1049hESC[?25l...PASS: CSI A decodes as Up
+#
+# `^(FAIL|SKIP)` cannot see those, and measured on a real pty run it hid 13
+# of 1042 results -- every one of them a terminal-ownership check, which is
+# the entire reason this arm exists. A failure there would have turned the
+# gate red while the report printed nothing about it. The status was never
+# in doubt (script -e propagates the child's, and the second run supplies
+# it); what was blind is the half a person reads.
 test-pty: tests-build
 	@command -v script >/dev/null 2>&1 || { 		echo "    pty: SKIPPED -- util-linux script is not installed"; exit 0; }
-	@QTTY_QPA_PLATFORM=$(TEST_PLATFORM) $(TEST_CRASH_ENV) 		timeout $(TEST_TIMEOUT) script -qec "$(TEST_BIN)" /dev/null 		| grep -aE "^(FAIL|SKIP)|failures" | tail -6; 	QTTY_QPA_PLATFORM=$(TEST_PLATFORM) $(TEST_CRASH_ENV) 		timeout $(TEST_TIMEOUT) script -qec "$(TEST_BIN)" /dev/null >/dev/null 2>&1
+	@QTTY_QPA_PLATFORM=$(TEST_PLATFORM) $(TEST_CRASH_ENV) 		timeout $(TEST_TIMEOUT) script -qec "$(TEST_BIN)" /dev/null 		| grep -aoE "(FAIL|SKIP): .*|(OK|FAILED) \([0-9]+ failures?\)" | tail -6; 	QTTY_QPA_PLATFORM=$(TEST_PLATFORM) $(TEST_CRASH_ENV) 		timeout $(TEST_TIMEOUT) script -qec "$(TEST_BIN)" /dev/null >/dev/null 2>&1
 
 # The system tray, which needs a SESSION BUS and therefore cannot live in the
 # suite: `make check` has to pass on a machine that has none -- a build

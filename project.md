@@ -6663,6 +6663,46 @@ which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
 
+**The pty gate's report was blind to 13 of its 1042 results, and they
+were the 13 it exists for** (2026-09-06). Found by pointing the skip sweep
+one layer in, at the suite rather than the gates -- and the first
+measurement was WRONG in a way worth keeping.
+
+Counting `^PASS:` per arm gave offscreen 1042 and pty 1028, with one SKIP
+printed. Thirteen checks apparently ran nowhere and said nothing, which is
+the "0 failed, 13 never ran" shape exactly. It was not that. A backend that
+owns the terminal writes its setup sequence with NO trailing newline, so
+the next result lands after it on the same line:
+
+    ESC[?1049hESC[?25l...PASS: CSI A decodes as Up
+
+The checks all ran. `grep -c '^PASS:'` could not see them -- my own
+instrument, manufacturing an absence by the pattern, and it read as a
+finding for several minutes because the thirteen names were all plausibly
+environment-dependent (signals, terminal ownership, raw mode). What broke
+it was one name that is not: "CSI A decodes as Up" has no environment
+dependency at all, so truncation or an instrument fault was likelier than
+guarding. **A list of suspects that all fit the theory is not evidence; the
+member that does not fit is.**
+
+The real finding is what the same anchor does to the GATE. `make test-pty`
+displayed its results with `grep -aE "^(FAIL|SKIP)"`, so those same 13 were
+invisible to the report -- and they are every terminal-ownership check in
+the suite, which is the entire reason a pty arm exists. A failure there
+would have turned the gate red while printing nothing about which check or
+why.
+
+**The gate's STATUS was never in doubt**, which is why this survived: the
+recipe re-runs the binary clean and takes make's status from that, and
+`script -e` propagates the child's code (measured: `script -qec /bin/false`
+returns 1). Only the half a person reads was blind, so the gate would have
+failed correctly and unhelpfully.
+
+Fixed by matching unanchored -- `grep -aoE "(FAIL|SKIP): .*|(OK|FAILED)
+\([0-9]+ failures?\)"` -- which finds a result wherever on the line it
+sits. Controlled by rewriting one captured mid-line PASS into a FAIL: the
+old pattern shows 0, the new one shows 1.
+
 **Two gates reported success having measured nothing** (2026-09-06). The
 lens came from the last two rounds -- a gate flaky under load, a check
 contaminated by the defect it tested -- pointed at the gates themselves:
