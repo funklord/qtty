@@ -2162,28 +2162,21 @@ specifications. The summary:
   `CellPaintDevice` / `CellPaintEngine` catch everything that reaches
   `QPainter` without passing a style hook.
 
-  **The transparency contract, which an application author needs and which
-  was not written down until every part of it had been got wrong**
-  (2026-09-06). A colour reaching this engine carries an alpha, and
-  `QPainter::setOpacity()` multiplies it; a gradient brush or pen has no
-  single colour at all and `QBrush::color()` answers black for one. All
-  three are honoured now, and the rule is one sentence:
+  **The transparency contract is `doc/design.md` section 6.1**: zero alpha
+  draws nothing, partial alpha blends against what the cell holds, an
+  unknown ground takes the paint opaque, and a gradient or texture brush is
+  resolved rather than believed. Fills and pens alike, each clause carried
+  by a check with a sabotage entry behind it.
 
-  - **Zero alpha draws NOTHING** -- no cell touched, no glyph written, no
-    run cleared. `Qt::transparent` is how an application says "not this",
-    and it was drawing opaque black.
-  - **Partial alpha is BLENDED against what the cell already holds**, so
-    one wash over two grounds reads as two colours.
-  - **Where the ground is not a concrete colour it is laid down opaque.**
-    A `Default` background is the terminal's own and this layer does not
-    know it; guessing would be worse than leaving the paint alone, and the
-    shade stays visible either way.
-  - **A gradient is averaged over its own stops**, weighted by span. A cell
-    grid cannot show a gradient, and the colour the area actually is beats
-    the black that `QBrush::color()` hands over.
-
-  It applies to fills and to pens alike -- rules, strokes and TEXT -- and
-  each clause is carried by a check with a sabotage entry behind it.
+  It was written HERE first, by mistake, and the mistake is worth keeping:
+  I ran `ls *.md` at the repository root, found no `design.md`, and
+  concluded project.md was the design document. `doc/design.md` is -- the
+  README calls it "read this first" -- and a rendering rule an application
+  author needs before writing a paintEvent belongs there. **A listing
+  scoped to one directory answers about that directory**, which is the
+  same fault as reading `df` in a source tree and calling it the disk.
+  Moved, and reduced to this pointer rather than left as a second copy,
+  because two copies of a rule are how one of them goes stale.
 - **L4.5 -- GraphicsPlane** (design.md §5.7). Pixel overlays over the
   cell UI, and cell-anchored image placements that scroll with text.
   Three delivery strategies chosen by `Capabilities::graphics`; the

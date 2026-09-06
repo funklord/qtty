@@ -45,12 +45,15 @@ carries the literal string. Measured: `--version` printing
 the reference text. Run the one in fmake's own tree until a newer package is
 installed.
 
-`fmake.toml` beside it says three things fmake cannot read off the tree:
+`fmake.toml` beside it says four things fmake cannot read off the tree:
 that the tests find their snapshot fixtures through `QTTY_SOURCE_DIR`,
 which qmake spells `$$QTTY_ROOT` and fmake spells `$root`; that `spike/`
 is the Phase 0 record rather than something to build, the same exemption
 `.style-gate.toml` already makes; and the tools' names, since fmake calls
-a program after its root TU and these ship with a `qtty-` prefix.
+a program after its root TU and these ship with a `qtty-` prefix; and the
+language standard, which qmake takes from `CONFIG += c++17` and fmake would
+otherwise leave to whatever the compiler defaults to. `make tools-check`
+compares the last two against the `.pro` files rather than trusting either.
 
 It writes its objects into `.fmake/` and leaves the programs at the
 repository root -- `chat`, `qtty-inspect`, `qtty-negotiate`, `qtty-replay`,

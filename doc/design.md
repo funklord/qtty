@@ -717,6 +717,36 @@ Contrast is enforced, not hoped for: after mapping, assert a minimum luminance d
 between `fg` and `bg` in every emitted cell, and log violations in debug builds. A GUI
 palette that relies on subtle greys will produce invisible text otherwise.
 
+### 6.1 Transparency — what an alpha means on a grid
+
+A terminal cell has no alpha channel, so every colour arriving with one has to be
+resolved before it can be written. Four rules, each measured against a real
+application's `paintEvent` and each carried by a check:
+
+- **Zero alpha draws nothing.** No cell touched, no glyph written, no run cleared.
+  `Qt::transparent` is how an application says *not this*, and it must not become a
+  colour. Both the fill path and the pen path drew opaque **black** for it, because
+  `QColor::rgba()` for `Qt::transparent` is four zero bytes and nothing looked at the
+  alpha. Drawing a string in a transparent pen is an ordinary way to hide it, so the
+  text case made hidden text *visible*.
+- **Partial alpha blends against what the cell already holds**, per cell, so one wash
+  over two different grounds reads as two colours. That is what keeps a shaded curve
+  legible rather than uniform.
+- **Where the ground is not a concrete colour, the paint is laid down opaque.** A
+  `Default` background is the terminal's own and this layer does not know it; guessing
+  would be worse than leaving the paint alone, and the shade stays visible either way.
+- **A brush whose `color()` is meaningless is resolved, not believed.** `QBrush::color()`
+  answers black for a gradient *and* for a texture. A gradient is averaged over its own
+  stops weighted by span; a texture over its own pixels weighted by alpha, sampled on a
+  bounded grid. A cell grid cannot show either, and the colour the area actually is
+  beats the black that accessor hands over.
+
+`QPainter::setOpacity()` multiplies the brush's or pen's own alpha and is folded in
+before any of the above — an application can express the same intent through the painter
+instead of the colour, and reading only one of the two leaves half the cases wrong.
+
+The rules apply to fills and to pens alike: rules, strokes and text.
+
 ---
 
 ## 7. Adaptation: one view, two very different canvases
