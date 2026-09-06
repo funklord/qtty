@@ -1146,8 +1146,18 @@ int suite_backend() {
 		qputenv("TMUX", "/tmp/tmux-1000/default,1234,0");
 		qputenv("TERM", "xterm-kitty");
 		CHECK(inside_tmux(), "$TMUX is how tmux is known");
+		// "whose depth cannot carry the id" is the premise, and the depth
+		// came from the environment. With QTTY_COLOR=truecolor set it CAN
+		// carry it, so there is no fallback and this went red for the
+		// library being right -- the mirror of the check below, which went
+		// red under QTTY_COLOR=mono for the same reason in the other
+		// direction. Neither pinned the one thing its sentence names.
+		const QByteArray outer_color = qgetenv("QTTY_COLOR");
+		qputenv("QTTY_COLOR", "xterm256");
 		CHECK(negotiate_graphics(kitty) == Capabilities::Halfblocks,
 		      "and a kitty terminal whose depth cannot carry the id falls back");
+		if (outer_color.isEmpty()) qunsetenv("QTTY_COLOR");
+		else qputenv("QTTY_COLOR", outer_color);
 		qunsetenv("TMUX");
 		qputenv("TERM", "screen-256color");
 		CHECK(inside_tmux(), "$TERM saying screen is enough on its own");
@@ -1185,8 +1195,25 @@ int suite_backend() {
 		      "and neither does one proven NOT to speak the protocol");
 		// And with them available, tmux no longer forces half-blocks: that
 		// refusal was only ever standing in for this.
+		// The DEPTH is pinned for this one, because negotiate_graphics()
+		// reads it from the environment while the three checks above pass it
+		// explicitly. With QTTY_COLOR=mono in the environment the id cannot
+		// travel in the foreground colour, the fallback is half-blocks, and
+		// this check went red for the library behaving correctly -- measured,
+		// it is the only failure `QTTY_COLOR=mono make test` produced.
+		//
+		// Set rather than unset. Unsetting it makes the depth follow $TERM,
+		// which varies per machine; unsetting it across the whole block was
+		// tried and took the same run from two failures to seven. What this
+		// check means is "at a depth that can carry the id", and the
+		// neighbours say so by passing TrueColor, so this says it the same
+		// way.
+		const QByteArray had_color = qgetenv("QTTY_COLOR");
+		qputenv("QTTY_COLOR", "truecolor");
 		CHECK(negotiate_graphics(tcaps) == Capabilities::Kitty,
 		      "so tmux stops forcing half-blocks once placeholders can carry it");
+		if (had_color.isEmpty()) qunsetenv("QTTY_COLOR");
+		else qputenv("QTTY_COLOR", had_color);
 		qunsetenv("TMUX");
 		CHECK(!use_placeholders(tcaps, Capabilities::TrueColor),
 		      "outside tmux a real placement is cheaper and exact");

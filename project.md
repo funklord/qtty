@@ -6663,6 +6663,32 @@ which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
 
+**The two colour-depth checks that named a depth and did not pin one**
+(2026-09-06), the last recorded environment sensitivity.
+
+`QTTY_COLOR=mono` produced one failure and `QTTY_COLOR=truecolor` produced
+one, and they are the same defect pointing opposite ways. Both checks turn
+on whether the terminal's depth can carry a kitty placeholder id in the
+foreground colour -- one asserts the fallback happens when it cannot, the
+other that it does not happen when it can -- and **neither pinned the
+depth**, so `negotiate_graphics()` read it from the environment. Each went
+red for the library behaving correctly under a setting a user is entitled
+to make.
+
+Their three neighbours say the depth explicitly, passing `TrueColor` or
+`Xterm256` to `use_placeholders()`. These two call `negotiate_graphics()`,
+which asks the environment instead, and the difference was invisible
+because the machine's ambient value happened to suit both.
+
+Pinned by SETTING rather than unsetting: unset means "follow $TERM", which
+varies per machine, and unsetting `QTTY_COLOR` across the whole block was
+tried earlier and took the same run from two failures to seven. What each
+check means is "at a depth that can (or cannot) carry the id", which is
+what its neighbours already say out loud.
+
+Verified across all four values of `QTTY_COLOR`, inside tmux, and plain.
+Both still discriminate: sabotaging `inside_tmux()` reddens the first.
+
 **The last two items from that sweep: one fixed, one measured away**
 (2026-09-06).
 

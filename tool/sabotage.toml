@@ -315,3 +315,11 @@ find = "\tint failures = 0;"
 into = "\tint failures = 0;\n\tapp.setStyle(new Qtty::GridStyle);"
 count = 1
 check = "inert before setup()"
+
+[[sabotage]]
+name = "placeholders are refused at a depth that can carry the id"
+file = "src/backend/ansi/term_caps.cpp"
+find = "bool inside_tmux() {"
+into = "bool inside_tmux() {\n\treturn false;"
+count = 1
+check = "so tmux stops forcing half-blocks once placeholders can carry it"
