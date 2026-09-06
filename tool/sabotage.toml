@@ -230,3 +230,11 @@ find = "\tapp.installEventFilter(new StyleKeeper(&app));"
 into = "\t;"
 count = 1
 check = "still does after the application installs its own style"
+
+[[sabotage]]
+name = "a small icon is averaged into one colour again"
+file = "src/render/cell_paint.cpp"
+find = "\t\t\t\tif (top_any && bot_any && close(top, bot)) {"
+into = "\t\t\t\tif (top_any && bot_any) {"
+count = 1
+check = "one with a top and a bottom carries both"

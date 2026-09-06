@@ -341,6 +341,62 @@ int suite_render(bool record) {
 			++r;
 		}
 
+		// An icon whose meaning is its SHAPE, substituted. The old
+		// substitution averaged the whole picture into one colour per cell,
+		// which for an icon encoding its state as a shape is the whole
+		// meaning gone -- a sibling project draws five status icons that
+		// differ deliberately by shape, its header recording that "around
+		// one man in twelve cannot reliably tell the amber from the green",
+		// and every one arrived as two cells of one colour.
+		//
+		// The pair is what says it, and it is the same picture twice: one
+		// with vertical structure and one without. The flat one must still
+		// substitute to the shaded block, because that convention is what
+		// says "a picture is here" and several other checks pin it; the
+		// structured one must carry its two halves.
+		{
+			const auto substitute = [&](bool structured) {
+				QPixmap pm(cw * 2, ch);
+				pm.fill(QColor(40, 160, 60));
+				if (structured) {
+					QPainter p(&pm);
+					p.fillRect(0, 0, pm.width(), pm.height() / 2,
+					           QColor(200, 40, 40));
+				}
+				Qtty::CellBuffer b(4, 2);
+				{
+					Qtty::CellPaintDevice dev(b);
+					QPainter p(&dev);
+					p.drawPixmap(QRect(0, 0, cw * 2, ch), pm);
+					p.end();
+				}
+				return b.at(0, 0);
+			};
+			const Qtty::Cell flat = substitute(false);
+			const Qtty::Cell split = substitute(true);
+			printf("info: a flat icon substitutes [%s], one with a top half"
+			       " [%s] fg/bg %s\n", qPrintable(flat.ch), qPrintable(split.ch),
+			       split.bg == Qtty::Color() ? "one colour" : "two");
+			if (flat.ch == QStringLiteral("▒"))
+				printf("PASS: a flat icon keeps the shaded block that says a"
+				       " picture is here\n");
+			else {
+				printf("FAIL: a flat icon keeps the shaded block that says a"
+				       " picture is here\n      condition: got [%s]\n",
+				       qPrintable(flat.ch));
+				++r;
+			}
+			if (split.ch == QStringLiteral("▀") && split.bg != Qtty::Color()
+			    && split.fg != split.bg)
+				printf("PASS: and one with a top and a bottom carries both\n");
+			else {
+				printf("FAIL: and one with a top and a bottom carries both\n"
+				       "      condition: [%s], two colours %d\n",
+				       qPrintable(split.ch), int(split.bg != Qtty::Color()));
+				++r;
+			}
+		}
+
 		// A fill WIDER than the cap this engine used to carry. The literal
 		// 400x200 was applied to the UNCLIPPED cell rect, before the clip
 		// narrowed it -- so it does not need a huge terminal, only a huge

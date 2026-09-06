@@ -428,25 +428,99 @@ void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &whole,
 		// to be one. Strided so a large pixmap substituted into one cell
 		// costs a bounded scan rather than one per pixel.
 		const QImage img = pm.toImage();
-		qint64 r_sum = 0, g_sum = 0, b_sum = 0, a_sum = 0;
-		const int step_x = qMax(1, img.width() / 32), step_y = qMax(1, img.height() / 32);
-		for (int y = 0; y < img.height(); y += step_y)
-			for (int x = 0; x < img.width(); x += step_x) {
-				const QRgb px = img.pixel(x, y);
-				const int a = qAlpha(px);
-				r_sum += qint64(qRed(px)) * a;
-				g_sum += qint64(qGreen(px)) * a;
-				b_sum += qint64(qBlue(px)) * a;
-				a_sum += a;
-			}
+		// One colour per HALF CELL rather than one for the whole picture.
+		//
+		// A single average is a picture reduced to its mean, and for an icon
+		// that encodes its meaning as a SHAPE that is the whole meaning gone.
+		// The case that produced this: a sibling project draws five status
+		// icons whose states differ by shape deliberately, its own header
+		// recording that "around one man in twelve cannot reliably tell the
+		// amber from the green" -- and every one of them arrived here as two
+		// cells of one averaged colour, distinct only by hue. The
+		// accessibility property the design was built around was exactly
+		// what the substitution removed.
+		//
+		// The upper half block gives a top and a bottom colour per cell, so
+		// an icon over two cells carries four samples instead of one. That
+		// is not a picture either, but it is the difference between a bar
+		// and a disc.
+		//
+		// HALF blocks and not quadrants, measured: of 20 fixed-pitch
+		// families here 11 carry U+2580 and only 8 carry U+2596..U+259F --
+		// Liberation Mono, Noto Mono, Inconsolata and Nimbus Mono PS have
+		// the half and not the quadrants. 11 is the same set that carries
+		// the box-drawing rules this style already draws every frame, so
+		// this asks for nothing new of a font.
+		const auto mean = [&](int y0, int y1, int x0, int x1, bool *any) {
+			qint64 r = 0, g = 0, b = 0, a = 0;
+			const int sx = qMax(1, (x1 - x0) / 16), sy = qMax(1, (y1 - y0) / 16);
+			for (int y = y0; y < y1; y += sy)
+				for (int x = x0; x < x1; x += sx) {
+					const QRgb px = img.pixel(x, y);
+					const int al = qAlpha(px);
+					r += qint64(qRed(px)) * al;
+					g += qint64(qGreen(px)) * al;
+					b += qint64(qBlue(px)) * al;
+					a += al;
+				}
+			*any = a > 0;
+			return a > 0 ? qRgb(int(r / a), int(g / a), int(b / a)) : qRgb(0, 0, 0);
+		};
+
+		bool whole_any = false;
+		mean(0, img.height(), 0, img.width(), &whole_any);
 		// Nothing to stand for. A fully transparent pixmap drew a block that
 		// said a picture was there when none was.
-		if (a_sum == 0) return;
-		Cell v;
-		v.ch = QStringLiteral("▒");
-		v.fg = Color::rgb(qRgb(int(r_sum / a_sum), int(g_sum / a_sum),
-		                       int(b_sum / a_sum)));
-		dev_->buffer().fill(c, v);
+		if (!whole_any) return;
+
+		for (int cy = c.top(); cy <= c.bottom(); ++cy) {
+			for (int cx = c.left(); cx <= c.right(); ++cx) {
+				// The slice of the image this cell covers, and its two
+				// halves. Derived from the cell's position within c so a
+				// picture wider than one cell is sampled across rather than
+				// repeated.
+				const int x0 = (cx - c.left()) * img.width() / c.width();
+				const int x1 = qMax(x0 + 1, (cx - c.left() + 1) * img.width() / c.width());
+				const int y0 = (cy - c.top()) * img.height() / c.height();
+				const int y1 = qMax(y0 + 1, (cy - c.top() + 1) * img.height() / c.height());
+				const int mid = qMax(y0 + 1, (y0 + y1) / 2);
+				bool top_any = false, bot_any = false;
+				const QRgb top = mean(y0, mid, x0, x1, &top_any);
+				const QRgb bot = mean(mid, qMax(mid + 1, y1), x0, x1, &bot_any);
+				Cell v;
+				// A cell whose two halves agree keeps the shaded block this
+				// has always drawn. That is deliberate rather than
+				// conservative: section 8.6's substitution says "a picture
+				// is here", several checks pin it, and an icon with no
+				// vertical structure has nothing more to say. The half
+				// block is ADDED for the cells that do differ, so this
+				// carries strictly more than before and changes no
+				// convention.
+				const auto close = [](QRgb a, QRgb b) {
+					return qAbs(qRed(a) - qRed(b)) + qAbs(qGreen(a) - qGreen(b))
+					     + qAbs(qBlue(a) - qBlue(b)) < 24;
+				};
+				if (top_any && bot_any && close(top, bot)) {
+					v.ch = QStringLiteral("▒");
+					v.fg = Color::rgb(qRgb((qRed(top) + qRed(bot)) / 2,
+					                       (qGreen(top) + qGreen(bot)) / 2,
+					                       (qBlue(top) + qBlue(bot)) / 2));
+				} else if (top_any && bot_any) {
+					v.ch = QStringLiteral("▀");
+					v.fg = Color::rgb(top);
+					v.bg = Color::rgb(bot);
+				} else if (top_any) {
+					v.ch = QStringLiteral("▀");
+					v.fg = Color::rgb(top);
+				} else if (bot_any) {
+					v.ch = QStringLiteral("▄");
+					v.fg = Color::rgb(bot);
+				} else {
+					continue;          // this cell of the icon is transparent
+				}
+				if (dev_->buffer().writable(cx, cy)) dev_->buffer().at(cx, cy) = v;
+			}
+		}
 	}
 }
 

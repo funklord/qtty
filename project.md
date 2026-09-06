@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1024 checks, 0 failures, under six configurations, all six re-run
+1026 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6590,6 +6590,38 @@ passed, because Qt's own `QWidget::event()` reaches its Tab branch first.
 The check was kept for the behaviour it does pin -- Tab reaching a widget
 when nothing has focus, which nothing covered -- with its claim corrected
 and what was tried written down. The fallback remains unreached.
+
+**A small icon carries its shape, not just its average** (2026-09-06).
+A pixmap too small to become a placement is substituted by a glyph, and
+the substitution averaged the WHOLE picture into one colour per cell. For
+an icon that encodes its state as a shape that is the entire meaning
+gone: raidcfgd draws five status icons that differ deliberately by shape,
+its own header recording that "around one man in twelve cannot reliably
+tell the amber from the green", and every one arrived as two cells of one
+averaged colour -- distinct only by hue, which is exactly the failure the
+design was built to avoid.
+
+Each cell now samples its top and bottom halves separately, so an icon
+over two cells carries four samples instead of one. Not a picture, but
+the difference between a bar and a disc.
+
+**HALF blocks and not quadrants, measured.** Quadrants would give 2x2 per
+cell, but of 20 fixed-pitch families here 11 carry U+2580 and only **8**
+carry U+2596..U+259F -- Liberation Mono, Noto Mono, Inconsolata and
+Nimbus Mono PS have the half and not the quadrants. 11 is the same set
+that carries the box-drawing rules this style already draws every frame,
+so the half block asks nothing new of a font. Across all 101 families,
+including the retro bitmap set, it is 92 against 8.
+
+**The change is ADDITIVE, and the suite is what made it so.** The first
+version replaced the shaded block everywhere and four existing checks
+went red -- the ones pinning section 8.6's "a picture is here", plus the
+progress bar's indeterminate shade, which shares the glyph and has
+nothing to do with pixmaps. That is `working-practice.md`'s rule about
+not adjusting a convention in passing, arriving as four red lines. A cell
+whose two halves AGREE keeps the shaded block; the half block is added
+only where they differ, so nothing that was true before stopped being
+true.
 
 **An application's own style no longer deletes Channel A** (2026-09-06).
 `QApplication::setStyle()` REPLACES, so a program that installs a style
