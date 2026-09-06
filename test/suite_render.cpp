@@ -309,6 +309,40 @@ int suite_render(bool record) {
 			}
 		}
 
+		// A GRADIENT brush, whose QBrush::color() is documented to be
+		// "the brush colour" and answers BLACK -- a gradient has none. A
+		// chart shading an area is the ordinary way to meet this, and it
+		// filled the cells with a colour the drawing does not contain.
+		{
+			QLinearGradient gr(0, 0, 0, ch);
+			gr.setColorAt(0, QColor(0x2e, 0x7e, 0xbb));
+			gr.setColorAt(1, QColor(0x2e, 0x7e, 0xbb));
+			Qtty::CellBuffer b(4, 1);
+			{
+				Qtty::CellPaintDevice dev(b);
+				QPainter p(&dev);
+				p.fillRect(QRect(0, 0, cw * 4, ch), QBrush(gr));
+				p.end();
+			}
+			const Qtty::Color got = b.at(1, 0).bg;
+			// Against the STOPS, not against a constant: what is wrong
+			// with black here is that it is a colour no stop names, and
+			// asserting the blue directly would pass just as well for a
+			// fill that ignored the gradient and happened to be handed
+			// blue by something else.
+			const bool from_stops =
+			    got.kind() == Qtty::Color::Rgb
+			    && (got.value() & 0xffffff) == 0x2e7ebbu;
+			if (from_stops)
+				printf("PASS: a gradient fill takes its colour from the"
+				       " gradient\n");
+			else {
+				printf("FAIL: a gradient fill takes its colour from the"
+				       " gradient\n");
+				++r;
+			}
+		}
+
 		// A DISABLED widget's fill. Qt takes a disabled widget's brush from
 		// the palette's Disabled group, and this engine matched the brush
 		// against the Active group only -- its own copy of the role list,

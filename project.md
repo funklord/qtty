@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1045 checks, 0 failures, under six configurations, all six re-run
+1046 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6662,6 +6662,57 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.14 Cells against pixels, on a real frame (2026-09-06)
+
+The instrument 8.13 needed became the better half of it. Render the same
+widget BOTH ways -- through qtty into a CellBuffer, and through Qt into a
+QImage at the same geometry -- then ask, per cell: **is this cell empty
+where the pixels have ink?** A cell blank in one and inked in the other is
+something the cell path lost.
+
+On bbq-predictor's graph at 160x24, against a control of 31,300 inked
+pixels in the image:
+
+    597 cells agreed
+     31 blank in cells where the pixels are inked
+    786 drawn in cells where the pixels are not
+
+**The 786 are the instrument, not a finding**: the graph's ground is light,
+and "inked" is a grey threshold, so every pale filled cell counts as
+uninked. The number is not evidence of anything and is recorded so nobody
+reads it as such.
+
+**The 31 are real and are not a defect.** They are all `#9dc2df`, which is
+bbq's rain `#2e7ebb` at alpha 120 over white, and they sit at the sloping
+boundary of a filled path -- `drawPath(rain_path)` with `Qt::NoPen`.
+`fill_polygon()` samples each row at its vertical CENTRE, `(y + 0.5) * ch`,
+which is the ordinary scanline rule; a cell whose lower half the path
+covers but whose centre lies above the boundary is not filled, while the
+pixel render inks the covered half. **A cell grid has one sample where the
+pixel grid has nineteen, and that is the resolution rather than a fault.**
+
+**Two wrong readings on the way, both caught by controls rather than by
+care.** The first version of the comparator read the snapshot's TEXT and
+counted every background-filled cell as blank, reporting 93 losses that
+were the shaded band and the curve rendering correctly; reading the
+CellBuffer, where a filled cell is distinguishable from an empty one, is
+what fixed it. And an empty discrepancy list was nearly reported before
+anybody asked whether the image had ink in it at all -- a render that
+silently produced a blank QImage would have reported "no discrepancies" in
+exactly the same words.
+
+**What it did find is a GRADIENT brush painting solid black.**
+`QBrush::color()` is documented to return "the brush colour" and a gradient
+has none, so it answers black -- and this engine took it. A chart shading
+an area under a curve is the ordinary way to meet that, and it filled the
+cells with a colour the drawing does not contain. The colour is averaged
+over the gradient's own stops now, weighted by the span each covers. That
+is not a gradient, and a cell grid cannot show one; it is the colour the
+area actually is, which beats being exactly black. Checked against the
+STOPS rather than against a constant, so a fill that ignored the gradient
+and was handed blue by something else would still fail, and sabotage-
+verified.
 
 ### 8.13 bbq-predictor's own graph, hosted (2026-09-06)
 

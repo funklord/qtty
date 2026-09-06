@@ -681,6 +681,10 @@ bool CellPaintEngine::is_thin(const QRectF &r) const {
 // theme does not name, and any colour with no role behind it at all, keeps the
 // application's own colour -- that is how a selection reaches the cells under
 // the default theme, and how Channel B output reaches them at all.
+// Defined below, beside the rule it implements. Declared here because
+// fill_rectf reads a brush's alpha and comes first in the file.
+static QColor brush_colour(const QBrush &b);
+
 void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 	QRect c = to_cells(r);
 	// Bounded by the BUFFER rather than by a pair of literals. The 400x200
@@ -747,7 +751,7 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 	// keeps the RGB bytes -- and for Qt::transparent those are zero. So
 	// fillRect(r, Qt::transparent), an ordinary way of saying "leave this
 	// alone", blacked the cells out instead.
-	const int alpha = brush_.color().alpha();
+	const int alpha = brush_colour(brush_).alpha();
 	if (alpha == 0) return;
 
 	const FillCell f = brush_cell();
@@ -776,7 +780,7 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 	// laid down opaque, as it was before. That keeps it visible rather than
 	// dropping it, and leaves nothing looking worse than it did.
 	if (!thin && alpha < 255) {
-		const QColor src = brush_.color();
+		const QColor src = brush_colour(brush_);
 		auto mix = [alpha](int s, int d) {
 			return (s * alpha + d * (255 - alpha)) / 255;
 		};
@@ -805,10 +809,46 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 		}
 }
 
+// The colour a BRUSH stands for, which is not always QBrush::color().
+//
+// For a gradient brush that accessor answers black -- it is documented to
+// return "the brush colour", and a gradient has none -- so a gradient-filled
+// area came out here as a solid BLACK block. Measured on the ordinary way a
+// chart shades an area, a vertical blue gradient: eight cells of #000000,
+// which is a colour nothing in the drawing contains.
+//
+// Averaged over the gradient's own stops instead, weighted by the span each
+// stop covers so a long tail counts for more than a pinned endpoint. That is
+// not a gradient: a cell grid cannot show one, and evaluating per cell would
+// need the gradient's coordinate space, which is a larger change than this
+// defect justifies. It is the colour the area actually is, and being roughly
+// right beats being exactly black.
+static QColor brush_colour(const QBrush &b) {
+	const QGradient *g = b.gradient();
+	if (!g) return b.color();
+	const QGradientStops stops = g->stops();
+	if (stops.isEmpty()) return b.color();
+	if (stops.size() == 1) return stops.first().second;
+	double r = 0, gr = 0, bl = 0, al = 0, total = 0;
+	for (int i = 0; i + 1 < stops.size(); ++i) {
+		const double span = stops[i + 1].first - stops[i].first;
+		if (span <= 0) continue;
+		const QColor &c0 = stops[i].second, &c1 = stops[i + 1].second;
+		r  += span * (c0.red()   + c1.red())   / 2.0;
+		gr += span * (c0.green() + c1.green()) / 2.0;
+		bl += span * (c0.blue()  + c1.blue())  / 2.0;
+		al += span * (c0.alpha() + c1.alpha()) / 2.0;
+		total += span;
+	}
+	if (total <= 0) return stops.first().second;
+	return QColor(int(r / total), int(gr / total), int(bl / total),
+	              int(al / total));
+}
+
 // The palette-role rule for a fill, in one place. See the declaration in
 // qtty/paint.h for why it is not written out twice.
 CellPaintEngine::FillCell CellPaintEngine::brush_cell() const {
-	const QRgb col = brush_.color().rgba();
+	const QRgb col = brush_colour(brush_).rgba();
 	// role_of(), not a copy of its list. This carried the same six roles in
 	// the same order and asked `pal.color(role)` -- the palette's CURRENT
 	// group, Active for the application palette -- so a disabled widget's
