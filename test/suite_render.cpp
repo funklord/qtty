@@ -815,41 +815,423 @@ int suite_render(bool record) {
 		}
 	}
 
-	// drawPolygon, which coverage named as a paint-engine primitive nothing
-	// ever exercised. It is not decoration: every Qt widget that draws an
-	// arrow, a triangle or a chevron through the default style arrives here,
-	// and the engine turns it into the box of its bounding rectangle rather
-	// than dropping it.
+	// ---- Channel B geometry: diagonals, polylines, polygons ----------------
 	//
-	// Driven at the engine, like the caret above, because reaching it through
-	// a widget would depend on which style path that widget happens to take
-	// -- and the qtty style draws the combo, spin and scroll bars whole, so
-	// the obvious candidates never call it.
+	// The gap, measured on a custom paintEvent before any of this existed:
+	//
+	//     horizontal line   renders as a rule
+	//     vertical line     renders as a rule
+	//     diagonal line     NOTHING
+	//     polyline, curve   NOTHING
+	//     filled polygon    the box of its bounding rectangle
+	//
+	// line() had exactly two branches, |dy| < ch/2 and |dx| < cw/2, and a
+	// diagonal matched neither and fell off the end of the function.
+	// drawPath() and drawPolygon() both reduced to fill_rectf() of the
+	// bounding rectangle, so a curve was replaced by its own bounding box --
+	// and a FLAT curve, whose bounding box collapses to one row, by nothing,
+	// because box() refuses a rectangle under two cells.
+	//
+	// Every check below asserts a RELATIONSHIP between the cells and the
+	// geometry that produced them, never a named cell: a named cell measures
+	// this suite's own arithmetic and goes stale the first time the walk is
+	// touched. Three carry an explicit control -- a fixture where the answer
+	// this replaced is ALSO non-empty -- so "something was drawn" cannot pass
+	// them.
+	//
+	// Driven at the engine rather than through a widget, like the caret above:
+	// reaching it through a widget would depend on which style path that
+	// widget happens to take, and the qtty style draws the combo, spin and
+	// scroll bars whole, so the obvious candidates never call it.
 	{
-		Qtty::CellBuffer buf(10, 4);
-		const QString before = buf.to_text();
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		const auto occupied = [](const Qtty::CellBuffer &b, int x, int y) {
+			return b.at(x, y).ch != QStringLiteral(" ");
+		};
+		const auto shown = [](const Qtty::CellBuffer &b) {
+			return b.to_text().replace(QLatin1Char('\n'), QLatin1Char('/'));
+		};
+		// How far each occupied cell sits from the line the fixture drew, and
+		// how many cells were touched at all. Both halves are needed and
+		// neither is enough: "every row was reached" passes for a bounding
+		// box, and "few cells" passes for a stray mark somewhere else.
+		struct Trace { int rows_reached = 0, cells = 0, off_line = 0,
+			           widest_row = 0; double worst = 0; };
+		const auto trace = [&](const Qtty::CellBuffer &b, double y_at_x0,
+		                       double rows_per_col) {
+			Trace t;
+			for (int y = 0; y < b.rows(); ++y) {
+				int in_row = 0;
+				for (int x = 0; x < b.cols(); ++x) {
+					if (!occupied(b, x, y)) continue;
+					++in_row;
+					++t.cells;
+					// The cell centre against the line's own equation. One
+					// cell of slack, because a cell is atomic and a line
+					// crossing its edge legitimately marks either side.
+					const double ideal = y_at_x0 + (double(x) + 0.5) * rows_per_col;
+					const double miss = qAbs((double(y) + 0.5) - ideal);
+					t.worst = qMax(t.worst, miss);
+					if (miss > 1.0) ++t.off_line;
+				}
+				if (in_row) ++t.rows_reached;
+				t.widest_row = qMax(t.widest_row, in_row);
+			}
+			return t;
+		};
+
+		// A diagonal, corner to corner. The whole of the reported gap: this
+		// drew nothing at all.
+		const int cols = 10, rows = 10;
+		Qtty::CellBuffer diag(cols, rows);
 		{
-			Qtty::CellPaintDevice dev(buf);
+			Qtty::CellPaintDevice dev(diag);
 			QPainter p(&dev);
-			const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
-			const QPointF tri[3] = { QPointF(cw, ch), QPointF(cw * 4, ch),
-				                     QPointF(cw * 2.5, ch * 3) };
-			p.setBrush(QGuiApplication::palette().color(QPalette::Text));
-			p.drawPolygon(tri, 3);
+			p.drawLine(QLineF(0, 0, cw * cols, ch * rows));
 		}
-		// Asserted as CHANGED plus a corner, not merely changed: a polygon
-		// that painted one stray cell would satisfy "something happened",
-		// and the bounding box is what this primitive actually computes.
-		const bool drew = buf.to_text() != before;
-		const bool boxed = buf.at(1, 1).ch != QStringLiteral(" ")
-		                && buf.at(3, 1).ch != QStringLiteral(" ");
-		if (drew && boxed)
-			printf("PASS: a polygon becomes the box of its bounding rectangle\n");
+		const Trace d = trace(diag, 0.0, double(rows) / cols);
+		if (d.rows_reached == rows)
+			printf("PASS: a diagonal line touches a cell in every row\n");
 		else {
-			printf("FAIL: a polygon becomes the box of its bounding rectangle\n");
-			printf("      drew=%d boxed=%d, buffer '%s'\n", int(drew), int(boxed),
-			       qPrintable(buf.to_text().replace(QLatin1Char('\n'),
-			                                        QLatin1Char('/'))));
+			printf("FAIL: a diagonal line touches a cell in every row\n"
+			       "      %d of %d rows, buffer '%s'\n",
+			       d.rows_reached, rows, qPrintable(shown(diag)));
+			++r;
+		}
+		// The control, and the reason the check above is not enough on its
+		// own: the bounding box of this line is the WHOLE buffer, so filling
+		// it -- or drawing box() round it, which is what drawPolygon did --
+		// reaches every row too. What separates a line from its own bounding
+		// box is that every cell is ON the line and there are few of them.
+		//
+		// ONE cell per row, and that is geometry rather than arithmetic: this
+		// fixture is as many columns as rows, so the line crosses exactly one
+		// cell of each. It is here because a grid walk's classic defect
+		// produces a trace that passes every other clause -- when a segment
+		// runs through a lattice corner, which this one does at every step,
+		// the walk can take the column boundary and the row boundary
+		// separately and visit a cell the segment never enters. That draws
+		// twenty cells rather than ten, every one of them within a row of the
+		// line and the total landing exactly on the `cols + rows` limit, so
+		// only the per-row count sees it. Measured rather than argued: that
+		// was the first version's behaviour, and putting it back turns this
+		// check, the rising-line check below and the overwrite check further
+		// down red, and nothing else in the suite.
+		//
+		// `d.cells > 0` is not padding either. Without it this check passes
+		// over an engine that drew NOTHING -- which is exactly the engine it
+		// was written against, and it did pass, green, directly under the
+		// failure above. A control has to be able to fail the way the thing
+		// it controls for fails, and "no cell is off the line" is true of an
+		// empty buffer.
+		if (d.cells > 0 && d.off_line == 0 && d.widest_row == 1
+		    && d.cells <= cols + rows)
+			printf("PASS: and every cell it touches lies on the line, not in"
+			       " its bounding box\n");
+		else {
+			printf("FAIL: and every cell it touches lies on the line, not in"
+			       " its bounding box\n"
+			       "      %d cells, %d off the line by up to %.2f rows,"
+			       " widest row %d, buffer '%s'\n",
+			       d.cells, d.off_line, d.worst, d.widest_row,
+			       qPrintable(shown(diag)));
+			++r;
+		}
+
+		// A SHALLOW diagonal, which is the shape a chart actually draws: one
+		// row per three and a third columns. It is the case a Bresenham walk
+		// has to get right and a per-line glyph cannot, and it is what the
+		// blocked sibling project's temperature curve is made of.
+		Qtty::CellBuffer shallow(20, 6);
+		{
+			Qtty::CellPaintDevice dev(shallow);
+			QPainter p(&dev);
+			p.drawLine(QLineF(0, 0, cw * 20, ch * 6));
+		}
+		const Trace s = trace(shallow, 0.0, 6.0 / 20.0);
+		if (s.rows_reached == 6 && s.off_line == 0)
+			printf("PASS: a shallow diagonal follows its own slope down the"
+			       " rows\n");
+		else {
+			printf("FAIL: a shallow diagonal follows its own slope down the"
+			       " rows\n      %d of 6 rows, %d cells off the line by up to"
+			       " %.2f rows, buffer '%s'\n",
+			       s.rows_reached, s.off_line, s.worst, qPrintable(shown(shallow)));
+			++r;
+		}
+
+		// The sign of the slope has to survive into the cells, or a rising
+		// line and a falling one render identically and a chart reads
+		// backwards. Asserted as the two glyph sets being DISJOINT rather
+		// than by naming a glyph: which characters carry the slope is the
+		// engine's choice, that it carries the slope at all is not.
+		Qtty::CellBuffer rising(cols, rows);
+		{
+			Qtty::CellPaintDevice dev(rising);
+			QPainter p(&dev);
+			p.drawLine(QLineF(0, ch * rows, cw * cols, 0));
+		}
+		const Trace u = trace(rising, double(rows), -double(rows) / cols);
+		QSet<QString> falling_glyphs, rising_glyphs;
+		for (int y = 0; y < rows; ++y)
+			for (int x = 0; x < cols; ++x) {
+				if (occupied(diag, x, y)) falling_glyphs.insert(diag.at(x, y).ch);
+				if (occupied(rising, x, y)) rising_glyphs.insert(rising.at(x, y).ch);
+			}
+		const bool disjoint = !falling_glyphs.isEmpty() && !rising_glyphs.isEmpty()
+		                   && !falling_glyphs.intersects(rising_glyphs);
+		if (u.rows_reached == rows && u.off_line == 0 && u.widest_row == 1
+		    && disjoint)
+			printf("PASS: and a rising line is drawn with different glyphs"
+			       " from a falling one\n");
+		else {
+			printf("FAIL: and a rising line is drawn with different glyphs"
+			       " from a falling one\n      %d of %d rows, %d off the line,"
+			       " disjoint=%d, buffer '%s'\n",
+			       u.rows_reached, rows, u.off_line, int(disjoint),
+			       qPrintable(shown(rising)));
+			++r;
+		}
+
+		// A polyline follows its POINTS. The fixture is a V whose bounding
+		// box is the whole buffer, so the answer this replaced -- the box of
+		// that rectangle -- is non-empty, reaches every row, and marks the
+		// whole top edge. The V does not go along the top edge: it touches
+		// the top row only at the two ends.
+		Qtty::CellBuffer vee(16, 8);
+		{
+			Qtty::CellPaintDevice dev(vee);
+			QPainter p(&dev);
+			const QPointF pts[3] = { QPointF(0, 0), QPointF(cw * 8, ch * 8),
+				                     QPointF(cw * 16, 0) };
+			p.drawPolyline(pts, 3);
+		}
+		int top_middle = 0;
+		for (int x = 4; x < 12; ++x) if (occupied(vee, x, 0)) ++top_middle;
+		const bool ends = occupied(vee, 0, 0) && occupied(vee, 15, 0);
+		bool apex = false;
+		for (int x = 6; x < 10; ++x) if (occupied(vee, x, 7)) apex = true;
+		if (ends && apex && top_middle == 0)
+			printf("PASS: a polyline follows its points rather than its"
+			       " bounding box\n");
+		else {
+			printf("FAIL: a polyline follows its points rather than its"
+			       " bounding box\n      ends=%d apex=%d stray-top=%d,"
+			       " buffer '%s'\n",
+			       int(ends), int(apex), top_middle, qPrintable(shown(vee)));
+			++r;
+		}
+
+		// A FLAT polyline, whose bounding rectangle has no height at all.
+		// This is the case that drew literally nothing: to_cells() rounds the
+		// extent up to one row and box() refuses a rectangle under two cells,
+		// so a horizontal trace across a chart vanished.
+		Qtty::CellBuffer flat(12, 4);
+		{
+			Qtty::CellPaintDevice dev(flat);
+			QPainter p(&dev);
+			const qreal y = ch * 2 + ch / 2.0;
+			const QPointF pts[3] = { QPointF(0, y), QPointF(cw * 6, y),
+				                     QPointF(cw * 12, y) };
+			p.drawPolyline(pts, 3);
+		}
+		int on_row = 0, off_row = 0;
+		for (int y = 0; y < 4; ++y)
+			for (int x = 0; x < 12; ++x)
+				if (occupied(flat, x, y)) { (y == 2 ? on_row : off_row)++; }
+		if (on_row >= 10 && off_row == 0)
+			printf("PASS: a flat polyline draws a rule instead of nothing\n");
+		else {
+			printf("FAIL: a flat polyline draws a rule instead of nothing\n"
+			       "      %d cells on its row, %d elsewhere, buffer '%s'\n",
+			       on_row, off_row, qPrintable(shown(flat)));
+			++r;
+		}
+
+		// drawPolygon honouring its mode. A filled triangle standing on its
+		// base: the bounding-rect fill this replaced is non-empty, covers
+		// every row and every column, and therefore passes any "did it draw"
+		// test -- so the discriminator is the two TOP corners, which are
+		// inside the bounding rectangle and outside the triangle.
+		Qtty::CellBuffer tri(16, 8);
+		{
+			Qtty::CellPaintDevice dev(tri);
+			QPainter p(&dev);
+			const QPointF pts[3] = { QPointF(cw * 8, 0), QPointF(0, ch * 8),
+				                     QPointF(cw * 16, ch * 8) };
+			// A colour no palette role explains, so the fill passes through
+			// as the application's own rather than resolving to a theme
+			// answer that may be Color::Default and write nothing.
+			p.setBrush(QColor(0x20, 0x90, 0x40));
+			p.setPen(Qt::NoPen);
+			p.drawPolygon(pts, 3);
+		}
+		const auto painted = [&](int x, int y) {
+			return tri.at(x, y).bg.kind() != Qtty::Color::Default
+			    || occupied(tri, x, y);
+		};
+		int base = 0;
+		for (int x = 0; x < 16; ++x) if (painted(x, 7)) ++base;
+		const bool corners_clear = !painted(0, 0) && !painted(15, 0);
+		bool apex_painted = false;
+		for (int x = 6; x < 10; ++x) if (painted(x, 0)) apex_painted = true;
+		if (base >= 12 && apex_painted && corners_clear)
+			printf("PASS: a filled polygon fills its own area, not the box of"
+			       " its bounding rectangle\n");
+		else {
+			printf("FAIL: a filled polygon fills its own area, not the box of"
+			       " its bounding rectangle\n"
+			       "      base=%d apex=%d corners-clear=%d\n",
+			       base, int(apex_painted), int(corners_clear));
+			++r;
+		}
+
+		// The other half of the mode, and the same control: an OUTLINE has
+		// nothing in the middle. box() of the bounding rectangle draws all
+		// four corners, and the triangle has only one cell near each of two
+		// of them, so the top corners separate the two answers again.
+		Qtty::CellBuffer wire(16, 8);
+		{
+			Qtty::CellPaintDevice dev(wire);
+			QPainter p(&dev);
+			const QPointF pts[3] = { QPointF(cw * 8, 0), QPointF(0, ch * 8),
+				                     QPointF(cw * 16, ch * 8) };
+			p.setBrush(Qt::NoBrush);
+			p.drawPolygon(pts, 3);
+		}
+		// Rows 4 to 6 and the middle six columns, which is inside the
+		// triangle and clear of both its legs -- at row 4 they are near
+		// columns 3 and 12, and they only spread further apart below that.
+		// Sampling nearer the apex would sample the legs themselves, which is
+		// what the first version of this check did.
+		int interior = 0;
+		for (int y = 4; y < 7; ++y)
+			for (int x = 5; x < 11; ++x) if (occupied(wire, x, y)) ++interior;
+		const bool wire_corners = !occupied(wire, 0, 0) && !occupied(wire, 15, 0);
+		bool wire_edges = false;
+		for (int x = 0; x < 16; ++x) if (occupied(wire, x, 7)) wire_edges = true;
+		if (interior == 0 && wire_corners && wire_edges)
+			printf("PASS: an unfilled polygon draws its edges and leaves its"
+			       " middle alone\n");
+		else {
+			printf("FAIL: an unfilled polygon draws its edges and leaves its"
+			       " middle alone\n      interior=%d corners-clear=%d"
+			       " edges=%d, buffer '%s'\n",
+			       interior, int(wire_corners), int(wire_edges),
+			       qPrintable(shown(wire)));
+			++r;
+		}
+
+		// A curve, which is what an application actually draws and what
+		// arrives through drawPath() rather than drawPolygon(). An arc from
+		// one corner to the other: the box of its bounding rectangle marks
+		// BOTH remaining corners and the arc marks neither.
+		Qtty::CellBuffer arc(16, 8);
+		{
+			Qtty::CellPaintDevice dev(arc);
+			QPainter p(&dev);
+			QPainterPath path(QPointF(0, ch * 8));
+			path.cubicTo(QPointF(cw * 5, 0), QPointF(cw * 11, 0),
+			             QPointF(cw * 16, ch * 8));
+			p.setBrush(Qt::NoBrush);
+			p.strokePath(path, QPen(QGuiApplication::palette().color(QPalette::Text)));
+		}
+		int arc_cells = 0, arc_rows = 0;
+		for (int y = 0; y < 8; ++y) {
+			bool any = false;
+			for (int x = 0; x < 16; ++x) if (occupied(arc, x, y)) { any = true; ++arc_cells; }
+			if (any) ++arc_rows;
+		}
+		const bool arc_corners = !occupied(arc, 0, 0) && !occupied(arc, 15, 0);
+		if (arc_rows >= 6 && arc_corners && arc_cells <= 16 + 8)
+			printf("PASS: a curve is rasterised rather than replaced by its"
+			       " bounding box\n");
+		else {
+			printf("FAIL: a curve is rasterised rather than replaced by its"
+			       " bounding box\n      %d rows, %d cells, corners-clear=%d,"
+			       " buffer '%s'\n",
+			       arc_rows, arc_cells, int(arc_corners), qPrintable(shown(arc)));
+			++r;
+		}
+
+		// -- what must NOT have changed --------------------------------------
+		// The two branches that already worked, and the rule they enforce.
+		// Each was paid for by a defect: a rule lands in the cell it COVERS
+		// rather than the one it is nearest, and a rule that meets any
+		// content is not drawn at all, because a table grid crossing a row of
+		// text otherwise filled the gaps between the words.
+		Qtty::CellBuffer rules(10, 3);
+		{
+			Qtty::CellPaintDevice dev(rules);
+			QPainter p(&dev);
+			p.drawLine(QLineF(0, ch / 2.0, cw * 10, ch / 2.0));
+			p.drawLine(QLineF(cw * 5 + cw / 2.0, ch, cw * 5 + cw / 2.0, ch * 3));
+		}
+		int h_run = 0, v_run = 0;
+		for (int x = 0; x < 10; ++x)
+			if (rules.at(x, 0).ch == QStringLiteral("─")) ++h_run;
+		for (int y = 1; y < 3; ++y)
+			if (rules.at(5, y).ch == QStringLiteral("│")) ++v_run;
+		if (h_run == 10 && v_run == 2)
+			printf("PASS: horizontal and vertical rules still render as rules\n");
+		else {
+			printf("FAIL: horizontal and vertical rules still render as rules\n"
+			       "      h=%d v=%d, buffer '%s'\n",
+			       h_run, v_run, qPrintable(shown(rules)));
+			++r;
+		}
+
+		// The refusal, for both the rule path and the new walk. A diagonal
+		// crossing a label must leave the label standing: a cell already
+		// holding a glyph is content somebody drew, and a line is chrome.
+		Qtty::CellBuffer over(10, 10);
+		for (int i = 0; i < 10; ++i)
+			over.text(i, i, QStringLiteral("#"));
+		const QString labelled = over.to_text();
+		const QString labelled_flat =
+		    QString(labelled).replace(QLatin1Char('\n'), QLatin1Char('/'));
+		{
+			Qtty::CellPaintDevice dev(over);
+			QPainter p(&dev);
+			p.drawLine(QLineF(0, 0, cw * 10, ch * 10));
+			p.drawLine(QLineF(0, ch / 2.0, cw * 10, ch / 2.0));
+		}
+		if (over.to_text() == labelled)
+			printf("PASS: neither a rule nor a diagonal overwrites a cell that"
+			       " holds a glyph\n");
+		else {
+			printf("FAIL: neither a rule nor a diagonal overwrites a cell that"
+			       " holds a glyph\n      before '%s'\n      after  '%s'\n",
+			       qPrintable(labelled_flat),
+			       qPrintable(shown(over)));
+			++r;
+		}
+
+		// And the clip, which the walk has to honour cell by cell for the
+		// reason box() does: a shape crossing the clip's edge keeps the part
+		// inside it and loses the part outside, rather than being shrunk to
+		// fit or dropped whole.
+		Qtty::CellBuffer clipped(10, 10);
+		{
+			Qtty::CellPaintDevice dev(clipped);
+			QPainter p(&dev);
+			p.setClipRect(QRect(cw * 2, ch * 2, cw * 4, ch * 4));
+			p.drawLine(QLineF(0, 0, cw * 10, ch * 10));
+		}
+		int inside = 0, outside = 0;
+		for (int y = 0; y < 10; ++y)
+			for (int x = 0; x < 10; ++x)
+				if (occupied(clipped, x, y)) {
+					if (x >= 2 && x < 6 && y >= 2 && y < 6) ++inside;
+					else ++outside;
+				}
+		if (inside > 0 && outside == 0)
+			printf("PASS: and a clipped diagonal keeps only the part inside"
+			       " the clip\n");
+		else {
+			printf("FAIL: and a clipped diagonal keeps only the part inside"
+			       " the clip\n      %d inside, %d outside, buffer '%s'\n",
+			       inside, outside, qPrintable(shown(clipped)));
 			++r;
 		}
 	}

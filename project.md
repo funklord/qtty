@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1011 checks, 0 failures, under six configurations, all six re-run
+1022 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6590,6 +6590,56 @@ passed, because Qt's own `QWidget::event()` reaches its Tab branch first.
 The check was kept for the behaviour it does pin -- Tab reaching a widget
 when nothing has focus, which nothing covered -- with its claim corrected
 and what was tried written down. The fallback remains unreached.
+
+**Channel B draws a curve** (2026-09-06). The largest gap the sibling
+survey found, and the one that blocked a whole application: `line()` had
+exactly two branches, horizontal and vertical, so a DIAGONAL matched
+neither and fell off the end of the function, while `drawPolyline`,
+`drawPath`, `drawPolygon` and `drawEllipse` all reduced to
+`fill_rectf(boundingRect())`. A chart was not degraded, it was replaced
+by its own box -- and a FLAT curve, whose box collapses, drew nothing.
+
+`stroke_segment()` walks the cells a segment actually enters and picks a
+glyph from how far the segment travels INSIDE each cell, rather than from
+the line's overall slope -- which is what makes a shallow line a run of
+rules with a step at each break instead of disconnected fragments.
+`drawPolygon()` honours its mode and its brush; `drawPath()` flattens
+through the transform and strokes or scanline-fills the real geometry.
+
+**Braille was measured and refused.** It offers 2x4 sub-cell resolution
+and would have been the highest-fidelity answer, but of 21 non-DOS
+monospace families here fontconfig reports **one** carrying
+U+2800..U+28FF, against 10 of 11 for the light box-drawing rules -- and
+decisively, **DejaVu Sans Mono, the family this library names and
+refuses to start without, has no braille at all**, reported exactly as a
+private-use codepoint is. U+2571 and U+2572 were chosen instead, and
+recorded as themselves a tier weaker than the rules.
+
+**A polygon fills its own cells rather than its bounding rectangle**, and
+the reason is not that the box is coarse. A triangle's bounding rectangle
+is twice its area, so half the cells it colours are cells nothing drew
+in -- it INVENTS content, and a reader cannot tell which half. Centre
+sampling is the same question `to_cells()` already answers for a
+rectangle, which is why both snapshot fixtures came back byte-identical.
+
+**One thing measured and left for the holder: a Channel B stroke carries
+no colour.** The obvious fix was built and measured at both sides -- on a
+40x20 fixture, 294 rule cells all default today, against 174 default and
+120 true-colour with the pen carried. But 1586 of 1597 pens reaching
+`line()` resolve to a hard 24-bit colour and 1569 of those to one grey,
+because Qt draws sunken borders with `pal.dark()` and `pal.light()`.
+That is the #bebebe incident by a new route, and the suite is blind to
+it: with the pen carried all checks pass and both fixtures re-record
+identically. The real fix wants a "is this colour anywhere in the
+palette" rule, which is a section 6 decision.
+
+**And one of my own probes was the wrong instrument**, worth recording
+because it nearly became a reported gap: a filled ellipse read as "0
+glyphs" and looked like a hole in the new work. A fill colours a cell's
+BACKGROUND without writing a glyph, so counting non-space characters
+measures strokes and is blind to fills. Counted properly it colours 28
+cells. The code was right and the probe was wrong, which is this
+document's most-recorded shape arriving in my own hands.
 
 **Clipboard out, and a bare Escape** (2026-09-06), the two gaps the
 sibling survey named that needed no design decision.

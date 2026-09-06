@@ -1,6 +1,9 @@
 // src/render/cell_paint.cpp -- CellPaintDevice / CellPaintEngine (section 5.4).
 #include "qtty/paint.h"
+#include <algorithm>
 #include <cmath>
+#include <limits>
+#include <QVarLengthArray>
 #include <QCoreApplication>
 #include <QEvent>
 #include <QWidget>
@@ -331,10 +334,38 @@ void CellPaintEngine::drawRects(const QRect *r, int n)  { for (int i = 0; i < n;
 void CellPaintEngine::drawLines(const QLineF *l, int n) { for (int i = 0; i < n; ++i) line(l[i]); }
 void CellPaintEngine::drawLines(const QLine *l, int n)  { for (int i = 0; i < n; ++i) line(QLineF(l[i])); }
 
+// Solid-brush paths are fills -- this is how QTextLayout paints selection
+// regions (section 17.2) -- and brushless ones are strokes. Both were the
+// bounding rectangle: a fill of the box around the shape, or box() drawn round
+// it. QPainter::drawEllipse and QPainter::drawArc arrive here, so a circle was
+// a rectangle and an arc was a rectangle.
+//
+// Flattened THROUGH the transform rather than before it. QPainterPath decides
+// how finely to subdivide a curve from the size of the thing it is
+// subdividing, so flattening in logical coordinates and mapping afterwards
+// makes a path that is scaled up come out as visible straight runs.
 void CellPaintEngine::drawPath(const QPainterPath &path) {
-	// Solid-brush paths are fills -- this is how QTextLayout paints selection
-	// regions (section 17.2). Only brushless paths degrade to outline boxes.
-	fill_rectf(path.boundingRect(), /*outline_only=*/brush_.style() == Qt::NoBrush);
+	const std::optional<QRect> clip = clip_cells();
+	if (clip && clip->isEmpty()) return;
+	const QPointF origin(dev_->origin);
+	if (brush_.style() != Qt::NoBrush) {
+		// A path too thin to cover a cell centre is what fill_rectf()'s thin
+		// branch exists for -- a caret, a rule, a hairline -- and the scanline
+		// cannot represent it: no cell centre is inside, so it would draw
+		// nothing where this used to colour a blank cell. Kept on the old road
+		// for exactly that case, which is also the only case where the
+		// bounding rectangle and the shape are the same thing by construction.
+		if (is_thin(path.boundingRect())) {
+			fill_rectf(path.boundingRect());
+		} else {
+			for (const QPolygonF &poly : path.toFillPolygons(xf_))
+				fill_polygon(poly.translated(origin),
+				             path.fillRule() == Qt::WindingFill, clip);
+		}
+	}
+	if (pen_.style() != Qt::NoPen)
+		for (const QPolygonF &poly : path.toSubpathPolygons(xf_))
+			stroke_polyline(poly.translated(origin), false, clip);
 }
 
 void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &whole,
@@ -419,10 +450,30 @@ void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &whole,
 	}
 }
 
-void CellPaintEngine::drawPolygon(const QPointF *pts, int n, PolygonDrawMode) {
+// The MODE, which this took and ignored. Qt sends a polyline, an odd-even
+// polygon, a winding polygon and a convex polygon through one entry point and
+// says which by the third argument; this passed outline_only = true for all
+// four, so QPainter::drawPolyline came out as a closed box and a filled
+// polygon drew no fill at all.
+//
+// The pen and the brush are honoured here rather than left to QPainter,
+// because QPainter does not filter this call: QPainter::drawPolygon hands the
+// engine the points whatever the pen and brush are, and the engine is what
+// decides that Qt::NoPen means no outline.
+void CellPaintEngine::drawPolygon(const QPointF *pts, int n, PolygonDrawMode mode) {
+	if (n < 2) return;
+	const std::optional<QRect> clip = clip_cells();
+	if (clip && clip->isEmpty()) return;
 	QPolygonF p;
-	for (int i = 0; i < n; ++i) p << pts[i];
-	fill_rectf(p.boundingRect(), true);
+	p.reserve(n);
+	for (int i = 0; i < n; ++i) p << xf_.map(pts[i]) + QPointF(dev_->origin);
+	const bool closed = mode != PolylineMode;
+	// Fill first, then stroke. The fill writes whole cells and would erase an
+	// outline drawn before it; the stroke writes only the glyph and leaves the
+	// background the fill put there, which is how a filled shape keeps both.
+	if (closed && brush_.style() != Qt::NoBrush)
+		fill_polygon(p, mode == WindingMode, clip);
+	if (pen_.style() != Qt::NoPen) stroke_polyline(p, closed, clip);
 }
 
 // Is `role` one of the surfaces a widget sits ON, as opposed to something
@@ -512,6 +563,25 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 		if (c.isEmpty()) return;
 	}
 
+	const FillCell f = brush_cell();
+	if (f.erase) {
+		if (!thin && c.width() > 1 && c.height() > 1) dev_->buffer().fill(c, Cell{});
+		return;
+	}
+	if (!thin) { dev_->buffer().fill(c, f.cell); return; }
+	for (int y = c.top(); y <= c.bottom(); ++y)
+		for (int x = c.left(); x <= c.right(); ++x) {
+			Cell &cell = dev_->buffer().at(x, y);
+			if (cell.ch == QStringLiteral(" ")) {
+				cell.bg = f.cell.bg;
+				cell.attrs |= f.cell.attrs;
+			}
+		}
+}
+
+// The palette-role rule for a fill, in one place. See the declaration in
+// qtty/paint.h for why it is not written out twice.
+CellPaintEngine::FillCell CellPaintEngine::brush_cell() const {
 	const QRgb col = brush_.color().rgba();
 	// role_of(), not a copy of its list. This carried the same six roles in
 	// the same order and asked `pal.color(role)` -- the palette's CURRENT
@@ -530,10 +600,7 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 	                                       : theme().background(matched);
 	Attrs mark;
 	if (bg.kind() == Color::Default) {
-		if (is_surface_role(matched)) {
-			if (!thin && c.width() > 1 && c.height() > 1) dev_->buffer().fill(c, Cell{});
-			return;
-		}
+		if (is_surface_role(matched)) return FillCell{Cell{}, true};
 		// A HIGHLIGHT the theme has not coloured is reverse video, not the
 		// desktop's blue.
 		//
@@ -558,12 +625,7 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 	Cell v;
 	v.bg = bg;
 	v.attrs = mark;
-	if (!thin) { dev_->buffer().fill(c, v); return; }
-	for (int y = c.top(); y <= c.bottom(); ++y)
-		for (int x = c.left(); x <= c.right(); ++x) {
-			Cell &cell = dev_->buffer().at(x, y);
-			if (cell.ch == QStringLiteral(" ")) { cell.bg = bg; cell.attrs |= mark; }
-		}
+	return FillCell{v, false};
 }
 
 void CellPaintEngine::box(const QRect &c, const std::optional<QRect> &clip) {
@@ -675,7 +737,25 @@ void CellPaintEngine::line(const QLineF &l) {
 	};
 	const std::optional<QRect> clip = clip_cells();
 	if (clip && clip->isEmpty()) return;
-	if (qAbs(m.dy()) < ch / 2.0) {
+	// A rule is a line that stays in ONE cell row, and the second half of
+	// that sentence had to be added when the walk below arrived. The dy test
+	// alone is an ABSOLUTE one: a line 200 px across dropping 9 px satisfies
+	// it and still straddles a row boundary, and this branch draws such a
+	// line as one flat rule at the row of its FIRST point -- so a chart
+	// segment sloping gently across the screen came out in the wrong row with
+	// none of its slope, which is a wrong picture rather than a coarse one.
+	//
+	// Nothing that was working moves, and that is measured rather than
+	// argued. Counted over the whole suite: 1597 calls reach here, 1481 take
+	// the horizontal branch and 111 the vertical, and the number of them that
+	// straddle a cell row or a cell column is ZERO -- every rule widget
+	// chrome draws has a dy or a dx of exactly nought, so its two ends are in
+	// the same cell by construction. The 5 that are left are the diagonals
+	// the checks in suite_render add, and before the branch below existed
+	// they drew nothing at all.
+	const bool one_row = cell_of(m.y1(), ch) == cell_of(m.y2(), ch);
+	const bool one_col = cell_of(m.x1(), cw) == cell_of(m.x2(), cw);
+	if (qAbs(m.dy()) < ch / 2.0 && one_row) {
 		const int y = cell_of(m.y1(), ch);
 		auto span = covered(qMin(m.x1(), m.x2()), qMax(m.x1(), m.x2()), cw);
 		if (clip) {
@@ -687,7 +767,7 @@ void CellPaintEngine::line(const QLineF &l) {
 		if (!clear_run(y, span.first, span.second, true)) return;
 		for (int x = span.first; x <= span.second; ++x)
 			b.at(x, y).ch = QStringLiteral("─");
-	} else if (qAbs(m.dx()) < cw / 2.0) {
+	} else if (qAbs(m.dx()) < cw / 2.0 && one_col) {
 		const int x = cell_of(m.x1(), cw);
 		auto span = covered(qMin(m.y1(), m.y2()), qMax(m.y1(), m.y2()), ch);
 		if (clip) {
@@ -699,6 +779,417 @@ void CellPaintEngine::line(const QLineF &l) {
 		if (!clear_run(x, span.first, span.second, false)) return;
 		for (int y = span.first; y <= span.second; ++y)
 			b.at(x, y).ch = QStringLiteral("│");
+	} else {
+		// Everything that is neither a row nor a column, which until this
+		// existed fell off the end of the function and drew nothing. The two
+		// branches above are left exactly as they were: their behaviour was
+		// measured over the whole suite -- 510 horizontal rules landing on
+		// clear cells, 8 on occupied ones, 426 partial, and 102 vertical --
+		// and a diagonal is a case they never saw rather than one they got
+		// wrong.
+		stroke_segment(m.p1(), m.p2(), clip);
+	}
+}
+
+// ---- Channel B geometry: diagonals, polylines and polygons -----------------
+//
+// What this replaced, measured on a custom paintEvent:
+//
+//     horizontal line   renders as a rule
+//     vertical line     renders as a rule
+//     diagonal line     NOTHING
+//     polyline, curve   NOTHING
+//     filled polygon    the box of its bounding rectangle
+//
+// line() had exactly two branches and a diagonal matched neither, so it fell
+// off the end of the function; drawPath() and drawPolygon() both reduced to
+// fill_rectf() of the bounding rectangle, which replaces a curve by the box
+// around it and a FLAT curve -- whose bounding rectangle collapses to one row
+// -- by nothing at all, because box() refuses a rectangle under two cells.
+//
+// THE GLYPH REPERTOIRE, and why it stops where it does.
+//
+// The cells go to a TERMINAL, so what draws them is the user's terminal font
+// and qtty cannot measure it -- the grid is the terminal's and does not depend
+// on the glyph, but whether anything appears in the cell does. Coverage is
+// therefore the question, and the only proxy available is what a machine has
+// installed. Counted here with `fc-list :charset=NNNN:spacing=100` over the 21
+// monospace families on this one that are not DOS bitmap fonts (`fc-list`
+// reports 102 and 81 of them are the `Px ` CP437 set, which every terminal
+// glyph below is in by construction and which nobody sets a terminal to):
+//
+//     U+2500, U+2502   the light rules       10, 11 of 21
+//     U+2588, U+2592   full and medium       10,  9 of 21 -- drawPixmap()
+//                      shade                                already emits the
+//                                                           second of these
+//     U+2581..U+2587   the eighth blocks          8 of 21
+//     U+2596..U+259F   the quadrants              8 of 21
+//     U+2571, U+2572   the light diagonals        5 of 21 -- DejaVu Sans Mono,
+//                                                           Hack, Agave, and
+//                                                           two home-computer
+//                                                           revival fonts
+//     U+1FB00..        the sextants               3 of 21
+//     U+2800..U+28FF   braille                    1 of 21 -- Agave
+//
+// READ THAT AS AN ORDERING AND NOT AS A RATE. The denominator is one machine's
+// font directory and it is noisy at both ends: the 21 include an emoji font, a
+// SignWriting font and OCR A, none of which anybody reads a terminal in. What
+// survives the noise is the ORDER, which is the same however the population is
+// drawn -- box drawing is the most widely carried, the diagonals are a tier
+// below it, and braille is alone at the bottom.
+//
+// So braille is out, and it is the option worth arguing about because it is
+// the highest-fidelity one by a distance: 2x4 dots per cell against one glyph
+// per cell, and every terminal plotting library that can assume a font reaches
+// for it. Two measurements decide it against, and the second is the one that
+// settles it, because it does not depend on the population above at all.
+//
+// DejaVu Sans Mono is the family qtty NAMES -- application.cpp asks for it and
+// grid_font_problem() makes a font that cannot carry the grid a hard startup
+// error -- and it has no braille. Asked of Qt directly rather than assumed,
+// with a control at each end:
+//
+//     QRawFont::fromFont("DejaVu Sans Mono", 16px).supportsCharacter()
+//       'M'                yes    advance 10.0     control: must be present
+//       U+2500 U+2571      yes    advance 10.0
+//       U+2800 U+2847      NO     advance 12.0
+//       U+E000             NO     advance 12.0     control: must be absent
+//
+// A braille pattern reports exactly what a private-use codepoint reports. In a
+// terminal that is a missing glyph rather than a broken grid -- the terminal
+// owns the columns, not the font -- but it means qtty's own snapshots, taken
+// under the one font the library refuses to start without, would be recorded
+// against a character that font cannot draw. A glyph nobody can render is
+// worse than a coarser one that everybody can.
+//
+// The diagonals being a tier weaker than the rules already emitted is a real
+// cost rather than a rounding error: Liberation Mono and Nimbus Mono PS carry
+// U+2500, U+2502 and the four corners box() draws, and not U+2571 or U+2572.
+// They are in the same Unicode block as the glyphs box() has always written,
+// the font qtty names has them, and the alternative for a 45-degree line is a
+// staircase of rules and columns that reads as several disconnected marks.
+// Taken, and recorded here so the trade is visible rather than discovered.
+//
+// The eighth blocks were considered for the top edge of a filled area and not
+// taken. They are no better covered than the quadrants, and the fill below
+// carries a BACKGROUND colour instead -- which needs no glyph at all, cannot
+// be missing from any font, and composes with whatever character is already in
+// the cell rather than replacing it.
+
+// A segment clipped to `r`, or false when none of it is inside. Liang-Barsky,
+// which answers in the segment's own parameter and so cannot move an endpoint
+// off the line.
+//
+// This is what BOUNDS the walk below, and it is not tidiness. fill_rectf()
+// records the same finding from the other side: a layer wider than the
+// terminal is the ordinary state of a window whose layout minimum exceeds the
+// screen, so a segment running corner to corner across one can be arbitrarily
+// long while nothing outside the buffer can be written. Clipped first, the
+// number of cells a segment can visit is bounded by the buffer's own extent.
+static bool clip_segment(QPointF &a, QPointF &b, const QRectF &r) {
+	// Rejected outright rather than clipped. An infinity or a NaN makes every
+	// comparison below false, so the clip would pass it through unchanged and
+	// the walk would then convert it to an int, which is undefined. An
+	// application can produce one -- a chart dividing by an empty data range
+	// is the ordinary way -- and the honest answer to a coordinate that names
+	// no point is to draw nothing.
+	if (!std::isfinite(a.x()) || !std::isfinite(a.y())
+	 || !std::isfinite(b.x()) || !std::isfinite(b.y())) return false;
+	const double dx = b.x() - a.x(), dy = b.y() - a.y();
+	const double p[4] = {-dx, dx, -dy, dy};
+	const double q[4] = {a.x() - r.left(), r.right() - a.x(),
+	                     a.y() - r.top(),  r.bottom() - a.y()};
+	double t0 = 0.0, t1 = 1.0;
+	for (int i = 0; i < 4; ++i) {
+		if (p[i] == 0.0) {
+			if (q[i] < 0.0) return false;           // parallel and outside
+			continue;
+		}
+		const double t = q[i] / p[i];
+		if (p[i] < 0.0) { if (t > t1) return false; if (t > t0) t0 = t; }
+		else            { if (t < t0) return false; if (t < t1) t1 = t; }
+	}
+	const QPointF from = a;
+	a = QPointF(from.x() + dx * t0, from.y() + dy * t0);
+	b = QPointF(from.x() + dx * t1, from.y() + dy * t1);
+	return true;
+}
+
+// The cells a segment passes through, in order, with how far it travels inside
+// each. Amanatides and Woo's grid traversal: every step advances to whichever
+// of the next column boundary or the next row boundary the segment reaches
+// first, so it visits exactly the cells the segment enters -- no cell missed,
+// and none invented. A sampled walk can promise neither at a shallow slope,
+// where consecutive samples straddle a column, nor at a steep one, where they
+// straddle a row.
+//
+// `visit` is called as (cell x, cell y, span across in px, span down in px,
+// first, last).
+//
+// TERMINATION, named because this walks coordinates an application supplied.
+// `t` is the segment's own parameter, every step raises it to the next
+// boundary crossing, and the loop ends when it reaches 1 or when the cell
+// holding the far endpoint is reached. That is the bound, and it is enough for
+// any finite segment. `cap` is the second one: the caller clips to the buffer
+// first, so the cells a legitimate segment can visit are bounded by the
+// buffer's own extent and a run that exceeds the cap is a run that should not
+// exist. Non-finite input cannot reach here -- clip_segment() refuses it --
+// which is what makes the first bound trustworthy rather than merely stated.
+template <class Visit>
+static void walk_segment(const QPointF &a, const QPointF &b, int cw, int ch,
+                         int cap, Visit &&visit) {
+	const double dx = b.x() - a.x(), dy = b.y() - a.y();
+	// floor(), for the reason line() records: the cell a pixel is IN, not the
+	// boundary it is nearest. Rounding put a rule on the last pixel row of a
+	// widget into the row below it.
+	int cx = int(std::floor(a.x() / cw)), cy = int(std::floor(a.y() / ch));
+	const int end_x = int(std::floor(b.x() / cw)), end_y = int(std::floor(b.y() / ch));
+	const int step_x = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+	const int step_y = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
+	const double never = std::numeric_limits<double>::infinity();
+	// Infinity where the segment does not move in that axis at all, which is
+	// what stops a horizontal segment ever taking a row step: min() never
+	// picks it, and the increment below never runs.
+	double at_x = never, at_y = never, per_x = never, per_y = never;
+	if (step_x) {
+		at_x = ((cx + (step_x > 0 ? 1 : 0)) * double(cw) - a.x()) / dx;
+		per_x = double(cw) / std::fabs(dx);
+	}
+	if (step_y) {
+		at_y = ((cy + (step_y > 0 ? 1 : 0)) * double(ch) - a.y()) / dy;
+		per_y = double(ch) / std::fabs(dy);
+	}
+	double t = 0.0;
+	for (int guard = 0; guard <= cap; ++guard) {
+		const double out = std::min(1.0, std::min(at_x, at_y));
+		const double in_x = a.x() + dx * t,   in_y = a.y() + dy * t;
+		const double out_x = a.x() + dx * out, out_y = a.y() + dy * out;
+		// Both conditions, not either. `out >= 1` is the parametric end and
+		// `cx == end_x && cy == end_y` is the geometric one; floating point
+		// makes each of them arrive first in different cases, and a segment
+		// ending exactly on a cell boundary has an end cell the walk never
+		// enters, which only the first can see.
+		const bool last = out >= 1.0 || (cx == end_x && cy == end_y);
+		visit(cx, cy, std::fabs(out_x - in_x), std::fabs(out_y - in_y),
+		      guard == 0, last);
+		if (last) return;
+		t = out;
+		if (at_x < at_y) { cx += step_x; at_x += per_x; }
+		else             { cy += step_y; at_y += per_y; }
+	}
+}
+
+// The glyph for a segment crossing one cell, chosen from how far it travels
+// INSIDE that cell rather than from the line's overall slope. The difference
+// shows at a shallow slope: a line dropping one row every three columns is a
+// run of rules with a single diagonal at each step, and a per-line glyph would
+// make it either a staircase of rules with a visible break at every step or a
+// run of diagonals that are not diagonal.
+//
+// The comparison is against half a cell in each axis, which is the same
+// half-cell test fill_rectf() applies across a thin rect and covered() applies
+// along a rule's length -- stated as a ratio here because a cell is 10 x 19 px
+// and comparing raw pixel spans would call every 45-degree line vertical.
+static QString segment_glyph(double across, double down, double dx, double dy,
+                             int cw, int ch) {
+	const double fx = across / cw, fy = down / ch;
+	if (fy * 2.0 < fx) return QStringLiteral("─");
+	if (fx * 2.0 < fy) return QStringLiteral("│");
+	// Screen coordinates: y grows downwards, so a segment going right and
+	// down leans the way U+2572 does. A degenerate segment -- a polygon with
+	// a repeated vertex, which is common in generated geometry -- has no
+	// direction at all and gets the rule, which is what line() already draws
+	// for a zero-length QLineF.
+	if (dx == 0.0 && dy == 0.0) return QStringLiteral("─");
+	return (dx >= 0) == (dy >= 0) ? QStringLiteral("╲") : QStringLiteral("╱");
+}
+
+void CellPaintEngine::stroke_segment(const QPointF &a, const QPointF &b,
+                                     const std::optional<QRect> &clip) {
+	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+	CellBuffer &buf = dev_->buffer();
+	QPointF from = a, to = b;
+	if (!clip_segment(from, to, QRectF(0, 0, buf.cols() * double(cw),
+	                                   buf.rows() * double(ch)))) return;
+	const double dx = b.x() - a.x(), dy = b.y() - a.y();
+	// The clip has already bounded the walk to the buffer; this is the cap
+	// walk_segment() cannot reach. Every step advances one column or one row,
+	// so a segment inside the buffer visits at most cols + rows cells, and the
+	// slack is for the boundary cases at each end.
+	const int cap = buf.cols() + buf.rows() + 4;
+	// `share` is how much of the cell the segment crosses, on whichever axis
+	// it crosses more. Collected rather than decided as it goes, because the
+	// trim below is a property of the RUN and cannot be judged while the run
+	// is still being built.
+	struct Visited { int x, y; double across, down, share; };
+	QVarLengthArray<Visited, 256> run;
+	walk_segment(from, to, cw, ch, cap,
+	             [&](int x, int y, double across, double down, bool, bool) {
+		run.append({x, y, across, down, std::max(across / cw, down / ch)});
+	});
+	if (run.isEmpty()) return;
+
+	// The cells the segment COVERS, not the ones it touches -- covered()'s
+	// rule, generalised from a rule's length to a walk in two axes. A cell the
+	// segment enters by a pixel is not a cell the segment is in: measured on a
+	// mnemonic, Qt underlines the marked letter with a line that starts a
+	// pixel early, and without that rule every check box, radio button and
+	// group box with a mnemonic drew a rule in the gap between its indicator
+	// and its label.
+	//
+	// It is applied to EVERY cell here and not only to the two ends, which is
+	// where this had to differ from covered(), and the case that forced it is
+	// a grid traversal's oldest one. When a segment passes exactly through a
+	// lattice corner -- which a corner-to-corner diagonal on a square cell
+	// grid does at every single step -- the walk reaches the column boundary
+	// and the row boundary at the same parameter, takes them one at a time,
+	// and so visits an extra cell that the segment's interior never enters at
+	// all. Measured before the rule was widened: a diagonal across a 10 x 10
+	// buffer drew twenty cells rather than ten, a doubled trace one row below
+	// where the line is, and it overwrote a column of text the line does not
+	// touch. Those cells have zero span in both axes, so the same half-cell
+	// question that catches the mnemonic catches them, asked of the middle of
+	// the run rather than only its ends.
+	//
+	// No gap can open. Where a segment crosses a cell boundary inside a
+	// column, the two cells' shares of that column sum to one, so at most one
+	// of them can be under a half -- and where they are exactly equal both are
+	// kept. What the trim removes is a duplicate, never the only candidate.
+	//
+	// And a segment wholly inside ONE cell keeps that cell whatever its share:
+	// it is the only cell it can be in, and a polyline dense enough to be a
+	// curve is made almost entirely of such segments, so trimming them would
+	// delete the curve rather than tidy it. The `best` fallback is that rule
+	// stated so it also covers a short segment straddling two cells, which
+	// covered() answers by trimming the first end and then finding the second
+	// is no longer a second.
+	int kept = 0, best = 0;
+	for (int i = 0; i < run.size(); ++i) {
+		if (run[i].share >= 0.5) ++kept;
+		if (run[i].share > run[best].share) best = i;
+	}
+	for (int i = 0; i < run.size(); ++i) {
+		if (kept > 0 ? run[i].share < 0.5 : i != best) continue;
+		const int x = run[i].x, y = run[i].y;
+		if (clip && !clip->contains(x, y)) continue;
+		if (x < 0 || y < 0 || x >= buf.cols() || y >= buf.rows()) continue;
+		Cell &cell = buf.at(x, y);
+		// Per cell, where a rule is all or nothing, and the difference is
+		// deliberate. line()'s clear_run() refuses a rule that meets ANY
+		// content, because a table's grid line crossing a row of text
+		// otherwise filled the gaps between the words and that reads as
+		// corruption. A curve is not a rule: it crosses whatever a chart has
+		// already drawn -- an axis label, a legend -- and dropping the whole
+		// segment because one cell holds a character loses the curve rather
+		// than tidying it. Skipping that one cell reads as the curve passing
+		// behind the label, which is what it is doing.
+		if (cell.ch != QStringLiteral(" ")) continue;
+		cell.ch = segment_glyph(run[i].across, run[i].down, dx, dy, cw, ch);
+	}
+}
+
+void CellPaintEngine::stroke_polyline(const QPolygonF &pts, bool close,
+                                      const std::optional<QRect> &clip) {
+	for (int i = 0; i + 1 < pts.size(); ++i)
+		stroke_segment(pts[i], pts[i + 1], clip);
+	if (close && pts.size() > 2 && pts.first() != pts.last())
+		stroke_segment(pts.last(), pts.first(), clip);
+}
+
+// The cells a polygon covers, filled with the brush.
+//
+// Scanline against each cell row's CENTRE, so a cell is filled when the
+// polygon covers its middle. That is the same question to_cells() answers for
+// a rectangle by rounding each edge to the nearest cell, asked in a form that
+// works for a shape with no edges to round -- and it is why the two agree on a
+// rectangle, which matters because drawPath() has always sent QTextLayout's
+// selection rectangles down the fill road.
+//
+// The alternative this replaced was filling the BOUNDING RECTANGLE, and the
+// case against it is not that it is coarse. A triangle's bounding rectangle is
+// twice its area, so half the cells it colours are cells nothing was drawn in
+// -- it invents content rather than losing it, and a reader cannot tell which
+// half is which. Drawing nothing at all would at least be honest. This is
+// neither: the polygon's own cells, and no others.
+void CellPaintEngine::fill_polygon(const QPolygonF &pts, bool winding,
+                                   const std::optional<QRect> &clip) {
+	if (pts.size() < 3) return;
+	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+	CellBuffer &buf = dev_->buffer();
+	const QRectF box_px = pts.boundingRect();
+	if (!std::isfinite(box_px.left()) || !std::isfinite(box_px.top())
+	 || !std::isfinite(box_px.right()) || !std::isfinite(box_px.bottom())) return;
+
+	QRect cells(int(std::floor(box_px.left() / cw)),
+	            int(std::floor(box_px.top() / ch)),
+	            0, 0);
+	cells.setRight(int(std::floor(box_px.right() / cw)));
+	cells.setBottom(int(std::floor(box_px.bottom() / ch)));
+	QRect bounded = cells & QRect(0, 0, buf.cols(), buf.rows());
+	if (clip) bounded &= *clip;
+	if (bounded.isEmpty()) return;
+
+	const FillCell f = brush_cell();
+	// The same test fill_rectf() applies, asked of the polygon's own cell
+	// extent rather than of a scanline's: a surface role the theme has left at
+	// the terminal's own background erases, and a shape one cell wide or one
+	// cell tall is a rule or a caret rather than a surface and must not.
+	const bool erasing = f.erase;
+	if (erasing && (cells.width() <= 1 || cells.height() <= 1)) return;
+	const Cell written = erasing ? Cell{} : f.cell;
+
+	// Hoisted out of the row loop and cleared per row: a chart's area polygon
+	// has one vertex per sample and this runs once per cell row, so a vector
+	// allocated inside would be allocated once per row of every fill.
+	QVector<double> crossings;
+	QVector<int> directions, order;
+	for (int y = bounded.top(); y <= bounded.bottom(); ++y) {
+		const double sample = (double(y) + 0.5) * ch;
+		crossings.clear();
+		directions.clear();
+		for (int i = 0; i < pts.size(); ++i) {
+			const QPointF &p1 = pts[i], &p2 = pts[(i + 1) % pts.size()];
+			// Half-open in y -- [min, max) -- which is what stops a vertex
+			// landing exactly on the sample line being counted twice and
+			// turning the parity inside out for the rest of the row. A
+			// horizontal edge contributes nothing, which is correct: it
+			// crosses the sample line nowhere.
+			if ((p1.y() <= sample) == (p2.y() <= sample)) continue;
+			const double t = (sample - p1.y()) / (p2.y() - p1.y());
+			crossings.append(p1.x() + t * (p2.x() - p1.x()));
+			directions.append(p2.y() > p1.y() ? 1 : -1);
+		}
+		if (crossings.isEmpty()) continue;
+		// Sorted together, so a winding count stays paired with its crossing.
+		// An index sort rather than a struct, so the three vectors can be
+		// reused across rows.
+		order.resize(crossings.size());
+		for (int i = 0; i < order.size(); ++i) order[i] = i;
+		std::sort(order.begin(), order.end(),
+		          [&](int l, int r) { return crossings[l] < crossings[r]; });
+
+		int wind = 0;
+		for (int i = 0; i + 1 < order.size(); ++i) {
+			wind += winding ? directions[order[i]] : 1;
+			const bool inside = winding ? (wind != 0) : (wind % 2 != 0);
+			if (!inside) continue;
+			const double lo = crossings[order[i]], hi = crossings[order[i + 1]];
+			// A cell is in the span when its CENTRE is, which is the same
+			// question the row sample above asks, asked along the other axis.
+			const int first = int(std::ceil(lo / cw - 0.5));
+			const int last = int(std::floor(hi / cw - 0.5));
+			for (int x = qMax(first, bounded.left());
+			     x <= qMin(last, bounded.right()); ++x)
+				// writable(), which is what CellBuffer::fill() asks and so
+				// what fill_rectf() has always honoured. It carries the
+				// buffer's OWN clip as well as its bounds, and Channel A sets
+				// that one around a widget it is drawing (CellClip) -- so a
+				// fill reached from inside a style path stops where the widget
+				// does. box() and line() write through at() and do not; that
+				// is theirs to answer, and copying it here would be a second
+				// wrong answer rather than consistency.
+				if (buf.writable(x, y)) buf.at(x, y) = written;
+		}
 	}
 }
 

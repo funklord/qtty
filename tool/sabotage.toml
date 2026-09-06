@@ -206,3 +206,19 @@ find = "\tQByteArray out = \"\\033]52;\";"
 into = "\tQByteArray out = \"\\033]99;\";"
 count = 1
 check = "write_clipboard puts the text out as OSC 52 for selection c"
+
+[[sabotage]]
+name = "a diagonal segment is dropped as it always was"
+file = "src/render/cell_paint.cpp"
+find = "\t\tstroke_segment(m.p1(), m.p2(), clip);"
+into = "\t\treturn;"
+count = 1
+check = "a diagonal line touches a cell in every row"
+
+[[sabotage]]
+name = "a polygon's brush is read and discarded"
+file = "src/render/cell_paint.cpp"
+find = "\tif (closed && brush_.style() != Qt::NoBrush)"
+into = "\tif (false && brush_.style() != Qt::NoBrush)"
+count = 1
+check = "a filled polygon fills its own area"

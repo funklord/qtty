@@ -10,6 +10,7 @@
 #include <QBrush>
 #include <QFont>
 #include <QTransform>
+#include <QPolygonF>
 #include <optional>
 #include "cell.h"
 
@@ -130,6 +131,29 @@ private:
 	void fill_rectf(const QRectF &, bool outline_only = false);
 	void box(const QRect &cells, const std::optional<QRect> &clip = std::nullopt);
 	void line(const QLineF &);
+
+	// What a brush fill puts in one cell. `erase` says the brush resolved to
+	// a SURFACE the theme has left at the terminal's own background, which is
+	// a cell to clear rather than a cell to colour -- the caller decides
+	// whether the shape is big enough to stand for a surface, because that
+	// test is about the shape and not about the colour.
+	//
+	// It exists so that fill_rectf() and fill_polygon() cannot disagree.
+	// cell_paint.cpp already records three places giving three answers to the
+	// palette-role question and only two of them being corrected; a fourth
+	// copy is how that happens again.
+	struct FillCell { Cell cell; bool erase = false; };
+	FillCell brush_cell() const;
+
+	// Channel B geometry (section 5.4). Every one of these takes points that
+	// are already in DEVICE pixels with the compositor's origin added, so the
+	// transform is applied once by the caller rather than once per helper.
+	void stroke_segment(const QPointF &a, const QPointF &b,
+	                    const std::optional<QRect> &clip);
+	void stroke_polyline(const QPolygonF &device_px, bool close,
+	                     const std::optional<QRect> &clip);
+	void fill_polygon(const QPolygonF &device_px, bool winding,
+	                  const std::optional<QRect> &clip);
 
 	CellPaintDevice *dev_ = nullptr;
 	QPen pen_; QBrush brush_; QFont font_; QTransform xf_;
