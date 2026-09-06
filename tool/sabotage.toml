@@ -395,3 +395,11 @@ find = "\tconst QColor seg_pen = pen_ink();\n\tif (seg_pen.alpha() == 0) return;
 into = "\tconst QColor seg_pen = pen_ink();"
 count = 1
 check = "and a transparent pen draws no diagonal"
+
+[[sabotage]]
+name = "a texture brush answers with its meaningless colour"
+file = "src/render/cell_paint.cpp"
+find = "\tif (b.style() == Qt::TexturePattern) {"
+into = "\tif (false) {"
+count = 1
+check = "a texture fill takes its colour from the texture"

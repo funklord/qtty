@@ -841,6 +841,33 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 // defect justifies. It is the colour the area actually is, and being roughly
 // right beats being exactly black.
 static QColor brush_colour(const QBrush &b) {
+	// A TEXTURE brush is the other case where QBrush::color() means nothing
+	// and answers black -- the same trap the gradient below was. Averaged
+	// over the texture's own pixels, weighted by their alpha so a mostly
+	// transparent texture does not report the colour of the parts nobody
+	// sees. Sampled on a bounded grid rather than read whole: this runs per
+	// fill, and a texture is an image of any size.
+	if (b.style() == Qt::TexturePattern) {
+		const QImage img = b.textureImage().isNull()
+		                       ? b.texture().toImage()
+		                       : b.textureImage();
+		if (img.isNull() || img.width() < 1 || img.height() < 1)
+			return b.color();
+		const int steps = 16;
+		double r = 0, g2 = 0, bl = 0, wsum = 0;
+		for (int iy = 0; iy < steps; ++iy)
+			for (int ix = 0; ix < steps; ++ix) {
+				const int px = ix * img.width() / steps;
+				const int py = iy * img.height() / steps;
+				const QRgb v = img.pixel(px, py);
+				const double w = qAlpha(v) / 255.0;
+				r += qRed(v) * w; g2 += qGreen(v) * w; bl += qBlue(v) * w;
+				wsum += w;
+			}
+		if (wsum <= 0) return QColor(0, 0, 0, 0);   // wholly transparent
+		return QColor(int(r / wsum), int(g2 / wsum), int(bl / wsum),
+		              int(255.0 * wsum / (steps * steps)));
+	}
 	const QGradient *g = b.gradient();
 	if (!g) return b.color();
 	const QGradientStops stops = g->stops();

@@ -427,6 +427,32 @@ int suite_render(bool record) {
 			}
 		}
 
+		// A TEXTURE brush, the other kind whose QBrush::color() means
+		// nothing and answers black. Checked beside the gradient because
+		// they are one defect with two spellings, and fixing either alone
+		// leaves brush_colour() answering wrongly for a case it claims.
+		{
+			QPixmap tex(4, 4);
+			tex.fill(QColor(0x11, 0xaa, 0x44));
+			Qtty::CellBuffer b(4, 1);
+			{
+				Qtty::CellPaintDevice dev(b);
+				QPainter p(&dev);
+				p.fillRect(QRect(0, 0, cw * 4, ch), QBrush(tex));
+				p.end();
+			}
+			const Qtty::Color got = b.at(1, 0).bg;
+			if (got.kind() == Qtty::Color::Rgb
+			    && (got.value() & 0xffffff) == 0x11aa44u)
+				printf("PASS: a texture fill takes its colour from the"
+				       " texture\n");
+			else {
+				printf("FAIL: a texture fill takes its colour from the"
+				       " texture\n");
+				++r;
+			}
+		}
+
 		// A GRADIENT brush, whose QBrush::color() is documented to be
 		// "the brush colour" and answers BLACK -- a gradient has none. A
 		// chart shading an area is the ordinary way to meet this, and it

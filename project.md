@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1051 checks, 0 failures, under six configurations, all six re-run
+1052 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6685,6 +6685,60 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.17 Where the transparency family stops (2026-09-06)
+
+Four more pieces of painter state probed, to find the end of the family
+rather than to keep pulling on it:
+
+    texture brush            drew BLACK
+    CompositionMode_Clear    PAINTED where it should erase
+    setClipPath              correct, both in and out
+    rotate() and scale()     correct
+
+**Only the texture brush is fixed, and it is a completion rather than a new
+case.** `brush_colour()` exists precisely to answer "the colour this brush
+stands for" where `QBrush::color()` cannot, and a texture is the other kind
+that cannot -- it answers black, exactly as a gradient does. Leaving it
+would be an inconsistency inside a helper written three commits ago.
+Averaged over the texture's pixels weighted by alpha, so a mostly
+transparent texture does not report the colour of the parts nobody sees,
+and sampled on a bounded 16x16 grid because this runs per fill and a
+texture is an image of any size.
+
+**`CompositionMode_Clear` is NOT fixed, and the reason is a correction I
+had to make to myself.** Counting consumers across the seven sibling GUIs
+gave one: raidcfgd's `status_icons.cpp`, which punches a hole in a tray
+icon with Clear and a black brush -- its comment says "so it works over any
+tray background". I wrote down that qtty would give them a black dot
+instead of a hole, and that this would wreck the shape-encoded
+accessibility 8.11 records them designing for.
+
+**That was wrong.** They paint into a `QPixmap`, not into a widget, so the
+painting goes through Qt's ordinary raster engine and never reaches
+`CellPaintEngine` at all. The hole survives into the ARGB32 the tray
+receives. The same correction applies to hydra's two transform uses: one is
+`setTransform` on a `QGraphicsProxyWidget`, which is the scene graph rather
+than a `paintEvent`.
+
+So the honest count of consumers that reach this engine is **zero for all
+three**, and the grep that said "one file" was right about the file and
+silent about the device. **A consumer count is not a count of callers until
+you have asked what each one paints INTO** -- which is one line of each
+file, and is the line I did not read before writing the consequence down.
+
+**Two empty results worth recording, because an absence nobody wrote down
+is indistinguishable from an absence nobody looked for.** A path clip
+narrower than the fill excluded the cells outside it and kept the cells
+inside -- both directions, so the check could have failed either way. And
+the painter's transform is honoured: a four-by-one cell bar rotated ninety
+degrees comes out one by four, and the same bar under `scale(2, 2)` doubles
+on both axes. Neither needed a fixture chosen to flatter it; the rotated
+case is the one that would show a transform being dropped, because a
+dropped transform leaves the bar horizontal.
+
+So the family is swept and clean, and the next fault here needs a different
+lens rather than another probe of the same shape.
 
 ### 8.16 The pen path had the same two defects, and one worse (2026-09-06)
 
