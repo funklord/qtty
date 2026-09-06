@@ -144,6 +144,12 @@ private:
 	// copy is how that happens again.
 	struct FillCell { Cell cell; bool erase = false; };
 	FillCell brush_cell() const;
+	// The colour a PEN writes, with the painter's opacity applied and a
+	// gradient pen resolved the way a gradient brush is. Four drawing paths
+	// need it, and each of them read pen_.color() directly before -- which
+	// is how Qt::transparent came to be drawn as an opaque BLACK rule and
+	// as opaque BLACK text.
+	QColor pen_ink() const;
 
 	// Channel B geometry (section 5.4). Every one of these takes points that
 	// are already in DEVICE pixels with the compositor's origin added, so the

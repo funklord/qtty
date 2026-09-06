@@ -236,6 +236,11 @@ bool CellPaintEngine::begin(QPaintDevice *pdev) {
 }
 bool CellPaintEngine::end() { dev_ = nullptr; return true; }
 
+// Defined below, each beside the rule it implements. Declared here because
+// the text, stroke and fill paths all need them and all come first.
+static QColor brush_colour(const QBrush &b);
+static Color ink_over(Color ink, int alpha, const Color &ground);
+
 void CellPaintEngine::updateState(const QPaintEngineState &s) {
 	if (s.state() & DirtyPen)       pen_ = s.pen();
 	if (s.state() & DirtyBrush)     brush_ = s.brush();
@@ -421,11 +426,22 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	// recognises that group and answers with the role's ordinary colour plus
 	// Attr::Dim -- the same sentence GridStyle writes through with_state(),
 	// where before this channel wrote a 24-bit grey and no attribute.
-	const TextStyle ts = text_style_for(pen_.color().rgba());
+	// Qt::transparent TEXT drew opaque BLACK, which is the worst of this
+	// family: drawing a string in a transparent pen is an ordinary way to
+	// hide it, and this made it visible. The alpha is the pen's own times
+	// the painter's opacity, so both routes to invisibility are honoured.
+	const QColor ink = pen_ink();
+	if (ink.alpha() == 0) return;
+	const TextStyle ts = text_style_for(qRgb(ink.red(), ink.green(),
+	                                         ink.blue()));
 	int x = col;
 	for (const QString &cl : to_clusters(text)) {
 		const Attrs had = dev_->buffer().at(x, row).attrs & Attrs(Attr::Reverse);
-		x += dev_->buffer().text(x, row, cl, ts.color, Color(), a | ts.attrs | had);
+		// Blended per cell, so a translucent string over two different
+		// grounds reads as two colours rather than one.
+		const Color use = ink_over(ts.color, ink.alpha(),
+		                           dev_->buffer().at(x, row).bg);
+		x += dev_->buffer().text(x, row, cl, use, Color(), a | ts.attrs | had);
 	}
 	last_row_ = row;
 	last_end_col_ = x;
@@ -682,10 +698,6 @@ bool CellPaintEngine::is_thin(const QRectF &r) const {
 // theme does not name, and any colour with no role behind it at all, keeps the
 // application's own colour -- that is how a selection reaches the cells under
 // the default theme, and how Channel B output reaches them at all.
-// Defined below, beside the rule it implements. Declared here because
-// fill_rectf reads a brush's alpha and comes first in the file.
-static QColor brush_colour(const QBrush &b);
-
 void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 	QRect c = to_cells(r);
 	// Bounded by the BUFFER rather than by a pair of literals. The 400x200
@@ -850,6 +862,34 @@ static QColor brush_colour(const QBrush &b) {
 	              int(al / total));
 }
 
+// A resolved ink laid over what a cell already holds.
+//
+// The same rule a translucent FILL follows: blended where the ground is a
+// concrete colour, laid down unchanged where it is not, because this layer
+// does not know the terminal's own background and guessing it would be
+// worse than leaving the ink alone.
+static Color ink_over(Color ink, int alpha, const Color &ground) {
+	if (alpha >= 255 || ink.kind() != Color::Rgb
+	 || ground.kind() != Color::Rgb) return ink;
+	const QRgb s = ink.value(), d = ground.value();
+	auto mix = [alpha](int sv, int dv) {
+		return (sv * alpha + dv * (255 - alpha)) / 255;
+	};
+	return Color::rgb(qRgb(mix(qRed(s), qRed(d)), mix(qGreen(s), qGreen(d)),
+	                       mix(qBlue(s), qBlue(d))));
+}
+
+// The pen's colour with the painter's opacity folded in, and a gradient pen
+// resolved through the same averaging a gradient brush gets. Normalised to
+// opaque rgb for the same reason a fill's colour is: a terminal has no alpha
+// channel, and the byte only made equal colours compare unequal.
+QColor CellPaintEngine::pen_ink() const {
+	QColor c = brush_colour(pen_.brush());
+	const int a = qBound(0, int(c.alpha() * opacity_ + 0.5), 255);
+	c.setAlpha(a);
+	return c;
+}
+
 // The palette-role rule for a fill, in one place. See the declaration in
 // qtty/paint.h for why it is not written out twice.
 CellPaintEngine::FillCell CellPaintEngine::brush_cell() const {
@@ -934,6 +974,12 @@ void CellPaintEngine::box(const QRect &c, const std::optional<QRect> &clip) {
 }
 
 void CellPaintEngine::line(const QLineF &l) {
+	// Qt::transparent drew an opaque BLACK rule, because this read
+	// pen_.color() and Color::rgb() kept bytes that are zero for it. An
+	// invisible line has to draw nothing at all: it clears the run it
+	// covers, so returning after that would leave a wiped row behind.
+	const QColor pi = pen_ink();
+	if (pi.alpha() == 0) return;
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	QLineF m(xf_.map(l.p1()) + QPointF(dev_->origin), xf_.map(l.p2()) + QPointF(dev_->origin));
 	CellBuffer &b = dev_->buffer();
@@ -1045,10 +1091,10 @@ void CellPaintEngine::line(const QLineF &l) {
 			if (span.first > span.second) return;
 		}
 		if (!clear_run(y, span.first, span.second, true)) return;
-		const Color ink = line_for(pen_.color().rgba());
+		const Color ink = line_for(qRgb(pi.red(), pi.green(), pi.blue()));
 		for (int x = span.first; x <= span.second; ++x) {
 			b.at(x, y).ch = QStringLiteral("─");
-			b.at(x, y).fg = ink;
+			b.at(x, y).fg = ink_over(ink, pi.alpha(), b.at(x, y).bg);
 		}
 	} else if (qAbs(m.dx()) < cw / 2.0 && one_col) {
 		const int x = cell_of(m.x1(), cw);
@@ -1060,10 +1106,10 @@ void CellPaintEngine::line(const QLineF &l) {
 			if (span.first > span.second) return;
 		}
 		if (!clear_run(x, span.first, span.second, false)) return;
-		const Color ink = line_for(pen_.color().rgba());
+		const Color ink = line_for(qRgb(pi.red(), pi.green(), pi.blue()));
 		for (int y = span.first; y <= span.second; ++y) {
 			b.at(x, y).ch = QStringLiteral("│");
-			b.at(x, y).fg = ink;
+			b.at(x, y).fg = ink_over(ink, pi.alpha(), b.at(x, y).bg);
 		}
 	} else {
 		// Everything that is neither a row nor a column, which until this
@@ -1292,6 +1338,19 @@ static QString segment_glyph(double across, double down, double dx, double dy,
 
 void CellPaintEngine::stroke_segment(const QPointF &a, const QPointF &b,
                                      const std::optional<QRect> &clip) {
+	// An invisible pen writes no glyph. Guarded before anything touches a
+	// cell rather than at the write: this path sets `ch` as well as `fg`,
+	// so a transparent stroke that got as far as the loop would leave a
+	// visible mark whatever colour it was given.
+	const QColor seg_pen = pen_ink();
+	if (seg_pen.alpha() == 0) return;
+	// Resolved ONCE per segment, not once per cell. Reading it inside the
+	// loop below cost a QColor construction -- and for a gradient pen, an
+	// average over its stops -- for every cell of every stroke, against a
+	// 16 ms frame budget. Nothing in the loop can change the pen.
+	const int seg_alpha = seg_pen.alpha();
+	const Color seg_ink = line_for(qRgb(seg_pen.red(), seg_pen.green(),
+	                                    seg_pen.blue()));
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	CellBuffer &buf = dev_->buffer();
 	QPointF from = a, to = b;
@@ -1376,7 +1435,7 @@ void CellPaintEngine::stroke_segment(const QPointF &a, const QPointF &b,
 		// makes this matter -- a chart draws several series and they are
 		// told apart by colour, so a plot rendered in one ink is a plot with
 		// its legend removed.
-		cell.fg = line_for(pen_.color().rgba());
+		cell.fg = ink_over(seg_ink, seg_alpha, cell.bg);
 	}
 }
 

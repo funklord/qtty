@@ -309,6 +309,87 @@ int suite_render(bool record) {
 			}
 		}
 
+		// The PEN path, which had the same two defects as the fill and one
+		// of them worse. Qt::transparent drew an opaque BLACK rule, and
+		// transparent TEXT drew opaque BLACK text -- drawing a string in a
+		// transparent pen is an ordinary way to hide it, so this made
+		// hidden text visible rather than merely miscoloured.
+		{
+			auto cell_after = [&](std::function<void(QPainter &)> draw) {
+				Qtty::CellBuffer b(6, 1);
+				Qtty::CellPaintDevice dev(b);
+				QPainter p(&dev);
+				draw(p);
+				p.end();
+				return b.at(1, 0);
+			};
+			const Qtty::Cell rule = cell_after([&](QPainter &p) {
+				p.setPen(QPen(Qt::transparent, 1.0));
+				p.drawLine(0, ch / 2, cw * 5, ch / 2);
+			});
+			const Qtty::Cell words = cell_after([&](QPainter &p) {
+				p.setPen(QPen(Qt::transparent, 1.0));
+				p.drawText(QRectF(0, 0, cw * 5, ch), Qt::AlignLeft,
+				           QStringLiteral("XXXX"));
+			});
+			// The GLYPH, not the colour. A transparent stroke that got as
+			// far as writing a mark would be wrong whatever colour it
+			// carried, and this path sets the character as well as the ink.
+			if (rule.ch == QStringLiteral(" ")
+			    && rule.fg.kind() == Qtty::Color::Default)
+				printf("PASS: a transparent pen draws no rule\n");
+			else {
+				printf("FAIL: a transparent pen draws no rule\n");
+				++r;
+			}
+			if (words.ch == QStringLiteral(" "))
+				printf("PASS: and a transparent pen draws no text\n");
+			else {
+				printf("FAIL: and a transparent pen draws no text\n");
+				++r;
+			}
+
+			// A DIAGONAL, which reaches the guard in stroke_segment
+			// rather than the one in line(). line() returns early for a
+			// transparent pen now, so a plain drawLine cannot get there
+			// -- only a polyline can, and without this the guard is code
+			// no check exercises.
+			const Qtty::Cell diag = cell_after([&](QPainter &p) {
+				p.setPen(QPen(Qt::transparent, 1.0));
+				QPolygonF poly;
+				poly << QPointF(0, 0) << QPointF(cw * 5, ch);
+				p.drawPolyline(poly);
+			});
+			if (diag.ch == QStringLiteral(" "))
+				printf("PASS: and a transparent pen draws no diagonal\n");
+			else {
+				printf("FAIL: and a transparent pen draws no diagonal\n");
+				++r;
+			}
+
+			// And a translucent one blends, the way a translucent fill
+			// does -- over a ground this layer can actually see.
+			const Qtty::Cell wash = cell_after([&](QPainter &p) {
+				p.fillRect(QRect(0, 0, cw * 5, ch),
+				           QColor(0xd5, 0x20, 0x2a));
+				QColor c(0x2e, 0x7e, 0xbb);
+				c.setAlpha(80);
+				p.setPen(QPen(c, 1.0));
+				p.drawLine(0, ch / 2, cw * 5, ch / 2);
+			});
+			const QRgb v = wash.fg.value();
+			if (wash.fg.kind() == Qtty::Color::Rgb
+			    && qRed(v) > 0x2e && qRed(v) < 0xd5
+			    && qBlue(v) > 0x2a && qBlue(v) < 0xbb)
+				printf("PASS: and a translucent pen blends with the"
+				       " ground\n");
+			else {
+				printf("FAIL: and a translucent pen blends with the"
+				       " ground\n");
+				++r;
+			}
+		}
+
 		// QPainter::setOpacity(), which multiplies the brush's own alpha
 		// and which this engine did not track at all -- so a half-opaque
 		// fill drew fully opaque. The same defect as discarding a colour's

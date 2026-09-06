@@ -363,3 +363,35 @@ find = "\tif (s.state() & DirtyOpacity)   opacity_ = s.opacity();"
 into = "\t;"
 count = 1
 check = "a fill under setOpacity blends with what is under it"
+
+[[sabotage]]
+name = "a transparent pen still draws its rule"
+file = "src/render/cell_paint.cpp"
+find = "\tconst QColor pi = pen_ink();\n\tif (pi.alpha() == 0) return;"
+into = "\tconst QColor pi = pen_ink();"
+count = 1
+check = "a transparent pen draws no rule"
+
+[[sabotage]]
+name = "a transparent pen still draws its text"
+file = "src/render/cell_paint.cpp"
+find = "\tconst QColor ink = pen_ink();\n\tif (ink.alpha() == 0) return;"
+into = "\tconst QColor ink = pen_ink();"
+count = 1
+check = "and a transparent pen draws no text"
+
+[[sabotage]]
+name = "a pen's ink ignores the ground under it"
+file = "src/render/cell_paint.cpp"
+find = "\tif (alpha >= 255 || ink.kind() != Color::Rgb"
+into = "\tif (true || ink.kind() != Color::Rgb"
+count = 1
+check = "and a translucent pen blends with the ground"
+
+[[sabotage]]
+name = "a transparent pen still strokes a diagonal"
+file = "src/render/cell_paint.cpp"
+find = "\tconst QColor seg_pen = pen_ink();\n\tif (seg_pen.alpha() == 0) return;"
+into = "\tconst QColor seg_pen = pen_ink();"
+count = 1
+check = "and a transparent pen draws no diagonal"

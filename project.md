@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1047 checks, 0 failures, under six configurations, all six re-run
+1051 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -2161,6 +2161,29 @@ specifications. The summary:
   supplies layout margins and spacing as well as widget metrics.
   `CellPaintDevice` / `CellPaintEngine` catch everything that reaches
   `QPainter` without passing a style hook.
+
+  **The transparency contract, which an application author needs and which
+  was not written down until every part of it had been got wrong**
+  (2026-09-06). A colour reaching this engine carries an alpha, and
+  `QPainter::setOpacity()` multiplies it; a gradient brush or pen has no
+  single colour at all and `QBrush::color()` answers black for one. All
+  three are honoured now, and the rule is one sentence:
+
+  - **Zero alpha draws NOTHING** -- no cell touched, no glyph written, no
+    run cleared. `Qt::transparent` is how an application says "not this",
+    and it was drawing opaque black.
+  - **Partial alpha is BLENDED against what the cell already holds**, so
+    one wash over two grounds reads as two colours.
+  - **Where the ground is not a concrete colour it is laid down opaque.**
+    A `Default` background is the terminal's own and this layer does not
+    know it; guessing would be worse than leaving the paint alone, and the
+    shade stays visible either way.
+  - **A gradient is averaged over its own stops**, weighted by span. A cell
+    grid cannot show a gradient, and the colour the area actually is beats
+    the black that `QBrush::color()` hands over.
+
+  It applies to fills and to pens alike -- rules, strokes and TEXT -- and
+  each clause is carried by a check with a sabotage entry behind it.
 - **L4.5 -- GraphicsPlane** (design.md §5.7). Pixel overlays over the
   cell UI, and cell-anchored image placements that scroll with text.
   Three delivery strategies chosen by `Capabilities::graphics`; the
@@ -6662,6 +6685,55 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.16 The pen path had the same two defects, and one worse (2026-09-06)
+
+8.15 fixed alpha and opacity for FILLS and said in as many words that the
+pen path was left. That scoping decision is the lens: the same engine reads
+a pen's colour at four sites, and every one of them read `pen_.color()`
+raw.
+
+    Qt::transparent pen      drew an opaque BLACK rule
+    Qt::transparent text     drew opaque BLACK text
+    alpha-80 pen             drew opaque
+    setOpacity(0.5) pen      drew opaque
+
+**The text case is the worst thing this family has produced.** Drawing a
+string in a transparent pen is an ordinary way to HIDE it, so this did not
+merely miscolour hidden text -- it made it visible. A fill drawn black
+where nothing was wanted is a blemish; text shown where the application
+asked for none is a disclosure.
+
+Fixed at all four sites through one helper, `pen_ink()`, which folds the
+painter's opacity into the pen's own alpha and resolves a gradient pen
+through the same averaging a gradient brush gets. An alpha of zero draws
+NOTHING -- guarded before anything touches a cell, because the rule paths
+clear the run they cover and the stroke path writes a character as well as
+an ink, so returning later would leave a wiped row or a visible mark.
+
+Translucent ink is blended against what the cell already holds, by the same
+rule fills follow: blended where the ground is a concrete colour, laid down
+unchanged where it is not. Measured -- blue at alpha 80 over red gives
+`#a03d57`, and text at opacity 0.5 gives `#814f72`, the exact midpoint.
+
+**The checks assert the GLYPH and not the colour** for the two transparent
+cases. A transparent stroke that got as far as writing a mark would be
+wrong whatever ink it carried, and these paths set the character too, so a
+check reading only the colour would pass a rule that was still drawn.
+
+**Two things the fix itself needed, both found by re-reading it rather than
+by a gate.** `pen_ink()` was being called INSIDE the per-cell loop of
+`stroke_segment`, costing a QColor construction -- and for a gradient pen an
+average over its stops -- for every cell of every stroke, against a 16 ms
+frame budget. It is resolved once per segment now; nothing in the loop can
+change the pen.
+
+And the guard added to `stroke_segment` had no check behind it. `line()`
+returns early for a transparent pen, so a plain `drawLine` can no longer
+reach that path at all -- only a polyline can, which means the guard was
+code no check exercised. **A fix that closes one route can make another
+route's guard unreachable from every existing fixture**, and the fixture
+has to be written for the route that is left.
 
 ### 8.15 What else the painter says and this engine ignored (2026-09-06)
 
