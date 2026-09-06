@@ -6885,18 +6885,52 @@ over-ssh frame budget, so Escape resolves inside one frame of the slowest
 case designed for. `ESC ESC` delivers an Escape too; `Alt-Escape` is no
 longer expressible, and that trade is recorded where it is made.
 
-**Two checks fail when the suite runs on a PTY, and nothing catches
-it.** Found while verifying the above and confirmed as pre-existing by
-control -- HEAD without the patch fails identically, 979 passes against
-997 with it, the same two red:
+**Two checks failed when the suite ran on a PTY, and nothing caught it.
+Both are fixed and `make test-pty` now runs that arm** (2026-09-06). They
+were the suspend and job-control paths, which are exactly what a real pty
+exercises and an offscreen run cannot -- `make check` redirects stdout, and
+a great deal of this library only does anything when stdout IS a terminal.
 
-    and a resize while suspended writes nothing to the terminal it handed back
-    a stop signal stops a program that owns the terminal
+**Neither was a fault in the library, and both were a fault.** The first
+was a premise error in the check: it asserted that a suspended backend
+writes nothing "to the terminal it handed back", and the terminal had not
+been handed back by anybody. The suite declares an `AnsiBackend` at the top
+of that function which stays ACTIVE for the whole run -- measured, it spans
+lines 238 to 2983 -- so it answered every SIGWINCH and wrote its own
+`\033[14t\033[16t`. The suspended backend behaved perfectly throughout:
+traced, `read_winch()` saw `active=0` and returned. The outer one is
+suspended for the length of the block now.
 
-Both are the suspend and job-control paths, which are exactly what a real
-pty exercises and the offscreen run cannot. `make check` never runs the
-suite on a pty, so this has been true for an unknown time. Recorded, not
-fixed.
+It failed only on a pty because `query_geometry()` returns early when
+stdout is not a terminal, so under the ordinary run the outer backend wrote
+nothing and the premise was accidentally true.
+
+**The second is the kernel's, and it is now measured rather than
+assumed.** POSIX requires a stop signal sent to an ORPHANED process group
+to be discarded, and running under `script` -- the only way to exercise
+the tty paths at all -- makes the suite a session leader, so its children's
+group IS the session's leading group and nothing can be outside it.
+Measured with a standalone fork, the same program twice:
+
+    no pty        pgrp 11042  sid 10954   parent saw STOPPED
+    under script  pgrp 11077  sid 11077   stop discarded
+
+So the condition is `getsid(0) == getpgrp()`, which is exact rather than a
+heuristic: it says this process group is the session's own, which is
+precisely when POSIX orphans it. The check SKIPS there with that reason,
+beside the valgrind skip that was already there -- and it still passes in
+the ordinary run, so the discriminating case is not lost.
+
+**That check's own comment records an orphaned group being offered as an
+explanation once and disproved.** It was disproved for the ordinary run,
+where it genuinely is not the cause, and it is the cause here. Which is
+why the condition is tested rather than assumed either way -- the same
+observation was right in one environment and wrong in the other.
+
+**And the gate is the point.** Nothing ran the suite on a pty, so the arm
+that exercises `tty_out_`, the suspend paths and the escape writers was the
+one nobody ran. `make test-pty` runs it, and found both of these the first
+time it was pointed at them.
 
 **And the control for that was wrong the first time, in the way this
 tree documents.** Plain `make` deliberately does not build tests here, so

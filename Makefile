@@ -28,6 +28,7 @@
 #   make count-check  -- project.md's stated check count against the real one
 #   make sabotage     -- break the code on purpose; every check must go red
 #   make test-tray    -- publish a real tray icon on a private D-Bus session
+#   make test-pty     -- the suite on a real pseudo-terminal
 #   make coverage F=x -- line coverage for src/**/x.cpp
 #   make check        -- style + test; what must pass before committing
 #   make style        -- the shared source gate and the project.md checks
@@ -355,6 +356,28 @@ QT_PLUGIN_PATH_FOR_CHECK = $(shell $(QMAKE) -query QT_INSTALL_PLUGINS 2>/dev/nul
 # correctly and confusingly.
 test-screen: $(LIB)
 	@./tool/screen-check $(BUILD_DIR)
+
+# The suite on a PSEUDO-TERMINAL, which nothing ran it on until now.
+#
+# `make check` runs it under the offscreen platform with stdout redirected,
+# and a great deal of this library only does anything when stdout IS a
+# terminal -- query_geometry() returns early otherwise, the suspend and
+# job-control paths are about a terminal being handed back, and the escape
+# writers are all gated on tty_out_. So the arm that exercises them was the
+# one nobody ran.
+#
+# It found two failures that had been true for an unknown time. One was a
+# real premise error in a check -- the suite's own long-lived backend still
+# owned the terminal, so nothing had been "handed back" -- and the other was
+# the kernel discarding a stop sent to an orphaned process group, which
+# running under `script` creates by making the suite a session leader.
+#
+# Out of `check` because it needs `script` and takes as long as the suite
+# does twice over. Skipped with a note where `script` is absent, the way the
+# tray and negotiation gates are.
+test-pty: tests-build
+	@command -v script >/dev/null 2>&1 || { 		echo "    pty: SKIPPED -- util-linux script is not installed"; exit 0; }
+	@QTTY_QPA_PLATFORM=$(TEST_PLATFORM) $(TEST_CRASH_ENV) 		timeout $(TEST_TIMEOUT) script -qec "$(TEST_BIN)" /dev/null 		| grep -aE "^(FAIL|SKIP)|failures" | tail -6; 	QTTY_QPA_PLATFORM=$(TEST_PLATFORM) $(TEST_CRASH_ENV) 		timeout $(TEST_TIMEOUT) script -qec "$(TEST_BIN)" /dev/null >/dev/null 2>&1
 
 # The system tray, which needs a SESSION BUS and therefore cannot live in the
 # suite: `make check` has to pass on a machine that has none -- a build
@@ -1122,4 +1145,4 @@ help:
 
 .PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks \
         version-check run install uninstall clean veryclean distclean help \
-        test-screen test-negotiate test-consume test-tray sabotage FORCE
+        test-screen test-negotiate test-consume test-tray test-pty sabotage FORCE

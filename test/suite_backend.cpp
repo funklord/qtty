@@ -2366,6 +2366,25 @@ int suite_backend() {
 				::dup2(slave, 1);
 				QByteArray after;
 				bool live_seen = false;
+				// The suite's own long-lived backend, suspended for the
+				// length of this block, and it is not housekeeping.
+				//
+				// That one is declared at the top of this function and is
+				// ACTIVE for everything below it, so it answers every
+				// SIGWINCH and writes its own \033[14t\033[16t. The check
+				// below says "the terminal it handed back", and the terminal
+				// had not been handed back by anybody: measured on a pty, the
+				// suspended backend behaved perfectly -- read_winch() saw
+				// active=0 and returned -- while the outer one wrote the ten
+				// bytes the check then blamed on it.
+				//
+				// It failed only on a pty because query_geometry() returns
+				// early when stdout is not a terminal, so under the ordinary
+				// offscreen run the outer backend wrote nothing and the
+				// premise was accidentally true. `make check` never runs the
+				// suite on a pty, which is why this stood for an unknown
+				// time.
+				backend.suspend();
 				{
 					AnsiBackend b;
 					Recorder rec;
@@ -2396,6 +2415,7 @@ int suite_backend() {
 				}
 				fflush(stdout);
 				::dup2(keep_out, 1);
+				backend.resume();
 				CHECK(live_seen,
 				      "a resize reaches the backend while it owns the terminal");
 				if (after.isEmpty())
@@ -2793,9 +2813,35 @@ int suite_backend() {
 		// the HANDLERS wrote and are unaffected, which is why only this one
 		// stands down. Skipped with the reason printed, the way
 		// suite_budget's wall-clock ceiling is.
+		//
+		// The second reason is the KERNEL's, and it is measured rather than
+		// assumed. POSIX requires a stop signal sent to an ORPHANED process
+		// group to be discarded, and a group is orphaned when no member has
+		// a parent in a different group within the same session. Running the
+		// suite on a pseudo-terminal -- under `script`, which is the only way
+		// to exercise the tty paths at all -- makes it a session leader, so
+		// its children's group IS the session's leading group and nothing can
+		// be outside it. Measured with a standalone fork, the same program
+		// twice:
+		//
+		//     no pty      pgrp 11042  sid 10954   parent saw STOPPED
+		//     under script pgrp 11077 sid 11077   stop discarded
+		//
+		// So `getsid(0) == getpgrp()` is the condition, and it is exact
+		// rather than a heuristic: it says this process group is the
+		// session's own, which is precisely when POSIX orphans it.
+		//
+		// The comment above records that an orphaned group was offered as an
+		// explanation once and disproved. That was disproved for the ordinary
+		// run, where it is genuinely not the cause, and it is the cause here
+		// -- which is why the condition is tested rather than assumed either
+		// way.
 		if (!qEnvironmentVariableIsEmpty("QTTY_UNDER_VALGRIND")) {
 			printf("SKIP: valgrind does not deliver the default stop action,"
 			       " so the stop itself is not observable here\n");
+		} else if (::getsid(0) == ::getpgrp()) {
+			printf("SKIP: this process group is the session's own, so the"
+			       " kernel discards a stop sent to it\n");
 		} else {
 			CHECK(stopped,
 			      "a stop signal stops a program that owns the terminal");
