@@ -241,6 +241,7 @@ void CellPaintEngine::updateState(const QPaintEngineState &s) {
 	if (s.state() & DirtyBrush)     brush_ = s.brush();
 	if (s.state() & DirtyFont)      font_ = s.font();
 	if (s.state() & DirtyTransform) xf_ = s.transform();
+	if (s.state() & DirtyOpacity)   opacity_ = s.opacity();
 }
 
 // The clip in cells, or an invalid rect when there is none.
@@ -751,7 +752,11 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 	// keeps the RGB bytes -- and for Qt::transparent those are zero. So
 	// fillRect(r, Qt::transparent), an ordinary way of saying "leave this
 	// alone", blacked the cells out instead.
-	const int alpha = brush_colour(brush_).alpha();
+	// The brush's own alpha TIMES the painter's opacity, which is how Qt
+	// composes the two. Reading only the first drew a setOpacity(0.5) fill
+	// fully opaque.
+	const int alpha = qBound(0, int(brush_colour(brush_).alpha() * opacity_
+	                               + 0.5), 255);
 	if (alpha == 0) return;
 
 	const FillCell f = brush_cell();

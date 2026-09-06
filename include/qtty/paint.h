@@ -157,6 +157,12 @@ private:
 
 	CellPaintDevice *dev_ = nullptr;
 	QPen pen_; QBrush brush_; QFont font_; QTransform xf_;
+	// QPainter::setOpacity(), which multiplies a brush's own alpha. Tracked
+	// because it was NOT: a half-opaque fill drew fully opaque, which is the
+	// same defect as discarding a colour's alpha byte arriving by a second
+	// route. Folded into the alpha the fill blends with, rather than into the
+	// colour, so palette-role matching still sees the brush's own colour.
+	qreal opacity_ = 1.0;
 	// Where the last text item on this row ended, in CELLS. Qt positions each
 	// run by the FONT's advances, and a run of wide clusters is narrower in
 	// pixels than it is in cells -- so the run after it starts on top of its

@@ -355,3 +355,11 @@ find = "\tconst QGradient *g = b.gradient();"
 into = "\tconst QGradient *g = nullptr;"
 count = 1
 check = "a gradient fill takes its colour from the gradient"
+
+[[sabotage]]
+name = "the painter's opacity is not tracked"
+file = "src/render/cell_paint.cpp"
+find = "\tif (s.state() & DirtyOpacity)   opacity_ = s.opacity();"
+into = "\t;"
+count = 1
+check = "a fill under setOpacity blends with what is under it"

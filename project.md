@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1046 checks, 0 failures, under six configurations, all six re-run
+1047 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6662,6 +6662,51 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.15 What else the painter says and this engine ignored (2026-09-06)
+
+Both of 8.13's fixes were the same shape -- **a brush property the engine
+discarded** -- so the lens is what other painter state it never reads.
+Swept by probe:
+
+    setOpacity(0.5)     IGNORED -- drew fully opaque
+    Dense4Pattern       drawn solid
+    CrossPattern        drawn solid
+    Qt::DotLine pen     drawn as a solid rule
+
+**`setOpacity` was the defect and is fixed.** It multiplies a brush's own
+alpha, and `updateState()` tracked pen, brush, font and transform but not
+opacity -- so the alpha work of 8.13 could be defeated by an application
+that expressed the same intent through the painter instead of the colour.
+It is folded into the alpha the fill blends with rather than into the
+colour, so palette-role matching still sees the brush's own colour and
+nothing else moves. Measured: red under a half-opaque blue now gives
+`#814f72`, which is the exact midpoint of the two.
+
+**The other three are left alone deliberately, and the reason is a
+measurement rather than a judgement.** Across the seven sibling GUIs:
+
+    setOpacity        0 files
+    brush patterns    0 files
+    alpha colours     3 files (bbq-predictor 2, beerssh 1)
+
+Nothing in the workspace uses a hatch or a dotted pen, so mapping
+`Dense1..7Pattern` onto the shade glyphs this renderer already has -- which
+would be consistent with how it substitutes for a small pixmap -- would be
+**a feature invented for no caller**. Recorded so the next person meets the
+option and the count together, rather than rediscovering the option alone.
+
+**The alpha work has real consumers, which the same count establishes.**
+beerssh's terminal view draws at 0.45, 0.35 and 0.9, and bbq-predictor's
+`widget_picture` lays a SCRIM over an image -- a translucent wash whose
+whole purpose is to dim what is under it. From what I measured of this
+engine before the fix, that scrim was laid down opaque, which does not dim
+a picture but replaces it.
+
+**And `setOpacity` has none**, which is worth saying in the same breath: it
+is a correctness fix for a general Qt library rather than one any sibling
+was waiting for, and it is cheap and checked rather than large and
+speculative.
 
 ### 8.14 Cells against pixels, on a real frame (2026-09-06)
 

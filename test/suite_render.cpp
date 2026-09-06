@@ -309,6 +309,43 @@ int suite_render(bool record) {
 			}
 		}
 
+		// QPainter::setOpacity(), which multiplies the brush's own alpha
+		// and which this engine did not track at all -- so a half-opaque
+		// fill drew fully opaque. The same defect as discarding a colour's
+		// alpha byte, arriving by a route the alpha checks above cannot
+		// see, because the brush here is FULLY opaque and the
+		// transparency lives in the painter.
+		{
+			Qtty::CellBuffer b(4, 1);
+			{
+				Qtty::CellPaintDevice dev(b);
+				QPainter p(&dev);
+				p.fillRect(QRect(0, 0, cw * 4, ch), QColor(0xd5, 0x20, 0x2a));
+				p.setOpacity(0.5);
+				p.fillRect(QRect(0, 0, cw * 4, ch), QColor(0x2e, 0x7e, 0xbb));
+				p.end();
+			}
+			const Qtty::Color got = b.at(1, 0).bg;
+			const QRgb v = got.value();
+			// Between the two, per channel -- the relationship, so the
+			// arithmetic can be tuned without rewriting the check, and so
+			// that ignoring the opacity (which lands exactly on the blue)
+			// fails.
+			const bool between =
+			    got.kind() == Qtty::Color::Rgb
+			    && qRed(v) > 0x2e && qRed(v) < 0xd5
+			    && qGreen(v) < 0x7e && qGreen(v) > 0x20
+			    && qBlue(v) < 0xbb && qBlue(v) > 0x2a;
+			if (between)
+				printf("PASS: a fill under setOpacity blends with what is"
+				       " under it\n");
+			else {
+				printf("FAIL: a fill under setOpacity blends with what is"
+				       " under it\n");
+				++r;
+			}
+		}
+
 		// A GRADIENT brush, whose QBrush::color() is documented to be
 		// "the brush colour" and answers BLACK -- a gradient has none. A
 		// chart shading an area is the ordinary way to meet this, and it
