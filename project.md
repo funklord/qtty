@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1053 checks, 0 failures, under six configurations, all six re-run
+1056 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6685,6 +6685,48 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.22 The doubling fuzznet reported, explained (2026-09-07)
+
+Another session recorded fuzznet's report in this document while I was
+working: a framed `QPlainTextEdit` under a label double-spaces its content,
+and their third measurement -- after correcting themselves twice -- was
+that **the font makes all of it** and neither the frame nor the read-only
+flag matters. Their words: "which sounds like cell-height rounding
+somewhere, and is a sharper thing to hand you than either of the two
+verdicts that preceded it."
+
+It is, and here is where.
+
+**`GridMetrics::ch` is set from `QFontMetrics::height()`. A text document
+lays its lines out at `lineSpacing()`, which is `height()` plus LEADING.**
+When a font carries leading the two differ, every editor line needs more
+than one row, and the content comes out double-spaced.
+
+`grid_font_problem()` refuses a font for an empty family, for not being
+fixed pitch, for a non-integral line height and for an inconsistent
+advance. It never looked at leading, so a font could pass every check and
+still break the one-line-per-row assumption the whole grid rests on.
+
+**I could not reproduce it on this machine, and that is itself the
+finding.** The base font is hardcoded `DejaVu Sans Mono`, whose
+`lineSpacing` is 19.00 against a `ch` of 19 -- leading exactly zero. Their
+machine resolved something else. Measured across the 103 fixed-pitch
+families installed here, **2 carry non-zero leading**: `gallant12x22` at
++1.44 px and `Nimbus Mono PS` at -1.00.
+
+**Reported rather than refused**, unlike everything else in that function.
+Those checks are fatal because a wrong advance makes every column wrong;
+leading costs rows and leaves the text readable, so refusing to start would
+turn a degraded screen into no screen at all on a machine whose only font
+carries it. What was missing was never the refusal -- it was the sentence
+saying what happened, which is exactly what cost the reporting session two
+wrong verdicts.
+
+**The check asserts the partition before the case.** This machine's grid
+font has no leading, so a detector that only ever sees zero cannot be told
+from a broken one; the fixture uses `gallant12x22`, and if that is ever
+absent the check says so rather than passing quietly.
 
 ### 8.21 fuzzypickles and fuzznet, asked directly (2026-09-07)
 
@@ -13468,3 +13510,78 @@ need no qtty installed and run in `make check`.
 
 If an API change breaks the render target, that is a signal we would rather
 have than not.
+
+## 13. From fuzzypickles: a whole application window, and three border faults
+
+Written 2026-09-07 from `fuzzypickles`, which has both a Qt Widgets desktop
+client and a separate hand-written TUI of 8595 lines of C. qtty's premise --
+one QWidget codebase producing both -- is why that second client's future is
+now an open question there, and a spike was built to test the premise before
+any port.
+
+Everything here is fuzzypickles' measurement in fuzzypickles' voice, against
+qtty **`e756b39`**, which was your HEAD when this tree pinned it. You are one
+commit ahead of that (`080ea62`), and since that commit is itself about
+rendering our delivery marks, some of what follows may already be known to
+you. **Nothing in this tree was changed** except this section.
+
+### It works, and that is the finding
+
+`gui/src/main_window.cpp` -- the real client window, eleven tabs, splitters,
+tree views, a progress bar, a slider, a media player -- rendered on a cell
+grid **with no changes to it at all**. Not a reduced version and not a widget
+extracted for the purpose: the window the desktop build ships.
+
+The seam was the four lines the README advertises. Our `main()` is
+`prepare_environment()`, `QApplication`, `setup(app)`, `exec(app, win)`, and
+nothing else was needed to get a running terminal client.
+
+**Reproducible from our tree**, which is the part worth having: fuzzypickles
+carries `qtty-spike/` and vendors qtty as a submodule, so
+`qmake6 qtty-spike/qtty-spike.pro && make` and then
+`./fzp-qtty --frame 120 40` prints a NullBackend frame. `--frame COLS ROWS
+[TAB]` selects a tab, so `--frame 120 34 10` is the frame below.
+
+### Three border faults, all where panes nest
+
+All three are on our Chat tab, which is a `QSplitter` of three panes inside a
+`QTabWidget`. Our Library tab -- a tree, a label, a progress bar, a combo box,
+a grid of buttons and a slider, no nesting -- renders clean, so this looks
+specific to nested frames rather than general.
+
+The top-left corner, and the first rows:
+
+    ┌┌───────────────────────┐│┌───────────
+    ││                       │││
+    ││                       ││└
+
+- **Corners and edges are drawn twice.** `┌┌` at the origin, `││` down the
+  left of both panes, `│││` where the splitter meets the second pane. Each
+  nested frame appears to paint its own border in its own column rather than
+  sharing an edge.
+- **The bottom edge closes in the wrong column.** Two rows from the bottom
+  read `││                       ││└` -- an opening corner glyph inboard,
+  with the run to the right edge missing -- and the row below it is
+  `│└                       ┘│`, which closes the inner pane but leaves the
+  outer one's corner one column further out than the top row put it.
+- **The frame runs into the widget below it.** The last border row is
+  `└──────────────────────────>[S][F][select a conversation───`: the
+  horizontal rule does not stop where the frame ends, it continues through
+  the message input row's buttons and placeholder text.
+
+We have not reduced these to a minimal case -- the reproduction we hold is a
+whole application -- and we have not looked at your rendering code, since a
+fault in a dependency is yours to diagnose and ours to report.
+
+One warning on stderr, once per run, which we mention only because we cannot
+tell whether it is expected:
+
+    This plugin does not support propagateSizeHints()
+
+### What we are not asking for
+
+Nothing, yet. fuzzypickles has not decided whether it will make this
+transition -- qtty says pre-alpha and expects API movement, and our existing
+TUI works today -- so this is a report from a spike and not a request for a
+fix or a schedule. If the transition proceeds, that is a conversation to have
+then.

@@ -395,6 +395,11 @@ void setup(QApplication &app) {
 	// was held.
 	if (const QString subst = grid_font_substitution(f); !subst.isEmpty())
 		qWarning("qtty: %s", qPrintable(subst));
+	// Said before the refusal below for the same reason the substitution is:
+	// a font that is about to be refused should not also be reported for its
+	// leading, and a font that is merely odd should say so while it still can.
+	if (const QString lead = grid_font_leading(f); !lead.isEmpty())
+		qWarning("qtty: %s", qPrintable(lead));
 	if (const QString problem = grid_font_problem(f); !problem.isEmpty()) {
 		qFatal("qtty: the grid needs a font with integral metrics: %s",
 		       qPrintable(problem));

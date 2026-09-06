@@ -58,6 +58,27 @@ QString grid_font_problem(const QFont &font);
 // platform with no font database an installed family resolves to '' too.
 QString grid_font_substitution(const QFont &font);
 
+// A font whose LEADING is not zero, which is a warning rather than a refusal.
+//
+// GridMetrics::ch comes from QFontMetrics::height(), and a text document lays
+// its lines out at lineSpacing(), which is height() plus leading. When those
+// differ every line of a QPlainTextEdit or a QTextEdit needs more than one
+// row, and the content comes out double-spaced -- half as much text on the
+// screen, silently, with nothing anywhere saying why.
+//
+// Reported from fuzznet, who met it in a framed editor under a label and
+// measured it one setting at a time to find that neither the frame nor the
+// read-only flag mattered and the FONT made all of it. Their words for what
+// they wanted handed back: "which sounds like cell-height rounding
+// somewhere". It is, and this is where.
+//
+// A warning and not a qFatal, unlike the checks in grid_font_problem(). Those
+// refuse because a wrong advance makes every column wrong; leading costs rows
+// and leaves the text readable, so refusing to start would turn a degraded
+// screen into no screen at all on a machine whose only font carries it. What
+// was actually missing is the sentence saying what happened.
+QString grid_font_leading(const QFont &font);
+
 // section 5.3, and the design calls this "the highest value-per-line component
 // in the project": an event filter that checks every widget geometry against
 // the grid as it is assigned, so a misalignment is reported where it happens

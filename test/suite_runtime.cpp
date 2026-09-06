@@ -207,6 +207,35 @@ int suite_runtime() {
 		      && said.contains(QFontInfo(absent).family()),
 		      "naming both what was asked for and what arrived");
 
+		// LEADING, which every other check here is blind to. ch comes from
+		// height() and a text document lays out at lineSpacing(); a font
+		// where those differ puts every editor line on two rows, and
+		// nothing said so. Reported from fuzznet, who measured a framed
+		// editor one setting at a time and found neither the frame nor the
+		// read-only flag mattered while the font made all of it.
+		//
+		// The partition is asserted first, because this machine's grid
+		// font has no leading and a check that only ever sees zero cannot
+		// tell a working detector from a broken one. gallant12x22 carries
+		// 1.44 px at this size -- 2 of 103 fixed-pitch families here do --
+		// and if it is ever absent this says so rather than passing.
+		CHECK(grid_font_leading(mono).isEmpty(),
+		      "the grid font lays its lines out one to a row");
+		QFont leaded(QStringLiteral("gallant12x22"));
+		leaded.setPixelSize(16);
+		const QFontMetricsF lfm(leaded);
+		if (qAbs(lfm.lineSpacing() - lfm.height()) < 0.01) {
+			printf("SKIP: no font with leading is installed, so the"
+			       " detector cannot be shown to fire\n");
+		} else {
+			const QString lead = grid_font_leading(leaded);
+			CHECK(!lead.isEmpty(),
+			      "and a font whose leading is not zero is reported");
+			CHECK(lead.contains(QStringLiteral("leading"))
+			      && lead.contains(QStringLiteral("row")),
+			      "saying what it costs rather than only that it differs");
+		}
+
 		// The check this replaced compared the advance of 'i' with that of
 		// 'M', which a proportional font fails on the same pair -- but it was
 		// an assert, so it did nothing in a release build. This one is a

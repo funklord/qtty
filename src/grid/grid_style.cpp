@@ -309,6 +309,19 @@ QString grid_font_substitution(const QFont &font) {
 	       .arg(font.family(), info.family());
 }
 
+QString grid_font_leading(const QFont &font) {
+	const QFontMetricsF fm(font);
+	const qreal lead = fm.lineSpacing() - fm.height();
+	if (qAbs(lead) < 0.01) return QString();
+	return QStringLiteral("'%1' has %2 px of leading -- its line height is %3 "
+	                      "px and it lays text out every %4 px, so a text "
+	                      "editor's lines will not sit one to a row")
+	    .arg(QFontInfo(font).family())
+	    .arg(lead, 0, 'g', 3)
+	    .arg(fm.height(), 0, 'g', 4)
+	    .arg(fm.lineSpacing(), 0, 'g', 4);
+}
+
 QString grid_font_problem(const QFont &font) {
 	const QFontInfo info(font);
 	// Asked before fixed-pitch, because "which is not fixed pitch" about an
