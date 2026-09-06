@@ -522,6 +522,7 @@ static void draw_box(CellBuffer &b, const QRect &c, bool focused = false,
 }
 
 GridStyle::GridStyle() : QProxyStyle(QStyleFactory::create(QStringLiteral("Fusion"))) {}
+GridStyle::GridStyle(QStyle *base) : QProxyStyle(base) {}
 
 // Which way a slider runs, for the metrics that measure along its axis. A
 // null option means no slider is asking -- Qt queries these metrics without

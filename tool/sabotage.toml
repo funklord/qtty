@@ -222,3 +222,11 @@ find = "\tif (closed && brush_.style() != Qt::NoBrush)"
 into = "\tif (false && brush_.style() != Qt::NoBrush)"
 count = 1
 check = "a filled polygon fills its own area"
+
+[[sabotage]]
+name = "an application's own style replaces GridStyle"
+file = "src/runtime/application.cpp"
+find = "\tapp.installEventFilter(new StyleKeeper(&app));"
+into = "\t;"
+count = 1
+check = "still does after the application installs its own style"

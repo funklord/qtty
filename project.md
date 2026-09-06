@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1022 checks, 0 failures, under six configurations, all six re-run
+1024 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6590,6 +6590,36 @@ passed, because Qt's own `QWidget::event()` reaches its Tab branch first.
 The check was kept for the behaviour it does pin -- Tab reaching a widget
 when nothing has focus, which nothing covered -- with its claim corrected
 and what was tried written down. The fallback remains unreached.
+
+**An application's own style no longer deletes Channel A** (2026-09-06).
+`QApplication::setStyle()` REPLACES, so a program that installs a style
+after `setup()` -- to supply toolbar icons, which is an ordinary thing for
+a Qt program to want, and which a surveyed sibling does today -- deleted
+GridStyle and with it every Channel A drawing in the program. Silently,
+everywhere at once, with nothing to attribute it to.
+
+GridStyle is a `QProxyStyle`, so the answer is to WRAP rather than to
+refuse: the application's style becomes the base, GridStyle answers what
+it knows about cells, and everything else falls through to the style the
+application asked for. It keeps its icons and its hints, and the terminal
+keeps its drawing. Watched through `QEvent::StyleChange`, which Qt sends
+to every widget when the application style changes -- there is no
+application-level signal for it -- with a guard, because setting the
+style inside the handler sends another round of the same event.
+
+Sabotaged, the button renders `▒▒Push▒▒` instead of `<Push>` and the tab
+bar check goes red with it, which is the "everywhere at once" part
+measured rather than asserted.
+
+**Two things this cost, both worth keeping.** The base is a FRESH instance
+of the application style's key rather than the live pointer, because
+`setStyle()` adopts its argument and deletes the previous style -- handing
+it the very object it is about to destroy is a use-after-free waiting for
+the first repaint. And the check cannot put the old style back for the
+same reason: saving the pointer and restoring it follows a dangling one,
+which segfaulted the whole suite when it was first written that way. It
+is safe to leave the style changed only because the fix re-wraps, so what
+the suite is left with is a GridStyle again.
 
 **Channel B draws a curve** (2026-09-06). The largest gap the sibling
 survey found, and the one that blocked a whole application: `line()` had

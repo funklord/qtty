@@ -612,6 +612,44 @@ int suite_widgets() {
 			      "and one with no value yet writes no percentage at all");
 		}
 
+		// An application that installs a style of its OWN after setup().
+		// QApplication::setStyle() REPLACES, so GridStyle went away and with
+		// it every Channel A drawing in the program -- silently, everywhere
+		// at once. A surveyed sibling does this today to supply its toolbar
+		// icons, which is an ordinary thing for a Qt program to want.
+		//
+		// The CONTROL is the button BEFORE the replacement: it must draw as
+		// cells to begin with, or the assertion after would pass against a
+		// button that never drew properly at all.
+		//
+		// Note this check cannot put the old style back and does not try.
+		// setStyle() ADOPTS its argument and DELETES the previous style, so
+		// saving the pointer and restoring it follows a dangling one -- which
+		// segfaulted the whole suite when this was first written that way.
+		// It is safe to leave because the fix re-wraps: what the suite is
+		// left with is a GridStyle again.
+		{
+			const auto render_button = [&] {
+				QPushButton b(QStringLiteral("Push"));
+				b.setFixedSize(cw * 8, ch);
+				show(b, 10, 2);
+				CellBuffer buf(10, 2);
+				render_once(b, buf);
+				return buf.to_text().trimmed();
+			};
+			const QString before = render_button();
+			QApplication::setStyle(QStringLiteral("Fusion"));
+			QCoreApplication::processEvents();
+			const QString after = render_button();
+			printf("info: a button draws [%s]; after the application sets its"
+			       " own style, [%s]\n", qPrintable(before), qPrintable(after));
+			CHECK(before == QStringLiteral("<Push>"),
+			      "a button draws as cells");
+			CHECK(after == before,
+			      "and still does after the application installs its own"
+			      " style");
+		}
+
 		// A scroll bar squeezed to ONE cell. The control returned without
 		// drawing anything at all below two cells, so the cell was blank and
 		// nothing said the view scrolls.

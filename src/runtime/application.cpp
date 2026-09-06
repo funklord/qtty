@@ -290,6 +290,40 @@ public:
 
 } // namespace
 
+// Keeps GridStyle on top of whatever style the application installs. See the
+// installEventFilter call in setup() for why this exists rather than a note
+// in the documentation.
+namespace {
+class StyleKeeper : public QObject {
+public:
+	explicit StyleKeeper(QObject *parent) : QObject(parent) {}
+	bool eventFilter(QObject *o, QEvent *e) override {
+		if (e->type() != QEvent::StyleChange || rewrapping_)
+			return QObject::eventFilter(o, e);
+		QStyle *const now = QApplication::style();
+		// dynamic_cast rather than qobject_cast: GridStyle carries no
+		// Q_OBJECT, and this tree already detects PixelSurface the same way
+		// and for the same reason -- a Q_OBJECT here would put moc in the
+		// path of a class an application subclasses.
+		if (!now || dynamic_cast<GridStyle *>(now))
+			return QObject::eventFilter(o, e);
+		// Wrap what the application chose. setStyle() adopts the argument
+		// and deletes the previous style, so the base has to be one Qt is
+		// not about to delete: take a fresh instance of the same key rather
+		// than the live pointer, which setStyle() would destroy underneath
+		// the proxy that had just been given it.
+		rewrapping_ = true;
+		QStyle *const base = QStyleFactory::create(now->name());
+		QApplication::setStyle(new GridStyle(
+		    base ? base : QStyleFactory::create(QStringLiteral("Fusion"))));
+		rewrapping_ = false;
+		return QObject::eventFilter(o, e);
+	}
+private:
+	bool rewrapping_ = false;
+};
+} // namespace
+
 void setup(QApplication &app) {
 	// Held from here on, and released by the backend when it gives the
 	// terminal back. Installed in setup() rather than in the backend because
@@ -374,6 +408,26 @@ void setup(QApplication &app) {
 	fonts->setParent(&app);
 	app.installEventFilter(fonts);
 	app.setStyle(new GridStyle);
+	// And put it back if the application installs one of its own.
+	//
+	// QApplication::setStyle() REPLACES, so a program that sets a style
+	// after setup() -- to supply toolbar icons, say, which is an ordinary
+	// thing for a Qt program to want -- deleted GridStyle and with it every
+	// Channel A drawing in the program. Silently, everywhere at once, and
+	// with nothing to attribute it to: a surveyed sibling does exactly this
+	// today.
+	//
+	// GridStyle is a QProxyStyle, so the answer is to WRAP rather than to
+	// refuse: the application's style becomes the base, GridStyle answers
+	// what it knows about cells, and everything else falls through to the
+	// style the application asked for. It keeps its icons and its hints and
+	// the terminal keeps its drawing.
+	//
+	// Watched through QEvent::StyleChange, which Qt sends to every widget
+	// when the application style changes -- there is no application-level
+	// signal for it. The guard is not optional: setting the style inside the
+	// handler sends another round of the same event.
+	app.installEventFilter(new StyleKeeper(&app));
 	// Lets an ICellPainted widget paint itself in cells instead of going
 	// through Channel B (section 5.3, risk R5). Inert in a GUI build by
 	// construction: with no cell device being rendered into, the filter stands

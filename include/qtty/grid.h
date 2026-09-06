@@ -213,6 +213,10 @@ Priority priority_of(const QWidget *w);
 class GridStyle : public QProxyStyle {
 public:
 	GridStyle();
+	// Over a base of the caller's choosing, so an application that installs
+	// a style of its own keeps it AND keeps cell drawing. Ownership is
+	// QProxyStyle's: the base is adopted.
+	explicit GridStyle(QStyle *base);
 	int pixelMetric(PixelMetric, const QStyleOption *, const QWidget *) const override;
 	QSize sizeFromContents(ContentsType, const QStyleOption *, const QSize &,
 	                       const QWidget *) const override;
