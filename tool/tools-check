@@ -56,5 +56,25 @@ if [ "$n" -eq 0 ]; then
 	echo "             one, so this is a failure." >&2
 	exit 1
 fi
+# The language standard is the same shape of fact: stated in qtty.pri for
+# qmake and in fmake.toml for fmake, derivable from neither. They agreed
+# only because fmake passed no -std= at all and the compiler's own default
+# happened to match -- which is a property of the compiler, not of this
+# project, and would drift silently the day that default moves.
+qstd=$(sed -n 's/^[[:space:]]*CONFIG[[:space:]]*+=.*\(c++[0-9a-z]*\).*/\1/p' \
+       "$root/qtty.pri" | head -1)
+fstd=$(sed -n 's/^[[:space:]]*std[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+       "$root/fmake.toml" | head -1)
+if [ -z "$qstd" ] || [ -z "$fstd" ]; then
+	echo "tools-check: a language standard is missing -- qtty.pri says" >&2
+	echo "             '$qstd', fmake.toml says '$fstd'. Neither build" >&2
+	echo "             system can derive it from the other." >&2
+	fail=1
+elif [ "$qstd" != "$fstd" ]; then
+	echo "tools-check: qtty.pri builds $qstd and fmake.toml builds $fstd." >&2
+	fail=1
+fi
+
 [ "$fail" -eq 0 ] || exit 1
-echo "tools-check: $n tool(s) named consistently in .pro, fmake.toml and .gitignore"
+echo "tools-check: $n tool(s) named consistently in .pro, fmake.toml and"
+echo "             .gitignore, and both build systems state $qstd"

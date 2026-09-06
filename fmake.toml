@@ -5,6 +5,15 @@
 # run from a fixed directory.
 defines = ['QTTY_SOURCE_DIR="$root"']
 
+# The language standard, which qtty.pri states as `CONFIG += c++17` and this
+# file did not state at all. fmake passes no -std= when none is given, so the
+# fmake build took whatever the compiler defaults to -- measured with
+# `fmake -n`: not one -std= flag on any command line. It agreed with qmake
+# only because g++ currently defaults to gnu++17, which is a property of the
+# compiler rather than of this project, and it would drift the day that
+# default moves without anything failing. tools-check compares the two.
+std = "c++17"
+
 # spike/ is the Phase 0 record -- the four spikes exactly as they were run,
 # which is what makes them evidence for design.md's measurements. Nothing
 # in the library builds them, and .style-gate.toml already exempts them for

@@ -6686,6 +6686,36 @@ which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
 
+### 8.20 The other facts two build systems both need (2026-09-07)
+
+8.19's lesson was that a second build system is a second copy of every
+name. The lens is what ELSE is copied, and `build-and-commit.md` names two
+things a build must get right.
+
+**`-Os`: clean, and by two different routes.** qtty.pri replaces qmake's
+`-O2` release default explicitly; fmake's own `DEFAULT_CFLAGS` is `["-Os"]`.
+Verified by reading the commands rather than the configuration -- `fmake -n`
+shows `-Os` on every compile and nothing else. An empty result, recorded so
+the next person does not re-derive it.
+
+**The language standard: not clean, and silently so.** qtty.pri says
+`CONFIG += c++17`. fmake.toml said nothing, and fmake passes no `-std=`
+when none is given -- measured, not one such flag on any command line. So
+the fmake build compiled at **whatever the compiler defaults to**, and
+agreed with qmake only because g++ currently defaults to `gnu++17`.
+
+That is a property of the compiler rather than of this project, and it is
+the shape `working-practice.md` warns about: **a rule that appears to work
+because it has only ever been tried under one configuration.** Nothing
+would have failed on the day the default moved; the two builds would simply
+have been compiling different languages. Stated now, and `tools-check`
+compares the two rather than trusting either.
+
+Both new branches were made to fail before being trusted -- the two
+disagreeing, and one missing -- and each names both values, because "the
+standards differ" without saying which is which sends the reader to the
+wrong file.
+
 ### 8.19 A tool's name, written in three places (2026-09-07)
 
 `harmonization.md` asks a README that shows `make` to show `fmake` beside
@@ -13296,12 +13326,44 @@ invisible pen draws nothing, and a translucent one blends" is close enough to
 a frame border to have changed it. It did not: the render is identical at both
 commits. That rules out one explanation rather than offering one.
 
-We have not looked further. The mechanism is yours and we hold only the
-symptom; the content renders correctly in both cases, so for us this is
-cosmetic and nothing is blocked.
-
 Reproduction: parent widget, `QVBoxLayout`, a `QLabel` and a `QPlainTextEdit`
 added in that order, `resize(GridMetrics::cells(60, 8))`, snapshot at 60x8.
+
+### Correcting the paragraph above: it is not cosmetic, and it needs BOTH
+
+**Written the same day, and the sentence it replaces said "the content renders
+correctly in both cases, so for us this is cosmetic and nothing is blocked".
+That was wrong.** We had only ever rendered that widget EMPTY, so we had never
+seen what the frame does to content. Put text in it and the lines double-space:
+
+    label + frame          label, no frame        frame, no label
+     no log                 no log                 ┌one
+     ┌one                    one                   │two
+     │                       two                   │
+     │two                                          │
+     └                                             └
+
+**It needs both the label and the frame.** Either alone renders the lines
+consecutively; together, every log line gets a blank row after it. A log
+viewer showing half as many entries as the terminal has room for is not a
+decoration problem, and we called it one because our fixture was empty.
+
+**Our own fixture is the reason we got it wrong**, and it is the part worth
+carrying: `entries_text()` was right throughout -- the widget held three lines
+and the screen spread them over five -- so nothing that asked the widget could
+have seen it. The same shape as the fingerprint defect, in the same session,
+found the same way and missed for one more round because the first render had
+nothing in it.
+
+**Fuzznet's side is fixed by not asking for the frame**, which we would defend
+even if this changes: a generic widget should not impose chrome, and a
+consumer wanting a border can put a `QGroupBox` around the whole thing. So
+nothing here is blocked for us. The report stands because the interaction is
+still yours and somebody else will meet it.
+
+Reproduction for that half: the same widget, `setPlainText("one\ntwo")` in the
+`QPlainTextEdit`, snapshot at 60x8; then again with
+`setFrameShape(QFrame::NoFrame)`, which renders correctly.
 
 ### What fuzznet now runs, so a change here has a consumer that will notice
 
