@@ -254,3 +254,19 @@ find = "\tif (target && g_live->over_accepts) {"
 into = "\tif (target && false) {"
 count = 1
 check = "and the drop carries the payload"
+
+[[sabotage]]
+name = "a press on a window tab reaches a widget instead"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\tif (QWidget *pick = window_tab_at(m.cell)) {"
+into = "\t\t\tif (QWidget *pick = nullptr) {"
+count = 1
+check = "a press on a tab shows that window instead"
+
+[[sabotage]]
+name = "every top-level is drawn into the same rectangle again"
+file = "src/runtime/compositor.cpp"
+find = "\tconst int strip = tabs.size() > 1 ? 1 : 0;"
+into = "\tconst int strip = 0;"
+count = 1
+check = "two windows are both named in the strip"

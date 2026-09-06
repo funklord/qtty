@@ -7,6 +7,7 @@
 //   section 8.3: input outside activeModalWidget() is dropped before dispatch.
 #include "qtty/runtime.h"
 #include "qtty/drag.h"
+#include "qtty/windows.h"
 #include "qtty/grid.h"
 #include <QtWidgets>
 
@@ -677,6 +678,17 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 		// The press is not handled here because a drag can only begin from
 		// one that has already been delivered: exec_drag() is called from
 		// inside the application's own mousePressEvent or mouseMoveEvent.
+		// The window tab strip owns row 0 when there is more than one
+		// window, and a press there belongs to no widget: it chooses which
+		// window the frame shows. Asked before anything else, because the
+		// widget underneath is the one being covered by the strip.
+		if (m.press) {
+			if (QWidget *pick = window_tab_at(m.cell)) {
+				set_current_window(pick);
+				if (frame_requested) frame_requested();
+				return;
+			}
+		}
 		if (drag_active()) {
 			if (m.motion) drag_move_to(target, pos, screen);
 			if (m.release) drag_drop_at(target, pos, screen);

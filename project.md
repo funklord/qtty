@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1029 checks, 0 failures, under six configurations, all six re-run
+1034 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6590,6 +6590,61 @@ passed, because Qt's own `QWidget::event()` reaches its Tab branch first.
 The check was kept for the behaviour it does pin -- Tab reaching a widget
 when nothing has focus, which nothing covered -- with its claim corrected
 and what was tried written down. The fallback remains unreached.
+
+**Several top-level windows, as tabs** (2026-09-06). A desktop gives a
+program as many windows as it asks for and lets a window manager arrange
+them. A terminal is one rectangle, and every visible non-modal top-level
+was drawn into it at its own position -- so a second window OVERWROTE the
+first. Measured: two windows of 30x5 left only the second one's contents
+on the screen, and no way at all to reach the other.
+
+A strip of names in row 0, one view at a time, which is the arrangement a
+terminal has already taught its users. It appears only when there is more
+than one window, so a program with a single window pays nothing and looks
+exactly as it did -- and that property has a real control rather than an
+assertion: every other check in this suite composes a single window and
+would be offset by a row if a strip appeared. A thousand of them pass.
+
+Modals and popups are untouched and still stack over whichever window is
+current. A dialog belongs to the window that opened it, and putting one in
+the strip would make it something a user could tab AWAY from, which is the
+one thing a modal must not be.
+
+**No keyboard shortcut is bound, deliberately.** `next_window()` and
+`previous_window()` are public for an application to bind, because every
+combination a tab switch conventionally uses is one some application
+already means something else by -- and this library taking one would be
+deciding that for every program that ever uses it.
+
+**The bug this introduced, and how it surfaced.** The strip's record is a
+file static that InputRouter reads on every press, and it outlived the
+frame that drew it: two slider checks went red because their fixtures
+click in row 0 of their own window and the router was reading those as tab
+selections for windows nobody was showing. Clearing it when no strip is
+drawn was not enough -- a suite block that composes two windows and then
+never composes again leaves it populated -- so it is cleared in
+`~Compositor` as well. The strip belongs to a compositor, and when the
+compositor goes the strip goes.
+
+**The check was then wrong for the SAME reason, on two gates `make check`
+does not run.** It sized its buffer at 18 columns, and a narrow strip
+elides names -- so with a different set of leftover windows still up it
+passed on offscreen and failed under the sanitizer and under xcb, where
+"Beta" had been elided away. The fixture was reading the suite's
+leftovers rather than this code. Seventy columns, and the number is
+recorded beside it with what it is for. **Twice in one change the ambient
+window set was the thing being measured**, which is what a shared global
+does to a fixture.
+
+**And the check for it cannot assert the single-window case**, which is
+worth recording rather than quietly omitting: this suite leaves visible
+top-levels behind between blocks, so by that point the strip legitimately
+carries a window another block made -- measured, a third tab appears in
+it. Asserting "no strip" there would be asserting the suite's tidiness
+rather than this code's behaviour. What is asserted instead is that both
+windows are named, that they do not both draw into one rectangle, and
+that a press reaches each of them -- both directions, because a check on
+one would pass against a strip that could only ever move forwards.
 
 **Drag and drop, which had no platform half at all** (2026-09-06). Qt
 splits it in two. The WIDGET side -- `dragEnterEvent`, `dragMoveEvent`,

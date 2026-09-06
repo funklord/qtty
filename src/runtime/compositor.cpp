@@ -2,6 +2,7 @@
 // FrameScheduler (section 5.4 steps 1-4, simplified per section 16.1 F9: full render + diff
 // beats damage tracking at these sizes).
 #include "qtty/runtime.h"
+#include "qtty/windows.h"
 #include "qtty/grid.h"
 #include "qtty/paint.h"
 #include "qtty/application.h"
@@ -72,6 +73,7 @@ std::optional<QRect> follow_rect(QWidget *layer) {
 
 Compositor::Compositor(QWidget *window, InputRouter *router)
     : win_(window), router_(router) {}
+
 
 void Compositor::apply_priority(int cols, int rows) {
 	apply_priority(win_, root_, cols, rows);
@@ -192,6 +194,133 @@ void Compositor::follow_focus(QWidget *layer, Layer &state, int cols, int rows) 
 	state.scroll.setY(qBound(0, state.scroll.y(), max_y));
 }
 
+// ------------------------------------------------- several windows, as tabs
+//
+// See qtty/windows.h for why a terminal arranges them this way at all. What
+// lives here is the part compose() needs: which windows there are, which one
+// is showing, and the strip that says so.
+namespace {
+
+QPointer<QWidget> g_current;
+QVector<QPointer<QWidget>> g_tabs;
+// Where each tab's name sits, so a press can be turned back into a window.
+// Rebuilt every frame, because a window can be opened or closed between two.
+QVector<QPair<int, int>> g_tab_spans;      // first column, last column
+
+QString window_name(const QWidget *w, int index)
+{
+	if (!w->windowTitle().isEmpty()) return w->windowTitle();
+	// A window with no title still needs something to click. Its class is
+	// more use than a number on its own, and an application that cares sets
+	// a title -- which is the same thing a desktop would show.
+	return QStringLiteral("%1 %2").arg(QString::fromLatin1(
+	    w->metaObject()->className())).arg(index + 1);
+}
+
+QVector<QWidget *> collect_window_tabs(QWidget *root)
+{
+	QVector<QWidget *> out;
+	if (root) out.append(root);
+	for (QWidget *w : QApplication::topLevelWidgets()) {
+		if (w == root || !is_compositable(w)) continue;
+		if (InputRouter::is_popup_layer(w)) continue;
+		if (w->isModal()) continue;
+		out.append(w);
+	}
+	return out;
+}
+
+QWidget *choose_current_window(const QVector<QWidget *> &tabs, QWidget *root)
+{
+	// A window that has gone takes the selection with it, back to the root
+	// rather than to nothing: a frame with no current window would draw an
+	// empty screen and give a user nowhere to click.
+	if (g_current && tabs.contains(g_current.data())) return g_current.data();
+	g_current = tabs.isEmpty() ? root : tabs.first();
+	return g_current.data();
+}
+
+} // namespace
+
+QVector<QWidget *> window_tabs()
+{
+	QVector<QWidget *> out;
+	for (const QPointer<QWidget> &w : std::as_const(g_tabs))
+		if (w) out.append(w.data());
+	return out.size() > 1 ? out : QVector<QWidget *>();
+}
+
+QWidget *current_window() { return g_current.data(); }
+
+void set_current_window(QWidget *w) { if (w) g_current = w; }
+
+void next_window()
+{
+	const QVector<QWidget *> t = window_tabs();
+	const int i = t.indexOf(g_current.data());
+	if (!t.isEmpty()) g_current = t.at((i < 0 ? 0 : i + 1) % t.size());
+}
+
+void previous_window()
+{
+	const QVector<QWidget *> t = window_tabs();
+	const int i = t.indexOf(g_current.data());
+	if (!t.isEmpty()) g_current = t.at((i <= 0 ? t.size() : i) - 1);
+}
+
+// The window a press in the strip selects, or null for a press anywhere
+// else. The router asks before it does anything with the event, because a
+// click on the strip belongs to no widget at all.
+QWidget *window_tab_at(const QPoint &cell)
+{
+	if (cell.y() != 0 || g_tabs.size() < 2) return nullptr;
+	for (int i = 0; i < g_tab_spans.size() && i < g_tabs.size(); ++i)
+		if (cell.x() >= g_tab_spans[i].first && cell.x() <= g_tab_spans[i].second)
+			return g_tabs[i].data();
+	return nullptr;
+}
+
+// The strip itself, in row 0. Spelled like this style's own tab bar so the
+// two do not look like different ideas: the current one in brackets, the
+// rest plain, and a name elided rather than allowed to push the next one off
+// the row.
+static void draw_window_tabs(CellBuffer &out, const QVector<QWidget *> &tabs,
+                             const QWidget *shown)
+{
+	g_tabs.clear();
+	g_tab_spans.clear();
+	int x = 0;
+	for (int i = 0; i < tabs.size(); ++i) {
+		g_tabs.append(tabs[i]);
+		const bool here = tabs[i] == shown;
+		const int room = out.cols() - x;
+		if (room <= 2) { g_tab_spans.append({out.cols(), out.cols() - 1}); continue; }
+		QString name = window_name(tabs[i], i);
+		// Two cells for the brackets, one so the next tab is not flush
+		// against this one.
+		if (name.size() > room - 3) name = name.left(qMax(0, room - 4)) + QStringLiteral("…");
+		const QString text = (here ? QStringLiteral("[") : QStringLiteral(" "))
+		                   + name
+		                   + (here ? QStringLiteral("]") : QStringLiteral(" "));
+		const int first = x;
+		for (const QChar c : text) {
+			if (x >= out.cols()) break;
+			Cell v;
+			v.ch = QString(c);
+			if (here) v.attrs |= Attr::Reverse;
+			if (out.writable(x, 0)) out.at(x, 0) = v;
+			++x;
+		}
+		g_tab_spans.append({first, x - 1});
+	}
+}
+
+Compositor::~Compositor()
+{
+	g_tabs.clear();
+	g_tab_spans.clear();
+}
+
 void Compositor::compose(CellBuffer &out) {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	out.images.clear();
@@ -232,10 +361,34 @@ void Compositor::compose(CellBuffer &out) {
 	// the root is not drawn at the screen's origin once this scrolls. Told
 	// here rather than asked for, because compose() is the only place that
 	// knows -- and because the Compositor already holds the router.
+	// The tab strip, and which window it has chosen. Collected before
+	// anything is drawn, because the strip takes a row off the top and
+	// everything below it moves down by one.
+	const QVector<QWidget *> tabs = collect_window_tabs(win_);
+	QWidget *const shown = choose_current_window(tabs, win_);
+	const int strip = tabs.size() > 1 ? 1 : 0;
+	if (strip) {
+		draw_window_tabs(out, tabs, shown);
+	} else {
+		// No strip means no tab to click, and the record of the last one has
+		// to go with it. It is a file static, so without this it outlived the
+		// frame that drew it and InputRouter went on treating a press in row
+		// 0 as a tab selection -- measured, it swallowed the slider fixtures'
+		// clicks, which land in row 0 of their own window and have nothing to
+		// do with any strip.
+		g_tabs.clear();
+		g_tab_spans.clear();
+	}
+
 	if (router_) router_->set_root_scroll(root_.scroll);
-	draw(win_, root_at);
-	QWidget *cursor_layer = win_;
-	QPoint cursor_origin = root_at;
+	// The window the strip chose, at the origin below it. With one window
+	// this is win_ at root_at and nothing has changed.
+	QWidget *const base = shown ? shown : win_;
+	const QPoint base_at = base == win_ ? root_at + QPoint(0, strip * ch)
+	                                    : QPoint(0, strip * ch);
+	draw(base, base_at);
+	QWidget *cursor_layer = base;
+	QPoint cursor_origin = base_at;
 
 	QVector<QWidget *> modals;
 	const auto tops = QApplication::topLevelWidgets();
@@ -243,7 +396,13 @@ void Compositor::compose(CellBuffer &out) {
 		if (w == win_ || !is_compositable(w)) continue;
 		if (InputRouter::is_popup_layer(w)) continue;     // the popup stack draws these
 		if (w->isModal()) { modals.append(w); continue; } // the modal stack does
-		draw(w, place(w, false));
+		// Every other plain top-level is a TAB now rather than a layer drawn
+		// at its own position. It was the second that decided the frame:
+		// measured, two windows drawn into one rectangle left only the last
+		// one's contents and no way to reach the other. See qtty/windows.h.
+		//
+		// Nothing is drawn here; the bar above chose one and drew it.
+		(void)w;
 	}
 
 	// section 8.1's mitigation: activeModalWidget() and activePopupWidget() as

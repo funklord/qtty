@@ -111,6 +111,12 @@ private:
 class Compositor {
 public:
 	Compositor(QWidget *window, InputRouter *router);
+	// Takes the window tab strip down with it. The strip is a property of a
+	// composed FRAME, and its record is a file static that InputRouter reads
+	// on every press -- so without this it outlived the compositor that drew
+	// it and a later press in row 0, in a test or a second phase of a
+	// program, was read as a tab selection for windows nobody is showing.
+	~Compositor();
 	void compose(CellBuffer &out);                        // fills out + out.images
 	// design.md section 7's small-terminal policy, first half, on the ROOT.
 	// Public so the behaviour can be exercised without a terminal; compose()

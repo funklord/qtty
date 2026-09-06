@@ -552,7 +552,8 @@ INSTALLED_HEADERS = application.h \
 	                  testing.h \
 	                  tray.h \
 	                  theme.h \
-	                  version.h
+	                  version.h \
+	                  windows.h
 
 INSTALLED_FILES = usr/bin/qtty-inspect usr/bin/qtty-replay usr/lib/libqtty.a \
                   usr/lib/pkgconfig/qtty.pc \

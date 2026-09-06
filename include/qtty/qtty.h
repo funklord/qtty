@@ -15,3 +15,6 @@
 #include "runtime.h"
 #include "application.h"
 #include "testing.h"
+#include "tray.h"
+#include "drag.h"
+#include "windows.h"
