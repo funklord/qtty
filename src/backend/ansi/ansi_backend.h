@@ -14,6 +14,8 @@
 #include <QSet>
 #include <QVector>
 
+class QTimer;
+
 class QSocketNotifier;
 
 namespace Qtty {
@@ -28,6 +30,16 @@ Capabilities::ColorDepth negotiate_color(const TermCaps &caps);
 // otherwise misplace them, on a terminal proven to speak kitty, at a colour
 // depth that can carry the image id exactly.
 bool use_placeholders(const TermCaps &caps, Capabilities::ColorDepth depth);
+
+// How long an unaccompanied ESC waits before it is delivered as Escape.
+//
+// ESC prefixes every escape sequence, so a lone one can only be told from the
+// start of a longer one by a clock. The trade is symmetrical and both ends are
+// real: too short and a link that splits Alt-<key> across two reads turns it
+// into Escape followed by a stray letter; too long and Escape feels dead in a
+// dialog. Named here rather than written into the decoder so that a test reads
+// the shipped number instead of repeating it.
+int escape_flush_ms();
 
 class AnsiBackend : public QObject, public ITerminalBackend,
                     public IGraphicsOutput {
@@ -46,6 +58,11 @@ public:
 	void set_event_sink(ITerminalEventSink *s) override {
 		sink_ = s;
 		while (!pending_.isEmpty()) { if (!decode_one()) break; }
+		// Type-ahead can be a bare Escape too, and until the sink existed
+		// there was nobody to deliver it to. Without this the one key a user
+		// presses to back out of a program that is still starting is the one
+		// key that waits for ever.
+		arm_escape_timer();
 	}
 	void suspend() override;
 	void resume() override;
@@ -61,8 +78,47 @@ public:
 	QRect  for_terminal(const QRect &r) const;
 	void clear_overlay(int id) override;
 
+	// ---- the clipboard going OUT (OSC 52) ---------------------------------
+	//
+	// Which of the terminal's selections a copy lands in. xterm's ctlseqs
+	// allows c p q s and the eight cut buffers; these are the two an
+	// application means, and they are not interchangeable -- PRIMARY is what
+	// a middle click pastes, so writing it turns a copy into an edit of
+	// something the user did not ask about.
+	enum class Selection { Clipboard, Primary };
+
+	// Put `text` in the terminal's selection. False when nothing was written,
+	// which is a real answer rather than a formality: it is returned for a
+	// stream that is not a terminal, for a terminal that has been suspended,
+	// and for text past clipboard_limit(). There is NO third state -- a copy
+	// is written whole or not at all, because a truncated one the caller
+	// believes went out is worse than a refused one.
+	//
+	// Applications need not call it. AnsiBackend watches QClipboard, so an
+	// ordinary QClipboard::setText() reaches the terminal on its own; this is
+	// for a caller that wants to name the selection, which Qt cannot express
+	// under the offscreen platform qtty pins.
+	bool write_clipboard(const QString &text,
+	                     Selection sel = Selection::Clipboard);
+
+	// The largest copy qtty will put on the wire, in bytes of UTF-8. Public
+	// so an application can ask before it offers the user a Copy that cannot
+	// work, and so a test reads the shipped bound rather than repeating it.
+	static int clipboard_limit();
+
 private:
 	void read_input();
+	// The pending-Escape window (section 5.1). arm_ starts it only when
+	// pending_ holds exactly one ESC and nothing else; flush_ delivers the
+	// Escape if that is still true when it expires. Any byte arriving in
+	// between stops it, because bytes decide what the clock was guessing at.
+	void arm_escape_timer();
+	void flush_lone_escape();
+	// Connects QClipboard to write_clipboard(), so an ordinary
+	// QClipboard::setText() reaches the terminal without the application
+	// knowing a backend exists. Called once, from the constructor.
+	void watch_clipboard();
+	QTimer *escape_timer_ = nullptr;
 	bool decode_one();                    // one event from pending_ -> sink
 	// A complete CSI at the head of pending_, or -1 if more bytes are needed.
 	// Fills the private prefix, the numeric parameters and the final byte.

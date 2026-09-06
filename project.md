@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-993 checks, 0 failures, under six configurations, all six re-run
+1011 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6590,6 +6590,64 @@ passed, because Qt's own `QWidget::event()` reaches its Tab branch first.
 The check was kept for the behaviour it does pin -- Tab reaching a widget
 when nothing has focus, which nothing covered -- with its claim corrected
 and what was tried written down. The fallback remains unreached.
+
+**Clipboard out, and a bare Escape** (2026-09-06), the two gaps the
+sibling survey named that needed no design decision.
+
+**OSC 52.** `QClipboard::setText()` now reaches the terminal --
+the backend watches `QClipboard::changed`, measured firing under the
+offscreen platform this library pins. `c` is written for anything
+observed through Qt; PRIMARY only through the explicit
+`write_clipboard()` call, because offscreen Qt reports
+`supportsSelection() == false` and refuses a Selection write outright, so
+a PRIMARY copy could never reach an observer.
+
+**The size bound is 200,000 bytes and it REFUSES rather than truncates.**
+Measured, each payload decoded back and compared: xterm 398 round-trips
+exactly at 200,000; tmux 3.5a stores 500,000 exactly; tmux forwarded into
+xterm is exact at 200,000. So nothing measured to work is refused. The
+bound exists because kitty 0.41.1 truncates past its own cap and logs
+only to its own log -- the application is never told, which is the one
+outcome worse than a refusal. The widely-copied 74,994 figure was tested
+for deliberately and reproduced no cap anywhere, so it was not adopted.
+
+**No capability gate, and the cost of a wrong yes was measured at zero.**
+There is no query for OSC 52 -- xterm gates it on `allowWindowOps`, off
+by default, and only xterm answers XTQALLOWED. GNU screen 4.09.01 does
+not implement it and swallowed the sequence whole, **0 payload bytes
+reaching its output**. Gated on `tty_out_ && active_` instead, which is
+this tree's own state-versus-content line.
+
+**A bare Escape** waits 50 ms, armed only when `pending_` is exactly one
+ESC and stopped by any byte. Measured for the choice: in xterm with
+`metaSendsEscape`, Alt-a arrives as ONE read of two bytes and Escape as
+one of one, so locally the clock is never needed -- it exists for a link
+that splits them. Shipped defaults around it: tmux `escape-time` 10,
+ncurses `ESCDELAY` 1000, vim `timeoutlen` 1000. 50 ms is design.md's own
+over-ssh frame budget, so Escape resolves inside one frame of the slowest
+case designed for. `ESC ESC` delivers an Escape too; `Alt-Escape` is no
+longer expressible, and that trade is recorded where it is made.
+
+**Two checks fail when the suite runs on a PTY, and nothing catches
+it.** Found while verifying the above and confirmed as pre-existing by
+control -- HEAD without the patch fails identically, 979 passes against
+997 with it, the same two red:
+
+    and a resize while suspended writes nothing to the terminal it handed back
+    a stop signal stops a program that owns the terminal
+
+Both are the suspend and job-control paths, which are exactly what a real
+pty exercises and the offscreen run cannot. `make check` never runs the
+suite on a pty, so this has been true for an unknown time. Recorded, not
+fixed.
+
+**And the control for that was wrong the first time, in the way this
+tree documents.** Plain `make` deliberately does not build tests here, so
+reverting the source and running `make` left the PATCHED test binary in
+place and the control reported the patched numbers. `make tests-build`
+is what rebuilds it. build-and-commit.md's rule -- never judge a test
+from a binary the build did not rebuild -- was written for exactly this
+and was still walked into.
 
 **The focus events Qt's platform layer would have sent** (2026-09-06).
 Qt delivers a `QFocusEvent` only for an ACTIVE window, and no qtty window

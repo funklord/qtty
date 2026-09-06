@@ -5,6 +5,9 @@
 #include "qtty/grid.h"
 #include "qtty/theme.h"
 #include <QSocketNotifier>
+#include <QTimer>
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QImage>
 #include <QCoreApplication>
 #include <unistd.h>
@@ -231,6 +234,7 @@ AnsiBackend::AnsiBackend() {
 	}
 	notifier_ = new QSocketNotifier(0, QSocketNotifier::Read, this);
 	connect(notifier_, &QSocketNotifier::activated, this, [this] { read_input(); });
+	watch_clipboard();
 }
 
 AnsiBackend::~AnsiBackend() { suspend(); }
@@ -1189,6 +1193,10 @@ void AnsiBackend::set_cursor(std::optional<QPoint> cell, CursorShape shape) {
 
 // ---- input decoding --------------------------------------------------------
 void AnsiBackend::read_input() {
+	// Bytes have arrived, so whatever the pending-Escape window was waiting to
+	// decide is decided by them and not by the clock. Stopped before the read
+	// rather than after it, since the read is where this thread blocks.
+	if (escape_timer_) escape_timer_->stop();
 	char buf[256];
 	ssize_t n = ::read(0, buf, sizeof buf);
 	if (n <= 0) {                                     // EOF: quit politely
@@ -1197,6 +1205,8 @@ void AnsiBackend::read_input() {
 	}
 	pending_.append(buf, n);
 	while (!pending_.isEmpty()) { if (!decode_one()) break; }
+	// And re-armed only if what is left is an ESC on its own.
+	arm_escape_timer();
 }
 
 // A CSI is ESC [ , an optional private prefix, semicolon-separated decimal
@@ -1546,6 +1556,22 @@ bool AnsiBackend::decode_one() {
 			return true;
 		}
 		if (pending_.size() < 2) return false;
+		// Escape pressed twice, which is the commonest way of being sure a
+		// dialog closes. It fell through to the Alt branch below and arrived
+		// as "Alt held with an escape character", which no widget handles --
+		// so pressing Escape twice delivered nothing, twice.
+		//
+		// One byte consumed, not two: the second ESC is left pending and is
+		// either the start of a sequence still arriving or another Escape
+		// when its own window closes. The cost is Alt-Escape, which this
+		// decoder can no longer express -- an ambiguous chord almost nothing
+		// binds, traded for the key every dialog in both surveyed
+		// applications uses.
+		if (static_cast<unsigned char>(pending_[1]) == 0x1b) {
+			pending_.remove(0, 1);
+			sink_->on_key({Qt::Key_Escape, QString(), false, false, false});
+			return true;
+		}
 		// Alt-<char>, and the character may be multi-byte for the same reason
 		// the plain path below handles: ESC then a UTF-8 lead byte is Alt held
 		// with a non-ASCII key. Decoded as a sequence rather than as one byte,
@@ -1606,6 +1632,223 @@ bool AnsiBackend::decode_one() {
 	else { k.qt_key = 0; k.text = QString(QChar(c)); }
 	sink_->on_key(k);
 	return true;
+}
+
+// ---- the clipboard going OUT ----------------------------------------------
+//
+// qtty decoded bracketed paste from the day the decoder was written, so text
+// came IN and nothing ever went the other way: no OSC 52 anywhere in the tree,
+// and a QClipboard write landing in Qt's in-process store and stopping there.
+// Two surveyed applications copy to the clipboard -- twelve call sites in one,
+// three in the other -- and neither could.
+//
+// The sequence is ESC ] 52 ; Pc ; <base64> ST, from xterm's ctlseqs under
+// "Manipulate Selection Data". Pc names the selections; Pd is the data, and
+// xterm's own text says that data which is neither base64 nor `?` CLEARS the
+// selection -- which is why an empty copy is emitted rather than suppressed,
+// an empty payload being the spelling for "there is nothing selected now".
+//
+// ST rather than BEL. Both are legal OSC terminators and both were measured to
+// round-trip through tmux 3.5a into xterm 398, so the tie is broken by what
+// this file already does: caps_query() writes ST for OSC 11 and OSC 4.
+//
+// NOT wrapped for tmux, unlike the graphics queries. tmux implements OSC 52
+// itself -- `set-clipboard`, keyed off the Ms terminfo extension -- so wrapping
+// would go past the thing that already handles it and would need
+// allow-passthrough besides. Measured end to end: an unwrapped OSC 52 written
+// inside tmux 3.5a arrives in an outer xterm 398 byte for byte.
+namespace {
+
+// The largest copy qtty will attempt, in bytes of UTF-8.
+//
+// This is a bound on what qtty puts on the wire, NOT a promise that a copy
+// under it arrives -- no terminal reports what it stored and there is nothing
+// to ask, so every OSC 52 is fire-and-forget. What the number is, precisely,
+// is the largest payload confirmed intact end to end in this workspace, which
+// is a TESTED bound rather than a discovered cap: raising it means extending
+// the sweep, not re-reading this comment.
+//
+// Measured 2026-09-06, in each case decoded back and compared:
+//
+//   xterm 398 (Xvfb), written and read back with OSC 52 ; c ; ?
+//                                        exact at 200,000 bytes
+//   tmux 3.5a, set-clipboard on, stored   exact at 500,000 bytes
+//   tmux 3.5a forwarded into xterm 398    exact at 200,000 bytes
+//
+// So nothing measured to work is refused. The reason a bound exists at all is
+// the other end of the same sweep: kitty 0.41.1 caps at `clipboard_max_size`,
+// 512 MiB by default, and past it TRUNCATES -- clipboard.py logs "truncating"
+// to kitty's own log, where the application will never see it. A copy that
+// silently loses its tail is worse than one that is refused, because the user
+// pastes it somewhere and finds out later.
+//
+// The 74,994-byte bound widely copied from older clipboard tooling -- the
+// largest raw size whose base64 fits 100,000 -- was tested for deliberately
+// and reproduced no cap in any of the three above, so it was not adopted.
+const int kClipboardMaxBytes = 200000;
+
+// How long an unaccompanied ESC waits. See escape_flush_ms().
+const int kEscapeFlushMs = 50;
+
+} // namespace
+
+int AnsiBackend::clipboard_limit() { return kClipboardMaxBytes; }
+
+bool AnsiBackend::write_clipboard(const QString &text, Selection sel) {
+	// Gated on the terminal, and this is the line the tree already draws
+	// rather than a new one: present() writes a frame to a pipe because
+	// `qtty-replay --ansi > corpus` asks for exactly that, while resume()
+	// writes the alternate-screen and reporting modes only to a terminal,
+	// because setting a mode on something we do not own and cannot reset is
+	// not ours to do. A clipboard write is the second kind twice over -- what
+	// it changes is not even the stream, it is the user's system clipboard.
+	//
+	// And on active_, for the reason read_winch() already refuses to write a
+	// geometry query while suspended: the terminal then belongs to whatever
+	// the application shelled out to, and a burst of base64 arrives at that
+	// editor as keystrokes.
+	if (!tty_out_ || !active_) return false;
+
+	const QByteArray utf8 = text.toUtf8();
+	if (utf8.size() > kClipboardMaxBytes) {
+		// Refused, and said so. A qWarning rather than silence because the
+		// caller usually cannot tell: setup() holds diagnostics back while
+		// qtty owns the terminal and flushes them when it gives it back, so
+		// this arrives where the user can read it instead of landing in the
+		// middle of a frame.
+		qWarning("qtty: clipboard copy of %lld bytes refused, over the %d byte"
+		         " limit -- nothing was written",
+		         static_cast<long long>(utf8.size()), kClipboardMaxBytes);
+		return false;
+	}
+
+	QByteArray out = "\033]52;";
+	// One selection per call. Pc accepts several and setting both would make
+	// a copy silently replace PRIMARY too, so the next middle click pastes
+	// something the user never selected.
+	out += (sel == Selection::Primary) ? 'p' : 'c';
+	out += ';';
+	out += utf8.toBase64();
+	out += "\033\\";
+	fwrite(out.constData(), 1, out.size(), stdout);
+	fflush(stdout);
+	return true;
+}
+
+// NOT gated on a capability, and the honest reason is that there is nothing to
+// ask. OSC 52 has no query: xterm gates it on the `allowWindowOps` resource and
+// is OFF by default, and while xterm 398 will answer XTQALLOWED (OSC 60) with
+// the list of allowed features, that is one terminal's sequence and nothing
+// else implements it. The nearest thing to a real signal is the `Ms` terminfo
+// extension, which is what tmux itself keys `set-clipboard` off; asking for it
+// would be one more name in caps_query()'s XTGETTCAP, and that lives in
+// term_caps.cpp rather than here.
+//
+// So the decision falls to term_caps.h's asymmetry rule -- an unverifiable
+// signal may only say YES -- and to what the two wrong answers cost. Measured
+// 2026-09-06: GNU screen 4.09.01 does not implement OSC 52 at all, and driven
+// on a pty of its own it SWALLOWED the whole sequence. Zero bytes of the
+// payload reached its output. An OSC is a string sequence in ECMA-48, so a
+// conformant parser consumes one it does not recognise, which is the same
+// reasoning caps_query() already relies on to send a kitty APC blind.
+//
+// A wrong yes therefore costs nothing visible. A wrong no costs the whole
+// feature, silently, on every terminal that would have worked.
+//
+// What follows from that is the OTHER half, and it is not qtty's to decide:
+// whether a terminal lets an application reach the system clipboard is a
+// security question its own configuration answers. xterm answers no by
+// default. qtty asks; the terminal is entitled to refuse.
+void AnsiBackend::watch_clipboard() {
+	// A QGuiApplication is needed for there to be a clipboard at all, and the
+	// backend is reachable without one -- `qtty-replay --ansi` drives it to
+	// produce a byte stream and has no GUI.
+	if (!qobject_cast<QGuiApplication *>(QCoreApplication::instance())) return;
+	QClipboard *board = QGuiApplication::clipboard();
+	if (!board) return;
+	connect(board, &QClipboard::changed, this, [this](QClipboard::Mode mode) {
+		// Clipboard only. PRIMARY cannot arrive here: measured under the
+		// offscreen platform prepare_environment() pins, QClipboard
+		// answers supportsSelection() false and refuses
+		// setText(.., QClipboard::Selection) outright with "Data set on
+		// unsupported clipboard mode" -- so the Selection half of Qt's API
+		// is unreachable and write_clipboard() is the only way to it.
+		if (mode != QClipboard::Clipboard) return;
+		write_clipboard(QGuiApplication::clipboard()->text(),
+		                Selection::Clipboard);
+	});
+}
+
+// ---- a bare Escape ---------------------------------------------------------
+//
+// ESC prefixes every escape sequence, so a lone one is distinguishable only by
+// a clock: decode_one() answered "still arriving" for a single ESC and waited
+// for ever, and when a byte did turn up later it was read as Alt-<char>. Both
+// surveyed applications close every dialog with Escape, and Qt::Key_Escape
+// appeared nowhere in src/ or include/.
+//
+// 50 ms, and the number is a trade rather than a measurement of one thing.
+// What was measured, 2026-09-06:
+//
+//   xterm 398 under Xvfb, metaSendsEscape on
+//     Alt-a          ONE read() of two bytes, \033 a
+//     Escape         ONE read() of one byte, \033
+//
+// so on a local terminal the two never need the clock at all -- the window
+// exists for a link that splits them, and every millisecond of it is a
+// millisecond Escape is late. The defaults other programs ship, measured on
+// this machine rather than recalled: tmux 3.5a `escape-time` 10, ncurses
+// ESCDELAY 1000, vim `ttimeoutlen` -1 falling back to `timeoutlen` 1000.
+//
+// 50 ms sits where it does for two reasons. It is design.md's own over-ssh
+// frame budget (section 11: "16 ms local, 50 ms over ssh"), so an Escape
+// resolves inside one frame of the slowest case this library designs for and
+// cannot be perceived as lag. And it is five times tmux's 10 ms, which tmux
+// can afford because it sits on the local pty of the terminal it is in, while
+// qtty is routinely on the far end of an ssh link that can put a TCP boundary
+// between the ESC and the letter after it.
+//
+// Overridable, in the shape and with the bounds QTTY_PROBE_MS already uses,
+// because the one person who needs a different number is on a link nobody here
+// can measure.
+int escape_flush_ms() {
+	if (const char *env = ::getenv("QTTY_ESCAPE_MS")) {
+		const int v = ::atoi(env);
+		if (v > 0 && v <= 60000) return v;
+	}
+	return kEscapeFlushMs;
+}
+
+void AnsiBackend::arm_escape_timer() {
+	// Exactly one ESC and nothing behind it. A longer prefix -- ESC [ waiting
+	// for its final, a half-arrived UTF-8 character -- is a sequence genuinely
+	// in flight and keeps waiting as it always did; only the case where there
+	// is nothing to distinguish is decided by the clock.
+	if (!sink_ || pending_.size() != 1
+	    || static_cast<unsigned char>(pending_[0]) != 0x1b)
+		return;
+	if (!escape_timer_) {
+		escape_timer_ = new QTimer(this);
+		escape_timer_->setSingleShot(true);
+		connect(escape_timer_, &QTimer::timeout, this,
+		        [this] { flush_lone_escape(); });
+	}
+	escape_timer_->start(escape_flush_ms());
+}
+
+void AnsiBackend::flush_lone_escape() {
+	// Re-checked rather than assumed. A timer fires from the event loop, and
+	// between arming and firing a read may have completed the sequence -- in
+	// which case there is nothing here to deliver and the bytes have already
+	// gone out as the key they spell.
+	if (!sink_ || pending_.size() != 1
+	    || static_cast<unsigned char>(pending_[0]) != 0x1b)
+		return;
+	pending_.clear();
+	// No text, following what decode_one() already does for Return, Tab and
+	// Backspace: a named key carries its key and nothing else, and the plain
+	// byte path there declines to put a control character in `text` anyway.
+	sink_->on_key({Qt::Key_Escape, QString(), false, false, false});
 }
 
 } // namespace Qtty

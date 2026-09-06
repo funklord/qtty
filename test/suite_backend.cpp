@@ -13,6 +13,7 @@
 #include "src/backend/ansi/term_caps.h"
 #include "src/backend/ansi/scroll_settle.h"
 #include <QtWidgets>
+#include <QClipboard>
 #include <cstdio>
 #include <functional>
 #include <unistd.h>
@@ -294,6 +295,92 @@ int suite_backend() {
 	feed("\033OA");
 	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Up,
 	      "SS3 A decodes as Up, for a terminal in application mode");
+
+	// -- a bare Escape ---------------------------------------------------------
+	//
+	// ESC prefixes every escape sequence, so a lone one is only distinguishable
+	// by knowing that nothing followed it -- which is a policy, not a table
+	// entry. The decoder returned "still arriving" for a single ESC and waited
+	// for ever, and if a byte turned up later it was read as Alt-<char>. Both
+	// surveyed applications close their dialogs with Escape.
+	//
+	// Driving it needs the event loop turned, because the answer arrives on a
+	// TIMER rather than on a byte. processEvents() alone returns immediately
+	// and would assert on a timer that has not fired.
+	const auto settle = [&](int ms) {
+		QElapsedTimer t;
+		t.start();
+		while (t.elapsed() < ms) {
+			QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+			usleep(1000);
+		}
+	};
+	// Sends without clearing the recorder, so a sequence arriving in two
+	// reads can be asserted on as one event.
+	const auto send = [&](const QByteArray &bytes) {
+		feeder.send(bytes);
+		QCoreApplication::processEvents();
+	};
+
+	feed("\033");
+	CHECK(rec.keys.isEmpty(), "a bare Escape is not delivered immediately");
+	settle(escape_flush_ms() + 80);
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Escape
+	      && !rec.keys[0].alt && rec.keys[0].text.isEmpty(),
+	      "and becomes Key_Escape once the window closes with nothing behind it");
+
+	// The control, and the thing the timeout is a trade against. Measured in
+	// xterm 398 under Xvfb with metaSendsEscape on: Alt-a arrives as ONE
+	// read() of two bytes, `\033a`, and a lone Escape as one read() of one
+	// byte. So locally the two never need the timer at all -- it exists only
+	// for a link that splits them.
+	feed("\033a");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].alt
+	      && rec.keys[0].text == QStringLiteral("a"),
+	      "Alt-a delivered in one read is still Alt-a");
+	settle(escape_flush_ms() + 80);
+	CHECK(rec.keys.size() == 1,
+	      "and no Escape is invented behind it");
+
+	// The same two bytes SPLIT across two reads. This is the case the whole
+	// policy is about: too short a window turns a slow link's Alt-a into
+	// Escape followed by a stray letter.
+	//
+	// The gap is a FIXED 10 ms rather than a fraction of the window, and that
+	// is the difference between a check and a tautology. Derived from the
+	// constant it merely says "a byte inside the window counts", which is true
+	// at any window size -- measured, with the window sabotaged to 1 ms this
+	// check went on passing because the gap shrank with it. 10 ms is a real
+	// requirement instead: it is the whole of tmux 3.5a's default escape-time,
+	// so a window that cannot absorb it is shorter than what the most common
+	// thing in the middle already thinks is enough.
+	const int split_gap_ms = 10;
+	feed("\033");
+	settle(split_gap_ms);
+	send("a");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].alt
+	      && rec.keys[0].text == QStringLiteral("a"),
+	      "Alt-a split across two reads inside the window is still Alt-a");
+
+	// And a whole CSI split the same way, since a function key on a slow link
+	// arrives in pieces exactly as Alt does.
+	feed("\033");
+	settle(split_gap_ms);
+	send("[A");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Up,
+	      "and a CSI split after its ESC is still the key it spells");
+
+	// Escape pressed twice. Before this the second ESC made the first one
+	// look like Alt held with an escape character, which no widget handles --
+	// so the commonest way of being sure a dialog closes delivered nothing
+	// twice over.
+	feed("\033\033");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Escape
+	      && !rec.keys[0].alt,
+	      "ESC ESC delivers an Escape rather than Alt held with an escape");
+	settle(escape_flush_ms() + 80);
+	CHECK(rec.keys.size() == 2 && rec.keys[1].qt_key == Qt::Key_Escape,
+	      "and the second one follows when its own window closes");
 
 	// -- SGR 1006 mouse. Unreachable before: the backend never enabled the
 	//    mode and the decoder had no branch for it.
@@ -3351,6 +3438,236 @@ int suite_exec() {
 			      "the last row of this frame really is coloured");
 			CHECK(out.endsWith("\033[0m"),
 			      "and the frame ends by putting the terminal back to plain");
+		}
+	}
+
+	// ---- OSC 52: the clipboard going OUT -------------------------------------
+	//
+	// qtty decoded bracketed paste, so text came IN, and nothing ever went the
+	// other way: there was no OSC 52 anywhere in the tree, and a QClipboard
+	// write landed in Qt's in-process store and stopped there. Two surveyed
+	// applications copy to the clipboard -- twelve call sites in one, three in
+	// the other -- and neither could.
+	//
+	// Asserted on the BYTES, with the base64 decoded back rather than pinned as
+	// a literal: a literal would be satisfied by an encoder that is wrong in
+	// the same way twice.
+	//
+	// NOTHING IS CHECKED WHILE fd 1 IS REDIRECTED. The first version of this
+	// block put its CHECKs inside, and all six PASS lines went into the file
+	// it was capturing -- the run reported eleven failures and printed five,
+	// and the six that were invisible were the ones under test. That is the
+	// warning the Tty fixture above already carries, walked into anyway. So
+	// every write is collected into a local here, the descriptor goes back,
+	// and only then is anything asserted.
+	{
+		// Two descriptors, and they are not interchangeable. The backend
+		// decides once, in resume(), whether stdout is a terminal, and this is
+		// gated on that -- so it has to be CONSTRUCTED with a pty on fd 1.
+		// The bytes are then collected into a file rather than out of the pty,
+		// because a payload at the size bound is 266,680 bytes and a pty's
+		// buffer is a few tens of kilobytes: fwrite would block with its only
+		// reader on the same thread, which is a hang rather than a failure.
+		// The file is unlinked at once, so nothing survives the block, and its
+		// size is bounded by the same limit the checks below pin.
+		struct WireCapture {
+			int master = -1, slave = -1, saved_out = -1, sink = -1;
+			WireCapture() {
+				if (::openpty(&master, &slave, nullptr, nullptr, nullptr) != 0)
+					return;
+				::fcntl(master, F_SETFL, O_NONBLOCK);
+				char name[] = "/tmp/qtty-osc52-XXXXXX";
+				sink = ::mkstemp(name);
+				if (sink >= 0) ::unlink(name);
+				fflush(stdout);
+				saved_out = ::dup(1);
+				::dup2(slave, 1);
+			}
+			bool ok() const { return slave >= 0 && sink >= 0 && saved_out >= 0; }
+			// Everything written from here on goes to the file instead.
+			void to_file() { fflush(stdout); ::dup2(sink, 1); }
+			QByteArray taken() {
+				fflush(stdout);
+				const off_t end = ::lseek(sink, 0, SEEK_CUR);
+				QByteArray out;
+				if (end > 0) {
+					::lseek(sink, 0, SEEK_SET);
+					out.resize(int(end));
+					const ssize_t n = ::read(sink, out.data(), size_t(end));
+					out.resize(int(n > 0 ? n : 0));
+				}
+				// Truncated, so each check reads only its own write.
+				const int rc = ::ftruncate(sink, 0);
+				(void)rc;
+				::lseek(sink, 0, SEEK_SET);
+				return out;
+			}
+			// Idempotent, and called by hand before the CHECKs rather than
+			// left to the destructor: the backend has to be destroyed while
+			// the descriptor is still diverted, or suspend()'s mode resets
+			// land in the middle of this suite's own output.
+			void restore() {
+				fflush(stdout);
+				if (saved_out >= 0) {
+					::dup2(saved_out, 1);
+					::close(saved_out);
+					saved_out = -1;
+				}
+			}
+			~WireCapture() {
+				restore();
+				if (sink >= 0) ::close(sink);
+				if (slave >= 0) ::close(slave);
+				if (master >= 0) ::close(master);
+			}
+		};
+
+		// The payload out of a captured write, decoded. Returns a null
+		// QByteArray when there is no OSC 52 in it at all, which is a
+		// different answer from an empty payload and has to stay so: an
+		// OSC 52 whose data is not base64 CLEARS the selection.
+		const auto payload_of = [](const QByteArray &wire, char selection) {
+			QByteArray opener = "\033]52;";
+			opener += selection;
+			opener += ';';
+			const int at = wire.indexOf(opener);
+			if (at < 0) return QByteArray();
+			const int from = at + opener.size();
+			int end = wire.indexOf("\033\\", from);
+			if (end < 0) end = wire.indexOf('\007', from);
+			if (end < 0) return QByteArray();
+			return QByteArray::fromBase64(wire.mid(from, end - from));
+		};
+
+		WireCapture cap;
+		// Asked ONCE, before anything moves. restore() clears the saved
+		// descriptor, so cap.ok() answers false afterwards -- and the first
+		// version of this block asked it again on the far side, took the
+		// false, and SKIPPED all nine checks in silence. The run reported
+		// five failures and nine checks that were never run print exactly
+		// like nine that were never written.
+		const bool built = cap.ok();
+		const int cap_bytes = AnsiBackend::clipboard_limit();
+		const QString one = QStringLiteral("copy me");
+		const QString wide =
+		    QString::fromUtf8("h\xc3\xa9llo \xe4\xb8\x96 \xf0\x9f\x8e\x89");
+		const QString via_qt = QStringLiteral("through QClipboard");
+		QByteArray w_plain, w_wide, w_prim, w_qt, w_at, w_over, w_suspended;
+		bool r_plain = false, r_at = false, r_over = false, r_suspended = false;
+		if (built) {
+			{
+				AnsiBackend out_backend;
+				cap.to_file();
+				r_plain = out_backend.write_clipboard(one);
+				w_plain = cap.taken();
+
+				out_backend.write_clipboard(wide);
+				w_wide = cap.taken();
+
+				out_backend.write_clipboard(one,
+				                            AnsiBackend::Selection::Primary);
+				w_prim = cap.taken();
+
+				QGuiApplication::clipboard()->setText(via_qt);
+				QCoreApplication::processEvents();
+				w_qt = cap.taken();
+
+				r_at = out_backend.write_clipboard(
+				    QString(cap_bytes, QLatin1Char('x')));
+				w_at = cap.taken();
+				r_over = out_backend.write_clipboard(
+				    QString(cap_bytes + 1, QLatin1Char('x')));
+				w_over = cap.taken();
+
+				out_backend.suspend();
+				r_suspended = out_backend.write_clipboard(one);
+				w_suspended = cap.taken();
+				out_backend.resume();
+			}
+			cap.restore();
+		} else {
+			printf("FAIL: could not build the clipboard capture\n");
+			++fails;
+		}
+
+		if (built) {
+			CHECK(r_plain && payload_of(w_plain, 'c') == one.toUtf8(),
+			      "write_clipboard puts the text out as OSC 52 for selection c");
+			// The FRAMING, separately, because a decoder that found the
+			// payload has already assumed most of it. ST rather than BEL, as
+			// caps_query() already writes for OSC 11 and OSC 4; measured to
+			// round-trip through tmux 3.5a into xterm 398 either way.
+			CHECK(w_plain.contains("\033]52;c;") && w_plain.endsWith("\033\\"),
+			      "and frames it as ESC ] 52 ; c ; <base64> ST");
+			// Not ASCII, because the wire is base64 of UTF-8 and an encoder
+			// reaching for QString::toLatin1() would pass every check above.
+			CHECK(payload_of(w_wide, 'c') == wide.toUtf8(),
+			      "and carries non-ASCII text as base64 of UTF-8");
+			// PRIMARY has to be reachable through this method and cannot be
+			// reached any other way: measured, Qt's offscreen platform -- the
+			// one qtty pins -- answers supportsSelection() false and refuses
+			// setText(.., QClipboard::Selection) outright, so no clipboard
+			// observer can ever see a PRIMARY write.
+			CHECK(payload_of(w_prim, 'p') == one.toUtf8(),
+			      "and the primary selection goes out as selection p");
+			CHECK(!w_prim.contains("\033]52;c;"),
+			      "and a primary copy does not also replace the clipboard");
+			// The ideal the gap asked for: QClipboard::setText() alone, with
+			// nothing else called, reaches the terminal.
+			CHECK(payload_of(w_qt, 'c') == via_qt.toUtf8(),
+			      "and a plain QClipboard::setText() reaches the terminal");
+			// The bound. Refused rather than truncated, and the PAIR is what
+			// makes it a bound rather than a number: one byte under goes out
+			// whole, one byte over is not written at all.
+			CHECK(r_at && payload_of(w_at, 'c').size() == cap_bytes,
+			      "a copy exactly at the size bound goes out whole");
+			CHECK(!r_over && !w_over.contains("\033]52;"),
+			      "and one past it is REFUSED rather than silently truncated");
+			// suspend() hands the terminal to whatever the application shelled
+			// out to, and read_winch() already refuses to write a geometry
+			// query into an editor for exactly this reason -- the reply would
+			// arrive at the editor as keystrokes. A clipboard write is worse,
+			// being a burst of base64 nobody asked for.
+			CHECK(!r_suspended && !w_suspended.contains("\033]52;"),
+			      "and nothing is written while the terminal is suspended");
+		}
+	}
+
+	// A stream that is not a terminal is sent none of it, and this is the
+	// tree's own line rather than a new one: setting a mode on something we do
+	// not own and cannot reset is what the alternate-screen check above
+	// refuses, while the FRAME is written to a pipe because that is what
+	// `qtty-replay --ansi > corpus` asks for. A clipboard write is the first
+	// kind -- it changes the user's system clipboard, which qtty does not own
+	// and cannot put back.
+	{
+		int fds[2];
+		if (::pipe(fds) == 0) {
+			QByteArray on_pipe;
+			{
+				const int keep = ::dup(1);
+				fflush(stdout);
+				::dup2(fds[1], 1);
+				{
+					AnsiBackend b;
+					b.write_clipboard(QStringLiteral("into a pipe"));
+				}
+				fflush(stdout);
+				::dup2(keep, 1);
+				::close(keep);
+			}
+			::close(fds[1]);
+			::fcntl(fds[0], F_SETFL, O_NONBLOCK);
+			char buf[4096];
+			ssize_t n;
+			while ((n = ::read(fds[0], buf, sizeof(buf))) > 0)
+				on_pipe.append(buf, int(n));
+			::close(fds[0]);
+			CHECK(!on_pipe.contains("\033]52;"),
+			      "a stream that is not a terminal is sent no clipboard write");
+		} else {
+			printf("FAIL: could not build the clipboard pipe\n");
+			++fails;
 		}
 	}
 
