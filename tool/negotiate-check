@@ -28,9 +28,15 @@ for need in xvfb-run xterm script; do
 	}
 done
 tool="${1:-build}/tool/negotiate/qtty-negotiate"
+# NOT a skip, unlike the missing xterm above, and the difference is who
+# promised what. A machine without xterm is an environment this gate has no
+# claim on. The tool is OUR artifact and `make test-negotiate` names it as a
+# prerequisite, so if it is absent the build failed to do what it said -- and
+# reporting success for that is a gate measuring nothing and saying so
+# quietly.
 [ -x "$tool" ] || {
 	echo "negotiate-check: $tool is not built, so nothing was asked" >&2
-	exit 0
+	exit 1
 }
 tool=$(cd "$(dirname "$tool")" && pwd)/$(basename "$tool")
 

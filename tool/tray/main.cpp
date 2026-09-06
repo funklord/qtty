@@ -37,8 +37,24 @@ int main(int argc, char **argv) {
 	app.setApplicationName(QStringLiteral("qtty-tray-check"));
 	Qtty::setup(app);
 
+	// `--require-bus` is the caller saying it has SUPPLIED one: `make
+	// test-tray` runs this under dbus-run-session, so a missing bus there
+	// is not a machine without D-Bus, it is the harness failing to do what
+	// it promised. Skipping in that case reports success having measured
+	// nothing, which is the vacuous pass this project keeps paying for --
+	// so the guard's failure becomes the caller's failure instead.
+	bool require_bus = false;
+	for (int i = 1; i < argc; ++i)
+		if (QLatin1String(argv[i]) == QLatin1String("--require-bus"))
+			require_bus = true;
+
 	QDBusConnection bus = QDBusConnection::sessionBus();
 	if (!bus.isConnected()) {
+		if (require_bus) {
+			printf("FAIL: --require-bus was given and there is no "
+			       "session bus, so the gate measured nothing\n");
+			return 1;
+		}
 		printf("SKIP: no session bus, so nothing here can be measured\n");
 		return 0;
 	}

@@ -6663,6 +6663,51 @@ which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
 
+**Two gates reported success having measured nothing** (2026-09-06). The
+lens came from the last two rounds -- a gate flaky under load, a check
+contaminated by the defect it tested -- pointed at the gates themselves:
+what can each one SKIP, and does anybody find out?
+
+Six skip paths across four gates. Four are right and two were vacuous
+passes:
+
+    test-pty        `script` absent            environment   skip, right
+    test-tray       dbus-run-session absent    environment   skip, right
+    test-negotiate  xvfb/xterm/script absent   environment   skip, right
+    test-screen     load average too high      environment   skip, right
+    test-tray       NO SESSION BUS             promised      was a pass
+    test-negotiate  the tool is not built      our artifact  was a pass
+
+The discriminator is who promised what, and it is the whole finding:
+
+- **A missing ENVIRONMENT dependency is a legitimate skip.** A machine
+  without xterm is not a machine with broken negotiation, and saying so is
+  honest.
+- **A missing PROMISED resource is a failure.** `make test-tray` runs the
+  gate under `dbus-run-session`, so a missing bus there is not a machine
+  without D-Bus -- it is the harness failing to do what it said. The gate
+  printed `SKIP: no session bus` and returned 0. Measured directly:
+  `DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent ./qtty-tray-check`
+  exits 0 today.
+- **A missing OWN ARTIFACT is a failure.** `test-negotiate` names the tool
+  as a make prerequisite and the script then treated its absence as
+  "nothing was asked", exit 0. If make built it and it is not there, the
+  build failed and the gate covered for it.
+
+Fixed by making the guard's failure the caller's failure. The tray check
+takes `--require-bus`, which is the caller saying it has supplied one, and
+refuses instead of skipping; the Makefile passes it. negotiate-check exits
+1 for the unbuilt tool while keeping its environment skips.
+
+**And the tray gate now carries its own positive control**, because a
+control that lives beside a tool is run when somebody remembers and one
+inside it is run when they do not. Before the real run the recipe invokes
+the binary with a deliberately broken bus address and `--require-bus`, and
+fails the gate if that returns 0. Verified by dropping the flag from the
+control's own command line: `tray: the no-bus control PASSED, so this gate
+cannot refuse a run that measured nothing`, make exits 1. Restored, and
+`make test-tray` is green with seven checks.
+
 **The fifteen checks that assume they are the only visible top-level:
 measured, and there is nothing to fix** (2026-09-06). This was the last
 item carried from the ambient-state sweep, and the honest answer is an

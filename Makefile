@@ -393,7 +393,12 @@ test-pty: tests-build
 TRAY_CHECK = $(BUILD_DIR)/tool/tray/qtty-tray-check
 test-tray: all
 	@command -v dbus-run-session >/dev/null 2>&1 || { 		echo "    tray: SKIPPED -- dbus-run-session is not installed"; exit 0; }
-	@dbus-run-session -- $(TRAY_CHECK)
+	@DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent-qtty-tray \
+		$(TRAY_CHECK) --require-bus >/dev/null 2>&1; \
+	if [ $$? -eq 0 ]; then \
+		echo "    tray: the no-bus control PASSED, so this gate cannot"; \
+		echo "          refuse a run that measured nothing"; exit 1; fi
+	@dbus-run-session -- $(TRAY_CHECK) --require-bus
 
 # The negotiation the screen check depends on, asked of a second terminal.
 # Out of `check` for the same reason test-screen is: it starts terminals
