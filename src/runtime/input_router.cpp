@@ -6,6 +6,7 @@
 //       and track the popups' z-order for the compositor.
 //   section 8.3: input outside activeModalWidget() is dropped before dispatch.
 #include "qtty/runtime.h"
+#include "qtty/drag.h"
 #include "qtty/grid.h"
 #include <QtWidgets>
 
@@ -667,6 +668,21 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 		// dismissed the menu instead of firing its item. Measured -- with the
 		// enter arriving after the press, the item highlighted, the menu
 		// stayed up, and the release fired nothing at all.
+		// A drag takes the mouse over. While one is up a move is a drag
+		// move and not a hover, and the release is a drop and not a click --
+		// so the ordinary path below is skipped entirely rather than run
+		// alongside, which would send a widget a mouseMoveEvent and a
+		// dragMoveEvent for the same pointer.
+		//
+		// The press is not handled here because a drag can only begin from
+		// one that has already been delivered: exec_drag() is called from
+		// inside the application's own mousePressEvent or mouseMoveEvent.
+		if (drag_active()) {
+			if (m.motion) drag_move_to(target, pos, screen);
+			if (m.release) drag_drop_at(target, pos, screen);
+			QCoreApplication::processEvents();
+			return;
+		}
 		update_hover(target, pos);
 		if (m.press) {
 			prime_menu_motion(target, screen, mods);

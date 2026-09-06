@@ -238,3 +238,19 @@ find = "\t\t\t\tif (top_any && bot_any && close(top, bot)) {"
 into = "\t\t\t\tif (top_any && bot_any) {"
 count = 1
 check = "one with a top and a bottom carries both"
+
+[[sabotage]]
+name = "the mouse never reaches a drag"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\tif (m.motion) drag_move_to(target, pos, screen);"
+into = "\t\t\tif (false) drag_move_to(target, pos, screen);"
+count = 1
+check = "a drag reaches the widget under the pointer"
+
+[[sabotage]]
+name = "a drop is offered to a widget that refused the drag"
+file = "src/runtime/drag.cpp"
+find = "\tif (target && g_live->over_accepts) {"
+into = "\tif (target && false) {"
+count = 1
+check = "and the drop carries the payload"

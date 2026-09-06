@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1026 checks, 0 failures, under six configurations, all six re-run
+1029 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6590,6 +6590,41 @@ passed, because Qt's own `QWidget::event()` reaches its Tab branch first.
 The check was kept for the behaviour it does pin -- Tab reaching a widget
 when nothing has focus, which nothing covered -- with its claim corrected
 and what was tried written down. The fallback remains unreached.
+
+**Drag and drop, which had no platform half at all** (2026-09-06). Qt
+splits it in two. The WIDGET side -- `dragEnterEvent`, `dragMoveEvent`,
+`dropEvent`, the mime data, the accepted actions -- is ordinary Qt and
+works here untouched: measured, a hand-delivered `QDragEnterEvent` and
+`QDropEvent` reach a target and it reads the payload. The PLATFORM side
+is what carries the pointer while the drag is up, and qtty's offscreen
+platform has none, so **`QDrag::exec()` returned `Qt::IgnoreAction` in
+under a millisecond** and no target ever heard anything. A surveyed
+sibling's whole tab-tree reorder, and another's tab tear-out, were inert.
+
+That second measurement is what made this tractable rather than a
+research project: only half of Qt's machinery was missing, and the half
+that was missing is the pointer -- which InputRouter already owns, because
+there is no platform to own it.
+
+`Qtty::exec_drag()` runs a nested event loop, and the router turns a move
+into a drag move and a release into a drop while one is up. The ordinary
+mouse path is SKIPPED rather than run alongside, or a widget would get a
+`mouseMoveEvent` and a `dragMoveEvent` for the same pointer. Leave is
+sent before enter when the pointer crosses between widgets, which is Qt's
+own order and what a target that highlights on enter depends on.
+
+**The shortfall is stated rather than hidden: an application calls
+`Qtty::exec_drag(drag, actions)` where it would have called
+`drag->exec(actions)`.** `QDrag::exec()` is not virtual, returns before
+anything could be filtered, and offers no hook -- so the ordinary
+spelling cannot be made to work from a library. That is the same
+shortfall as `Qtty::SystemTrayIcon` and it has the same cause: Qt asks
+the platform, and the platform is a stub.
+
+The check drives the mouse from a `singleShot` rather than inline,
+because `exec_drag()` does not return until the drop -- exactly as
+`QDrag::exec()` does not -- so the mouse that drives it has to arrive
+from inside the nested loop, which is where a real one comes from too.
 
 **A small icon carries its shape, not just its average** (2026-09-06).
 A pixmap too small to become a placement is substituted by a glyph, and

@@ -2,6 +2,7 @@
 // dispatch, popup stamping + compositor placement (F7, section 8.1), the
 // top-level walk (section 5.4 step 3), and modal handling (section 8.3).
 #include <qtty/qtty.h>
+#include <qtty/drag.h>
 #include <QtWidgets>
 #include <cstdio>
 
@@ -645,6 +646,73 @@ int suite_router() {
 		CHECK(v > 0 && hz > 0,
 		      "a one-cell scroll bar steps when its cell is clicked");
 		CHECK(v == hz, "and both axes agree about how far");
+	}
+
+	// DRAG AND DROP, which had no platform half at all. Qt splits it in
+	// two: the widget side -- dragEnterEvent, dropEvent, the mime data -- is
+	// ordinary Qt and works here untouched, and the platform side is what
+	// carries the pointer while the drag is up. qtty's offscreen platform
+	// has none, so QDrag::exec() returned Qt::IgnoreAction in under a
+	// millisecond and no target ever heard anything.
+	//
+	// The pointer is this library's, so the missing half is one it can
+	// supply. Asserted end to end: the target must hear the enter, must be
+	// offered the moves, must receive the PAYLOAD, and exec_drag() must
+	// return the action the target accepted rather than a hopeful default.
+	{
+		struct Target : QWidget {
+			int enters = 0, moves = 0, drops = 0, leaves = 0;
+			QString got;
+			explicit Target(QWidget *p) : QWidget(p) { setAcceptDrops(true); }
+			void dragEnterEvent(QDragEnterEvent *e) override {
+				++enters; e->setDropAction(Qt::MoveAction); e->accept();
+			}
+			void dragMoveEvent(QDragMoveEvent *e) override {
+				++moves; e->setDropAction(Qt::MoveAction); e->accept();
+			}
+			void dragLeaveEvent(QDragLeaveEvent *) override { ++leaves; }
+			void dropEvent(QDropEvent *e) override {
+				++drops; got = e->mimeData()->text();
+				e->setDropAction(Qt::MoveAction); e->accept();
+			}
+		};
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *t = new Target(&h);
+		t->setGeometry(0, 0, cw * 10, ch * 2);
+		h.resize(GridMetrics::cells(12, 4));
+		h.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&h);
+
+		auto *mime = new QMimeData;
+		mime->setText(QStringLiteral("payload"));
+		auto *drag = new QDrag(&h);
+		drag->setMimeData(mime);
+
+		// The drag is started from a timer rather than inline, because
+		// exec_drag() does not return until the drop -- exactly as
+		// QDrag::exec() does not. The mouse that drives it therefore has to
+		// come from inside the nested loop, which is where a real one comes
+		// from too.
+		Qt::DropAction acted = Qt::IgnoreAction;
+		QTimer::singleShot(0, [&] {
+			r.on_mouse({QPoint(2, 0), 1, false, false, true, 0});
+			r.on_mouse({QPoint(4, 1), 1, false, false, true, 0});
+			r.on_mouse({QPoint(4, 1), 1, false, true, false, 0});
+		});
+		acted = Qtty::exec_drag(drag, Qt::CopyAction | Qt::MoveAction);
+		QCoreApplication::processEvents();
+
+		printf("info: a drag saw enter=%d move=%d drop=%d leave=%d, payload"
+		       " \"%s\", action %d\n", t->enters, t->moves, t->drops,
+		       t->leaves, qPrintable(t->got), int(acted));
+		CHECK(t->enters == 1 && t->moves >= 1,
+		      "a drag reaches the widget under the pointer");
+		CHECK(t->drops == 1 && t->got == QStringLiteral("payload"),
+		      "and the drop carries the payload");
+		CHECK(acted == Qt::MoveAction,
+		      "and the action the target chose is what exec_drag returns");
 	}
 
 	// A modal with an EMPTY geometry. The rule above drops every click

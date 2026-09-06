@@ -23,6 +23,7 @@ HEADERS += \
     ../include/qtty/graphics.h \
     ../include/qtty/overlay.h \
     ../include/qtty/tray.h \
+    ../include/qtty/drag.h \
     backend/ansi/ansi_backend.h \
     backend/ansi/term_caps.h \
     backend/ansi/scroll_settle.h \
@@ -39,6 +40,7 @@ SOURCES += \
     runtime/compositor.cpp \
     runtime/application.cpp \
     runtime/tray.cpp \
+    runtime/drag.cpp \
     graphics/graphics.cpp \
     graphics/overlay.cpp \
     backend/ansi/ansi_backend.cpp \

@@ -541,6 +541,7 @@ INSTALLED_HEADERS = application.h \
 	                  cell.h \
 	                  color.h \
 	                  delegate.h \
+	                  drag.h \
 	                  graphics.h \
 	                  grid.h \
 	                  null_backend.h \
