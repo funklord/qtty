@@ -6663,6 +6663,34 @@ which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
 
+**The fifteen checks that assume they are the only visible top-level:
+measured, and there is nothing to fix** (2026-09-06). This was the last
+item carried from the ambient-state sweep, and the honest answer is an
+empty result rather than a change.
+
+Instrumenting every `CHECK` in `suite_widgets` to count visible top-levels:
+**20 checks run with two**, and the classes are
+
+    QWidget QTableView            11 checks
+    QListView QListView            2
+    QWidget QLineEdit              2
+    QTableView QWidget             1
+    QComboBoxPrivateContainer      1
+
+The second window is not a leak. It is `QTableView table;` declared at line
+473, parentless and shown -- deliberately, and its own comment says why: a
+table whose headers are hidden leaves the corner button at a size off the
+row grid, which costs a GridGuard violation. Its scope runs to line 1116
+and its LAST USE is line 1113, so it is in use for the whole of it. The
+inner blocks that show a window of their own are what make two.
+
+Those checks pass because they render a single widget through
+`render_once()` rather than composing, so the tab strip never enters. The
+hazard is latent and unchanged: an inner check that ever COMPOSES inside
+that scope gets a strip in row 0 and everything moves down a row. Worth
+knowing, not worth a change -- and the measurement is here so the next
+person does not re-derive it before reaching the same conclusion.
+
 **`make test-screen` is flaky under load, and says so now instead of
 failing** (2026-09-06). It drives real terminals under Xvfb and reads their
 pixels back after a fixed settle, so on a busy machine what it measures is
