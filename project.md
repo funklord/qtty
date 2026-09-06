@@ -6663,6 +6663,32 @@ which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
 
+**The last two items from that sweep: one fixed, one measured away**
+(2026-09-06).
+
+A `QMessageBox` was left showing across the two checks that follow it in
+its own block, and it is a MODAL -- so `activeModalWidget()` named it, and
+that is what `InputRouter::input_scope()` reads. A routing check placed
+there would have delivered into a dialog nobody in its own block had
+opened. Nothing there does today and both checks still pass with it
+hidden, which is why this is a fix rather than a change. The rule, which
+this file has now been bitten by twice: a fixture that shows a modal owns
+it for the whole block unless it takes it down, because a modal is global
+state with a router reading it.
+
+**And a sweep between suites -- hide every window the last one left
+showing -- was written and REMOVED again, because it changed nothing.**
+Measured both ways: **zero** visible top-levels at the start of all twelve
+suites, with the sweep and without it. Nothing leaks across a suite
+boundary, so a boundary sweep buys nothing and would only look like
+protection.
+
+What does leak is WITHIN a suite -- a `QTableView` shown for one check
+stays visible through thirty-three later ones in the same file -- and that
+is where the fifteen fragile checks are. A fix belongs at those blocks
+rather than at the boundary, and the measurement is recorded so the next
+person does not write the boundary sweep again.
+
 **What `GridGuard::reset()` throws away is counted now** (2026-09-06).
 `reset()` exists so a fixture can disown an off-grid geometry it made on
 purpose, and it is called 59 times across these suites -- so whatever

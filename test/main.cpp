@@ -118,6 +118,17 @@ int main(int argc, char **argv) {
 		++ran;
 		printf("\n== %s ==\n", s.name);
 		Qtty::GridGuard::reset();
+		// A sweep between suites -- hide every window the last one left
+		// showing -- was written here and REMOVED again, because it changed
+		// nothing. Measured both ways: zero visible top-levels at the start
+		// of all twelve suites, with the sweep and without it. Nothing leaks
+		// ACROSS a suite boundary, so a boundary sweep buys nothing and
+		// would only look like protection.
+		//
+		// What does leak is within a suite: a QTableView shown for one check
+		// stays visible through thirty-three later ones in the same file.
+		// That is where the fifteen checks recorded in section 7 are fragile,
+		// and a fix belongs at those blocks rather than here.
 		failures += s.run();
 		// The guard's own finding, reported per suite so it names which one
 		// moved a widget off the grid rather than leaving a total nobody can

@@ -1632,6 +1632,19 @@ int suite_widgets() {
 		CHECK(k1 == k1_again && k2 != k1 && placed != k1 && placed != k2,
 		      "a standard icon's identity does not survive standardIcon()");
 
+		// The message box is put away before the rest of this block runs.
+		// It is a MODAL, so while it is up QApplication::activeModalWidget()
+		// names it -- and that is what InputRouter::input_scope() reads, so a
+		// routing check placed after this would deliver into a dialog nobody
+		// in its own block had opened. Nothing here does today, and the
+		// checks below still pass with it hidden, which is why this is a fix
+		// rather than a change.
+		//
+		// The rule this file has now been bitten by twice: a fixture that
+		// shows a MODAL owns it for the whole block unless it takes it down,
+		// because a modal is global state with a router reading it.
+		mb.hide();
+		QCoreApplication::processEvents();
 		QMainWindow win;
 		win.setAttribute(Qt::WA_DontShowOnScreen);
 		auto *dock = new QDockWidget(QStringLiteral("Panel"), &win);
