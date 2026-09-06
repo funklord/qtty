@@ -6663,6 +6663,30 @@ which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
 
+**`make test-screen` is flaky under load, and says so now instead of
+failing** (2026-09-06). It drives real terminals under Xvfb and reads their
+pixels back after a fixed settle, so on a busy machine what it measures is
+the scheduler. Measured with three other sessions building on this box:
+
+    load ~65    failed twice, with DIFFERENT symptoms each time --
+                "0 px of the test colour" once, "nothing was on screen
+                when it was captured" the other
+    load 37.6   ran and PASSED, unchanged
+
+A flaky gate is worse than no gate: it fails for a reason the reader cannot
+act on and teaches them to re-run rather than to look. It skips with the
+load in the message now, which is what `suite_budget` already does with its
+wall-clock figures and for the same reason.
+
+**The threshold was wrong first, in the direction that matters.** It was
+set to eight -- "twice the core count" -- which is a rule of thumb rather
+than a measurement, and would have skipped the gate almost always on this
+machine while calling that safety. That is a gate switched off by
+instalments. It is forty now, which sits between the load that failed and
+the load that passed, and `QTTY_SCREEN_MAX_LOAD` overrides it either way --
+running it under the override is how the 37.6 figure was taken, and is the
+control that shows the guard has not simply disabled the gate.
+
 **The two colour-depth checks that named a depth and did not pin one**
 (2026-09-06), the last recorded environment sensitivity.
 
@@ -6809,14 +6833,36 @@ launched from: bash hands a command substitution's child `SIG_IGN`, so
 script or CI agent that captures output reddened the build. It asserts the
 RELATIONSHIP now: suspend puts back the disposition it found.
 
-**That check is weaker than it looks, and the comment says so.** The
-handlers are installed on the first backend to take the terminal and
-restored on the last, so while another backend in the block is alive
-suspend() restores nothing and the relationship holds whatever it does --
-sabotaged by deleting the restore outright, the check still passed. Making
-it discriminating again means a block where this backend is the only owner,
-which is a restructuring rather than an edit, so it is recorded and its
-sabotage entry withdrawn rather than left claiming cover it does not give.
+**That check was weaker than it looked, and the reason was not the one
+first recorded.** It was written up as "another backend in the block owns
+the terminal, so suspend() restores nothing" -- and the scopes say
+otherwise: exactly one backend spans that line. Instrumented under the
+sabotage, all three readings printed the SAME pointer:
+
+    TSTP before=0x55922d8b84db while=0x55922d8b84db after=0x55922d8b84db
+
+**The defect contaminates its own baseline.** With the restore deleted from
+`suspend()`, an EARLIER backend leaves qtty's handler installed, so the
+"before" this check reads is already the handler, and before == after holds
+however badly suspend() behaves. A check cannot detect a globally-missing
+restore by comparing the state around one instance of it.
+
+Fixed by FORCING a known baseline -- save the outer disposition, set
+`SIG_DFL`, measure, put the outer back -- which is the pattern this file
+already uses for the fatal-signal dispositions a hundred lines below. That
+breaks the loop: whatever an earlier backend left, or the shell the suite
+was launched from, the block starts from a value it set itself. It asserts
+both halves now, that the disposition came back and that it came back to
+the value forced.
+
+**Made to fail:** with the restore deleted the check goes red, which it did
+not do before. Its sabotage entry is back in the spec.
+
+**And the wrong first explanation was reached the same way three others
+were today** -- from a run whose binary the build had not rebuilt. `make
+tests-build` rebuilds the SUITE but not the library, so a sabotage in
+`src/` needs `make` as well, and this was the fourth variation of that trap
+in one session.
 
 **And the tab strip did not tell input it had moved the window**
 (2026-09-06), found the same day by asking what the features added that

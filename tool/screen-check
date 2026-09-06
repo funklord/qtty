@@ -15,6 +15,39 @@
 # the whole run, kitty given a command that exits, and the Xvfb display
 # taken down with it.
 set -e
+
+# A LOAD guard, and it is not caution for its own sake. This gate drives real
+# terminals under Xvfb and reads their pixels back after a fixed settle, so
+# what it measures on a busy machine is the scheduler. Measured 2026-09-06 at
+# load average 65, with three other builds running: two consecutive runs
+# failed with DIFFERENT symptoms -- "0 px of the test colour" once, "nothing
+# was on screen when it was captured" the other -- and a third passed
+# unchanged.
+#
+# A flaky gate is worse than no gate: it fails for a reason the reader cannot
+# act on, and it teaches them to re-run rather than to look. This one says it
+# cannot measure instead, which is what suite_budget already does with its
+# wall-clock figures and for the same reason.
+#
+# FORTY, and the number comes from the measurements rather than from a rule
+# of thumb -- the first version said eight, "twice the core count", and that
+# was wrong in the direction that matters. Measured on this machine:
+#
+#     load ~65   failed twice, with different symptoms each time
+#     load 37.6  ran and PASSED, unchanged
+#
+# So a threshold of eight would have skipped the gate almost always here and
+# called that safety, which is a gate switched off by instalments. Forty sits
+# between the two observations. QTTY_SCREEN_MAX_LOAD overrides it either way,
+# and running it under the override is how the 37.6 figure was taken.
+load=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null || echo 0)
+max=${QTTY_SCREEN_MAX_LOAD:-40}
+if [ "$(echo "$load $max" | awk '{print ($1 > $2) ? 1 : 0}')" = 1 ]; then
+	echo "screen-check: SKIPPED -- load average $load is above $max, so a"
+	echo "              timed capture would measure the scheduler. Set"
+	echo "              QTTY_SCREEN_MAX_LOAD to run it anyway."
+	exit 0
+fi
 for need in xvfb-run kitty import python3; do
 	command -v "$need" >/dev/null 2>&1 || {
 		echo "screen-check: $need is absent, so nothing was drawn or read" >&2

@@ -3395,6 +3395,30 @@ int suite_exec() {
 				// bash hands a command substitution's child SIGTSTP =
 				// SIG_IGN, and asserting SIG_DFL made `out=$(make test)`
 				// fail while `make test` passed.
+				// A FORCED baseline, saved and put back, which is the
+				// pattern this file already uses for the fatal-signal
+				// dispositions a hundred lines below.
+				//
+				// Reading the ambient disposition and comparing before with
+				// after cannot detect the defect it exists for, because that
+				// defect contaminates the baseline: with the restore deleted
+				// from suspend(), an EARLIER backend leaves qtty's handler
+				// installed, so before, during and after all read the same
+				// pointer and the comparison holds. Measured -- sabotaged,
+				// all three printed 0x55922d8b84db.
+				//
+				// Forcing SIG_DFL breaks that loop: whatever an earlier
+				// backend left, or the shell the suite was launched from
+				// (bash hands a command substitution's child SIG_IGN, which
+				// is why the original SIG_DFL assertion was wrong to read the
+				// environment at all), this block starts from a value it set
+				// itself.
+				struct sigaction outer_tstp {};
+				sigaction(SIGTSTP, nullptr, &outer_tstp);
+				struct sigaction dfl {};
+				dfl.sa_handler = SIG_DFL;
+				sigemptyset(&dfl.sa_mask);
+				sigaction(SIGTSTP, &dfl, nullptr);
 				struct sigaction before_resume {};
 				sigaction(SIGTSTP, nullptr, &before_resume);
 				Qtty::AnsiBackend backend;
@@ -3439,8 +3463,10 @@ int suite_exec() {
 				// wrapper that captures the suite's output -- a script, a CI
 				// agent -- reddened the build for a reason that had nothing
 				// to do with the code.
-				CHECK(after_suspend.sa_handler == before_resume.sa_handler,
+				CHECK(after_suspend.sa_handler == before_resume.sa_handler
+				      && before_resume.sa_handler == SIG_DFL,
 				      "while suspending gives the stop signal back too");
+				sigaction(SIGTSTP, &outer_tstp, nullptr);
 			}
 		}
 	}
