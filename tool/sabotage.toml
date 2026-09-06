@@ -403,3 +403,11 @@ find = "\tif (b.style() == Qt::TexturePattern) {"
 into = "\tif (false) {"
 count = 1
 check = "a texture fill takes its colour from the texture"
+
+[[sabotage]]
+name = "a one-colour icon's halves are compared by colour alone"
+file = "src/render/cell_paint.cpp"
+find = "\t\t\t\tif (top_any && bot_any && close(top, bot)\n\t\t\t\t    && (lean_top || lean_bot)) {"
+into = "\t\t\t\tif (false) {"
+count = 1
+check = "and two one-colour icons differing only in shape do too"

@@ -1560,6 +1560,52 @@ int suite_graphics() {
 		      && red.at(0, 0).fg != grey.at(0, 0).fg,
 		      "two icons of different colours substitute to different blocks");
 
+		// And two icons of ONE colour that differ only in SHAPE. The
+		// substitution compared the halves of a cell by colour alone, so a
+		// single-hued icon -- where every inked half reports the same colour
+		// -- always took the "halves agree" branch and became a shaded block
+		// whatever it looked like.
+		//
+		// Measured on fuzzypickles' three delivery marks, a ring, a tick and
+		// a double tick: all three arrived as the same two blocks, and that
+		// project's own header requires them to stay distinguishable to
+		// someone who cannot tell one tick from two. The colour was never
+		// the carrier of that difference; the coverage was.
+		//
+		// The fixture is one colour by construction, so a substitution that
+		// still reads only colour cannot pass it.
+		// BOTH halves carry ink, and they differ only in HOW MUCH.
+		//
+		// The first version of this fixture inked one half and left the
+		// other empty, which the top_any/bot_any branches already told
+		// apart -- so it passed against the unfixed engine, and the
+		// sabotage harness refused to redden it. That is the question
+		// worth asking of any new check: what would still be true if the
+		// fix were reverted.
+		auto shaped = [](bool ink_low, CellBuffer &b) {
+			const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+			QImage im(cw, ch, QImage::Format_ARGB32);
+			im.fill(Qt::transparent);
+			const int mid = ch / 2;
+			for (int y = 0; y < ch; ++y) {
+				const bool dense = ink_low ? (y >= mid) : (y < mid);
+				// Every row carries some ink, so neither half is empty and
+				// both report the same colour; only the density differs.
+				const int span = dense ? cw : qMax(1, cw / 8);
+				for (int x = 0; x < span; ++x)
+					im.setPixelColor(x, y, QColor(220, 40, 40));
+			}
+			CellPaintDevice dev(b);
+			QPainter p(&dev);
+			p.drawPixmap(QRect(0, 0, cw, ch), QPixmap::fromImage(im));
+			p.end();
+		};
+		CellBuffer low(2, 1), high(2, 1);
+		shaped(true, low);
+		shaped(false, high);
+		CHECK(low.at(0, 0).ch != high.at(0, 0).ch,
+		      "and two one-colour icons differing only in shape do too");
+
 		// And nothing stands for nothing. A fully transparent pixmap drew a
 		// block that said a picture was there when none was -- which is the
 		// same shape as the null image above, one step along.

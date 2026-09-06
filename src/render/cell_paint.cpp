@@ -570,9 +570,11 @@ void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &whole,
 		// the half and not the quadrants. 11 is the same set that carries
 		// the box-drawing rules this style already draws every frame, so
 		// this asks for nothing new of a font.
-		const auto mean = [&](int y0, int y1, int x0, int x1, bool *any) {
+		const auto mean = [&](int y0, int y1, int x0, int x1, bool *any,
+		                      int *cov = nullptr) {
 			qint64 r = 0, g = 0, b = 0, a = 0;
 			const int sx = qMax(1, (x1 - x0) / 16), sy = qMax(1, (y1 - y0) / 16);
+			qint64 n = 0;
 			for (int y = y0; y < y1; y += sy)
 				for (int x = x0; x < x1; x += sx) {
 					const QRgb px = img.pixel(x, y);
@@ -581,8 +583,16 @@ void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &whole,
 					g += qint64(qGreen(px)) * al;
 					b += qint64(qBlue(px)) * al;
 					a += al;
+					++n;
 				}
 			*any = a > 0;
+			// COVERAGE as well as colour, in 0..255. The colour alone is
+			// what a single-hued icon has none of: every half of it that
+			// holds any ink at all reports the same colour, so `close()`
+			// below was always true and every such icon became one shaded
+			// block per cell whatever its shape. Coverage is the half of
+			// the picture that survives being one colour.
+			if (cov) *cov = n > 0 ? int(a / n) : 0;
 			return a > 0 ? qRgb(int(r / a), int(g / a), int(b / a)) : qRgb(0, 0, 0);
 		};
 
@@ -604,8 +614,10 @@ void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &whole,
 				const int y1 = qMax(y0 + 1, (cy - c.top() + 1) * img.height() / c.height());
 				const int mid = qMax(y0 + 1, (y0 + y1) / 2);
 				bool top_any = false, bot_any = false;
-				const QRgb top = mean(y0, mid, x0, x1, &top_any);
-				const QRgb bot = mean(mid, qMax(mid + 1, y1), x0, x1, &bot_any);
+				int top_cov = 0, bot_cov = 0;
+				const QRgb top = mean(y0, mid, x0, x1, &top_any, &top_cov);
+				const QRgb bot = mean(mid, qMax(mid + 1, y1), x0, x1,
+				                      &bot_any, &bot_cov);
 				Cell v;
 				// A cell whose two halves agree keeps the shaded block this
 				// has always drawn. That is deliberate rather than
@@ -619,7 +631,29 @@ void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &whole,
 					return qAbs(qRed(a) - qRed(b)) + qAbs(qGreen(a) - qGreen(b))
 					     + qAbs(qBlue(a) - qBlue(b)) < 24;
 				};
-				if (top_any && bot_any && close(top, bot)) {
+				// A cell whose halves agree in COLOUR may still differ in
+				// how much of each is inked, and for a one-colour icon that
+				// is the only difference there is. The comment below used to
+				// say such an icon "has nothing more to say"; measured
+				// against fuzzypickles' three delivery marks -- a ring, a
+				// tick and a double tick, whose own header requires them to
+				// stay distinguishable to someone who cannot tell one tick
+				// from two -- all three arrived as the same two blocks,
+				// because they are one colour and every half of each holds
+				// some ink.
+				//
+				// So the halves are compared by coverage when their colours
+				// match, and the denser one is drawn. Twice as much ink and
+				// a clear absolute gap, so a nearly-even cell still keeps
+				// the block rather than flickering between halves on noise.
+				const bool lean_top = top_cov > bot_cov * 2 && top_cov - bot_cov > 24;
+				const bool lean_bot = bot_cov > top_cov * 2 && bot_cov - top_cov > 24;
+				if (top_any && bot_any && close(top, bot)
+				    && (lean_top || lean_bot)) {
+					v.ch = lean_top ? QStringLiteral("▀")
+					                : QStringLiteral("▄");
+					v.fg = Color::rgb(lean_top ? top : bot);
+				} else if (top_any && bot_any && close(top, bot)) {
 					v.ch = QStringLiteral("▒");
 					v.fg = Color::rgb(qRgb((qRed(top) + qRed(bot)) / 2,
 					                       (qGreen(top) + qGreen(bot)) / 2,

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1052 checks, 0 failures, under six configurations, all six re-run
+1053 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6685,6 +6685,73 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.21 fuzzypickles and fuzznet, asked directly (2026-09-07)
+
+The copyright holder asked what these two are missing. Measured by building
+their widgets against this library rather than by reading them.
+
+**fuzzypickles' compass: closed.** 8.11 recorded "the cardinal letters
+survive and the needle does not" -- the diagonal gap. Their
+`compass_widget` now draws the ring, the crosshair, N/S/E/W and the needle.
+Checked across six bearings rather than one: every bearing produces a
+different frame, and the two DIAGONAL bearings put their extra ink in the
+correct quadrant, 45 degrees north-east and 225 south-west. The cardinals
+appear unchanged to that counter because it counts diagonal glyphs and a
+due-north needle is drawn with a vertical bar -- a limit of the instrument,
+stated rather than hidden.
+
+**fuzzypickles' delivery marks: a real defect, and it is fixed.** Their
+three marks are a ring, a tick and a double tick, and their own header
+requires them to stay "distinguishable to someone who cannot tell a single
+tick from a double". All three arrived here as **the same two cells**,
+`▒▒`.
+
+The cause is exact. The substitution samples each half of a cell and
+compares the halves by COLOUR; a one-colour icon reports the same colour
+from every half that holds any ink at all, so the "halves agree" branch was
+taken for every such icon whatever its shape. The comment there said an
+icon with no vertical structure "has nothing more to say", and that is the
+sentence the measurement refutes: it has nothing more to say about COLOUR,
+while its shape is entirely in the COVERAGE, which nothing read.
+
+Halves are compared by coverage as well now, and the denser one is drawn --
+twice the ink and a clear absolute gap, so a nearly-even cell keeps the
+block rather than flickering on noise. The three marks read `▒▒`, `▄▀` and
+`▄▒`: distinct, which is the whole requirement. No existing check moved.
+
+**Quadrant glyphs are NOT the fix, and that was already settled here.** The
+comment beside this code records the measurement: of 20 fixed-pitch
+families on this machine 11 carry `U+2580` and only 8 carry `U+2596..259F`.
+The obvious idea is one this project has already priced, which is what
+recording a rejected option is for.
+
+**fuzznet: nothing missing, and I was wrong about it twice.** I called it a
+protocol library with no GUI; it has `gui/trust_view` and `gui/log_view`.
+Neither overrides `paintEvent` or draws anything custom, so there is
+nothing for this renderer to lose.
+
+**And they were ahead of me.** `gui/test/qtty_render_test.cpp` already
+exists -- 77 checks that render their widgets through this library and
+assert on the SCREEN. Built against qtty HEAD in my scratch, it passes: 77
+checks, 0 failures. Its one "FAIL ... deliberate" line is its own positive
+control, which fails a check on purpose and asserts the counter moved.
+
+Their reasons are worth carrying, because they are a consumer's view of
+this project:
+
+- `trust_view.h` says it is Qt Widgets rather than QML **because of qtty**:
+  a widget written this way "gives a headless daemon a configuration view
+  from the same source as a desktop dialog".
+- Their suite exists because the text-only assertions "all passed while the
+  trust view showed a user 63 hex digits of a 64-digit fingerprint at 80
+  columns. The text was whole and the screen was not."
+- They keep it OUT of their `make check` deliberately, because qtty is
+  pre-alpha and "a gate that breaks for somebody else's reasons is a gate
+  people switch off."
+
+**They depend on four entry points**: `GridMetrics::cw`, `::ch`, `::cells`
+and `test::snapshot_of`. Worth knowing before any of those moves.
 
 ### 8.20 The other facts two build systems both need (2026-09-07)
 
