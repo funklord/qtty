@@ -6744,6 +6744,29 @@ run against a binary that was never instrumented reads identically to a
 real one**, and the only thing separating them is asking what the binary
 links.
 
+**Valgrind memcheck: 0 errors from 0 contexts, and 0 bytes lost.**
+
+The count reconciles exactly -- 1054 PASS plus 2 SKIP against the suite's
+1056 -- and both skips say why they are skips: valgrind does not deliver
+the default stop action, and the frame-budget ceiling would measure the
+instrument rather than the code. Nothing went missing quietly.
+
+**The log's scary number belongs to a process that was killed on purpose,
+and is worth writing down because the next reader will meet it.** Memcheck
+reports two processes. The main one, 22909, loses nothing at all. The
+other, 23537, reports 13,600 bytes definitely lost in 51 blocks -- and its
+first line is `Process terminating with default action of signal 11
+(SIGSEGV)`. That is the forked child of `suite_backend`'s `::raise(SIGSEGV)`
+check, which exists to watch a raw segfault reach the signal restore path.
+**A process killed mid-flight never unwinds, so everything it held is
+"definitely lost" by construction.** It is an artifact of dying, not a leak.
+
+**What the arm gates, precisely.** `--error-exitcode=99`, so any memcheck
+ERROR fails it; leaks are reported and not gated. It also refuses a run
+that wrote no log -- "valgrind wrote no log, so it did not run, this is not
+a clean result" -- which is the vacuity guard this project keeps having to
+add elsewhere, already present here.
+
 **One regression check worth keeping.** The substitution's own comment
 records a dragged tab arriving as an 82x19 pixmap -- eight cells by one --
 and the rule that it must mark every cell it covers rather than one.
