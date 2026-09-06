@@ -6686,6 +6686,49 @@ which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
 
+### 8.19 A tool's name, written in three places (2026-09-07)
+
+`harmonization.md` asks a README that shows `make` to show `fmake` beside
+it, and to RUN it first because a false build line in the most-read file
+will be believed. qtty's README already had one. Running it anyway, which
+is the part of that rule that keeps paying:
+
+    * built chat, qtty-inspect, qtty-negotiate, qtty-replay,
+      screen-probe, tray
+
+**`tray`, not `qtty-tray-check`.** fmake names a program after its root
+translation unit, which gives the bare verb; `fmake.toml` carries the
+mapping to the real name, and it had stanzas for inspect, replay and
+negotiate and none for tray. `.gitignore` names the programs for the same
+reason and had five of the six. So `git status` showed an untracked binary
+at the repository root -- **the exact state the comment above that ignore
+list was written to record from the last time it happened.**
+
+Both gaps are mine, from adding the tray gate earlier in this session, and
+neither was visible from anything I ran: `make` builds through qmake, which
+reads the `.pro` and needs no mapping at all. **A second build system is
+a second copy of every name, and only the build nobody runs can tell you
+they have drifted.**
+
+**Fixed by a gate rather than by an edit**, because the list had now rotted
+twice. `make tools-check` reads each `tool/*/*.pro` for its `TARGET`, then
+requires `fmake.toml` to rename that directory to it and `.gitignore` to
+carry it. It is in `CHECK_PARTS`, so it runs before every commit.
+
+Both controls were run before it was trusted: removing the `fmake.toml`
+stanza reports that fmake would build `tray`, removing the `.gitignore`
+line reports the untracked binary, and each names the tool. It also refuses
+an empty sweep -- `tool/*/*.pro` matching nothing would otherwise pass
+exactly like a real run.
+
+**And it turned up a disagreement between two gates about one noun.**
+`tools-check` counts four tools where `test-tools` says three, which is
+correct -- the tray gate needs a session bus and lives in `make test-tray`
+-- but "3 tool(s)" beside a tree holding four is a silent partial. It says
+`3 of 4` now and names the one it does not run and why. A count that does
+not name its denominator is the same shape as a gate over an empty file
+list.
+
 ### 8.18 The half of the tray interface nothing called (2026-09-06)
 
 A different lens, since the paint-state family is swept: **an interface is

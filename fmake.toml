@@ -22,3 +22,10 @@ name = "qtty-replay"
 
 [target.negotiate]
 name = "qtty-negotiate"
+
+# The tray gate, added after the three above and missed here at the time --
+# so fmake built it as the bare verb `tray` while qmake built
+# `qtty-tray-check`, and the binary that appeared at the root was one
+# .gitignore did not know either. tool/tray/tray.pro is the authority.
+[target.tray]
+name = "qtty-tray-check"

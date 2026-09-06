@@ -1,0 +1,60 @@
+#!/bin/sh
+# Every tool's name, stated once in its .pro and repeated in two places that
+# cannot derive it.
+#
+# fmake names a program after its root translation unit, which gives the bare
+# verb -- `tray` where qmake builds `qtty-tray-check`. fmake.toml carries the
+# mapping and .gitignore carries the result, and NEITHER can be computed from
+# the tree, so both are copies of a fact and both go stale silently.
+#
+# They did. The tray gate was added with neither, so `python3 fmake` built a
+# program called `tray` and left it untracked at the repository root -- which
+# is precisely the state the .gitignore comment above the program list was
+# written to record the last time it happened. Nothing noticed until somebody
+# ran fmake and read `git status`.
+#
+# Checked rather than remembered: this reads each tool/*/ *.pro for its
+# TARGET, then requires fmake.toml to rename that directory to it and
+# .gitignore to ignore it.
+set -e
+root=$(dirname "$0")/..
+fail=0
+n=0
+for pro in "$root"/tool/*/*.pro; do
+	[ -f "$pro" ] || continue
+	dir=$(basename "$(dirname "$pro")")
+	target=$(sed -n 's/^[[:space:]]*TARGET[[:space:]]*=[[:space:]]*\([^[:space:]]*\).*/\1/p' "$pro" | head -1)
+	if [ -z "$target" ]; then
+		echo "tools-check: $pro states no TARGET" >&2
+		fail=1
+		continue
+	fi
+	n=$((n + 1))
+	# fmake.toml must rename the directory to the .pro's TARGET. A bare
+	# verb that happens to match needs no stanza, so that case passes.
+	if [ "$dir" != "$target" ]; then
+		if ! grep -q "^\[target\.$dir\]" "$root/fmake.toml" \
+		|| ! awk -v d="[target.$dir]" '
+			$0 == d { found = 1; next }
+			found && /^\[/ { exit }
+			found && /^name[[:space:]]*=/ { print; exit }' \
+			"$root/fmake.toml" | grep -q "\"$target\""; then
+			echo "tools-check: fmake.toml does not rename $dir to $target," >&2
+			echo "             so fmake builds it as '$dir'." >&2
+			fail=1
+		fi
+	fi
+	if ! grep -qx "/$target" "$root/.gitignore"; then
+		echo "tools-check: .gitignore does not carry /$target, so an" >&2
+		echo "             fmake build leaves it untracked at the root." >&2
+		fail=1
+	fi
+done
+if [ "$n" -eq 0 ]; then
+	echo "tools-check: no tool/*/*.pro found, so nothing was checked -- a" >&2
+	echo "             sweep over an empty list passes exactly like a real" >&2
+	echo "             one, so this is a failure." >&2
+	exit 1
+fi
+[ "$fail" -eq 0 ] || exit 1
+echo "tools-check: $n tool(s) named consistently in .pro, fmake.toml and .gitignore"

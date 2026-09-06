@@ -53,10 +53,18 @@ is the Phase 0 record rather than something to build, the same exemption
 a program after its root TU and these ship with a `qtty-` prefix.
 
 It writes its objects into `.fmake/` and leaves the programs at the
-repository root -- `chat`, `qtty-inspect`, `qtty-negotiate`, `qtty-replay`
-and `screen-probe`. All five are in `.gitignore`; the list was four until
-`screen-probe` arrived with the screen gate, which is why the line above
-no longer counts them.
+repository root -- `chat`, `qtty-inspect`, `qtty-negotiate`, `qtty-replay`,
+`qtty-tray-check` and `screen-probe`. All six are in `.gitignore`; the list
+was four until `screen-probe` arrived with the screen gate and five until
+`qtty-tray-check` arrived with the tray gate, which is why the line above
+counts categories rather than programs.
+
+`make tools-check` holds this together, because the list had already
+rotted once: a tool arrives with a `.pro` and a `TARGET`, and its name has
+to be repeated in `fmake.toml` -- which fmake cannot guess -- and in
+`.gitignore`, or fmake builds it under the bare verb and leaves an
+untracked binary at the root. The gate reads the `.pro` files and checks
+both, so the next tool cannot be added quietly.
 
 `make` remains the entry point: fmake builds the programs and not the
 library, and none of the gates.

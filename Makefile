@@ -758,7 +758,8 @@ test-tools: all
 	[ "$$fail" -eq 0 ] || { \
 		echo "test-tools: a shipped program did not do its job" >&2; exit 1; \
 	}; \
-	echo "test-tools: 3 tool(s) and the example, 0 failed"
+	echo "test-tools: 3 of 4 tool(s) and the example, 0 failed"; \
+	echo "            (qtty-tray-check needs a session bus: make test-tray)"
 
 # The suite under valgrind's memcheck, which catches what the sanitizers do not:
 # a READ of memory that was never written. That is not a hypothetical gap --
@@ -893,7 +894,8 @@ record: tests-build
 #
 # The identity is HEAD plus every uncommitted change to tracked files, which
 # is what `git diff HEAD` gives and is unchanged by staging.
-CHECK_PARTS = style layout version-check count-check test test-tools test-install
+CHECK_PARTS = style layout version-check count-check tools-check test \
+              test-tools test-install
 CHECK_STAMP = $(shell git rev-parse --git-common-dir 2>/dev/null)/qtty-check-stamp
 
 check:
@@ -965,6 +967,15 @@ style-docs:
 # 2>/dev/null is not tidiness, and section 0c says why: the offscreen platform
 # writes to stderr, and in a merged stream it lands mid-line and cuts a PASS
 # line in half. Two runs of one binary counted 744 and 745 for that reason.
+# Each tool's name is stated in its .pro and REPEATED in fmake.toml, which
+# cannot derive it, and in .gitignore, which cannot either. Two copies of a
+# fact that nothing compared, and they had already drifted: the tray gate
+# arrived with neither, so `python3 fmake` built a program called `tray` and
+# left it untracked at the repository root -- the exact state the .gitignore
+# comment above its program list exists to record from the previous time.
+tools-check:
+	@./tool/tools-check
+
 count-check: tests-build
 	@stated=$$(sed -n 's/^\([0-9][0-9]*\) checks, 0 failures.*/\1/p' \
 		project.md | head -1); \

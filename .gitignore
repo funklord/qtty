@@ -50,6 +50,7 @@ compile_commands.json
 /qtty-inspect
 /qtty-negotiate
 /qtty-replay
+/qtty-tray-check
 /screen-probe
 
 # Harness state: agent worktrees and session scratch. Untracked and, until
