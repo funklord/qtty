@@ -6679,6 +6679,79 @@ which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
 
+### 8.24 Two sabotage entries that could no longer be applied (2026-09-07)
+
+Checking something narrow -- whether any sabotage entry's `check` string
+matches more than one check name, since the harness matches by substring --
+turned up something else. **All 50 entries name exactly one check.** But
+the same script asked a second question, and two entries' ANCHORS no longer
+matched their source at all:
+
+    a small icon is averaged into one colour again    find matches 0
+    a stroke's pen is thrown away again               find matches 0
+
+**Both were broken by my own edits to the very lines they anchor on**: the
+icon substitution, rewritten this session to compare halves by coverage,
+and the stroke ink, rewritten to go through `ink_over()`. An entry whose
+`find` has drifted cannot be applied, so the behaviour it defends is
+undefended while the spec still lists it and the count still reads 50.
+
+**Nothing announced it, and the reason is affordability.** The harness
+reports a bad anchor when that entry is RUN, and running one costs a build
+and a suite run -- so a session verifying the entry it just wrote uses
+`--only` and never touches the other forty-nine. Both had been dead for a
+session's worth of commits.
+
+The anchors are repaired against the current source, and the intent of each
+is preserved rather than re-invented: the icon entry now collapses the
+`else if` branch that draws the shaded block, and the stroke entry drops
+the `ink_over()` assignment rather than the plain one it used to drop.
+
+**`make sabotage-check` is the fix, and it is a gate rather than a note.**
+`sabotage.py --validate` checks every anchor against its file and runs
+nothing -- string matching costs milliseconds where running costs minutes,
+which is exactly what lets this be a gate when the sweep itself cannot be.
+It is in `CHECK_PARTS`, so it runs before every commit.
+
+Two details it needed. It runs BEFORE the dirty-tree refusal, because it
+writes nothing and a gate that declines while the tree has uncommitted
+source is off during precisely the work that breaks anchors. And it refuses
+an empty spec, which would otherwise validate nothing and say so in the
+words of a pass.
+
+Controlled by breaking an anchor on purpose: it names the entry, says the
+anchor matches 0 times where the spec says 1, and states the consequence --
+"the check it names is undefended" -- rather than only reporting a mismatch.
+
+### 8.23 The wider battery, on a session's worth of paint changes (2026-09-07)
+
+`make check` covers style, layout, the version and count claims, the tool
+names, the suite, the tools and an install. It does NOT cover the
+sanitizers, valgrind, the other platforms or a pty -- and this session
+rewrote the paint engine's colour handling four times over: alpha
+blending, gradient stop averaging, texture pixel sampling, the pen ink path
+and a coverage sampler. New code that indexes into an image at computed
+offsets is exactly what those arms exist for.
+
+**AddressSanitizer and UBSan: 1056 checks, 0 failures, no diagnostics.**
+
+The result was checked rather than read off an exit code. `make
+test-sanitize` exiting 0 proves the recipe ran, not that a sanitized binary
+did the work, so: 41 compile lines carry `-fsanitize=address`, the suite
+reports its full 1056 rather than a truncated count, and
+`build-san-test/qtty-tests` links `libasan` by `ldd`. **A green sanitizer
+run against a binary that was never instrumented reads identically to a
+real one**, and the only thing separating them is asking what the binary
+links.
+
+**One regression check worth keeping.** The substitution's own comment
+records a dragged tab arriving as an 82x19 pixmap -- eight cells by one --
+and the rule that it must mark every cell it covers rather than one.
+Re-measured after the coverage change: still eight cells, still the shaded
+block, because a flat fill's halves agree in coverage as well as in colour.
+The change is additive, which is what the comment beside it claims and what
+somebody had to check.
+
 ### 8.22 The doubling fuzznet reported, explained (2026-09-07)
 
 Another session recorded fuzznet's report in this document while I was

@@ -136,6 +136,52 @@ def main():
 		say("sabotage: no spec at %s" % SPEC)
 		return 2
 
+	# Read-only, so it runs BEFORE the dirty-tree refusal below rather than
+	# after it. Validation writes nothing and restores nothing, and a gate
+	# that declines while the tree has uncommitted source is a gate that is
+	# off during exactly the work that breaks anchors.
+	if "--validate" in sys.argv:
+		with open(SPEC, "rb") as f:
+			spec = tomllib.load(f).get("sabotage", [])
+	# It
+	# exists because an entry whose `find` has drifted out of the source is
+	# a sabotage that cannot be applied, and therefore a behaviour this
+	# harness no longer defends -- and it says so only when that entry is
+	# RUN, which at one build and one suite run apiece is rarely.
+	#
+	# Two entries were found dead this way, both broken by edits to the very
+	# lines they anchor on: the icon substitution and the stroke ink. Both
+	# had been silent for a session's worth of commits, because every run in
+	# between was an --only for something else. String matching costs
+	# milliseconds where running costs minutes, so this can be a gate and
+	# the sweep cannot.
+		bad = 0
+		for e in spec:
+			path = os.path.join(ROOT, e["file"])
+			if not os.path.isfile(path):
+				say("sabotage: %s names a missing file %s"
+				    % (e["name"], e["file"]))
+				bad += 1
+				continue
+			with open(path, encoding="utf-8") as f:
+				got = f.read().count(e["find"])
+			if got != e.get("count", 1):
+				say("sabotage: %s" % e["name"])
+				say("          its anchor matches %d time(s) in %s, and the"
+				    % (got, e["file"]))
+				say("          spec says %d. The entry cannot be applied, so"
+				    % e.get("count", 1))
+				say("          the check it names is undefended.")
+				bad += 1
+		if bad:
+			say("sabotage: %d of %d entries cannot be applied" % (bad, len(spec)))
+			return 1
+		if not spec:
+			say("sabotage: the spec is empty, so validating it proves nothing")
+			return 1
+		say("sabotage: %d entries, every anchor matches its source" % len(spec))
+		return 0
+
 	dirty = subprocess.run(["git", "status", "--porcelain", "--", "src", "test",
 	                        "include"], cwd=ROOT, stdout=subprocess.PIPE,
 	                       text=True).stdout.strip()
@@ -152,6 +198,7 @@ def main():
 
 	with open(SPEC, "rb") as f:
 		spec = tomllib.load(f).get("sabotage", [])
+
 
 	# --only <substring> runs the entries whose name matches. It exists so
 	# that the harness's OWN positive control is affordable: proving this

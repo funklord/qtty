@@ -26,6 +26,8 @@
 #   make test-tools   -- the shipped tools and the example, RUN not just built
 #   make test-install -- install into a scratch root and check what landed
 #   make count-check  -- project.md's stated check count against the real one
+#   make tools-check  -- each tool's name in its .pro, fmake.toml, .gitignore
+#   make sabotage-check -- every sabotage anchor still matches its source
 #   make sabotage     -- break the code on purpose; every check must go red
 #   make test-tray    -- publish a real tray icon on a private D-Bus session
 #   make test-pty     -- the suite on a real pseudo-terminal
@@ -894,8 +896,8 @@ record: tests-build
 #
 # The identity is HEAD plus every uncommitted change to tracked files, which
 # is what `git diff HEAD` gives and is unchanged by staging.
-CHECK_PARTS = style layout version-check count-check tools-check test \
-              test-tools test-install
+CHECK_PARTS = style layout version-check count-check tools-check \
+              sabotage-check test test-tools test-install
 CHECK_STAMP = $(shell git rev-parse --git-common-dir 2>/dev/null)/qtty-check-stamp
 
 check:
@@ -975,6 +977,19 @@ style-docs:
 # comment above its program list exists to record from the previous time.
 tools-check:
 	@./tool/tools-check
+
+# Every sabotage entry anchors on a literal line of source, and an entry whose
+# anchor has drifted cannot be applied -- so the check it names is undefended
+# while the spec still lists it. It announces that only when that entry is RUN,
+# which at one build and one suite run apiece is rare: a session doing --only
+# for the entry it just wrote never touches the other forty-nine.
+#
+# Two were found dead this way, both broken by edits to the very lines they
+# anchor on, both silent for a session's worth of commits. String matching
+# costs milliseconds where running costs minutes, which is what lets this be a
+# gate when the sweep itself cannot be.
+sabotage-check:
+	@python3 tool/sabotage.py --validate
 
 count-check: tests-build
 	@stated=$$(sed -n 's/^\([0-9][0-9]*\) checks, 0 failures.*/\1/p' \
@@ -1174,4 +1189,5 @@ help:
 
 .PHONY: all test test-platforms test-sanitize test-valgrind test-tools test-install count-check tests-build coverage record check style style-source style-docs layout hooks \
         version-check run install uninstall clean veryclean distclean help \
-        test-screen test-negotiate test-consume test-tray test-pty sabotage FORCE
+        test-screen test-negotiate test-consume test-tray test-pty sabotage \
+        tools-check sabotage-check FORCE

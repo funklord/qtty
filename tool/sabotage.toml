@@ -234,8 +234,8 @@ check = "still does after the application installs its own style"
 [[sabotage]]
 name = "a small icon is averaged into one colour again"
 file = "src/render/cell_paint.cpp"
-find = "\t\t\t\tif (top_any && bot_any && close(top, bot)) {"
-into = "\t\t\t\tif (top_any && bot_any) {"
+find = "\t\t\t\t} else if (top_any && bot_any && close(top, bot)) {"
+into = "\t\t\t\t} else if (top_any && bot_any) {"
 count = 1
 check = "one with a top and a bottom carries both"
 
@@ -282,7 +282,7 @@ check = "an unsupported widget says what it is"
 [[sabotage]]
 name = "a stroke's pen is thrown away again"
 file = "src/render/cell_paint.cpp"
-find = "\t\t\tb.at(x, y).ch = QStringLiteral(\"\u2500\");\n\t\t\tb.at(x, y).fg = ink;"
+find = "\t\t\tb.at(x, y).ch = QStringLiteral(\"\u2500\");\n\t\t\tb.at(x, y).fg = ink_over(ink, pi.alpha(), b.at(x, y).bg);"
 into = "\t\t\tb.at(x, y).ch = QStringLiteral(\"\u2500\");"
 count = 1
 check = "a rule in a colour no role explains carries it"
