@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1040 checks, 0 failures, under six configurations, all six re-run
+1042 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6662,6 +6662,68 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+**A sweep for checks that depend on state they do not own** (2026-09-06),
+the lens the last four defects shared. It found more than the lens that
+produced it, and four of its findings are fixed here.
+
+**The section 10.1 inertness gate could never fail.** It compared
+`app.style()->metaObject()->className()` against "GridStyle" -- and
+GridStyle carries no `Q_OBJECT`, so that name is "QProxyStyle" for every
+instance of it, before `setup()` and after. Measured independently: the
+gate printed PASS with a GridStyle installed directly above it. It has
+reported PASS since it was written without once being able to report
+anything else, sitting in the check that guards the library's inertness
+promise. It uses `dynamic_cast` now, which this tree already uses for
+PixelSurface and for the same reason.
+
+**Its sabotage entry had to be inverted, and that is the general point.**
+Reverting the gate to the class-name spelling makes it pass VACUOUSLY, and
+a vacuous pass is a PASS, which the harness looks past -- so the spec entry
+is the positive CONTROL instead: install a GridStyle before the gate and
+require it to notice. A sabotage has to produce a FAILURE, and for a check
+whose defect is vacuity the sabotage is the thing the check should catch,
+not the check itself.
+
+**`make check` was red inside tmux.** `negotiate_graphics()` consults
+`inside_tmux()`, which reads `$TMUX`, and the fixture that neutralises
+`TERM`, `TERM_PROGRAM`, `KITTY_WINDOW_ID`, `QTTY_GRAPHICS` and `COLORTERM`
+did not neutralise that one. Four failures, and **the person most likely to
+run a terminal library's suite inside tmux is the person writing it.**
+The rule the list now states: neutralise every variable the code UNDER TEST
+reads, not every variable the file happens to know about.
+
+**`QTTY_COLOR` was tried in the same list and removed again**, which is
+worth as much as the fix. It is an explicit user override of colour depth
+and several checks negotiate against the depth it sets: neutralising it
+took `QTTY_COLOR=mono` from two failures to SEVEN. A fixture neutralises a
+variable the code reads incidentally, not one the user set to change the
+answer. Two failures under `QTTY_COLOR=mono` remain, recorded rather than
+papered over.
+
+**`make check` was also red on the commonest terminal setting there is.**
+A check named the ANSI-16 spellings of two colours while the backend
+negotiates its depth from `$TERM` and `$COLORTERM` -- so on
+`xterm-256color`, on `screen-256color` and with `TERM` unset it emitted the
+256-colour form and went red. The depth is pinned for that block now, as
+its neighbours already do. Verified across five settings including
+`xterm-kitty`, whose PAIRED check was failing instead.
+
+**And red whenever its output was CAPTURED.** A check asserted `SIGTSTP ==
+SIG_DFL` after suspend, which is a fact about the environment the suite was
+launched from: bash hands a command substitution's child `SIG_IGN`, so
+`out=$(make test)` exited 2 while `make test` exited 0 -- any wrapper
+script or CI agent that captures output reddened the build. It asserts the
+RELATIONSHIP now: suspend puts back the disposition it found.
+
+**That check is weaker than it looks, and the comment says so.** The
+handlers are installed on the first backend to take the terminal and
+restored on the last, so while another backend in the block is alive
+suspend() restores nothing and the relationship holds whatever it does --
+sabotaged by deleting the restore outright, the check still passed. Making
+it discriminating again means a block where this backend is the only owner,
+which is a restructuring rather than an edit, so it is recorded and its
+sabotage entry withdrawn rather than left claiming cover it does not give.
 
 **And the tab strip did not tell input it had moved the window**
 (2026-09-06), found the same day by asking what the features added that

@@ -1081,10 +1081,31 @@ int suite_backend() {
 		const QByteArray had_kwid = qgetenv("KITTY_WINDOW_ID");
 		const QByteArray had_gfx = qgetenv("QTTY_GRAPHICS");
 		const QByteArray had_ct = qgetenv("COLORTERM");
+		// TMUX belongs in this list and was not in it.
+		// negotiate_graphics() consults inside_tmux(), which reads $TMUX, so
+		// running the suite INSIDE TMUX gave four failures here -- and the
+		// person most likely to run a terminal library's suite inside tmux is
+		// the person writing it. Measured: `TMUX=... make test` was red
+		// before this, with four failures, and is green after.
+		//
+		// QTTY_COLOR was tried in the same list and REMOVED again, which is
+		// worth the sentence: it is an explicit user override of colour
+		// depth, several checks below negotiate against the depth it sets,
+		// and neutralising it took `QTTY_COLOR=mono` from two failures to
+		// SEVEN. The variable a fixture must neutralise is one the code
+		// under test reads incidentally, not one the user set to change the
+		// answer. That two remain is recorded in section 7 rather than
+		// papered over here.
+		//
+		// The rule the list follows, so the next variable is not missed the
+		// same way: neutralise every variable the function UNDER TEST reads,
+		// not every variable this file happens to know about.
+		const QByteArray outer_tmux = qgetenv("TMUX");
 		qunsetenv("QTTY_GRAPHICS");
 		qunsetenv("KITTY_WINDOW_ID");
 		qunsetenv("TERM_PROGRAM");
 		qunsetenv("COLORTERM");
+		qunsetenv("TMUX");
 
 		TermCaps none;                       // answered nothing at all
 		TermCaps kitty;  kitty.answered = true;  kitty.kitty = true;
@@ -1230,6 +1251,7 @@ int suite_backend() {
 		if (!had_kwid.isEmpty()) qputenv("KITTY_WINDOW_ID", had_kwid);
 		if (!had_gfx.isEmpty()) qputenv("QTTY_GRAPHICS", had_gfx);
 		if (!had_ct.isEmpty()) qputenv("COLORTERM", had_ct);
+		if (!outer_tmux.isEmpty()) qputenv("TMUX", outer_tmux);
 	}
 
 	// ---------------------------------------------------------- a real terminal
@@ -3326,6 +3348,28 @@ int suite_exec() {
 			// suite, and a suite that suspends itself to make a point is a
 			// worse trade than checking what is installed.
 			{
+				// WHAT THIS CHECK CANNOT PROVE, measured and stated rather
+				// than left to be discovered. The signal handlers are
+				// installed on the FIRST backend to take the terminal and
+				// restored on the LAST to give it back, so while any other
+				// backend in this block is still alive, suspend() restores
+				// nothing -- and the assertion below is then true whatever
+				// suspend() does. Sabotaged by deleting the restore
+				// outright: the check still passed.
+				//
+				// It is kept because the value it DOES pin is real and was
+				// being pinned wrongly before: see below. Making it
+				// discriminating again means a block in which this backend
+				// is the only owner, which is a restructuring of the
+				// surrounding fixture rather than an edit to this line.
+				// Read BEFORE this backend takes the terminal, so the check
+				// below can assert that suspend() puts back what it FOUND
+				// rather than a value this environment happens to have --
+				// bash hands a command substitution's child SIGTSTP =
+				// SIG_IGN, and asserting SIG_DFL made `out=$(make test)`
+				// fail while `make test` passed.
+				struct sigaction before_resume {};
+				sigaction(SIGTSTP, nullptr, &before_resume);
 				Qtty::AnsiBackend backend;
 				backend.resume();
 				struct sigaction tstp {}, cont {};
@@ -3355,8 +3399,20 @@ int suite_exec() {
 				      && !(resumed.c_lflag & (ICANON | ECHO)),
 				      "and SIGCONT puts raw mode back, every flag of it");
 				backend.suspend();
-				sigaction(SIGTSTP, nullptr, &tstp);
-				CHECK(tstp.sa_handler == SIG_DFL,
+				struct sigaction after_suspend {};
+				sigaction(SIGTSTP, nullptr, &after_suspend);
+				// The RELATIONSHIP, not the value. suspend() restores the
+				// disposition it found, whatever that was -- and this
+				// asserted SIG_DFL, which is a fact about the environment
+				// the suite was launched from rather than about suspend().
+				//
+				// Measured: bash hands a command substitution's child
+				// SIGTSTP = SIG_IGN, so `out=$(make test)` failed this one
+				// check and exited 2 while `make test` alone exited 0. Any
+				// wrapper that captures the suite's output -- a script, a CI
+				// agent -- reddened the build for a reason that had nothing
+				// to do with the code.
+				CHECK(after_suspend.sa_handler == before_resume.sa_handler,
 				      "while suspending gives the stop signal back too");
 			}
 		}
@@ -3456,6 +3512,25 @@ int suite_exec() {
 			++fails;
 		} else {
 			fcntl(tty.master, F_SETFL, O_NONBLOCK);
+			// The colour DEPTH is pinned, because the assertion below names
+			// the ANSI-16 spellings of the two colours this frame uses and
+			// the backend negotiates its depth from $TERM and $COLORTERM.
+			// Measured: on TERM=xterm-256color -- and on screen-256color, and
+			// with TERM unset -- it emits the 256-colour form instead and
+			// this check went red, so `make check` failed on the commonest
+			// terminal setting there is. Neighbouring blocks in this file
+			// already pin TERM for exactly this reason.
+			//
+			// Pinned rather than made depth-agnostic on purpose: the claim
+			// underneath is "a frame ends by putting the terminal back to
+			// plain", and its premise is that the frame carried colour AT
+			// ALL. Accepting any spelling would keep the premise true while
+			// letting the two halves drift apart, which is what pinning one
+			// known depth prevents.
+			const QByteArray had_term = qgetenv("TERM");
+			const QByteArray had_ct = qgetenv("COLORTERM");
+			qputenv("TERM", "xterm");
+			qunsetenv("COLORTERM");
 			Qtty::AnsiBackend backend;
 			backend.resume();
 			fflush(stdout);
@@ -3484,6 +3559,9 @@ int suite_exec() {
 			      "the last row of this frame really is coloured");
 			CHECK(out.endsWith("\033[0m"),
 			      "and the frame ends by putting the terminal back to plain");
+			if (had_term.isEmpty()) qunsetenv("TERM");
+			else qputenv("TERM", had_term);
+			if (!had_ct.isEmpty()) qputenv("COLORTERM", had_ct);
 		}
 	}
 

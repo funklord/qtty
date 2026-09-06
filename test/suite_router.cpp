@@ -861,6 +861,52 @@ int suite_router() {
 		      "and the drop carries the payload");
 		CHECK(acted == Qt::MoveAction,
 		      "and the action the target chose is what exec_drag returns");
+
+		// Escape ABANDONS a drag, which is what it does on every desktop.
+		// drag_cancel() existed, was exported, and had no caller anywhere --
+		// so a drag could be started and not given up, with the pointer
+		// captured and every widget under it being offered something the
+		// user had changed their mind about.
+		//
+		// The pair is the assertion: the target must have been offered the
+		// drag (or cancelling proves nothing, an unstarted drag cancels
+		// trivially) and must NOT have received a drop.
+		auto *mime2 = new QMimeData;
+		mime2->setText(QStringLiteral("abandoned"));
+		auto *drag2 = new QDrag(&h);
+		drag2->setMimeData(mime2);
+		const int drops_before = t->drops, enters_before = t->enters;
+		QTimer::singleShot(0, [&] {
+			r.on_mouse({QPoint(2, 0), 1, false, false, true, 0});
+			r.on_key({Qt::Key_Escape, {}, false, false, false});
+		});
+		// A bound, because exec_drag() does not return until the drag ends
+		// and this check exists precisely to test the thing that ends it.
+		// Without it a broken Escape does not fail the check -- it HANGS the
+		// suite, which running-code.md says is worse than no gate at all.
+		// Measured: with the cancel disabled the run stopped at 212 checks
+		// and was killed by the suite's own timeout, and the sabotage harness
+		// reported "the code was broken and nothing noticed" because a hang
+		// produces neither a PASS nor a FAIL line.
+		//
+		// The rescue is not a workaround that hides the defect: it records
+		// that it was NEEDED, and that is what the check asserts. If Escape
+		// works the timer finds no drag and does nothing.
+		bool needed_rescue = false;
+		QTimer::singleShot(2000, [&] {
+			if (Qtty::drag_active()) { needed_rescue = true; Qtty::drag_cancel(); }
+		});
+		const Qt::DropAction gave_up =
+		    Qtty::exec_drag(drag2, Qt::CopyAction | Qt::MoveAction);
+		QCoreApplication::processEvents();
+		printf("info: an abandoned drag entered %d more, dropped %d more,"
+		       " returned %d\n", t->enters - enters_before,
+		       t->drops - drops_before, int(gave_up));
+		CHECK(t->enters > enters_before,
+		      "an abandoned drag was offered to the target first");
+		CHECK(t->drops == drops_before && gave_up == Qt::IgnoreAction
+		      && !needed_rescue,
+		      "and Escape abandons it without a drop");
 	}
 
 	// A modal with an EMPTY geometry. The rule above drops every click

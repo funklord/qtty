@@ -305,6 +305,22 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 }
 
 void InputRouter::on_key(const KeyEvent &k) {
+	// Escape cancels a drag, which is what it does on every desktop -- and
+	// before this nothing called drag_cancel() at all. It was written,
+	// exported and never wired: an interface is only as wired as its
+	// least-used method, and this tree had already been bitten by exactly
+	// that and recorded it.
+	//
+	// Ahead of the quit keys, because a drag is a MODE and a key pressed
+	// during one belongs to the mode -- and ahead of everything else for the
+	// same reason a drag takes the mouse over in on_mouse(). A drag that
+	// cannot be abandoned is worse than one that cannot be started: the
+	// pointer is captured and every widget under it is being offered
+	// something the user has changed their mind about.
+	if (drag_active() && k.qt_key == Qt::Key_Escape) {
+		drag_cancel();
+		return;
+	}
 	for (const KeyEvent &q : std::as_const(quit_keys_))
 		if (q.qt_key == k.qt_key && q.ctrl == k.ctrl && q.alt == k.alt) {
 			// ...unless a text field has focus, where the same chord is copy

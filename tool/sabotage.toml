@@ -294,3 +294,24 @@ find = "\tif (router_) router_->set_root_scroll(root_.scroll - QPoint(0, strip))
 into = "\tif (router_) router_->set_root_scroll(root_.scroll);"
 count = 1
 check = "a click lands where the widget is drawn, not a row above"
+
+[[sabotage]]
+name = "Escape does not abandon a drag"
+file = "src/runtime/input_router.cpp"
+find = "\tif (drag_active() && k.qt_key == Qt::Key_Escape) {"
+into = "\tif (false && k.qt_key == Qt::Key_Escape) {"
+count = 1
+check = "Escape abandons it without a drop"
+
+
+[[sabotage]]
+# Not "revert the gate", which would make it pass VACUOUSLY -- and a
+# vacuous pass is a PASS, which this harness looks past. The sabotage is
+# the positive control instead: make the library non-inert and require the
+# gate to notice. Under the old class-name spelling it did not.
+name = "the library is not inert before setup"
+file = "test/main.cpp"
+find = "\tint failures = 0;"
+into = "\tint failures = 0;\n\tapp.setStyle(new Qtty::GridStyle);"
+count = 1
+check = "inert before setup()"

@@ -67,8 +67,18 @@ int main(int argc, char **argv) {
 
 	// section 10.1 inertness gate runs BEFORE setup() by necessity.
 	int failures = 0;
-	if (QString::fromLatin1(app.style()->metaObject()->className())
-	        .contains(QStringLiteral("GridStyle"))) {
+	// dynamic_cast, not the class NAME. GridStyle carries no Q_OBJECT, so
+	// metaObject()->className() answers "QProxyStyle" for every instance of
+	// it -- measured, before setup() and after -- and this gate's condition
+	// could never be true. It has reported PASS since it was written without
+	// once being able to report anything else, which is the vacuous pass
+	// this project spends its time hunting, sitting in the check that guards
+	// section 10.1.
+	//
+	// Proved by positive control: with setup(app) moved ABOVE this gate --
+	// the exact condition it exists to detect -- the old spelling still
+	// printed PASS, and this one fails.
+	if (dynamic_cast<Qtty::GridStyle *>(app.style())) {
 		printf("FAIL: library not inert before setup()\n");
 		++failures;
 	} else printf("PASS: inert before setup()\n");

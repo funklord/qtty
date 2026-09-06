@@ -254,6 +254,24 @@ def main():
 				others = [c for c in failing_checks(out) if check not in c]
 				if others:
 					say("     and %d other check(s) with it" % len(others))
+			elif check not in " ".join(passing_checks(out)):
+				# Neither red nor green: the run never got there. A hang or a
+				# crash produces no line of either kind, and reporting that
+				# as "nothing noticed" is a different and much more alarming
+				# claim than the truth. Measured on the day this was added:
+				# a sabotage that stopped a drag from ever ending hung the
+				# suite at 212 checks, and this branch said the code was
+				# broken and nothing noticed.
+				say("  INCONCLUSIVE: the suite never reached the named check.")
+				say("          check: %s" % check)
+				say("          It reported %d pass(es) and %d failure(s), so"
+				    " the run" % (len(passing_checks(out)),
+				                  len(failing_checks(out))))
+				say("          stopped early -- a hang or a crash, not a"
+				    " silent pass.")
+				say("          Fix the check so it FAILS rather than stops,"
+				    " then re-run.")
+				rc = 1
 			else:
 				say("  FAILED: the suite did not report the named check.")
 				say("          check: %s" % check)
