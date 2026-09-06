@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1038 checks, 0 failures, under six configurations, all six re-run
+1040 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6662,6 +6662,33 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+**And the tab strip did not tell input it had moved the window**
+(2026-09-06), found the same day by asking what the features added that
+day do to EACH OTHER rather than by testing them one at a time.
+
+The strip takes row 0, so the window it shows is drawn one row down.
+Nothing shared that with the router: measured, with two windows up a
+button DRAWN at screen row 1 could not be clicked there at all -- the
+click went to the row above it, which is the row the strip occupies.
+
+**This tree had already recorded that exact lesson**, in the comment beside
+`root_scroll_`: the root is drawn at -scroll cells and "nothing shared that
+offset with this function: a click on the button the user could SEE was
+delivered" elsewhere. The same fault, by a second route, on the day the
+second route was built. A feature that moves coordinates has to tell input,
+and knowing that is not the same as remembering it while adding one.
+
+The strip is folded INTO the scroll the router already subtracts, rather
+than sent as a second offset, because two offsets are two chances to apply
+the wrong one. And the router applies it to whichever window is being
+SHOWN rather than to `win_` alone -- before tabs those were always the same
+widget, which is why the test could be written against `win_` and be right.
+
+The check finds the button's row in the RENDER and clicks there, so what it
+asserts is that drawing and input AGREE, not that either is at row 1. Drag
+and drop was checked against the same arrangement and needs nothing of its
+own: it reads the corrected position through the same path.
 
 **Several top-level windows, as tabs** (2026-09-06). A desktop gives a
 program as many windows as it asks for and lets a window manager arrange

@@ -380,7 +380,17 @@ void Compositor::compose(CellBuffer &out) {
 		g_tab_spans.clear();
 	}
 
-	if (router_) router_->set_root_scroll(root_.scroll);
+	// The strip is part of the offset input has to undo, not just part of
+	// the picture. It takes row 0 and everything below it moves down a row,
+	// and nothing shared that with the router: measured, with two windows up
+	// a button DRAWN at screen row 1 could not be clicked there at all --
+	// the same fault the comment beside root_scroll_ already records for
+	// scrolling, arriving by a second route the day tabs were added.
+	//
+	// Folded into the scroll rather than sent separately, because the router
+	// already subtracts one offset and two would be two chances to apply the
+	// wrong one.
+	if (router_) router_->set_root_scroll(root_.scroll - QPoint(0, strip));
 	// The window the strip chose, at the origin below it. With one window
 	// this is win_ at root_at and nothing has changed.
 	QWidget *const base = shown ? shown : win_;

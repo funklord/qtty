@@ -579,7 +579,11 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 	// above reads it. This comment said that was an open fault until
 	// 2026-09-04; it was closed the day it was written, in the same pass
 	// that taught follow_focus() to steer a menu by its active action.
-	const QPoint screen = top == win_
+	// The offset belongs to whichever window is being SHOWN, which with a
+	// tab strip up is not necessarily win_. Before tabs the two were always
+	// the same and the test could be written against win_ alone.
+	QWidget *const base = current_window() ? current_window() : win_;
+	const QPoint screen = (top == win_ || top == base)
 	    ? px + QPoint(root_scroll_.x() * GridMetrics::cw(),
 	                  root_scroll_.y() * GridMetrics::ch())
 	    : px;

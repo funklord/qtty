@@ -756,6 +756,44 @@ int suite_router() {
 		CHECK(body3.contains(QStringLiteral("AAA"))
 		      && !body3.contains(QStringLiteral("BBB")),
 		      "and a press on the other tab comes back");
+
+		// A click has to land where the widget is DRAWN, and the strip moved
+		// everything down a row. Nothing shared that with the router:
+		// measured, a button drawn at screen row 1 could not be clicked
+		// there at all -- the same fault the comment beside root_scroll_
+		// already records for scrolling, arriving by a second route on the
+		// day tabs were added.
+		//
+		// The row is taken from the RENDER rather than counted: the button's
+		// own row is found in the frame and clicked there, so the assertion
+		// is that drawing and input agree, not that either is at row 1.
+		int fired = 0;
+		auto *go = new QPushButton(QStringLiteral("GOGO"), &a);
+		go->setGeometry(0, 0, cw * 6, ch);
+		// A child added to a parent that is ALREADY shown is not itself
+		// shown, and a widget nobody shows is a widget nobody draws -- the
+		// first version of this looked for it in the frame and found row -1.
+		go->show();
+		QObject::connect(go, &QPushButton::clicked, [&] { ++fired; });
+		Qtty::set_current_window(&a);
+		QCoreApplication::processEvents();
+		CellBuffer withbtn(70, 6);
+		c.compose(withbtn);
+		int drawn_row = -1;
+		const QStringList rows = withbtn.to_text().split(QLatin1Char('\n'));
+		for (int i = 0; i < rows.size(); ++i)
+			if (rows.at(i).contains(QStringLiteral("GOGO"))) { drawn_row = i; break; }
+		if (drawn_row >= 0) {
+			r.on_mouse({QPoint(1, drawn_row), 1, true, false, false, 0});
+			r.on_mouse({QPoint(1, drawn_row), 1, false, true, false, 0});
+			QCoreApplication::processEvents();
+		}
+		printf("info: with a strip up the button is drawn on row %d and a"
+		       " click there fired %d\n", drawn_row, fired);
+		CHECK(drawn_row > 0,
+		      "a strip moves the window it shows down a row");
+		CHECK(fired == 1,
+		      "and a click lands where the widget is drawn, not a row above");
 	}
 
 	// DRAG AND DROP, which had no platform half at all. Qt splits it in

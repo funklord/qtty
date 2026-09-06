@@ -286,3 +286,11 @@ find = "\t\t\tb.at(x, y).ch = QStringLiteral(\"\u2500\");\n\t\t\tb.at(x, y).fg =
 into = "\t\t\tb.at(x, y).ch = QStringLiteral(\"\u2500\");"
 count = 1
 check = "a rule in a colour no role explains carries it"
+
+[[sabotage]]
+name = "the strip offset is not shared with input"
+file = "src/runtime/compositor.cpp"
+find = "\tif (router_) router_->set_root_scroll(root_.scroll - QPoint(0, strip));"
+into = "\tif (router_) router_->set_root_scroll(root_.scroll);"
+count = 1
+check = "a click lands where the widget is drawn, not a row above"
