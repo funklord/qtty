@@ -270,3 +270,19 @@ find = "\tconst int strip = tabs.size() > 1 ? 1 : 0;"
 into = "\tconst int strip = 0;"
 count = 1
 check = "two windows are both named in the strip"
+
+[[sabotage]]
+name = "an unsupported widget draws no placeholder"
+file = "src/render/cell_paint.cpp"
+find = "\t\t\tif (const char *pw = unsupported_class(p)) {"
+into = "\t\t\tif (const char *pw = nullptr) {"
+count = 1
+check = "an unsupported widget says what it is"
+
+[[sabotage]]
+name = "a stroke's pen is thrown away again"
+file = "src/render/cell_paint.cpp"
+find = "\t\t\tb.at(x, y).ch = QStringLiteral(\"\u2500\");\n\t\t\tb.at(x, y).fg = ink;"
+into = "\t\t\tb.at(x, y).ch = QStringLiteral(\"\u2500\");"
+count = 1
+check = "a rule in a colour no role explains carries it"

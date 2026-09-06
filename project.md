@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1034 checks, 0 failures, under six configurations, all six re-run
+1038 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6590,6 +6590,61 @@ passed, because Qt's own `QWidget::event()` reaches its Tab branch first.
 The check was kept for the behaviour it does pin -- Tab reaching a widget
 when nothing has focus, which nothing covered -- with its claim corrected
 and what was tried written down. The fallback remains unreached.
+
+**A stroke carries its pen, and an unsupported widget says so**
+(2026-09-06). Both were held open as the copyright holder's, and both were
+approved.
+
+**The pen needed a rule, not a wire.** Carrying it naively is the #bebebe
+incident by another route: measured over one suite run, 1586 of 1597 pens
+reaching the stroke path resolve to a hard 24-bit colour and **1569 of
+those to a single grey**, because Qt shades a sunken border with
+`pal.dark()` and `pal.light()`. Passing those through would spend a
+true-colour sequence on a terminal that may have sixteen, for a line that
+carries no information -- and put Fusion's light-desktop grey on a dark
+terminal, where it is brighter than the text.
+
+So the rule is by ROLE, and the list is the FRAME roles -- Dark, Light,
+Mid, Midlight, Shadow -- with the window and text roles beside them,
+because a border drawn in the text colour is furniture too. A stroke whose
+colour is one of those draws in the terminal's own colour exactly as it
+always has; a stroke whose colour no role explains is the application
+saying something, and is carried. That is the same sentence section 6
+already applies to text and to backgrounds, extended to the third thing
+that has a colour.
+
+The check is a pair and has to be: either half alone would pass against a
+renderer that ignored the pen entirely, or against one that carried every
+pen including the grey.
+
+**And section 8.4's placeholder exists.** It promised that an unsupported
+widget "renders a labelled placeholder box" and nothing drew one -- a
+QGraphicsView came out as 42 glyphs, all of them its own empty QFrame
+border, which is what any framed widget with no content draws. An
+unsupported widget was indistinguishable from a bug, which is the one
+thing a placeholder exists to prevent.
+
+By CLASS rather than by behaviour, because 8.4 names the classes and
+because there is nothing to detect at paint time: a widget drawing with
+OpenGL or into a scene issues no primitive this engine ever sees. The walk
+goes up the metaObject chain so an application's own subclass is
+recognised, which is how these are actually used.
+
+**Two things it took to make the label survive, both measured.** Consuming
+the widget's own paint is not enough -- its CHILDREN paint separately and
+went straight over the box, so the placeholder said "QGraphicsView" and
+then said "scene text" instead. And consuming a child's paint does not
+stop Qt filling that child's BACKGROUND first, which lands inside the box:
+the border survived and the label did not, because a QGraphicsView's
+viewport is inset by the frame and its fill cleared exactly the interior.
+The placeholder is redrawn on every consumed descendant, which makes it
+the last thing written in its own area -- the only ordering that does not
+depend on how many children a widget happens to have.
+
+The label is written cell by cell rather than through `CellBuffer::text()`,
+which honours the device clip. The placeholder is not the application's
+content and is not subject to the application's clip: it is this library
+saying what it cannot draw.
 
 **Several top-level windows, as tabs** (2026-09-06). A desktop gives a
 program as many windows as it asks for and lets a window manager arrange

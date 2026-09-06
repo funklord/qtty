@@ -43,6 +43,76 @@ CellPaintDevice::~CellPaintDevice() { s_active = outer_; delete eng_; }
 // CellPaintDevice::active() is for: in a GUI build there is no active cell
 // device, the filter stands down, and the widget paints normally. Section
 // 10.1's inertness rule made concrete.
+// design.md section 8.4's Unsupported tier: "renders a labelled placeholder
+// box". It promised one and nothing drew it -- measured, a QGraphicsView came
+// out as 42 glyphs, every one of them its own empty QFrame border, which is
+// what any framed widget with no content draws. So an unsupported widget was
+// indistinguishable from a bug, which is the one thing a placeholder exists
+// to prevent.
+//
+// By class rather than by behaviour, because 8.4 names the classes and
+// because there is nothing to detect at paint time: a widget that draws
+// with OpenGL or into a scene issues no primitive this engine ever sees. The
+// walk is up the metaObject chain so an application's own subclass of one of
+// these is recognised too, which is how they are actually used.
+static const char *unsupported_class(const QObject *o) {
+	static const char *const names[] = {
+		"QGraphicsView", "QOpenGLWidget", "QQuickWidget", "QQuickView",
+		"QWebEngineView", "QVideoWidget", "QAxWidget",
+	};
+	for (const QMetaObject *m = o->metaObject(); m; m = m->superClass())
+		for (const char *n : names)
+			if (qstrcmp(m->className(), n) == 0) return n;
+	return nullptr;
+}
+
+// The box, and the name of what is missing from it. A frame says "something
+// belongs here" and the label says what, which together are the difference
+// between an unsupported widget and a broken one.
+static void draw_placeholder(CellBuffer &buf, const QRect &c, const QString &what) {
+	if (c.width() < 2 || c.height() < 2) {
+		// Too small for a box. One shaded cell still says something is here,
+		// which is the same answer the pixmap substitution gives and for the
+		// same reason.
+		if (buf.writable(c.left(), c.top())) {
+			Cell v; v.ch = QStringLiteral("▒");
+			buf.at(c.left(), c.top()) = v;
+		}
+		return;
+	}
+	const auto put = [&](int x, int y, const QString &g) {
+		if (buf.writable(x, y)) { Cell v; v.ch = g; buf.at(x, y) = v; }
+	};
+	for (int x = c.left() + 1; x < c.right(); ++x) {
+		put(x, c.top(), QStringLiteral("─"));
+		put(x, c.bottom(), QStringLiteral("─"));
+	}
+	for (int y = c.top() + 1; y < c.bottom(); ++y) {
+		put(c.left(), y, QStringLiteral("│"));
+		put(c.right(), y, QStringLiteral("│"));
+	}
+	put(c.left(), c.top(), QStringLiteral("┌"));
+	put(c.right(), c.top(), QStringLiteral("┐"));
+	put(c.left(), c.bottom(), QStringLiteral("└"));
+	put(c.right(), c.bottom(), QStringLiteral("┘"));
+
+	// The label, centred, elided to the room between the borders. A name cut
+	// without an ellipsis reads as a different class.
+	const int room = c.width() - 2;
+	if (room <= 0) return;
+	const QString label = elide_to_cells(what, room);
+	const int x0 = c.left() + 1 + qMax(0, (room - int(label.size())) / 2);
+	const int y = c.top() + c.height() / 2;
+	// Written cell by cell like the border above, and not through
+	// CellBuffer::text(), which honours the device clip -- measured, the box
+	// appeared and the label did not, because a clip was in force from
+	// whatever was drawing when this ran. The placeholder is not the
+	// application's content and is not subject to the application's clip: it
+	// is this library saying what it cannot draw.
+	for (int i = 0; i < label.size(); ++i)
+		put(x0 + i, y, QString(label.at(i)));
+}
+
 class CellPaintFilter : public QObject {
 public:
 	bool eventFilter(QObject *o, QEvent *e) override {
@@ -57,6 +127,38 @@ public:
 		// genuinely pixels, and Channel B would snap every primitive in it to
 		// the grid. Guarded against its own render() below, which sends
 		// another paint event straight back here.
+		// Before the two interfaces below, because an unsupported widget
+		// that also implemented one of them would be a contradiction -- and
+		// because what it draws is exactly what must not reach Channel B.
+		if (const char *what = unsupported_class(o)) {
+			draw_placeholder(dev->buffer(),
+			                 cells_of_rect(w->rect(), w, dev->origin),
+			                 QString::fromLatin1(what));
+			return true;                           // consumed
+		}
+		// And the whole subtree under one, drawing nothing. The box above is
+		// the widget's own paint; its CHILDREN paint separately and would go
+		// straight over it -- measured, a QGraphicsView's viewport drew the
+		// scene's text items across the placeholder's label, so the box said
+		// QGraphicsView and then said "scene text" instead. Its scroll bars
+		// would have followed. The ancestor has already said what is here.
+		for (QWidget *p = w->parentWidget(); p; p = p->parentWidget())
+			if (const char *pw = unsupported_class(p)) {
+				// Drawn AGAIN, from the ancestor's rectangle, and not merely
+				// consumed. Consuming a child's paint does not stop Qt
+				// filling that child's BACKGROUND first, and the fill lands
+				// inside the box: measured, the border survived and the
+				// label did not, because a QGraphicsView's viewport is
+				// inset by the frame and its fill cleared exactly the
+				// interior. Redrawing on every consumed descendant makes the
+				// placeholder the last thing written in its own area, which
+				// is the only ordering that does not depend on how many
+				// children a widget happens to have.
+				draw_placeholder(dev->buffer(),
+				                 cells_of_rect(p->rect(), p, dev->origin),
+				                 QString::fromLatin1(pw));
+				return true;
+			}
 		if (auto *surface = dynamic_cast<PixelSurface *>(o)) {
 			if (harvesting_) return false;         // our own render(): paint
 			return harvest(surface, dev);
@@ -839,8 +941,11 @@ void CellPaintEngine::line(const QLineF &l) {
 			if (span.first > span.second) return;
 		}
 		if (!clear_run(y, span.first, span.second, true)) return;
-		for (int x = span.first; x <= span.second; ++x)
+		const Color ink = line_for(pen_.color().rgba());
+		for (int x = span.first; x <= span.second; ++x) {
 			b.at(x, y).ch = QStringLiteral("─");
+			b.at(x, y).fg = ink;
+		}
 	} else if (qAbs(m.dx()) < cw / 2.0 && one_col) {
 		const int x = cell_of(m.x1(), cw);
 		auto span = covered(qMin(m.y1(), m.y2()), qMax(m.y1(), m.y2()), ch);
@@ -851,8 +956,11 @@ void CellPaintEngine::line(const QLineF &l) {
 			if (span.first > span.second) return;
 		}
 		if (!clear_run(x, span.first, span.second, false)) return;
-		for (int y = span.first; y <= span.second; ++y)
+		const Color ink = line_for(pen_.color().rgba());
+		for (int y = span.first; y <= span.second; ++y) {
 			b.at(x, y).ch = QStringLiteral("│");
+			b.at(x, y).fg = ink;
+		}
 	} else {
 		// Everything that is neither a row nor a column, which until this
 		// existed fell off the end of the function and drew nothing. The two
@@ -1159,6 +1267,12 @@ void CellPaintEngine::stroke_segment(const QPointF &a, const QPointF &b,
 		// behind the label, which is what it is doing.
 		if (cell.ch != QStringLiteral(" ")) continue;
 		cell.ch = segment_glyph(run[i].across, run[i].down, dx, dy, cw, ch);
+		// The pen, by line_for()'s rule: an application's own colour is
+		// carried and Qt's frame greys are not. A curve is the case that
+		// makes this matter -- a chart draws several series and they are
+		// told apart by colour, so a plot rendered in one ink is a plot with
+		// its legend removed.
+		cell.fg = line_for(pen_.color().rgba());
 	}
 }
 

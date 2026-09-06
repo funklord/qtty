@@ -101,6 +101,34 @@ inline TextStyle text_style_for(QRgb c) {
 }
 inline Color fg_for(QRgb c) { return text_style_for(c).color; }
 
+// A STROKE colour, which needed a rule of its own and did not have one --
+// Channel B drew every rule and every diagonal in the terminal's default
+// colour, so an application's red graph line and Qt's grey frame shading
+// came out identically.
+//
+// The list is the FRAME roles, and that is the whole of the design.
+// Measured over one suite run: 1586 of 1597 pens reaching the stroke path
+// resolve to a hard 24-bit colour and 1569 of those to a single grey,
+// because Qt shades a sunken border with pal.dark() and pal.light(). Passing
+// those through as true colour is the #bebebe incident by a new route -- a
+// literal Fusion grey, spent as a 24-bit sequence, on a terminal that may
+// have sixteen colours, for a line that carries no information at all.
+//
+// So a stroke whose colour is a role the frame furniture uses draws in the
+// terminal's own colour, exactly as it does today; and a stroke whose colour
+// no role explains is the application saying something, and is carried. The
+// text roles are in the list for the same reason: a border drawn in the text
+// colour is furniture too.
+inline Color line_for(QRgb c) {
+	const QPalette::ColorRole r = role_of(c, {QPalette::Dark, QPalette::Light,
+		                                      QPalette::Mid, QPalette::Midlight,
+		                                      QPalette::Shadow,
+		                                      QPalette::Window, QPalette::Button,
+		                                      QPalette::WindowText, QPalette::Text,
+		                                      QPalette::ButtonText});
+	return r == QPalette::NoRole ? Color::rgb(c) : Color();
+}
+
 // A background colour, by the same rule. A surface role the theme leaves at
 // Color::Default means "the terminal's own background", which is nothing to
 // write rather than something to write in black -- so it comes back Default

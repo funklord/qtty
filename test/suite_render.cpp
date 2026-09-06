@@ -341,6 +341,100 @@ int suite_render(bool record) {
 			++r;
 		}
 
+		// design.md section 8.4's Unsupported tier: "renders a labelled
+		// placeholder box". It promised one and nothing drew it -- measured,
+		// a QGraphicsView came out as 42 glyphs, every one its own empty
+		// QFrame border, which is what any framed widget with no content
+		// draws. An unsupported widget was indistinguishable from a bug,
+		// which is the one thing a placeholder exists to prevent.
+		//
+		// The LABEL is the assertion, not the box. A box alone is what the
+		// old behaviour already looked like, so a check on the frame would
+		// pass against the defect.
+		{
+			QGraphicsView v;
+			auto *sc = new QGraphicsScene(&v);
+			sc->addText(QStringLiteral("SCENETEXT"));
+			v.setScene(sc);
+			v.setAttribute(Qt::WA_DontShowOnScreen);
+			v.resize(GridMetrics::cells(22, 5));
+			v.show();
+			QCoreApplication::processEvents();
+			Qtty::CellBuffer b(24, 6);
+			Qtty::render_once(v, b);
+			const QString frame = b.to_text();
+			printf("info: an unsupported widget renders [%s]\n",
+			       qPrintable(frame.simplified().left(46)));
+			if (frame.contains(QStringLiteral("QGraphicsView")))
+				printf("PASS: an unsupported widget says what it is\n");
+			else {
+				printf("FAIL: an unsupported widget says what it is\n");
+				++r;
+			}
+			// And its content does NOT leak through. A scene item drawing
+			// over the label is what the first version did, and it made the
+			// box say something other than the truth.
+			if (!frame.contains(QStringLiteral("SCENETEXT")))
+				printf("PASS: and its contents do not draw over the box\n");
+			else {
+				printf("FAIL: and its contents do not draw over the box\n");
+				++r;
+			}
+		}
+
+		// The PEN on a stroke, which Channel B used to throw away: every
+		// rule and every diagonal drew in the terminal's default colour, so
+		// an application's red graph line and Qt's grey frame shading came
+		// out identically.
+		//
+		// Carrying it naively is the #bebebe incident by another route.
+		// Measured over one suite run, 1586 of 1597 pens reaching this path
+		// resolve to a hard 24-bit colour and 1569 of those to ONE grey,
+		// because Qt shades a sunken border with pal.dark() and pal.light().
+		// So the rule is by ROLE: a colour the frame furniture uses draws in
+		// the terminal's own colour as it always has, and a colour no role
+		// explains is the application saying something and is carried.
+		//
+		// The pair is the whole assertion. Either half alone would pass
+		// against a renderer that ignored the pen entirely, or against one
+		// that carried every pen including Fusion's grey.
+		{
+			const auto ink = [&](const QColor &pen) {
+				Qtty::CellBuffer b(8, 2);
+				{
+					Qtty::CellPaintDevice dev(b);
+					QPainter p(&dev);
+					p.setPen(pen);
+					p.drawLine(0, ch / 2, cw * 6, ch / 2);
+					p.end();
+				}
+				return b.at(1, 0).fg;
+			};
+			const QColor furniture = QGuiApplication::palette().dark().color();
+			const Qtty::Color as_furniture = ink(furniture);
+			const Qtty::Color as_content = ink(QColor(220, 40, 40));
+			printf("info: a rule in the frame grey draws %s, one in the"
+			       " application's red draws %s\n",
+			       as_furniture == Qtty::Color() ? "default" : "a colour",
+			       as_content == Qtty::Color() ? "default" : "a colour");
+			if (as_furniture == Qtty::Color())
+				printf("PASS: a rule Qt draws to shade a frame keeps the"
+				       " terminal's colour\n");
+			else {
+				printf("FAIL: a rule Qt draws to shade a frame keeps the"
+				       " terminal's colour\n");
+				++r;
+			}
+			if (as_content != Qtty::Color())
+				printf("PASS: and a rule in a colour no role explains carries"
+				       " it\n");
+			else {
+				printf("FAIL: and a rule in a colour no role explains carries"
+				       " it\n");
+				++r;
+			}
+		}
+
 		// An icon whose meaning is its SHAPE, substituted. The old
 		// substitution averaged the whole picture into one colour per cell,
 		// which for an icon encoding its state as a shape is the whole
