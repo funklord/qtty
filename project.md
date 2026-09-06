@@ -6591,6 +6591,23 @@ The check was kept for the behaviour it does pin -- Tab reaching a widget
 when nothing has focus, which nothing covered -- with its claim corrected
 and what was tried written down. The fallback remains unreached.
 
+**The consumer gate calls the new API rather than only linking against
+it** (2026-09-06). `make test-consume` builds a program against the
+INSTALLED prefix with nothing from this tree, which proved the library
+installs and links -- and proved nothing about the three headers added in
+the last day. An umbrella header naming a class is not evidence a consumer
+can use it: `tray.h`, `drag.h` and `windows.h` each have to be in the
+install list, in `qtty.h`, and linkable, and the first two need QtDBus and
+a nested event loop, which are exactly what a pkg-config file gets wrong.
+That is the least-used-method rule applied to a whole seam.
+
+Each call is one an application makes before it knows whether a terminal,
+a desktop or a bus exists, and each has a defined answer when they do not
+-- so the gate needs none of them.
+
+**Made to fail before it was believed**: with `tray.h` withheld from
+`INSTALLED_HEADERS` the gate goes red, and green again with it restored.
+
 **A stroke carries its pen, and an unsupported widget says so**
 (2026-09-06). Both were held open as the copyright holder's, and both were
 approved.
@@ -6927,10 +6944,32 @@ where it genuinely is not the cause, and it is the cause here. Which is
 why the condition is tested rather than assumed either way -- the same
 observation was right in one environment and wrong in the other.
 
-**And the gate is the point.** Nothing ran the suite on a pty, so the arm
-that exercises `tty_out_`, the suspend paths and the escape writers was the
-one nobody ran. `make test-pty` runs it, and found both of these the first
-time it was pointed at them.
+**And the gate is the point -- but its value is NARROWER than the sentence
+that first stood here, which was measured afterwards and found too
+strong.** It claimed the pty arm exercises `tty_out_`, the suspend paths
+and the escape writers, "the one nobody ran". Counted, per configuration,
+over a whole suite run:
+
+    stdout not a tty   query=4  sync=79  clipboard=6  raw=27
+    stdout IS a tty    query=6  sync=80  clipboard=6  raw=33
+
+Barely a difference, and the reason is that this suite already makes its
+OWN pseudo-terminals -- `posix_openpt`, then `dup2` onto fd 1 inside a
+block -- so `isatty(1)` is true in those fixtures however the suite was
+launched. The per-fixture tty paths were already covered.
+
+What the outer pty actually changes is the state of the SUITE PROCESS: its
+own stdout becomes a terminal, so objects that outlive a block -- the
+long-lived backend at line 238 -- take the tty branches too, and its
+session and process group change, which is what job control depends on.
+That is exactly the pair of defects it found, and neither is a per-fixture
+path. The +2 queries are the outer backend answering the two SIGWINCHes the
+resize fixture raises, and the +6 raw entries are its own resume and
+suspend taking the terminal branch.
+
+So the gate covers PROCESS-WIDE state under a terminal, not terminal code
+in general. Recorded that way because the first version of this sentence
+would have sent the next reader looking for coverage it does not add.
 
 **And the control for that was wrong the first time, in the way this
 tree documents.** Plain `make` deliberately does not build tests here, so

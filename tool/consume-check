@@ -67,6 +67,25 @@ int main(int argc, char **argv) {
 	Qtty::setup(app);
 	QLabel w(QStringLiteral("hello from a consumer"));
 
+	// The API added since this gate was written, CALLED rather than merely
+	// included. An umbrella header that names a class is not evidence a
+	// consumer can use it: tray.h, drag.h and windows.h each have to be in
+	// the install list, in qtty.h, and linkable -- and the first two need
+	// QtDBus and a nested event loop respectively, which are exactly the
+	// things a pkg-config file gets wrong. This is the least-used-method
+	// rule applied to a whole seam.
+	//
+	// Nothing here needs a terminal, a desktop or a bus to be present. Each
+	// call is one an application makes before it knows whether any of those
+	// exist, and each has a defined answer when they do not.
+	std::printf("tray available=%d\n",
+	            int(Qtty::SystemTrayIcon::is_available()));
+	Qtty::SystemTrayIcon tray;
+	tray.set_icon_name(QStringLiteral("dialog-information"));
+	tray.set_tool_tip(QStringLiteral("from a consumer"));
+	std::printf("drag active=%d windows=%d\n",
+	            int(Qtty::drag_active()), int(Qtty::window_tabs().size()));
+
 	if (argc > 1 && QString::fromLatin1(argv[1]) == QStringLiteral("--headless")) {
 		Qtty::NullBackend backend(QSize(40, 6));
 		QTimer quit;
