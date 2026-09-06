@@ -6686,6 +6686,48 @@ which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
 
+### 8.18 The half of the tray interface nothing called (2026-09-06)
+
+A different lens, since the paint-state family is swept: **an interface is
+only as wired as its least-used method.** Every public method declared in
+`include/qtty/*.h` was checked for a caller anywhere in `src`, `test`,
+`tool` or `example`.
+
+114 declared. One is defined and called nowhere: **`SystemTrayIcon::set_icon(const QIcon &)`**.
+
+Its sibling `set_icon_name()` is exercised by the tray gate. Reading the
+header finds a complete, symmetrical pair -- because it IS one. What was
+missing is a caller, which no amount of reading the interface can show.
+
+**It is also the half that matters most.** An icon by NAME is drawn by the
+desktop from its own theme and never passes through anything qtty owns. An
+icon by PIXMAP is the case for a program encoding state as SHAPE rather
+than colour -- which is the accessible way to do it, and 8.11 records
+raidcfgd doing exactly that and saying why in its own header. The path
+nothing exercised is the path that carries the accessibility.
+
+The gate calls it now and reads the result back over the bus as a panel
+would: three sizes offered, and the pixels asserted byte by byte. The
+fixture pixel is `#112233` at alpha `0xf4` -- **four channels that are all
+different**, so a byte order wrong in any way, BGRA or RGBA or a swapped
+alpha, reads differently. A grey or a primary would survive several wrong
+orders unchanged and the check would pass for the wrong reason.
+
+**Both checks were then made to fail, because the tray gate is not covered
+by `sabotage.py`** -- that harness runs the suite, and these live in a gate
+it never invokes. Swapping red and blue in `to_argb()` reddens the byte
+check while the size check stays green, which is the separation the two
+were written for; cutting the size list to one reddens both, the second
+because the 22-pixel entry it reads is then absent. Source restored and
+verified identical after each.
+
+**One instrument note that cost a crash.** `QDBusArgument::beginArray()`
+has a writing overload and a reading one, and a NON-CONST argument selects
+the writer -- which aborts the process with "write from a read-only object"
+rather than returning an error. Demarshalling wants the const overloads
+throughout, and the failure is a SIGABRT rather than a bad value, so it
+cannot be mistaken for a defect in what is being read.
+
 ### 8.17 Where the transparency family stops (2026-09-06)
 
 Four more pieces of painter state probed, to find the end of the family
@@ -13141,3 +13183,96 @@ file's own header -- the same binary rendered the same fixture in 1.35 ms
 and 2.41 ms minutes apart, so a wall-clock assertion on a shared machine
 is a coin toss wearing a threshold. A stale roadmap entry is worse than
 none, because it sends somebody to build what is already there.
+
+## 12. From fuzznet: a first outside consumer, and what it met
+
+Written 2026-09-06 from `fuzznet`, whose `gui/` holds two Qt Widgets objects
+so that every consuming daemon shows an anchor and a log the same way. Those
+widgets are Qt Widgets **because of qtty** -- their headers have said so since
+they were written -- and until now nobody had checked that claim by rendering
+one.
+
+Everything here is fuzznet's measurement in fuzznet's voice, against qtty
+`fbbeb71` unless a line says otherwise. Nothing in this tree was changed.
+
+### It works, and the instrument is the good part
+
+`Qtty::test::snapshot_of` rendered both widgets headlessly on the first
+attempt, against `libqtty.a` built from this tree's HEAD. That is the whole
+promise delivered to an outside consumer with no adaptation layer: two widgets
+written for a desktop dialog, drawn on a cell grid.
+
+It also found a real defect in fuzznet within an hour of being pointed at it.
+A fingerprint label clipped rather than wrapped between 76 and 80 columns, so
+a user comparing a key out of band compared 63 hex digits of 64 and could not
+tell. Every text-level assertion fuzznet had passed throughout -- the widget
+held all 79 characters and the screen showed 78. **Rendering is what caught
+it**, and nothing else would have. That defect was ours and is fixed.
+
+### Two things that cost us time and might be worth a line in the README
+
+**The protocol is not obvious from the headers.** `snapshot_of(w, cols, rows)`
+reads as though it takes a widget and a size, so a widget passed straight to
+it renders at its own small size and looks truncated. The four steps --
+`WA_DontShowOnScreen`, `resize(GridMetrics::cells(...))`, `show()`,
+`processEvents()` -- are visible only in `test/suite_render.cpp`. Our first
+probe did none of them and produced a confident, wrong report about our own
+widget; we nearly filed it against you. A sentence beside `snapshot_of`, or a
+helper that does all four, would have saved that.
+
+**HEAD does not build under Qt 5, and `qmake` on Debian is Qt 5's.**
+`QPalette::Accent` in `src/core/theme.cpp` is Qt 6.6 and later;
+`QAction::associatedObjects` and `QKeyCombination` in
+`src/runtime/input_router.cpp` are Qt 6 as well. With `qmake6` it builds
+clean, first time, at both commits we tried.
+
+There is a second-order trap in it worth more than the first: `qtty.pro` is a
+subdirs project, so a failed Qt 5 attempt leaves sub-Makefiles behind, and the
+following `qmake6` run fails again on the same Qt 5 error. **The second
+failure looks exactly like the first and has a different cause**, which reads
+as the Qt 6 build being broken when it is not.
+
+### One observation, offered as an observation
+
+A `QPlainTextEdit` inside a `QVBoxLayout` in a parent widget renders, at 60
+columns, only the left edge of its frame:
+
+     no log
+     ┌
+     │
+     │
+     └
+
+**Controlled**: a bare `QPlainTextEdit` with no fuzznet code around it renders
+with **no** frame at all, so the difference is in the composition rather than
+in the widget.
+
+**And it is not `fbbeb71`.** We first saw this at `7f3c041`, and re-measured
+both the case and its control at `fbbeb71` before writing this, because "an
+invisible pen draws nothing, and a translucent one blends" is close enough to
+a frame border to have changed it. It did not: the render is identical at both
+commits. That rules out one explanation rather than offering one.
+
+We have not looked further. The mechanism is yours and we hold only the
+symptom; the content renders correctly in both cases, so for us this is
+cosmetic and nothing is blocked.
+
+Reproduction: parent widget, `QVBoxLayout`, a `QLabel` and a `QPlainTextEdit`
+added in that order, `resize(GridMetrics::cells(60, 8))`, snapshot at 60x8.
+
+### What fuzznet now runs, so a change here has a consumer that will notice
+
+`make qtty QTTY_DIR=../qtty` extracts this tree's HEAD read-only with `git
+archive`, builds it with `qmake6`, renders both widgets across 41 to 96
+columns and asserts every fingerprint line reaches the screen whole. 62 checks
+green against `fbbeb71`.
+
+It is opt-in and outside fuzznet's default gate, deliberately: this project is
+pre-alpha and its README promises API movement, and a gate that breaks for
+another tree's reasons is one people switch off. Our own two guards -- a
+format property, and your `design.md` §7 ban on `setContentsMargins`,
+`setSpacing`, `setFixedSize` and `setFixedWidth` enforced on our `gui/` --
+need no qtty installed and run in `make check`.
+
+If an API change breaks the render target, that is a signal we would rather
+have than not.

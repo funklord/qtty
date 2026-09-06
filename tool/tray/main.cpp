@@ -110,6 +110,71 @@ int main(int argc, char **argv) {
 	      && get("ToolTipTitle") == QStringLiteral("md0 degraded"),
 	      "carrying the name, status and tooltip it was given");
 
+	// set_icon(), the PIXMAP half of this interface, which until now was
+	// public API that nothing in the tree ever called -- not the suite, not
+	// this gate, not the example. Its sibling set_icon_name() is exercised
+	// above, and a reviewer reading the header would have found the pair
+	// complete, because it is: what was missing is a caller.
+	//
+	// It is also the half that matters most. An icon by NAME is drawn by
+	// the desktop from its own theme; an icon by PIXMAP is the case for a
+	// program that encodes state as SHAPE rather than colour, which is the
+	// accessible way to do it and the reason to send pixels at all.
+	{
+		QImage art(22, 22, QImage::Format_ARGB32);
+		art.fill(Qt::transparent);
+		// One opaque pixel of a colour whose four channels are all
+		// different, so a byte order that is wrong in ANY way -- BGRA,
+		// RGBA, a swapped alpha -- reads differently. A grey or a
+		// primary would survive several wrong orders unchanged.
+		art.setPixelColor(3, 5, QColor(0x11, 0x22, 0x33, 0xf4));
+		tray.set_icon(QIcon(QPixmap::fromImage(art)));
+		QCoreApplication::processEvents();
+
+		const QDBusReply<QDBusVariant> r =
+		    item.call(QStringLiteral("Get"),
+		              QStringLiteral("org.kde.StatusNotifierItem"),
+		              QStringLiteral("IconPixmap"));
+		int count = 0, w22 = 0, h22 = 0;
+		bool bytes_ok = false;
+		// CONST, and the distinction is not style: QDBusArgument's
+		// beginArray() has a writing overload and a reading one, and a
+		// non-const object selects the writer -- which aborts the process
+		// with "write from a read-only object" rather than returning an
+		// error. Demarshalling wants the const overloads throughout.
+		if (r.isValid()) {
+			const QDBusArgument arg =
+			    r.value().variant().value<QDBusArgument>();
+			arg.beginArray();
+			while (!arg.atEnd()) {
+				int width = 0, height = 0;
+				QByteArray data;
+				arg.beginStructure();
+				arg >> width >> height >> data;
+				arg.endStructure();
+				++count;
+				if (width != 22) continue;
+				w22 = width;
+				h22 = height;
+				// The specification says ARGB32 in NETWORK byte order, so
+				// the pixel at (3,5) must read A,R,G,B in that order.
+				const int at = (5 * width + 3) * 4;
+				bytes_ok = data.size() == width * height * 4
+				           && at + 3 < data.size()
+				           && quint8(data[at])     == 0xf4
+				           && quint8(data[at + 1]) == 0x11
+				           && quint8(data[at + 2]) == 0x22
+				           && quint8(data[at + 3]) == 0x33;
+			}
+			arg.endArray();
+		}
+		printf("info: the desktop is offered %d pixmap size(s)\n", count);
+		check(count == 3 && w22 == 22 && h22 == 22,
+		      "a pixmap icon is offered at the three sizes panels ask for");
+		check(bytes_ok,
+		      "and its pixels go out as ARGB32 in network byte order");
+	}
+
 	// A click in the panel is a method call on that object.
 	QDBusInterface act(w.last_item, QStringLiteral("/StatusNotifierItem"),
 	                   QStringLiteral("org.kde.StatusNotifierItem"), bus);
