@@ -1894,6 +1894,15 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 			bool neighbours_draw_edges = false;
 			{
 				const auto *sp = qobject_cast<const QSplitter *>(w);
+				// The second branch is DELIBERATELY uncovered. Measured on
+				// this Qt, `w` is always the QSplitter -- a cast to
+				// QSplitterHandle fails and the class name says QSplitter --
+				// so the handle case never occurs and coverage names these
+				// three lines every run. It is kept because which of the two
+				// Qt hands over is Qt's choice and not this project's, and
+				// three lines is cheap against a version that chooses the
+				// other. Recorded so the next reader does not delete it as
+				// dead or waste a session trying to reach it.
 				if (!sp)
 					if (const auto *h =
 					        qobject_cast<const QSplitterHandle *>(w))
@@ -1903,28 +1912,33 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 						const auto *f = qobject_cast<QFrame *>(x);
 						return f && f->frameShape() != QFrame::NoFrame;
 					};
-					bool matched = false;
-					for (int i = 1; i < sp->count(); ++i) {
-						const QWidget *h = sp->handle(i);
-						if (!h || !h->geometry().intersects(opt->rect))
-							continue;
-						neighbours_draw_edges = framed(sp->widget(i - 1))
-						                        || framed(sp->widget(i));
-						matched = true;
-						break;
-					}
-					// A handle whose geometry does not meet this rect --
-					// a layout mid-flight, or a Qt that paints them
-					// together -- falls back to asking whether ANY pane
-					// is framed. Erring toward the gap leaves one rule
-					// where the panes drew one; erring toward the bar is
-					// the fault being fixed.
-					if (!matched)
-						for (int i = 0; i < sp->count(); ++i)
-							if (framed(sp->widget(i))) {
-								neighbours_draw_edges = true;
-								break;
-							}
+					// EVERY pane, not the two beside this handle, because
+					// the style cannot tell which handle it is drawing.
+					//
+					// The first version tried: it walked the handles and
+					// took the one whose geometry met `opt->rect`. Coverage
+					// showed those lines never executed, and measuring said
+					// why -- `opt->rect` is the handle's OWN rect, origin
+					// (0,0), while `handle(i)->geometry()` is its position
+					// in the splitter. Measured: `opt->rect=0,0 10x114`
+					// against `handle1=184,0 10x114`. Two coordinate
+					// spaces, so the test could only succeed for a handle
+					// at the very left, and a fallback nobody noticed was
+					// doing all the work.
+					//
+					// ALL rather than ANY, which is the change that fallback
+					// needed. A splitter whose panes are all framed needs no
+					// bar anywhere; one with any UNFRAMED pane has at least
+					// one junction where the bar is the only thing marking
+					// the split, and drawing it there matters more than the
+					// doubled rule it costs beside a framed neighbour.
+					// Losing the separator is worse than doubling one.
+					neighbours_draw_edges = sp->count() > 0;
+					for (int i = 0; i < sp->count(); ++i)
+						if (!framed(sp->widget(i))) {
+							neighbours_draw_edges = false;
+							break;
+						}
 				}
 			}
 			if (neighbours_draw_edges) return;

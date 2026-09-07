@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1070 checks, 0 failures, under six configurations, all six re-run
+1071 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6704,6 +6704,47 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.40 A splitter fix comparing two coordinate spaces (2026-09-07)
+
+Pointed at `grid_style` -- the file this session changed most -- coverage
+reports 725 of 744 lines. Most of the nineteen are font-diagnostic strings
+that need a font the grid would refuse, which is the untested-diagnostic
+class this document already names. **Two are the splitter fix from 8.25.**
+
+The uncovered pair is `neighbours_draw_edges = framed(...)`: the loop that
+walks the handles and takes the one whose geometry meets `opt->rect`. It
+never executed. Measured why:
+
+    opt->rect = 0,0 10x114        the handle's OWN rect
+    handle1   = 184,0 10x114      its position in the splitter
+
+**Two coordinate spaces.** `intersects()` between them can only succeed for
+a handle sitting at the very left, so the test never matched and the
+FALLBACK -- written as a safety net -- was doing all the work. The fix
+behaved correctly for a reason its own code did not state.
+
+**And the fallback was the wrong test.** It asked whether ANY pane is
+framed and suppressed the bar if so. A splitter whose panes are all framed
+needs no bar anywhere; one with an UNFRAMED pane has at least one junction
+where the bar is the only thing marking the split, and suppressing it there
+loses the separator entirely. **A missing separator is worse than a doubled
+rule**, so the question is now ALL rather than any, and the mixed case has
+a check -- which nothing had, because the code that would have made it fail
+was unreachable.
+
+**One branch stays uncovered on purpose, and now says so.** The cast for a
+Qt that hands the HANDLE rather than the splitter never runs here --
+measured -- but which of the two Qt passes is Qt's choice, not this
+project's, and three lines is cheap against a version that chooses the
+other. The comment records that, so the next reader neither deletes it as
+dead nor spends a session trying to reach it. **An uncovered line with a
+stated reason is a different thing from an uncovered line.**
+
+**What the dead branch cost was not correctness but explanation.** Every
+splitter check passed before and passes now. What was wrong is that the
+code claimed to identify a handle and could not, so the next reader would
+have believed a precision that was not there.
 
 ### 8.39 Asking the compiler which lines never ran (2026-09-07)
 

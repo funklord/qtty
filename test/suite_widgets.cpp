@@ -788,6 +788,41 @@ int suite_widgets() {
 		      "a splitter between framed panes leaves a gap, not a third"
 		      " rule");
 	}
+	// A MIXED splitter keeps its bar, which is what "all panes" rather than
+	// "any pane" buys.
+	//
+	// The style cannot tell which handle it is drawing -- `opt->rect` is the
+	// handle's own rect at origin (0,0) while `handle(i)->geometry()` is its
+	// place in the splitter, measured -- so the question it CAN answer is
+	// about the panes as a set. All framed means no bar is needed anywhere.
+	// One unframed pane means some junction has nothing else marking it, and
+	// a missing separator is worse than a doubled rule.
+	{
+		QSplitter split(Qt::Horizontal);
+		auto *f = new QFrame;
+		f->setFrameStyle(QFrame::StyledPanel);
+		auto *fv = new QVBoxLayout(f);
+		fv->addWidget(new QLabel(QStringLiteral("framed")));
+		split.addWidget(f);
+		auto *bare = new QLabel(QStringLiteral("bare"));
+		bare->setFrameStyle(QFrame::NoFrame);
+		split.addWidget(bare);
+		split.setAttribute(Qt::WA_DontShowOnScreen);
+		split.resize(GridMetrics::cells(30, 5));
+		split.setSizes({14 * GridMetrics::cw(), 15 * GridMetrics::cw()});
+		split.show();
+		QCoreApplication::processEvents();
+		CellBuffer b(32, 6);
+		render_once(split, b);
+		// The row through the middle carries the framed pane's two edges
+		// AND the handle's bar: three rules, where two framed panes give
+		// two.
+		int rules = 0;
+		for (int x = 0; x < b.cols(); ++x)
+			if (b.at(x, 2).ch == QStringLiteral("│")) ++rules;
+		CHECK(rules >= 3,
+		      "and a splitter with one unframed pane keeps its bar");
+	}
 	// line edit: a selection is reverse video, the same as every other
 	// selection in the program.
 	//

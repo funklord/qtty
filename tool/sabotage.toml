@@ -500,3 +500,11 @@ into = "\t\t\t\t\t\t\t\t;"
 count = 1
 check = "a toolbar button underlines the letter its mnemonic uses"
 
+
+[[sabotage]]
+name = "a splitter suppresses its bar when any pane is framed"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\t\tif (!framed(sp->widget(i))) {"
+into = "\t\t\t\t\t\tif (false) {"
+count = 1
+check = "and a splitter with one unframed pane keeps its bar"
