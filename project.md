@@ -28,7 +28,7 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-07, at 1109.**
+**Last re-verified under all six configurations: 2026-09-07, at 1115.**
 Two sentences rather than one, deliberately. They used to be welded --
 *"N checks under six configurations, all six re-run <date>"* -- and a
 count bumped without re-running the six turned a measured record into a
@@ -45,12 +45,20 @@ which is not the same code, `setup()` installing `GridGuard` itself under
 `!QT_NO_DEBUG` -- and **valgrind's memcheck**, which catches the one thing
 the sanitizers do not.
 
-**Re-verified again 2026-09-07 at 1109**, twice in the day: first at 1098
-after the API-completeness pass of 8.42 to 8.46 -- which touched the width
-table every rendered cluster goes through, the frame scheduler and the
-runtime's window handling -- and again at 1109 after the coverage pass of
-8.47 and 8.48. Offscreen, xcb under Xvfb and the hostile environment all
-report 1109; the minimal platform still refuses and says why;
+**Re-verified 2026-09-07 at 1115**, and three times in the day before
+that: at 1098 after the API-completeness pass of 8.42 to 8.46 -- which
+touched the width table every rendered cluster goes through, the frame
+scheduler and the runtime's window handling -- at 1109 after the line-
+coverage pass of 8.47 and 8.48, and at 1115 after the branch-coverage
+pass of 8.49.
+
+**One of those runs is not quoted, deliberately.** A fourth was started at
+1114 and a check landed while it ran, so `test-platforms` measured 1114
+and the sanitizer and valgrind builds measured 1115. Every part passed and
+the run is still worthless as a claim: **a verification whose parts saw
+different trees says nothing about either.** It was discarded and re-run
+against a settled tree rather than reported with a caveat. Offscreen, xcb under Xvfb and the hostile environment all
+report 1115; the minimal platform still refuses and says why;
 AddressSanitizer with UndefinedBehaviorSanitizer and the leak detector
 report 0 failures; and valgrind's memcheck over the debug build exits
 clean under `--error-exitcode=99`, with the frame-budget ceiling skipping
