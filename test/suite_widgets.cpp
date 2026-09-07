@@ -401,6 +401,87 @@ int suite_widgets() {
 		render_once(split, b);
 		CHECK(buffer_contains(b, QStringLiteral("│")), "splitter handle renders");
 	}
+	// No container puts its own border flush against a framed child's.
+	//
+	// This is the tab defect's family swept rather than its one instance:
+	// a container draws a one-cell border and then insets its content by
+	// something that is not a cell, so a framed child -- an item view, a
+	// nested QFrame -- lands its edge in the next column and the two read
+	// as one doubled rule.
+	//
+	// The population is NAMED and its one exemption is named with it,
+	// because a sweep that quietly skipped the awkward case would pass for
+	// the wrong reason. QScrollArea is excluded and is not a defect: its
+	// viewport IS inset a full cell -- measured, x=10 at cw=10 -- and the
+	// child's own border then sits immediately inside it. That is two
+	// frames with no margin between them, which is the open question in
+	// section 8.25 rather than a wrong inset, and it stays visible here so
+	// that settling it settles this line too.
+	{
+		const auto doubled = [](QWidget *host, int cols, int rows) {
+			host->setAttribute(Qt::WA_DontShowOnScreen);
+			host->resize(GridMetrics::cells(cols, rows));
+			host->show();
+			QCoreApplication::processEvents();
+			CellBuffer b(cols, rows);
+			render_once(*host, b);
+			int n = 0;
+			for (int y = 0; y < b.rows(); ++y)
+				for (int x = 0; x + 1 < b.cols(); ++x)
+					if (b.at(x, y).ch == QStringLiteral("│")
+					    && b.at(x + 1, y).ch == QStringLiteral("│"))
+						++n;
+			return n;
+		};
+		int offenders = 0, swept = 0;
+		{
+			QGroupBox g(QStringLiteral("Group"));
+			auto *v = new QVBoxLayout(&g);
+			auto *l = new QListWidget; l->addItem(QStringLiteral("x"));
+			v->addWidget(l);
+			++swept; if (doubled(&g, 24, 7)) ++offenders;
+		}
+		{
+			QTabWidget t;
+			auto *page = new QWidget;
+			auto *v = new QVBoxLayout(page);
+			auto *l = new QListWidget; l->addItem(QStringLiteral("x"));
+			v->addWidget(l);
+			t.addTab(page, QStringLiteral("T"));
+			++swept; if (doubled(&t, 24, 8)) ++offenders;
+		}
+		{
+			QToolBox tb;
+			auto *page = new QWidget;
+			auto *v = new QVBoxLayout(page);
+			auto *l = new QListWidget; l->addItem(QStringLiteral("x"));
+			v->addWidget(l);
+			tb.addItem(page, QStringLiteral("One"));
+			++swept; if (doubled(&tb, 24, 8)) ++offenders;
+		}
+		{
+			QFrame f; f.setFrameStyle(QFrame::StyledPanel);
+			auto *v = new QVBoxLayout(&f);
+			auto *l = new QListWidget; l->addItem(QStringLiteral("x"));
+			v->addWidget(l);
+			++swept; if (doubled(&f, 24, 7)) ++offenders;
+		}
+		{
+			QMainWindow mw;
+			auto *l = new QListWidget; l->addItem(QStringLiteral("x"));
+			mw.setCentralWidget(l);
+			++swept; if (doubled(&mw, 24, 7)) ++offenders;
+		}
+		{
+			QDockWidget d(QStringLiteral("Dock"));
+			auto *l = new QListWidget; l->addItem(QStringLiteral("x"));
+			d.setWidget(l);
+			++swept; if (doubled(&d, 24, 7)) ++offenders;
+		}
+		CHECK(swept == 6 && offenders == 0,
+		      "no container's border sits flush against a framed child's");
+	}
+
 	// A QTabWidget's page must clear the frame that is actually DRAWN.
 	//
 	// The pane's border is one cell wide, and the base style inset the page

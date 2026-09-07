@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1058 checks, 0 failures, under six configurations, all six re-run
+1059 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6678,6 +6678,54 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.26 The tab defect's family, swept (2026-09-07)
+
+8.25's fix was one instance of a shape: **a container draws a one-cell
+border and insets its content by something that is not a cell**, so a
+framed child lands its edge in the next column and the two read as one
+doubled rule. The detector for that is mechanical -- two vertical rules in
+adjacent columns -- so the question is whether any other container has it.
+
+Six composites, each a container holding a framed child:
+
+    QGroupBox      clean          QDockWidget    clean
+    QToolBox       clean          QFrame         clean
+    QMainWindow    clean          QScrollArea    3 doubled cells
+
+**The one hit is not a second instance of the defect, and measuring is what
+told them apart.** A QScrollArea's viewport IS inset a full cell -- x=10 at
+cw=10 -- and the child's own border then sits immediately inside it. There
+is no inset disagreeing with a border here; there are two borders with no
+margin between them, which is 8.25's open question rather than a new fault.
+Guessing from the picture alone would have filed it as the same bug.
+
+**A related oddity, already documented in the code and not a defect.**
+`QFrame::frameWidth()` reports 19 where the horizontal inset is 10, because
+`PM_DefaultFrameWidth` is one number and a cell is not square. The code
+beside `SE_FrameContents` says exactly that; the vertical inset is a row
+and the horizontal one a column, and the single metric can only be one of
+them.
+
+**The sweep is a check now rather than a session's afternoon**, over a
+named population of six -- the five above plus the tab widget that started
+it -- with the exemption named beside it. A sweep that
+quietly skipped the awkward case would pass for the wrong reason, so
+QScrollArea's exclusion is written down with why -- and settling the open
+question settles that line too.
+
+Its control is the sabotage that already exists: the tab widget is in the
+swept population, so breaking `SE_TabWidgetTabContents` reddens this check
+as well as the one it names. Run: the harness reports the named check "and
+2 other check(s) with it" -- this sweep and the gallery snapshot. **A sweep
+that cannot be shown to detect anything passes exactly like one that found
+nothing.**
+
+**The check first swept five and the table above listed six**, which is the
+same class of error one level down: a population stated in prose and a
+population walked by code, disagreeing because nobody compared them.
+QDockWidget was in the investigation and absent from the check for no
+reason at all. It is in both now.
 
 ### 8.25 fuzzypickles vendored qtty, and sent back three faults (2026-09-07)
 
