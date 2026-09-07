@@ -1333,6 +1333,27 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 			// The tab pane is in this group and never matches, because a
 			// QTabWidget hands focus to its tab bar through a focus proxy --
 			// which the bar's own case answers.
+			//
+			// A FLAT frame draws only its top. That is what Qt documents
+			// for a flat group box -- "only the top part of the frame is
+			// drawn in most styles" -- and this drew the whole box either
+			// way, so `setFlat(true)` changed nothing at all: 36 border
+			// cells with it and 36 without, measured.
+			//
+			// The flag is read off the OPTION rather than by casting to
+			// QGroupBox, because a style is handed what to draw and not
+			// who asked for it -- and any frame that declares itself flat
+			// means the same thing by it.
+			if (const auto *fo =
+			        qstyleoption_cast<const QStyleOptionFrame *>(opt))
+				if (fo->features & QStyleOptionFrame::Flat) {
+					for (int x = c.left(); x <= c.right(); ++x)
+						dev->buffer().put_cluster(x, c.top(),
+						                          QStringLiteral("─"),
+						                          Color(), Color(),
+						                          with_state(opt));
+					return;
+				}
 			draw_box(dev->buffer(), c, owns_focus(w), with_state(opt));
 			return;
 		// A one-row line edit is bracketed, the way the combo box and the spin

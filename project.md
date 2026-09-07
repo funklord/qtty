@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1061 checks, 0 failures, under six configurations, all six re-run
+1062 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6695,6 +6695,44 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.32 Five widgets asked for less, and one was ignored (2026-09-07)
+
+8.31's defect was **a frame drawn for a widget that said it did not want
+one**. That is a lens rather than an instance: for each widget with a
+property meaning "draw less", render it twice and count border cells.
+
+    QListWidget   setFrameStyle(NoFrame)     38 -> 0    honoured
+    QTextEdit     setFrameStyle(NoFrame)     38 -> 0    honoured
+    QScrollArea   setFrameShape(NoFrame)     38 -> 0    honoured
+    QTabWidget    setDocumentMode(true)      38 -> 13   honoured
+    QGroupBox     setFlat(true)              36 -> 36   IGNORED
+
+Qt documents `flat` as "only the top part of the frame is drawn in most
+styles". This drew the whole box either way, so the property changed
+nothing at all.
+
+Fixed at `PE_FrameGroupBox`, which shares its case with the other frames
+and called `draw_box()` unconditionally. **The flag is read off the OPTION
+rather than by casting to QGroupBox**, because a style is handed what to
+draw and not who asked for it -- and any frame declaring itself flat means
+the same thing by it.
+
+The check asserts **fewer and still something**, not an exact count: a flat
+box that drew NOTHING would satisfy "fewer" while losing the rule Qt says
+to keep, and a number would pin the check to one width.
+
+**The sweep reported a false negative first, and the cause is this
+session's oldest trap.** After the fix, `props` still said IGNORED while a
+second probe showed the rule drawn. The sweep binary links `libqtty.a`
+statically and had not been rebuilt -- **a measurement taken against a
+binary the build did not refresh**, which is exactly what `make test`
+exists to prevent inside the tree and what a scratch probe has nothing to
+prevent. Rebuilt, it agrees: 36 to 16.
+
+**Four honoured out of five is the useful half of the result.** The lens
+was worth running because it could have found nothing, and saying which
+four were checked is what stops the next person re-running it.
 
 ### 8.31 A spin box drew two frames (2026-09-07)
 

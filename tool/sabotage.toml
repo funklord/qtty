@@ -459,3 +459,11 @@ find = "\t\t\tif (le && !le->hasFrame()) return;"
 into = "\t\t\t;"
 count = 1
 check = "a frameless line edit draws no box and a framed one still"
+
+[[sabotage]]
+name = "a flat group box is boxed anyway"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tif (fo->features & QStyleOptionFrame::Flat) {"
+into = "\t\t\t\tif (false) {"
+count = 1
+check = "a flat group box draws its top rule and not the whole box"

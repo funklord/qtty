@@ -401,6 +401,45 @@ int suite_widgets() {
 		render_once(split, b);
 		CHECK(buffer_contains(b, QStringLiteral("│")), "splitter handle renders");
 	}
+	// A FLAT group box draws only its top rule.
+	//
+	// Qt documents `flat` as "only the top part of the frame is drawn in
+	// most styles", and this drew the whole box either way -- measured, 36
+	// border cells with `setFlat(true)` and 36 without, so the property
+	// changed nothing at all.
+	//
+	// Asserted as fewer-and-still-something rather than as an exact count:
+	// a flat box that drew NOTHING would satisfy "fewer" while losing the
+	// rule Qt says to keep, and an exact number would pin this to one
+	// width.
+	{
+		auto borders = [](bool flat) {
+			QGroupBox g(QStringLiteral("Group"));
+			g.setFlat(flat);
+			auto *v = new QVBoxLayout(&g);
+			v->addWidget(new QLabel(QStringLiteral("body")));
+			g.setAttribute(Qt::WA_DontShowOnScreen);
+			g.resize(GridMetrics::cells(18, 5));
+			g.show();
+			QCoreApplication::processEvents();
+			CellBuffer b(18, 5);
+			render_once(g, b);
+			int n = 0;
+			for (int y = 0; y < b.rows(); ++y)
+				for (int x = 0; x < b.cols(); ++x) {
+					const QString &ch = b.at(x, y).ch;
+					if (ch == QStringLiteral("│") || ch == QStringLiteral("─")
+					    || ch == QStringLiteral("┌") || ch == QStringLiteral("┐")
+					    || ch == QStringLiteral("└") || ch == QStringLiteral("┘"))
+						++n;
+				}
+			return n;
+		};
+		const int boxed = borders(false), flat = borders(true);
+		CHECK(flat > 0 && flat < boxed,
+		      "a flat group box draws its top rule and not the whole box");
+	}
+
 	// A line edit that says it has no frame gets none -- and one that says
 	// it has a frame still gets it.
 	//
