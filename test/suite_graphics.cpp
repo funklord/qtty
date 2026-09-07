@@ -816,6 +816,19 @@ int suite_graphics() {
 		o.set_opacity(0.5);
 		const QImage half = o.image();
 		CHECK(qAlpha(half.pixel(1, 1)) < 130, "opacity multiplies into alpha");
+		CHECK(o.opacity() == 0.5,
+		      "and the overlay reports the opacity it was given, which "
+		      "image() cannot answer because it has applied it");
+		// The clamp, which nothing could observe until there was a reader:
+		// a value outside 0..1 is a caller's arithmetic having gone wrong,
+		// and an unclamped one reaches an alpha byte that wraps.
+		o.set_opacity(2.5);
+		const qreal high = o.opacity();
+		o.set_opacity(-1.0);
+		CHECK(high == 1.0 && o.opacity() == 0.0,
+		      "and an opacity outside the range is clamped rather than "
+		      "wrapped around the alpha byte");
+		o.set_opacity(0.5);                   // as the cases below expect
 		Overlay o2;
 		o2.set_image(img); o2.set_z(-1); o2.show();
 		CHECK(Overlay::visible_overlays().first() == &o2, "overlays z-ordered");

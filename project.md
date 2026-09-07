@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1096 checks, 0 failures, under six configurations, all six re-run
+1098 checks, 0 failures, under six configurations, all six re-run
 2026-09-07: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -14513,6 +14513,52 @@ connect that merely duplicated a working one. It was the race all along,
 and the duplicate connect confirmed the wrong mechanism because it
 changed two things at once. **A second observation agreeing with a wrong
 mechanism is what an experiment that varies two things buys.**
+
+### 8.46 The last write-only property, and what the sweeps now return (2026-09-07)
+
+`Overlay` could be asked its rectangle, whether it covers the terminal,
+its z, and whether it is visible. **Opacity was the one property that
+could be written and not read.** `image()` applies it and says so, so an
+application fading an overlay could not recover the current value from
+there and had to keep its own copy.
+
+**The reader is one line; what it bought is a check.** `set_opacity()`
+clamps to 0..1 -- undocumented, and until there was a reader, invisible to
+everything including the suite. Nothing could tell a clamp from no clamp,
+because the only observable was an image whose alpha had already been
+multiplied. The clamp is documented in the header now and pinned by a
+check, and the sabotage that removes it reddens exactly that check.
+
+**Where the completeness sweeps now stand**, with the method beside each,
+because an empty result is a measurement only if somebody can re-take it:
+
+    every capability field has a reader   grep each field name outside
+                                          backend.h; unicode_wide was the
+                                          last with none (8.43)
+    every public function has a caller    grep each name in include/qtty/
+                                          against src/ test/ tool/
+                                          example/, excluding its own
+                                          definition; three had none (8.43,
+                                          8.44) and none do now
+    every declaration has a definition    each non-inline declaration
+                                          appears in some src/*.cpp -- run
+                                          with a positive control, because
+                                          the first version of this sweep
+                                          anchored on `(^|::)name(` and
+                                          reported all 49 as undefined,
+                                          a manufactured absence caught
+                                          only by the control
+    every setter has a reader             set_X against X(); what is left
+                                          is write-only BY DESIGN -- the
+                                          tray's properties live on the
+                                          bus, and OSC 2 is write-only, so
+                                          there is nothing to read back
+
+**The control is the part worth copying rather than the results.** Two of
+those four sweeps returned a confident wrong answer first -- one anchored
+on a pattern that could not match a definition inside a namespace, and it
+reported every function in the library as undefined. The library links.
+Nothing but the control said so.
 
 ## 11. What is next, in order
 

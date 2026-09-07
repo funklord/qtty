@@ -596,3 +596,11 @@ find = "\t\tif (kind_ != Default && index >= 0 && index < 16) c.ansi16_ = qint8(
 into = "\t\tc.ansi16_ = qint8(index);"
 count = 1
 check = "an out-of-range index is refused"
+
+[[sabotage]]
+name = "an out-of-range opacity is taken as given"
+file = "src/graphics/overlay.cpp"
+find = "void Overlay::set_opacity(qreal o) { opacity_ = qBound(0.0, o, 1.0); sync_gui_twin(); }"
+into = "void Overlay::set_opacity(qreal o) { opacity_ = o; sync_gui_twin(); }"
+count = 1
+check = "and an opacity outside the range is clamped rather than"
