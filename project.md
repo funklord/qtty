@@ -6679,6 +6679,45 @@ which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
 
+### 8.30 A second consumer, and a gate that skipped honestly (2026-09-07)
+
+**`make test-screen` skipped, and it was right to.** It is the one arm this
+session had not run, and the one that would verify the graphics tiers
+against real terminals after a session of paint-engine changes. Load
+average 42.24 against the threshold of 40 this session set from
+measurement, so it declined and said why and how to override.
+
+Checked before accepting that: **no orphaned work of mine**, nothing
+reparented to init, nothing left from the sabotage runs. The load is three
+other sessions compiling -- bbq-predictor's tests, situ under mypy, and
+netcfgd. A timed capture that reads pixels back would have measured their
+schedulers, which is exactly what the guard exists to refuse. **Overriding
+it would have produced a number, and the number would have been about
+somebody else's build.**
+
+**And the third of those builds is a finding.** netcfgd is compiling with
+`-D NETCFGD_QTTY -I ../../qtty/include`: it has a `qtty` submodule and its
+`gui/src/main.cpp` chooses the frontend at runtime --
+`want_tui(argc, argv)`, then `prepare_environment()` and `setup()` only on
+that branch, before any widget exists.
+
+That is the "one QWidget codebase, two frontends" case this library was
+written for, and **8.11 predicted this tree specifically**: "netcfgd -- 47
+files, 8,982 lines, 25 widget classes, zero `paintEvent` overrides -- would
+host essentially as it stands". A second consumer is now doing it, after
+fuzzypickles' spike this morning.
+
+**What their pattern needs that fuzzypickles' did not** is that qtty be
+INERT when `setup()` is never called, because their GUI branch links the
+library and does not use it. That property is already gated: the suite's
+inertness check fails if a `GridStyle` is installed before setup, and it
+has a sabotage entry behind it. Their integration is on a covered path.
+
+**Not touched, and deliberately.** Another session is working in that tree
+right now. A dependency's session does not edit its consumer mid-change,
+and there is nothing to signal: the path they are on is the one this
+library already defends.
+
 ### 8.29 Two questions asked of beerssh, answered by looking (2026-09-07)
 
 `doc/beerssh.md` is an integration contract with three `[Q]` markers --
