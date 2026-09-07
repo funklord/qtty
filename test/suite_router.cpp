@@ -1136,6 +1136,156 @@ int suite_router() {
 			CHECK(no->leaves >= 1,
 			      "and it still hears the leave, because it heard the enter");
 		}
+
+		// THE WALK UP THE WIDGET TREE, which line coverage could not see:
+		// `drop_target` was 100% of lines and its loop had never taken the
+		// step that makes it a loop. Branch coverage says which direction --
+		// the `acceptDrops()` test had never been false, so every drag this
+		// suite ran landed on a widget that was itself the target.
+		//
+		// That is the case the function exists for and its comment says so:
+		// a label inside a drop area is not itself a target, and the area
+		// is. It is also the ordinary shape of a real drop target -- a panel
+		// of labels, an item view's viewport -- so the untested path is the
+		// common one and the tested one was the special case.
+		{
+			struct Area : QWidget {
+				int enters = 0, drops = 0;
+				QString got;
+				explicit Area(QWidget *p) : QWidget(p) { setAcceptDrops(true); }
+				void dragEnterEvent(QDragEnterEvent *e) override {
+					++enters; e->setDropAction(Qt::CopyAction); e->accept();
+				}
+				void dragMoveEvent(QDragMoveEvent *e) override {
+					e->setDropAction(Qt::CopyAction); e->accept();
+				}
+				void dropEvent(QDropEvent *e) override {
+					++drops; got = e->mimeData()->text();
+					e->setDropAction(Qt::CopyAction); e->accept();
+				}
+			};
+			QWidget h4;
+			h4.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *area = new Area(&h4);
+			area->setGeometry(0, 0, cw * 10, ch * 2);
+			// The child takes no drops and is what the pointer is actually
+			// over. Without the walk it is the target, and a target that
+			// accepts nothing means the drop goes nowhere.
+			auto *inner = new QLabel(QStringLiteral("label"), area);
+			inner->setGeometry(0, 0, cw * 5, ch);
+			h4.resize(GridMetrics::cells(12, 4));
+			h4.show();
+			QCoreApplication::processEvents();
+			InputRouter r4(&h4);
+
+			auto *mime5 = new QMimeData;
+			mime5->setText(QStringLiteral("through the child"));
+			auto *drag5 = new QDrag(&h4);
+			drag5->setMimeData(mime5);
+			QTimer::singleShot(0, [&] {
+				r4.on_mouse({QPoint(1, 0), 1, false, false, true, 0});
+				r4.on_mouse({QPoint(2, 0), 1, false, false, true, 0});
+				r4.on_mouse({QPoint(2, 0), 1, false, true, false, 0});
+			});
+			bool rescued3 = false;
+			QTimer::singleShot(2000, [&] {
+				if (Qtty::drag_active()) { rescued3 = true; Qtty::drag_cancel(); }
+			});
+			const Qt::DropAction took =
+			    Qtty::exec_drag(drag5, Qt::CopyAction | Qt::MoveAction);
+			QCoreApplication::processEvents();
+			printf("info: a drop over a child gave the area enter=%d drop=%d"
+			       " \"%s\"\n", area->enters, area->drops,
+			       qPrintable(area->got));
+			CHECK(!rescued3 && area->enters >= 1 && area->drops == 1
+			      && area->got == QStringLiteral("through the child")
+			      && took == Qt::CopyAction,
+			      "a drop over a child that takes no drops reaches the "
+			      "ancestor that does, which is how every real drop area is "
+			      "built");
+		}
+
+		// AND OFF THE END OF IT: released where nothing accepts anything.
+		// The other direction of the same loop -- it had never run out of
+		// parents, so `drop_target` had never returned null and no drag had
+		// ever been over nothing. It is what a user does to change their
+		// mind: drag out of the drop area and let go over the background.
+		{
+			struct Area : QWidget {
+				int enters = 0, leaves = 0, drops = 0;
+				explicit Area(QWidget *p) : QWidget(p) { setAcceptDrops(true); }
+				void dragEnterEvent(QDragEnterEvent *e) override {
+					++enters; e->setDropAction(Qt::CopyAction); e->accept();
+				}
+				void dragMoveEvent(QDragMoveEvent *e) override {
+					e->setDropAction(Qt::CopyAction); e->accept();
+				}
+				void dragLeaveEvent(QDragLeaveEvent *) override { ++leaves; }
+				void dropEvent(QDropEvent *e) override { ++drops; e->accept(); }
+			};
+			// The HOST counts drag events and takes no drops, and that is
+			// what makes this check discriminate. Asserting only that the
+			// area got no drop passes against a `drop_target` that returns
+			// the widget under the pointer instead of null: the host is then
+			// the target, it ignores the enter, `over_accepts` stays false,
+			// and the drop is refused anyway -- same leave, same
+			// IgnoreAction, same everything a check would look at. Measured:
+			// that sabotage passed until the host was watched.
+			// NOT asserted here: that nothing was offered the drag over the
+			// background. It cannot be, and the reason is worth the lines
+			// because the obvious check passes in both worlds.
+			//
+			// `drop_target` returning null and returning the widget under
+			// the pointer differ only in a value nothing can observe. With
+			// the walk sabotaged to return `under`, the enter IS sent -- a
+			// probe in `drag_move_to` shows `enter -> QWidget accepts=0` --
+			// and Qt delivers it nowhere: `QWidget::event()` does not
+			// dispatch a drag event to a widget with no drop support, and an
+			// event filter on the receiver does not see it either, both
+			// measured. The else arm then sends that widget a leave, equally
+			// unseen. Same leave to the area, same absent drop, same
+			// IgnoreAction.
+			//
+			// So a "the background was not offered the drag" check would be
+			// a check that cannot fail, which this project holds to be worse
+			// than none. What defends the walk is the sibling check above,
+			// where the ancestor DOES accept drops and the difference is
+			// visible.
+			QWidget h5;
+			h5.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *area = new Area(&h5);
+			area->setGeometry(0, 0, cw * 4, ch);
+			h5.resize(GridMetrics::cells(12, 4));
+			h5.show();
+			QCoreApplication::processEvents();
+			InputRouter r5(&h5);
+
+			auto *mime6 = new QMimeData;
+			mime6->setText(QStringLiteral("changed my mind"));
+			auto *drag6 = new QDrag(&h5);
+			drag6->setMimeData(mime6);
+			QTimer::singleShot(0, [&] {
+				r5.on_mouse({QPoint(1, 0), 1, false, false, true, 0});
+				r5.on_mouse({QPoint(9, 3), 1, false, false, true, 0});
+				r5.on_mouse({QPoint(9, 3), 1, false, true, false, 0});
+			});
+			bool rescued4 = false;
+			QTimer::singleShot(2000, [&] {
+				if (Qtty::drag_active()) { rescued4 = true; Qtty::drag_cancel(); }
+			});
+			const Qt::DropAction nowhere =
+			    Qtty::exec_drag(drag6, Qt::CopyAction | Qt::MoveAction);
+			QCoreApplication::processEvents();
+			printf("info: dragged off the area: enter=%d leave=%d drop=%d,"
+			       " returned %d\n", area->enters, area->leaves,
+			       area->drops, int(nowhere));
+			CHECK(!rescued4 && area->enters >= 1 && area->leaves >= 1
+			      && area->drops == 0 && nowhere == Qt::IgnoreAction,
+			      "dragging off the drop area and letting go over the "
+			      "background drops nothing, and the area is told it was "
+			      "left");
+
+		}
 	}
 
 	// A modal with an EMPTY geometry. The rule above drops every click

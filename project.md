@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1109 checks, 0 failures. `make check` is green and includes
+1111 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -14778,6 +14778,62 @@ cannot say which one the check noticed.**
 Both new checks carry the 2-second rescue the abandoned-drag check
 carries, for the reason recorded there: a broken drag does not fail a
 check, it hangs the suite, and a hang produces neither a PASS nor a FAIL.
+
+### 8.49 Branch coverage, and the walk that had never walked (2026-09-07)
+
+Line coverage is exhausted: 8.47 and 8.48 closed the sweep with every line
+in the tree either executed or accounted for. **The instrument that sees
+what it cannot is branch coverage** -- `gcov -b`, which the project had
+never used -- and the number that matters is not "branches executed" but
+**taken at least once**. A condition that runs every frame and has only
+ever gone one way is untested, and line coverage reports it as covered.
+
+    drag.cpp   lines 100%   branches executed 100%   taken at least once 59.72%
+
+**Of the 29 untaken directions, most are C++ noise** -- the exception edge
+of every call, the guard in a destructor -- and reading them is the price
+of the instrument. Two were real, and both are in `drop_target`, a
+five-line function that line coverage called complete:
+
+    for (QWidget *w = under; w; w = w->parentWidget())
+            if (w->acceptDrops()) return w;      // false side: never taken
+    return nullptr;                              // never reached
+
+**So the loop had never taken the step that makes it a loop.** Every drag
+this suite ran landed on a widget that was itself the target -- and the
+comment above the function says what it is for: *"a label inside a drop
+area is not itself a target, and the area is."* That is the ordinary shape
+of a real drop target, a panel of labels or an item view's viewport, so
+**the untested path was the common one and the tested one was the special
+case.** A drop over a child now reaches the ancestor, and the sabotage
+that removes the walk reddens it.
+
+**The other direction cannot be defended, and the effort to prove that is
+the more useful half of this entry.** Returning `nullptr` and returning
+the widget under the pointer differ only in a value nothing can observe.
+Measured, in this order: a check on the host's `dragEnterEvent` passed
+against the sabotage, so the probe was moved to an event FILTER, which
+passed too. A probe inside `drag_move_to` then showed the enter IS sent --
+`enter -> QWidget accepts=0` -- and that **`QWidget::event()` does not
+dispatch a drag event to a widget with no drop support, and a filter on
+the receiver does not see it either.** The else arm's leave to that widget
+is equally unseen. Same leave to the area, same absent drop, same
+`IgnoreAction`.
+
+So the check that would have pinned it is a check that cannot fail, and it
+was written and then deleted rather than kept. **Three probes in a row
+reported "no difference" and only the third was measuring anything** --
+the first two were placed where the failure could not be expressed, which
+is the shape `evidence.md` names, met three times in one function.
+
+**What the check that stayed does pin** is the drag-off-and-let-go
+behaviour a user performs to change their mind: the area is told it was
+left, nothing is dropped, and `IgnoreAction` comes back.
+
+**And the instrument is worth keeping for a file at a time, not a sweep.**
+Reading 29 branch directions to find 2 is a fair trade on a 170-line file
+whose subject is a state machine over widgets; it would not be on
+`grid_style`.
 
 ## 11. What is next, in order
 

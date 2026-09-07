@@ -668,3 +668,11 @@ find = "\t\tif (target) {\n\t\t\tQDragLeaveEvent leave;\n\t\t\tQApplication::sen
 into = "\t\tg_live->result = Qt::IgnoreAction;"
 count = 1
 check = "and it still hears the leave, because it heard the enter"
+
+[[sabotage]]
+name = "drop_target does not walk up to the ancestor that accepts"
+file = "src/runtime/drag.cpp"
+find = "\tfor (QWidget *w = under; w; w = w->parentWidget())\n\t\tif (w->acceptDrops()) return w;\n\treturn nullptr;"
+into = "\treturn under && under->acceptDrops() ? under : nullptr;"
+count = 1
+check = "a drop over a child that takes no drops reaches the ancestor that does"
