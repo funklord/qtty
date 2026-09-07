@@ -27,6 +27,22 @@ memcheck**, which catches the one thing the sanitizers do not.
 `make check` is green and now includes `version-check`, which had never
 been part of it.
 
+**Re-verified again 2026-09-07 at 1098**, after the API-completeness pass
+recorded in 8.42 to 8.46 -- which touched the width table every rendered
+cluster goes through, the frame scheduler, and the runtime's window
+handling, so it is not a documentation change that could be waved
+through. Offscreen, xcb under Xvfb and the hostile environment all report
+1098; the minimal platform still refuses and says why; AddressSanitizer
+with UndefinedBehaviorSanitizer and the leak detector report 0 failures;
+and valgrind's memcheck over the debug build exits clean under
+`--error-exitcode=99`, with the frame-budget ceiling skipping itself
+because under valgrind it measures the instrument.
+
+**The paragraph below is a different measurement on the same date** --
+the paint-engine session's, at 1060 -- and is kept as its own record
+rather than overwritten, because the two say different things about
+different code.
+
 **Re-verified 2026-09-07**, after a session that rewrote the paint engine's
 colour handling: alpha, painter opacity, gradient and texture brushes, the
 pen path, and the icon substitution's shape comparison. All six
