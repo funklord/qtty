@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1106 checks, 0 failures, under six configurations, all six re-run
+1109 checks, 0 failures, under six configurations, all six re-run
 2026-09-07: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -14616,8 +14616,11 @@ refusal is the tool doing its job.
 **Two more, from pointing the same instrument at two more files.**
 
 **`overlay.cpp`, 67 of 69: nothing had ever heap-allocated an `Overlay`.**
-The uncovered pair is the deleting destructor, which sounds like a gcov
-artifact and is not: the registry holds RAW pointers and hands them to the
+The uncovered pair is the deleting destructor -- **and 8.39 had already met
+that exact gcov signature in `input_router` and correctly called it an
+artifact**, a destructor's signature and brace uncovered while its body
+runs. Here it is not, and the difference is not visible in the coverage
+output: the registry holds RAW pointers and hands them to the
 compositor, so an overlay that failed to remove itself on destruction
 would be dereferenced after it was freed. `new Overlay(this)` and letting
 Qt's parent ownership free it is how an application would write it, and
@@ -14628,6 +14631,15 @@ sabotage confirms it: deleting the removal reddens the new check and
 leaves the old one green. One of the six configurations runs under
 AddressSanitizer, which is what makes this check load-bearing rather than
 decorative.
+
+**So the signature does not classify itself, and that is the part to
+carry.** Two files, the same two uncovered lines, and opposite answers:
+what decides it is whether anything holds a raw pointer to the object
+after it dies. `InputRouter` is owned by whoever made it and nothing
+outlives it; an `Overlay` puts itself in a process-wide registry that the
+compositor reads every frame. **The question to ask of an unused deleting
+destructor is not "is this gcov being gcov" but "who still has a pointer",
+and only reading the class answers it.**
 
 **`ansi_backend.cpp`, 594 of 644, and most of the gap is the instrument.**
 The Makefile says so already: the signal and crash paths cannot report,
@@ -14690,6 +14702,48 @@ one-liner either: the twins are frameless always-on-top `Qt::Tool`
 windows, so ordering them means raising them in z order and living with
 whatever the window manager does, and it cannot be verified headlessly
 here. Recorded in 0b.
+
+### 8.48 Two drag paths nothing had ever taken (2026-09-07)
+
+Coverage across the rest of the tree: `color.cpp`, `term_caps.cpp`,
+`graphics.cpp`, `cell_item_delegate.cpp` and `theme.cpp` at **100%**;
+`application.cpp` 136 of 144; `input_router.cpp` 266 of 269, whose three
+are the destructor pair 8.39 explains and the `focusNextPrevChild`
+fallback 8.39 already recorded as unreached, with what was tried. Nothing
+new in any of those, and the empty result is worth as much as a find --
+those files have been swept and the next fault needs a different lens.
+
+**`drag.cpp` 65 of 72, and both gaps are behaviour a user sees.**
+
+**Crossing from one widget to another had never happened.** Every drag
+this suite ran saw one target or none. The order is the whole of it and
+`drag.cpp` says why: the widget being left hears the leave BEFORE the one
+being entered hears the enter, because a target that highlights on enter
+and clears on leave otherwise ends up with **two widgets both looking like
+the drop site**.
+
+Asserted as a SEQUENCE, not as two counters -- counters are satisfied by
+either order, which is exactly the fault. The log reads
+`left:enter left:leave right:enter right:drop`.
+
+**A drop on a widget that was offered the drag and refused it** was the
+other. That is a different case from a widget taking no drops at all: it
+is asked and says no, so `over` is set and `over_accepts` is false, and
+the else arm sends it a leave -- because it heard an enter -- and reports
+`IgnoreAction` rather than a hopeful default.
+
+**Both sabotages change one thing each**, and that took two goes. The
+first attempt at the crossing sabotage MOVED the leave to after the enter,
+which is the fault the check names -- and it also broke the drop and
+tripped the rescue timer, so it reddened the check for more reasons than
+one and proved less than it appeared to. Deleting the leave instead
+reddens the crossing check while `right:drop` still happens, which is a
+single variable. **A sabotage that perturbs two things is a control that
+cannot say which one the check noticed.**
+
+Both new checks carry the 2-second rescue the abandoned-drag check
+carries, for the reason recorded there: a broken drag does not fail a
+check, it hangs the suite, and a hang produces neither a PASS nor a FAIL.
 
 ## 11. What is next, in order
 

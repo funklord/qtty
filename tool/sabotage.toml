@@ -652,3 +652,19 @@ find = "\t\tcase 15: emit_function_key(Qt::Key_F5,  param(1, 1) - 1); return tru
 into = "\t\tcase 15: case 22: emit_function_key(Qt::Key_F5,  param(1, 1) - 1); return true;"
 count = 1
 check = "the three numbers nobody ever assigned invent no key"
+
+[[sabotage]]
+name = "a drag crossing to another widget never tells the one it left"
+file = "src/runtime/drag.cpp"
+find = "\t\tif (g_live->over) {\n\t\t\tQDragLeaveEvent leave;\n\t\t\tQApplication::sendEvent(g_live->over, &leave);\n\t\t}\n\t\tg_live->over = target;"
+into = "\t\tg_live->over = target;"
+count = 1
+check = "a drag crossing from one widget to another tells the one it left"
+
+[[sabotage]]
+name = "a target that refused a drop never hears the leave"
+file = "src/runtime/drag.cpp"
+find = "\t\tif (target) {\n\t\t\tQDragLeaveEvent leave;\n\t\t\tQApplication::sendEvent(target, &leave);\n\t\t}\n\t\tg_live->result = Qt::IgnoreAction;"
+into = "\t\tg_live->result = Qt::IgnoreAction;"
+count = 1
+check = "and it still hears the leave, because it heard the enter"

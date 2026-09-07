@@ -1008,6 +1008,134 @@ int suite_router() {
 		CHECK(t->drops == drops_before && gave_up == Qt::IgnoreAction
 		      && !needed_rescue,
 		      "and Escape abandons it without a drop");
+
+		// CROSSING from one widget to another, which coverage said had
+		// never happened: every drag this suite had run saw one target or
+		// none. The order is the whole of it, and drag.cpp says why -- the
+		// widget being left hears the leave BEFORE the widget being entered
+		// hears the enter, because a target that highlights on enter and
+		// clears on leave otherwise ends up with two widgets both looking
+		// like the drop site.
+		//
+		// Asserted as a SEQUENCE rather than as two counters. Counters are
+		// satisfied by either order, which is exactly the fault.
+		{
+			QStringList order;
+			struct Watched : QWidget {
+				QStringList *log = nullptr;
+				QString name;
+				explicit Watched(QWidget *p) : QWidget(p) { setAcceptDrops(true); }
+				void dragEnterEvent(QDragEnterEvent *e) override {
+					*log << name + QStringLiteral(":enter");
+					e->setDropAction(Qt::MoveAction); e->accept();
+				}
+				void dragMoveEvent(QDragMoveEvent *e) override {
+					e->setDropAction(Qt::MoveAction); e->accept();
+				}
+				void dragLeaveEvent(QDragLeaveEvent *) override {
+					*log << name + QStringLiteral(":leave");
+				}
+				void dropEvent(QDropEvent *e) override {
+					*log << name + QStringLiteral(":drop");
+					e->setDropAction(Qt::MoveAction); e->accept();
+				}
+			};
+			QWidget h2;
+			h2.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *left = new Watched(&h2);
+			left->log = &order; left->name = QStringLiteral("left");
+			left->setGeometry(0, 0, cw * 5, ch * 2);
+			auto *right = new Watched(&h2);
+			right->log = &order; right->name = QStringLiteral("right");
+			right->setGeometry(cw * 6, 0, cw * 5, ch * 2);
+			h2.resize(GridMetrics::cells(12, 4));
+			h2.show();
+			QCoreApplication::processEvents();
+			InputRouter r2(&h2);
+
+			auto *mime3 = new QMimeData;
+			mime3->setText(QStringLiteral("crossing"));
+			auto *drag3 = new QDrag(&h2);
+			drag3->setMimeData(mime3);
+			QTimer::singleShot(0, [&] {
+				r2.on_mouse({QPoint(1, 0), 1, false, false, true, 0});
+				r2.on_mouse({QPoint(2, 0), 1, false, false, true, 0});
+				r2.on_mouse({QPoint(8, 0), 1, false, false, true, 0});
+				r2.on_mouse({QPoint(8, 0), 1, false, true, false, 0});
+			});
+			// The same rescue the abandoned-drag check carries, and for the
+			// reason recorded there: a broken drag does not fail this, it
+			// HANGS the suite, and a hang produces neither a PASS nor a FAIL.
+			bool rescued = false;
+			QTimer::singleShot(2000, [&] {
+				if (Qtty::drag_active()) { rescued = true; Qtty::drag_cancel(); }
+			});
+			Qtty::exec_drag(drag3, Qt::CopyAction | Qt::MoveAction);
+			QCoreApplication::processEvents();
+			printf("info: crossing between two targets gave %s\n",
+			       qPrintable(order.join(QStringLiteral(" "))));
+			const int lv = order.indexOf(QStringLiteral("left:leave"));
+			const int en = order.indexOf(QStringLiteral("right:enter"));
+			CHECK(!rescued && lv >= 0 && en >= 0 && lv < en,
+			      "a drag crossing from one widget to another tells the one "
+			      "it left before the one it reached, so two widgets are "
+			      "never both lit as the drop site");
+		}
+
+		// And a drop on a widget that was OFFERED the drag and refused it.
+		// The else arm: it hears a leave, because it heard an enter, and
+		// exec_drag reports IgnoreAction rather than a hopeful default.
+		// Never run either -- every drag here had accepted.
+		{
+			struct Refuser : QWidget {
+				int enters = 0, leaves = 0, drops = 0;
+				explicit Refuser(QWidget *p) : QWidget(p) { setAcceptDrops(true); }
+				// Offered and declined, which is not the same as a widget
+				// that takes no drops at all: this one is asked and says no,
+				// so it is the branch where `over` is set and
+				// `over_accepts` is false.
+				void dragEnterEvent(QDragEnterEvent *e) override {
+					++enters; e->ignore();
+				}
+				void dragMoveEvent(QDragMoveEvent *e) override { e->ignore(); }
+				void dragLeaveEvent(QDragLeaveEvent *) override { ++leaves; }
+				void dropEvent(QDropEvent *e) override { ++drops; e->ignore(); }
+			};
+			QWidget h3;
+			h3.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *no = new Refuser(&h3);
+			no->setGeometry(0, 0, cw * 10, ch * 2);
+			h3.resize(GridMetrics::cells(12, 4));
+			h3.show();
+			QCoreApplication::processEvents();
+			InputRouter r3(&h3);
+
+			auto *mime4 = new QMimeData;
+			mime4->setText(QStringLiteral("refused"));
+			auto *drag4 = new QDrag(&h3);
+			drag4->setMimeData(mime4);
+			QTimer::singleShot(0, [&] {
+				r3.on_mouse({QPoint(2, 0), 1, false, false, true, 0});
+				r3.on_mouse({QPoint(4, 1), 1, false, false, true, 0});
+				r3.on_mouse({QPoint(4, 1), 1, false, true, false, 0});
+			});
+			bool rescued2 = false;
+			QTimer::singleShot(2000, [&] {
+				if (Qtty::drag_active()) { rescued2 = true; Qtty::drag_cancel(); }
+			});
+			const Qt::DropAction refused =
+			    Qtty::exec_drag(drag4, Qt::CopyAction | Qt::MoveAction);
+			QCoreApplication::processEvents();
+			printf("info: a refusing target saw enter=%d leave=%d drop=%d,"
+			       " and the drag returned %d\n", no->enters, no->leaves,
+			       no->drops, int(refused));
+			CHECK(!rescued2 && no->enters >= 1 && no->drops == 0
+			      && refused == Qt::IgnoreAction,
+			      "a widget offered a drag and refusing it gets no drop, and "
+			      "the drag reports that nothing was taken");
+			CHECK(no->leaves >= 1,
+			      "and it still hears the leave, because it heard the enter");
+		}
 	}
 
 	// A modal with an EMPTY geometry. The rule above drops every click
