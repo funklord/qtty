@@ -395,6 +395,51 @@ int suite_router() {
 	comp.compose(picked);
 	CHECK(picked.to_text().contains(QStringLiteral("SECONDWIN")),
 	      "and choosing its tab shows it");
+	// next_window() and previous_window(), which coverage found had never
+	// run and a grep found had no caller anywhere -- not the library, not
+	// this suite, not a tool. They are public API and the header says why:
+	// an application MUST bind keys to them, because qtty deliberately binds
+	// no shortcut of its own. So the one route a terminal user has to a
+	// second window was carried by two functions nothing had ever called.
+	//
+	// Asserted as a round trip rather than against a named window: forward
+	// then back must return where it started, whatever the order the strip
+	// happens to use, and that is what a key binding actually promises.
+	{
+		// THREE windows, not two, and the sabotage is what said so. With
+		// two, stepping forward twice returns to the start -- so a round
+		// trip holds even if previous_window() steps FORWARD, and the
+		// check passed with the direction reversed. A fixture has to be
+		// chosen so that the plausible wrong answer differs from the right
+		// one, and two windows cannot tell those apart.
+		QWidget third;
+		third.setObjectName(QStringLiteral("THIRDWIN"));
+		third.setAttribute(Qt::WA_DontShowOnScreen);
+		third.resize(GridMetrics::cells(10, 3));
+		third.show();
+		QCoreApplication::processEvents();
+		// Compose again, because window_tabs() reports the set the LAST
+		// compose collected -- not the widgets that exist now. Measured:
+		// without this the strip still holds two and the third window is
+		// invisible to the cycling it was created to exercise.
+		{
+			CellBuffer refresh(40, 16);
+			comp.compose(refresh);
+		}
+
+		Qtty::set_current_window(&win);
+		QWidget *start = Qtty::current_window();
+		Qtty::next_window();
+		QWidget *stepped = Qtty::current_window();
+		Qtty::previous_window();
+		CHECK(Qtty::window_tabs().size() >= 3 && stepped && stepped != start
+		      && Qtty::current_window() == start,
+		      "next_window moves to another window and previous_window"
+		      " comes back");
+		third.hide();
+		QCoreApplication::processEvents();
+	}
+
 	Qtty::set_current_window(&win);
 	second.hide();
 	QCoreApplication::processEvents();

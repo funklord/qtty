@@ -508,3 +508,11 @@ find = "\t\t\t\t\t\tif (!framed(sp->widget(i))) {"
 into = "\t\t\t\t\t\tif (false) {"
 count = 1
 check = "and a splitter with one unframed pane keeps its bar"
+
+[[sabotage]]
+name = "previous_window steps the same way as next_window"
+file = "src/runtime/compositor.cpp"
+find = "\tif (!t.isEmpty()) g_current = t.at((i <= 0 ? t.size() : i) - 1);"
+into = "\tif (!t.isEmpty()) g_current = t.at((i < 0 ? 0 : i + 1) % t.size());"
+count = 1
+check = "next_window moves to another window and previous_window"

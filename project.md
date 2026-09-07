@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1071 checks, 0 failures, under six configurations, all six re-run
+1072 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6704,6 +6704,60 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.41 Two public functions nothing had ever called (2026-09-07)
+
+Coverage pointed at `compositor` -- 313 of 324 -- names
+**`next_window()` and `previous_window()` entirely**, and a grep says why:
+they are declared in `include/qtty/windows.h` and called by nothing. Not
+the library, not the suite, not a tool.
+
+**They are the one keyboard route to a second window**, and the header says
+so in as many words: *"For an application that wants to bind keys to this,
+which it must: a terminal user needs a keyboard route, and qtty
+deliberately binds no shortcut of its own."* So the feature an application
+is REQUIRED to wire up was carried by two functions no line of this project
+had ever executed.
+
+This is 8.18's finding again -- `SystemTrayIcon::set_icon`, public,
+complete-looking, uncalled -- and it arrived by a different instrument.
+Reading the interface finds nothing wrong either time, because nothing IS
+wrong with the interface. **Coverage and a caller-grep answer the question
+reading cannot: not "is this right" but "has this ever run".**
+
+Checked as a ROUND TRIP -- forward then back returns where it started --
+rather than against a named window. That is what a key binding actually
+promises, and it holds whatever order the strip happens to use.
+
+**With THREE windows, and the sabotage is what said so.** The first version
+used the two the fixture already had, and passed with `previous_window()`
+reversed to step FORWARD -- because with two windows, forward twice IS the
+identity. A round trip over two elements cannot tell the directions apart.
+**The fixture has to be chosen so the plausible wrong answer differs from
+the right one**, and this is the cheapest possible instance of that: one
+more window.
+
+**And the third window had to be composed before it existed to the strip.**
+`window_tabs()` reports what the LAST `compose()` collected, not the
+widgets alive now, so showing a window is not enough -- measured, the strip
+still held two and the new window was invisible to the very cycling it was
+created to exercise. A cache that lags is not a bug here; it is what makes
+the strip a property of a FRAME. But a fixture has to know it.
+
+**Also verified this round, and clean: hydra's `setStyle()` after
+`setup()`.** 8.11 flagged that pattern as one that would delete Channel A
+program-wide, and `theme.cpp` still does `QApplication::setStyle(new
+icon_style)`. It survives -- for the widget that existed and for one made
+afterwards.
+
+**The first probe for it proved nothing**, and the reason is worth the
+line: it installed a `QProxyStyle`, and Qt resolves a proxy's base to the
+current style at construction, so it wrapped GridStyle by Qt's own
+semantics and would have passed whatever qtty did. Re-run against a
+NON-proxy Fusion style, and confirmed by `dynamic_cast` rather than
+`className()` -- GridStyle declares no `Q_OBJECT`, so its class name IS
+"QProxyStyle" and the name cannot tell a re-wrapped GridStyle from a plain
+proxy.
 
 ### 8.40 A splitter fix comparing two coordinate spaces (2026-09-07)
 
