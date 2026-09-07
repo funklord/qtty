@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1057 checks, 0 failures, under six configurations, all six re-run
+1058 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6727,9 +6727,41 @@ Both directions are checked, and that is the point of the pair: a fix that
 merely stopped drawing handles would pass the new check and fail the
 existing one, and a fix that changed nothing would do the reverse.
 
-**The first is reproduced, and it is a decision rather than a bug.** With
-the layout margins set to zero -- which is how their chat tab nests -- a
-frame inside a frame gives
+**Two of the three are fixed, and my first reading of the first one was
+wrong.** I recorded it as a policy question about merging borders. It is
+not: reproducing their ACTUAL structure showed an inset that disagrees with
+the border it exists to clear.
+
+Their chat tab is a `QSplitter` of item views inside a `QTabWidget`, and
+item views are QFrames carrying a StyledPanel. Reproduced at 74 columns,
+that gave their sentence verbatim -- `┌┌` at the opening and `││` down both
+panes:
+
+    ┌┌─────────────────────┐─┌─────────────────────┐──┌───────────────────┐┐
+    ││   Peers             │ │ hello                  │ nabeel            ││
+
+**The mechanism, measured rather than reasoned.** The frame around a tab
+widget's pane is one cell wide, because `PM_DefaultFrameWidth` is a cell.
+The page rect the base style computes is inset by its own PIXEL frame
+width -- two pixels. Measured: a 200px tab widget gives a page at x=0 with
+width 196, so the page begins inside the drawn border, and the page's own
+one-cell layout margin then lands a framed child in the column next to the
+tab's. `SE_FrameContents` was already gridded here; `SE_TabWidgetTabContents`
+was not.
+
+Fixed by insetting the page a cell from the pane, which is what the drawn
+border needs. `┌┌` becomes `┌─┌`, and their bottom-row complaint -- a corner
+inboard of the true right edge -- becomes `┘─┘`, which is a frame closing
+correctly rather than a stray.
+
+**The snapshot it moved was inspected before it was blessed.** One line:
+`│[x] Enable` became `│ [x] Enable`. That is the fix in the one place the
+gallery exercises a tab widget -- a checkbox that had been flush against
+the border now clears it -- and re-recording a snapshot without reading the
+diff is how a fixture stops being evidence.
+
+**What remains open is narrower than it was.** Two frames nested with NO
+layout margin between them still draw two rules in adjacent columns:
 
     ┌──────────────────────┐
     │┌────────────────────┐│
@@ -6763,13 +6795,13 @@ them without moving one of them.
 This is a rendering policy that touches every nested frame in every
 application, so it is the copyright holder's rather than a session's.
 
-**The second fault is not reproduced, and may already be gone.** They
-described the bottom edge closing in the wrong column, `││└` on the left --
-two vertical rules and then a corner. The middle rule in that sequence is
-where the splitter handle was, and the handle no longer draws one. Their
-report was made against `e756b39`, six commits back; **re-testing at HEAD
-is cheaper than either of us reasoning about it**, and it may be that
-fixing the third fault closed the second.
+**Their second fault had the same cause as the first, and my guess about
+it was wrong.** I wrote that the middle rule in their `││└` was probably
+the splitter handle, and that fixing the handle may have closed it. It was
+the tab widget's border beside a pane's, the same inset defect -- which
+reproducing their real structure showed and guessing did not. **A plausible
+mechanism attached to a real symptom is still a guess**, and this one sent
+the explanation to the wrong element.
 
 ### 8.24 Two sabotage entries that could no longer be applied (2026-09-07)
 

@@ -427,3 +427,11 @@ find = "\t\t\tif (neighbours_draw_edges) return;"
 into = "\t\t\t;"
 count = 1
 check = "a splitter between framed panes leaves a gap, not a third rule"
+
+[[sabotage]]
+name = "a tab page is inset by the base style's pixel frame again"
+file = "src/grid/grid_style.cpp"
+find = "\tif (se == SE_TabWidgetTabContents && opt) {"
+into = "\tif (false) {"
+count = 1
+check = "a tab widget's page clears the border it draws"

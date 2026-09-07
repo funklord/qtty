@@ -401,6 +401,45 @@ int suite_widgets() {
 		render_once(split, b);
 		CHECK(buffer_contains(b, QStringLiteral("│")), "splitter handle renders");
 	}
+	// A QTabWidget's page must clear the frame that is actually DRAWN.
+	//
+	// The pane's border is one cell wide, and the base style inset the page
+	// by its own two-pixel frame width -- so a framed child put its edge in
+	// the column next to the tab's, and the two read as one doubled rule.
+	// Reported from fuzzypickles, whose chat tab "opens with two corners and
+	// runs two rules down both panes"; their panes are item views, which are
+	// QFrames carrying a StyledPanel.
+	//
+	// Asserted as a RELATIONSHIP -- the gap between the two borders -- rather
+	// than as a column number, which would pin this to one terminal width and
+	// one frame width.
+	{
+		QTabWidget tabs;
+		auto *page = new QWidget;
+		auto *v = new QVBoxLayout(page);
+		auto *inner = new QListWidget;
+		inner->addItem(QStringLiteral("x"));
+		v->addWidget(inner);
+		tabs.addTab(page, QStringLiteral("T"));
+		tabs.setAttribute(Qt::WA_DontShowOnScreen);
+		tabs.resize(GridMetrics::cells(20, 7));
+		tabs.show();
+		QCoreApplication::processEvents();
+		CellBuffer b(20, 7);
+		render_once(tabs, b);
+		// The row through the middle: the tab's rule, then the pane's, with
+		// at least one cell that is neither between them.
+		int first = -1, second = -1;
+		const int row = 3;
+		for (int x = 0; x < b.cols(); ++x)
+			if (b.at(x, row).ch == QStringLiteral("│")) {
+				if (first < 0) first = x;
+				else if (second < 0) { second = x; break; }
+			}
+		CHECK(first >= 0 && second > first + 1,
+		      "a tab widget's page clears the border it draws");
+	}
+
 	// The same handle between FRAMED panes, where it must not render.
 	//
 	// Reported from fuzzypickles, whose chat tab splits two framed panes:

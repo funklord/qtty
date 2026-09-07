@@ -770,6 +770,27 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 	// -- QRect calls it invalid, and QFrame derives its four widths from it.
 	// Below that the frame keeps Fusion's answer, which is wrong by less
 	// than an empty viewport is.
+	// A QTabWidget's page must clear the frame that is actually DRAWN.
+	//
+	// The frame around a tab widget's pane is one cell wide here, because
+	// PM_DefaultFrameWidth is a cell; the page rect the base style computes
+	// is inset by its own pixel frame width, two pixels. So the page began
+	// inside the drawn border, and a framed child -- an item view, which is
+	// a QFrame and carries a StyledPanel by default -- put its own edge in
+	// the column next to the tab's. Reported from fuzzypickles as a chat tab
+	// that "opens with two corners and runs two rules down both panes", and
+	// reproduced exactly: their panes are QTreeWidget and QListWidget.
+	//
+	// This is not the border-merging question, which is a policy and is
+	// open. It is an inset disagreeing with the border it exists to clear.
+	if (se == SE_TabWidgetTabContents && opt) {
+		const int cw = GridMetrics::cw();
+		const QRect pane = QProxyStyle::subElementRect(SE_TabWidgetTabPane,
+		                                              opt, w);
+		if (pane.isValid() && pane.width() > 2 * cw)
+			return QRect(pane.left() + cw, r.top(),
+			             pane.width() - 2 * cw, r.height());
+	}
 	if ((se == SE_FrameContents || se == SE_ShapedFrameContents) && opt) {
 		const int ch = GridMetrics::ch();
 		const int fw = pixelMetric(PM_DefaultFrameWidth, opt, w);
