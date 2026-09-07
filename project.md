@@ -6734,6 +6734,35 @@ prevent. Rebuilt, it agrees: 36 to 16.
 was worth running because it could have found nothing, and saying which
 four were checked is what stops the next person re-running it.
 
+**Six more properties, and the discriminator the first sweep lacked.**
+Extending it: a progress bar's `setTextVisible(false)` and a label's
+`NoFrame` are honoured, and four came back "identical" --
+`QPushButton::setFlat`, `QToolButton::setAutoRaise`,
+`QToolBar::setMovable`, `QTabBar::setDrawBase`.
+
+**None of those four is a defect, and the comparator could not tell.**
+"Identical" conflates *ignored a distinction that matters* with *draws
+neither thing*. Rendered and looked at:
+
+    button, ordinary   [<Go>]      toolbar, movable   [[A]]
+    button, flat       [<Go>]      toolbar, fixed     [[A]]
+
+A button IS `<Go>` -- the brackets are the button, and a terminal has no
+bevel to flatten. `autoRaise` is the same affordance on a tool button. The
+toolbar's movable handle is deliberately nil-extent, recorded at
+`PE_IndicatorToolBarHandle`. `setDrawBase` controls a base line under tabs
+that this renderer never draws.
+
+**So the rule is: a property is ignored only if the distinction it draws
+has a CELL-LEVEL meaning.** A bevel does not; a frame does. That is why
+`QGroupBox::flat` was real -- Qt's flat means "draw the top rule and not
+the box", which translates exactly -- and why these four are not. Without
+that test the sweep files four false positives, each of them a widget
+rendering correctly.
+
+Ten properties across the two rounds: **one defect, five honoured, four
+with no cell-level meaning.**
+
 ### 8.31 A spin box drew two frames (2026-09-07)
 
 The last several fixes shared a root -- **a metric in pixels where the
