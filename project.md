@@ -27,6 +27,23 @@ memcheck**, which catches the one thing the sanitizers do not.
 `make check` is green and now includes `version-check`, which had never
 been part of it.
 
+**Re-verified 2026-09-07**, after a session that rewrote the paint engine's
+colour handling: alpha, painter opacity, gradient and texture brushes, the
+pen path, and the icon substitution's shape comparison. All six
+configurations were re-run against that code -- offscreen and xcb under
+Xvfb both at 1060 checks, the minimal platform still refusing and saying
+why, the hostile environment absorbed by the pins, AddressSanitizer with
+UndefinedBehaviorSanitizer and the leak detector clean, and valgrind's
+memcheck reporting 0 errors from 0 contexts over the debug build.
+
+**`make test-screen` is NOT among the six and did not run.** It is the arm
+that would put the graphics tiers in front of real terminals under Xvfb,
+which is what this session's changes most deserve, and its load guard
+declined twice -- 42.24, then 42.56 when a reading of 39.92 seconds earlier
+had said it would run. The machine is carrying three other sessions'
+builds. **The honest state is that nobody has run it since these changes,
+not that it passed.**
+
 **xcb is today's, and it is part of `make test-platforms` now.** It had
 been the previous session's measurement, unrepeatable from this account
 for want of a display, and this document said what that meant: *a
@@ -6694,6 +6711,19 @@ netcfgd. A timed capture that reads pixels back would have measured their
 schedulers, which is exactly what the guard exists to refuse. **Overriding
 it would have produced a number, and the number would have been about
 somebody else's build.**
+
+**Tried again when the load read 39.92, and it skipped again at 42.56.**
+The number moved between my reading it and the gate reading it, seconds
+apart, and the gate was right both times. That is `evidence.md`'s
+shelf-life rule in its purest form -- a load average is the state of a
+machine other people are also using, and quoting one back a moment later
+is quoting something that has since moved. Its own remedy applies: **the
+answer is not to sample more carefully but to stop conditioning on it.**
+
+So `test-screen` is recorded as UNRUN this session rather than chased. It
+is the one arm that would verify the graphics tiers against real terminals
+after a session of paint-engine changes, and the honest state is that
+nobody has run it since those changes, not that it passed.
 
 **And the third of those builds is a finding.** netcfgd is compiling with
 `-D NETCFGD_QTTY -I ../../qtty/include`: it has a `qtty` submodule and its
