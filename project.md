@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1064 checks, 0 failures, under six configurations, all six re-run
+1065 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6701,6 +6701,42 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.36 The same rule, implemented twice (2026-09-07)
+
+8.35 fixed the menu BAR and named its sibling sites. The menu ITEM is one,
+and it had both halves of the fault.
+
+**Its mnemonic works.** Measured: with a menu open, pressing `o` on an item
+carrying "&Open" triggers it -- the plain letter, which is what Qt uses
+inside an open menu. Nothing was underlined.
+
+**And it dropped a literal ampersand.** It used `label.remove('&')` where
+the bar uses `strip_mnemonic()`, so "A && B" rendered as "A  B". That is
+the exact bug the bar's own comment records being fixed for: *"the ad-hoc
+version that stood here turned 'A && B' into 'A  B' rather than 'A & B',
+because it did not know that a doubled ampersand is a literal one."*
+
+**The bar was fixed and the item was not, and the suite could not tell.**
+There were already three checks about doubled ampersands -- for
+`strip_mnemonic` itself and for the menu bar -- and they all passed
+throughout, because the item never called the function they test. **A rule
+proved in one place says nothing about a second implementation of it**,
+which is the whole argument for one spelling in one place and is why the
+comment asking for that was written on the bar and not obeyed by the item.
+
+Both halves are fixed together and checked together, since they fail
+independently: a fix that underlined the wrong character would still print
+the right text, and one that printed the right text could still underline
+nothing. The fixture asserts `A & B` survives AND that exactly `O` is
+marked -- the doubled ampersand marking nothing is what proves
+`mnemonic_index()` and `strip_mnemonic()` agree.
+
+**The instrument needed correcting first.** `render_once()` on a window does
+not compose popups -- the Compositor does -- so the first probe showed a
+menu bar and no menu at all, which looked like a renderer that draws
+nothing and was a probe rendering the wrong widget. Rendering the popup
+itself is what showed the labels.
 
 ### 8.35 A working key nobody could see (2026-09-07)
 

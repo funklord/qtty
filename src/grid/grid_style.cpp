@@ -1568,7 +1568,13 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				}
 				const QStringList parts = mi->text.split(QLatin1Char('\t'));
 				QString label = parts.value(0);
-				label.remove(QLatin1Char('&'));       // mnemonic markers
+				// strip_mnemonic(), for the reason the menu BAR one case
+				// down already gives: remove('&') does not know that a
+				// doubled ampersand is a literal one, so "A && B" rendered
+				// as "A  B". The bar was fixed and the item was not, and
+				// they are the same rule -- one spelling, in one place.
+				const int mn = mnemonic_index(parts.value(0));
+				label = strip_mnemonic(label);
 				// The last cell the label may use. The row ends at
 				// c.right() -- the item-view path one case down says the
 				// same with `- text_at + 1` -- less the arrow cell a submenu
@@ -1598,9 +1604,20 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					if (reserved - label_at + 1 > 0) last = reserved;
 					else                             room_for_shortcut = false;
 				}
-				dev->buffer().text(label_at, c.top(),
-				                   elide_to_cells(label, last - label_at + 1),
+				const QString shown = elide_to_cells(label,
+				                                     last - label_at + 1);
+				dev->buffer().text(label_at, c.top(), shown,
 				                   Color(), Color(), la);
+				// The mnemonic, underlined -- and it is a working key here,
+				// not decoration: measured, pressing 'o' in an open menu
+				// carrying "&Open" triggers it. After the write, because
+				// writing a run sets each cell's attributes; guarded
+				// against the elision having cut the marked letter off.
+				if (mn >= 0 && mn < shown.size()) {
+					const int x = label_at + mn;
+					if (dev->buffer().writable(x, c.top()))
+						dev->buffer().at(x, c.top()).attrs |= Attr::Underline;
+				}
 				if (room_for_shortcut) {              // right-aligned shortcut
 					const QString sc = parts[1];
 					dev->buffer().text(c.right() - sc.size(), c.top(), sc,

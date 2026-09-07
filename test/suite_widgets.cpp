@@ -401,6 +401,41 @@ int suite_widgets() {
 		render_once(split, b);
 		CHECK(buffer_contains(b, QStringLiteral("│")), "splitter handle renders");
 	}
+	// A menu ITEM does the same, and keeps a doubled ampersand literal.
+	//
+	// The item is a working key too: pressing 'o' in an open menu carrying
+	// "&Open" triggers it, measured. It also carried the bug the menu bar
+	// was fixed for -- `remove('&')` rather than `strip_mnemonic()`, which
+	// does not know that "&&" is one literal ampersand, so "A && B"
+	// rendered as "A  B".
+	//
+	// Both halves in one fixture, because they are the same rule seen twice:
+	// the marked letter must be underlined AND the doubled one must survive
+	// unmarked. A fix that underlined the wrong character would still print
+	// the right text, and one that printed the right text could still
+	// underline nothing.
+	{
+		QMenu menu;
+		menu.addAction(QStringLiteral("&Open"));
+		menu.addAction(QStringLiteral("A && B"));
+		menu.setAttribute(Qt::WA_DontShowOnScreen);
+		menu.resize(GridMetrics::cells(20, 4));
+		menu.show();
+		QCoreApplication::processEvents();
+		CellBuffer b(20, 4);
+		render_once(menu, b);
+		QString text, under;
+		for (int y = 0; y < b.rows(); ++y)
+			for (int x = 0; x < b.cols(); ++x) {
+				text += b.at(x, y).ch;
+				if (b.at(x, y).attrs & Attrs(Attr::Underline))
+					under += b.at(x, y).ch;
+			}
+		CHECK(text.contains(QStringLiteral("A & B")) && under == QStringLiteral("O"),
+		      "a menu item underlines its mnemonic and keeps a doubled"
+		      " ampersand");
+	}
+
 	// A menu bar underlines the letter its mnemonic uses.
 	//
 	// Measured before marking it: Alt+F on a bar carrying "&File" opens the
