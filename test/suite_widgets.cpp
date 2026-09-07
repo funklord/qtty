@@ -478,8 +478,22 @@ int suite_widgets() {
 			d.setWidget(l);
 			++swept; if (doubled(&d, 24, 7)) ++offenders;
 		}
+		// The name says COLUMN, and the precision is the point. Sweeping
+		// the other axis -- two horizontal rules on adjacent ROWS -- every
+		// one of these fails: 36 cells in a QFrame, 18 in a QGroupBox, 17
+		// in a QToolBox. That is not the same defect and not a defect at
+		// all. `PM_LayoutTopMargin` is deliberately 0 where the left and
+		// right margins are a cell, and the reason is written beside it:
+		// "a column of eighty is cheap where a row of twenty-four is not".
+		// So nested frames are separated by a column and stacked without a
+		// row, on purpose.
+		//
+		// A check called "no container's border sits flush against a
+		// framed child's" would therefore claim an axis it never looked
+		// at, and would be false on the axis it implied.
 		CHECK(swept == 6 && offenders == 0,
-		      "no container's border sits flush against a framed child's");
+		      "no container's border shares a column with a framed"
+		      " child's");
 	}
 
 	// A QTabWidget's page must clear the frame that is actually DRAWN.

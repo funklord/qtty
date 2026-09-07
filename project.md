@@ -6721,6 +6721,19 @@ as well as the one it names. Run: the harness reports the named check "and
 that cannot be shown to detect anything passes exactly like one that found
 nothing.**
 
+**The check is named for the axis it tests, and finding out which axis
+that was is the rest of this entry.** Sweeping the OTHER one -- two
+horizontal rules on adjacent rows -- every container fails: 36 cells in a
+QFrame, 18 in a QGroupBox, 17 in a QToolBox.
+
+That is not the same defect and not a defect. `PM_LayoutTopMargin` is
+deliberately 0 where left and right are a cell, and the reason is written
+beside it: **"a column of eighty is cheap where a row of twenty-four is
+not"**. Nested frames are separated by a column and stacked without a row,
+on purpose. So the first name -- "no container's border sits flush against
+a framed child's" -- claimed an axis it never looked at, and was false on
+the axis it implied. It says COLUMN now.
+
 **The check first swept five and the table above listed six**, which is the
 same class of error one level down: a population stated in prose and a
 population walked by code, disagreeing because nobody compared them.
