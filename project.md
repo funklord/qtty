@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1100 checks, 0 failures, under six configurations, all six re-run
+1104 checks, 0 failures, under six configurations, all six re-run
 2026-09-07: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -14612,6 +14612,44 @@ apart and byte-for-byte the same source, is covered. Two identical lines,
 one exercised and one not -- which is also why the sabotage entry needs a
 two-line anchor, the one-line form matching both and being refused. The
 refusal is the tool doing its job.
+
+**Two more, from pointing the same instrument at two more files.**
+
+**`overlay.cpp`, 67 of 69: nothing had ever heap-allocated an `Overlay`.**
+The uncovered pair is the deleting destructor, which sounds like a gcov
+artifact and is not: the registry holds RAW pointers and hands them to the
+compositor, so an overlay that failed to remove itself on destruction
+would be dereferenced after it was freed. `new Overlay(this)` and letting
+Qt's parent ownership free it is how an application would write it, and
+nothing here had built that arrangement. **The existing "hidden overlays
+leave registry" check does not cover it** -- `hide()` never touches the
+registry, `visible_overlays()` filtering by `isVisible()` -- and the
+sabotage confirms it: deleting the removal reddens the new check and
+leaves the old one green. One of the six configurations runs under
+AddressSanitizer, which is what makes this check load-bearing rather than
+decorative.
+
+**`ansi_backend.cpp`, 594 of 644, and most of the gap is the instrument.**
+The Makefile says so already: the signal and crash paths cannot report,
+because the process dies before gcov writes anything, and "improving" that
+number means deleting the checks doing the work. What was left after
+ignoring those is the SS3 table -- `ESC O <final>` -- with **three of its
+ten rows checked and seven not**. The three are F1, F4 and Up, which are
+the three anybody would write.
+
+**A typo in one of the other seven ships, and it is not a key that does
+nothing.** Left arriving as Right is a key that does the wrong thing, and
+the decoder's own comment beside that table says why this family is worse
+than missing: an unmapped key is silence, a mis-mapped one fires
+somebody's menu. **The default arm had never run either**, and it is the
+one the comment was written about -- an SS3 final nobody listed must be
+consumed, because left in the buffer it falls through to the Alt branch
+and `ESC O Z` is delivered as Alt held with the letter O.
+
+Asserted as a POPULATION rather than row by row, so a row added to the
+decoder and not to the check's list is caught by the count beside it.
+Sabotaged both ways: one row swapped to the wrong key, and the default arm
+made to fall through.
 
 **Also flagged and NOT resolved: `Overlay::set_z()` does nothing in a GUI
 build.** Found by the lens the tray bug suggested -- a call that moves

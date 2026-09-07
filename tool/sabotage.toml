@@ -612,3 +612,27 @@ find = "std::as_const(popup_.dropped))\n\t\t\tif (w) w->show();"
 into = "std::as_const(popup_.dropped))\n\t\t\tif (false) w->show();"
 count = 1
 check = "and the popup layer putting itself away hands them back"
+
+[[sabotage]]
+name = "a deleted overlay stays in the registry"
+file = "src/graphics/overlay.cpp"
+find = "\tregistry().removeAll(this);"
+into = "\t;"
+count = 1
+check = "and deleting it takes it out of the registry"
+
+[[sabotage]]
+name = "SS3 D is decoded as the wrong arrow key"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\tcase 'D': k.qt_key = Qt::Key_Left; break;"
+into = "\t\t\tcase 'D': k.qt_key = Qt::Key_Right; break;"
+count = 1
+check = "every one of the ten SS3 finals decodes as the key it names"
+
+[[sabotage]]
+name = "an unknown SS3 final falls through to the Alt branch"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\tdefault:  pending_.remove(0, 3); return true;   // consumed"
+into = "\t\t\tdefault:  break;   // consumed"
+count = 1
+check = "an SS3 final the decoder does not know is swallowed"

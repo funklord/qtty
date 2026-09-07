@@ -834,6 +834,28 @@ int suite_graphics() {
 		CHECK(Overlay::visible_overlays().first() == &o2, "overlays z-ordered");
 		o.hide(); o2.hide();
 		CHECK(Overlay::visible_overlays().isEmpty(), "hidden overlays leave registry");
+
+		// DELETED while visible, which is a different question from hidden
+		// and a worse one. The registry holds raw pointers and hands them to
+		// the compositor, so an overlay that failed to remove itself would
+		// be dereferenced after it was freed -- and the suite runs under
+		// AddressSanitizer in one of the six configurations, which is what
+		// makes this check load-bearing rather than decorative.
+		//
+		// It is also the only thing that heap-allocates one. Coverage put
+		// the deleting destructor at zero, and an application writes
+		// `new Overlay(this)` and lets Qt's parent ownership free it, which
+		// is the arrangement nothing here had ever built.
+		QObject owner;
+		auto *heap = new Overlay(&owner);
+		heap->set_image(img);
+		heap->show();
+		CHECK(Overlay::visible_overlays().size() == 1,
+		      "an overlay owned by a parent registers like any other");
+		delete heap;
+		CHECK(Overlay::visible_overlays().isEmpty(),
+		      "and deleting it takes it out of the registry, so the "
+		      "compositor is never handed a pointer to freed memory");
 	}
 
 

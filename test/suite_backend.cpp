@@ -296,6 +296,63 @@ int suite_backend() {
 	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Up,
 	      "SS3 A decodes as Up, for a terminal in application mode");
 
+	// THE WHOLE SS3 TABLE, because three of its ten rows were checked and
+	// seven were not. Coverage is what said so -- the three above are the
+	// three that any reader would have written, and a typo in one of the
+	// other seven ships: Left arriving as Right is not a key that does
+	// nothing, it is a key that does the wrong thing.
+	//
+	// Asserted as a POPULATION rather than one row at a time, so a row
+	// added to the decoder and not to this list is a row nobody checked,
+	// and the count below is what says so.
+	{
+		const struct { char final; int key; const char *what; } ss3[] = {
+			{ 'P', Qt::Key_F1,    "F1"    },
+			{ 'Q', Qt::Key_F2,    "F2"    },
+			{ 'R', Qt::Key_F3,    "F3"    },
+			{ 'S', Qt::Key_F4,    "F4"    },
+			{ 'A', Qt::Key_Up,    "Up"    },
+			{ 'B', Qt::Key_Down,  "Down"  },
+			{ 'C', Qt::Key_Right, "Right" },
+			{ 'D', Qt::Key_Left,  "Left"  },
+			{ 'H', Qt::Key_Home,  "Home"  },
+			{ 'F', Qt::Key_End,   "End"   },
+		};
+		QStringList wrong;
+		for (const auto &e : ss3) {
+			feed(QByteArray("\033O") + e.final);
+			if (rec.keys.size() != 1 || rec.keys[0].qt_key != e.key)
+				// What ARRIVED, not just that something did: a row that
+				// decodes to the wrong key and a row that decodes to
+				// nothing are different faults, and the first version of
+				// this message could not tell them apart.
+				wrong << QStringLiteral("%1 (ESC O %2) gave %3")
+				             .arg(QLatin1String(e.what))
+				             .arg(QLatin1Char(e.final))
+				             .arg(rec.keys.size() == 1
+				                  ? QStringLiteral("key 0x%1")
+				                        .arg(rec.keys[0].qt_key, 0, 16)
+				                  : QStringLiteral("%1 key(s)")
+				                        .arg(rec.keys.size()));
+		}
+		if (!wrong.isEmpty())
+			printf("info: SS3 rows that did not decode: %s\n",
+			       qPrintable(wrong.join(QStringLiteral("; "))));
+		CHECK(wrong.isEmpty() && sizeof(ss3) / sizeof(ss3[0]) == 10,
+		      "every one of the ten SS3 finals decodes as the key it names");
+
+		// The default arm, which is the one that matters most and had never
+		// run. An SS3 final this decoder does not know must be CONSUMED:
+		// left in the buffer it falls through to the Alt branch, and ESC O Z
+		// is then delivered as Alt held with the letter O -- the exact
+		// mis-mapping the F1 comment above was written about, reintroduced
+		// by any terminal that sends a final nobody here listed.
+		feed("\033OZ");
+		CHECK(rec.keys.isEmpty(),
+		      "and an SS3 final the decoder does not know is swallowed "
+		      "rather than delivered as Alt held with the letter O");
+	}
+
 	// -- a bare Escape ---------------------------------------------------------
 	//
 	// ESC prefixes every escape sequence, so a lone one is only distinguishable
