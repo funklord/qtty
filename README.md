@@ -143,6 +143,16 @@ What an application may ask for on top, none of it automatic:
 picture over the cells, and the `qtty.cells` widget property to state a size
 in cells. Each is documented in its own header.
 
+**A widget that paints itself works, and transparency has rules.** A
+`paintEvent` reaches a `QPainter` like any other, and what it draws is
+resolved onto cells: a diagonal becomes a line of glyphs, a filled path is
+scanline-filled, a small pixmap is substituted by a block. The one thing
+worth reading before writing one is `doc/design.md` §6.1, because a cell has
+no alpha channel and the four rules it states — zero alpha draws nothing,
+partial alpha blends against what the cell holds, an unknown ground takes
+the paint opaque, and a gradient or texture brush is resolved rather than
+believed — are not what a pixel canvas does.
+
 **Known limits, so they are not a surprise.** The library is a static
 `libqtty.a`; there is no shared build and no CMake package file. The font is
 resolved by `setup()` and must be monospace with integral metrics — see the
