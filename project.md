@@ -14446,6 +14446,74 @@ methods and nothing else, which is what an adopter's minimal backend looks
 like: it must compile, take a title without complaint, and say it cannot
 show one.
 
+### 8.45 A tray property that changed and told nobody, and a gate that would not answer twice (2026-09-07)
+
+`SystemTrayIcon::set_tool_tip()` writes **two** properties -- the tooltip
+and the title -- from the one string, because a panel too narrow to show a
+tooltip shows the title instead. It emitted `NewToolTip` and there was no
+`NewTitle` signal at all.
+
+**A StatusNotifierItem host caches what it read at registration and
+re-reads only when told.** So every host that shows `Title` went on
+showing the value from registration for the life of the program, with the
+property correct underneath it. That is why no property read can see it:
+the property agrees either way, and `make test-tray` reads properties.
+
+**The fix is one line and the specification is the argument for it.**
+`org.kde.StatusNotifierItem` defines `NewTitle` for exactly this, beside
+the three this tree already emitted.
+
+**The gate that found it is not in the tree, and this is the part worth
+recording.** It subscribed to the notifications on the bus and counted
+arrivals. First version: three subscriptions, all three arrived, and
+deleting one `emit` took its count to zero while the others stayed at one
+-- a clean discriminating measurement, and how the missing `NewTitle` was
+found. Then it stopped behaving:
+
+    three subscriptions, no flush        all three arrive
+    four subscriptions                   none arrive
+    the same four in separate phases     a different one each run
+    four plus a blocking round-trip      green three runs, red the fourth
+    subscription armed by a probe        the probe arrives, nothing after
+
+**Every one of those reads as a library that emits only some of its
+notifications** -- which is precisely what a broken library would look
+like, and precisely the thing the gate was written to detect.
+
+**The mechanism, as far as it was established:**
+`QDBusConnection::connect` does not install the match rule before it
+returns, QtDBus sending `AddMatch` from its own thread, so a property
+changed on the next line races the rule that would deliver its
+notification. That explains the first four rows -- more subscriptions
+lose the race more often, and a busy machine loses it more than an idle
+one, which is the one property a gate must not have. **It does not
+explain the fifth**, where a probe signal arrives, proving the rule live,
+and the changes made immediately afterwards deliver nothing. That is
+unexplained, and saying so is the point.
+
+**So the gate was withdrawn rather than tuned.** A check that cannot
+answer the same way twice is worse than no check: it is a red gate that
+teaches everyone to reach for an ignore rule, and here it would have been
+red against correct code, with the obvious way to make it pass being to
+delete the notification it was written to defend. The attempt is in this
+entry rather than in `tool/tray/`, where it would rot into an ignore
+rule.
+
+**What stands behind the shipped line, stated plainly**: the
+specification, and a by-hand measurement taken twice -- with the emit a
+subscriber saw the title notification, without it that count was zero
+while the other three stayed at one. Not a repeatable gate. The comment
+in `tray.cpp` says so, so that nobody reads the surrounding checked code
+and assumes this line is checked too.
+
+**And the earlier conclusion here was wrong in a way worth keeping.** The
+four-subscription failure was first written down as "a fourth connect
+silences delivery", a count limit -- confirmed, as it seemed, by a fourth
+connect that merely duplicated a working one. It was the race all along,
+and the duplicate connect confirmed the wrong mechanism because it
+changed two things at once. **A second observation agreeing with a wrong
+mechanism is what an experiment that varies two things buys.**
+
 ## 11. What is next, in order
 
 The four items that used to head this list -- backend injection, the

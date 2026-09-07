@@ -143,6 +143,23 @@ signals:
 	void NewIcon();
 	void NewToolTip();
 	void NewStatus(const QString &);
+	// Title is a separate property with a separate notification, and
+	// set_tool_tip() moves BOTH -- it writes the tooltip and the title from
+	// the one string, because a tray icon's title is what a panel shows
+	// when it will not show a tooltip. Emitting only NewToolTip left every
+	// host that reads Title showing the value it read at registration for
+	// ever, with the property correct underneath it, which is why no
+	// property read can see it: the property agrees either way.
+	//
+	// NOT DEFENDED BY A CHECK, and that is worth knowing rather than
+	// assuming. `make test-tray` reads these properties and does not
+	// listen for the notifications; an attempt to make it listen is
+	// written up in project.md section 8.45 and was withdrawn because it
+	// could not be made to answer the same way twice. What stands behind
+	// this line is the specification and a measurement taken by hand --
+	// with it, a subscriber saw the title notification; without it, that
+	// count was zero while the other three stayed one.
+	void NewTitle();
 };
 
 struct SystemTrayIcon::Private {
@@ -206,6 +223,7 @@ void SystemTrayIcon::set_tool_tip(const QString &text)
 	d_->adaptor.tool_tip_ = text;
 	d_->adaptor.title_ = text;
 	emit d_->adaptor.NewToolTip();
+	emit d_->adaptor.NewTitle();
 }
 
 void SystemTrayIcon::set_status(const QString &s)
