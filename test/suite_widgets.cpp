@@ -401,6 +401,36 @@ int suite_widgets() {
 		render_once(split, b);
 		CHECK(buffer_contains(b, QStringLiteral("│")), "splitter handle renders");
 	}
+	// A toolbar button underlines its mnemonic, read off the ACTION.
+	//
+	// Its key works: Alt+C on a toolbar action "&Cut" triggers it,
+	// measured. What makes this different from the menu cases is where the
+	// marker survives -- by the time a tool button reaches the style,
+	// `QStyleOptionToolButton::text` is already "Cut", Qt having stripped
+	// it. A QStyleOptionMenuItem keeps its marker; this one does not. An
+	// index taken from the option is therefore always -1, and the first
+	// version of this fix was a silent no-op that rendered exactly as
+	// before.
+	//
+	// So the check would pass against a style that never marked anything if
+	// it only asserted "nothing is underlined outside the label" -- it pins
+	// the letter instead.
+	{
+		QToolBar bar;
+		bar.addAction(QStringLiteral("&Cut"));
+		bar.setAttribute(Qt::WA_DontShowOnScreen);
+		bar.resize(GridMetrics::cells(20, 1));
+		bar.show();
+		QCoreApplication::processEvents();
+		CellBuffer b(20, 1);
+		render_once(bar, b);
+		QString under;
+		for (int x = 0; x < b.cols(); ++x)
+			if (b.at(x, 0).attrs & Attrs(Attr::Underline)) under += b.at(x, 0).ch;
+		CHECK(under == QStringLiteral("C"),
+		      "a toolbar button underlines the letter its mnemonic uses");
+	}
+
 	// A menu ITEM does the same, and keeps a doubled ampersand literal.
 	//
 	// The item is a working key too: pressing 'o' in an open menu carrying

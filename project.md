@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1065 checks, 0 failures, under six configurations, all six re-run
+1066 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6701,6 +6701,54 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.37 The last two sibling sites, and a fix that did nothing (2026-09-07)
+
+8.36 named five remaining places that strip a mnemonic. The rule from 8.35
+decides each one by measurement rather than by symmetry: **mark it where
+the key works.**
+
+    toolbar action "&Cut"     Alt+C TRIGGERS it      was unmarked -> fixed
+    tab        "&Second"      Alt+S does nothing     unmarked, left alone
+
+**The toolbar fix was a silent no-op first, and finding that out is the
+entry.** Written the obvious way -- take `mnemonic_index()` of the option's
+text -- it rendered exactly as before. Instrumented: by the time a tool
+button reaches this style, `QStyleOptionToolButton::text` is already
+`"Cut"`. **Qt strips the marker before handing the option over.** An index
+from it is always -1.
+
+A `QStyleOptionMenuItem` keeps its marker, which is why the two menu fixes
+worked at the first attempt and this one did not. The ampersand survives
+here only on the `QAction`, so that is what the mark is read from -- guarded
+on the label being that same text, because an icon-only action falls back
+to its TOOL TIP and an index from the action would then mark a letter of a
+different string.
+
+**Nothing distinguished the working fix from the no-op except a debug
+line.** The suite was green either way, the frame was identical either way,
+and the sabotage would have been green too -- an entry that breaks code
+which already does nothing reddens nothing. **A fix whose evidence is that
+the code looks right is not evidence**, and one printf is what separated
+them.
+
+The check pins the letter rather than asserting that something is
+underlined, for that reason.
+
+**And the sabotage for it was malformed, which the harness caught rather
+than swallowed.** Replacing `if (const auto *btn = ...)` with `if (false)`
+left the next line referring to a `btn` that no longer existed, so the
+build failed -- and the harness reported **INCONCLUSIVE: "No check ran, so
+this says nothing about the one named"** instead of counting a failed build
+as a reddened check. That branch was added earlier today for a sabotage
+that hung; this is the same hole with a different cause, and it is the
+difference between a spec of 60 entries and a spec of 59 entries and one
+lie. Re-anchored on the innermost assignment, which compiles when removed.
+
+**The tab is left alone**, on the same rule that left the push button
+alone: `Alt+S` on a tab labelled "&Second" does not switch to it -- the
+router matches Alt against ACTION text and a tab is not an action -- so
+underlining the letter would advertise a key that does nothing.
 
 ### 8.36 The same rule, implemented twice (2026-09-07)
 

@@ -491,3 +491,11 @@ find = "\t\t\t\tlabel = strip_mnemonic(label);"
 into = "\t\t\t\tlabel.remove(QLatin1Char('&'));"
 count = 1
 check = "a menu item underlines its mnemonic and keeps a doubled"
+
+[[sabotage]]
+name = "a toolbar button's mnemonic is read off the option again"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\t\t\t\tmn = mnemonic_index(act->text());"
+into = "\t\t\t\t\t\t\t\t;"
+count = 1
+check = "a toolbar button underlines the letter its mnemonic uses"

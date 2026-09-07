@@ -2097,12 +2097,37 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 					                          QStringLiteral("▾"),
 					                          Color(), Color(), with_state(opt));
 				const int inner = c.width() - (bracket ? 2 : 0) - (menu ? 2 : 0);
-				if (inner > 0)
-					dev->buffer().text(c.left() + (bracket ? 1 : 0), row,
-					                       elide_to_cells(label, inner),
-					                       Color(), Color(),
-					                       label_attrs(opt, w, on ? Attrs(Attr::Reverse)
-					                                              : Attrs()));
+				if (inner > 0) {
+					const QString shown = elide_to_cells(label, inner);
+					const int at = c.left() + (bracket ? 1 : 0);
+					dev->buffer().text(at, row, shown, Color(), Color(),
+					                   label_attrs(opt, w, on ? Attrs(Attr::Reverse)
+					                                          : Attrs()));
+					// The mnemonic, where the label IS the action's text.
+					// A toolbar action's Alt key works -- measured, Alt+C
+					// on "&Cut" triggers it -- and nothing said which
+					// letter.
+					//
+					// Read off the ACTION, not the option. Measured: by
+					// the time a tool button reaches this style its
+					// `tb->text` is already "Cut" -- Qt strips the marker
+					// before handing the option over -- so an index taken
+					// from it is always -1 and the mark never appears. The
+					// ampersand survives only on the QAction.
+					//
+					// Guarded on the label being that same text, because
+					// tool_button_label() falls back to the TOOL TIP for an
+					// icon-only action, and an index from the action would
+					// then mark a letter of a different string.
+					int mn = -1;
+					if (const auto *btn = qobject_cast<const QToolButton *>(w))
+						if (const QAction *act = btn->defaultAction())
+							if (label == strip_mnemonic(act->text()))
+								mn = mnemonic_index(act->text());
+					if (mn >= 0 && mn < shown.size()
+					    && dev->buffer().writable(at + mn, row))
+						dev->buffer().at(at + mn, row).attrs |= Attr::Underline;
+				}
 				return;
 			}
 			break;
