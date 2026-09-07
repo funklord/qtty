@@ -36,13 +36,19 @@ why, the hostile environment absorbed by the pins, AddressSanitizer with
 UndefinedBehaviorSanitizer and the leak detector clean, and valgrind's
 memcheck reporting 0 errors from 0 contexts over the debug build.
 
-**`make test-screen` is NOT among the six and did not run.** It is the arm
-that would put the graphics tiers in front of real terminals under Xvfb,
-which is what this session's changes most deserve, and its load guard
-declined twice -- 42.24, then 42.56 when a reading of 39.92 seconds earlier
-had said it would run. The machine is carrying three other sessions'
-builds. **The honest state is that nobody has run it since these changes,
-not that it passed.**
+**`make test-screen` is not among the six, and it has now run too.** Its
+load guard declined twice first -- 42.24, then 42.56 when a reading of
+39.92 seconds earlier had said it would run -- while three other sessions
+were building. It was recorded as UNRUN rather than as passed, because
+those are different claims. When the machine went quiet at 12.36 it ran,
+with no skip, and every arm matched its prediction: the kitty protocol,
+an overlay and its removal, tmux passthrough engaging the placeholder
+path, xterm over sixel, and the half-block fallback. The one-pixel kitty
+difference is the documented tolerance -- its smooth scaling blends the
+outermost column.
+
+So the graphics tiers are verified against real terminals after this
+session's paint-engine work, which is the thing that had been missing.
 
 **xcb is today's, and it is part of `make test-platforms` now.** It had
 been the previous session's measurement, unrepeatable from this account
