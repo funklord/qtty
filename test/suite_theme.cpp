@@ -335,5 +335,27 @@ int suite_theme() {
 	}
 
 
+	// `Color::authored_ansi16()` had no caller anywhere either. The setter is
+	// exercised through the role table; the reader is the only way an
+	// application or a backend can ask what a colour was authored as, and
+	// nothing had ever asked.
+	{
+		const Color plain = Color::rgb(qRgb(200, 30, 30));
+		CHECK(plain.authored_ansi16() == -1,
+		      "a colour with no authored index says so rather than "
+		      "claiming index 0");
+		CHECK(plain.with_ansi16(9).authored_ansi16() == 9,
+		      "and one given an authored index reads it back");
+		// The header states both no-ops. Neither had ever been read back,
+		// so neither was more than a comment.
+		CHECK(plain.with_ansi16(16).authored_ansi16() == -1
+		      && plain.with_ansi16(-1).authored_ansi16() == -1,
+		      "an out-of-range index is refused, so a role with no entry "
+		      "falls through to the nearest match");
+		CHECK(Color().with_ansi16(3).authored_ansi16() == -1,
+		      "and the terminal's own colour is not improved on by naming "
+		      "one of the sixteen");
+	}
+
 	return fails;
 }

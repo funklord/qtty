@@ -618,6 +618,12 @@ std::optional<QPoint> Compositor::cursor_cell() const { return cursor_; }
 FrameScheduler::FrameScheduler(ITerminalBackend *backend, Compositor *compositor,
                                QWidget *window)
     : backend_(backend), comp_(compositor), win_(window) {
+	// The terminal's answer about wide clusters, taken once, here, because
+	// this is where qtty is handed a backend: exec() builds one of these,
+	// and so does an application running its own loop with a scheduler.
+	// Reading it per cluster instead would be a virtual call and a struct
+	// copy for every character of every frame.
+	if (backend_) set_wide_clusters(backend_->capabilities().unicode_wide);
 	coalesce_.setSingleShot(true);
 	coalesce_.setInterval(0);
 	QObject::connect(&coalesce_, &QTimer::timeout, this, [this] { render_now(); });

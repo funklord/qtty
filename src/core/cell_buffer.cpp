@@ -58,6 +58,15 @@ static bool is_zero_width(char32_t u) {
 	    || u == 0xfeff;                    // zero width no-break space
 }
 
+// Default true, which is what every terminal this project has met does and
+// what `Capabilities::unicode_wide` itself defaults to. A tree that read the
+// flag correctly and defaulted it false would render every CJK document
+// wrongly on the terminals that are fine.
+static bool s_wide_clusters = true;
+
+void set_wide_clusters(bool honoured) { s_wide_clusters = honoured; }
+bool wide_clusters() { return s_wide_clusters; }
+
 int cluster_width(QStringView cluster) {
 	if (cluster.isEmpty()) return 1;
 	char32_t first = cluster.at(0).unicode();
@@ -69,6 +78,12 @@ int cluster_width(QStringView cluster) {
 	bool all_zero = true;
 	for (QChar c : cluster) if (!is_zero_width(c.unicode())) { all_zero = false; break; }
 	if (all_zero) return 0;
+	// Zero width is not affected and is asked first, above: the capability
+	// names wcwidth-2, and a terminal that will not advance two columns for
+	// a wide cluster says nothing about whether it advances none for a
+	// combining mark. Answering both with one flag would be inventing a
+	// second capability out of this one.
+	if (!s_wide_clusters) return 1;
 	if (is_wide_codepoint(first)) return 2;
 	// VS16 forces emoji presentation -> wide
 	for (QChar c : cluster) if (c.unicode() == 0xFE0F) return 2;

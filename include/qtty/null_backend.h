@@ -22,6 +22,16 @@ public:
 		++frames_;
 	}
 	void set_cursor(std::optional<QPoint> cell, CursorShape) override { cursor_ = cell; }
+	// Recorded like the frame and the cursor, and for the same reason: this
+	// is the backend an adopter's snapshot test drives, and a title is
+	// something their application sets and would want to assert on. It was
+	// the one thing the runtime hands a backend that this dropped.
+	//
+	// `capabilities().title` stays false, which is not a contradiction: this
+	// backend has no terminal, so nothing will DISPLAY the title. Recording
+	// it is what a harness does, exactly as it records frames while
+	// reporting no graphics.
+	void set_title(const QString &t) override { title_ = t; ++titles_; }
 	void set_event_sink(ITerminalEventSink *s) override { sink_ = s; }
 	void suspend() override {}
 	void resume() override {}
@@ -30,6 +40,8 @@ public:
 	QString last_frame() const { return last_frame_; }
 	int frame_count() const { return frames_; }
 	std::optional<QPoint> cursor() const { return cursor_; }
+	QString last_title() const { return title_; }
+	int title_count() const { return titles_; }
 	ITerminalEventSink *sink() const { return sink_; }
 
 private:
@@ -37,6 +49,8 @@ private:
 	QString last_frame_;
 	int frames_ = 0;
 	std::optional<QPoint> cursor_;
+	QString title_;
+	int titles_ = 0;
 	ITerminalEventSink *sink_ = nullptr;
 };
 

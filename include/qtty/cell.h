@@ -45,9 +45,34 @@ struct CellImage {
 
 // Display width of one grapheme cluster: 2 for East Asian wide/fullwidth and
 // emoji presentation, else 1. The table is deliberately simple; terminals
-// disagree at the margins, and Capabilities::unicode_wide lets a backend
-// override behaviour (section 5.2).
+// disagree at the margins, and `Capabilities::unicode_wide` lets a backend
+// override it (design.md section 5.2).
 int cluster_width(QStringView cluster);
+
+// Whether the terminal advances TWO columns for a wide cluster. This is what
+// `Capabilities::unicode_wide` means, and until it was wired the field was a
+// promise the header made and nothing kept: a backend could report `false`
+// and every width in the tree carried on saying 2.
+//
+// It matters because the two ends have to agree. If qtty reserves two cells
+// and the terminal advances one, everything to the right of that cluster
+// sits one column left of where qtty believes it is -- for the rest of the
+// line, and for every line after it that the diff decides is unchanged. The
+// failure is not a wrong glyph; it is a screen that slides.
+//
+// So `false` makes every cluster one cell wide. That is the only thing a
+// bool CAN say: the alternative reading of design.md's "override the table"
+// is a backend supplying its own width function, which needs more than a
+// flag and is not what the flag was declared as.
+//
+// Process-wide, and set from the backend's own answer by `FrameScheduler`,
+// which is where qtty has a backend in hand. `set_terminal_palette()` is the
+// same shape for the same reason -- a fact about the terminal that a hot
+// path must read without a virtual call. An application driving its own
+// frame loop through `render_once()` has no backend in the picture and calls
+// this itself, the way it already presents its own frames.
+void set_wide_clusters(bool honoured);
+bool wide_clusters();
 
 // Split text into grapheme clusters (QTextBoundaryFinder::Grapheme).
 QVector<QString> to_clusters(const QString &text);

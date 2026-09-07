@@ -1671,17 +1671,13 @@ int suite_runtime() {
 	// unmodified Qt application already sets one -- so this is wiring rather
 	// than an interface an application has to learn.
 	{
-		// Records what it was told, and how often. The COUNT matters: a
-		// keeper that re-sent the title on every event would work in every
-		// assertion below and would put an escape sequence on the wire for
-		// each keystroke.
-		struct TitleBackend : NullBackend {
-			using NullBackend::NullBackend;
-			QStringList titles;
-			void set_title(const QString &t) override { titles << t; }
-		};
-
-		TitleBackend b;
+		// NullBackend's own recorder, not a private one made for the check.
+		// A harness accessor a test declines to use is an accessor with no
+		// caller, which is the defect this section was written to close.
+		// The COUNT matters as much as the title: a keeper that re-sent on
+		// every event would satisfy every assertion below and put an escape
+		// sequence on the wire for each keystroke.
+		NullBackend b;
 		QWidget win;
 		win.setWindowTitle(QStringLiteral("Editor -- untitled"));
 		{
@@ -1689,47 +1685,131 @@ int suite_runtime() {
 			// The title the window already had. An application sets it while
 			// building the window, which is before exec() and therefore
 			// before any change event exists to observe.
-			CHECK(b.titles == QStringList{QStringLiteral("Editor -- untitled")},
+			CHECK(b.title_count() == 1
+			      && b.last_title() == QStringLiteral("Editor -- untitled"),
 			      "a window's existing title reaches the backend when the "
 			      "keeper is installed");
 
 			win.setWindowTitle(QStringLiteral("Editor -- notes.txt"));
 			QCoreApplication::processEvents();
-			CHECK(b.titles.size() == 2
-			      && b.titles.last() == QStringLiteral("Editor -- notes.txt"),
+			CHECK(b.title_count() == 2
+			      && b.last_title() == QStringLiteral("Editor -- notes.txt"),
 			      "and a later change reaches it too");
 
 			// Nothing else does. A widget sees a great many events and only
 			// one of them is a title change; a filter that answered to more
 			// would re-send on every repaint.
-			const int before = b.titles.size();
+			const int before = b.title_count();
 			win.resize(win.width() + 1, win.height() + 1);
 			win.setToolTip(QStringLiteral("not a title"));
 			QCoreApplication::processEvents();
-			CHECK(b.titles.size() == before,
+			CHECK(b.title_count() == before,
 			      "and nothing else the window does sends a title");
 		}
 		// The event filter is removed with the keeper. A destroyed filter
 		// that is still installed is a dangling pointer Qt will call, and
 		// this is the arrangement in exec(): both live on the stack, and
 		// the order they are destroyed in is the compiler's.
-		const int after_death = b.titles.size();
+		const int after_death = b.title_count();
 		win.setWindowTitle(QStringLiteral("gone"));
 		QCoreApplication::processEvents();
-		CHECK(b.titles.size() == after_death,
+		CHECK(b.title_count() == after_death,
 		      "and a destroyed keeper is no longer listening");
 
 		// A backend that cannot set a title is a normal thing rather than a
 		// broken one, which is why ITerminalBackend::set_title is defaulted
-		// rather than pure. NullBackend takes the default and does nothing;
-		// this is the check that doing nothing is not doing something.
-		NullBackend plain;
+		// rather than pure -- every backend outside this tree would stop
+		// compiling if it were. NullBackend overrides it to record, so the
+		// DEFAULT needs a backend that does not: this one implements the
+		// four pure methods and nothing else, which is exactly what an
+		// adopter's minimal backend looks like.
+		struct BareBackend : ITerminalBackend {
+			Capabilities capabilities() const override { return {}; }
+			QSize size() const override { return {80, 24}; }
+			void present(const CellBuffer &, const QRegion &) override {}
+			void set_cursor(std::optional<QPoint>, CursorShape) override {}
+			void set_event_sink(ITerminalEventSink *) override {}
+			void suspend() override {}
+			void resume() override {}
+		};
+		BareBackend bare;
 		QWidget other;
 		other.setWindowTitle(QStringLiteral("ignored"));
-		TitleKeeper quiet(other, plain);
-		CHECK(!plain.capabilities().title,
-		      "a backend with no title support says so, and takes a title "
-		      "without complaint");
+		TitleKeeper quiet(other, bare);       // must compile, and do nothing
+		CHECK(!bare.capabilities().title,
+		      "a backend that implements no title support still compiles, "
+		      "takes one without complaint, and says it cannot show it");
+	}
+
+	// ------------------------------------ the cursor reaches the backend
+	//
+	// `NullBackend::cursor()` is a shipped harness accessor that no line of
+	// this project had ever called -- the 8.41 shape found by a
+	// caller-grep rather than by reading, and the third instance of it.
+	// Nothing had confirmed the harness reports the cursor at all.
+	{
+		QWidget win;
+		win.resize(20 * cw, 4 * ch);
+		auto *edit = new QLineEdit(&win);
+		edit->setGeometry(0, 0, 10 * cw, ch);
+		edit->setText(QStringLiteral("ab"));
+		edit->setFocus();
+		QCoreApplication::processEvents();
+
+		NullBackend b;
+		Compositor comp(&win, nullptr);
+		FrameScheduler sched(&b, &comp, &win);
+		sched.render_now();
+		const auto seen = b.cursor();
+		// Against the caret's own column, not a literal: what matters is
+		// that the backend was told where the caret IS, and a pinned
+		// number would be asserting on the line edit's insets instead.
+		CHECK(seen.has_value() && seen == comp.cursor_cell(),
+		      "a rendered frame tells the backend where the cursor is, and "
+		      "the harness backend reports it back");
+
+		// And the other half, which is what CursorShape::Hidden is for: a
+		// window with nothing to type into must not leave a caret behind
+		// on the terminal.
+		edit->hide();
+		win.setFocus();
+		QCoreApplication::processEvents();
+		sched.render_now();
+		CHECK(!b.cursor().has_value(),
+		      "and a frame with nothing focused to type into hides it");
+	}
+
+	// ------------------------------------- the width capability is absorbed
+	//
+	// The suite_cells checks prove the width table obeys the flag. They would
+	// pass just as loudly if nothing ever read the BACKEND's answer, which is
+	// the state the field was in: declared, documented in cell.h, set by
+	// AnsiBackend, and consulted by no line in the tree.
+	{
+		struct NarrowTerminal : NullBackend {
+			using NullBackend::NullBackend;
+			Capabilities capabilities() const override {
+				Capabilities c;
+				c.unicode_wide = false;      // a terminal that will not
+				return c;                    // advance two columns
+			}
+		};
+		QWidget win;
+		win.resize(20 * cw, 4 * ch);
+		Compositor comp(&win, nullptr);
+		{
+			NarrowTerminal narrow;
+			FrameScheduler sched(&narrow, &comp, &win);
+			CHECK(!wide_clusters(),
+			      "a backend reporting no wide-cluster support turns the "
+			      "width table off when it takes the terminal");
+		}
+		{
+			NullBackend ordinary;            // reports the default, true
+			FrameScheduler sched(&ordinary, &comp, &win);
+			CHECK(wide_clusters(),
+			      "and an ordinary backend turns it back on");
+		}
 	}
 
 	return fails;

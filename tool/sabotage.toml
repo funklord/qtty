@@ -556,3 +556,43 @@ find = "\t\tif (!win.windowTitle().isEmpty()) backend.set_title(win.windowTitle(
 into = "\t\t;"
 count = 1
 check = "a window's existing title reaches the backend when the keeper is"
+
+[[sabotage]]
+name = "the width table ignores the terminal's answer"
+file = "src/core/cell_buffer.cpp"
+find = "\tif (!s_wide_clusters) return 1;"
+into = "\t;"
+count = 1
+check = "and a terminal that does not advance two columns is told so"
+
+[[sabotage]]
+name = "the scheduler never asks the backend about wide clusters"
+file = "src/runtime/compositor.cpp"
+find = "\tif (backend_) set_wide_clusters(backend_->capabilities().unicode_wide);"
+into = "\t;"
+count = 1
+check = "a backend reporting no wide-cluster support turns the width table off"
+
+[[sabotage]]
+name = "the harness backend drops the title it is given"
+file = "include/qtty/null_backend.h"
+find = "\tvoid set_title(const QString &t) override { title_ = t; ++titles_; }"
+into = "\tvoid set_title(const QString &) override {}"
+count = 1
+check = "a window's existing title reaches the backend when the keeper is"
+
+[[sabotage]]
+name = "a frame does not tell the backend where the cursor is"
+file = "src/runtime/compositor.cpp"
+find = "\tbackend_->set_cursor(comp_->cursor_cell(),"
+into = "\tif (false) backend_->set_cursor(comp_->cursor_cell(),"
+count = 1
+check = "a rendered frame tells the backend where the cursor is"
+
+[[sabotage]]
+name = "an authored ansi16 index is taken without checking its range"
+file = "include/qtty/color.h"
+find = "\t\tif (kind_ != Default && index >= 0 && index < 16) c.ansi16_ = qint8(index);"
+into = "\t\tc.ansi16_ = qint8(index);"
+count = 1
+check = "an out-of-range index is refused"

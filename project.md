@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1084 checks, 0 failures, under six configurations, all six re-run
+1096 checks, 0 failures, under six configurations, all six re-run
 2026-09-07: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -14353,6 +14353,98 @@ keeper records how many titles it sent, and a resize and a tooltip must
 not add to the number: a filter answering to more events than
 `WindowTitleChange` would work in every other assertion here and put an
 escape sequence on the wire for each keystroke.
+
+### 8.43 A capability the header promised and nothing kept (2026-09-07)
+
+`Capabilities::unicode_wide` was **declared in `backend.h`, documented in
+`cell.h`, set by `AnsiBackend`, specified by design.md §5.2 -- and read by
+no line in the tree.** `cell.h` told an adopter that it *"lets a backend
+override behaviour"*, and it did not.
+
+**That is worse than an unimplemented field.** An unimplemented field is
+absent and an adopter goes looking for another way. A documented one that
+silently does nothing is a promise: a backend author for a terminal that
+does not do wide clusters sets it, ships, and gets exactly the corruption
+the flag exists to prevent.
+
+**The corruption is not a wrong glyph, it is a screen that slides.** If
+qtty reserves two cells and the terminal advances one, everything to the
+right of that cluster sits one column left of where qtty believes it is --
+for the rest of the line, and for every later line the diff decides is
+unchanged and does not repaint.
+
+**Found by the caller-grep from §8.41, not by reading.** Reading `cell.h`
+finds a well-explained field; asking which lines read it finds none. The
+same sweep, run over every name in `include/qtty/`, produced two more:
+`NullBackend::cursor()` and `Color::authored_ansi16()`, both public, both
+never called by anything, both now checked. That is the fourth, fifth and
+sixth instance of this shape in the project, and the instrument has now
+found more of them than reading has.
+
+**One flag can only mean one thing.** design.md says width comes from *"a
+table the backend can override"*, which could describe a backend supplying
+its own width function -- but the field is a `bool`, and the only thing a
+bool can say is whether the table applies. So `false` makes every cluster
+one cell. The alternative needs more than a flag and is not what was
+declared.
+
+**Zero width is deliberately not affected.** The capability names wcwidth-2,
+and a terminal that will not advance two columns for a wide cluster has
+said nothing about whether it advances none for a combining mark.
+Answering both with one flag would be inventing a second capability out of
+this one, and the check pins that.
+
+**Absorbed in `FrameScheduler`'s constructor**, which is where qtty is
+handed a backend: `exec()` builds one, and so does an application running
+its own loop with a scheduler. Reading it per cluster instead would be a
+virtual call and a struct copy for every character of every frame. An
+application driving `render_once()` alone has no backend in the picture and
+calls `set_wide_clusters()` itself, the way it already presents its own
+frames. `set_terminal_palette()` is the same shape for the same reason.
+
+**Two checks, because the table and the wiring are different claims.** The
+`suite_cells` checks prove the table obeys the flag and would pass just as
+loudly against a build that never read the backend's answer -- which is
+precisely the state the field was in. The `suite_runtime` check drives a
+`FrameScheduler` with a backend reporting `false` and one reporting the
+default, so a scheduler that stopped asking fails and a flag that stuck
+fails too.
+
+**And the table check is asserted on the WIDE cases only.** A check over
+`"a"` answers 1 with the flag honoured and 1 with it ignored, so it cannot
+tell the two builds apart.
+
+**A note on design.md rather than an edit to it.** Its `ITerminalBackend`
+listing shows neither `set_title` (§8.42) nor the graphics methods this
+tree folded in as defaulted virtuals -- `IGraphicsOutput` is a separate
+interface there and defaulted members here. So the listing has been behind
+the code since the graphics tier landed, and the title follows the pattern
+the code already uses. Flagged rather than resolved: which of the two is
+right is a design question and not one to settle while adding a method.
+
+### 8.44 The harness backend now records the title (2026-09-07)
+
+`NullBackend` records the frame, the frame count, the cursor and the sink --
+everything the runtime hands a backend except the title. It is the backend
+an adopter's snapshot test drives, and the README advertises it for exactly
+that, so an application wanting to assert on its own title had no route
+without subclassing a shipped class.
+
+`capabilities().title` stays false, and that is not a contradiction: this
+backend has no terminal, so nothing will DISPLAY the title. Recording it is
+what a harness does, exactly as it records frames while reporting no
+graphics.
+
+**The keeper checks were rewritten to drive it**, rather than the private
+recorder they used first. A harness accessor a test declines to use is an
+accessor with no caller -- the defect this pass exists to close, and
+writing a new one while closing three would have been a poor trade.
+
+**Which left the DEFAULT unexercised**, since `NullBackend` now overrides
+`set_title`. The check for it uses a backend implementing the seven pure
+methods and nothing else, which is what an adopter's minimal backend looks
+like: it must compile, take a title without complaint, and say it cannot
+show one.
 
 ## 11. What is next, in order
 

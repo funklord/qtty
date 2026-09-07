@@ -23,6 +23,33 @@ int suite_cells() {
 	CHECK(cluster_width(u"あ") == 2, "hiragana is wide");
 	CHECK(cluster_width(u"漢") == 2, "CJK is wide");
 	CHECK(cluster_width(QStringLiteral("🎉")) == 2, "emoji is wide");
+
+	// `Capabilities::unicode_wide`, which the header promised and nothing
+	// kept until this. A backend for a terminal that will not advance two
+	// columns says so, and the width table has to stop saying 2 -- otherwise
+	// qtty reserves a cell the terminal does not consume and everything to
+	// the right of it slides one column left.
+	{
+		CHECK(wide_clusters(), "the width table honours wide clusters by "
+		                       "default, as every terminal met so far does");
+		set_wide_clusters(false);
+		// Asserted on the WIDE cases, because the narrow ones answer 1 with
+		// the flag ignored entirely: a check over "a" would pass against a
+		// build that never read it.
+		CHECK(cluster_width(u"あ") == 1 && cluster_width(u"漢") == 1
+		      && cluster_width(QStringLiteral("🎉")) == 1,
+		      "and a terminal that does not advance two columns is told so, "
+		      "and gets one-cell clusters");
+		// The capability names wcwidth-2 and nothing else. Answering the
+		// zero-width question with the same flag would be inventing a second
+		// capability out of this one.
+		CHECK(cluster_width(QString(QChar(0x200b))) == 0,
+		      "and a zero-width character is still zero, which is a "
+		      "different question the flag does not answer");
+		set_wide_clusters(true);              // process-wide: put it back
+		CHECK(cluster_width(u"あ") == 2,
+		      "and the table comes back when the flag does");
+	}
 	CHECK(to_clusters(QStringLiteral("héllo")).size() == 5
 	      || to_clusters(QStringLiteral("héllo")).size() == 6,   // the accented e may be composed
 	      "grapheme clustering runs");
