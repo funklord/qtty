@@ -1629,9 +1629,28 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				const QString label =
 				    elide_to_cells(strip_mnemonic(mi->text),
 				                   qMax(0, c.width() - 1));
+				// The MNEMONIC, underlined -- the oldest convention a
+				// terminal menu bar has, and it was missing while the key
+				// worked. Measured: Alt+F on a bar carrying "&File" opens
+				// the menu, so the affordance was real and invisible.
+				//
+				// Marked only here and not on a push button, deliberately:
+				// a button's mnemonic does NOT activate it -- measured,
+				// Alt+S on "&Save" clicks nothing -- and underlining a key
+				// that does nothing is worse than leaving it bare.
+				const int mn = mnemonic_index(mi->text);
 				dev->buffer().text(c.left() + 1, c.top(), label, Color(), Color(),
 				                   label_attrs(opt, w, mi->font,
 				                               hot ? Attrs(Attr::Reverse) : Attrs()));
+				// After the text, because writing the run sets each cell's
+				// attributes -- marking first would be overwritten. Guarded
+				// against a label the elision cut short, where the marked
+				// letter is no longer on screen to mark.
+				if (mn >= 0 && mn < label.size()) {
+					const int x = c.left() + 1 + mn;
+					if (dev->buffer().writable(x, c.top()))
+						dev->buffer().at(x, c.top()).attrs |= Attr::Underline;
+				}
 				return;
 			}
 			break;

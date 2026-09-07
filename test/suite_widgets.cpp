@@ -401,6 +401,35 @@ int suite_widgets() {
 		render_once(split, b);
 		CHECK(buffer_contains(b, QStringLiteral("│")), "splitter handle renders");
 	}
+	// A menu bar underlines the letter its mnemonic uses.
+	//
+	// Measured before marking it: Alt+F on a bar carrying "&File" opens the
+	// menu, so the affordance was real and invisible -- the oldest
+	// convention a terminal menu bar has, missing while the key worked.
+	//
+	// The check pins WHICH letter, not merely that something is underlined:
+	// marking the wrong character is the failure this can actually have,
+	// since "&&" is a literal ampersand and counting one as a marker shifts
+	// the mark. "E&xit" is the fixture for that -- the marked letter is not
+	// the first.
+	{
+		QMenuBar bar;
+		bar.addMenu(QStringLiteral("&File"));
+		bar.addMenu(QStringLiteral("E&xit"));
+		bar.setAttribute(Qt::WA_DontShowOnScreen);
+		bar.resize(GridMetrics::cells(24, 1));
+		bar.show();
+		QCoreApplication::processEvents();
+		CellBuffer b(24, 1);
+		render_once(bar, b);
+		QString under;
+		for (int x = 0; x < b.cols(); ++x)
+			if (b.at(x, 0).attrs & Attrs(Attr::Underline))
+				under += b.at(x, 0).ch;
+		CHECK(under == QStringLiteral("Fx"),
+		      "a menu bar underlines the letter its mnemonic uses");
+	}
+
 	// The DEFAULT button is marked, because Enter activates it.
 	//
 	// Measured on a dialog whose focus was elsewhere: Enter fired the

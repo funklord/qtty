@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1063 checks, 0 failures, under six configurations, all six re-run
+1064 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6701,6 +6701,45 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.35 A working key nobody could see (2026-09-07)
+
+8.33's default button was **an affordance that worked and was not shown**.
+Mnemonics are the same question asked of the keyboard, and the answer was
+split four ways:
+
+    checkbox  "&Enable"   E underlined      Alt does not activate it
+    label     "&Name:"    N underlined      (a buddy label, not a key)
+    button    "&Save"     nothing marked    Alt+S clicks nothing
+    menu bar  "&File"     nothing marked    **Alt+F OPENS THE MENU**
+
+**The split is between the two channels**, which is why it looks
+arbitrary. A checkbox and a label are drawn by Qt's own text path, and it
+carries the underline through; the menu bar and the button are drawn by
+this style with `strip_mnemonic()`, which removes the marker and marks
+nothing.
+
+**Only the menu bar is fixed, and the measurement is what decides that.**
+Alt+F on a bar carrying "&File" opens the menu -- the router matches Alt
+against the `&` in ACTION text -- so the affordance was real and invisible,
+and an underlined mnemonic is the oldest convention a terminal menu bar
+has. A push button's mnemonic activates nothing here: Alt+S on "&Save"
+clicks it zero times, measured. **Underlining a key that does nothing is
+worse than leaving it bare**, so the button is left alone and the reason is
+recorded rather than the gap being "fixed" into a lie.
+
+**`mnemonic_index()` lives beside `strip_mnemonic()` and says so**, because
+the two must agree about `&&`: a literal ampersand is not a marker, and
+counting one as such underlines the wrong letter. The check pins WHICH
+letters rather than that something is underlined -- `"&File"` and `"E&xit"`
+together must give exactly `Fx`, so a marker counted wrongly moves the mark
+and the check fails. Marking the wrong character is the failure this can
+really have.
+
+**Applied after the text is written**, since writing a run sets each cell's
+attributes and marking first would be overwritten -- and guarded against a
+label the elision cut short, where the marked letter is no longer on screen
+to mark.
 
 ### 8.33 The other direction: what a widget asks FOR (2026-09-07)
 

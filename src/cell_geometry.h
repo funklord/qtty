@@ -322,6 +322,32 @@ inline QString elide_to_cells(const QString &s, int cells) {
 // The underline is not drawn. A terminal has one underline attribute and
 // design.md spends it on other things; the mnemonic is discoverable by the
 // Alt key rather than by the glyph. That is a limitation, not an oversight.
+// The index, in the STRIPPED text, of the character an '&' marked -- or -1
+// when there is none.
+//
+// Beside strip_mnemonic() because the two have to agree about "&&": a
+// literal ampersand is not a marker, and counting one as such underlines
+// the wrong letter. Any change to either belongs in both.
+//
+// Counts CHARACTERS, which is the same as cells only while the label is
+// narrow -- a wide cluster before the marker would shift it. Menu titles
+// are the caller and they are short ASCII words; a label where that stops
+// being true wants the buffer's own advance rather than this.
+inline int mnemonic_index(const QString &s) {
+	int out = 0;
+	for (int i = 0; i < s.size(); ++i) {
+		if (s.at(i) != QLatin1Char('&')) { ++out; continue; }
+		if (i + 1 < s.size() && s.at(i + 1) == QLatin1Char('&')) {
+			++out;                               // "&&" is one literal
+			++i;
+			continue;
+		}
+		if (i + 1 < s.size()) return out;        // the next one is marked
+		++out;                                   // a trailing '&' is literal
+	}
+	return -1;
+}
+
 inline QString strip_mnemonic(const QString &s) {
 	QString out;
 	out.reserve(s.size());

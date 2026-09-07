@@ -475,3 +475,11 @@ find = "\t\t\t\tif (b->features & QStyleOptionButton::DefaultButton)"
 into = "\t\t\t\tif (false)"
 count = 1
 check = "a default button is marked and an ordinary one is not"
+
+[[sabotage]]
+name = "a menu bar's mnemonic is not underlined"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tif (mn >= 0 && mn < label.size()) {"
+into = "\t\t\t\tif (false) {"
+count = 1
+check = "a menu bar underlines the letter its mnemonic uses"
