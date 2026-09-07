@@ -869,6 +869,12 @@ test-valgrind:
 # concluding the crash path is untested is being misled by the instrument,
 # and "improving" the number there would mean deleting the checks that are
 # doing the work.
+# And a file the SUITE never reaches reports 0.00%, which means the
+# instrument was pointed at the wrong binary rather than that the code is
+# untested. tray.cpp is the case here: it is exercised by `make test-tray`,
+# a separate program under dbus-run-session, so `make coverage F=tray` says
+# 0 of 99 while thirteen checks pass over there. Read a zero as "not in this
+# binary" and go and find out which one it is in.
 COV_DIR = build-cov
 coverage:
 	@test -n "$(F)" || { echo "coverage: name the file, e.g. make coverage F=term_caps" >&2; exit 1; }

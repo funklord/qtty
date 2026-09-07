@@ -14713,6 +14713,22 @@ fallback 8.39 already recorded as unreached, with what was tried. Nothing
 new in any of those, and the empty result is worth as much as a find --
 those files have been swept and the next fault needs a different lens.
 
+**`application.cpp` 136 of 144, and all eight are accounted for**: four are
+the `QtFatalMsg` branch, which cannot report because the process dies
+before gcov writes -- the same instrument limit the Makefile records for
+`ansi_backend`'s crash paths -- and four are the font diagnostics 8.40
+already recorded as deliberately unreached, with the six things that were
+tried. A percentage that is explained is worth more than a higher one that
+is not.
+
+**And `tray.cpp` reports 0 of 99, which means the instrument was pointed at
+the wrong binary.** The tray is exercised by `make test-tray`, a separate
+program under `dbus-run-session`, so the suite never touches it and
+thirteen checks pass over there while this one says zero. **A zero from a
+coverage run is "not in this binary" rather than "untested"**, and the
+Makefile says so now, because the obvious way to "fix" it -- moving the
+tray checks into the suite -- cannot work: they need a bus.
+
 **`drag.cpp` 65 of 72, and both gaps are behaviour a user sees.**
 
 **Crossing from one widget to another had never happened.** Every drag
