@@ -6679,6 +6679,36 @@ which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
 
+### 8.29 Two questions asked of beerssh, answered by looking (2026-09-07)
+
+`doc/beerssh.md` is an integration contract with three `[Q]` markers --
+"questions beerssh's side needs to answer". Two of them are not questions
+about what beerssh WANTS. They are questions about what beerssh IS, and
+those are answerable by reading their tree rather than by waiting.
+
+**Is beerssh Qt-based?** Yes. Its `.pro` says `QT += widgets network` and
+`CONFIG += c++17`. So a QtCore dependency is no obstacle and L2 does not
+need extracting to a plain-C++ core to be linkable. That closes the
+capability half; **whether they want the dependency is theirs**, and the
+entry says so rather than treating a measurement as consent.
+
+**Does beerssh have a headless mode -- escape stream in, grid state out?**
+No. It has `--self-test`, which its own `command_line.h` calls "CI's
+headless smoke test", and nothing in `src/` dumps grid, screen or cell
+state. A smoke test is a different thing from the loop the contract
+proposes. The "want" half is unchanged and theirs.
+
+**Both are written in MY voice, deliberately.** They are measurements I
+took in a tree I do not own, not statements beerssh has made -- "measured
+in my copy of their tree" rather than "beerssh is". A claim in the
+subject's voice reads as theirs and so never gets checked by them; a claim
+in mine invites *which copy, and when*, which is the question that kills a
+wrong one in a single exchange.
+
+**And the third `[Q]` is left alone**, because it asks what beerssh wants
+rather than what it is. A question that is a decision does not become
+answered by somebody else measuring something.
+
 ### 8.28 A hundred lines of platform noise, counted instead (2026-09-07)
 
 The last item in fuzzypickles' report, and the only one I had not touched:

@@ -19,8 +19,13 @@ can be compiled out if needed). Both ends then compute width from the same
 table and disagreement is impossible *by construction*. Divergence becomes a
 version-skew problem, handled by the handshake below.
 
-- **[Q]** Is beerssh Qt-based / can it take a QtCore dependency, or should
-  L2 be extractable as a plain-C++ core?
+- ~~**[Q]** Is beerssh Qt-based / can it take a QtCore dependency, or should
+  L2 be extractable as a plain-C++ core?~~ **Measured 2026-09-07, in my
+  copy of beerssh's tree: its `.pro` says `QT += widgets network` and
+  `CONFIG += c++17`.** It is a Qt Widgets application, so a QtCore
+  dependency is no obstacle and L2 need not be extracted to be linkable.
+  That answers the capability half; **whether beerssh WANTS the dependency
+  is still theirs to say**, and this note does not presume it.
 
 ## 2. Capability negotiation
 
@@ -334,7 +339,13 @@ terminals that answer none of this.
   stream (`--ansi`) — the latter is a deterministic corpus for beerssh's
   parser tests.
 - **[Q]** Does beerssh have (or want) a headless mode — escape stream in,
-  grid state out (text or JSON)? With that, CI runs the full loop:
+  grid state out (text or JSON)? **Half-answered by measurement, 2026-09-07,
+  in my copy of their tree: it has `--self-test`, a headless smoke test
+  (`command_line.h` calls it "CI's headless smoke test"), and I found
+  nothing anywhere in `src/` that dumps grid, screen or cell state.** So
+  the "have" is no — the smoke test is a different thing from an escape
+  stream in and a grid out — and the "want" is unchanged and theirs.
+  With that, CI runs the full loop:
   `qtty-replay --ansi script | beerssh --headless | diff fixture` — qtty
   encoder bugs and beerssh parser bugs surface in one harness, attributable
   by which fixture moved.
