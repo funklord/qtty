@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1056 checks, 0 failures, under six configurations, all six re-run
+1057 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6678,6 +6678,60 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.25 fuzzypickles vendored qtty, and sent back three faults (2026-09-07)
+
+Asked a second time what fuzzypickles and fuzznet are missing, I looked
+where I had not: at what they have WRITTEN DOWN. fuzzypickles' project.md
+gained a section 25 today. **They have vendored qtty as a submodule, pinned
+at `e756b39`, and spiked their existing `main_window` on a cell grid with
+nothing in `gui/` changed.** It renders -- menu bar, eleven tabs, splitter,
+status bar -- and their Library tab frame is in that section.
+
+**Their pin is six commits behind, and one of those six is theirs.** The
+delivery-mark fix in `080ea62` is the one their own header asked for, and
+they are pinned one commit before it. Worth telling them rather than
+waiting for them to find it.
+
+**They reported three rendering faults, all on the chat tab where panes
+nest**, and explicitly signalled rather than fixed, per *a project you
+depend on is signalled, not edited*:
+
+    borders double where a frame sits inside another
+    the bottom edge closes in the wrong column
+    the splitter handle paints as a bar rather than a gap
+
+**The third is fixed.** Reproduced immediately: a `QSplitter` of two framed
+panes rendered
+
+    ┌────────────────┐│┌───────────────────┐
+
+-- the left pane's edge, the handle's bar, the right pane's edge. Three
+vertical rules where a terminal wants one, which is exactly their sentence
+about the doubled columns reading as three rules side by side.
+
+`CE_Splitter` filled the handle unconditionally. **Not simply dropped**:
+between two UNFRAMED panes that bar is the only thing saying where the
+split is or that it can be dragged, so the question is whether the
+neighbours already draw an edge in that column. Asked of the WIDGETS rather
+than of the cells, because Qt paints a parent before its children -- at
+that moment the panes' borders are not in the buffer, and looking there
+would always find it empty.
+
+**The widget handed to `CE_Splitter` is the QSplitter, not the handle**,
+measured rather than assumed: a cast to `QSplitterHandle` fails and the
+class name is `QSplitter`. The handle is identified by the rectangle being
+painted instead, with a fallback for a rect no handle's geometry meets.
+
+Both directions are checked, and that is the point of the pair: a fix that
+merely stopped drawing handles would pass the new check and fail the
+existing one, and a fix that changed nothing would do the reverse.
+
+**The other two are not reproduced yet and are not claimed.** A frame
+inside a frame renders correctly here, with a clear gap, because the
+layout's own margin separates them; theirs must nest with no margin. That
+is the next thing to build rather than something to guess at, and their
+report stands unclosed until it is.
 
 ### 8.24 Two sabotage entries that could no longer be applied (2026-09-07)
 

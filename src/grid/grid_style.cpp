@@ -27,6 +27,11 @@
 #include <QCoreApplication>
 #include <QFontMetricsF>
 #include <QFontInfo>
+// For CE_Splitter, which asks the handle's neighbours whether they draw
+// their own edges before drawing one of its own.
+#include <QSplitter>
+#include <QSplitterHandle>
+#include <QFrame>
 
 namespace Qtty {
 
@@ -1765,6 +1770,62 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 			}
 			break;
 		case CE_Splitter: {
+			// A handle between two FRAMED panes is a third rule beside
+			// their two. Reported from fuzzypickles, whose chat tab splits
+			// two framed panes and came out `>|<` -- the left pane's edge,
+			// this bar, and the right pane's edge, three vertical rules
+			// side by side where a terminal wants one.
+			//
+			// Not simply dropped, because between two UNFRAMED panes the
+			// bar is the only thing saying where the split is or that it
+			// can be dragged. So the question is whether the neighbours
+			// draw an edge here already, and that is asked of the widgets
+			// rather than of the cells: Qt paints a parent before its
+			// children, so at this moment the panes' borders are not in
+			// the buffer yet and looking there would always find it empty.
+			//
+			// The widget handed here is the SPLITTER, not the handle --
+			// measured, not assumed: a cast to QSplitterHandle fails and
+			// the className is QSplitter. So the handle is identified by
+			// the rectangle being painted, and its two neighbours are the
+			// panes either side of it.
+			bool neighbours_draw_edges = false;
+			{
+				const auto *sp = qobject_cast<const QSplitter *>(w);
+				if (!sp)
+					if (const auto *h =
+					        qobject_cast<const QSplitterHandle *>(w))
+						sp = h->splitter();
+				if (sp) {
+					const auto framed = [](QWidget *x) {
+						const auto *f = qobject_cast<QFrame *>(x);
+						return f && f->frameShape() != QFrame::NoFrame;
+					};
+					bool matched = false;
+					for (int i = 1; i < sp->count(); ++i) {
+						const QWidget *h = sp->handle(i);
+						if (!h || !h->geometry().intersects(opt->rect))
+							continue;
+						neighbours_draw_edges = framed(sp->widget(i - 1))
+						                        || framed(sp->widget(i));
+						matched = true;
+						break;
+					}
+					// A handle whose geometry does not meet this rect --
+					// a layout mid-flight, or a Qt that paints them
+					// together -- falls back to asking whether ANY pane
+					// is framed. Erring toward the gap leaves one rule
+					// where the panes drew one; erring toward the bar is
+					// the fault being fixed.
+					if (!matched)
+						for (int i = 0; i < sp->count(); ++i)
+							if (framed(sp->widget(i))) {
+								neighbours_draw_edges = true;
+								break;
+							}
+				}
+			}
+			if (neighbours_draw_edges) return;
 			const bool horizontal_handle = opt->rect.width() < opt->rect.height();
 			const QString g = horizontal_handle ? QStringLiteral("│") : QStringLiteral("─");
 			const Attrs a = with_state(opt);

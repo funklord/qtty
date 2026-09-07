@@ -419,3 +419,11 @@ find = "\tif (qAbs(lead) < 0.01) return QString();"
 into = "\treturn QString();"
 count = 1
 check = "and a font whose leading is not zero is reported"
+
+[[sabotage]]
+name = "a splitter draws its bar between framed panes again"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\tif (neighbours_draw_edges) return;"
+into = "\t\t\t;"
+count = 1
+check = "a splitter between framed panes leaves a gap, not a third rule"

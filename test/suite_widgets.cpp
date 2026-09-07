@@ -401,6 +401,50 @@ int suite_widgets() {
 		render_once(split, b);
 		CHECK(buffer_contains(b, QStringLiteral("│")), "splitter handle renders");
 	}
+	// The same handle between FRAMED panes, where it must not render.
+	//
+	// Reported from fuzzypickles, whose chat tab splits two framed panes:
+	// the handle drew a bar between the two panes' own borders, so a
+	// terminal showed three vertical rules side by side where it wants
+	// one. The bar is right above and wrong here, and the difference is
+	// whether anything else is already drawing an edge in that column.
+	//
+	// Both directions are asserted, because a fix that simply stopped
+	// drawing the handle would pass this and fail the check above -- and
+	// one that changed nothing would pass that and fail this.
+	{
+		QSplitter split(Qt::Horizontal);
+		for (const char *t : {"left", "right"}) {
+			auto *f = new QFrame;
+			f->setFrameStyle(QFrame::StyledPanel);
+			auto *v = new QVBoxLayout(f);
+			v->addWidget(new QLabel(QLatin1String(t)));
+			split.addWidget(f);
+		}
+		split.setAttribute(Qt::WA_DontShowOnScreen);
+		split.resize(GridMetrics::cells(30, 5));
+		split.setSizes({14 * GridMetrics::cw(), 15 * GridMetrics::cw()});
+		split.show();
+		QCoreApplication::processEvents();
+		CellBuffer b(32, 6);
+		render_once(split, b);
+		// The row through the middle of the panes: exactly two vertical
+		// rules on the left pane's side of centre and its neighbour's,
+		// with a blank between them rather than a third.
+		int rules = 0, blank_between = 0;
+		const int row = 2;
+		for (int x = 0; x + 1 < b.cols(); ++x) {
+			if (b.at(x, row).ch == QStringLiteral("│")) {
+				++rules;
+				if (b.at(x + 1, row).ch == QStringLiteral(" ")
+				    && b.at(x + 2, row).ch == QStringLiteral("│"))
+					++blank_between;
+			}
+		}
+		CHECK(rules == 4 && blank_between == 1,
+		      "a splitter between framed panes leaves a gap, not a third"
+		      " rule");
+	}
 	// line edit: a selection is reverse video, the same as every other
 	// selection in the program.
 	//
