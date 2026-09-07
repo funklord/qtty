@@ -510,7 +510,7 @@ int suite_runtime() {
 	// so the proof is asserted directly on rectangles before any widget is
 	// involved -- a widget test can only sample, and the property is universal.
 	{
-		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		const int ch = GridMetrics::ch();     // cw is not used by the samples
 		const QRect samples[] = {
 			QRect(0, 0, 45, ch), QRect(46, 0, 45, ch), QRect(3, 7, 3, 3),
 			QRect(10, 19, 88, 19), QRect(-4, 0, 27, 40), QRect(0, 0, 0, 0),

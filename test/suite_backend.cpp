@@ -2587,7 +2587,12 @@ int suite_backend() {
 					printf("FAIL: and a resize while suspended writes nothing"
 					       " to the terminal it handed back\n"
 					       "      condition: %d byte(s), %s\n",
-					       after.size(),
+					       // int(), because size() is qsizetype and a
+					       // 64-bit value read through %d is undefined --
+					       // in a FAIL path, so the one line that has to
+					       // be right is the one nobody sees until it is
+					       // needed.
+					       int(after.size()),
 					       after.toPercentEncoding().constData());
 					++fails;
 				}
