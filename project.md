@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1098 checks, 0 failures, under six configurations, all six re-run
+1100 checks, 0 failures, under six configurations, all six re-run
 2026-09-07: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -529,6 +529,7 @@ Owned by the copyright holder:
 | **Two frames nested with no layout margin draw two rules in adjacent columns.** Faithful to the widget tree -- in pixels they are 1px lines 1px apart -- and on a grid they read as two rules. Merging is not a paint-time trick: the edges are in DIFFERENT cells because the inner rect is one cell inside the outer. Three options with their costs are recorded; the cheapest is to suppress a rule whose neighbour already holds one, which cannot tell nesting from two adjacent framed widgets. Reported by fuzzypickles, and reached again by a QScrollArea | 8.25, 8.26, 8.27 |
 | **A read-only line edit is not marked.** Measured: it renders identically to an editable one, so a user cannot tell they cannot type. Marking it needs vocabulary, and the obvious candidate collides -- disabled already uses Dim, and read-only is a different state, focusable and selectable. Unlike Enter's target it has no consequence a user cannot discover by typing | 8.33 |
 | **A tab's mnemonic does nothing.** `Alt+S` on a tab labelled "&Second" does not switch to it: the router matches Alt against ACTION text and a tab is not an action. It is therefore left unmarked, on the rule that underlining a key that does nothing is worse than leaving it bare. Whether a terminal should switch tabs by mnemonic at all is the question -- the marking follows the answer | 8.37 |
+| **`Overlay::set_z()` does nothing in a GUI build.** `visible_overlays()` sorts by z and its only production caller is the compositor, which is the TUI path; the GUI twin never reads `z_`, so stacking there falls to the window manager. design.md presents `Overlay` as target-independent and lists `setZ` unqualified, so this is a scope question -- does the twin owe z ordering? -- rather than a defect. Not a one-liner: the twins are frameless always-on-top `Qt::Tool` windows, and it cannot be verified headlessly here | 8.47 |
 | The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
@@ -14575,6 +14576,62 @@ those four sweeps returned a confident wrong answer first -- one anchored
 on a pattern that could not match a definition inside a namespace, and it
 reported every function in the library as undefined. The library links.
 Nothing but the control said so.
+
+### 8.47 What coverage said about the code this pass added (2026-09-07)
+
+Coverage is the instrument that found 8.41, so it is the one to point at a
+pass that added API. Run over the two files this one changed most:
+
+    cell_buffer.cpp   173 of 174   the only uncovered line is the
+                                   defensive `return "?"` after a switch
+                                   that is exhaustive over the enum --
+                                   unreachable without undefined
+                                   behaviour, and correctly so
+    compositor.cpp    323 of 324   one line, and it was a real gap
+
+**The gap: putting back what a popup layer dropped.** When a layer does not
+fit the terminal, `apply_priority()` hides its `Optional` widgets and
+records them. One line in `compose()` puts them back when the popup layer
+CHANGES, and it had never run.
+
+**It is the only thing that can put them back, and the hysteresis is why.**
+While a popup stays the top of the stack, `apply_priority()` runs on it
+every frame -- restoring, re-measuring, dropping again because it still
+does not fit. The moment the popup goes away it is no longer in `popups()`,
+so `apply_priority()` is never called for it again, and `popup_ = Layer()`
+would wipe the record with the widgets still hidden.
+
+**For the life of the WIDGET, not of the popup.** An application that keeps
+its menu around -- which is the ordinary way to keep a menu -- gets it back
+short the next time it opens it, and nothing will ever put those widgets
+back.
+
+**The modal twin of this check has existed for a while**, and that is the
+part worth noticing: the identical line for the input layer, five lines
+apart and byte-for-byte the same source, is covered. Two identical lines,
+one exercised and one not -- which is also why the sabotage entry needs a
+two-line anchor, the one-line form matching both and being refused. The
+refusal is the tool doing its job.
+
+**Also flagged and NOT resolved: `Overlay::set_z()` does nothing in a GUI
+build.** Found by the lens the tray bug suggested -- a call that moves
+state without telling every consumer. Four of `Overlay`'s five mutators
+call `sync_gui_twin()`; `set_z()` does not, and it is right not to,
+because the twin never reads `z_`. `visible_overlays()` sorts by z and its
+only production caller is the compositor, which is the TUI path.
+
+So z is honoured on a terminal and ignored on a desktop, where stacking
+falls to the window manager. design.md presents `Overlay` as
+target-independent -- *"the same class renders through an ordinary
+top-level widget, so shared code manipulates one object in both targets"*
+-- and lists `setZ` with no qualification.
+
+**Whether the GUI twin owes z ordering is a scope question and it is the
+holder's**, which is why this is a flag rather than a change. It is not a
+one-liner either: the twins are frameless always-on-top `Qt::Tool`
+windows, so ordering them means raising them in z order and living with
+whatever the window manager does, and it cannot be verified headlessly
+here. Recorded in 0b.
 
 ## 11. What is next, in order
 

@@ -604,3 +604,11 @@ find = "void Overlay::set_opacity(qreal o) { opacity_ = qBound(0.0, o, 1.0); syn
 into = "void Overlay::set_opacity(qreal o) { opacity_ = o; sync_gui_twin(); }"
 count = 1
 check = "and an opacity outside the range is clamped rather than"
+
+[[sabotage]]
+name = "a popup layer keeps what it dropped when it goes away"
+file = "src/runtime/compositor.cpp"
+find = "std::as_const(popup_.dropped))\n\t\t\tif (w) w->show();"
+into = "std::as_const(popup_.dropped))\n\t\t\tif (false) w->show();"
+count = 1
+check = "and the popup layer putting itself away hands them back"

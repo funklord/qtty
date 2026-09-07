@@ -1234,6 +1234,71 @@ int suite_runtime() {
 	}
 
 	{
+		// The POPUP twin of the check above, which coverage said had never
+		// run: one line in compose(), putting back what the popup layer
+		// dropped when that layer changes. It is the only thing that can put
+		// them back, and the reason is the hysteresis.
+		//
+		// While a popup stays the top of the stack, apply_priority() runs on
+		// it every frame -- restoring, re-measuring, and dropping again
+		// because it still does not fit. The moment the popup goes away it is
+		// no longer in popups(), so apply_priority() is never called for it
+		// again, and the state it dropped would be wiped by `popup_ =
+		// Layer()` with the widgets left hidden. Not for the life of the
+		// popup: for the life of the WIDGET, which an application that keeps
+		// its menu around gets back empty the next time it opens it.
+		QWidget win;
+		auto *v = new QVBoxLayout(&win);
+		v->addWidget(new QLabel(QStringLiteral("Root")));
+		win.resize(GridMetrics::cells(20, 6));
+		win.show();
+		QCoreApplication::processEvents();
+
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+
+		// Qt::Popup is what makes the router adopt it -- is_popup_layer()
+		// asks the window flags, and the router sets WA_DontShowOnScreen on
+		// anything that shows up after it is installed.
+		QWidget pop;
+		pop.setWindowFlags(Qt::Popup);
+		auto *pv = new QVBoxLayout(&pop);
+		auto *keep = new QLabel(QStringLiteral("Required"));
+		pv->addWidget(keep);
+		auto *extra = new QLabel(QStringLiteral("Popup extra"));
+		set_priority(extra, Priority::Optional);
+		pv->addWidget(extra);
+		for (int i = 0; i < 8; ++i)
+			pv->addWidget(new QLabel(QStringLiteral("Pad %1").arg(i)));
+		pop.resize(GridMetrics::cells(18, 12));
+		pop.show();
+		keep->setFocus();
+		QCoreApplication::processEvents();
+
+		CellBuffer b(20, 4);
+		c.compose(b);
+		const bool dropped = !extra->isVisible();
+		pop.hide();
+		QCoreApplication::processEvents();
+		c.compose(b);                                // the restore happens here
+		// isHidden() rather than isVisible(), for the reason the modal check
+		// above records: the parent is a closed popup, so isVisible() is
+		// false for a reason that has nothing to do with the restore.
+		const bool unhidden = !extra->isHidden();
+		pop.show();
+		QCoreApplication::processEvents();
+		CHECK(dropped,
+		      "a popup too big for the terminal drops its optional widgets");
+		CHECK(unhidden && extra->isVisible(),
+		      "and the popup layer putting itself away hands them back, "
+		      "which nothing else will do once it has left the stack");
+		pop.hide();
+		win.hide();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
+	{
 		// TWO modals at once, which is what reaches compose()'s branch for a
 		// modal that is not the ACTIVE one. Nothing had: with a single modal
 		// the active-layer path takes it every time, and coverage showed the
