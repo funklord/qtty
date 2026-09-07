@@ -6727,11 +6727,49 @@ Both directions are checked, and that is the point of the pair: a fix that
 merely stopped drawing handles would pass the new check and fail the
 existing one, and a fix that changed nothing would do the reverse.
 
-**The other two are not reproduced yet and are not claimed.** A frame
-inside a frame renders correctly here, with a clear gap, because the
-layout's own margin separates them; theirs must nest with no margin. That
-is the next thing to build rather than something to guess at, and their
-report stands unclosed until it is.
+**The first is reproduced, and it is a decision rather than a bug.** With
+the layout margins set to zero -- which is how their chat tab nests -- a
+frame inside a frame gives
+
+    ┌──────────────────────┐
+    │┌────────────────────┐│
+    ││alpha               ││
+    │└────────────────────┘│
+    └──────────────────────┘
+
+Each frame draws its own edge in its own column, which is a faithful
+rendering of the widget tree: in pixels those are two 1px lines 1px apart
+and read as one slightly thicker rule, and on a grid they are two columns
+and read as two rules. Nothing is wrong with either frame; what differs is
+that a cell is a hundred times the width of the line it stands for.
+
+**The options, their costs, and whose decision it is.** Merging is not a
+paint-time trick: the two edges are in DIFFERENT cells because the inner
+frame's rect is one cell inside the outer's, so a renderer cannot combine
+them without moving one of them.
+
+- **Suppress a rule whose immediate neighbour already holds one.** Works
+  here because a parent is painted first. Costs: it cannot tell a nested
+  frame from two genuinely adjacent framed widgets, and would drop a
+  border in the second case too -- which may be right, since they look the
+  same on a grid.
+- **Give a frame flush inside another a zero frame width**, through
+  `PM_DefaultFrameWidth` or `SE_FrameContents`. Keeps painting honest and
+  moves the decision to layout, where it belongs; costs a rule that has to
+  recognise "flush inside another frame", which is fragile.
+- **Leave it.** Two columns per nesting level is a real cost on an 80-column
+  terminal, and it is honest.
+
+This is a rendering policy that touches every nested frame in every
+application, so it is the copyright holder's rather than a session's.
+
+**The second fault is not reproduced, and may already be gone.** They
+described the bottom edge closing in the wrong column, `││└` on the left --
+two vertical rules and then a corner. The middle rule in that sequence is
+where the splitter handle was, and the handle no longer draws one. Their
+report was made against `e756b39`, six commits back; **re-testing at HEAD
+is cheaper than either of us reasoning about it**, and it may be that
+fixing the third fault closed the second.
 
 ### 8.24 Two sabotage entries that could no longer be applied (2026-09-07)
 
