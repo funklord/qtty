@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1068 checks, 0 failures, under six configurations, all six re-run
+1070 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6704,6 +6704,49 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.39 Asking the compiler which lines never ran (2026-09-07)
+
+8.38 found a branch nothing reaches, one failed sabotage at a time. `make
+coverage F=<file>` asks the same question of every line at once, and it had
+not been used this session.
+
+**Validated against a known answer before being trusted.** Pointed at
+`input_router`, gcov names line 392 --
+`focusNextPrevChild(!k.shift)` -- which is exactly the line instrumentation
+had shown running zero times. The tool agrees with the hand measurement, so
+its answers elsewhere are worth reading. 266 of 269 lines, and the other
+two are a destructor's signature and brace while its BODY is covered: gcov
+attributing an unused deleting-destructor variant, not a gap.
+
+**`cell_paint` is 514 of 532, and two of the eighteen are mine.**
+
+**My own alpha fallback was defended by nothing.** "Where the ground is not
+a concrete colour the paint is laid down opaque" is a rule I wrote,
+commented at length, and put in the design document -- and gcov named its
+two lines, `cell.bg = f.cell.bg; continue;`, as never executed. The check
+above it uses a red ground, so it takes the blend path; nothing used a
+Default one. **A rule stated three times and tested zero.**
+
+**The other is sharper, because I made it.** The one-sided substitution
+branches -- `top_any` without `bot_any` and the reverse, which draw `▀` and
+`▄` -- were reached by the FIRST version of the shape fixture, the one that
+inked a single half. That fixture was replaced because it passed against
+the unfixed engine, and the replacement inks both halves at different
+densities. Closing the hole opened another: **a fixture rewritten to fix
+one fault can stop exercising a branch, and only counting the lines says
+so.** Both are checked now.
+
+**Measured after, which is the half that makes it a result rather than an
+intention:** `cell_paint` goes from 514 of 532 to **522 of 532** -- 96.62%
+to 98.12% -- and all six named lines are covered. Two checks closed eight
+lines, the six aimed at and two adjacent.
+
+**What coverage is not.** It says which lines ran, not which were tested --
+a line executed by a fixture that asserts nothing is covered and undefended
+both. It earns its place here as a way of finding candidates, not as a
+measure of quality, and every candidate it named was read before anything
+was written.
 
 ### 8.38 Backward focus, and a fixture on the wrong side of it (2026-09-07)
 

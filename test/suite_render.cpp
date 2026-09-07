@@ -294,6 +294,33 @@ int suite_render(bool record) {
 				++r;
 			}
 
+			// The FALLBACK, which coverage found untested: a translucent
+			// fill over a ground this layer cannot resolve is laid down
+			// opaque, and nothing asserted it. The rule is documented
+			// beside the code and was defended by nothing -- gcov named
+			// the two lines, `cell.bg = f.cell.bg; continue;`.
+			//
+			// A Default background is that case: it is the terminal's own
+			// and unknown here.
+			{
+				Qtty::CellBuffer plainbg(4, 1);
+				Qtty::CellPaintDevice dev(plainbg);
+				QPainter p(&dev);
+				p.fillRect(QRect(0, 0, cw * 4, ch),
+				           QColor(0xff, 0x8b, 0x33, 80));
+				p.end();
+				const Qtty::Color got = plainbg.at(1, 0).bg;
+				if (got.kind() == Qtty::Color::Rgb
+				    && (got.value() & 0xffffff) == 0xff8b33u)
+					printf("PASS: and over a ground it cannot resolve it is"
+					       " laid down opaque\n");
+				else {
+					printf("FAIL: and over a ground it cannot resolve it is"
+					       " laid down opaque\n");
+					++r;
+				}
+			}
+
 			// And it lies BETWEEN them per channel, which is what makes
 			// it a blend rather than merely a third colour.
 			const QRgb w = washed.value(), g = plain.value(),

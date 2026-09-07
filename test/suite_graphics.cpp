@@ -1606,6 +1606,35 @@ int suite_graphics() {
 		CHECK(low.at(0, 0).ch != high.at(0, 0).ch,
 		      "and two one-colour icons differing only in shape do too");
 
+		// ONE-SIDED ink, where a half is entirely empty rather than merely
+		// thinner. That is a different branch -- `top_any` without
+		// `bot_any` and the reverse -- and coverage found it unreached:
+		// the fixture above was CHANGED to ink both halves (an earlier
+		// version inked one, and passed against the unfixed engine), and
+		// changing it left these two lines with nothing exercising them.
+		//
+		// A fixture rewritten to close one hole can open another, and only
+		// counting the lines says which.
+		auto sided = [](bool ink_top, CellBuffer &b) {
+			const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+			QImage im(cw, ch, QImage::Format_ARGB32);
+			im.fill(Qt::transparent);
+			for (int y = ink_top ? 0 : ch / 2;
+			     y < (ink_top ? ch / 2 : ch); ++y)
+				for (int x = 0; x < cw; ++x)
+					im.setPixelColor(x, y, QColor(220, 40, 40));
+			CellPaintDevice dev(b);
+			QPainter p(&dev);
+			p.drawPixmap(QRect(0, 0, cw, ch), QPixmap::fromImage(im));
+			p.end();
+		};
+		CellBuffer topped(2, 1), bottomed(2, 1);
+		sided(true, topped);
+		sided(false, bottomed);
+		CHECK(topped.at(0, 0).ch == QStringLiteral("▀")
+		      && bottomed.at(0, 0).ch == QStringLiteral("▄"),
+		      "an icon inked on one side only draws that half");
+
 		// And nothing stands for nothing. A fully transparent pixmap drew a
 		// block that said a picture was there when none was -- which is the
 		// same shape as the null image above, one step along.
