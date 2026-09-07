@@ -7263,10 +7263,20 @@ at `e756b39`, and spiked their existing `main_window` on a cell grid with
 nothing in `gui/` changed.** It renders -- menu bar, eleven tabs, splitter,
 status bar -- and their Library tab frame is in that section.
 
-**Their pin is six commits behind, and one of those six is theirs.** The
+**Their pin is behind, and one of the commits is theirs.** The
 delivery-mark fix in `080ea62` is the one their own header asked for, and
 they are pinned one commit before it. Worth telling them rather than
 waiting for them to find it.
+
+**And bumping costs them nothing, which is the fact a consumer actually
+needs.** Measured across the 27 commits from `e756b39` to HEAD:
+`include/qtty/` gained **one declaration** -- `grid_font_leading()` -- with
+nothing removed and no signature changed. No public class changed at all,
+so the bump is source-compatible and layout-compatible both. A pre-alpha
+library's README promises API movement, and the honest report is that
+between those two commits there was none: what moved is behaviour, and all
+of it in their favour -- the delivery marks, the splitter gap, the tab
+inset, the platform noise.
 
 **They reported three rendering faults, all on the chat tab where panes
 nest**, and explicitly signalled rather than fixed, per *a project you
@@ -7442,6 +7452,34 @@ reports its full 1056 rather than a truncated count, and
 run against a binary that was never instrumented reads identically to a
 real one**, and the only thing separating them is asking what the binary
 links.
+
+**Re-run again on 2026-09-07 after the style work** -- the spin box frame,
+the flat group box, the default button and three mnemonic sites -- and all
+of it holds: platforms green at 2 plus a refusal and a hostile environment,
+the sanitizers at 1066 checks with no diagnostic, and valgrind clean with
+its counts reconciling exactly (1064 PASS plus the same 2 documented skips,
+`ERROR SUMMARY: 0 errors` in the main process, and the 13,600 bytes
+belonging as before to the child the suite segfaults on purpose). The
+screen gate ran too, with no skip: kitty, an overlay and its removal, tmux
+passthrough engaging the placeholder path, xterm over sixel and the
+half-block fallback, every arm within prediction.
+
+**So all seven gates and all six configurations have now seen this
+session's code**, which is the state the header claims and, for once, the
+state that was actually measured rather than inherited from the morning.
+
+**That second sanitizer count had to be taken twice, and the first was my
+own doing.** A merged capture (`> log 2>&1`) reported 1065, and the missing
+one was a PASS line spliced by a grid-guard warning -- `...own edit
+doeqtty: QLabel '' geometry 380x19+10+104 is off the 10x19 grid`. With
+stderr separated the same binary reports 1066.
+
+**Which is 8.28's own caveat proving itself within a day.** That entry
+fixed the platform notice and said in as many words that it removes the
+DOMINANT source rather than the need for stream separation, because the
+grid guard and the contrast check still write to stderr. The correction to
+that overclaim was made before it shipped, and here is the case it
+predicted -- walked into by the person who wrote it.
 
 **Valgrind memcheck: 0 errors from 0 contexts, and 0 bytes lost.**
 
