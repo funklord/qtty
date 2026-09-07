@@ -692,3 +692,11 @@ find = "\tif (k.qt_key == Qt::Key_Tab && !k.ctrl) {"
 into = "\tif (k.qt_key == Qt::Key_Tab) {"
 count = 1
 check = "Ctrl+Tab does not cycle focus"
+
+[[sabotage]]
+name = "a layer never scrolls back up to its focus"
+file = "src/runtime/compositor.cpp"
+find = "\t\tif (top < state.scroll.y())                    state.scroll.setY(top);"
+into = "\t\tif (false)                                     state.scroll.setY(top);"
+count = 1
+check = "and back up again when the focus returns to the top"

@@ -771,6 +771,27 @@ int suite_runtime() {
 		      && at_top.contains(QStringLiteral("Field 0"))
 		      && !at_bottom.contains(QStringLiteral("Field 0")),
 		      "a window taller than the terminal scrolls to its focus");
+
+		// AND BACK. Branch coverage said `if (left < state.scroll.x())` and
+		// `if (top < state.scroll.y())` had never been true: the layer had
+		// scrolled DOWN to reach a focus and never back UP. Both arms are
+		// one `if`/`else if` apart and only one of them had ever run.
+		//
+		// It is the ordinary way a user meets it -- Tab to the end of a
+		// form, Shift+Tab back to the first field -- and the failure is
+		// silent: focus really is on the field, the application really did
+		// move it, and the field is off the top of the screen with no
+		// indication that anything is wrong.
+		auto *first = win.findChild<QLineEdit *>();
+		first->setFocus();
+		QCoreApplication::processEvents();
+		CellBuffer again(30, 6);
+		c.compose(again);
+		const QString back_at_top = again.to_text();
+		CHECK(back_at_top.contains(QStringLiteral("Field 0"))
+		      && !back_at_top.contains(QStringLiteral("Close")),
+		      "and back up again when the focus returns to the top, which "
+		      "is Shift+Tab out of the last field");
 		GridGuard::reset();
 	}
 

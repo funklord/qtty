@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1114 checks, 0 failures. `make check` is green and includes
+1115 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -14873,6 +14873,32 @@ other, and it was found by sabotaging rather than by reading.**
 reached 0 times" is equally what a router that delivers no wheel anywhere
 would report: with the modal hidden, the same wheel over the same cell
 must reach the root, and it does.
+
+**And pointed at `compositor`** -- 99.70% of lines, 97.77% of branches
+executed, **67.20% taken at least once**, 40 conditional lines with a
+direction never taken. The one worth having:
+
+    if (left < state.scroll.x())                 // never true
+            state.scroll.setX(left);
+    else if (right > state.scroll.x() + cols - 1)  // 10% / 90%
+    if (top  < state.scroll.y())                 // never true
+            state.scroll.setY(top);
+    else if (bottom > state.scroll.y() + rows - 1) // taken
+
+**The layer had only ever scrolled DOWN to reach a focus, never back up.**
+Two arms of one `if`/`else if`, and only one had run. It is the ordinary
+way a user meets it -- Tab to the end of a form, Shift+Tab back to the
+first field -- and the failure is silent: focus really is on the field,
+the application really did move it, and the field is off the top of the
+screen with nothing to say so.
+
+**A pattern worth naming across all three of this session's branch
+findings**: `drop_target`'s walk, the wheel's escape guard, and this. Each
+is a two-armed decision where the fixtures only ever exercised one arm,
+and in each the untested arm was the one a user reaches by doing the
+ordinary thing -- dropping on a label rather than a panel, wheeling inside
+a dialog, tabbing backwards. **Line coverage reports all three as
+covered**, because one arm running is enough to execute the line.
 
 ## 11. What is next, in order
 
