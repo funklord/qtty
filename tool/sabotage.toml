@@ -499,3 +499,4 @@ find = "\t\t\t\t\t\t\t\tmn = mnemonic_index(act->text());"
 into = "\t\t\t\t\t\t\t\t;"
 count = 1
 check = "a toolbar button underlines the letter its mnemonic uses"
+

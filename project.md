@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1066 checks, 0 failures, under six configurations, all six re-run
+1068 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6704,6 +6704,92 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.38 Backward focus, and a fixture on the wrong side of it (2026-09-07)
+
+The input side had had little attention this session, so eight keyboard
+properties were measured. **Seven are correct and the eighth was
+undefended.**
+
+    Tab forward            first -> second -> button   correct
+    Shift+Tab back         button -> second            correct
+    Down in a list         -1 -> 0                     correct
+    Tab skips a disabled field                         correct
+    Tab wraps round                                    correct
+    Space toggles a check box                          correct
+    a modal keeps the key target inside itself         correct
+    Enter reaches the default button (8.33)            correct
+
+**The modal one nearly read as a failure and was the instrument.** The
+target's `objectName` is empty, which looks like nothing; it is the
+`QDialog` itself, and `dlg.isAncestorOf()` says so. An empty string is not
+a finding.
+
+**`Key_Backtab` appeared nowhere in the suite** while `Key_Tab` appeared
+four times, so backward focus -- which works -- was defended by nothing. A
+behaviour that works and is undefended is one a refactor takes away
+silently.
+
+**And the first version of the check tested the wrong key**, which is worth
+more than the check. It sent `Key_Backtab`. A terminal sends Shift+Tab as
+`CSI Z`, and this library's own backend turns that into **`Key_Tab` with
+`shift` set** -- `case 'Z': k.qt_key = Qt::Key_Tab; k.shift = true;`.
+`Key_Backtab` is a spelling no terminal here produces: it skips the
+router's branch entirely, because that branch tests `qt_key == Key_Tab`,
+and Qt's own default handling moves the focus instead.
+
+**The check passed either way, and only one of them exercises this
+project's code.** That is the fixture-on-the-safe-side-of-the-hazard
+failure this document records more often than any other, met again -- and
+what caught it was asking which key the BACKEND produces rather than which
+key Qt names.
+
+Sent as `Key_Tab` with shift now. **And that still did not reach the
+router's own code, which the sabotage is what proved.** Breaking
+`focusNextPrevChild(!k.shift)` to `focusNextPrevChild(true)` left the check
+green.
+
+The reason is in the branch: the router sends the key to the target first
+and calls `focusNextPrevChild()` **only if the target did not accept it and
+the focus did not move**. A focused widget accepts Tab, because
+`QWidget::event()` handles it -- so with anything focused, Qt moves the
+focus and that line never executes. It is a FALLBACK, and a fixture with a
+focused widget cannot reach it by construction.
+
+**With nothing focused there is no target, and the fallback is the only
+thing that can move focus** -- and its direction becomes observable:
+backward from nothing lands on the LAST field, forward on the FIRST.
+Asserting the PAIR is what makes a flipped argument fail; either alone
+passes with the direction hardcoded.
+
+**And the second fixture did not reach it either.** The sabotage failed
+again, so the router was instrumented: `focusNextPrevChild(!k.shift)` **ran
+zero times across all 1068 checks**, and zero times in four fixtures built
+to provoke it -- including the one with nothing focused, where Qt moved the
+focus through the window as target and the fallback still never fired.
+
+**So that line is a fallback nobody has observed to run**, which this
+document has a rule about. Its condition is `(!target ||
+!press.isAccepted()) && scope->focusWidget() == before`, and
+`QWidget::event()` accepts Key_Tab whenever it can move focus at all --
+so reaching it needs a scope with no focusable child, where there is
+nothing to move focus to in any case.
+
+**Not called dead, because non-reproduction is not proof of
+impossibility.** What is measured is: never taken in 1068 checks or four
+deliberate attempts. What would change the answer is a target that ignores
+Tab while a focusable sibling exists.
+
+**The sabotage entry is REMOVED rather than left failing.** An entry that
+cannot redden anything is worse than no entry: it reports FAILED on every
+full sweep and trains a reader to skip the one line that matters. The two
+checks stay -- they assert the behaviour a user gets, which is real whoever
+implements it -- and they are honest about not covering that line, which is
+what this entry is for.
+
+**Three attempts to reach one branch, each green and each wrong**, is the
+strongest argument this session has produced for the harness: a check that
+passes tells you nothing about which code it ran.
 
 ### 8.37 The last two sibling sites, and a fix that did nothing (2026-09-07)
 

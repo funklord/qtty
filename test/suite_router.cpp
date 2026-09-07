@@ -159,8 +159,59 @@ int suite_router() {
 	}
 
 	// Tab walks the focus chain
+	QWidget *before_tab = win.focusWidget();
 	router.on_key({Qt::Key_Tab, QString(), false, false, false});
 	CHECK(win.focusWidget() == btn, "Tab advances focus chain");
+
+	// And BACKWARD, which nothing here asked about until now: backward focus
+	// appeared nowhere in the suite while Tab appeared four times. It works
+	// -- measured -- and a behaviour that works and is undefended is one a
+	// refactor takes away silently.
+	//
+	// Key_Tab WITH SHIFT, not Key_Backtab, and the difference is the whole
+	// value of the check. A terminal sends Shift+Tab as CSI Z, and this
+	// library's own backend turns that into `Key_Tab` with `shift` set --
+	// `case 'Z': k.qt_key = Qt::Key_Tab; k.shift = true;`. Key_Backtab is a
+	// spelling no terminal here produces: sending it skips the router's own
+	// branch entirely, because that branch tests `qt_key == Key_Tab`, and
+	// Qt's default handling moves the focus instead. The check passes either
+	// way and only one of them exercises this project's code.
+	//
+	// Asserted as a RETURN to where Tab came from rather than against a
+	// named widget: that is what "backward" means, and it stays true if the
+	// fixture above gains a widget.
+	router.on_key({Qt::Key_Tab, QString(), false, false, true});
+	CHECK(win.focusWidget() == before_tab,
+	      "and Shift+Tab walks it back to where Tab came from");
+
+	// The router's OWN fallback, which the check above does not reach.
+	//
+	// `focusNextPrevChild(!k.shift)` runs only when the target did not
+	// accept the key AND the focus did not move -- and a focused widget
+	// accepts Tab, because QWidget::event() handles it. So with anything
+	// focused, Qt moves the focus and this line never executes: measured,
+	// breaking it to `focusNextPrevChild(true)` left the check above green.
+	//
+	// With NOTHING focused there is no target, so the fallback is the only
+	// thing that can move focus -- and its direction is then observable:
+	// backward from nothing is the LAST field, forward from nothing is the
+	// FIRST. Asserting the pair is what makes a flipped direction fail;
+	// either alone would pass with the argument hardcoded one way.
+	{
+		if (QWidget *f = win.focusWidget()) f->clearFocus();
+		QCoreApplication::processEvents();
+		router.on_key({Qt::Key_Tab, QString(), false, false, true});
+		QCoreApplication::processEvents();
+		QWidget *back = win.focusWidget();
+		if (QWidget *f = win.focusWidget()) f->clearFocus();
+		QCoreApplication::processEvents();
+		router.on_key({Qt::Key_Tab, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		QWidget *fwd = win.focusWidget();
+		CHECK(back && fwd && back != fwd,
+		      "and with nothing focused the two directions differ");
+	}
+	router.on_key({Qt::Key_Tab, QString(), false, false, false});
 
 	// mouse: click the button by cell
 	int clicked = 0;
