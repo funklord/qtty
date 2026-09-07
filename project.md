@@ -17,26 +17,44 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1109 checks, 0 failures, under six configurations, all six re-run
-2026-09-07: the offscreen
-platform, xcb, the hostile environment `make test-platforms` builds, a
-build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
-detector, a **debug** build -- which is not the same code, `setup()`
-installing `GridGuard` itself under `!QT_NO_DEBUG` -- and **valgrind's
-memcheck**, which catches the one thing the sanitizers do not.
-`make check` is green and now includes `version-check`, which had never
-been part of it.
+1109 checks, 0 failures. `make check` is green and includes
+`version-check`, which had never been part of it.
 
-**Re-verified again 2026-09-07 at 1098**, after the API-completeness pass
-recorded in 8.42 to 8.46 -- which touched the width table every rendered
-cluster goes through, the frame scheduler, and the runtime's window
-handling, so it is not a documentation change that could be waved
-through. Offscreen, xcb under Xvfb and the hostile environment all report
-1098; the minimal platform still refuses and says why; AddressSanitizer
-with UndefinedBehaviorSanitizer and the leak detector report 0 failures;
-and valgrind's memcheck over the debug build exits clean under
-`--error-exitcode=99`, with the frame-budget ceiling skipping itself
-because under valgrind it measures the instrument.
+That first line starts with the number and nothing else, and has to:
+`count-check` reads it with `sed -n 's/^\([0-9][0-9]*\) checks, 0
+failures.*/\1/p'`, anchored at the start of the line. Bolding it -- which
+this document does to almost every other opening -- made the gate report
+*"project.md states no check count"* rather than a disagreement, and that
+is the gate behaving well: it refused to compare against a number it could
+not find instead of quietly passing.
+
+**Last re-verified under all six configurations: 2026-09-07, at 1109.**
+Two sentences rather than one, deliberately. They used to be welded --
+*"N checks under six configurations, all six re-run <date>"* -- and a
+count bumped without re-running the six turned a measured record into a
+claim nobody had taken, silently, because the configuration half rode
+along with the number. It happened twice in one day, the second time
+within an hour of the first being corrected. **Keep them separate: the
+count moves whenever a check is added, and the date moves only when
+somebody has actually run them.**
+
+The six: the offscreen platform, xcb, the hostile environment `make
+test-platforms` builds, a build under AddressSanitizer,
+UndefinedBehaviorSanitizer and the leak detector, a **debug** build --
+which is not the same code, `setup()` installing `GridGuard` itself under
+`!QT_NO_DEBUG` -- and **valgrind's memcheck**, which catches the one thing
+the sanitizers do not.
+
+**Re-verified again 2026-09-07 at 1109**, twice in the day: first at 1098
+after the API-completeness pass of 8.42 to 8.46 -- which touched the width
+table every rendered cluster goes through, the frame scheduler and the
+runtime's window handling -- and again at 1109 after the coverage pass of
+8.47 and 8.48. Offscreen, xcb under Xvfb and the hostile environment all
+report 1109; the minimal platform still refuses and says why;
+AddressSanitizer with UndefinedBehaviorSanitizer and the leak detector
+report 0 failures; and valgrind's memcheck over the debug build exits
+clean under `--error-exitcode=99`, with the frame-budget ceiling skipping
+itself because under valgrind it measures the instrument.
 
 **The paragraph below is a different measurement on the same date** --
 the paint-engine session's, at 1060 -- and is kept as its own record
