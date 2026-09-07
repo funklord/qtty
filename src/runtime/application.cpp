@@ -55,6 +55,9 @@ constexpr int kMaxDeferred = 256;
 struct Held { QString text; int count = 1; };
 QVector<Held> g_deferred;
 int g_dropped = 0;
+// How many times the offscreen platform's size-hint notice was suppressed.
+// Reported by flush_deferred_messages(), so the count survives the silence.
+int g_offscreen_noise = 0;
 QtMessageHandler g_previous = nullptr;
 // The backend that has the screen. Set by the backend itself, in resume() and
 // suspend() -- see terminal_owner.h for why those two and not exec(). A fatal
@@ -96,6 +99,35 @@ void deferring_handler(QtMsgType type, const QMessageLogContext &ctx,
 		if (g_previous) g_previous(type, ctx, text);
 		return;
 	}
+	// The offscreen platform's own noise, which qtty CAUSES BY DESIGN and
+	// which no caller can act on. It says the plugin does not propagate size
+	// hints; qtty chose that plugin precisely because there is no window
+	// manager to propagate them to, and section 7's policy resizes layouts
+	// below their minimum as a matter of routine -- which is what emits it.
+	//
+	// Counted and explained once rather than repeated. On a TERMINAL the
+	// branch below already coalesces duplicates, so a hundred of these became
+	// one held line; with stderr REDIRECTED every one passed through, and
+	// that is the case every measurement takes. It has cost this project two
+	// wrong check counts -- 744 and 745 from one binary, the warning landing
+	// mid-line and cutting a PASS in half -- and the remedy so far has been
+	// `2>/dev/null` repeated in count-check, in the sabotage harness and in
+	// section 0c. Fixing it here retires all three.
+	//
+	// Not silently: the first one is printed with a note that the rest are
+	// counted, and the total is reported when messages are flushed. A
+	// diagnostic that vanishes without trace is the opposite defect.
+	if (text == QLatin1String("This plugin does not support "
+	                          "propagateSizeHints()")) {
+		if (g_offscreen_noise++ == 0 && g_previous)
+			g_previous(type, ctx,
+			           QStringLiteral("qtty: the offscreen platform does not "
+			                          "propagate size hints, which it says "
+			                          "whenever a layout is asked to shrink "
+			                          "below its minimum. Further identical "
+			                          "lines are counted, not printed."));
+		return;
+	}
 	if (!isatty(2)) {                       // nothing to protect
 		if (g_previous) g_previous(type, ctx, text);
 		return;
@@ -134,6 +166,13 @@ void flush_deferred_messages() {
 	if (dropped)
 		fprintf(stderr, "qtty: and %d further distinct message(s) while the"
 		                " terminal was in use\n", dropped);
+	// The suppressed platform notice, reported as a number so that silencing
+	// it does not also lose it. Reset with the rest, so a later flush counts
+	// only what happened since this one.
+	if (g_offscreen_noise > 1)
+		fprintf(stderr, "qtty: the offscreen size-hint notice was emitted"
+		                " %d time(s)\n", g_offscreen_noise);
+	g_offscreen_noise = 0;
 	fflush(stderr);
 }
 

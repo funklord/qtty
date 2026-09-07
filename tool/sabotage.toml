@@ -435,3 +435,19 @@ find = "\tif (se == SE_TabWidgetTabContents && opt) {"
 into = "\tif (false) {"
 count = 1
 check = "a tab widget's page clears the border it draws"
+
+[[sabotage]]
+name = "the platform's size-hint notice is repeated again"
+file = "src/runtime/application.cpp"
+find = "\t\tif (g_offscreen_noise++ == 0 && g_previous)"
+into = "\t\tif (g_previous)"
+count = 1
+check = "the platform's size-hint notice is explained once and counted"
+
+[[sabotage]]
+name = "the suppressed notice is not counted anywhere"
+file = "src/runtime/application.cpp"
+find = "\tif (g_offscreen_noise > 1)"
+into = "\tif (false)"
+count = 1
+check = "the platform's size-hint notice is explained once and counted"

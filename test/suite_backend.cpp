@@ -3471,6 +3471,59 @@ int suite_exec() {
 		}
 	}
 
+	// ---- the offscreen platform's own notice is counted, not repeated ----
+	//
+	// It is emitted whenever a layout is asked to shrink below its minimum,
+	// which section 7's policy does routinely: over a hundred lines in one
+	// run. On a terminal the handler already coalesced duplicates; with
+	// stderr REDIRECTED, which is what every measurement does, each one
+	// passed through -- and this project has twice counted its own checks
+	// wrongly because one landed mid-line and cut a PASS in half.
+	//
+	// Asserted through fd 2, because that is where the damage happened. Both
+	// halves matter: the repeats must go, and ONE line must remain, since a
+	// handler that dropped the notice entirely would look identical here
+	// while losing something a reader should know.
+	{
+		const QString path = QDir::temp().filePath(
+		    QStringLiteral("qtty-noise-%1").arg(QCoreApplication::applicationPid()));
+		fflush(stderr);
+		const int saved = ::dup(2);
+		const int to = ::open(qPrintable(path), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+		int emitted = 0;
+		// Both descriptors are closed on every path. The first version
+		// leaked `saved` when the open failed and the dup did not -- a
+		// fixture that leaks a file descriptor on its error path is the
+		// kind of thing that only shows up in a suite run long enough to
+		// exhaust them.
+		if (saved >= 0 && to < 0) ::close(saved);
+		if (saved < 0 && to >= 0) ::close(to);
+		if (saved >= 0 && to >= 0) {
+			::dup2(to, 2);
+			::close(to);
+			for (int i = 0; i < 8; ++i) {
+				qWarning("This plugin does not support propagateSizeHints()");
+				++emitted;
+			}
+			Qtty::flush_deferred_messages();
+			fflush(stderr);
+			::dup2(saved, 2);
+			::close(saved);
+		}
+		QFile f(path);
+		QString got;
+		if (f.open(QIODevice::ReadOnly)) got = QString::fromUtf8(f.readAll());
+		f.remove();
+		const int raw = got.count(QStringLiteral(
+		    "This plugin does not support propagateSizeHints()"));
+		const bool explained =
+		    got.contains(QStringLiteral("does not propagate size hints"));
+		const bool counted = got.contains(QStringLiteral("8 time(s)"));
+		CHECK(emitted == 8 && raw == 0 && explained && counted,
+		      "the platform's size-hint notice is explained once and"
+		      " counted");
+	}
+
 	// ---- a diagnostic does not land on the frame ----
 	{
 		// Nothing installed a message handler, and qtty emits qWarning from

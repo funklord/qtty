@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1059 checks, 0 failures, under six configurations, all six re-run
+1060 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6678,6 +6678,49 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.28 A hundred lines of platform noise, counted instead (2026-09-07)
+
+The last item in fuzzypickles' report, and the only one I had not touched:
+"Qt also warns once on stderr: `This plugin does not support
+propagateSizeHints()`". Once for them; **104 times in one run of this
+suite.**
+
+It is emitted whenever a layout is asked to shrink below its minimum, which
+section 7's policy does routinely, and qtty CAUSES it by design: it chose
+the offscreen platform precisely because there is no window manager to
+propagate hints to. No caller can act on it.
+
+**It has cost this project two wrong measurements of itself.** §0a and §0c
+both record it: one binary counted 744 and 745 checks on consecutive runs
+because a warning landed mid-line and cut a `PASS:` in half. The remedy
+each time was `2>/dev/null` at the reading end -- in `count-check`, in the
+sabotage harness, and written into §0c as the documented command.
+
+**The handler already had the right idea and applied it to only half the
+cases.** On a TERMINAL it coalesces duplicates, so a hundred of these
+became one held line. With stderr REDIRECTED -- which is what every
+measurement does -- each one passed straight through. The case that was
+protected is the one that never mattered for counting; the case that was
+not is the one that corrupted the counts.
+
+Counted and explained once now: one line saying what it is and that the
+rest are counted, and a total at the flush. Measured, a full suite run goes
+from **104 raw lines to 0**, with three lines of explanation and count in
+their place.
+
+**Not silenced, and the check asserts both halves.** A handler that dropped
+the notice entirely would look identical to this one at the reading end
+while losing something a reader should know -- so the check requires the
+repeats to be gone AND one explanation and a count to remain. It reads
+through fd 2, because that is where the damage happened rather than where
+it is convenient to observe.
+
+**It does not retire the `2>/dev/null`**, and the comment saying so was
+corrected before it shipped. The grid guard and the contrast check still
+write to stderr, and a measurement taken through a stream somebody else
+writes to is still not a measurement of the thing. What this removes is the
+dominant source, not the need for separation.
 
 ### 8.27 Why two panes sometimes touch, and two wrong guesses (2026-09-07)
 
