@@ -2877,6 +2877,24 @@ int suite_router() {
 		tab();
 		CHECK(win.focusWidget() == edit,
 		      "one widget at a time, not two");
+
+		// CTRL+TAB IS NOT QTTY'S, and the `!k.ctrl` in that condition is
+		// what leaves it alone. Branch coverage said the condition had
+		// never been false: every Tab this suite sent was unmodified, so
+		// nothing pinned the carve-out.
+		//
+		// It matters because Ctrl+Tab is conventionally "the next tab" or
+		// "the next window", and `windows.h` says qtty deliberately binds
+		// no shortcut of its own and an application must bind its own
+		// route. A qtty that moved focus on Ctrl+Tab would be taking a
+		// key the application is entitled to -- and taking it invisibly,
+		// since focus moving looks like the application doing something.
+		b1->setFocus();
+		Qtty::set_focus_widget(win.focusWidget());
+		router.on_key({ Qt::Key_Tab, QStringLiteral("\t"), true, false, false });
+		CHECK(win.focusWidget() == b1,
+		      "Ctrl+Tab does not cycle focus, so an application can bind it "
+		      "to whatever a Ctrl+Tab means there");
 		GridGuard::reset();
 	}
 

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1113 checks, 0 failures. `make check` is green and includes
+1114 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -14841,6 +14841,15 @@ at least once**. 105 lines carry an untaken direction and 42 of those
 carry a real condition rather than an exception edge. Most of the 42 are
 small -- Alt with a non-character key, Alt with punctuation, Ctrl+Tab --
 and one is not.
+
+**Ctrl+Tab was worth taking anyway**, small as it is. The `!k.ctrl` in
+`if (k.qt_key == Qt::Key_Tab && !k.ctrl)` is a carve-out: Ctrl+Tab is
+conventionally "the next tab" or "the next window", and `windows.h` says
+qtty binds no shortcut of its own and an application must bind its own
+route. A qtty that cycled focus on Ctrl+Tab would be taking a key the
+application is entitled to, and taking it invisibly -- focus moving looks
+like the application doing something. The condition had never been false,
+so nothing pinned it; dropping `!k.ctrl` now reddens a check.
 
 **A wheel nothing accepts had never reached the top of the input layer.**
 The walk up the parent chain had never run out of parents, and

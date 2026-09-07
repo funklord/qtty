@@ -684,3 +684,11 @@ find = "\t\t\tif (w == top) break;              // do not escape the input layer
 into = "\t\t\t;              // do not escape the input layer"
 count = 1
 check = "a wheel nothing in a modal accepts stops at the modal"
+
+[[sabotage]]
+name = "Ctrl+Tab is taken for focus cycling"
+file = "src/runtime/input_router.cpp"
+find = "\tif (k.qt_key == Qt::Key_Tab && !k.ctrl) {"
+into = "\tif (k.qt_key == Qt::Key_Tab) {"
+count = 1
+check = "Ctrl+Tab does not cycle focus"
