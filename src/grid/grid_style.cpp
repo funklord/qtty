@@ -1496,6 +1496,20 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// invisible, and Qt reports both in the same option.
 				bool foc = (opt->state & (State_HasFocus | State_Sunken | State_On))
 				           || (w && w == s_focus.data());
+				// The DEFAULT button is the one Enter activates -- and it
+				// does activate it here, measured on a dialog whose focus
+				// was elsewhere: Enter fired the default and not the
+				// focused one. Nothing said WHICH, so a terminal user
+				// pressing Enter could not tell what would happen.
+				//
+				// Marked with an attribute rather than another bracket. A
+				// second pair of brackets costs two columns on a screen
+				// that is short of them, and would collide with the
+				// bracketing that already means "this is a button"; bold
+				// costs nothing and is what a terminal has for emphasis.
+				Attrs extra = foc ? Attrs(Attr::Reverse) : Attrs();
+				if (b->features & QStyleOptionButton::DefaultButton)
+					extra |= Attrs(Attr::Bold);
 				// Elided to the room BETWEEN the brackets, so the closing
 				// one survives. This wrote the whole label and let the clip
 				// cut it: a button squeezed below its label rendered
@@ -1508,8 +1522,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				                                        qMax(0, bc.width() - 2))
 				                       + QLatin1Char('>'),
 				                   Color(), Color(),
-				                   label_attrs(opt, w, foc ? Attrs(Attr::Reverse)
-				                                           : Attrs()));
+				                   label_attrs(opt, w, extra));
 			}
 			return;
 		case CE_MenuItem:

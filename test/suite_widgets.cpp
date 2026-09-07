@@ -401,6 +401,38 @@ int suite_widgets() {
 		render_once(split, b);
 		CHECK(buffer_contains(b, QStringLiteral("│")), "splitter handle renders");
 	}
+	// The DEFAULT button is marked, because Enter activates it.
+	//
+	// Measured on a dialog whose focus was elsewhere: Enter fired the
+	// default button and not the focused one, so the behaviour was right
+	// while nothing on screen said WHICH button that was. A terminal user
+	// pressing Enter could not tell what would happen.
+	//
+	// Bold rather than another bracket: a second pair costs two columns on
+	// a screen short of them and collides with the brackets that already
+	// mean "button", while an attribute costs none.
+	{
+		auto bold_cells = [](bool dflt) {
+			QPushButton b(QStringLiteral("Go"));
+			b.setDefault(dflt);
+			b.setAttribute(Qt::WA_DontShowOnScreen);
+			b.resize(GridMetrics::cells(12, 1));
+			b.show();
+			QCoreApplication::processEvents();
+			CellBuffer buf(12, 1);
+			render_once(b, buf);
+			int n = 0;
+			for (int x = 0; x < buf.cols(); ++x)
+				if (buf.at(x, 0).attrs & Attrs(Attr::Bold)) ++n;
+			return n;
+		};
+		// Both directions: marking everything would satisfy "the default is
+		// bold" while saying nothing, and marking nothing would satisfy a
+		// check that only looked at the ordinary button.
+		CHECK(bold_cells(true) > 0 && bold_cells(false) == 0,
+		      "a default button is marked and an ordinary one is not");
+	}
+
 	// A FLAT group box draws only its top rule.
 	//
 	// Qt documents `flat` as "only the top part of the frame is drawn in

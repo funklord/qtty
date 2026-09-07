@@ -13,9 +13,22 @@
 
 
 --- attrs ---
-(none)
+
+
+
+
+
+
+
+
+
+
+
+.............................1111
+
+
 --- colours ---
 (none)
 --- legend ---
 . fg=default bg=default
-attrs: . none
+attrs: . none, 1 bold

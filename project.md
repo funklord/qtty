@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1062 checks, 0 failures, under six configurations, all six re-run
+1063 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6701,6 +6701,82 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.33 The other direction: what a widget asks FOR (2026-09-07)
+
+8.32 swept properties meaning "draw less". The inverse is the more serious
+half -- a widget asking for something and not getting it -- so six states an
+application sets were rendered twice and compared.
+
+**The security-relevant one is clean, and is recorded because it is.** A
+`QLineEdit` in `Password` mode masks to bullets, `NoEcho` shows nothing,
+and `PasswordEchoOnEdit` masks; only `Normal` shows the text. Nothing
+leaks.
+
+    placeholder when empty      distinguished
+    partially-checked box       distinguished
+    setWordWrap(true)           distinguished
+    setEnabled(false)           distinguished -- by ATTRIBUTE
+    setDefault(true)            NOT distinguished
+    setReadOnly(true)           NOT distinguished
+
+**`setEnabled(false)` moved between two runs of the same sweep**, and the
+comparator was why: it read GLYPHS only, and a disabled control is marked
+with an attribute. Comparing whole cells -- character, attributes, both
+colours -- is what told a widget being distinguished perfectly well from
+one that is not. **A probe that reads one field of a cell answers about
+that field**, which is this session's most repeated lesson wearing another
+hat.
+
+**The default button is fixed, and the reason is functional rather than
+cosmetic.** Measured on a dialog whose focus was elsewhere: Enter fired the
+DEFAULT button, not the focused one. So the behaviour was already right
+while nothing on screen said which button that was -- a terminal user
+pressing Enter could not tell what would happen. It is bold now, rather
+than double-bracketed: a second pair of brackets costs two columns on a
+screen short of them and collides with the brackets that already mean
+"button".
+
+**`setReadOnly` is left alone deliberately.** Marking it would need new
+vocabulary, and the obvious candidate collides: disabled already uses Dim,
+and read-only is a different state -- focusable, selectable, not editable.
+Unlike Enter's target it has no consequence a user cannot discover by
+typing. That is a decision rather than a defect, and it is recorded rather
+than guessed at.
+
+### 8.34 A snapshot verdict prints where nobody greps (2026-09-07)
+
+Blessing 8.33's change turned a snapshot red, and finding out WHICH took
+ten minutes: the suite reported it on **stderr** while every other result
+goes to stdout. Grepping stdout for `FAIL` found nothing while the summary
+said the run had failed.
+
+The concern is real and outlives this session. A result here is a line on
+stdout beginning `PASS:` or `FAIL:` -- count-check greps it, the pty gate
+greps it, and section 0c's documented command is
+`qtty-tests 2>/dev/null | grep -c '^PASS:'`, which **discards stderr**. A
+snapshot verdict is the one result that command cannot see.
+
+**And moving it to stdout is wrong, which two checks already knew.** They
+capture `check_snapshot`'s diagnostic by redirecting **fd 2 around the
+call** -- deliberately, because that reads the message in isolation while
+the suite's own PASS lines keep flowing to stdout. Move the message and
+the capture reads nothing: "a fixture that is not there is diagnosed as not
+being there" and "one that cannot be read is not called missing" both go
+red. Measured, then reverted.
+
+**The stream is load-bearing and the tests encode why.** That is
+`evidence.md`'s rule about suspecting the check first, met from the other
+side: the checks were right, my change was the thing to doubt, and the
+count-check caught it within a minute of the edit.
+
+**What a real fix looks like, recorded rather than done.** The verdict and
+the diagnostic are different things sharing one line. A caller that printed
+its own `PASS:`/`FAIL:` on stdout, leaving `check_snapshot`'s detail on
+stderr where a test can still capture it, satisfies both -- the result
+lands where results live and the diagnostic stays isolatable. That touches
+every snapshot caller, so it is a deliberate change rather than one made
+while blessing a fixture.
 
 ### 8.32 Five widgets asked for less, and one was ignored (2026-09-07)
 
