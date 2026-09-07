@@ -451,3 +451,11 @@ find = "\tif (g_offscreen_noise > 1)"
 into = "\tif (false)"
 count = 1
 check = "the platform's size-hint notice is explained once and counted"
+
+[[sabotage]]
+name = "a frameless line edit is boxed anyway"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\tif (le && !le->hasFrame()) return;"
+into = "\t\t\t;"
+count = 1
+check = "a frameless line edit draws no box and a framed one still"

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-05
 
-1060 checks, 0 failures, under six configurations, all six re-run
+1061 checks, 0 failures, under six configurations, all six re-run
 2026-09-05: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -6695,6 +6695,63 @@ The label is written cell by cell rather than through `CellBuffer::text()`,
 which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
+
+### 8.31 A spin box drew two frames (2026-09-07)
+
+The last several fixes shared a root -- **a metric in pixels where the
+drawing is in cells** -- so that is mechanically checkable: enumerate every
+`QStyle::PixelMetric` and flag the ones that are neither a whole column nor
+a whole row.
+
+Of the non-zero metrics, three looked like the tab defect's family:
+
+    PM_SpinBoxFrameWidth        3 px
+    PM_ToolTipLabelFrameWidth   2 px
+    PM_DockWidgetFrameWidth     1 px
+
+`PM_DefaultFrameWidth` is overridden to a cell and these are not, so a
+frame drawn one cell wide with content inset three pixels is exactly the
+shape that had just been fixed for `SE_TabWidgetTabContents`.
+
+**Rendered, a QSpinBox does open with two corners:**
+
+    ┌┌────────┐──┐
+    │42       │▴▾│
+    └└────────┘──┘
+
+**And the metric is not the cause.** Measured: the editor sits at x=10,
+which IS one cell, so the inset is right. `QLineEdit` is not a `QFrame`, so
+the second border is one qtty drew -- and the spin box reports
+`hasFrame=1` while its internal editor reports `hasFrame=0`. **qtty was
+drawing a frame for a widget that said it did not want one.**
+
+`PE_PanelLineEdit` has two paths and only one of them asked. The ONE-ROW
+path checks `le->hasFrame()` before drawing its `[` and `]`; the box path
+called `draw_box()` unconditionally. That is the same shape as the message
+handler earlier today -- **one branch guarded and the other not** -- and
+the unguarded branch is the one a spin box takes.
+
+Fixed by asking once, before either path. `┌┌────────┐──┐` becomes
+`┌────────────┐`.
+
+**Both directions are checked**, because they fail oppositely: honouring
+the flag by drawing nothing at all would pass a check that only asked
+about the spin box, and drawing regardless would pass one that only asked
+about a plain editor. A `QLineEdit` on its own still gets its box.
+
+**The other two flagged metrics are inert today, and saying so is part of
+the sweep.** `PM_ToolTipLabelFrameWidth` cannot matter because qtty never
+sends `QEvent::ToolTip` -- that is 0b's open question, not a defect -- and
+`PM_DockWidgetFrameWidth` cannot matter because a `QDockWidget` renders no
+frame here at all: rendered, it draws its widget and nothing else. Neither
+is a finding; both are metrics nothing reads. **A sweep that reports only
+its hit leaves the next person to re-flag the same two.**
+
+**What the sweep was worth is not what it found.** It was aimed at pixel
+metrics and the defect was a missing predicate; the metrics it flagged are
+still exactly what they were. It earned its keep by pointing at spin boxes
+at all -- and then the thing to measure was the widget's own answer about
+itself, not the number that looked wrong.
 
 ### 8.30 A second consumer, and a gate that skipped honestly (2026-09-07)
 

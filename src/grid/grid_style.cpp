@@ -1351,11 +1351,22 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 		// setFrame(false) answers false and is obeyed. The widget says
 		// whether it wants a boundary; this only asks.
 		case PE_PanelLineEdit: {
+			// A line edit that says it has NO frame gets none, at either
+			// height. The one-row path below already asked; the box path
+			// did not, and the two disagreeing is the whole defect.
+			//
+			// A QSpinBox is where it shows. Its internal QLineEdit is
+			// frameless by construction -- the spin box draws the frame
+			// and the editor sits inside it -- so drawing one anyway put
+			// two borders in adjacent columns and a spin box opened with
+			// two corners. Measured: the spin box says hasFrame=1, its
+			// editor says hasFrame=0, and the editor got a box regardless.
+			const auto *le = qobject_cast<const QLineEdit *>(w);
+			if (le && !le->hasFrame()) return;
 			if (c.height() >= 2) {
 				draw_box(dev->buffer(), c, owns_focus(w), with_state(opt));
 				return;
 			}
-			const auto *le = qobject_cast<const QLineEdit *>(w);
 			if (le && le->hasFrame()) {
 				dev->buffer().put_cluster(c.left(), c.top(), QStringLiteral("["),
 				                          Color(), Color(), with_state(opt));

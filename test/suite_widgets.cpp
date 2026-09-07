@@ -401,6 +401,50 @@ int suite_widgets() {
 		render_once(split, b);
 		CHECK(buffer_contains(b, QStringLiteral("│")), "splitter handle renders");
 	}
+	// A line edit that says it has no frame gets none -- and one that says
+	// it has a frame still gets it.
+	//
+	// Both directions, because they fail in opposite ways: honouring the
+	// flag by drawing nothing at all would pass a check that only asked
+	// about the spin box, and drawing regardless would pass one that only
+	// asked about a plain editor.
+	//
+	// The case that found it is a QSpinBox. Its internal QLineEdit is
+	// frameless by construction, since the spin box draws the frame and
+	// the editor sits inside it -- so a box drawn for the editor anyway
+	// put two borders in adjacent columns and the widget opened with two
+	// corners.
+	{
+		QSpinBox spin;
+		spin.setRange(0, 999);
+		spin.setValue(42);
+		spin.setAttribute(Qt::WA_DontShowOnScreen);
+		spin.resize(GridMetrics::cells(14, 3));
+		spin.show();
+		QCoreApplication::processEvents();
+		CellBuffer sb(14, 3);
+		render_once(spin, sb);
+		int corners = 0;
+		for (int x = 0; x < sb.cols(); ++x)
+			if (sb.at(x, 0).ch == QStringLiteral("┌")) ++corners;
+
+		QLineEdit plain;
+		plain.setText(QStringLiteral("hi"));
+		plain.setAttribute(Qt::WA_DontShowOnScreen);
+		plain.resize(GridMetrics::cells(14, 3));
+		plain.show();
+		QCoreApplication::processEvents();
+		CellBuffer pb(14, 3);
+		render_once(plain, pb);
+		bool framed = false;
+		for (int x = 0; x < pb.cols(); ++x)
+			if (pb.at(x, 0).ch == QStringLiteral("┌")) framed = true;
+
+		CHECK(corners == 1 && framed,
+		      "a frameless line edit draws no box and a framed one still"
+		      " does");
+	}
+
 	// No container puts its own border flush against a framed child's.
 	//
 	// This is the tab defect's family swept rather than its one instance:
