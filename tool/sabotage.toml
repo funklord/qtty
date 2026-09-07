@@ -636,3 +636,19 @@ find = "\t\t\tdefault:  pending_.remove(0, 3); return true;   // consumed"
 into = "\t\t\tdefault:  break;   // consumed"
 count = 1
 check = "an SS3 final the decoder does not know is swallowed"
+
+[[sabotage]]
+name = "CSI 13~ is decoded as the wrong function key"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tcase 13: emit_function_key(Qt::Key_F3,  param(1, 1) - 1); return true;"
+into = "\t\tcase 13: emit_function_key(Qt::Key_F4,  param(1, 1) - 1); return true;"
+count = 1
+check = "every one of the twenty CSI <n>~ numbers decodes as the key it names"
+
+[[sabotage]]
+name = "a number nobody assigned is given a key"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tcase 15: emit_function_key(Qt::Key_F5,  param(1, 1) - 1); return true;"
+into = "\t\tcase 15: case 22: emit_function_key(Qt::Key_F5,  param(1, 1) - 1); return true;"
+count = 1
+check = "the three numbers nobody ever assigned invent no key"

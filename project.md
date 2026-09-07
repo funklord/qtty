@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1104 checks, 0 failures, under six configurations, all six re-run
+1106 checks, 0 failures, under six configurations, all six re-run
 2026-09-07: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
@@ -14650,6 +14650,26 @@ Asserted as a POPULATION rather than row by row, so a row added to the
 decoder and not to the check's list is caught by the count beside it.
 Sabotaged both ways: one row swapped to the wrong key, and the default arm
 made to fall through.
+
+**And the CSI `<n>~` table beside it, which is the sharper one.** Two of
+its twelve function-key rows were checked, 15 and 24 -- and the decoder's
+own comment says **the linux console sends F1 to F4 as `11~` to `14~`
+always**. Those four rows are the ones a headless server hits first, and
+not one of them had ever been decoded here. The navigation rows were
+covered, by checks scattered elsewhere in the suite; the function keys
+were not.
+
+The population is twenty numbers, the aliases included: `7~` and `8~` are
+the rxvt family's spelling of Home and End, and a decoder that dropped one
+would be silent on a whole terminal rather than on a key. Beside it, the
+three numbers nobody ever assigned -- 16, 22 and 25 -- asserted to invent
+no key; 16 alone had been checked, and the other two had never been fed.
+
+**The failure message names the row AND the key that arrived**, because a
+row decoding to the wrong key and a row decoding to nothing are different
+faults and the first version could not tell them apart. Sabotaged both
+ways again: `13~` swapped to F4, which the message reports as
+`F3 (CSI 13~) gave key 0x1000033`, and `22~` given F5's mapping.
 
 **Also flagged and NOT resolved: `Overlay::set_z()` does nothing in a GUI
 build.** Found by the lens the tray bug suggested -- a call that moves

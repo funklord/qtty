@@ -353,6 +353,62 @@ int suite_backend() {
 		      "rather than delivered as Alt held with the letter O");
 	}
 
+	// AND THE CSI <n> ~ TABLE, for the same reason and with a sharper
+	// consequence. Two of its twelve function-key rows were checked, 15 and
+	// 24 -- and the decoder's own comment says the LINUX CONSOLE sends F1 to
+	// F4 as 11~ to 14~ always. Those four rows are the ones a headless
+	// server hits first, and not one of them had ever been decoded here.
+	{
+		const struct { int n; int key; const char *what; } tilde[] = {
+			{  1, Qt::Key_Home,     "Home"     },
+			{  2, Qt::Key_Insert,   "Insert"   },
+			{  3, Qt::Key_Delete,   "Delete"   },
+			{  4, Qt::Key_End,      "End"      },
+			{  5, Qt::Key_PageUp,   "PageUp"   },
+			{  6, Qt::Key_PageDown, "PageDown" },
+			// 7 and 8 are the other spelling of Home and End, which the
+			// rxvt family sends. Aliases rather than extra keys, and a
+			// decoder that dropped one would be silent on a whole terminal.
+			{  7, Qt::Key_Home,     "Home (7)" },
+			{  8, Qt::Key_End,      "End (8)"  },
+			{ 11, Qt::Key_F1,  "F1"  }, { 12, Qt::Key_F2,  "F2"  },
+			{ 13, Qt::Key_F3,  "F3"  }, { 14, Qt::Key_F4,  "F4"  },
+			{ 15, Qt::Key_F5,  "F5"  }, { 17, Qt::Key_F6,  "F6"  },
+			{ 18, Qt::Key_F7,  "F7"  }, { 19, Qt::Key_F8,  "F8"  },
+			{ 20, Qt::Key_F9,  "F9"  }, { 21, Qt::Key_F10, "F10" },
+			{ 23, Qt::Key_F11, "F11" }, { 24, Qt::Key_F12, "F12" },
+		};
+		QStringList wrong;
+		for (const auto &e : tilde) {
+			feed("\033[" + QByteArray::number(e.n) + "~");
+			if (rec.keys.size() != 1 || rec.keys[0].qt_key != e.key)
+				wrong << QStringLiteral("%1 (CSI %2~) gave %3")
+				             .arg(QLatin1String(e.what)).arg(e.n)
+				             .arg(rec.keys.size() == 1
+				                  ? QStringLiteral("key 0x%1")
+				                        .arg(rec.keys[0].qt_key, 0, 16)
+				                  : QStringLiteral("%1 key(s)")
+				                        .arg(rec.keys.size()));
+		}
+		if (!wrong.isEmpty())
+			printf("info: CSI ~ rows that did not decode: %s\n",
+			       qPrintable(wrong.join(QStringLiteral("; "))));
+		CHECK(wrong.isEmpty() && sizeof(tilde) / sizeof(tilde[0]) == 20,
+		      "every one of the twenty CSI <n>~ numbers decodes as the key "
+		      "it names, the linux console's F1 to F4 among them");
+
+		// The gaps, asserted as a set rather than singly: 16, 22 and 25 were
+		// never assigned, and a decoder that mapped them would be inventing
+		// keys. 16 alone is checked above; the other two had never been fed.
+		QStringList invented;
+		for (int n : { 16, 22, 25 }) {
+			feed("\033[" + QByteArray::number(n) + "~");
+			if (!rec.keys.isEmpty()) invented << QString::number(n);
+		}
+		CHECK(invented.isEmpty(),
+		      "and the three numbers nobody ever assigned invent no key");
+	}
+
 	// -- a bare Escape ---------------------------------------------------------
 	//
 	// ESC prefixes every escape sequence, so a lone one is only distinguishable
