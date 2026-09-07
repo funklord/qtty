@@ -6679,6 +6679,46 @@ which honours the device clip. The placeholder is not the application's
 content and is not subject to the application's clip: it is this library
 saying what it cannot draw.
 
+### 8.27 Why two panes sometimes touch, and two wrong guesses (2026-09-07)
+
+The chat reproduction in 8.25 left one thing unexplained: with three panes,
+two of them rendered with their borders in adjacent columns while the third
+pair had a clear gap. Chased to the end, because an unexplained difference
+between two halves of one picture is not something to leave.
+
+**Two hypotheses, both measured, both wrong.**
+
+*That splitter handles are off-grid.* They are: a `QSplitterHandle` is named
+`qt_splithandle_`, `GridGuard::is_exempt()` returns true for anything whose
+ancestor's objectName starts with `qt_`, and `GridSnap` skips whatever the
+guard exempts. Measured, handles sit at 227 and 463 where the panes sit at
+0, 240 and 470. **But the guard is right to be silent and the render is
+unaffected**: a handle spanning two cells still draws its bar in one column,
+and a deliberately straddling handle -- cols 15..16, forced with sizes that
+do not divide into cells -- renders identically to a snapped one. Snapping
+them by hand changed no pixel.
+
+*That the straddle eats the gap.* It does not, as above.
+
+**What actually happens is the panes.** In the chat layout the measurement
+reads `pane0 ends col 24, pane1 starts col 25`: there is no free column
+between them at all, so the handle has no space to occupy. GridSnap rounds
+a pane's geometry up to whole cells, and where the arithmetic leaves the
+handle's ten pixels between two panes, that rounding can consume them.
+
+**Left unfixed and recorded, for a reason.** The visible result is two
+framed borders in adjacent columns, which is exactly the open question of
+8.25 arrived at by another route -- and a fix here means teaching the snap
+to preserve a gap it currently rounds away, which changes pane geometry in
+every splitter. That belongs with the decision it duplicates rather than
+ahead of it.
+
+**What the two wrong guesses cost is worth the entry on its own.** Both
+were plausible, both named a real off-grid fact, and neither was the cause.
+The measurement that settled it was not a cleverer theory but printing the
+two panes' own edges -- **the thing the symptom is about, rather than the
+thing nearby that looked wrong.**
+
 ### 8.26 The tab defect's family, swept (2026-09-07)
 
 8.25's fix was one instance of a shape: **a container draws a one-cell
