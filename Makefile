@@ -685,6 +685,19 @@ test-install: $(LIB) $(INSPECT) $(REPLAY)
 #
 # The timeout is the part that is not optional. A gate that can hang is worse
 # than no gate: it does not fail, it stops, and `make check` waits for it.
+#
+# The escape-sequence count in the stdout-only case is pinned rather than
+# bounded, so a sequence ARRIVING is caught as well as one going somewhere it
+# should not -- which is what it caught. It went 13 -> 15 when the title
+# emitter added the XTWINOPS push and pop to the enter and leave strings
+# (section 8.42), and both are correct and balanced: `22;2t` in, `23;2t` out.
+# The number is updated with the change rather than loosened to stop noticing.
+#
+# And a comment cannot go INSIDE the recipe below, which is why this one is
+# here. The whole recipe is one shell command joined by backslashes, so a
+# `#` line in the middle comments out the join: everything after it became a
+# SECOND shell, `fail` was unset in it, and the target failed with
+# "[: Illegal number:" while every check it prints said ok.
 test-tools: all
 	@fail=0; \
 	out=$$(timeout $(TEST_TIMEOUT) $(INSPECT) < /dev/null 2>/dev/null); \
@@ -738,7 +751,7 @@ test-tools: all
 			< /dev/null" $(BUILD_DIR)/neg.out > /dev/null 2>&1; \
 		n=$$(tr -cd '\033' < $(BUILD_DIR)/neg.out | wc -c); \
 		case "$$n:$$(cat $(BUILD_DIR)/neg.out)" in \
-		13:*"stdin is not a terminal"*) \
+		15:*"stdin is not a terminal"*) \
 			echo "    negotiate --probes, stdout only: ok";; \
 		*) echo "    negotiate --probes, stdout only: FAILED -- $$n escape"; \
 		   echo "                        sequence(s) on a terminal nothing"; \

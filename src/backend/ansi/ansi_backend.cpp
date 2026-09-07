@@ -291,7 +291,12 @@ Capabilities AnsiBackend::capabilities() const {
 	// synchronised-output specification itself names -- so a terminal that
 	// says nothing has declined to be asked, and gets unbracketed frames.
 	c.synchronised_output = sync_frames();
-	c.title = false;                                // no OSC 0/2 emitter yet
+	// True when qtty owns the terminal, which is the honest meaning: no
+	// terminal reports whether it will DISPLAY a title, and there is no
+	// query for it -- OSC 2 is write-only. So this says "qtty will emit
+	// one", not "you will see it", and the comment is here because the
+	// field's name invites the other reading.
+	c.title = tty_out_;
 	return c;
 }
 
@@ -399,10 +404,17 @@ namespace {
 //
 // This comment said "three places for the enter and three for the leave"
 // until 2026-09-03, when they were counted. Two each.
+// `22;2t` pushes the terminal's title on entry and `23;2t` pops it on the
+// way out, which is XTWINOPS and is what makes setting a title polite: the
+// shell prompt the user had before qtty ran comes back when it exits,
+// including on the signal path below, which writes these same two strings.
+// A terminal that does not implement the pair ignores both, and then a
+// title we set simply outlives us -- the same as any other TUI that sets
+// one without pushing.
 const char kEnter[] = "\033[?1049h\033[?25l\033[?1006h\033[?1002h"
-                      "\033[?2004h\033[?1004h";
-const char kLeave[] = "\033[?1004l\033[?2004l\033[?1002l\033[?1006l"
-                      "\033[0m\033[?1049l\033[?25h";
+                      "\033[?2004h\033[?1004h\033[22;2t";
+const char kLeave[] = "\033[23;2t\033[?1004l\033[?2004l\033[?1002l"
+                      "\033[?1006l\033[0m\033[?1049l\033[?25h";
 
 struct Restore {
 	struct termios saved {};      // as the terminal was before qtty
@@ -1180,6 +1192,34 @@ void AnsiBackend::clear_overlay(int id) {
 	QByteArray out = "\033_Ga=d,d=i,q=2,i="
 	               + QByteArray::number(0xFFFFE00u + quint32(id)) + ";\033\\";
 	fwrite(out.constData(), 1, out.size(), stdout);
+	fflush(stdout);
+}
+
+void AnsiBackend::set_title(const QString &title) {
+	if (!tty_out_) return;                 // nothing is reading the escapes
+
+	// An OSC string ends at a control character, so one INSIDE the title
+	// truncates it -- and an ESC in there can start a sequence of its own,
+	// which is a terminal executing text an application merely displayed.
+	// A window title is application data and may hold anything; a filename
+	// with a newline in it is enough. Stripped rather than escaped, because
+	// there is no escaping inside an OSC string to do it with.
+	QString safe;
+	safe.reserve(title.size());
+	for (const QChar c : title)
+		if (!c.isNull() && c.unicode() >= 0x20 && c.unicode() != 0x7f)
+			safe += c;
+
+	// Bounded, because this goes out on every title change and a terminal
+	// has to keep it. The cut is at a character rather than a byte so a
+	// multi-byte cluster is never split down the middle.
+	constexpr int kMax = 256;
+	if (safe.size() > kMax) safe.truncate(kMax);
+
+	// ST rather than BEL to close it: both are accepted everywhere that
+	// implements OSC at all, and BEL is a character a terminal may also
+	// ring.
+	printf("\033]2;%s\033\\", safe.toUtf8().constData());
 	fflush(stdout);
 }
 

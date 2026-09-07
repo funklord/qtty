@@ -516,3 +516,43 @@ find = "\tif (!t.isEmpty()) g_current = t.at((i <= 0 ? t.size() : i) - 1);"
 into = "\tif (!t.isEmpty()) g_current = t.at((i < 0 ? 0 : i + 1) % t.size());"
 count = 1
 check = "next_window moves to another window and previous_window"
+
+[[sabotage]]
+name = "a title goes out with its control characters intact"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tif (!c.isNull() && c.unicode() >= 0x20 && c.unicode() != 0x7f)"
+into = "\t\tif (true)"
+count = 1
+check = "an escape inside a title does not reach the terminal"
+
+[[sabotage]]
+name = "no bound on the title's length"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (safe.size() > kMax) safe.truncate(kMax);"
+into = "\t;"
+count = 1
+check = "and a title far longer than any titlebar is cut short"
+
+[[sabotage]]
+name = "the terminal's own title is never pushed"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\\033[?1004h\\033[22;2t\";"
+into = "\\033[?1004h\";"
+count = 1
+check = "taking the terminal pushes the title it already had"
+
+[[sabotage]]
+name = "the keeper ignores a title that changes later"
+file = "src/runtime/title_keeper.h"
+find = "\t\tif (e->type() == QEvent::WindowTitleChange && o == &win_)"
+into = "\t\tif (false)"
+count = 1
+check = "and a later change reaches it too"
+
+[[sabotage]]
+name = "the keeper waits for a change rather than reading what is there"
+file = "src/runtime/title_keeper.h"
+find = "\t\tif (!win.windowTitle().isEmpty()) backend.set_title(win.windowTitle());"
+into = "\t\t;"
+count = 1
+check = "a window's existing title reaches the backend when the keeper is"

@@ -2,6 +2,7 @@
 // check (section 5.3, risk R3), and GridGuard (section 5.3, section 9).
 #include <qtty/qtty.h>
 #include <qtty/null_backend.h>
+#include "src/runtime/title_keeper.h"
 #include <QtWidgets>
 #include <cstdio>
 
@@ -1662,6 +1663,73 @@ int suite_runtime() {
 		menu.close();
 		QCoreApplication::processEvents();
 		GridGuard::reset();
+	}
+
+	// ------------------------------------------------- the title (section 11)
+	//
+	// A terminal shows a title where a desktop shows a title bar, and an
+	// unmodified Qt application already sets one -- so this is wiring rather
+	// than an interface an application has to learn.
+	{
+		// Records what it was told, and how often. The COUNT matters: a
+		// keeper that re-sent the title on every event would work in every
+		// assertion below and would put an escape sequence on the wire for
+		// each keystroke.
+		struct TitleBackend : NullBackend {
+			using NullBackend::NullBackend;
+			QStringList titles;
+			void set_title(const QString &t) override { titles << t; }
+		};
+
+		TitleBackend b;
+		QWidget win;
+		win.setWindowTitle(QStringLiteral("Editor -- untitled"));
+		{
+			TitleKeeper keeper(win, b);
+			// The title the window already had. An application sets it while
+			// building the window, which is before exec() and therefore
+			// before any change event exists to observe.
+			CHECK(b.titles == QStringList{QStringLiteral("Editor -- untitled")},
+			      "a window's existing title reaches the backend when the "
+			      "keeper is installed");
+
+			win.setWindowTitle(QStringLiteral("Editor -- notes.txt"));
+			QCoreApplication::processEvents();
+			CHECK(b.titles.size() == 2
+			      && b.titles.last() == QStringLiteral("Editor -- notes.txt"),
+			      "and a later change reaches it too");
+
+			// Nothing else does. A widget sees a great many events and only
+			// one of them is a title change; a filter that answered to more
+			// would re-send on every repaint.
+			const int before = b.titles.size();
+			win.resize(win.width() + 1, win.height() + 1);
+			win.setToolTip(QStringLiteral("not a title"));
+			QCoreApplication::processEvents();
+			CHECK(b.titles.size() == before,
+			      "and nothing else the window does sends a title");
+		}
+		// The event filter is removed with the keeper. A destroyed filter
+		// that is still installed is a dangling pointer Qt will call, and
+		// this is the arrangement in exec(): both live on the stack, and
+		// the order they are destroyed in is the compiler's.
+		const int after_death = b.titles.size();
+		win.setWindowTitle(QStringLiteral("gone"));
+		QCoreApplication::processEvents();
+		CHECK(b.titles.size() == after_death,
+		      "and a destroyed keeper is no longer listening");
+
+		// A backend that cannot set a title is a normal thing rather than a
+		// broken one, which is why ITerminalBackend::set_title is defaulted
+		// rather than pure. NullBackend takes the default and does nothing;
+		// this is the check that doing nothing is not doing something.
+		NullBackend plain;
+		QWidget other;
+		other.setWindowTitle(QStringLiteral("ignored"));
+		TitleKeeper quiet(other, plain);
+		CHECK(!plain.capabilities().title,
+		      "a backend with no title support says so, and takes a title "
+		      "without complaint");
 	}
 
 	return fails;

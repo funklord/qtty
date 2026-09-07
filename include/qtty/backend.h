@@ -106,6 +106,18 @@ public:
 	// backend's business (QSocketNotifier, thread, ...).
 	virtual void set_event_sink(ITerminalEventSink *) = 0;
 
+	// The terminal's title, from the window's own `windowTitle()`. A
+	// terminal shows it where a desktop shows a title bar -- the tab, the
+	// task list, the window manager's furniture -- and an unmodified Qt
+	// application already sets one, so this asks nothing new of it.
+	//
+	// NOT pure, deliberately. Every backend outside this tree would stop
+	// compiling if it were, and a backend that cannot set a title is a
+	// normal thing rather than a broken one: `NullBackend` is the case in
+	// this repository. The default does nothing, and `Capabilities::title`
+	// says whether anything will happen.
+	virtual void set_title(const QString &) {}
+
 	virtual void suspend() = 0;                     // SIGTSTP / shelling out
 	virtual void resume() = 0;
 };

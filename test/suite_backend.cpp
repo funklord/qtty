@@ -3901,5 +3901,90 @@ int suite_exec() {
 		}
 	}
 
+	// ------------------------------------------ the title on the wire (sec 11)
+	//
+	// What the runtime check in suite_runtime cannot see: the BYTES. That one
+	// proves a title change reaches the backend, and would pass just as
+	// loudly against a backend that took the title and wrote nothing.
+	{
+		Tty tty;
+		if (!tty.ok()) {
+			printf("FAIL: no pseudo-terminal, so the title checks say"
+			       " nothing\n");
+			++fails;
+		} else {
+			fcntl(tty.master, F_SETFL, O_NONBLOCK);
+			auto drain = [&] {
+				fflush(stdout);
+				QByteArray got;
+				char buf[4096];
+				for (;;) {
+					const ssize_t n = ::read(tty.master, buf, sizeof(buf));
+					if (n <= 0) break;
+					got.append(buf, int(n));
+				}
+				return got;
+			};
+			// STDOUT this time, not stderr: a title is terminal control and
+			// goes where the frames go. Restored before the first CHECK,
+			// because a PASS line written onto the pseudo-terminal is a PASS
+			// line nobody reads.
+			fflush(stdout);
+			const int saved_out = ::dup(1);
+			::dup2(tty.slave, 1);
+
+			Qtty::AnsiBackend backend;
+			backend.resume();               // takes tty_out_ from fd 1
+			const QByteArray entry = drain();
+			const bool cap = backend.capabilities().title;
+
+			backend.set_title(QStringLiteral("notes.txt"));
+			const QByteArray plain = drain();
+
+			// A title is APPLICATION DATA. A filename may hold a newline, and
+			// a window title is whatever setWindowTitle() was given -- so an
+			// escape inside one would otherwise close the OSC string early
+			// and have the terminal execute what followed as a sequence of
+			// its own. That is a terminal running text an application meant
+			// only to display.
+			backend.set_title(QStringLiteral("a\033]0;evil\007b\nc"));
+			const QByteArray nasty = drain();
+
+			backend.set_title(QString(4000, QLatin1Char('x')));
+			const QByteArray huge = drain();
+
+			backend.suspend();
+			const QByteArray exit_bytes = drain();
+			::dup2(saved_out, 1);
+			::close(saved_out);
+
+			CHECK(cap, "a backend that owns the terminal reports that it can "
+			           "set a title");
+			CHECK(plain == QByteArray("\033]2;notes.txt\033\\"),
+			      "and writes the title as an OSC 2 string closed by ST");
+
+			// Counting the ESCs is what separates stripping from not
+			// stripping: two are the OSC framing, and a third could only
+			// have come from the title.
+			CHECK(nasty.count('\033') == 2,
+			      "an escape inside a title does not reach the terminal");
+			CHECK(!nasty.contains('\007') && !nasty.contains('\n')
+			      && nasty.contains("a]0;evilbc"),
+			      "nor any other control character, and what is left of the "
+			      "title is still shown");
+			// Bounded, because this goes out on every change and a terminal
+			// has to hold it.
+			CHECK(huge.size() < 400,
+			      "and a title far longer than any titlebar is cut short");
+
+			// The pair that makes setting one polite. Without the pop, the
+			// shell prompt the user had before qtty ran does not come back.
+			CHECK(entry.contains("\033[22;2t"),
+			      "taking the terminal pushes the title it already had");
+			CHECK(exit_bytes.contains("\033[23;2t"),
+			      "and giving it back pops it");
+		}
+	}
+
 	return fails;
 }

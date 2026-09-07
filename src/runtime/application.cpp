@@ -2,6 +2,7 @@
 // section 5 architecture: AnsiBackend -> InputRouter -> Compositor -> FrameScheduler.
 #include "qtty/application.h"
 #include "terminal_owner.h"
+#include "title_keeper.h"
 #include "qtty/grid.h"
 #include "qtty/paint.h"
 #include "qtty/runtime.h"
@@ -576,6 +577,13 @@ int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	FrameScheduler scheduler(&backend, &compositor, &win);
 	backend.set_event_sink(&router);
 	router.frame_requested = [&scheduler] { scheduler.request_frame(); };
+
+	// The window's title becomes the terminal's, now and whenever it
+	// changes. An unmodified Qt application already calls
+	// setWindowTitle() -- a QMainWindow does it for the document it has
+	// open -- so this asks nothing new of one, which is the whole premise
+	// of the library.
+	TitleKeeper titles(win, backend);
 
 	scheduler.render_now();                      // initial frame
 	const int rc = app.exec();

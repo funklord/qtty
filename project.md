@@ -15,10 +15,10 @@ open, and how to work in the tree. Where design.md holds the detail, this
 document states the substance in a sentence or two and cites the section
 number rather than restating it.
 
-## 0a. State, 2026-09-05
+## 0a. State, 2026-09-07
 
-1072 checks, 0 failures, under six configurations, all six re-run
-2026-09-05: the offscreen
+1084 checks, 0 failures, under six configurations, all six re-run
+2026-09-07: the offscreen
 platform, xcb, the hostile environment `make test-platforms` builds, a
 build under AddressSanitizer, UndefinedBehaviorSanitizer and the leak
 detector, a **debug** build -- which is not the same code, `setup()`
@@ -14271,6 +14271,89 @@ with its reason in §8.5 and in `code-style.md`. It covers type names and
 nothing wider -- a method is `put_cluster`, not `putCluster`. The tree's
 existing members do not yet follow that; see §8.5 and §11.
 
+### 8.42 The title, which was the last declared capability with no emitter (2026-09-07)
+
+`Capabilities::title` had been declared and hardcoded `false` since the
+capability struct was written, carrying the comment *"no OSC 0/2 emitter
+yet"*. So an application could ask whether qtty would set a title and get
+a truthful no, for a reason that was a gap rather than a property of any
+terminal.
+
+**A terminal shows a title where a desktop shows a title bar** -- the tab,
+the task list, the window manager's furniture -- and an unmodified Qt
+application already calls `setWindowTitle()`. A `QMainWindow` does it for
+the document it has open. So this asks nothing new of an application,
+which is the whole premise of the library, and that is why it is wiring
+rather than an interface.
+
+**`set_title` is defaulted on `ITerminalBackend`, not pure**, and the
+reason is the same one §5.6 gives for the seam existing at all: every
+backend outside this tree would stop compiling if it were pure, and a
+backend that cannot set a title is a normal thing rather than a broken
+one. `NullBackend` is that case here. `Capabilities::title` says whether
+anything will happen.
+
+**`c.title = tty_out_`, which is the honest meaning and not the obvious
+one.** No terminal reports whether it will DISPLAY a title, and there is
+no query to ask: OSC 2 is write-only. So the field says *qtty will emit
+one*, not *you will see one*, and the code says so, because the name
+invites the other reading.
+
+**A class rather than four lines inside `exec()`.** It was four lines
+inside `exec()` first, and nothing could reach them -- `exec()` runs an
+event loop and does not return until the application quits, so a check
+asking whether a title change reaches the backend had no way in. That is
+this project's most expensive recurring shape, a correct function nothing
+can be shown to call (§8.18, §8.41), and the fix is a seam rather than a
+cleverer test. `TitleKeeper` is in `src/runtime/`, internal, and the five
+checks in `suite_runtime` drive it directly.
+
+**It filters rather than connecting, because there is no signal to
+connect to.** `QWidget` has no `windowTitleChanged`; `QWindow` has one,
+and a widget's window handle is null under `WA_DontShowOnScreen`.
+`QEvent::WindowTitleChange` is the only report there is.
+
+**And it reads the title the window already has.** A change event fires
+for a change, and an application sets its title while building its window
+-- before `exec()`. Installing the filter and waiting would have shown a
+title only to an application that renamed its window afterwards, which is
+the minority of them and none of the examples in this tree.
+
+**A title is application data, and an escape inside one is a terminal
+executing text an application meant only to display.** An OSC string ends
+at a control character, so one in the middle truncates it and what follows
+is parsed as a fresh sequence; a filename with a newline in it is enough
+to get there without anybody being hostile. Control characters are
+stripped rather than escaped, because there is no escaping inside an OSC
+string to do it with, and the title is cut at 256 characters because it
+goes out on every change and the terminal has to hold it.
+
+**The check that discriminates is a count of escape bytes.** Two are the
+OSC framing, so a third could only have come from the title -- where
+asserting the payload "looks right" would have passed against no stripping
+at all. Sabotaged both ways: with the strip removed and with the bound
+removed, and each reddens the check that names it.
+
+**Entry pushes the terminal's own title and exit pops it**, `22;2t` and
+`23;2t`, which is XTWINOPS. Without the pop, the shell prompt the user had
+before qtty ran does not come back -- and the pair is in the constants the
+signal-safe path writes too, so a run killed by a signal restores it as
+well. A terminal that does not implement the pair ignores both, and then a
+title we set outlives us exactly as any other TUI's does.
+
+**Two suites, because neither sees what the other does.** `suite_runtime`
+proves a title change reaches the backend and would pass just as loudly
+against a backend that took the title and wrote nothing; `suite_backend`
+proves the bytes, on a pseudo-terminal with fd 1 redirected into it -- and
+restores fd 1 before the first `CHECK`, because a `PASS` line written onto
+the pseudo-terminal is a `PASS` line nobody reads.
+
+**One check earns its place by counting rather than asserting.** The
+keeper records how many titles it sent, and a resize and a tooltip must
+not add to the number: a filter answering to more events than
+`WindowTitleChange` would work in every other assertion here and put an
+escape sequence on the wire for each keystroke.
+
 ## 11. What is next, in order
 
 The four items that used to head this list -- backend injection, the
@@ -14305,9 +14388,9 @@ Dependency-ordered:
    structural check in the file passing**.
 4. ~~The declared-but-unreachable surface in §7.4.~~ **Done** -- see
    §7.4. `synchronisedOutput` is done too: DEC 2026 is asked for and the
-   frames are bracketed when the terminal confirms it. What is left of
-   that section is a title emitter, which is an addition rather than a
-   gap.
+   frames are bracketed when the terminal confirms it. **And the title
+   emitter that was left of it is done** -- see §8.42. That section is
+   now closed.
 5. **§8.2**: whether L6 becomes the `Application` class design.md §5.6
    specifies. The backend seam no longer waits on it, so this is now a
    design decision taken on its merits rather than a blocker.
@@ -14560,6 +14643,40 @@ need no qtty installed and run in `make check`.
 
 If an API change breaks the render target, that is a signal we would rather
 have than not.
+
+### A QFormLayout row label does not reach the grid (fuzznet, 2026-09-07)
+
+Measured in fuzznet, rendering thirteen widgets through `Qtty::test::
+snapshot_of` at 80x24. **The value widget of a form row appears on the grid;
+the row's own label does not.**
+
+    QFormLayout *form = new QFormLayout(this);
+    form->addRow(QStringLiteral("Requires"), requirement_);   // a QLabel
+    requirement_->setText(QStringLiteral("no capability -- unguarded"));
+
+    snapshot contains "unguarded"  -> yes
+    snapshot contains "Requires"   -> NO
+
+Both are QLabels; the difference is that the second is created by
+`QFormLayout::addRow(const QString &, QWidget *)` rather than by the caller.
+That is the only difference I can see from here, and I have not read your
+walk, so treat the cause as unknown rather than as stated.
+
+**How it surfaced, which is the part worth having.** Nine of ten widgets
+passed a containment check and the tenth rendered NOTHING. That tenth is a
+settings form whose fields are empty until configured -- so it is all label
+and no value, and it is the only one of the ten where the absence is visible
+at all. The other nine looked fine because every assertion happened to match a
+value.
+
+**What it costs a consumer.** On a terminal these objects show their answers
+with nothing saying what each answer is about: a state, a count and a
+fingerprint in a column, unlabelled. Not fatal -- the values are the content
+-- but a form is mostly its labels, and an empty one is blank.
+
+Not worked around here. fuzznet's render test now pins the behaviour as
+measured, with an assertion that goes RED if you fix it, so that the fix
+arrives as a notice rather than silently: fuzznet project.md sec 190.
 
 ## 13. From fuzzypickles: a whole application window, and three border faults
 
