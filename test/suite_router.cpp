@@ -1476,6 +1476,73 @@ int suite_router() {
 	}
 
 
+	// A WHEEL NOTHING TAKES, INSIDE A MODAL. Branch coverage found this:
+	// the walk up the parent chain had never once run out of parents, and
+	// `if (w == top) break;` -- the line that stops it escaping the input
+	// layer -- had never fired. Every wheel this suite sent was accepted by
+	// something before the question could arise.
+	//
+	// The consequence when it does: a modal's parent is the window behind
+	// it, so a wheel over something in the dialog that does not scroll
+	// walks straight out of the modal and into the window it is blocking.
+	// That is section 8.3's rule -- while a modal is up it is the whole of
+	// the input tree -- broken by a mouse wheel.
+	//
+	// The ROOT COUNTS WHEELS, and that is what makes this discriminate. The
+	// first version put a QScrollArea behind the modal and asserted its
+	// scroll bar had not moved: it passed with the guard deleted, because a
+	// QScrollArea acts on wheels delivered to its VIEWPORT and the walk
+	// reaches the area itself, so nothing would have moved either way. A
+	// fixture on the safe side of the hazard, which this project has now
+	// paid for often enough to look for first.
+	{
+		struct CountingRoot : QWidget {
+			int wheels = 0;
+			void wheelEvent(QWheelEvent *e) override { ++wheels; e->ignore(); }
+		};
+		CountingRoot root;
+		root.setAttribute(Qt::WA_DontShowOnScreen);
+		root.resize(GridMetrics::cells(20, 8));
+		root.show();
+		QCoreApplication::processEvents();
+
+		QDialog dlg(&root);
+		dlg.setAttribute(Qt::WA_DontShowOnScreen);
+		dlg.setModal(true);
+		// A label takes no wheel, which is the point: something inside the
+		// dialog has to DECLINE the event for the walk to continue past it.
+		auto *inert = new QLabel(QStringLiteral("nothing here scrolls"), &dlg);
+		inert->setGeometry(0, 0, 10 * cw, 2 * ch);
+		dlg.setGeometry(0, 0, 12 * cw, 3 * ch);
+		dlg.show();
+		QCoreApplication::processEvents();
+
+		InputRouter r6(&root);
+		MouseEvent turn; turn.cell = QPoint(2, 1); turn.wheel = -3;
+		r6.on_mouse(turn);
+		QCoreApplication::processEvents();
+		printf("info: a wheel inside a modal reached the window behind it"
+		       " %d time(s)\n", root.wheels);
+		CHECK(root.wheels == 0,
+		      "a wheel nothing in a modal accepts stops at the modal rather "
+		      "than reaching the window it is blocking");
+
+		// The control, and it is not optional: with the modal gone the same
+		// wheel over the same cell MUST reach the root. Without it, "0"
+		// above is equally the answer for a router that delivers no wheel
+		// anywhere, and the check would pass against a suite where the
+		// whole mechanism was dead.
+		dlg.hide();
+		QCoreApplication::processEvents();
+		r6.on_mouse(turn);
+		QCoreApplication::processEvents();
+		printf("info: and with the modal gone it reached it %d time(s)\n",
+		       root.wheels);
+		CHECK(root.wheels >= 1,
+		      "and the same wheel does reach it once the modal is down, so "
+		      "the zero above is the guard rather than a dead router");
+	}
+
 	// ------------------------------------------------ section 5.5: drags
 	// Motion was parsed by the backend and dropped by the router, and there
 	// was no grab, so nothing that needs a drag worked -- section 7.2 recorded

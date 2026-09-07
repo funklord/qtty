@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1111 checks, 0 failures. `make check` is green and includes
+1113 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -14834,6 +14834,36 @@ left, nothing is dropped, and `IgnoreAction` comes back.
 Reading 29 branch directions to find 2 is a fair trade on a 170-line file
 whose subject is a state machine over widgets; it would not be on
 `grid_style`.
+
+**Pointed next at `input_router`, by that criterion**, its subject being
+transitions: 98.92% of lines, 97.71% of branches executed, **69.85% taken
+at least once**. 105 lines carry an untaken direction and 42 of those
+carry a real condition rather than an exception edge. Most of the 42 are
+small -- Alt with a non-character key, Alt with punctuation, Ctrl+Tab --
+and one is not.
+
+**A wheel nothing accepts had never reached the top of the input layer.**
+The walk up the parent chain had never run out of parents, and
+`if (w == top) break;` had never fired: every wheel this suite sent was
+accepted by something before the question arose. **A modal's parent is the
+window behind it**, so a wheel over something in a dialog that does not
+scroll walks out of the modal and into the window it is blocking -- 8.3's
+rule, that a modal is the whole of the input tree while it is up, broken
+by a mouse wheel. Measured with the guard deleted: the window behind is
+reached once where it should be reached not at all.
+
+**The first fixture for it was vacuous and passed the sabotage.** It put a
+`QScrollArea` behind the modal and asserted its scroll bar had not moved
+-- and a `QScrollArea` acts on wheels delivered to its VIEWPORT, while the
+walk reaches the area itself, so nothing would have moved either way. A
+root that COUNTS wheel events discriminates. **That is the fixture-on-the-
+safe-side-of-the-hazard shape this document names more often than any
+other, and it was found by sabotaging rather than by reading.**
+
+**The check carries its own control**, because "the window behind was
+reached 0 times" is equally what a router that delivers no wheel anywhere
+would report: with the modal hidden, the same wheel over the same cell
+must reach the root, and it does.
 
 ## 11. What is next, in order
 

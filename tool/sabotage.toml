@@ -676,3 +676,11 @@ find = "\tfor (QWidget *w = under; w; w = w->parentWidget())\n\t\tif (w->acceptD
 into = "\treturn under && under->acceptDrops() ? under : nullptr;"
 count = 1
 check = "a drop over a child that takes no drops reaches the ancestor that does"
+
+[[sabotage]]
+name = "a wheel nothing accepts escapes the input layer"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\tif (w == top) break;              // do not escape the input layer"
+into = "\t\t\t;              // do not escape the input layer"
+count = 1
+check = "a wheel nothing in a modal accepts stops at the modal"
