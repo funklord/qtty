@@ -15161,6 +15161,43 @@ Both sabotage cleanly and both messages name the spelling: removing
 `24bit` reports `QTTY_COLOR spellings that did not take: 24bit`, and
 disabling `kitty-alpha` reports it by name.
 
+### 8.53 Two more buttons, and where the lens came back empty (2026-09-08)
+
+**The tray's `ActivationReason` is the same shape**, and the header states
+the promise: the enum is `QSystemTrayIcon`'s *"so a switch on the reason
+ports unchanged"*. An application porting such a switch has three arms
+this adaptor can reach -- Trigger, MiddleClick and Context -- and **one of
+the three was checked.**
+
+They are not exotic: a right-click is how nearly every tray icon is used
+at all. And they arrive as three separate D-Bus METHODS rather than as a
+parameter, so they are three separate slots, and a wrong constant in any
+one sends the application down the wrong arm of its switch with nothing to
+say so. Verified by making `ContextMenu` report `Trigger`: the check
+reddens and names the button.
+
+Method calls rather than signals, which is what makes this the reliable
+half of that gate -- 8.45 records why the signal half is not there.
+
+**And the lens is now spent, which is worth recording with its method.**
+Asked of every value set in the public headers:
+
+    Attrs (6)            8.50 -- three consumers, two of them one-row
+    CursorShape (4)      8.51 -- one of four honoured, decision in 0b
+    GraphicsMode (6)     8.52 -- two of six spellings checked
+    ColorDepth (4x2)     8.52 -- three of four aliases never matched
+    ActivationReason     this entry -- one of three
+    Color::Kind (3)      EMPTY. Default, Indexed and Rgb all reach
+                         sgr_sequence, colour_name and the rasteriser;
+                         branch data shows both sides of every kind test
+    Qt::DropAction       EMPTY, and not a gap: qtty chooses Copy or Move
+                         and never offers Link, so there is no arm to test
+
+**Two empties out of seven, and both were checked rather than assumed.**
+The instrument for all of them was the same: find the code that dispatches
+on the value set, read its branch data, and ask which rows have never been
+set rather than which lines have never run.
+
 ## 11. What is next, in order
 
 The four items that used to head this list -- backend injection, the

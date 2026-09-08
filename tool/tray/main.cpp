@@ -183,6 +183,41 @@ int main(int argc, char **argv) {
 	check(activations == 1 && why == Qtty::SystemTrayIcon::Trigger,
 	      "and a click in the panel reaches the program");
 
+	// THE OTHER TWO BUTTONS. The header promises this enum is
+	// QSystemTrayIcon's "so a switch on the reason ports unchanged", and an
+	// application that ports such a switch has three arms this adaptor can
+	// reach: Trigger, MiddleClick and Context. One of the three was
+	// checked.
+	//
+	// They are not exotic. A right-click on a tray icon is how nearly every
+	// one of them is used at all, and it arrives as a different D-Bus
+	// method rather than as a parameter -- so the three are three separate
+	// slots, and a wrong constant in any of them sends the application down
+	// the wrong arm of its switch with nothing to say so. Method calls
+	// rather than signals, which is what makes this the reliable half of
+	// this gate.
+	const struct { const char *method; Qtty::SystemTrayIcon::ActivationReason r;
+	               const char *what; } buttons[] = {
+		{ "SecondaryActivate", Qtty::SystemTrayIcon::MiddleClick, "middle" },
+		{ "ContextMenu",       Qtty::SystemTrayIcon::Context,     "right"  },
+	};
+	for (const auto &b : buttons) {
+		const int before = activations;
+		why = Qtty::SystemTrayIcon::Unknown;
+		act.call(QString::fromLatin1(b.method), 0, 0);
+		QCoreApplication::processEvents();
+		if (activations == before + 1 && why == b.r)
+			printf("PASS: a %s click in the panel reaches the program as "
+			       "its own reason\n", b.what);
+		else {
+			printf("FAIL: a %s click in the panel reaches the program as "
+			       "its own reason\n"
+			       "      condition: %d activation(s), reason %d\n",
+			       b.what, activations - before, int(why));
+			++failures;
+		}
+	}
+
 	// Hiding drops the NAME, which is how the specification says an icon
 	// goes away -- there is no Unregister call to make.
 	tray.hide();
