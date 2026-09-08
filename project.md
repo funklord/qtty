@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1115 checks, 0 failures. `make check` is green and includes
+1117 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -14899,6 +14899,27 @@ way a user meets it -- Tab to the end of a form, Shift+Tab back to the
 first field -- and the failure is silent: focus really is on the field,
 the application really did move it, and the field is off the top of the
 screen with nothing to say so.
+
+**And pointed at `ansi_backend`, the byte parser** -- 95.23% of lines,
+98.11% of branches executed, **67.99% taken at least once**, 59 executed
+conditional lines with a direction never taken. The one that matters:
+
+    if (c == 0x1b) return i;   // a new escape: the old one was abandoned
+
+**Never run. Every OSC this suite had fed was closed properly**, by BEL or
+by ST, so the line that abandons a string sequence when a new escape
+arrives inside it had no case. Without it the scanner goes on looking for
+a terminator that is not coming and swallows what follows -- **not one
+byte but up to the 4096-byte cap** -- so a terminal killed mid-write, or a
+multiplexer that drops bytes, eats the user's next keystrokes. The symptom
+is a keyboard that has gone dead for no reason a user can see.
+
+**Deleting that one line fails 28 checks**, which is the measurement that
+says what it is holding up: it is not a corner of the parser but the thing
+that keeps every unterminated sequence from consuming the stream. The new
+check is named among the 28, which is what the sabotage entry needs -- a
+breakage this broad is otherwise the case `evidence.md` warns about, where
+something else fails first and the check under test is never reached.
 
 **A pattern worth naming across all three of this session's branch
 findings**: `drop_target`'s walk, the wheel's escape guard, and this. Each

@@ -700,3 +700,11 @@ find = "\t\tif (top < state.scroll.y())                    state.scroll.setY(top
 into = "\t\tif (false)                                     state.scroll.setY(top);"
 count = 1
 check = "and back up again when the focus returns to the top"
+
+[[sabotage]]
+name = "an unterminated string sequence is never abandoned"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tif (c == 0x1b) return i;      // a new escape: the old one was abandoned"
+into = "\t\t;      // a new escape: the old one was abandoned"
+count = 1
+check = "an escape arriving inside it abandons it"

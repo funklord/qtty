@@ -409,6 +409,34 @@ int suite_backend() {
 		      "and the three numbers nobody ever assigned invent no key");
 	}
 
+	// AN OSC THAT IS NEVER TERMINATED, and then a real key. Branch coverage
+	// found this one: `if (c == 0x1b) return i;` in parse_string_sequence --
+	// the line that abandons a string sequence when a NEW escape arrives
+	// inside it -- had never run. Every OSC this suite fed was closed
+	// properly, by BEL or by ST.
+	//
+	// Without it the scanner keeps looking for a terminator that is not
+	// coming, and the bytes after the truncated sequence are swallowed into
+	// it: not one byte, but up to the 4096-byte cap. A terminal killed
+	// mid-write, or a multiplexer that drops bytes, would therefore eat the
+	// user's next keystrokes -- and the symptom is a keyboard that has gone
+	// dead for no reason a user can see.
+	{
+		// A background-colour reply, cut off where a terminator should be.
+		feed("\033]11;rgb:00/00/00");
+		CHECK(rec.keys.isEmpty(),
+		      "an unterminated OSC produces no keys while it might still "
+		      "be arriving");
+		// The new escape is what says the old one is over. This is one
+		// feed rather than two, because `feed` clears the recorder and the
+		// point is what happens to bytes that arrive AFTER the truncated
+		// sequence in the same stream.
+		feed("\033]11;rgb:00/00/00\033[A");
+		CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Up,
+		      "and an escape arriving inside it abandons it, so the key "
+		      "that follows is delivered rather than swallowed");
+	}
+
 	// -- a bare Escape ---------------------------------------------------------
 	//
 	// ESC prefixes every escape sequence, so a lone one is only distinguishable
