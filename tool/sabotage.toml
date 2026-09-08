@@ -908,3 +908,11 @@ find = "\tconst QString text = (k.alt && types) ? QString() : k.text;"
 into = "\tconst QString text = k.text;"
 count = 1
 check = "Alt and a letter that matches nothing types nothing"
+
+[[sabotage]]
+name = "focus steps onto a disabled control"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (!w->isVisible() || !w->isEnabled()) continue;\n\t\tif (!(w->focusPolicy() & Qt::TabFocus)) continue;"
+into = "\t\tif (!(w->focusPolicy() & Qt::TabFocus)) continue;"
+count = 1
+check = "a disabled control is stepped over rather than landed on"

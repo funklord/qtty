@@ -163,7 +163,15 @@ hints -- a terminal user cannot discover a binding by looking for a
 button. This costs one `QLabel` and is the difference between an
 application people can use and one they can use *if somebody tells them*.
 
-**9. Prefer stepping to dragging.** A splitter, a slider and a scroll bar
+**9. In a custom widget, ignore keys that carry `Alt`.** qtty withholds
+the letter from widgets Qt marks as taking text, which covers every
+standard input widget. A widget of your own that reads
+`QKeyEvent::text()` directly is outside that, and will see the `z` of an
+`Alt+Z` that was meant for a menu. One line:
+
+    if (event->modifiers() & Qt::AltModifier) { event->ignore(); return; }
+
+**10. Prefer stepping to dragging.** A splitter, a slider and a scroll bar
 all respond to arrows when focused, but only if a user can reach them.
 Give a splitter a keyboard route or a menu action that sets the split;
 "drag the handle" is not available to everybody.

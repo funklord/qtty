@@ -1672,6 +1672,22 @@ int suite_router() {
 		CHECK(fired == before_enter + 1,
 		      "and Enter activates the control that has focus, which is "
 		      "what Enter means on a terminal");
+
+		// A DISABLED control is stepped over rather than landed on. The
+		// walk is this library's own -- the obvious route to Qt's is
+		// protected, and reaching it by casting a widget to a fake derived
+		// class is the undefined behaviour 8.68 removed -- so what it
+		// skips is qtty's to get right, and a form that parks focus on a
+		// greyed-out field is one a person cannot get out of by pressing
+		// the same key again.
+		named->setEnabled(false);
+		field->setFocus();
+		set_focus_widget(win.focusWidget());
+		key(Qt::Key_Down, QString());
+		CHECK(win.focusWidget() != named && win.focusWidget() != field,
+		      "and a disabled control is stepped over rather than landed "
+		      "on");
+		named->setEnabled(true);
 		// A text field keeps its own keys either way: the conventions fire
 		// only where the focused widget ignored the key, so this is not a
 		// router that has taken Enter away from everything.

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1165 checks, 0 failures. `make check` is green and includes
+1166 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15809,6 +15809,61 @@ the answer. It cannot follow it here: a selected tab is ALREADY underlined
 to show the tab bar has focus, so underlining the mnemonic letter would
 make one mark mean two things. The guide says so and tells an application
 to put the key in its own help text.
+
+### 8.68 A dormant piece of undefined behaviour, woken by using it (2026-09-09)
+
+The sanitizer configuration went red after 8.66 and 8.67, and **the thing
+it reported was not the thing that was wrong.**
+
+    ERROR: LeakSanitizer: detected memory leaks
+    Direct leak of 16 byte(s) in 2 object(s)
+        #0 realloc
+        #1 (/lib/x86_64-linux-gnu/libstdc++.so.6+0xb5a42)
+
+Two frames, no qtty code, in libstdc++. **Read as a leak it is
+unattributable.** Every check passed; only the exit was unclean.
+
+**Narrowed by running one suite at a time**, which is cheaper than
+thinking: `cells` clean, `nosuchsuite` clean -- so not static
+initialisation -- and `router` dirty. Then by `#if 0` around the new
+keyboard block: clean without it. Mine, then.
+
+**The stack was truncated, and asking for a real one changed the
+diagnosis entirely.** With `malloc_context_size=30:fast_unwind_on_malloc=0`
+the same 8 bytes come from `__cxa_demangle` inside
+`__ubsan_handle_dynamic_type_cache_miss`, called from
+`InputRouter::deliver_key`. **The leak is UBSan's own demangler buffer
+while printing a report. The report is the finding.**
+
+    struct Probe : QWidget { using QWidget::focusNextPrevChild; };
+    static_cast<Probe *>(scope)->focusNextPrevChild(...);
+
+`focusNextPrevChild` is protected, and this is the trick for reaching it:
+declare a fake derived class and cast a widget that is not one to it.
+**That is undefined behaviour**, and a vptr check is exactly what catches
+it.
+
+**It had been in the tree and never executed.** 8.39 measured the Tab
+fallback as unreached -- Qt's own `QWidget::event()` takes Tab first -- so
+the cast sat there, correct-looking, for as long as nothing called it. The
+arrow conventions of 8.66 call it on **every press**, and the sanitizer
+found it the same day. **A latent fault is not a harmless one; it is one
+whose bill has not arrived.**
+
+**Replaced with `nextInFocusChain()`**, which is public and defined, in a
+helper both callers use -- so the Tab fallback lost the cast too, though
+nothing reaches it. The chain is circular, so returning to the start is
+the termination condition, with a counter beside it for a chain something
+else has corrupted. What it skips -- invisible, disabled, no `TabFocus` --
+is now this library's own decision rather than Qt's, so a check pins the
+one that matters: **focus steps OVER a disabled control**, a form that
+parks focus on a greyed-out field being one a person cannot leave by
+pressing the same key again.
+
+**The lesson is about instruments, not about casts.** A truncated stack
+turned a UBSan report into a leak report, and a leak report is
+unattributable where a UBSan report names the function. **Two frames is
+not a stack; it is a prompt to ask for more.**
 
 ## 11. What is next, in order
 

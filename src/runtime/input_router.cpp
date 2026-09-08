@@ -130,6 +130,39 @@ static QList<QAction *> mnemonic_actions(QWidget *scope) {
 
 // The letter a `&` marks, or a null QChar. Qt spells a literal ampersand
 // "&&", which marks nothing.
+// Move focus one step through the layer's focus chain.
+//
+// NOT `static_cast<Probe *>(w)->focusNextPrevChild()`, which is what stood
+// here: `focusNextPrevChild` is protected, and the trick to reach it is to
+// declare a fake derived class and cast a widget that is not one to it.
+// That is undefined behaviour, and UndefinedBehaviorSanitizer says so --
+// `__ubsan_handle_dynamic_type_cache_miss`, a vptr that is not the type
+// the cast claimed.
+//
+// It went unseen because nothing REACHED it: 8.39 measured the Tab
+// fallback as never running, Qt's own `QWidget::event()` taking Tab first.
+// The arrow conventions of 8.66 call it on every press, so a dormant piece
+// of undefined behaviour became a live one, and the sanitizer found it
+// within a day.
+//
+// `nextInFocusChain()` is public and defined. The chain is circular, so
+// returning to where it started is the termination condition; the counter
+// beside it bounds a chain corrupted by something else.
+static bool move_focus(QWidget *scope, bool forward) {
+	QWidget *const start = scope->focusWidget() ? scope->focusWidget() : scope;
+	QWidget *w = start;
+	for (int guard = 0; guard < 4096; ++guard) {
+		w = forward ? w->nextInFocusChain() : w->previousInFocusChain();
+		if (!w || w == start) return false;
+		if (w != scope && !scope->isAncestorOf(w)) continue;
+		if (!w->isVisible() || !w->isEnabled()) continue;
+		if (!(w->focusPolicy() & Qt::TabFocus)) continue;
+		w->setFocus(forward ? Qt::TabFocusReason : Qt::BacktabFocusReason);
+		return true;
+	}
+	return false;
+}
+
 static QChar mnemonic_of(const QString &text) {
 	for (int i = 0; i + 1 < text.size(); ++i) {
 		if (text.at(i) != QLatin1Char('&')) continue;
@@ -347,9 +380,7 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 		QWidget *const scope = input_scope();
 		if (k.qt_key == Qt::Key_Down || k.qt_key == Qt::Key_Up) {
 			QWidget *before = scope->focusWidget();
-			struct Probe : QWidget { using QWidget::focusNextPrevChild; };
-			static_cast<Probe *>(scope)->focusNextPrevChild(
-			    k.qt_key == Qt::Key_Down);
+			move_focus(scope, k.qt_key == Qt::Key_Down);
 			if (scope->focusWidget() != before) {
 				set_focus_widget(scope->focusWidget());
 				if (frame_requested) frame_requested();
@@ -535,8 +566,11 @@ void InputRouter::on_key(const KeyEvent &k) {
 		if ((!target || !press.isAccepted()) && scope->focusWidget() == before) {
 			// Focus chain works without an active window (F4); drive it
 			// directly.
-			struct Probe : QWidget { using QWidget::focusNextPrevChild; };
-			static_cast<Probe *>(scope)->focusNextPrevChild(!k.shift);
+			// The same defined route as the arrow conventions use, and
+			// for the same reason: the cast this used to make is
+			// undefined behaviour that 8.68 caught the moment anything
+			// executed it.
+			move_focus(scope, !k.shift);
 		}
 		set_focus_widget(scope->focusWidget());
 	} else {
