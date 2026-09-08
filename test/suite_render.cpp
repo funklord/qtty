@@ -87,6 +87,83 @@ int suite_render(bool record) {
 	                                  QStringLiteral("prefs_dialog"), got, record);
 	if (!r && !record) printf("PASS: snapshot matches\n");
 
+	// RICH TEXT'S OWN ATTRIBUTES, found by rendering a QTextBrowser --
+	// eleven uses across the consumers and nothing here had drawn one.
+	// `<b>`, `<i>` and `<u>` reached the cells; `<s>` reached nothing, and
+	// the underline arrived TWICE.
+	{
+		QTextBrowser br;
+		br.setAttribute(Qt::WA_DontShowOnScreen);
+		br.setHtml(QStringLiteral("<u>under</u> <s>struck</s>"));
+		br.resize(GridMetrics::cells(30, 5));
+		br.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer b(30, 5);
+		Qtty::render_once(br, b);
+		const QString snap = b.to_snapshot();
+		// Through the SNAPSHOT, because that is where an attribute is
+		// visible at all: the glyph plane says "struck" either way.
+		if (snap.contains(QStringLiteral("strike")))
+			printf("PASS: rich text's strikethrough reaches the cells as an "
+			       "attribute rather than as unmarked characters\n");
+		else {
+			printf("FAIL: rich text's strikethrough reaches the cells as an "
+			       "attribute rather than as unmarked characters\n");
+			++r;
+		}
+		// And the underline exactly once. Qt draws it as QFont::underline()
+		// on the text item AND as a separate line just below the baseline,
+		// so honouring both put a rule of box-drawing glyphs on the next
+		// cell row under every underlined word.
+		// The row BELOW the word, not any row: a QTextBrowser draws its own
+		// frame, and its border is made of the same box-drawing character.
+		// The first version of this check matched the frame and reported a
+		// defect that was not there.
+		const QStringList rows = b.to_text().split(QLatin1Char('\n'));
+		int word = -1;
+		for (int i = 0; i < rows.size(); ++i)
+			if (rows.at(i).contains(QStringLiteral("under"))) word = i;
+		const bool rule = word >= 0 && word + 1 < rows.size()
+		               && rows.at(word + 1).contains(QStringLiteral("──"));
+		printf("info: the word is on row %d; the row under it is |%s|\n",
+		       word, qPrintable(rows.value(word + 1)));
+		if (!rule && snap.contains(QStringLiteral("underline")))
+			printf("PASS: and its underline is the attribute alone, not the "
+			       "attribute and a drawn rule under it\n");
+		else {
+			printf("FAIL: and its underline is the attribute alone, not the "
+			       "attribute and a drawn rule under it\n");
+			++r;
+		}
+	}
+	{
+		// The control for that suppression, and it is the whole of why it
+		// is narrow: a rule the APPLICATION draws below underlined text
+		// must survive. Only a horizontal line inside the band the last
+		// underlined run occupies is dropped.
+		Qtty::CellBuffer b(20, 4);
+		{
+			Qtty::CellPaintDevice dev(b);
+			QPainter p(&dev);
+			QFont f = QGuiApplication::font();
+			f.setUnderline(true);
+			p.setFont(f);
+			p.drawText(QPoint(0, GridMetrics::ch() - 4),
+			           QStringLiteral("Heading"));
+			p.setFont(QGuiApplication::font());
+			p.drawLine(0, GridMetrics::ch() * 2 + 9,
+			           GridMetrics::cw() * 10, GridMetrics::ch() * 2 + 9);
+		}
+		if (b.to_text().contains(QStringLiteral("──────")))
+			printf("PASS: and a rule the application draws under an "
+			       "underlined heading is left alone\n");
+		else {
+			printf("FAIL: and a rule the application draws under an "
+			       "underlined heading is left alone\n");
+			++r;
+		}
+	}
+
 	// AN INDEPENDENT READING OF THE FIXTURES, which is what a
 	// regenerate-and-diff gate cannot give. `check_snapshot` proves a
 	// fixture is what THIS renderer produces; it says nothing about whether

@@ -175,6 +175,16 @@ private:
 	// tail. See drawTextItem() for the measurement.
 	int last_row_ = -1, last_end_col_ = 0;
 	qreal last_x_ = 0;
+	// The underline bands of every run in this pass that carried
+	// Attr::Underline, in device pixels, so line() can tell Qt's own
+	// underline decoration from a rule the application drew.
+	//
+	// A LIST rather than the last one, and that took a failing check to
+	// learn: Qt draws all the text items first and their decorations
+	// afterwards, so with two runs the underline arrives after a later run
+	// has already replaced the remembered band. Cleared when the pass
+	// resets, beside last_row_.
+	QVector<QRectF> underline_bands_;
 };
 
 } // namespace Qtty

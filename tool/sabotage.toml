@@ -828,3 +828,19 @@ find = "\t\t\t\tf.setStrikeOut(c.attrs & Attr::Strike);"
 into = "\t\t\t\t;"
 count = 1
 check = "a struck cell is rasterised with its line"
+
+[[sabotage]]
+name = "rich text's strikethrough never reaches a cell"
+file = "src/render/cell_paint.cpp"
+find = "\tif (ti.font().strikeOut()) a |= Attr::Strike;"
+into = "\t;"
+count = 1
+check = "rich text's strikethrough reaches the cells as an attribute"
+
+[[sabotage]]
+name = "Qt's underline decoration is drawn as well as attributed"
+file = "src/render/cell_paint.cpp"
+find = "\t\t\t\tif (band.contains(QPointF(a.x(), a.y()))\n\t\t\t\t    && band.contains(QPointF(b2.x(), b2.y())))\n\t\t\t\t\treturn;"
+into = "\t\t\t\tif (false)\n\t\t\t\t\treturn;"
+count = 1
+check = "its underline is the attribute alone"

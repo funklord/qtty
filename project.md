@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1148 checks, 0 failures. `make check` is green and includes
+1151 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15570,6 +15570,51 @@ that composited children individually for damage would put every page on
 the screen at once. **That is a different thing from the form-layout
 alignment in 8.60, which no change to this library could break; this one
 is one change away.**
+
+### 8.63 Two defects in rich text, found by rendering the last uncovered class (2026-09-08)
+
+`QTextBrowser` was the last widget from 8.62's list with real usage --
+eleven across the consumers -- and it is the one that pays, because it
+renders HTML: markup is the only way an application asks for a cell
+ATTRIBUTE without setting one.
+
+Rendered `<b>Bold</b> <i>slanted</i> <u>under</u> <s>struck</s>` and read
+the snapshot's attribute plane:
+
+    bold      -> 1111       correct
+    italic    -> 4444444    correct
+    underline -> 88888      correct, AND a rule of box-drawing glyphs
+                            on the row below the word
+    strike    -> nothing at all; the legend has no entry for it
+
+**`<s>` reached the cells as ordinary characters.** `drawTextItem` mapped
+`bold`, `italic` and `underline` from the font and not `strikeOut` -- the
+same attribute missed at a second door, 8.58 having just added it to the
+rasteriser. **One line, and the same line twice in one day.**
+
+**The underline arrived TWICE**, which is Qt's doing and qtty honouring
+both halves: `QFont::underline()` on the text item becomes
+`Attr::Underline`, and Qt then draws the decoration as a separate line
+primitive just below the baseline -- found by probing the engine, it is
+`drawLines` with one `QLineF`. So an underlined word got the attribute
+AND a `─────` rule on the next cell row.
+
+**The fix remembers the band and drops a line inside it**, in the idiom
+the file already uses for the wide-cluster overlap guard. **It had to be a
+LIST rather than the last band, and a failing check taught that**: Qt
+draws all the text runs first and their decorations afterwards, so with
+two runs the underline arrives after a later run has replaced a
+single remembered band. With `<u>under</u>` alone the first version
+worked, which is exactly the fixture that would have shipped it.
+
+**Narrow on purpose, with the control to prove it**: only a HORIZONTAL
+line inside the band an underlined run occupies is dropped, and a rule the
+application draws two rows below an underlined heading still renders.
+
+**And the first version of the check reported a defect that was not
+there.** It looked for `──` on any row -- and a `QTextBrowser` draws its
+own frame out of the same character. The row BELOW the word is the
+question, and the frame is not it.
 
 ## 11. What is next, in order
 

@@ -232,6 +232,7 @@ bool CellPaintEngine::begin(QPaintDevice *pdev) {
 	last_row_ = -1;
 	last_end_col_ = 0;
 	last_x_ = 0;
+	underline_bands_.clear();
 	return true;
 }
 bool CellPaintEngine::end() { dev_ = nullptr; return true; }
@@ -356,6 +357,12 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	if (ti.font().bold()) a |= Attr::Bold;
 	if (ti.font().italic()) a |= Attr::Italic;
 	if (ti.font().underline()) a |= Attr::Underline;
+	// Strike, which was missing here as it was missing from the rasteriser
+	// in 8.58 -- the same attribute, dropped at a second door. A
+	// QTextDocument carries it in the char format, so `<s>` in any rich
+	// text reached the cells as ordinary characters and struck text was
+	// indistinguishable from plain.
+	if (ti.font().strikeOut()) a |= Attr::Strike;
 	const std::optional<QRect> clip = clip_cells();
 	if (clip && (clip->isEmpty() || row < clip->top() || row > clip->bottom())) return;
 	QString text = ti.text();
@@ -446,6 +453,25 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	last_row_ = row;
 	last_end_col_ = x;
 	last_x_ = q.x();
+	// Qt draws an underline TWICE for a rich-text run: once as
+	// QFont::underline() on the text item, which becomes Attr::Underline
+	// above, and once as a separate line primitive just below the
+	// baseline. Honouring both gives an underlined word with a rule of
+	// box-drawing glyphs under it, on the next cell row -- measured
+	// through a QTextBrowser, `<u>under</u>` produced "under" underlined
+	// and a rule of five box-drawing horizontals beneath it.
+	//
+	// So remember the band that decoration will land in, and let line()
+	// drop a line that falls inside it. Recorded rather than guessed: the
+	// primitive is drawLines with one QLineF, found by probing the engine.
+	if (a & Attr::Underline) {
+		// From just above the baseline down through the descent, across
+		// the run's own advance. Qt puts the decoration a pixel or two
+		// below the baseline.
+		underline_bands_.append(QRectF(q.x(), q.y() - 1,
+		                               fm.horizontalAdvance(ti.text()),
+		                               fm.descent() + 2));
+	}
 }
 
 void CellPaintEngine::drawRects(const QRectF *r, int n) { for (int i = 0; i < n; ++i) fill_rectf(r[i]); }
@@ -1041,6 +1067,21 @@ void CellPaintEngine::line(const QLineF &l) {
 	// covers, so returning after that would leave a wiped row behind.
 	const QColor pi = pen_ink();
 	if (pi.alpha() == 0) return;
+	// Qt's own underline decoration for the text run just drawn, which is
+	// already carried as Attr::Underline on those cells. Drawing it as
+	// well puts a rule of box-drawing glyphs on the row below the word.
+	// Narrow on purpose: horizontal, and inside the band the last
+	// underlined run occupies, so an application's own rule under a
+	// heading is untouched.
+	{
+		const QPointF a = xf_.map(l.p1()) + QPointF(dev_->origin);
+		const QPointF b2 = xf_.map(l.p2()) + QPointF(dev_->origin);
+		if (qFuzzyCompare(a.y(), b2.y()))
+			for (const QRectF &band : underline_bands_)
+				if (band.contains(QPointF(a.x(), a.y()))
+				    && band.contains(QPointF(b2.x(), b2.y())))
+					return;
+	}
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	QLineF m(xf_.map(l.p1()) + QPointF(dev_->origin), xf_.map(l.p2()) + QPointF(dev_->origin));
 	CellBuffer &b = dev_->buffer();
