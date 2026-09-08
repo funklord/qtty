@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1137 checks, 0 failures. `make check` is green and includes
+1141 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15291,6 +15291,46 @@ tree already goes.** One word, `covered` for `tested`, and it does not.
 once** -- the substitution notice, the leading notice and the fatal -- so
 the fontconfig route is worth knowing as a way to reach the font
 diagnostics 8.54 left unpinned, if they are ever wanted.
+
+### 8.56 The snapshot gate is one witness asked twice (2026-09-08)
+
+`evidence.md`: **a gate that compares an artifact to its generator tests
+agreement.** Regenerate-and-diff proves the artifact is what this
+generator produces, says nothing about whether that is right, and goes
+green in the same words either way.
+
+`check_snapshot` is exactly that gate, and the fixtures are this tree's
+most-cited artefacts. **Nothing else read them.** Both call sites compare
+`got` against the recorded file and assert nothing more, so a fixture
+recorded from a broken renderer is agreed with for ever -- which 8.54
+already showed the shape of, four attribute names never printed by
+anything and a misspelling invisible by construction.
+
+**Two properties now read the committed file and nothing else:**
+
+- **One attribute row per glyph row, both at the height the CALL asked
+  for.** The 14 and the 17 come from the call sites, not from the
+  fixtures, so a fixture whose shape changed cannot be absorbed by
+  `make record`.
+- **Every symbol the attribute plane uses is named in the legend.** A
+  plane symbol with no legend entry is a fixture nobody can read -- and
+  the serialiser has a branch that emits `?` once it runs out of
+  alphabet, which would land exactly here.
+
+**Neither can be satisfied by re-recording, which is the whole point.**
+Sabotaging the GENERATOR does not reach them at all: the checks read the
+file on disk, so the legend loop can be disabled entirely and they stay
+green. That is the property, not a defect in the check -- and it took a
+failed sabotage to see it, which is worth the sentence.
+
+**Demonstrated by corrupting the artefact instead**, which is the failure
+they defend against. Dropping `1 bold` from the legend reports
+`prefs_dialog defines no [1]`; deleting a glyph row reports
+`13 glyph row(s), 14 attr row(s)`.
+
+**No sabotage entry, and the reason is structural**: `sabotage.py` edits
+source files, and nothing these checks read is a source file. Verified by
+hand, as the tray checks are.
 
 ## 11. What is next, in order
 

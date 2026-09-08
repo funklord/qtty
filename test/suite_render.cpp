@@ -87,6 +87,81 @@ int suite_render(bool record) {
 	                                  QStringLiteral("prefs_dialog"), got, record);
 	if (!r && !record) printf("PASS: snapshot matches\n");
 
+	// AN INDEPENDENT READING OF THE FIXTURES, which is what a
+	// regenerate-and-diff gate cannot give. `check_snapshot` proves a
+	// fixture is what THIS renderer produces; it says nothing about whether
+	// that is right, and it goes green in the same words either way -- the
+	// generator is one witness, and asking it twice is not two.
+	//
+	// So these assertions read the committed file and nothing else. They
+	// cannot be satisfied by re-recording, which is the property that makes
+	// them worth having: 8.54 found four attribute names that had never
+	// been printed by anything, and a fixture recorded with a wrong one
+	// agrees with every later run for ever.
+	if (!record) {
+		// The row counts come from the CALL SITES above and below, not from
+		// the fixtures. A fixture whose shape changed would otherwise be
+		// absorbed silently by `make record`.
+		const struct { const char *name; int rows; } fixtures[] = {
+			{ "prefs_dialog",     14 },
+			{ "widgets_gallery",  17 },
+		};
+		for (const auto &fx : fixtures) {
+			QFile f(QStringLiteral(QTTY_SOURCE_DIR "/test/snapshot/")
+			        + QLatin1String(fx.name) + QStringLiteral(".txt"));
+			if (!f.open(QIODevice::ReadOnly)) {
+				printf("FAIL: fixture %s cannot be read, so nothing below it"
+				       " means anything\n", fx.name);
+				++r;
+				continue;
+			}
+			const QStringList line =
+			    QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+			const int at_attrs = line.indexOf(QStringLiteral("--- attrs ---"));
+			const int at_cols = line.indexOf(QStringLiteral("--- colours ---"));
+			QString used, defined;
+			for (const QString &l : line)
+				if (l.startsWith(QStringLiteral("attrs:")))
+					for (const QString &e :
+					     l.mid(6).split(QStringLiteral(",")))
+						if (!e.trimmed().isEmpty())
+							defined += e.trimmed().at(0);
+			for (int i = at_attrs + 1; i > 0 && i < at_cols; ++i)
+				for (const QChar c : line.at(i))
+					if (c != QLatin1Char(' ') && !used.contains(c)) used += c;
+			QString undefined;
+			for (const QChar c : used)
+				if (!defined.contains(c)) undefined += c;
+
+			printf("info: %s has %d glyph row(s), %d attr row(s), plane uses"
+			       " [%s], legend defines [%s]\n", fx.name, at_attrs,
+			       at_cols - at_attrs - 1, qPrintable(used),
+			       qPrintable(defined));
+			if (at_attrs == fx.rows && at_cols - at_attrs - 1 == fx.rows)
+				printf("PASS: %s carries one attribute row per glyph row, "
+				       "both at the height the call asked for\n", fx.name);
+			else {
+				printf("FAIL: %s carries one attribute row per glyph row, "
+				       "both at the height the call asked for\n", fx.name);
+				++r;
+			}
+			// The half that a re-record cannot fix: a plane symbol the
+			// legend does not define is a fixture nobody can read, and the
+			// serialiser has a branch that emits `?` once it runs out of
+			// alphabet -- which would land here.
+			if (undefined.isEmpty())
+				printf("PASS: and every symbol its attribute plane uses is "
+				       "named in its legend\n");
+			else {
+				printf("FAIL: and every symbol its attribute plane uses is "
+				       "named in its legend\n"
+				       "      condition: %s defines no [%s]\n",
+				       fx.name, qPrintable(undefined));
+				++r;
+			}
+		}
+	}
+
 	// An image too small to be a picture is substituted by a glyph, and the
 	// substitution has to cover the cells the image OCCUPIES. For the 1x1 icon
 	// that motivated the rule those are the same thing; for anything wider
