@@ -59,6 +59,54 @@ static void show(QWidget &w, int cols, int rows) {
 int suite_widgets() {
 	fails = 0;
 
+	// QFormLayout, which nothing here had ever rendered. It is not an
+	// exotic class: netcfgd, which vendors this library as a submodule,
+	// uses it eleven times, and it is how nearly every settings dialog is
+	// built.
+	//
+	// What a form layout IS, is the alignment: a label column sized to the
+	// widest label and a field column that starts at one x for every row.
+	// The width is computed in PIXELS from font metrics, so rounding it
+	// onto cells is exactly where a grid can lose it -- and a form whose
+	// fields start at four different columns still contains every widget,
+	// so nothing but the alignment says it went wrong.
+	{
+		QWidget win;
+		auto *form = new QFormLayout(&win);
+		form->addRow(QStringLiteral("SSID"), new QLineEdit);
+		form->addRow(QStringLiteral("Security"), new QComboBox);
+		form->addRow(QStringLiteral("Priority"), new QSpinBox);
+		show(win, 40, 8);
+		CellBuffer b(40, 8);
+		render_once(win, b);
+		const QStringList rows = b.to_text().split(QLatin1Char('\n'));
+		// Where each field begins, taken from the frame rather than from
+		// the widgets: a check reading geometry would be asking Qt what it
+		// intended, and the question is what reached the cells.
+		QVector<int> starts;
+		for (const QString &r : rows) {
+			const int at = r.indexOf(QLatin1Char('['));
+			if (at >= 0) starts.append(at);
+		}
+		printf("info: form fields begin at column(s)");
+		for (int x : starts) printf(" %d", x);
+		printf("\n");
+		// The column alignment is printed and NOT asserted, which took a
+		// sabotage to establish. QFormLayout gives every field one column,
+		// so they share one pixel x, and one pixel x rounds to one cell x
+		// -- the assertion holds by construction and tests Qt rather than
+		// this library. Measured: with GridSnap::snap() returning its
+		// argument unchanged the fields still land at 10, 10, 10. A check
+		// that cannot fail is worse than none, so what is asserted below is
+		// what qtty actually decides.
+		CHECK(starts.size() == 3
+		      && rows.value(0).contains(QStringLiteral("SSID"))
+		      && rows.value(1).contains(QStringLiteral("Security"))
+		      && rows.value(2).contains(QStringLiteral("Priority")),
+		      "a form layout renders every row, each label on its own "
+		      "field's row and each field drawn");
+	}
+
 	// combo: box + dropdown arrow
 	{
 		QComboBox combo;

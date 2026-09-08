@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1142 checks, 0 failures. `make check` is green and includes
+1143 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15449,6 +15449,39 @@ is not safe everywhere, which is an argument for the clamping form.
 **The measurement is the deliverable.** A question that survives it is a
 real decision and goes to whoever owns it -- with its cost named, which is
 what it lacked yesterday.
+
+### 8.60 A layout a live consumer uses eleven times (2026-09-08)
+
+**netcfgd vendors this library as a submodule now**, so its widget
+vocabulary is a better question than a survey: what does an actual adopter
+build dialogs out of, and does the suite render it?
+
+Counted across its GUI: `QPushButton` 113, `QLabel` 71, `QMessageBox` 67,
+`QLineEdit` 65, `QComboBox` 50, `QTableWidget` 32, `QDialogButtonBox` 31,
+`QCheckBox` 27, `QSpinBox` 19, `QTabWidget` 13 -- **every one of which this
+suite renders somewhere. And `QFormLayout` 11 times, which it did not
+render at all.**
+
+**It works.** A four-row form renders with its labels in one column and
+its fields in another, no off-grid geometry, and with
+`WrapLongRows` on a 22-column terminal the long row wraps to two lines the
+way the policy says. **An empty result, and the fixture is worth keeping
+anyway**: an uncovered layout class that an adopter depends on eleven
+times is a regression nobody would catch.
+
+**The alignment is printed and not asserted, which took a sabotage to
+learn.** The obvious check -- every field begins at the same column, which
+is what a form layout is FOR -- holds by construction: `QFormLayout` gives
+the fields one column, so they share one pixel x, and one pixel x rounds
+to one cell x. Measured with `GridSnap::snap()` returning its argument
+untouched: still 10, 10, 10. **That assertion tests Qt, not this
+library**, and a check that cannot fail is worse than none.
+
+What is asserted instead is what qtty decides: that every row reaches the
+cells, each label on its own field's row and each field drawn. It reddens
+when `GridSnap` is made to collapse geometry -- **and no sabotage entry,
+because any breakage broad enough to redden it reddens dozens**, which is
+the control-not-reached shape rather than a defence.
 
 ## 11. What is next, in order
 
