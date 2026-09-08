@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1159 checks, 0 failures. `make check` is green and includes
+1163 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15740,6 +15740,20 @@ took them would break exactly the applications that had thought hardest
 about their keys. **Both fire only where the focused widget IGNORED the
 key**, so a text field keeps its own Enter and a list its own arrows,
 which is the check that pins it.
+
+**Two more went in after measuring how a keyboard user changes PAGE.**
+`Ctrl+Tab` and `Ctrl+Shift+Tab` move between a tab widget's tabs from
+inside a page, which is Qt's and works; `Ctrl+PageUp` and `Ctrl+PageDown`
+do not, and they are what somebody coming from a browser, an editor or a
+multiplexer tries first. **And `F6` had no meaning at all**: `next_window`
+and `previous_window` are public, this library binds no key of its own,
+so **a second window could be composed and be unreachable without a
+mouse** unless the application bound something. Both are in the opt-in
+bundle, both fire only where the focused widget ignored the key, and the
+tab step wraps because a person holding the key expects to come round
+rather than stop with no signal. The tab widget chosen is the one the
+FOCUSED widget sits inside, not the first in the layer, since a page
+holding its own tabs is ordinary.
 
 **`doc/keyboard-first.md` is the guide**, and the README points at it. It
 carries the table above, the opt-in, and nine practices in the order they

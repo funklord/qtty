@@ -436,6 +436,34 @@ int suite_router() {
 		      && Qtty::current_window() == start,
 		      "next_window moves to another window and previous_window"
 		      " comes back");
+
+		// F6, which is what makes those two reachable by a person. They
+		// are public and this library binds no key of its own, so until
+		// the conventions were asked for a second window could be
+		// composed and never got to -- an application had to bind
+		// something or the window was unreachable without a mouse.
+		Qtty::set_current_window(&win);
+		QWidget *const was = Qtty::current_window();
+		router.on_key({Qt::Key_F6, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		const bool moved_off = Qtty::current_window() != was;
+		router.on_key({Qt::Key_F6, QString(), false, false, true});
+		QCoreApplication::processEvents();
+		CHECK(!moved_off && Qtty::current_window() == was,
+		      "F6 does not move between windows until an application asks "
+		      "for the terminal conventions");
+
+		Qtty::set_keyboard_conventions(true);
+		Qtty::set_current_window(&win);
+		router.on_key({Qt::Key_F6, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		QWidget *const after_f6 = Qtty::current_window();
+		router.on_key({Qt::Key_F6, QString(), false, false, true});
+		QCoreApplication::processEvents();
+		CHECK(after_f6 != &win && Qtty::current_window() == &win,
+		      "asked for, F6 moves to the next window and Shift+F6 comes "
+		      "back, so two windows are reachable with no mouse");
+		Qtty::set_keyboard_conventions(false);
 		third.hide();
 		QCoreApplication::processEvents();
 	}
@@ -1637,6 +1665,41 @@ int suite_router() {
 		CHECK(fired == after,
 		      "while Enter in a text field is still the field's own, "
 		      "because the conventions only take a key nothing wanted");
+
+		// Ctrl+PageUp and Ctrl+PageDown between tabs. Qt gives a
+		// QTabWidget Ctrl+Tab and Ctrl+Shift+Tab and not these, and these
+		// are what somebody coming from a browser or an editor tries.
+		{
+			auto *tabs = new QTabWidget;
+			for (const char *t : { "One", "Two", "Three" }) {
+				auto *page = new QWidget;
+				auto *pv = new QVBoxLayout(page);
+				pv->addWidget(new QLineEdit(QString::fromLatin1(t)));
+				tabs->addTab(page, QString::fromLatin1(t));
+			}
+			v->addWidget(tabs);
+			QCoreApplication::processEvents();
+			tabs->setCurrentIndex(0);
+			// Focus INSIDE a page, which is where a user is once they have
+			// started typing, and the case a check that focused the tab
+			// bar would not reach.
+			tabs->currentWidget()->findChild<QLineEdit *>()->setFocus();
+			set_focus_widget(win.focusWidget());
+			r.on_key({Qt::Key_PageDown, QString(), true, false, false});
+			QCoreApplication::processEvents();
+			const int forward = tabs->currentIndex();
+			r.on_key({Qt::Key_PageUp, QString(), true, false, false});
+			QCoreApplication::processEvents();
+			CHECK(forward == 1 && tabs->currentIndex() == 0,
+			      "Ctrl+PageDown and Ctrl+PageUp step through the tabs the "
+			      "focused widget is inside");
+			// And it wraps, because a person holding the key expects to
+			// come round rather than stop at an end with no signal.
+			r.on_key({Qt::Key_PageUp, QString(), true, false, false});
+			QCoreApplication::processEvents();
+			CHECK(tabs->currentIndex() == 2,
+			      "and stepping back from the first tab wraps to the last");
+		}
 		set_keyboard_conventions(false);          // process-wide: put it back
 	}
 

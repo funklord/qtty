@@ -47,6 +47,32 @@ itself. Menus and actions worked from the start; buttons and label buddies
 were added later, and an application written for the desktop gets them
 without knowing.
 
+## Moving between pages and windows
+
+A terminal interface is layers, so getting BETWEEN them is half of using
+it. Measured:
+
+| Key | What happens | Whose |
+|---|---|---|
+| `Ctrl+Tab`, `Ctrl+Shift+Tab` | Move between a `QTabWidget`'s tabs, from anywhere inside a page | Qt's |
+| Arrows on a focused tab bar | Move between tabs | Qt's |
+| `Ctrl+PageDown`, `Ctrl+PageUp` | Move between tabs, and wrap at the ends | qtty's, opt-in |
+| `F6`, `Shift+F6` | Move between top-level windows | qtty's, opt-in |
+
+The last two are part of the opt-in below. `Ctrl+PageUp`/`PageDown` is
+what somebody coming from a browser, an editor or a multiplexer reaches
+for, and Qt does not give it to a tab widget. `F6` matters more: multiple
+top-level windows are reachable through `Qtty::next_window()` and
+`Qtty::previous_window()`, and **until the conventions are asked for
+nothing binds a key to them at all** -- a second window could be on the
+screen and unreachable without a mouse.
+
+**A tab's mnemonic does not switch to it.** `Alt+S` on a tab labelled
+`&Second` does nothing: the mnemonic search covers menus, actions,
+buttons and label buddies, and a tab is none of those. Whether it should
+is an open question in `project.md` §0b; until it is answered, do not
+rely on tab mnemonics.
+
 ## The two conventions that differ, and how to ask for them
 
 Two terminal habits are not Qt's behaviour, so qtty does **not** turn them
@@ -60,6 +86,9 @@ on by itself:
 - **Up and Down move between controls.** On a desktop they move *within*
   one, and between controls only `Tab` does -- which is reasonable when a
   mouse is always available and unreasonable when it is not.
+
+It also binds the two navigation keys in the table above, `Ctrl+PageUp`
+and `Ctrl+PageDown` for tabs and `F6` for windows.
 
 **Both fire only where the focused widget ignored the key.** A text field
 keeps its own `Enter`, a list keeps its own arrows, a slider keeps its
@@ -106,12 +135,12 @@ the same action in a menu, give it a shortcut, or both. `QAction` in a
 inline editor, a mode -- does not, and a user who cannot get back is
 stuck in a way a mouse user never is.
 
-**6. Bind window cycling yourself.** qtty deliberately binds **no**
-shortcut of its own beyond the quit keys, because any key it took would
-be one an application could not use. Multiple top-level windows are
-reachable through `Qtty::next_window()` and `Qtty::previous_window()`,
-and a terminal user expects something like `Alt+Tab` or `F6` to reach
-them. Nothing happens until you bind it.
+**6. Reach every window.** qtty binds **no** shortcut of its own beyond
+the quit keys, because any key it took by default would be one an
+application could not use. So a second top-level window is unreachable
+until either you bind `Qtty::next_window()` yourself or you turn on the
+conventions, which put it on `F6`. Do one of the two: a window nobody can
+get to is worse than one that was never opened.
 
 **7. Do not depend on hover or tooltips.** A terminal has no pointer to
 rest, and qtty does not send `QEvent::ToolTip` today. Information a user

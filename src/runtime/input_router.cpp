@@ -332,6 +332,39 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 				return;
 			}
 		}
+		// Ctrl+PageUp and Ctrl+PageDown between tabs. Qt gives a
+		// QTabWidget Ctrl+Tab and Ctrl+Shift+Tab already and not these,
+		// and these are what a person coming from a browser, an editor or
+		// a terminal multiplexer reaches for first. The tab widget the
+		// FOCUSED widget is inside, rather than the first one in the
+		// layer: a page holding its own tabs is an ordinary arrangement
+		// and the inner one is the one being used.
+		if (k.ctrl && (k.qt_key == Qt::Key_PageUp
+		               || k.qt_key == Qt::Key_PageDown)) {
+			for (QWidget *w = key_target(); w; w = w->parentWidget()) {
+				auto *tabs = qobject_cast<QTabWidget *>(w);
+				if (!tabs || tabs->count() < 2) continue;
+				const int step = k.qt_key == Qt::Key_PageDown ? 1 : -1;
+				const int n = tabs->count();
+				tabs->setCurrentIndex((tabs->currentIndex() + step + n) % n);
+				set_focus_widget(scope->focusWidget());
+				if (frame_requested) frame_requested();
+				return;
+			}
+		}
+		// F6 between top-level windows, which had no key at all: this
+		// library binds none of its own, so an application with two
+		// windows was reachable only by whatever IT bound. F6 is the
+		// conventional "next pane" and is rarely an application's own --
+		// and it is offered only where the focused widget ignored it, so
+		// one that does use F6 keeps it.
+		if (k.qt_key == Qt::Key_F6) {
+			if (window_tabs().size() > 1) {
+				if (k.shift) previous_window(); else next_window();
+				if (frame_requested) frame_requested();
+				return;
+			}
+		}
 		if (k.qt_key == Qt::Key_Return || k.qt_key == Qt::Key_Enter) {
 			// Enter on the control that has focus, which is what a
 			// terminal user means by it. A button only: Enter inside a

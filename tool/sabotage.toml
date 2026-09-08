@@ -876,3 +876,19 @@ find = "void set_keyboard_conventions(bool on) { s_conventions = on; }"
 into = "void set_keyboard_conventions(bool) { s_conventions = false; }"
 count = 1
 check = "Down moves to the next control"
+
+[[sabotage]]
+name = "Ctrl+PageDown does not step the tabs"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\t\ttabs->setCurrentIndex((tabs->currentIndex() + step + n) % n);"
+into = "\t\t\t\t;"
+count = 1
+check = "Ctrl+PageDown and Ctrl+PageUp step through the tabs"
+
+[[sabotage]]
+name = "F6 reaches no other window"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\t\tif (k.shift) previous_window(); else next_window();"
+into = "\t\t\t\t;"
+count = 1
+check = "F6 moves to the next window and Shift+F6 comes back"
