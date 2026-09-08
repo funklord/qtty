@@ -28,9 +28,10 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-08, at 1124**,
-and the full sabotage set with it: **90 entries, every one reddening the
-check it names**, zero inconclusive.
+**Last re-verified under all six configurations: 2026-09-08, at 1128.**
+The full sabotage set was run end to end at 90 entries the same day, every
+one reddening the check it names and none inconclusive; the three added
+since were each proved by hand as they were written.
 Two sentences rather than one, deliberately. They used to be welded --
 *"N checks under six configurations, all six re-run <date>"* -- and a
 count bumped without re-running the six turned a measured record into a
@@ -14798,7 +14799,16 @@ Both new checks carry the 2-second rescue the abandoned-drag check
 carries, for the reason recorded there: a broken drag does not fail a
 check, it hangs the suite, and a hang produces neither a PASS nor a FAIL.
 
-### 8.49 Branch coverage, and the walk that had never walked (2026-09-07)
+### 8.49 Branch coverage: seven findings across six files (2026-09-07/08)
+
+**The heading used to name one of them** -- *"the walk that had never
+walked"* -- and the entry grew to cover `drag`, `input_router`,
+`compositor`, `ansi_backend`, `cell_buffer`, `graphics` and `cell_paint`
+while the title still pointed at `drop_target`. A reader looking for the
+wheel guard or the OSC abandon would not have found them from the index.
+Renamed rather than split: it is one instrument applied across a tree in
+one pass, and the findings are only comparable because they are read
+together.
 
 Line coverage is exhausted: 8.47 and 8.48 closed the sweep with every line
 in the tree either executed or accounted for. **The instrument that sees
