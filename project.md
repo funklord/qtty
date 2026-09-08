@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1163 checks, 0 failures. `make check` is green and includes
+1165 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -581,7 +581,7 @@ Owned by the copyright holder:
 | **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect | §7.2 |
 | **Two frames nested with no layout margin draw two rules in adjacent columns.** Faithful to the widget tree -- in pixels they are 1px lines 1px apart -- and on a grid they read as two rules. Merging is not a paint-time trick: the edges are in DIFFERENT cells because the inner rect is one cell inside the outer. Three options with their costs are recorded; the cheapest is to suppress a rule whose neighbour already holds one, which cannot tell nesting from two adjacent framed widgets. Reported by fuzzypickles, and reached again by a QScrollArea | 8.25, 8.26, 8.27 |
 | **A read-only line edit is not marked.** Measured: it renders identically to an editable one, so a user cannot tell they cannot type. Marking it needs vocabulary, and the obvious candidate collides -- disabled already uses Dim, and read-only is a different state, focusable and selectable. Unlike Enter's target it has no consequence a user cannot discover by typing | 8.33 |
-| **A tab's mnemonic does nothing.** `Alt+S` on a tab labelled "&Second" does not switch to it: the router matches Alt against ACTION text and a tab is not an action. It is therefore left unmarked, on the rule that underlining a key that does nothing is worse than leaving it bare. Whether a terminal should switch tabs by mnemonic at all is the question -- the marking follows the answer | 8.37 |
+| **~~A tab's mnemonic does nothing.~~ It works with the conventions on (8.67); what is left is the DEFAULT.** `Alt+S` on a tab labelled "&Second" does not switch to it: the router matches Alt against ACTION text and a tab is not an action. It is therefore left unmarked, on the rule that underlining a key that does nothing is worse than leaving it bare. Whether a terminal should switch tabs by mnemonic at all is the question -- the marking follows the answer | 8.37 |
 | **Three of `CursorShape`'s four values do nothing.** `AnsiBackend::set_cursor` tells Hidden from the rest and emits no shape selection, so Block, Underline and Bar are the same two bytes. DECSCUSR would set it in one line -- but its parameters pair each shape with a blink or steady variant that the enum cannot express, so honouring it means choosing on the application's behalf, and the prior question is whether a TUI should touch the cursor shape at all. design.md declares the method and never says what the shapes mean | 8.51 |
 | **A `QMainWindow` application sees nine off-grid warnings it cannot act on.** The suite works around this with `GridGuard::reset()` and an application has no equivalent. `is_exempt()`'s PRINCIPLE covers them exactly -- *"widgets Qt builds for itself, which the application never constructs and cannot size"* -- and its mechanism does not: it keys on `qt_` object names and `Private` class names, and `QStatusBar`, `QSizeGrip` and a central widget placed by `QMainWindowLayout` carry neither. Measured on a window shaped like netcfgd's: **9 violations, 0 forgiven**. The fix is not obviously a longer list -- the code warns in as many words that a list is what somebody adds a tenth entry to without deciding anything | 8.61 |
 | **A disabled widget is indistinguishable from an enabled one on the pixel tiers.** Measured, not inferred: `Attr::Dim` is set for EVERY disabled widget (`cell_geometry.h`), the rasteriser has no row for it, and the two render byte-identically -- same 123 lit pixels, same channel sum. ~~How far fidelity goes between tiers~~ is no longer the question; the question is how faint "faint" should be. Blends toward the ground up to **70%** clear qtty's own `has_minimum_contrast` floor and 80% does not, so the range is measured. No mechanism exists, unlike `Strike` in 8.58, so every option means choosing a rule -- a fixed factor, or "as faint as the floor permits" the way beerssh's `ensure_contrast` walks a colour | 8.50, 8.59 |
@@ -15766,6 +15766,49 @@ focused `QSlider` appeared not to answer arrow keys; the slider in that
 fixture had never been laid out and had no size. Laid out, `Right` moves
 it 5 to 6. A guide is exactly where an unchecked measurement does the most
 damage, being read by people with no way to test the claim.
+
+### 8.67 Alt was typing into whatever had focus (2026-09-09)
+
+Following 8.66 further into the keyboard found a defect worse than any
+missing binding, and it was found by a check that would not pass rather
+than by looking.
+
+**Alt+letter typed the letter.** A terminal sends `Alt+Z` as `ESC` then
+`z`, so the decoder hands the router the letter in `text`, and
+`deliver_key` passed that straight to the target -- where a `QLineEdit`
+read the text and inserted it. Measured: a field holding `abc` became
+`abcz`.
+
+**Alt+letter is how a terminal user reaches a menu.** So pressing `Alt+F`
+for a File menu that does not exist put an `f` into whatever they were
+editing, silently, the key doing nothing else to say it had missed. A
+desktop never does this: Qt delivers Alt combinations with no text.
+
+**Found sideways.** The tab-mnemonic work below would not fire, and the
+probe said the block was never reached -- because the focused field had
+ACCEPTED the key, having typed it. The defect was standing between a new
+feature and its check.
+
+**The first fix was too broad and a check caught it.** Withholding the
+text from every target left an open `QMenu` deaf to its own mnemonics:
+with no `QShortcutMap` here, a menu matches its items BY the event's
+text. Three menu checks went red at once. **Withheld now only from
+widgets that take typing** -- `WA_InputMethodEnabled`, which is the same
+question this file already asks for its Ctrl+C carve-out -- so a menu
+still reads the letter and a field never does.
+
+**And the tab mnemonic that started it.** 8.37 recorded `Alt+S` on a
+`&Second` tab as doing nothing. It works under the opt-in now: an
+application that asked for the terminal's conventions has answered that
+question for itself, and the DEFAULT is untouched, so 0b keeps what is
+actually still open.
+
+**The marking is not resolved and the reason is a collision, which is
+worth recording rather than guessing at.** 8.37 said the marking follows
+the answer. It cannot follow it here: a selected tab is ALREADY underlined
+to show the tab bar has focus, so underlining the mnemonic letter would
+make one mark mean two things. The guide says so and tells an application
+to put the key in its own help text.
 
 ## 11. What is next, in order
 

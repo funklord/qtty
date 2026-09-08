@@ -291,10 +291,34 @@ bool InputRouter::match_shortcut(const KeyEvent &k) {
 
 void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 	const Qt::KeyboardModifiers mods = qt_modifiers(k.ctrl, k.alt, k.shift);
-	QKeyEvent press(QEvent::KeyPress, k.qt_key, mods, k.text);
+	// NO TEXT when Alt is held, which is what a desktop delivers and what
+	// this did not. A terminal sends Alt+Z as ESC then 'z', so the decoder
+	// sets alt with the letter still in `text` -- and a QLineEdit reads
+	// text and TYPES it. Measured: Alt+Z on a field holding "abc" left
+	// "abcz".
+	//
+	// That is worse than a missing binding. Alt+letter is how a terminal
+	// user reaches a menu, so pressing Alt+F for a File menu that is not
+	// there put an "f" into whatever they were typing -- silently, the key
+	// doing nothing else to say it had missed.
+	//
+	// Alt here always means the ESC prefix and never AltGr: a terminal
+	// delivers an AltGr'd character as the composed character with no
+	// prefix, so nothing that legitimately types text arrives this way.
+	//
+	// Withheld from the widgets that TYPE, rather than from everything,
+	// and that took a broken check to learn. A QMenu matches its items by
+	// the event's text -- there is no QShortcutMap here to do it another
+	// way -- so emptying the text for every target left an open menu deaf
+	// to its own mnemonics. `WA_InputMethodEnabled` is how this file
+	// already asks "does this widget take typing", for the Ctrl+C carve-
+	// out above, and it is the same question.
+	const bool types = target && target->testAttribute(Qt::WA_InputMethodEnabled);
+	const QString text = (k.alt && types) ? QString() : k.text;
+	QKeyEvent press(QEvent::KeyPress, k.qt_key, mods, text);
 	QApplication::sendEvent(target, &press);
 	// Terminals have no key-release; fabricate one immediately (section 5.5).
-	QKeyEvent release(QEvent::KeyRelease, k.qt_key, mods, k.text);
+	QKeyEvent release(QEvent::KeyRelease, k.qt_key, mods, text);
 	QApplication::sendEvent(target, &release);
 
 	// Arrow keys nothing wanted fall back to scrolling a scroll area -- the
@@ -350,6 +374,27 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 				set_focus_widget(scope->focusWidget());
 				if (frame_requested) frame_requested();
 				return;
+			}
+		}
+		// Alt and a TAB's own letter, which 8.37 recorded as doing
+		// nothing: the mnemonic search covers actions, buttons and label
+		// buddies, and a tab is none of those. Here rather than in the
+		// default search because 0b still holds the question of whether a
+		// terminal should switch tabs this way at all -- an application
+		// that asked for the terminal's conventions has answered it for
+		// itself, and the default is untouched.
+		if (k.alt && k.text.size() == 1) {
+			const QChar want = k.text.at(0).toLower();
+			for (QTabBar *bar : scope->findChildren<QTabBar *>()) {
+				if (!bar->isVisible()) continue;
+				for (int i = 0; i < bar->count(); ++i) {
+					if (!bar->isTabEnabled(i)) continue;
+					if (mnemonic_of(bar->tabText(i)) != want) continue;
+					bar->setCurrentIndex(i);
+					set_focus_widget(scope->focusWidget());
+					if (frame_requested) frame_requested();
+					return;
+				}
 			}
 		}
 		// F6 between top-level windows, which had no key at all: this

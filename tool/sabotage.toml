@@ -892,3 +892,19 @@ find = "\t\t\t\tif (k.shift) previous_window(); else next_window();"
 into = "\t\t\t\t;"
 count = 1
 check = "F6 moves to the next window and Shift+F6 comes back"
+
+[[sabotage]]
+name = "a tab's own letter reaches nothing"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\t\t\tbar->setCurrentIndex(i);"
+into = "\t\t\t\t\t;"
+count = 1
+check = "a tab's own letter reaches it"
+
+[[sabotage]]
+name = "Alt hands its letter to a widget that types"
+file = "src/runtime/input_router.cpp"
+find = "\tconst QString text = (k.alt && types) ? QString() : k.text;"
+into = "\tconst QString text = k.text;"
+count = 1
+check = "Alt and a letter that matches nothing types nothing"

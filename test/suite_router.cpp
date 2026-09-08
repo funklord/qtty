@@ -1602,6 +1602,23 @@ int suite_router() {
 			QCoreApplication::processEvents();
 		};
 
+		// ALT NEVER TYPES. A terminal sends Alt+Z as ESC then 'z', so the
+		// decoder hands the router the letter in `text` -- and a text
+		// field read the text and inserted it. Measured before the fix: a
+		// field holding "abc" became "abcz".
+		//
+		// That is worse than a missing binding, and it is why this comes
+		// first. Alt+letter is how a terminal user reaches a menu, so
+		// pressing Alt+F for a File menu that is not there put an "f" in
+		// whatever they were typing, silently.
+		field->setFocus();
+		set_focus_widget(win.focusWidget());
+		field->setText(QStringLiteral("abc"));
+		key(Qt::Key_Z, QStringLiteral("z"), true);
+		CHECK(field->text() == QStringLiteral("abc"),
+		      "Alt and a letter that matches nothing types nothing, rather "
+		      "than putting the letter in whatever had focus");
+
 		// A BUTTON's mnemonic, which is not an action and so was
 		// unreachable: the router searched QActions and a push button is
 		// not one. On a desktop Alt+A activates `&Apply`.
@@ -1699,6 +1716,20 @@ int suite_router() {
 			QCoreApplication::processEvents();
 			CHECK(tabs->currentIndex() == 2,
 			      "and stepping back from the first tab wraps to the last");
+
+			// A TAB's own letter, which 8.37 recorded as doing nothing.
+			// Under the opt-in only: 0b still holds whether a terminal
+			// should switch tabs this way by default, and an application
+			// that asked for the conventions has answered it for itself.
+			tabs->setTabText(1, QStringLiteral("&Two"));
+			tabs->setCurrentIndex(0);
+			tabs->currentWidget()->findChild<QLineEdit *>()->setFocus();
+			set_focus_widget(win.focusWidget());
+			r.on_key({Qt::Key_T, QStringLiteral("t"), false, true, false});
+			QCoreApplication::processEvents();
+			CHECK(tabs->currentIndex() == 1,
+			      "and a tab's own letter reaches it, so a page is one "
+			      "keystroke away rather than a count of steps");
 		}
 		set_keyboard_conventions(false);          // process-wide: put it back
 	}

@@ -39,13 +39,22 @@ reimplements it:
 | `Esc` | Closes an open menu; rejects a modal dialog | Qt's |
 | `Enter` | Fires the dialog's **default** button, wherever focus is | Qt's |
 | `Alt` + letter | Reaches a menu, a toolbar action, a **button**, or the field a **label** is the buddy of | qtty's |
+| `Alt` + a letter that matches nothing | Nothing. It does not type the letter into whatever has focus | qtty's |
 | `Ctrl+C`, `Ctrl+D` | Quit. Change them with `InputRouter::set_quit_keys()` | qtty's |
 
-The `Alt` row is qtty's because a terminal delivers keys as bytes and
+The `Alt` rows are qtty's because a terminal delivers keys as bytes and
 nothing here ever reaches Qt's shortcut map: the router matches mnemonics
 itself. Menus and actions worked from the start; buttons and label buddies
 were added later, and an application written for the desktop gets them
 without knowing.
+
+The second row is there because it was once false. A terminal sends
+`Alt+Z` as `ESC` then `z`, so the letter arrives in the event's text and a
+text field **typed it** -- pressing `Alt+F` for a File menu that did not
+exist left an `f` in whatever you were editing. The text is now withheld
+from widgets that take typing, and only from those: an open menu still
+matches its items by the letter, because with no shortcut map that is how
+it finds them.
 
 ## Moving between pages and windows
 
@@ -67,11 +76,14 @@ top-level windows are reachable through `Qtty::next_window()` and
 nothing binds a key to them at all** -- a second window could be on the
 screen and unreachable without a mouse.
 
-**A tab's mnemonic does not switch to it.** `Alt+S` on a tab labelled
-`&Second` does nothing: the mnemonic search covers menus, actions,
-buttons and label buddies, and a tab is none of those. Whether it should
-is an open question in `project.md` §0b; until it is answered, do not
-rely on tab mnemonics.
+**A tab's mnemonic works only with the conventions on.** `Alt+S` on a tab
+labelled `&Second` switches to it once `set_keyboard_conventions(true)`
+has been called, and does nothing otherwise -- whether a terminal should
+switch tabs that way *by default* is still an open question in
+`project.md` §0b. **The tab is not marked either way**, and that is
+deliberate: a selected tab is already underlined to show the tab bar has
+focus, so underlining one letter of it would say two things at once. Put
+the key in your own help text if your users need to find it.
 
 ## The two conventions that differ, and how to ask for them
 
