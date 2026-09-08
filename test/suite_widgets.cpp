@@ -59,6 +59,88 @@ static void show(QWidget &w, int cols, int rows) {
 int suite_widgets() {
 	fails = 0;
 
+	// QGridLayout and QStackedWidget, neither of which this suite had ever
+	// rendered, and both of which the consumers lean on: 37 uses of the
+	// layout and 63 of the stack across the five Qt Widgets applications.
+	{
+		QWidget win;
+		auto *g = new QGridLayout(&win);
+		g->addWidget(new QLabel(QStringLiteral("Host")), 0, 0);
+		g->addWidget(new QLineEdit(QStringLiteral("alpha")), 0, 1);
+		g->addWidget(new QLabel(QStringLiteral("Port")), 1, 0);
+		g->addWidget(new QSpinBox, 1, 1);
+		// The spanning cell, which is what a grid layout does that a form
+		// layout cannot, and the reason to render one at all.
+		g->addWidget(new QPushButton(QStringLiteral("Connect")), 2, 0, 1, 2);
+		show(win, 34, 6);
+		CellBuffer b(34, 6);
+		render_once(win, b);
+		const QStringList rows = b.to_text().split(QLatin1Char('\n'));
+		int host = -1, port = -1, conn = -1;
+		for (int i = 0; i < rows.size(); ++i) {
+			if (rows.at(i).contains(QStringLiteral("Host"))) host = i;
+			if (rows.at(i).contains(QStringLiteral("Port"))) port = i;
+			if (rows.at(i).contains(QStringLiteral("Connect"))) conn = i;
+		}
+		printf("info: grid layout -- Host row %d, Port row %d, Connect row"
+		       " %d\n", host, port, conn);
+		CHECK(host >= 0 && port > host && conn > port,
+		      "a grid layout renders its rows in order, each on its own");
+		// The spanning widget reaches past the field column's left edge,
+		// which is what makes it a span rather than a third cell.
+		const int field = rows.value(host).indexOf(QLatin1Char('['));
+		CHECK(field > 0
+		      && rows.value(conn).indexOf(QStringLiteral("<Connect>")) < field,
+		      "and a widget spanning two columns starts left of the field "
+		      "column rather than inside it");
+		// The row spacing is UNEVEN and that is 7.8's decision showing
+		// through rather than a defect: the layout puts its rows 33 px
+		// apart on a 19 px grid, GridSnap rounds each to the nearest cell,
+		// and 1.7 cells rounds to one gap and then to two. Recorded here
+		// because a consumer will see it and nothing else says why.
+		GridGuard::reset();
+	}
+	{
+		QWidget win;
+		auto *v = new QVBoxLayout(&win);
+		auto *stack = new QStackedWidget;
+		for (const char *t : { "PAGE-ONE", "PAGE-TWO" }) {
+			auto *page = new QWidget;
+			auto *pv = new QVBoxLayout(page);
+			pv->addWidget(new QLabel(QString::fromLatin1(t)));
+			stack->addWidget(page);
+		}
+		v->addWidget(stack);
+		show(win, 30, 6);
+		CellBuffer first(30, 6);
+		render_once(win, first);
+		stack->setCurrentIndex(1);
+		QCoreApplication::processEvents();
+		CellBuffer second(30, 6);
+		render_once(win, second);
+		const QString a = first.to_text(), b2 = second.to_text();
+		// Both directions, because "the current page is drawn" passes
+		// against a stack that draws every page on top of itself.
+		//
+		// What this defends is the DELEGATION rather than an arithmetic of
+		// qtty's own: hidden children are skipped by `QWidget::render()`,
+		// which `compose()` calls on the top level, so the property holds
+		// because qtty hands the tree to Qt rather than walking it. That
+		// is worth pinning precisely because the compositor DOES walk
+		// children elsewhere -- for popups, modals and the priority pass --
+		// and a change that composited children individually for damage
+		// would put every page on the screen at once. No single-line
+		// sabotage reddens this today; the fixture is here for the change
+		// that would.
+		CHECK(a.contains(QStringLiteral("PAGE-ONE"))
+		      && !a.contains(QStringLiteral("PAGE-TWO")),
+		      "a stacked widget draws its current page and not the ones "
+		      "behind it");
+		CHECK(b2.contains(QStringLiteral("PAGE-TWO"))
+		      && !b2.contains(QStringLiteral("PAGE-ONE")),
+		      "and changing the page changes what is drawn");
+	}
+
 	// A STATUS BAR, which nothing here had rendered either and which
 	// netcfgd's main window uses -- `statusBar()->addWidget(status)`. It is
 	// the one piece of a QMainWindow that carries text a user reads

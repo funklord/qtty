@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1144 checks, 0 failures. `make check` is green and includes
+1148 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15527,6 +15527,49 @@ reports nothing."* Adding three more names is exactly that move. What the
 principle needs is a mechanism -- *placed by a layout the application did
 not create* -- and inventing one while writing a check is how a guard
 stops guarding. **It is in 0b with its number.**
+
+### 8.62 What the consumers use that nothing here rendered (2026-09-08)
+
+The completeness question qtty's premise actually asks is not "which
+widgets exist" but **"which widgets do the applications that will be
+rendered use"**. Six private trees are Qt Widgets applications and one now
+vendors this library, so the answer is countable.
+
+Taking every `Q[A-Z]` name from hydra, beerssh, fuzzypickles, raidcfgd,
+bbq-predictor and netcfgd, keeping those Qt ships a QtWidgets header for,
+and subtracting what the suite mentions: **33 classes**. Most are abstract
+bases, style plumbing and gesture types. Four are ordinary widgets a user
+sees, and two of those are fundamental:
+
+    QStackedWidget    63 uses    never rendered
+    QGridLayout       37 uses    never rendered
+    QTextBrowser      11 uses    never rendered
+    QStatusBar         (8.61)    never rendered until now
+
+**All of them render correctly**, which is the third empty result in a row
+from this lens and still worth the fixtures: a layout used 37 times and a
+container used 63 times had no coverage at all, and a regression in either
+would have reached an adopter before it reached a check.
+
+**`QGridLayout`'s rows are unevenly spaced, and that is 7.8's decision
+showing through rather than a defect.** The layout puts its rows 33 px
+apart on a 19 px grid; `GridSnap` rounds each origin to the nearest cell,
+and 1.7 cells rounds to a gap of one and then a gap of two -- measured,
+Host on row 1, Port on row 2, Connect on row 4. `GridGuard` reports five
+off-grid geometries for the same reason 8.61 describes: it reads the
+geometry as ASKED, before the snap. Recorded because a consumer will see
+the spacing and nothing else says why.
+
+**And the stacked-widget check defends a delegation, not an arithmetic.**
+Hidden children are skipped by `QWidget::render()`, which `compose()`
+calls on the top level, so only the current page draws because qtty hands
+the tree to Qt rather than walking it. No single-line sabotage reddens it.
+It is kept anyway, and the comment says why: the compositor DOES walk
+children elsewhere -- popups, modals, the priority pass -- and a change
+that composited children individually for damage would put every page on
+the screen at once. **That is a different thing from the form-layout
+alignment in 8.60, which no change to this library could break; this one
+is one change away.**
 
 ## 11. What is next, in order
 
