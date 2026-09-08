@@ -561,6 +561,7 @@ Owned by the copyright holder:
 | Question | Where |
 |---|---|
 | A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. Cheaper to answer after the picture-rule entry below, which is the same question seen from the other end | *Qt's standard iconography* |
+| **A rule drawn as a thin RECTANGLE becomes a coloured background; the same rule drawn as a LINE becomes a box-drawing glyph.** Measured through an HTML table: its borders arrive as `drawRects` of `11x1` and `1x19` and come out as grey blocks, while `drawLines` of the same shape draws `-` and `\|`. The horizontal case could be told from a caret by shape; **the vertical case cannot -- a caret and a one-cell vertical rule are the same `1x19` rectangle**, which is what stops this being a small fix | 8.65 |
 | **An HTML bullet list loses its bullets.** Measured through a `QTextBrowser`: `<ul><li>one</li></ul>` renders the text indented with a one-cell BACKGROUND block where the bullet belongs and no glyph -- `bg=#000000` on the default dark ground. Qt draws the bullet as `drawPath` with a 6x6 bounding rect, and `is_thin` (`width*2 < cw \|\| height*2 < ch`) is true of it, so a bullet takes the hairline road meant for carets and rules. **The discriminator is clean and is the finding**: a shape smaller than one cell in BOTH dimensions is a mark, not a hairline -- a caret is 1x19 and a rule 50x1, and neither is. What a mark should BECOME is the choice, and it is the holder's | 8.64 |
 | Whether the "too small to be a picture" rule moves to the backend. Nothing left unmeasured: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()`; no widget icon reaches the branch today; and the cost is **1.4 KB once per distinct icon, 35 bytes a frame after** -- eight of them together less than the one 48x48 icon the library already uploads | §7.2 |
 | **Right-to-left: does qtty support it at all?** design.md never says, and nothing in the tree mentions it -- so this is a scope question rather than a defect. Measured: under `Qt::RightToLeft` a check box mirrors and a combo box's text does, while its arrow, a progress bar's fill, a label's alignment and a line edit's text do not. §7.2 has the rendered pair | *undesigned* |
@@ -15650,6 +15651,46 @@ means picking one, and picking one is rendering policy: qtty already
 substitutes glyphs for icons by NAME, and a bullet has no name to look up.
 Left in 0b with the discriminator, so whoever takes it starts with the
 measurement rather than with the symptom.
+
+### 8.65 Two roads to a rule, and only one of them draws (2026-09-08)
+
+8.64 found a bullet taking the hairline branch. Asking the rest of what
+HTML can say turned up the same branch reached by a different road, and a
+reason the obvious fix is bounded.
+
+    <span style="background-color">   bg on the cells      correct
+    <table border=1>                  text renders; the
+                                      BORDERS come out as
+                                      grey background blocks
+
+**The borders arrive as `drawRects`**, probed: eight of `11x1` and four of
+`1x19`. Both are thin, so both take `fill_rectf`'s thin branch, which
+tints a cell's background rather than drawing anything. **The same shapes
+sent through `drawLines` produce box-drawing glyphs** -- 8.63's doubled
+underline was exactly that, a `drawLines` hairline coming out as a rule of
+horizontals.
+
+So qtty has two roads for a hairline and they disagree: **a rule drawn as
+a line is drawn, and a rule drawn as a filled rectangle is tinted.** Qt
+uses both idioms, so which one an application gets is a matter of what
+drew it.
+
+**The horizontal case is separable and the vertical case is not**, which
+is the part worth knowing before anybody tries:
+
+    caret            1 x 19    tint the background -- correct today
+    vertical border  1 x 19    should be a box-drawing vertical
+    horizontal rule  11 x 1    should be a box-drawing horizontal
+
+**A caret and a one-cell vertical rule are the same rectangle.** No
+geometric test separates them, so a fix cannot be "recognise the shape" --
+it would need the CALLER's intent, which the paint engine does not have.
+The horizontal case has no such collision and could be taken alone.
+
+**Recorded rather than half-fixed.** Taking the horizontal case only would
+leave a table with drawn tops and tinted sides, which is worse to look at
+than one tinted throughout and much worse to explain. It is in 0b beside
+8.64's bullet, both being the same branch seen from different sides.
 
 ## 11. What is next, in order
 
