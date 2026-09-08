@@ -3930,7 +3930,12 @@ Both assertions were wrong before they were right, and differently:
   so the hide path gets a fresh menu that was never clicked.
 
 Whole tree 97.04%; `application.cpp` 91.43% to 97.18%, its only remaining
-line a `qFatal` that cannot be tested because it aborts.
+line a `qFatal` that cannot be COVERED because it aborts -- gcov writes
+nothing from a process that dies. **It is tested, and its message is
+pinned**: `make test-platforms` runs the suite on the `minimal` platform,
+which has no font database, and requires both the abort and the sentence
+`the grid needs a font ... resolved to no font at all`. The distinction is
+the whole of 8.55.
 
 **Every failure in this suite printed a sentence and nothing else.** The
 beerssh session paid two container runs and three wrong theories for a
@@ -15242,6 +15247,50 @@ coordinates; the font `qFatal` cannot be produced without a font the grid
 refuses, which 8.40 records as six things tried; and the SIGWINCH pipe
 failure needs a pipe that cannot be made non-blocking. **Recorded rather
 than attempted, so the next reader knows the three are a choice.**
+
+### 8.55 An impossibility claim that was about the wrong thing (2026-09-08)
+
+`evidence.md` asks for this sweep by name -- **claims of impossibility
+rather than claims of absence**, because they are rarer and the harm is
+worse in kind: an absence claim that has been closed wastes a reader's
+time, while an impossibility claim that was never true **tells the next
+person not to write a test that would work.** Its trigger is *re-read
+can't-test comments whenever a fixture grows*, and this session has grown
+several.
+
+Eight such claims in `project.md`. **Seven are sound** and each names what
+it does instead: SIGTSTP is not raised because a suite that suspends
+itself to make a point is the worse trade; the image work's limit is
+stated as the suite's reach rather than the machine's, with the tools that
+would lift it named; and two say a persistent buffer and a full re-render
+put IDENTICAL pixels on the screen, so no oracle can separate them --
+which is the same shape as `drop_target`'s null return in 8.49, two states
+with one observable.
+
+**One deters falsely.** *"its only remaining line a `qFatal` that cannot be
+tested because it aborts"* is true about COVERAGE -- gcov writes nothing
+from a process that dies -- and false about testing. `make test-platforms`
+runs the suite on the `minimal` platform, which has no font database,
+requires it to abort, and matches the sentence. The refusal is tested end
+to end and its wording is pinned.
+
+**The cost was a detour, which is exactly the predicted harm.** Reading
+it, I went looking for a way to reach the abort: found that the base font
+is hardcoded with no override, then reached the same refusal from any
+platform by running the suite under a fontconfig naming no fonts --
+
+    FONTCONFIG_FILE=<empty config> ./qtty-tests
+    -> exit 134, "the grid needs a font with integral metrics:
+       'DejaVu Sans Mono' resolved to no font at all"
+
+-- which works, and is redundant, because the gate already there says the
+same thing. **The sentence sent me to build a second road to a place the
+tree already goes.** One word, `covered` for `tested`, and it does not.
+
+**Not everything was wasted: that run produced three diagnostics at
+once** -- the substitution notice, the leading notice and the fatal -- so
+the fontconfig route is worth knowing as a way to reach the font
+diagnostics 8.54 left unpinned, if they are ever wanted.
 
 ## 11. What is next, in order
 
