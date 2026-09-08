@@ -621,6 +621,44 @@ int suite_graphics() {
 			CHECK(qBlue(far) > 150 && qRed(far) < 100,
 			      "a wide cluster's background covers both of its cells");
 		}
+		{
+			// A REVERSE cell through the rasteriser, which nothing had sent
+			// it either: branch coverage said `if (c.attrs & Attr::Reverse)`
+			// had never been true here. Reverse is how a terminal shows a
+			// SELECTION, so on the tiers that go through pixels -- sixel and
+			// iTerm2, and the half-block fallback built on the same
+			// rasteriser -- selected text was drawn by a path nothing had
+			// ever exercised.
+			//
+			// Two things have to happen and the second is the one that is
+			// easy to lose: the colours swap, AND the background is filled
+			// even though it equals the default, because after the swap the
+			// "background" is the foreground colour. Without the fill the
+			// cell keeps the default ground and only the glyph changes, so a
+			// selection looks like ordinary text in a slightly wrong colour.
+			CellBuffer rv(4, 1);
+			rv.put_cluster(0, 0, QStringLiteral("A"));
+			rv.at(0, 0).attrs = Attr::Reverse;
+			const QImage img = rasterize(rv, QGuiApplication::font());
+			// The corner of the cell, which the glyph does not reach: it is
+			// the GROUND that reverse changes, and sampling the middle would
+			// be sampling the letter.
+			const QRgb ground = img.pixel(cw - 1, 0);
+			const QRgb plain  = img.pixel(3 * cw - 1, 0);
+			printf("info: reverse cell ground %06x, an ordinary one %06x\n",
+			       unsigned(ground & 0xffffff), unsigned(plain & 0xffffff));
+			CHECK(ground != plain,
+			      "a reverse cell is rasterised on a different ground from "
+			      "an ordinary one, which is what makes a selection visible "
+			      "on the pixel tiers");
+			// And specifically the default FOREGROUND, which is what the
+			// swap produces. Asserting only "different" would pass against a
+			// fill in any colour at all.
+			CHECK(qRed(ground) > 180 && qGreen(ground) > 180
+			      && qBlue(ground) > 180,
+			      "and the ground it gets is the foreground colour the swap "
+			      "moved there, not merely some other colour");
+		}
 		bool red_seen = false;
 		for (int y = 0; y < ch && !red_seen; ++y)
 			for (int x = cw; x < 3 * cw; ++x) {

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1124 checks, 0 failures. `make check` is green and includes
+1126 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -14972,6 +14972,28 @@ which fails the moment the substitution goes.
 worth carrying: branch coverage names the redundant one -- `writable(x +
 1, y)` is unreachable-by-construction once the substitution above has
 returned -- and a check aimed at the redundant guard cannot fail.
+
+**`graphics` last** -- 99.69% of lines, 62.15% of branches taken at least
+once -- and the find is **a reverse cell had never reached the
+rasteriser.** Reverse is how a terminal shows a SELECTION, so on every
+tier that goes through pixels -- sixel, iTerm2, and the half-block
+fallback built on the same rasteriser -- selected text was drawn by a path
+nothing had exercised. Measured with the swap deleted: the reverse cell's
+ground comes out `101418`, identical to an ordinary cell's, where it
+should be `d7dadc`.
+
+**The check asserts the colour, not merely that it differs**, because a
+fill in any colour at all would satisfy "different" while a selection
+still looked wrong. And it samples the CORNER of the cell rather than the
+middle, which is the glyph.
+
+**The `|| (c.attrs & Attr::Reverse)` beside it is nearly redundant and no
+check was written for it.** After the swap the background holds what was
+the foreground, which differs from the default ground in every case but
+one -- a cell whose foreground was set to exactly the default background.
+Branch coverage says as much: that test has never decided anything. **A
+clause that cannot be shown to matter does not get a sabotage entry**;
+recording why is cheaper than a check that cannot fail.
 
 **A pattern worth naming across all three of this session's branch
 findings**: `drop_target`'s walk, the wheel's escape guard, and this. Each

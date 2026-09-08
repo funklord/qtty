@@ -740,3 +740,11 @@ find = "\tif (w == 2 && !writable(x + 1, y)) {"
 into = "\tif (false) {"
 count = 1
 check = "a wide cluster in the last column becomes a blank"
+
+[[sabotage]]
+name = "a reverse cell is rasterised without swapping its colours"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\tif (c.attrs & Attr::Reverse) std::swap(fg, bg);"
+into = "\t\t\t;"
+count = 1
+check = "a reverse cell is rasterised on a different ground"
