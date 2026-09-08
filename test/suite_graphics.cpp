@@ -315,6 +315,46 @@ int suite_graphics() {
 		qputenv("QTTY_GRAPHICS", "none");
 		CHECK(detect_graphics_mode() == Capabilities::NoGraphics,
 		      "QTTY_GRAPHICS=none disables graphics");
+
+		// EVERY VALUE THE OVERRIDE ACCEPTS. Two of the six were checked --
+		// sixel above and none -- and this is a knob a person types on a
+		// command line to work around a terminal qtty has misread, so the
+		// spelling it accepts is part of the interface rather than an
+		// implementation detail. project.md's own worked example uses one
+		// of the four that had never been tried.
+		{
+			const struct { const char *set; Capabilities::GraphicsMode mode;
+			} forced[] = {
+				{ "none",        Capabilities::NoGraphics },
+				{ "halfblocks",  Capabilities::Halfblocks },
+				{ "sixel",       Capabilities::Sixel      },
+				{ "iterm2",      Capabilities::ITerm2     },
+				{ "kitty",       Capabilities::Kitty      },
+				{ "kitty-alpha", Capabilities::KittyAlpha },
+			};
+			QStringList wrong;
+			for (const auto &f : forced) {
+				qputenv("QTTY_GRAPHICS", f.set);
+				if (detect_graphics_mode() != f.mode)
+					wrong << QLatin1String(f.set);
+			}
+			if (!wrong.isEmpty())
+				printf("info: QTTY_GRAPHICS values that did not take: %s\n",
+				       qPrintable(wrong.join(QStringLiteral(", "))));
+			CHECK(wrong.isEmpty() && sizeof(forced) / sizeof(forced[0]) == 6,
+			      "each of the six values QTTY_GRAPHICS accepts selects the "
+			      "tier it names");
+
+			// And a value it does NOT accept falls back to detection rather
+			// than to a tier of its own. A typo on a command line should
+			// leave the terminal working, not silently disable pictures --
+			// and this direction had never been taken either: every value
+			// the suite set matched something.
+			qputenv("QTTY_GRAPHICS", "purple");
+			CHECK(detect_graphics_mode() == Capabilities::Halfblocks,
+			      "and a value it does not know is ignored, leaving the "
+			      "terminal detected as it would be with no override");
+		}
 		qunsetenv("QTTY_GRAPHICS");
 		setenvs(old_kitty, old_term, old_prog);
 	}

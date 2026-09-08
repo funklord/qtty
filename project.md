@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1132 checks, 0 failures. `make check` is green and includes
+1135 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15130,6 +15130,36 @@ where the cursor is and not what it was asked to look like. That is the
 same half-recorded seam the title had before 8.44, found by the same
 question asked of a different enum -- and it is what would make the
 decision above testable when it is taken.
+
+### 8.52 The spellings a person types (2026-09-08)
+
+The same lens once more, pointed at the two environment overrides
+`project.md` documents and its own worked examples use. **These are not
+implementation details**: `QTTY_GRAPHICS` and `QTTY_COLOR` are what a
+person types on a command line to work around a terminal qtty has
+misread, so the set of spellings they accept is part of the interface.
+
+`QTTY_GRAPHICS` accepts six values and two were checked -- `sixel` and
+`none`. **`QTTY_COLOR` is the sharper one**: each of its four depths has
+two names, and branch coverage said three of the four aliases had never
+matched. **`24bit` had never even been evaluated**, because `truecolor`
+short-circuits before it on the same line.
+
+**A dead alias fails silently in the worst way.** It falls through to
+detection, and on a capable terminal detection returns the same answer the
+override asked for -- so `QTTY_COLOR=24bit` looks like it worked, and only
+someone forcing a depth their terminal does not have would ever find out,
+which is exactly the person who typed it.
+
+**And a value the override does NOT know is now pinned too.** That
+direction had never been taken either -- every value the suite set matched
+something -- and the right behaviour for a typo is to fall back to
+detection, leaving the terminal working rather than silently dropping to a
+tier nobody asked for.
+
+Both sabotage cleanly and both messages name the spelling: removing
+`24bit` reports `QTTY_COLOR spellings that did not take: 24bit`, and
+disabling `kitty-alpha` reports it by name.
 
 ## 11. What is next, in order
 

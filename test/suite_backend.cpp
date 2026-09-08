@@ -1431,6 +1431,44 @@ int suite_backend() {
 		qputenv("QTTY_COLOR", "truecolor");
 		TermCaps nope;
 		CHECK(negotiate_color(nope) == Capabilities::TrueColor, "QTTY_COLOR=truecolor");
+
+		// THE SECOND SPELLING OF EACH, which the four checks above do not
+		// reach. Every depth this override accepts has two names, and
+		// branch coverage said three of the four aliases had never matched
+		// -- `24bit` had never even been EVALUATED, because `truecolor`
+		// short-circuits before it.
+		//
+		// An alias is not decoration: it is what a person types, and the
+		// only reason to carry `24bit` and `ansi16` at all is that somebody
+		// will write them. A dead one fails silently by falling through to
+		// detection, which on a capable terminal looks exactly like the
+		// override having worked.
+		{
+			const struct { const char *set; Capabilities::ColorDepth depth;
+			} spellings[] = {
+				{ "mono",      Capabilities::Mono      },
+				{ "1",         Capabilities::Mono      },
+				{ "16",        Capabilities::Ansi16    },
+				{ "ansi16",    Capabilities::Ansi16    },
+				{ "256",       Capabilities::Xterm256  },
+				{ "xterm256",  Capabilities::Xterm256  },
+				{ "truecolor", Capabilities::TrueColor },
+				{ "24bit",     Capabilities::TrueColor },
+			};
+			QStringList wrong;
+			for (const auto &sp : spellings) {
+				qputenv("QTTY_COLOR", sp.set);
+				if (negotiate_color(TermCaps{}) != sp.depth)
+					wrong << QLatin1String(sp.set);
+			}
+			if (!wrong.isEmpty())
+				printf("info: QTTY_COLOR spellings that did not take: %s\n",
+				       qPrintable(wrong.join(QStringLiteral(", "))));
+			CHECK(wrong.isEmpty()
+			      && sizeof(spellings) / sizeof(spellings[0]) == 8,
+			      "both spellings of each of the four colour depths select "
+			      "the depth they name");
+		}
 		qunsetenv("QTTY_COLOR");
 
 		// $TERM read upward only, and downward only to refuse: an empty or
