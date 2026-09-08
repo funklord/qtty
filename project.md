@@ -28,8 +28,8 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-08, at 1135**,
-and `make test-tray` with them.
+**Last re-verified under all six configurations: 2026-09-08, at 1142**,
+and `make test-tray` at 1135 with the two checks 8.53 added.
 The full sabotage set was run end to end at 90 entries the same day, every
 one reddening the check it names and none inconclusive; the three added
 since were each proved by hand as they were written.
