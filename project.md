@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1143 checks, 0 failures. `make check` is green and includes
+1144 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -569,6 +569,7 @@ Owned by the copyright holder:
 | **A read-only line edit is not marked.** Measured: it renders identically to an editable one, so a user cannot tell they cannot type. Marking it needs vocabulary, and the obvious candidate collides -- disabled already uses Dim, and read-only is a different state, focusable and selectable. Unlike Enter's target it has no consequence a user cannot discover by typing | 8.33 |
 | **A tab's mnemonic does nothing.** `Alt+S` on a tab labelled "&Second" does not switch to it: the router matches Alt against ACTION text and a tab is not an action. It is therefore left unmarked, on the rule that underlining a key that does nothing is worse than leaving it bare. Whether a terminal should switch tabs by mnemonic at all is the question -- the marking follows the answer | 8.37 |
 | **Three of `CursorShape`'s four values do nothing.** `AnsiBackend::set_cursor` tells Hidden from the rest and emits no shape selection, so Block, Underline and Bar are the same two bytes. DECSCUSR would set it in one line -- but its parameters pair each shape with a blink or steady variant that the enum cannot express, so honouring it means choosing on the application's behalf, and the prior question is whether a TUI should touch the cursor shape at all. design.md declares the method and never says what the shapes mean | 8.51 |
+| **A `QMainWindow` application sees nine off-grid warnings it cannot act on.** The suite works around this with `GridGuard::reset()` and an application has no equivalent. `is_exempt()`'s PRINCIPLE covers them exactly -- *"widgets Qt builds for itself, which the application never constructs and cannot size"* -- and its mechanism does not: it keys on `qt_` object names and `Private` class names, and `QStatusBar`, `QSizeGrip` and a central widget placed by `QMainWindowLayout` carry neither. Measured on a window shaped like netcfgd's: **9 violations, 0 forgiven**. The fix is not obviously a longer list -- the code warns in as many words that a list is what somebody adds a tenth entry to without deciding anything | 8.61 |
 | **A disabled widget is indistinguishable from an enabled one on the pixel tiers.** Measured, not inferred: `Attr::Dim` is set for EVERY disabled widget (`cell_geometry.h`), the rasteriser has no row for it, and the two render byte-identically -- same 123 lit pixels, same channel sum. ~~How far fidelity goes between tiers~~ is no longer the question; the question is how faint "faint" should be. Blends toward the ground up to **70%** clear qtty's own `has_minimum_contrast` floor and 80% does not, so the range is measured. No mechanism exists, unlike `Strike` in 8.58, so every option means choosing a rule -- a fixed factor, or "as faint as the floor permits" the way beerssh's `ensure_contrast` walks a colour | 8.50, 8.59 |
 | **`Overlay::set_z()` does nothing in a GUI build.** `visible_overlays()` sorts by z and its only production caller is the compositor, which is the TUI path; the GUI twin never reads `z_`, so stacking there falls to the window manager. design.md presents `Overlay` as target-independent and lists `setZ` unqualified, so this is a scope question -- does the twin owe z ordering? -- rather than a defect. Not a one-liner: the twins are frameless always-on-top `Qt::Tool` windows, and it cannot be verified headlessly here | 8.47 |
 | The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
@@ -15482,6 +15483,50 @@ cells, each label on its own field's row and each field drawn. It reddens
 when `GridSnap` is made to collapse geometry -- **and no sabotage entry,
 because any breakage broad enough to redden it reddens dozens**, which is
 the control-not-reached shape rather than a defence.
+
+### 8.61 The guard's principle and its mechanism disagree about QMainWindow (2026-09-08)
+
+Following netcfgd's vocabulary further: **`QStatusBar` was never rendered
+here**, and its main window uses one -- `statusBar()->addWidget(status)`.
+
+**It renders correctly.** The message lands on the last row, below whatever
+the central widget put at its own bottom, and it stays there: swept from
+5 to 12 rows, the button and the status bar are on adjacent rows every
+time, never colliding and never losing one.
+
+**That it renders correctly is not obvious**, because the geometry
+underneath is not. `QMainWindowLayout` splits the window in pixels with no
+regard for the cell: on a 7-row window the central widget gets 109 px of a
+19 px grid and the status bar starts at y=109, mid-cell. The rounding
+happens to separate them, and now a check says so rather than nobody
+knowing.
+
+**The finding is not in the rendering. It is in the guard.** A window
+shaped like netcfgd's -- menu bar, central widget, tab widget, status bar
+-- reports **9 off-grid geometries and 0 forgiven**.
+
+`is_exempt()`'s stated principle covers every one of them: *"widgets Qt
+builds for itself, which the application never constructs and cannot
+size"*. `QSizeGrip` is the purest case -- `statusBar()` creates it, and no
+application asked for it or can move it. **The mechanism misses them all**,
+keying on `qt_` object names and `Private` class names that
+`QStatusBar`, `QSizeGrip` and a `QMainWindowLayout`-placed central widget
+do not carry.
+
+**The suite has been working around this rather than reporting it.** The
+dock-widget block already calls `GridGuard::reset()` with a comment saying
+these are *"the same category section 7.8 exempts by principle"* -- so the
+disagreement was known where it was met, and its consequence for an
+APPLICATION was not: netcfgd has no `reset()`, and a debug build prints
+nine warnings about widgets nobody can fix.
+
+**Recorded rather than fixed, and the code says why.** `is_exempt` warns
+that a list of class names *"is one somebody adds a tenth to without
+deciding anything, and that is how an exemption grows until the guard
+reports nothing."* Adding three more names is exactly that move. What the
+principle needs is a mechanism -- *placed by a layout the application did
+not create* -- and inventing one while writing a check is how a guard
+stops guarding. **It is in 0b with its number.**
 
 ## 11. What is next, in order
 

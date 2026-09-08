@@ -59,6 +59,48 @@ static void show(QWidget &w, int cols, int rows) {
 int suite_widgets() {
 	fails = 0;
 
+	// A STATUS BAR, which nothing here had rendered either and which
+	// netcfgd's main window uses -- `statusBar()->addWidget(status)`. It is
+	// the one piece of a QMainWindow that carries text a user reads
+	// continuously, so where it lands is the whole question: it must be the
+	// LAST row and it must not collide with whatever the central widget put
+	// at its bottom.
+	//
+	// That is not free. `QMainWindowLayout` splits the window in pixels
+	// without regard to the cell, so the boundary falls mid-cell -- measured
+	// on a 7-row window, the central widget gets 109 px of a 19 px grid and
+	// the status bar starts there. The two still round onto separate rows,
+	// and this check is what says so.
+	{
+		QMainWindow win;
+		auto *c = new QWidget;
+		auto *v = new QVBoxLayout(c);
+		v->addWidget(new QLabel(QStringLiteral("Interfaces")));
+		v->addStretch();
+		v->addWidget(new QPushButton(QStringLiteral("Apply")));
+		win.setCentralWidget(c);
+		win.statusBar()->addWidget(new QLabel(QStringLiteral("wlan0 up")));
+		show(win, 30, 7);
+		CellBuffer b(30, 7);
+		render_once(win, b);
+		const QStringList rows = b.to_text().split(QLatin1Char('\n'));
+		int apply = -1, status = -1;
+		for (int i = 0; i < rows.size(); ++i) {
+			if (rows.at(i).contains(QStringLiteral("Apply"))) apply = i;
+			if (rows.at(i).contains(QStringLiteral("wlan0"))) status = i;
+		}
+		printf("info: main window -- Apply on row %d, status bar on row %d\n",
+		       apply, status);
+		CHECK(status >= 0 && apply >= 0 && status > apply,
+		      "a status bar renders below the central widget's own last row "
+		      "rather than in the same cell as it");
+		// Qt's own furniture is off the grid here and cannot be placed from
+		// the style -- 8.61 sizes it. Reset so the count this block leaves
+		// is not attributed to whatever runs next, which is what the dock
+		// block above does for the same reason.
+		GridGuard::reset();
+	}
+
 	// QFormLayout, which nothing here had ever rendered. It is not an
 	// exotic class: netcfgd, which vendors this library as a submodule,
 	// uses it eleven times, and it is how nearly every settings dialog is
