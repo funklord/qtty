@@ -764,3 +764,19 @@ find = "\t\tif (is_thin(path.boundingRect())) {"
 into = "\t\tif (false) {"
 count = 1
 check = "a hairline drawn as a PATH colours the blank cell it lands on"
+
+[[sabotage]]
+name = "reverse is emitted with the wrong SGR code"
+file = "src/core/theme.cpp"
+find = "\tif (attrs & Attr::Reverse)   out += \"\\033[7m\";"
+into = "\tif (attrs & Attr::Reverse)   out += \"\\033[5m\";"
+count = 1
+check = "each of the six attributes emits its own ECMA-48 code"
+
+[[sabotage]]
+name = "a snapshot misspells an attribute name"
+file = "src/core/cell_buffer.cpp"
+find = "\tif (a & Attr::Italic)    on << QStringLiteral(\"italic\");"
+into = "\tif (a & Attr::Italic)    on << QStringLiteral(\"itallic\");"
+count = 1
+check = "a snapshot spells each of the six attributes by name"

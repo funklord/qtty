@@ -394,5 +394,39 @@ int suite_cells() {
 		      "and masks the alpha byte off rather than printing eight");
 	}
 
+	// THE ATTRIBUTE NAMES IN A SNAPSHOT, all six. Branch coverage said four
+	// had never been written: bold and reverse had, and dim, italic,
+	// underline and strike had not.
+	//
+	// Snapshots are this tree's most-cited artefacts and they are compared
+	// against THEMSELVES, so a misspelled name is invisible by construction
+	// -- record a fixture with "itallic" in it and every later run agrees.
+	// The legend is only worth what its words are, and four of the six words
+	// had never been printed.
+	{
+		const struct { Attr a; const char *name; } names[] = {
+			{ Attr::Bold,      "bold"      },
+			{ Attr::Dim,       "dim"       },
+			{ Attr::Italic,    "italic"    },
+			{ Attr::Underline, "underline" },
+			{ Attr::Reverse,   "reverse"   },
+			{ Attr::Strike,    "strike"    },
+		};
+		QStringList missing;
+		for (const auto &e : names) {
+			CellBuffer one(2, 1);
+			one.text(0, 0, QStringLiteral("x"), Color(), Color(), Attrs(e.a));
+			if (!one.to_snapshot().contains(QLatin1String(e.name)))
+				missing << QLatin1String(e.name);
+		}
+		if (!missing.isEmpty())
+			printf("info: attribute names a snapshot never spells: %s\n",
+			       qPrintable(missing.join(QStringLiteral(", "))));
+		CHECK(missing.isEmpty() && sizeof(names) / sizeof(names[0]) == 6,
+		      "a snapshot spells each of the six attributes by name, so a "
+		      "fixture recording one is comparing against a word somebody "
+		      "has read");
+	}
+
 	return fails;
 }

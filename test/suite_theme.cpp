@@ -125,6 +125,55 @@ int suite_theme() {
 	                   {}, Capabilities::Mono)
 	      == QByteArray("\033[0m"),
 	      "mono emits no colour at all");
+
+	// EVERY ATTRIBUTE, because only ONE of the six had ever been emitted.
+	// Branch coverage over 32,440 calls to this function: Bold at 8%, and
+	// Dim, Italic, Underline, Reverse and Strike at zero. This is the
+	// function that turns a cell into the bytes a terminal receives, so a
+	// wrong number in any of those five rows is a wrong rendering on every
+	// terminal, for every application, with nothing in the tree to notice
+	// -- and `Reverse` is how a selection is drawn.
+	//
+	// The codes are ECMA-48's and are not qtty's to choose: 1 bold, 2 faint,
+	// 3 italic, 4 underline, 7 negative image, 9 crossed out.
+	{
+		const struct { Attr a; const char *code; const char *what; } sgr[] = {
+			{ Attr::Bold,      "\033[1m", "bold"      },
+			{ Attr::Dim,       "\033[2m", "dim"       },
+			{ Attr::Italic,    "\033[3m", "italic"    },
+			{ Attr::Underline, "\033[4m", "underline" },
+			{ Attr::Reverse,   "\033[7m", "reverse"   },
+			{ Attr::Strike,    "\033[9m", "strike"    },
+		};
+		QStringList missing;
+		for (const auto &e : sgr) {
+			const QByteArray out =
+			    sgr_sequence(Color(), Color(), Attrs(e.a),
+			                 Capabilities::TrueColor);
+			if (!out.contains(e.code)) missing << QLatin1String(e.what);
+		}
+		if (!missing.isEmpty())
+			printf("info: attributes with no SGR code on the wire: %s\n",
+			       qPrintable(missing.join(QStringLiteral(", "))));
+		CHECK(missing.isEmpty() && sizeof(sgr) / sizeof(sgr[0]) == 6,
+		      "each of the six attributes emits its own ECMA-48 code, so a "
+		      "terminal is told about all of them and not only bold");
+
+		// And together, in one cell, which is what a struck-through heading
+		// in a selection actually is. Asserted as a set rather than as a
+		// literal string, because the ORDER is this function's business and
+		// pinning it would be pinning something nobody depends on.
+		Attrs all;
+		for (const auto &e : sgr) all |= e.a;
+		const QByteArray both = sgr_sequence(Color(), Color(), all,
+		                                     Capabilities::TrueColor);
+		QStringList absent;
+		for (const auto &e : sgr)
+			if (!both.contains(e.code)) absent << QLatin1String(e.what);
+		CHECK(absent.isEmpty(),
+		      "and a cell carrying all six emits all six, rather than the "
+		      "first one that matched");
+	}
 	// The theme's authored index is what an Ansi16 terminal gets, which is the
 	// whole point of carrying it on the colour.
 	{

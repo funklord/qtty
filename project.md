@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1128 checks, 0 failures. `make check` is green and includes
+1131 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -567,6 +567,7 @@ Owned by the copyright holder:
 | **Two frames nested with no layout margin draw two rules in adjacent columns.** Faithful to the widget tree -- in pixels they are 1px lines 1px apart -- and on a grid they read as two rules. Merging is not a paint-time trick: the edges are in DIFFERENT cells because the inner rect is one cell inside the outer. Three options with their costs are recorded; the cheapest is to suppress a rule whose neighbour already holds one, which cannot tell nesting from two adjacent framed widgets. Reported by fuzzypickles, and reached again by a QScrollArea | 8.25, 8.26, 8.27 |
 | **A read-only line edit is not marked.** Measured: it renders identically to an editable one, so a user cannot tell they cannot type. Marking it needs vocabulary, and the obvious candidate collides -- disabled already uses Dim, and read-only is a different state, focusable and selectable. Unlike Enter's target it has no consequence a user cannot discover by typing | 8.33 |
 | **A tab's mnemonic does nothing.** `Alt+S` on a tab labelled "&Second" does not switch to it: the router matches Alt against ACTION text and a tab is not an action. It is therefore left unmarked, on the rule that underlining a key that does nothing is worse than leaving it bare. Whether a terminal should switch tabs by mnemonic at all is the question -- the marking follows the answer | 8.37 |
+| **The pixel tiers drop two of the six attributes.** The rasteriser honours Bold, Italic, Underline and Reverse and has no row for `Dim` or `Strike`, so the same application renders differently on a terminal with graphics from one without. `Strike` is a one-line `QFont::setStrikeOut`; `Dim` has no font equivalent and would be a colour operation, blending the foreground toward the ground -- a different KIND of change, which is why the two are not one decision. How far fidelity goes between tiers is a scope question | 8.50 |
 | **`Overlay::set_z()` does nothing in a GUI build.** `visible_overlays()` sorts by z and its only production caller is the compositor, which is the TUI path; the GUI twin never reads `z_`, so stacking there falls to the window manager. design.md presents `Overlay` as target-independent and lists `setZ` unqualified, so this is a scope question -- does the twin owe z ordering? -- rather than a defect. Not a one-liner: the twins are frameless always-on-top `Qt::Tool` windows, and it cannot be verified headlessly here | 8.47 |
 | The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
 
@@ -15054,6 +15055,51 @@ and in each the untested arm was the one a user reaches by doing the
 ordinary thing -- dropping on a label rather than a panel, wheeling inside
 a dialog, tabbing backwards. **Line coverage reports all three as
 covered**, because one arm running is enough to execute the line.
+
+### 8.50 One attribute in six, on the wire (2026-09-08)
+
+The lens came from 8.49's last find -- Reverse never reaching the
+rasteriser -- asked of the whole set: **each consumer of `Attrs` carries
+its own table, so which rows has each one never seen?** Three consumers,
+six attributes, eighteen cells, and branch coverage answers every one.
+
+    sgr_sequence()   theme.cpp    bold only.  32,440 calls, 8% bold,
+                                  and dim, italic, underline, reverse
+                                  and strike at ZERO
+    to_snapshot()    cell_buffer  bold and reverse. dim, italic,
+                                  underline and strike at zero
+    the rasteriser   graphics     reverse was zero until 8.49; it has
+                                  no row for dim or strike at all
+
+**`sgr_sequence()` is the worst of the three because it writes the
+bytes.** It is what turns a cell into what a terminal receives, so a wrong
+number in any of the five untested rows is a wrong rendering on every
+terminal for every application -- and `Reverse` is how a selection is
+drawn. Emitting `5` instead of `7` makes the selection BLINK on a terminal
+that honours it, and nothing in the tree noticed. The codes are ECMA-48's
+and not qtty's to choose, which is what makes a table check the right
+shape: 1 bold, 2 faint, 3 italic, 4 underline, 7 negative image, 9 crossed
+out.
+
+**And a cell carrying all six must emit all six**, asserted as a set
+rather than as a literal string, because the ORDER is that function's own
+business and pinning it would pin something nobody depends on.
+
+**`to_snapshot()` is the subtler one: a misspelled name is invisible by
+construction.** Snapshots are this tree's most-cited artefacts and they
+are compared against THEMSELVES, so a fixture recorded with `itallic` in
+it agrees with every later run for ever. Four of the six words had never
+been printed by anything.
+
+**A gap left open rather than closed: the rasteriser has no row for `Dim`
+or `Strike`.** Four of the six reach the pixel tiers -- sixel, iTerm2 and
+half-blocks -- and two are dropped, so the same application renders
+differently depending on what the terminal can do. `Strike` is a one-line
+`QFont::setStrikeOut`; `Dim` has no font equivalent and would be a colour
+operation, blending the foreground toward the ground. **Whether the pixel
+tiers owe both is a question about how far fidelity goes between tiers,
+and it is the holder's**; recorded in 0b rather than answered while
+writing a check.
 
 ## 11. What is next, in order
 
