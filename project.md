@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1131 checks, 0 failures. `make check` is green and includes
+1132 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -567,6 +567,7 @@ Owned by the copyright holder:
 | **Two frames nested with no layout margin draw two rules in adjacent columns.** Faithful to the widget tree -- in pixels they are 1px lines 1px apart -- and on a grid they read as two rules. Merging is not a paint-time trick: the edges are in DIFFERENT cells because the inner rect is one cell inside the outer. Three options with their costs are recorded; the cheapest is to suppress a rule whose neighbour already holds one, which cannot tell nesting from two adjacent framed widgets. Reported by fuzzypickles, and reached again by a QScrollArea | 8.25, 8.26, 8.27 |
 | **A read-only line edit is not marked.** Measured: it renders identically to an editable one, so a user cannot tell they cannot type. Marking it needs vocabulary, and the obvious candidate collides -- disabled already uses Dim, and read-only is a different state, focusable and selectable. Unlike Enter's target it has no consequence a user cannot discover by typing | 8.33 |
 | **A tab's mnemonic does nothing.** `Alt+S` on a tab labelled "&Second" does not switch to it: the router matches Alt against ACTION text and a tab is not an action. It is therefore left unmarked, on the rule that underlining a key that does nothing is worse than leaving it bare. Whether a terminal should switch tabs by mnemonic at all is the question -- the marking follows the answer | 8.37 |
+| **Three of `CursorShape`'s four values do nothing.** `AnsiBackend::set_cursor` tells Hidden from the rest and emits no shape selection, so Block, Underline and Bar are the same two bytes. DECSCUSR would set it in one line -- but its parameters pair each shape with a blink or steady variant that the enum cannot express, so honouring it means choosing on the application's behalf, and the prior question is whether a TUI should touch the cursor shape at all. design.md declares the method and never says what the shapes mean | 8.51 |
 | **The pixel tiers drop two of the six attributes.** The rasteriser honours Bold, Italic, Underline and Reverse and has no row for `Dim` or `Strike`, so the same application renders differently on a terminal with graphics from one without. `Strike` is a one-line `QFont::setStrikeOut`; `Dim` has no font equivalent and would be a colour operation, blending the foreground toward the ground -- a different KIND of change, which is why the two are not one decision. How far fidelity goes between tiers is a scope question | 8.50 |
 | **`Overlay::set_z()` does nothing in a GUI build.** `visible_overlays()` sorts by z and its only production caller is the compositor, which is the TUI path; the GUI twin never reads `z_`, so stacking there falls to the window manager. design.md presents `Overlay` as target-independent and lists `setZ` unqualified, so this is a scope question -- does the twin owe z ordering? -- rather than a defect. Not a one-liner: the twins are frameless always-on-top `Qt::Tool` windows, and it cannot be verified headlessly here | 8.47 |
 | The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
@@ -15100,6 +15101,35 @@ operation, blending the foreground toward the ground. **Whether the pixel
 tiers owe both is a question about how far fidelity goes between tiers,
 and it is the holder's**; recorded in 0b rather than answered while
 writing a check.
+
+### 8.51 The same question of a second enum (2026-09-08)
+
+8.50's lens -- **which rows of this value set has each consumer never
+seen** -- asked of `CursorShape`, whose four values are Block, Underline,
+Bar and Hidden.
+
+**`AnsiBackend::set_cursor` distinguishes exactly one of them.** Hidden
+turns the cursor off; Block, Underline and Bar emit the same two bytes,
+`\033[?25h`, and no shape selection at all. The compositor only ever
+sends Bar or Hidden, so nothing in the tree is wrong today -- the exposure
+is an application driving its own frame loop, which asks for a Block and
+gets whatever the terminal already had.
+
+**Not closed, and this one is a decision rather than an oversight.**
+DECSCUSR (`CSI Ps SP q`) can set the shape in one line, and its parameters
+pair each shape with a BLINK or STEADY variant -- 1 and 2 for block, 3 and
+4 for underline, 5 and 6 for bar -- which the enum cannot express. So
+implementing it means choosing blink or steady on the application's
+behalf, and there is a prior question: whether a TUI should touch the
+cursor shape at all, many deliberately not. design.md declares the method
+and never says what the shapes mean. Recorded in 0b.
+
+**What was closed is the harness half**, which is not a decision: `NullBackend`
+took the shape and dropped it, so an adopter's snapshot test could read
+where the cursor is and not what it was asked to look like. That is the
+same half-recorded seam the title had before 8.44, found by the same
+question asked of a different enum -- and it is what would make the
+decision above testable when it is taken.
 
 ## 11. What is next, in order
 

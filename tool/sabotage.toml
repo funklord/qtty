@@ -780,3 +780,11 @@ find = "\tif (a & Attr::Italic)    on << QStringLiteral(\"italic\");"
 into = "\tif (a & Attr::Italic)    on << QStringLiteral(\"itallic\");"
 count = 1
 check = "a snapshot spells each of the six attributes by name"
+
+[[sabotage]]
+name = "every frame reports its cursor as hidden"
+file = "src/runtime/compositor.cpp"
+find = "\t                    comp_->cursor_cell() ? CursorShape::Bar : CursorShape::Hidden);"
+into = "\t                    CursorShape::Hidden);"
+count = 1
+check = "a rendered frame tells the backend where the cursor is"

@@ -1847,10 +1847,12 @@ int suite_runtime() {
 		FrameScheduler sched(&b, &comp, &win);
 		sched.render_now();
 		const auto seen = b.cursor();
+		const CursorShape seen_shape = b.cursor_shape();
 		// Against the caret's own column, not a literal: what matters is
 		// that the backend was told where the caret IS, and a pinned
 		// number would be asserting on the line edit's insets instead.
-		CHECK(seen.has_value() && seen == comp.cursor_cell(),
+		CHECK(seen.has_value() && seen == comp.cursor_cell()
+		      && seen_shape != CursorShape::Hidden,
 		      "a rendered frame tells the backend where the cursor is, and "
 		      "the harness backend reports it back");
 
@@ -1863,6 +1865,12 @@ int suite_runtime() {
 		sched.render_now();
 		CHECK(!b.cursor().has_value(),
 		      "and a frame with nothing focused to type into hides it");
+		// The SHAPE travels with the position, and the harness records it
+		// now. Both halves matter to an application: where the caret is,
+		// and whether the frame wanted one at all.
+		CHECK(b.cursor_shape() == CursorShape::Hidden,
+		      "and says the shape it was given, which for a frame with no "
+		      "caret is Hidden rather than a shape at no position");
 	}
 
 	// ------------------------------------- the width capability is absorbed
