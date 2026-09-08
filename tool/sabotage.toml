@@ -820,3 +820,11 @@ find = "\t\tqWarning(\"qtty: clipboard copy of %lld bytes refused, over the %d b
 into = "\t\tqWarning(\"qtty: clipboard copy of %lld bytes declined, over the %d byte\""
 count = 1
 check = "and says so, naming both the size refused and the bound it broke"
+
+[[sabotage]]
+name = "the rasteriser drops a struck cell's line"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\t\tf.setStrikeOut(c.attrs & Attr::Strike);"
+into = "\t\t\t\t;"
+count = 1
+check = "a struck cell is rasterised with its line"

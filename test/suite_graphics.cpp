@@ -708,6 +708,35 @@ int suite_graphics() {
 			      "and the ground it gets is the foreground colour the swap "
 			      "moved there, not merely some other colour");
 		}
+		{
+			// STRIKE through the rasteriser. It was the one
+			// QFont-expressible attribute this path did not map: Bold,
+			// Italic and Underline were all here, so a struck heading kept
+			// its line on a terminal with no graphics and lost it on one
+			// with pictures.
+			//
+			// Counted rather than sampled at a coordinate, because where
+			// the line falls is the FONT's business -- a fixture that
+			// probed one row would be asserting on metrics rather than on
+			// the attribute.
+			auto ink = [&](Attrs a) {
+				CellBuffer one(2, 1);
+				one.text(0, 0, QStringLiteral("x"), Color(), Color(), a);
+				const QImage img = rasterize(one, QGuiApplication::font());
+				int n = 0;
+				for (int y = 0; y < img.height(); ++y)
+					for (int x = 0; x < img.width(); ++x)
+						if (qRed(img.pixel(x, y)) > 120) ++n;
+				return n;
+			};
+			const int plain = ink(Attrs());
+			const int struck = ink(Attrs(Attr::Strike));
+			printf("info: a plain cell inks %d pixel(s), a struck one %d\n",
+			       plain, struck);
+			CHECK(struck > plain,
+			      "a struck cell is rasterised with its line, so a terminal "
+			      "with pictures shows what one without already showed");
+		}
 		bool red_seen = false;
 		for (int y = 0; y < ch && !red_seen; ++y)
 			for (int x = cw; x < 3 * cw; ++x) {

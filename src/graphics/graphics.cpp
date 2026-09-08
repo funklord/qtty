@@ -388,6 +388,18 @@ QRect rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
 				f.setBold(c.attrs & Attr::Bold);
 				f.setItalic(c.attrs & Attr::Italic);
 				f.setUnderline(c.attrs & Attr::Underline);
+				// Strike was the one QFont-expressible attribute this did
+				// not map, so a struck heading kept its line on a terminal
+				// with no graphics and lost it on one with pictures --
+				// sixel, iTerm2 and the half-blocks built on this same
+				// rasteriser. The other three were here from the start,
+				// which is what made the omission read as deliberate.
+				//
+				// Dim is NOT here and is a different question: it has no
+				// QFont equivalent and would be a colour operation,
+				// blending the foreground toward the ground. That one is a
+				// policy and is left in 0b.
+				f.setStrikeOut(c.attrs & Attr::Strike);
 				p.setFont(f);
 				p.setPen(QColor::fromRgb(fg));
 				p.drawText(x * cw, y * ch + fm.ascent(), c.ch);

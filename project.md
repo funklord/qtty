@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1141 checks, 0 failures. `make check` is green and includes
+1142 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -569,7 +569,7 @@ Owned by the copyright holder:
 | **A read-only line edit is not marked.** Measured: it renders identically to an editable one, so a user cannot tell they cannot type. Marking it needs vocabulary, and the obvious candidate collides -- disabled already uses Dim, and read-only is a different state, focusable and selectable. Unlike Enter's target it has no consequence a user cannot discover by typing | 8.33 |
 | **A tab's mnemonic does nothing.** `Alt+S` on a tab labelled "&Second" does not switch to it: the router matches Alt against ACTION text and a tab is not an action. It is therefore left unmarked, on the rule that underlining a key that does nothing is worse than leaving it bare. Whether a terminal should switch tabs by mnemonic at all is the question -- the marking follows the answer | 8.37 |
 | **Three of `CursorShape`'s four values do nothing.** `AnsiBackend::set_cursor` tells Hidden from the rest and emits no shape selection, so Block, Underline and Bar are the same two bytes. DECSCUSR would set it in one line -- but its parameters pair each shape with a blink or steady variant that the enum cannot express, so honouring it means choosing on the application's behalf, and the prior question is whether a TUI should touch the cursor shape at all. design.md declares the method and never says what the shapes mean | 8.51 |
-| **The pixel tiers drop two of the six attributes.** The rasteriser honours Bold, Italic, Underline and Reverse and has no row for `Dim` or `Strike`, so the same application renders differently on a terminal with graphics from one without. `Strike` is a one-line `QFont::setStrikeOut`; `Dim` has no font equivalent and would be a colour operation, blending the foreground toward the ground -- a different KIND of change, which is why the two are not one decision. How far fidelity goes between tiers is a scope question | 8.50 |
+| **The pixel tiers drop `Dim`.** ~~And `Strike`~~ -- see 8.58, which closed that half: `Strike` had an exact `QFont::setStrikeOut` and its absence was an inconsistency rather than a choice. `Dim` is the decision that remains: no font expresses it, so honouring it means blending the foreground toward the ground, and how far fidelity goes between tiers is a scope question | 8.50, 8.58 |
 | **`Overlay::set_z()` does nothing in a GUI build.** `visible_overlays()` sorts by z and its only production caller is the compositor, which is the TUI path; the GUI twin never reads `z_`, so stacking there falls to the window manager. design.md presents `Overlay` as target-independent and lists `setZ` unqualified, so this is a scope question -- does the twin owe z ordering? -- rather than a defect. Not a one-liner: the twins are frameless always-on-top `Qt::Tool` windows, and it cannot be verified headlessly here | 8.47 |
 | The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
 
@@ -15099,7 +15099,7 @@ it agrees with every later run for ever. Four of the six words had never
 been printed by anything.
 
 **A gap left open rather than closed: the rasteriser has no row for `Dim`
-or `Strike`.** Four of the six reach the pixel tiers -- sixel, iTerm2 and
+or `Strike`.** ~~Both~~ -- **`Strike` is closed, see 8.58.** Four of the six reach the pixel tiers -- sixel, iTerm2 and
 half-blocks -- and two are dropped, so the same application renders
 differently depending on what the terminal can do. `Strike` is a one-line
 `QFont::setStrikeOut`; `Dim` has no font equivalent and would be a colour
@@ -15371,6 +15371,38 @@ files` from a conversion that happened once, `47 files` measured in
 another tree on a day. Past-tense records of a measurement are not claims
 about the tree now, and rewriting them would destroy the only evidence
 they carry.
+
+### 8.58 Splitting a deferral that had two halves (2026-09-08)
+
+8.50 recorded one open question where there were two, and bundling them
+made the answerable half wait on the unanswerable one.
+
+**The rasteriser mapped every QFont-expressible attribute except one.**
+Bold, Italic and Underline were all there from the start; `Strike` has an
+exact `QFont::setStrikeOut` and was not. So a struck heading kept its line
+on a terminal with NO graphics -- where `sgr_sequence` emits `\033[9m`
+and the terminal draws it -- and lost it on one with pictures, which is
+the wrong way round for a tier that exists to be more faithful. **Three of
+four present is what made the fourth read as deliberate**, and it was
+written up as a scope question on that reading.
+
+**`Dim` is a real decision and stays open.** No font expresses it, so
+honouring it means a colour operation -- blending the foreground toward
+the ground -- and choosing how far is a policy about what the tiers owe
+each other. That is the holder's, and 0b keeps it.
+
+**The distinction is not fidelity-in-general but whether a mechanism
+exists.** `Strike` needed no choice: Qt already has the switch, and three
+of its siblings were already thrown. Deferring it cost nothing visible
+and would have cost indefinitely, which is `working-practice.md`'s point
+-- **a wrongly-deferred question is caught by nothing**, sits looking
+exactly like diligence, and every later reader inherits the deferral with
+the reasoning that justified it.
+
+**Counted rather than sampled**, because where a strikeout line falls is
+the font's business: 28 inked pixels plain, 36 struck, and 28 either way
+with the call removed. A fixture probing one row would have been
+asserting on metrics.
 
 ## 11. What is next, in order
 
