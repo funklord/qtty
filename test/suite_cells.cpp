@@ -50,6 +50,90 @@ int suite_cells() {
 		CHECK(cluster_width(u"あ") == 2,
 		      "and the table comes back when the flag does");
 	}
+
+	// EVERY RANGE IN THE WIDE TABLE, one character each. Branch coverage
+	// said eight of its thirteen rows had never matched: the suite used
+	// hiragana, a CJK ideograph and an emoji, so Hangul, Yi, the fullwidth
+	// forms, the compatibility blocks and CJK Ext B were carried by nobody.
+	//
+	// A typo in a bound is not a wrong glyph. A character the table calls
+	// narrow occupies one cell here and two on the terminal, so everything
+	// after it on the line sits one column left of where qtty believes it
+	// is -- and the diff, which repaints only what changed, leaves the rest
+	// of the screen as it was. Whole writing systems ride on these bounds.
+	{
+		const struct { char32_t cp; const char *what; } wide_ranges[] = {
+			{ 0x1100,  "Hangul Jamo"        },
+			{ 0x2E80,  "CJK Radicals"       },
+			{ 0x3042,  "Kana"               },
+			{ 0x3400,  "CJK Ext A"          },
+			{ 0x4E00,  "CJK Unified"        },
+			{ 0xA000,  "Yi"                 },
+			{ 0xAC00,  "Hangul Syllables"   },
+			{ 0xF900,  "CJK Compatibility"  },
+			{ 0xFE30,  "CJK Compat Forms"   },
+			{ 0xFF01,  "Fullwidth forms"    },
+			{ 0xFFE0,  "Fullwidth signs"    },
+			{ 0x1F600, "emoji"              },
+			{ 0x20000, "CJK Ext B"          },
+		};
+		QStringList narrow;
+		for (const auto &r : wide_ranges)
+			if (cluster_width(QString::fromUcs4(&r.cp, 1)) != 2)
+				narrow << QString::fromLatin1(r.what);
+		if (!narrow.isEmpty())
+			printf("info: ranges the table called narrow: %s\n",
+			       qPrintable(narrow.join(QStringLiteral(", "))));
+		CHECK(narrow.isEmpty()
+		      && sizeof(wide_ranges) / sizeof(wide_ranges[0]) == 13,
+		      "one character from each of the thirteen wide ranges is two "
+		      "cells, so no writing system is silently narrow");
+
+		// The other side of the same table: a character just outside a
+		// bound must stay narrow. Without this the check above passes
+		// against a table that answers 2 for everything.
+		const char32_t just_below = 0x10FF, just_above = 0x1160;
+		CHECK(cluster_width(QString::fromUcs4(&just_below, 1)) == 1
+		      && cluster_width(QString::fromUcs4(&just_above, 1)) == 1,
+		      "and the characters on either side of a range are one, so the "
+		      "table discriminates rather than answering two");
+	}
+
+	// A WIDE CLUSTER IN THE LAST COLUMN. `text()` stops before the edge
+	// rather than walking past it, so nothing had ever put one there --
+	// and `put_cluster` is public, so an application or a renderer can.
+	//
+	// What it must do is documented in the source and was not pinned: a
+	// width-2 cell always has its partner, so in a column with no partner
+	// to be had a BLANK is what fits. The alternative is a cell claiming
+	// two columns in a one-column space, which `to_text()` emits as a row
+	// one column wider than the buffer and a terminal either wraps onto
+	// the next line or truncates.
+	//
+	// Asserted on the ROW WIDTH, which is what discriminates. The obvious
+	// assertion -- that the next row is untouched -- passes against the
+	// blank substitution being deleted, because a second guard further
+	// down stops the out-of-bounds write on its own. Two guards, and only
+	// one of them decides what the user sees.
+	{
+		CellBuffer b(4, 2);
+		b.text(0, 1, QStringLiteral("keep"));
+		b.put_cluster(3, 0, QStringLiteral("あ"));
+		const QStringList rows = b.to_text().split(QLatin1Char('\n'));
+		// Empty rather than four spaces: `to_text()` trims a row's trailing
+		// blanks, so a blanked cell is the absence of anything. What
+		// discriminates is that the GLYPH is not there -- with the blank
+		// substitution deleted the row carries it and is one column wider
+		// than the buffer.
+		CHECK(rows.size() >= 2 && !rows.at(0).contains(QStringLiteral("あ"))
+		      && rows.at(0).isEmpty(),
+		      "a wide cluster in the last column becomes a blank, because a "
+		      "cell claiming two columns in a one-column space is a row "
+		      "wider than the buffer");
+		CHECK(rows.size() >= 2 && rows.at(1) == QStringLiteral("keep"),
+		      "and the next row is untouched, which in one flat array is "
+		      "the cell its continuation would have been");
+	}
 	CHECK(to_clusters(QStringLiteral("héllo")).size() == 5
 	      || to_clusters(QStringLiteral("héllo")).size() == 6,   // the accented e may be composed
 	      "grapheme clustering runs");

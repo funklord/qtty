@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1120 checks, 0 failures. `make check` is green and includes
+1124 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -14931,6 +14931,36 @@ though **a three-byte character cut in half is what a pty routinely hands
 over**, most of all across ssh; without the wait the decoder decodes what
 it has. Both sabotage cleanly, the first reporting
 `four bytes: 1 key(s)` from a population assertion over one to four bytes.
+
+**`cell_buffer` next** -- 99.44% of lines, 64.59% of branches taken at
+least once -- and its wide-codepoint table is the SS3 shape again: **eight
+of thirteen ranges had never matched anything.** The suite used hiragana,
+a CJK ideograph and an emoji, so Hangul Jamo, Hangul Syllables, Yi, the
+fullwidth forms, both compatibility blocks and CJK Ext B were carried by
+nobody. **A typo in a bound is not a wrong glyph**: a character the table
+calls narrow takes one cell here and two on the terminal, so the rest of
+the line sits a column left of where qtty believes it is, and the diff
+repaints only what changed. Whole writing systems ride on those bounds.
+One character per range now, plus one on each side of a bound so the check
+discriminates rather than passing against a table that answers 2 for
+everything; moving the Hangul bound by one is caught and named.
+
+**And a wide cluster in the last column, where three attempts were needed
+to write a check that could fail.** `text()` stops before the edge, so
+nothing had ever put one there, and `put_cluster` is public. The first
+assertion -- that the next row is untouched -- passed against its own
+sabotage, because the buffer is one flat array and TWO guards protect that
+cell: the blank substitution at the top of `put_cluster` and a
+`writable(x + 1, y)` further down. Deleting either leaves the other. The
+second assertion was wrong about the observable, expecting four spaces
+where `to_text()` trims a row's trailing blanks and yields nothing at all.
+**What discriminates is that the glyph is absent and the row is empty**,
+which fails the moment the substitution goes.
+
+**Two guards, and only one of them decides what the user sees.** That is
+worth carrying: branch coverage names the redundant one -- `writable(x +
+1, y)` is unreachable-by-construction once the substitution above has
+returned -- and a check aimed at the redundant guard cannot fail.
 
 **A pattern worth naming across all three of this session's branch
 findings**: `drop_target`'s walk, the wheel's escape guard, and this. Each

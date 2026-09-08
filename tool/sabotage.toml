@@ -724,3 +724,19 @@ find = "\t\tif (pending_.size() < 1 + len) return false;      // still arriving"
 into = "\t\t;      // still arriving"
 count = 1
 check = "half of a multi-byte Alt character produces nothing yet"
+
+[[sabotage]]
+name = "a Hangul syllable is one column short of the wide table"
+file = "src/core/cell_buffer.cpp"
+find = "\t    || (u >= 0xAC00  && u <= 0xD7A3)   // Hangul Syllables"
+into = "\t    || (u >= 0xAC01  && u <= 0xD7A3)   // Hangul Syllables"
+count = 1
+check = "one character from each of the thirteen wide ranges is two cells"
+
+[[sabotage]]
+name = "a wide cluster at the edge is written without its partner"
+file = "src/core/cell_buffer.cpp"
+find = "\tif (w == 2 && !writable(x + 1, y)) {"
+into = "\tif (false) {"
+count = 1
+check = "a wide cluster in the last column becomes a blank"
