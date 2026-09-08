@@ -28,7 +28,7 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-08, at 1142**,
+**Last re-verified under all six configurations: 2026-09-08, at 1151**,
 and `make test-tray` at 1135 with the two checks 8.53 added.
 The full sabotage set was run end to end at 90 entries the same day, every
 one reddening the check it names and none inconclusive; the three added
@@ -561,6 +561,7 @@ Owned by the copyright holder:
 | Question | Where |
 |---|---|
 | A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. Cheaper to answer after the picture-rule entry below, which is the same question seen from the other end | *Qt's standard iconography* |
+| **An HTML bullet list loses its bullets.** Measured through a `QTextBrowser`: `<ul><li>one</li></ul>` renders the text indented with a one-cell BACKGROUND block where the bullet belongs and no glyph -- `bg=#000000` on the default dark ground. Qt draws the bullet as `drawPath` with a 6x6 bounding rect, and `is_thin` (`width*2 < cw \|\| height*2 < ch`) is true of it, so a bullet takes the hairline road meant for carets and rules. **The discriminator is clean and is the finding**: a shape smaller than one cell in BOTH dimensions is a mark, not a hairline -- a caret is 1x19 and a rule 50x1, and neither is. What a mark should BECOME is the choice, and it is the holder's | 8.64 |
 | Whether the "too small to be a picture" rule moves to the backend. Nothing left unmeasured: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()`; no widget icon reaches the branch today; and the cost is **1.4 KB once per distinct icon, 35 bytes a frame after** -- eight of them together less than the one 48x48 icon the library already uploads | §7.2 |
 | **Right-to-left: does qtty support it at all?** design.md never says, and nothing in the tree mentions it -- so this is a scope question rather than a defect. Measured: under `Qt::RightToLeft` a check box mirrors and a combo box's text does, while its arrow, a progress bar's fill, a label's alignment and a line edit's text do not. §7.2 has the rendered pair | *undesigned* |
 | **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism | §7.2 |
@@ -15615,6 +15616,40 @@ application draws two rows below an underlined heading still renders.
 there.** It looked for `──` on any row -- and a `QTextBrowser` draws its
 own frame out of the same character. The row BELOW the word is the
 question, and the frame is not it.
+
+### 8.64 A bullet takes the hairline road (2026-09-08)
+
+Continuing 8.63's lens -- **markup is the only way an application asks for
+a cell attribute without setting one** -- through the rest of what HTML
+can say. Two answers were right and one was not:
+
+    <font color="#ff0000">   fg=#ff0000 on the cells        correct
+    <h1>                     bold                           correct, and
+                             the only faithful answer: a
+                             grid has one type size
+    <ul><li>                 the text indented, and a
+                             one-cell BACKGROUND block
+                             where the bullet belongs       NOT a bullet
+
+**The mechanism, probed rather than guessed.** Qt draws a list bullet as
+`drawPath` with a **6x6** bounding rect. `is_thin` asks
+`width*2 < cw || height*2 < ch`, and 12 < 19 is true, so the bullet takes
+the branch written for hairlines -- a caret, a rule -- which paints a
+cell's background rather than a glyph. On the default dark ground the
+result is a slightly darker block; on a light one it would be a black
+square.
+
+**The discriminator is clean, which is what makes this worth recording
+rather than guessing at.** A hairline is thin in one dimension and LONG in
+the other: a caret is 1x19, a rule 50x1. A bullet is 6x6 -- **smaller than
+one cell in both dimensions**, which no hairline is. That test separates
+them exactly, and it does not disturb either existing case.
+
+**What a mark should BECOME is the choice, and it is not mine.** A glyph
+means picking one, and picking one is rendering policy: qtty already
+substitutes glyphs for icons by NAME, and a bullet has no name to look up.
+Left in 0b with the discriminator, so whoever takes it starts with the
+measurement rather than with the symptom.
 
 ## 11. What is next, in order
 
