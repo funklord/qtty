@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1127 checks, 0 failures. `make check` is green and includes
+1128 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15009,6 +15009,33 @@ bottom-right corner of a frame with no other side. Not nothing -- and
 worse than nothing in one way, because a stray corner reads as a drawing
 fault in whatever surrounds it, where a shade block reads as *something is
 here that qtty cannot draw*. The comment says that now.
+
+**A second from `cell_paint`: a hairline drawn as a PATH.** The suite fills
+a caret through `fillRect`, which reaches `fill_rectf` directly;
+`drawPath` is a second front door with its own thin branch, and
+`is_thin(path.boundingRect())` had never been true -- every path this
+suite filled was big enough to cover a cell centre. The comment beside it
+says why that matters: the scanline fill asks which cell CENTRES lie
+inside the shape, and a one-pixel path contains none, so a caret or a rule
+drawn through `QPainterPath` rather than `fillRect` draws nothing at all.
+Same picture, different Qt call, one road tested.
+
+**And the fixture was wrong twice before it discriminated.** A thin fill
+colours a cell only where its glyph is a SPACE -- that is what keeps a
+caret over a letter from erasing the letter, which the check above it
+pins -- so the first version, drawn over "abcdef", correctly changed
+nothing and read as a failure of the code. The measurement came from
+reading `fill_rectf` rather than from another guess. **Two neighbouring
+checks want opposite fixtures for the same branch: one a glyph, the other
+a blank.**
+
+**And one candidate that was not a gap at all.** `drawPixmap`'s source
+rectangle looked untested -- the never-taken branch sits on that line --
+and it is exercised at 95%/5% by a check written for exactly it. The
+untaken direction belongs to a different sub-condition of the same `&&`
+chain, the null-pixmap guard. **gcov numbers branches per sub-condition,
+not per line**, so a `&&` chain has to be mapped before its report means
+anything.
 
 **A pattern worth naming across all three of this session's branch
 findings**: `drop_target`'s walk, the wheel's escape guard, and this. Each

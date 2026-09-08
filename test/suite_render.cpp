@@ -1174,6 +1174,52 @@ int suite_render(bool record) {
 			++r;
 		}
 
+		{
+			// THE SAME HAIRLINE AS A PATH. The check above reaches
+			// fill_rectf() through fillRect(); drawPath() is a second front
+			// door with its own thin branch, and branch coverage said
+			// `is_thin(path.boundingRect())` had never been true -- every
+			// path this suite filled was big enough to cover a cell centre.
+			//
+			// The comment beside that branch says what it is for and what
+			// happens without it: the scanline fill asks which cell CENTRES
+			// lie inside the shape, and a one-pixel-wide path contains none,
+			// so a caret or a rule drawn through QPainterPath rather than
+			// fillRect draws nothing at all. Same picture, different Qt
+			// call, and only one of the two roads was tested.
+			// A BLANK cell under the hairline, which is the case the branch
+			// is written for: a thin fill colours a cell only where its
+			// glyph is a space, so that a caret over a letter leaves the
+			// letter alone -- the check above. Over a blank it is the only
+			// thing that puts the colour there at all.
+			Qtty::CellBuffer hair(6, 1);
+			hair.text(0, 0, QStringLiteral("ab def"));
+			{
+				Qtty::CellPaintDevice dev(hair);
+				QPainter p(&dev);
+				QPainterPath path;
+				path.addRect(QRectF(GridMetrics::cw() * 2, 0,
+				                    1, GridMetrics::ch()));
+				p.fillPath(path, QColor(Qt::red));
+			}
+			const Qtty::Cell &c = hair.at(2, 0);
+			const bool reddened = c.bg.kind() == Qtty::Color::Rgb
+			                   && qRed(c.bg.value()) > 150
+			                   && qGreen(c.bg.value()) < 100;
+			printf("info: a hairline path left cell 2 as bg kind %d, glyph"
+			       " '%s'\n", int(c.bg.kind()), qPrintable(c.ch));
+			if (reddened && c.ch == QStringLiteral(" "))
+				printf("PASS: a hairline drawn as a PATH colours the blank "
+				       "cell it lands on, as the same shape does through "
+				       "fillRect\n");
+			else {
+				printf("FAIL: a hairline drawn as a PATH colours the blank "
+				       "cell it lands on, as the same shape does through "
+				       "fillRect\n");
+				++r;
+			}
+		}
+
 		// The other half, so the rule is not just "thin fills do nothing": a
 		// fill of the same colour that DOES cover the cell still paints.
 		{

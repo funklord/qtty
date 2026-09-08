@@ -756,3 +756,11 @@ find = "\tif (c.width() < 2 || c.height() < 2) {"
 into = "\tif (false) {"
 count = 1
 check = "an unsupported widget too small for a box is still a mark"
+
+[[sabotage]]
+name = "a hairline path is filled by the scanline that cannot see it"
+file = "src/render/cell_paint.cpp"
+find = "\t\tif (is_thin(path.boundingRect())) {"
+into = "\t\tif (false) {"
+count = 1
+check = "a hairline drawn as a PATH colours the blank cell it lands on"
