@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1151 checks, 0 failures. `make check` is green and includes
+1159 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -555,6 +555,18 @@ through 3,400 lines -- and a question nobody can locate is one nobody
 answers. **None is a defect and none blocks anything**; each is a decision
 that was deliberately not taken while working on something else. The
 sections named carry the measurement and the options.
+
+**Four of the rows below are ONE decision, and reading them apart is what
+makes the list look longer than it is.** The message box's severity icon,
+the bullet an HTML list loses, a table's borders coming out as tinted
+cells, and whether the "too small to be a picture" rule moves to the
+backend all ask the same thing: **what does a small drawn MARK become on a
+character grid -- a glyph, a block, or the ground it is standing on?**
+Each arrived from a different direction and each carries its own
+measurement, but one answer settles all four, and answering them
+separately would be four chances to answer inconsistently.
+
+The rest are separate questions and are not related to each other.
 
 Owned by the copyright holder:
 
@@ -15691,6 +15703,55 @@ The horizontal case has no such collision and could be taken alone.
 leave a table with drawn tops and tinted sides, which is worse to look at
 than one tinted throughout and much worse to explain. It is in 0b beside
 8.64's bullet, both being the same branch seen from different sides.
+
+### 8.66 The keyboard a terminal user expects (2026-09-08)
+
+Asked for directly by the copyright holder: **a TUI is keyboard-driven and
+2D -- Enter goes in, Escape comes back -- and it should not need a
+mouse.** Measured what the conventional keys actually do here before
+writing anything, which found one defect and two conventions.
+
+**Working already, and none of it needed saying until somebody asked:**
+`Tab` and `Shift+Tab` move focus, `Space` activates a focused button and
+toggles a check box, arrows work inside a control that wants them,
+`Esc` closes a menu and rejects a modal dialog, and `Enter` fires a
+dialog's DEFAULT button from anywhere in it. All Qt's own.
+
+**The defect: a button's mnemonic was unreachable.** `match_mnemonic`
+searched `QAction`s, and a `QPushButton` is not one -- so `&Apply` did
+nothing on Alt+A, and a `&Host` label never moved focus to the field it
+was the buddy of. On a desktop both work, Qt registering a shortcut for
+the ampersand, and **on a terminal they matter more**: a mnemonic is the
+only way to reach a control DIRECTLY instead of tabbing past everything
+between. Buttons and buddies are searched now, after the actions, because
+a menu's `&File` and a button's `&File` in one window is a collision the
+application made and the menu is the older meaning.
+
+**The two conventions, behind one opt-in call.** `Enter` activating the
+FOCUSED control and `Up`/`Down` moving BETWEEN controls are terminal
+habits that are not Qt's behaviour: on a desktop Enter fires the default
+button and arrows move within a control. `set_keyboard_conventions(true)`
+turns both on.
+
+**Off by default, and that is not timidity.** This library's promise is
+that an unmodified application renders faithfully, and an application that
+binds `Enter` or `Down` itself must keep them -- a default that quietly
+took them would break exactly the applications that had thought hardest
+about their keys. **Both fire only where the focused widget IGNORED the
+key**, so a text field keeps its own Enter and a list its own arrows,
+which is the check that pins it.
+
+**`doc/keyboard-first.md` is the guide**, and the README points at it. It
+carries the table above, the opt-in, and nine practices in the order they
+matter -- mnemonics first, because one character turns four keystrokes
+into one. It says which behaviours are Qt's and which are qtty's, so a
+reader knows what an upgrade could change.
+
+**One claimed defect was withdrawn before it reached the guide.** A
+focused `QSlider` appeared not to answer arrow keys; the slider in that
+fixture had never been laid out and had no size. Laid out, `Right` moves
+it 5 to 6. A guide is exactly where an unchecked measurement does the most
+damage, being read by people with no way to test the claim.
 
 ## 11. What is next, in order
 

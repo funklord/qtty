@@ -844,3 +844,35 @@ find = "\t\t\t\tif (band.contains(QPointF(a.x(), a.y()))\n\t\t\t\t    && band.co
 into = "\t\t\t\tif (false)\n\t\t\t\t\treturn;"
 count = 1
 check = "its underline is the attribute alone"
+
+[[sabotage]]
+name = "a button's mnemonic is unreachable again"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\tb->click();\n\t\t\treturn true;"
+into = "\t\t\treturn true;"
+count = 1
+check = "Alt and a button's own letter activates it"
+
+[[sabotage]]
+name = "a label's mnemonic does not move focus to its buddy"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\tbuddy->setFocus(Qt::ShortcutFocusReason);"
+into = "\t\t\t;"
+count = 1
+check = "a label's letter moves focus to the field it is the buddy of"
+
+[[sabotage]]
+name = "the conventions take Enter even when a widget wanted it"
+file = "src/runtime/input_router.cpp"
+find = "\tif (s_conventions && !press.isAccepted()) {"
+into = "\tif (s_conventions) {"
+count = 1
+check = "Enter in a text field is still the field's own"
+
+[[sabotage]]
+name = "asking for the conventions does nothing"
+file = "src/runtime/input_router.cpp"
+find = "void set_keyboard_conventions(bool on) { s_conventions = on; }"
+into = "void set_keyboard_conventions(bool) { s_conventions = false; }"
+count = 1
+check = "Down moves to the next control"

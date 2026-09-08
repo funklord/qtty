@@ -20,6 +20,32 @@ class QApplication;
 
 namespace Qtty {
 
+// ------------------------------------------------- terminal keyboard habits
+//
+// A terminal has no mouse, and the conventions a person expects there are
+// not the desktop's. Two of them differ from Qt outright:
+//
+//   Enter activates the control that HAS focus. On a desktop it activates
+//   the DEFAULT button instead, wherever focus is, and a focused button
+//   answers to Space.
+//
+//   Up and Down move between controls. On a desktop they move within one
+//   -- a list, a spin box -- and do nothing between them, because Tab is
+//   the way and a mouse is always there.
+//
+// OPT-IN, and off by default, because this library's premise is that an
+// unmodified application renders faithfully: an application that binds
+// Enter or Down itself must keep them, and a default that quietly took
+// them would break exactly the applications that had thought hardest
+// about their keys. Both fire only when the focused widget IGNORED the
+// key, so a list still takes its own arrows and a text field still takes
+// its own Enter.
+//
+// `doc/keyboard-first.md` is the guide this belongs to, and says what to
+// do instead where an application would rather do it itself.
+void set_keyboard_conventions(bool on);
+bool keyboard_conventions();
+
 // ---------------------------------------------------------------- InputRouter
 // Owns everything Qt's platform layer would normally own (measured F3/F4):
 // the shortcut table (synthetic keys never reach QShortcutMap), focus

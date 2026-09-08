@@ -23,6 +23,10 @@ Phase-2 build-out of those spikes. Expect API movement.
 - Deterministic snapshot testing with no tty (`NullBackend`, text fixtures).
 - Strict hygiene contract (`doc/design.md` §10.1): everything in
   `namespace Qtty`, no public macros, inert in GUI builds.
+- Keyboard-first by design: `doc/keyboard-first.md` is the guide for
+  making an application usable with no mouse -- what already works, the
+  two terminal conventions `Qtty::set_keyboard_conventions()` turns on,
+  and the practices that decide whether a terminal user can drive it.
 
 ## Build
 

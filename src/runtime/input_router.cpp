@@ -13,6 +13,13 @@
 
 namespace Qtty {
 
+// Off by default: see runtime.h. Process-wide rather than per-router
+// because an application using exec() never holds the router, which is
+// the same reason set_wide_clusters() and set_terminal_palette() are.
+static bool s_conventions = false;
+void set_keyboard_conventions(bool on) { s_conventions = on; }
+bool keyboard_conventions() { return s_conventions; }
+
 InputRouter::InputRouter(QWidget *window) : win_(window) {
 	quit_keys_ = { KeyEvent{Qt::Key_C, QString(), true, false, false},
 		          KeyEvent{Qt::Key_D, QString(), true, false, false} };
@@ -183,6 +190,37 @@ bool InputRouter::match_mnemonic(const KeyEvent &k) {
 		a->trigger();
 		return true;
 	}
+	// BUTTONS AND BUDDIES, which are not actions and were therefore
+	// unreachable. On a desktop `&Apply` on a push button is activated by
+	// Alt+A -- Qt registers a shortcut for the ampersand -- and `&Name:` on
+	// a label moves focus to the field it is the buddy of. Both are how a
+	// person without a mouse reaches a control DIRECTLY rather than tabbing
+	// to it, so on a terminal they matter more than on the desktop, and
+	// this router reached neither: it searched `QAction`s and a button is
+	// not one.
+	//
+	// After the actions, not before: a menu's `&File` and a button's
+	// `&File` in the same window is a collision the application made, and
+	// the menu is the older meaning.
+	for (QWidget *w : input_scope()->findChildren<QWidget *>()) {
+		if (!w->isVisible() || !w->isEnabled()) continue;
+		if (auto *b = qobject_cast<QAbstractButton *>(w)) {
+			if (mnemonic_of(b->text()) != want) continue;
+			// click() rather than animateClick(): a terminal has no
+			// animation to wait for, and animateClick defers the signal
+			// by a timer an application would have to spin for.
+			b->click();
+			return true;
+		}
+		if (auto *l = qobject_cast<QLabel *>(w)) {
+			QWidget *buddy = l->buddy();
+			if (!buddy || mnemonic_of(l->text()) != want) continue;
+			if (!buddy->isVisible() || !buddy->isEnabled()) continue;
+			buddy->setFocus(Qt::ShortcutFocusReason);
+			set_focus_widget(buddy);
+			return true;
+		}
+	}
 	return false;
 }
 
@@ -275,6 +313,37 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 	// above it at all, and then there is no "nearest" to speak of: the
 	// scope's first is as good an answer as any, and picking it is the
 	// convention rather than a resolution of ambiguity.
+	// The terminal conventions, when an application has asked for them and
+	// the focused widget did not want the key. Focus movement comes BEFORE
+	// the scroll fallback below on purpose: follow_focus() scrolls the
+	// layer to keep the focused widget visible, so moving focus scrolls as
+	// a consequence and lands somewhere a person can type, where scrolling
+	// alone moves the view and leaves focus behind it.
+	if (s_conventions && !press.isAccepted()) {
+		QWidget *const scope = input_scope();
+		if (k.qt_key == Qt::Key_Down || k.qt_key == Qt::Key_Up) {
+			QWidget *before = scope->focusWidget();
+			struct Probe : QWidget { using QWidget::focusNextPrevChild; };
+			static_cast<Probe *>(scope)->focusNextPrevChild(
+			    k.qt_key == Qt::Key_Down);
+			if (scope->focusWidget() != before) {
+				set_focus_widget(scope->focusWidget());
+				if (frame_requested) frame_requested();
+				return;
+			}
+		}
+		if (k.qt_key == Qt::Key_Return || k.qt_key == Qt::Key_Enter) {
+			// Enter on the control that has focus, which is what a
+			// terminal user means by it. A button only: Enter inside a
+			// text field is that field's business and it consumed the
+			// key already if it wanted it.
+			if (auto *b = qobject_cast<QAbstractButton *>(key_target())) {
+				b->click();
+				return;
+			}
+		}
+	}
+
 	if (!press.isAccepted() && (k.qt_key == Qt::Key_Up || k.qt_key == Qt::Key_Down
 	                            || k.qt_key == Qt::Key_PageUp || k.qt_key == Qt::Key_PageDown)) {
 		if (auto *area = input_scope()->findChild<QAbstractScrollArea *>()) {

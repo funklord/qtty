@@ -1543,6 +1543,103 @@ int suite_router() {
 		      "the zero above is the guard rather than a dead router");
 	}
 
+	// ---- the keyboard a terminal user expects --------------------------------
+	//
+	// A terminal has no mouse, so every control has to be reachable by key.
+	// Two things were missing and they are different in kind: a MNEMONIC on
+	// a button is a desktop behaviour this router dropped, and Enter-on-
+	// focus and arrow navigation are terminal CONVENTIONS the desktop does
+	// not have.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		auto *field = new QLineEdit(QStringLiteral("one"));
+		auto *name = new QLabel(QStringLiteral("&Name"));
+		auto *named = new QLineEdit(QStringLiteral("two"));
+		name->setBuddy(named);
+		auto *apply = new QPushButton(QStringLiteral("&Apply"));
+		int fired = 0;
+		QObject::connect(apply, &QPushButton::clicked, [&] { ++fired; });
+		v->addWidget(field);
+		v->addWidget(name);
+		v->addWidget(named);
+		v->addWidget(apply);
+		win.resize(GridMetrics::cells(30, 8));
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		auto key = [&](int qt_key, const QString &text, bool alt = false) {
+			r.on_key({qt_key, text, false, alt, false});
+			QCoreApplication::processEvents();
+		};
+
+		// A BUTTON's mnemonic, which is not an action and so was
+		// unreachable: the router searched QActions and a push button is
+		// not one. On a desktop Alt+A activates `&Apply`.
+		field->setFocus();
+		set_focus_widget(win.focusWidget());
+		key(Qt::Key_A, QStringLiteral("a"), true);
+		CHECK(fired == 1,
+		      "Alt and a button's own letter activates it, which is how a "
+		      "person without a mouse reaches it without tabbing there");
+
+		// A LABEL's mnemonic moves focus to the field it names, which is
+		// the other half of the same convention and the reason a form
+		// labels its fields with an ampersand at all.
+		field->setFocus();
+		set_focus_widget(win.focusWidget());
+		key(Qt::Key_N, QStringLiteral("n"), true);
+		CHECK(win.focusWidget() == named,
+		      "and a label's letter moves focus to the field it is the "
+		      "buddy of");
+
+		// The CONVENTIONS are off unless asked for, and that is the half
+		// that keeps an unmodified application unmodified: an application
+		// that binds Down or Enter itself keeps them.
+		CHECK(!keyboard_conventions(),
+		      "the terminal keyboard conventions are off until an "
+		      "application asks for them");
+		field->setFocus();
+		set_focus_widget(win.focusWidget());
+		key(Qt::Key_Down, QString());
+		CHECK(win.focusWidget() == field,
+		      "so Down does not move focus by itself, as it does not on a "
+		      "desktop");
+		const int before_enter = fired;
+		apply->setFocus();
+		set_focus_widget(win.focusWidget());
+		key(Qt::Key_Return, QStringLiteral("\r"));
+		CHECK(fired == before_enter,
+		      "and Enter on a focused button does nothing, Space being the "
+		      "desktop's key for that");
+
+		set_keyboard_conventions(true);
+		field->setFocus();
+		set_focus_widget(win.focusWidget());
+		key(Qt::Key_Down, QString());
+		CHECK(win.focusWidget() != field,
+		      "asked for, Down moves to the next control, so a form is "
+		      "walkable without Tab");
+		apply->setFocus();
+		set_focus_widget(win.focusWidget());
+		key(Qt::Key_Return, QStringLiteral("\r"));
+		CHECK(fired == before_enter + 1,
+		      "and Enter activates the control that has focus, which is "
+		      "what Enter means on a terminal");
+		// A text field keeps its own keys either way: the conventions fire
+		// only where the focused widget ignored the key, so this is not a
+		// router that has taken Enter away from everything.
+		named->setFocus();
+		set_focus_widget(win.focusWidget());
+		const int after = fired;
+		key(Qt::Key_Return, QStringLiteral("\r"));
+		CHECK(fired == after,
+		      "while Enter in a text field is still the field's own, "
+		      "because the conventions only take a key nothing wanted");
+		set_keyboard_conventions(false);          // process-wide: put it back
+	}
+
 	// ------------------------------------------------ section 5.5: drags
 	// Motion was parsed by the backend and dropped by the router, and there
 	// was no grab, so nothing that needs a drag worked -- section 7.2 recorded
