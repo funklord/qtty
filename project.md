@@ -13317,7 +13317,7 @@ literals are flagged.
 same shape.** `layout_gate.py` printed nothing on success, so a run that
 read five files and one that read none looked identical -- and the file
 list is a `wildcard`, which is exactly the thing that stops matching when
-a directory moves. It reports its population (`5 file(s), 4 call site(s)
+a directory moves. It reports its population (`N file(s), M call site(s)
 judged`) the way `style_gate.py` does, `make layout` refuses an empty
 list, and `make test-platforms` -- which had no counter at all where
 `make test` refuses a run over zero binaries in so many words -- refuses
@@ -15331,6 +15331,46 @@ they defend against. Dropping `1 bold` from the legend reports
 **No sabotage entry, and the reason is structural**: `sabotage.py` edits
 source files, and nothing these checks read is a source file. Verified by
 hand, as the tray checks are.
+
+### 8.57 One stale count in three, and why the other two held (2026-09-08)
+
+`evidence.md` names the form that rots: **a present-tense countable claim
+about the tree's own shape.** Neither half discriminates alone -- present
+tense is ordinary in a document stating principles, a count is ordinary in
+one recording measurements -- and the conjunction is rare enough to sweep.
+
+**The mechanical subset is a count a command can recount**, and this
+document has an obvious population of those: the gates print their own
+populations, so any sentence quoting one is checkable in a command. Three
+such quotations. **One was stale.**
+
+    style-gate's "61 file(s) pass ..."      HELD, and says why:
+                                            "Quoted as it read on
+                                            2026-08-31"
+    tools-check's "3 tool(s)"               HELD -- quoted as the text
+                                            that was REPLACED, and the
+                                            sentence says it reads
+                                            "3 of 4" now
+    layout-gate's "5 file(s), 4 call        STALE. Present tense, "It
+    site(s) judged"                         reports its population", and
+                                            it reports 6 files today
+
+**The two that held were guarded differently, and both guards work**: a
+date, and quoting a superseded string as superseded. The one that failed
+had neither, and it failed for the reason the rule predicts -- the
+sentence's POINT was the format, and the number came along for the ride.
+
+**The remedy is `evidence.md`'s own: stop quoting the count.** It reads
+`N file(s), M call site(s) judged` now, which says everything the sentence
+was for and cannot go stale. Pinning it to today's 6 would only move the
+expiry date.
+
+**And the counts that cannot rot were left alone**, which is most of them:
+`83 misaligned geometries on its first run`, `2372 violations across 48
+files` from a conversion that happened once, `47 files` measured in
+another tree on a day. Past-tense records of a measurement are not claims
+about the tree now, and rewriting them would destroy the only evidence
+they carry.
 
 ## 11. What is next, in order
 
