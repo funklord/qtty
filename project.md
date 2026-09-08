@@ -28,7 +28,9 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-07, at 1115.**
+**Last re-verified under all six configurations: 2026-09-08, at 1124**,
+and the full sabotage set with it: **90 entries, every one reddening the
+check it names**, zero inconclusive.
 Two sentences rather than one, deliberately. They used to be welded --
 *"N checks under six configurations, all six re-run <date>"* -- and a
 count bumped without re-running the six turned a measured record into a
@@ -44,6 +46,15 @@ UndefinedBehaviorSanitizer and the leak detector, a **debug** build --
 which is not the same code, `setup()` installing `GridGuard` itself under
 `!QT_NO_DEBUG` -- and **valgrind's memcheck**, which catches the one thing
 the sanitizers do not.
+
+**Re-verified 2026-09-08 at 1124**, with the whole sabotage set run end
+to end for the first time this session -- 90 entries, one baseline, 15
+source files edited and restored, every entry reddening the check it
+names. Each had been proved individually as it was written, most by hand;
+what the full run adds is that no entry has since stopped applying, and
+that none of them fails to BUILD, which an individual `--validate` cannot
+see. It took about ninety minutes against a machine at load 27 from other
+sessions.
 
 **Re-verified 2026-09-07 at 1115**, and three times in the day before
 that: at 1098 after the API-completeness pass of 8.42 to 8.46 -- which
