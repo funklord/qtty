@@ -31,6 +31,21 @@
 
 using namespace Qtty;
 
+// What Qt was told to say, kept rather than counted. A named function
+// because qInstallMessageHandler takes a plain function pointer, so the
+// text has to live in a file static either way -- the same reason
+// suite_graphics keeps a counter that way.
+//
+// It exists because a diagnostic is the whole of what some failures give a
+// user, and asserting that a call REFUSED leaves the sentence explaining
+// why unwatched: a message that has stopped describing its own case fails
+// silently, where a check that stopped firing would be noticed.
+static QString g_said;
+static void keep_message(QtMsgType, const QMessageLogContext &,
+                         const QString &m) {
+	g_said = m;
+}
+
 static int fails = 0;
 // The failure carries the condition that was false, not only the sentence.
 // A message that cannot separate the hypotheses it will generate guarantees
@@ -4034,8 +4049,11 @@ int suite_exec() {
 				r_at = out_backend.write_clipboard(
 				    QString(cap_bytes, QLatin1Char('x')));
 				w_at = cap.taken();
+				g_said.clear();
+				QtMessageHandler prev_h = qInstallMessageHandler(keep_message);
 				r_over = out_backend.write_clipboard(
 				    QString(cap_bytes + 1, QLatin1Char('x')));
+				qInstallMessageHandler(prev_h);
 				w_over = cap.taken();
 
 				out_backend.suspend();
@@ -4082,6 +4100,20 @@ int suite_exec() {
 			      "a copy exactly at the size bound goes out whole");
 			CHECK(!r_over && !w_over.contains("\033]52;"),
 			      "and one past it is REFUSED rather than silently truncated");
+			// The SENTENCE, not just the refusal. A copy that does not
+			// happen is invisible -- the selection is still highlighted and
+			// the clipboard simply holds what it held before -- so this
+			// message is the only thing that tells a user why, and it has
+			// to name the size and the bound to be worth reading. Nothing
+			// asserted it, which is the shape evidence.md names: pin the
+			// message, because asserting that it refused leaves exactly the
+			// half that rots.
+			printf("info: refusing a copy said: %s\n", qPrintable(g_said));
+			CHECK(g_said.contains(QStringLiteral("refused"))
+			      && g_said.contains(QString::number(cap_bytes + 1))
+			      && g_said.contains(QString::number(cap_bytes)),
+			      "and says so, naming both the size refused and the bound "
+			      "it broke");
 			// suspend() hands the terminal to whatever the application shelled
 			// out to, and read_winch() already refuses to write a geometry
 			// query into an editor for exactly this reason -- the reply would

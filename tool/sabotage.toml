@@ -804,3 +804,19 @@ find = "\t\tif (force == \"kitty-alpha\") return Capabilities::KittyAlpha;"
 into = "\t\tif (false) return Capabilities::KittyAlpha;"
 count = 1
 check = "each of the six values QTTY_GRAPHICS accepts"
+
+[[sabotage]]
+name = "the empty-overlay warning stops saying empty"
+file = "src/graphics/overlay.cpp"
+find = "\t\tqWarning(\"qtty: overlay rect %gx%g at (%g,%g) is empty, so nothing \""
+into = "\t\tqWarning(\"qtty: overlay rect %gx%g at (%g,%g) is fine, so nothing \""
+count = 1
+check = "and says the rectangle is empty, naming where it was put"
+
+[[sabotage]]
+name = "the clipboard refusal stops saying it refused"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tqWarning(\"qtty: clipboard copy of %lld bytes refused, over the %d byte\""
+into = "\t\tqWarning(\"qtty: clipboard copy of %lld bytes declined, over the %d byte\""
+count = 1
+check = "and says so, naming both the size refused and the bound it broke"

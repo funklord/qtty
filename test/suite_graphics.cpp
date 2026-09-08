@@ -31,6 +31,15 @@ static bool covers(const QRegion &r, const QRect &want) {
                          else { printf("FAIL: %s\n      condition: %s\n", \
                                        m, #c); ++fails; } } while (0)
 
+// What Qt was told to SAY, kept rather than counted, for the checks that
+// pin a diagnostic's wording. Same reason as the counter below: the
+// handler is a plain function pointer, so the text lives in a file static.
+static QString g_said;
+static void keep_message(QtMsgType, const QMessageLogContext &,
+                         const QString &m) {
+	g_said = m;
+}
+
 // Counts what Qt says while a call is being made. A named function rather
 // than a lambda because qInstallMessageHandler takes a plain function
 // pointer, so a capture is not available anyway and the counter has to be a
@@ -997,6 +1006,29 @@ int suite_graphics() {
 			      "an overlay nobody has placed covers the terminal");
 			CHECK(!positioned.covers_terminal(),
 			      "and one placed at a point with no size does not");
+			// AND SAYS SO, which is the whole value of that case. The
+			// header's comment records the fault it was written for: a rect
+			// COMPUTED as 0x0 at (5,5) used to be read as "the whole
+			// terminal", the largest interpretation available of a value
+			// that had most likely come from arithmetic that went wrong.
+			// The fix makes it draw nothing instead -- and an overlay that
+			// draws nothing is indistinguishable from one nobody placed,
+			// so the message is the only thing that tells the application
+			// its numbers were bad. Nothing asserted it.
+			{
+				Overlay complains;
+				g_said.clear();
+				QtMessageHandler prev_h = qInstallMessageHandler(keep_message);
+				complains.set_rect(QRectF(5, 5, 0, 0));
+				qInstallMessageHandler(prev_h);
+				printf("info: an empty overlay rect said: %s\n",
+				       qPrintable(g_said));
+				CHECK(g_said.contains(QStringLiteral("empty"))
+				      && g_said.contains(QStringLiteral("5")),
+				      "and says the rectangle is empty, naming where it was "
+				      "put, since drawing nothing looks exactly like never "
+				      "having been placed");
+			}
 			CHECK(!sized.covers_terminal()
 			      && sized.cell_rect() == QRectF(1, 2, 8, 4),
 			      "and an ordinary rectangle is kept as it was given");

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1135 checks, 0 failures. `make check` is green and includes
+1137 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15198,6 +15198,50 @@ Asked of every value set in the public headers:
 The instrument for all of them was the same: find the code that dispatches
 on the value set, read its branch data, and ask which rows have never been
 set rather than which lines have never run.
+
+### 8.54 A diagnostic is what some failures give a user (2026-09-08)
+
+`evidence.md` names this one and it had not been applied here: **pin the
+message, not the fact that it raised.** A check stopping fires is noticed;
+a message that has stopped describing its own case fails silently.
+
+The library has six diagnostics carrying a literal sentence. **One had its
+wording asserted anywhere** -- the off-grid geometry warning, which four
+checks match on. The other five were produced by tests and read by nobody.
+
+**The first sweep for this was broken and said all six were unpinned.** It
+built each fragment by stripping the format specifiers, so
+`overlay rect %gx%g at (%g,%g) is empty` became `overlay rect at (,) is`,
+which appears nowhere -- including in the source it came from. A control
+phrase known to be present is what separated a real absence from a
+mangled query, and it is the same manufactured absence `evidence.md`
+opens with.
+
+**Two were worth pinning, and both for the same reason: the failure is
+otherwise invisible.**
+
+A refused clipboard copy leaves the selection highlighted and the
+clipboard holding what it held before, so **nothing about the screen says
+the copy did not happen** -- the sentence is the whole of what the user
+gets, and it has to name the size and the bound to be worth reading. An
+overlay placed with an empty rectangle draws nothing, and an overlay that
+draws nothing is indistinguishable from one nobody placed; the message is
+the only thing telling the application its arithmetic went wrong. That
+case exists because a rect COMPUTED as 0x0 at (5,5) used to be read as
+*the whole terminal*, which the header records.
+
+**Both sabotage by rewording rather than by removing**, which is the point
+-- the call still fires, the behaviour is unchanged, and only the words
+move. Changing `empty` to `fine` and `refused` to `declined` reddens each.
+The clipboard sabotage also happened to swap the argument order, so the
+message named the wrong number, and the check caught that too.
+
+**Three left unpinned, and why**: the contrast warning fires per cell on
+real applications and pinning its wording would pin a sentence that names
+coordinates; the font `qFatal` cannot be produced without a font the grid
+refuses, which 8.40 records as six things tried; and the SIGWINCH pipe
+failure needs a pipe that cannot be made non-blocking. **Recorded rather
+than attempted, so the next reader knows the three are a choice.**
 
 ## 11. What is next, in order
 
