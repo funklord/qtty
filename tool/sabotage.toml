@@ -748,3 +748,11 @@ find = "\t\t\tif (c.attrs & Attr::Reverse) std::swap(fg, bg);"
 into = "\t\t\t;"
 count = 1
 check = "a reverse cell is rasterised on a different ground"
+
+[[sabotage]]
+name = "a placeholder too small for a box draws one anyway"
+file = "src/render/cell_paint.cpp"
+find = "\tif (c.width() < 2 || c.height() < 2) {"
+into = "\tif (false) {"
+count = 1
+check = "an unsupported widget too small for a box is still a mark"

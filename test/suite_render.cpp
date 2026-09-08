@@ -663,6 +663,42 @@ int suite_render(bool record) {
 			}
 		}
 
+		{
+			// THE SAME WIDGET, TOO SMALL FOR A BOX. Branch coverage said the
+			// `c.width() < 2 || c.height() < 2` arm of draw_placeholder had
+			// never run: every unsupported widget the suite had rendered was
+			// big enough to draw a frame and a label in.
+			//
+			// The whole point of the placeholder is that an unsupported
+			// widget is not silently missing. Below two cells the box has no
+			// interior, and measured with this arm deleted a one-cell widget
+			// renders a bare "\u2518" -- the bottom-right corner of a frame
+			// that has no other side. Not nothing, which was the guess, but
+			// worse than nothing in one way: a stray corner reads as a
+			// drawing fault in whatever is around it, where a shade block
+			// reads as "something is here that qtty cannot draw".
+			QGraphicsView tiny;
+			tiny.setScene(new QGraphicsScene(&tiny));
+			tiny.setFrameStyle(QFrame::NoFrame);
+			tiny.setAttribute(Qt::WA_DontShowOnScreen);
+			tiny.resize(GridMetrics::cells(1, 1));
+			tiny.show();
+			QCoreApplication::processEvents();
+			Qtty::CellBuffer b(3, 2);
+			Qtty::render_once(tiny, b);
+			const QString frame = b.to_text();
+			printf("info: a one-cell unsupported widget renders [%s]\n",
+			       qPrintable(frame.simplified()));
+			if (frame.contains(QStringLiteral("\u2592")))
+				printf("PASS: an unsupported widget too small for a box is "
+				       "still a mark on the screen rather than nothing\n");
+			else {
+				printf("FAIL: an unsupported widget too small for a box is "
+				       "still a mark on the screen rather than nothing\n");
+				++r;
+			}
+		}
+
 		// The PEN on a stroke, which Channel B used to throw away: every
 		// rule and every diagonal drew in the terminal's default colour, so
 		// an application's red graph line and Qt's grey frame shading came

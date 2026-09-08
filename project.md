@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1126 checks, 0 failures. `make check` is green and includes
+1127 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -14994,6 +14994,21 @@ one -- a cell whose foreground was set to exactly the default background.
 Branch coverage says as much: that test has never decided anything. **A
 clause that cannot be shown to matter does not get a sabotage entry**;
 recording why is cheaper than a check that cannot fail.
+
+**`cell_paint` and `grid_style` are noisier -- 50 and 77 conditional lines
+with a missing direction -- and one of them still paid.** The
+`draw_placeholder` arm for a rect under two cells had never run: every
+unsupported widget the suite rendered was big enough for a frame and a
+label. The tier exists so an unsupported widget is not silently missing,
+and below two cells the box has no interior.
+
+**What it does instead was measured rather than guessed, and the guess was
+wrong.** The comment first said a small one would leave nothing at all;
+with the arm deleted a one-cell `QGraphicsView` renders a bare `┘`, the
+bottom-right corner of a frame with no other side. Not nothing -- and
+worse than nothing in one way, because a stray corner reads as a drawing
+fault in whatever surrounds it, where a shade block reads as *something is
+here that qtty cannot draw*. The comment says that now.
 
 **A pattern worth naming across all three of this session's branch
 findings**: `drop_target`'s walk, the wheel's escape guard, and this. Each
