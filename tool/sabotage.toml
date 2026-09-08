@@ -708,3 +708,19 @@ find = "\t\tif (c == 0x1b) return i;      // a new escape: the old one was aband
 into = "\t\t;      // a new escape: the old one was abandoned"
 count = 1
 check = "an escape arriving inside it abandons it"
+
+[[sabotage]]
+name = "a four-byte Alt character is read as three"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\telse if ((alt & 0xF8) == 0xF0) len = 4;"
+into = "\t\telse if ((alt & 0xF8) == 0xF0) len = 3;"
+count = 1
+check = "Alt with a character of one, two, three or four bytes"
+
+[[sabotage]]
+name = "a split Alt character is decoded before it has arrived"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tif (pending_.size() < 1 + len) return false;      // still arriving"
+into = "\t\t;      // still arriving"
+count = 1
+check = "half of a multi-byte Alt character produces nothing yet"

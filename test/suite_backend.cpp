@@ -659,6 +659,51 @@ int suite_backend() {
 	      && rec.keys[0].text == QStringLiteral("a"),
 	      "Alt with an ASCII character still works");
 
+	// One byte and two were checked; THREE and FOUR were not, and branch
+	// coverage said so -- `len = 3` and `len = 4` had never been assigned.
+	// The lead byte decides how many continuation bytes belong to the key,
+	// and a wrong length is not a wrong character but several: the extra
+	// bytes stay in the buffer and decode as junk keys of their own.
+	//
+	// Asserted over the whole population, one to four bytes, because the
+	// two that were checked are the two anybody would write.
+	{
+		const struct { const char *utf8; const char *what; } wide[] = {
+			{ "a",  "one byte"    },
+			{ "\u00e9", "two bytes"   },      // e-acute
+			{ "\u3042", "three bytes" },      // HIRAGANA A
+			{ "\U0001F389", "four bytes" },   // party popper
+		};
+		QStringList bad;
+		for (const auto &w : wide) {
+			const QString want = QString::fromUtf8(w.utf8);
+			feed(QByteArray("\033") + want.toUtf8());
+			if (rec.keys.size() != 1 || !rec.keys[0].alt
+			    || rec.keys[0].text != want)
+				bad << QStringLiteral("%1: %2 key(s)")
+				           .arg(QLatin1String(w.what)).arg(rec.keys.size());
+		}
+		if (!bad.isEmpty())
+			printf("info: Alt with a multi-byte character: %s\n",
+			       qPrintable(bad.join(QStringLiteral("; "))));
+		CHECK(bad.isEmpty(),
+		      "Alt with a character of one, two, three or four bytes is one "
+		      "key event carrying the whole character");
+
+		// AND SPLIT ACROSS TWO READS, which is the case a terminal actually
+		// produces: bytes arrive in whatever chunks the pty hands over, and
+		// over ssh a three-byte character is routinely cut in half. The
+		// decoder must wait rather than decode what it has.
+		feed(QByteArray("\033\xe3\x81"));
+		CHECK(rec.keys.isEmpty(),
+		      "half of a multi-byte Alt character produces nothing yet");
+		feeder.send(QByteArray("\x82"));
+		QCoreApplication::processEvents();
+		CHECK(rec.keys.size() == 1 && rec.keys[0].alt
+		      && rec.keys[0].text == QString::fromUtf8("\u3042"),
+		      "and the rest of it completes the same one key");
+	}
+
 	// -- plain text still works, and is what most input is
 	feed("hi");
 	CHECK(rec.keys.size() == 2 && rec.keys[0].text == QStringLiteral("h"),

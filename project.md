@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1117 checks, 0 failures. `make check` is green and includes
+1120 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -14920,6 +14920,17 @@ that keeps every unterminated sequence from consuming the stream. The new
 check is named among the 28, which is what the sabotage entry needs -- a
 breakage this broad is otherwise the case `evidence.md` warns about, where
 something else fails first and the check under test is never reached.
+
+**Two more from the same file, smaller and worth taking.** `len = 3` and
+`len = 4` had never been assigned: Alt with a one- or two-byte character
+was checked and three and four were not, which are the two anybody would
+write and the two that were missing. **A wrong length is not a wrong
+character but several** -- the surplus bytes stay in the buffer and decode
+as junk keys of their own. And the `still arriving` wait had never run,
+though **a three-byte character cut in half is what a pty routinely hands
+over**, most of all across ssh; without the wait the decoder decodes what
+it has. Both sabotage cleanly, the first reporting
+`four bytes: 1 key(s)` from a population assertion over one to four bytes.
 
 **A pattern worth naming across all three of this session's branch
 findings**: `drop_target`'s walk, the wheel's escape guard, and this. Each
