@@ -430,6 +430,40 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 	// layer to keep the focused widget visible, so moving focus scrolls as
 	// a consequence and lands somewhere a person can type, where scrolling
 	// alone moves the view and leaves focus behind it.
+	// THE KEYBOARD ROUTE TO A CONTEXT MENU, which the platform normally
+	// supplies and which this library had filled in for the mouse only.
+	// on_mouse() synthesises QContextMenuEvent for a right press because
+	// "there is no platform here"; the Menu key and Shift+F10 are the same
+	// absence and were left open, so on a terminal a context menu was
+	// reachable ONLY BY POINTER -- the one thing doc/keyboard-first.md
+	// tells applications never to do, in the library that tells them.
+	// Measured before the fix: 0 QContextMenuEvent from either key.
+	//
+	// NOT opt-in, unlike the conventions below, and this is the line the
+	// distinction sits on. Practice 6 says qtty binds no shortcut of its
+	// own, and this binds none: it restores what every Qt application
+	// already has on every desktop, the way the MouseMove and right-press
+	// synthesis do. QWidget::event() reads contextMenuPolicy from the
+	// event, so NoContextMenu still yields nothing and a custom policy
+	// still emits the application's own signal -- the application keeps
+	// the decision, which a bound key would have taken from it.
+	//
+	// Gated on the press not being accepted, so a widget wanting F10 or
+	// the Menu key for itself keeps it: the same order the Tab and arrow
+	// paths use, and the guard 8.70 exists to defend.
+	//
+	// The centre of the widget, because a keyboard press has no position
+	// and the menu has to appear somewhere the focused control is. Qt's
+	// own platform code makes the same choice.
+	if (!press.isAccepted() && target
+	    && (k.qt_key == Qt::Key_Menu
+	        || (k.qt_key == Qt::Key_F10 && k.shift))) {
+		const QPoint local = target->rect().center();
+		QContextMenuEvent menu(QContextMenuEvent::Keyboard, local,
+		                       target->mapToGlobal(local));
+		QApplication::sendEvent(target, &menu);
+		return;
+	}
 	if (s_conventions && !press.isAccepted()) {
 		QWidget *const scope = input_scope();
 		if (k.qt_key == Qt::Key_Down || k.qt_key == Qt::Key_Up) {

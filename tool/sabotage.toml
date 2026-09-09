@@ -981,3 +981,14 @@ find = "\t\t\tQMouseEvent ev(QEvent::MouseMove, QPointF(pos), QPointF(screen),\n
 into = "\t\t\t(void)held;"
 count = 1
 check = "so a custom widget CAN know the pointer is on it"
+
+[[sabotage]]
+# The keyboard route to a context menu. Remove it and every action behind
+# a right-click is reachable only by pointer again -- silently, since a
+# menu that never opens looks like a widget with no context menu.
+name = "the Menu key and Shift+F10 open nothing"
+file = "src/runtime/input_router.cpp"
+find = "\t\tQContextMenuEvent menu(QContextMenuEvent::Keyboard, local,\n\t\t                       target->mapToGlobal(local));\n\t\tQApplication::sendEvent(target, &menu);"
+into = "\t\t(void)local;"
+count = 1
+check = "the Menu key opens a context menu"

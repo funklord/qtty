@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1186 checks, 0 failures. `make check` is green and includes
+1188 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15913,6 +15913,49 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.77 A context menu no keyboard could open (2026-09-09)
+
+Five entries of correcting prose, so this one went looking for code. The
+lens was the guide's own practice 4 -- *never let an action be reachable
+only by pointer* -- pointed at qtty rather than at the applications it
+lectures.
+
+**It was in breach of it.** `on_mouse()` synthesises a
+`QContextMenuEvent` for a right press, with a comment saying the platform
+layer that normally does this is absent. **The Menu key and Shift+F10 are
+the same absence and nobody filled them in**, so measured before the fix:
+
+    context menu by Menu key = 0, by Shift+F10 = 0
+
+Every action behind a right-click -- a QLineEdit's cut and paste
+included -- was unreachable without a mouse, in the library that tells
+applications not to do that. The mouse half was noticed because somebody
+was fixing mouse buttons; the keyboard half had no such occasion.
+
+**The fix is not opt-in, and that is the line worth stating.** The
+conventions bundle is opt-in because it binds keys a terminal user
+expects and an application might want. This binds nothing: it restores
+what every Qt application already has on every desktop, the way the
+`MouseMove` and right-press synthesis do. `QWidget::event()` reads
+`contextMenuPolicy` off the event, so `NoContextMenu` still yields
+nothing and a custom policy still emits the application's own signal --
+**the application keeps the decision**, which a bound key would have
+taken from it. It is gated on the press not being accepted, so a widget
+that wants F10 keeps it.
+
+Practice 6 says qtty binds no shortcut of its own, so the guide now says
+in that paragraph why this is not a counter-example. **Writing the fix
+without that sentence would have created exactly the document
+contradiction 8.75 and 8.76 were about**, four entries after finding the
+first one.
+
+**The check's first version reported Shift+F10 broken and was wrong.**
+The Menu key had opened a REAL popup, so the next key went to the menu --
+correct routing, read as a failure. The diagnostic showed two different
+target pointers and that was the whole story; the check closes the menu
+between the two keys now. *Read the input before theorising about the
+mechanism*, on a fixture rather than a program.
 
 ### 8.76 The guide inherited its wrong claim from here (2026-09-09)
 

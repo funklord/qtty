@@ -40,6 +40,7 @@ reimplements it:
 | `Enter` | Fires the focused button if focus is on one; otherwise the dialog's **default** button | Qt's |
 | `Alt` + letter | Reaches a menu, a toolbar action, a **button**, or the field a **label** is the buddy of | qtty's |
 | `Alt` + a letter that matches nothing | Nothing. It does not type the letter into whatever has focus | qtty's |
+| `Menu`, `Shift+F10` | Opens the focused widget's context menu, honouring its `contextMenuPolicy` | qtty's |
 | `Ctrl+C`, `Ctrl+D` | Quit. Change them with `InputRouter::set_quit_keys()` | qtty's |
 
 The `Alt` rows are qtty's because a terminal delivers keys as bytes and
@@ -157,6 +158,12 @@ menu, a hover reveal, a drag: each needs a keyboard route beside it. Put
 the same action in a menu, give it a shortcut, or both. `QAction` in a
 `QMenu` gets you a mnemonic and a shortcut at once.
 
+A right-click menu is the exception you get for free: `Menu` and
+`Shift+F10` open it, and your `contextMenuPolicy` is honoured exactly as
+on a desktop. That was not true until the library was measured against
+this very practice -- the mouse route had been supplied and the keyboard
+one had not. A hover reveal and a drag still need a route you provide.
+
 **5. Leave a way back from every layer.** Modal dialogs and menus answer
 `Esc` already. A layer of your own -- a page in a `QStackedWidget`, an
 inline editor, a mode -- does not, and a user who cannot get back is
@@ -179,7 +186,10 @@ convention added later cannot quietly take it.
 
 **6. Reach every window.** qtty binds **no** shortcut of its own beyond
 the quit keys, because any key it took by default would be one an
-application could not use. So a second top-level window is unreachable
+application could not use. (`Menu` and `Shift+F10` are not a counter-
+example: they are the platform's own behaviour, restored, and a widget
+that wants either key keeps it -- the context menu opens only when
+nothing accepted the press.) So a second top-level window is unreachable
 until either you bind `Qtty::next_window()` yourself or you turn on the
 conventions, which put it on `F6`. Do one of the two: a window nobody can
 get to is worse than one that was never opened.

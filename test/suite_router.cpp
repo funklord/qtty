@@ -2084,6 +2084,54 @@ int suite_router() {
 			hb->removeEventFilter(&w);
 		}
 
+		// A CONTEXT MENU WITHOUT A MOUSE. qtty synthesises
+		// QContextMenuEvent for a right press, because the platform
+		// layer that normally does it is absent -- and the KEYBOARD
+		// routes live in that same absent layer and were left open.
+		// Measured before the fix: 0 events from either key, so every
+		// action behind a right-click was reachable only by pointer,
+		// in the library whose own guide forbids exactly that.
+		{
+			struct Ctx : QObject {
+				int n = 0;
+				bool eventFilter(QObject *, QEvent *e) override {
+					if (e->type() == QEvent::ContextMenu) ++n;
+					return false;
+				}
+			};
+			Ctx cm;
+			auto *cw = new QLineEdit;
+			v->addWidget(cw);
+			QCoreApplication::processEvents();
+			cw->installEventFilter(&cm);
+			cw->setFocus();
+			set_focus_widget(win.focusWidget());
+			r.on_key({Qt::Key_Menu, QString(), false, false, false});
+			QCoreApplication::processEvents();
+			CHECK(cm.n == 1 && !r.popups().isEmpty(),
+			      "the Menu key opens a context menu, so an action behind "
+			      "a right-click is reachable without a mouse");
+
+			// Close it before asking again. The first version of this
+			// check did not, read Shift+F10 as broken, and was wrong:
+			// the Menu key had opened a REAL popup, so the next key went
+			// to the menu, which is correct routing. The pointers in the
+			// diagnostic differed and that was the whole story.
+			r.on_key({Qt::Key_Escape, QString(), false, false, false});
+			QCoreApplication::processEvents();
+			cw->setFocus();
+			set_focus_widget(win.focusWidget());
+			const int after_esc = cm.n;
+			r.on_key({Qt::Key_F10, QString(), false, false, true});
+			QCoreApplication::processEvents();
+			CHECK(cm.n == after_esc + 1,
+			      "and Shift+F10 does too, the other key every desktop "
+			      "binds to the same thing");
+			r.on_key({Qt::Key_Escape, QString(), false, false, false});
+			QCoreApplication::processEvents();
+			cw->removeEventFilter(&cm);
+		}
+
 		// What an application SHOWS. A terminal user cannot find a binding
 		// by looking for a button, so the guide asks every application to
 		// put its keys on the screen -- and one that wrote "F6 window"
