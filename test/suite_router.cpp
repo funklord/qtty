@@ -2246,6 +2246,38 @@ int suite_router() {
 			      "would leave alone");
 		}
 
+		// AND A SHORTCUT DOES NOT FIRE FROM BEHIND AN OPEN MENU, which
+		// is the rule the QAction table already followed and which the
+		// QShortcut loop was written to match -- `if (popup_owns_input)
+		// return true` swallows the chord rather than firing it. Adding
+		// the code without the check would have left the one branch of
+		// the new loop that says NO untested, which is the half a
+		// sabotage of the other half cannot reach.
+		{
+			int behind = 0;
+			auto *bsc = new QShortcut(
+			    QKeySequence(QStringLiteral("Ctrl+B")), &win);
+			QObject::connect(bsc, &QShortcut::activated,
+			                 [&] { ++behind; });
+			QMenu blocker(&win);
+			blocker.addAction(QStringLiteral("One"));
+			blocker.popup(QPoint(0, 0));
+			QCoreApplication::processEvents();
+			const bool up = !r.popups().isEmpty();
+			r.on_key({Qt::Key_B, QStringLiteral("b"), true, false, false});
+			QCoreApplication::processEvents();
+			CHECK(up && behind == 0,
+			      "a QShortcut does not fire from behind an open menu, the "
+			      "chord being swallowed exactly as an action's is");
+			r.on_key({Qt::Key_Escape, QString(), false, false, false});
+			QCoreApplication::processEvents();
+			r.on_key({Qt::Key_B, QStringLiteral("b"), true, false, false});
+			QCoreApplication::processEvents();
+			CHECK(behind == 1,
+			      "and fires once the menu is gone, so the swallow is the "
+			      "menu's doing rather than the shortcut being broken");
+		}
+
 		// What an application SHOWS. A terminal user cannot find a binding
 		// by looking for a button, so the guide asks every application to
 		// put its keys on the screen -- and one that wrote "F6 window"

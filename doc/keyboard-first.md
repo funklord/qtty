@@ -140,7 +140,17 @@ is one line, and it is what makes a form walkable.
 **And ask it what it bound** rather than writing the table above into your
 own status bar -- see practice 8.
 
-## Practices, in the order they matter
+## Practices
+
+**Most are advice**, roughly in the order they pay off: they turn an
+application a terminal user can operate into one they can operate
+comfortably. **Practices 9, 10 and 11 are not advice but traps** -- each
+concerns a custom widget, breaks something silently, and breaks it only
+on the terminal, so the desktop build hides all three. They sit here
+because that is where custom-widget material belongs, not because they
+matter least. If you are writing a widget of your own, read those three
+first; they are collected with a fourth in the table below, under *If you
+are writing a custom widget*.
 
 **1. Give every control a mnemonic, and every field a labelled buddy.**
 
@@ -362,6 +372,26 @@ by type, Qt exposing no generic "accepts a newline" query -- so if you
 write one, fold them yourself. This is the fourth thing on this page a
 custom widget must do that a standard one gets free, with practices 9,
 10 and 11; they are worth reading together before writing one.
+
+## If you are writing a custom widget
+
+Four things a standard Qt widget gets and yours does not. **Each is one
+line, each fails silently, and each fails only on the terminal** -- the
+desktop build hides all four, which is what makes them worth collecting
+in one place rather than leaving scattered above.
+
+| Do this | Or else |
+|---|---|
+| `event->ignore()` for a key carrying `Alt` (practice 9) | you eat the `z` of an `Alt+Z` that was meant for a menu |
+| Draw a focus mark, asking `Qtty::focusWidget()` (practice 10) | nothing marks you, and `hasFocus()` is permanently false here |
+| `setAttribute(Qt::WA_InputMethodEnabled)` if you edit text (practice 11) | `Ctrl+C` quits instead of copying, and no cursor is placed on you |
+| Fold pasted newlines if you are single-line (*Copy and paste*) | you get the raw ones: the fold is by type and your type is not on the list |
+
+None of these is a limitation of the library so much as the price of Qt
+having no way to ask a widget what it is. Where a question could be put
+to the widget, qtty puts it -- `WA_InputMethodEnabled` is exactly that,
+and it is why the list is four items rather than a class list nobody
+could keep current.
 
 ## Checking it without a terminal
 

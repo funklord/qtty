@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1194 checks, 0 failures. `make check` is green and includes
+1196 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15915,6 +15915,62 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.84 The run of record, and a number read off a stale binary (2026-09-09)
+
+**The full sabotage set completed: 121 of 121 reddened the check they
+name, no failure and nothing inconclusive**, against a clean tree holding
+every commit of the day. It is the first complete run of the session --
+two earlier attempts reached 73 and were stopped to land queued work, so
+the tail had been abandoned twice and is now covered.
+
+**It was nearly reported as invalid, on a number read off a stale
+binary.** The log's baseline said *1181 checks passing* while
+`count-check` says 1194, which reads exactly like a run against a tree
+from several commits ago -- the one thing that would make the result
+worthless.
+
+Three measurements settled it, and the order matters:
+
+- **The harness counts a SET.** `green = set(passing_checks(out))`, so
+  duplicate messages collapse; its number was never comparable to
+  `count-check`'s and the difference proved nothing on its own.
+- **Reproducing its exact method.** `make test`, stdout only, unique:
+  **1181**, matching the baseline. The first contradicting number came
+  from running `build-test/qtty-tests` directly against a binary left
+  over in the tree, which is this file's oldest complaint -- *never
+  conclude from a binary the build step did not rebuild* -- committed by
+  the session that keeps writing it down.
+- **Determinism, because one measurement agreeing is not enough.** Three
+  consecutive runs produced **identical sets of 1181**. Had the set
+  varied, the harness's per-entry comparison would be unsound for any
+  entry naming a wandering check, so this was worth the two minutes
+  rather than an assumption.
+
+**The six configurations were re-taken at the same time and are green**
+-- xcb under Xvfb, the minimal platform refusing as designed, a hostile
+environment absorbed, ASan/UBSan/LSan clean, `test-valgrind: clean`.
+They were last verified at 1169 and the tree is at 1196, so they were
+owed rather than repeated.
+
+**And writing them up found a branch of the new code with no check.** The
+`QShortcut` loop swallows a chord while a popup owns input, matching what
+the action table already did -- and nothing tested that half. A sabotage
+of the *matching* half cannot reach it, since removing the loop makes
+both branches silent. Two checks now: the shortcut does not fire from
+behind an open menu, and fires once the menu is gone, the second being
+the control that stops the first passing for a shortcut that never
+worked at all.
+
+**And one wrong turn inside the investigation is worth keeping**: an
+early comparison used `make test 2>&1`, which merges Qt's own warnings
+into stdout mid-line and corrupts PASS lines into strings that look like
+distinct checks. The harness does not have that problem and says why --
+it captures the two streams separately, *"parsing a stream nobody else
+writes to removes the whole class"*. **The instrument was sound and the
+person reading it was not**, which is the ordinary case and the reason
+the remedy is to reproduce the tool's method rather than invent a
+comparable one.
 
 ### 8.83 QShortcut did nothing at all (2026-09-09)
 
