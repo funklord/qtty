@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1196 checks, 0 failures. `make check` is green and includes
+1198 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15915,6 +15915,44 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.85 A nested event loop, which nothing had ever run (2026-09-10)
+
+The implementer's-question lens again, and this one is asked by a large
+share of every Qt application there is:
+
+    if (dialog.exec() == QDialog::Accepted) ...
+
+`exec()` runs a **nested QEventLoop**. Nothing in this suite had ever run
+one -- no check called `exec()` on a dialog, and neither the guide nor the
+README mentioned it. After `QShortcut` turned out to fire nothing at all,
+an untested path that common was worth measuring rather than assuming.
+
+**It works, and the reason it works is a property rather than a
+coincidence.** This library owns no loop: input arrives on a
+`QSocketNotifier` and frames on a timer, so a nested loop pumps both
+exactly as the outer one does. **A backend that ever grew a read loop of
+its own would freeze every dialog in every application at once**, and the
+application would look hung with nothing anywhere to say why. That is
+what the check is for -- the behaviour is not in doubt today, the
+property it rests on is.
+
+**The check reads the frame from INSIDE the nested loop**, which is the
+whole question: not whether `exec()` returns, but whether the screen went
+on living while it was up. A timer inside the dialog captures
+`last_frame()` and then accepts, and the assertion is a relationship
+rather than a presence -- the dialog's text absent from the frame before
+it opened and present in the one taken during it. "The frame contains
+MODAL" would pass just as well if it always had.
+
+**Two things the suite's own comments saved.** A `singleShot(0)` fires
+before `exec()` has a loop to run in -- the capability block above says so
+in as many words -- so the opener is a repeating timer. And the whole
+check is bounded only by the suite's timeout: if the nested loop does not
+run, `exec()` never returns and no timer inside it can fire, so a failure
+**hangs rather than reddens**. `running-code.md` calls that worse than no
+gate; the drag checks pay the same tax, and the alternative is not testing
+the thing at all.
 
 ### 8.84 The run of record, and a number read off a stale binary (2026-09-09)
 

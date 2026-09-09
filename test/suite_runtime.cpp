@@ -137,6 +137,82 @@ int suite_runtime() {
 		CHECK(!is_tui_active(), "exec() clears the TUI flag on the way out");
 	}
 
+	// ------------------------- a modal dialog run with exec() (nested loop)
+	{
+		// `if (d.exec() == QDialog::Accepted)` is how a large share of Qt
+		// applications ask a question, and it runs a NESTED QEventLoop --
+		// which nothing here had ever run. It works because this library
+		// owns no loop of its own: input arrives on a QSocketNotifier and
+		// frames on a timer, so a nested loop pumps both exactly as the
+		// outer one does.
+		//
+		// That is worth pinning rather than inferring. A backend that grew
+		// a read loop of its own would freeze every dialog in every
+		// application at once, and the application would look hung with
+		// nothing anywhere to say why.
+		//
+		// BOUNDED BY THE SUITE'S OWN TIMEOUT and not by anything here: if
+		// the nested loop does not run, exec() never returns and no timer
+		// inside it can fire, so this hangs rather than failing.
+		// running-code.md calls that worse than no gate, and it is the
+		// same tax the drag checks pay -- the alternative is not testing
+		// the thing at all.
+		NullBackend backend(QSize(40, 12));
+		QWidget win;
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->setSpacing(0);
+		v->addWidget(new QLabel(QStringLiteral("under"), &win));
+		v->addStretch();
+
+		int result = -1;
+		QString drawn_while_up, before_up;
+		bool opened = false;
+		// Repeating rather than singleShot(0), for the reason the capability
+		// block above gives: a zero timer fires before there is a loop to
+		// run in, and this one has to run INSIDE one.
+		QTimer opener;
+		opener.setInterval(10);
+		QObject::connect(&opener, &QTimer::timeout, [&] {
+			if (opened) return;
+			opened = true;
+			// What the screen held BEFORE the dialog, so the check
+			// below discriminates: "the frame contains MODAL" would
+			// pass just as well if it always had.
+			before_up = backend.last_frame();
+			QDialog d(&win);
+			d.setModal(true);
+			auto *dv = new QVBoxLayout(&d);
+			dv->addWidget(new QLabel(QStringLiteral("MODAL")));
+			// Read what the terminal is drawing from INSIDE the nested
+			// loop, which is the whole question: not whether exec()
+			// returns, but whether the screen went on living while it
+			// was up.
+			QTimer closer;
+			closer.setInterval(10);
+			QObject::connect(&closer, &QTimer::timeout, [&] {
+				drawn_while_up = backend.last_frame();
+				d.accept();
+			});
+			closer.start();
+			result = d.exec();
+			qApp->quit();
+		});
+		opener.start();
+		const int rc = exec(*qApp, win, backend);
+		opener.stop();
+
+		CHECK(rc == 0 && result == QDialog::Accepted,
+		      "a modal dialog run with exec() returns, so a nested event "
+		      "loop runs here at all");
+		CHECK(!before_up.isEmpty()
+		      && !before_up.contains(QStringLiteral("MODAL"))
+		      && drawn_while_up.contains(QStringLiteral("MODAL")),
+		      "and the terminal drew the dialog while that loop was "
+		      "spinning -- absent before it opened, present during it, "
+		      "which is what an application asking with exec() depends on");
+	}
+
 	// --------------------------------------- font provisioning (5.3, risk R3)
 	{
 		// The font setup() installed, rather than a second one built here to

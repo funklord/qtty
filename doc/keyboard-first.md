@@ -373,6 +373,20 @@ write one, fold them yourself. This is the fourth thing on this page a
 custom widget must do that a standard one gets free, with practices 9,
 10 and 11; they are worth reading together before writing one.
 
+## Modal dialogs and `exec()`
+
+`if (dialog.exec() == QDialog::Accepted)` works, and the terminal goes on
+drawing while the dialog is up. That is worth stating because it is not
+obvious: `exec()` runs a **nested event loop**, and a library that owned
+a read loop of its own would freeze the screen inside one. qtty owns
+none -- input arrives on a `QSocketNotifier`, frames on a timer -- so a
+nested loop pumps both exactly as the outer one does. A check pins it, by
+reading the frame from inside the nested loop and asserting the dialog is
+in it.
+
+`Esc` rejects such a dialog and its default button answers `Enter`, both
+Qt's own; see the first table.
+
 ## If you are writing a custom widget
 
 Four things a standard Qt widget gets and yours does not. **Each is one
