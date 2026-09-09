@@ -21,17 +21,36 @@ void set_keyboard_conventions(bool on) { s_conventions = on; }
 bool keyboard_conventions() { return s_conventions; }
 
 QVector<QPair<QString, QString>> keyboard_conventions_help() {
-	if (!s_conventions) return {};
 	// Written once, here, beside the code that acts on them. The list and
 	// the behaviour drifting apart is the whole failure this exists to
 	// prevent, so a binding added below must be added here in the same
 	// edit -- and a check reads both.
+	//
+	// It answers "what does qtty respond to RIGHT NOW", which stopped
+	// being the same as the opt-in bundle in 8.77: the context menu's
+	// keyboard route works whether or not an application asked for the
+	// conventions. Returning nothing while that key worked would have sent
+	// an application back to hand-writing the row, which is the one thing
+	// the guide's practice 8 exists to prevent. The empty answer was never
+	// the contract -- "never promise a key that does nothing" was, and a
+	// key that always works belongs in the list always.
+	//
+	// The QUIT KEYS are deliberately absent, and the same rule puts them
+	// there: set_quit_keys() changes them per router, and this is a free
+	// function with no router to ask, so naming Ctrl+C would promise a key
+	// an application may have taken away. The same fault, pointed the
+	// other way.
+	const QPair<QString, QString> menu = {
+		QStringLiteral("Menu/Shift+F10"), QStringLiteral("context menu")
+	};
+	if (!s_conventions) return { menu };
 	return {
 		{ QStringLiteral("Enter"),          QStringLiteral("activate") },
 		{ QStringLiteral("Up/Down"),        QStringLiteral("move") },
 		{ QStringLiteral("Ctrl+PgUp/PgDn"), QStringLiteral("tab") },
 		{ QStringLiteral("F6"),             QStringLiteral("window") },
 		{ QStringLiteral("Alt+letter"),     QStringLiteral("jump to") },
+		menu,
 	};
 }
 

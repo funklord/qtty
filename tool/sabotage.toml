@@ -933,12 +933,16 @@ count = 1
 check = "the conventions can list what they bind"
 
 [[sabotage]]
-name = "the list is offered even with the conventions off"
+# Re-anchored in 8.78 rather than deleted: the shape changed when the
+# help stopped being empty with the conventions off, and the property it
+# defends did not. Listing an opt-in key that is not on is still promising
+# a key that does nothing.
+name = "the opt-in keys are listed even when they are off"
 file = "src/runtime/input_router.cpp"
-find = "\tif (!s_conventions) return {};"
+find = "\tif (!s_conventions) return { menu };"
 into = "\t;"
 count = 1
-check = "with the conventions off it lists nothing"
+check = "it lists only the keys that work anyway"
 
 [[sabotage]]
 # The two halves of `tab_stop`, which the router moves through and
@@ -992,3 +996,15 @@ find = "\t\tQContextMenuEvent menu(QContextMenuEvent::Keyboard, local,\n\t\t    
 into = "\t\t(void)local;"
 count = 1
 check = "the Menu key opens a context menu"
+
+[[sabotage]]
+# The always-on row. Drop it and the help is empty whenever an
+# application has not asked for the conventions -- so a hint bar built
+# the way practice 8 asks says nothing about the one key that reaches a
+# context menu, and the application is back to hand-writing it.
+name = "the help forgets the keys that work without the opt-in"
+file = "src/runtime/input_router.cpp"
+find = "\t\tQStringLiteral(\"Menu/Shift+F10\"), QStringLiteral(\"context menu\")"
+into = "\t\tQStringLiteral(\"Menu/Shift+F11\"), QStringLiteral(\"context menu\")"
+count = 1
+check = "it lists only the keys that work anyway"

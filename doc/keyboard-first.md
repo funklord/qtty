@@ -224,10 +224,14 @@ Do not hand-write the ones qtty binds. Ask for them:
         hints << key + " " + what;
     status->setText(hints.join("  \u00b7  "));
 
-It returns **nothing** when the conventions are off, so the same code is
-right either way and never promises a key that does nothing. Writing
-`"F6 window"` into your own status bar instead keeps a second copy of a
-fact this library owns, and the copy is wrong the day the binding moves.
+It lists **what qtty answers right now** -- the five conventions when
+they are on, and `Menu/Shift+F10` either way, since the context menu's
+keys do not need the opt-in. So the same code is right in both states and
+never promises a key that does nothing. Writing `"F6 window"` into your
+own status bar instead keeps a second copy of a fact this library owns,
+and the copy is wrong the day the binding moves -- which it did: the
+context-menu row appeared after this guide was first written, and an
+application asking for the list got it without an edit.
 
 **9. In a custom widget, ignore keys that carry `Alt`.** qtty withholds
 the letter from widgets Qt marks as taking text, which covers every

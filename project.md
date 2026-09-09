@@ -15914,6 +15914,68 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.78 The fix in 8.77 broke the guide's practice 8 (2026-09-09)
+
+The same lens again -- the guide's practices pointed at qtty -- and this
+time it caught the previous entry. Practice 8 says **do not hand-write
+the keys qtty binds, ask for them**, because a copy is wrong the day the
+binding moves. 8.77 moved a binding. `keyboard_conventions_help()` did
+not know, so an application following practice 8 exactly would show a
+hint bar that **never mentions the one key that reaches a context menu**.
+
+**The contract was not "empty when the conventions are off".** That was
+the consequence of every listed key being opt-in, and the check said the
+reason out loud: *never promise a key that does nothing*. The context
+menu's keys do something whether or not an application asked for the
+conventions, so they belong in the list always. It answers "what does
+qtty respond to right now", which is what a hint bar shows.
+
+**The quit keys stay out, and the same rule puts them there.**
+`set_quit_keys()` changes them per router and this is a free function
+with no router to ask, so naming Ctrl+C would promise a key an
+application may have taken away. The same fault, pointed the other way.
+
+**Two sabotage entries needed work, and one had gone obsolete rather than
+stale.** The entry anchored on `if (!s_conventions) return {};` names a
+line that no longer exists and a check whose message no longer exists,
+because the behaviour deliberately changed. Deleting it would have
+dropped a property that still holds -- listing an opt-in key that is not
+on is still promising a key that does nothing -- so it is re-anchored to
+`if (s_conventions)` and reddens the new check. The other broke because
+re-indenting the list by one tab moved its anchor, which `--validate`
+catches and no amount of reading would.
+
+**8.70 said a sabotage entry can rot without anybody editing it. This is
+the other way round: an entry can rot BECAUSE somebody edited the code it
+guards, and the edit was correct.** `--validate` catches the anchor; only
+reading the entry catches a check name that has stopped existing.
+
+**And an anchor keyed on indentation moves when the code is reflowed,
+twice in one edit.** The F6 row's anchor broke when the list gained a tab
+and broke again when it lost one -- the same entry, the same line, no
+change to what it guards. The style gate caused the first: it models an
+unbraced `if` body but not a braced initialiser inside an assignment, so
+`rows = { ... }` under a bare `if` was refused.
+
+**The code was NOT braced to satisfy it.** `code-style.md` records what
+that costs -- a style document once told authors to brace single-statement
+bodies because the tool counted braces, and twenty-two lines across five
+projects were deformed to silence it. The function is written in the shape
+this file already used and the gate already accepted, an early return and
+a `return { ... }` at function-body level, which reads better than the
+version that provoked the argument:
+
+    const QPair<QString, QString> menu = { ... };
+    if (!s_conventions) return { menu };
+    return { five conventions..., menu };
+
+Whether the gate should model an assignment's initialiser is a question
+for the shared tool rather than for this tree, and it is not raised here:
+nothing was worked around, and one file finding one shape awkward is not
+a measurement.
+
+
+
 ### 8.77 A context menu no keyboard could open (2026-09-09)
 
 Five entries of correcting prose, so this one went looking for code. The

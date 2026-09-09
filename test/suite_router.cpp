@@ -2149,7 +2149,8 @@ int suite_router() {
 			CHECK(keys.contains(QStringLiteral("Enter"))
 			      && keys.contains(QStringLiteral("Up/Down"))
 			      && keys.contains(QStringLiteral("Ctrl+PgUp/PgDn"))
-			      && keys.contains(QStringLiteral("F6")),
+			      && keys.contains(QStringLiteral("F6"))
+			      && keys.contains(QStringLiteral("Menu/Shift+F10")),
 			      "the conventions can list what they bind, so an "
 			      "application shows the keys without keeping its own copy "
 			      "of them");
@@ -2160,10 +2161,17 @@ int suite_router() {
 			      "meaning beside it being no help at all");
 		}
 		set_keyboard_conventions(false);          // process-wide: put it back
-		CHECK(keyboard_conventions_help().isEmpty(),
-		      "and with the conventions off it lists nothing, so an "
-		      "application can show the list unconditionally and never "
-		      "promise a key that does nothing");
+		// NOT empty, since 8.77. The contract was never "empty when
+		// off" -- it was never promise a key that does nothing, and the
+		// context menu's keys work whether or not the conventions were
+		// asked for. An application showing this list unconditionally
+		// still gets exactly the keys that answer.
+		const auto off = keyboard_conventions_help();
+		CHECK(off.size() == 1
+		      && off[0].first == QStringLiteral("Menu/Shift+F10"),
+		      "and with the conventions off it lists only the keys that "
+		      "work anyway, so the list is what answers rather than what "
+		      "was opted into");
 	}
 
 	// ------------------------------------------------ section 5.5: drags
