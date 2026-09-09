@@ -37,7 +37,7 @@ reimplements it:
 | `Space` | Activates the focused button, toggles the focused check box | Qt's |
 | Arrows | Work inside a control that wants them -- a slider moves, a list selects, a spin box steps | Qt's |
 | `Esc` | Closes an open menu; rejects a modal dialog | Qt's |
-| `Enter` | Fires the dialog's **default** button, wherever focus is | Qt's |
+| `Enter` | Fires the focused button if focus is on one; otherwise the dialog's **default** button | Qt's |
 | `Alt` + letter | Reaches a menu, a toolbar action, a **button**, or the field a **label** is the buddy of | qtty's |
 | `Alt` + a letter that matches nothing | Nothing. It does not type the letter into whatever has focus | qtty's |
 | `Ctrl+C`, `Ctrl+D` | Quit. Change them with `InputRouter::set_quit_keys()` | qtty's |
@@ -135,8 +135,16 @@ a control *directly*. It costs one character.
 
     buttons->button(QDialogButtonBox::Ok)->setDefault(true);
 
-`Enter` then commits from anywhere in the dialog, which is what a person
-expects, and it works with no opt-in.
+`Enter` then commits from anywhere in the dialog **except another
+button**, and it works with no opt-in.
+
+That exception is Qt's `autoDefault`, which is on for a `QPushButton` in a
+dialog: a button that has focus becomes the effective default and takes
+`Enter` for itself. Measured, both with the opt-in conventions and
+without. It is the behaviour you want -- `Enter` on a highlighted
+*Cancel* should cancel -- but it means a default button is not a promise
+that `Enter` always commits, and a form whose first `Tab` lands on a
+button will commit somewhere else than you drew it.
 
 **3. Make the tab order the reading order.** Qt's default is construction
 order, which is usually right and silently is not after a refactor.

@@ -1847,6 +1847,97 @@ int suite_router() {
 			CHECK(tabs->currentIndex() == 1,
 			      "and a tab's own letter reaches it, so a page is one "
 			      "keystroke away rather than a count of steps");
+
+			// CTRL+TAB, which is Qt's and not qtty's -- and which
+			// nothing pinned. The suite asserted only that Ctrl+Tab does
+			// NOT cycle focus, a lone negative that passes just as well
+			// if the key never arrived. This is its positive control:
+			// the carve-out exists so Qt can act on the key, so the
+			// thing to assert is that Qt did.
+			tabs->setCurrentIndex(0);
+			tabs->currentWidget()->findChild<QLineEdit *>()->setFocus();
+			set_focus_widget(win.focusWidget());
+			r.on_key({Qt::Key_Tab, QStringLiteral("\t"), true, false, false});
+			QCoreApplication::processEvents();
+			CHECK(tabs->currentIndex() == 1,
+			      "Ctrl+Tab switches tabs from inside a page, the carve-out "
+			      "leaving the key for Qt rather than spending it on focus");
+
+			// Arrows on a FOCUSED TAB BAR, the guide's other unverified
+			// "Qt's" row. It holds, and now says so.
+			tabs->setCurrentIndex(0);
+			tabs->tabBar()->setFocus();
+			set_focus_widget(win.focusWidget());
+			r.on_key({Qt::Key_Right, QString(), false, false, false});
+			QCoreApplication::processEvents();
+			CHECK(tabs->currentIndex() == 1,
+			      "and Right on a focused tab bar moves to the next tab, "
+			      "which is Qt's and needs no opt-in");
+
+			// ENTER AND THE DEFAULT BUTTON, and the guide had this
+			// wrong. It said Enter "fires the dialog's default button,
+			// WHEREVER focus is", and practice 2 told implementers that
+			// Enter then "commits from anywhere in the dialog". Neither
+			// is true: a QPushButton in a dialog has autoDefault set, so
+			// a FOCUSED button is the effective default and takes Enter
+			// for itself. The designated default fires only when focus
+			// is on something that is not a button.
+			//
+			// Both states are run because the opt-in convention also
+			// claims Enter, and two things clicking on one key would be
+			// a defect nobody had looked for. They do not collide: Qt
+			// accepts the press, and the convention is gated on it not
+			// having been accepted.
+			for (int conv = 0; conv < 2; ++conv) {
+				set_keyboard_conventions(conv != 0);
+				QDialog dlg;
+				dlg.setAttribute(Qt::WA_DontShowOnScreen);
+				auto *dv = new QVBoxLayout(&dlg);
+				auto *okb = new QPushButton(QStringLiteral("OK"));
+				auto *oth = new QPushButton(QStringLiteral("Other"));
+				okb->setDefault(true);
+				dv->addWidget(okb);
+				dv->addWidget(oth);
+				int okf = 0, othf = 0;
+				QObject::connect(okb, &QPushButton::clicked,
+				                 [&] { ++okf; });
+				QObject::connect(oth, &QPushButton::clicked,
+				                 [&] { ++othf; });
+				dlg.show();
+				QCoreApplication::processEvents();
+				InputRouter dr(&dlg);
+				oth->setFocus();
+				set_focus_widget(dlg.focusWidget());
+				dr.on_key({Qt::Key_Return, QStringLiteral("\r"),
+				           false, false, false});
+				QCoreApplication::processEvents();
+				CHECK(okf == 0 && othf == 1,
+				      conv ? "with the conventions on, Enter on a focused "
+				             "button fires that button and not the dialog's "
+				             "default, and fires it once"
+				           : "Enter on a focused button fires that button "
+				             "and not the dialog's default, autoDefault "
+				             "following the focus");
+
+				// And with focus on something that is NOT a button,
+				// which is the case the guide's row is really about.
+				auto *fld = new QLineEdit;
+				dv->addWidget(fld);
+				QCoreApplication::processEvents();
+				okf = othf = 0;
+				fld->setFocus();
+				set_focus_widget(dlg.focusWidget());
+				dr.on_key({Qt::Key_Return, QStringLiteral("\r"),
+				           false, false, false});
+				QCoreApplication::processEvents();
+				CHECK(okf == 1 && othf == 0,
+				      conv ? "and with them on, Enter in a field still "
+				             "commits the dialog through its default button"
+				           : "while Enter in a field does fire the "
+				             "designated default, which is the case the "
+				             "guide's row is really about");
+			}
+			set_keyboard_conventions(true);
 		}
 
 		// What an application SHOWS. A terminal user cannot find a binding

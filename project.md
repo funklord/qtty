@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1173 checks, 0 failures. `make check` is green and includes
+1179 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15905,6 +15905,104 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.73 The guide stated a Qt behaviour that Qt does not have (2026-09-09)
+
+8.72's sweep found nothing, so the next lens came from what the guide
+itself asserts. Its tables have seventeen rows, each a testable claim
+about a key, and **a claim in the most-read file with no check behind it
+is one that rots without anybody noticing.** Three rows had none.
+
+Two hold and now say so:
+
+- **Ctrl+Tab switches tabs from inside a page.** The suite asserted only
+  that Ctrl+Tab does NOT cycle focus -- a lone negative, which passes
+  just as well if the key never arrived at all. The carve-out
+  `!k.ctrl` exists so that Qt can act on the key, so the assertion worth
+  having is that Qt did. That is 8.72's shape put to use: the negative
+  had no positive control, and now it has one.
+- **Right on a focused tab bar moves to the next tab.**
+
+**The third was wrong.** The guide said:
+
+    | `Enter` | Fires the dialog's DEFAULT button, wherever focus is |
+
+and practice 2 told implementers that `Enter` then "commits from anywhere
+in the dialog". Measured, focus on a button that is not the default:
+
+    conventions=0  default=0  focused=1
+    conventions=1  default=0  focused=1
+
+**A `QPushButton` in a dialog has `autoDefault` set, so a FOCUSED button
+is the effective default and takes Enter for itself.** The designated
+default fires only when focus is on something that is not a button --
+measured separately, and it does.
+
+The behaviour is right; Enter on a highlighted *Cancel* should cancel.
+What was wrong is the guide, and wrongly in the direction an implementer
+acts on: **a default button is not a promise that Enter commits**, and a
+form whose first Tab lands on a button commits somewhere other than where
+it was drawn. Both the row and practice 2 now say so.
+
+**The interaction nobody had looked for is clean.** The opt-in convention
+also claims Enter, so two things could have clicked on one key. They do
+not collide, and the check runs both states to keep it that way: Qt
+accepts the press, and the convention is gated on it not having been
+accepted -- the guard 8.70 rewrote a check to defend.
+
+### 8.72 A lens that cannot find the class it was aimed at (2026-09-09)
+
+Two checks that could not fail in two consecutive entries, and **both were
+negative assertions** -- 8.70's asserted a button had NOT been clicked,
+8.71's that another window's controls were NOT in a list. A negative
+passes when the machinery never ran at all, so that is the lens the last
+two defects hand over, and it was worth one pass.
+
+**The instrument, with its control stated first.** A check is at risk when
+its condition would still hold if the code under test did nothing: every
+top-level conjunct negated -- a leading `!`, `== 0`, `== false`,
+`.isEmpty()`, `== nullptr`, or a comparison against a value captured
+before the act. The classifier asserts three fixtures before reading a
+file: `!fired` must flag, `x == 1` must not, and
+`!fired && win.focusWidget() == field` must not, since one positive
+conjunct is enough.
+
+**175 of 1173 checks are at risk by that reading, which is too many to
+read**, so the second pass drops any with a positive check on the same
+subject within 25 lines -- this suite's idiom being "nothing yet", then
+"and now the key arrives". That leaves **50**.
+
+**All 50 that were read are properly paired, and the sweep found
+nothing.** The near miss is worth keeping: `frame_outside == 0` at
+`suite_widgets.cpp:4204` looked bare, and its pairing is 27 lines below,
+two outside the window -- with a comment saying the FIRST attempt at that
+pairing was not one, because a group box's title comes through Channel B
+and survived `draw_box()` drawing nothing.
+
+**The lens cannot find the class, and that is the finding.** Both real
+misses looked exactly like the controlled ones: 8.70's had a plausible
+pairing beside it. What separates a live negative from a dead one is
+whether the sabotage path reaches the assertion at all, which is a fact
+about the code rather than about the check's wording -- **not readable
+from the check, at any window size.** Only breaking the code and watching
+says so. Do not run this sweep again expecting yield.
+
+**What the pass did produce is the honest denominator.** The sabotage set
+names **112 distinct checks of the 1173 the suite runs, about one in
+ten.** The first measurement said 7% and was wrong: 20 entry names matched
+no check, because **96 checks are hand-rolled `printf("PASS: ...")`
+rather than the `CHECK` macro** and the extractor only saw the macro.
+Re-deriving the number a second way is what caught it.
+
+Those 96 are not a defect and were left alone -- they print the VALUES
+that decided the verdict (`base=%d apex=%d corners-clear=%d`) where the
+macro prints the condition text, which is more diagnostic rather than
+less. 73 of them are in `suite_render.cpp`, where it is the house style.
+
+**And the 10% is not a coverage failure.** Both misses this week were
+inside it, found because they had entries; an entry exists wherever a
+check was written alongside a fix, which is where subtlety lives. The
+other 90% are mostly direct assertions on a value the act produces.
 
 ### 8.71 The guide asked for a check and got its cost wrong (2026-09-09)
 
