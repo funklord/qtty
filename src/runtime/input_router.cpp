@@ -163,19 +163,58 @@ static QList<QAction *> mnemonic_actions(QWidget *scope) {
 // `nextInFocusChain()` is public and defined. The chain is circular, so
 // returning to where it started is the termination condition; the counter
 // beside it bounds a chain corrupted by something else.
+//
+// The filter is `tab_stop` below rather than three lines here, because two
+// things ask the same question: this, which moves to the next stop, and
+// `keyboard_reachable`, which lists them all so a test can assert on them.
+// An application walking `nextInFocusChain()` itself would be asserting on
+// Qt's focus order rather than on the order qtty actually moves through,
+// which is not the question the test means to ask.
+static bool tab_stop(QWidget *scope, QWidget *w) {
+	if (w != scope && !scope->isAncestorOf(w)) return false;
+	if (!w->isVisible() || !w->isEnabled()) return false;
+	return (w->focusPolicy() & Qt::TabFocus) != 0;
+}
+
 static bool move_focus(QWidget *scope, bool forward) {
 	QWidget *const start = scope->focusWidget() ? scope->focusWidget() : scope;
 	QWidget *w = start;
 	for (int guard = 0; guard < 4096; ++guard) {
 		w = forward ? w->nextInFocusChain() : w->previousInFocusChain();
 		if (!w || w == start) return false;
-		if (w != scope && !scope->isAncestorOf(w)) continue;
-		if (!w->isVisible() || !w->isEnabled()) continue;
-		if (!(w->focusPolicy() & Qt::TabFocus)) continue;
+		if (!tab_stop(scope, w)) continue;
 		w->setFocus(forward ? Qt::TabFocusReason : Qt::BacktabFocusReason);
 		return true;
 	}
 	return false;
+}
+
+// Every widget Tab reaches inside `scope`, in the order it reaches them.
+//
+// `doc/keyboard-first.md` asks an implementer to assert that every control
+// is reachable by key, and said the loop takes ten lines. It does not: it
+// is the traversal above, and the ten-line version an application writes
+// for itself gets the filter wrong in the direction that hides the fault
+// -- an invisible widget, one outside the scope, or one whose focus policy
+// excludes Tab all appear in a raw walk of the chain and are not stops.
+// A test built on that reports controls reachable that a user cannot get
+// to, which is the one answer it exists to rule out.
+//
+// Deliberately no complement -- no `unreachable_controls`. Naming what
+// SHOULD have been reachable means deciding which widgets are controls,
+// and that is a heuristic; a list of what IS reachable is a measurement.
+// The application knows which of its widgets matter and can say so.
+QVector<QWidget *> keyboard_reachable(QWidget *scope) {
+	QVector<QWidget *> out;
+	if (!scope) return out;
+	if (tab_stop(scope, scope)) out.append(scope);
+	QWidget *w = scope;
+	for (int guard = 0; guard < 4096; ++guard) {
+		w = w->nextInFocusChain();
+		if (!w || w == scope) break;
+		if (tab_stop(scope, w)) out.append(w);
+	}
+	return out;
 }
 
 static QChar mnemonic_of(const QString &text) {

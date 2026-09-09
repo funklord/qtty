@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1169 checks, 0 failures. `make check` is green and includes
+1173 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15905,6 +15905,64 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.71 The guide asked for a check and got its cost wrong (2026-09-09)
+
+The guide written in 8.66 closes by asking every implementer to assert
+that each control can be reached by key, and told them **"it is a loop, it
+takes ten lines"**. That was wrong, and wrong in the direction that hides
+the fault.
+
+The loop is the router's own traversal. The ten-line version an
+application writes for itself walks `nextInFocusChain()` raw, and a raw
+walk lists widgets that are hidden, disabled, outside the window, or whose
+focus policy excludes Tab -- **none of which is a place Tab stops.** The
+test then reports a control reachable that a person cannot get to, which
+is the single answer it exists to rule out. **A guide that asks for a
+check and describes a broken one is worse than a guide that asks for
+nothing**, because the broken one gets written and then believed.
+
+`keyboard_reachable(scope)` returns the widgets Tab reaches inside a
+scope, in the order it reaches them. The filter came out of `move_focus`
+as `tab_stop`, so there is **one traversal with two consumers** rather
+than a copy of it: what the list names is what the router really moves
+through.
+
+**Deliberately no complement.** `unreachable_controls()` is the obvious
+other half and is not there. Naming what SHOULD have been reachable means
+deciding which widgets are controls, and that is a heuristic -- a toolbar
+button with `NoFocus` is not a fault, and the guess would have to be
+tuned per application until somebody switched it off. A list of what IS
+reachable is a measurement. The application knows which of its widgets
+matter, and says so in one `contains`.
+
+**The check that matters is the relationship, not the list.** Asserting
+the list against a second copy of the filter is asserting the helper
+against itself -- `evidence.md`'s two documents written by one hand. So
+the test presses Tab as many times as the list is long and asserts the
+set it visited equals the set named. If the filter and Qt's focus order
+ever disagree, that reddens, and nothing else would.
+
+**And the harness caught a second check that could not fail, one entry
+after 8.70 caught the first.** The scope filter has two halves; the check
+written for the ancestor half asserted that ANOTHER WINDOW's controls
+were not in the list. They are not, and they would not be however the
+filter was broken: **Qt's focus chain does not span top-level windows**,
+so the walk returns to its scope without ever meeting them. The check
+passed for a reason that had nothing to do with the code it named.
+
+The chain DOES run on past the end of a group box -- a walk from one
+reaches the group's siblings and comes back -- so the case the filter
+exists for is a NESTED scope, and that is what the check asks now:
+`keyboard_reachable(box)` lists the field inside the box and not the two
+beside it. It reddens.
+
+**Twice in two entries, and both times the same shape**: a check that
+names the right subject and exercises a path where the sabotage makes no
+difference. 8.70's pressed Enter somewhere the convention would not have
+fired; this one asked about widgets the traversal could not have reached.
+Neither is caught by reading the check, because the sentence is true
+either way -- only breaking the code and watching says so.
 
 ### 8.70 The harness caught a check that could not fail (2026-09-09)
 

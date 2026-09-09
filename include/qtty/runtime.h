@@ -60,6 +60,12 @@ bool keyboard_conventions();
 // right either way, which is the only version that cannot lie to a user.
 QVector<QPair<QString, QString>> keyboard_conventions_help();
 
+// Every widget Tab reaches inside `scope`, in the order it reaches them,
+// using the router's own traversal rather than a second copy of it. For
+// the test `doc/keyboard-first.md` asks every application to write: that
+// each control it owns can be reached without a mouse.
+QVector<QWidget *> keyboard_reachable(QWidget *scope);
+
 // ---------------------------------------------------------------- InputRouter
 // Owns everything Qt's platform layer would normally own (measured F3/F4):
 // the shortcut table (synthetic keys never reach QShortcutMap), focus

@@ -919,8 +919,8 @@ check = "Alt and a letter that matches nothing types nothing"
 [[sabotage]]
 name = "focus steps onto a disabled control"
 file = "src/runtime/input_router.cpp"
-find = "\t\tif (!w->isVisible() || !w->isEnabled()) continue;\n\t\tif (!(w->focusPolicy() & Qt::TabFocus)) continue;"
-into = "\t\tif (!(w->focusPolicy() & Qt::TabFocus)) continue;"
+find = "\tif (!w->isVisible() || !w->isEnabled()) return false;\n\treturn (w->focusPolicy() & Qt::TabFocus) != 0;"
+into = "\treturn (w->focusPolicy() & Qt::TabFocus) != 0;"
 count = 1
 check = "a disabled control is stepped over rather than landed on"
 
@@ -939,3 +939,23 @@ find = "\tif (!s_conventions) return {};"
 into = "\t;"
 count = 1
 check = "with the conventions off it lists nothing"
+
+[[sabotage]]
+# The two halves of `tab_stop`, which the router moves through and
+# `keyboard_reachable` lists. Breaking either makes the list name widgets
+# a person cannot reach -- the failure the helper exists to rule out, so
+# a test built on a broken list is worse than no test.
+name = "a hidden widget counts as a place Tab can stop"
+file = "src/runtime/input_router.cpp"
+find = "\tif (!w->isVisible() || !w->isEnabled()) return false;"
+into = "\tif (!w->isEnabled()) return false;"
+count = 1
+check = "leaves out what Tab does not reach"
+
+[[sabotage]]
+name = "a container's list runs on past its own children"
+file = "src/runtime/input_router.cpp"
+find = "\tif (w != scope && !scope->isAncestorOf(w)) return false;"
+into = "\tif (false) return false;"
+count = 1
+check = "asking about a container lists what is inside it"

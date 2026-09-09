@@ -209,6 +209,23 @@ terminal emulator, which is how this library tests its own:
 *shows*. Between them an application can assert that every control it
 owns is reachable by key, in a unit test, on a machine with no terminal.
 
-**The check worth writing first**: focus every control in turn with `Tab`
-and assert you reach them all. It is a loop, it takes ten lines, and it
-fails the day somebody adds a widget that cannot be reached.
+**The check worth writing first**: assert that every control you own can
+be reached without a mouse.
+
+    const QVector<QWidget *> reach = Qtty::keyboard_reachable(&window);
+    QVERIFY(reach.contains(apply_button));
+
+`keyboard_reachable()` returns the widgets `Tab` reaches inside a scope,
+in the order it reaches them. This paragraph used to say the loop takes
+ten lines and to write it yourself; that was wrong, and wrong in the
+direction that hides the fault. Walking `nextInFocusChain()` by hand
+lists widgets that are hidden, disabled, outside the window, or whose
+focus policy excludes `Tab` -- none of them stops. A test built on that
+walk reports a control reachable that a person cannot get to, which is
+the one answer it exists to rule out. The function is the traversal the
+router itself moves through, so what it lists is what will happen.
+
+There is deliberately no `unreachable_controls()`. Naming what *should*
+have been reachable means deciding which widgets are controls, and that
+is a guess; a list of what *is* reachable is a measurement. You know
+which of your widgets matter, so assert on those.

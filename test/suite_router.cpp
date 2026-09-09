@@ -1713,6 +1713,93 @@ int suite_router() {
 			      "list's selection and leaves focus on the list");
 		}
 
+		// KEYBOARD_REACHABLE -- the list an application's own test
+		// asserts on. 8.71.
+		//
+		// `doc/keyboard-first.md` asks every implementer to check that
+		// each control can be reached without a mouse, and told them the
+		// loop takes ten lines. It does not: it is the router's own
+		// traversal, and a hand-written walk of `nextInFocusChain()`
+		// gets the filter wrong in the direction that hides the fault --
+		// an invisible widget, one belonging to another window, or one
+		// whose focus policy excludes Tab all appear in a raw walk and
+		// are not stops. A test built on that reports a control
+		// reachable that a user cannot get to, which is the single
+		// answer it exists to rule out.
+		{
+			QWidget scope;
+			auto *sv = new QVBoxLayout(&scope);
+			auto *one = new QLineEdit;
+			auto *two = new QPushButton(QStringLiteral("two"));
+			auto *lab = new QLabel(QStringLiteral("a label"));
+			auto *dis = new QLineEdit;
+			auto *hid = new QLineEdit;
+			for (QWidget *w : { (QWidget *)one, (QWidget *)two,
+			                    (QWidget *)lab, (QWidget *)dis,
+			                    (QWidget *)hid })
+				sv->addWidget(w);
+			dis->setEnabled(false);
+			scope.setAttribute(Qt::WA_DontShowOnScreen);
+			scope.show();
+			hid->hide();
+			QCoreApplication::processEvents();
+
+			const QVector<QWidget *> reach = keyboard_reachable(&scope);
+			CHECK(reach.contains(one) && reach.contains(two),
+			      "keyboard_reachable lists the controls Tab reaches");
+			CHECK(!reach.contains(lab) && !reach.contains(dis)
+			      && !reach.contains(hid),
+			      "and leaves out what Tab does not reach: a label, a "
+			      "disabled field, and a hidden one");
+
+			// THE RELATIONSHIP, which is the check worth having: Tab
+			// really does visit exactly this set. Asserting the list
+			// against a second copy of the filter would be asserting
+			// the helper against itself.
+			InputRouter r2(&scope);
+			one->setFocus();
+			QCoreApplication::processEvents();
+			QVector<QWidget *> visited;
+			for (int i = 0; i < reach.size(); ++i) {
+				r2.on_key({Qt::Key_Tab, QStringLiteral("\t"),
+				           false, false, false});
+				QCoreApplication::processEvents();
+				visited.append(scope.focusWidget());
+			}
+			QVector<QWidget *> a = reach, b = visited;
+			std::sort(a.begin(), a.end());
+			std::sort(b.begin(), b.end());
+			CHECK(!a.isEmpty() && a == b,
+			      "and pressing Tab that many times visits exactly the "
+			      "widgets it named, so the list is what a person "
+			      "walking the form with one key actually meets");
+
+			// A NESTED scope, which is where the ancestor filter earns
+			// its keep -- and the first version of this check could not
+			// fail. It asserted that ANOTHER WINDOW's controls were
+			// absent, and they are absent whatever the filter does:
+			// Qt's focus chain does not span top-level windows, so the
+			// walk returns to `scope` without ever meeting them. The
+			// sabotage harness reported it, one entry after 8.70 said
+			// the same thing about a different check.
+			//
+			// The chain DOES run on past the end of a group box, so a
+			// walk from one reaches its siblings and comes back. That
+			// is the case the filter exists for.
+			auto *box = new QGroupBox(QStringLiteral("group"));
+			auto *bv = new QVBoxLayout(box);
+			auto *inner = new QLineEdit;
+			bv->addWidget(inner);
+			sv->addWidget(box);
+			QCoreApplication::processEvents();
+			const QVector<QWidget *> in_box = keyboard_reachable(box);
+			CHECK(in_box.contains(inner) && !in_box.contains(one)
+			      && !in_box.contains(two),
+			      "asking about a container lists what is inside it and "
+			      "not its siblings, the focus chain running on past the "
+			      "end of a group");
+		}
+
 		// Ctrl+PageUp and Ctrl+PageDown between tabs. Qt gives a
 		// QTabWidget Ctrl+Tab and Ctrl+Shift+Tab and not these, and these
 		// are what somebody coming from a browser or an editor tries.
