@@ -25,9 +25,16 @@ namespace Qtty {
 // A terminal has no mouse, and the conventions a person expects there are
 // not the desktop's. Two of them differ from Qt outright:
 //
-//   Enter activates the control that HAS focus. On a desktop it activates
-//   the DEFAULT button instead, wherever focus is, and a focused button
-//   answers to Space.
+//   Enter activates the control that HAS focus. On a desktop a focused
+//   button answers to Space and not to Enter -- except inside a dialog,
+//   where autoDefault makes a focused button take Enter for itself, and
+//   the designated default fires only when focus is on something that is
+//   not a button.
+//
+//   That sentence used to end "the DEFAULT button instead, wherever
+//   focus is", which is the fixture's condition dropped. 8.79 found five
+//   copies of the claim across this tree and only one kept the
+//   condition -- the comment beside the measurement itself.
 //
 //   Up and Down move between controls. On a desktop they move within one
 //   -- a list, a spin box -- and do nothing between them, because Tab is

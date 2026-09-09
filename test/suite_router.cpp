@@ -2132,6 +2132,41 @@ int suite_router() {
 			cw->removeEventFilter(&cm);
 		}
 
+		// THE ESCAPE ROW of the guide's "what already works" table, stated
+		// as Qt's and asserted by nothing. Four rows in that table had no
+		// check; three were measured in 8.73 and one of THOSE was wrong, so
+		// an unverified row earns a fixture rather than a shrug.
+		{
+			QMenu m(&win);
+			m.addAction(QStringLiteral("One"));
+			m.popup(QPoint(0, 0));
+			QCoreApplication::processEvents();
+			const bool up = !r.popups().isEmpty();
+			r.on_key({Qt::Key_Escape, QString(), false, false, false});
+			QCoreApplication::processEvents();
+			CHECK(up && r.popups().isEmpty() && !m.isVisible(),
+			      "Escape closes an open menu -- asserted with the menu "
+			      "proved open first, since an empty popup stack is empty "
+			      "whether the key worked or the menu never opened");
+
+			// NOT result() == QDialog::Rejected: Rejected is 0 and a dialog
+			// that has done nothing returns 0, so the obvious spelling
+			// passes without the key being delivered at all. The signal
+			// fires once or it does not.
+			QDialog d(&win);
+			d.setAttribute(Qt::WA_DontShowOnScreen);
+			d.setModal(true);
+			int rejected = 0;
+			QObject::connect(&d, &QDialog::rejected, [&] { ++rejected; });
+			d.show();
+			QCoreApplication::processEvents();
+			r.on_key({Qt::Key_Escape, QString(), false, false, false});
+			QCoreApplication::processEvents();
+			CHECK(rejected == 1 && !d.isVisible(),
+			      "and rejects a modal dialog, so a person who opened one by "
+			      "accident is not shut inside it");
+		}
+
 		// What an application SHOWS. A terminal user cannot find a binding
 		// by looking for a button, so the guide asks every application to
 		// put its keys on the screen -- and one that wrote "F6 window"

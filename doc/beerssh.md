@@ -77,6 +77,30 @@ measurement to confirm no change. A method without a trigger gets re-run
 either too often or never, and never is the one that leaves a stale table
 looking current.
 
+**The trigger has fired, and this is the note it exists to produce.**
+Measured by reading their log on 2026-09-09 -- my observation of their
+tree, not a claim they have made: **197 commits since `3525de0`**, their
+HEAD at `5d4aa8b`. Two of the three named conditions are met.
+
+    src/term      8 commits   image cost bounds, reflow measurement,
+                              hyperlink and kitty-flag table bounds,
+                              `clear` clearing history
+    vterm-patch   1 commit    c1ebf5b, "consult the fallback before
+                              libvterm acts on a DEC mode"
+
+**`c1ebf5b` is the one that matters**, and it is the worst case for this
+document rather than an incidental hit: the tables below are about DEC
+mode switching, and that commit changes when the fallback is consulted
+relative to libvterm acting on such a mode. Every table on this page was
+measured against `3525de0` and none has been re-taken since.
+
+So the tables are **due**, not wrong -- nobody has measured them against
+`5d4aa8b` and this note is not that measurement. Re-taking them needs
+`qtty-negotiate` built here and beerssh built there, which is a session's
+work rather than a paragraph's. Until then read every measured table
+below as "as of `3525de0`", which is what the dates on them say and what
+this note stops a reader skipping past.
+
 ## Silence, and the one place it is the wrong answer
 
 **Measured 2026-08-31 with `qtty-negotiate --probes`**, which reports each

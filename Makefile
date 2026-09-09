@@ -762,9 +762,16 @@ test-tools: all
 		  i=$$((i + 1)); done ) \
 		| timeout $(TEST_TIMEOUT) script -qec "$(EXAMPLE)" \
 			$(BUILD_DIR)/chat.out > /dev/null 2>&1; \
-		case "$$(tr -d '\000' < $(BUILD_DIR)/chat.out)" in \
+		out="$$(tr -d '\000' < $(BUILD_DIR)/chat.out)"; \
+		case "$$out" in \
 		*"did the release build pass"*) echo "    example: ok";; \
 		*) echo "    example: FAILED -- it drew no frame"; fail=1;; \
+		esac; \
+		case "$$out" in \
+		*"context menu"*) echo "    example: ok (it shows its keys)";; \
+		*) echo "    example: FAILED -- it drew no key hints, so the"; \
+		   echo "             guide's practice 8 is advice the canonical"; \
+		   echo "             example does not take"; fail=1;; \
 		esac; \
 		rm -f $(BUILD_DIR)/chat.out; \
 	else \

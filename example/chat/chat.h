@@ -105,6 +105,7 @@ public:
 	ChatModel model;
 	QListView *view;
 	QLineEdit *input;
+	QLabel *status;
 	QPixmap smiley, heart;
 
 	ChatWindow() {
@@ -132,6 +133,15 @@ public:
 		lay->addWidget(input);
 		connect(input, &QLineEdit::returnPressed, this, &ChatWindow::send);
 
+		// A place for the frontend to say what the keys are. Empty and
+		// hidden unless something fills it, so the GUI build is
+		// unchanged and the terminal build spends a row on it only when
+		// there is something to spend it on. Still plain Qt: the window
+		// offers the line and does not know who writes to it.
+		status = new QLabel(this);
+		status->hide();
+		lay->addWidget(status);
+
 		for (const Msg &m : QVector<Msg>{
 			{"dave", "hey, did the release build pass?", {}},
 			{"mika", "yes! all four products green ☺", {}},
@@ -144,6 +154,14 @@ public:
 		setWindowTitle("qtty chat");
 		resize(52 * cw, 18 * ch);
 		input->setFocus();
+	}
+
+	// Filled by whichever frontend has something to say. On a terminal
+	// that is the key hints; on a desktop nothing, and the row is not
+	// taken. See doc/keyboard-first.md practice 8.
+	void setStatus(const QString &text) {
+		status->setText(text);
+		status->setVisible(!text.isEmpty());
 	}
 
 public slots:

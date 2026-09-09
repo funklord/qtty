@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1188 checks, 0 failures. `make check` is green and includes
+1190 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -551,8 +551,8 @@ faith looks like rendered.
 ## 0b. Open questions, and who owns them
 
 An index, because these are recorded where they were found -- scattered
-through 3,400 lines -- and a question nobody can locate is one nobody
-answers. **None is a defect and none blocks anything**; each is a decision
+through a document that has long outgrown reading end to end -- and a
+question nobody can locate is one nobody answers. **None is a defect and none blocks anything**; each is a decision
 that was deliberately not taken while working on something else. The
 sections named carry the measurement and the options.
 
@@ -586,6 +586,7 @@ Owned by the copyright holder:
 | **A `QMainWindow` application sees nine off-grid warnings it cannot act on.** The suite works around this with `GridGuard::reset()` and an application has no equivalent. `is_exempt()`'s PRINCIPLE covers them exactly -- *"widgets Qt builds for itself, which the application never constructs and cannot size"* -- and its mechanism does not: it keys on `qt_` object names and `Private` class names, and `QStatusBar`, `QSizeGrip` and a central widget placed by `QMainWindowLayout` carry neither. Measured on a window shaped like netcfgd's: **9 violations, 0 forgiven**. The fix is not obviously a longer list -- the code warns in as many words that a list is what somebody adds a tenth entry to without deciding anything | 8.61 |
 | **A disabled widget is indistinguishable from an enabled one on the pixel tiers.** Measured, not inferred: `Attr::Dim` is set for EVERY disabled widget (`cell_geometry.h`), the rasteriser has no row for it, and the two render byte-identically -- same 123 lit pixels, same channel sum. ~~How far fidelity goes between tiers~~ is no longer the question; the question is how faint "faint" should be. Blends toward the ground up to **70%** clear qtty's own `has_minimum_contrast` floor and 80% does not, so the range is measured. No mechanism exists, unlike `Strike` in 8.58, so every option means choosing a rule -- a fixed factor, or "as faint as the floor permits" the way beerssh's `ensure_contrast` walks a colour | 8.50, 8.59 |
 | **`Overlay::set_z()` does nothing in a GUI build.** `visible_overlays()` sorts by z and its only production caller is the compositor, which is the TUI path; the GUI twin never reads `z_`, so stacking there falls to the window manager. design.md presents `Overlay` as target-independent and lists `setZ` unqualified, so this is a scope question -- does the twin owe z ordering? -- rather than a defect. Not a one-liner: the twins are frameless always-on-top `Qt::Tool` windows, and it cannot be verified headlessly here | 8.47 |
+| **`design.md` recommends a function the library cannot call.** Its focus section says `focusNextPrevChild()` "walks the focus chain correctly", citing spike F4 -- and 8.71 removed the only call to it, because it is **protected**: reaching it from outside means declaring a fake derived class and casting a widget that is not one, which is undefined behaviour and which UBSan named. A spike can call it, being a subclass; the library walks widgets it does not own and cannot. Neither side is wrong -- the spike's finding holds and the code is right to refuse the cast -- but the naked recommendation is a trap for the next reader, and this tree's habit is to record design.md's lag rather than edit it (README carries the same caution about its API chapter, and 8.2 the same about `qtty::Application`). Whether design.md gains a sentence is the holder's | 8.71, F4 |
 | The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
@@ -15913,6 +15914,155 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.81 The last unheld row, and the example that ignored its own guide (2026-09-09)
+
+**The Escape row holds.** Enumerating the guide's table against the suite
+found one row with nothing behind it -- *"closes an open menu; rejects a
+modal dialog"* -- the fourth such row, after the three 8.73 measured. It
+was worth measuring rather than assuming, because one of those three had
+been wrong. This one is right, and now asserted.
+
+**The modal half avoided the obvious spelling.** `QDialog::Rejected` is
+**0**, and a dialog that has done nothing returns 0, so
+`result() == QDialog::Rejected` passes without the key being delivered at
+all -- a check that could not fail, of exactly the shape 8.70 and 8.71
+each cost an entry to learn. It counts the `rejected()` signal instead.
+The menu half proves the menu OPEN before pressing anything, since an
+empty popup stack is empty whether the key worked or the menu never
+opened.
+
+**The example did not take the guide's advice.** `example/chat` is the
+canonical program an implementer copies, and it demonstrated **none** of
+practice 8 -- no key hints at all, in the tree that tells applications a
+terminal user cannot discover a binding by looking for a button.
+
+The fix went in twice. The first version had `main()` reach into
+`ChatWindow`'s layout and append a label: it works, and it teaches a
+habit an example should not. **The guide's own practice-8 sample assumes
+the window HAS a status widget**, so the second version is the shape the
+guide already implies -- `chat.h` offers a status line and a
+`setStatus()`, still plain Qt so the file's "ZERO qtty types" property
+holds, hidden while empty so the GUI build is unchanged; and the TUI
+branch of `main.cpp` fills it, being the only code that knows a terminal
+is involved. **It asks `keyboard_conventions_help()` rather than writing
+the keys out**, which is the practice it is demonstrating.
+
+The conventions are deliberately NOT turned on there: the bar then holds
+one row and fits a 52-column window, where opting in adds five and clips.
+The comment says so rather than leaving the next reader to infer it from
+a truncated line.
+
+**`make test-tools` asserts the hints are drawn, and the gate was watched
+failing.** A demonstration nothing checks is decoration. The example's
+existing arm greps the drawn frame for a message; the new one greps for
+the hints, and `(void)hints;` in place of the call produced *"example:
+FAILED -- it drew no key hints"* while the first arm stayed green, so the
+two are independent and the new one does its own work.
+
+**And the guide now carries a trigger**, which is 8.80's lesson turned on
+the document that has produced most of today's findings: every row is
+held by at least one check, and **when you add a row, add the check that
+holds it**. A page with a maintenance rule gets re-checked in one
+command; one without gets re-checked when it happens to be wrong in front
+of somebody.
+
+**The full sabotage run was stopped at 73 of 119 to land this** -- 72
+reddened, 0 failures, no finding in the two thirds it reached. It is
+restarted afterwards rather than resumed, so that the run of record
+covers the checks added here as well. Stopping is safe by design and was
+confirmed: the harness keeps originals in memory and restores through
+`atexit` and a SIGTERM handler, and `git status` after the signal showed
+no source file left sabotaged.
+
+### 8.80 A staleness trigger fired, and checking it cost one command (2026-09-09)
+
+`doc/beerssh.md` measures qtty's negotiation against beerssh at `3525de0`
+and, unusually, says when to re-take the measurement: **when something
+touches the emulator, the negotiation, or the vendored libvterm patches
+-- not on every commit.** It gives the reason in the document: *a method
+without a trigger gets re-run either too often or never, and never is the
+one that leaves a stale table looking current.*
+
+Nine days later the trigger has fired. Measured by reading their log --
+my observation of their tree, not a claim they have made -- **197 commits
+since `3525de0`**, their HEAD at `5d4aa8b`, of which eight touch
+`src/term` and one touches `vterm-patch`.
+
+**The one that matters is `c1ebf5b`, "consult the fallback before
+libvterm acts on a DEC mode".** Every table on that page is about DEC
+mode switching, so the trigger fired in the most relevant way available
+rather than incidentally.
+
+The tables are **due, not wrong**: nobody has measured them against
+`5d4aa8b`, and the note now on the page is not that measurement.
+Re-taking them needs `qtty-negotiate` built here and beerssh built there,
+which is a session's work rather than a paragraph's -- so what is
+recorded is the date, the commits and the fact that every table below
+means "as of `3525de0`".
+
+**The methodological point is the cheap half.** The whole check was one
+`git log` in a tree this project does not own, and it was possible only
+because somebody wrote the condition down. Compare 8.79, where five
+copies of a claim drifted with nothing to say when any of them should
+have been re-read: **a claim with a trigger gets re-checked in one
+command; a claim without one gets re-checked when it happens to be
+wrong in front of somebody.**
+
+### 8.79 One wrong claim had five copies, and the best one was nearest the fixture (2026-09-09)
+
+8.76 corrected the default-button claim in this file after 8.73 corrected
+it in the guide, and said the lesson was that a claim lives in more than
+one place. **It lived in five**, and fixing two of them left three.
+
+    doc/keyboard-first.md  table row      WRONG   fixed in 8.73
+    project.md 8.33        prose          WRONG   fixed in 8.76
+    doc/keyboard-first.md  rationale      WRONG   survived both
+    include/qtty/runtime.h header comment WRONG   survived both
+    test/suite_widgets.cpp comment        RIGHT
+
+**The one that was right is the one closest to the measurement**, and it
+is right because it kept the fixture's condition: *"measured on a dialog
+whose focus was ELSEWHERE"*. Every copy further from the fixture dropped
+that clause, and dropping it is exactly what turns a true measurement
+into a false rule. The header's version -- the API documentation an
+implementer reads -- had become *"on a desktop it activates the DEFAULT
+button instead, wherever focus is"*.
+
+So the shape is not "a claim gets copied and the copies rot". It is that
+**a claim loses its qualifier as it travels**, and the qualifier is the
+whole content. Nobody rewrote the sentence carelessly; each retelling
+dropped the condition that made it narrow, because a condition reads like
+detail when the conclusion reads like the point.
+
+**And the guide's opening was certifying the lot.** It said *"everything
+in it was measured against this library rather than assumed"* -- false
+when written, and the reason four findings took four separate occasions
+to surface rather than one sweep. `evidence.md` names this: a sentence
+claiming rigour is what stops anybody checking. It now says which rows
+are held by checks, names the two that were wrong, and tells a reader the
+row is the first suspect when it disagrees with what they see.
+
+**A fifth site turned up in `design.md` and is NOT being edited.** Its
+focus section recommends `focusNextPrevChild()`, which 8.71 removed as
+undefined behaviour when reached from outside a subclass. That is the
+same shape one layer up -- a measurement taken in a spike, quoted without
+the condition that made it true, where the condition is *who is allowed
+to call it*. It is a 0b row rather than an edit, because this tree
+records design.md's lag rather than resolving it, and because a design
+document is the holder's.
+
+The README carried the other stale kind, a **count**: *"the two terminal
+conventions"*, of five. **And this file's own index carried
+one**: 0b opened by saying its questions were *"scattered through 3,400
+lines"*, in a document of 16,832 -- wrong by a factor of five, in the
+index whose whole purpose is helping somebody locate things, understating
+the problem it exists to solve. Found by pointing this entry's lens at
+the file the entry is written in, which took one `wc -l`. Neither number
+is stated now; the count was never the point, and a number nothing
+recomputes is a claim waiting to be wrong. It does not say a number now -- the list is in
+`keyboard_conventions_help()`, which is where 8.78 put it, and prose that
+restates a number the code owns is a copy waiting to be wrong.
 
 ### 8.78 The fix in 8.77 broke the guide's practice 8 (2026-09-09)
 

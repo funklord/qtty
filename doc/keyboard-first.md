@@ -6,9 +6,25 @@ result is *usable* is the keyboard, because a terminal user often has no
 mouse at all -- over ssh, in a console, on a server -- and a control that
 can only be clicked is a control that does not exist.
 
-This is the guide for that. Everything in it was measured against this
-library rather than assumed; where a behaviour is Qt's own it says so, and
+This is the guide for that. Where a behaviour is Qt's own it says so, and
 where it is qtty's it says which.
+
+**Every row below is held by at least one check in the suite**, so a
+behaviour that changes reddens something rather than quietly making this
+file wrong. **When you add a row here, add the check that holds it** --
+that is the trigger, and it is the whole maintenance rule for this page.
+The mapping was enumerated on 2026-09-09 and found one row with nothing
+behind it, `Esc`; it has two checks now.
+That is worth saying plainly because the sentence here before it claimed
+that everything had been measured, and several rows had not been. One of
+them said `Enter` fires a dialog's **default** button wherever focus is,
+which Qt does not do; another said a terminal has no pointer to rest,
+which contradicted a measurement already recorded in `project.md`. (This
+sentence said "three" until a fourth turned up an hour later, which is
+the argument for not counting in prose at all.) **A
+sentence claiming rigour is what stops anybody checking**, so this one
+says what to do instead: if a row here disagrees with what you observe,
+the row is the first suspect, and `project.md` holds the measurement.
 
 ## The model a terminal user already has
 
@@ -101,11 +117,12 @@ One line turns on the habits a terminal user has and Qt does not:
 | `Alt` + a tab's letter | Switch to that tab |
 
 The first two are the ones that **differ** from Qt rather than merely
-adding to it, and they are why the whole set is opt-in. On a desktop
-`Enter` fires the *default* button wherever focus is and a focused button
-answers to `Space`; and arrows move *within* a control, never between --
-both reasonable when a mouse is always there, and neither reasonable when
-it is not.
+adding to it, and they are why the whole set is opt-in. On a desktop a
+focused button answers to `Space` and not to `Enter` -- except inside a
+dialog, where `autoDefault` makes a focused button take `Enter` for
+itself and the designated default fires only when focus is elsewhere; and
+arrows move *within* a control, never between. Both are reasonable when a
+mouse is always there and neither is when it is not.
 
 **Every one of them fires only where the focused widget ignored the key.**
 A text field keeps its own `Enter`, a list keeps its own arrows, an

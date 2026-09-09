@@ -25,8 +25,11 @@ Phase-2 build-out of those spikes. Expect API movement.
   `namespace Qtty`, no public macros, inert in GUI builds.
 - Keyboard-first by design: `doc/keyboard-first.md` is the guide for
   making an application usable with no mouse -- what already works, the
-  two terminal conventions `Qtty::set_keyboard_conventions()` turns on,
-  and the practices that decide whether a terminal user can drive it.
+  terminal conventions `Qtty::set_keyboard_conventions()` turns on, and
+  the practices that decide whether a terminal user can drive it.
+  `Qtty::keyboard_conventions_help()` names the keys that answer, so a
+  status bar never keeps its own copy; `Qtty::keyboard_reachable()` lists
+  what `Tab` reaches, so a test can assert every control is reachable.
 
 ## Build
 
@@ -176,7 +179,8 @@ status note at the top.
     src/widget/       replaced widgets (planned)
     example/chat/     canonical dual-frontend example (§16.4)
     test/             the suite; text fixtures in test/snapshot/
-    tool/             qtty-inspect, qtty-replay, style_gate.py, hooks/
+    tool/             the tools' sources, the style and layout gates,
+                      the sabotage harness and its spec, hooks/
     doc/design.md     the design document — read this first
     doc/beerssh.md    integration contract with beerssh (the terminal end)
     spike/            the Phase-0 spikes exactly as run (§16); standalone

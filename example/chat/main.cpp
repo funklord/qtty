@@ -72,7 +72,27 @@ int main(int argc, char **argv) {
 		QTimer::singleShot(300, &app, &QCoreApplication::quit);
 
 #ifndef QTTY_NO_TUI
-	if (tui) return Qtty::exec(app, win);
+	if (tui) {
+		// PRACTICE 8 of doc/keyboard-first.md -- say what the keys are --
+		// demonstrated where such a thing BELONGS: in the frontend. The
+		// window offers a status line and does not know what a terminal
+		// is; this branch is the only code that does.
+		//
+		// The list is ASKED FOR rather than written out. An application
+		// that typed "Menu context menu" into a label would keep a
+		// second copy of a fact the library owns, and the copy is wrong
+		// the day the binding moves -- which it did, twice, in one day.
+		//
+		// The conventions are deliberately NOT turned on here. The bar
+		// then holds one entry and fits a 52-column window; asking for
+		// them adds five more, and an application that does should give
+		// the bar the rows to show them.
+		QStringList hints;
+		for (const auto &row : Qtty::keyboard_conventions_help())
+			hints << row.first + QStringLiteral(" ") + row.second;
+		win.setStatus(hints.join(QStringLiteral("  ")));
+		return Qtty::exec(app, win);
+	}
 #endif
 	win.show();
 	return app.exec();
