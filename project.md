@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1198 checks, 0 failures. `make check` is green and includes
+1199 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -588,6 +588,7 @@ Owned by the copyright holder:
 | **`Overlay::set_z()` does nothing in a GUI build.** `visible_overlays()` sorts by z and its only production caller is the compositor, which is the TUI path; the GUI twin never reads `z_`, so stacking there falls to the window manager. design.md presents `Overlay` as target-independent and lists `setZ` unqualified, so this is a scope question -- does the twin owe z ordering? -- rather than a defect. Not a one-liner: the twins are frameless always-on-top `Qt::Tool` windows, and it cannot be verified headlessly here | 8.47 |
 | **`design.md` recommends a function the library cannot call.** Its focus section says `focusNextPrevChild()` "walks the focus chain correctly", citing spike F4 -- and 8.71 removed the only call to it, because it is **protected**: reaching it from outside means declaring a fake derived class and casting a widget that is not one, which is undefined behaviour and which UBSan named. A spike can call it, being a subclass; the library walks widgets it does not own and cannot. Neither side is wrong -- the spike's finding holds and the code is right to refuse the cast -- but the naked recommendation is a trap for the next reader, and this tree's habit is to record design.md's lag rather than edit it (README carries the same caution about its API chapter, and 8.2 the same about `qtty::Application`). Whether design.md gains a sentence is the holder's | 8.71, F4 |
 | **Should the clipboard limit be public?** `AnsiBackend::clipboard_limit()` says in its own comment that it is "public so an application can ask before it offers the user a Copy that cannot work" -- and `make install` ships `include/qtty/*.h` only, so `ansi_backend.h` does not leave the tree and **no installed header mentions the clipboard at all**. The consequence is not cosmetic: a copy past the limit is refused whole, by design and rightly, the `QClipboard` watcher discards the result, and an application therefore cannot detect the refusal OR pre-empt it. The user believes they copied. Three shapes are available -- a free `Qtty::clipboard_limit()`, a field on `Capabilities` where it arguably belongs since it is a property of the terminal, or leaving it internal and saying so in the header rather than claiming an audience it cannot reach. Which one is an API decision, and the holder's | 8.83 |
+| **Should qtty notice a style sheet at all?** Measured 2026-09-10 on a ten-cell push button: no sheet draws `<Hi>`, a box-model sheet draws `Hi` -- the brackets gone -- and `color: red` alone draws **nothing**. A `QLabel` with the same rule is unharmed, so it is controls rather than drawing. The affordance goes while the behaviour stays: a styled button still takes Enter and still shows focus, and nothing on screen says it is a button. Qt's machinery taking drawing over from the application style is what style sheets ARE, and qtty's cell drawing is that style, so this is not a bug to fix in the drawing. What is open is whether qtty should react -- ignore sheets while a cell device is being drawn into, warn once when one is set, or stay silent and let the guide carry it, which is where it sits today. Each is a decision about somebody else's application | 8.86 |
 | The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
@@ -15915,6 +15916,54 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.86 A style sheet takes a control's affordance away (2026-09-10)
+
+Same lens, next question: **what does `setStyleSheet()` do here?**
+Nothing in the tree mentioned style sheets -- not `src/`, not the suite,
+not a document -- and they are one of the commonest ways a Qt application
+styles itself.
+
+Measured, a ten-cell push button at three settings:
+
+    no sheet                       <Hi>
+    background/border/padding      Hi      -- the brackets are gone
+    color: red                             -- nothing at all
+
+A `QLabel` carrying the same colour rule is unharmed, which is what makes
+this a fact about **controls** rather than about drawing.
+
+**The affordance goes while the behaviour stays, which is the worst way
+round.** A styled button still takes Enter, still shows focus, still
+fires; the brackets that tell a terminal user it is a button are what
+disappears. On a desktop the shape and the bevel say "button" and a style
+sheet only repaints them. Here the brackets ARE the button, so removing
+them removes the control from the user's view while leaving it in the
+program.
+
+**Pinned as measured rather than as wanted.** Qt's style-sheet machinery
+takes drawing over from the application style -- that is what style
+sheets are for -- and qtty's cell drawing IS that style, so a sheet
+replaces it by design rather than by fault. The check exists to catch the
+behaviour changing in either direction, and 0b now carries the question
+of whether qtty should react at all: ignore a sheet while drawing into
+cells, warn once when one is set, or stay silent and let the guide carry
+it, which is where it sits today.
+
+**The mechanism is deliberately not asserted.** Why a colour-only sheet
+draws nothing while a box-model one draws the label is a question about
+`QStyleSheetStyle`'s delegation that this session did not answer, and
+*read the input before theorising about the mechanism* says the
+reduction and the explanation are separate claims. The reduction is
+exact: four fixtures, one line of output each.
+
+**And the practices heading was wrong for the third time.** It has said
+"in the order they matter", then "9 to 12 are traps" when 12 was advice,
+and then kept the sentence *"each concerns a custom widget"* under a
+range that had stopped being about custom widgets. **A range claim goes
+stale every time an item is added to the range**, and it is the same
+shape as the counts in 8.79 -- a number in prose that nothing recomputes.
+The heading now names which practices are which and why they sit last.
 
 ### 8.85 A nested event loop, which nothing had ever run (2026-09-10)
 

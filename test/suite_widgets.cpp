@@ -58,6 +58,59 @@ static void show(QWidget &w, int cols, int rows) {
 
 int suite_widgets() {
 	fails = 0;
+	// A STYLE SHEET TAKES A CONTROL'S TERMINAL AFFORDANCE AWAY. Nothing
+	// in this tree mentioned style sheets before 8.86, and they are a
+	// very common way a Qt application styles itself.
+	//
+	// Measured, a ten-cell push button at three settings:
+	//
+	//     no sheet                       <Hi>
+	//     background/border/padding      Hi      -- the brackets are gone
+	//     color: red                             -- nothing at all
+	//
+	// A QLabel with the same colour rule is unharmed, so this is about
+	// controls rather than about drawing. The brackets are how a terminal
+	// user knows a thing is a button, so the first row is not decoration:
+	// a styled button still takes Enter and still shows focus, and NOTHING
+	// ON SCREEN SAYS IT IS A BUTTON.
+	//
+	// PINNED AS MEASURED, NOT AS WANTED. Qt's style-sheet machinery takes
+	// drawing over from the application style, which is what it is for;
+	// what this check exists to catch is the behaviour CHANGING, in either
+	// direction, since 0b carries the question of whether qtty should
+	// notice a sheet at all.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		const auto render = [&](QWidget &w) {
+			w.setFixedSize(10 * cw, ch);
+			show(w, 12, 2);
+			CellBuffer b(12, 2);
+			render_once(w, b);
+			GridGuard::reset();
+			return b.to_text().trimmed();
+		};
+		QPushButton plain(QStringLiteral("Hi"));
+		QPushButton boxed(QStringLiteral("Hi"));
+		boxed.setStyleSheet(QStringLiteral(
+		    "background-color: red; border: 2px solid blue; padding: 6px;"));
+		QPushButton tinted(QStringLiteral("Hi"));
+		tinted.setStyleSheet(QStringLiteral("color: red;"));
+		QLabel lab(QStringLiteral("Hi"));
+		lab.setStyleSheet(QStringLiteral("color: red;"));
+
+		const QString a1 = render(plain), a2 = render(boxed);
+		const QString a3 = render(tinted), a4 = render(lab);
+		printf("info: a button draws [%s]; with a box-model sheet [%s];"
+		       " with a colour sheet [%s]; a label with one [%s]\n",
+		       qPrintable(a1), qPrintable(a2), qPrintable(a3),
+		       qPrintable(a4));
+		CHECK(a1 == QStringLiteral("<Hi>") && a2 == QStringLiteral("Hi")
+		      && a3.isEmpty() && a4 == QStringLiteral("Hi"),
+		      "a style sheet costs a button its brackets, and a colour-only "
+		      "one draws it not at all, while a label is unharmed -- pinned "
+		      "as measured rather than as wanted");
+	}
+
 
 	// QGridLayout and QStackedWidget, neither of which this suite had ever
 	// rendered, and both of which the consumers lean on: 37 uses of the

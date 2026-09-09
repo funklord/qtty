@@ -144,13 +144,14 @@ own status bar -- see practice 8.
 
 **Most are advice**, roughly in the order they pay off: they turn an
 application a terminal user can operate into one they can operate
-comfortably. **Practices 9, 10 and 11 are not advice but traps** -- each
-concerns a custom widget, breaks something silently, and breaks it only
-on the terminal, so the desktop build hides all three. They sit here
-because that is where custom-widget material belongs, not because they
-matter least. If you are writing a widget of your own, read those three
-first; they are collected with a fourth in the table below, under *If you
-are writing a custom widget*.
+comfortably. **Practices 9 to 12 are traps rather than advice** -- each
+breaks something silently, and breaks it only on the terminal, so the
+desktop build hides every one. Nine to eleven concern a widget of your
+own; twelve concerns styling a standard one. They sit last because that
+is where the material belongs, not because they matter least. If you are
+writing a custom widget, read 9 to 11 first: they are collected, with a
+fourth from *Copy and paste*, in the table under *If you are writing a
+custom widget*.
 
 **1. Give every control a mnemonic, and every field a labelled buddy.**
 
@@ -336,7 +337,27 @@ the attribute behaves perfectly there and fails only where you are not
 looking. (Qt *clears* the attribute on a read-only line edit, which is
 right: nothing to copy, and `Ctrl+C` should still quit.)
 
-**12. Prefer stepping to dragging.** A splitter, a slider and a scroll bar
+**12. Do not put a style sheet on a control.** Measured on a push
+button, at three settings:
+
+    no sheet                       <Hi>
+    background/border/padding      Hi      -- the brackets are gone
+    color: red                             -- nothing at all
+
+The brackets are how a terminal user knows a thing is a button. A styled
+one still takes `Enter` and still shows focus, and **nothing on screen
+says it is a control** -- so the affordance is gone while the behaviour
+stays, which is the worst way round. A colour-only sheet is worse again:
+the button draws nothing. A `QLabel` with the same rule is unharmed, so
+this is about controls rather than about drawing.
+
+Qt's style-sheet machinery takes drawing over from the application style,
+which is what it is for; qtty's cell drawing IS the application style, so
+a sheet replaces it. If you style for the desktop, set the sheet in the
+GUI branch of your frontend -- the same place the terminal-only pieces
+go, one section down.
+
+**13. Prefer stepping to dragging.** A splitter, a slider and a scroll bar
 all respond to arrows when focused, but only if a user can reach them.
 Give a splitter a keyboard route or a menu action that sets the split;
 "drag the handle" is not available to everybody.
