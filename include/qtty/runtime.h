@@ -46,6 +46,20 @@ namespace Qtty {
 void set_keyboard_conventions(bool on);
 bool keyboard_conventions();
 
+// What the conventions bind, as key/meaning pairs, so an application can
+// SHOW them.
+//
+// A terminal user cannot discover a binding by looking for a button, so
+// `doc/keyboard-first.md` asks every application to put its keys on the
+// screen -- and an application that wrote "F6 window" into its own status
+// bar would be keeping a second copy of a fact this library owns, which
+// goes stale the day the binding moves. This hands over the list instead.
+//
+// EMPTY when the conventions are off, rather than a list of what they
+// would be. An application can then render it unconditionally and be
+// right either way, which is the only version that cannot lie to a user.
+QVector<QPair<QString, QString>> keyboard_conventions_help();
+
 // ---------------------------------------------------------------- InputRouter
 // Owns everything Qt's platform layer would normally own (measured F3/F4):
 // the shortcut table (synthetic keys never reach QShortcutMap), focus

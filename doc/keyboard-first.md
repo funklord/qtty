@@ -163,6 +163,18 @@ hints -- a terminal user cannot discover a binding by looking for a
 button. This costs one `QLabel` and is the difference between an
 application people can use and one they can use *if somebody tells them*.
 
+Do not hand-write the ones qtty binds. Ask for them:
+
+    QStringList hints;
+    for (const auto &[key, what] : Qtty::keyboard_conventions_help())
+        hints << key + " " + what;
+    status->setText(hints.join("  \u00b7  "));
+
+It returns **nothing** when the conventions are off, so the same code is
+right either way and never promises a key that does nothing. Writing
+`"F6 window"` into your own status bar instead keeps a second copy of a
+fact this library owns, and the copy is wrong the day the binding moves.
+
 **9. In a custom widget, ignore keys that carry `Alt`.** qtty withholds
 the letter from widgets Qt marks as taking text, which covers every
 standard input widget. A widget of your own that reads

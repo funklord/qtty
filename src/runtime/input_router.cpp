@@ -20,6 +20,21 @@ static bool s_conventions = false;
 void set_keyboard_conventions(bool on) { s_conventions = on; }
 bool keyboard_conventions() { return s_conventions; }
 
+QVector<QPair<QString, QString>> keyboard_conventions_help() {
+	if (!s_conventions) return {};
+	// Written once, here, beside the code that acts on them. The list and
+	// the behaviour drifting apart is the whole failure this exists to
+	// prevent, so a binding added below must be added here in the same
+	// edit -- and a check reads both.
+	return {
+		{ QStringLiteral("Enter"),          QStringLiteral("activate") },
+		{ QStringLiteral("Up/Down"),        QStringLiteral("move") },
+		{ QStringLiteral("Ctrl+PgUp/PgDn"), QStringLiteral("tab") },
+		{ QStringLiteral("F6"),             QStringLiteral("window") },
+		{ QStringLiteral("Alt+letter"),     QStringLiteral("jump to") },
+	};
+}
+
 InputRouter::InputRouter(QWidget *window) : win_(window) {
 	quit_keys_ = { KeyEvent{Qt::Key_C, QString(), true, false, false},
 		          KeyEvent{Qt::Key_D, QString(), true, false, false} };

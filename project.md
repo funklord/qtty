@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1166 checks, 0 failures. `make check` is green and includes
+1169 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15877,6 +15877,34 @@ evidence about it rather than silence.
 
 Everything else the grep found is `using QWidget::QWidget` in a real
 subclass, which inherits a constructor and casts nothing.
+
+### 8.69 A key nobody can find is a key nobody has (2026-09-09)
+
+The guide's practice 8 asks every application to put its keys on the
+screen, because **a terminal user cannot discover a binding by looking for
+a button** -- there is no menu to open with a mouse and read. That advice
+was incomplete: an application following it would have written
+`"F6 window"` into its own status bar, which is **a second copy of a fact
+this library owns**, wrong the day the binding moves.
+
+`keyboard_conventions_help()` hands over the list instead: key and meaning,
+written beside the code that acts on them.
+
+**It returns NOTHING when the conventions are off**, rather than a list of
+what they would be. That is the property worth having: an application can
+render it unconditionally and be right either way, where a constant list
+would promise `F6` to a user for whom it does nothing. **A help line that
+lies is worse than no help line**, because the user believes it and
+concludes the application is broken.
+
+**The check reads both sides**, which is the point of the list living in
+the same file as the behaviour: every binding the block above exercises --
+Enter, Up/Down, Ctrl+PgUp/PgDn, F6 -- has to appear in the list, so a key
+added to one and not the other fails. The sabotage renames `F6` to `F7`
+and the check reddens.
+
+**And every line must say what its key DOES.** A key with no meaning
+beside it is no help at all, so an empty meaning fails too.
 
 ## 11. What is next, in order
 

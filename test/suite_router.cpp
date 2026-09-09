@@ -1747,7 +1747,39 @@ int suite_router() {
 			      "and a tab's own letter reaches it, so a page is one "
 			      "keystroke away rather than a count of steps");
 		}
+
+		// What an application SHOWS. A terminal user cannot find a binding
+		// by looking for a button, so the guide asks every application to
+		// put its keys on the screen -- and one that wrote "F6 window"
+		// into its own status bar would keep a second copy of a fact this
+		// library owns.
+		{
+			const auto help = keyboard_conventions_help();
+			QStringList keys;
+			for (const auto &row : help) keys << row.first;
+			printf("info: the conventions describe themselves as [%s]\n",
+			       qPrintable(keys.join(QStringLiteral(", "))));
+			// Every binding the block above exercised has a line, which is
+			// the property that keeps the list and the behaviour together:
+			// a key added to one and not the other fails here.
+			CHECK(keys.contains(QStringLiteral("Enter"))
+			      && keys.contains(QStringLiteral("Up/Down"))
+			      && keys.contains(QStringLiteral("Ctrl+PgUp/PgDn"))
+			      && keys.contains(QStringLiteral("F6")),
+			      "the conventions can list what they bind, so an "
+			      "application shows the keys without keeping its own copy "
+			      "of them");
+			for (const auto &row : help)
+				if (row.second.isEmpty()) keys.clear();
+			CHECK(!keys.isEmpty(),
+			      "and every line says what its key does, a key with no "
+			      "meaning beside it being no help at all");
+		}
 		set_keyboard_conventions(false);          // process-wide: put it back
+		CHECK(keyboard_conventions_help().isEmpty(),
+		      "and with the conventions off it lists nothing, so an "
+		      "application can show the list unconditionally and never "
+		      "promise a key that does nothing");
 	}
 
 	// ------------------------------------------------ section 5.5: drags

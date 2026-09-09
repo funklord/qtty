@@ -916,3 +916,19 @@ find = "\t\tif (!w->isVisible() || !w->isEnabled()) continue;\n\t\tif (!(w->focu
 into = "\t\tif (!(w->focusPolicy() & Qt::TabFocus)) continue;"
 count = 1
 check = "a disabled control is stepped over rather than landed on"
+
+[[sabotage]]
+name = "the conventions list a key they do not bind"
+file = "src/runtime/input_router.cpp"
+find = "\t\t{ QStringLiteral(\"F6\"),             QStringLiteral(\"window\") },"
+into = "\t\t{ QStringLiteral(\"F7\"),             QStringLiteral(\"window\") },"
+count = 1
+check = "the conventions can list what they bind"
+
+[[sabotage]]
+name = "the list is offered even with the conventions off"
+file = "src/runtime/input_router.cpp"
+find = "\tif (!s_conventions) return {};"
+into = "\t;"
+count = 1
+check = "with the conventions off it lists nothing"
