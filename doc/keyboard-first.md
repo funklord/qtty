@@ -408,6 +408,34 @@ in it.
 `Esc` rejects such a dialog and its default button answers `Enter`, both
 Qt's own; see the first table.
 
+## Where your output goes
+
+A TUI owns the screen, so anything printed into it lands in the middle of
+a frame -- and nothing repaints over it, because the cell plane never
+changed.
+
+**Qt's own logging is handled for you.** `setup()` installs a message
+handler that buffers `qDebug()`, `qWarning()` and the rest while stderr
+is a terminal, and writes them out when the backend gives the terminal
+back, with a count of anything it held. An application that takes the
+screen some other way can flush them itself:
+
+    Qtty::flush_deferred_messages();
+
+**`qFatal()` is handled the other way round, deliberately.** The screen
+is given back *first* and the message printed after, because a fatal
+message is the process's last words and the alternate screen dies with
+the process -- taking them with it. Measured before that was so: with a
+frame up, 2746 bytes of screen reached the terminal and not one sentence
+of the diagnostic.
+
+**A raw `printf`, `std::cout` or `write(1, ...)` is not interceptable.**
+It will land in your frame and stay there. Use Qt's logging and it is
+taken care of; write to stdout yourself and nothing can help you. In a
+dual-frontend application this is the easiest trap here to fall into,
+because the identical line is harmless in the GUI build -- which is the
+same reason every trap on this page is a trap.
+
 ## If you are writing a custom widget
 
 Four things a standard Qt widget gets and yours does not. **Each is one

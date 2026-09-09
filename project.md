@@ -15917,6 +15917,44 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.87 A public function nobody was told about (2026-09-10)
+
+Next question: **where does my application's output go?** A TUI owns the
+screen, so a stray line lands in the middle of a frame and stays there --
+nothing repaints over it, because the cell plane never changed.
+
+**The code is ahead of the documentation again**, and this time
+handsomely. `setup()` installs a message handler that buffers Qt's
+logging while stderr is a terminal and writes it out when the backend
+gives the terminal back, with a count of what it held. `qFatal()` is
+handled the other way round on purpose: the screen goes back FIRST and
+the message prints after, because a fatal message is the process's last
+words and the alternate screen dies with the process. The comment carries
+the measurement that made it so -- with a frame up, **2746 bytes of
+screen reached the terminal and not one sentence of the diagnostic**.
+
+**And `flush_deferred_messages()` is public API that nothing tells anyone
+about.** It is declared in `include/qtty/application.h`, so unlike the
+clipboard limit in 8.86's neighbour it actually ships -- and it appears
+in neither the guide nor the README, so an application that takes the
+screen some other way has no way to learn it exists. That is the same
+class as the clipboard limit and the milder half of it: **reachable but
+unmentioned, rather than mentioned but unreachable.**
+
+The guide now has a *Where your output goes* section carrying all three
+facts, and the fourth an implementer actually needs: **a raw `printf` or
+`std::cout` is not interceptable and will corrupt the frame.** Qt's
+logging is handled; a direct write is not, and in a dual-frontend
+application the identical line is harmless in the GUI build -- which is
+what every trap on that page has in common and is now said once, there,
+rather than implied five times.
+
+**No check was added, and that is the finding holding still.** The
+deferral is already covered thoroughly: eight warnings emitted, none
+reaching the stream raw, the explanation printed once and the count
+printed as "8 time(s)". Adding a check here would have been motion rather
+than work; what was missing was a sentence in the file people read.
+
 ### 8.86 A style sheet takes a control's affordance away (2026-09-10)
 
 Same lens, next question: **what does `setStyleSheet()` do here?**
