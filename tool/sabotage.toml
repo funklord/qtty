@@ -613,13 +613,20 @@ into = "std::as_const(popup_.dropped))\n\t\t\tif (false) w->show();"
 count = 1
 check = "and the popup layer putting itself away hands them back"
 
-[[sabotage]]
-name = "a deleted overlay stays in the registry"
-file = "src/graphics/overlay.cpp"
-find = "\tregistry().removeAll(this);"
-into = "\t;"
-count = 1
-check = "and deleting it takes it out of the registry"
+# REMOVED: "a deleted overlay stays in the registry".
+#
+# The breakage is FATAL, so the check it named could not report it. Taking
+# `registry().removeAll(this)` out of ~Overlay() leaves a dangling pointer
+# in a registry the compositor walks every frame, and the suite segfaults
+# in a paint path BEFORE reaching the check -- measured, `qtty-tests
+# graphics` alone dies with 0 failures printed. The harness calls that
+# INCONCLUSIVE and is right to: a crash is not a check speaking.
+#
+# It reported FAIL by hand when the check was written (8.44); the suite has
+# grown since, and something now touches the registry first. What defends
+# the property instead: the check itself, which passes on the real code and
+# asserts the registry is emptied, and the sanitizer configuration, where a
+# dangling registry entry is a use-after-free rather than a lucky crash.
 
 [[sabotage]]
 name = "SS3 D is decoded as the wrong arrow key"
@@ -867,7 +874,7 @@ file = "src/runtime/input_router.cpp"
 find = "\tif (s_conventions && !press.isAccepted()) {"
 into = "\tif (s_conventions) {"
 count = 1
-check = "Enter in a text field is still the field's own"
+check = "a control that takes the key keeps it"
 
 [[sabotage]]
 name = "asking for the conventions does nothing"

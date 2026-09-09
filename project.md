@@ -15906,6 +15906,53 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.70 The harness caught a check that could not fail (2026-09-09)
+
+The full sabotage set was run end to end at 114 entries -- the first time
+since 103 -- and **112 reddened the check they name. The other two are the
+reason to run it.**
+
+**One was a check that could not fail, and it was mine, written the same
+day.** The entry breaks the guard that keeps the terminal conventions from
+taking a key the focused widget WANTED:
+
+    if (s_conventions && !press.isAccepted())   ->   if (s_conventions)
+
+and the harness reported *"the code was broken and nothing noticed, which
+is the one thing this target exists to find."*
+
+**The check asserted the wrong thing.** It pressed Enter in a text field
+and asserted the button had not been clicked -- which is true whether the
+guard is there or not, because the convention clicks only a focused
+BUTTON and a field is not one. It looked like a test of the guard and
+tested nothing.
+
+**The case that shows the guard is a control that ACCEPTS the key.** A
+`QListWidget` takes Down: it moves its selection and accepts. Without the
+guard the convention runs as well, so the selection moves AND focus leaves
+the list the user was working in. The check asserts both halves -- the
+selection moved, focus stayed -- and reddens on the sabotage.
+
+**The other is a breakage the check cannot survive, and the entry is
+gone.** Taking `registry().removeAll(this)` out of `~Overlay()` leaves a
+dangling pointer in a registry the compositor walks every frame, and the
+suite **segfaults in a paint path before reaching the check** -- measured,
+the graphics suite alone dies having printed 0 failures. The harness calls
+that INCONCLUSIVE and is right: **a crash is not a check speaking.**
+
+It reported FAIL by hand when it was written in 8.44; the suite has grown
+since and something now touches the registry first. **A sabotage entry can
+rot without anybody editing it** -- not the anchor, which `--validate`
+watches, but the ORDER in which the suite meets the wreckage.
+
+What defends that property instead is written where the entry was: the
+check itself, and the sanitizer configuration, where a dangling registry
+entry is a use-after-free rather than a lucky crash.
+
+**Both findings are the same shape as 8.68's**: a thing that looked
+verified was not, and only running the whole set said so. Individually,
+each of these entries had been proved by hand on the day it was written.
+
 ## 11. What is next, in order
 
 The four items that used to head this list -- backend injection, the

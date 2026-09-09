@@ -1688,16 +1688,30 @@ int suite_router() {
 		      "and a disabled control is stepped over rather than landed "
 		      "on");
 		named->setEnabled(true);
-		// A text field keeps its own keys either way: the conventions fire
-		// only where the focused widget ignored the key, so this is not a
-		// router that has taken Enter away from everything.
-		named->setFocus();
-		set_focus_widget(win.focusWidget());
-		const int after = fired;
-		key(Qt::Key_Return, QStringLiteral("\r"));
-		CHECK(fired == after,
-		      "while Enter in a text field is still the field's own, "
-		      "because the conventions only take a key nothing wanted");
+		// A widget that WANTED the key keeps it. The conventions fire only
+		// where the focused widget ignored one, and the case that shows it
+		// is a list: Down moves its selection AND is accepted, so a
+		// convention that ran anyway would move the selection and then
+		// take focus off the list the user was working in.
+		//
+		// The first version of this check asserted that Enter in a text
+		// field did not click the button -- which is true whether the
+		// guard is there or not, because the convention clicks only a
+		// focused BUTTON and a field is not one. The sabotage harness
+		// caught it: "the code was broken and nothing noticed".
+		{
+			auto *list = new QListWidget;
+			list->addItems({ QStringLiteral("one"), QStringLiteral("two") });
+			v->addWidget(list);
+			QCoreApplication::processEvents();
+			list->setCurrentRow(0);
+			list->setFocus();
+			set_focus_widget(win.focusWidget());
+			key(Qt::Key_Down, QString());
+			CHECK(list->currentRow() == 1 && win.focusWidget() == list,
+			      "a control that takes the key keeps it: Down moves a "
+			      "list's selection and leaves focus on the list");
+		}
 
 		// Ctrl+PageUp and Ctrl+PageDown between tabs. Qt gives a
 		// QTabWidget Ctrl+Tab and Ctrl+Shift+Tab and not these, and these

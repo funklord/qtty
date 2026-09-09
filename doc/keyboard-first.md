@@ -15,7 +15,7 @@ where it is qtty's it says which.
 A terminal interface is a stack of layers rather than a plane of windows,
 and people navigate it with three ideas:
 
-- **Enter goes IN.** It opens the thing under the cursor, accepts the
+- **Enter goes IN.** It opens the thing that has focus, accepts the
   dialog, commits the field.
 - **Escape comes BACK.** It closes the menu, cancels the dialog, leaves
   the layer. Pressed enough times it reaches the top.
@@ -85,32 +85,39 @@ deliberate: a selected tab is already underlined to show the tab bar has
 focus, so underlining one letter of it would say two things at once. Put
 the key in your own help text if your users need to find it.
 
-## The two conventions that differ, and how to ask for them
+## The terminal's own keys, and how to ask for them
 
-Two terminal habits are not Qt's behaviour, so qtty does **not** turn them
-on by itself:
+One line turns on the habits a terminal user has and Qt does not:
 
     Qtty::set_keyboard_conventions(true);
 
-- **Enter activates the control that has focus.** On a desktop Enter
-  fires the *default* button wherever focus is, and a focused button
-  answers to `Space`. On a terminal Enter is the "do it" key.
-- **Up and Down move between controls.** On a desktop they move *within*
-  one, and between controls only `Tab` does -- which is reasonable when a
-  mouse is always available and unreasonable when it is not.
+| Key | What it does |
+|---|---|
+| `Enter` | Activates the control that has focus |
+| `Up`, `Down` | Move between controls |
+| `Ctrl+PageUp`, `Ctrl+PageDown` | Move between tabs, wrapping at the ends |
+| `F6`, `Shift+F6` | Move between top-level windows |
+| `Alt` + a tab's letter | Switch to that tab |
 
-It also binds the two navigation keys in the table above, `Ctrl+PageUp`
-and `Ctrl+PageDown` for tabs and `F6` for windows.
+The first two are the ones that **differ** from Qt rather than merely
+adding to it, and they are why the whole set is opt-in. On a desktop
+`Enter` fires the *default* button wherever focus is and a focused button
+answers to `Space`; and arrows move *within* a control, never between --
+both reasonable when a mouse is always there, and neither reasonable when
+it is not.
 
-**Both fire only where the focused widget ignored the key.** A text field
-keeps its own `Enter`, a list keeps its own arrows, a slider keeps its
-own. So turning them on cannot take a key away from a control that wanted
-it.
+**Every one of them fires only where the focused widget ignored the key.**
+A text field keeps its own `Enter`, a list keeps its own arrows, an
+application that already uses `F6` keeps `F6`. So turning them on cannot
+take a key away from a control that wanted it.
 
 It is off by default because this library's promise is that an unmodified
-application renders faithfully, and an application that has bound `Enter`
-or `Down` itself must keep them. If you are writing for a terminal,
-turn it on: it is one line, and it is what makes a form walkable.
+application renders faithfully, and one that has bound `Enter` or `Down`
+itself must keep them. If you are writing for a terminal, turn it on: it
+is one line, and it is what makes a form walkable.
+
+**And ask it what it bound** rather than writing the table above into your
+own status bar -- see practice 8.
 
 ## Practices, in the order they matter
 
