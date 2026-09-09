@@ -1940,6 +1940,53 @@ int suite_router() {
 			set_keyboard_conventions(true);
 		}
 
+		// AN UNCONSUMED ESCAPE REACHES THE FOCUSED WIDGET, which is
+		// the mechanism practice 5 rests on and did not name. "Enter
+		// goes in, Esc comes back" is the shape a terminal user
+		// expects; Qt answers Esc for a menu and a modal, and a layer
+		// of the application's own -- a QStackedWidget page, an inline
+		// editor, a mode -- has to hear it itself.
+		//
+		// Pinned in both convention states, because the risk is a
+		// LATER convention taking Esc for something plausible and
+		// silently retiring every application's way back. qtty binds
+		// nothing to it deliberately: "back" differs per application,
+		// and a guess would be wrong somewhere and unremovable.
+		{
+			struct Ear : QObject {
+				int esc = 0;
+				bool eventFilter(QObject *, QEvent *e) override {
+					if (e->type() == QEvent::KeyPress
+					    && static_cast<QKeyEvent *>(e)->key()
+					       == Qt::Key_Escape) ++esc;
+					return false;
+				}
+			};
+			Ear ear;
+			auto *page = new QLineEdit;
+			v->addWidget(page);
+			QCoreApplication::processEvents();
+			page->installEventFilter(&ear);
+			page->setFocus();
+			set_focus_widget(win.focusWidget());
+			for (int conv = 0; conv < 2; ++conv) {
+				set_keyboard_conventions(conv != 0);
+				const int was = ear.esc;
+				r.on_key({Qt::Key_Escape, QString(),
+				          false, false, false});
+				QCoreApplication::processEvents();
+				CHECK(ear.esc - was == 1,
+				      conv ? "and still reaches it with the conventions "
+				             "on, which take no key an application needs "
+				             "for going back"
+				           : "an Escape nothing else consumed reaches the "
+				             "focused widget, so a layer of the "
+				             "application's own can be left by it");
+			}
+			set_keyboard_conventions(true);
+			page->removeEventFilter(&ear);
+		}
+
 		// What an application SHOWS. A terminal user cannot find a binding
 		// by looking for a button, so the guide asks every application to
 		// put its keys on the screen -- and one that wrote "F6 window"

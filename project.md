@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1179 checks, 0 failures. `make check` is green and includes
+1181 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15905,6 +15905,46 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.74 The half of the model that had no mechanism (2026-09-09)
+
+The request that produced the guide described a terminal's shape as
+**"enter goes in, esc comes back"**. Enter got a convention in 8.66 and
+four checks. **Esc got a practice and nothing else** -- practice 5 asks an
+application to leave a way back from a layer of its own, and never said
+how it hears about the key, or whether the key even arrives.
+
+Measured, in both convention states: an Escape nothing else consumed
+**reaches the focused widget** as an ordinary key event. Qt answers it for
+a menu and a modal; below that it is delivered, and the way back is an
+ordinary `keyPressEvent`. Practice 5 now shows the four lines.
+
+**The reason to pin it is a key nobody has taken yet.** The convention
+bundle grew from two entries to five in one session, and each addition
+took a key the terminal had spare. A later one taking Esc for something
+plausible -- closing the top window, stepping out of a control -- would
+retire every application's way back at once, and **from outside nothing
+would look wrong**: the key would simply stop arriving. So the check runs
+in both states and a sabotage entry swallows Escape into the drag-cancel
+path, which is where it would actually go.
+
+**qtty still binds nothing to Esc, and that is the same decision as
+declining `unreachable_controls()` in 8.71.** "Back" means something
+different in every application, so a default would be a guess that is
+wrong somewhere and cannot be removed. What the library owes is not a
+behaviour but a **promise that the key reaches you** -- and a promise is
+worth having only if something asserts it.
+
+**Where the lens came from, since it was not the obvious next one.** 8.73
+found a claim about a dependency that nobody had measured, so the sweep
+after it read the 27 claims about Qt in the source. Nearly all carry their
+measurement -- "measured on a QListWidget six cells wide", "the check had
+to be rewritten twice to see" -- and the two load-bearing ones read in
+full are both tested end to end: the style re-wrap through
+`QApplication::setStyle`, and the 800x800 offscreen screen, pinned twice
+including its platform dependence. That sweep found nothing, and it is
+recorded here rather than as its own entry because what it produced was
+the observation that the SOURCE is measured and the GUIDE was not.
 
 ### 8.73 The guide stated a Qt behaviour that Qt does not have (2026-09-09)
 

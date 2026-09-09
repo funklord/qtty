@@ -162,6 +162,21 @@ the same action in a menu, give it a shortcut, or both. `QAction` in a
 inline editor, a mode -- does not, and a user who cannot get back is
 stuck in a way a mouse user never is.
 
+An `Esc` that nothing else consumed arrives at the focused widget as an
+ordinary key event, with the conventions or without them, so the way back
+is the usual one:
+
+    void page::keyPressEvent(QKeyEvent *e) {
+        if (e->key() == Qt::Key_Escape) { emit back(); return; }
+        QWidget::keyPressEvent(e);
+    }
+
+qtty binds nothing to `Esc` itself, deliberately: "back" means something
+different in every application, and a default that guessed would be wrong
+somewhere and impossible to remove. What it does promise is that the key
+reaches you, and a check asserts that in both convention states -- so a
+convention added later cannot quietly take it.
+
 **6. Reach every window.** qtty binds **no** shortcut of its own beyond
 the quit keys, because any key it took by default would be one an
 application could not use. So a second top-level window is unreachable

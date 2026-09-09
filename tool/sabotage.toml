@@ -959,3 +959,14 @@ find = "\tif (w != scope && !scope->isAncestorOf(w)) return false;"
 into = "\tif (false) return false;"
 count = 1
 check = "asking about a container lists what is inside it"
+
+[[sabotage]]
+# Escape is special-cased only to cancel a drag. Drop the guard and every
+# Escape is eaten as a cancel, which retires practice 5's way back from
+# every application at once and looks like nothing at all from outside.
+name = "every Escape is swallowed as a drag cancel"
+file = "src/runtime/input_router.cpp"
+find = "\tif (drag_active() && k.qt_key == Qt::Key_Escape) {"
+into = "\tif (k.qt_key == Qt::Key_Escape) {"
+count = 1
+check = "an Escape nothing else consumed reaches the focused widget"
