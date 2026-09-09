@@ -1930,6 +1930,20 @@ int suite_router() {
 				dr.on_key({Qt::Key_Return, QStringLiteral("\r"),
 				           false, false, false});
 				QCoreApplication::processEvents();
+				// THE MECHANISM, which reconciles two checks this
+				// suite has held apart since 8.33. A focused button
+				// in a PLAIN widget ignores Enter; a focused button
+				// in a DIALOG takes it. Both are true and the tree
+				// recorded them as though one contradicted the
+				// other. autoDefault is the whole difference, and
+				// pinning it means a Qt that changed the default
+				// reddens the explanation rather than silently
+				// moving the behaviour.
+				CHECK(oth->autoDefault() && !apply->autoDefault(),
+				      "autoDefault is set for a button in a dialog and "
+				      "clear for one in a plain widget, which is why "
+				      "Enter reaches the focused button in the first "
+				      "and not the second");
 				CHECK(okf == 1 && othf == 0,
 				      conv ? "and with them on, Enter in a field still "
 				             "commits the dialog through its default button"

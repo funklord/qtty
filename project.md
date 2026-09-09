@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1184 checks, 0 failures. `make check` is green and includes
+1186 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -3278,9 +3278,17 @@ would satisfy "the value differs".
 Two behaviours were checked and left alone, because they are Qt's and not
 this style's, and naming them stops the next sweep re-investigating:
 
-- **Enter on a focused push button does nothing.** Qt routes Return to a
-  dialog's default button, not to whatever has focus; a bare button in a
+- **Enter on a focused push button does nothing.** A bare button in a
   plain widget responds to Space alone. Matching the desktop is right.
+
+  **The explanation first written here was wrong and 8.73 corrected it,
+  along with the guide that had inherited it.** It said Qt routes Return
+  to a dialog's default button "not to whatever has focus", generalising
+  from a fixture whose focus was deliberately NOT on a button. In a
+  dialog a focused button DOES take Enter, because `autoDefault` is set
+  for a button whose parent is a `QDialog` and clear for one in a plain
+  widget -- measured, and asserted since 8.76. Both behaviours above are
+  right; only the reason given for them was not.
 - **A click on a slider's groove pages rather than jumping.** Qt's
   default adds `pageStep`, which on a 0..10 range with the default step
   lands on the maximum however near the low end the click was.
@@ -15905,6 +15913,48 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.76 The guide inherited its wrong claim from here (2026-09-09)
+
+8.75 said the guide had contradicted a measurement already in the tree, so
+the next lens was the obvious one: **what else says something this file
+also says, differently?** It found the source of 8.73.
+
+8.33 recorded, as a behaviour checked and left alone:
+
+    Qt routes Return to a dialog's default button, not to whatever
+    has focus
+
+**That is where the guide's row came from**, nearly word for word, and it
+is wrong in the same way. The measurement behind it was sound and is
+quoted two thousand lines later -- *"measured on a dialog whose focus was
+ELSEWHERE"* -- and the sentence generalised it: a fixture that
+deliberately kept focus off a button became a rule about every focus.
+**A bound reported as a value**, and then copied.
+
+So 8.73 fixed the copy and not the source, which is the failure
+`working-practice.md` names -- *a claim usually lives in more than one
+place, and the correction has to go where it will next be looked for.*
+The guide is read by implementers; this file is read by whoever writes
+the guide next.
+
+**The reconciling fact is one call, and it is asserted now.** `autoDefault`
+is set for a `QPushButton` whose parent is a `QDialog` and clear for one
+in a plain widget:
+
+    autoDefault in a dialog = 1, in a plain widget = 0
+
+That is the whole difference between two checks this suite has held apart
+since 8.33 -- *Enter on a focused button does nothing* in a plain window,
+and *Enter on a focused button fires it* in a dialog. **Both are right,
+and the tree recorded them as though one contradicted the other.** The
+new check pins the mechanism rather than either behaviour, so a Qt that
+changed the default reddens the explanation instead of moving the
+behaviour under two checks that would both go on passing.
+
+8.33's entry is rewritten rather than annotated, since a reader finding
+the old sentence and the correction together believes whichever sounds
+more careful, and the old one always does.
 
 ### 8.75 The guide contradicted this file, and this file was right (2026-09-09)
 
