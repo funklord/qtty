@@ -184,9 +184,23 @@ until either you bind `Qtty::next_window()` yourself or you turn on the
 conventions, which put it on `F6`. Do one of the two: a window nobody can
 get to is worse than one that was never opened.
 
-**7. Do not depend on hover or tooltips.** A terminal has no pointer to
-rest, and qtty does not send `QEvent::ToolTip` today. Information a user
-needs must be visible or reachable by key.
+**7. Do not depend on hover or tooltips.** Information a user needs must
+be visible or reachable by key.
+
+The reason is not that a terminal has no pointer -- this guide said that
+and it was wrong. qtty sends `QEvent::MouseMove`, so Qt sets `WA_Hover`,
+delivers `Enter` and `HoverEnter`, and `underMouse()` answers true: a
+custom widget consulting it in `paintEvent` **will** see the pointer.
+What is absent is the two things anyone would build on. No
+`QEvent::ToolTip` is raised, even after its timer, so whatever only a
+tooltip says cannot be got at. And the cell style never reads
+`State_MouseOver`, so every widget Qt ships draws the same hovered or
+not.
+
+Hover is therefore available and invisible -- the worst pair to depend
+on, since it works in the widget you wrote and nowhere else. A keyboard
+user never produces it at all. Whether either should change is an open
+question in `project.md`, not a gap.
 
 **8. Say what the keys are.** A status bar line, a `?` page, a footer of
 hints -- a terminal user cannot discover a binding by looking for a

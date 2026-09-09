@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1181 checks, 0 failures. `make check` is green and includes
+1184 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -577,8 +577,8 @@ Owned by the copyright holder:
 | **An HTML bullet list loses its bullets.** Measured through a `QTextBrowser`: `<ul><li>one</li></ul>` renders the text indented with a one-cell BACKGROUND block where the bullet belongs and no glyph -- `bg=#000000` on the default dark ground. Qt draws the bullet as `drawPath` with a 6x6 bounding rect, and `is_thin` (`width*2 < cw \|\| height*2 < ch`) is true of it, so a bullet takes the hairline road meant for carets and rules. **The discriminator is clean and is the finding**: a shape smaller than one cell in BOTH dimensions is a mark, not a hairline -- a caret is 1x19 and a rule 50x1, and neither is. What a mark should BECOME is the choice, and it is the holder's | 8.64 |
 | Whether the "too small to be a picture" rule moves to the backend. Nothing left unmeasured: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()`; no widget icon reaches the branch today; and the cost is **1.4 KB once per distinct icon, 35 bytes a frame after** -- eight of them together less than the one 48x48 icon the library already uploads | §7.2 |
 | **Right-to-left: does qtty support it at all?** design.md never says, and nothing in the tree mentions it -- so this is a scope question rather than a defect. Measured: under `Qt::RightToLeft` a check box mirrors and a combo box's text does, while its arrow, a progress bar's fill, a label's alignment and a line edit's text do not. §7.2 has the rendered pair | *undesigned* |
-| **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism | §7.2 |
-| **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect | §7.2 |
+| **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise | §7.2 |
+| **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect. **Both halves are asserted since 8.75** -- the hover arrives, and the render is byte-identical with the pointer on the control and off it | §7.2 |
 | **Two frames nested with no layout margin draw two rules in adjacent columns.** Faithful to the widget tree -- in pixels they are 1px lines 1px apart -- and on a grid they read as two rules. Merging is not a paint-time trick: the edges are in DIFFERENT cells because the inner rect is one cell inside the outer. Three options with their costs are recorded; the cheapest is to suppress a rule whose neighbour already holds one, which cannot tell nesting from two adjacent framed widgets. Reported by fuzzypickles, and reached again by a QScrollArea | 8.25, 8.26, 8.27 |
 | **A read-only line edit is not marked.** Measured: it renders identically to an editable one, so a user cannot tell they cannot type. Marking it needs vocabulary, and the obvious candidate collides -- disabled already uses Dim, and read-only is a different state, focusable and selectable. Unlike Enter's target it has no consequence a user cannot discover by typing | 8.33 |
 | **~~A tab's mnemonic does nothing.~~ It works with the conventions on (8.67); what is left is the DEFAULT.** `Alt+S` on a tab labelled "&Second" does not switch to it: the router matches Alt against ACTION text and a tab is not an action. It is therefore left unmarked, on the rule that underlining a key that does nothing is worse than leaving it bare. Whether a terminal should switch tabs by mnemonic at all is the question -- the marking follows the answer | 8.37 |
@@ -15905,6 +15905,51 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.75 The guide contradicted this file, and this file was right (2026-09-09)
+
+Practice 7 said: *"A terminal has no pointer to rest, and qtty does not
+send `QEvent::ToolTip` today."* The first clause is false, and **0b had
+already measured it** -- the *Hover* row says in as many words that
+`InputRouter` sends Enter and Leave, that `underMouse()` answers, and
+that `WA_Hover` was set on a push button while the hover could never
+come.
+
+So this is not a claim nobody had checked, which is what 8.73 was. **It is
+a claim contradicting a measurement already in the tree**, written because
+the guide was drafted from what a terminal obviously is rather than from
+what this project had recorded about it. That is the worse of the two:
+8.73 needed an experiment, and this needed a table of contents.
+
+Measured again while pinning it:
+
+    Enter=1  Hover=1  ToolTip=0  WA_Hover=1
+
+Three checks now hold the facts the two 0b rows state, so answering
+either question means turning a red check green rather than remembering
+a paragraph:
+
+- the pointer arrives -- `Enter`, `HoverEnter`, `WA_Hover`, and a
+  sabotage entry that drops the `MouseMove` send;
+- no tooltip is raised, even after its timer;
+- and a widget under the pointer renders **byte-identically** to the
+  same widget without one, which is what makes the advice true for every
+  widget Qt ships rather than only for the ones nobody hovers.
+
+**The third check was vacuous when written, and the denominator caught
+it within a minute.** It compared two renders for equality, and
+`render_once()` on a CHILD widget draws nothing -- so it was comparing
+two empty buffers and passing. Adding
+`!cold.to_text().trimmed().isEmpty()` -- 8.72's own lesson, applied to a
+check being written rather than to one being read -- turned it red at
+once, and rendering the window instead of the button fixed it.
+
+**The correction to the guide keeps the advice and replaces the reason.**
+Hover is available and invisible: it works in a widget you wrote and
+nowhere else, and a keyboard user never produces it. That is a better
+argument for not depending on it than the false one it replaces, and it
+points at `project.md` for the open question rather than presenting an
+absence as the nature of terminals.
 
 ### 8.74 The half of the model that had no mechanism (2026-09-09)
 

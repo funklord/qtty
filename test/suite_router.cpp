@@ -1987,6 +1987,89 @@ int suite_router() {
 			page->removeEventFilter(&ear);
 		}
 
+		// HOVER, which practice 7 denied outright. It said "a terminal
+		// has no pointer to rest, and qtty does not send
+		// QEvent::ToolTip today" -- and qtty DOES send
+		// QEvent::MouseMove, so Qt sets WA_Hover, delivers Enter and
+		// HoverEnter, and underMouse() is true. There is a pointer and
+		// it does rest.
+		//
+		// The advice was right and the reason was wrong, which is the
+		// worse half to get wrong: a custom widget that consults
+		// underMouse() in paintEvent WILL see the pointer, and would
+		// have been talked out of it. What is actually absent is a
+		// TOOLTIP, and a GridStyle that never reads State_MouseOver --
+		// so a standard widget draws the same hovered or not, which is
+		// what makes the advice true for everything Qt ships.
+		{
+			struct Watch : QObject {
+				int enter = 0, hover = 0, tip = 0;
+				bool eventFilter(QObject *, QEvent *e) override {
+					switch (e->type()) {
+					case QEvent::Enter:      ++enter; break;
+					case QEvent::HoverEnter: ++hover; break;
+					case QEvent::HoverMove:  ++hover; break;
+					case QEvent::ToolTip:    ++tip;   break;
+					default: break;
+					}
+					return false;
+				}
+			};
+			Watch w;
+			auto *hb = new QPushButton(QStringLiteral("Hov"));
+			hb->setToolTip(QStringLiteral("a tip"));
+			v->addWidget(hb);
+			QCoreApplication::processEvents();
+			hb->installEventFilter(&w);
+			// The WINDOW, not the button: render_once() on a child
+			// draws nothing, which the denominator assertion below
+			// caught the moment it was added -- the first version of
+			// this check compared two empty buffers and passed.
+			const int wc = win.width() / GridMetrics::cw();
+			const int wr = win.height() / GridMetrics::ch();
+			CellBuffer cold(wc > 0 ? wc : 1, wr > 0 ? wr : 1);
+			render_once(win, cold);
+			const QPoint c(hb->geometry().center().x()
+			                   / GridMetrics::cw(),
+			               hb->geometry().center().y()
+			                   / GridMetrics::ch());
+			r.on_mouse({c, 0, false, false, true, 0});
+			QCoreApplication::processEvents();
+			// Bounded: a tooltip is on a ~700ms timer, so give it one
+			// second of event loop and no more.
+			QElapsedTimer t; t.start();
+			while (t.elapsed() < 1000 && w.tip == 0) {
+				QCoreApplication::processEvents(
+				    QEventLoop::AllEvents, 20);
+			}
+			CHECK(w.enter == 1 && w.hover >= 1
+			      && hb->testAttribute(Qt::WA_Hover),
+			      "a mouse move over a widget delivers Enter and hover, "
+			      "so a custom widget CAN know the pointer is on it");
+			CHECK(w.tip == 0,
+			      "but no tooltip is raised even after its timer, so "
+			      "anything only a tooltip says is unreachable");
+
+			// And the reason the advice holds for everything Qt ships:
+			// the cell style never asks. Rendered rather than grepped --
+			// a check reading the source would pass on a style that
+			// asked and drew the same anyway, and fail on one merely
+			// spelled differently. The same button that just proved it
+			// receives the pointer, so the fixture cannot be the reason
+			// nothing changed.
+			CellBuffer warm(wc > 0 ? wc : 1, wr > 0 ? wr : 1);
+			render_once(win, warm);
+			// The denominator, because "the two renders agree" is true
+			// of two empty buffers -- 8.72's lesson applied to the check
+			// being written rather than to one being read.
+			CHECK(hb->underMouse() && !cold.to_text().trimmed().isEmpty()
+			      && warm.to_text() == cold.to_text(),
+			      "and a standard widget under the pointer draws what it "
+			      "drew without one -- something, and the same something "
+			      "-- the cell style never reading State_MouseOver");
+			hb->removeEventFilter(&w);
+		}
+
 		// What an application SHOWS. A terminal user cannot find a binding
 		// by looking for a button, so the guide asks every application to
 		// put its keys on the screen -- and one that wrote "F6 window"

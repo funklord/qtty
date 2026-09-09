@@ -970,3 +970,14 @@ find = "\tif (drag_active() && k.qt_key == Qt::Key_Escape) {"
 into = "\tif (k.qt_key == Qt::Key_Escape) {"
 count = 1
 check = "an Escape nothing else consumed reaches the focused widget"
+
+[[sabotage]]
+# The ordinary motion send. Drop it and the pointer never arrives: no
+# Enter, no hover, underMouse() false -- and a custom widget that draws
+# from underMouse() goes blind with nothing to say so.
+name = "a mouse move is never delivered"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\tQMouseEvent ev(QEvent::MouseMove, QPointF(pos), QPointF(screen),\n\t\t\t               Qt::NoButton, held, mods);\n\t\t\tQApplication::sendEvent(target, &ev);"
+into = "\t\t\t(void)held;"
+count = 1
+check = "so a custom widget CAN know the pointer is on it"
