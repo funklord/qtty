@@ -28,8 +28,8 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-08, at 1151**,
-and `make test-tray` at 1135 with the two checks 8.53 added.
+**Last re-verified under all six configurations: 2026-09-09, at 1166**,
+the sanitizers included after 8.68's fix, and `make test-tray` at 1165.
 The full sabotage set was run end to end at 90 entries the same day, every
 one reddening the check it names and none inconclusive; the three added
 since were each proved by hand as they were written.
@@ -15864,6 +15864,19 @@ pressing the same key again.
 turned a UBSan report into a leak report, and a leak report is
 unattributable where a UBSan report names the function. **Two frames is
 not a stack; it is a prompt to ask for more.**
+
+**And the question a reader asks next -- are there others? -- is answered
+rather than left.** Swept the library for pointer downcasts: **one**
+remains, `static_cast<TwinWidget *>(gui_twin_)` in `overlay.cpp`, and it
+is sound. `gui_twin_` is assigned in exactly one place, from a
+`new TwinWidget`, so the object really is of that type. It is also
+EXERCISED under the sanitizer -- the GUI-twin path runs whenever
+`is_tui_active()` is false, which is the suite's own state -- so unlike
+the cast above it is not a dormant one, and a clean sanitizer run is
+evidence about it rather than silence.
+
+Everything else the grep found is `using QWidget::QWidget` in a real
+subclass, which inherits a constructor and casts nothing.
 
 ## 11. What is next, in order
 
