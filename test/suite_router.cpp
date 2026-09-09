@@ -5,6 +5,7 @@
 #include <qtty/drag.h>
 #include <qtty/windows.h>
 #include <QtWidgets>
+#include <QShortcut>
 #include <cstdio>
 
 using namespace Qtty;
@@ -2165,6 +2166,84 @@ int suite_router() {
 			CHECK(rejected == 1 && !d.isVisible(),
 			      "and rejects a modal dialog, so a person who opened one by "
 			      "accident is not shut inside it");
+		}
+
+		// hasFocus() IS PERMANENTLY FALSE, which practice 10 of the guide
+		// warns about and nothing asserted. Under the offscreen platform no
+		// window ever activates, so Qt never sets its own focus widget --
+		// and a custom widget drawing `if (hasFocus()) drawFocusMark()`
+		// therefore draws nothing on a terminal while working perfectly on
+		// the desktop. Same binary, same widget, no error anywhere.
+		//
+		// The RELATIONSHIP is the check. Asserting `!hasFocus()` alone
+		// passes before anything is focused at all, and asserting qtty's
+		// answer alone says nothing about the trap. What is worth pinning
+		// is that the two disagree at the same instant, because that
+		// disagreement IS the reason Qtty::focusWidget() exists.
+		{
+			auto *fw = new QLineEdit;
+			v->addWidget(fw);
+			QCoreApplication::processEvents();
+			fw->setFocus();
+			set_focus_widget(win.focusWidget());
+			CHECK(Qtty::focusWidget() == fw && win.focusWidget() == fw
+			      && !fw->hasFocus()
+			      && QApplication::focusWidget() == nullptr,
+			      "qtty names the focused widget at the moment Qt's own "
+			      "hasFocus() is false, which is why a custom widget must "
+			      "ask Qtty::focusWidget() to draw a focus mark");
+		}
+
+		// QSHORTCUT, which is not a QAction and so was invisible to the
+		// router's table. `new QShortcut(QKeySequence("Ctrl+S"), this)` is
+		// the commonest way a Qt application binds a key, and it worked in
+		// the desktop build and did nothing at all on the terminal --
+		// silently, since Qt's own map gates on an active window and none
+		// activates here, so the key simply fell through.
+		{
+			int fired = 0, widget_fired = 0;
+			auto *sc = new QShortcut(
+			    QKeySequence(QStringLiteral("Ctrl+S")), &win);
+			QObject::connect(sc, &QShortcut::activated, [&] { ++fired; });
+			r.on_key({Qt::Key_S, QStringLiteral("s"), true, false, false});
+			QCoreApplication::processEvents();
+			CHECK(fired == 1,
+			      "a QShortcut fires, which is the commonest way a Qt "
+			      "application binds a key and did nothing here at all");
+
+			sc->setEnabled(false);
+			r.on_key({Qt::Key_S, QStringLiteral("s"), true, false, false});
+			QCoreApplication::processEvents();
+			CHECK(fired == 1,
+			      "and a disabled one does not, so the enabled flag means on "
+			      "a terminal what it means on a desktop");
+
+			// CONTEXT, because firing a WidgetShortcut from anywhere would
+			// give the terminal a binding the desktop does not have -- a
+			// fault in the other direction, and the harder one to notice.
+			auto *host = new QLineEdit;
+			auto *other = new QLineEdit;
+			v->addWidget(host);
+			v->addWidget(other);
+			QCoreApplication::processEvents();
+			auto *wsc = new QShortcut(
+			    QKeySequence(QStringLiteral("Ctrl+G")), host);
+			wsc->setContext(Qt::WidgetShortcut);
+			QObject::connect(wsc, &QShortcut::activated,
+			                 [&] { ++widget_fired; });
+			other->setFocus();
+			set_focus_widget(win.focusWidget());
+			r.on_key({Qt::Key_G, QStringLiteral("g"), true, false, false});
+			QCoreApplication::processEvents();
+			const int away = widget_fired;
+			host->setFocus();
+			set_focus_widget(win.focusWidget());
+			r.on_key({Qt::Key_G, QStringLiteral("g"), true, false, false});
+			QCoreApplication::processEvents();
+			CHECK(away == 0 && widget_fired == 1,
+			      "a WidgetShortcut fires only while its own widget has "
+			      "focus, so the terminal does not answer a key the desktop "
+			      "would leave alone");
 		}
 
 		// What an application SHOWS. A terminal user cannot find a binding

@@ -1008,3 +1008,26 @@ find = "\t\tQStringLiteral(\"Menu/Shift+F10\"), QStringLiteral(\"context menu\")
 into = "\t\tQStringLiteral(\"Menu/Shift+F11\"), QStringLiteral(\"context menu\")"
 count = 1
 check = "it lists only the keys that work anyway"
+
+[[sabotage]]
+# Focus tracking itself. Qt's own hasFocus() is permanently false under
+# the offscreen platform, so Qtty::focusWidget() is the only answer to
+# "who has focus" -- and if it stops answering, a custom widget's focus
+# mark disappears with nothing to say so. A heavy break: much of the
+# suite depends on focus, and the harness reports the named check.
+name = "focus is delivered but never recorded"
+file = "src/grid/grid_style.cpp"
+find = "\ts_focus = w;"
+into = "\t;"
+count = 1
+check = "qtty names the focused widget at the moment Qt's own"
+[[sabotage]]
+# QShortcut support. Remove the loop and the commonest way a Qt program
+# binds a key goes dead on the terminal while working on the desktop --
+# which is how it shipped until 8.83, with nothing to report it.
+name = "a QShortcut is never matched"
+file = "src/runtime/input_router.cpp"
+find = "\tconst auto owned = scope->findChildren<QShortcut *>();"
+into = "\tconst QList<QShortcut *> owned;"
+count = 1
+check = "a QShortcut fires, which is the commonest way"

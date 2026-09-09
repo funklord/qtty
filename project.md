@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1190 checks, 0 failures. `make check` is green and includes
+1194 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -587,6 +587,7 @@ Owned by the copyright holder:
 | **A disabled widget is indistinguishable from an enabled one on the pixel tiers.** Measured, not inferred: `Attr::Dim` is set for EVERY disabled widget (`cell_geometry.h`), the rasteriser has no row for it, and the two render byte-identically -- same 123 lit pixels, same channel sum. ~~How far fidelity goes between tiers~~ is no longer the question; the question is how faint "faint" should be. Blends toward the ground up to **70%** clear qtty's own `has_minimum_contrast` floor and 80% does not, so the range is measured. No mechanism exists, unlike `Strike` in 8.58, so every option means choosing a rule -- a fixed factor, or "as faint as the floor permits" the way beerssh's `ensure_contrast` walks a colour | 8.50, 8.59 |
 | **`Overlay::set_z()` does nothing in a GUI build.** `visible_overlays()` sorts by z and its only production caller is the compositor, which is the TUI path; the GUI twin never reads `z_`, so stacking there falls to the window manager. design.md presents `Overlay` as target-independent and lists `setZ` unqualified, so this is a scope question -- does the twin owe z ordering? -- rather than a defect. Not a one-liner: the twins are frameless always-on-top `Qt::Tool` windows, and it cannot be verified headlessly here | 8.47 |
 | **`design.md` recommends a function the library cannot call.** Its focus section says `focusNextPrevChild()` "walks the focus chain correctly", citing spike F4 -- and 8.71 removed the only call to it, because it is **protected**: reaching it from outside means declaring a fake derived class and casting a widget that is not one, which is undefined behaviour and which UBSan named. A spike can call it, being a subclass; the library walks widgets it does not own and cannot. Neither side is wrong -- the spike's finding holds and the code is right to refuse the cast -- but the naked recommendation is a trap for the next reader, and this tree's habit is to record design.md's lag rather than edit it (README carries the same caution about its API chapter, and 8.2 the same about `qtty::Application`). Whether design.md gains a sentence is the holder's | 8.71, F4 |
+| **Should the clipboard limit be public?** `AnsiBackend::clipboard_limit()` says in its own comment that it is "public so an application can ask before it offers the user a Copy that cannot work" -- and `make install` ships `include/qtty/*.h` only, so `ansi_backend.h` does not leave the tree and **no installed header mentions the clipboard at all**. The consequence is not cosmetic: a copy past the limit is refused whole, by design and rightly, the `QClipboard` watcher discards the result, and an application therefore cannot detect the refusal OR pre-empt it. The user believes they copied. Three shapes are available -- a free `Qtty::clipboard_limit()`, a field on `Capabilities` where it arguably belongs since it is a property of the terminal, or leaving it internal and saying so in the header rather than claiming an audience it cannot reach. Which one is an API decision, and the holder's | 8.83 |
 | The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
@@ -15914,6 +15915,166 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.83 QShortcut did nothing at all (2026-09-09)
+
+Reading the source with an implementer's question in hand kept paying, so
+the questions kept coming. This one was **"do my shortcuts work?"** and
+the answer for the commonest idiom in Qt was no.
+
+    new QShortcut(QKeySequence("Ctrl+S"), this, ...)
+
+**It did nothing on the terminal and worked in the desktop build**, which
+is why nobody had met it. A `QShortcut` is not a `QAction`, and
+`match_shortcut()` collected `scope->actions()` and its children's --
+actions only. Qt's own `QShortcutMap` could not fire either, and this file
+had already measured why: **it gates on the window being ACTIVE, and none
+activates under `WA_DontShowOnScreen`.** So the chord matched nothing,
+fell through to the focused widget, and was ignored. No handling anywhere
+in `src/`, no test creating one, no mention in the guide.
+
+**This is a defect against the premise rather than a missing feature.**
+The README's first sentence is that qtty renders an *unmodified* Qt
+Widgets application; a silently dead `QShortcut` is half the toolkit's
+key binding gone. So it was fixed rather than documented as a limitation.
+
+Three things the fix gets right, and each was a decision:
+
+- **Context is honoured.** `findChildren` already scopes the search,
+  which is what `Qt::WindowShortcut` means here; `WidgetShortcut` and
+  `WidgetWithChildrenShortcut` consult the focused widget -- through
+  `Qtty::focusWidget()`, because `hasFocus()` is permanently false, which
+  8.82 had found an hour earlier and which turned out to be load-bearing
+  rather than a curiosity.
+- **`QMetaObject::invokeMethod`, with its result read.** `activated()` is
+  a signal and cannot be emitted from outside its class; the meta-object
+  system is the supported route. The return is asserted rather than
+  discarded, since a rename upstream would otherwise leave the shortcut
+  dead again **for a new reason and just as quietly**.
+- **The checks cover both directions.** One shortcut that must fire, one
+  disabled that must not, and a `WidgetShortcut` that must fire only
+  while its own widget has focus. That last is the error in the other
+  direction -- a terminal answering a key the desktop would leave alone
+  -- and it is the harder one to notice, since nothing looks broken.
+
+**A note on the harness, which refused the work first.** The sabotage
+spec would not parse: a draft written into a quoted heredoc turned
+`'\n'` into a literal backslash-n, and `tomllib` stopped at line 1024.
+One corrupt line, caught immediately because `--validate` runs before
+anything else -- the escaping hazard is in the tooling around the spec
+rather than in the spec, and the gate that reads it does not care which.
+
+### 8.82 The affordance a keyboard user needs most, undocumented (2026-09-09)
+
+Reading `grid_style.cpp` for how focus is drawn -- the one thing a
+keyboard user cannot do without, since there is no pointer hovering near
+what they are about to use and no window manager drawing a ring -- found
+the code in good order and **the documentation silent**.
+
+**The code is ahead of the guide, again.** Focus is reverse video on the
+control's own glyph, and that comment records a measurement: focus moved
+to each of nine widgets in turn, the whole frame compared cell by cell
+including attributes, and **exactly two of the nine marked themselves**.
+The other seven were hidden by the hardware cursor landing on them for a
+reason that was itself wrong. That was found and fixed. A line edit is
+deliberately excluded, having a real caret, which says where typing goes
+as well as that it goes here.
+
+**What nobody had written down is the trap.** Under the offscreen
+platform no window ever activates, so Qt never sets its own focus widget:
+`QWidget::hasFocus()` is **permanently false**, `QApplication::focusWidget()`
+permanently null, `State_HasFocus` never set. So the obvious custom-widget
+code --
+
+    if (hasFocus()) drawFocusMark();
+
+-- works on the desktop and silently draws nothing on the terminal. Same
+binary, same widget, no error anywhere, and the affordance that goes
+missing is the one telling a person where their next keystroke lands.
+
+**Where that fact lived: a comment inside `src/grid/grid_style.cpp`.** Not
+the guide, not the README, not a public header, and no check. `grid.h`
+comes closest and documents the neighbours -- `QApplication::focusWidget()`
+null, `State_HasFocus` never set -- without naming `hasFocus()`, which is
+the call a `paintEvent` would actually make.
+
+Practice 10 says it now, with the working line
+(`Qtty::focusWidget() == this`), and a check pins the **relationship**
+rather than either half: qtty names the widget at the same instant Qt says
+nobody has focus. Asserting `!hasFocus()` alone passes before anything is
+focused at all, and asserting qtty's answer alone says nothing about the
+trap -- the disagreement IS the reason `Qtty::focusWidget()` exists.
+
+**A third reading found an affordance nobody had been told about, with a
+cost attached.** The question was "after F6, how does a person know which
+window they are in?" -- the title being the obvious channel, and
+`TitleKeeper` being bound to the single window `exec()` was given. The
+answer is that qtty already solves it better: with more than one
+top-level window the compositor draws a **window strip along the top
+row**, every window named and the current one in brackets, clickable as
+well as reachable by F6. It is the terminal's task bar, and it names all
+the windows rather than only the one in front.
+
+**What made it worth documenting is the sentence beside it in
+`compositor.cpp`:** *"the strip takes a row off the top and everything
+below it moves down by one."* So opening a second window silently costs
+a row, and a layout that exactly filled the terminal loses its last one.
+Practice 6 says both halves now -- the affordance and its price -- where
+before it said only that a second window is unreachable without a
+binding.
+
+**A fourth reading found the sharpest trap of the family.** The question
+was "what happens when a user presses Ctrl+C to copy?", Ctrl+C being a
+quit key. There is a carve-out and it is correct: the quit keys stand
+down for a widget carrying `WA_InputMethodEnabled`, because a caret in a
+field is the one place a person means copy rather than interrupt. Qt sets
+that attribute on `QLineEdit`, `QTextEdit` and `QPlainTextEdit`.
+
+**A text editor of an application's own is outside that, and loses two
+things at once.** `Ctrl+C` quits the application rather than copying --
+and `compositor.cpp` drops the terminal cursor for a focused widget
+without the attribute, so nothing on screen says where typing goes.
+**Both are silent and both are terminal-only**: the desktop build has a
+real caret and no quit key, so the widget behaves perfectly where its
+author is looking.
+
+The code anticipated this exactly -- its comment says a class list "would
+have to name QLineEdit, QTextEdit, QPlainTextEdit and every
+application's own editor, and would be wrong about the last one", which
+is why the attribute is the test. **What was missing was telling
+anybody.** Practice 11 does, and the quit row in the table now says
+Ctrl+C is left for copy in a widget that takes text, which it did not.
+
+**Four readings, four outcomes: two traps, two empty sweeps, and a
+feature.** That spread is the argument for reading the source with an
+implementer's question in hand rather than a defect in mind. None of
+these was findable by running anything.
+
+**The guide's code samples were swept and are correct** -- sixteen
+blocks, each identifier checked against the header that declares it and
+each brace-initialiser against the struct it fills. `KeyEvent` is
+`{qt_key, text, ctrl, alt, shift}` and the sample's `{Qt::Key_Tab, "\t",
+false, false, false}` fills it in that order; `focusWidget`,
+`keyboard_reachable`, `keyboard_conventions_help` and
+`set_keyboard_conventions` are all declared in headers `qtty.h` includes.
+Recorded because an empty sweep is a measurement only if its lens is
+written down, and this one was worth running: a wrong sample in the
+most-read file teaches the mistake rather than merely stating it.
+
+**A second empty one, from the same root cause as the trap above.** *No
+window ever activates* should break more of Qt's API than `hasFocus()`,
+so the tree was searched for the neighbours. `QApplication::activeWindow()`
+has exactly one caller, in `overlay.cpp`, and it is the GUI twin path
+with a fallback that walks `topLevelWidgets()` when the answer is null --
+already handled, and the twin is already a 0b question for other reasons.
+
+**The pattern across today is worth stating once.** Eleven entries, and
+the defects were in prose almost every time: a guide row Qt does not
+honour, a claim contradicting a measurement in this file, five copies of
+one sentence losing the condition that made it true, two counts rotted,
+an example ignoring its own advice, and now a trap recorded where only a
+maintainer would find it. **The code has been right and the writing about
+it has not**, which inverts the usual assumption about where to look.
 
 ### 8.81 The last unheld row, and the example that ignored its own guide (2026-09-09)
 

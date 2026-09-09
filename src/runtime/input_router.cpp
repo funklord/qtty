@@ -10,6 +10,7 @@
 #include "qtty/windows.h"
 #include "qtty/grid.h"
 #include <QtWidgets>
+#include <QShortcut>
 
 namespace Qtty {
 
@@ -391,6 +392,49 @@ bool InputRouter::match_shortcut(const KeyEvent &k) {
 				a->trigger();
 				return true;
 			}
+	}
+
+	// QShortcut, which is NOT a QAction and was therefore invisible to
+	// everything above. An application writing the commonest Qt idiom there
+	// is --
+	//
+	//     new QShortcut(QKeySequence("Ctrl+S"), this, ...)
+	//
+	// -- got a shortcut that worked in the desktop build and did nothing at
+	// all on the terminal. Nothing reported it: the table above found no
+	// QAction to match, Qt's own QShortcutMap gates on an active window and
+	// none activates here, so the key fell through to the focused widget and
+	// was ignored. A silent half of the toolkit, in a library whose premise
+	// is that an unmodified Qt application runs.
+	//
+	// CONTEXT IS HONOURED because leaving it out would fire a shortcut the
+	// desktop would not. findChildren already limits the search to the input
+	// scope, which is what Qt::WindowShortcut means here; the two widget
+	// contexts need the focused widget, and that is Qtty::focusWidget()
+	// rather than hasFocus(), which is permanently false under this platform.
+	//
+	// invokeMethod because activated() is a signal and a signal cannot be
+	// emitted from outside its class. The meta-object system can, which is
+	// the one supported way to do this; the return value is read rather than
+	// discarded, since a rename upstream would otherwise fail silently and
+	// leave the shortcut dead again for a new reason.
+	const auto owned = scope->findChildren<QShortcut *>();
+	for (QShortcut *sc : owned) {
+		if (!sc->isEnabled() || sc->key().isEmpty()) continue;
+		if (sc->key() != pressed) continue;
+		const QWidget *const owner = qobject_cast<QWidget *>(sc->parent());
+		const QWidget *const fw = focusWidget();
+		if (sc->context() == Qt::WidgetShortcut) {
+			if (!owner || owner != fw) continue;
+		} else if (sc->context() == Qt::WidgetWithChildrenShortcut) {
+			if (!owner || !fw
+			    || !(owner == fw || owner->isAncestorOf(fw)))
+				continue;
+		}
+		if (popup_owns_input) return true;       // swallowed, not fired
+		const bool sent = QMetaObject::invokeMethod(sc, "activated");
+		Q_ASSERT_X(sent, "match_shortcut", "QShortcut::activated missing");
+		return sent;
 	}
 	return false;
 }

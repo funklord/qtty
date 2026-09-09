@@ -57,11 +57,14 @@ reimplements it:
 | `Alt` + letter | Reaches a menu, a toolbar action, a **button**, or the field a **label** is the buddy of | qtty's |
 | `Alt` + a letter that matches nothing | Nothing. It does not type the letter into whatever has focus | qtty's |
 | `Menu`, `Shift+F10` | Opens the focused widget's context menu, honouring its `contextMenuPolicy` | qtty's |
-| `Ctrl+C`, `Ctrl+D` | Quit. Change them with `InputRouter::set_quit_keys()` | qtty's |
+| `Ctrl+C`, `Ctrl+D` | Quit -- except in a widget that takes text, where `Ctrl+C` is left for copy. Change them with `InputRouter::set_quit_keys()` | qtty's |
 
 The `Alt` rows are qtty's because a terminal delivers keys as bytes and
-nothing here ever reaches Qt's shortcut map: the router matches mnemonics
-itself. Menus and actions worked from the start; buttons and label buddies
+nothing here ever reaches Qt's shortcut map -- it gates on the window
+being *active*, and no window activates under this platform. The router
+matches mnemonics itself, and for the same reason it matches your
+`QAction` shortcuts and your `QShortcut` objects: if it did not, neither
+would fire at all. Menus and actions worked from the start; buttons and label buddies
 were added later, and an application written for the desktop gets them
 without knowing.
 
@@ -211,6 +214,18 @@ until either you bind `Qtty::next_window()` yourself or you turn on the
 conventions, which put it on `F6`. Do one of the two: a window nobody can
 get to is worse than one that was never opened.
 
+**What you get for free, once there is more than one window**: qtty draws
+a window strip along the top row, every window named, the current one in
+brackets -- so a person can see which one they are in and click a tab to
+change it, as well as pressing `F6`. This is the terminal's answer to a
+task bar, and it is better than the window title for the purpose, since
+it names all of them rather than only the one you are looking at.
+
+**It costs a row, and that is worth knowing before it surprises you.**
+The strip takes the top row and everything below moves down by one, so a
+layout that exactly filled the terminal loses its last row the moment a
+second window opens. With one window there is no strip and no cost.
+
 **7. Do not depend on hover or tooltips.** Information a user needs must
 be visible or reachable by key.
 
@@ -258,10 +273,95 @@ standard input widget. A widget of your own that reads
 
     if (event->modifiers() & Qt::AltModifier) { event->ignore(); return; }
 
-**10. Prefer stepping to dragging.** A splitter, a slider and a scroll bar
+**10. In a custom widget, draw your own focus mark -- and do not ask
+`hasFocus()`.** This is the one that bites hardest, because the desktop
+build hides it.
+
+qtty shows focus as reverse video on the control's own glyph: a push
+button's brackets, a check box's brackets, a slider's handle, a scroll
+bar's thumb. A line edit is deliberately left alone, having a real caret,
+which says where typing goes as well as that it goes here. **The style
+can only mark the controls it knows how to draw**, so a widget that
+paints itself gets no mark from anybody.
+
+Worse, the obvious way to draw one does not work:
+
+    void paintEvent(QPaintEvent *) {
+        if (hasFocus()) drawFocusMark();      // NEVER true under qtty
+    }
+
+Under the offscreen platform no window ever becomes active, so Qt never
+sets its own focus widget: `QWidget::hasFocus()` is permanently false,
+`QApplication::focusWidget()` permanently null, and `State_HasFocus`
+never set. That code works on the desktop and silently draws nothing on
+the terminal -- the same binary, the same widget, no error anywhere. Ask
+qtty instead:
+
+    if (Qtty::focusWidget() == this) drawFocusMark();
+
+On a terminal this matters more than on a desktop. There is no pointer
+hovering near the thing a person is about to use, and no window manager
+drawing a focus ring: **the only way to know where a keystroke will land
+is the mark on the screen.** A control that cannot show it is a control a
+keyboard user has to find by trial.
+
+**11. If your widget edits text, set `WA_InputMethodEnabled`.** Qt sets
+it on `QLineEdit`, `QTextEdit` and `QPlainTextEdit`. A text editor of
+your own is outside that, and **two things go wrong at once, silently,
+and only on the terminal**:
+
+    setAttribute(Qt::WA_InputMethodEnabled);
+
+Without it, **`Ctrl+C` quits the application** instead of copying. The
+quit keys stand down for a widget that says it takes text, because a
+caret in a field is the one place a person means *copy* rather than
+*interrupt* -- so an editor that never said so gets the interrupt.
+
+And **the terminal cursor is not placed**: the compositor puts it on the
+focused widget only when that attribute is set, so nothing on screen says
+where typing goes.
+
+The desktop build has a real caret and no quit key, so a widget missing
+the attribute behaves perfectly there and fails only where you are not
+looking. (Qt *clears* the attribute on a read-only line edit, which is
+right: nothing to copy, and `Ctrl+C` should still quit.)
+
+**12. Prefer stepping to dragging.** A splitter, a slider and a scroll bar
 all respond to arrows when focused, but only if a user can reach them.
 Give a splitter a keyboard route or a menu action that sets the split;
 "drag the handle" is not available to everybody.
+
+## Copy and paste
+
+**Copy needs no code.** The ANSI backend watches `QClipboard`, so an
+ordinary `QClipboard::setText()` reaches the terminal's own clipboard as
+OSC 52 and the application never learns a backend exists.
+
+**A copy is written whole or not at all.** Past a size limit nothing goes
+out, deliberately -- a truncated copy the user believes went out is worse
+than a refused one. The same holds when stdout is not a terminal, and
+while the terminal is suspended.
+
+**Today you cannot tell that it was refused.** The watcher discards the
+result, and neither the limit nor the writing call is in an installed
+header, so an application cannot ask before offering a Copy of something
+large. That is a gap rather than a design: `project.md` 0b carries the
+question of whether the limit belongs in the public API.
+
+PRIMARY -- what a middle click pastes -- is unreachable through Qt here.
+Under the offscreen platform `QClipboard::supportsSelection()` is false
+and Qt refuses `setText(.., QClipboard::Selection)` outright.
+
+**Paste arrives as text, not as typing.** That is what bracketed paste is
+for: delivering the newlines as `Return` would fire a dialog's default
+button halfway through a paste. Newlines are folded to spaces for
+`QLineEdit` and `QAbstractSpinBox`, which cannot hold one.
+
+**A single-line editor of your own gets the raw newlines.** The test is
+by type, Qt exposing no generic "accepts a newline" query -- so if you
+write one, fold them yourself. This is the fourth thing on this page a
+custom widget must do that a standard one gets free, with practices 9,
+10 and 11; they are worth reading together before writing one.
 
 ## Checking it without a terminal
 
