@@ -15917,6 +15917,42 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.92 An unknown option was ignored, in a diagnostic tool (2026-09-10)
+
+The same three tools took a mistyped flag, ignored it, did their ordinary
+work and exited 0:
+
+    qtty-negotiate --probs      the ordinary output, rc 0
+
+**`--probs` is one letter from `--probes`**, and the two answer different
+questions on purpose: the ordinary output says what qtty CONCLUDED, while
+`--probes` says what each probe ANSWERED, separating silence from a
+definite no. A terminal implementer checking that a disabled feature is
+silent rather than answering-but-inert would read the conclusion as the
+detail. **In a program whose whole job is telling somebody what is really
+happening**, a silently swallowed flag is worse than in most.
+
+All three now name the option and exit 2.
+
+**The interesting half is where the check had to go.** `QApplication`
+consumes Qt's own arguments -- `-platform`, `-style` and the rest -- so a
+strict "unknown dash is an error" scan BEFORE it would refuse perfectly
+good Qt options. Qt removes what it recognises from `argv`, so the check
+runs after construction and judges only what is left. The control for
+that decision is `qtty-inspect -platform offscreen`, which still exits 0:
+without it the placement would be a guess that happened to work on the
+arguments somebody tried.
+
+`--help` stays before `QApplication`, where 8.91 put it, because it must
+answer in a pipe and with no terminal. **The two checks want opposite
+placements and both are right**, which is why they are two loops rather
+than one.
+
+`make test-tools` gates it, and the gate was watched failing on a
+deliberately broken `qtty-replay`. It named the tool and said what was
+lost -- *"a typo for a real flag reads as the flag being off"* -- and
+this time no "ok" line followed it, 8.91's own correction holding.
+
 ### 8.91 Three shipped tools that ignored --help (2026-09-10)
 
 A different surface, same shape. `make install` puts `qtty-inspect`,

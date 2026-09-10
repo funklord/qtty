@@ -37,6 +37,25 @@ int main(int argc, char **argv) {
 	}
 	Qtty::prepare_environment();
 	QApplication app(argc, argv);
+	// An unrecognised option was IGNORED, and the tool then did its
+	// ordinary work and exited 0 -- so `--probs` for `--probes` reads as
+	// "the probes are off" rather than as a typo, in a program whose whole
+	// job is telling somebody what is really happening.
+	//
+	// AFTER QApplication, deliberately: Qt removes the arguments it
+	// recognises (-platform, -style and the rest) from argv, so what is
+	// left is this program's to judge. Doing it before would refuse
+	// perfectly good Qt options.
+	for (int i = 1; i < argc; ++i) {
+		static const char *const known[] = { "--help", "-h", "--version", "-V" };
+		if (argv[i][0] != '-') continue;
+		bool ok = false;
+		for (const char *k : known) ok = ok || !qstrcmp(argv[i], k);
+		if (ok) continue;
+		fprintf(stderr, "qtty-inspect: unknown option '%s'\n"
+		        "try 'qtty-inspect --help'\n", argv[i]);
+		return 2;
+	}
 	Qtty::setup(app);
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 

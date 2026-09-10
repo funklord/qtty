@@ -753,9 +753,20 @@ test-tools: all
 		*) echo "    $$(basename $$prog) --version: FAILED -- it does not"; \
 		   echo "             say $(VERSION)"; fail=1; hv=1;; \
 		esac; \
+		out=$$(timeout $(TEST_TIMEOUT) $$prog --not-an-option 2>&1); \
+		rc=$$?; \
+		case "$$rc:$$out" in \
+		0:*) echo "    $$(basename $$prog): FAILED -- an unknown option was"; \
+		     echo "             ignored and it worked anyway, so a typo for a"; \
+		     echo "             real flag reads as the flag being off"; \
+		     fail=1; hv=1;; \
+		*--not-an-option*) ;; \
+		*) echo "    $$(basename $$prog): FAILED -- it refused an unknown"; \
+		   echo "             option without naming it"; fail=1; hv=1;; \
+		esac; \
 	done; \
 	[ "$$hv" -eq 0 ] && \
-		echo "    --help and --version: ok on all three tools"; \
+		echo "    --help, --version and unknown options: ok on all three"; \
 	esc=$$(printf '\033'); \
 	out=$$(timeout $(TEST_TIMEOUT) $(NEGOTIATE) --probes < /dev/null 2>/dev/null); \
 	case "$$out" in \
