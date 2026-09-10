@@ -15918,6 +15918,34 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.96 Ctrl+Z is a key, and a terminal user expects a suspend (2026-09-10)
+
+The third key the driver used to own. Clearing `ISIG` took Ctrl+C and
+Ctrl+S from it deliberately (8.95) and took **Ctrl+Z** along with them,
+which nothing told an implementer.
+
+**The half that works is the half nobody types.** A real `SIGTSTP` --
+`kill -TSTP` from another window -- is handled properly: `leave_terminal()`
+gives the screen back, the program stops for real with the default
+action, and `SIGCONT` restores raw mode, the cursor and mouse reporting.
+The comment records what it was like before that existed: a stopped
+program left its shell looking at the alternate screen, in raw mode, with
+the cursor hidden and mouse reporting on, and **the user's next keystroke
+went nowhere visible.**
+
+What no longer happens is the keystroke, and that is the one a person
+uses. Ctrl+Z reaches the focused widget as an ordinary key -- nothing in
+`InputRouter` touches it -- so an application that wants the conventional
+behaviour binds it and raises the signal itself, landing in the same
+handler.
+
+**Leaving it to the application is right, and worth saying rather than
+implying.** A full-screen editor usually does NOT want Ctrl+Z suspending
+it, having its own use for the chord; that is why this is not a
+convention in the opt-in bundle. But an application that says nothing
+gets neither behaviour, which is the state every application is in until
+somebody reads this.
+
 ### 8.95 Blocking the event loop locks the user out entirely (2026-09-10)
 
 A keyboard-first concern the guide did not cover, and it is one where the

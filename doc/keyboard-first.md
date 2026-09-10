@@ -83,6 +83,7 @@ reimplements it:
 | `Alt` + a letter that matches nothing | Nothing. It does not type the letter into whatever has focus | qtty's |
 | `Menu`, `Shift+F10` | Opens the focused widget's context menu, honouring its `contextMenuPolicy` | qtty's |
 | `Ctrl+C`, `Ctrl+D` | Quit -- except in a widget that takes text, where `Ctrl+C` is left for copy. Change them with `InputRouter::set_quit_keys()` | qtty's |
+| `Ctrl+Z` | An ordinary key, **not** a suspend -- see *Never block the event loop* for why, and how to get the conventional behaviour back | qtty's |
 
 The `Alt` rows are qtty's because a terminal delivers keys as bytes and
 nothing here ever reaches Qt's shortcut map -- it gates on the window
@@ -517,6 +518,21 @@ has and worth the same care.
 The upside of the same decision is worth knowing: because `IXON` is
 cleared, a user who types `Ctrl+S` out of habit does **not** freeze your
 screen with no way to know why. That key reaches you like any other.
+
+**`Ctrl+Z` is a key here too, and a terminal user will expect a
+suspend.** Clearing `ISIG` takes that from the driver along with the
+other two. A real `SIGTSTP` -- `kill -TSTP` from another window -- is
+handled properly: qtty gives the terminal back, stops for real, and
+restores raw mode, the cursor and mouse reporting when `SIGCONT` arrives.
+What no longer happens by itself is the keystroke. If you want it, bind
+the key and ask for the signal:
+
+    if (chord == Ctrl+Z) ::raise(SIGTSTP);
+
+which lands in the same handler and behaves the same way. That is a
+deliberate choice to leave with you rather than take: a full-screen
+editor usually does NOT want `Ctrl+Z` suspending it, having its own use
+for the chord.
 
 ## Where your output goes
 
