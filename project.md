@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1199 checks, 0 failures. `make check` is green and includes
+1200 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15916,6 +15916,39 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.90 Two branches, two entries, and a claim I had made myself (2026-09-10)
+
+Adding the missing entry for the `QShortcut` loop's declining branch
+produced a rule worth applying rather than filing: **a gate has two
+branches and one entry usually covers one of them.** Removing the whole
+loop silences both, so the entry proving a feature works cannot reach the
+case where it must decline.
+
+Pointed at 8.77's context-menu fix, the rule found the same gap and
+something worse. Only the firing half was checked -- and **the declining
+half is a claim I had written into the guide myself**: practice 6 says
+qtty binds no shortcut of its own, and the paragraph excusing `Menu` and
+`Shift+F10` says *"a widget that wants either key keeps it -- the context
+menu opens only when nothing accepted the press."* Nothing verified that.
+It is the shape 8.73 found in three rows of the same table, one of which
+turned out false, arriving this time from my own hand a day later.
+
+It is true, and asserted now: a widget whose `keyPressEvent` accepts
+`Key_Menu` sees the key, gets no `QEvent::ContextMenu`, and leaves the
+popup stack empty. An entry drops the `!press.isAccepted()` test and
+reddens it, which is the distinction the practice rests on -- the
+platform's behaviour restored, rather than a key qtty took.
+
+**The check failed first, and the diagnostic is why this entry is not a
+retraction.** `seen=0 ctx=0 popups=1` -- the menu opened by the Shift+F10
+check above was still up, so the popup owned input and the key never
+reached the widget. **The fixture was wrong and the code was right**, and
+without the numbers the honest reading of a red check would have been
+that the fix takes a key it should not. *Read the input before theorising
+about the mechanism*, on a fixture as much as on a program -- the second
+time in two days that rule has been the difference between a correction
+and a wrong retraction.
 
 ### 8.89 Three public functions nobody could find (2026-09-10)
 

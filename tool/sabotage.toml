@@ -1043,3 +1043,15 @@ find = "\t\tif (popup_owns_input) return true;       // swallowed, not fired\n\t
 into = "\t\tconst bool sent"
 count = 1
 check = "a QShortcut does not fire from behind an open menu"
+
+[[sabotage]]
+# The other branch of the context-menu gate. Dropping the accepted test
+# makes qtty open a menu over a widget that handled the key itself --
+# which turns "the platform's behaviour restored" into "a key qtty took",
+# the distinction practice 6 of the guide rests on.
+name = "the context menu opens over a widget that wanted the key"
+file = "src/runtime/input_router.cpp"
+find = "\tif (!press.isAccepted() && target\n\t    && (k.qt_key == Qt::Key_Menu"
+into = "\tif (target\n\t    && (k.qt_key == Qt::Key_Menu"
+count = 1
+check = "but a widget that handles the Menu key keeps it"

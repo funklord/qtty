@@ -2128,6 +2128,45 @@ int suite_router() {
 			CHECK(cm.n == after_esc + 1,
 			      "and Shift+F10 does too, the other key every desktop "
 			      "binds to the same thing");
+
+			// AND A WIDGET THAT WANTS THE KEY KEEPS IT, which is the
+			// half practice 6 rests on: the guide says these two are not
+			// a shortcut qtty bound, because the menu opens only where
+			// nothing accepted the press. That was a claim with nothing
+			// behind it until now -- the same shape 8.73 found in three
+			// other rows of the same table, one of which was false.
+			// Close the menu Shift+F10 just opened. Without this the
+			// popup owns input, the key never reaches the widget below,
+			// and the check fails for the fixture rather than the code --
+			// measured, seen=0 with popups=1.
+			r.on_key({Qt::Key_Escape, QString(), false, false, false});
+			QCoreApplication::processEvents();
+			struct Eater : QWidget {
+				int seen = 0;
+				void keyPressEvent(QKeyEvent *e) override {
+					if (e->key() == Qt::Key_Menu) {
+						++seen;
+						e->accept();
+						return;
+					}
+					QWidget::keyPressEvent(e);
+				}
+			};
+			auto *eater = new Eater;
+			eater->setFocusPolicy(Qt::StrongFocus);
+			v->addWidget(eater);
+			QCoreApplication::processEvents();
+			Ctx eaten;
+			eater->installEventFilter(&eaten);
+			eater->setFocus();
+			set_focus_widget(win.focusWidget());
+			r.on_key({Qt::Key_Menu, QString(), false, false, false});
+			QCoreApplication::processEvents();
+			CHECK(eater->seen == 1 && eaten.n == 0 && r.popups().isEmpty(),
+			      "but a widget that handles the Menu key keeps it, so this "
+			      "is the platform's behaviour restored rather than a key "
+			      "qtty took");
+			eater->removeEventFilter(&eaten);
 			r.on_key({Qt::Key_Escape, QString(), false, false, false});
 			QCoreApplication::processEvents();
 			cw->removeEventFilter(&cm);
