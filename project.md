@@ -15949,6 +15949,50 @@ re-run started. `running-code.md` records the same incident -- a pkill
 that killed the very build it was clearing the way for. The tell was an
 exit of 144 and a message that never printed.
 
+**The full run was attempted a fourth time and stopped again, and the
+reason is worth stating rather than dressing up.** It reached 20 of 124
+clean before another user's work took the machine to a load of 23 on 12
+cores. **My run was one of those loads.** Weighed honestly: the gain is
+124-verified-together against 121-together plus three verified
+individually as they were written, and the cost is two hours of a
+saturated shared machine somebody else is trying to work on.
+
+So the position, stated plainly rather than left to be inferred from four
+interrupted logs: **the complete run of record is 8.84's 121, and the
+three entries added since have each been seen to redden the check they
+name.** The full 124 wants a quiet machine, and persisting on a busy one
+would have been stubbornness dressed as rigour.
+
+**A rule of the guidelines checked against 0b, and the structure already
+satisfies it elsewhere.** `working-practice.md` asks that a recorded
+option name three things -- the option, its cost, and **whose decision it
+is** -- and a per-row check reports twelve of seventeen rows not naming an
+owner. They do not need to: the table sits under the heading *"Owned by
+the copyright holder"*, which says it once for all of them. Adding "the
+holder's" to twelve rows would be noise, and the checker was looking per
+row for a fact stored per table.
+
+That is the fifth instrument of mine today to raise a false alarm, and the
+family is now clear: **each one looked for a fact in the shape I expected
+rather than the shape it was kept in** -- a check's wording, a heading's
+line wrapping, a provenance header, a per-row owner. The remedy is not
+better patterns; it is reading one hit before believing the count.
+
+**A footgun in this project's own tooling, noticed while the harness was
+running.** `git status` mid-run shows the file the current entry has
+sabotaged -- `term_caps.cpp` at entry 12 of 124, for instance. The harness
+**refuses to start** on a dirty `src/`, `test/` or `include/`, and nothing
+stops a commit while it is running: a `git add -u`, or any path list
+computed from `git status`, would stage broken source under an innocent
+message.
+
+The rule that protects against it is already written down -- stage the
+paths you changed by name, and read `git diff --cached --name-only` before
+committing -- and this is one more reason it is a rule rather than
+tidiness. Worth knowing because the window is long: a full run is over an
+hour, and the tree looks dirty for all of it in a way that is not
+anybody's work in progress.
+
 **All six are green at 1201**, re-taken rather than assumed: platforms
 and the sanitizers had been verified at 1200, before the Ctrl+Z check
 landed, and valgrind at 1201 with the fix. A one-check delta is a small
@@ -16245,9 +16289,17 @@ carries the two-line provenance header saying where it came from and to
 keep it in sync. Ignoring those lines, both are byte-identical.
 
 **Acting on the binary verdict would have stripped the header**, deleting
-the one thing that tells a reader the file is a copy at all. So the check
-worth running on a spread file is a diff with the provenance lines
-dropped, not `diff -q` -- and this was not the moment to edit either of
+the one thing that tells a reader the file is a copy at all.
+
+**And the right check is not a hand-rolled diff either -- it is
+`~/.claude/tool/sync.py --check`, which already does this.** Its own
+docstring says the thing found here: *"A copy is not byte-identical to its
+source: it carries a two-line header... A sync that ignores that copies
+the header away"*, so it compares against the copy the source WOULD
+produce rather than against the source. Recommending a diff with the
+provenance lines dropped, as this entry first did, is a second copy of a
+fact the workspace already owns -- the fault this session spent two days
+finding in prose, committed in a sentence about how to check for it -- and this was not the moment to edit either of
 them regardless: another session has uncommitted work in
 `tool/test_style_gate.py`, which is the gate's own test.
 
