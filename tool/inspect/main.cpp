@@ -1,12 +1,40 @@
 // qtty-inspect -- dump a widget tree with cell geometry beside its rendering (section 9).
 // Currently inspects a built-in sample; Phase 2 adds loading .ui files.
 #include <qtty/qtty.h>
+#include <qtty/version.h>
 #include <QtWidgets>
 #include <cstdio>
 
 using Qtty::GridMetrics;
 
+// What the file's own header says, reachable from the program. Every one of
+// these tools documented itself thoroughly in a comment nobody running it
+// could see, and answered --help by doing its ordinary work -- which reads as
+// if the flag had been understood.
+static const char *const usage =
+    "qtty-inspect -- dump a widget tree with cell geometry beside its"
+    " rendering.\n"
+    "\n"
+    "usage: qtty-inspect [--help] [--version]\n"
+    "\n"
+    "Prints every widget's position and size in cells, says whether each\n"
+    "lands on the character grid, and then the frame they compose to. It\n"
+    "inspects a built-in sample dialog; loading a .ui file is Phase 2.\n";
+
 int main(int argc, char **argv) {
+	// Before QApplication, so both answer in a pipe and on a machine with no
+	// terminal, which is where somebody reads --help.
+	for (int i = 1; i < argc; ++i) {
+		if (!qstrcmp(argv[i], "--help") || !qstrcmp(argv[i], "-h")) {
+			printf("%s", usage);
+			return 0;
+		}
+		if (!qstrcmp(argv[i], "--version") || !qstrcmp(argv[i], "-V")) {
+			printf("qtty-inspect %s\n%s\n", Qtty::version_string,
+			       Qtty::copyright);
+			return 0;
+		}
+	}
 	Qtty::prepare_environment();
 	QApplication app(argc, argv);
 	Qtty::setup(app);

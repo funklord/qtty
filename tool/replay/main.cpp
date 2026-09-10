@@ -18,6 +18,7 @@
 // Drives the built-in sample UI; applications link libqtty and reuse
 // InputRouter/Compositor the same way for their own screens.
 #include <qtty/qtty.h>
+#include <qtty/version.h>
 #include "../../src/backend/ansi/ansi_backend.h"
 #include <QtWidgets>
 #include <QTextStream>
@@ -36,7 +37,41 @@ static int key_by_name(const QString &n) {
 	return map.value(n.toLower(), 0);
 }
 
+static const char *const usage =
+    "qtty-replay -- scripted input to text frames, so a bug report is"
+    " reproducible.\n"
+    "\n"
+    "usage: qtty-replay [--ansi] [--help] [--version] [script]\n"
+    "\n"
+    "Reads the script from a file argument or stdin, one command per line,\n"
+    "and drives the built-in sample UI through the real InputRouter:\n"
+    "\n"
+    "  text <string>      type characters\n"
+    "  key <name>         Tab Return Backspace Up Down Left Right\n"
+    "                     PageUp PageDown\n"
+    "  ctrl <letter>      e.g. \"ctrl s\"\n"
+    "  click <col> <row>  mouse press and release at a cell\n"
+    "  frame              print the composed frame between markers\n"
+    "  snapshot           the same with attributes, which frame cannot show\n"
+    "\n"
+    "  --ansi             emit the raw ANSI and graphics byte stream through\n"
+    "                     the real backend instead of text frames, which is a\n"
+    "                     deterministic corpus for terminal parser testing.\n"
+    "                     Set QTTY_GRAPHICS to force a graphics tier into it.\n";
+
 int main(int argc, char **argv) {
+	// Before QApplication, for the reason the same block in qtty-negotiate
+	// gives: these must answer in a pipe and with no terminal present.
+	for (int i = 1; i < argc; ++i) {
+		if (!qstrcmp(argv[i], "--help") || !qstrcmp(argv[i], "-h")) {
+			printf("%s", usage);
+			return 0;
+		}
+		if (!qstrcmp(argv[i], "--version") || !qstrcmp(argv[i], "-V")) {
+			printf("qtty-replay %s\n%s\n", version_string, copyright);
+			return 0;
+		}
+	}
 	prepare_environment();
 	QApplication app(argc, argv);
 	setup(app);

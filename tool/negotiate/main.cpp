@@ -23,10 +23,32 @@
 
 using namespace Qtty;
 
+static const char *const usage =
+    "qtty-negotiate -- report what this terminal answered, and what qtty"
+    " concluded.\n"
+    "\n"
+    "usage: qtty-negotiate [--probes] [--help] [--version]\n"
+    "\n"
+    "Prints the graphics tier, colour depth, cell size, background and\n"
+    "palette qtty settled on for the terminal it is run in.\n"
+    "\n"
+    "  --probes           report what each probe ANSWERED, one at a time,\n"
+    "                     separating silence from a definite no. The ordinary\n"
+    "                     output cannot: it reports what qtty concluded, and\n"
+    "                     an unverifiable signal may only say yes, so no reply\n"
+    "                     and a reply saying no reach the same conclusion\n"
+    "                     there -- which a terminal implementer checking that\n"
+    "                     a disabled feature is silent needs to tell apart.\n";
+
 int main(int argc, char **argv) {
 	// Before anything else, and before QApplication: --version must work in a
 	// pipe, on a machine with no terminal to negotiate with, and without the
 	// startup query this tool otherwise sends.
+	for (int i = 1; i < argc; ++i)
+		if (!qstrcmp(argv[i], "--help") || !qstrcmp(argv[i], "-h")) {
+			printf("%s", usage);
+			return 0;
+		}
 	for (int i = 1; i < argc; ++i)
 		if (!qstrcmp(argv[i], "--version") || !qstrcmp(argv[i], "-V")) {
 			printf("qtty-negotiate %s\n%s\n", version_string, copyright);

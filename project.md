@@ -15917,6 +15917,43 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.91 Three shipped tools that ignored --help (2026-09-10)
+
+A different surface, same shape. `make install` puts `qtty-inspect`,
+`qtty-replay` and `qtty-negotiate` in `$(PREFIX)/bin`, and **not one of
+them answered `--help`.** They ignored it and did their ordinary work:
+
+    qtty-inspect --help      dumped a widget tree
+    qtty-negotiate --help    ran a negotiation
+    qtty-replay --help       printed NOTHING
+
+The third is the worst, because nothing distinguishes it from a binary
+that does not work. The first two are worse in a subtler way: **output
+appears, so the flag reads as understood.**
+
+**Each tool already documented itself thoroughly, in a comment nobody
+running it could see.** `replay`'s header lists every script command;
+`negotiate`'s explains what `--probes` separates and why the ordinary
+output cannot. The help text is that prose, moved where a person typing
+`--help` will meet it -- which is this session's recurring finding
+arriving at the programs rather than the library.
+
+`--version` was inconsistent too: `negotiate` had it, the other two had
+no argument parsing at all. All three now answer both, before
+`QApplication` for the reason `negotiate`'s comment already gave -- they
+must work in a pipe and on a machine with no terminal, which is exactly
+where somebody reads help.
+
+**`make test-tools` gates both flags on all three, and the gate was
+watched failing -- which is how a fault in the GATE was found.** The
+sabotage reddened correctly and then the run printed
+*"--help and --version: ok on all three tools"* anyway, because that
+echo was unconditional. **A success line printed regardless of the
+result** is the fault this session has spent two days finding in other
+people's work, written into a new gate within a minute of building it.
+It is conditional now, and the sabotage was re-run to watch the line stay
+away.
+
 ### 8.90 Two branches, two entries, and a claim I had made myself (2026-09-10)
 
 Adding the missing entry for the `QShortcut` loop's declining branch

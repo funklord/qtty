@@ -737,6 +737,25 @@ test-tools: all
 	*) echo "    negotiate --version: FAILED -- the binary does not say $(VERSION)"; \
 	   fail=1;; \
 	esac; \
+	hv=0; \
+	for prog in $(INSPECT) $(REPLAY) $(NEGOTIATE); do \
+		out=$$(timeout $(TEST_TIMEOUT) $$prog --help 2>/dev/null); \
+		case "$$out" in \
+		*usage:*) ;; \
+		*) echo "    $$(basename $$prog) --help: FAILED -- it printed no"; \
+		   echo "             usage, so the flag was ignored and the tool"; \
+		   echo "             did its ordinary work instead"; \
+		   fail=1; hv=1;; \
+		esac; \
+		out=$$(timeout $(TEST_TIMEOUT) $$prog --version 2>/dev/null); \
+		case "$$out" in \
+		*"$(VERSION)"*) ;; \
+		*) echo "    $$(basename $$prog) --version: FAILED -- it does not"; \
+		   echo "             say $(VERSION)"; fail=1; hv=1;; \
+		esac; \
+	done; \
+	[ "$$hv" -eq 0 ] && \
+		echo "    --help and --version: ok on all three tools"; \
 	esc=$$(printf '\033'); \
 	out=$$(timeout $(TEST_TIMEOUT) $(NEGOTIATE) --probes < /dev/null 2>/dev/null); \
 	case "$$out" in \
