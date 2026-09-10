@@ -15917,6 +15917,44 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.88 The small-terminal story, and two claims caught before shipping (2026-09-10)
+
+Next question: **what happens when the terminal is smaller than the
+form?** For a keyboard-first library that is practice 4's question again
+-- a control scrolled off the screen is a control somebody has to be able
+to reach -- and the guide said nothing about it.
+
+**The answer is better than the question deserved, and undocumented.**
+Two stages, in order. First the compositor **hides what the application
+marked `Priority::Optional`**, one widget at a time, stopping the moment
+the layer fits and never hiding the one that owns focus. Then whatever is
+still too big is **scrolled rather than clipped**, with the scroll
+following the focused widget -- per layer, so a window, a modal and a
+popup each scroll on their own, and a menu follows its current item since
+it has no focus widget.
+
+The compositor states the reasoning, and it is the guide's own argument
+arrived at independently: *"arrow keys belong to the focused widget and a
+chord would have to be learned, but Tab already walks the form -- so
+keeping the focused widget inside the terminal makes every widget
+reachable with the keys the application already answers."*
+
+**Two claims were caught before they shipped, both mine.** The first
+draft said `PageUp` scrolls "a screenful with a floor of five rows" --
+the five rows is a **test's assertion floor**, not a design constant, and
+the code asks the scroll area's *mode* so a per-item list moves by
+visible rows. A number lifted from a check and written up as behaviour is
+the same fault as a count in prose, one layer further out.
+
+The second was reaching for `set_priority()` as the lever without
+checking that anything reads it. Something does -- `compositor.cpp` acts
+on it directly -- **and this session has already found two declared-and-
+unreached things** (`Overlay::set_z()` in a GUI build, `clipboard_limit()`
+outside the tree), so the check cost one grep and was not paranoia. It
+also turned the sentence from a vague gesture into the accurate two-stage
+description above, which is the better outcome: **verifying a claim
+usually improves it rather than merely licensing it.**
+
 ### 8.87 A public function nobody was told about (2026-09-10)
 
 Next question: **where does my application's output go?** A TUI owns the

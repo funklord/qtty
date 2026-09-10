@@ -105,6 +105,47 @@ deliberate: a selected tab is already underlined to show the tab bar has
 focus, so underlining one letter of it would say two things at once. Put
 the key in your own help text if your users need to find it.
 
+## When the terminal is smaller than the form
+
+Two things happen, in this order, and neither needs anything from you at
+the time.
+
+**First, what you marked optional is dropped.** `Qtty::set_priority(w,
+Priority::Optional)` says a widget may go when there is not enough room.
+The compositor hides them one at a time, stopping the moment the layer
+fits, and **never hides the widget that owns focus**. It is carried as a
+dynamic property, so it is a no-op in the GUI build and can be set from a
+`.ui` file without linking qtty at all.
+
+**Then what is still too big is scrolled, not clipped**, and the scroll
+follows the focused widget: move focus with `Tab` and the view comes with
+it. A layer that already fits scrolls by nothing, so on a roomy terminal
+none of this is visible. The reasoning, from the compositor:
+
+> Follow the focus rather than binding a key: arrow keys belong to the
+> focused widget and a chord would have to be learned, but `Tab` already
+> walks the form -- so keeping the focused widget inside the terminal
+> makes every widget reachable with the keys the application already
+> answers.
+
+So **practice 4's rule survives a small screen**: if every control is on
+the tab chain, every control can be got to at 80x24, or at 40x10. It
+works per layer -- the window, a modal and a popup each scroll on their
+own -- and a menu follows its *current item*, having no focus widget to
+follow.
+
+Two keys move the view without moving focus. An arrow the focused widget
+**ignores** falls through to the scroll area that widget is inside, and
+`PageUp`/`PageDown` page the same area -- asking its scroll *mode*, so a
+list that scrolls per item moves by visible rows rather than by a
+pixel count that would mean nothing to it.
+
+What none of this does is reflow your layout. A form that needs eighty
+columns still needs them; it is reached by scrolling rather than by
+becoming narrower. Marking the parts that can go is the lever you have,
+and it is worth setting before somebody meets the form on a phone-sized
+terminal rather than after.
+
 ## The terminal's own keys, and how to ask for them
 
 One line turns on the habits a terminal user has and Qt does not:
