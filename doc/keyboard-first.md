@@ -649,6 +649,42 @@ fixture under `<root>/test/snapshot/`, prints both sides on a mismatch,
 and rewrites the fixture when you pass `record = true` -- so capturing a
 screen before you change it is one call and a flag.
 
+### One test that uses all three
+
+Assembled rather than left as fragments, since the three answer different
+questions and an application wants all of them:
+
+    void LoginTest::terminal()
+    {
+        LoginWindow win;                       // your ordinary Qt window
+        win.setAttribute(Qt::WA_DontShowOnScreen);
+        win.show();
+        QCoreApplication::processEvents();
+
+        // 1. Every control is reachable without a mouse (practice 4).
+        const auto reach = Qtty::keyboard_reachable(&win);
+        QVERIFY(reach.contains(win.user()));
+        QVERIFY(reach.contains(win.password()));
+        QVERIFY(reach.contains(win.okButton()));
+
+        // 2. The keys do what you think: Tab from the user field lands
+        //    on the password field rather than somewhere else.
+        Qtty::InputRouter router(&win);
+        win.user()->setFocus();
+        router.on_key({Qt::Key_Tab, "\t", false, false, false});
+        QCoreApplication::processEvents();
+        QCOMPARE(win.focusWidget(), win.password());
+
+        // 3. And it still LOOKS right, attributes included.
+        const QString got = Qtty::test::snapshot_of(win, 40, 12);
+        QVERIFY(!Qtty::test::check_snapshot(MY_SOURCE_DIR, "login", got));
+    }
+
+**The first is the one people skip and the one that rots.** Tab order
+follows construction order until somebody inserts a widget, and nothing
+about that edit looks like it touched the keyboard. The other two fail
+loudly when they break; a control quietly leaving the tab chain does not.
+
 `Qtty::NullBackend` captures frames the same way for what the screen
 *shows*. Between them an application can assert that every control it
 owns is reachable by key, in a unit test, on a machine with no terminal.

@@ -15955,6 +15955,21 @@ landed, and valgrind at 1201 with the fix. A one-check delta is a small
 risk and re-running is what makes the sentence true rather than nearly
 true.
 
+**The guide's testing section was three fragments and is now a test.**
+It showed how to drive keys, how to list what Tab reaches, and how to
+snapshot a screen -- each on its own, leaving the reader to assemble
+them. They answer different questions and an application wants all three,
+so the page carries one `LoginTest::terminal()` that uses each in turn
+and can be copied.
+
+**The reachability assertion is placed first deliberately, and the note
+says why.** It is the one people skip and the one that rots: tab order
+follows construction order until somebody inserts a widget, and **nothing
+about that edit looks like it touched the keyboard**. A wrong snapshot or
+a key that lands in the wrong place fails loudly; a control quietly
+leaving the tab chain does not, which is exactly the failure
+`keyboard_reachable()` was added for in 8.71.
+
 **And QShortcut was implemented but barely documented** -- one passing
 mention inside a paragraph about Alt. A reader whose shortcut does not
 fire had nothing to find, and the subtle half is `context()`: a
