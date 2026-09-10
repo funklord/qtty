@@ -143,12 +143,29 @@ Nothing else is required. A widget tree written against ordinary Qt renders
 into the terminal as it is; `example/chat/chat.h` is deliberately free of
 qtty types to show that.
 
-What an application may ask for on top, none of it automatic:
-`Qtty::set_priority()` for what to drop first on a small terminal,
-`Qtty::CellItemDelegate` for item views with check states and icons,
-`Qtty::set_icon_glyph()` to name a glyph for an icon, `Qtty::Overlay` for a
-picture over the cells, and the `qtty.cells` widget property to state a size
-in cells. Each is documented in its own header.
+What an application may ask for on top, none of it automatic.
+
+For the widgets: `Qtty::set_priority()` for what to drop first on a small
+terminal, `Qtty::CellItemDelegate` for item views with check states and
+icons, `Qtty::set_icon_glyph()` to name a glyph for an icon,
+`Qtty::Overlay` for a picture over the cells, and the `qtty.cells` widget
+property to state a size in cells.
+
+For the keyboard: `Qtty::set_keyboard_conventions()` turns on the habits a
+terminal user expects, `Qtty::keyboard_conventions_help()` names the keys
+that answer so a status bar keeps no second copy of them,
+`Qtty::keyboard_reachable()` lists what `Tab` reaches so a test can assert
+every control is on it, and `Qtty::focusWidget()` says who has focus --
+which `QWidget::hasFocus()` cannot here, no window ever being active.
+
+About the session itself: `Qtty::is_tui_active()` is true while `exec()`
+is driving a terminal, so a widget can branch without being told which
+frontend built it; `Qtty::capabilities()` reports what the terminal
+negotiated; and `Qtty::flush_deferred_messages()` writes out diagnostics
+held back while the screen was in use.
+
+Each is documented in its own header, and `doc/keyboard-first.md` is the
+guide to the keyboard half.
 
 **A widget that paints itself works, and transparency has rules.** A
 `paintEvent` reaches a `QPainter` like any other, and what it draws is

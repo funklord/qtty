@@ -15917,6 +15917,42 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.89 Three public functions nobody could find (2026-09-10)
+
+`is_tui_active()` is declared in `include/qtty/application.h`, ships with
+every install, and appears in **neither** the guide nor the README. That
+is the third in two days -- `flush_deferred_messages()` was the second
+(8.87), and `clipboard_limit()` the inverse case, documented as public
+and not shipped at all (8.86's 0b row).
+
+Three of a kind stops being a coincidence, so the question became **where
+would an application look**, and the answer already exists: the README's
+*"what an application may ask for on top"* list. It named five things and
+omitted `is_tui_active`, `flush_deferred_messages`, `capabilities`,
+`focusWidget`, and every keyboard function added this session. **The
+index was real and half empty**, which is worse than absent -- a list
+that looks complete is read as complete.
+
+It names them all now, in three groups: the widget-facing ones, the
+keyboard ones, and the three about the session itself. Each still points
+at its own header for the detail, which is the division that was already
+right.
+
+**The one that mattered most to reach was `focusWidget()`.** 8.82 found
+that `QWidget::hasFocus()` is permanently false here, so a custom widget
+must ask qtty instead -- and the function it must ask was in no list an
+application reads. The trap and its escape were both undiscoverable, in a
+library whose whole premise is that ordinary Qt code works.
+
+**And `is_tui_active()` gave practice 12 a usable escape.** That practice
+says not to put a style sheet on a control and told the reader to branch
+in their frontend; with this they can branch anywhere:
+
+    if (!Qtty::is_tui_active()) setStyleSheet(...);
+
+Both halves of it are asserted -- true during a run, false after -- so
+the advice rests on a check rather than on a reading.
+
 ### 8.88 The small-terminal story, and two claims caught before shipping (2026-09-10)
 
 Next question: **what happens when the terminal is smaller than the

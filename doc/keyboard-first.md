@@ -394,9 +394,15 @@ this is about controls rather than about drawing.
 
 Qt's style-sheet machinery takes drawing over from the application style,
 which is what it is for; qtty's cell drawing IS the application style, so
-a sheet replaces it. If you style for the desktop, set the sheet in the
-GUI branch of your frontend -- the same place the terminal-only pieces
-go, one section down.
+a sheet replaces it. If you style for the desktop, set the sheet only
+there -- and you can ask from anywhere, not just from `main()`:
+
+    if (!Qtty::is_tui_active()) setStyleSheet(...);
+
+`Qtty::is_tui_active()` is true while `exec()` is driving a terminal
+session, so a widget deep in a tree can branch without being told which
+frontend built it. That is the general escape for anything a desktop
+wants and a terminal cannot use.
 
 **13. Prefer stepping to dragging.** A splitter, a slider and a scroll bar
 all respond to arrows when focused, but only if a user can reach them.
