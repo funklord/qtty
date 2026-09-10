@@ -15953,6 +15953,41 @@ from the comment it came from.** `key Tab` alone leaves row 1 at
 That is the documented vocabulary end to end: underline for current,
 reverse for selected, both for both.
 
+**The bigger gap was that `qtty-replay` could not SEND most of what the
+library answers.** Its whole stated purpose is to make a bug report
+reproducible, and its script vocabulary was `text`, `key <name>` over ten
+names, `ctrl <letter>`, `click`, `frame`, `snapshot`. So none of these
+reports could be reproduced with it:
+
+    Alt+F does not open my File menu        no alt, at all
+    Esc does not close my dialog            escape not in the key map
+    F6 does not switch windows              no function keys
+    Shift+Tab walks the wrong way           no shift
+    the Menu key does nothing               not in the key map
+    Ctrl+PageDown does not step my tabs     ctrl took a letter only
+
+**Several of those keys this session added**, so the tool had fallen
+behind the library it exists to report on. `key` takes a spec now --
+`key shift+tab`, `key ctrl+pagedown`, `key alt+f`, `key escape`, `key f6`,
+`key menu` -- with modifiers joined by `+`, and the map carries Escape,
+Menu, Home, End, Delete, Insert, Space and F1 to F12. `ctrl <letter>`
+still works, because the existing fixtures use it.
+
+**A single letter after the modifiers becomes its key AND its text**,
+which is what a terminal delivers: Alt+F arrives as ESC then `f`, so the
+letter is in the event and the router's mnemonic matching reads it.
+Withholding it from widgets that type is the router's job and not the
+tool's -- 8.66's own fix.
+
+Verified through the tool rather than by reading it: `key tab` leaves the
+list's current item at `8 underline`, and `key shift+tab` returns
+`none`, focus having walked back to the line edit. **The gate asserts the
+help lists those keys and the modifier form**, and was watched failing
+with `escape` removed from the map. A shift-specific assertion was
+considered and rejected: the sample has two focusable widgets, so Tab
+wraps and looks identical to Shift+Tab, which would have been a check
+that could not fail.
+
 **And the inspector could not show what the guide had just told people to
 look for.** `qtty-inspect` prints the rendering as glyphs, so a developer
 debugging *"why does my focus not show"* saw no underline and no reverse

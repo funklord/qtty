@@ -774,6 +774,19 @@ test-tools: all
 	done; \
 	[ "$$hv" -eq 0 ] && \
 		echo "    --help, --version and unknown options: ok on all three"; \
+	out=$$(timeout $(TEST_TIMEOUT) $(REPLAY) --help 2>/dev/null); \
+	miss=""; \
+	for k in escape menu f6 f10; do \
+		case "$$out" in *" $$k "*|*" $$k") ;; *) miss="$$miss $$k";; esac; \
+	done; \
+	case "$$out" in *ctrl+pagedown*) ;; *) miss="$$miss modifiers";; esac; \
+	if [ -n "$$miss" ]; then \
+		echo "    replay --help: FAILED -- the script cannot send:$$miss,"; \
+		echo "             so a bug report about those keys cannot be"; \
+		echo "             reproduced with it"; fail=1; \
+	else \
+		echo "    replay key vocabulary: ok (modifiers and the named keys)"; \
+	fi; \
 	out=$$(timeout $(TEST_TIMEOUT) $(INSPECT) --attrs 2>/dev/null); \
 	case "$$out" in \
 	*legend*attrs:*) echo "    inspect --attrs: ok (it shows attributes)";; \

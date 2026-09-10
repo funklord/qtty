@@ -4,7 +4,8 @@
 //
 // Script (stdin or file argument), one command per line:
 //   text <string>     type characters
-//   key <name>        see key_map() below, and `qtty-replay --help`
+//   key <spec>        a key with optional ctrl+/alt+/shift+ modifiers;
+//                     see key_map() below and `qtty-replay --help`
 //   ctrl <letter>     e.g. "ctrl s"
 //   click <col> <row> mouse press+release at cell
 //   frame             print the composed frame between markers
@@ -39,12 +40,53 @@ static const QHash<QString, int> &key_map() {
 		{"backspace", Qt::Key_Backspace}, {"up", Qt::Key_Up}, {"down", Qt::Key_Down},
 		{"left", Qt::Key_Left}, {"right", Qt::Key_Right},
 		{"pageup", Qt::Key_PageUp}, {"pagedown", Qt::Key_PageDown},
+		// Added because the library answers all of these and a script
+		// could not send one of them: Escape is the way back out of a
+		// layer, F6 moves between windows, Menu opens a context menu,
+		// and none could be reproduced in a bug report.
+		{"escape", Qt::Key_Escape}, {"esc", Qt::Key_Escape},
+		{"menu", Qt::Key_Menu}, {"home", Qt::Key_Home},
+		{"end", Qt::Key_End}, {"delete", Qt::Key_Delete},
+		{"insert", Qt::Key_Insert}, {"space", Qt::Key_Space},
+		{"f1", Qt::Key_F1}, {"f2", Qt::Key_F2}, {"f3", Qt::Key_F3},
+		{"f4", Qt::Key_F4}, {"f5", Qt::Key_F5}, {"f6", Qt::Key_F6},
+		{"f7", Qt::Key_F7}, {"f8", Qt::Key_F8}, {"f9", Qt::Key_F9},
+		{"f10", Qt::Key_F10}, {"f11", Qt::Key_F11},
+		{"f12", Qt::Key_F12},
 	};
 	return map;
 }
 
 static int key_by_name(const QString &n) {
 	return key_map().value(n.toLower(), 0);
+}
+
+// `key ctrl+pagedown`, `key shift+tab`, `key alt+f`. The modifiers were
+// missing entirely and the library answers all three: Alt reaches a
+// mnemonic, Shift+Tab walks backwards, Ctrl+PageDown steps a tab. A tool
+// for reproducible bug reports could not reproduce any report about them.
+//
+// A single letter after the modifiers becomes its key AND its text,
+// because that is what a terminal delivers and what the router's mnemonic
+// matching reads -- Alt+F arrives as ESC then 'f', so the letter is in the
+// event. Withholding it from widgets that type is the router's job, not
+// this tool's.
+static Qtty::KeyEvent key_from_spec(const QString &spec) {
+	Qtty::KeyEvent k;
+	QStringList parts = spec.toLower().split(QLatin1Char('+'));
+	const QString name = parts.takeLast();
+	for (const QString &m : parts) {
+		if (m == QLatin1String("ctrl"))  k.ctrl = true;
+		else if (m == QLatin1String("alt"))   k.alt = true;
+		else if (m == QLatin1String("shift")) k.shift = true;
+	}
+	if (const int mapped = key_by_name(name)) {
+		k.qt_key = mapped;
+	} else if (name.size() == 1 && name.at(0).isLetter()) {
+		k.qt_key = Qt::Key_A + (name.at(0).unicode() - 'a');
+		k.text = name;
+	}
+	return k;
 }
 
 static const char *const usage =
@@ -57,7 +99,11 @@ static const char *const usage =
     "and drives the built-in sample UI through the real InputRouter:\n"
     "\n"
     "  text <string>      type characters\n"
-    "  key <name>         one of the names printed below\n"
+    "  key <spec>         a key, with optional modifiers joined by +:\n"
+    "                     key tab, key shift+tab, key ctrl+pagedown,\n"
+    "                     key alt+f, key escape, key f6, key menu.\n"
+    "                     A single letter becomes its key and its text,\n"
+    "                     which is what a terminal delivers. Names below\n"
     "  ctrl <letter>      e.g. \"ctrl s\"\n"
     "  click <col> <row>  mouse press and release at a cell\n"
     "  frame              print the composed frame between markers\n"
@@ -158,7 +204,7 @@ int main(int argc, char **argv) {
 			for (const QString &cl : to_clusters(t))
 				router.on_key({0, cl, false, false, false});
 		} else if (cmd == QLatin1String("key") && parts.size() == 2) {
-			router.on_key({key_by_name(parts[1]), QString(), false, false, false});
+			router.on_key(key_from_spec(parts[1]));
 		} else if (cmd == QLatin1String("ctrl") && parts.size() == 2) {
 			router.on_key({Qt::Key_A + (parts[1].at(0).toLower().unicode() - 'a'),
 				          QString(), true, false, false});
