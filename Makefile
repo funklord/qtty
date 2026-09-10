@@ -774,6 +774,13 @@ test-tools: all
 	done; \
 	[ "$$hv" -eq 0 ] && \
 		echo "    --help, --version and unknown options: ok on all three"; \
+	out=$$(timeout $(TEST_TIMEOUT) $(INSPECT) --attrs 2>/dev/null); \
+	case "$$out" in \
+	*legend*attrs:*) echo "    inspect --attrs: ok (it shows attributes)";; \
+	*) echo "    inspect --attrs: FAILED -- it printed no legend, so the"; \
+	   echo "             one way to see focus in this tool is gone"; \
+	   fail=1;; \
+	esac; \
 	esc=$$(printf '\033'); \
 	out=$$(timeout $(TEST_TIMEOUT) $(NEGOTIATE) --probes < /dev/null 2>/dev/null); \
 	case "$$out" in \

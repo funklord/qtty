@@ -15,11 +15,16 @@ static const char *const usage =
     "qtty-inspect -- dump a widget tree with cell geometry beside its"
     " rendering.\n"
     "\n"
-    "usage: qtty-inspect [--help] [--version]\n"
+    "usage: qtty-inspect [--attrs] [--help] [--version]\n"
     "\n"
     "Prints every widget's position and size in cells, says whether each\n"
     "lands on the character grid, and then the frame they compose to. It\n"
-    "inspects a built-in sample dialog; loading a .ui file is Phase 2.\n";
+    "inspects a built-in sample dialog; loading a .ui file is Phase 2.\n"
+    "\n"
+    "  --attrs            show the rendering with attributes and colours\n"
+    "                     instead of glyphs alone, which is the only way to\n"
+    "                     see focus: a list's current item is underlined and\n"
+    "                     a focused button reversed, and neither is a glyph\n";
 
 int main(int argc, char **argv) {
 	// Before QApplication, so both answer in a pipe and on a machine with no
@@ -35,6 +40,9 @@ int main(int argc, char **argv) {
 			return 0;
 		}
 	}
+	bool attrs = false;
+	for (int i = 1; i < argc; ++i)
+		if (!qstrcmp(argv[i], "--attrs")) attrs = true;
 	Qtty::prepare_environment();
 	QApplication app(argc, argv);
 	// An unrecognised option was IGNORED, and the tool then did its
@@ -47,7 +55,7 @@ int main(int argc, char **argv) {
 	// left is this program's to judge. Doing it before would refuse
 	// perfectly good Qt options.
 	for (int i = 1; i < argc; ++i) {
-		static const char *const known[] = { "--help", "-h", "--version", "-V" };
+		static const char *const known[] = { "--help", "-h", "--version", "-V", "--attrs" };
 		if (argv[i][0] != '-') continue;
 		bool ok = false;
 		for (const char *k : known) ok = ok || !qstrcmp(argv[i], k);
@@ -84,6 +92,17 @@ int main(int argc, char **argv) {
 	}
 	Qtty::CellBuffer buf(52, 12);
 	Qtty::render_once(dlg, buf);
-	printf("\nrendering:\n%s", qPrintable(buf.to_text()));
+	// GLYPHS by default and ATTRIBUTES on request. The guide tells an
+	// implementer that a list's current item is underlined and a focused
+	// button is reversed -- and this tool printed neither, so somebody
+	// debugging "why does my focus not show" could not see the answer in
+	// the one program built to show them their own dialog. qtty-replay
+	// already has `snapshot` for the same reason; the buffer has carried
+	// to_snapshot() all along.
+	if (attrs)
+		printf("\nrendering (attributes shown):\n%s",
+		       qPrintable(buf.to_snapshot()));
+	else
+		printf("\nrendering:\n%s", qPrintable(buf.to_text()));
 	return 0;
 }

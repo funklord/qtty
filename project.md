@@ -15945,6 +15945,28 @@ underlined **and** reversed.
 users**: in a list on a terminal the underline is where the keys will act
 and the highlight is what is already chosen. Practice 10 says so now.
 
+**The new paragraph was then verified through the same tool rather than
+from the comment it came from.** `key Tab` alone leaves row 1 at
+`8 underline` -- current, not selected. `key Down` twice moves it to row
+3 and changes the code to **`o underline+reverse`**, because Down in a
+`QListView` moves the current item and selects it, so the item is both.
+That is the documented vocabulary end to end: underline for current,
+reverse for selected, both for both.
+
+**And the inspector could not show what the guide had just told people to
+look for.** `qtty-inspect` prints the rendering as glyphs, so a developer
+debugging *"why does my focus not show"* saw no underline and no reverse
+in the one program built to show them their own dialog. `qtty-replay`
+already had `snapshot` for that reason and the buffer has carried
+`to_snapshot()` all along; only the tool never asked.
+
+`--attrs` does now, and its first run showed something previously
+invisible there: **`1 bold` across the default button's row** -- the
+affordance 8.33 added and described as "bold now, rather than
+double-bracketed", which no glyph dump could ever have displayed. The gate
+asserts the legend appears, and was watched failing with the branch
+disabled.
+
 **Two things about the method are worth keeping.** The first attempt used
 `frame` rather than `snapshot` and showed four identical frames -- because
 `frame` prints glyphs and focus is an attribute, which is exactly why
