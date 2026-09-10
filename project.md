@@ -587,8 +587,9 @@ Owned by the copyright holder:
 | **A disabled widget is indistinguishable from an enabled one on the pixel tiers.** Measured, not inferred: `Attr::Dim` is set for EVERY disabled widget (`cell_geometry.h`), the rasteriser has no row for it, and the two render byte-identically -- same 123 lit pixels, same channel sum. ~~How far fidelity goes between tiers~~ is no longer the question; the question is how faint "faint" should be. Blends toward the ground up to **70%** clear qtty's own `has_minimum_contrast` floor and 80% does not, so the range is measured. No mechanism exists, unlike `Strike` in 8.58, so every option means choosing a rule -- a fixed factor, or "as faint as the floor permits" the way beerssh's `ensure_contrast` walks a colour | 8.50, 8.59 |
 | **`Overlay::set_z()` does nothing in a GUI build.** `visible_overlays()` sorts by z and its only production caller is the compositor, which is the TUI path; the GUI twin never reads `z_`, so stacking there falls to the window manager. design.md presents `Overlay` as target-independent and lists `setZ` unqualified, so this is a scope question -- does the twin owe z ordering? -- rather than a defect. Not a one-liner: the twins are frameless always-on-top `Qt::Tool` windows, and it cannot be verified headlessly here | 8.47 |
 | **`design.md` recommends a function the library cannot call.** Its focus section says `focusNextPrevChild()` "walks the focus chain correctly", citing spike F4 -- and 8.71 removed the only call to it, because it is **protected**: reaching it from outside means declaring a fake derived class and casting a widget that is not one, which is undefined behaviour and which UBSan named. A spike can call it, being a subclass; the library walks widgets it does not own and cannot. Neither side is wrong -- the spike's finding holds and the code is right to refuse the cast -- but the naked recommendation is a trap for the next reader, and this tree's habit is to record design.md's lag rather than edit it (README carries the same caution about its API chapter, and 8.2 the same about `qtty::Application`). Whether design.md gains a sentence is the holder's | 8.71, F4 |
-| **Should the clipboard limit be public?** `AnsiBackend::clipboard_limit()` says in its own comment that it is "public so an application can ask before it offers the user a Copy that cannot work" -- and `make install` ships `include/qtty/*.h` only, so `ansi_backend.h` does not leave the tree and **no installed header mentions the clipboard at all**. The consequence is not cosmetic: a copy past the limit is refused whole, by design and rightly, the `QClipboard` watcher discards the result, and an application therefore cannot detect the refusal OR pre-empt it. The user believes they copied. Three shapes are available -- a free `Qtty::clipboard_limit()`, a field on `Capabilities` where it arguably belongs since it is a property of the terminal, or leaving it internal and saying so in the header rather than claiming an audience it cannot reach. Which one is an API decision, and the holder's | 8.83 |
+| **Should the clipboard limit be public?** `AnsiBackend::clipboard_limit()` says in its own comment that it is "public so an application can ask before it offers the user a Copy that cannot work" -- and `make install` ships `include/qtty/*.h` only, so `ansi_backend.h` does not leave the tree and **no installed header mentions the clipboard at all**. The consequence is not cosmetic: a copy past the limit is refused whole, by design and rightly, the `QClipboard` watcher discards the result, and an application therefore cannot detect the refusal OR pre-empt it. **The user is not left in silence, which the first version of this row got wrong**: a refused copy logs a sentence naming the size and the bound, pinned by a check that asserts the wording rather than the refusal, and the deferring handler prints it when the terminal is given back -- so a person learns why after they have stopped needing to know. What no code can do is ask beforehand. Three shapes are available -- a free `Qtty::clipboard_limit()`, a field on `Capabilities` where it arguably belongs since it is a property of the terminal, or leaving it internal and saying so in the header rather than claiming an audience it cannot reach. Which one is an API decision, and the holder's | 8.83 |
 | **Should qtty notice a style sheet at all?** Measured 2026-09-10 on a ten-cell push button: no sheet draws `<Hi>`, a box-model sheet draws `Hi` -- the brackets gone -- and `color: red` alone draws **nothing**. A `QLabel` with the same rule is unharmed, so it is controls rather than drawing. The affordance goes while the behaviour stays: a styled button still takes Enter and still shows focus, and nothing on screen says it is a button. Qt's machinery taking drawing over from the application style is what style sheets ARE, and qtty's cell drawing is that style, so this is not a bug to fix in the drawing. What is open is whether qtty should react -- ignore sheets while a cell device is being drawn into, warn once when one is set, or stay silent and let the guide carry it, which is where it sits today. Each is a decision about somebody else's application | 8.86 |
+| **Should a Channel B stroke carry its pen colour?** Today it does not: a rule drawn through the paint engine lands in a cell with the default colour. The obvious fix was built and measured on a 40x20 fixture -- **294 rule cells all default today, against 174 default and 120 true-colour with the pen carried** -- and the measurement is why it was not taken. **1586 of 1597 pens reaching `line()` resolve to a hard 24-bit colour and 1569 of those to one grey**, because Qt draws sunken borders with `pal.dark()` and `pal.light()`: carrying the pen would paint that grey across the tree, which is the #bebebe incident by a new route. The suite is blind to it -- with the pen carried every check passes and both fixtures re-record identically. The real fix wants an "is this colour anywhere in the palette" rule, which is a section 6 decision and the holder's | 8.x, near "left for the holder" |
 | The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
 
 Owned elsewhere, and signalled rather than fixed here:
@@ -15916,6 +15917,190 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.94 Auditing my own sections, and two greps that manufactured an absence (2026-09-10)
+
+The guide gained four sections in two days -- copy and paste, modal
+dialogs and `exec()`, where output goes, and the small-terminal story --
+each written from headers and source comments. **A claim taken from a
+comment is not a claim backed by a check**, and this session's whole
+record says which of those rots. So each section was audited against the
+suite.
+
+**One overstatement, and it was load-bearing.** The copy section said a
+refused clipboard write cannot be told about at all. The suite says
+otherwise: a refused copy logs a sentence **naming the size refused and
+the bound it broke**, and the check pins the WORDING rather than the
+refusal, its comment giving the reason -- *asserting that it refused
+leaves exactly the half that rots*. So the application still cannot
+detect or pre-empt it, and the user does get an explanation, printed when
+the terminal is given back. **They learn why after they have stopped
+needing to know**, which is a real defect and a different one from
+silence. The 0b row asking the holder to decide rested on the wrong
+version and is corrected too.
+
+Everything else held: the nested loop and its frame, the per-layer scroll
+(window, modal, and a menu following its active item), the `qFatal`
+ordering down to *"arrives after the alternate screen was given back"*,
+and the clipboard's OSC 52 framing, size bound and suspended case.
+
+**Two of my own greps manufactured an absence, ten minutes apart, while
+auditing for exactly that.** The first searched for `limit|too big|whole
+or` and reported the size bound unchecked -- it is checked as *"a copy
+exactly at the size bound goes out whole"*, wording my pattern could not
+match, and I came within a minute of writing a check that already
+existed. The second searched correctly and passed the result through
+`head -5`, where five matches for *follow* consumed the limit and hid
+three checks that said precisely what I was looking for.
+
+**The full run was stopped at 72 of 124, by machine load rather than by
+anything in the tree.** 71 reddened, no failure and nothing inconclusive
+in what it reached. Other users' builds had the box at a load average of
+**19 to 21**, so each entry -- a full rebuild and a suite run -- was
+taking about five minutes and the remainder would have been four hours.
+
+**What the coverage actually is, stated plainly rather than implied:**
+121 entries verified together in the complete run of 8.84, plus the three
+added since, each verified individually as it was written. This run would
+have made it 124 together, which is worth having and is not worth holding
+a day's documentation work hostage to a machine somebody else is using.
+Restarting it is a quiet-machine job.
+
+**Reading the guide end to end found two things no section-level edit
+would.** Its model section stated three ideas as flat facts -- *Escape
+comes back, it closes the menu, cancels the dialog, leaves the layer* --
+when only the first two are free and a layer of the application's own
+answers Escape because somebody made it. Every piece was accurate in its
+own place and the arrangement promised more than any of them said; it now
+separates what a user expects from what an application gets.
+
+And the snapshot section **narrated its own revision history** -- *"a
+harness you have not been told about"*, *"neither document mentioned it
+until now"* -- which is true of the tree and has no business in a guide.
+A reader arriving fresh has just been told. That belongs here, and the
+guide states the facts.
+
+**The sample beside it also needed a sentence rather than a correction.**
+It asserts on `window.focusWidget()`, which DOES answer -- and it sits
+after a practice saying focus queries are dead here. They are different
+calls: Qt keeps the window's own focus widget, and it is `hasFocus()` and
+`QApplication::focusWidget()` that read the ACTIVE window and therefore
+never answer. Without that clause a reader would have "fixed" a correct
+sample.
+
+**And the snapshot sample written an hour earlier had an invented
+identifier in it.** It passed `SRC_ROOT` to `check_snapshot()`, a name
+that exists nowhere: the suite passes `QTTY_SOURCE_DIR`, a compile define
+the build supplies, and an application has to supply its own. `evidence.md`
+names this exactly -- **read the identifier, do not complete it** -- and
+the shape it warns about is a plausible, well-formed value that matches
+nothing, which is what `SRC_ROOT` is. The sample says whose job it is and
+where the fixture lands.
+
+**That is two samples in two days, both mine, both invented rather than
+read** -- the other listed nine of `qtty-replay`'s ten key names. A code
+sample is the part of a document a reader copies verbatim, so it is the
+worst place to guess and the easiest one to check.
+
+**The spread files were checked too, and `diff -q` cries drift on all of
+them by construction.** `code-style.md` carries every section of the
+global source plus eleven of its own, which is what a project copy is
+supposed to look like. `tool/style_gate.py` and `tool/hooks/commit-msg`
+are meant to be VERBATIM, and `diff -q` says both differ -- because each
+carries the two-line provenance header saying where it came from and to
+keep it in sync. Ignoring those lines, both are byte-identical.
+
+**Acting on the binary verdict would have stripped the header**, deleting
+the one thing that tells a reader the file is a copy at all. So the check
+worth running on a spread file is a diff with the provenance lines
+dropped, not `diff -q` -- and this was not the moment to edit either of
+them regardless: another session has uncommitted work in
+`tool/test_style_gate.py`, which is the gate's own test.
+
+**And 0b was itself half an index, which is the README's fault of a few
+hours earlier in the file that found it.** The section opens by saying a
+question nobody can locate is one nobody answers -- so the body was swept
+for sentences handing a decision over, and one was **not in the index**:
+a Channel B stroke carries no pen colour, measured at both sides on a
+40x20 fixture, left for the holder at line 8844 of a document nobody
+reads end to end.
+
+**The measurement is the reason it stayed open, and it is the part that
+was unfindable.** Carrying the pen turns 294 default rule cells into 174
+default and 120 true-colour -- and 1586 of 1597 pens reaching `line()`
+resolve to a hard 24-bit colour, 1569 of them to one grey, because Qt
+draws sunken borders with `pal.dark()` and `pal.light()`. So the obvious
+fix paints that grey across the tree, and **the suite cannot see it**:
+with the pen carried every check passes and both fixtures re-record
+identically. A question that expensive to re-derive is exactly what an
+index is for.
+
+Two other candidates were checked and are fine -- one is a correction
+saying something was NOT a holder decision, the other is the message-box
+icon, already indexed.
+
+**A third broken instrument in the same stretch, and a fourth count of
+mine.** Checking that the guide's new task list cites real section titles,
+the comparison reported two of four missing -- both because the bold text
+wraps across a line and the heading does not, so the extracted string
+carried a newline. Normalised, all four match. And the sentence beside
+the list said it named "five" sections; it names four and two practice
+numbers. **That is the third count corrected in this one document**, so
+it no longer states one: *some of them* is true, stays true, and loses
+nothing a reader wanted.
+
+**So the population was enumerated rather than sampled**, which is
+`evidence.md`'s remedy for a count that inherits its detector: 85 public
+names across the installed headers, **61 mentioned in neither document.**
+
+**That number is not 61 gaps, and reading them is the only thing that
+says so.** Most are the library's own machinery -- `encode_sixel`,
+`rasterize`, `dirty_tiles`, `compose_halfblocks`, `CellPaintEngine` --
+public because the library and its suite compile against them, and no
+application will ever call one. The detector reports "public and
+unmentioned"; treating that as "should be documented" is the proxy
+mistake this file keeps recording.
+
+Read, the genuinely application-facing omissions were three, and one is
+substantial. **`Qtty::SystemTrayIcon` is a whole capability the README
+never mentions** -- it publishes a tray icon over D-Bus for a program
+with no display, which `QSystemTrayIcon` cannot do here because Qt asks
+the platform for an implementation and the offscreen platform supplies
+none, so `isSystemTrayAvailable()` answers false however healthy the
+desktop is. The README named `qtty-tray-check` twice, **as a build
+artifact in a .gitignore list**, and the feature nowhere. `set_theme()`
+and `ICellPainted` were the other two.
+
+**A fourth undiscoverable public API turned up in the same audit**, and
+this one is what the guide's own testing section exists to recommend.
+`qtty/testing.h` ships with every install and carries
+`Qtty::test::snapshot_of()` -- a widget rendered to text in one call,
+**glyphs, attributes and colours** -- and `check_snapshot()`, which holds
+that against a fixture and rewrites it on request. Neither document
+mentioned either, so the guide told applications to drive an
+`InputRouter` by hand while a one-line harness sat in the installed
+headers.
+
+The header records why `snapshot_of` returns more than glyphs, and it is
+the reason to prefer it: it used to return characters alone, so **a frame
+that stopped drawing a selection compared equal to one that drew it.**
+An application writing its own capture would make exactly that mistake,
+because glyphs are the obvious thing to keep.
+
+**The README's new API index was audited the same way and is sound.**
+Eleven names, each resolved to the public header that declares it --
+`delegate.h`, `grid.h`, `runtime.h`, `application.h`, `backend.h`,
+`overlay.h` -- and the twelfth entry is not a symbol at all but the
+`"qtty.cells"` property, whose spelling has to match a string the style
+reads: it does, `w->property("qtty.cells")`. **A list of names is the
+shape that rots**, and 8.89 had just added six to it, so checking it cost
+one loop and removes the need for anybody to wonder.
+
+`evidence.md` names both -- **the pattern and the view** -- and observes
+that a loose pattern makes you work while a short one hands you the
+answer you were hoping for. Here it handed me the answer I was *fearing*,
+which is the same mechanism and no easier to notice: a gap I was
+half-expecting to find, produced by the instrument, twice.
 
 ### 8.93 The help I had just written was already wrong (2026-09-10)
 

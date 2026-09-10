@@ -9,6 +9,24 @@ can only be clicked is a control that does not exist.
 This is the guide for that. Where a behaviour is Qt's own it says so, and
 where it is qtty's it says which.
 
+**If you came here with a job**, rather than to read it through:
+
+- *writing a widget of your own* -- **If you are writing a custom widget**
+  has the four things a standard one gets free, and practices 9 to 11
+  explain each;
+- *your control does not look like a control* -- practice 12, on style
+  sheets;
+- *your form is bigger than the terminal* -- **When the terminal is
+  smaller than the form**;
+- *deciding what to bind* -- **What already works, unmodified** first, so
+  you do not bind a key that already answers;
+- *your debug output is landing on the screen* -- **Where your output
+  goes**.
+
+That is organised by task rather than mirroring every heading below --
+though it does name some of them, so it is a smaller copy rather than
+none, and worth checking if you rename a section.
+
 **Every row below is held by at least one check in the suite**, so a
 behaviour that changes reddens something rather than quietly making this
 file wrong. **When you add a row here, add the check that holds it** --
@@ -41,6 +59,13 @@ and people navigate it with three ideas:
 An application that answers those three consistently feels native on a
 terminal whatever else it does. One that requires a pointer for any step
 does not, however good it looks.
+
+**Those are what a user expects, not a list of what you get.** Some of it
+is already true -- Qt closes a menu on `Esc` and fires a dialog's default
+button on `Enter` -- some arrives with the opt-in conventions, and some
+is yours to arrange: a layer of your own answers `Esc` only because you
+made it. The tables below say which is which, and the practices say what
+is left to you.
 
 ## What already works, unmodified
 
@@ -420,11 +445,16 @@ out, deliberately -- a truncated copy the user believes went out is worse
 than a refused one. The same holds when stdout is not a terminal, and
 while the terminal is suspended.
 
-**Today you cannot tell that it was refused.** The watcher discards the
-result, and neither the limit nor the writing call is in an installed
-header, so an application cannot ask before offering a Copy of something
-large. That is a gap rather than a design: `project.md` 0b carries the
-question of whether the limit belongs in the public API.
+**Your application cannot tell that it was refused; the user eventually
+can.** The `QClipboard` watcher discards the result, and neither the
+limit nor the writing call is in an installed header, so you cannot ask
+before offering a Copy of something large or branch on the answer after.
+qtty does not stay silent about it, though: a refused copy logs a message
+naming the size refused and the bound it broke, held with the other
+diagnostics and printed when the terminal is given back. So a person
+learns why their copy did not arrive -- **after they have stopped
+needing to know.** Whether the limit belongs in the public API is an open
+question in `project.md`.
 
 PRIMARY -- what a middle click pastes -- is unreachable through Qt here.
 Under the offscreen platform `QClipboard::supportsSelection()` is false
@@ -512,6 +542,33 @@ terminal emulator, which is how this library tests its own:
     router.on_key({Qt::Key_Tab, "\t", false, false, false});
     QCoreApplication::processEvents();
     // ... assert on window.focusWidget()
+
+`QWidget::focusWidget()` on the window does answer, which is worth saying
+straight after practice 10: it is `hasFocus()` on the widget, and
+`QApplication::focusWidget()`, that are dead here. Qt keeps the window's
+own idea of its focus widget; what it never sets is the ACTIVE window,
+which is what the other two read.
+
+**There is a snapshot harness for what the screen shows.**
+`qtty/testing.h` ships with every install:
+
+    #include <qtty/testing.h>
+
+    const QString got = Qtty::test::snapshot_of(win, 40, 12);
+    QVERIFY(!Qtty::test::check_snapshot(MY_SOURCE_DIR, "login", got));
+
+`MY_SOURCE_DIR` is yours to supply -- a compile define pointing at your
+source tree, the way this project's own build passes `QTTY_SOURCE_DIR`.
+The fixture then lives at `<root>/test/snapshot/login.txt`, which is
+where `check_snapshot()` looks and what it rewrites when you record.
+
+`snapshot_of()` renders a widget to text in one call -- **glyphs,
+attributes and colours**, not glyphs alone, which matters because a frame
+that stopped drawing a selection compares equal to one that drew it if
+only the characters are kept. `check_snapshot()` compares that against a
+fixture under `<root>/test/snapshot/`, prints both sides on a mismatch,
+and rewrites the fixture when you pass `record = true` -- so capturing a
+screen before you change it is one call and a flag.
 
 `Qtty::NullBackend` captures frames the same way for what the screen
 *shows*. Between them an application can assert that every control it

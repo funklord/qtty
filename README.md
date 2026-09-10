@@ -151,12 +151,28 @@ icons, `Qtty::set_icon_glyph()` to name a glyph for an icon,
 `Qtty::Overlay` for a picture over the cells, and the `qtty.cells` widget
 property to state a size in cells.
 
+`Qtty::SystemTrayIcon` publishes a tray icon over D-Bus, which a terminal
+program otherwise cannot have: Qt asks the platform for a tray
+implementation, qtty's offscreen platform supplies none, and
+`QSystemTrayIcon::isSystemTrayAvailable()` therefore answers false however
+healthy the desktop is. The tray belongs to the desktop the terminal runs
+on, not to the terminal.
+
+`Qtty::set_theme()` replaces the process-wide cell palette that `setup()`
+installs, and `Qtty::ICellPainted` lets a widget paint cells directly
+instead of going through a `QPainter`.
+
 For the keyboard: `Qtty::set_keyboard_conventions()` turns on the habits a
 terminal user expects, `Qtty::keyboard_conventions_help()` names the keys
 that answer so a status bar keeps no second copy of them,
 `Qtty::keyboard_reachable()` lists what `Tab` reaches so a test can assert
 every control is on it, and `Qtty::focusWidget()` says who has focus --
 which `QWidget::hasFocus()` cannot here, no window ever being active.
+
+For testing without a terminal: `Qtty::test::snapshot_of()` renders a
+widget to text in one call -- glyphs, attributes and colours --  and
+`Qtty::test::check_snapshot()` holds it against a fixture, rewriting the
+fixture on request. Both are in `qtty/testing.h`.
 
 About the session itself: `Qtty::is_tui_active()` is true while `exec()`
 is driving a terminal, so a widget can branch without being told which
