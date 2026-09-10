@@ -637,11 +637,18 @@ test-install: $(LIB) $(INSPECT) $(REPLAY)
 	}; \
 	echo "test-install: $(words $(INSTALLED_FILES)) file(s) installed and removed"
 
-# The three shipped tools and the example, run rather than merely built.
-# `make install` puts all four in $$(PREFIX)/bin, and until now the only thing
-# holding them to anything was the compiler: a tool that aborted at startup
-# would have shipped, and the example -- which exists to show one view codebase
-# serving both targets -- was never once seen to draw.
+# The three tools and the example, run rather than merely built. Until this
+# target the only thing holding them to anything was the compiler: a tool that
+# aborted at startup would have shipped, and the example -- which exists to
+# show one view codebase serving both targets -- was never once seen to draw.
+#
+# `make install` puts TWO of them in $$(PREFIX)/bin, qtty-inspect and
+# qtty-replay, which `INSTALLED_FILES` names and `test-install` pins from both
+# sides: every named file must arrive, and nothing unnamed may. So the set is
+# deliberate rather than an omission -- qtty-negotiate and the example are
+# built and exercised here without shipping. This comment said "all four" for
+# a long time, which was wrong about a fact the gate two targets down was
+# already enforcing.
 #
 # Each assertion is on what the thing is FOR rather than on its exit status: a
 # program that prints nothing and exits 0 satisfies a status check, which is

@@ -4,7 +4,7 @@
 //
 // Script (stdin or file argument), one command per line:
 //   text <string>     type characters
-//   key <name>        Tab | Return | Backspace | Up | Down | Left | Right
+//   key <name>        see key_map() below, and `qtty-replay --help`
 //   ctrl <letter>     e.g. "ctrl s"
 //   click <col> <row> mouse press+release at cell
 //   frame             print the composed frame between markers
@@ -27,14 +27,24 @@
 
 using namespace Qtty;
 
-static int key_by_name(const QString &n) {
+// Lifted out of key_by_name() so --help can ASK it. The header used to list
+// the names in a comment and the help repeated them, and both were wrong the
+// same way: neither mentioned "enter", and the comment predated pageup and
+// pagedown. A list the program owns and prose repeats is a copy waiting to be
+// wrong -- which is what this guide tells applications about key hints, so a
+// tool of ours keeping its own second copy was poor advertising.
+static const QHash<QString, int> &key_map() {
 	static const QHash<QString, int> map = {
 		{"tab", Qt::Key_Tab}, {"return", Qt::Key_Return}, {"enter", Qt::Key_Return},
 		{"backspace", Qt::Key_Backspace}, {"up", Qt::Key_Up}, {"down", Qt::Key_Down},
 		{"left", Qt::Key_Left}, {"right", Qt::Key_Right},
 		{"pageup", Qt::Key_PageUp}, {"pagedown", Qt::Key_PageDown},
 	};
-	return map.value(n.toLower(), 0);
+	return map;
+}
+
+static int key_by_name(const QString &n) {
+	return key_map().value(n.toLower(), 0);
 }
 
 static const char *const usage =
@@ -47,8 +57,7 @@ static const char *const usage =
     "and drives the built-in sample UI through the real InputRouter:\n"
     "\n"
     "  text <string>      type characters\n"
-    "  key <name>         Tab Return Backspace Up Down Left Right\n"
-    "                     PageUp PageDown\n"
+    "  key <name>         one of the names printed below\n"
     "  ctrl <letter>      e.g. \"ctrl s\"\n"
     "  click <col> <row>  mouse press and release at a cell\n"
     "  frame              print the composed frame between markers\n"
@@ -65,6 +74,10 @@ int main(int argc, char **argv) {
 	for (int i = 1; i < argc; ++i) {
 		if (!qstrcmp(argv[i], "--help") || !qstrcmp(argv[i], "-h")) {
 			printf("%s", usage);
+			QStringList names = key_map().keys();
+			names.sort();
+			printf("\nkey names: %s\n",
+			       qPrintable(names.join(QLatin1Char(' '))));
 			return 0;
 		}
 		if (!qstrcmp(argv[i], "--version") || !qstrcmp(argv[i], "-V")) {

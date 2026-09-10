@@ -15917,6 +15917,35 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.93 The help I had just written was already wrong (2026-09-10)
+
+Checking 8.91's help text against the code it describes: `qtty-replay`
+accepts ten key names and **the help I wrote a commit earlier listed
+nine.** It omitted `enter`, because it was copied from the file's own
+header comment -- which listed seven, having predated `pageup` and
+`pagedown` as well.
+
+**Two hand-copies of a list the program owns, both wrong, one of them
+mine and hours old.** That is the argument practice 8 makes to
+applications about key hints -- *do not keep a second copy of a fact this
+library owns, the copy is wrong the day the binding moves* -- and a tool
+of ours was doing exactly what the guide tells applications not to.
+
+So the help asks the map. `key_by_name`'s table is lifted to `key_map()`
+and `--help` prints its sorted keys, so the list cannot drift from what
+the program accepts. The header comment now points at the map rather than
+repeating it. **The fix is not a corrected list; a corrected list would
+be wrong again the next time somebody adds a key.**
+
+**And `make install` puts TWO tools in `bin`, not the four its comment
+claimed.** `INSTALLED_FILES` names them and `test-install` pins the set
+from both sides -- every named file must arrive, and nothing unnamed may
+-- so the two-tool set is deliberate and `qtty-negotiate` and the example
+are built and exercised without shipping. The comment was wrong about a
+fact **the gate two targets below it was already enforcing**, which is
+the cheapest kind of stale claim to have: the answer was in the same
+file.
+
 ### 8.92 An unknown option was ignored, in a diagnostic tool (2026-09-10)
 
 The same three tools took a mistyped flag, ignored it, did their ordinary
