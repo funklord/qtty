@@ -15918,6 +15918,30 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.97 Mouse reporting takes the user's selection away (2026-09-10)
+
+The last of the things qtty takes from the terminal without telling
+anybody. `resume()` writes `1006h` and `1002h`, so drags reach the
+application -- and the terminal therefore stops treating a drag as a text
+selection. **A user's habitual select-and-copy stops working**, and
+nothing in the guide said so or named the escape.
+
+By convention most terminals bypass reporting while Shift is held, so
+Shift-drag still selects. **That is written as convention rather than as
+measurement, deliberately.** It is the terminal's own behaviour, this
+tree has no fixture that could observe it, and the reason is structural:
+the whole point of the Shift bypass is that those events never reach the
+application. A claim qtty cannot check is one it should not make in its
+own voice.
+
+**What makes it worth a paragraph rather than a footnote is the failure
+mode.** A user who cannot select text does not think "a modifier is
+missing"; they think the program is broken. So it belongs in the
+application's own help, which is the same argument practice 8 makes about
+keys -- with the twist that this one is a key qtty cannot tell them
+about, because `keyboard_conventions_help()` reports what qtty answers
+and Shift-drag is answered by the terminal.
+
 ### 8.96 Ctrl+Z is a key, and a terminal user expects a suspend (2026-09-10)
 
 The third key the driver used to own. Clearing `ISIG` took Ctrl+C and

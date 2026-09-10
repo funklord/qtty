@@ -461,6 +461,20 @@ PRIMARY -- what a middle click pastes -- is unreachable through Qt here.
 Under the offscreen platform `QClipboard::supportsSelection()` is false
 and Qt refuses `setText(.., QClipboard::Selection)` outright.
 
+**Your user's habitual drag-to-select stops working, and there is an
+escape you should tell them about.** qtty turns on mouse reporting --
+`1006` and `1002`, so drags reach the application -- which means the
+terminal no longer treats a drag as a selection. By convention most
+terminals bypass reporting while **Shift** is held (xterm and the VTE
+family do), so `Shift`-drag still selects and the terminal's own copy
+still works.
+
+That last is stated as convention rather than measurement, and qtty is
+structurally unable to check it: the whole point is that those events
+never reach the application. It is worth a line in your own help, because
+a user who cannot select text usually concludes the program is broken
+rather than that a modifier is missing.
+
 **Paste arrives as text, not as typing.** That is what bracketed paste is
 for: delivering the newlines as `Return` would fire a dialog's default
 button halfway through a paste. Newlines are folded to spaces for
