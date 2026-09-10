@@ -2167,6 +2167,42 @@ int suite_router() {
 			      "is the platform's behaviour restored rather than a key "
 			      "qtty took");
 			eater->removeEventFilter(&eaten);
+
+			// CTRL+Z IS AN ORDINARY KEY, which the guide's table says and
+			// nothing held. The backend clears ISIG so the driver no longer
+			// turns it into a suspend, and InputRouter binds nothing to it,
+			// so it reaches the focused widget like any other chord. That is
+			// what lets an application bind it and raise SIGTSTP itself when
+			// it wants the conventional behaviour.
+			//
+			// Added because the guide gained the row first and its own rule
+			// says a row arrives with the check that holds it. Testing that
+			// rule found it broken by the person who wrote it.
+			struct Zed : QObject {
+				int z = 0;
+				bool eventFilter(QObject *, QEvent *e) override {
+					if (e->type() != QEvent::KeyPress) return false;
+					auto *k = static_cast<QKeyEvent *>(e);
+					if (k->key() == Qt::Key_Z
+					    && (k->modifiers() & Qt::ControlModifier))
+						++z;
+					return false;
+				}
+			};
+			Zed zed;
+			auto *zf = new QLineEdit;
+			v->addWidget(zf);
+			QCoreApplication::processEvents();
+			zf->installEventFilter(&zed);
+			zf->setFocus();
+			set_focus_widget(win.focusWidget());
+			r.on_key({Qt::Key_Z, QStringLiteral("z"), true, false, false});
+			QCoreApplication::processEvents();
+			CHECK(zed.z == 1,
+			      "Ctrl+Z reaches the focused widget as an ordinary key, the "
+			      "driver no longer making it a suspend, so an application "
+			      "can bind it");
+			zf->removeEventFilter(&zed);
 			r.on_key({Qt::Key_Escape, QString(), false, false, false});
 			QCoreApplication::processEvents();
 			cw->removeEventFilter(&cm);

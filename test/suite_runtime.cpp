@@ -188,11 +188,25 @@ int suite_runtime() {
 			// loop, which is the whole question: not whether exec()
 			// returns, but whether the screen went on living while it
 			// was up.
+			// POLLS rather than sampling once. The first version read
+			// last_frame() from a single 10 ms timer and assumed the
+			// compositor had drawn the dialog by then -- true on an
+			// ordinary run, and a race it loses under valgrind, where
+			// it failed while 1199 other checks passed. Waiting for
+			// the condition tests the same thing and stops asserting
+			// a schedule.
+			//
+			// Bounded by TRIES, not by wall clock: valgrind stretches
+			// the clock and a wall-clock bound would shrink with it,
+			// which is how a timing fix becomes a second timing bug.
 			QTimer closer;
+			int tries = 0;
 			closer.setInterval(10);
 			QObject::connect(&closer, &QTimer::timeout, [&] {
 				drawn_while_up = backend.last_frame();
-				d.accept();
+				if (drawn_while_up.contains(QStringLiteral("MODAL"))
+				    || ++tries > 400)
+					d.accept();
 			});
 			closer.start();
 			result = d.exec();

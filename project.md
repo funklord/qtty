@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1200 checks, 0 failures. `make check` is green and includes
+1201 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -589,6 +589,7 @@ Owned by the copyright holder:
 | **`design.md` recommends a function the library cannot call.** Its focus section says `focusNextPrevChild()` "walks the focus chain correctly", citing spike F4 -- and 8.71 removed the only call to it, because it is **protected**: reaching it from outside means declaring a fake derived class and casting a widget that is not one, which is undefined behaviour and which UBSan named. A spike can call it, being a subclass; the library walks widgets it does not own and cannot. Neither side is wrong -- the spike's finding holds and the code is right to refuse the cast -- but the naked recommendation is a trap for the next reader, and this tree's habit is to record design.md's lag rather than edit it (README carries the same caution about its API chapter, and 8.2 the same about `qtty::Application`). Whether design.md gains a sentence is the holder's | 8.71, F4 |
 | **Should the clipboard limit be public?** `AnsiBackend::clipboard_limit()` says in its own comment that it is "public so an application can ask before it offers the user a Copy that cannot work" -- and `make install` ships `include/qtty/*.h` only, so `ansi_backend.h` does not leave the tree and **no installed header mentions the clipboard at all**. The consequence is not cosmetic: a copy past the limit is refused whole, by design and rightly, the `QClipboard` watcher discards the result, and an application therefore cannot detect the refusal OR pre-empt it. **The user is not left in silence, which the first version of this row got wrong**: a refused copy logs a sentence naming the size and the bound, pinned by a check that asserts the wording rather than the refusal, and the deferring handler prints it when the terminal is given back -- so a person learns why after they have stopped needing to know. What no code can do is ask beforehand. Three shapes are available -- a free `Qtty::clipboard_limit()`, a field on `Capabilities` where it arguably belongs since it is a property of the terminal, or leaving it internal and saying so in the header rather than claiming an audience it cannot reach. Which one is an API decision, and the holder's | 8.83 |
 | **Should qtty notice a style sheet at all?** Measured 2026-09-10 on a ten-cell push button: no sheet draws `<Hi>`, a box-model sheet draws `Hi` -- the brackets gone -- and `color: red` alone draws **nothing**. A `QLabel` with the same rule is unharmed, so it is controls rather than drawing. The affordance goes while the behaviour stays: a styled button still takes Enter and still shows focus, and nothing on screen says it is a button. Qt's machinery taking drawing over from the application style is what style sheets ARE, and qtty's cell drawing is that style, so this is not a bug to fix in the drawing. What is open is whether qtty should react -- ignore sheets while a cell device is being drawn into, warn once when one is set, or stay silent and let the guide carry it, which is where it sits today. Each is a decision about somebody else's application | 8.86 |
+| **Platform scope: is the terminal build Linux-only?** design.md's R2 rates this **H/H -- the highest in its risk table -- with a trigger to act of "Now"**, and 5.1 says it must be decided BEFORE Phase 2. The library is the Phase-2 build-out, so the trigger fired at the start of the work now finished. Qt documents the offscreen plugin as *"only fully supported on X11"*, and that plugin is this design's foundation. Two answers are written out: declare Linux the supported target for the TERMINAL build, which costs nothing if the TUI is a server feature and is the likely case; or accept that a Windows or macOS terminal build needs the fallback or a per-platform spike. **It bounds where the TUI runs and never where the GUI runs.** Nothing records an answer, and 0b did not carry the question at all until now | 5.1, design.md 13.3 |
 | **Should a Channel B stroke carry its pen colour?** Today it does not: a rule drawn through the paint engine lands in a cell with the default colour. The obvious fix was built and measured on a 40x20 fixture -- **294 rule cells all default today, against 174 default and 120 true-colour with the pen carried** -- and the measurement is why it was not taken. **1586 of 1597 pens reaching `line()` resolve to a hard 24-bit colour and 1569 of those to one grey**, because Qt draws sunken borders with `pal.dark()` and `pal.light()`: carrying the pen would paint that grey across the tree, which is the #bebebe incident by a new route. The suite is blind to it -- with the pen carried every check passes and both fixtures re-record identically. The real fix wants an "is this colour anywhere in the palette" rule, which is a section 6 decision and the holder's | 8.x, near "left for the holder" |
 | The bundled font, and it now has a **measured consequence**. Not the fixtures -- those depend on the cell, not the font (§7.9). But a font whose wide glyphs do not advance exactly two cells makes Qt wrap wide text where the terminal cannot show it: a 12-cell label fits six CJK clusters and Qt puts seven on the line, so **31 of 36 characters reach the screen**. Wrapping is decided in pixels before anything reaches a cell, so no code here can fix it | §7.9, §11 |
 
@@ -15918,6 +15919,123 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.99 A check of mine that only valgrind could fail (2026-09-10)
+
+The six configurations were re-taken at 1200 and **valgrind failed**, one
+check of 1200. It was mine, added the day before: the nested-loop check
+that asserts the terminal keeps drawing while `exec()` spins.
+
+**It sampled where it should have waited.** `last_frame()` was read from
+a single 10 ms timer inside the nested loop, which assumes the compositor
+has drawn the dialog by then -- true on an ordinary run and a race under
+valgrind, which is roughly twenty times slower. It polls now until the
+frame contains the dialog, and **the bound is on TRIES rather than wall
+clock**: valgrind stretches the clock, so a wall-clock bound shrinks with
+it and the timing fix becomes a second timing bug. `test-valgrind: clean`
+with the change.
+
+**Two of my own instruments failed while diagnosing it, both from rules
+quoted in this file today.**
+
+The run piped `make test-valgrind` through `tail -3`, so **the `FAIL:`
+line naming the check was destroyed** and a full valgrind reproduction
+was spent recovering a name already produced once. *Never reduce a
+check's output before you know it passed* -- free on a green run, and it
+costs exactly the diagnosis on the run that is not.
+
+Then `pkill -f 'build-dbg-test/qtty-tests'` **matched the shell running
+it**, whose command line contained that string, and killed it before the
+re-run started. `running-code.md` records the same incident -- a pkill
+that killed the very build it was clearing the way for. The tell was an
+exit of 144 and a message that never printed.
+
+**What the episode is actually evidence for is the six-configuration
+sweep.** This check passed every ordinary run, 1199 of its neighbours
+passed under valgrind beside it, and nothing but the slow configuration
+could see it. A suite that runs one way tests one schedule.
+
+### 8.98 The highest-rated risk had a trigger of "Now" and no index entry (2026-09-10)
+
+8.80 found a stated re-measurement trigger that had fired, so the next
+question was **what else in this tree states a trigger.** `design.md`
+carries a whole table of them: seven risks, each with a *Trigger to act*
+column, in the document the README calls "read this first".
+
+**R2 is rated H/H -- the highest in that table -- and its trigger is
+"Now".** Qt documents the offscreen plugin as *"only fully supported on
+X11"*, and that plugin is this design's foundation; 5.1 here says the
+scope decision **must be decided before Phase 2**. The README says the
+library IS the Phase-2 build-out. So the trigger fired at the start of
+the work that is now largely done, and **nothing records an answer.**
+
+**Worse for finding it: 0b did not carry the question.** The index whose
+stated purpose is that a question nobody can locate is one nobody answers
+had no row for the highest-rated risk in the design document. That is the
+second unindexed question in two days -- the Channel B stroke was the
+first -- and both were found by taking a document's own claim about
+itself and checking it.
+
+The question itself is small to answer and only the holder can: declare
+Linux the supported target for the terminal build, which costs nothing if
+the TUI is a server feature and is what 5.1 calls the likely case; or
+accept that a Windows or macOS terminal build needs the fallback or a
+spike. **It bounds where the TUI runs and never where the GUI runs**,
+which is the sentence that makes it cheap rather than frightening.
+
+**The README's hygiene contract was audited too, and all three parts
+hold.** It promises *everything in `namespace Qtty`, no public macros,
+inert in GUI builds.* No public header defines a macro beyond its include
+guard. Every public header opens a `Qtty` namespace, and the single
+declaration at global scope is `Q_DECLARE_INTERFACE(Qtty::ICellPainted,
+...)`, which **Qt requires** to sit outside the namespace -- the header
+already explains why the macro is there at all. Inertness has a check,
+*"inert before setup()"*.
+
+The README's other list holds too: it calls seven things spike-validated
+-- rendering, popups, input, focus, resize, placements, graphics
+compositing -- and each maps to design.md 16, the last two to 16.3's
+scrolling stickers and 16.2's overlay plane rather than to a lettered
+finding, which is why they are easy to miss when looking for one.
+
+Nothing to do, and that is the point of writing it down: the contract has
+now been tested rather than repeated, and the one thing that looks like a
+violation is Qt's rule rather than a lapse, so the next person auditing
+it can stop where this stopped.
+
+**One load-bearing claim was checked and holds.** `spike/` is documented
+as kept *"exactly as run"*, which is what makes those files evidence for
+the numbers design.md cites -- and the style gate exempts the directory
+for that reason, so nothing would have complained if they had been
+reformatted. `git log -- spike/` returns **one commit**, and its diff is
+insertions only: the spikes were added and have never been touched. The
+claim is true, and now somebody has looked.
+
+**design.md's own Open Questions were checked the same way, and one is
+answered by the tree rather than by anybody.** OQ-1 and OQ-2 are struck
+through as closed. Of the three left, **OQ-3 -- "Qt 5.15 and Qt 6 in one
+codebase, or Qt 6 only" -- is settled in practice**: the code uses Qt 6
+APIs throughout and the README states Qt 6 as a requirement. Nothing
+enforces it, so the requirement is carried by compilation failing rather
+than by a guard, which is a poor message and not a defect. OQ-4 and OQ-5
+are product and scope questions that only the holder can answer, and they
+are not stale.
+
+This is recorded rather than fixed: design.md is the holder's, this tree
+keeps its lag as a note (README carries the same caution about the API
+chapter), and **an open question that reality has closed is not the same
+as one somebody must decide** -- it wants striking through by its owner,
+not answering by me.
+
+**Two other triggers in that table are worth knowing about and are not
+being raised as findings.** R3's is *"assert fires"* and the assert
+exists -- `grid_font_problem()` refuses at startup and now says so where
+somebody can read it. R5's is **">30% of a screen's cells from Channel
+B", and nothing measures that**, so it is a trigger no one can evaluate:
+a condition written as though it were observable, with no instrument
+behind it. That is a smaller version of the same fault and is recorded
+here rather than in 0b, since inventing the measurement is a piece of
+work rather than a decision.
+
 ### 8.97 Mouse reporting takes the user's selection away (2026-09-10)
 
 The last of the things qtty takes from the terminal without telling
@@ -16278,6 +16396,16 @@ no argument parsing at all. All three now answer both, before
 `QApplication` for the reason `negotiate`'s comment already gave -- they
 must work in a pipe and on a machine with no terminal, which is exactly
 where somebody reads help.
+
+**The other two programs were checked and deliberately left alone.**
+`qtty-tray-check` and `screen-probe` also ignore `--help`, and neither
+should answer it: their own headers say why. `screen-probe` is *"not
+shipped and not in any .pro"* -- `tool/screen-check` compiles it when the
+library is built, "because a binary that only a screen test uses does not
+belong in the install" -- and `qtty-tray-check` is a tool rather than a
+suite check only because it needs a **session bus** the suite must not
+assume. Both are gate fixtures invoked with fixed arguments by a script.
+Recorded so that finishing the job is not mistaken for work left undone.
 
 **`make test-tools` gates both flags on all three, and the gate was
 watched failing -- which is how a fault in the GATE was found.** The
