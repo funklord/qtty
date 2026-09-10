@@ -485,6 +485,39 @@ in it.
 `Esc` rejects such a dialog and its default button answers `Enter`, both
 Qt's own; see the first table.
 
+## Never block the event loop
+
+Everywhere else this is advice about responsiveness. Here it is about
+whether the user can get out at all.
+
+A full-screen program owns its keyboard, so qtty clears `ISIG` and
+`IXON`: the terminal driver no longer turns `Ctrl+C` into `SIGINT`, and
+`Ctrl+S` no longer means flow control. **Both keys arrive as bytes**,
+read by the event loop like any other -- which is the only way
+`InputRouter`'s quit keys can see `Ctrl+C` at all, the only way
+`set_quit_keys()` can change them, and the only way a text field can
+keep `Ctrl+C` for copy.
+
+The cost lands on exactly one case. **If your handler blocks the event
+loop, nothing reads those bytes, so `Ctrl+C` does nothing** -- no signal,
+no quit, no redraw, no input. On a desktop a frozen window can still be
+closed by the window manager, and `Ctrl+C` in the launching terminal
+still signals; here neither is true, and the only way out is a `kill`
+from another terminal.
+
+So a long operation goes on a thread, or breaks itself up:
+
+    QtConcurrent::run([this] { ... });   // and a signal when it lands
+
+`QCoreApplication::processEvents()` inside a loop works too and is the
+blunter instrument -- it re-enters, so anything reachable from the event
+loop can run underneath you, which is the same hazard a nested `exec()`
+has and worth the same care.
+
+The upside of the same decision is worth knowing: because `IXON` is
+cleared, a user who types `Ctrl+S` out of habit does **not** freeze your
+screen with no way to know why. That key reaches you like any other.
+
 ## Where your output goes
 
 A TUI owns the screen, so anything printed into it lands in the middle of

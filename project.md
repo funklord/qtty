@@ -15918,6 +15918,39 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.95 Blocking the event loop locks the user out entirely (2026-09-10)
+
+A keyboard-first concern the guide did not cover, and it is one where the
+terminal is not a milder case of the desktop but a sharper one.
+
+`AnsiBackend` clears `ISIG` and `IXON`, and the comment gives the reason:
+with `ISIG` set the terminal DRIVER turns Ctrl+C into SIGINT before any
+byte reaches `read_input()`, so `InputRouter`'s quit keys could never see
+that chord, `set_quit_keys()` could not change it, and the carve-out that
+lets a text field keep Ctrl+C for copy could not exist. **Two mechanisms
+for one key, and the one that ran was not the one the code reasons
+about.** `IXON` is the same shape with a worse symptom -- Ctrl+S freezes
+the screen and the user has no way to know why.
+
+**The cost is stated in that comment and appears nowhere a reader of the
+guide would find it**: *"Ctrl+C no longer kills a program whose event
+loop has stopped -- a kill from another window still does, and so does
+the quit key once the loop is running."*
+
+So on a terminal, blocking the event loop is not a responsiveness
+problem. **It is a lockout.** Nothing reads the bytes, so Ctrl+C is not a
+signal and not a quit; there is no window manager to close the window and
+no signal in the launching terminal, because that terminal IS this one.
+The only way out is a kill from somewhere else. Everywhere else "do not
+block the event loop" is advice about feel; here it decides whether a
+user can leave.
+
+The guide says so now, with the thread and the `processEvents()` forms
+and the note that the latter re-enters -- the same hazard 8.85's nested
+loop has. It also states the upside of the same decision, which nobody
+would guess: because `IXON` is cleared, **a user who types Ctrl+S out of
+habit does not freeze the screen.**
+
 ### 8.94 Auditing my own sections, and two greps that manufactured an absence (2026-09-10)
 
 The guide gained four sections in two days -- copy and paste, modal
