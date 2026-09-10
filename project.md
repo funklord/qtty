@@ -15940,6 +15940,22 @@ popup stack empty. An entry drops the `!press.isAccepted()` test and
 reddens it, which is the distinction the practice rests on -- the
 platform's behaviour restored, rather than a key qtty took.
 
+**The rule generalises and was applied once more, then deliberately not
+swept.** The same shape sits on the line that withholds Alt's letter:
+one entry hands the letter to a widget that types, and nothing sabotaged
+the other direction -- withholding it from EVERYTHING, which is how that
+fix was first written and what left a `QMenu` deaf to its own mnemonics
+(8.70). An entry does that now, and the menu checks catch it.
+
+**Thirty-six of the 124 entries anchor on a compound condition**, so the
+rule has that many possible applications. They were not swept. The two
+gaps found were both in code written in the last two days, which is where
+a missing complement is likeliest: an older entry was written beside its
+check by somebody holding both halves in mind, while a new gate gets the
+entry for the behaviour somebody was pleased to have added. **The rule
+belongs on new work rather than on a census**, and a census of 36 would
+mostly have confirmed what earlier sessions already did.
+
 **The check failed first, and the diagnostic is why this entry is not a
 retraction.** `seen=0 ctx=0 popups=1` -- the menu opened by the Shift+F10
 check above was still up, so the popup owned input and the key never
