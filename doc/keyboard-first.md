@@ -374,7 +374,18 @@ build hides it.
 qtty shows focus as reverse video on the control's own glyph: a push
 button's brackets, a check box's brackets, a slider's handle, a scroll
 bar's thumb. A line edit is deliberately left alone, having a real caret,
-which says where typing goes as well as that it goes here. **The style
+which says where typing goes as well as that it goes here.
+
+**In an item view the vocabulary is different, and deliberately.**
+`reverse` already means *selected* there, so it cannot also mean *focused*
+-- which item the keys would act on is a different fact from which items
+are chosen. So a list, table or tree with the keys shows its **current
+item underlined**, and an item that is current *and* selected is
+underlined **and** reversed. The tab bar set that precedent.
+
+Worth telling your users, since it is the opposite of the desktop habit:
+in a list on a terminal, **the underline is where the keys will act** and
+the highlight is what is already chosen. **The style
 can only mark the controls it knows how to draw**, so a widget that
 paints itself gets no mark from anybody.
 

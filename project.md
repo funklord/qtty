@@ -15919,6 +15919,42 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.100 Dogfooding the tools found what reading did not (2026-09-11)
+
+A different lens, after the reading ones ran dry: **drive the library
+through its own tools and look at what comes out**, the way somebody
+reporting a bug would.
+
+`qtty-replay` with a script of `snapshot`, `key Tab`, `snapshot` says
+plainly what a keyboard user sees. Before the Tab, no attributes at all --
+correct, since focus starts in a line edit, which shows a caret rather
+than reverse video. After it, row 1 carries **attribute 8, underline**,
+across its full width.
+
+**That is right, and the guide said something else.** Practice 10
+described focus as reverse video on the control's own glyph -- true of a
+push button, a check box, a slider, a scroll bar -- and an item view does
+not work that way. The reasoning is in `grid_style.cpp` and is better than
+the omission: *"Underline, not reverse, and the tab bar is the precedent:
+reverse already means 'selected', and which item the keys would act on is
+a different fact from which items are chosen."* So a view with the keys
+underlines its **current** item; an item both current and selected is
+underlined **and** reversed.
+
+**It is the opposite of the desktop habit and therefore worth telling
+users**: in a list on a terminal the underline is where the keys will act
+and the highlight is what is already chosen. Practice 10 says so now.
+
+**Two things about the method are worth keeping.** The first attempt used
+`frame` rather than `snapshot` and showed four identical frames -- because
+`frame` prints glyphs and focus is an attribute, which is exactly why
+`snapshot` exists and what the Makefile's replay arm already asserts. **A
+tool that cannot show the state you are looking for reports no change,
+not an error.** And nothing here was a defect: the code was right, the
+vocabulary was considered, and only the writing was short. That is the
+tenth time this session, and the first time the finding came from OUTPUT
+rather than from source.
+
 ### 8.99 A check of mine that only valgrind could fail (2026-09-10)
 
 The six configurations were re-taken at 1200 and **valgrind failed**, one
