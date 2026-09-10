@@ -15949,6 +15949,22 @@ re-run started. `running-code.md` records the same incident -- a pkill
 that killed the very build it was clearing the way for. The tell was an
 exit of 144 and a message that never printed.
 
+**All six are green at 1201**, re-taken rather than assumed: platforms
+and the sanitizers had been verified at 1200, before the Ctrl+Z check
+landed, and valgrind at 1201 with the fix. A one-check delta is a small
+risk and re-running is what makes the sentence true rather than nearly
+true.
+
+**And QShortcut was implemented but barely documented** -- one passing
+mention inside a paragraph about Alt. A reader whose shortcut does not
+fire had nothing to find, and the subtle half is `context()`: a
+`WidgetShortcut` fires only while its own widget has focus. The table
+carries a row now, with the reason -- Qt's map gates on an active window
+and none activates here, so neither a QAction's shortcut nor a QShortcut
+would fire at all if the router did not resolve them. **The row's checks
+were counted before it was written this time**, which is the maintenance
+rule working rather than being violated by its author.
+
 **What the episode is actually evidence for is the six-configuration
 sweep.** This check passed every ordinary run, 1199 of its neighbours
 passed under valgrind beside it, and nothing but the slow configuration

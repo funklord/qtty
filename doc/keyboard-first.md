@@ -21,7 +21,12 @@ where it is qtty's it says which.
 - *deciding what to bind* -- **What already works, unmodified** first, so
   you do not bind a key that already answers;
 - *your debug output is landing on the screen* -- **Where your output
-  goes**.
+  goes**;
+- *a user says your program hangs and `Ctrl+C` does nothing* -- **Never
+  block the event loop**, which on a terminal is a lockout rather than a
+  slow window;
+- *a user cannot select text with the mouse any more* -- **Copy and
+  paste**, which names the modifier that still works.
 
 That is organised by task rather than mirroring every heading below --
 though it does name some of them, so it is a smaller copy rather than
@@ -81,9 +86,20 @@ reimplements it:
 | `Enter` | Fires the focused button if focus is on one; otherwise the dialog's **default** button | Qt's |
 | `Alt` + letter | Reaches a menu, a toolbar action, a **button**, or the field a **label** is the buddy of | qtty's |
 | `Alt` + a letter that matches nothing | Nothing. It does not type the letter into whatever has focus | qtty's |
+| A `QAction` shortcut, or a `QShortcut` | Fires -- and a `QShortcut`'s `context()` is honoured, so a `WidgetShortcut` needs its own widget focused. Neither fires from behind an open menu | qtty's |
 | `Menu`, `Shift+F10` | Opens the focused widget's context menu, honouring its `contextMenuPolicy` | qtty's |
 | `Ctrl+C`, `Ctrl+D` | Quit -- except in a widget that takes text, where `Ctrl+C` is left for copy. Change them with `InputRouter::set_quit_keys()` | qtty's |
 | `Ctrl+Z` | An ordinary key, **not** a suspend -- see *Never block the event loop* for why, and how to get the conventional behaviour back | qtty's |
+
+**Your shortcuts are matched by the router, not by Qt.** Qt's shortcut
+map gates on the window being *active* and none activates here, so
+neither a `QAction`'s shortcut nor a `QShortcut` would ever fire if qtty
+did not resolve them itself. It does, including `QShortcut::context()`:
+a `WidgetShortcut` fires only while its own widget has focus, a
+`WidgetWithChildrenShortcut` while that widget or a descendant does, and
+the default `WindowShortcut` from anywhere in the window. Getting that
+wrong in the other direction would give the terminal a binding the
+desktop does not answer.
 
 The `Alt` rows are qtty's because a terminal delivers keys as bytes and
 nothing here ever reaches Qt's shortcut map -- it gates on the window
