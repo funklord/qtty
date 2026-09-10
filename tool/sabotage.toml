@@ -1031,3 +1031,15 @@ find = "\tconst auto owned = scope->findChildren<QShortcut *>();"
 into = "\tconst QList<QShortcut *> owned;"
 count = 1
 check = "a QShortcut fires, which is the commonest way"
+
+[[sabotage]]
+# The branch of the QShortcut loop that says NO. Removing the loop
+# altogether silences both branches, so the entry that proves the feature
+# works cannot reach this one: a shortcut firing from behind an open menu
+# is a key the desktop would not have answered.
+name = "a QShortcut fires from behind an open menu"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (popup_owns_input) return true;       // swallowed, not fired\n\t\tconst bool sent"
+into = "\t\tconst bool sent"
+count = 1
+check = "a QShortcut does not fire from behind an open menu"

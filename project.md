@@ -16159,7 +16159,11 @@ of the *matching* half cannot reach it, since removing the loop makes
 both branches silent. Two checks now: the shortcut does not fire from
 behind an open menu, and fires once the menu is gone, the second being
 the control that stops the first passing for a shortcut that never
-worked at all.
+worked at all. **And an entry now covers that branch**, added
+2026-09-10: removing the swallow makes a shortcut fire from behind an
+open menu -- a key the desktop would not have answered -- and reddens
+the check. The two branches of one loop needed two entries, which is
+the general shape rather than a detail of this one.
 
 **And one wrong turn inside the investigation is worth keeping**: an
 early comparison used `make test 2>&1`, which merges Qt's own warnings
