@@ -228,6 +228,10 @@ private:
 	struct PopupPlace { QPoint anchor, placed; };
 
 	Layer root_;
+	// Which window root_ describes. The drawn window can change under a
+	// window switch, and a layer's scroll and dropped-widget list are that
+	// layer's own -- see the same pair for modals and popups below.
+	QPointer<QWidget> root_layer_;
 	// The modal that owns input, and the state the policy keeps for it. Reset
 	// when the layer changes, because what one layer hid must not outlive the
 	// reason for hiding it.

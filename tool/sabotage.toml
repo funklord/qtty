@@ -1229,3 +1229,38 @@ find = "\t\t    : (!w->parentWidget() && !w->testAttribute(Qt::WA_Moved));"
 into = "\t\t    : true;"
 count = 1
 check = "a dialog the application placed itself stays where it was put"
+
+[[sabotage]]
+# Section 7's policy on win_ again -- the window the compositor was
+# constructed with rather than the one being drawn. A second window too big
+# for the terminal then drops nothing and never scrolls to its focus, which
+# is 8.101's defect for every window except the first. 8.115.
+name = "the small-terminal policy runs on the constructed window"
+file = "src/runtime/compositor.cpp"
+find = "\tapply_priority(base, root_, out.cols(), out.rows() - strip);\n\tfollow_focus(base, root_, out.cols(), out.rows() - strip);"
+into = "\tapply_priority(win_, root_, out.cols(), out.rows());\n\tfollow_focus(win_, root_, out.cols(), out.rows());"
+count = 1
+check = "still scrolls to its focus"
+
+[[sabotage]]
+# The strip drawn BEFORE the window again. A scrolled window is drawn at a
+# negative offset, so whichever of its rows lands on screen row 0 paints
+# over the strip. Expressed as a second draw of the window after the strip,
+# which is the same order the code had before 8.115.
+name = "the window paints over the strip that labels it"
+file = "src/runtime/compositor.cpp"
+find = "\t\tdraw_window_tabs(out, tabs, shown);"
+into = "\t\tdraw_window_tabs(out, tabs, shown);\n\t\tdraw(base, base_at);"
+count = 1
+check = "the strip survives a window scrolled underneath it"
+
+[[sabotage]]
+# One window's layer state carried into another. The scroll and the
+# dropped-widget list belong to the layer they were computed for, which is
+# the rule input_layer_ and popup_layer_ already follow.
+name = "the root layer state survives a window switch"
+file = "src/runtime/compositor.cpp"
+find = "\tif (base != root_layer_) {\n\t\troot_ = Layer{};\n\t\troot_layer_ = base;\n\t}"
+into = "\tif (false) {\n\t\troot_ = Layer{};\n\t\troot_layer_ = base;\n\t}"
+count = 1
+check = "another window's policy does not restore it"

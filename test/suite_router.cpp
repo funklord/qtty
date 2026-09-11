@@ -1059,6 +1059,164 @@ int suite_router() {
 		      "a strip moves the window it shows down a row");
 		CHECK(fired == 1,
 		      "and a click lands where the widget is drawn, not a row above");
+
+		// SECTION 7's POLICY BELONGS TO THE WINDOW BEING DRAWN, and it ran on
+		// the window this compositor was CONSTRUCTED with. So a second window
+		// too big for the terminal got neither half of it: nothing optional
+		// was dropped and it never scrolled to its focus. Measured before the
+		// fix with two windows in a 30x8 terminal, the second 26 rows tall
+		// with focus on its last field -- the frame held row0 to row2 while
+		// the field being typed into was row11, off the bottom with no key
+		// that could reach it. That is 8.101's defect for every window except
+		// the first.
+		QWidget tall;
+		tall.setAttribute(Qt::WA_DontShowOnScreen);
+		tall.setWindowTitle(QStringLiteral("Tall"));
+		auto *tv = new QVBoxLayout(&tall);
+		tv->setContentsMargins(0, 0, 0, 0);
+		tv->setSpacing(0);
+		QLineEdit *bottom = nullptr;
+		for (int i = 0; i < 12; ++i) {
+			auto *e = new QLineEdit(QStringLiteral("ROW%1").arg(i), &tall);
+			e->setFixedHeight(ch);
+			tv->addWidget(e);
+			bottom = e;
+		}
+		// An optional widget, so the FIRST half of the policy can be asked
+		// about as well as the second. Section 7 drops these before it
+		// scrolls, and a second window was dropping nothing.
+		auto *spare = new QLabel(QStringLiteral("OPTIONALROW"), &tall);
+		spare->setFixedHeight(ch);
+		Qtty::set_priority(spare, Qtty::Priority::Optional);
+		tv->addWidget(spare);
+		// SIZED TO ITS CONTENT, and that is what makes the strip questions
+		// below askable at all. At 26 cells the window is mostly empty space:
+		// thirteen rows of fields and thirteen of nothing, so the row that
+		// lands on screen row 0 once it scrolls carries no glyph, and a strip
+		// drawn underneath it would survive by luck. Both strip sabotages
+		// passed that way before this line was measured and changed. Thirteen
+		// is the content, and still taller than the eight-row terminal, which
+		// is what the other checks need.
+		tall.resize(GridMetrics::cells(60, 13));
+		tall.show();
+		QCoreApplication::processEvents();
+
+		Qtty::set_current_window(&tall);
+		bottom->setFocus();
+		set_focus_widget(bottom);
+		QCoreApplication::processEvents();
+		CellBuffer deep(70, 8);
+		c.compose(deep);
+		const QString shown = deep.to_text();
+
+		// The control: this window cannot fit, so the question is real. A
+		// window that fitted would be in the frame whatever the policy did.
+		CHECK(tall.height() > 8 * ch,
+		      "the case is real: the second window is taller than the "
+		      "terminal it is drawn in");
+		CHECK(shown.contains(bottom->text()),
+		      "a window that is not the first still scrolls to its focus, so "
+		      "the field being typed into is on screen");
+		CHECK(!shown.contains(QStringLiteral("OPTIONALROW")),
+		      "and still drops what the application marked optional");
+
+		// The strip survives it. A scrolled window is drawn at a negative
+		// offset, so whichever of its rows lands on screen row 0 painted
+		// straight over the strip -- and the row is the strip's, all of it,
+		// which is why the window's border no longer runs out of the last tab
+		// to the right edge either.
+		const QString top = shown.section(QLatin1Char('\n'), 0, 0);
+		// NOT "does row 0 hold the window's text". Both of these were written
+		// that way first and both sabotages -- the window drawn over the
+		// strip, and the strip writing only where a label falls -- left them
+		// GREEN and said so. What bleeds through is the window's BORDER, not
+		// its text, so a check looking for "ROW" cannot see it.
+		//
+		// The relationship instead: row 0 holds the strip and nothing else.
+		// Every character in it must belong to a tab name, to the brackets
+		// around the current one, or be blank -- which fails whether the
+		// window painted over the strip or showed through the gaps in it.
+		QString leftover = top;
+		for (QWidget *t : Qtty::window_tabs())
+			leftover.remove(Qtty::window_tabs().isEmpty()
+			                ? QString()
+			                : t->windowTitle());
+		leftover.remove(QLatin1Char('['));
+		leftover.remove(QLatin1Char(']'));
+		leftover.remove(QLatin1Char(' '));
+		// Tab names are elided with an ellipsis when the strip is narrow, and
+		// an object name stands in for a window with no title.
+		leftover.remove(QChar(0x2026));
+		leftover.remove(QStringLiteral("QWidget"));
+		for (int d = 0; d < 10; ++d) leftover.remove(QChar(QLatin1Char('0' + d)));
+		CHECK(top.contains(QStringLiteral("Tall")),
+		      "the strip survives a window scrolled underneath it");
+		//
+		// WHAT THIS PAIR DOES NOT COVER, pinned rather than left to be
+		// assumed: the strip CLEARING its row. Disabling the clear leaves
+		// both of these green here, because at 70 columns with a 60-column
+		// window the cells a label does not cover carry nothing of the
+		// window either. The clear was added for a measured bleed at 30
+		// columns -- the window's frame running out of the last tab to the
+		// right edge -- and a 30-column fixture cannot be used here: the
+		// strip elides names at that width and this suite leaves visible
+		// top-levels behind, so the assertion would read the suite's
+		// leftovers rather than this code. That trap is recorded at the top
+		// of this block, and it is why there is no sabotage entry for the
+		// clear rather than one that cannot redden.
+		CHECK(leftover.isEmpty(),
+		      "and keeps its whole row: nothing of the scrolled window shows "
+		      "through it, border included");
+
+		// And input agrees with the picture. set_root_scroll() now carries a
+		// scroll that can belong to a window other than win_, and a click is
+		// mapped through it: if the two disagreed, the field found in the
+		// frame would not be the field a press on it reaches.
+		int hit_row = -1;
+		const QStringList deep_rows = shown.split(QLatin1Char('\n'));
+		for (int i = 0; i < deep_rows.size(); ++i)
+			if (deep_rows.at(i).contains(bottom->text())) { hit_row = i; break; }
+		if (hit_row >= 0) {
+			r.on_mouse({QPoint(2, hit_row), 1, true, false, false, 0});
+			r.on_mouse({QPoint(2, hit_row), 1, false, true, false, 0});
+			QCoreApplication::processEvents();
+		}
+		CHECK(hit_row > 0 && Qtty::focusWidget() == bottom,
+		      "and a press on a scrolled second window's field reaches that "
+		      "field, so drawing and input agree about the offset");
+
+		// A WINDOW'S DROPPED WIDGETS ARE ITS OWN. root_ is reset when the
+		// drawn window changes, and the first version of this entry had no
+		// check that could see it: both windows' state came out the same, so
+		// sabotaging the reset changed nothing and said so.
+		//
+		// What separates them is the hysteresis. apply_priority() remembers
+		// what IT hid so that a terminal growing back shows exactly those --
+		// so if one window's list is carried into another's layer, the policy
+		// running for the second window restores the FIRST window's widgets
+		// while it is not even being drawn.
+		// The window that genuinely does not fit is the one to ask with:
+		// the policy measures minimumSizeHint(), and `a` has no layout, so it
+		// fits any terminal and drops nothing however small the buffer. The
+		// first version of this check used `a` and failed as a control --
+		// correctly, and for a reason about the fixture rather than the code.
+		const bool dropped_in_tall = !spare->isVisible();
+		CHECK(dropped_in_tall,
+		      "the control: the optional widget of the window being drawn is "
+		      "hidden while the terminal is too small for it");
+
+		Qtty::set_current_window(&a);
+		QCoreApplication::processEvents();
+		CellBuffer roomy(70, 40);
+		c.compose(roomy);
+		CHECK(!spare->isVisible(),
+		      "and another window's policy does not restore it: the dropped "
+		      "list belongs to the layer it was computed for, and the window "
+		      "it belongs to is not even being drawn");
+
+		Qtty::set_current_window(&a);
+		tall.hide();
+		QCoreApplication::processEvents();
 	}
 
 	// DRAG AND DROP, which had no platform half at all. Qt splits it in

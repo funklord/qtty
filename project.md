@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1229 checks, 0 failures. `make check` is green and includes
+1237 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15918,6 +15918,141 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.115 Section 7's policy ran on the wrong window (2026-09-11)
+
+The 8.107 shape, one layer down and in the renderer. `compose()` ran
+design.md section 7's small-terminal policy as
+
+    apply_priority(win_, root_, out.cols(), out.rows());
+    follow_focus(win_, root_, out.cols(), out.rows());
+
+-- on `win_`, the window the compositor was **constructed** with, whatever
+window was being drawn. So a second window too big for the terminal got
+neither half: it dropped no optional widget and never scrolled to its
+focus.
+
+Measured with a probe before any change, two windows in a **30x8** terminal
+with the second **26 rows** tall and the focus on its last field:
+
+    frame held   row0, row1, row2
+    focus was    row11 -- off the bottom, with no key that could reach it
+
+That is 8.101's defect exactly -- a caret off the edge of the screen -- for
+every window except the first.
+
+**Four parts, and three of them were found by fixing the one before.**
+
+- **The policy runs on the window being drawn**, with the strip's row taken
+  off the height it may spend, and `root_` reset when the drawn window
+  changes: a layer's scroll and dropped-widget list are that layer's own,
+  which is the rule `input_layer_` and `popup_layer_` already follow.
+- **That window is drawn at its own scroll.** The offset used to be applied
+  only when the window happened to be `win_` -- right while nothing else
+  could scroll, and wrong the moment the policy learned to scroll another
+  window.
+- **The strip is drawn after the window, not before.** A scrolled window is
+  drawn at a negative offset, so whichever of its rows lands on screen row 0
+  painted straight over the strip. Seen in the probe the moment the second
+  part worked -- and reachable for the first window too, since a scrolled
+  primary with a strip up has always been able to do it. The strip beats the
+  window it labels and loses to the modals and popups drawn after it.
+- **The strip owns its whole row.** It wrote only where a tab label fell,
+  which was invisible while the window below started at row 1: with the
+  window drawn first, its frame ran out of the last tab to the right edge
+  and read as part of the strip.
+
+Eight checks and three sabotage entries. The control comes first -- the
+window has to be taller than the terminal or the question is not being
+asked -- and the check that matters most for input is the last:
+`set_root_scroll()` now carries a scroll that can belong to a window other
+than `win_`, so a press on the field found in the frame has to reach **that**
+field. Drawing and input agreeing is the property, not either one alone.
+
+**Three of the six checks written first were weaker than their own wording,
+and the sabotages are what said so.** All three passed against broken code,
+and getting them to discriminate took three separate corrections -- to the
+assertion, to the fixture, and to the sabotage itself:
+
+- **Two strip checks asked for the window's TEXT.** What bleeds through a
+  strip is the window's **border**, so "row 0 does not contain ROW" is true
+  while the frame's box-drawing runs across it. They assert the relationship
+  now -- row 0 holds the strip and nothing else: every character in it
+  belongs to a tab name, to the brackets round the current one, or is blank.
+- **And the fixture could not express the failure.** The window was 26 cells
+  tall holding thirteen rows of content, so the row that landed on screen
+  row 0 once it scrolled carried no glyph at all: a strip drawn underneath
+  it survived by luck, and both sabotages stayed green. Sized to its content
+  at thirteen -- still taller than the eight-row terminal -- the fault
+  becomes visible. **A fixture that cannot express the failure is not a
+  weaker check, it is no check.**
+- **And the sabotage was wrong too.** An ordering cannot be reverted by a
+  one-line substitution, so the first attempt inserted an extra strip draw
+  before the window -- and the REAL strip call still ran last, so the order
+  under test never changed. Aimed at the real call site, appending a re-draw
+  of the window after it, both strip checks fail as they should.
+- **The layer-state check could not tell the two windows apart.** Both
+  windows' state came out the same, so carrying one into the other changed
+  nothing observable. What separates them is the **hysteresis**:
+  `apply_priority()` remembers what it hid so a terminal growing back shows
+  exactly those, and a list carried into another layer means the second
+  window's policy restores the first window's widgets while that window is
+  not being drawn. The check now drops a widget in one window, switches
+  away, composes the other into a roomy terminal, and asserts the first
+  window's widget is still hidden.
+
+A fourth attempt failed as a **control** rather than as a check, and was
+right to: it dropped an optional widget in a window with no layout.
+`apply_priority()` measures `minimumSizeHint()`, which for a layoutless
+window fits any terminal, so nothing was ever dropped and the control said
+so on the first run.
+
+**One thing has no sabotage entry, deliberately: the strip clearing its
+row.** Disabling the clear leaves both strip checks green, because at 70
+columns with a 60-column window the cells a label does not cover carry
+nothing of the window either. The clear exists for a bleed measured at 30
+columns, and a 30-column fixture cannot be used here -- the strip elides
+names at that width and this suite leaves visible top-levels behind, so the
+assertion would read the suite's leftovers rather than this code, which is
+the trap that block already records. The limit is written at the check.
+**An entry that cannot redden is worse than none, because it reads as
+cover.**
+
+The sabotage for the strip ordering is worth noting for its shape: an
+ordering cannot be reverted by a one-line substitution, so the entry draws
+the window a second time after the strip, which reproduces the old order
+exactly.
+
+### 8.114 Two lenses that found nothing, and why that is worth writing (2026-09-11)
+
+Both aimed at the same family as 8.107-8.113 -- what does this platform
+answer differently -- and both came back clean. Recorded with their method,
+because an absence nobody wrote down licenses nothing and reads exactly
+like an absence of looking.
+
+**`showMaximized()` and `showFullScreen()` size against the screen.** The
+screen here is the fictional 800x800, so a window maximised by an
+application should have come out 100x50 cells in a 40x12 terminal, scrolled
+by section 7's policy and wrong in the obvious way. Measured: the window
+stays **320x192, exactly the terminal**, through `showMaximized()`,
+`showFullScreen()` and a compose after each. `WA_DontShowOnScreen` means
+there is no platform window to change state, and the offscreen plugin
+resizes nothing.
+
+**A focused text field blinks its caret.** Qt flashes a caret every
+`cursorFlashTime` -- 1000 ms here -- and on a terminal the caret is the
+terminal's own cursor, so every repaint that blink causes would be work
+nobody can see and frames nobody needs. Measured with a probe counting
+`InputRouter::frame_requested` over three idle seconds with a focused
+`QLineEdit`: **zero requests, and every frame identical to the first.**
+
+The reason is the inversion worth keeping: **Qt starts the blink only for a
+visible widget in an ACTIVE window**, and no window activates here. The
+same fact that cost seven defects in this family is what makes an idle TUI
+cost nothing.
+
+So the lens is close to exhausted for its obvious members, and the two
+results say where not to look next.
 
 ### 8.113 A dialog placed against a screen that does not exist (2026-09-11)
 

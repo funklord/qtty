@@ -436,6 +436,14 @@ static void draw_window_tabs(CellBuffer &out, const QVector<QWidget *> &tabs,
 {
 	g_tabs.clear();
 	g_tab_spans.clear();
+	// The row is the strip's, all of it. It used to be written only where a
+	// tab label falls, which was invisible while the window below started at
+	// row 1 -- and stopped being invisible the moment a scrolled window could
+	// put its own border on row 0. What showed through was the window's frame
+	// running out of the last tab to the right edge, which reads as part of
+	// the strip and is not.
+	for (int x = 0; x < out.cols(); ++x)
+		if (out.writable(x, 0)) out.at(x, 0) = Cell();
 	int x = 0;
 	for (int i = 0; i < tabs.size(); ++i) {
 		g_tabs.append(tabs[i]);
@@ -497,25 +505,73 @@ void Compositor::compose(CellBuffer &out) {
 	// why modals and popups are pulled out of this pass and stacked explicitly
 	// below (section 8.1: treat them as an explicit stack "rather than trusting
 	// window flags"). Within the plain layer the list order is all there is.
+	// The tab strip, and which window it has chosen. Collected BEFORE the
+	// policy below, because the policy belongs to the window being drawn and
+	// this is what decides which one that is -- and because the strip takes a
+	// row off the top, which is a row the policy does not have to spend.
+	const QVector<QWidget *> tabs = collect_window_tabs(win_);
+	QWidget *const shown = choose_current_window(tabs, win_);
+	const int strip = tabs.size() > 1 ? 1 : 0;
+
 	// design.md section 7's policy in the order it names: drop what the
 	// application said is optional FIRST, and only then scroll what is left.
 	// Dropping can make a screen fit; scrolling never does, it only makes the
 	// rest reachable.
-	apply_priority(win_, root_, out.cols(), out.rows());
-	follow_focus(win_, root_, out.cols(), out.rows());
+	//
+	// ON THE WINDOW BEING DRAWN, and it was on win_ -- the window this
+	// compositor was constructed with -- however many windows the application
+	// had. So a second window too big for the terminal got neither half: it
+	// dropped nothing and it never scrolled to its focus. Measured with two
+	// windows in a 30x8 terminal, the second 26 rows tall with the focus on
+	// its last field: the frame held row0 to row2 and the field being typed
+	// into was row11, off the bottom with no way to reach it. That is 8.101's
+	// defect exactly, for every window except the first, and it is the same
+	// shape as 8.107 -- the picture followed the switch and the machinery
+	// behind it did not.
+	QWidget *const base = shown ? shown : win_;
+	// A layer's dropped-widget list and scroll belong to that layer, the rule
+	// input_layer_ and popup_layer_ already follow. Carrying one window's
+	// state into another would show the new window scrolled to a position
+	// computed from the old one's focus, and would hide widgets it never
+	// dropped.
+	if (base != root_layer_) {
+		root_ = Layer{};
+		root_layer_ = base;
+	}
+	apply_priority(base, root_, out.cols(), out.rows() - strip);
+	follow_focus(base, root_, out.cols(), out.rows() - strip);
 
 	const QPoint root_at(-root_.scroll.x() * cw, -root_.scroll.y() * ch);
 	// The router maps a click from a screen cell to a window position, and
 	// the root is not drawn at the screen's origin once this scrolls. Told
 	// here rather than asked for, because compose() is the only place that
 	// knows -- and because the Compositor already holds the router.
-	// The tab strip, and which window it has chosen. Collected before
-	// anything is drawn, because the strip takes a row off the top and
-	// everything below it moves down by one.
-	const QVector<QWidget *> tabs = collect_window_tabs(win_);
-	QWidget *const shown = choose_current_window(tabs, win_);
-	const int strip = tabs.size() > 1 ? 1 : 0;
+	// The strip is part of the offset input has to undo, not just part of
+	// the picture. It takes row 0 and everything below it moves down a row,
+	// and nothing shared that with the router: measured, with two windows up
+	// a button DRAWN at screen row 1 could not be clicked there at all --
+	// the same fault the comment beside root_scroll_ already records for
+	// scrolling, arriving by a second route the day tabs were added.
+	//
+	// Folded into the scroll rather than sent separately, because the router
+	// already subtracts one offset and two would be two chances to apply the
+	// wrong one.
+	if (router_) router_->set_root_scroll(root_.scroll - QPoint(0, strip));
+	// The window the strip chose, at the origin below it, scrolled by ITS OWN
+	// offset. That offset used to be applied only when the window happened to
+	// be win_, which was right while nothing else could scroll and wrong the
+	// moment the policy above learned to scroll another window.
+	const QPoint base_at = root_at + QPoint(0, strip * ch);
+	draw(base, base_at);
 	if (strip) {
+		// AFTER the window, not before it. A scrolled window is drawn at a
+		// negative offset, so whichever of its rows lands on screen row 0
+		// would paint straight over the strip -- measured the moment the
+		// policy above learned to scroll a second window, and reachable for
+		// the first window too, since a scrolled primary with a strip up has
+		// always been able to do this. The strip beats the window it labels
+		// and loses to the modals and popups drawn after it, which is the
+		// layering the rest of this function already has.
 		draw_window_tabs(out, tabs, shown);
 	} else {
 		// No strip means no tab to click, and the record of the last one has
@@ -528,23 +584,6 @@ void Compositor::compose(CellBuffer &out) {
 		g_tab_spans.clear();
 	}
 
-	// The strip is part of the offset input has to undo, not just part of
-	// the picture. It takes row 0 and everything below it moves down a row,
-	// and nothing shared that with the router: measured, with two windows up
-	// a button DRAWN at screen row 1 could not be clicked there at all --
-	// the same fault the comment beside root_scroll_ already records for
-	// scrolling, arriving by a second route the day tabs were added.
-	//
-	// Folded into the scroll rather than sent separately, because the router
-	// already subtracts one offset and two would be two chances to apply the
-	// wrong one.
-	if (router_) router_->set_root_scroll(root_.scroll - QPoint(0, strip));
-	// The window the strip chose, at the origin below it. With one window
-	// this is win_ at root_at and nothing has changed.
-	QWidget *const base = shown ? shown : win_;
-	const QPoint base_at = base == win_ ? root_at + QPoint(0, strip * ch)
-	                                    : QPoint(0, strip * ch);
-	draw(base, base_at);
 	QWidget *cursor_layer = base;
 	QPoint cursor_origin = base_at;
 
