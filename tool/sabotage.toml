@@ -1194,3 +1194,15 @@ find = "\t\tfor (const QWidget *w = owner; w; w = w->parentWidget())\n\t\t\tif (
 into = "\t\tfor (const QWidget *w = owner; w; w = w->parentWidget()) {\n\t\t\tif (w == scope) return true;\n\t\t\tif (w->isWindow()) return false;\n\t\t}"
 count = 1
 check = "a shortcut on a menu's action fires with the menu closed"
+
+[[sabotage]]
+# The lookup blind to the group Qt actually paints from, which is where it
+# stood until 8.112. Invisible on this machine's palette, where Active and
+# Inactive agree for all eleven roles -- the check installs a palette that
+# separates them, so this entry is what says the check is doing work.
+name = "the role lookup ignores the inactive colour group"
+file = "src/cell_geometry.h"
+find = "\tfor (QPalette::ColorRole r : roles)\n\t\tif (pal.color(QPalette::Inactive, r).rgba() == c) return r;"
+into = "\tfor (QPalette::ColorRole r : roles)\n\t\tif (false) return r;"
+count = 1
+check = "resolves to its role rather than to a true colour"

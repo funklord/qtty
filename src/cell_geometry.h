@@ -67,6 +67,27 @@ namespace Qtty {
 // Active is searched first, so a palette whose two groups share a colour
 // reads as enabled. That is the safe direction: a missing Dim understates,
 // a spurious one greys out a control the user can actually use.
+//
+// INACTIVE IS SEARCHED TOO, and was not. Qt paints every widget here from the
+// palette's Inactive group, permanently: QWidgetPrivate::colorGroup() answers
+// Active only for a widget that is hidden or in an active window, and no
+// window activates under this platform (F4). Measured with a probe -- a shown
+// QLineEdit's palette().currentColorGroup() is Inactive, and
+// QStyleOption::initFrom() sets no State_Active.
+//
+// Nothing was losing anything on this machine, and nothing would have noticed
+// either: of the eleven roles these lookups ask about, Active and Inactive are
+// IDENTICAL for all eleven in the palette here, so the omission was invisible
+// by construction. Under a theme that greys its inactive colours, every
+// Channel B colour would have matched no role and gone out as a hard 24-bit
+// sequence -- the #bebebe incident above, by a third route, and on a terminal
+// that may have sixteen colours.
+//
+// Before Disabled rather than after, and that is a choice. A theme whose
+// Inactive and Disabled colours coincide makes the colour genuinely ambiguous:
+// colour is the only signal Channel B carries, so no order is right for both
+// cases. Enabled-first keeps this file's own stated preference -- a missing
+// Dim understates, a spurious one greys out a control the user can use.
 inline QPalette::ColorRole role_of(QRgb c,
                                    std::initializer_list<QPalette::ColorRole> roles,
                                    bool *disabled = nullptr) {
@@ -74,6 +95,8 @@ inline QPalette::ColorRole role_of(QRgb c,
 	if (disabled) *disabled = false;
 	for (QPalette::ColorRole r : roles)
 		if (pal.color(QPalette::Active, r).rgba() == c) return r;
+	for (QPalette::ColorRole r : roles)
+		if (pal.color(QPalette::Inactive, r).rgba() == c) return r;
 	for (QPalette::ColorRole r : roles)
 		if (pal.color(QPalette::Disabled, r).rgba() == c) {
 			if (disabled) *disabled = true;

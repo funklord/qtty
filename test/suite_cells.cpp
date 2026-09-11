@@ -428,5 +428,68 @@ int suite_cells() {
 		      "has read");
 	}
 
+	// ---- the colour group Qt actually paints from -------------------------
+	//
+	// role_of() searched Active and Disabled. Qt paints every widget here
+	// from the palette's INACTIVE group -- no window activates, so
+	// QWidgetPrivate::colorGroup() never answers Active for a shown widget --
+	// and a colour matching no role is carried out as a hard 24-bit sequence,
+	// which is what section 6 exists to avoid on a sixteen-colour terminal.
+	//
+	// THE FIXTURE HAS TO MAKE THE GROUPS DIFFER. On this machine's palette
+	// Active and Inactive are identical for all eleven roles these lookups
+	// ask about, measured -- so the omission could not be observed here, and
+	// a check written against the palette as it stands would pass with the
+	// defect in place. This one installs a palette that separates them and
+	// asserts the separation before asking anything else.
+	{
+		const QPalette saved = QGuiApplication::palette();
+		const QColor odd(0x12, 0x34, 0x56);
+		QPalette p = saved;
+		p.setColor(QPalette::Inactive, QPalette::Text, odd);
+		p.setColor(QPalette::Inactive, QPalette::Dark, odd);
+		QGuiApplication::setPalette(p);
+
+		// The partition: this colour must belong to no Active and no Disabled
+		// role in either list, or the lookup would find it without reading
+		// the Inactive group at all and the check would prove nothing.
+		const QPalette &live = QGuiApplication::palette();
+		bool elsewhere = false;
+		for (QPalette::ColorRole r : { QPalette::WindowText, QPalette::Text,
+		                               QPalette::ButtonText,
+		                               QPalette::HighlightedText,
+		                               QPalette::Dark, QPalette::Light,
+		                               QPalette::Mid, QPalette::Midlight,
+		                               QPalette::Shadow, QPalette::Window,
+		                               QPalette::Button })
+			if (live.color(QPalette::Active, r).rgba() == odd.rgba()
+			    || live.color(QPalette::Disabled, r).rgba() == odd.rgba())
+				elsewhere = true;
+		CHECK(!elsewhere,
+		      "the fixture separates the palette's groups: the inactive "
+		      "colour belongs to no active or disabled role");
+
+		// Text, through the shared helper both channels use.
+		const TextStyle ts = text_style_for(odd.rgba());
+		CHECK(ts.color.kind() != Color::Rgb && !(ts.attrs & Attr::Dim),
+		      "a text colour from the group Qt actually paints with resolves "
+		      "to its role rather than to a true colour");
+
+		// And a stroke, because the frame furniture is the bigger population:
+		// Qt shades every sunken border with pal.dark() and pal.light(), so a
+		// theme whose inactive greys differ would carry a 24-bit colour for
+		// every frame in the program.
+		CHECK(line_for(odd.rgba()).kind() != Color::Rgb,
+		      "and a border shaded from that group draws in the terminal's "
+		      "own colour rather than as true colour");
+
+		QGuiApplication::setPalette(saved);
+		CHECK(QGuiApplication::palette().color(QPalette::Inactive,
+		                                       QPalette::Text)
+		      == saved.color(QPalette::Inactive, QPalette::Text),
+		      "and the palette is put back, so no later check inherits this "
+		      "fixture");
+	}
+
 	return fails;
 }

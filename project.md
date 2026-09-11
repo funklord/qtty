@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1219 checks, 0 failures. `make check` is green and includes
+1223 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15918,6 +15918,49 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.112 The colour group Qt actually paints from (2026-09-11)
+
+The activation lens once more, and this time it reaches the renderer. Qt
+chooses a palette colour group per widget, and
+`QWidgetPrivate::colorGroup()` answers `Active` only for a widget that is
+**hidden or in an active window**. No window activates here, so every shown
+widget paints from the **Inactive** group, permanently. `role_of()` in
+`cell_geometry.h` searched `Active`, then `Disabled`, and never `Inactive`.
+
+Measured with a standalone probe rather than reasoned about: a shown
+`QLineEdit`'s `palette().currentColorGroup()` is `Inactive`, and
+`QStyleOption::initFrom()` sets no `State_Active`.
+
+**And nothing was wrong on this machine, which is the whole point of the
+entry.** In the palette here, Active and Inactive are **identical for all
+eleven roles** these lookups ask about, so the omission could not produce a
+wrong pixel and no check could have caught it -- a defect invisible by
+construction rather than by neglect. Under a theme that greys its inactive
+colours, every Channel B colour matching no role is carried out as a hard
+24-bit sequence: the `#bebebe` incident this file already records, by a
+third route, on a terminal that may have sixteen colours. The frame
+furniture is the bigger half -- Qt shades every sunken border with
+`pal.dark()` and `pal.light()`, and a measurement recorded here earlier
+found 1586 of 1597 pens resolving to a hard colour when that path lacked
+its role list.
+
+`Inactive` is searched **before** `Disabled`, and that is a choice worth
+stating: a theme whose inactive and disabled colours coincide makes the
+colour genuinely ambiguous, since colour is the only signal Channel B
+carries. Enabled-first keeps this file's own stated preference -- a missing
+Dim understates, a spurious one greys out a control the user can use.
+
+**The check has to manufacture the difference**, because the palette here
+cannot express it: it installs a palette separating the groups, asserts the
+separation first so the check cannot pass by finding the colour somewhere
+else, then asks for a text colour and a stroke colour, and puts the palette
+back. Three checks and a sabotage entry.
+
+**What made this findable at all was asking what else "no window ever
+activates" decides**, after four defects in that family. It is the first one
+that reaches the drawing rather than the input, and the first whose
+consequence is invisible on the machine it was found on.
 
 ### 8.111 The action arm's context, and the trap inside it (2026-09-11)
 
