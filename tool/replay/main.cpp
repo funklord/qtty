@@ -20,6 +20,18 @@
 //
 // Drives the built-in sample UI; applications link libqtty and reuse
 // InputRouter/Compositor the same way for their own screens.
+//
+// The sample carries a menu bar, a tab widget, a button, a line edit and a
+// list, and `window` opens a second top-level -- one target for each key the
+// library answers, so a report about any of them can be reproduced here:
+//
+//   key alt+f              the File menu, by mnemonic
+//   conventions on         then key return on the focused Send button
+//   key ctrl+pagedown      across the tabs
+//   window, key f6         between the windows
+//
+// Both actions change something a frame can see: Send moves the field's text
+// into the list, and the menu items clear and fill the field.
 #include <qtty/qtty.h>
 #include <qtty/version.h>
 #include "../../src/backend/ansi/ansi_backend.h"
@@ -107,7 +119,11 @@ static const char *const usage =
     "                     A single letter becomes its key and its text,\n"
     "                     which is what a terminal delivers. Names below\n"
     "  ctrl <letter>      e.g. \"ctrl s\"\n"
-    "  click <col> <row>  mouse press and release at a cell\n"    "  conventions on|off  turn the terminal keyboard conventions on, as\n"
+    "  click <col> <row>  mouse press and release at a cell\n"    "  window             open a second top-level window, so F6 has\n"
+    "                     somewhere to go. It is not open at the start,\n"
+    "                     because two windows put a strip in row 0 of\n"
+    "                     every frame and that is every script's output\n"
+    "  conventions on|off  turn the terminal keyboard conventions on, as\n"
     "                     an application does with\n"
     "                     Qtty::set_keyboard_conventions(). They are off\n"
     "                     by default here, as they are in the library\n"
@@ -162,12 +178,49 @@ int main(int argc, char **argv) {
 	}
 	setup(app);
 
-	// sample UI: form + scrolling list (replace with your screen when linking)
+	// The sample UI. Replace it with your screen when you link the library;
+	// what it is FOR here is giving every key the library answers something
+	// to aim at, which it did not.
+	//
+	// It was a line edit and a list, and four of the six opt-in conventions
+	// could not be driven from a script at all for want of a target: Enter on
+	// a focused BUTTON, Ctrl+PageUp and PageDown across a TAB WIDGET, F6
+	// between two WINDOWS, and Alt+letter against a MENU BAR. A tool for
+	// reproducible bug reports could not reproduce a report about any of
+	// them.
+	//
+	// The line edit keeps its place and its focus deliberately: the replay
+	// gate asserts that `text hi` reaches a frame and that `ctrl a` changes
+	// the snapshot without changing the glyphs, which are claims about THIS
+	// widget being focused at the start. It lives in the first tab page now,
+	// which is visible from the first frame, so those hold.
 	QWidget win;
 	auto *v = new QVBoxLayout(&win);
 	v->setContentsMargins(0, 0, 0, 0); v->setSpacing(0);
-	auto *edit = new QLineEdit(&win);
+
+	// A menu bar, for Alt+letter. Its items carry mnemonics too, so a bare
+	// letter in the open menu reaches them the way a desktop's does.
+	auto *bar = new QMenuBar(&win);
+	QMenu *file_menu = bar->addMenu(QStringLiteral("&File"));
+	auto *edit_menu = bar->addMenu(QStringLiteral("&Edit"));
+	v->addWidget(bar);
+
+	auto *tabs = new QTabWidget(&win);
+	tabs->setDocumentMode(true);
+	auto *page_one = new QWidget;
+	auto *pv = new QVBoxLayout(page_one);
+	pv->setContentsMargins(0, 0, 0, 0); pv->setSpacing(0);
+	auto *edit = new QLineEdit(page_one);
 	edit->setPlaceholderText("type here");
+	auto *send = new QPushButton(QStringLiteral("&Send"), page_one);
+	pv->addWidget(edit); pv->addWidget(send);
+	tabs->addTab(page_one, QStringLiteral("&One"));
+	auto *page_two = new QWidget;
+	auto *pv2 = new QVBoxLayout(page_two);
+	pv2->addWidget(new QLabel(QStringLiteral("second page"), page_two));
+	tabs->addTab(page_two, QStringLiteral("&Two"));
+	v->addWidget(tabs);
+
 	auto *list = new QListView(&win);
 	auto *model = new QStringListModel(&win);
 	QStringList rows;
@@ -176,7 +229,27 @@ int main(int argc, char **argv) {
 	list->setModel(model);
 	list->setFrameShape(QFrame::NoFrame);
 	list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-	v->addWidget(edit); v->addWidget(list, 1);
+	v->addWidget(list, 1);
+
+	// Both actions change something a frame can SEE, because a script that
+	// fires one has to be able to tell that it did: an action whose only
+	// evidence is that no error appeared proves nothing.
+	QObject::connect(send, &QPushButton::clicked, [&] {
+		if (edit->text().isEmpty()) return;
+		QStringList now = model->stringList();
+		now.prepend(edit->text());
+		model->setStringList(now);
+		edit->clear();
+	});
+	QAction *clear = file_menu->addAction(QStringLiteral("&Clear the field"));
+	QObject::connect(clear, &QAction::triggered, [&] { edit->clear(); });
+	QAction *fill = edit_menu->addAction(QStringLiteral("&Fill the field"));
+	QObject::connect(fill, &QAction::triggered,
+	                 [&] { edit->setText(QStringLiteral("filled")); });
+	// Titled, because the window strip names each window and an untitled one
+	// comes out as "QWidget 1" -- which is Qt's fallback and reads like a
+	// fault in the strip rather than a window nobody named.
+	win.setWindowTitle(QStringLiteral("replay"));
 	win.setAttribute(Qt::WA_DontShowOnScreen);
 	// The script's current terminal size. Fixed at 48x14 until now, so a
 	// report about a layout that breaks when the terminal is resized could
@@ -191,6 +264,7 @@ int main(int argc, char **argv) {
 
 	InputRouter router(&win);
 	Compositor comp(&win, &router);
+	std::unique_ptr<QWidget> second;          // the `window` command builds it
 
 	bool ansi = false;
 	QString script_path;
@@ -233,6 +307,34 @@ int main(int argc, char **argv) {
 			Qtty::set_keyboard_conventions(
 			    parts[1].compare(QLatin1String("off"),
 			                     Qt::CaseInsensitive) != 0);
+		} else if (cmd == QLatin1String("window")) {
+			// A SECOND top-level, on demand rather than at startup. F6
+			// moves between windows and there was only ever one, so that
+			// convention could not be driven at all -- and creating it
+			// up front would put the window strip in row 0 of every
+			// frame this tool has ever printed, which is a change to
+			// every existing script's output for the sake of one key.
+			if (!second) {
+				second = std::make_unique<QWidget>();
+				second->setAttribute(Qt::WA_DontShowOnScreen);
+				second->setWindowTitle(QStringLiteral("second"));
+				auto *sv = new QVBoxLayout(second.get());
+				sv->addWidget(new QLineEdit(QStringLiteral("in the second"),
+				                            second.get()));
+				second->resize(GridMetrics::cells(term_cols, term_rows));
+				second->show();
+				sv->activate();
+				QCoreApplication::processEvents();
+				// Compose once into a buffer nobody prints. The window
+				// registry the strip and F6 read is built DURING
+				// compose(), so without this a script that opens a
+				// window and presses F6 finds nothing to switch to --
+				// and would have to know to put a `frame` between them,
+				// which is a hidden step and therefore a trap. A real
+				// application composes every frame and never meets it.
+				CellBuffer settle(term_cols, term_rows);
+				comp.compose(settle);
+			}
 		} else if (cmd == QLatin1String("resize") && parts.size() == 3) {
 			// Through the SINK, not by resizing the widget: on_resize is
 			// what a real SIGWINCH reaches, and it is the path that

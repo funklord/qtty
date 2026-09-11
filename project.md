@@ -15919,6 +15919,57 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.106 The replay sample, enriched on the holder's instruction (2026-09-11)
+
+8.105 recorded that four of the six opt-in conventions could not be driven
+from a script for want of a target, and left enriching the sample as the
+holder's call. **They asked for it**, so the sample carries a menu bar, a
+tab widget, a button beside the line edit, and a `window` command that
+opens a second top-level.
+
+All four are reachable now, and each is asserted by `make test-tools`:
+
+    key alt+f                            the File menu opens
+    conventions on, tab, return          Send fires, moving text to the list
+    conventions on, ctrl+pagedown        the second tab's page shows
+    conventions on, window, f6          the second window draws
+
+**The line edit keeps its place and its focus deliberately.** The replay
+gate asserts `text hi` reaches a frame and that `ctrl a` changes the
+snapshot without changing the glyphs -- claims about THAT widget being
+focused at the start. It lives in the first tab page now, visible from the
+first frame, so both hold.
+
+**The second window is opened on demand and that is the whole reason.**
+Two windows put the strip in row 0 and move everything below it down, so
+creating it at startup would change the output of every script anybody has
+ever written against this tool, for the sake of one key.
+
+**Both actions had to change something a frame can see.** Send moves the
+field's text into the list; the menu items clear and fill the field. An
+action whose only evidence is that no error appeared proves nothing, and a
+gate over it would pass on a sample with the action disconnected.
+
+**Three things the enrichment broke or exposed, which is why it was worth
+gating.**
+
+`window` then `f6` did nothing: the window registry the strip and F6 read
+is built **during `compose()`**, so a script had to know to put a `frame`
+between them. That is a hidden step and therefore a trap, so the command
+composes into a buffer nobody prints. A real application composes every
+frame and never meets it.
+
+The conventions gate **stopped discriminating**. It compared the `attrs:`
+legend line, which was enough when the sample was a field and a list and
+is saturated now that a tab bar and a button put underline and reverse in
+every frame. It compares the whole snapshot, which is what it should have
+done first: **a coarse check passed for two years' worth of simplicity and
+failed the moment the fixture grew.**
+
+And the strip named the main window **"QWidget 1"** -- Qt's fallback for an
+untitled window, which reads like a fault in the strip rather than a window
+nobody named. It has a title now.
+
 ### 8.105 The conventions verified through the tool, and a half-truth in the guide (2026-09-11)
 
 With `conventions on` available, 8.66's opt-in behaviour was driven the

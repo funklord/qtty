@@ -788,9 +788,9 @@ test-tools: all
 		echo "    replay key vocabulary: ok (modifiers and the named keys)"; \
 	fi; \
 	on=$$(printf 'conventions on\nkey down\nsnapshot\n' \
-		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null | grep 'attrs:'); \
+		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null); \
 	off=$$(printf 'key down\nsnapshot\n' \
-		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null | grep 'attrs:'); \
+		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null); \
 	if [ "$$on" = "$$off" ]; then \
 		echo "    replay conventions: FAILED -- turning them on changed"; \
 		echo "             nothing, so a report about the opt-in keys"; \
@@ -798,6 +798,26 @@ test-tools: all
 		fail=1; \
 	else \
 		echo "    replay conventions: ok (on and off differ)"; \
+	fi; \
+	miss=""; \
+	out=$$(printf 'key alt+f\nframe\n' \
+		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null); \
+	case "$$out" in *"Clear the field"*) ;; *) miss="$$miss alt+letter";; esac; \
+	out=$$(printf 'conventions on\ntext zz\nkey tab\nkey return\nframe\n' \
+		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null); \
+	case "$$out" in *zz*) ;; *) miss="$$miss enter-on-button";; esac; \
+	out=$$(printf 'conventions on\nkey ctrl+pagedown\nframe\n' \
+		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null); \
+	case "$$out" in *"second page"*) ;; *) miss="$$miss ctrl+pagedown";; esac; \
+	out=$$(printf 'conventions on\nwindow\nkey f6\nframe\n' \
+		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null); \
+	case "$$out" in *"in the second"*) ;; *) miss="$$miss f6";; esac; \
+	if [ -n "$$miss" ]; then \
+		echo "    replay sample: FAILED -- the sample gives nothing to aim"; \
+		echo "             these at:$$miss, so a report about them cannot"; \
+		echo "             be reproduced"; fail=1; \
+	else \
+		echo "    replay sample: ok (menu, button, tabs and a second window)"; \
 	fi; \
 	out=$$(timeout $(TEST_TIMEOUT) $(INSPECT) --attrs 2>/dev/null); \
 	case "$$out" in \
