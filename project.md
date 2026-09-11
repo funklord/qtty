@@ -15935,6 +15935,27 @@ It is right, and precisely right at the boundary:
 So arrows walk inside a control while it has somewhere to go and between
 controls when it does not.
 
+**Menu mnemonics were verified the same way and work**: with "hi" typed,
+`key menu` then a bare `u` fires Undo and closes the menu -- the frame
+comes back showing the placeholder, so the text was undone and the popup
+is gone. That is the path the router's comment describes, reached from a
+script rather than from a check.
+
+**And that is the end of what this sample can exercise, which is worth
+recording as a limit rather than discovered again.** The built-in UI is a
+line edit and a list, so the conventions that need other widgets cannot
+be driven with the tool at all: `Enter` on a focused button, Ctrl+PageUp
+and PageDown across a tab widget, `F6` between top-level windows, and
+Alt+letter against a menu bar. Four of the six opt-in behaviours are
+unreachable from a script for want of something to aim them at.
+
+**Enriching the sample would close that and is not being done unasked.**
+The tool drives a built-in UI deliberately -- its header says an
+application links the library and reuses `InputRouter` and `Compositor`
+for its own screens -- so a richer sample is a change to what the tool
+demonstrates, which is a judgement about the tool's purpose rather than a
+gap in it.
+
 **The guide said something slightly weaker and it matters.** *"A list
 keeps its own arrows"* is true per widget and the rule is per keystroke:
 a list keeps them **while it has somewhere to go**, and at its first item
