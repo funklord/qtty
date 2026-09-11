@@ -16022,6 +16022,11 @@ After: both views place the cursor at (1,1), the three existing
 *"scrolls to its focus"* checks still pass, and an entry restores the old
 rule and reddens the new check.
 
+**All six configurations are green at 1203 with both fixes in**, taken
+because these are behaviour changes in the compositor rather than new
+checks: xcb under Xvfb, the minimal platform refusing, a hostile
+environment absorbed, the sanitizers clean, `test-valgrind: clean`.
+
 **The check asserts the two agree rather than that the narrow case has a
 cursor.** A cursor parked anywhere would satisfy the weaker claim, and
 the claim worth making is that narrowing the view does not move the
@@ -16315,6 +16320,19 @@ enforces it, so the requirement is carried by compilation failing rather
 than by a guard, which is a poor message and not a defect. OQ-4 and OQ-5
 are product and scope questions that only the holder can answer, and they
 are not stale.
+
+**Two other design.md divergences were checked and both are already
+recorded**, which puts the one above in proportion. Its section 5.6
+describes a `qtty::Application` class that was never built -- the README
+cautions about that chapter and 8.2 records it. Its section 7 offers
+`qtty::setCompact(toolbar, Compact::IconsToLetters)`, which does not
+exist either: the implementation uses the tool tip's WORD instead of a
+letter, unconditionally and with no hint to set, because *"a word beats
+the letter design.md's Compact::IconsToLetters asks for, and it costs the
+application nothing new"* -- and the source comment says section 8 records
+that divergence, which it does. **The habit is consistent and the
+`focusNextPrevChild` recommendation is the exception**, unrecorded until
+now, which is the only reason it was worth raising.
 
 This is recorded rather than fixed: design.md is the holder's, this tree
 keeps its lag as a note (README carries the same caution about the API
