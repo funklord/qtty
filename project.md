@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1223 checks, 0 failures. `make check` is green and includes
+1229 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15918,6 +15918,61 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.113 A dialog placed against a screen that does not exist (2026-09-11)
+
+Still following what the platform answers differently. Qt places an
+**unparented** dialog by centring it on the primary screen, and the screen
+here is a fiction: the offscreen plugin reports **800x800** whatever the
+terminal is. So `QMessageBox::information(nullptr, ...)` -- as ordinary an
+idiom as Qt has -- asked for `+326+325`, and `placed_at()` clamped that into
+the nearest corner it could.
+
+Measured with a probe at two sizes, the ask identical both times:
+
+    terminal   Qt asked    clamped to     where that is
+    80x24      +326+325    +320+304       bottom right
+    40x12      +326+325    +192+112       flush against both far edges
+
+A dialog **with** a parent was already right: Qt centres it over the parent,
+and the parent is inside the terminal. So the fault is exactly the case
+where Qt consults the screen.
+
+Centred in the terminal now, snapped to the grid, never negative -- a dialog
+bigger than the terminal starts at the origin and section 7's scrolling
+takes over, which is the existing policy rather than a new one.
+
+**Two things made this answerable rather than a heuristic.**
+
+- **`WA_Moved` separates Qt's placement from the application's.** Measured
+  rather than assumed: Qt leaves the flag clear after its own default
+  placement and sets it for an explicit `move()`. So "nobody placed this" is
+  a fact the toolkit records, not a guess -- and an application that
+  positions its own dialog is obeyed.
+- **The decision has to be taken the first time the dialog is seen**, because
+  `compose()` moves a modal to where it draws it and `QWidget::move()` *sets*
+  `WA_Moved`. By the second frame every dialog would have looked
+  application-placed. The position last written is remembered and re-checked,
+  so an application that moves its dialog later takes it back -- the popup
+  stack's `placed` trick, for the same hazard.
+
+Five checks, the fifth added because the guide's new paragraph promised
+something nothing had measured -- that a centred dialog re-centres when the
+terminal is resized. It does, and it does so because the centre is
+recomputed from the frame rather than remembered; the check discriminates
+because the two sizes' centres are 112 and 272 pixels apart. **A sentence
+in a document is a claim like any other**, and writing one is the moment to
+ask whether anything checks it.
+
+The control comes first -- Qt's own answer is outside this
+terminal altogether, so a check that merely found the dialog inside would
+pass against the clamp doing its old job -- and the parented case asserts
+that Qt's placement and the terminal's centre are **different points**
+before asserting which one the dialog is at, since Qt centres over a parent
+that fills the terminal and the two would otherwise be indistinguishable.
+That check was wrong on its first run for a better reason than the fix: it
+asserted the parented dialog was untouched, and every layer is snapped to
+the grid.
 
 ### 8.112 The colour group Qt actually paints from (2026-09-11)
 

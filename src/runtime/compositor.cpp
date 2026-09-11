@@ -45,6 +45,25 @@ QPoint placed_at(const QRect &g, int cols, int rows, int cw, int ch, bool flip) 
 	return QPoint((x / cw) * cw, (y / ch) * ch);          // snap the result to the grid
 }
 
+// Where a dialog goes when nobody has said. Centred in the terminal and
+// snapped to the grid, never negative -- a dialog bigger than the terminal
+// starts at the origin and section 7's scrolling takes over from there.
+//
+// This exists because Qt's answer is computed against a screen that does not
+// exist. QDialog places an unparented dialog by centring it on the primary
+// screen, and the offscreen plugin reports 800x800 whatever the terminal is,
+// so `QMessageBox::information(nullptr, ...)` -- as ordinary an idiom as
+// there is -- came out jammed into the bottom-right corner. Measured: at
+// 80x24 Qt asked for +326+325 and the clamp gave +320+304; at 40x12 it asked
+// for the same and the clamp gave +192+112, which is flush against both far
+// edges. A dialog WITH a parent is already right, Qt centring it over the
+// parent, and that parent is inside the terminal.
+QPoint centred_in(const QSize &size, int cols, int rows, int cw, int ch) {
+	const int x = (cols * cw - size.width()) / 2;
+	const int y = (rows * ch - size.height()) / 2;
+	return QPoint(qMax(0, (x / cw) * cw), qMax(0, (y / ch) * ch));
+}
+
 // The rectangle a layer has to keep inside the terminal, in the layer's own
 // coordinates, or nothing if it is not pointing at anything.
 //
@@ -561,8 +580,30 @@ void Compositor::compose(CellBuffer &out) {
 	}
 	if (active_modal && modals.removeAll(active_modal))
 		modals.append(active_modal);                      // the active one is topmost
+	// Which modals this compositor places, decided the FIRST time each is
+	// seen and re-checked every frame after.
+	//
+	// The decision has to be taken first because compose() moves a modal to
+	// where it draws it, and QWidget::move() sets WA_Moved -- so by the second
+	// frame every dialog would look like one the application had positioned.
+	// Measured that Qt leaves the flag clear after its own default placement
+	// and sets it for an explicit move(), which is what makes the question
+	// answerable at all.
+	//
+	// Re-checked, because an application may move its dialog later: the
+	// position we last placed it at is remembered, and a geometry that no
+	// longer matches means the application has spoken and we stop. That is
+	// the popup stack's `placed` trick, for the same reason.
+	QHash<QWidget *, QPoint> mine;
 	for (QWidget *w : std::as_const(modals)) {
 		QPoint at;
+		const bool ours = modal_place_.contains(w)
+		    ? modal_place_.value(w) == w->geometry().topLeft()
+		    : (!w->parentWidget() && !w->testAttribute(Qt::WA_Moved));
+		QRect want = w->geometry();
+		if (ours)
+			want.moveTopLeft(centred_in(w->size(), out.cols(), out.rows(),
+			                            cw, ch));
 		if (w == active_modal) {
 			// design.md section 7's policy runs on the layer that OWNS INPUT,
 			// not on the root. A modal owns input while it is up (section
@@ -580,15 +621,20 @@ void Compositor::compose(CellBuffer &out) {
 			// its geometry does not say would take every click on the wrong
 			// widget. Moving it keeps the place that reads the position and
 			// the place that draws it saying the same thing.
-			at = placed_at(w->geometry(), out.cols(), out.rows(), cw, ch, false)
+			at = placed_at(want, out.cols(), out.rows(), cw, ch, false)
 			     - QPoint(input_.scroll.x() * cw, input_.scroll.y() * ch);
 			if (at != w->geometry().topLeft()) w->move(at);
 		} else {
-			at = place(w, false);                         // a dialog is not anchored
+			at = placed_at(want, out.cols(), out.rows(), cw, ch, false);
+			if (at != w->geometry().topLeft()) w->move(at);
 		}
+		if (ours) mine.insert(w, at);
 		draw(w, at);
 		if (w == active_modal) { cursor_layer = w; cursor_origin = at; }
 	}
+	// Only what is still up, so a closed dialog's record cannot dangle -- the
+	// popup stack's rule, applied to the same hazard.
+	modal_place_ = mine;
 
 	// popups last: always the top of the stack, and flipped rather than slid.
 	const auto popups = router_ ? router_->popups() : QVector<QWidget *>{};

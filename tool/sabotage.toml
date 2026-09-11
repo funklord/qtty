@@ -1206,3 +1206,26 @@ find = "\tfor (QPalette::ColorRole r : roles)\n\t\tif (pal.color(QPalette::Inact
 into = "\tfor (QPalette::ColorRole r : roles)\n\t\tif (false) return r;"
 count = 1
 check = "resolves to its role rather than to a true colour"
+
+[[sabotage]]
+# A dialog left where Qt's fictional 800x800 screen put it. Measured
+# before 8.113: `QMessageBox::information(nullptr, ...)` asked for +326+325
+# whatever the terminal was, and the clamp jammed it into the bottom-right
+# corner of an 80x24 and of a 40x12 alike.
+name = "an unplaced dialog keeps its screen-relative position"
+file = "src/runtime/compositor.cpp"
+find = "\t\tif (ours)\n\t\t\twant.moveTopLeft(centred_in(w->size(), out.cols(), out.rows(),\n\t\t\t                            cw, ch));"
+into = "\t\tif (false)\n\t\t\twant.moveTopLeft(centred_in(w->size(), out.cols(), out.rows(),\n\t\t\t                            cw, ch));"
+count = 1
+check = "a dialog nobody placed is centred in the terminal"
+
+[[sabotage]]
+# Centre every modal, including one the application positioned itself.
+# WA_Moved is the only thing separating Qt's default placement from an
+# application's move(), so dropping it silently overrides the application.
+name = "the compositor centres a dialog the application placed"
+file = "src/runtime/compositor.cpp"
+find = "\t\t    : (!w->parentWidget() && !w->testAttribute(Qt::WA_Moved));"
+into = "\t\t    : true;"
+count = 1
+check = "a dialog the application placed itself stays where it was put"

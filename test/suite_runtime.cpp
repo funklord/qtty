@@ -1465,6 +1465,109 @@ int suite_runtime() {
 		GridGuard::reset();
 	}
 
+	// ---- where a dialog lands when nobody said -----------------------------
+	//
+	// Qt places an unparented dialog by centring it on the primary screen,
+	// and the screen here is a fiction: the offscreen plugin reports 800x800
+	// whatever the terminal is. So `QMessageBox::information(nullptr, ...)`
+	// -- as ordinary an idiom as Qt has -- asked for +326+325 and the clamp
+	// put it flush against the bottom-right corner. Measured at 80x24 and at
+	// 40x12 before the fix, the same ask both times.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.move(0, 0);
+		win.resize(GridMetrics::cells(40, 12));
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Compositor c(&win, &r);
+
+		const auto dialog = [](QWidget *parent, int cols, int rows) {
+			auto *d = new QDialog(parent);
+			d->setAttribute(Qt::WA_DontShowOnScreen);
+			d->setModal(true);
+			d->resize(GridMetrics::cells(cols, rows));
+			return d;
+		};
+
+		// The control first: Qt's own answer is outside this terminal
+		// altogether, so a check that merely found the dialog inside would
+		// pass against the clamp doing its old job.
+		QDialog *loose = dialog(nullptr, 12, 4);
+		loose->show();
+		QCoreApplication::processEvents();
+		const QRect asked = loose->geometry();
+		CellBuffer b(40, 12);
+		c.compose(b);
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		CHECK(asked.x() + asked.width() > 40 * cw
+		      || asked.y() + asked.height() > 12 * ch,
+		      "the case is real: Qt's own placement puts an unparented dialog "
+		      "outside the terminal");
+		CHECK(loose->x() == ((40 * cw - loose->width()) / 2 / cw) * cw
+		      && loose->y() == ((12 * ch - loose->height()) / 2 / ch) * ch,
+		      "a dialog nobody placed is centred in the terminal rather than "
+		      "clamped into its corner");
+
+		// The half that stops this over-reaching: an application that moved
+		// its dialog is obeyed. WA_Moved is what separates the two, measured
+		// -- Qt leaves it clear after its own default placement.
+		QDialog *put = dialog(nullptr, 10, 3);
+		put->move(3 * cw, 2 * ch);
+		put->show();
+		QCoreApplication::processEvents();
+		CellBuffer b2(40, 12);
+		c.compose(b2);
+		CHECK(put->x() == 3 * cw && put->y() == 2 * ch,
+		      "while a dialog the application placed itself stays where it "
+		      "was put");
+
+		// And a parented one is Qt's business, which it already gets right:
+		// it centres over the parent, and the parent is inside the terminal.
+		put->hide();
+		QDialog *child = dialog(&win, 12, 4);
+		child->show();
+		QCoreApplication::processEvents();
+		const QPoint before = child->geometry().topLeft();
+		CellBuffer b3(40, 12);
+		c.compose(b3);
+		// Qt's position, snapped to the grid -- which every layer is, and
+		// which is not the same as being placed. The centred position is
+		// asserted to DIFFER first, because Qt centres a parented dialog over
+		// its parent and the parent fills the terminal: without that, "it is
+		// where Qt put it" and "we centred it" would be the same point and
+		// the check could not tell the two apart.
+		const QPoint snapped((before.x() / cw) * cw, (before.y() / ch) * ch);
+		const QPoint centre(((40 * cw - child->width()) / 2 / cw) * cw,
+		                    ((12 * ch - child->height()) / 2 / ch) * ch);
+		CHECK(snapped != centre,
+		      "the parented case can be told apart: Qt's placement over the "
+		      "parent is not the terminal's centre");
+		CHECK(child->geometry().topLeft() == snapped,
+		      "and a dialog with a parent is left where Qt put it, snapped to "
+		      "the grid like every layer but not moved");
+
+		// And it stays centred when the terminal changes size, which the
+		// guide now promises. Composing into a bigger buffer is what a
+		// SIGWINCH reaches, and the centre is recomputed from the buffer
+		// rather than remembered -- so the dialog has to move.
+		child->hide();
+		QCoreApplication::processEvents();
+		win.resize(GridMetrics::cells(80, 24));
+		CellBuffer wide(80, 24);
+		c.compose(wide);
+		CHECK(loose->x() == ((80 * cw - loose->width()) / 2 / cw) * cw
+		      && loose->y() == ((24 * ch - loose->height()) / 2 / ch) * ch,
+		      "and a centred dialog re-centres when the terminal is resized "
+		      "rather than staying where the old size put it");
+
+		loose->hide();
+		win.hide();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	// Section 7's policy belongs to the layer that OWNS INPUT, and a modal
 	// owns input while it is up (section 8.3). It was only ever run on the
 	// root, and the follow-the-focus scroll was root-only too, so a modal

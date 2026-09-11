@@ -612,6 +612,22 @@ in it.
 `Esc` rejects such a dialog and its default button answers `Enter`, both
 Qt's own; see the first table.
 
+**Where a dialog lands, and the one case worth knowing about.** Give a
+dialog a parent and Qt centres it over that parent, which is inside the
+terminal, and qtty leaves it there. Give it **no** parent -- which is what
+`QMessageBox::information(nullptr, ...)` does -- and Qt centres it on the
+primary screen, which under this platform is a fiction reported as
+800x800 whatever your terminal is: it asked for `+326+325` in every
+terminal measured, and the result was a dialog jammed into the corner. So
+qtty centres a dialog nobody placed, and keeps it centred across a
+resize.
+
+If you position a dialog yourself with `move()`, that is obeyed and
+nothing here second-guesses it. You are not asked to do anything
+differently; this is written down because a dialog appearing somewhere
+you did not choose is exactly the kind of thing that reads as a bug in
+your own layout code.
+
 ## Never block the event loop
 
 Everywhere else this is advice about responsiveness. Here it is about

@@ -240,6 +240,12 @@ private:
 	QPointer<QWidget> popup_layer_;
 	Layer popup_;
 	QHash<QWidget *, PopupPlace> popup_place_;
+	// The modals this compositor placed itself, and where it put them. A
+	// dialog Qt positioned against its fictional 800x800 screen is centred in
+	// the terminal instead; one the application moved is left alone, and an
+	// entry disappears the moment its dialog's geometry stops matching what
+	// was written here.
+	QHash<QWidget *, QPoint> modal_place_;
 	QWidget *win_;
 	InputRouter *router_;
 	std::optional<QPoint> cursor_;
