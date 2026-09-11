@@ -118,6 +118,16 @@ public:
 	// or every press lands on the wrong widget.
 	void set_root_scroll(QPoint cells);
 
+	// Which window keys and clicks go to, when the application has more than
+	// one. Set by the Compositor this router was handed to, from
+	// Qtty::set_current_window() and next_window()/previous_window().
+	//
+	// AN APPLICATION CALLS THOSE, NOT THIS. Moving input without moving what
+	// is drawn is precisely the defect this exists to fix -- keys arriving in
+	// a window the user cannot see -- and calling this directly reintroduces
+	// it from the other side.
+	void set_input_window(QWidget *);
+
 private:
 	bool match_shortcut(const KeyEvent &);
 	// Alt-<letter> against the `&` markers in action text (section 17.2). A
@@ -131,6 +141,10 @@ private:
 	QWidget *input_scope() const;
 
 	QWidget *win_;
+	// The window the compositor is drawing, once it has said so. Null until
+	// then, which means win_: a router with no compositor -- a test's, over
+	// its own window -- keeps the window it was built with.
+	QPointer<QWidget> cur_;
 	QVector<QPointer<QWidget>> popups_;
 	QVector<KeyEvent> quit_keys_;
 	// The widget a press grabbed, held until the release (section 5.5). A

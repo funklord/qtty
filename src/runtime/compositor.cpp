@@ -94,8 +94,20 @@ std::optional<QRect> follow_rect(QWidget *layer) {
 
 } // namespace
 
+// The routers that want telling when the drawn window moves.
+//
+// A Compositor constructed with a router IS the statement "this router serves
+// the windows I draw", so the pairing comes from there rather than from
+// InputRouter reading a global. A stack, pushed and popped with the
+// compositor, for the same reason ~Compositor() clears the tab strip: a
+// compositor's facts must not outlive it, and a suite builds many.
+static QVector<InputRouter *> g_switch_routers;
+
 Compositor::Compositor(QWidget *window, InputRouter *router)
-    : win_(window), router_(router) {}
+    : win_(window), router_(router)
+{
+	if (router_) g_switch_routers.append(router_);
+}
 
 
 void Compositor::apply_priority(int cols, int rows) {
@@ -291,20 +303,93 @@ QVector<QWidget *> window_tabs()
 
 QWidget *current_window() { return g_current.data(); }
 
-void set_current_window(QWidget *w) { if (w) g_current = w; }
+// Leaving a window dismisses whatever it had open. On a desktop Qt does this
+// for you: a popup closes when its window deactivates. No window ever
+// activates here (F4), so nothing fired -- and a menu opened in one window
+// stayed drawn over the next one AND kept input, because a popup owns input
+// above everything. Measured through qtty-replay: F6 with the File menu up
+// drew the menu over the second window and `text zz` reached neither, the
+// second window's field unchanged and the keystrokes going to a menu
+// belonging to a window nobody could see.
+//
+// NOT QApplication::activePopupWidget(), which was tried first and is null
+// here for the same reason activeWindow() is: a popup carrying
+// WA_DontShowOnScreen has no platform window for Qt to register as active.
+// The flags are what qtty itself goes by, and InputRouter::is_popup_layer()
+// is the one predicate that decides it -- asking anything else would be a
+// second opinion about which widgets are popups.
+//
+// A free function rather than something on the router, because the guide
+// tells an application to bind next_window() itself, and a fix living in
+// the F6 path would miss every application that took that advice.
+static void dismiss_popups()
+{
+	// Bounded: closing a popup can open another in principle, and a loop
+	// that trusts the stack to shrink is a loop that can fail to.
+	for (int guard = 0; guard < 32; ++guard) {
+		QWidget *found = nullptr;
+		const auto tops = QApplication::topLevelWidgets();
+		for (QWidget *w : tops)
+			if (w->isVisible() && InputRouter::is_popup_layer(w)) {
+				found = w;
+				break;
+			}
+		if (!found) return;
+		found->close();
+	}
+}
+
+// Arriving in a window is this runtime's activation, and it has to do what
+// activation does. A desktop Qt gives a window with no focus widget its first
+// tab stop when it activates -- QApplicationPrivate::setActiveWindow calls
+// focusNextPrevChild() -- and nothing activates here (F4), so a window opened
+// after exec() had NO focus widget at all and keys went to whatever the
+// previous window had focused. Measured through qtty-replay: `window`, F6,
+// then `text zz`, and the zz appeared in the FIRST window's field, which the
+// user could no longer see. Drawing followed the switch and input did not.
+//
+// keyboard_reachable() rather than a walk of nextInFocusChain() written here,
+// because that function is what decides a tab stop for Tab itself: seeding
+// focus somewhere Tab would not have gone is a second focus order.
+static void enter_window(QWidget *w)
+{
+	if (!w) return;
+	dismiss_popups();
+	if (!w->focusWidget()) {
+		const QVector<QWidget *> stops = keyboard_reachable(w);
+		if (!stops.isEmpty()) stops.first()->setFocus(Qt::OtherFocusReason);
+	}
+	g_current = w;
+	// Keys follow the picture. Without this the router kept the window it was
+	// constructed with and a switch moved only what is drawn.
+	if (!g_switch_routers.isEmpty()) g_switch_routers.last()->set_input_window(w);
+	// Qtty::focusWidget() is what the application, the tests and the cursor
+	// placement read, and it is set by the router after each key. A switch is
+	// not a key, so nothing would have updated it and the accessor would name
+	// a widget in the window we just left.
+	set_focus_widget(w->focusWidget());
+}
+
+void set_current_window(QWidget *w)
+{
+	if (!w || w == g_current.data()) return;
+	enter_window(w);
+}
 
 void next_window()
 {
 	const QVector<QWidget *> t = window_tabs();
 	const int i = t.indexOf(g_current.data());
-	if (!t.isEmpty()) g_current = t.at((i < 0 ? 0 : i + 1) % t.size());
+	if (t.isEmpty()) return;
+	enter_window(t.at((i < 0 ? 0 : i + 1) % t.size()));
 }
 
 void previous_window()
 {
 	const QVector<QWidget *> t = window_tabs();
 	const int i = t.indexOf(g_current.data());
-	if (!t.isEmpty()) g_current = t.at((i <= 0 ? t.size() : i) - 1);
+	if (t.isEmpty()) return;
+	enter_window(t.at((i <= 0 ? t.size() : i) - 1));
 }
 
 // The window a press in the strip selects, or null for a press anywhere
@@ -358,6 +443,7 @@ Compositor::~Compositor()
 {
 	g_tabs.clear();
 	g_tab_spans.clear();
+	g_switch_routers.removeAll(router_);
 }
 
 void Compositor::compose(CellBuffer &out) {

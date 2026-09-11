@@ -85,7 +85,28 @@ bool InputRouter::is_popup_layer(const QWidget *w) {
 // layer we bypass with synthetic events.
 QWidget *InputRouter::input_scope() const {
 	QWidget *m = QApplication::activeModalWidget();
-	return m ? m : win_;
+	if (m) return m;
+	// cur_, not win_, once a compositor has told us the drawn window moved.
+	// win_ is the window this router was CONSTRUCTED with, and a router that
+	// never looked past it sent every key into the primary window however
+	// many windows the application had opened -- F6 moved the picture and
+	// left input behind, so text typed at the second window appeared in the
+	// first one, off screen.
+	//
+	// Told rather than read. Reading Qtty::current_window() here was tried
+	// and is wrong: a router is per-window and a suite builds many of them
+	// over their own windows, so the global names a window most routers do
+	// not serve. Measured: nine checks in two sections failed that way,
+	// every one a router that had been sent keys meant for its own window.
+	return cur_ ? cur_.data() : win_;
+}
+
+void InputRouter::set_input_window(QWidget *w) {
+	// Called by the Compositor that draws this router's windows, from
+	// Qtty::set_current_window() and its neighbours. An application moves
+	// windows with THOSE -- calling this one directly would move input
+	// without moving what is drawn, which is the defect it exists to fix.
+	cur_ = w;
 }
 
 QWidget *InputRouter::key_target() const {

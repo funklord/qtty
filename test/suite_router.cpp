@@ -469,6 +469,99 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// Where the keys go once the picture has moved. Two windows with a field
+	// each, because a window holding only a label has no tab stop and cannot
+	// answer this at all -- the `second` above is that window, which is why
+	// this section builds its own.
+	{
+		QWidget a_win, b_win;
+		QLineEdit *a_edit = nullptr;
+		QLineEdit *b_edit = nullptr;
+		for (QWidget *w : { &a_win, &b_win }) {
+			w->setAttribute(Qt::WA_DontShowOnScreen);
+			auto *v = new QVBoxLayout(w);
+			v->setContentsMargins(0, 0, 0, 0);
+			auto *e = new QLineEdit(w);
+			v->addWidget(e);
+			(w == &a_win ? a_edit : b_edit) = e;
+			w->resize(GridMetrics::cells(20, 2));
+			w->show();
+		}
+		QCoreApplication::processEvents();
+		{
+			CellBuffer reg(40, 16);
+			comp.compose(reg);
+		}
+
+		Qtty::set_current_window(&a_win);
+		a_edit->setFocus();
+		router.on_key({Qt::Key_A, QStringLiteral("a"), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(a_edit->text() == QStringLiteral("a"),
+		      "the fixture is live: a key reaches the current window's field");
+
+		// The defect this was written for. InputRouter::input_scope() answered
+		// win_ -- the window the router was constructed with -- so every key
+		// went to the primary window whichever one was being drawn. Measured
+		// through qtty-replay before the fix: F6 to a second window, type, and
+		// the text appeared in the first window's field, off screen.
+		//
+		// BOTH fields are asserted. "b arrived in b" passes while b is also
+		// arriving somewhere else, and the whole fault was a keystroke landing
+		// in a window nobody can see -- so the untouched field is the half
+		// that says where it did NOT go.
+		Qtty::set_current_window(&b_win);
+		router.on_key({Qt::Key_B, QStringLiteral("b"), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(b_edit->text() == QStringLiteral("b")
+		      && a_edit->text() == QStringLiteral("a"),
+		      "a key after a window switch reaches the window on screen and "
+		      "not the one left behind");
+
+		// And it had a target to reach at all. A desktop Qt seeds a window's
+		// focus on activation; nothing activates here, so a window opened
+		// after exec() had no focus widget and the switch above would have
+		// had nowhere to deliver to. Asserted against keyboard_reachable(),
+		// which is what decides a tab stop for Tab -- naming the widget would
+		// let focus be seeded somewhere Tab cannot go and still pass.
+		const QVector<QWidget *> b_stops = Qtty::keyboard_reachable(&b_win);
+		CHECK(!b_stops.isEmpty() && Qtty::focusWidget() == b_stops.first(),
+		      "arriving in a window that has never had focus seeds its first "
+		      "tab stop");
+
+		// A popup belongs to the window it was opened in, and on a desktop it
+		// closes when that window deactivates. Nothing deactivates here, so a
+		// menu opened in one window stayed drawn over the next -- and kept
+		// input, because a popup outranks the window in key_target(). That is
+		// the dangerous half: a letter fires an action in a window the user
+		// cannot see.
+		Qtty::set_current_window(&a_win);
+		QMenu stale(&a_win);
+		stale.addAction(QStringLiteral("STALEITEM"));
+		stale.popup(QPoint(0, 0));
+		QCoreApplication::processEvents();
+		CellBuffer with_menu(40, 16);
+		comp.compose(with_menu);
+		CHECK(with_menu.to_text().contains(QStringLiteral("STALEITEM")),
+		      "the stale-popup case is real: the menu is drawn while its own "
+		      "window is current");
+
+		Qtty::set_current_window(&b_win);
+		CellBuffer after_switch(40, 16);
+		comp.compose(after_switch);
+		CHECK(!after_switch.to_text().contains(QStringLiteral("STALEITEM")),
+		      "leaving a window dismisses the menu it had open");
+		router.on_key({Qt::Key_C, QStringLiteral("c"), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(b_edit->text() == QStringLiteral("bc"),
+		      "and the keys go to the new window rather than to the menu the "
+		      "old one had open");
+
+		a_win.hide();
+		b_win.hide();
+		QCoreApplication::processEvents();
+	}
+
 	Qtty::set_current_window(&win);
 	second.hide();
 	QCoreApplication::processEvents();

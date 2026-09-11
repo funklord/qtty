@@ -512,8 +512,8 @@ check = "and a splitter with one unframed pane keeps its bar"
 [[sabotage]]
 name = "previous_window steps the same way as next_window"
 file = "src/runtime/compositor.cpp"
-find = "\tif (!t.isEmpty()) g_current = t.at((i <= 0 ? t.size() : i) - 1);"
-into = "\tif (!t.isEmpty()) g_current = t.at((i < 0 ? 0 : i + 1) % t.size());"
+find = "\tenter_window(t.at((i <= 0 ? t.size() : i) - 1));"
+into = "\tenter_window(t.at((i < 0 ? 0 : i + 1) % t.size()));"
 count = 1
 check = "next_window moves to another window and previous_window"
 
@@ -1091,3 +1091,37 @@ find = "\t\tif (wider)                                     state.scroll.setX(lef
 into = "\t\tif (false)                                     state.scroll.setX(left);"
 count = 1
 check = "a menu wider than the terminal shows its item names"
+
+[[sabotage]]
+# The router keeping the window it was constructed with. Every key then
+# goes to the primary window whichever one is drawn, so text typed at a
+# second window appears in the first one, off screen. 8.107.
+name = "input goes to the router's own window rather than the current one"
+file = "src/runtime/input_router.cpp"
+find = "\treturn cur_ ? cur_.data() : win_;"
+into = "\treturn win_;"
+count = 1
+check = "on screen and not the one left behind"
+
+[[sabotage]]
+# The menu the window being left had open, left open. It is drawn over
+# the new window AND keeps input, because a popup outranks the window in
+# key_target() -- so a letter fires an action in a window nobody can see.
+name = "a window switch leaves the old window's menu open"
+file = "src/runtime/compositor.cpp"
+find = "\tdismiss_popups();"
+into = "\tif (false) dismiss_popups();"
+count = 1
+check = "leaving a window dismisses the menu it had open"
+
+[[sabotage]]
+# No focus seeded on arrival. A desktop Qt does this when a window
+# activates and nothing activates here, so a window opened after exec()
+# has no focus widget at all and keys reach the window rather than a
+# control inside it.
+name = "a window becomes current with nothing focused in it"
+file = "src/runtime/compositor.cpp"
+find = "\t\tif (!stops.isEmpty()) stops.first()->setFocus(Qt::OtherFocusReason);"
+into = "\t\tif (false) stops.first()->setFocus(Qt::OtherFocusReason);"
+count = 1
+check = "seeds its first tab stop"

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1203 checks, 0 failures. `make check` is green and includes
+1209 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15918,6 +15918,117 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.107 A window switch that moved only the picture (2026-09-11)
+
+Dogfooding 8.106's enriched sample again, and the first script that opened
+a second window found **two** defects one behind the other. Both are the
+same root cause as `hasFocus()` being permanently false (F4): **no window
+ever activates here**, and a desktop Qt does three separate things on
+activation that nothing was doing.
+
+**A menu belonging to the window you left stayed open.** `conventions on
+/ window / key alt+f / key f6 / frame` drew the second window with the
+first window's File menu on top of it. Worse than a drawing fault: a
+popup outranks the window in `key_target()`, so the menu **kept input** --
+a letter would have fired an action in a window the user could no longer
+see.
+
+`QApplication::activePopupWidget()` was the obvious mechanism and is
+useless here, for a reason this tree already knew: a popup carrying
+`WA_DontShowOnScreen` is never mapped, and Qt's open-popup list follows
+the mapping. It returns null for every popup qtty draws.
+`InputRouter::is_popup_layer()` over the top-level list is what the
+router and the compositor already agree to mean by "popup", so the
+dismissal asks that and nothing else.
+
+**And underneath it, input never moved at all.** With the menu gone, the
+probe became `window / key f6 / text zz` -- and the `zz` appeared in the
+**first** window's field. `InputRouter::input_scope()` answered `win_`,
+the window the router was constructed with, so every key went to the
+primary window whichever one was being drawn. F6 moved the picture and
+left input behind. That is the bigger of the two and it was invisible
+while the menu was in the way: the menu ate the keystrokes, so the
+*symptom* of the second defect was hidden by the first.
+
+**The obvious fix was wrong, and the suite said so in nine checks.**
+Having `input_scope()` read `Qtty::current_window()` looks like "one
+fact, read by both" and is a category error: a router is per-window, and
+this suite builds many of them over their own ad-hoc windows -- the paste
+section and the menu section each build one. Reading a global sent their
+keys into the suite's main window. Nine failures, every one a router
+being handed keys meant for a window it does not serve.
+
+So the router is **told**, not reading anything. A `Compositor`
+constructed with a router *is* the statement "this router serves the
+windows I draw", so that is where the pairing comes from: the constructor
+pushes its router, the destructor pops it -- the same discipline
+`~Compositor()` already applies to the tab strip, and for the same
+reason, that a compositor's facts must not outlive it. A router with no
+compositor keeps `win_`, which is why the test routers are unaffected.
+`set_input_window()` is on the public class and its comment says an
+application must not call it: moving input without moving the picture is
+this defect from the other side.
+
+**The third thing activation does is seed focus.** A window opened after
+`exec()` had no focus widget at all, so even with input routed correctly
+there was nowhere to deliver it. `QApplicationPrivate::setActiveWindow()`
+calls `focusNextPrevChild()` for exactly this case on a desktop. The
+switch now gives a window with no focus widget its first tab stop --
+`keyboard_reachable()`'s first, not a walk of `nextInFocusChain()`
+written here, because that function is what decides a tab stop for `Tab`
+itself and seeding focus somewhere `Tab` cannot reach would be a second
+focus order. `set_focus_widget()` is updated with it, since a switch is
+not a key and nothing else would have.
+
+Six checks, in `suite_router.cpp`, and the fixture is its own: the
+`second` window that section already had holds only a label, and **a
+window with no tab stop cannot answer any of these questions**. Two
+windows with a field each, so that both halves can be asserted -- "b
+arrived in b" passes while b is *also* arriving in the window off screen,
+and where it did **not** go is the whole finding. Three sabotage entries,
+each watched reddening its own check: the router keeping `win_`, the
+menu left open, and the focus not seeded.
+
+The guide gains a paragraph under practice 6, because an implementer is
+told to bind `Qtty::next_window()` and now needs to know what it carries
+with it -- and that moving the current window by any other route leaves
+input behind.
+
+**And the sabotage run cost two builds to a story I made up.** The first
+of the three reported `INCONCLUSIVE: the suite never reached the named
+check`, which the harness explains as "a hang or a crash". I read the load
+average -- 25 on 12 cores -- decided make's own 300s `TEST_TIMEOUT` had
+killed the binary, re-ran with `TEST_TIMEOUT=1200`, and it reddened
+cleanly. That looked like a confirmed diagnosis and was a coincidence:
+**the suite runs in 10.3 seconds**, measured, so 300s was never in play.
+
+What actually happened is that I ran `make count-check` in this tree
+*while the harness was running*, and a second make rebuilt and relinked
+the test binary underneath the suite. The arithmetic is what settled it
+rather than any theory: count-check reported **1205** passes where the
+tree has 1209 checks and that sabotage reddens **4**, so the number it
+printed came from the SABOTAGED suite. Two readings agreeing, and neither
+was available to me while I was thinking about timeouts.
+
+Two things follow, and the second is the one worth keeping:
+
+- **`count-check` measures by running the suite**, so its number is
+  meaningless while anything else is building here, and reading it then is
+  how a sabotaged tree reports a count.
+- **The harness could not distinguish a truncated run from a skipped
+  check**, and said "a hang or a crash" for both. It now asks whether the
+  suite printed its own summary line -- the only thing that says a run
+  ended by choice -- and reports *cut off before* or *finished without*
+  accordingly, sending a reader to the run in the first case and to the
+  suite in the second. `suite_finished()` was exercised both ways before
+  it was believed.
+
+The timeout change that came with the wrong story is **reverted**. It was
+plausible on its own terms -- the harness's 600s and make's 300s, with the
+inner one firing first -- but nothing here has ever measured it happening,
+and a change carrying a comment that asserts a false measurement is worse
+than no change.
 
 ### 8.106 The replay sample, enriched on the holder's instruction (2026-09-11)
 
