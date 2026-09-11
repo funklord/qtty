@@ -121,6 +121,18 @@ def build_and_test():
 	return t.returncode == 0, t.stdout
 
 
+def suite_finished(output):
+	"""Did the suite print its own last line, rather than being stopped?
+
+	The summary is the only thing that says a run ended by choice. A
+	truncated run and a completed one are otherwise identical in shape --
+	both are a list of PASS lines -- so nothing else in the output can tell
+	a killed suite from one that simply never ran a check.
+	"""
+	return any(ln.startswith(("OK (", "FAILED ("))
+	           for ln in output.splitlines())
+
+
 def failing_checks(output):
 	return [ln[len("FAIL: "):].strip()
 	        for ln in output.splitlines() if ln.startswith("FAIL: ")]
@@ -320,15 +332,45 @@ def main():
 				# a sabotage that stopped a drag from ever ending hung the
 				# suite at 212 checks, and this branch said the code was
 				# broken and nothing noticed.
-				say("  INCONCLUSIVE: the suite never reached the named check.")
+				#
+				# Two conditions, split because they send a reader to
+				# different places. A suite that printed no summary line was
+				# CUT OFF -- killed, hung or crashed -- and what to look at
+				# is the run. One that finished and still never mentioned the
+				# check did not RUN it, and what to look at is the suite: a
+				# section returning early, or a check behind a condition that
+				# was false. The one message covering both used to say "a
+				# hang or a crash" for the second case too.
+				#
+				# What produced the split: a `make count-check` run in the
+				# same tree WHILE this harness was running, which rebuilt and
+				# relinked the test binary underneath the suite. The verdict
+				# said the check was never reached, which was true, and
+				# nothing said the run had been truncated rather than the
+				# check skipped -- so the next two builds were spent on a
+				# guess about timeouts. The arithmetic is what settled it:
+				# count-check reported 1205 passes where the tree has 1209
+				# checks and the sabotage reddens 4, so count-check had run
+				# the SABOTAGED suite. Anything that builds in this tree
+				# while this runs will do the same.
+				cut_off = not suite_finished(out)
+				say("  INCONCLUSIVE: the suite %s the named check."
+				    % ("was cut off before" if cut_off else "finished without"))
 				say("          check: %s" % check)
-				say("          It reported %d pass(es) and %d failure(s), so"
-				    " the run" % (len(passing_checks(out)),
-				                  len(failing_checks(out))))
-				say("          stopped early -- a hang or a crash, not a"
-				    " silent pass.")
-				say("          Fix the check so it FAILS rather than stops,"
-				    " then re-run.")
+				say("          It reported %d pass(es) and %d failure(s)."
+				    % (len(passing_checks(out)), len(failing_checks(out))))
+				if cut_off:
+					say("          No summary line, so it was killed, hung"
+					    " or crashed --")
+					say("          not a silent pass. Check the run before"
+					    " the check.")
+				else:
+					say("          It ran to the end, so the check did not"
+					    " run at all:")
+					say("          a section returning early, or a condition"
+					    " that was false.")
+					say("          Fix the check so it FAILS rather than"
+					    " stops, then re-run.")
 				rc = 1
 			else:
 				say("  FAILED: the suite did not report the named check.")
