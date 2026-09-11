@@ -2243,6 +2243,45 @@ int suite_router() {
 				      "a text field wider than the terminal keeps its caret "
 				      "in view -- the cursor lands in the same cell whether "
 				      "the view has room for the whole field or not");
+
+				// AND A RECT WIDER THAN THE VIEW SHOWS ITS LEFT EDGE.
+				// Same fault one widget over, found the same way: a menu
+				// thirty cells wide in a twenty-cell terminal drew its
+				// shortcut column and nothing else, every item NAME off
+				// the left, because the only branch that could fire
+				// scrolled to the far edge.
+				//
+				// Asserted on the frame rather than on the scroll offset:
+				// the offset is the mechanism and the text is what a
+				// person sees, and a check on the offset would pass for a
+				// rule that happened to compute the same number by a
+				// route nobody meant.
+				// A MENU, not a field, and the harness insisted. The
+				// first version of this asserted a wide FIELD shows its
+				// start -- which it does with the left-edge rule removed,
+				// because follow_rect() returns the caret there and a
+				// caret is never wider than the view. The check could not
+				// fail, and the sabotage entry said so.
+				//
+				// A menu item's rect IS the menu's full width, so this is
+				// where the rule bites: without it the view scrolls to the
+				// item's right edge and draws the shortcut column alone.
+				QMenu wide_menu(&host);
+				wide_menu.addAction(
+				    QStringLiteral("Undo the last thing you did"));
+				wide_menu.addAction(
+				    QStringLiteral("Redo the thing you just undid"));
+				wide_menu.popup(QPoint(0, 0));
+				QCoreApplication::processEvents();
+				wide_menu.setActiveAction(wide_menu.actions().at(0));
+				QCoreApplication::processEvents();
+				CellBuffer left_edge(20, 4);
+				wc.compose(left_edge);
+				CHECK(left_edge.to_text().contains(QStringLiteral("Undo")),
+				      "a menu wider than the terminal shows its item names "
+				      "rather than scrolling past them to the far edge");
+				wide_menu.close();
+				QCoreApplication::processEvents();
 			}
 			zf->removeEventFilter(&zed);
 			r.on_key({Qt::Key_Escape, QString(), false, false, false});

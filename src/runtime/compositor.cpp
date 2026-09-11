@@ -208,9 +208,25 @@ void Compositor::follow_focus(QWidget *layer, Layer &state, int cols, int rows) 
 		const int left = at.x() / cw, top = at.y() / ch;
 		const int right = (at.x() + r->width() - 1) / cw;
 		const int bottom = (at.y() + r->height() - 1) / ch;
-		if (left < state.scroll.x())                   state.scroll.setX(left);
+		// A rect WIDER than the view shows its LEFT edge, and one taller
+		// its top. Without this the second branch is the only one that
+		// can fire and it scrolls to the far edge -- measured on a menu
+		// thirty cells wide in a twenty-cell terminal, which drew its
+		// shortcut column and nothing else: Ctrl+Z, Ctrl+Y, Ctrl+X, with
+		// every item NAME off the left of the screen. A person navigates
+		// it blind.
+		//
+		// Left and top because that is where meaning starts: a label, a
+		// menu item and a line of text all begin there. The caret of a
+		// focused text field is followed separately by follow_rect(), so
+		// this rule does not fight it.
+		const bool wider = right - left + 1 > cols;
+		const bool taller = bottom - top + 1 > rows;
+		if (wider)                                     state.scroll.setX(left);
+		else if (left < state.scroll.x())              state.scroll.setX(left);
 		else if (right > state.scroll.x() + cols - 1)  state.scroll.setX(right - cols + 1);
-		if (top < state.scroll.y())                    state.scroll.setY(top);
+		if (taller)                                    state.scroll.setY(top);
+		else if (top < state.scroll.y())               state.scroll.setY(top);
 		else if (bottom > state.scroll.y() + rows - 1) state.scroll.setY(bottom - rows + 1);
 	}
 	state.scroll.setX(qBound(0, state.scroll.x(), max_x));

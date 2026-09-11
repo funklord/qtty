@@ -703,8 +703,8 @@ check = "Ctrl+Tab does not cycle focus"
 [[sabotage]]
 name = "a layer never scrolls back up to its focus"
 file = "src/runtime/compositor.cpp"
-find = "\t\tif (top < state.scroll.y())                    state.scroll.setY(top);"
-into = "\t\tif (false)                                     state.scroll.setY(top);"
+find = "\t\telse if (top < state.scroll.y())               state.scroll.setY(top);"
+into = "\t\telse if (false)                                state.scroll.setY(top);"
 count = 1
 check = "and back up again when the focus returns to the top"
 
@@ -1079,3 +1079,15 @@ find = "\t\t\t\treturn QRect(fw->mapTo(layer, caret.topLeft()),\n\t\t\t\t       
 into = "\t\t\t\treturn QRect(fw->mapTo(layer, QPoint()), fw->size());"
 count = 1
 check = "a text field wider than the terminal keeps its caret in view"
+
+[[sabotage]]
+# The left-edge rule for a rect wider than the view. Without it the only
+# branch that can fire scrolls to the far edge, so a wide menu shows its
+# shortcut column with every item name off the left, and a wide field
+# shows its end rather than where the caret is.
+name = "an over-wide rect scrolls to its far edge again"
+file = "src/runtime/compositor.cpp"
+find = "\t\tif (wider)                                     state.scroll.setX(left);"
+into = "\t\tif (false)                                     state.scroll.setX(left);"
+count = 1
+check = "a menu wider than the terminal shows its item names"

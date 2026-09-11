@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1202 checks, 0 failures. `make check` is green and includes
+1203 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15918,6 +15918,44 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.102 The same fault one widget over, and worse (2026-09-11)
+
+The menu, resized the same way 8.101's field was. With a current item and
+a terminal narrower than the menu, the frame read:
+
+    ────────────────────
+                 Ctrl+Z
+                 Ctrl+Y
+    ────────────────────
+                 Ctrl+X
+
+**The shortcut column, and every item NAME off the left of the screen.**
+A person navigates that blind: the keys still move, the highlight still
+moves, and nothing on screen says what any of it does. Worse than the
+caret case, where at least the text was visible.
+
+**The mechanism is the same and the fix is more general than 8.101's.** A
+menu item's rect IS the menu's full width, so it is wider than the view,
+and the only branch that can fire scrolls to the far edge. **A rect wider
+than the view now shows its LEFT edge, and one taller its top** -- because
+that is where meaning starts: a label, a menu item and a line of text all
+begin there. The caret rule of 8.101 is not redundant beside it; it keeps
+a caret visible when the FIELD is wide, which a left-edge rule alone
+cannot do once the caret has moved along the line.
+
+**The harness caught a check of mine that could not fail, and this one is
+instructive.** The check first written asserted a wide FIELD shows its
+start -- and it does with the left-edge rule removed, because
+`follow_rect()` returns the caret there and **a caret is never wider than
+the view**. The 8.101 fix had made the 8.102 check untestable through a
+field. The entry reported it immediately, and the check moved to the menu,
+where the followed rect really is over-wide.
+
+**Two entries needed re-anchoring**, one of them an older entry whose
+line this edit rewrote -- *"a layer never scrolls back up to its focus"*,
+now pointing at the `else if` the branch became. `--validate` caught it
+before the run did.
 
 ### 8.101 A caret off the edge of the screen (2026-09-11)
 
