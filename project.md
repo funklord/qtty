@@ -15935,6 +15935,22 @@ It is right, and precisely right at the boundary:
 So arrows walk inside a control while it has somewhere to go and between
 controls when it does not.
 
+**And practice 7 could have caused a blank toolbar.** It says *do not
+depend on hover or tooltips*, which is right about them POPPING UP -- no
+`QEvent::ToolTip` is ever raised -- and an implementer reading it would
+reasonably stop writing them. **qtty reads tool tips**: a `QToolButton`
+with an icon and no text is labelled from its tool tip, or its default
+action's, because a terminal cannot draw the icon and the tool tip is
+where the action already keeps its words. `grid_style.cpp` records the
+state before that existed -- two icon-only actions **occupied four cells
+between them and drew nothing.**
+
+So the advice needed its other half: do not depend on a tool tip
+appearing, and do write one. **A practice that could cost somebody their
+toolbar is worth more care than one that merely under-sells a feature**,
+and this is the first of today's guide findings where following the page
+as written would have made an application worse.
+
 **A tension between the guide and its own example, resolved toward the
 guide gaining a sentence.** Practice 1 says *every field a labelled
 buddy*, and `example/chat` gives its input a placeholder instead --

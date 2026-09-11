@@ -355,6 +355,14 @@ second window opens. With one window there is no strip and no cost.
 **7. Do not depend on hover or tooltips.** Information a user needs must
 be visible or reachable by key.
 
+**Write them anyway, and that is not a contradiction.** qtty *reads* a
+tool tip: a `QToolButton` with an icon and no text is labelled from its
+tool tip, or from its default action's, because a terminal cannot draw
+the icon and a word is what the action already has. Measured before that
+existed, two icon-only actions **occupied four cells between them and
+drew nothing**. So do not depend on a tool tip *appearing* -- it never
+will -- and do write one, or your toolbar is a row of blank cells.
+
 The reason is not that a terminal has no pointer -- this guide said that
 and it was wrong. qtty sends `QEvent::MouseMove`, so Qt sets `WA_Hover`,
 delivers `Enter` and `HoverEnter`, and `underMouse()` answers true: a
