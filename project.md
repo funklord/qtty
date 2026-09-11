@@ -15919,6 +15919,35 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.104 The tool could not turn on the behaviour it reports on (2026-09-11)
+
+The last gap of the family. The terminal key habits are **opt-in**, so an
+application that asked for them and one that did not answer different
+keys -- and `qtty-replay` could only ever be the second. No tool in the
+tree called `set_keyboard_conventions()` at all. So a report that **Down
+does not move focus**, or that **F6 does not change window**, was
+unreproducible with the tool built for reproducing reports, for exactly
+the applications those reports come from.
+
+`conventions on|off` does it now, as an application would, and the
+difference is plain:
+
+    conventions off    key down    no attributes -- nothing moved
+    conventions on     key down    8 underline -- focus on the list
+
+**That contrast is also what makes the gate discriminating**, which the
+key-vocabulary gate beside it is not: there the check reads the help text,
+because a shift assertion could not fail on a sample with two focusable
+widgets. Here the two runs differ observably, so the gate compares them
+and was watched failing with the call disabled.
+
+**Four gaps of one shape, found by using the tools rather than reading
+them**: the keys they could not send, the resize they could not perform,
+the attributes they could not show, and now the opt-in behaviour they
+could not enable. Each was invisible from the source, where every one of
+those tools looks complete and self-consistent. **A tool is only as good
+as the thing it cannot do that you have not tried.**
+
 ### 8.103 A resize transient that is not a defect (2026-09-11)
 
 The same lens on the vertical case, and this one stops at a measurement

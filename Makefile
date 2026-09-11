@@ -787,6 +787,18 @@ test-tools: all
 	else \
 		echo "    replay key vocabulary: ok (modifiers and the named keys)"; \
 	fi; \
+	on=$$(printf 'conventions on\nkey down\nsnapshot\n' \
+		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null | grep 'attrs:'); \
+	off=$$(printf 'key down\nsnapshot\n' \
+		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null | grep 'attrs:'); \
+	if [ "$$on" = "$$off" ]; then \
+		echo "    replay conventions: FAILED -- turning them on changed"; \
+		echo "             nothing, so a report about the opt-in keys"; \
+		echo "             still cannot be reproduced with this tool"; \
+		fail=1; \
+	else \
+		echo "    replay conventions: ok (on and off differ)"; \
+	fi; \
 	out=$$(timeout $(TEST_TIMEOUT) $(INSPECT) --attrs 2>/dev/null); \
 	case "$$out" in \
 	*legend*attrs:*) echo "    inspect --attrs: ok (it shows attributes)";; \

@@ -9,6 +9,7 @@
 //   ctrl <letter>     e.g. "ctrl s"
 //   click <col> <row> mouse press+release at cell
 //   resize <c> <r>    resize the terminal through on_resize()
+//   conventions on|off  the opt-in terminal key habits
 //   frame             print the composed frame between markers
 //   snapshot          the same, with attributes -- what `frame` cannot show
 //
@@ -106,7 +107,11 @@ static const char *const usage =
     "                     A single letter becomes its key and its text,\n"
     "                     which is what a terminal delivers. Names below\n"
     "  ctrl <letter>      e.g. \"ctrl s\"\n"
-    "  click <col> <row>  mouse press and release at a cell\n"    "  resize <cols> <rows>  resize the terminal, through the same sink a\n"
+    "  click <col> <row>  mouse press and release at a cell\n"    "  conventions on|off  turn the terminal keyboard conventions on, as\n"
+    "                     an application does with\n"
+    "                     Qtty::set_keyboard_conventions(). They are off\n"
+    "                     by default here, as they are in the library\n"
+    "  resize <cols> <rows>  resize the terminal, through the same sink a\n"
     "                     SIGWINCH reaches, so optional widgets drop and\n"
     "                     the view re-follows the focus as they would\n"
     "  frame              print the composed frame between markers\n"
@@ -217,6 +222,17 @@ int main(int argc, char **argv) {
 		} else if (cmd == QLatin1String("ctrl") && parts.size() == 2) {
 			router.on_key({Qt::Key_A + (parts[1].at(0).toLower().unicode() - 'a'),
 				          QString(), true, false, false});
+		} else if (cmd == QLatin1String("conventions")
+		           && parts.size() == 2) {
+			// The terminal habits are OPT-IN, so an application that
+			// asked for them and an application that did not answer
+			// different keys -- and this tool could only ever be the
+			// second. A report that Down does not move focus, or that
+			// F6 does not change window, was unreproducible with it for
+			// exactly the applications those reports come from.
+			Qtty::set_keyboard_conventions(
+			    parts[1].compare(QLatin1String("off"),
+			                     Qt::CaseInsensitive) != 0);
 		} else if (cmd == QLatin1String("resize") && parts.size() == 3) {
 			// Through the SINK, not by resizing the widget: on_resize is
 			// what a real SIGWINCH reaches, and it is the path that
