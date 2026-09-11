@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1201 checks, 0 failures. `make check` is green and includes
+1202 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15918,6 +15918,48 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.101 A caret off the edge of the screen (2026-09-11)
+
+The dogfooding lens, pushed one step further, found a real defect in the
+library rather than in its documentation -- the first of this session to
+come from output rather than from reading.
+
+**How it surfaced.** `qtty-replay` gained a `resize` command (below), and
+a script that shrank the sample to 4x2 drew the RIGHT-HAND end of the
+line edit rather than its left. That is `follow_focus` doing as it is
+told: `follow_rect()` returned the focused widget's whole rectangle, and
+a widget wider than the view can only satisfy the second branch, which
+scrolls to its right edge.
+
+**Measured, with a control, because a symptom at 4x2 proves nothing.** A
+sixty-cell field, focused, composed into two views:
+
+    60-cell view    cursor at (1,1)
+    20-cell view    cursor ABSENT
+
+The caret sits at the field's left, the view is scrolled to its right, so
+the caret is outside and `Compositor` places no cursor at all. **A person
+types with nothing on screen saying where** -- in exactly the case the
+small-terminal design exists for, and against a guide that says nothing
+is unreachable because the screen is small.
+
+**The fix follows the caret rather than the widget**, and the rect is the
+one the cursor placement already asks Qt for: `ImCursorRectangle`. A
+non-text widget has none and keeps the old rule. Mapped from the focus
+widget rather than from an inner editor that may own the rect -- that
+distinction is worth a cell when PLACING a cursor, which is why the
+placement code hunts for the owner, and is not worth one when deciding
+what to scroll into view.
+
+After: both views place the cursor at (1,1), the three existing
+*"scrolls to its focus"* checks still pass, and an entry restores the old
+rule and reddens the new check.
+
+**The check asserts the two agree rather than that the narrow case has a
+cursor.** A cursor parked anywhere would satisfy the weaker claim, and
+the claim worth making is that narrowing the view does not move the
+caret.
 
 ### 8.100 Dogfooding the tools found what reading did not (2026-09-11)
 

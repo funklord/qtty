@@ -1067,3 +1067,15 @@ find = "\tconst QString text = (k.alt && types) ? QString() : k.text;"
 into = "\tconst QString text = k.alt ? QString() : k.text;"
 count = 1
 check = "Alt+letter is answered by the menu, which closes"
+
+[[sabotage]]
+# Follow the widget again instead of its caret. A field wider than the
+# view can then only scroll to its right edge, the caret goes outside,
+# and the compositor places no cursor -- so a person types with nothing
+# on screen saying where. Measured that way before 8.101.
+name = "the view follows a text widget rather than its caret"
+file = "src/runtime/compositor.cpp"
+find = "\t\t\t\treturn QRect(fw->mapTo(layer, caret.topLeft()),\n\t\t\t\t             caret.size());"
+into = "\t\t\t\treturn QRect(fw->mapTo(layer, QPoint()), fw->size());"
+count = 1
+check = "a text field wider than the terminal keeps its caret in view"

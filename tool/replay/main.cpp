@@ -8,6 +8,7 @@
 //                     see key_map() below and `qtty-replay --help`
 //   ctrl <letter>     e.g. "ctrl s"
 //   click <col> <row> mouse press+release at cell
+//   resize <c> <r>    resize the terminal through on_resize()
 //   frame             print the composed frame between markers
 //   snapshot          the same, with attributes -- what `frame` cannot show
 //
@@ -105,7 +106,9 @@ static const char *const usage =
     "                     A single letter becomes its key and its text,\n"
     "                     which is what a terminal delivers. Names below\n"
     "  ctrl <letter>      e.g. \"ctrl s\"\n"
-    "  click <col> <row>  mouse press and release at a cell\n"
+    "  click <col> <row>  mouse press and release at a cell\n"    "  resize <cols> <rows>  resize the terminal, through the same sink a\n"
+    "                     SIGWINCH reaches, so optional widgets drop and\n"
+    "                     the view re-follows the focus as they would\n"
     "  frame              print the composed frame between markers\n"
     "  snapshot           the same with attributes, which frame cannot show\n"
     "\n"
@@ -170,7 +173,13 @@ int main(int argc, char **argv) {
 	list->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
 	v->addWidget(edit); v->addWidget(list, 1);
 	win.setAttribute(Qt::WA_DontShowOnScreen);
-	win.resize(GridMetrics::cells(48, 14));
+	// The script's current terminal size. Fixed at 48x14 until now, so a
+	// report about a layout that breaks when the terminal is resized could
+	// not be reproduced with this tool at all -- and resize is where the
+	// small-terminal behaviour lives: optional widgets are dropped, and
+	// what is left scrolls to follow the focus.
+	int term_cols = 48, term_rows = 14;
+	win.resize(GridMetrics::cells(term_cols, term_rows));
 	win.show();
 	edit->setFocus();
 	QCoreApplication::processEvents();
@@ -208,12 +217,21 @@ int main(int argc, char **argv) {
 		} else if (cmd == QLatin1String("ctrl") && parts.size() == 2) {
 			router.on_key({Qt::Key_A + (parts[1].at(0).toLower().unicode() - 'a'),
 				          QString(), true, false, false});
+		} else if (cmd == QLatin1String("resize") && parts.size() == 3) {
+			// Through the SINK, not by resizing the widget: on_resize is
+			// what a real SIGWINCH reaches, and it is the path that
+			// drops optional widgets and re-follows the focus. Resizing
+			// the window directly would skip exactly what a resize bug
+			// is about.
+			term_cols = qMax(1, parts[1].toInt());
+			term_rows = qMax(1, parts[2].toInt());
+			router.on_resize(QSize(term_cols, term_rows));
 		} else if (cmd == QLatin1String("click") && parts.size() == 3) {
 			QPoint cell(parts[1].toInt(), parts[2].toInt());
 			router.on_mouse({cell, 1, true, false, false, 0});
 			router.on_mouse({cell, 1, false, true, false, 0});
 		} else if (cmd == QLatin1String("frame")) {
-			CellBuffer buf(48, 14);
+			CellBuffer buf(term_cols, term_rows);
 			comp.compose(buf);
 			if (backend) {
 				backend->present(buf, QRegion(0, 0, buf.cols(), buf.rows()));
@@ -237,7 +255,7 @@ int main(int argc, char **argv) {
 			//
 			// Added rather than swapped: `frame` keeps its format, because
 			// something may be reading it.
-			CellBuffer buf(48, 14);
+			CellBuffer buf(term_cols, term_rows);
 			comp.compose(buf);
 			printf("--- snapshot %d ---\n%s--- end ---\n",
 			       frame_no++, qPrintable(buf.to_snapshot()));

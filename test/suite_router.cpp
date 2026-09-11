@@ -2202,6 +2202,48 @@ int suite_router() {
 			      "Ctrl+Z reaches the focused widget as an ordinary key, the "
 			      "driver no longer making it a suspend, so an application "
 			      "can bind it");
+
+			// A TEXT FIELD WIDER THAN THE TERMINAL keeps its caret in
+			// view. It did not: follow_rect() returned the whole widget,
+			// and a widget wider than the view can only scroll to its
+			// RIGHT edge, which puts the caret outside and makes the
+			// compositor place no cursor at all. Measured before the fix
+			// -- present at (1,1) in a 60-cell view, absent in a 20-cell
+			// one -- so a person typed with nothing saying where.
+			//
+			// The control is the same field in a view with room for it:
+			// asserting only that the narrow case has A cursor would pass
+			// for a cursor parked anywhere, and the two agreeing is the
+			// claim worth making.
+			{
+				QWidget host;
+				host.setAttribute(Qt::WA_DontShowOnScreen);
+				auto *wide = new QLineEdit(&host);
+				wide->setMinimumWidth(60 * GridMetrics::cw());
+				wide->setGeometry(0, 0, 60 * GridMetrics::cw(),
+				                  GridMetrics::ch());
+				host.resize(GridMetrics::cells(60, 2));
+				host.show();
+				QCoreApplication::processEvents();
+				InputRouter wr(&host);
+				Compositor wc(&host, &wr);
+				wide->setFocus();
+				set_focus_widget(host.focusWidget());
+				CellBuffer wideview(60, 2);
+				wc.compose(wideview);
+				const auto ctl = wc.cursor_cell();
+				CellBuffer narrow(20, 2);
+				wc.compose(narrow);
+				const auto cur = wc.cursor_cell();
+				printf("info: a 60-cell field: cursor at (%d,%d) in a "
+				       "60-cell view, (%d,%d) in a 20-cell one\n",
+				       ctl ? ctl->x() : -1, ctl ? ctl->y() : -1,
+				       cur ? cur->x() : -1, cur ? cur->y() : -1);
+				CHECK(ctl && cur && *ctl == *cur,
+				      "a text field wider than the terminal keeps its caret "
+				      "in view -- the cursor lands in the same cell whether "
+				      "the view has room for the whole field or not");
+			}
 			zf->removeEventFilter(&zed);
 			r.on_key({Qt::Key_Escape, QString(), false, false, false});
 			QCoreApplication::processEvents();

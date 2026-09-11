@@ -64,8 +64,31 @@ std::optional<QRect> follow_rect(QWidget *layer) {
 		}
 		return std::nullopt;
 	}
-	if (QWidget *fw = layer->focusWidget())
+	if (QWidget *fw = layer->focusWidget()) {
+		// A TEXT widget is followed by its CARET, not by its rectangle.
+		// Measured: a line edit sixty cells wide in a twenty-cell view
+		// scrolls to the widget's RIGHT edge under the rectangle rule --
+		// the "else if right > ..." below can do nothing else when the
+		// widget is wider than the view -- which puts the caret, at the
+		// left, outside it. The compositor then places no cursor at all,
+		// measured as present at (1,1) in a sixty-cell view and absent in
+		// the twenty. **The user types with nothing on screen saying
+		// where**, in the one case the small-terminal design is for.
+		//
+		// The caret is what a person needs kept in view, and it is the
+		// same rect the cursor placement already asks Qt for. Mapped from
+		// the focus widget rather than from the inner editor that may own
+		// it: that distinction is worth a cell when PLACING a cursor and
+		// is not worth one when deciding what to scroll into view.
+		const QVariant v = fw->inputMethodQuery(Qt::ImCursorRectangle);
+		if (v.isValid()) {
+			const QRect caret = v.toRect();
+			if (caret.isValid())
+				return QRect(fw->mapTo(layer, caret.topLeft()),
+				             caret.size());
+		}
 		return QRect(fw->mapTo(layer, QPoint()), fw->size());
+	}
 	return std::nullopt;
 }
 
