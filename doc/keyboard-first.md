@@ -170,6 +170,14 @@ none of this is visible. The reasoning, from the compositor:
 > makes every widget reachable with the keys the application already
 > answers.
 
+Two refinements are worth knowing, because they decide what you actually
+see. **A text widget is followed by its caret**, not by its rectangle, so
+a field wider than the terminal keeps the place you are typing in view
+rather than showing you its far end. And **anything wider than the view
+shows its left edge**, anything taller its top: a menu thirty cells wide
+in a twenty-cell terminal draws its item names rather than the shortcut
+column, which is what it did before the rule and is no use to anybody.
+
 So **practice 4's rule survives a small screen**: if every control is on
 the tab chain, every control can be got to at 80x24, or at 40x10. It
 works per layer -- the window, a modal and a popup each scroll on their
