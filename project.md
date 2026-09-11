@@ -15950,6 +15950,25 @@ field's text into the list; the menu items clear and fill the field. An
 action whose only evidence is that no error appeared proves nothing, and a
 gate over it would pass on a sample with the action disconnected.
 
+**It paid immediately, in verification rather than in defects.** Seven
+documented behaviours are now reproducible from a script instead of only
+asserted in the suite, and all seven are correct:
+
+    key space on the focused button       fires it -- Qt's own
+    key return on it, conventions off     does NOTHING
+    key return on it, conventions on      fires it
+    key alt+f / alt+e                     each menu, by mnemonic
+    key right with a menu open            walks the menu bar
+    key alt+t                             the tab, by its own letter
+    key ctrl+pageup from the first tab    wraps to the last
+    window, key f6, key f6                cycles and comes back
+
+**The second and third rows are the autoDefault distinction**, which 8.73
+measured and 8.33's corrected entry describes: a bare button outside a
+dialog answers Space alone, and Enter needs either a dialog's autoDefault
+or the opt-in convention. That was a claim resting on two checks and is
+now something anybody can reproduce in four lines.
+
 **Three things the enrichment broke or exposed, which is why it was worth
 gating.**
 
