@@ -15919,6 +15919,34 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.103 A resize transient that is not a defect (2026-09-11)
+
+The same lens on the vertical case, and this one stops at a measurement
+rather than a fix.
+
+Focus the list, seven Downs, then shrink to 22x5: the frame draws items 0
+to 3 and the snapshot reports **no attributes at all** -- no underline
+anywhere, so nothing on screen says which item the keys would act on.
+That reads exactly like the two defects above.
+
+**It is not one, and one more keystroke proves it.** A Down after the
+resize draws items 5 to 8, so the current item was **7 throughout**:
+preserved across the resize, merely outside the list's own viewport,
+and brought back by the next key. Qt does not re-scroll a view to its
+current item on resize, on any platform, and qtty's `follow_focus` keeps
+the focused WIDGET in view rather than reaching inside it.
+
+**The distinguishing experiment is the whole entry.** *Off-view* and
+*lost* look identical in a frame -- both are an absent underline -- and
+they are different bugs with different fixes. Pressing one key separated
+them in seconds. Without it the honest reading of that snapshot was "the
+current item is gone", which would have sent somebody into `follow_focus`
+after a fault that is not there.
+
+The guide carries a sentence about it, with the remedy for an application
+that cares: `scrollTo(currentIndex())` on a resize event. Nothing in the
+library changed.
+
 ### 8.102 The same fault one widget over, and worse (2026-09-11)
 
 The menu, resized the same way 8.101's field was. With a current item and

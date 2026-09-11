@@ -182,6 +182,13 @@ Two keys move the view without moving focus. An arrow the focused widget
 list that scrolls per item moves by visible rows rather than by a
 pixel count that would mean nothing to it.
 
+**One transient worth knowing**: a resize does not re-scroll a list to
+its current item, because Qt does not, so after a sharp shrink the item
+the keys would act on can be off-view until the next keystroke brings it
+back. The item is not lost -- measured, it is exactly where it was -- and
+if that matters in your application, `scrollTo(currentIndex())` on a
+resize event settles it.
+
 What none of this does is reflow your layout. A form that needs eighty
 columns still needs them; it is reached by scrolling rather than by
 becoming narrower. Marking the parts that can go is the lever you have,
