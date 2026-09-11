@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1217 checks, 0 failures. `make check` is green and includes
+1219 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15918,6 +15918,48 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.111 The action arm's context, and the trap inside it (2026-09-11)
+
+The gap 8.109 named and left: `QAction::shortcutContext()` was ignored
+entirely. The action arm collected everything in the scope and fired
+whatever matched, so **an action asking for `Qt::WidgetShortcut` answered
+while its widget was not focused** -- a key the desktop leaves alone, which
+is the direction that changes what an application does rather than merely
+failing to do something. The `QShortcut` arm had honoured context from the
+day it was written; the two arms disagreed, and nothing said so.
+
+Honoured now, through one `context_applies()` both arms can use, with the
+owning widgets taken from `associatedObjects()` and falling back to the
+action's parent.
+
+**The window case has a trap in it, and the first version fell in.** A
+`QMenu` is a top-level widget carrying `Qt::Popup`, so "is this action's
+widget in the current window" cannot be asked as `w->window() == scope` --
+the answer is the menu itself. What it also cannot be asked with is
+`QWidget::isAncestorOf()`, which is what I reached for:
+
+    while (child) { if (child == this) return true;
+                    if (child->isWindow()) return false;
+                    child = child->parentWidget(); }
+
+A popup is a window, so it returns **false on the first step** and every
+menu action's shortcut in every application stops firing. The fix is to
+walk `parentWidget()` without stopping at windows, which is the chain Qt
+itself uses to decide where a popup belongs.
+
+**What kept the wrong version out of the tree is that the check was
+written first, for a path that had no assertion over it at all.** The
+three `setShortcut` fixtures in this suite were on a window or a plain
+widget; not one bound a shortcut to a *menu* action, so the behaviour every
+application depends on rested on nothing. The new check failed on its first
+run and named the reason. Had I written the code and then the check, the
+check would have been written to pass.
+
+Two sabotage entries: the context test removed, and the walk taught to stop
+at a window boundary -- the second reproducing the exact mistake, so the
+next person to reach for `isAncestorOf` here meets a red check rather than a
+silent regression in menu shortcuts.
 
 ### 8.110 A fixture that outlived the counter it wrote into (2026-09-11)
 

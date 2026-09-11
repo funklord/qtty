@@ -86,7 +86,7 @@ reimplements it:
 | `Enter` | Fires the focused button if focus is on one; otherwise the dialog's **default** button | Qt's |
 | `Alt` + letter | Reaches a menu, a toolbar action, a **button**, or the field a **label** is the buddy of | qtty's |
 | `Alt` + a letter that matches nothing | Nothing. It does not type the letter into whatever has focus | qtty's |
-| A `QAction` shortcut, or a `QShortcut` | Fires -- and a `QShortcut`'s `context()` is honoured, so a `WidgetShortcut` needs its own widget focused. Neither fires from behind an open menu | qtty's |
+| A `QAction` shortcut, or a `QShortcut` | Fires, and its **context** is honoured either way: a `WidgetShortcut` needs its own widget focused, an `ApplicationShortcut` fires from any window. Neither fires from behind an open menu | qtty's |
 | `Menu`, `Shift+F10` | Opens the focused widget's context menu, honouring its `contextMenuPolicy` | qtty's |
 | `Ctrl+C`, `Ctrl+D` | Quit -- except in a widget that takes text, where `Ctrl+C` is left for copy. Change them with `InputRouter::set_quit_keys()` | qtty's |
 | `Ctrl+Z` | An ordinary key, **not** a suspend -- see *Never block the event loop* for why, and how to get the conventional behaviour back | qtty's |
@@ -94,12 +94,28 @@ reimplements it:
 **Your shortcuts are matched by the router, not by Qt.** Qt's shortcut
 map gates on the window being *active* and none activates here, so
 neither a `QAction`'s shortcut nor a `QShortcut` would ever fire if qtty
-did not resolve them itself. It does, including `QShortcut::context()`:
-a `WidgetShortcut` fires only while its own widget has focus, a
-`WidgetWithChildrenShortcut` while that widget or a descendant does, and
-the default `WindowShortcut` from anywhere in the window. Getting that
-wrong in the other direction would give the terminal a binding the
-desktop does not answer.
+did not resolve them itself. It does, and **all four contexts mean what
+they mean on the desktop, for a `QAction` and a `QShortcut` alike**:
+
+| `context()` / `shortcutContext()` | fires |
+|---|---|
+| `Qt::WidgetShortcut` | only while its own widget has focus |
+| `Qt::WidgetWithChildrenShortcut` | while that widget or a descendant has it |
+| `Qt::WindowShortcut` (the default) | anywhere in the window that owns it |
+| `Qt::ApplicationShortcut` | from any window, including ones that do not own it |
+
+Getting the narrow ones wrong in the other direction would give the
+terminal a binding the desktop does not answer, which is worse than
+missing one: it changes what your program does rather than what it
+offers. A shortcut on a **menu's** action fires with the menu closed, as
+it does on the desktop -- worth stating because a `QMenu` is a top-level
+window of its own here, and "is this action in the current window" is not
+the obvious question it looks like.
+
+**With more than one window, the context is what decides where a key
+lands.** A `WindowShortcut` in the window you are not in stays quiet --
+that is the point of it -- so if you want a binding to work everywhere,
+say `Qt::ApplicationShortcut` and it will.
 
 The `Alt` rows are qtty's because a terminal delivers keys as bytes and
 nothing here ever reaches Qt's shortcut map -- it gates on the window

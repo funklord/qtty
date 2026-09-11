@@ -388,6 +388,81 @@ static QVector<QWidget *> other_windows(const QWidget *scope) {
 	return out;
 }
 
+// Does a shortcut with this context apply right now?
+//
+// QAction::shortcutContext() was ignored entirely: the action arm collected
+// everything in the scope and fired whatever matched, so an action asking for
+// Qt::WidgetShortcut answered while its widget was not focused -- a key the
+// desktop would have left alone, which is the direction that changes what an
+// application does rather than merely failing to. The QShortcut arm honoured
+// context from the day it was written, and the two arms disagreeing is the
+// kind of gap nobody meets until their own binding misbehaves.
+//
+// THE WINDOW CASE IS THE ONE WITH A TRAP IN IT, and the first version of this
+// fell in. A QMenu is a top-level widget carrying Qt::Popup, so "is it in this
+// window" cannot be asked as w->window() == scope -- the answer is the menu
+// itself -- AND IT CANNOT BE ASKED WITH QWidget::isAncestorOf() EITHER, which
+// is what this tried first. Qt's implementation refuses at a window boundary:
+//
+//     while (child) { if (child == this) return true;
+//                     if (child->isWindow()) return false;
+//                     child = child->parentWidget(); }
+//
+// A popup is a window, so it returns false on the first step and every menu
+// action's shortcut in every application stops working. The check written for
+// this case caught it on the first run, which is the only reason the wrong
+// version never left the tree: nothing here had ever bound a shortcut to a
+// menu action, so the whole behaviour rested on a path with no assertion over
+// it.
+//
+// So walk parentWidget() and do not stop at windows. That is the chain Qt
+// itself uses to decide where a popup belongs.
+static bool context_applies(Qt::ShortcutContext ctx, const QWidget *owner,
+                            const QWidget *scope, const QWidget *fw) {
+	switch (ctx) {
+	case Qt::ApplicationShortcut:
+		return true;
+	case Qt::WidgetShortcut:
+		return owner && owner == fw;
+	case Qt::WidgetWithChildrenShortcut:
+		return owner && fw && (owner == fw || owner->isAncestorOf(fw));
+	case Qt::WindowShortcut:
+	default:
+		if (!owner || !scope) return false;
+		for (const QWidget *w = owner; w; w = w->parentWidget())
+			if (w == scope) return true;
+		return false;
+	}
+}
+
+// The widgets an action belongs to, for the purpose above: the ones it was
+// added to, and its parent if it was added to nothing. Qt matches a
+// widget-context shortcut against any of them, so this answers as a list
+// rather than picking one.
+static QVector<const QWidget *> owners_of(const QAction *a) {
+	QVector<const QWidget *> out;
+	const auto associated = a->associatedObjects();
+	for (QObject *o : associated)
+		if (auto *w = qobject_cast<QWidget *>(o)) out.append(w);
+	if (out.isEmpty())
+		if (auto *p = qobject_cast<QWidget *>(a->parent())) out.append(p);
+	return out;
+}
+
+static bool action_context_applies(const QAction *a, const QWidget *scope,
+                                   const QWidget *fw) {
+	const Qt::ShortcutContext ctx = a->shortcutContext();
+	if (ctx == Qt::ApplicationShortcut) return true;
+	const QVector<const QWidget *> owners = owners_of(a);
+	// An action belonging to no widget at all is left alone rather than
+	// refused: there is nothing to scope it by, and refusing would silently
+	// disable a binding that works today.
+	if (owners.isEmpty()) return true;
+	for (const QWidget *w : owners)
+		if (context_applies(ctx, w, scope, fw)) return true;
+	return false;
+}
+
 static QAction *app_action_for(const QKeySequence &pressed,
                               const QWidget *scope) {
 	for (QWidget *w : other_windows(scope)) {
@@ -462,6 +537,7 @@ bool InputRouter::match_shortcut(const KeyEvent &k) {
 	const bool popup_owns_input = !popups().isEmpty();
 	for (QAction *a : std::as_const(actions)) {
 		if (!a->isEnabled()) continue;
+		if (!action_context_applies(a, scope, focusWidget())) continue;
 		const auto shortcuts = a->shortcuts();
 		for (const QKeySequence &s : shortcuts)
 			if (!s.isEmpty() && s == pressed) {

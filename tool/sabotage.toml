@@ -1170,3 +1170,27 @@ find = "\t\tif (popup_owns_input) return true;       // swallowed (application)"
 into = "\t\tif (false) return true;       // swallowed (application)"
 count = 1
 check = "an application-context shortcut is swallowed behind an open menu"
+
+[[sabotage]]
+# The action arm ignoring the context an action asked for, which is where
+# it stood until 8.111: anything in the scope whose sequence matched
+# fired, so a WidgetShortcut answered from a widget that was not focused.
+name = "an action's shortcut context is ignored again"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (!action_context_applies(a, scope, focusWidget())) continue;"
+into = "\t\tif (false) continue;"
+count = 1
+check = "an action asking for WidgetShortcut fires only while its own widget"
+
+[[sabotage]]
+# Stop the window-scope walk at a window boundary, which is what
+# QWidget::isAncestorOf() does and what the first version of this used. A
+# QMenu is a popup and therefore a window, so every menu action's shortcut
+# stops working -- and the check for it was written before the code, which
+# is the only reason the wrong version never shipped.
+name = "the window-scope walk stops at a popup boundary"
+file = "src/runtime/input_router.cpp"
+find = "\t\tfor (const QWidget *w = owner; w; w = w->parentWidget())\n\t\t\tif (w == scope) return true;"
+into = "\t\tfor (const QWidget *w = owner; w; w = w->parentWidget()) {\n\t\t\tif (w == scope) return true;\n\t\t\tif (w->isWindow()) return false;\n\t\t}"
+count = 1
+check = "a shortcut on a menu's action fires with the menu closed"

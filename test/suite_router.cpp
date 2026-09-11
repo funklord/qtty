@@ -56,6 +56,48 @@ int suite_router() {
 	router.on_key({Qt::Key_S, QString(), true, false, false});
 	CHECK(fired == 1, "router resolves Ctrl+S to QAction (F3)");
 
+	// A MENU's action, which is the case the context rule could break and
+	// which nothing here had ever asserted -- the three setShortcut fixtures
+	// in this suite were all on a window or a plain widget. A QMenu is a
+	// top-level widget carrying Qt::Popup, so asking "is this action's widget
+	// in the current window" as w->window() == scope answers with the menu
+	// itself and refuses every menu shortcut in every application. What holds
+	// is the parent chain, and this is what says so.
+	int printed = 0;
+	QMenu *file_menu = new QMenu(QStringLiteral("&File"), &win);
+	QAction *print_it = file_menu->addAction(QStringLiteral("&Print"));
+	print_it->setShortcut(QKeySequence(QStringLiteral("Ctrl+P")));
+	QObject::connect(print_it, &QAction::triggered, [&] { ++printed; });
+	router.on_key({Qt::Key_P, QString(), true, false, false});
+	QCoreApplication::processEvents();
+	CHECK(printed == 1,
+	      "a shortcut on a menu's action fires with the menu closed, the menu "
+	      "being a popup top-level whose window is itself");
+
+	// And the context an action asks for is honoured, which it was not: the
+	// action arm fired anything in the scope whose sequence matched, so an
+	// action asking for Qt::WidgetShortcut answered while its widget was not
+	// focused -- a key the desktop leaves alone. The QShortcut arm had
+	// honoured context from the day it was written and the two disagreed.
+	int narrow = 0;
+	QAction *only_here = new QAction(QStringLiteral("Narrow"), edit);
+	only_here->setShortcut(QKeySequence(QStringLiteral("Ctrl+N")));
+	only_here->setShortcutContext(Qt::WidgetShortcut);
+	edit->addAction(only_here);
+	QObject::connect(only_here, &QAction::triggered, [&] { ++narrow; });
+	btn->setFocus(Qt::OtherFocusReason);
+	set_focus_widget(win.focusWidget());
+	router.on_key({Qt::Key_N, QString(), true, false, false});
+	QCoreApplication::processEvents();
+	const int while_away = narrow;
+	edit->setFocus(Qt::OtherFocusReason);
+	set_focus_widget(win.focusWidget());
+	router.on_key({Qt::Key_N, QString(), true, false, false});
+	QCoreApplication::processEvents();
+	CHECK(while_away == 0 && narrow == 1,
+	      "an action asking for WidgetShortcut fires only while its own "
+	      "widget has focus, as the desktop has it");
+
 	// typing reaches the focus widget
 	edit->setFocus(Qt::OtherFocusReason);
 	QCoreApplication::processEvents();
