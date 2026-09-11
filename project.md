@@ -15919,6 +15919,57 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.116 Fourteen watchers that could not exit (2026-09-11)
+
+Not a defect in qtty. A defect in how this session waited for qtty's own
+gates, found by asking what was still running before clearing the session,
+and recorded because the mechanism is one `running-code.md` does not state.
+
+**Fourteen abandoned `until ... sleep` shells, the oldest alive 2h53m**,
+each cycling a `pgrep` every 20 to 40 seconds. They were written to wait for
+a sabotage run to release the tree -- the lesson of 8.110, applied by
+writing a watcher instead of by waiting for the notification that was coming
+anyway.
+
+**Why none of them could ever exit, which is the part worth keeping.** Two
+spellings were in use and they kept each other alive:
+
+    until ! pgrep -f 'tool/sabotage.py' ...    the pattern is in the
+                                               watcher's OWN argv, so
+                                               pgrep always finds it
+    until ! pgrep -f 'sabotage[.]py' ...       the bracket avoids self-match
+                                               -- and matches the OTHER
+                                               watchers' argv, which carry
+                                               the literal tool/sabotage.py
+
+So the careful spelling was kept alive by the careless one. Neither could
+finish while the other existed, and each new wait added another member to
+the set. `running-code.md` records the self-match and the 38 found on this
+machine once; **the cross-match between two spellings of the same guard is
+not in it**, and it is what turns a self-limiting mistake into one that
+accumulates.
+
+**The same fault three more times in one day, twice destructively.** Two
+`pkill -f` calls matched their own command line and killed the shell running
+them -- exit 144, with the "started" message never printed -- and the sweep
+written to CLEAN UP the watchers matched its own argv and killed itself,
+which is the failure inside its own remedy.
+
+What to do instead, in order of preference:
+
+- **Do not write a watcher.** The harness notifies when a background task
+  ends, and every one of these was duplicating a notification already on its
+  way.
+- **Watch a pid, not a pattern**: `while [ -d /proc/$PID ]; do sleep 20;
+  done` has nothing to match.
+- **Exclude self** only where neither of those is available -- and remember
+  that excluding *self* does not exclude the next watcher.
+
+Nothing was lost: they only slept, the tree was clean, and no build was
+disturbed. The cost was the turns spent polling files that a notification
+would have delivered, and a machine carrying fourteen processes that could
+not stop.
+
 ### 8.115 Section 7's policy ran on the wrong window (2026-09-11)
 
 The 8.107 shape, one layer down and in the renderer. `compose()` ran
