@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1213 checks, 0 failures. `make check` is green and includes
+1217 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15918,6 +15918,110 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.110 A fixture that outlived the counter it wrote into (2026-09-11)
+
+8.109's second sabotage -- widen the cross-window search so it ignores the
+shortcut's context -- did not redden its check. It **segfaulted the
+suite**, and the backtrace said nothing useful: a posted event delivered
+inside `InputRouter::on_key`, three frames of Qt, and no qtty code below
+the router at all.
+
+The cause is in the fixtures, not the library, and it is a trap rather
+than an oversight. **Five `QShortcut`s in `suite_router.cpp` were parented
+to the long-lived `win` while their `[&]` lambdas captured counters local
+to a block that exits.** Each one stays alive and connected for the rest
+of the run, so anything that makes it fire later increments a dead stack
+slot. Two of the five were written this morning, by me.
+
+And the chord mattered as much as the lifetime. My new
+application-context check used **Ctrl+G**, which the WidgetShortcut block
+above already binds -- so the widened search found *that* shortcut first,
+which is both the dangling one and the wrong one. The sabotage's verdict
+would have been a fact about fixture order rather than about context. The
+new checks use Ctrl+Y and Ctrl+K, chords nothing else in the suite binds.
+
+**The fix is the confirming experiment**, which is why it is recorded as
+one rather than as a tidy-up: each shortcut is deleted with the counter it
+reports into, and the same sabotage then reddens the check it names. A
+crash replaced by the intended red line is what turns "probably the
+lambdas" into a measurement.
+
+Two things worth carrying:
+
+- **A sabotage that crashes is not a sabotage that failed.** The harness
+  said the suite was cut off before the named check -- which was true, and
+  which 8.107's wording change is what made legible. Reading the crash
+  rather than the entry is what found it.
+- **The verdict line is not the end of the run.** The harness restores the
+  file and rebuilds to the real source *after* printing its verdict, so a
+  `make check` started on the strength of that line linked against an
+  archive mid-update: every `InputRouter` symbol undefined, which reads
+  exactly like a broken tree. Third concurrency error of the day in this
+  tree, and the rule that covers all three is to wait for the process
+  rather than for the line.
+- **A fixture whose lifetime exceeds what it writes to is a defect in the
+  suite even while every check passes**, because it is armed for whoever
+  next broadens the matching it sits behind. Nothing would have found this
+  except deliberately breaking that matching.
+
+### 8.109 The shortcut 8.107 quietly took away (2026-09-11)
+
+Reading `match_shortcut()` after the window-switch fix, for the same
+reason 8.108 was written: what else does the current window decide? It
+scopes its whole search to `input_scope()`, which **8.107 changed** from
+"always the primary window" to "the current one". That is right for
+`Qt::WindowShortcut` and for the two widget contexts. It is wrong for
+`Qt::ApplicationShortcut`, whose entire meaning is that it does not care
+where you are -- and that context now could not fire at all from a window
+that does not own it.
+
+**A regression of mine, made the same day, and not a pre-existing gap.**
+Before 8.107 an application-context shortcut parented to the primary
+window fired from anywhere, because every key went to the primary window
+whichever one was drawn. That was the defect rather than the feature, so
+the behaviour was right by accident and nothing here had ever asked the
+question: `shortcutContext` and `ApplicationShortcut` appeared **nowhere**
+in `src/`, `test/`, `include/` or `doc/`.
+
+Both arms reach out of the scope now -- `app_action_for()` and
+`app_shortcut_for()` over the other visible top-levels -- and
+**deliberately only for that one context**. A search that reached out for
+everything would fire a window-context shortcut from a window that does
+not own it, which is the mistake this fix is one line away from, so the
+pair is asserted: the application context fires from elsewhere, the window
+context in the same window stays quiet, and it answers again once its own
+window is current.
+
+Three things the checks cost, all of them mine rather than the library's:
+
+- **The block's router was not the one the switch tells.** The section's
+  `InputRouter r(&win)` has no compositor of its own, so
+  `set_current_window()` notified the router paired with an outer
+  compositor and `r` never heard. The two context checks failed exactly as
+  the defect would have -- a test bug wearing the defect's clothes -- and
+  the fix is a `Compositor local(&win, &r)` in the block.
+- **A left-over window shifted four later checks.** The second window
+  stayed in the registry after being hidden, so a strip appeared in row 0
+  and every later click was off by a row: four failures about drags and
+  context menus, none about shortcuts. `~Compositor` clearing the strip is
+  what makes the block self-contained.
+- **My new arm made an existing sabotage anchor ambiguous.** The two
+  swallow lines were textually identical, so an entry that had matched one
+  line matched two and stopped being applicable. Uniqueness is a property
+  of the file at the moment of the edit; the comments differ now.
+
+Four sabotage entries, including one for the new arm's `popup_owns_input`
+return, which is the branch that says NO and would otherwise have been the
+one shortcut path nothing asked about.
+
+**Still open, and pre-existing: the action arm ignores
+`QAction::shortcutContext()` entirely.** It collects every action in the
+scope and fires any whose sequence matches, so an action asking for
+`Qt::WidgetShortcut` fires while its widget is not focused -- the
+`QShortcut` arm honours context and the two disagree. The default is
+`WindowShortcut`, which scope-limiting already implements, so what is
+wrong is exactly the explicitly-narrowed action. Next.
 
 ### 8.108 What else activation carries: the terminal's own name (2026-09-11)
 

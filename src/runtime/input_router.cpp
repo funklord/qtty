@@ -362,6 +362,62 @@ static Qt::KeyboardModifiers qt_modifiers(bool ctrl, bool alt, bool shift) {
 	return mods;
 }
 
+// Emit QShortcut::activated().
+//
+// invokeMethod because activated() is a signal and a signal cannot be emitted
+// from outside its class. The meta-object system can, which is the one
+// supported way to do this; the return value is read rather than discarded,
+// since a rename upstream would otherwise fail silently and leave every
+// shortcut dead again for a new reason.
+static bool fire(QShortcut *sc) {
+	const bool sent = QMetaObject::invokeMethod(sc, "activated");
+	Q_ASSERT_X(sent, "match_shortcut", "QShortcut::activated missing");
+	return sent;
+}
+
+// The windows an application-context shortcut may be found in: every visible
+// top-level except the scope, which has already been searched, and except the
+// popups, whose keys the caller has already decided about.
+static QVector<QWidget *> other_windows(const QWidget *scope) {
+	QVector<QWidget *> out;
+	for (QWidget *w : QApplication::topLevelWidgets()) {
+		if (w == scope || !w->isVisible()) continue;
+		if (InputRouter::is_popup_layer(w)) continue;
+		out.append(w);
+	}
+	return out;
+}
+
+static QAction *app_action_for(const QKeySequence &pressed,
+                              const QWidget *scope) {
+	for (QWidget *w : other_windows(scope)) {
+		QList<QAction *> actions = w->actions();
+		const auto children = w->findChildren<QWidget *>();
+		for (QWidget *c : children) actions += c->actions();
+		for (QAction *a : std::as_const(actions)) {
+			if (!a->isEnabled()) continue;
+			if (a->shortcutContext() != Qt::ApplicationShortcut) continue;
+			const auto shortcuts = a->shortcuts();
+			for (const QKeySequence &s : shortcuts)
+				if (!s.isEmpty() && s == pressed) return a;
+		}
+	}
+	return nullptr;
+}
+
+static QShortcut *app_shortcut_for(const QKeySequence &pressed,
+                                   const QWidget *scope) {
+	for (QWidget *w : other_windows(scope)) {
+		const auto owned = w->findChildren<QShortcut *>();
+		for (QShortcut *sc : owned) {
+			if (!sc->isEnabled() || sc->key().isEmpty()) continue;
+			if (sc->context() != Qt::ApplicationShortcut) continue;
+			if (sc->key() == pressed) return sc;
+		}
+	}
+	return nullptr;
+}
+
 bool InputRouter::match_shortcut(const KeyEvent &k) {
 	if (!k.qt_key || k.qt_key == Qt::Key_unknown) return false;
 	const Qt::KeyboardModifiers mods = qt_modifiers(k.ctrl, k.alt, k.shift);
@@ -415,6 +471,25 @@ bool InputRouter::match_shortcut(const KeyEvent &k) {
 			}
 	}
 
+	// Qt::ApplicationShortcut, which by definition does not care which window
+	// you are in -- so the scope above cannot find it, and the scope is now
+	// the CURRENT window rather than always the primary one. That change
+	// (8.107) is what made this reachable: before it, an application-wide
+	// shortcut parented to the primary window fired from anywhere because
+	// every key went to the primary window, which was the defect rather than
+	// the feature. Correct for the window and widget contexts, wrong for this
+	// one, and nothing said so -- `shortcutContext` and `ApplicationShortcut`
+	// appeared nowhere in this tree.
+	//
+	// Deliberately narrow: only the application context reaches out of the
+	// scope. A window-context shortcut in another window must NOT fire, which
+	// is the half a broader search would break, and there is a check for each.
+	if (QAction *a = app_action_for(pressed, scope)) {
+		if (popup_owns_input) return true;           // swallowed, not fired
+		a->trigger();
+		return true;
+	}
+
 	// QShortcut, which is NOT a QAction and was therefore invisible to
 	// everything above. An application writing the commonest Qt idiom there
 	// is --
@@ -453,9 +528,18 @@ bool InputRouter::match_shortcut(const KeyEvent &k) {
 				continue;
 		}
 		if (popup_owns_input) return true;       // swallowed, not fired
-		const bool sent = QMetaObject::invokeMethod(sc, "activated");
-		Q_ASSERT_X(sent, "match_shortcut", "QShortcut::activated missing");
-		return sent;
+		return fire(sc);
+	}
+
+	// The same reach for a QShortcut, and for the same reason.
+	if (QShortcut *sc = app_shortcut_for(pressed, scope)) {
+		// Swallowed behind a menu exactly as the others are. The comment
+		// differs from its twin above deliberately: the two arms were
+		// textually identical, which made an existing sabotage anchor match
+		// twice and stop being applicable -- uniqueness is a property of the
+		// file at the moment of the edit, not of the string.
+		if (popup_owns_input) return true;       // swallowed (application)
+		return fire(sc);
 	}
 	return false;
 }

@@ -1039,8 +1039,8 @@ check = "a QShortcut fires, which is the commonest way"
 # is a key the desktop would not have answered.
 name = "a QShortcut fires from behind an open menu"
 file = "src/runtime/input_router.cpp"
-find = "\t\tif (popup_owns_input) return true;       // swallowed, not fired\n\t\tconst bool sent"
-into = "\t\tconst bool sent"
+find = "\t\tif (popup_owns_input) return true;       // swallowed, not fired\n\t\treturn fire(sc);"
+into = "\t\treturn fire(sc);"
 count = 1
 check = "a QShortcut does not fire from behind an open menu"
 
@@ -1136,3 +1136,37 @@ find = "\tTitleKeeper::follow(w);"
 into = "\tif (false) TitleKeeper::follow(w);"
 count = 1
 check = "the terminal takes its title from the window switched to"
+
+[[sabotage]]
+# No reach out of the scope at all, which is where 8.107 left this: an
+# application-context shortcut belonging to another window cannot fire,
+# because input_scope() answers the current window now. 8.109.
+name = "an application-context shortcut cannot be found in another window"
+file = "src/runtime/input_router.cpp"
+find = "\tif (QShortcut *sc = app_shortcut_for(pressed, scope)) {"
+into = "\tif (QShortcut *sc = nullptr) {"
+count = 1
+check = "an application-context shortcut fires from a window that does not own it"
+
+[[sabotage]]
+# Reach out of the scope for EVERY context rather than the one that asks
+# for it. A window-context shortcut then fires from a window that does not
+# own it, which is the mistake a broader search makes and which the
+# obvious check cannot see.
+name = "the cross-window search ignores the shortcut's context"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\tif (sc->context() != Qt::ApplicationShortcut) continue;"
+into = "\t\t\tif (false) continue;"
+count = 1
+check = "while a window-context shortcut in the window you left stays quiet"
+
+[[sabotage]]
+# The cross-window arm firing from behind an open menu. Every other
+# shortcut path swallows the chord there; this one was added later and
+# would have been the one exception nothing asked about.
+name = "an application-context shortcut fires from behind a menu"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (popup_owns_input) return true;       // swallowed (application)"
+into = "\t\tif (false) return true;       // swallowed (application)"
+count = 1
+check = "an application-context shortcut is swallowed behind an open menu"

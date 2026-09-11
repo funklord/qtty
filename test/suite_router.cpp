@@ -2459,6 +2459,16 @@ int suite_router() {
 			CHECK(fired == 1,
 			      "a QShortcut fires, which is the commonest way a Qt "
 			      "application binds a key and did nothing here at all");
+			// EVERY SHORTCUT IN THIS SECTION IS DELETED WITH THE COUNTER IT
+			// WRITES TO, and they were not. Parented to `win`, they outlived
+			// the blocks their `[&]` lambdas capture, so anything that made
+			// them fire later wrote to a dead stack frame. That is not
+			// theoretical: a sabotage widening the cross-window search
+			// segfaulted the suite -- the backtrace was a posted event
+			// delivered inside on_key, a long way from the cause -- and the
+			// check it was written for could not be defended at all until
+			// this was fixed. A fixture that outlives what it reports into is
+			// a trap for whoever next broadens shortcut matching.
 
 			sc->setEnabled(false);
 			r.on_key({Qt::Key_S, QStringLiteral("s"), true, false, false});
@@ -2493,6 +2503,8 @@ int suite_router() {
 			      "a WidgetShortcut fires only while its own widget has "
 			      "focus, so the terminal does not answer a key the desktop "
 			      "would leave alone");
+			delete sc;                    // see the note above: with its
+			delete wsc;                   // counter, not with the window
 		}
 
 		// AND A SHORTCUT DOES NOT FIRE FROM BEHIND AN OPEN MENU, which
@@ -2525,6 +2537,110 @@ int suite_router() {
 			CHECK(behind == 1,
 			      "and fires once the menu is gone, so the swallow is the "
 			      "menu's doing rather than the shortcut being broken");
+			delete bsc;
+		}
+
+		// CONTEXT ACROSS WINDOWS, which 8.107 made reachable and broke in
+		// the same stroke. input_scope() answers the CURRENT window now, so
+		// a shortcut belonging to another window is out of the search -- and
+		// that is right for Qt::WindowShortcut and wrong for
+		// Qt::ApplicationShortcut, whose whole meaning is that it does not
+		// care where you are. Before 8.107 an application-context shortcut
+		// parented to the primary window fired from anywhere because every
+		// key went to the primary window, which was the defect and not the
+		// feature, so nothing here had ever asked the question.
+		{
+			// A compositor of its own, paired with THIS router. The switch
+			// tells the router that the live compositor was built with, and
+			// the one in this section is paired with another -- so without
+			// this the current window moved and `r` never heard, which is
+			// the very defect under test wearing a test bug's clothes.
+			// Measured: the two context checks below failed that way first.
+			//
+			// It also takes the tab strip down with it (~Compositor), which
+			// keeps `elsewhere` out of the registry for the sections after
+			// this one. Left in, it put a strip in row 0 and shifted every
+			// later click by a row -- four failures, none of them about
+			// shortcuts.
+			Compositor local(&win, &r);
+			int app_fired = 0, win_fired = 0;
+			// Ctrl+Y and Ctrl+K, chords no other block in this suite
+			// binds. Ctrl+G was used first and is the WidgetShortcut of the
+			// block above: a cross-window search widened by sabotage found
+			// that one instead of this one, which made the sabotage's
+			// verdict a fact about fixture order rather than about context.
+			auto *asc = new QShortcut(
+			    QKeySequence(QStringLiteral("Ctrl+Y")), &win);
+			asc->setContext(Qt::ApplicationShortcut);
+			QObject::connect(asc, &QShortcut::activated,
+			                 [&] { ++app_fired; });
+			// The control for the other direction, in the SAME window, so
+			// the pair differs only in context. A search that reached out of
+			// the scope for everything would fire this one too, and a
+			// reader cannot tell those two mistakes apart from one check.
+			auto *wsc2 = new QShortcut(
+			    QKeySequence(QStringLiteral("Ctrl+K")), &win);
+			wsc2->setContext(Qt::WindowShortcut);
+			QObject::connect(wsc2, &QShortcut::activated,
+			                 [&] { ++win_fired; });
+
+			QWidget elsewhere;
+			elsewhere.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *ev = new QVBoxLayout(&elsewhere);
+			ev->addWidget(new QLineEdit(&elsewhere));
+			elsewhere.resize(GridMetrics::cells(20, 2));
+			elsewhere.show();
+			QCoreApplication::processEvents();
+			{
+				CellBuffer reg(40, 16);
+				local.compose(reg);
+			}
+			Qtty::set_current_window(&elsewhere);
+			r.on_key({Qt::Key_Y, QStringLiteral("y"), true, false, false});
+			r.on_key({Qt::Key_K, QStringLiteral("k"), true, false, false});
+			QCoreApplication::processEvents();
+			CHECK(Qtty::current_window() == &elsewhere && app_fired == 1,
+			      "an application-context shortcut fires from a window that "
+			      "does not own it");
+			CHECK(win_fired == 0,
+			      "while a window-context shortcut in the window you left "
+			      "stays quiet");
+
+			// And back, where the window context is the one that applies.
+			Qtty::set_current_window(&win);
+			r.on_key({Qt::Key_K, QStringLiteral("k"), true, false, false});
+			QCoreApplication::processEvents();
+			CHECK(win_fired == 1,
+			      "and answers again once its own window is current, so the "
+			      "silence was the context and not a dead shortcut");
+			// The arm that says NO. An application-context shortcut is
+			// swallowed behind an open menu like every other, and the menu
+			// has to be opened in the CURRENT window to ask the question at
+			// all -- switching windows dismisses the one the old window had
+			// (8.107), so a menu opened before the switch is gone by now.
+			Qtty::set_current_window(&elsewhere);
+			{
+				QMenu over(&elsewhere);
+				over.addAction(QStringLiteral("Item"));
+				over.popup(QPoint(0, 0));
+				QCoreApplication::processEvents();
+				const bool up = !r.popups().isEmpty();
+				const int before_menu = app_fired;
+				r.on_key({Qt::Key_Y, QStringLiteral("y"), true, false,
+				          false});
+				QCoreApplication::processEvents();
+				CHECK(up && app_fired == before_menu,
+				      "and an application-context shortcut is swallowed "
+				      "behind an open menu like any other");
+				over.close();
+				QCoreApplication::processEvents();
+			}
+
+			Qtty::set_current_window(&win);
+			delete asc;
+			delete wsc2;
+			elsewhere.hide();
+			QCoreApplication::processEvents();
 		}
 
 		// What an application SHOWS. A terminal user cannot find a binding
