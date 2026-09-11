@@ -230,6 +230,15 @@ A text field keeps its own `Enter`, a list keeps its own arrows, an
 application that already uses `F6` keeps `F6`. So turning them on cannot
 take a key away from a control that wanted it.
 
+**"Ignored the key" is per keystroke, not per widget, and that is the
+part a user feels.** A list keeps its arrows while it has somewhere to
+go; at its first item `Up` is one it does not want, so focus leaves for
+the control above. Measured: three `Down`s put the current item two rows
+in and `Up` moves it back within the list, while `Up` at the top returns
+focus to the field. So the arrows walk *inside* a control until it runs
+out and then *between* controls -- which is how a person expects to get
+out of a list without reaching for `Tab`.
+
 It is off by default because this library's promise is that an unmodified
 application renders faithfully, and one that has bound `Enter` or `Down`
 itself must keep them. If you are writing for a terminal, turn it on: it

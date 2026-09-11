@@ -15919,6 +15919,33 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.105 The conventions verified through the tool, and a half-truth in the guide (2026-09-11)
+
+With `conventions on` available, 8.66's opt-in behaviour was driven the
+way an application's user would drive it, rather than through checks
+written beside the code.
+
+It is right, and precisely right at the boundary:
+
+    conventions on, down          focus leaves the field for the list
+    down, down                    the list's own current item moves
+    up (item two rows in)         moves back WITHIN the list
+    up (at the first item)        focus returns to the field
+
+So arrows walk inside a control while it has somewhere to go and between
+controls when it does not.
+
+**The guide said something slightly weaker and it matters.** *"A list
+keeps its own arrows"* is true per widget and the rule is per keystroke:
+a list keeps them **while it has somewhere to go**, and at its first item
+`Up` is a key it does not want. The difference is exactly the case a
+person cares about -- **how do I get out of this list?** -- and the
+weaker sentence implies the answer is `Tab`, which is one more key than
+they need.
+
+Nothing in the library changed. The guide now states the boundary and
+cites the measurement.
+
 ### 8.104 The tool could not turn on the behaviour it reports on (2026-09-11)
 
 The last gap of the family. The terminal key habits are **opt-in**, so an
