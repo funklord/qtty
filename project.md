@@ -15935,6 +15935,24 @@ It is right, and precisely right at the boundary:
 So arrows walk inside a control while it has somewhere to go and between
 controls when it does not.
 
+**A tension between the guide and its own example, resolved toward the
+guide gaining a sentence.** Practice 1 says *every field a labelled
+buddy*, and `example/chat` gives its input a placeholder instead --
+deliberately, since a label costs a whole terminal row for a single field
+that `Tab` reaches at once.
+
+Both are right, and the practice was stating a rule where it meant a
+trade. **The buddy is worth a row when the mnemonic is**: a label exists
+to carry a letter somebody can jump to, so a form with several fields
+wants labels, and a lone input is better served by a placeholder naming
+it. The guide says so now, cites the example as the case, and keeps its
+force where it belongs -- *count the keystrokes you are saving before you
+spend the row.*
+
+**The alternative was editing the example to obey the rule**, which would
+have cost a row of a fourteen-row demo to satisfy a sentence rather than a
+user. The rule was the thing that was wrong.
+
 **Menu mnemonics were verified the same way and work**: with "hi" typed,
 `key menu` then a bare `u` fires Undo and closes the menu -- the frame
 comes back showing the placeholder, so the text was undone and the popup

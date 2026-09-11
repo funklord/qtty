@@ -270,6 +270,14 @@ This is the single highest-value thing in this document. A mnemonic turns
 "tab past four fields" into one keystroke, and it is the only way to reach
 a control *directly*. It costs one character.
 
+**The buddy is worth a row when the mnemonic is**, and not otherwise. A
+label exists here to carry a letter you can jump to; on a terminal it also
+costs a whole row, which is a real price on twenty-four of them. So a form
+with several fields wants labels and mnemonics, and a single input that
+`Tab` reaches immediately is better served by a placeholder naming it --
+which is what `example/chat` does, and why it does not contradict this
+page. **Count the keystrokes you are saving before you spend the row.**
+
 **2. Give every dialog a default button.**
 
     buttons->button(QDialogButtonBox::Ok)->setDefault(true);
