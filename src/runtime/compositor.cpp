@@ -8,6 +8,7 @@
 #include "qtty/application.h"
 #include "qtty/graphics.h"
 #include "qtty/overlay.h"
+#include "title_keeper.h"
 #include <QtWidgets>
 
 namespace Qtty {
@@ -363,6 +364,9 @@ static void enter_window(QWidget *w)
 	// Keys follow the picture. Without this the router kept the window it was
 	// constructed with and a switch moved only what is drawn.
 	if (!g_switch_routers.isEmpty()) g_switch_routers.last()->set_input_window(w);
+	// And so does what the terminal calls itself, which is the window
+	// manager's job on a desktop and nobody's here.
+	TitleKeeper::follow(w);
 	// Qtty::focusWidget() is what the application, the tests and the cursor
 	// placement read, and it is set by the router after each key. A switch is
 	// not a key, so nothing would have updated it and the accessor would name

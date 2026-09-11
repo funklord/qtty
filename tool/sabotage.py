@@ -373,7 +373,7 @@ def main():
 					    " stops, then re-run.")
 				rc = 1
 			else:
-				say("  FAILED: the suite did not report the named check.")
+				say("  FAILED: the named check PASSED against broken code.")
 				say("          check: %s" % check)
 				say("          The code was broken and nothing noticed, which"
 				    " is the")

@@ -352,16 +352,18 @@ The strip takes the top row and everything below moves down by one, so a
 layout that exactly filled the terminal loses its last row the moment a
 second window opens. With one window there is no strip and no cost.
 
-**The switch carries input, the open menu and the focus with it, and none
-of that was free.** `Qtty::set_current_window()`, `next_window()` and
-`previous_window()` move where keys go as well as what is drawn; they
-dismiss a menu the window being left had open; and they give a window
-that has never had focus its first tab stop. Those are the three things a
-desktop gets from window *activation*, which never happens here -- so
-each had to be done by hand, and each was missing at one point. Nothing
-is asked of you except that you move windows with these functions: a
-window made current by any other route leaves input in the window the
-user can no longer see.
+**The switch carries input, focus, the open menu and the terminal's title
+with it, and none of that was free.** `Qtty::set_current_window()`,
+`next_window()` and `previous_window()` move where keys go as well as
+what is drawn; they give a window that has never had focus its first tab
+stop; they dismiss a menu the window being left had open; and the
+terminal takes its title from the window you arrive in, so a tabbed
+terminal names the window you are actually looking at. Those are four
+things a desktop gets from window *activation*, which never happens here
+-- so each had to be done by hand, and each was missing at one point.
+Nothing is asked of you except that you move windows with these
+functions: a window made current by any other route leaves input in the
+window the user can no longer see.
 
 **7. Do not depend on hover or tooltips.** Information a user needs must
 be visible or reachable by key.

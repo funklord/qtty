@@ -1881,6 +1881,77 @@ int suite_runtime() {
 			QCoreApplication::processEvents();
 			CHECK(b.title_count() == before,
 			      "and nothing else the window does sends a title");
+
+			// The window you are IN, which a terminal has one title for
+			// and a window manager would take from the active window.
+			// Measured before the keeper learned to follow: switching to
+			// the second window left the terminal saying
+			// "Editor -- notes.txt", so a tabbed terminal named the window
+			// nobody was looking at.
+			QWidget two;
+			two.setWindowTitle(QStringLiteral("Log -- live"));
+			two.setAttribute(Qt::WA_DontShowOnScreen);
+			two.resize(GridMetrics::cells(10, 2));
+			two.show();
+			QCoreApplication::processEvents();
+			Qtty::set_current_window(&two);
+			QCoreApplication::processEvents();
+			CHECK(b.last_title() == QStringLiteral("Log -- live"),
+			      "the terminal takes its title from the window switched to");
+
+			// And keeps taking it from there. A rename of the window you are
+			// in is the ordinary case -- an editor opening a file -- and it
+			// arrives through a filter that has to have MOVED to reach it.
+			two.setWindowTitle(QStringLiteral("Log -- rotated"));
+			QCoreApplication::processEvents();
+			CHECK(b.last_title() == QStringLiteral("Log -- rotated"),
+			      "and from that window's later renames");
+
+			// The other half: the window left behind renames itself and the
+			// terminal says nothing. A keeper that answered to any window's
+			// rename would pass the two checks above and fail this one.
+			//
+			// NO SINGLE-LINE SABOTAGE REDDENS THIS ONE, and that is worth
+			// knowing rather than discovering. Two mechanisms hold it and
+			// either alone is enough: the filter MOVES off the old window,
+			// so its rename never reaches the filter, and the filter's
+			// GUARD rejects an event from anything but the window being
+			// followed. Both were sabotaged separately and this check
+			// stayed green both times; breaking the pair together fails it,
+			// measured. So it has no entry in sabotage.toml -- an entry
+			// that cannot redden its check is worse than none, because it
+			// reads as cover.
+			//
+			// evidence.md names the shape: a guard shipped as two
+			// conditions each independently saving the reported case, where
+			// each one's sabotage stays green because the other covers it.
+			const int before_quiet = b.title_count();
+			win.setWindowTitle(QStringLiteral("Editor -- other.txt"));
+			QCoreApplication::processEvents();
+			CHECK(b.title_count() == before_quiet
+			      && b.last_title() == QStringLiteral("Log -- rotated"),
+			      "while the window left behind renames itself unheard");
+
+			// Two windows with one name -- a document open twice -- is a
+			// switch that changes nothing, and nothing is what should go on
+			// the wire.
+			QWidget same;
+			same.setWindowTitle(QStringLiteral("Log -- rotated"));
+			same.setAttribute(Qt::WA_DontShowOnScreen);
+			same.resize(GridMetrics::cells(10, 2));
+			same.show();
+			QCoreApplication::processEvents();
+			const int before_same = b.title_count();
+			Qtty::set_current_window(&same);
+			QCoreApplication::processEvents();
+			CHECK(b.title_count() == before_same,
+			      "and switching to a window with the same name sends no "
+			      "second copy of it");
+
+			Qtty::set_current_window(&win);
+			same.hide();
+			two.hide();
+			QCoreApplication::processEvents();
 		}
 		// The event filter is removed with the keeper. A destroyed filter
 		// that is still installed is a dangling pointer Qt will call, and

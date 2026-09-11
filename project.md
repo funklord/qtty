@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1209 checks, 0 failures. `make check` is green and includes
+1213 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15918,6 +15918,69 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.108 What else activation carries: the terminal's own name (2026-09-11)
+
+8.107's lens, asked again. If the window switch had to be taught to carry
+input, focus and popups, what else does a desktop get from activation that
+nothing here does? **The title**, and it was wrong in the way that is
+visible outside the program: a terminal shows one title where a window
+manager shows the active window's, and `TitleKeeper` was bound to the
+window `exec()` handed it for its whole life.
+
+Measured with a probe before anything was designed -- a second window
+titled `Log -- live`, made current, and the backend still holding
+`Editor -- notes.txt`. So a person with two windows in a tabbed terminal
+read the name of the window nobody was looking at, and the strip in row 0
+was the only thing telling the truth.
+
+The keeper follows the current window now: the switch tells it, and it
+**moves** its event filter rather than installing one on `qApp`. An
+application-wide filter sees every event in the process to answer about
+one, and moving is what "follows the window" means anyway.
+
+Three things this got right only because they were asked:
+
+- **The constructor does not read `current_window()`.** `exec()` installs
+  the keeper before the first compose, so there is no current window yet
+  -- and in the suite there *is* one, left by an earlier section, which
+  would have had the keeper publish a title belonging to a window the
+  code under test does not own.
+- **The window left behind renames itself unheard**, which a keeper
+  answering to any window would fail while passing "the title follows the
+  switch" and "later renames arrive" -- both of them. **And no single-line
+  sabotage can redden it.** Two attempts, two green runs: disabling the
+  `removeEventFilter` left the check passing because the filter's guard
+  rejects an event from anything but the window being followed, and
+  disabling the guard left it passing because the filter is no longer
+  installed on the old window at all. Breaking the pair together fails it,
+  measured. `evidence.md` has the shape exactly -- a guard shipped as two
+  conditions each independently saving the reported case, so each one's
+  sabotage stays green because the other covers it -- and it arrived here
+  in code I had just written, in a class of 90 lines.
+
+  The code keeps both, because each is right for its own reason: the
+  removal keeps a filter off every window that has ever been current, and
+  the guard means a title read off the wrong object is impossible rather
+  than unlikely. What changes is the record: the limit is written at the
+  check, and **the entry that could not redden it is deleted rather than
+  left in the spec**, since an entry that cannot fail reads as cover for a
+  check nothing is defending.
+- **Publication is per change, not per call.** Two windows with one name,
+  a document open twice, is a switch that changes nothing and should put
+  nothing on the wire. The first version of that comment claimed it
+  suppressed the bytes of switching back and forth between two windows,
+  which is false -- that switch changes the title each way and should
+  send each way. Corrected in the same pass.
+
+Four checks and one sabotage entry, and the entry that is NOT there is the
+reason this entry is longer than the defect deserved: **a sabotage is how
+you find out which line your check was resting on, and sometimes the
+answer is "not the one you meant, and not any one of them".** Reading the
+code could not have told me -- both lines are present and both look
+load-bearing. The harness's verdict for that case said "the suite did not
+report the named check", which described a symptom; it says `the named
+check PASSED against broken code` now, which is the fact.
 
 ### 8.107 A window switch that moved only the picture (2026-09-11)
 

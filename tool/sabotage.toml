@@ -544,7 +544,7 @@ check = "taking the terminal pushes the title it already had"
 [[sabotage]]
 name = "the keeper ignores a title that changes later"
 file = "src/runtime/title_keeper.h"
-find = "\t\tif (e->type() == QEvent::WindowTitleChange && o == &win_)"
+find = "\t\tif (e->type() == QEvent::WindowTitleChange && o == target_)"
 into = "\t\tif (false)"
 count = 1
 check = "and a later change reaches it too"
@@ -552,7 +552,7 @@ check = "and a later change reaches it too"
 [[sabotage]]
 name = "the keeper waits for a change rather than reading what is there"
 file = "src/runtime/title_keeper.h"
-find = "\t\tif (!win.windowTitle().isEmpty()) backend.set_title(win.windowTitle());"
+find = "\t\tpublish(win.windowTitle());"
 into = "\t\t;"
 count = 1
 check = "a window's existing title reaches the backend when the keeper is"
@@ -1125,3 +1125,14 @@ find = "\t\tif (!stops.isEmpty()) stops.first()->setFocus(Qt::OtherFocusReason);
 into = "\t\tif (false) stops.first()->setFocus(Qt::OtherFocusReason);"
 count = 1
 check = "seeds its first tab stop"
+
+[[sabotage]]
+# The title keeper bound to one window again. The terminal then names the
+# primary window whatever the user switched to -- a tabbed terminal
+# showing the title of a window nobody is looking at. 8.108.
+name = "the terminal title stays on the first window"
+file = "src/runtime/compositor.cpp"
+find = "\tTitleKeeper::follow(w);"
+into = "\tif (false) TitleKeeper::follow(w);"
+count = 1
+check = "the terminal takes its title from the window switched to"
