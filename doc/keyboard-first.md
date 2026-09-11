@@ -407,6 +407,14 @@ standard input widget. A widget of your own that reads
 
     if (event->modifiers() & Qt::AltModifier) { event->ignore(); return; }
 
+That line is right for a widget with no `Alt` bindings of its own, which
+is most of them. **If yours has some, handle those first and ignore the
+rest** -- the hazard is narrower than the line suggests. What must not
+happen is inserting `event->text()` while `Alt` is held, and what must
+happen is that an `Alt`+letter you do not want reaches the mnemonic
+matcher instead of being swallowed. Your own `Alt+Left` is neither, and
+taking the line literally would cost you it.
+
 **10. In a custom widget, draw your own focus mark -- and do not ask
 `hasFocus()`.** This is the one that bites hardest, because the desktop
 build hides it.

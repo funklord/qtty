@@ -15935,6 +15935,24 @@ It is right, and precisely right at the boundary:
 So arrows walk inside a control while it has somewhere to go and between
 controls when it does not.
 
+**The same test run over the other practices found one more, milder.**
+The question is not *is this claim true* but **what would a reader who
+believed it stop doing** -- and practice 9 hands a custom widget one line
+that ignores every key carrying `Alt`. A widget with its own `Alt+Left`
+loses it by following the page exactly.
+
+The hazard is narrower than the line: what must not happen is inserting
+`event->text()` while Alt is held, and what must happen is that an
+Alt+letter the widget does not want reaches the mnemonic matcher. Their
+own binding is neither. The line stays, because it is right for the
+widgets that have no Alt bindings -- most of them -- with the caveat
+beside it.
+
+**Eleven other practices were put to the same question and pass**: a
+reader who believes them adds labels, sets a tab order, writes keyboard
+routes, handles Escape, shows their keys. Only 7 and 9 made a believer
+stop or lose something, and 7 was the expensive one.
+
 **And practice 7 could have caused a blank toolbar.** It says *do not
 depend on hover or tooltips*, which is right about them POPPING UP -- no
 `QEvent::ToolTip` is ever raised -- and an implementer reading it would
