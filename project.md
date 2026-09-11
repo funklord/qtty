@@ -15953,6 +15953,26 @@ from the comment it came from.** `key Tab` alone leaves row 1 at
 That is the documented vocabulary end to end: underline for current,
 reverse for selected, both for both.
 
+**With the keys available, the context menu of 8.77 was exercised the way
+a user would and it works.** `key menu` opens `QLineEdit`'s standard menu
+-- Undo, Redo, Cut, Copy, Paste, Delete, Select All, each with its
+shortcut -- drawn bordered over the list, and `key escape` closes it.
+
+**Two readings of the attributes, and the first was nearly a false
+finding.** With the field empty every item rendered `dim`, and no item
+highlighted after two Downs. Dim means disabled, and on an empty field
+with an empty clipboard **every one of those items IS disabled**, so Qt
+had nothing to make current: the fixture explained it, not a defect.
+Typing first changed the answer completely -- the current item comes back
+`reverse`, its mnemonic letter `underline+reverse`, its shortcut label
+`dim+reverse`.
+
+**That completed the focus vocabulary and the guide now carries the whole
+of it.** A view needs two facts at once, so underline says *current* and
+reverse says *selected*. A menu has no selection, so reverse is free to
+mean current. The rule underneath both is one rule: **reverse means
+current unless something else already needs it.**
+
 **The bigger gap was that `qtty-replay` could not SEND most of what the
 library answers.** Its whole stated purpose is to make a bug report
 reproducible, and its script vocabulary was `text`, `key <name>` over ten

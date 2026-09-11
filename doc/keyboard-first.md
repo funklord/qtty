@@ -385,7 +385,15 @@ underlined **and** reversed. The tab bar set that precedent.
 
 Worth telling your users, since it is the opposite of the desktop habit:
 in a list on a terminal, **the underline is where the keys will act** and
-the highlight is what is already chosen. **The style
+the highlight is what is already chosen.
+
+**A menu is the simple case, because it has no selection.** Nothing in a
+menu is "chosen" while you are moving through it, so `reverse` is free to
+mean *current* there: the item the keys would act on is highlighted, its
+mnemonic letter is underlined within that highlight, and its shortcut
+label is dimmed. The rule underneath both is one rule -- **reverse means
+current unless something else already needs it**, and in a view something
+does. **The style
 can only mark the controls it knows how to draw**, so a widget that
 paints itself gets no mark from anybody.
 
