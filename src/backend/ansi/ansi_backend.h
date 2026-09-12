@@ -170,6 +170,13 @@ private:
 	// send a capability query carrying the geometry request; a later one has
 	// neither, and may be coming back to a terminal that has been resized.
 	bool first_resume_ = true;
+	// The title sequence last put on the terminal, ready to send again: a
+	// handover pops the title stack, and the only thing that knows what was
+	// there is the backend that put it there.
+	QByteArray last_title_;
+	// Handovers this backend has already acted on. Per instance, because the
+	// nudge that carries them is process-wide and every live backend gets it.
+	int seen_handovers_ = 0;
 
 	bool raw_ok_ = false;
 	bool tty_out_ = false;               // stdout is a terminal

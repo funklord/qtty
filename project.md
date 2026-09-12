@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1259 checks, 0 failures. `make check` is green and includes
+1261 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15929,6 +15929,74 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.124 The window title, given back with the terminal and never taken again (2026-09-13)
+
+`kEnter` ends with `ESC[22;2t` and `kLeave` begins with `ESC[23;2t` -- push
+and pop the terminal's title stack. So suspending gives the title back with
+the terminal, and resuming pushes whatever is there **now**, which is the
+shell's. Nothing put the program's back.
+
+**The dedupe is what made it permanent rather than momentary.**
+`TitleKeeper::publish()` suppresses a title the terminal is already showing,
+keyed on its own `last_` -- and after a handover that field is right about
+what the application wants and wrong about what the terminal has. A
+mechanism that exists to save one escape sequence per change guaranteed the
+title could never be sent again. Measured through a real bash with real job
+control:
+
+    on startup the program set the title to: ['qtty chat']
+    on suspend it popped the title back: True
+    after fg it pushed again: True; titles re-sent: []
+
+The shell's title, from the first Ctrl+Z onward, for the rest of the run.
+
+Fixed in the backend rather than in the keeper. The backend is what popped
+the title, so the backend is what puts it back; the keeper goes on
+describing changes the application makes, which is the only thing it can
+see. `set_title()` keeps the sequence it sent, sanitised and truncated, so
+what goes back is byte-for-byte what went out.
+
+**The first fix was green and changed nothing, which is the entry's real
+content.** It restored the title in `resume()`, the check passed, and the
+chat example stopped and resumed through a real shell still showed the
+shell's title. `qtty_cont_handler()` **never calls `resume()`** -- it runs
+`enter_terminal()`, the part of it a signal handler may run, and then nudges
+the SIGWINCH pipe. Ctrl+Z and a shell-out are two routes to one handover and
+only one of them is a call, so a fix in the call left the case anybody
+actually meets untouched.
+
+That is 8.107's lens again and this time it was aimed correctly and still
+missed, because **the second route is not a call site**: nothing in the
+source of `resume()` points at the signal handler that does the same job by
+other means. What caught it was re-running the end-to-end measurement after
+the suite went green -- the check and the program disagreeing, which is
+`evidence.md`'s *a model that disagrees is the witness working*. **A green
+check on a fix whose measurement has not been re-taken is one witness.**
+
+**And the second attempt was wrong in a way only measurement found.** It
+used a consume-once flag set by the handler and cleared by `read_winch()`.
+The pipe is process-wide and the notifier draining it is per-backend, so
+**every live backend's `read_winch()` runs on every nudge** -- which is what
+makes each of them re-measure its own size. Instrumenting the library rather
+than reasoning about it:
+
+    DIAG cont_handler ran
+    DIAG read_winch: handed_back=1 title_len=0  tty_out=0
+    DIAG read_winch: handed_back=0 title_len=22 tty_out=1
+
+A leftover backend that owned no terminal and had no title swallowed the
+handover, and the one holding the screen saw nothing. Handovers are
+**counted** now, and each backend compares against its own last-seen count,
+so each sees every one exactly once -- which is how the resize beside it has
+always behaved. It carries its own sabotage entry, because a flag is what
+anybody writes first.
+
+**This is the process-wide-state-handled-per-instance fault the file already
+records twice** -- `g_owners` and `g_restore.armed` were both per-instance
+where the thing they guard is process-wide. Here it arrived reversed: state
+that is genuinely process-wide, consumed as though one instance could speak
+for all of them.
 
 ### 8.123 A resume that trusted the size it was suspended with (2026-09-12)
 

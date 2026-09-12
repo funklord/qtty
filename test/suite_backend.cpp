@@ -2690,6 +2690,79 @@ int suite_backend() {
 					      " trusting the one it was suspended with");
 				}
 
+				// The title the terminal is left showing, which is the same
+				// fault in the other thing qtty hands over. kEnter ends with
+				// ESC[22;2t and kLeave begins with ESC[23;2t -- push and pop
+				// -- so a suspend gives the title back with the terminal, and
+				// the resume pushes whatever is there NOW, which is the
+				// shell's.
+				//
+				// Nothing re-published it. TitleKeeper::publish() suppresses
+				// a title the terminal is already showing, keyed on its own
+				// `last_`, which still held the application's -- so the
+				// dedupe that exists to save an escape sequence per change
+				// guaranteed the title could never be sent again. Measured
+				// through bash with real job control: "qtty chat" on startup,
+				// the shell's title from the first Ctrl-Z onward, for the
+				// rest of the program's life.
+				//
+				// Asserted on the BYTES rather than on set_title() having
+				// been called: what is wrong here is what the terminal ends
+				// up showing, and a keeper that called set_title() into a
+				// dedupe would satisfy any check written on the call.
+				{
+					fflush(stdout);
+					::dup2(slave, 1);
+					live.set_title(QStringLiteral("a named window"));
+					char eat[4096];
+					while (::read(master, eat, sizeof(eat)) > 0) { }
+					live.suspend();
+					live.resume();
+					QByteArray after;
+					ssize_t n;
+					while ((n = ::read(master, eat, sizeof(eat))) > 0)
+						after.append(eat, int(n));
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					CHECK(after.contains("\033]2;a named window"),
+					      "a resume puts the window title back, the terminal"
+					      " having popped it on the way out");
+				}
+
+				// The OTHER route to the same handover, and the reason this
+				// is a second check rather than a second assertion: Ctrl+Z
+				// does not call resume(). qtty_cont_handler() runs
+				// enter_terminal(), which is the part of resume() a signal
+				// handler may run, and then nudges the SIGWINCH pipe. So a
+				// title restore living only in resume() covers the shell-out
+				// and leaves the case anybody actually meets untouched --
+				// measured that way, with the suite green and the chat
+				// example still showing the shell's title after a real
+				// Ctrl+Z and fg.
+				//
+				// raise(SIGCONT) is safe on a process that is not stopped:
+				// the default action is "continue", which is nothing, and the
+				// handler still runs. The suite already drives the sibling
+				// path with raise(SIGWINCH) for the same reason.
+				{
+					fflush(stdout);
+					::dup2(slave, 1);
+					live.set_title(QStringLiteral("back from a stop"));
+					char eat[4096];
+					while (::read(master, eat, sizeof(eat)) > 0) { }
+					::raise(SIGCONT);
+					for (int i = 0; i < 50; ++i) QCoreApplication::processEvents();
+					QByteArray after;
+					ssize_t n;
+					while ((n = ::read(master, eat, sizeof(eat))) > 0)
+						after.append(eat, int(n));
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					CHECK(after.contains("\033]2;back from a stop"),
+					      "and a SIGCONT puts it back too, which is the route"
+					      " a Ctrl+Z actually takes");
+				}
+
 				// End to end, because the two halves being right separately
 				// is not the same fact as the chain working. The backend
 				// delivering to a sink is checked above; the router resizing

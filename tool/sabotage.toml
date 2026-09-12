@@ -1374,3 +1374,40 @@ find = "\tif (!first_resume_) read_winch();"
 into = "\tif (false) read_winch();"
 count = 1
 check = "a resume re-reads the terminal size rather than trusting"
+
+[[sabotage]]
+# resume() back to leaving the terminal showing whatever the shell's title
+# was. kLeave pops the title stack on the way out and kEnter pushes the
+# CURRENT one on the way back in, so nothing restores the program's unless
+# the backend that put it there does. 8.124.
+name = "a resume leaves the terminal showing the shell's title"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (!first_resume_ && !last_title_.isEmpty()) write_out(last_title_);"
+into = "\tif (false && !last_title_.isEmpty()) write_out(last_title_);"
+count = 1
+check = "a resume puts the window title back"
+
+[[sabotage]]
+# The same thing on the route a Ctrl+Z actually takes. qtty_cont_handler()
+# never calls resume() -- it runs enter_terminal(), the part a signal handler
+# may run -- so a restore living only in resume() leaves this untouched, and
+# the suite went green while the real program did not change. 8.124.
+name = "a SIGCONT leaves the terminal showing the shell's title"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (seen_handovers_ != s_handovers) {\n\t\tseen_handovers_ = s_handovers;"
+into = "\tif (false) {\n\t\tseen_handovers_ = s_handovers;"
+count = 1
+check = "and a SIGCONT puts it back too"
+
+[[sabotage]]
+# The plausible wrong fix, and the one that was written first: a consume-once
+# flag instead of a per-instance count. The nudge is process-wide while the
+# notifier draining it is per-backend, so whichever instance fires first
+# clears it for every other -- measured with a leftover backend that owned no
+# terminal and had no title swallowing the handover. 8.124.
+name = "the handover is consumed once for the whole process"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tseen_handovers_ = s_handovers;"
+into = "\t\ts_handovers = 0; seen_handovers_ = s_handovers;"
+count = 1
+check = "and a SIGCONT puts it back too"

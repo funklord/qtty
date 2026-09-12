@@ -316,6 +316,19 @@ QSize AnsiBackend::size() const { return cells_; }
 // ITerminalEventSink::on_resize existed, InputRouter implemented it, and
 // nothing ever called it -- dragging a terminal's edge did nothing whatever.
 static int s_winch_pipe[2] = {-1, -1};
+// Handovers, COUNTED rather than flagged, and bumped by the SIGCONT handler.
+// sig_atomic_t and volatile because a handler writes it.
+//
+// A counter because the pipe this accompanies is process-wide while the
+// notifier draining it is per-backend: every live backend's read_winch() runs
+// on every nudge, which is what makes each of them re-measure its own size. A
+// consume-once flag is therefore read by whichever instance's notifier fires
+// first and cleared for all the others -- measured exactly that way, with a
+// leftover backend that owned no terminal and had no title swallowing the
+// handover while the one holding the screen saw nothing. Each backend
+// compares against its own last-seen count instead, so each sees every
+// handover exactly once, which is how the resize beside it already behaves.
+static volatile sig_atomic_t s_handovers = 0;
 
 extern "C" void qtty_winch_handler(int) {
 	if (s_winch_pipe[1] >= 0) {
@@ -357,6 +370,26 @@ void AnsiBackend::read_winch() {
 	// written by a resize that arrived just BEFORE suspend() is already in
 	// the pipe.
 	if (!active_) return;
+
+	// A SIGCONT rather than a resize: the terminal has just been handed back
+	// and the title stack was popped when it was handed over, so the terminal
+	// is showing whatever was there before qtty ran.
+	//
+	// This is here rather than only in resume() because Ctrl+Z and a shell-out
+	// are two routes to one handover, and only one of them is a call.
+	// qtty_cont_handler() never touches resume() -- it uses enter_terminal(),
+	// the part a signal handler may run -- so a fix living in resume() alone
+	// left the case anybody actually meets completely unchanged. Measured
+	// exactly that way: the suite went green while the chat example, stopped
+	// and resumed through a real bash, still showed the shell's title.
+	if (seen_handovers_ != s_handovers) {
+		seen_handovers_ = s_handovers;
+		// An empty one is a backend that never put a title on a terminal --
+		// set_title() refuses when stdout is not one -- so there is nothing
+		// of its to put back.
+		if (!last_title_.isEmpty()) write_out(last_title_);
+	}
+
 	winsize ws{};
 	// ws_row as well as ws_col, for the reason the constructor now gives:
 	// this refused a zero column count and accepted a zero row count, and the
@@ -551,6 +584,13 @@ extern "C" void qtty_stop_handler(int sig) {
 // as well as the convenient one.
 extern "C" void qtty_cont_handler(int) {
 	enter_terminal();
+	// Which KIND of nudge this is, because the two are not the same event.
+	// enter_terminal() is the async-signal-safe half of resume() and can put
+	// back only what a handler may write; the title cannot be restored from
+	// here, since the bytes live in a QByteArray member. read_winch() is
+	// already the GUI-thread end of this pipe, so it is told to finish the
+	// job. Set BEFORE the nudge, or the pipe could be drained first.
+	s_handovers = s_handovers + 1;
 	qtty_winch_handler(SIGWINCH);
 }
 
@@ -756,6 +796,24 @@ void AnsiBackend::resume() {
 	// already carries the 14t and 16t the geometry query would repeat, and
 	// the size has just been read by the ioctl above this call.
 	if (!first_resume_) read_winch();
+
+	// And the title, for the same reason and from the other direction. This
+	// backend's own kLeave popped the title stack on the way out, so the
+	// terminal is showing whatever was there before qtty ran -- and the
+	// kEnter above has just pushed THAT, not the program's.
+	//
+	// It has to be restored here rather than by whoever set it.
+	// TitleKeeper::publish() suppresses a title the terminal is already
+	// showing, and after a handover its `last_` is right about what the
+	// application wants and wrong about what the terminal has: the dedupe
+	// that saves an escape sequence per change would guarantee the title was
+	// never sent again. Measured through bash: "qtty chat" on startup, the
+	// shell's title from the first Ctrl-Z onward, for the rest of the run.
+	//
+	// The backend restoring what the backend's own handover removed also
+	// keeps the keeper honest -- it goes on describing changes the
+	// application makes, which is the only thing it can see.
+	if (!first_resume_ && !last_title_.isEmpty()) write_out(last_title_);
 	first_resume_ = false;
 }
 
@@ -1300,7 +1358,12 @@ void AnsiBackend::set_title(const QString &title) {
 	// ST rather than BEL to close it: both are accepted everywhere that
 	// implements OSC at all, and BEL is a character a terminal may also
 	// ring.
-	write_out("\033]2;" + safe.toUtf8() + "\033\\");
+	// Kept, because the terminal's copy of this does not survive a handover:
+	// kLeave pops the title stack on the way out. Stored sanitised-and-
+	// truncated rather than raw, so what goes back is byte-for-byte what went
+	// out and the rules above are not applied twice.
+	last_title_ = "\033]2;" + safe.toUtf8() + "\033\\";
+	write_out(last_title_);
 }
 
 void AnsiBackend::set_cursor(std::optional<QPoint> cell, CursorShape shape) {
