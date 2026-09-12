@@ -1659,6 +1659,9 @@ int suite_backend() {
 				char out[4096];
 				const ssize_t got = ::read(master, out, sizeof(out));
 				const QByteArray written(out, got > 0 ? int(got) : 0);
+
+				fflush(stdout);
+				::dup2(slave, 1);
 				// The settle policy WIRED, not merely correct: a policy
 				// nothing consults is the fault this suite keeps finding.
 				// Driven at the sixel tier, since that is the one that pays
@@ -2640,6 +2643,51 @@ int suite_backend() {
 					CHECK(born == QSize(80, 24),
 					      "and a backend born against one falls back, as it "
 					      "does for zero columns");
+				}
+
+				// Placed after the two cases above rather than beside the
+				// resize they share a fixture with, and the reason is that
+				// both of them assert on the NUMBER of resizes the sink was
+				// told about. A suspend/resume that re-measures reports one,
+				// so writing this earlier turned "reports the new cell size
+				// once" red -- a true check failing because a later fixture
+				// had been inserted in front of it.
+				{
+					// fd 1 must BE the pty: read_winch() asks TIOCGWINSZ on
+					// descriptor 1, the same plumbing the two cases above
+					// record at length.
+					fflush(stdout);
+					::dup2(slave, 1);
+					ws.ws_col = 64;
+					ws.ws_row = 18;
+					::ioctl(slave, TIOCSWINSZ, &ws);
+					live.suspend();
+					live.resume();
+					const QSize came_back = live.size();
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					// SIGWINCH was the only thing that had ever refreshed
+					// it: the constructor reads TIOCGWINSZ once and
+					// read_winch() re-reads it, so resume() came back
+					// believing whatever was true when it left.
+					//
+					// qtty_cont_handler() already covers a STOPPED job by
+					// nudging the SIGWINCH pipe. It does not cover the other
+					// thing backend.h names suspend() for -- "SIGTSTP /
+					// shelling out" -- because a shell-out is an ordinary
+					// call rather than a signal: the application calls
+					// suspend(), runs an editor that takes the terminal's
+					// foreground process group, and calls resume(). A resize
+					// while the editor is up signals the EDITOR.
+					//
+					// No raise(SIGWINCH) here, deliberately, and it is the
+					// whole fixture: this pty has no foreground process
+					// group, so TIOCSWINSZ signals nobody. The resize cases
+					// above raise the signal by hand precisely because
+					// nothing else would.
+					CHECK(came_back == QSize(64, 18),
+					      "a resume re-reads the terminal size rather than"
+					      " trusting the one it was suspended with");
 				}
 
 				// End to end, because the two halves being right separately

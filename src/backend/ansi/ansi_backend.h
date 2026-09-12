@@ -166,6 +166,10 @@ private:
 	// in, and says it once.
 	void terminal_gone();
 	bool gone_ = false;                  // the sink has been told
+	// The constructor's resume() has already read the size and is about to
+	// send a capability query carrying the geometry request; a later one has
+	// neither, and may be coming back to a terminal that has been resized.
+	bool first_resume_ = true;
 
 	bool raw_ok_ = false;
 	bool tty_out_ = false;               // stdout is a terminal

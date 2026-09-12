@@ -613,10 +613,7 @@ void AnsiBackend::resume() {
 	//         burst of keystrokes that autorepeat handling cannot tell from
 	//         typing.
 	//   1004  focus in/out, which is how a TUI knows to dim its selection.
-	if (tty_out_) {
-		fputs(kEnter, stdout);
-		fflush(stdout);
-	}
+	if (tty_out_) write_out(kEnter);
 
 	// SIGPIPE would kill the process outright when the far end of the output
 	// goes away, and for a terminal program that is an ordinary event: the
@@ -626,7 +623,9 @@ void AnsiBackend::resume() {
 	// which is what this failure always looks like.
 	//
 	// Ignored rather than handled, which is only safe while every write goes
-	// through write_out() and its result is read. It was not: this comment
+	// through write_out() and its result is read -- every one but suspend()'s
+	// handover, which says beside itself why it is the exception. It was
+	// not: this comment
 	// used to claim the checking was already there, and no write in the file
 	// did any -- four bound the return and discarded it in the next
 	// statement, ferror() was read nowhere, and the frame path read nothing.
@@ -729,6 +728,35 @@ void AnsiBackend::resume() {
 	// this line only exec() knew, so an application driving its own frame
 	// loop printed onto a frame about to be torn down (terminal_owner.h).
 	take_terminal(this);
+
+	// A resume may be coming back to a terminal that changed size while this
+	// backend did not have it, and until this line nothing re-measured. The
+	// size was read once in the constructor and after that only by a
+	// SIGWINCH -- so resume() came back believing whatever was true when it
+	// left.
+	//
+	// The SIGTSTP path was already right and is the model: qtty_cont_handler()
+	// nudges the SIGWINCH pipe for exactly this reason, saying that a
+	// terminal genuinely may have been resized while the program was stopped.
+	// What that covers is a STOPPED job. It does not cover the other thing
+	// backend.h names suspend() for -- "SIGTSTP / shelling out" -- because a
+	// shell-out is an ordinary call rather than a signal: the application
+	// calls suspend(), runs an editor that takes the terminal's foreground
+	// process group, and calls resume(). A resize while the editor is up
+	// signals the EDITOR, and nothing signals the program coming back.
+	//
+	// read_winch() rather than a second copy of the ioctl: it is already the
+	// one place that re-measures, re-asks for the pixel geometry a font
+	// change moves without moving the cell count, and tells the sink only
+	// when the cell count actually differs. Synchronously, so that an
+	// application which calls resume() and then present() draws at the right
+	// size without first turning the event loop.
+	//
+	// Not on the FIRST resume, which is the constructor's: caps_query()
+	// already carries the 14t and 16t the geometry query would repeat, and
+	// the size has just been read by the ioctl above this call.
+	if (!first_resume_) read_winch();
+	first_resume_ = false;
 }
 
 void AnsiBackend::suspend() {
@@ -737,6 +765,12 @@ void AnsiBackend::suspend() {
 	// matter more than the screen restore: a terminal left in mouse mode
 	// writes an escape burst into the user's shell on every click, for the
 	// rest of that shell's life. Reset in the reverse order they were set.
+	// The one write that does NOT go through write_out(), and the exception
+	// is the point rather than an oversight: this is the backend giving the
+	// terminal up, so a failure here has nobody to report to. It also runs
+	// from ~AnsiBackend(), where the sink is on its way out and delivering a
+	// quit into it would be worse than losing the news that a terminal
+	// nobody is going to draw on again has gone.
 	if (tty_out_) {
 		fputs(kLeave, stdout);
 		fflush(stdout);

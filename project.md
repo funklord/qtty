@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1258 checks, 0 failures. `make check` is green and includes
+1259 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15929,6 +15929,82 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.123 A resume that trusted the size it was suspended with (2026-09-12)
+
+`cells_` was read in two places: once by the constructor's `TIOCGWINSZ`, and
+after that only by `read_winch()` on a SIGWINCH. `resume()` re-read
+`isatty(1)` and the termios state and **not** the size, so it came back
+believing whatever was true when it left.
+
+**The stopped-job half was already right, and is the model.**
+`qtty_cont_handler()` nudges the SIGWINCH pipe, and says why: *"a terminal
+genuinely may have been resized while the program was stopped, so
+re-measuring is the correct thing to do as well as the convenient one."*
+
+What that covers is a job stopped by a signal. It does not cover the other
+thing `backend.h` names `suspend()` for -- **"SIGTSTP / shelling out"** --
+because a shell-out is an ordinary call rather than a signal. The
+application calls `suspend()`, runs an editor which takes the terminal's
+foreground process group, and calls `resume()`. A window resize while the
+editor is up signals the **editor**; nothing signals the program coming
+back, and nothing re-measured when it did.
+
+`resume()` now calls `read_winch()`, which is already the one place that
+re-measures, re-asks for the pixel geometry a font change moves without
+moving the cell count, and tells the sink only when the cell count actually
+differs. Not on the first resume, which is the constructor's: `caps_query()`
+already carries the `14t` and `16t` the geometry query would repeat.
+
+**And the sweep found a miss in 8.122's own fix.** That entry's comment says
+ignoring SIGPIPE is safe *"while every write goes through write_out()"*, and
+two `fputs` handovers did not -- `resume()`'s and `suspend()`'s. `resume()`'s
+is routed now. `suspend()`'s deliberately is not, and says so beside itself:
+it is the backend giving the terminal up, so a failure has nobody to report
+to, and it runs from `~AnsiBackend()` where the sink is on its way out and
+delivering a quit into it would be worse than losing the news. The SIGPIPE
+comment names the exception rather than overclaiming again.
+
+**Calibration, which is the part worth keeping.** Four instrument errors in
+this sweep, every one of which produced a plausible finding:
+
+- **An orphaned process group.** The first fixture ran the program under
+  `setsid`, so `kill -TSTP` left it in state `S` and the report was going to
+  be "SIGTSTP does not stop it". A default-action stop is *discarded* in an
+  orphaned group. The handler's own comment names that theory -- and
+  disproves it for the real case -- which is how it was caught.
+- **A background SIGCONT.** Resuming with `SIGCONT` alone and no
+  `tcsetpgrp` left the job in the background, so what came back was bash's
+  prompt, read as "the program drew nothing after resume".
+- **A width measure that could not measure.** Counting printable columns
+  through half-stripped escapes reported column 238 on an 80-column
+  terminal, and then 42 on a 40-column one -- close enough to the answer to
+  have been believed. Rows addressed by `ESC[row;colH` is the observable
+  that has no escape-stripping and no UTF-8 width in it, and it reported
+  1..24 on 24 rows exactly.
+- **A FAIL line that went into the pty.** The new check's own failure was
+  invisible: `stdout` is block-buffered on a pty, so the text sat in the
+  buffer and was flushed down the slave after the descriptor was switched
+  back. This file already warns about that in as many words, twelve lines
+  above where it was written.
+
+**Three of the four produced a verdict the session was ready to write
+down**, and the thing that stopped each was not suspicion but a second
+measurement that disagreed -- `evidence.md`'s *a model that disagrees is the
+witness working*. The real behaviour, measured last through a real bash with
+real job control: Ctrl-Z, resize, `fg`, and the program redraws inside the
+new height. **Ctrl-Z itself is a key rather than a suspend**, `ISIG` being
+cleared, which the tree already records and checks.
+
+**And the lens that found this found nothing else.** The sweep it came from
+was "a comment that names a symbol and asserts what it does", derived from
+8.122. Fifty-five such claims; the nine load-bearing ones were checked
+against the code they name -- `brush_cell()`'s two callers, `to_xterm256()`'s
+`-1`, `CellBuffer::at()`'s scratch cell, `caps_query()`'s ST, `walk_segment()`
+on a zero-length segment where `min(1.0, ...)` is what saves it, and four
+more -- and **every one held**. 8.122 is the exception in this tree rather
+than the first of a family, which is worth knowing before anybody spends
+another sweep on it.
 
 ### 8.122 A comment that promised the checking, and no write that did it (2026-09-12)
 

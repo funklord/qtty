@@ -1361,3 +1361,16 @@ find = "\tfwrite(bytes.constData(), 1, size_t(bytes.size()), stdout);\n\tfflush(
 into = "\tconst size_t put = fwrite(bytes.constData(), 1, size_t(bytes.size()), stdout);\n\tfflush(stdout);\n\tif (put != size_t(bytes.size())) terminal_gone();"
 count = 1
 check = "a frame written to a terminal that has gone tells the"
+
+[[sabotage]]
+# resume() back to trusting the size it was suspended with. SIGWINCH was the
+# only thing that ever refreshed it, and a shell-out is a call rather than a
+# signal: the editor takes the terminal's foreground process group, so a
+# resize while it is up signals the EDITOR and nothing signals the program
+# coming back. 8.123.
+name = "a resume trusts the size it was suspended with"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (!first_resume_) read_winch();"
+into = "\tif (false) read_winch();"
+count = 1
+check = "a resume re-reads the terminal size rather than trusting"
