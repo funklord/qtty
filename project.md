@@ -2084,6 +2084,11 @@ In the order I would take them:
      an application cannot change Ctrl-C and Ctrl-D without reimplementing
      the whole of `exec()`. Fixing it means adding API -- an overload, a
      setter, or handing back the router -- which is a shape decision.
+     **And closing it opens 8.122's coupling**: the backend reports a
+     vanished terminal by synthesising Ctrl-D, so the moment an application
+     can redefine the quit keys it can also stop being told its terminal is
+     gone. The two are one decision; see 8.122 for why the honest fix is a
+     seam that carries the event rather than a chord that stands in for it.
    - **The font is hardcoded and fatal.** `setup()` installs DejaVu Sans
      Mono at 16 px and `qFatal()`s when the metrics are not integral.
      There is no override, so a machine without that font cannot run a
@@ -15983,6 +15988,56 @@ This is 8.107's lens -- *one route changes a fact, the other routes are not
 told* -- arriving in a place the lens was not pointed at: the two routes
 here are the two directions of one descriptor pair, and the fact is that
 the terminal has gone.
+
+**Where the false claim came from, which is the generalisable half.** The
+write that produced the incident is not in that file. `collect_caps()` in
+`term_caps.cpp` writes the capability query, and it *does* read its result:
+
+    const ssize_t w = ::write(out_fd, query.constData() + off, ...);
+    if (w <= 0) return caps;                  // cannot ask; assume nothing
+
+So the sentence was written by somebody looking at the one write that
+checks, and applied to a file holding eight that do not. Every clause of it
+was true of what its author had in front of them. `evidence.md`'s *a true
+sentence is not thereby a characterisation*, in a comment rather than in a
+report -- and the test it names, coextensiveness, is the one that would have
+caught it: does "every write here" pick out exactly the set meant, going
+both ways.
+
+**And the fix for it carried the same fault, within the hour.** The comment
+first written beside the new `clearerr(stdout)` justified it by saying the
+deferred diagnostics go out on that stream and could not while it was in
+error. `flush_deferred_messages()` writes to **stderr**; the justification
+was false, and it was false in exactly the way this entry is about -- a
+present-tense assertion about somewhere else in the code that nothing had
+checked, written while reasoning about something adjacent. It is corrected
+in place and says so.
+
+That is worth more than the correction. **The lens does not stop applying
+to the person holding it**, and a session that has just diagnosed a class of
+fault is writing the next instance of it with the frame that found it still
+switched on -- `evidence.md`'s *a frame that has just been right is the
+hardest one to drop*, met from the inside.
+
+**A coupling to record rather than to fix.** The backend now says "the
+terminal has gone" by synthesising Ctrl-D, which is the read path's existing
+answer, and Ctrl-D is a **quit key** -- one of a list an application may
+replace with `set_quit_keys()`, including with an empty one. So the machine
+event is expressed in a vocabulary the application is allowed to redefine,
+and an application that redefined it would no longer be told its terminal
+had vanished.
+
+It is not reachable today, and the reason is section 3's own list: the
+router is built on `exec()`'s stack and nothing hands it out, so nothing can
+call `set_quit_keys()` at all. **The two are one decision and nothing
+connects them** -- whoever closes the reachability gap opens this one, and
+would have no reason to look here. Fixing it properly means the seam
+carrying the event rather than borrowing a chord for it, which is a change
+to `ITerminalEventSink` and so belongs with that decision rather than ahead
+of it. The Ctrl-C text-field exemption does **not** apply: it is keyed on
+`Qt::Key_C` specifically, checked, and a focused `QLineEdit` does not
+swallow the Ctrl-D.
+
 
 **And the comment is the thing that kept anybody from looking.** It did not
 describe an intention; it stated, in the present tense, that the work was

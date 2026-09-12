@@ -805,9 +805,16 @@ void AnsiBackend::write_out(const QByteArray &bytes) {
 // Once, and the flag is why. The error indicator is sticky, so every later
 // write would report the same gone terminal again; a quit delivered on every
 // frame is one an application cannot tell from a user leaning on the key.
-// Cleared with it, because the deferred diagnostics are written down this
-// stream when qtty gives the terminal back, and a stream left in error is one
-// they cannot go out on.
+//
+// Cleared with it because the indicator has been CONSUMED: it is a signal
+// that has now been reported, and a consumed signal left latched is one that
+// any later reader of ferror(stdout) sees as a live condition. The first
+// version of this comment justified the clearerr by saying the deferred
+// diagnostics go out on this stream and could not while it was in error --
+// which is false, flush_deferred_messages() writes to stderr. That is the
+// fault this whole function exists to fix, committed into the fix for it
+// within the hour: a justification asserting something about elsewhere in
+// the code, in the present tense, that nothing had checked.
 //
 // The flag latches on TELLING rather than on noticing, which is not the same
 // thing: the constructor writes to the terminal before an application has set
