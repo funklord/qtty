@@ -1562,9 +1562,21 @@ int suite_runtime() {
 		      "and a centred dialog re-centres when the terminal is resized "
 		      "rather than staying where the old size put it");
 
+		// DELETED, not merely hidden. `loose` and `put` have no parent --
+		// that is the case under test -- so nothing else will ever free
+		// them, and LeakSanitizer counted 7706 bytes in 48 allocations for
+		// the pair, every one indirect from two QDialogs. `child` is
+		// parented and goes with `win`.
+		//
+		// `make check` cannot see this: the leak check lives in the
+		// sanitized configuration, which is a separate target, so a fixture
+		// can start leaking while the gate a session actually runs stays
+		// green.
 		loose->hide();
 		win.hide();
 		QCoreApplication::processEvents();
+		delete loose;
+		delete put;
 		GridGuard::reset();
 	}
 
@@ -2050,6 +2062,43 @@ int suite_runtime() {
 			CHECK(b.title_count() == before_same,
 			      "and switching to a window with the same name sends no "
 			      "second copy of it");
+
+			// CLOSING the window you are in, which is the other way the
+			// current window changes and the one that carried nothing.
+			// compose() picks a new one when the old has gone, and that
+			// pick used to assign the global directly: measured, the
+			// terminal went on naming a window that no longer existed.
+			//
+			// A compositor is needed because the pick happens inside
+			// compose() -- set_current_window() is the route that was
+			// already right, and asserting on it would prove nothing here.
+			{
+				InputRouter cr(&win);
+				Compositor cc(&win, &cr);
+				auto *doomed = new QWidget;
+				doomed->setAttribute(Qt::WA_DontShowOnScreen);
+				doomed->setWindowTitle(QStringLiteral("Doomed"));
+				doomed->resize(GridMetrics::cells(20, 3));
+				doomed->show();
+				QCoreApplication::processEvents();
+				Qtty::set_current_window(doomed);
+				QCoreApplication::processEvents();
+				CHECK(b.last_title() == QStringLiteral("Doomed"),
+				      "the control: the terminal is named for the window "
+				      "about to be closed");
+
+				delete doomed;             // as an application closes one
+				QCoreApplication::processEvents();
+				CellBuffer after(20, 4);
+				cc.compose(after);
+				CHECK(b.last_title() != QStringLiteral("Doomed")
+				      && Qtty::current_window()
+				      && b.last_title()
+				         == Qtty::current_window()->windowTitle(),
+				      "and closing it moves the terminal's name to whichever "
+				      "window is drawn instead, rather than leaving it on one "
+				      "that no longer exists");
+			}
 
 			Qtty::set_current_window(&win);
 			same.hide();

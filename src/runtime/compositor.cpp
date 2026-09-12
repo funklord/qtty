@@ -291,7 +291,13 @@ QString window_name(const QWidget *w, int index)
 QVector<QWidget *> collect_window_tabs(QWidget *root)
 {
 	QVector<QWidget *> out;
-	if (root) out.append(root);
+	// The root only while it can be SEEN. It used to go in unconditionally,
+	// so an application that hides its main window kept a tab for it -- and
+	// the pick below, which takes the first tab when the current window has
+	// gone, chose a window the terminal cannot draw. Measured: close the
+	// window you are in with the main one hidden, and the strip says
+	// "[primary]" over a frame that does not hold it.
+	if (root && is_compositable(root)) out.append(root);
 	for (QWidget *w : QApplication::topLevelWidgets()) {
 		if (w == root || !is_compositable(w)) continue;
 		if (InputRouter::is_popup_layer(w)) continue;
@@ -307,8 +313,15 @@ QWidget *choose_current_window(const QVector<QWidget *> &tabs, QWidget *root)
 	// rather than to nothing: a frame with no current window would draw an
 	// empty screen and give a user nowhere to click.
 	if (g_current && tabs.contains(g_current.data())) return g_current.data();
-	g_current = tabs.isEmpty() ? root : tabs.first();
-	return g_current.data();
+	// RETURNED, not assigned. Assigning here made this the second way the
+	// current window changes, and the only one that carried nothing with it:
+	// a switch moves input, focus, the open menu and the terminal's title
+	// (8.107, 8.108), and a window closing under the user went through none
+	// of that. Measured -- close the window you are in and the title still
+	// names it, nothing has focus, and the next keystroke goes nowhere.
+	// compose() hands the answer to enter_window(), so both routes carry the
+	// same things.
+	return tabs.isEmpty() ? root : tabs.first();
 }
 
 } // namespace
@@ -371,10 +384,18 @@ static void dismiss_popups()
 // keyboard_reachable() rather than a walk of nextInFocusChain() written here,
 // because that function is what decides a tab stop for Tab itself: seeding
 // focus somewhere Tab would not have gone is a second focus order.
-static void enter_window(QWidget *w)
+// Becoming the current window: everything a switch carries EXCEPT closing
+// what the old window had open.
+//
+// Split out because compose() reaches this too, when the window you were in
+// has gone and a new one has to be picked -- and that is not the same event
+// as a person switching. Measured: calling the full switch from compose()
+// dismissed popups during composition, so the first frame after a menu
+// opened closed it, and fifteen checks about menus and popup placement
+// failed at once.
+static void adopt_window(QWidget *w)
 {
 	if (!w) return;
-	dismiss_popups();
 	if (!w->focusWidget()) {
 		const QVector<QWidget *> stops = keyboard_reachable(w);
 		if (!stops.isEmpty()) stops.first()->setFocus(Qt::OtherFocusReason);
@@ -391,6 +412,15 @@ static void enter_window(QWidget *w)
 	// not a key, so nothing would have updated it and the accessor would name
 	// a widget in the window we just left.
 	set_focus_widget(w->focusWidget());
+}
+
+// A switch, as a person makes it: the window being left gives up whatever it
+// had open first.
+static void enter_window(QWidget *w)
+{
+	if (!w) return;
+	dismiss_popups();
+	adopt_window(w);
 }
 
 void set_current_window(QWidget *w)
@@ -529,6 +559,10 @@ void Compositor::compose(CellBuffer &out) {
 	// shape as 8.107 -- the picture followed the switch and the machinery
 	// behind it did not.
 	QWidget *const base = shown ? shown : win_;
+	// The pick above may have chosen a different window because the current
+	// one has gone. Going through the switch is what carries input, focus,
+	// the open menu and the title to it.
+	if (base != g_current.data()) adopt_window(base);
 	// A layer's dropped-widget list and scroll belong to that layer, the rule
 	// input_layer_ and popup_layer_ already follow. Carrying one window's
 	// state into another would show the new window scrolled to a position

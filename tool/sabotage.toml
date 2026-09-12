@@ -1277,3 +1277,27 @@ find = "\t\tfor (const QPointer<QWidget> &w : std::as_const(root_.dropped))\n\t\
 into = "\t\troot_ = Layer{};"
 count = 1
 check = "leaving a window puts back the widgets its own policy hid"
+
+[[sabotage]]
+# The pick that carries nothing, which is where closing the current window
+# stood: compose() chooses a new one and assigns it, so the terminal goes
+# on naming a window that no longer exists, nothing has focus, and the next
+# keystroke lands nowhere. 8.118.
+name = "a window closing under the user changes nothing but the pointer"
+file = "src/runtime/compositor.cpp"
+find = "\tif (base != g_current.data()) adopt_window(base);"
+into = "\tif (base != g_current.data()) g_current = base;"
+count = 1
+check = "and something inside it has focus"
+
+[[sabotage]]
+# The root in the tab list whether or not it can be drawn. The pick takes
+# the first tab when the current window has gone, so an application that
+# hides its main window gets a current window the terminal cannot draw --
+# and a strip naming it over a frame that does not hold it.
+name = "the tab strip lists a main window that cannot be seen"
+file = "src/runtime/compositor.cpp"
+find = "\tif (root && is_compositable(root)) out.append(root);"
+into = "\tif (root) out.append(root);"
+count = 1
+check = "closing the current one still leaves a window the terminal can draw"

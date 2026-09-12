@@ -1324,6 +1324,82 @@ int suite_router() {
 		      "a window with nothing focusable in it draws from its own top "
 		      "rather than at the scroll the last window needed");
 
+		// CLOSING THE WINDOW YOU ARE IN, which is the second route that
+		// changes the current window and the one that carried nothing.
+		// Nothing in this suite had ever destroyed a window while it was
+		// current, so the path compose() takes when the old one has gone --
+		// which its own comment describes -- had no check over it at all.
+		{
+			auto *doomed = new QWidget;
+			doomed->setAttribute(Qt::WA_DontShowOnScreen);
+			doomed->setWindowTitle(QStringLiteral("Doomed"));
+			auto *dv = new QVBoxLayout(doomed);
+			dv->addWidget(new QLineEdit(QStringLiteral("doomed"), doomed));
+			doomed->resize(GridMetrics::cells(20, 3));
+			doomed->show();
+			QCoreApplication::processEvents();
+			Qtty::set_current_window(doomed);
+			QCoreApplication::processEvents();
+			CellBuffer with_it(70, 8);
+			c.compose(with_it);
+			CHECK(Qtty::current_window() == doomed,
+			      "the control: the window about to be closed is the current "
+			      "one");
+
+			delete doomed;               // as an application closes a window
+			QCoreApplication::processEvents();
+			CellBuffer without(70, 8);
+			c.compose(without);
+
+			QWidget *const now = Qtty::current_window();
+			CHECK(now && now->isVisible(),
+			      "closing the current window leaves a visible one current");
+
+			// And it is a window somebody can type into. The pick carried
+			// nothing, so nothing seeded focus and the next keystroke went
+			// nowhere at all -- measured before the fix.
+			CHECK(Qtty::focusWidget()
+			      && now->isAncestorOf(Qtty::focusWidget()),
+			      "and something inside it has focus, so the next keystroke "
+			      "has somewhere to land");
+
+			// WITH THE MAIN WINDOW HIDDEN, which is what makes the check
+			// above able to fail at all: the tab list held the root
+			// unconditionally while every other window had to be
+			// compositable, so the pick could land on a window the terminal
+			// cannot draw -- and with a visible root it never does. The first
+			// version of this check omitted the hiding and passed against the
+			// defect, measured.
+			auto *doomed2 = new QWidget;
+			doomed2->setAttribute(Qt::WA_DontShowOnScreen);
+			doomed2->setWindowTitle(QStringLiteral("Doomed2"));
+			auto *d2v = new QVBoxLayout(doomed2);
+			d2v->addWidget(new QLineEdit(QStringLiteral("d2"), doomed2));
+			doomed2->resize(GridMetrics::cells(20, 3));
+			doomed2->show();
+			QCoreApplication::processEvents();
+			a.hide();                       // the compositor's own window
+			Qtty::set_current_window(doomed2);
+			QCoreApplication::processEvents();
+			CellBuffer hidden_root(70, 8);
+			c.compose(hidden_root);
+			CHECK(!a.isVisible() && Qtty::current_window() == doomed2,
+			      "the control: the main window is hidden and another is "
+			      "current");
+
+			delete doomed2;
+			QCoreApplication::processEvents();
+			CellBuffer after2(70, 8);
+			c.compose(after2);
+			QWidget *const now2 = Qtty::current_window();
+			CHECK(now2 && now2->isVisible(),
+			      "and with the main window hidden, closing the current one "
+			      "still leaves a window the terminal can draw, rather than "
+			      "the invisible root");
+			a.show();
+			QCoreApplication::processEvents();
+		}
+
 		Qtty::set_current_window(&a);
 		flat.hide();
 		QCoreApplication::processEvents();

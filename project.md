@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1241 checks, 0 failures. `make check` is green and includes
+1248 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15918,6 +15918,77 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.118 The other way the current window changes (2026-09-12)
+
+8.107 taught the window switch to carry input, focus, the open menu and the
+terminal's title. **There are two routes that change the current window, and
+that was only one of them.** `compose()` picks a new one when the window you
+are in has **gone** -- an application closing it -- and that path assigned
+`g_current` directly:
+
+    g_current = tabs.isEmpty() ? root : tabs.first();
+
+carrying nothing. Measured with three windows, closing the one in front:
+
+    terminal title      still names the CLOSED window
+    focusWidget()       none -- the next keystroke goes nowhere
+    the window picked   can be one that is HIDDEN
+
+The third is a second fault in the same line. `collect_window_tabs()`
+appends the root **unconditionally** while every other window must be
+`is_compositable()`, so an application that hides its main window keeps a
+tab for it -- and this pick takes the first tab. Measured: close the current
+window with the main one hidden and the strip says `[primary]` over a frame
+that does not hold it, with keystrokes reaching nothing at all.
+
+Fixed by making `choose_current_window()` **return** the pick instead of
+assigning it, and having `compose()` hand it to the switch. The root joins
+the strip only while it can be seen. Re-measured in the copy: the title
+follows, focus is seeded, the pick lands on a visible window, and the
+keystroke arrives in it.
+
+**And the first version of that fix was wrong in a way only the suite could
+say.** Routing the pick through `enter_window()` looked like the tidy
+answer -- one entry point, both routes carrying the same things -- and
+`enter_window()` **dismisses popups**, which compose() now did on any frame
+where the drawn window differed from the current one. The first frame after
+a menu opened closed it. **Fifteen checks failed**, every one about menus or
+popup placement.
+
+So the two events are not the same event. A person switching windows gives
+up what the old window had open; a window VANISHING takes its popups with it
+and has no business closing anybody else's. The switch is
+`dismiss_popups()` plus `adopt_window()` now, and the pick calls
+`adopt_window()` alone.
+
+**That is the second time in two days that "route both paths through one
+function" was the wrong shape** -- the first being 8.117, where the sibling
+resets shared a rule and mine shared half of it. The lesson is not that
+sharing is wrong but that **the shared thing has to be the part that is
+genuinely common**, and here it is three of the four things a switch does.
+
+**Nothing in 1241 checks destroyed a window that is current**, which is why
+yesterday's sweep of this family did not reach it: the family was defined by
+the switch, and this is the route that is not a switch. **Seven checks do
+now** -- the suite's own count, 1241 to 1248, rather than the five this
+entry first claimed from arithmetic -- and three of them were watched
+failing without the fix; the rest are their controls.
+
+**One of those five had to be strengthened for the same reason as
+yesterday's.** "Closing the current window leaves a visible one current"
+passes against the defect whenever the root is visible, which it is in every
+ordinary fixture; only with the main window HIDDEN does the pick land
+somewhere undrawable. The check hides it now, and the broken build also
+prints `QWidget::mapFrom(): parent must be in parent hierarchy` -- Qt
+objecting to being asked to map through a window that is not there.
+
+**And the whole of it was built and verified in a `git archive HEAD` copy**
+while the full sabotage run held this tree, then applied here in one step
+with `sabotage.py --validate` confirming that 142 anchors still matched.
+That is the technique from 8.117 used deliberately rather than in a pinch:
+develop against a fixed commit, keep the long verification running, and let
+the tree take a finished change instead of a sequence of half-ones.
 
 ### 8.117 The half of the rule my own comment claimed to follow (2026-09-12)
 
