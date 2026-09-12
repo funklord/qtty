@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1237 checks, 0 failures. `make check` is green and includes
+1241 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15918,6 +15918,105 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.117 The half of the rule my own comment claimed to follow (2026-09-12)
+
+8.115 taught `compose()` to run section 7's policy on the window being
+drawn, and reset the root layer when that window changes. **The reset
+discarded the dropped-widget list without putting the widgets back**, and
+the comment beside it said it was following "the rule `input_layer_` and
+`popup_layer_` already follow". Both of those resets do this:
+
+    for (w : input_.dropped) if (w) w->show();   input_ = Layer();
+
+Mine did the second line only. **The population is three resets, two
+correct, one wrong**, which is the sort of thing an enumeration finds and a
+query does not -- the query "does this reset the layer" says yes to all
+three.
+
+**The consequence is that a widget is lost, not merely mismanaged.**
+`dropped` is the ONLY record that this policy hid anything: discard it and
+the widgets stay hidden with nobody holding the record, because returning
+to the window finds an empty list and the drop loop skips them for being
+invisible already. Measured with an optional widget in a 30x7 window:
+
+    small, then roomy again                  the widget comes back
+    small, visit another window, return,
+      roomy                                  HIDDEN, and hidden for good
+
+**And the check I wrote yesterday asserted the wrong half.** It said "and
+another window's policy does not restore it", which reads as careful and
+required the widget to stay hidden -- so the fix makes that check fail, and
+a session that trusted it would have concluded the fix was wrong. What it
+was reaching for is real and is now stated so that it does not also forbid
+the window's own reset: **another window's policy leaves it alone, however
+little room that window is given.**
+
+Three checks where there was one: leaving a window puts back what its own
+policy hid; the round trip ends with the widget still there; and another
+window's policy does not touch it. A sabotage entry for the restore loop
+reddens all three.
+
+**And a fifth check, because the sabotage said the other entry was aimed
+at nothing.** Disabling the reset **outright** left all three of those
+green: `apply_priority()` begins by putting back whatever the Layer it is
+handed says it dropped, and it does that whichever layer that is -- so the
+widgets come back regardless, by the new window's policy loop rather than
+by the old window's reset. **The dropped list was never the half only the
+reset could protect.**
+
+What is, is the **scroll**, and seeing it needs a window with nothing
+focusable in it. `follow_focus()` recomputes the scroll every frame from
+the focused widget, so a window that has one overwrites the inherited value
+before anybody could observe it; a window with none gets no answer and
+keeps what the layer state held -- the previous window's offset, computed
+against a window this one has never met.
+
+**That check then took three attempts, and each failure was a different
+member of this file's own catalogue.**
+
+- **A vacuous control.** "The window switched away from is scrolled" was
+  asserted as *`ROW0` is not in the frame*, which a frame not holding that
+  window at all satisfies -- and with five windows up in that suite, that is
+  what was happening. It asserts the last row **present** as well now, which
+  is the half that says the window is drawn rather than absent.
+- **A fixture that could not express the failure.** The window built to have
+  nothing focusable had no layout either, and the policy's second pass
+  resizes such a window down to the terminal: traced, it reached `compose()`
+  **7 cells tall rather than the 20 it was given**, so `max_y` was zero and
+  the clamp at the end of `follow_focus()` erased the inherited scroll
+  before anything could see it. With a layout of fixed-height labels the
+  minimum is real, the clamp leaves room, and the check fails against the
+  broken code.
+- **A standalone probe that DID see it**, which is what said the suite was
+  at fault rather than the theory. The same two windows outside the suite
+  showed `Flat`'s frame come back empty under the broken code while the
+  suite stayed green -- and the difference between the two fixtures is
+  exactly the resize above.
+
+**The trace is what ended it.** Four guesses at the mechanism were wrong;
+one `fprintf` of `base`, the scroll and the layer's height answered it in
+one run. *Read the input before theorising about the mechanism* -- and a
+scroll is an input to the drawing, however much it looks like an internal.
+
+**Two checks that pass for a reason other than the one under test are not
+two checks**, and nothing but breaking the code says which reason it was.
+
+**How it was found matters more than the fault.** The guide says section
+7's policy "works per layer -- the window, a modal and a popup each scroll
+on their own", and that sentence was false for a second window until
+yesterday. Checking whether it had become true is what led to reading the
+reset, and reading the reset is what found the missing loop. **A claim that
+has just been made true is worth reading as carefully as one that has just
+been made false** -- nothing else in the day's work would have gone near
+it.
+
+**Measured in a copy, because the tree was busy.** The full sabotage run
+was in flight and rewrites `compositor.cpp` between entries, so a `git
+archive HEAD` into the scratch directory gave a clean tree to build and
+probe without touching either. That is worth keeping as a technique: it
+costs 3.7 MB and one build, and it removes the choice between waiting hours
+and disturbing a verification run.
 
 ### 8.116 Fourteen watchers that could not exit (2026-09-11)
 

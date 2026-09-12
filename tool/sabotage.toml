@@ -1260,7 +1260,20 @@ check = "the strip survives a window scrolled underneath it"
 # the rule input_layer_ and popup_layer_ already follow.
 name = "the root layer state survives a window switch"
 file = "src/runtime/compositor.cpp"
-find = "\tif (base != root_layer_) {\n\t\troot_ = Layer{};\n\t\troot_layer_ = base;\n\t}"
-into = "\tif (false) {\n\t\troot_ = Layer{};\n\t\troot_layer_ = base;\n\t}"
+find = "\tif (base != root_layer_) {\n\t\tfor (const QPointer<QWidget> &w : std::as_const(root_.dropped))\n\t\t\tif (w) w->show();\n\t\troot_ = Layer{};\n\t\troot_layer_ = base;\n\t}"
+into = "\tif (false) {\n\t\tfor (const QPointer<QWidget> &w : std::as_const(root_.dropped))\n\t\t\tif (w) w->show();\n\t\troot_ = Layer{};\n\t\troot_layer_ = base;\n\t}"
 count = 1
-check = "another window's policy does not restore it"
+check = "draws from its own top rather than at the scroll"
+
+[[sabotage]]
+# Forget the dropped widgets without showing them, which is where this
+# stood for a day: the only record that the policy hid them is discarded,
+# so returning to the window finds an empty list and the drop loop skips
+# them for being invisible already. Hidden for good on a terminal that has
+# since grown. 8.117.
+name = "a window switch forgets what it hid without putting it back"
+file = "src/runtime/compositor.cpp"
+find = "\t\tfor (const QPointer<QWidget> &w : std::as_const(root_.dropped))\n\t\t\tif (w) w->show();\n\t\troot_ = Layer{};"
+into = "\t\troot_ = Layer{};"
+count = 1
+check = "leaving a window puts back the widgets its own policy hid"

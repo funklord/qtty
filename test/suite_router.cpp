@@ -1205,14 +1205,128 @@ int suite_router() {
 		      "the control: the optional widget of the window being drawn is "
 		      "hidden while the terminal is too small for it");
 
+		// LEAVING THE WINDOW PUTS BACK WHAT THE POLICY HID, and the check
+		// that stood here asserted the opposite -- that the widget stays
+		// hidden while another window is drawn. That reads as careful and
+		// codified a defect: `dropped` is the only record that this policy
+		// hid anything, so a reset that discards it without showing them
+		// leaves them hidden with nobody holding the record. Returning finds
+		// an empty list, and the drop loop skips them for being invisible
+		// already. Measured, with an optional widget in a 30x7 window:
+		//
+		//     small, then roomy again            comes back
+		//     small, visit another window,
+		//       return, roomy                    HIDDEN, and for good
+		//
+		// The two sibling resets -- the modal's and the popup's -- had always
+		// shown their dropped widgets before clearing. This one claimed in a
+		// comment to follow that rule while following half of it.
 		Qtty::set_current_window(&a);
 		QCoreApplication::processEvents();
 		CellBuffer roomy(70, 40);
 		c.compose(roomy);
-		CHECK(!spare->isVisible(),
-		      "and another window's policy does not restore it: the dropped "
-		      "list belongs to the layer it was computed for, and the window "
-		      "it belongs to is not even being drawn");
+		CHECK(spare->isVisible(),
+		      "leaving a window puts back the widgets its own policy hid, "
+		      "rather than discarding the only record that they were hidden");
+
+		// And the round trip ends where it started. This is the property the
+		// hysteresis exists for, stated across a window switch: the widget is
+		// back, and a roomy terminal keeps it.
+		Qtty::set_current_window(&tall);
+		QCoreApplication::processEvents();
+		CellBuffer back_roomy(70, 40);
+		c.compose(back_roomy);
+		CHECK(spare->isVisible(),
+		      "and it is still there on the way back, so a terminal that grew "
+		      "while you were in another window shows what it can");
+
+		// What the old check was reaching for, stated so that it does not
+		// also forbid the window's own reset: a window's policy manages ITS
+		// widgets. Composing `a` -- which has no layout and therefore fits
+		// any terminal -- must leave the other window's optional widget
+		// alone whatever size it is given.
+		Qtty::set_current_window(&a);
+		QCoreApplication::processEvents();
+		CellBuffer pinched(70, 2);
+		c.compose(pinched);
+		CHECK(spare->isVisible(),
+		      "while another window's policy leaves it alone, however little "
+		      "room that window is given");
+
+		// AND A WINDOW'S SCROLL DOES NOT FOLLOW YOU INTO THE NEXT ONE.
+		//
+		// This needs a window with nothing focusable in it, and the reason is
+		// the whole point: follow_focus() recomputes the scroll every frame
+		// from the focused widget, so a window that HAS one hides the fault
+		// by immediately overwriting the inherited value. A window with no
+		// focus widget gets no answer from follow_rect() and keeps whatever
+		// the layer state already held -- which is the previous window's
+		// scroll, computed against a window this one has never met.
+		//
+		// Found by sabotage: disabling the reset outright left all three
+		// checks above green, because apply_priority()'s own put-back loop
+		// restores the widgets whichever layer it is handed. The dropped
+		// list was never the half that only the reset could protect.
+		// A LAYOUT, and fixed heights, so the window's own minimum is
+		// taller than the view. A layoutless window is resized down to the
+		// terminal by the policy's second pass -- traced, this one arrived
+		// at compose() 7 cells tall rather than the 20 it was given -- and
+		// then `max_y` is zero, so the clamp at the end of follow_focus()
+		// erases any inherited scroll and the check cannot fail. A fixture
+		// that cannot express the failure is no check, which is the second
+		// time in two days this section has taught that.
+		QWidget flat;
+		flat.setAttribute(Qt::WA_DontShowOnScreen);
+		flat.setWindowTitle(QStringLiteral("Flat"));
+		auto *flv = new QVBoxLayout(&flat);
+		flv->setContentsMargins(0, 0, 0, 0);
+		flv->setSpacing(0);
+		for (int i = 0; i < 20; ++i) {
+			// Labels only: nothing here may take focus, or follow_focus()
+			// computes a scroll for this window and overwrites the
+			// inherited one before it can be seen.
+			auto *lab = new QLabel(i == 0 ? QStringLiteral("TOPROW")
+			                              : QStringLiteral("flat%1").arg(i),
+			                       &flat);
+			lab->setFixedHeight(ch);
+			flv->addWidget(lab);
+		}
+		flat.resize(GridMetrics::cells(60, 20));
+		flat.show();
+		QCoreApplication::processEvents();
+
+		// Scroll `tall` first, so there is something to inherit: its focus is
+		// on its last field and the terminal is short, so the policy scrolls
+		// well down before the switch.
+		Qtty::set_current_window(&tall);
+		bottom->setFocus();
+		set_focus_widget(bottom);
+		QCoreApplication::processEvents();
+		CellBuffer scrolled(70, 8);
+		c.compose(scrolled);
+		// BOTH HALVES, and the first version had only the absent one --
+		// "ROW0 is not in the frame" is satisfied by a frame that does not
+		// hold this window at all, which is what was happening: with five
+		// windows up in this suite the control passed vacuously, the scroll
+		// under test was another window's zero, and the sabotage below stayed
+		// green. Asserting the LAST row present is what says this window is
+		// drawn and scrolled, rather than absent.
+		CHECK(scrolled.to_text().contains(QStringLiteral("ROW11"))
+		      && !scrolled.to_text().contains(QStringLiteral("ROW0")),
+		      "the control: the window switched away from is drawn and "
+		      "genuinely scrolled, so there is an offset to inherit");
+
+		Qtty::set_current_window(&flat);
+		QCoreApplication::processEvents();
+		CellBuffer plain(70, 8);
+		c.compose(plain);
+		CHECK(plain.to_text().contains(QStringLiteral("TOPROW")),
+		      "a window with nothing focusable in it draws from its own top "
+		      "rather than at the scroll the last window needed");
+
+		Qtty::set_current_window(&a);
+		flat.hide();
+		QCoreApplication::processEvents();
 
 		Qtty::set_current_window(&a);
 		tall.hide();

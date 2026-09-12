@@ -534,7 +534,27 @@ void Compositor::compose(CellBuffer &out) {
 	// state into another would show the new window scrolled to a position
 	// computed from the old one's focus, and would hide widgets it never
 	// dropped.
+	//
+	// PUT BACK WHAT WE HID BEFORE FORGETTING THAT WE HID IT, which the first
+	// version of this did not -- and its comment claimed to follow the rule
+	// the two resets below follow, while following half of it. `dropped`
+	// holds what THIS policy hid, so discarding it without showing those
+	// widgets leaves them hidden with no record anywhere that they were:
+	// returning to the window finds an empty list, and the drop loop skips
+	// them because they are already invisible. Measured, with an optional
+	// widget in a 30x7 window:
+	//
+	//     small, then roomy again          the widget comes back
+	//     small, visit another window,
+	//       return, roomy                  HIDDEN, and hidden for good
+	//
+	// A window that is not being drawn loses nothing by having its optional
+	// widgets shown: nobody is looking at it, and the policy re-drops them
+	// on the frame it becomes current again if the terminal still demands
+	// it.
 	if (base != root_layer_) {
+		for (const QPointer<QWidget> &w : std::as_const(root_.dropped))
+			if (w) w->show();
 		root_ = Layer{};
 		root_layer_ = base;
 	}
