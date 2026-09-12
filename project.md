@@ -28,11 +28,17 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-09, at 1166**,
-the sanitizers included after 8.68's fix, and `make test-tray` at 1165.
-The full sabotage set was run end to end at 90 entries the same day, every
-one reddening the check it names and none inconclusive; the three added
-since were each proved by hand as they were written.
+**Last re-verified under all six configurations: 2026-09-12, at 1257**,
+run one at a time rather than together, since two builds in one tree is
+how a session reads somebody else's half-written artifact as its own
+result. The sanitized run is clean because of 8.118's fix: the same run a
+day earlier reported 7706 bytes in 48 allocations, every one indirect from
+two unparented dialogs in checks written that afternoon, and `make check`
+cannot see any of it -- the leak detector lives in this target alone.
+The full sabotage set was run end to end at 144 entries on 2026-09-12,
+and **found one check that had stopped discriminating** (8.121): every
+other entry reddened the check it names. The three added since were each
+proved by hand as they were written.
 Two sentences rather than one, deliberately. They used to be welded --
 *"N checks under six configurations, all six re-run <date>"* -- and a
 count bumped without re-running the six turned a measured record into a
