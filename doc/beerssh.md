@@ -95,11 +95,44 @@ relative to libvterm acting on such a mode. Every table on this page was
 measured against `3525de0` and none has been re-taken since.
 
 So the tables are **due**, not wrong -- nobody has measured them against
-`5d4aa8b` and this note is not that measurement. Re-taking them needs
-`qtty-negotiate` built here and beerssh built there, which is a session's
-work rather than a paragraph's. Until then read every measured table
-below as "as of `3525de0`", which is what the dates on them say and what
-this note stops a reader skipping past.
+`5d4aa8b` and this note is not that measurement. Until then read every
+measured table below as "as of `3525de0`", which is what the dates on them
+say and what this note stops a reader skipping past.
+
+**Attempted 2026-09-12, and the cost is now known exactly: it is one
+capability, not a session's work.** Their HEAD is `bd7ace7` today and the
+binary in their tree is from 09-11 17:04, which sits between `b1a30e9`
+(15:43) and `bd7ace7` (17:06) -- so it contains everything up to
+`b1a30e9`, `c1ebf5b` included. **The binary is new enough to answer the
+question that fired this trigger.** What is missing is a way to read the
+answer.
+
+The method is `beerssh --term-features=<spec> -e qtty-negotiate --probes`,
+and the report lands on beerssh's own screen, because that is where a
+program's stdout goes when the program is run inside a terminal. Neither
+end can hand it to a file:
+
+- **qtty-negotiate refuses to probe down a pipe, deliberately.** Measured
+  today, and it is the tool saying so rather than an inference:
+
+      qtty-negotiate: stdout is not a terminal, so the probes were not sent.
+                      Nothing can answer them down a pipe, and asking would
+                      put the query in it.
+
+  Redirecting the report therefore turns the probes off, and a run with
+  every probe silent is exactly the reading this document must not take.
+- **beerssh has no headless capture.** `--self-test` builds the window,
+  runs one turn of the loop and exits; `--headless` appears in this
+  document only as a proposal further down, and their `--help` offers
+  nothing that reads the pane's text.
+
+- **[Q] A way to read a pane's text after a command has run in it** --
+  `--self-test`'s sibling, or the proposed `--headless`, or anything that
+  writes the screen to stdout on exit -- turns this page's re-measurement
+  from "a session's work" into a one-line command. It is asked here rather
+  than in their tree because this is a request of their program rather
+  than a fault in it, and because a note in somebody's working tree is a
+  note written while they are in it.
 
 ## Silence, and the one place it is the wrong answer
 
