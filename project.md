@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1257 checks, 0 failures. `make check` is green and includes
+1258 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15924,6 +15924,73 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.122 A comment that promised the checking, and no write that did it (2026-09-12)
+
+`AnsiBackend` calls `signal(SIGPIPE, SIG_IGN)` when it takes the terminal,
+and that is right: a terminal program losing the far end of its output is
+an ordinary event, and dying with signal 13 and no message is the worst
+available answer. It was found the hard way, by writing the capability
+query to a socket whose peer had closed and taking the whole suite down
+with it.
+
+The comment beside it justified ignoring rather than handling:
+
+    Ignored rather than handled: every write here already checks its
+    result, so the error path exists and a signal only prevents it from
+    running.
+
+**No write in the file checked anything.** There are eight, and the frame
+path reads nothing at all; the four sites that bind a result -- the winch
+self-pipe, the geometry query, and the two halves of the terminal handover
+-- `(void)` it in the next statement, which is a warning being silenced
+rather than an error being handled. `ferror` appears nowhere in the file.
+
+So the signal was traded for nothing. Measured with `example/chat`, stdin a
+pty and stdout a pipe whose reader closes:
+
+    read 3268 bytes of frame, then closed the pipe
+    STILL RUNNING 4s after its reader went away -- nothing stopped it
+    utime=17 stime=2 (clock ticks) -- it is still working
+
+A program that used to stop abruptly now does not stop at all, and goes on
+composing frames into a descriptor nothing is reading. **That is worse than
+what it replaced**, because signal 13 at least ends.
+
+**The read path had already decided what this means and the write path was
+not told.** `read_input()` delivers Ctrl-D on EOF -- "the terminal has
+gone" -- so the same event arriving on the way out now says the same thing
+rather than inventing a second answer. Every write goes through one
+`write_out()`, whose result is read. The terminal-closed case was already
+correct through the read path and still is; the pipe case now exits 0 the
+same way.
+
+**The check is `ferror(stdout)` after the flush, not `fwrite`'s return, and
+that is the whole subtlety.** stdout is block-buffered whenever it is not a
+terminal, so `fwrite` copies into the buffer and reports success for a
+descriptor that is already broken; the failure only appears at the flush. A
+write path guarded on `fwrite` would read as checked and catch nothing --
+which is close enough to the original comment's claim to be worth its own
+sabotage entry, and it reddens the check.
+
+**The flag latches on telling, not on noticing.** The constructor writes to
+the terminal before an application has set a sink, so a flag set at the
+write would spend the one report on nobody and leave a real one with
+nothing left to fire. With no sink the error indicator stays set and the
+next write asks again.
+
+This is 8.107's lens -- *one route changes a fact, the other routes are not
+told* -- arriving in a place the lens was not pointed at: the two routes
+here are the two directions of one descriptor pair, and the fact is that
+the terminal has gone.
+
+**And the comment is the thing that kept anybody from looking.** It did not
+describe an intention; it stated, in the present tense, that the work was
+done. Every reader after it -- including the sessions that added write
+sites -- had a sentence in front of them saying the result was already
+being read. `evidence.md`'s *a claim that outlived its subject* is about
+claims that were true once; this one was never true, which is the species
+that rule says a detector cannot tell from the other.
 
 ### 8.121 What the full sabotage run found, on its first completion (2026-09-12)
 

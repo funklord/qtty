@@ -1334,3 +1334,30 @@ find = "\tfor (QWidget *w : QApplication::topLevelWidgets()) {\n\t\tif (w == win
 into = "\tfor (QWidget *w : QApplication::topLevelWidgets()) {\n\t\tif (true) continue;\n\t\tif (w == win_ || is_popup_layer(w) || w->isModal()) continue;"
 count = 1
 check = "a terminal resize reaches a window that is not the one the router was built with"
+
+[[sabotage]]
+# The write path back to where it was: putting bytes on the terminal and not
+# reading the result. The comment beside signal(SIGPIPE, SIG_IGN) claimed the
+# checking was already there and no write in the file did any, so ignoring the
+# signal traded a program that died on a closed pipe for one that never stops
+# -- measured still drawing, and still accumulating CPU, four seconds after
+# its reader went away. 8.122.
+name = "a write to a terminal that has gone is not noticed"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (ferror(stdout)) terminal_gone();"
+into = "\tif (false) terminal_gone();"
+count = 1
+check = "a frame written to a terminal that has gone tells the"
+
+[[sabotage]]
+# The plausible wrong fix, which is why it is worth an entry of its own:
+# checking fwrite()'s return rather than ferror() after the flush. stdout is
+# block-buffered whenever it is not a terminal, so fwrite() copies into the
+# buffer and reports success for a descriptor that is already broken. A write
+# path guarded this way reads as checked and catches nothing. 8.122.
+name = "the write is checked where the failure cannot appear yet"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tfwrite(bytes.constData(), 1, size_t(bytes.size()), stdout);\n\tfflush(stdout);\n\tif (ferror(stdout)) terminal_gone();"
+into = "\tconst size_t put = fwrite(bytes.constData(), 1, size_t(bytes.size()), stdout);\n\tfflush(stdout);\n\tif (put != size_t(bytes.size())) terminal_gone();"
+count = 1
+check = "a frame written to a terminal that has gone tells the"

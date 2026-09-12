@@ -157,6 +157,16 @@ private:
 	// positions that no longer mean anything -- the only case where the
 	// whole screen has to be delete_all'd rather than replaced tile by tile.
 	QSize last_pixel_size_;
+	// Everything qtty puts on the wire goes through here, and the result is
+	// READ. Named rather than left as eight fwrite/fflush pairs because the
+	// checking is the point: the comment beside signal(SIGPIPE, SIG_IGN)
+	// promised every write already checked, and not one of them did.
+	void write_out(const QByteArray &bytes);
+	// The far end has gone. Says what read_input() says for EOF on the way
+	// in, and says it once.
+	void terminal_gone();
+	bool gone_ = false;                  // the sink has been told
+
 	bool raw_ok_ = false;
 	bool tty_out_ = false;               // stdout is a terminal
 	bool active_ = false;

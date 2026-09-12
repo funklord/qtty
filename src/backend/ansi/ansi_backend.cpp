@@ -625,10 +625,17 @@ void AnsiBackend::resume() {
 	// closed -- the whole suite died with signal 13 and no message at all,
 	// which is what this failure always looks like.
 	//
-	// Ignored rather than handled: every write here already checks its
-	// result, so the error path exists and a signal only prevents it from
-	// running. Taken at the same point as SIGWINCH, which is where qtty takes
-	// over the terminal anyway.
+	// Ignored rather than handled, which is only safe while every write goes
+	// through write_out() and its result is read. It was not: this comment
+	// used to claim the checking was already there, and no write in the file
+	// did any -- four bound the return and discarded it in the next
+	// statement, ferror() was read nowhere, and the frame path read nothing.
+	// So the signal that used to stop a program whose reader had gone was
+	// traded for a program that does not stop: measured with the chat
+	// example, stdin a pty and stdout a pipe whose reader closes, it was
+	// still running and still accumulating CPU four seconds later, drawing
+	// frames into a descriptor nothing was reading. Taken at the same point
+	// as SIGWINCH, which is where qtty takes over the terminal anyway.
 	signal(SIGPIPE, SIG_IGN);
 
 	if (s_winch_pipe[0] < 0 && ::pipe(s_winch_pipe) == 0) {
@@ -775,6 +782,43 @@ static void emit_sgr(QByteArray &out, const Cell &c, Sgr &cur,
 	if (cur.primed && c.fg == cur.fg && c.bg == cur.bg && c.attrs == cur.attrs) return;
 	out += sgr_sequence(c.fg, c.bg, c.attrs, depth);   // section 6: theme.cpp owns
 	cur = {c.fg, c.bg, c.attrs, true};                 // the three depths
+}
+
+// Put bytes on the terminal, and read the result.
+//
+// The check is ferror() after the flush rather than fwrite()'s return, and
+// that is the whole subtlety: stdout is block-buffered whenever it is not a
+// terminal, so fwrite() copies into the buffer and reports success for a
+// descriptor that is already broken. A write path that checked only fwrite
+// would look exactly like this one and catch nothing.
+void AnsiBackend::write_out(const QByteArray &bytes) {
+	fwrite(bytes.constData(), 1, size_t(bytes.size()), stdout);
+	fflush(stdout);
+	if (ferror(stdout)) terminal_gone();
+}
+
+// The far end has gone: the window was closed, or the output is a pipe whose
+// reader has finished. read_input() already decided what that means on the
+// way in -- EOF delivers Ctrl-D -- so the way out says the same thing rather
+// than inventing a second answer for one direction of the same event.
+//
+// Once, and the flag is why. The error indicator is sticky, so every later
+// write would report the same gone terminal again; a quit delivered on every
+// frame is one an application cannot tell from a user leaning on the key.
+// Cleared with it, because the deferred diagnostics are written down this
+// stream when qtty gives the terminal back, and a stream left in error is one
+// they cannot go out on.
+//
+// The flag latches on TELLING rather than on noticing, which is not the same
+// thing: the constructor writes to the terminal before an application has set
+// a sink, so latching on the write would spend the one report on nobody and
+// leave a real one with nothing left to fire. With no sink the error
+// indicator stays set and the next write asks again.
+void AnsiBackend::terminal_gone() {
+	if (gone_ || !sink_) return;
+	gone_ = true;
+	clearerr(stdout);
+	sink_->on_key({Qt::Key_D, QString(), true, false, false});
 }
 
 void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
@@ -986,8 +1030,7 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 	// it would leave exactly the tear this exists to prevent -- the text
 	// updated and the image arriving separately.
 	if (sync) out += "\033[?2026l";
-	fwrite(out.constData(), 1, out.size(), stdout);
-	fflush(stdout);
+	write_out(out);
 }
 
 // Free the terminal's copy of a picture nothing is showing any more.
@@ -1174,8 +1217,7 @@ void AnsiBackend::present_pixels(const QImage &frame, const QRegion &damage) {
 	default:
 		return;                                      // no pixel path
 	}
-	fwrite(out.constData(), 1, out.size(), stdout);
-	fflush(stdout);
+	write_out(out);
 }
 
 void AnsiBackend::present_overlay(int id, const QImage &rgba, QPoint cell, int z) {
@@ -1183,16 +1225,14 @@ void AnsiBackend::present_overlay(int id, const QImage &rgba, QPoint cell, int z
 	QByteArray out = moveTo(cell);
 	out += encode_kitty_image(0xFFFFE00u + quint32(id), for_terminal(rgba),
 	                          z > 0 ? z : 1);
-	fwrite(out.constData(), 1, out.size(), stdout);
-	fflush(stdout);
+	write_out(out);
 }
 
 void AnsiBackend::clear_overlay(int id) {
 	if (mode_ != Capabilities::KittyAlpha) return;
 	QByteArray out = "\033_Ga=d,d=i,q=2,i="
 	               + QByteArray::number(0xFFFFE00u + quint32(id)) + ";\033\\";
-	fwrite(out.constData(), 1, out.size(), stdout);
-	fflush(stdout);
+	write_out(out);
 }
 
 void AnsiBackend::set_title(const QString &title) {
@@ -1219,16 +1259,14 @@ void AnsiBackend::set_title(const QString &title) {
 	// ST rather than BEL to close it: both are accepted everywhere that
 	// implements OSC at all, and BEL is a character a terminal may also
 	// ring.
-	printf("\033]2;%s\033\\", safe.toUtf8().constData());
-	fflush(stdout);
+	write_out("\033]2;" + safe.toUtf8() + "\033\\");
 }
 
 void AnsiBackend::set_cursor(std::optional<QPoint> cell, CursorShape shape) {
 	if (cell && shape != CursorShape::Hidden)
-		printf("\033[%d;%dH\033[?25h", cell->y() + 1, cell->x() + 1);
+		write_out(moveTo(*cell) + "\033[?25h");
 	else
-		printf("\033[?25l");
-	fflush(stdout);
+		write_out("\033[?25l");
 }
 
 // ---- input decoding --------------------------------------------------------
@@ -1770,9 +1808,10 @@ bool AnsiBackend::write_clipboard(const QString &text, Selection sel) {
 	out += ';';
 	out += utf8.toBase64();
 	out += "\033\\";
-	fwrite(out.constData(), 1, out.size(), stdout);
-	fflush(stdout);
-	return true;
+	write_out(out);
+	// "False when nothing was written" is what the declaration promises, and
+	// a copy that went into a broken descriptor is the clearest case of it.
+	return !gone_;
 }
 
 // NOT gated on a capability, and the honest reason is that there is nothing to

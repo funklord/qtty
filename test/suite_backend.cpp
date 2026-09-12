@@ -1271,6 +1271,53 @@ int suite_backend() {
 			CHECK(!dead.answered, "a terminal that has gone yields nothing");
 			::close(fds[0]);
 		}
+
+		// And the other half of the same event, which the comment beside
+		// signal(SIGPIPE, SIG_IGN) claims is covered and is not. Ignoring the
+		// signal is justified there by "every write here already checks its
+		// result"; no write in that file does. Four bind the return and
+		// `(void)` it in the next statement, ferror() is never read, and the
+		// frame path reads nothing at all -- so the signal that used to stop
+		// a program whose reader had gone was traded for a program that does
+		// not stop.
+		//
+		// Measured before this was written, with the chat example: stdin a
+		// pty, stdout a pipe whose reader closes. Four seconds later it was
+		// still running and still accumulating CPU, drawing frames into a
+		// descriptor nothing was reading.
+		//
+		// The read path already decided what "the terminal has gone" means --
+		// read_input() delivers Ctrl-D on EOF -- so the write path says the
+		// same thing rather than inventing a second answer.
+		{
+			int out[2];
+			if (::pipe(out) == 0) {
+				::close(out[0]);                      // the reader goes away
+				Recorder gone;
+				AnsiBackend dead_out;
+				dead_out.set_event_sink(&gone);
+				CellBuffer frame(20, 3);
+				frame.text(0, 0, QStringLiteral("into the void"));
+
+				const int keep_out = ::dup(1);
+				fflush(stdout);
+				::dup2(out[1], 1);
+				dead_out.present(frame, QRegion());
+				fflush(stdout);
+				::dup2(keep_out, 1);                  // report on the real one
+				::close(keep_out);
+				::close(out[1]);
+				// Sticky, and it would follow every later printf in this
+				// suite down the real descriptor if it were left set.
+				clearerr(stdout);
+
+				CHECK(!gone.keys.isEmpty()
+				          && gone.keys.last().qt_key == Qt::Key_D
+				          && gone.keys.last().ctrl,
+				      "a frame written to a terminal that has gone tells the"
+				      " sink, as EOF on the way in does");
+			}
+		}
 	}
 
 	// -- negotiation. The rules, against capability sets built by hand:
