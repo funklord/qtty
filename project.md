@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1248 checks, 0 failures. `make check` is green and includes
+1257 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15918,6 +15918,150 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.121 What the full sabotage run found, on its first completion (2026-09-12)
+
+The 144-entry run has been deferred for two days and interrupted twice. Run
+end to end against a finished tree it reported **one** failure, and it is
+exactly the kind nothing else finds: *the named check PASSED against broken
+code*.
+
+The entry was 8.101's -- follow the widget rather than its caret -- and the
+check it names is "a text field wider than the terminal keeps its caret in
+view". **Reverting the caret fix no longer fails it**, because 8.115 added a
+second mechanism that covers the same fixture: a rect wider than the view
+shows its LEFT edge, and that check's field is **empty**, so its caret sits
+at the left. Two independent mechanisms, either sufficient, and the check
+cannot tell which one is working -- the shape 8.108 hit from the other side.
+
+The fixture is what had to change, not the rule. With the caret at the FAR
+END of the field the two disagree: follow the widget and the left edge is
+shown with the caret off it, and **the compositor then places no cursor at
+all**, which is the symptom the original defect was reported as. Measured,
+with the fix reverted by hand:
+
+    caret at 55 of 55 in a 20-cell view:  cursor ABSENT
+
+and with it in place, placed and inside the view. The entry points at the
+new check.
+
+**This is the argument for running the whole spec rather than the entries
+you touched.** Every check here was watched failing when it was written;
+this one stopped discriminating **later**, when an unrelated fix made its
+fixture reachable by a second route. Nothing in the ordinary course of work
+re-asks that question -- the check goes on passing, and passing is what it
+is supposed to do.
+
+The other 143 entries reddened the checks they name.
+
+### 8.120 A resize that reached one window of several (2026-09-12)
+
+The same shape a third time in one day -- one route, several objects.
+`InputRouter::on_resize()` resized `win_`, the window the router was built
+with, and nothing else. A terminal is one rectangle and the windows take
+turns filling it, so a window that missed a resize is drawn at the size the
+terminal used to be.
+
+Measured, two windows at 40x10 and the terminal grown to 80x24:
+
+    First    80x24     resized
+    Second   40x10     not
+
+and switching to Second drew two rows of content in the top-left corner of
+an empty 80x24 screen. Shrinking is the same fault wearing section 7's
+clothes: the window is too big, so the policy scrolls and drops -- the
+graceful handling of a size it should never have had, which is why nobody
+had noticed.
+
+Every plain top-level is resized now. **Modals and popups are excluded and
+that exclusion is checked**: a dialog is centred and clamped (8.113) and a
+menu sits at its anchor, so resizing either to the whole terminal would be
+a different bug. Hidden windows are included, because one shown later is
+drawn at the terminal's size like any other and nothing else would size it.
+
+Three checks -- the control, the resize reaching the other window, and the
+modal keeping its own size -- and the middle one was watched failing with
+the loop disabled.
+
+### 8.119 Who has focus, when nobody is told (2026-09-12)
+
+The lens from 8.117 and 8.118, generalised: **wherever this library keeps a
+copy of a fact Qt owns, it has to re-read rather than wait to be told**,
+because the notifications that would tell it are exactly what a platform
+with no active window does not send.
+
+`Qtty::focusWidget()` is the documented answer to "who has focus" -- the
+guide tells implementers to ask it, because `hasFocus()` is permanently
+false here. It is moved by explicit `set_focus_widget()` calls only: from
+the router after input, from the window switch, and once at startup.
+**`edit->setFocus()` in an application's own slot -- the commonest thing a
+Qt program does -- moves Qt's focus and leaves the record behind.**
+
+**There is no hook, measured rather than assumed.** In a window that never
+activates, Qt emits **no `focusChanged` signal** and delivers **no
+`FocusIn` or `FocusOut` event** when `setFocus()` is called;
+`window()->focusWidget()` simply changes. So nothing can be connected to,
+and the record has to be re-read where it is consumed.
+
+What the staleness cost, measured with two buttons and their own
+`Qt::WidgetShortcut`s:
+
+    after b->setFocus()      Qtty::focusWidget()   says A, Qt says B
+    Ctrl+K, B's own          did not fire          the context was judged
+                                                   against the stale widget
+    after the fix            says B, Ctrl+K fires, and A's stays silent
+
+The first key after a programmatic move was judged against the old widget
+because the router repairs the record **after** matching rather than
+before. So the re-read happens twice: at the top of `compose()`, before
+anything is drawn, so the frame carries the synthetic focus events rather
+than showing them a frame late; and at the top of `on_key()`, before
+shortcut matching.
+
+Three checks. One of them failed against the FIXED code on its first run,
+and the fixture was at fault rather than the code: this suite leaves other
+top-levels visible, so the drawn window was somebody else's and the record
+correctly named the focus in **that** one. Making the window under test
+current first is what makes the check about `compose()` rather than about
+the switch.
+
+**A fourth member of the family, and this one cannot be fixed.**
+`QApplication::keyboardModifiers()` is what an application asks inside a
+`clicked()` slot to spell "Ctrl+click", and Qt fills it from **platform**
+events. Measured, in both directions:
+
+    during a Ctrl+click     the event says Ctrl, the global says nothing
+    after a Ctrl+S          the global says Ctrl until the next plain key,
+                            so a click in between reads a modifier nobody
+                            is holding
+
+A synthetic KEY event does update the global and a synthetic MOUSE event
+does not, which is why it is wrong in two directions rather than one. There
+is no public setter -- `qguiapplication.h` has `keyboardModifiers()` and
+`queryKeyboardModifiers()` and nothing that writes -- so the library cannot
+repair it. **Pinned as a disagreement at one instant**, the way
+`hasFocus()` already is: if Qt ever starts tracking these, the check fails
+and says the limit has lifted. The guide tells implementers to ask the
+event, which is good practice on a desktop anyway and the only thing that
+works here.
+
+That check took three attempts, all fixture faults and none of them subtle
+in hindsight: a bare `QWidget` draws nothing to aim a click at; giving it
+text still left it on the last row of a window this section has been
+filling all day, where the press reached the widget above it -- `seen=0`,
+traced rather than guessed at the third attempt; and a window of its own is
+what removed the layout from a question that was never about the layout.
+
+**Two lenses in the same family came back empty, with their method.** The
+theme is not derived from `QPalette` at all -- it is section 6's
+hand-authored terminal table -- and `role_of()` reads
+`QGuiApplication::palette()` live on every lookup, so a runtime palette
+change is picked up with nothing to go stale. And `GridMetrics` caches the
+cell size, but `setup()` sets it from the font metrics once and a terminal's
+font does not change under the program. **The first of those two nearly
+became a false finding**: a grep for `set_cell_size` found no caller and the
+setter is called as `GridMetrics::set`, which is *four ways to manufacture
+an absence*, the pattern.
 
 ### 8.118 The other way the current window changes (2026-09-12)
 

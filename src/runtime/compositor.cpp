@@ -592,6 +592,21 @@ void Compositor::compose(CellBuffer &out) {
 		root_ = Layer{};
 		root_layer_ = base;
 	}
+	// WHO HAS FOCUS, RE-READ RATHER THAN WAITED FOR. An application moving
+	// focus itself -- `edit->setFocus()` in a slot, the commonest thing there
+	// is -- changes Qt's per-window focus widget and tells nobody: measured,
+	// a window that never activates emits no focusChanged signal and delivers
+	// no FocusIn or FocusOut event, so there is no hook to connect to. The
+	// record then disagreed with Qt until the next keystroke, and everything
+	// that asks this library who has focus -- the reverse-video mark, the
+	// widget-shortcut contexts, an application calling Qtty::focusWidget() --
+	// got the widget that used to.
+	//
+	// Before anything is drawn, so the frame already carries the synthetic
+	// focus events set_focus_widget() sends rather than showing them a frame
+	// late.
+	if (base->focusWidget() != focusWidget()) set_focus_widget(base->focusWidget());
+
 	apply_priority(base, root_, out.cols(), out.rows() - strip);
 	follow_focus(base, root_, out.cols(), out.rows() - strip);
 

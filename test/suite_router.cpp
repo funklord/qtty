@@ -1324,6 +1324,51 @@ int suite_router() {
 		      "a window with nothing focusable in it draws from its own top "
 		      "rather than at the scroll the last window needed");
 
+		// A TERMINAL RESIZE REACHES EVERY WINDOW THAT TAKES A TURN AT IT.
+		// on_resize() resized win_ alone -- the window this router was built
+		// with -- so a second window kept the size the terminal used to be.
+		// Measured: growing to 80x24 left it 40x10, and switching to it drew
+		// two rows of content in the corner of an empty screen.
+		{
+			QWidget other;
+			other.setAttribute(Qt::WA_DontShowOnScreen);
+			other.setWindowTitle(QStringLiteral("Other"));
+			auto *ov = new QVBoxLayout(&other);
+			ov->addWidget(new QLabel(QStringLiteral("OTHERCONTENT"), &other));
+			other.resize(GridMetrics::cells(20, 4));
+			other.show();
+			QCoreApplication::processEvents();
+			const QSize before = other.size();
+			CHECK(before == GridMetrics::cells(20, 4),
+			      "the control: the second window starts at the size it was "
+			      "given");
+
+			r.on_resize(QSize(60, 14));
+			QCoreApplication::processEvents();
+			CHECK(other.width() == 60 * cw && other.height() == 14 * ch,
+			      "a terminal resize reaches a window that is not the one the "
+			      "router was built with, since every window takes its turn "
+			      "at the whole screen");
+
+			// And NOT the layers whose geometry is their own. A dialog is
+			// centred and clamped, a menu sits at its anchor; resizing either
+			// to the whole terminal would be a different bug.
+			QDialog dlg(&a);
+			dlg.setAttribute(Qt::WA_DontShowOnScreen);
+			dlg.setModal(true);
+			dlg.resize(GridMetrics::cells(10, 3));
+			dlg.show();
+			QCoreApplication::processEvents();
+			r.on_resize(QSize(50, 12));
+			QCoreApplication::processEvents();
+			CHECK(dlg.width() == 10 * cw && dlg.height() == 3 * ch,
+			      "while a modal keeps its own size, its geometry being the "
+			      "dialog's business rather than the terminal's");
+			dlg.close();
+			other.hide();
+			QCoreApplication::processEvents();
+		}
+
 		// CLOSING THE WINDOW YOU ARE IN, which is the second route that
 		// changes the current window and the one that carried nothing.
 		// Nothing in this suite had ever destroyed a window while it was
@@ -2727,6 +2772,33 @@ int suite_router() {
 				      "in view -- the cursor lands in the same cell whether "
 				      "the view has room for the whole field or not");
 
+				// THE CARET AT THE FAR END, which is what actually
+				// separates following the caret from following the widget.
+				// The check above cannot: its field is empty, so the caret
+				// sits at the left -- and a rect wider than the view shows
+				// its LEFT edge under the rule added later, which puts the
+				// caret on screen for the wrong reason. The full sabotage
+				// run is what said so, reporting that reverting the caret
+				// fix left that check green.
+				//
+				// With the caret at the end the two rules disagree: follow
+				// the widget and the left edge is shown with the caret far
+				// off it, and the compositor then places no cursor at all,
+				// which is the symptom the original defect was reported as.
+				wide->setText(QString(55, QLatin1Char('x')));
+				wide->setCursorPosition(55);
+				QCoreApplication::processEvents();
+				CellBuffer endview(20, 2);
+				wc.compose(endview);
+				const auto at_end = wc.cursor_cell();
+				printf("info: caret at 55 of 55 in a 20-cell view: cursor "
+				       "%s\n", at_end ? "placed" : "ABSENT");
+				CHECK(at_end && at_end->x() >= 0 && at_end->x() < 20,
+				      "and with the caret at the far end of that field the "
+				      "cursor is still placed, inside the view, rather than "
+				      "left off the screen with nothing saying where typing "
+				      "goes");
+
 				// AND A RECT WIDER THAN THE VIEW SHOWS ITS LEFT EDGE.
 				// Same fault one widget over, found the same way: a menu
 				// thirty cells wide in a twenty-cell terminal drew its
@@ -2831,6 +2903,137 @@ int suite_router() {
 			      "qtty names the focused widget at the moment Qt's own "
 			      "hasFocus() is false, which is why a custom widget must "
 			      "ask Qtty::focusWidget() to draw a focus mark");
+
+			// AND THE SAME TRAP FOR MODIFIERS, which this library cannot
+			// repair. Qt fills QApplication::keyboardModifiers() from
+			// PLATFORM events, and there is no public setter -- the header
+			// has the getter and queryKeyboardModifiers() and nothing that
+			// writes. Measured: a synthetic KEY event does update the
+			// global, and a synthetic MOUSE event does not. So an
+			// application asking it inside a clicked() slot, which is the
+			// ordinary way to spell "Ctrl+click", reads no modifiers while
+			// the event in its hand says Ctrl.
+			//
+			// Pinned as a DISAGREEMENT at one instant rather than as either
+			// value alone, the way hasFocus() is pinned above: if Qt ever
+			// starts tracking these, this check fails and says the limit has
+			// lifted.
+			{
+				// ITS OWN WINDOW, because the shared one is crowded by
+				// this point in the section and the probe landed on the
+				// last row with the press reaching the widget above it --
+				// seen=0, traced. A window of its own removes the layout
+				// from the question, which is not what is under test.
+				struct Probe : QPushButton {
+					Qt::KeyboardModifiers on_event, on_app;
+					int seen = 0;
+					explicit Probe(QWidget *p)
+					    : QPushButton(QStringLiteral("MODPROBE"), p) {}
+					void mousePressEvent(QMouseEvent *e) override {
+						++seen;
+						on_event = e->modifiers();
+						on_app = QApplication::keyboardModifiers();
+						QPushButton::mousePressEvent(e);
+					}
+				};
+				QWidget host;
+				host.setAttribute(Qt::WA_DontShowOnScreen);
+				host.setWindowTitle(QStringLiteral("Mods"));
+				auto *hv = new QVBoxLayout(&host);
+				hv->setContentsMargins(0, 0, 0, 0);
+				hv->setSpacing(0);
+				auto *probe = new Probe(&host);
+				probe->setFixedHeight(ch);
+				hv->addWidget(probe);
+				host.resize(GridMetrics::cells(20, 3));
+				host.show();
+				QCoreApplication::processEvents();
+
+				InputRouter hr(&host);
+				Compositor hc(&host, &hr);
+				Qtty::set_current_window(&host);
+				QCoreApplication::processEvents();
+				CellBuffer frame(20, 3);
+				hc.compose(frame);
+				int prow = -1;
+				const QStringList prows =
+				    frame.to_text().split(QLatin1Char('\n'));
+				for (int i = 0; i < prows.size(); ++i)
+					if (prows.at(i).contains(QStringLiteral("MODPROBE")))
+						prow = i;
+				CHECK(prow >= 0,
+				      "the control: the modifier probe is on screen to be "
+				      "clicked");
+				hr.on_mouse({QPoint(1, prow), 1, true, false, false, 0, 0,
+				             true, false, false});
+				QCoreApplication::processEvents();
+				CHECK(probe->seen >= 1
+				      && (probe->on_event & Qt::ControlModifier)
+				      && !(probe->on_app & Qt::ControlModifier),
+				      "a mouse event carries its modifiers while "
+				      "QApplication::keyboardModifiers() does not, so a "
+				      "Ctrl+click is read from the event or not at all");
+				host.hide();
+				Qtty::set_current_window(&win);
+				QCoreApplication::processEvents();
+			}
+
+			// AND IT FOLLOWS AN APPLICATION THAT MOVES FOCUS ITSELF.
+			// `edit->setFocus()` in a slot is the commonest thing a Qt
+			// program does, and it used to leave this record behind: qtty
+			// went on naming the old widget until the next keystroke, so
+			// the reverse-video mark, the widget-shortcut contexts and any
+			// application asking this library who has focus all got the
+			// widget that used to have it.
+			//
+			// There is no signal to connect to, measured rather than
+			// assumed: in a window that never activates Qt emits no
+			// focusChanged and delivers no FocusIn or FocusOut when
+			// setFocus() is called. window()->focusWidget() simply changes.
+			// So the record is re-read where it is consumed -- at the top
+			// of compose() and at the top of on_key().
+			auto *other = new QLineEdit;
+			v->addWidget(other);
+			QCoreApplication::processEvents();
+			// THIS window current first, and the switch is what makes the
+			// rest of this about compose() rather than about the switch.
+			// The suite leaves other top-levels visible, so without it the
+			// drawn window is somebody else's and the record correctly
+			// names the focus in THAT one -- the first version of this
+			// check failed for exactly that reason.
+			Qtty::set_current_window(&win);
+			QCoreApplication::processEvents();
+			other->setFocus();                  // no key, no mouse, no switch
+			QCoreApplication::processEvents();
+			CHECK(win.focusWidget() == other && Qtty::focusWidget() != other,
+			      "the control: Qt's focus has moved and nothing has told "
+			      "qtty, which is the state this is about");
+
+			CellBuffer refreshed(40, 16);
+			comp.compose(refreshed);
+			CHECK(Qtty::focusWidget() == other,
+			      "composing a frame re-reads who has focus, so an "
+			      "application that moved it in a slot is drawn with the "
+			      "mark on the widget that has it");
+
+			// The keyboard half: a widget-context shortcut is decided
+			// against this record, and the repair used to happen after the
+			// matching rather than before it -- so the FIRST key after a
+			// programmatic move was judged against the old widget.
+			set_focus_widget(fw);               // stale it again, deliberately
+			other->setFocus();
+			QCoreApplication::processEvents();
+			int owned = 0;
+			auto *osc = new QShortcut(
+			    QKeySequence(QStringLiteral("Ctrl+Q")), other);
+			osc->setContext(Qt::WidgetShortcut);
+			QObject::connect(osc, &QShortcut::activated, [&] { ++owned; });
+			r.on_key({Qt::Key_Q, QStringLiteral("q"), true, false, false});
+			QCoreApplication::processEvents();
+			CHECK(owned == 1,
+			      "and the first key after that move is judged against the "
+			      "widget that has focus, so its own WidgetShortcut fires");
+			delete osc;
 		}
 
 		// QSHORTCUT, which is not a QAction and so was invisible to the

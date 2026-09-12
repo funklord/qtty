@@ -815,6 +815,14 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 }
 
 void InputRouter::on_key(const KeyEvent &k) {
+	// The record before the match, not only after it. An application that
+	// moved focus in a slot left this stale, and a widget-context shortcut is
+	// decided against it -- measured: after `b->setFocus()`, B's own
+	// Qt::WidgetShortcut refused to fire, because the repair at the end of
+	// this function happens after the matching.
+	if (QWidget *scope = input_scope())
+		if (scope->focusWidget() != focusWidget())
+			set_focus_widget(scope->focusWidget());
 	// Escape cancels a drag, which is what it does on every desktop -- and
 	// before this nothing called drag_cancel() at all. It was written,
 	// exported and never wired: an interface is only as wired as its
@@ -1385,7 +1393,30 @@ void InputRouter::on_paste(const QString &text) {
 }
 
 void InputRouter::on_resize(QSize cells) {
-	win_->resize(cells.width() * GridMetrics::cw(), cells.height() * GridMetrics::ch());
+	const QSize px(cells.width() * GridMetrics::cw(),
+	               cells.height() * GridMetrics::ch());
+	win_->resize(px);
+
+	// EVERY window that takes a turn at the terminal, not only the one this
+	// router was built with. A terminal is one rectangle and the windows take
+	// turns filling it, so a window that missed a resize is drawn at the size
+	// the terminal used to be: measured, growing an 80x24 terminal left the
+	// second window 40x10, and switching to it showed two rows of content in
+	// the top-left corner of an empty screen. Shrinking is the same fault
+	// wearing section 7's clothes -- the window is too big, so the policy
+	// scrolls it, which is the graceful handling of a size it should never
+	// have had.
+	//
+	// Modals and popups are excluded because their geometry is theirs: a
+	// dialog is centred and clamped (8.113) and a menu is placed at its
+	// anchor, and resizing either to the whole terminal would be a different
+	// bug. Hidden windows are resized too -- one shown later is drawn at the
+	// terminal's size like any other, and nothing else would size it.
+	for (QWidget *w : QApplication::topLevelWidgets()) {
+		if (w == win_ || is_popup_layer(w) || w->isModal()) continue;
+		if (w->windowType() == Qt::Desktop) continue;
+		w->resize(px);
+	}
 	QCoreApplication::processEvents();
 	if (frame_requested) frame_requested();
 }

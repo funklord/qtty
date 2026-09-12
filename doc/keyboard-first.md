@@ -495,6 +495,33 @@ drawing a focus ring: **the only way to know where a keystroke will land
 is the mark on the screen.** A control that cannot show it is a control a
 keyboard user has to find by trial.
 
+**And it follows `setFocus()` when you call it yourself**, which is worth
+saying because nothing in Qt makes that true here. A window that never
+activates emits no `focusChanged` signal and delivers no `FocusIn` or
+`FocusOut` event -- measured -- so `edit->setFocus()` in one of your slots
+moves Qt's focus and announces it to nobody. qtty re-reads the window's
+focus widget when it composes a frame and again when a key arrives, so the
+mark, the widget-shortcut contexts and `Qtty::focusWidget()` all agree with
+where your keystroke is actually going. You do not have to tell it, and
+there is nothing to call.
+
+**The same trap has one more member, and this one qtty cannot repair.**
+`QApplication::keyboardModifiers()` is filled by Qt from *platform* events,
+and there is no public setter -- so it is right after a key and **wrong
+during a mouse event**. Measured: inside a `mousePressEvent` for a
+Ctrl+click, the event says `Ctrl` and the application-wide answer says
+nothing at all; and if the last key you pressed was `Ctrl+S`, a plain click
+after it reads `Ctrl` that nobody is holding. So:
+
+    void MyWidget::mousePressEvent(QMouseEvent *e) {
+        if (e->modifiers() & Qt::ControlModifier) ...   // right
+        if (QApplication::keyboardModifiers() & ...)    // wrong here
+    }
+
+**Ask the event.** That is good practice on the desktop for other reasons
+and is the only thing that works here. A check pins the disagreement, so if
+Qt ever starts tracking these the suite says the limit has lifted.
+
 **11. If your widget edits text, set `WA_InputMethodEnabled`.** Qt sets
 it on `QLineEdit`, `QTextEdit` and `QPlainTextEdit`. A text editor of
 your own is outside that, and **two things go wrong at once, silently,

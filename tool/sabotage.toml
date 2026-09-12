@@ -1078,7 +1078,7 @@ file = "src/runtime/compositor.cpp"
 find = "\t\t\t\treturn QRect(fw->mapTo(layer, caret.topLeft()),\n\t\t\t\t             caret.size());"
 into = "\t\t\t\treturn QRect(fw->mapTo(layer, QPoint()), fw->size());"
 count = 1
-check = "a text field wider than the terminal keeps its caret in view"
+check = "with the caret at the far end of that field the cursor is still placed"
 
 [[sabotage]]
 # The left-edge rule for a rect wider than the view. Without it the only
@@ -1301,3 +1301,36 @@ find = "\tif (root && is_compositable(root)) out.append(root);"
 into = "\tif (root) out.append(root);"
 count = 1
 check = "closing the current one still leaves a window the terminal can draw"
+
+[[sabotage]]
+# The focus record left to the router and the window switch alone. An
+# application calling edit->setFocus() in a slot then leaves it naming the
+# widget that used to have focus -- and Qt tells nobody, emitting no
+# focusChanged and no FocusIn in a window that never activates. 8.119.
+name = "who has focus is waited for rather than re-read"
+file = "src/runtime/compositor.cpp"
+find = "\tif (base->focusWidget() != focusWidget()) set_focus_widget(base->focusWidget());"
+into = "\tif (false) set_focus_widget(base->focusWidget());"
+count = 1
+check = "composing a frame re-reads who has focus"
+
+[[sabotage]]
+# The same record left stale for the first key after a programmatic move,
+# which is when a widget-context shortcut is decided against it.
+name = "a key is matched against the focus record before it is refreshed"
+file = "src/runtime/input_router.cpp"
+find = "\tif (QWidget *scope = input_scope())\n\t\tif (scope->focusWidget() != focusWidget())\n\t\t\tset_focus_widget(scope->focusWidget());"
+into = "\tif (QWidget *scope = input_scope())\n\t\tif (false)\n\t\t\tset_focus_widget(scope->focusWidget());"
+count = 1
+check = "the first key after that move is judged against the widget that has focus"
+
+[[sabotage]]
+# A terminal resize reaching only the window the router was built with.
+# Windows take turns filling the terminal, so another one is then drawn at
+# the size the terminal used to be. 8.120.
+name = "a resize reaches one window of several"
+file = "src/runtime/input_router.cpp"
+find = "\tfor (QWidget *w : QApplication::topLevelWidgets()) {\n\t\tif (w == win_ || is_popup_layer(w) || w->isModal()) continue;"
+into = "\tfor (QWidget *w : QApplication::topLevelWidgets()) {\n\t\tif (true) continue;\n\t\tif (w == win_ || is_popup_layer(w) || w->isModal()) continue;"
+count = 1
+check = "a terminal resize reaches a window that is not the one the router was built with"
