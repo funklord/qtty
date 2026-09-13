@@ -1011,7 +1011,7 @@ record: tests-build
 #
 # The identity is HEAD plus every uncommitted change to tracked files, which
 # is what `git diff HEAD` gives and is unchanged by staging.
-CHECK_PARTS = style layout version-check count-check tools-check \
+CHECK_PARTS = style layout version-check count-check guide-check tools-check \
               sabotage-check test test-tools test-install
 CHECK_STAMP = $(shell git rev-parse --git-common-dir 2>/dev/null)/qtty-check-stamp
 
@@ -1105,6 +1105,19 @@ tools-check:
 # gate when the sweep itself cannot be.
 sabotage-check:
 	@python3 tool/sabotage.py --validate
+
+# Does the documentation name anything an application cannot reach? The
+# documentation is read by people who cannot test what it says, so a guide
+# naming a function that has been renamed, moved into src/, or was never
+# public sends the reader looking for something that is not there.
+#
+# Compiles a translation unit against the PUBLIC headers only -- exactly what
+# install copies -- and refuses when a name in the docs will not resolve, or
+# when qtty.h does not reach a public header at all. Carries its own control:
+# a name that does not exist is compiled first and must fail, or the compile
+# line proves nothing and the tool says so instead of reporting a clean sweep.
+guide-check:
+	python3 tool/guide_check.py
 
 count-check: tests-build
 	@stated=$$(sed -n 's/^\([0-9][0-9]*\) checks, 0 failures.*/\1/p' \

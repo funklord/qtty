@@ -15935,6 +15935,58 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.131 The umbrella header that did not cover two of its own (2026-09-13)
+
+8.130's lens, pointed at the rest of the public surface: **what else does the
+documentation name that an application cannot reach?**
+
+Two, and both are in `include/qtty/qtty.h` -- the umbrella every documented
+example includes. It named fifteen of the seventeen public headers.
+
+- **`delegate.h`.** The README lists `Qtty::CellItemDelegate` among the
+  things an application may ask for, beside four siblings that *were*
+  included. It was installed, listed in `src.pro`, included directly by the
+  suite, and unreachable through the documented include.
+- **`version.h`.** It calls itself *"the surface that reaches a person"* for
+  the copyright line a consuming program prints -- which is what
+  `harmonization.md` asks every private project to put in its `--version`.
+
+Both were added to the umbrella in the same commit that made the question
+mechanical.
+
+**`make guide-check` is the mechanism, and it is `count-check`'s shape.** A
+claim made in prose, checked against the thing it describes, by a tool rather
+than by somebody remembering. It compiles one translation unit against the
+public headers alone -- exactly what `install` copies -- naming every
+`Qtty::` symbol the guide and the README mention, and refuses when the
+umbrella does not reach a public header at all.
+
+**The probe was wrong twice before it was right, and only the second was
+caught by the control.**
+
+First it grepped for the name in the headers, which is `evidence.md`'s *a
+name is not a capability* exactly: `AnsiBackend` is named in four comments in
+those headers and declared in none of them, so that check would have passed
+it.
+
+Then it took the address of each symbol -- `(void)sizeof(&Qtty::X)` -- which
+cannot be done to a class and is ambiguous for an overloaded function. It
+reported `InputRouter`, `NullBackend`, `Overlay`, `SystemTrayIcon` and `exec`
+as unreachable, **every one of them public**. The control was firing
+correctly the whole time: an absent name failed, as it should, in all three
+versions. **A control proves a probe can speak, not that it is pointed at the
+right thing** -- capable and misaimed is the state it cannot detect, and what
+caught it was knowing that `InputRouter` is public.
+
+A using-declaration is the form that works, being the one construct that
+names a type, a function and an overload set alike while asking only whether
+the name is declared.
+
+**And the gate was watched failing in both of its modes** -- a header dropped
+from the umbrella, and a document naming a symbol that does not exist -- each
+naming the culprit rather than printing compiler output, before it was
+recorded as working.
+
 ### 8.130 A feature implemented, maintained, and callable by nobody (2026-09-13)
 
 `ITerminalBackend::suspend()` has carried the comment *"SIGTSTP / shelling

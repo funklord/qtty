@@ -17,4 +17,6 @@
 #include "testing.h"
 #include "tray.h"
 #include "drag.h"
+#include "delegate.h"
 #include "windows.h"
+#include "version.h"
