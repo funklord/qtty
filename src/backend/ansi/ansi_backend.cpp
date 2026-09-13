@@ -385,6 +385,11 @@ void AnsiBackend::read_winch() {
 	if (seen_handovers_ != s_handovers) {
 		seen_handovers_ = s_handovers;
 		++handovers_;             // the screen this backend drew on is gone
+		// enter_terminal() put kEnter out with a raw write() rather than
+		// through write_out(), a signal handler having no QByteArray to
+		// spare, so nothing has cleared this. kEnter hides the cursor, so
+		// the record is wrong in the direction that matters.
+		last_cursor_.clear();
 		// An empty one is a backend that never put a title on a terminal --
 		// set_title() refuses when stdout is not one -- so there is nothing
 		// of its to put back.
@@ -886,6 +891,13 @@ static void emit_sgr(QByteArray &out, const Cell &c, Sgr &cur,
 // descriptor that is already broken. A write path that checked only fwrite
 // would look exactly like this one and catch nothing.
 void AnsiBackend::write_out(const QByteArray &bytes) {
+	// Anything put on the terminal can move its cursor -- a run of cells
+	// certainly does -- so the record of where the cursor is stops being true
+	// here. set_cursor() compares BEFORE it writes and re-establishes the
+	// record AFTER, which is what makes this correct by construction rather
+	// than by a list of the calls that matter: a write site added later is
+	// simply not on such a list, and nothing would say so.
+	last_cursor_.clear();
 	fwrite(bytes.constData(), 1, size_t(bytes.size()), stdout);
 	fflush(stdout);
 	if (ferror(stdout)) terminal_gone();
@@ -1369,10 +1381,23 @@ void AnsiBackend::set_title(const QString &title) {
 }
 
 void AnsiBackend::set_cursor(std::optional<QPoint> cell, CursorShape shape) {
-	if (cell && shape != CursorShape::Hidden)
-		write_out(moveTo(*cell) + "\033[?25h");
-	else
-		write_out("\033[?25l");
+	// Skipped when the terminal is already like this, and the reason is a
+	// measurement rather than tidiness: render_now() calls this after EVERY
+	// frame, so a program sitting untouched went on placing the cursor where
+	// it already was. Measured on the chat example with nothing typed and
+	// nothing changing -- 130 bytes a second, for ever, thirteen identical
+	// ESC[23;2H ESC[?25h a second, which over ssh is a packet every 77 ms for
+	// a program doing nothing.
+	//
+	// Safe only because write_out() clears the record: the frame this follows
+	// writes cells, which moves the cursor, so the placement after a frame
+	// that drew anything is never the one skipped.
+	const QByteArray want = cell && shape != CursorShape::Hidden
+	    ? moveTo(*cell) + "\033[?25h"
+	    : QByteArray("\033[?25l");
+	if (want == last_cursor_) return;
+	write_out(want);
+	last_cursor_ = want;
 }
 
 // ---- input decoding --------------------------------------------------------

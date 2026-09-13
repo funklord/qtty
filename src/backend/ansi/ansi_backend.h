@@ -181,6 +181,10 @@ private:
 	// This backend's own handovers, for whoever holds a copy of the screen.
 	// Bumped on both routes into a resume, which are not the same code path.
 	int handovers_ = 0;
+	// The cursor sequence the terminal was last given, or empty when anything
+	// since could have moved it. Compared before writing, so an idle program
+	// puts nothing on the wire.
+	QByteArray last_cursor_;
 
 	bool raw_ok_ = false;
 	bool tty_out_ = false;               // stdout is a terminal

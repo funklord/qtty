@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1264 checks, 0 failures. `make check` is green and includes
+1267 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15929,6 +15929,60 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.126 130 bytes a second to say nothing (2026-09-13)
+
+`render_now()` calls `set_cursor()` after every frame, unconditionally, and
+`set_cursor()` wrote whatever it was given. A program sitting untouched
+therefore put the cursor back where it already was, for ever. Measured on
+the chat example with nothing typed and nothing changing:
+
+    idle output: 1300 bytes over 10 s = 130.0 bytes/s
+
+Thirteen identical `ESC[23;2H ESC[?25h` a second -- over ssh, a packet every
+77 ms for a program doing nothing, and a link that never goes quiet. Zero
+now.
+
+**Found by reading the bytes of an unrelated measurement.** The trace taken
+for 8.125 showed that sequence repeating while the screen stayed blank, and
+the interesting thing at the time was that frames were being produced at
+all. The rest of the line was the next finding, sitting in output already
+captured and read for something else -- *what a test does in passing is data
+you already own*.
+
+**The dedupe is only safe because the invalidation is structural.** Cells
+move the terminal's cursor, so the placement after a frame that drew
+anything must never be the one skipped. `write_out()` clears the record and
+`set_cursor()` compares before writing and records after, which makes it
+correct by construction rather than by a list of the calls that matter -- a
+write site added later would simply not be on such a list, and nothing would
+say so. That is this file's own lesson from 8.122, where a comment claimed
+a list of writes was checked and the list had never existed.
+
+**Two fixtures were wrong before the checks were right, and the sabotage run
+found the second.** The control asserts that a frame which DOES write cells
+places the cursor again; it first asserted the whole string `"moved along"`
+appeared, and a diffing writer emits only changed cells -- `ESC[1;1H`
+"moved" `ESC[1;7H` "along", the space at column six being unchanged. The
+words are there and the sentence is not. **A fixture asserting the sentence
+reports a library fault that is its own.**
+
+The second was sharper, because the check passed and the reasoning behind
+it was wrong. The handover branch clears the cursor record, and the
+sabotage of that line came back *FAILED: the named check PASSED against
+broken code*. `live` had a title, restoring a title goes through
+`write_out()`, and `write_out()` clears the record as a side effect -- so
+the check was resting on a neighbour. The line is load-bearing only for an
+application that sets **no** title, which is exactly the case it was written
+for, and the fixture is a backend that was never given one. **A check that
+passes for a reason you did not intend is indistinguishable from one that
+passes for the reason you did, and only breaking the code tells them
+apart.**
+
+**Who the fix is for.** An idle TUI is the normal state of a TUI. The cost
+is not the bytes but what they prevent: a link that can never be idle, a
+terminal woken thirteen times a second, and on a phone or over a metered
+link a program that is doing nothing and can be seen doing it.
 
 ### 8.125 A blank screen after a Ctrl+Z, and the diff that guaranteed it (2026-09-13)
 

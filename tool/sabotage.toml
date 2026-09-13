@@ -1447,3 +1447,39 @@ find = "\tQRegion damage = prev_ ? frame.diff(*prev_)\n\t                       
 into = "\tQRegion damage = QRegion(0, 0, frame.cols(), frame.rows());"
 count = 1
 check = "and an unchanged frame after it writes nothing"
+
+[[sabotage]]
+# The cursor placed again every frame whether or not it moved. render_now()
+# calls set_cursor() after EVERY frame, so an idle program put 130 bytes a
+# second on the wire for ever -- thirteen identical ESC[23;2H ESC[?25h a
+# second, a packet every 77 ms over ssh for a program doing nothing. 8.126.
+name = "an idle program keeps placing the cursor where it already is"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (want == last_cursor_) return;"
+into = "\tif (false) return;"
+count = 1
+check = "and writes nothing at all, the cursor included"
+
+[[sabotage]]
+# The record not cleared by a write. Cells move the terminal's cursor, so a
+# dedupe that survives a frame leaves the caret wherever the last glyph
+# landed -- which is why the clear lives in write_out() rather than in a list
+# of the calls that matter. 8.126.
+name = "the cursor record survives the cells that moved it"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tlast_cursor_.clear();\n\tfwrite(bytes.constData()"
+into = "\tif (false) last_cursor_.clear();\n\tfwrite(bytes.constData()"
+count = 1
+check = "while a frame that writes cells places the cursor again"
+
+[[sabotage]]
+# The record not cleared when the terminal is handed back. kEnter hides the
+# cursor and enter_terminal() writes it with a raw write(), so nothing else
+# clears this -- and an application driving its own frame loop has no
+# repaint to cover for it. The caret is simply gone. 8.126.
+name = "the cursor record survives a handover that hid the cursor"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tlast_cursor_.clear();"
+into = "\t\tif (false) last_cursor_.clear();"
+count = 1
+check = "but asking again after a handover writes it"

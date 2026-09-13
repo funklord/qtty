@@ -2763,6 +2763,57 @@ int suite_backend() {
 					      " a Ctrl+Z actually takes");
 				}
 
+				// The cursor record across the same handover, for an
+				// application driving its OWN frame loop -- which backend.h
+				// supports and which has no FrameScheduler to ask
+				// handovers() on its behalf. kEnter hides the cursor, so
+				// without this the record says "shown at 4,5", the terminal
+				// has it hidden, and the two never disagree loudly enough
+				// for anything to notice: the caret is simply gone.
+				//
+				// With a scheduler the repaint covers it, because a reset
+				// prev_ makes the next frame write cells and any write
+				// clears the record. This is the case that has no repaint.
+				{
+					fflush(stdout);
+					::dup2(slave, 1);
+					char eat[4096];
+					const auto take = [&] {
+						QByteArray got;
+						ssize_t n;
+						while ((n = ::read(master, eat, sizeof(eat))) > 0)
+							got.append(eat, int(n));
+						return got;
+					};
+					// A backend that was never given a TITLE, which is the
+					// fixture this needs and the first version got wrong.
+					// `live` has one, and restoring it on the way back goes
+					// through write_out(), which clears the cursor record as
+					// a side effect -- so the check passed with the clear
+					// sabotaged away, and the sabotage run said so. An
+					// application that sets no title has nothing written on
+					// its behalf, and then the clear is the only thing that
+					// knows kEnter hid the cursor.
+					AnsiBackend plain;
+					plain.set_cursor(QPoint(4, 5), CursorShape::Bar);
+					take();
+					plain.set_cursor(QPoint(4, 5), CursorShape::Bar);
+					const QByteArray repeated = take();
+					::raise(SIGCONT);
+					for (int i = 0; i < 50; ++i) QCoreApplication::processEvents();
+					take();
+					plain.set_cursor(QPoint(4, 5), CursorShape::Bar);
+					const QByteArray after_stop = take();
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					CHECK(repeated.isEmpty(),
+					      "asking for the cursor the terminal already has"
+					      " writes nothing");
+					CHECK(after_stop.contains("\033[?25h"),
+					      "but asking again after a handover writes it, the"
+					      " terminal having hidden it on the way back in");
+				}
+
 				// And the SCREEN, which is the same fault once more and the
 				// one a user actually sees. ESC[?1049h switches to the
 				// alternate screen and CLEARS it, so after a handover the
@@ -2822,6 +2873,23 @@ int suite_backend() {
 					sched.render_now();
 					const QByteArray again = take();
 
+					// A frame that DOES change must put the cursor back, and
+					// this is the control the idle assertion needs rather
+					// than a second opinion about it: present() writes cells,
+					// which moves the terminal's cursor, so a dedupe that
+					// suppressed the re-placement here would leave the caret
+					// wherever the last glyph landed. The two pull in
+					// opposite directions, and only the pair says the rule is
+					// "skip a cursor nothing has disturbed".
+					//
+					// Last, so that the assertions before it are not reading
+					// a fixture this one has moved on.
+					label.setText(QStringLiteral("moved along"));
+					label.adjustSize();
+					QCoreApplication::processEvents();
+					sched.render_now();
+					const QByteArray moved = take();
+
 					fflush(stdout);
 					::dup2(keep_out, 1);
 					CHECK(drawn.contains("still here"),
@@ -2829,6 +2897,29 @@ int suite_backend() {
 					CHECK(!quiet.contains("still here"),
 					      "and an unchanged frame after it writes nothing,"
 					      " which is what the diff is for");
+					// Nothing AT ALL, which the cell diff alone does not
+					// give: set_cursor() is called unconditionally after
+					// every frame, so an idle program went on placing the
+					// cursor where it already was. Measured on the chat
+					// example sitting untouched: 130 bytes a second, for
+					// ever, thirteen identical ESC[23;2H ESC[?25h a second
+					// -- a packet every 77 ms over ssh for a program doing
+					// nothing.
+					CHECK(quiet.isEmpty(),
+					      "and writes nothing at all, the cursor included,"
+					      " when nothing has disturbed it");
+					// Asserted on a RUN rather than on the whole string,
+					// which the first version of this got wrong: a diffing
+					// writer emits only the cells that changed, so "still
+					// here" becoming "moved along" goes out as ESC[1;1H
+					// "moved" ESC[1;7H "along" -- the space at column six
+					// was already a space. The words are there and the
+					// sentence is not, and a fixture asserting the sentence
+					// reports a library fault that is its own.
+					CHECK(moved.contains("moved") && moved.contains("along")
+					          && moved.contains("\033[?25"),
+					      "while a frame that writes cells places the cursor"
+					      " again, the cells having moved it");
 					CHECK(again.contains("still here"),
 					      "but a frame after the terminal was handed back"
 					      " writes it again, the handover having cleared the"
