@@ -15935,6 +15935,58 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.132 Verifying 8.127 cost three vacuous passes (2026-09-13)
+
+8.130's lens turned on this session's own fixes: which were verified from
+the seat an application sits in, and which only from inside the suite?
+8.124, 8.125, 8.126, 8.128 and 8.129 were all re-measured against a running
+program. **8.127 was not**, and could not have been: its claim is about a
+**kitty** terminal, and a bare pty is not one.
+
+Answered by driving a real program from a pty that replies to the startup
+query with the suite's own canned kitty answer -- copied rather than
+rewritten, so the two cannot drift into testing different terminals.
+
+    program        build      delete-alls / 5 keystrokes   bytes
+    text only      pre-fix              5                    380
+    text only      current              0                    295
+    chat example   current              5                    --
+
+The third row is the fix working rather than failing: the chat example
+carries an image in every frame, so clearing before re-placing is exactly
+what the sequence is for. 22% off a text-only program's keystroke traffic on
+that tier.
+
+**Getting there took three runs that all said "0 delete-alls, the fix
+works", and all three meant nothing.**
+
+- **`QTTY_GRAPHICS` unset.** Nothing answered my first harness's query in
+  time, so the tier was not kitty and the branch was never reached.
+- **`TMUX`.** Inherited from the shell. The suite neutralises it and says
+  why -- *the person most likely to run a terminal library's suite inside
+  tmux is the person writing it* -- and the harness did not.
+- **`TERM=screen`.** The one that would have survived review.
+  `inside_tmux()` returns true for a `$TERM` beginning "screen" even with
+  `TMUX` unset, deliberately and with a comment saying so, which puts the
+  frame on the Unicode-placeholder path where `pixel_placements` is false.
+
+**What caught all three was one control**: the same probe run against the
+binary built before the fix. Each time it also reported 0, which no working
+fix can explain. Without it every run would have been written up as a
+confirmation. `evidence.md` says a passing check is not evidence until you
+know it inspected something; these inspected a program that was never on the
+path being tested, and said so in exactly the words a success uses.
+
+**And it nearly produced a false finding.** `qtty-negotiate` reports
+*"unicode placements no"* in a shell where a real program used them, which
+read as a shipped tool contradicting the library. It is not: the tool's run
+had nothing answering its probes, so `caps.kitty` was false, while the
+program's run had the canned reply. Two different situations compared as
+one. What settled it was reading `use_placeholders()` -- three conditions,
+all visible -- rather than reasoning from the outputs. **A disagreement
+between two instruments is not evidence about the subject until both are
+known to have been pointed at the same thing.**
+
 ### 8.131 The umbrella header that did not cover two of its own (2026-09-13)
 
 8.130's lens, pointed at the rest of the public surface: **what else does the

@@ -596,6 +596,17 @@ learns why their copy did not arrive -- **after they have stopped
 needing to know.** Whether the limit belongs in the public API is an open
 question in `project.md`.
 
+**If you are wondering which graphics tier your program is on**, three
+things in the environment decide it before any of your code runs, and two
+are easy to be inside without noticing. `QTTY_GRAPHICS` names a tier
+outright. `TMUX` puts qtty on the Unicode-placeholder path, because a
+direct placement would land where the outer terminal's cursor is rather
+than where tmux is drawing. And `TERM` beginning `screen` or `tmux` does
+the same on its own, deliberately -- a terminal calling itself screen is
+treated as one even when `TMUX` is unset. `qtty-negotiate --probes` run
+in the terminal you care about reports what was actually measured there;
+run it over a pipe and it says so rather than guessing.
+
 PRIMARY -- what a middle click pastes -- is unreachable through Qt here.
 Under the offscreen platform `QClipboard::supportsSelection()` is false
 and Qt refuses `setText(.., QClipboard::Selection)` outright.
