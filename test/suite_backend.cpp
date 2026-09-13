@@ -2926,6 +2926,71 @@ int suite_backend() {
 					      " screen the diff was measured against");
 				}
 
+				// A kitty delete-all on a frame that has no pictures in it.
+				//
+				// pixel_placements is `mode_ >= Sixel && settled &&
+				// !placeholders` and never consults frame.images, so on a
+				// kitty terminal EVERY frame opened with
+				// ESC_Ga=d,d=a,q=2;ESC\ -- eighteen bytes telling the
+				// terminal to drop placements a text-only program never made.
+				// Seen in a hex dump taken for something else: a frame of
+				// this very fixture, which has no images at all, carried it.
+				//
+				// Both halves, because the fix is a condition rather than a
+				// removal: a frame that DOES carry a picture must still clear
+				// what was there, or a moved image leaves the old one behind.
+				// That is the case the sequence was put here for.
+				{
+					fflush(stdout);
+					::dup2(slave, 1);
+					char eat[4096];
+					const auto take = [&] {
+						QByteArray got;
+						ssize_t n;
+						while ((n = ::read(master, eat, sizeof(eat))) > 0)
+							got.append(eat, int(n));
+						return got;
+					};
+					CellBuffer words(20, 4);
+					words.text(0, 0, QStringLiteral("no pictures here"));
+					take();
+					live.present(words, QRegion());
+					const QByteArray textonly = take();
+
+					CellBuffer withpic(20, 4);
+					withpic.text(0, 0, QStringLiteral("a picture"));
+					CellImage pic;
+					pic.key = 4242;
+					pic.cell_rect = QRect(0, 2, 2, 1);
+					QImage art(16, 16, QImage::Format_ARGB32);
+					art.fill(QColor(0, 128, 255));
+					pic.pixmap = QPixmap::fromImage(art);
+					withpic.images.append(pic);
+					live.present(withpic, QRegion());
+					const QByteArray drew_pic = take();
+
+					// And the frame that STOPS carrying it, which is the
+					// branch the flag exists for. A picture going away leaves
+					// nothing in the cells to diff against, so this frame is
+					// the only one that can say so -- a rule keyed on "this
+					// frame has no images" would leave the last picture on
+					// the screen for the rest of the run.
+					live.present(words, QRegion());
+					const QByteArray gone_pic = take();
+
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					CHECK(!textonly.contains("a=d,d=a"),
+					      "a frame with no pictures does not tell the terminal"
+					      " to drop placements it never made");
+					CHECK(drew_pic.contains("a=d,d=a"),
+					      "while a frame that carries one still clears what"
+					      " was there, which is what the sequence is for");
+					CHECK(gone_pic.contains("a=d,d=a"),
+					      "and the frame that stops carrying one clears it,"
+					      " nothing else being able to");
+				}
+
 				// End to end, because the two halves being right separately
 				// is not the same fact as the chain working. The backend
 				// delivering to a sink is checked above; the router resizing

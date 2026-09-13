@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1267 checks, 0 failures. `make check` is green and includes
+1270 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15929,6 +15929,51 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.127 Eighteen bytes a frame telling a terminal to forget nothing (2026-09-13)
+
+On a kitty terminal every frame opened with `ESC_Ga=d,d=a,q=2;ESC\` -- drop
+all placements -- including the frames of a program that has never shown a
+picture.
+
+The gate is `pixel_placements`, and it is
+
+    mode_ >= Capabilities::Sixel && settled && !placeholders
+
+every term of which is a property of the **terminal**. It never consults
+`frame.images`. So "are we able to place pixels" was standing in for "is
+there a picture here", and the two agree for every program that has one.
+
+**Found in a hex dump taken for something else.** The `moved` frame in
+8.126's fixture is a `QLabel` and nothing else, and its bytes ended
+`... ESC[0m ESC_Ga=d,d=a,q=2;ESC\ ESC[?2026l`. The dump was printed to
+find out why an assertion about text was failing, and the delete-all was
+sitting in the middle of it. That is twice in two entries that the next
+finding was already inside output captured for the previous one.
+
+**The fix is a condition, not a removal, and the second half is the
+interesting one.** A frame that carries a picture must still clear what was
+there, or a moved image leaves the old one behind -- that is what the
+sequence is for. And a picture that goes **away** leaves nothing in the
+cells to diff against, so the frame that stops carrying it is the only thing
+that can say so: a rule keyed on "this frame has no images" would leave the
+last picture on the screen for the rest of the run. Hence a flag for what
+the previous frame placed, and a sabotage entry for each direction.
+
+**What it does not cost.** The idle case was already free after 8.126, since
+`present()` is not called when nothing changed. What this removes is
+eighteen bytes on every frame that *does* change -- so it is paid during
+typing and scrolling, on the tier most likely to be carrying pictures for
+someone else, and by every text-only program that will never place one.
+
+**The shape, for the next sweep.** 8.126 and this are the same sentence:
+**a capability standing in for a need.** "The terminal can do X" was written
+where "this frame requires X" was meant, and they agree on every case anyone
+tested, because a program with pictures is the one you test the picture path
+with. `evidence.md` calls this *a proxy tested only where you know the
+answer will separate anything* -- and the classifier here had two categories
+where the world has three: can place and is placing, can place and is not,
+and cannot place.
 
 ### 8.126 130 bytes a second to say nothing (2026-09-13)
 

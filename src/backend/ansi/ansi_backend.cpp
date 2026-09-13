@@ -1083,7 +1083,23 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 		// top, at a negative row.
 		const QSize grid(composed.cols(), composed.rows());
 		if (mode_ == Capabilities::Kitty || mode_ == Capabilities::KittyAlpha) {
-			out += kitty_delete_all();
+			// Only when there is something to clear or something to put in
+			// its place. This was unconditional, and the condition it sits
+			// in -- pixel_placements -- never consults frame.images: it is
+			// `mode_ >= Sixel && settled && !placeholders`, all properties of
+			// the TERMINAL. So every frame of a text-only program on a kitty
+			// terminal opened with eighteen bytes telling it to drop
+			// placements that program had never made.
+			//
+			// The previous frame is why this is a flag rather than a test on
+			// this frame alone: a picture that goes AWAY leaves nothing in
+			// the cells to diff against, so the frame that stops carrying it
+			// is exactly the frame that has to say so. Dropping the delete
+			// whenever frame.images is empty would leave the last picture on
+			// the screen for the rest of the run.
+			if (!frame.images.isEmpty() || kitty_placed_)
+				out += kitty_delete_all();
+			kitty_placed_ = !frame.images.isEmpty();
 			for (const CellImage &ci : frame.images) {
 				const QImage img = ci.pixmap.toImage();
 				const CroppedPlacement cp =

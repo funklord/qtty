@@ -185,6 +185,9 @@ private:
 	// since could have moved it. Compared before writing, so an idle program
 	// puts nothing on the wire.
 	QByteArray last_cursor_;
+	// Whether the last frame put any kitty placements on the screen, so that
+	// the frame which stops carrying a picture is the one that clears it.
+	bool kitty_placed_ = false;
 
 	bool raw_ok_ = false;
 	bool tty_out_ = false;               // stdout is a terminal

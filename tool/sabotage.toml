@@ -1483,3 +1483,28 @@ find = "\t\tlast_cursor_.clear();"
 into = "\t\tif (false) last_cursor_.clear();"
 count = 1
 check = "but asking again after a handover writes it"
+
+[[sabotage]]
+# The delete-all back to unconditional. pixel_placements never consults
+# frame.images -- it is mode_ >= Sixel && settled && !placeholders, all
+# properties of the terminal -- so every frame of a text-only program on a
+# kitty terminal opened with eighteen bytes telling it to drop placements
+# that program had never made. 8.127.
+name = "every frame drops placements a text-only program never made"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\tif (!frame.images.isEmpty() || kitty_placed_)\n\t\t\t\tout += kitty_delete_all();"
+into = "\t\t\tout += kitty_delete_all();"
+count = 1
+check = "a frame with no pictures does not tell the terminal"
+
+[[sabotage]]
+# The other direction, and the reason the fix is a flag rather than a test on
+# this frame alone: keyed on the current frame only, a picture that goes away
+# is never cleared, because the frame that stops carrying it is the only one
+# that could say so. 8.127.
+name = "a picture that goes away is left on the screen"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\tif (!frame.images.isEmpty() || kitty_placed_)"
+into = "\t\t\tif (!frame.images.isEmpty())"
+count = 1
+check = "and the frame that stops carrying one clears it"
