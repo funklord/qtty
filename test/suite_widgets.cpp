@@ -4552,6 +4552,55 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// Which way round a dial reads, asserted as a RELATIONSHIP rather than as
+	// a position, because both ways of getting it wrong are positions that
+	// look plausible on their own.
+	//
+	// QStyleOptionSlider::upsideDown carries it, and a dial reads the flag
+	// with the OPPOSITE polarity to a slider. Measured, printing what Qt put
+	// in the option:
+	//
+	//     invertedAppearance(false)   upsideDown = 1
+	//     invertedAppearance(true)    upsideDown = 0
+	//
+	// So `if (upsideDown) mirror`, which is correct for the slider a few
+	// lines above it in the style, puts 0 at the right-hand end of every
+	// ORDINARY dial. Ignoring the flag instead -- which is how the dial was
+	// first drawn -- makes an inverted dial identical to a normal one.
+	//
+	// The pair catches both: the first assertion fails if the polarity is
+	// the slider's, the second if the flag is not read at all.
+	{
+		const auto handle_x = [](bool inverted, int value) {
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *box = new QVBoxLayout(&host);
+			auto *d = new QDial;
+			d->setRange(0, 100);
+			d->setInvertedAppearance(inverted);
+			box->addWidget(d);
+			host.resize(GridMetrics::cells(20, 5));
+			host.show();
+			QCoreApplication::processEvents();
+			d->setValue(value);
+			QCoreApplication::processEvents();
+			CellBuffer b(20, 5);
+			render_once(host, b);
+			for (int y = 0; y < b.rows(); ++y)
+				for (int x = 0; x < b.cols(); ++x)
+					if (b.at(x, y).ch == QStringLiteral("\u25cf")) return x;
+			return -1;
+		};
+		const int lo = handle_x(false, 0), hi = handle_x(false, 100);
+		const int ilo = handle_x(true, 0), ihi = handle_x(true, 100);
+		CHECK(lo >= 0 && hi >= 0 && lo < hi,
+		      "a dial's handle moves rightwards as its value rises");
+		CHECK(ilo >= 0 && ihi >= 0 && ilo > ihi,
+		      "and leftwards when its appearance is inverted, which is the"
+		      " same flag the slider reads the other way round");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

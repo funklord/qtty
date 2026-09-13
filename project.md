@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1283 checks, 0 failures. `make check` is green and includes
+1285 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15934,6 +15934,46 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.136 The dial read backwards, in a flag the file already warned about (2026-09-13)
+
+The dial drawn in 8.135 ignored `invertedAppearance` entirely: an inverted
+dial rendered identically to a normal one, so a control whose value rises
+leftwards was drawn rising rightwards.
+
+**The warning was already in the file, ten lines above.** `CC_Slider` carries
+a long comment about `QStyleOptionSlider::upsideDown` -- *"Drawn top-down,
+the whole control was upside down -- 0 at the top, 100 at the bottom, and the
+handle moving the wrong way under the arrow keys"* -- and says it was settled
+by measuring against Qt's own geometry. Writing a second control against the
+same option struct and not reading that comment is how the same fault
+arrives twice in one file.
+
+**And copying the slider's line would have been worse than omitting it.**
+Measured, printing what Qt put in the option for each kind of dial:
+
+    invertedAppearance(false)   upsideDown = 1
+    invertedAppearance(true)    upsideDown = 0
+
+A dial has the flag set **by default**, where a horizontal slider does not.
+So `if (upsideDown) mirror`, which is correct one case above, would have put
+0 at the right-hand end of **every ordinary dial** -- a worse defect than the
+one being fixed, reached by copying code that was already right for its own
+control. **The same flag, the same struct, the opposite polarity.**
+
+Asserted as a relationship rather than a position, because both wrong
+answers are positions that look plausible alone: the handle moves rightwards
+as the value rises, and leftwards when the appearance is inverted. The pair
+separates the two failures -- the first assertion fails under the slider's
+polarity, the second under no polarity at all -- and each has its own
+sabotage entry proving it.
+
+**The general shape, which is not about dials.** A second implementation
+against a shared option struct inherits every question the first one
+answered, and none of its answers. The comment recording the first answer is
+the most valuable thing in the file for whoever writes the second -- and it
+is also the thing they are least likely to read, because it sits inside a
+case they are not editing.
 
 ### 8.135 The dial, and a partition that made closing the gap compulsory (2026-09-13)
 

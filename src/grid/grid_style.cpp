@@ -2214,8 +2214,24 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			if (auto *dl = qstyleoption_cast<const QStyleOptionSlider *>(opt)) {
 				const int len = c.width();
 				const int span = dl->maximum - dl->minimum;
-				const int pos = span > 0 && len > 1
+				int pos = span > 0 && len > 1
 				    ? (len - 1) * (dl->sliderPosition - dl->minimum) / span : 0;
+				// The SAME flag as the slider above, read with the OPPOSITE
+				// polarity, and copying that line is how this gets broken.
+				// Measured on a dial of each kind, printing what Qt put in
+				// the option:
+				//
+				//     invertedAppearance(false)   upsideDown = 1
+				//     invertedAppearance(true)    upsideDown = 0
+				//
+				// so a dial has it set by DEFAULT, where a horizontal slider
+				// does not. `if (upsideDown) mirror`, which is right for the
+				// slider, would put 0 at the right-hand end of every ordinary
+				// dial. The slider's own comment records that exact fault
+				// found the other way round -- the whole control upside down
+				// -- which is why the flag was checked here at all rather
+				// than assumed to be about vertical layout.
+				if (!dl->upsideDown) pos = len - 1 - pos;
 				const int row = c.top() + c.height() / 2;
 				const Attrs a = with_state(opt);
 				const Attrs held = ((opt->state & State_Sunken) ? Attrs(Attr::Reverse)
