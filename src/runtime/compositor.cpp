@@ -941,6 +941,31 @@ void FrameScheduler::request_frame() {
 }
 
 void FrameScheduler::render_now() {
+	// The terminal was handed over and taken back since the last frame, so
+	// everything remembered about what is ON it is worthless. ESC[?1049h
+	// switches to the alternate screen and CLEARS it, and prev_ is the frame
+	// that screen used to be showing -- so every cell diffs to nothing,
+	// present() is never called, and the user comes back from a Ctrl+Z to a
+	// blank window. Measured with the chat example through a real bash: 24
+	// rows of content became one, while ESC[23;2H ESC[?25h went out over and
+	// over, frames being produced the whole time and each one deciding it had
+	// nothing to say.
+	//
+	// The overlay bookkeeping goes with it and for the same reason: it
+	// records what the TERMINAL is holding, and the terminal is holding
+	// nothing now. Left alone, live_overlay_ids_ would have the next frame
+	// deleting ids that are already gone.
+	//
+	// Asked rather than told, which is the shape this tree keeps arriving at:
+	// a backend cannot reach a scheduler it does not know about, and a count
+	// compared against a local copy cannot be consumed by another reader the
+	// way a flag can.
+	if (const int handed = backend_->handovers(); handed != seen_handovers_) {
+		seen_handovers_ = handed;
+		prev_.reset();
+		prev_overlays_.clear();
+		live_overlay_ids_ = 0;
+	}
 	const QSize cells = backend_->size();
 	// A terminal with no cells has no frame to be given. Without this the
 	// buffer is empty, rasterize() answers a null QImage, and the software

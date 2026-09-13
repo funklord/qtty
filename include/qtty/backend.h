@@ -120,6 +120,23 @@ public:
 
 	virtual void suspend() = 0;                     // SIGTSTP / shelling out
 	virtual void resume() = 0;
+
+	// How many times this backend has given the terminal up and taken it
+	// back. Anything holding a copy of what is ON the terminal has to know
+	// when that copy stopped being true, and a handover is exactly when: the
+	// alternate screen is cleared on the way back in, so a frame diff
+	// measured against the last frame sent describes a screen that no longer
+	// exists and every cell of it compares equal to nothing.
+	//
+	// A COUNT rather than a flag, so that each reader compares against its
+	// own last-seen value and no reader can consume the news on behalf of
+	// another -- the fault measured inside AnsiBackend when this arrived as
+	// a flag.
+	//
+	// Not pure, and zero by default: a backend that never gives the terminal
+	// up answers truthfully without implementing anything, which is the case
+	// for NullBackend and for any test double.
+	virtual int handovers() const { return 0; }
 };
 
 // Optional extension -- only for backends whose terminal accepts pixel data.

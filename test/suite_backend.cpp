@@ -2763,6 +2763,78 @@ int suite_backend() {
 					      " a Ctrl+Z actually takes");
 				}
 
+				// And the SCREEN, which is the same fault once more and the
+				// one a user actually sees. ESC[?1049h switches to the
+				// alternate screen and CLEARS it, so after a handover the
+				// terminal is blank -- while FrameScheduler::prev_ still
+				// holds the frame it last sent, so every cell diffs to
+				// nothing and present() is never called at all.
+				//
+				// Measured with the chat example through a real bash: Ctrl+Z,
+				// fg, and 24 rows of content became one. What still went out
+				// was ESC[23;2H ESC[?25h over and over -- frames were being
+				// produced the whole time, and each one decided it had
+				// nothing to say.
+				//
+				// The control is the middle render, and it is what makes the
+				// last assertion mean anything: an identical frame must write
+				// NOTHING, or a check that the third one writes the label
+				// would pass against a scheduler that had simply stopped
+				// diffing.
+				{
+					fflush(stdout);
+					::dup2(slave, 1);
+					ws.ws_col = 40;
+					ws.ws_row = 10;
+					::ioctl(slave, TIOCSWINSZ, &ws);
+					::raise(SIGWINCH);
+					for (int i = 0; i < 30; ++i) QCoreApplication::processEvents();
+
+					QWidget win;
+					win.setAttribute(Qt::WA_DontShowOnScreen);
+					win.resize(GridMetrics::cells(40, 10));
+					QLabel label(QStringLiteral("still here"), &win);
+					label.move(0, 0);
+					win.show();
+					QCoreApplication::processEvents();
+					InputRouter router(&win);
+					live.set_event_sink(&router);
+					Compositor comp(&win, &router);
+					FrameScheduler sched(&live, &comp, &win);
+
+					char eat[4096];
+					const auto take = [&] {
+						QByteArray got;
+						ssize_t n;
+						while ((n = ::read(master, eat, sizeof(eat))) > 0)
+							got.append(eat, int(n));
+						return got;
+					};
+					take();
+					sched.render_now();                 // the first frame
+					const QByteArray drawn = take();
+					sched.render_now();                 // nothing has changed
+					const QByteArray quiet = take();
+
+					::raise(SIGCONT);                   // the terminal is new
+					for (int i = 0; i < 50; ++i) QCoreApplication::processEvents();
+					take();
+					sched.render_now();
+					const QByteArray again = take();
+
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					CHECK(drawn.contains("still here"),
+					      "a first frame puts the window on the terminal");
+					CHECK(!quiet.contains("still here"),
+					      "and an unchanged frame after it writes nothing,"
+					      " which is what the diff is for");
+					CHECK(again.contains("still here"),
+					      "but a frame after the terminal was handed back"
+					      " writes it again, the handover having cleared the"
+					      " screen the diff was measured against");
+				}
+
 				// End to end, because the two halves being right separately
 				// is not the same fact as the chain working. The backend
 				// delivering to a sink is checked above; the router resizing

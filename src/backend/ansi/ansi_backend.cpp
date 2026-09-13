@@ -384,6 +384,7 @@ void AnsiBackend::read_winch() {
 	// and resumed through a real bash, still showed the shell's title.
 	if (seen_handovers_ != s_handovers) {
 		seen_handovers_ = s_handovers;
+		++handovers_;             // the screen this backend drew on is gone
 		// An empty one is a backend that never put a title on a terminal --
 		// set_title() refuses when stdout is not one -- so there is nothing
 		// of its to put back.
@@ -813,6 +814,7 @@ void AnsiBackend::resume() {
 	// The backend restoring what the backend's own handover removed also
 	// keeps the keeper honest -- it goes on describing changes the
 	// application makes, which is the only thing it can see.
+	if (!first_resume_) ++handovers_;
 	if (!first_resume_ && !last_title_.isEmpty()) write_out(last_title_);
 	first_resume_ = false;
 }

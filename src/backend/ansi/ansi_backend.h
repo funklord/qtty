@@ -67,6 +67,7 @@ public:
 	}
 	void suspend() override;
 	void resume() override;
+	int handovers() const override { return handovers_; }
 
 	// IGraphicsOutput (section 5.7): pixel tiers for capable terminals.
 	void present_pixels(const QImage &frame, const QRegion &cell_region) override;
@@ -177,6 +178,9 @@ private:
 	// Handovers this backend has already acted on. Per instance, because the
 	// nudge that carries them is process-wide and every live backend gets it.
 	int seen_handovers_ = 0;
+	// This backend's own handovers, for whoever holds a copy of the screen.
+	// Bumped on both routes into a resume, which are not the same code path.
+	int handovers_ = 0;
 
 	bool raw_ok_ = false;
 	bool tty_out_ = false;               // stdout is a terminal

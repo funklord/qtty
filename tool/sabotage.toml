@@ -1411,3 +1411,39 @@ find = "\t\tseen_handovers_ = s_handovers;"
 into = "\t\ts_handovers = 0; seen_handovers_ = s_handovers;"
 count = 1
 check = "and a SIGCONT puts it back too"
+
+[[sabotage]]
+# The scheduler back to trusting its copy of the screen across a handover.
+# ESC[?1049h clears the alternate screen on the way back in, so prev_
+# describes a screen that no longer exists and every cell of it diffs to
+# nothing -- the user comes back from a Ctrl+Z to a blank window while frames
+# are produced the whole time. 8.125.
+name = "a handover leaves the frame diff measured against a cleared screen"
+file = "src/runtime/compositor.cpp"
+find = "\tif (const int handed = backend_->handovers(); handed != seen_handovers_) {\n\t\tseen_handovers_ = handed;\n\t\tprev_.reset();"
+into = "\tif (const int handed = backend_->handovers(); false) {\n\t\tseen_handovers_ = handed;\n\t\tprev_.reset();"
+count = 1
+check = "but a frame after the terminal was handed back writes it again"
+
+[[sabotage]]
+# The backend no longer counting the route a Ctrl+Z takes. The two routes
+# into a resume are not one code path, so a count bumped only by resume()
+# leaves the case anybody meets uncounted and the screen stale. 8.125.
+name = "the Ctrl+Z route is not counted as a handover"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t++handovers_;             // the screen this backend drew on is gone"
+into = "\t\tif (false) ++handovers_;"
+count = 1
+check = "but a frame after the terminal was handed back writes it again"
+
+[[sabotage]]
+# The control that makes the check above mean anything: an unchanged frame
+# must write NOTHING. With the diff removed it writes everything every time,
+# and a check that the post-handover frame carries the label would pass
+# against a scheduler that had simply stopped diffing. 8.125.
+name = "an unchanged frame is written out again"
+file = "src/runtime/compositor.cpp"
+find = "\tQRegion damage = prev_ ? frame.diff(*prev_)\n\t                       : QRegion(0, 0, frame.cols(), frame.rows());"
+into = "\tQRegion damage = QRegion(0, 0, frame.cols(), frame.rows());"
+count = 1
+check = "and an unchanged frame after it writes nothing"

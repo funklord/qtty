@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1261 checks, 0 failures. `make check` is green and includes
+1264 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15929,6 +15929,59 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.125 A blank screen after a Ctrl+Z, and the diff that guaranteed it (2026-09-13)
+
+`ESC[?1049h` does not merely switch to the alternate screen, it **clears**
+it. So every handover hands back a blank terminal -- and
+`FrameScheduler::prev_` still held the frame that screen used to be showing,
+so every cell diffed to nothing, `present()` was never called, and the user
+came back from a Ctrl+Z to an empty window.
+
+Measured with the chat example through a real bash, with **no resize**, which
+is what makes it the ordinary case rather than a corner:
+
+    startup drew 24 distinct rows
+    after fg (no resize) it drew 1 distinct rows
+
+What still went out was `ESC[23;2H ESC[?25h`, over and over. **Frames were
+being produced the whole time**, and each one decided it had nothing to say
+-- which is why nothing about the symptom points at the diff. A frozen
+screen and a screen nothing is trying to draw look identical.
+
+**Three faults, one shape, found in a row.** The size (8.123), the title
+(8.124) and now the screen are all the same sentence: qtty keeps a copy of
+something the terminal owns, the terminal's copy is changed by the handover,
+and the mechanism that exists to avoid redundant work -- an early return, a
+dedupe, a diff -- is precisely what guarantees the copy is never refreshed.
+**The optimisation is not incidental to the bug, it is the bug**: without it
+the next frame would have repaired everything by accident.
+
+**The seam asks rather than being told, and the reason is the one 8.124
+paid for.** `ITerminalBackend::handovers()` is a count, not pure, zero by
+default -- a backend that never gives the terminal up answers truthfully
+without implementing anything. Each reader compares it against its own
+last-seen value, so no reader can consume the news on behalf of another,
+which is exactly what went wrong when the same thing arrived as a flag
+inside the backend one entry ago. A backend also cannot reach a scheduler it
+does not know about, and the scheduler already holds the backend.
+
+`AnsiBackend` bumps it on **both** routes into a resume -- the call and the
+SIGCONT handler -- because 8.124 established that those are not one code
+path, and the sabotage set carries an entry for each.
+
+**The control is the part worth copying.** The middle render asserts that an
+unchanged frame writes **nothing**. Without it, "a frame after the handover
+carries the label" would pass just as loudly against a scheduler that had
+stopped diffing altogether -- the fix and the removal of the optimisation
+being indistinguishable from the last assertion alone. It has its own
+sabotage entry, and deleting the diff reddens it.
+
+**What is deliberately NOT reset**, so the next reader does not assume it
+was an oversight: the kitty upload cache. Image DATA is stored by id and
+survives a screen clear; placements do not, and those are rebuilt from the
+frame every time. `live_overlay_ids_` and `prev_overlays_` ARE cleared, both
+being records of what the terminal is holding rather than of what was sent.
 
 ### 8.124 The window title, given back with the terminal and never taken again (2026-09-13)
 

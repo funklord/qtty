@@ -300,6 +300,10 @@ private:
 	// the tail has to be deleted explicitly -- nothing about a smaller list
 	// removes the placements the terminal already has.
 	int live_overlay_ids_ = 0;
+	// Handovers already acted on. Compared rather than cleared, so that this
+	// scheduler reading the news cannot hide it from anything else that also
+	// keeps a copy of the screen.
+	int seen_handovers_ = 0;
 	// The composited picture, kept between frames so only the damaged cells
 	// have to be rasterised into it. Rasterising 200x60 measures 18.4 ms
 	// against section 11's 16 ms budget, so on the software-composite path
