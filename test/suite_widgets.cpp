@@ -4443,6 +4443,79 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// Can a keyboard user SEE where focus is? That is the whole premise of
+	// driving a form without a mouse, and it is not a property of any one
+	// widget: PE_FrameFocusRect is suppressed outright -- "focus by the
+	// router-owned focus attr" -- and the mark is then drawn per control
+	// type, in five places, each asking whether it owns the router's focus.
+	// So focus visibility is OPT-IN, and a control the style does not handle
+	// has none at all.
+	//
+	// Swept rather than sampled, and asserted as a PARTITION rather than as a
+	// count: the set of standard widgets whose focus is invisible must be
+	// exactly {QDial}. A widget that stops showing focus fails this, and so
+	// does a QDial that starts showing it -- the second being a message to
+	// whoever fixed it that the exception can go, rather than a check quietly
+	// passing for a new reason.
+	//
+	// QDial is the known exception because Fusion's dial never asks for a
+	// focus indicator at all: measured by making PE_FrameFocusRect draw a
+	// mark, which changed every other widget and left the dial identical. It
+	// would need its own control implementation, which a terminal dial has
+	// not yet earned.
+	{
+		struct Case { const char *name; std::function<QWidget *()> make; };
+		const QVector<Case> cases = {
+			{"QPushButton",    [] { return new QPushButton(QStringLiteral("Press")); }},
+			{"QCheckBox",      [] { return new QCheckBox(QStringLiteral("Tick")); }},
+			{"QRadioButton",   [] { return new QRadioButton(QStringLiteral("Pick")); }},
+			{"QLineEdit",      [] { return new QLineEdit(QStringLiteral("text")); }},
+			{"QComboBox",      [] { auto *c = new QComboBox; c->addItems({"one", "two"}); return c; }},
+			{"QSpinBox",       [] { return new QSpinBox; }},
+			{"QSlider",        [] { return new QSlider(Qt::Horizontal); }},
+			{"QToolButton",    [] { auto *t = new QToolButton; t->setText(QStringLiteral("Tool")); return t; }},
+			{"QListWidget",    [] { auto *l = new QListWidget; l->addItems({"a", "b", "c"}); return l; }},
+			{"QTreeWidget",    [] { auto *t = new QTreeWidget; t->setColumnCount(1); new QTreeWidgetItem(t, QStringList{"leaf"}); return t; }},
+			{"QTableWidget",   [] { return new QTableWidget(2, 2); }},
+			{"QTabBar",        [] { auto *t = new QTabBar; t->addTab(QStringLiteral("one")); t->addTab(QStringLiteral("two")); return t; }},
+			{"QPlainTextEdit", [] { return new QPlainTextEdit(QStringLiteral("body")); }},
+			{"QTextEdit",      [] { return new QTextEdit(QStringLiteral("body")); }},
+			{"QDateEdit",      [] { return new QDateEdit; }},
+			{"QDial",          [] { return new QDial; }},
+		};
+		QStringList blind;
+		bool all_took = true;
+		for (const Case &c : cases) {
+			const auto shot = [&](bool focused) {
+				QWidget host;
+				host.setAttribute(Qt::WA_DontShowOnScreen);
+				auto *box = new QVBoxLayout(&host);
+				QWidget *w = c.make();
+				box->addWidget(w);
+				host.resize(GridMetrics::cells(30, 6));
+				host.show();
+				QCoreApplication::processEvents();
+				if (focused) {
+					set_focus_widget(w);
+					QCoreApplication::processEvents();
+					// The fixture has to REACH the hazard: a focus that did
+					// not take renders identically for a reason that has
+					// nothing to do with the style.
+					if (Qtty::focusWidget() != w) all_took = false;
+				}
+				return Qtty::test::snapshot_of(host, 30, 6);
+			};
+			if (shot(false) == shot(true)) blind.append(QString::fromLatin1(c.name));
+		}
+		CHECK(all_took,
+		      "every widget in the focus sweep actually took focus, so an"
+		      " identical render means the style and not the fixture");
+		CHECK(blind == QStringList{QStringLiteral("QDial")},
+		      "and exactly one standard widget draws no focus mark, the"
+		      " terminal dial Fusion never asks a focus rect for");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

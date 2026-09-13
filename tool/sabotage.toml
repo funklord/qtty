@@ -1577,3 +1577,15 @@ find = "\t\t~Retake() { if (b) b->resume(); }"
 into = "\t\t~Retake() { if (false) b->resume(); }"
 count = 1
 check = "and taken it again afterwards"
+
+[[sabotage]]
+# A push button that no longer marks the router's focus. PE_FrameFocusRect is
+# suppressed outright and the mark is drawn per control type, so a control
+# that stops asking has no focus indication at all -- and a keyboard user
+# cannot see where they are, which is the whole premise of the guide. 8.133.
+name = "a push button stops marking the focus it owns"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t           || (w && w == s_focus.data());"
+into = "\t\t\t\t           || (w && false);"
+count = 1
+check = "and exactly one standard widget draws no focus mark"

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1280 checks, 0 failures. `make check` is green and includes
+1282 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15934,6 +15934,45 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.133 Focus is opt-in per control, and one standard widget opts out (2026-09-13)
+
+Back to what the guide is for: a keyboard user has to be able to SEE where
+focus is, or a form cannot be driven without a mouse.
+
+It is not a property of any one widget. `PE_FrameFocusRect` is suppressed
+outright -- *"focus by the router-owned focus attr"* -- and the mark is then
+drawn **per control type**, in five places, each asking whether that widget
+owns the router's focus. So focus visibility is **opt-in**, and a control
+the style does not handle has none.
+
+Swept across seventeen standard widgets, rendered focused and unfocused and
+compared: **sixteen mark it, `QDial` does not.** Fusion's dial never asks for
+a focus indicator at all -- measured by making `PE_FrameFocusRect` draw a
+mark, which changed every other widget and left the dial byte-identical. So
+the suppression is not the cause and the fix would be a control
+implementation of its own, which a terminal dial has not earned.
+
+**The sweep is in the suite, asserted as a partition rather than a count.**
+The set of focus-blind standard widgets must be exactly `{QDial}` -- so a
+widget that stops showing focus fails, and a `QDial` that starts showing it
+also fails, telling whoever fixed it that the exception can go rather than
+passing quietly for a new reason. `evidence.md`'s *assert the partition when
+the deciding cell is empty*.
+
+**It carries the fixture's own liveness check**, because the failure mode
+here is indistinguishable from a mistake: a focus that did not take renders
+identically for a reason that has nothing to do with the style. The sweep
+asserts that every widget in it actually took focus before any conclusion is
+drawn from an identical render.
+
+**And the magnitude the probe first reported was meaningless.** It counted
+differing characters between two `snapshot_of()` strings and reported 99 of
+what it called cells for a push button on a 180-cell grid. A snapshot is
+text, then an attrs map, then colours, then a legend -- so a one-cell change
+that adds an attrs section shifts everything after it. The BINARY answer was
+sound the whole time and the number never was; the check compares for
+equality and reports no number at all.
 
 ### 8.132 Verifying 8.127 cost three vacuous passes (2026-09-13)
 
