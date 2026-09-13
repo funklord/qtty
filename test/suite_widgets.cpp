@@ -4483,7 +4483,7 @@ int suite_widgets() {
 			{"QDateEdit",      [] { return new QDateEdit; }},
 			{"QDial",          [] { return new QDial; }},
 		};
-		QStringList blind;
+		QStringList blind, colour_only;
 		bool all_took = true;
 		for (const Case &c : cases) {
 			const auto shot = [&](bool focused) {
@@ -4505,7 +4505,18 @@ int suite_widgets() {
 				}
 				return Qtty::test::snapshot_of(host, 30, 6);
 			};
-			if (shot(false) == shot(true)) blind.append(QString::fromLatin1(c.name));
+			const QString off = shot(false), on = shot(true);
+			if (off == on) blind.append(QString::fromLatin1(c.name));
+			// What a MONO terminal can still show: the glyphs and the SGR
+			// attributes. Colour depth removes colour; reverse, bold and
+			// underline survive at every depth, so a mark that lives only in
+			// the colours is one a mono user cannot see at all.
+			const auto mono_sees = [](const QString &snap) {
+				const int cut = snap.indexOf(QStringLiteral("--- colours ---"));
+				return cut < 0 ? snap : snap.left(cut);
+			};
+			if (mono_sees(off) == mono_sees(on))
+				colour_only.append(QString::fromLatin1(c.name));
 		}
 		CHECK(all_took,
 		      "every widget in the focus sweep actually took focus, so an"
@@ -4513,6 +4524,25 @@ int suite_widgets() {
 		CHECK(blind == QStringList{QStringLiteral("QDial")},
 		      "and exactly one standard widget draws no focus mark, the"
 		      " terminal dial Fusion never asks a focus rect for");
+		// And the same partition at the depth where it is hardest. Mono is a
+		// depth qtty negotiates -- TERM=dumb reaches it, and QTTY_COLOR=mono
+		// asks for it -- so a focus mark that is only a colour leaves a
+		// keyboard user with nothing.
+		//
+		// QLineEdit is in this set deliberately and is NOT a gap: a focused
+		// text field is marked by the TERMINAL'S OWN CURSOR, which the
+		// compositor places for exactly the widgets carrying
+		// WA_InputMethodEnabled, and which a cell snapshot cannot see. The
+		// two mechanisms are complementary and this records which widget
+		// relies on which -- so a day when the line edit stops getting the
+		// cursor, or another widget quietly becomes colour-only, fails here
+		// rather than being discovered by somebody who cannot find their
+		// place in a form.
+		QStringList by_colour_only;
+		by_colour_only << QStringLiteral("QLineEdit") << QStringLiteral("QDial");
+		CHECK(colour_only == by_colour_only,
+		      "and exactly two mark focus in colour alone -- the line edit,"
+		      " which the terminal cursor marks instead, and the dial");
 		GridGuard::reset();
 	}
 

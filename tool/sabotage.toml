@@ -1589,3 +1589,14 @@ find = "\t\t\t\t           || (w && w == s_focus.data());"
 into = "\t\t\t\t           || (w && false);"
 count = 1
 check = "and exactly one standard widget draws no focus mark"
+
+[[sabotage]]
+# A focus mark that is only a colour. Mono is a depth qtty negotiates --
+# TERM=dumb reaches it and QTTY_COLOR=mono asks for it -- so a mark carried
+# by colour alone leaves a keyboard user with nothing to see. 8.134.
+name = "focus is marked in colour rather than in an attribute"
+file = "src/grid/grid_style.cpp"
+find = "\treturn owns_focus(w) ? Attrs(Attr::Reverse) : Attrs();"
+into = "\treturn Attrs();"
+count = 1
+check = "and exactly two mark focus in colour alone"

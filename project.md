@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1282 checks, 0 failures. `make check` is green and includes
+1283 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15934,6 +15934,48 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.134 What a monochrome terminal can see of a form (2026-09-13)
+
+8.133 asked whether focus is visible and compared whole snapshots. That is
+the wrong bar, and the right one is harder: **Mono is a depth qtty
+negotiates** -- `TERM=dumb` reaches it, `QTTY_COLOR=mono` asks for it -- and
+a mark carried by colour alone leaves such a user with nothing.
+
+Colour depth removes colour and not ATTRIBUTES: reverse, bold and underline
+are SGR and survive at every depth. So the question is whether the glyphs and
+the attributes differ, with the colours section of the snapshot cut off.
+
+**The checkable controls are clean.** Eight of them -- check box, radio,
+checkable push and tool buttons, checkable group box, and check states in
+list, tree and table items -- all differ in what a mono terminal can see. A
+form's check states are fillable in with no colour at all.
+
+**Focus has exactly two colour-only marks**, and they are different in kind.
+
+`QDial` is 8.133's known gap, marked nowhere.
+
+**`QLineEdit` is not a gap and is the more interesting half.** Its cell-level
+focus mark is colour alone -- and a focused text field is located by the
+**terminal's own cursor**, which the compositor places for exactly the
+widgets carrying `WA_InputMethodEnabled` and which a cell snapshot cannot
+see. The two mechanisms are complementary, and nothing recorded which widget
+relied on which until now.
+
+That is what the check pins: the set of colour-only focus marks must be
+exactly `{QLineEdit, QDial}`. So the day the line edit stops getting the
+cursor, or another widget quietly becomes colour-only, the suite says so --
+instead of it being found by somebody who cannot tell where they are in a
+form on a terminal that does not do colour.
+
+**The instrument had to be corrected twice, in the same direction both
+times.** It first compared whole snapshots, which cannot tell colour from
+attribute; then it cut at the attrs section, which treats a reverse-video
+mark as invisible when reverse is exactly what a mono terminal shows. Only
+the third split -- glyphs and attributes on one side, colours on the other --
+matches what the depth actually removes. **Each wrong cut produced a
+confident list, and the lists disagreed with each other**, which is the only
+reason there was anything to notice.
 
 ### 8.133 Focus is opt-in per control, and one standard widget opts out (2026-09-13)
 
