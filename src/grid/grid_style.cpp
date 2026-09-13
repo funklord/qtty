@@ -1739,10 +1739,26 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// this discarded: every item was elided on the right however
 				// the application had asked. A path column set to ElideLeft
 				// showed the directory and hid the filename.
-				dev->buffer().text(text_at, c.top(),
-				                   elide_to_cells(vi->text, room,
-				                                  vi->textElideMode),
-				                   fg, bg, la);
+				const QString shown =
+				    elide_to_cells(vi->text, room, vi->textElideMode);
+				// And displayAlignment, discarded the same way. A model that
+				// right-aligns a numeric column is not being decorative: it
+				// is asking for the digits to line up, which is the whole
+				// reason the convention exists. Left-aligned, "7" and "1234"
+				// share a column and agree about nothing.
+				//
+				// CellItemDelegate has honoured this all along, so a program
+				// that installed qtty's delegate was right and the same
+				// program without it was wrong -- and the delegate is the
+				// optional extra, so the default was the broken one. The two
+				// writers agree now; the arithmetic is the delegate's.
+				int text_x = text_at;
+				const int shown_cells = text_cells(shown);
+				if (vi->displayAlignment & Qt::AlignRight)
+					text_x = c.right() - shown_cells + 1;
+				else if (vi->displayAlignment & Qt::AlignHCenter)
+					text_x = text_at + (room - shown_cells) / 2;
+				dev->buffer().text(text_x, c.top(), shown, fg, bg, la);
 				return;
 			}
 			break;

@@ -308,6 +308,21 @@ inline QRect cells_of(const QRect &r, QPainter *p, CellPaintDevice *dev,
 //
 // Two implementations of one rule disagreeing is what surfaced it. Neither
 // had a test that asked about a wide cluster.
+// How many CELLS a string occupies: a combining sequence is one grapheme
+// cluster and a wide one occupies two (section 5.2), so counting QChars would
+// put a CJK label one cell past the column it was given.
+//
+// Shared rather than copied. It lived as a static in cell_item_delegate.cpp
+// while GridStyle needed the same number to right-align an item, and this
+// file's own history says what a second copy of one rule costs: two
+// implementations of elide_to_cells disagreed on 9 of 143 cases and the
+// loser had been wrong for months.
+inline int text_cells(const QString &s) {
+	int n = 0;
+	for (const QString &cluster : to_clusters(s)) n += cluster_width(cluster);
+	return n;
+}
+
 // The MODE is Qt's and was ignored: every caller got ElideRight, whatever the
 // application asked for. Measured on a tree column twelve cells wide showing
 // "/home/user/deep/dir/report.txt" -- all four modes rendered

@@ -1718,7 +1718,19 @@ check = "while ElideNone truncates and marks nothing"
 # function and an unwired feature look identical. 8.139.
 name = "an item view discards the elide mode Qt gave it"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\t\t                                  vi->textElideMode),"
-into = "\t\t\t\t                                  Qt::ElideRight),"
+find = "\t\t\t\t    elide_to_cells(vi->text, room, vi->textElideMode);"
+into = "\t\t\t\t    elide_to_cells(vi->text, room, Qt::ElideRight);"
 count = 1
 check = "a tree column elides the end its view asked for"
+
+[[sabotage]]
+# The style discarding displayAlignment, which is how it was: a numeric
+# column that a model had right-aligned came out left-aligned, so "7" and
+# "1234" shared a column and agreed about nothing. CellItemDelegate honoured
+# it all along, so the default path was the wrong one. 8.140.
+name = "the style ignores the alignment a model asked for"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tif (vi->displayAlignment & Qt::AlignRight)"
+into = "\t\t\t\tif (false)"
+count = 1
+check = "a right-aligned column lines its digits up"

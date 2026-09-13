@@ -12,15 +12,6 @@
 
 namespace Qtty {
 
-// Display width, and elision to a cell budget. Cluster-aware because a cell is
-// a grapheme cluster and a wide one occupies two (section 5.2): counting
-// QChars would put a CJK label one cell past the column it was given.
-static int text_cells(const QString &s) {
-	int n = 0;
-	for (const QString &cluster : to_clusters(s)) n += cluster_width(cluster);
-	return n;
-}
-
 CellItemDelegate::CellItemDelegate(QObject *parent) : QStyledItemDelegate(parent) {}
 
 void CellItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option,

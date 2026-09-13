@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1296 checks, 0 failures. `make check` is green and includes
+1298 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15934,6 +15934,46 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.140 Two writers of one rule, and the default was the wrong one (2026-09-13)
+
+Finishing the unread-field sweep found a second field split the same way as
+8.139's: `QStyleOptionViewItem::displayAlignment` was honoured by
+`CellItemDelegate` and discarded by the style.
+
+    default delegate          CellItemDelegate
+      7                                    7
+      1234                              1234
+
+A model that right-aligns a numeric column is not being decorative -- it is
+asking for the digits to line up, which is the whole reason the convention
+exists. Left-aligned, `7` and `1234` share a column and agree about nothing.
+
+**The direction of the split is what makes it worse than a plain bug.** The
+delegate was right and the style was wrong, and the delegate is the OPTIONAL
+extra: the README lists it among things an application may ask for. So a
+program that installed qtty's delegate got the correct rendering and the same
+program without it did not -- **the default path was the broken one**, which
+is the least likely arrangement for anybody to notice.
+
+**Twice now**, with `textElideMode`, so the check is on the two writers
+AGREEING rather than on either being right. A third field read by only one of
+them fails that without anybody having thought to test the particular
+property.
+
+**And the width helper is shared now rather than copied.** `text_cells()` was
+a static inside the delegate while the style needed the same number to
+right-align an item. This file's own history says what a second copy costs:
+two implementations of `elide_to_cells` disagreed on 9 of 143 cases and the
+loser had been wrong for months. One copy, in `cell_geometry.h`, beside the
+elision rule it belongs with.
+
+**The sabotage spec caught its own rot.** Restructuring the call to add the
+alignment moved the line an earlier entry anchored on, and `--validate` said
+so: *"its anchor matches 0 times ... the entry cannot be applied, so the check
+it names is undefended."* Without that, 8.139's wiring check would have gone
+on passing with nothing defending it, which is precisely the state the
+sabotage harness exists to make impossible.
 
 ### 8.139 Which end the text is cut off (2026-09-13)
 

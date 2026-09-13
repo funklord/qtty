@@ -4757,6 +4757,73 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// A right-aligned column, through BOTH writers, asserted as agreement
+	// rather than twice over.
+	//
+	// QStyleOptionViewItem::displayAlignment was honoured by CellItemDelegate
+	// and discarded by the style, so a program that installed qtty's delegate
+	// was right and the same program without it was wrong -- and the delegate
+	// is the optional extra, so the default was the broken one. A model that
+	// right-aligns a numeric column is not being decorative: it is asking for
+	// the digits to line up, which is the whole reason the convention exists.
+	// Left-aligned, "7" and "1234" share a column and agree about nothing.
+	//
+	// This is the second field found split between the two writers, after
+	// textElideMode, which is why the check is on their AGREEMENT: a third
+	// one read by only one of them fails here without anybody having thought
+	// to test that particular property.
+	{
+		const auto render = [](bool with_delegate) {
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *box = new QVBoxLayout(&host);
+			box->setContentsMargins(0, 0, 0, 0);
+			auto *table = new QTableWidget(2, 1);
+			table->setFrameShape(QFrame::NoFrame);
+			table->horizontalHeader()->hide();
+			table->verticalHeader()->hide();
+			if (with_delegate)
+				table->setItemDelegate(new CellItemDelegate(table));
+			for (int row = 0; row < 2; ++row) {
+				auto *cell = new QTableWidgetItem(row ? QStringLiteral("1234")
+				                                      : QStringLiteral("7"));
+				cell->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+				table->setItem(row, 0, cell);
+			}
+			box->addWidget(table);
+			host.resize(GridMetrics::cells(14, 4));
+			host.show();
+			QCoreApplication::processEvents();
+			table->setColumnWidth(0, 12 * GridMetrics::cw());
+			QCoreApplication::processEvents();
+			CellBuffer b(14, 4);
+			render_once(host, b);
+			QStringList out;
+			for (int y = 0; y < 2; ++y) {
+				QString line;
+				for (int x = 0; x < b.cols(); ++x) line += b.at(x, y).ch;
+				out << line;
+			}
+			return out;
+		};
+		const QStringList plain = render(false), custom = render(true);
+		// The units digits share a column, which is the thing a reader of a
+		// numeric table is actually using.
+		const auto last_digit = [](const QString &line) {
+			for (int i = line.size() - 1; i >= 0; --i)
+				if (line.at(i).isDigit()) return i;
+			return -1;
+		};
+		CHECK(last_digit(plain.value(0)) > 0
+		          && last_digit(plain.value(0)) == last_digit(plain.value(1)),
+		      "a right-aligned column lines its digits up, which is what the"
+		      " alignment was asked for");
+		CHECK(plain == custom,
+		      "and the style and CellItemDelegate draw it identically, two"
+		      " writers of one rule having twice disagreed about a field");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 
