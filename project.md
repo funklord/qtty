@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1273 checks, 0 failures. `make check` is green and includes
+1277 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15929,6 +15929,58 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.129 Seven per cent of a redraw spent saying nothing (2026-09-13)
+
+Accounting for every byte a fresh 80x24 program puts on the wire:
+
+    3609 bytes, 235 escape sequences
+      SGR                731 bytes  20.3%
+      printable text    2500 bytes  69.3%
+    of the SGR: 252 bytes repeat the sequence before them
+
+Only an SGR changes SGR state, so **two identical SGR sequences with nothing
+but text and cursor moves between them mean the second said nothing**. 252
+bytes of 3609 -- seven per cent of a full redraw -- and 3357 bytes with 0
+repeats now.
+
+**Two causes, and the first is a reset that was performed but not
+recorded.** `out += "\033[0m"` puts the terminal in a KNOWN state; the line
+after it said `cur = Sgr{}`, which means *unknown*. So the next default cell
+wrote `ESC[0m` again. The cache can hold what the reset guarantees --
+`sgr_sequence()` opens with `ESC[0m` and appends, so a cell carrying the
+defaults emits exactly those four bytes -- and `reset_sgr()` now writes the
+reset only when the terminal is not already in that state, which is the same
+guarantee obtained for nothing when it is.
+
+**The second is inside `sgr_sequence()` and is deliberate there.** It opens
+with `ESC[0m` by design -- *known state, then build up* -- and that reset
+says nothing after a run of ordinary text. Dropped now, but **only when the
+cache says the terminal is already at the defaults**.
+
+**That condition is the whole of it, and the sabotage run is what proved
+so.** Stripping the leading reset unconditionally came back *FAILED: the
+named check PASSED against broken code* -- and it was right. Every fixture
+in this area had unstyled cells between its runs, which is the one
+arrangement in which the two versions agree: the state is default either
+way, so the reset is redundant either way. The case that separates them is
+two **adjacent** runs, the first bold and the second plain, with nothing
+between. There the plain run's entire sequence IS the reset, so an
+unconditional strip emits nothing and the second run stays bold. That check
+exists now because the sabotage asked for it.
+
+**Three controls, and the fixture had to be rebuilt twice to earn them.**
+The liveness check -- *this frame carries several SGR sequences, so the scan
+has something to read* -- went red once the fix was in, because an
+all-default frame emits almost no SGR at all and a scan for repeats among
+two sequences proves nothing. **A fixture that was adequate for the defect
+was not adequate for the fix**, which is the vacuous-pass rule arriving from
+the far side: the thing that made the check meaningful was the very
+redundancy being removed.
+
+**Asserted as a property, not as a count.** A count pins one fixture; the
+scan would find the same fault anywhere in a frame, including in paths this
+block does not exercise.
 
 ### 8.128 The caret blink that starts when you type (2026-09-13)
 

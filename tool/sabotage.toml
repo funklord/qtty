@@ -1521,3 +1521,37 @@ find = "\tQApplication::setCursorFlashTime(0);"
 into = "\tQApplication::setCursorFlashTime(1000);"
 count = 1
 check = "so setup() pins it to zero"
+
+[[sabotage]]
+# A reset that performs the state without recording it. ESC[0m puts the
+# terminal in a KNOWN state and `cur = Sgr{}` then says it is unknown, so the
+# next default cell writes ESC[0m again -- four bytes per row of a full
+# redraw. 8.129.
+name = "a reset is performed but not recorded"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tout += \"\\033[0m\";\n\tcur = kAfterReset;"
+into = "\t\tout += \"\\033[0m\";\n\tcur = Sgr{};"
+count = 1
+check = "and none of them repeats the one before it"
+
+[[sabotage]]
+# The leading reset kept even when the terminal is already reset.
+# sgr_sequence() opens with ESC[0m by design -- known state, then build up --
+# and that reset says nothing after a run of ordinary text. 8.129.
+name = "a styled run resets a terminal that is already reset"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t    && cur.attrs == kAfterReset.attrs && seq.startsWith(\"\\033[0m\"))\n\t\tseq = seq.mid(4);"
+into = "\t    && cur.attrs == kAfterReset.attrs && false)\n\t\tseq = seq.mid(4);"
+count = 1
+check = "and none of them repeats the one before it"
+
+[[sabotage]]
+# The shortening applied without checking the state, which is the plausible
+# wrong version: strip the leading reset always, and a styled run following a
+# STYLED one inherits whatever the last one set. 8.129.
+name = "the leading reset is dropped whatever the state"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (cur.primed && cur.fg == kAfterReset.fg && cur.bg == kAfterReset.bg\n\t    && cur.attrs == kAfterReset.attrs && seq.startsWith(\"\\033[0m\"))"
+into = "\tif (seq.startsWith(\"\\033[0m\"))"
+count = 1
+check = "a plain run immediately after a bold one clears the bold"

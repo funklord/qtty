@@ -2991,6 +2991,129 @@ int suite_backend() {
 					      " nothing else being able to");
 				}
 
+				// SGR sequences that repeat the one before them, which are
+				// no-ops by definition: only an SGR changes SGR state, so two
+				// identical ones with nothing but text and cursor moves
+				// between them mean the second said nothing.
+				//
+				// Measured by accounting for every byte of a fresh 80x24
+				// program: 3609 bytes, of which 731 were SGR and 252 repeated
+				// the sequence before them -- seven per cent of a full
+				// redraw, spent saying what the terminal had just been told.
+				//
+				// The cause is a row terminator followed by a reset of the
+				// cache rather than by a record of what it just guaranteed:
+				// `out += "\033[0m"` puts the terminal in a KNOWN state and
+				// `cur = Sgr{}` then says it is unknown, so the next default
+				// cell writes ESC[0m again.
+				//
+				// Asserted as a property rather than as a count, because a
+				// count over one fixture pins that fixture. The scan is the
+				// check: it would find the same fault anywhere in a frame,
+				// including in paths this block does not exercise.
+				{
+					fflush(stdout);
+					::dup2(slave, 1);
+					char eat[4096];
+					const auto take = [&] {
+						QByteArray got;
+						ssize_t n;
+						while ((n = ::read(master, eat, sizeof(eat))) > 0)
+							got.append(eat, int(n));
+						return got;
+					};
+					// Coloured and attributed runs, so the frame genuinely
+					// carries several SGR sequences. An all-default frame is
+					// the wrong fixture for this and the liveness check above
+					// said so: with the fix in place such a frame emits
+					// almost no SGR at all, and a scan for repeats among two
+					// sequences proves nothing. The hazard needs a frame that
+					// changes state often.
+					CellBuffer plain(24, 5);
+					plain.text(0, 0, QStringLiteral("one"),
+					           Color::indexed(1), Color(), Attrs());
+					plain.text(6, 0, QStringLiteral("two"),
+					           Color::indexed(4), Color(), Attrs(Attr::Bold));
+					plain.text(0, 2, QStringLiteral("three"),
+					           Color::rgb(qRgb(200, 40, 40)), Color(), Attrs());
+					plain.text(8, 2, QStringLiteral("four"),
+					           Color(), Color::indexed(2), Attrs());
+					take();
+					live.present(plain, QRegion());
+					const QByteArray bytes = take();
+
+					// Walk the escape sequences, remember the last SGR, and
+					// count one that says it again.
+					int repeats = 0, sgr_seen = 0;
+					QByteArray last_sgr;
+					for (int i = 0; i + 1 < bytes.size(); ++i) {
+						if (bytes[i] != '\033' || bytes[i + 1] != '[') continue;
+						int j = i + 2;
+						while (j < bytes.size()
+						       && ((bytes[j] >= '0' && bytes[j] <= '9')
+						           || bytes[j] == ';' || bytes[j] == '?'))
+							++j;
+						if (j >= bytes.size()) break;
+						const QByteArray seq = bytes.mid(i, j - i + 1);
+						if (bytes[j] == 'm') {
+							++sgr_seen;
+							if (seq == last_sgr) ++repeats;
+							last_sgr = seq;
+						} else if (bytes[j] != 'H') {
+							last_sgr.clear();   // anything else, stop assuming
+						}
+						i = j;
+					}
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					CHECK(sgr_seen > 3,
+					      "a frame of ordinary text carries several SGR"
+					      " sequences, so the scan below has something to read");
+					CHECK(repeats == 0,
+					      "and none of them repeats the one before it, which"
+					      " would be bytes spent saying nothing");
+					// The control for the half of this that drops a leading
+					// ESC[0m: a reset removed because the terminal was
+					// already reset must not take the styling with it. These
+					// two runs follow unstyled ones, so they are exactly the
+					// sequences the shortening applies to.
+					CHECK(bytes.contains("\033[38;5;4m")
+					          && bytes.contains("\033[1m"),
+					      "while a styled run following an unstyled one still"
+					      " carries its colour and its attribute");
+
+					// And the case that decides whether the shortening may
+					// be unconditional: two ADJACENT runs, the first bold and
+					// the second plain, with no default cells between them to
+					// reset the state. The plain run's whole sequence IS the
+					// reset, so dropping the leading ESC[0m without looking
+					// at the state would emit nothing at all and leave the
+					// second run bold.
+					//
+					// Written because the sabotage run asked for it: stripping
+					// the reset unconditionally came back "the named check
+					// PASSED against broken code", and it was right -- every
+					// fixture here had unstyled cells between its runs, which
+					// is the one arrangement where the two versions agree.
+					fflush(stdout);
+					::dup2(slave, 1);
+					CellBuffer abut(12, 1);
+					abut.text(0, 0, QStringLiteral("AAA"), Color(), Color(),
+					          Attrs(Attr::Bold));
+					abut.text(3, 0, QStringLiteral("BBB"));
+					take();
+					live.present(abut, QRegion());
+					const QByteArray pair = take();
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					const int at_a = pair.indexOf("AAA");
+					const int at_b = pair.indexOf("BBB");
+					CHECK(at_a >= 0 && at_b > at_a
+					          && pair.mid(at_a, at_b - at_a).contains("\033[0m"),
+					      "a plain run immediately after a bold one clears the"
+					      " bold, the reset being the whole of what it says");
+				}
+
 				// End to end, because the two halves being right separately
 				// is not the same fact as the chain working. The backend
 				// delivering to a sink is checked above; the router resizing
