@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1285 checks, 0 failures. `make check` is green and includes
+1288 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15934,6 +15934,46 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.137 Three controls, one option struct, three conventions (2026-09-13)
+
+8.136's lens, applied immediately: **which other control shares that option
+struct?** `QStyleOptionSlider` serves the slider, the dial and the **scroll
+bar** -- and the scroll bar ignored `invertedAppearance` exactly as the dial
+had. An inverted bar drew identically to an ordinary one, so its thumb sat
+at the wrong end of the track at every value, in both orientations.
+
+**And the flag does not mean the same thing in any two of them.** Measured,
+printing what Qt put in the option:
+
+    QScrollBar   both orientations   upsideDown == inverted
+    QDial                            upsideDown == !inverted
+    QSlider      vertical            upsideDown == !inverted
+
+So the line that is correct for the dial -- written into this same file an
+hour earlier -- is wrong here, and the line that is correct here is the
+slider's. **There is no convention to carry between them**, which is what
+makes "copy the sibling" the wrong instinct in exactly the place it is
+strongest: a control written next to two working ones, against the same
+struct, reading the same field.
+
+**The fix had to land in two places, and that is the part worth keeping.**
+`thumb_pos` is computed in the drawing AND in `subControlRect()`, which is
+the hit test. Mirroring one alone would put the thumb where a click cannot
+reach it -- **worse than a bar that reads backwards consistently, because
+the bar then lies about itself**: what you see and what you can press
+disagree, and nothing in either code path says the other exists.
+
+Three assertions, one per way of being wrong: the thumb descends as the
+value rises, it ascends when inverted, and a click lands on the row the
+inverted thumb is drawn in. The third is the one that needed the trouble of
+building a style option by hand, and it is the only one that can see a
+half-applied fix. Each has its own sabotage entry.
+
+**The lens is not spent.** A shared option struct is a set of questions the
+first implementation answered and the second inherits without the answers --
+and the answers are not transferable, which is the discovery here rather
+than the individual defect.
 
 ### 8.136 The dial read backwards, in a flag the file already warned about (2026-09-13)
 

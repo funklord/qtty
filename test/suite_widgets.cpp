@@ -4601,6 +4601,81 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// A scroll bar's direction, and the agreement between what is DRAWN and
+	// where a click LANDS.
+	//
+	// Three controls share QStyleOptionSlider and none of them agrees about
+	// upsideDown. Measured, printing what Qt put in the option:
+	//
+	//     QScrollBar   both orientations   upsideDown == inverted
+	//     QDial                            upsideDown == !inverted
+	//     QSlider      vertical            upsideDown == !inverted
+	//
+	// So the line that is right for the dial is wrong here and vice versa,
+	// and the bar ignored the flag altogether: an inverted bar drew exactly
+	// like an ordinary one.
+	//
+	// The second assertion is the one worth the trouble. thumb_pos is
+	// computed in TWO places -- the drawing and subControlRect(), which is
+	// the hit test -- so mirroring one alone puts the thumb where a click
+	// cannot reach it, which is worse than a bar that reads backwards
+	// consistently.
+	{
+		const auto thumb_row = [](bool inverted, int value) {
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *box = new QVBoxLayout(&host);
+			auto *sb = new QScrollBar(Qt::Vertical);
+			sb->setRange(0, 100);
+			sb->setPageStep(10);
+			sb->setInvertedAppearance(inverted);
+			box->addWidget(sb);
+			host.resize(GridMetrics::cells(16, 8));
+			host.show();
+			QCoreApplication::processEvents();
+			sb->setValue(value);
+			QCoreApplication::processEvents();
+			CellBuffer b(16, 8);
+			render_once(host, b);
+			for (int y = 0; y < b.rows(); ++y)
+				for (int x = 0; x < b.cols(); ++x)
+					if (b.at(x, y).ch == QStringLiteral("\u2588")) return y;
+			return -1;
+		};
+		const int top = thumb_row(false, 0), bottom = thumb_row(false, 100);
+		const int itop = thumb_row(true, 0), ibottom = thumb_row(true, 100);
+		CHECK(top >= 0 && bottom >= 0 && top < bottom,
+		      "a scroll bar's thumb moves down as its value rises");
+		CHECK(itop >= 0 && ibottom >= 0 && itop > ibottom,
+		      "and up when its appearance is inverted, a flag it reads with"
+		      " the opposite polarity to the dial");
+
+		// And the hit test agrees with the drawing, asked of the style with
+		// the same option the widget would hand it.
+		QScrollBar bar(Qt::Vertical);
+		bar.setRange(0, 100);
+		bar.setPageStep(10);
+		bar.setInvertedAppearance(true);
+		bar.resize(GridMetrics::cells(1, 8));
+		bar.setValue(0);
+		QStyleOptionSlider so;
+		so.initFrom(&bar);
+		so.orientation = Qt::Vertical;
+		so.minimum = bar.minimum();
+		so.maximum = bar.maximum();
+		so.pageStep = bar.pageStep();
+		so.sliderPosition = bar.value();
+		so.sliderValue = bar.value();
+		so.upsideDown = bar.invertedAppearance();
+		const QRect slider = bar.style()->subControlRect(
+		    QStyle::CC_ScrollBar, &so, QStyle::SC_ScrollBarSlider, &bar);
+		const int hit_row = slider.center().y() / GridMetrics::ch();
+		CHECK(!slider.isNull() && hit_row == itop,
+		      "and a click lands on the row the inverted thumb is drawn in,"
+		      " the two being computed in different places");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

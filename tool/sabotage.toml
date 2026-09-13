@@ -1633,3 +1633,37 @@ find = "\t\t\t\tif (!dl->upsideDown) pos = len - 1 - pos;"
 into = "\t\t\t\tif (dl->upsideDown) pos = len - 1 - pos;"
 count = 1
 check = "a dial's handle moves rightwards as its value rises"
+
+[[sabotage]]
+# The scroll bar ignoring invertedAppearance, which is how it was: an
+# inverted bar drew exactly like an ordinary one, so its thumb sat at the
+# wrong end of the track at every value. 8.137.
+name = "a scroll bar ignores which way round it reads"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\t// the two backwards.\n\t\t\t\t\tif (sb->upsideDown) thumb_pos = track - thumb_len - thumb_pos;"
+into = "\t\t\t\t\t// the two backwards.\n\t\t\t\t\tif (false) thumb_pos = track - thumb_len - thumb_pos;"
+count = 1
+check = "and up when its appearance is inverted"
+
+[[sabotage]]
+# The scroll bar reading the flag with the DIAL's polarity, which is the
+# mistake copying the sibling control a few hundred lines away would make.
+# Three controls share QStyleOptionSlider and none of them agrees. 8.137.
+name = "a scroll bar reads its direction flag with the dial's polarity"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\t// the two backwards.\n\t\t\t\t\tif (sb->upsideDown) thumb_pos = track - thumb_len - thumb_pos;"
+into = "\t\t\t\t\t// the two backwards.\n\t\t\t\t\tif (!sb->upsideDown) thumb_pos = track - thumb_len - thumb_pos;"
+count = 1
+check = "a scroll bar's thumb moves down as its value rises"
+
+[[sabotage]]
+# The drawing mirrored and the HIT TEST not, which is what fixing one of the
+# two sites alone produces: the thumb is drawn at one end of the track and a
+# click reaches it at the other. Worse than a bar that reads backwards
+# consistently, because the bar then lies about itself. 8.137.
+name = "the scroll bar thumb is drawn where a click cannot reach it"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\t// than a bar that reads backwards consistently.\n\t\t\t\t\tif (sb->upsideDown) thumb_pos = track - thumb_len - thumb_pos;"
+into = "\t\t\t\t\t// than a bar that reads backwards consistently.\n\t\t\t\t\tif (false) thumb_pos = track - thumb_len - thumb_pos;"
+count = 1
+check = "and a click lands on the row the inverted thumb is drawn in"

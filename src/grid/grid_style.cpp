@@ -1022,6 +1022,12 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 					                     / qMax(1, span + sb->pageStep), track);
 					thumb_pos = (track - thumb_len)
 					          * (sb->sliderPosition - sb->minimum) / span;
+					// Mirrored here TOO, and that is the point of doing both
+					// in one change: this is the hit-test geometry and the
+					// other is the drawing. Fixing one alone would put the
+					// thumb where a click does not reach it, which is worse
+					// than a bar that reads backwards consistently.
+					if (sb->upsideDown) thumb_pos = track - thumb_len - thumb_pos;
 				}
 				// A run of whole cells along the axis, full width across it.
 				const auto band = [&](int first, int count) {
@@ -2014,6 +2020,24 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 					thumb_len = qBound(1, track * sb->pageStep
 					                     / qMax(1, span + sb->pageStep), track);
 					thumb_pos = (track - thumb_len) * (sb->sliderPosition - sb->minimum) / span;
+					// invertedAppearance, which this ignored: an inverted bar
+					// drew identically to an ordinary one, so its thumb sat
+					// at the wrong end of the track at every value.
+					//
+					// `if (upsideDown)` and NOT the dial's `if (!upsideDown)`
+					// -- three controls share QStyleOptionSlider and none of
+					// them agrees about this flag. Measured, printing what Qt
+					// put in the option:
+					//
+					//     QScrollBar   both orientations   upsideDown == inverted
+					//     QDial                            upsideDown == !inverted
+					//     QSlider      vertical            upsideDown == !inverted
+					//
+					// So the right line here is the slider's and the wrong one
+					// is the dial's, which was written an hour earlier in this
+					// same file. Copying either without measuring gets one of
+					// the two backwards.
+					if (sb->upsideDown) thumb_pos = track - thumb_len - thumb_pos;
 				}
 				const Attrs a = with_state(opt);
 				for (int i = 0; i < len; ++i) {
