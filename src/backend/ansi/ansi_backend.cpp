@@ -784,12 +784,25 @@ void AnsiBackend::resume() {
 	// The SIGTSTP path was already right and is the model: qtty_cont_handler()
 	// nudges the SIGWINCH pipe for exactly this reason, saying that a
 	// terminal genuinely may have been resized while the program was stopped.
-	// What that covers is a STOPPED job. It does not cover the other thing
-	// backend.h names suspend() for -- "SIGTSTP / shelling out" -- because a
-	// shell-out is an ordinary call rather than a signal: the application
-	// calls suspend(), runs an editor that takes the terminal's foreground
-	// process group, and calls resume(). A resize while the editor is up
-	// signals the EDITOR, and nothing signals the program coming back.
+	// What that covers is a STOPPED job, not the other thing backend.h names
+	// suspend() for -- "SIGTSTP / shelling out".
+	//
+	// And the way a shell-out loses a resize is NOT the one it is natural to
+	// assume. The obvious story is that the child takes the terminal's
+	// foreground process group, so the resize signals the child; that happens
+	// only under a shell with job control, and an application running
+	// QProcess or system() keeps the foreground itself and IS signalled.
+	//
+	// It is lost anyway, and read_winch() says why on its own first line: it
+	// DRAINS the self-pipe and then refuses, because the backend is
+	// suspended. So an application that keeps its event loop turning while
+	// the child runs -- QProcess with a nested QEventLoop, which is the
+	// ordinary way to wait for one without freezing -- has the byte consumed
+	// and the resize discarded, with nothing left to replay it.
+	//
+	// Measured from the seat an application sits in, against the installed
+	// headers, with this line disabled: a terminal resized to 12 rows while
+	// the child held it was drawn 14 rows deep on return. With it, 12.
 	//
 	// read_winch() rather than a second copy of the ioctl: it is already the
 	// one place that re-measures, re-asks for the pixel geometry a font

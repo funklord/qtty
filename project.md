@@ -16377,13 +16377,29 @@ believing whatever was true when it left.
 genuinely may have been resized while the program was stopped, so
 re-measuring is the correct thing to do as well as the convenient one."*
 
-What that covers is a job stopped by a signal. It does not cover the other
-thing `backend.h` names `suspend()` for -- **"SIGTSTP / shelling out"** --
-because a shell-out is an ordinary call rather than a signal. The
-application calls `suspend()`, runs an editor which takes the terminal's
-foreground process group, and calls `resume()`. A window resize while the
-editor is up signals the **editor**; nothing signals the program coming
-back, and nothing re-measured when it did.
+What that covers is a job stopped by a signal, not the other thing
+`backend.h` names `suspend()` for -- **"SIGTSTP / shelling out"**.
+
+**The way a shell-out loses a resize is not the one this entry first gave,
+and the correction is the useful part.** It said the child takes the
+terminal's foreground process group, so the resize signals the child. That
+happens only under a shell with job control; an application running
+`QProcess` or `system()` keeps the foreground itself and **is** signalled.
+
+It is lost anyway, and `read_winch()` says why on its own first line: it
+**drains** the self-pipe and then refuses, the backend being suspended. So
+an application that keeps its event loop turning while the child runs --
+`QProcess` with a nested `QEventLoop`, the ordinary way to wait for one
+without freezing -- has the byte consumed and the resize discarded, with
+nothing left to replay it.
+
+Measured afterwards from the seat an application sits in, against the
+installed headers, with the fix disabled by hand: a terminal resized to 12
+rows while the child held it was drawn **14 rows deep** on return, and 12
+with the fix in. So the fix is load-bearing rather than belt-and-braces --
+which the original fixture could not have shown, because it resized before
+the suspend and never raised the signal at all, proving the ioctl rather
+than the path. The fixture models the drain now.
 
 `resume()` now calls `read_winch()`, which is already the one place that
 re-measures, re-asks for the pixel geometry a font change moves without

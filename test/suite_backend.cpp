@@ -2660,8 +2660,22 @@ int suite_backend() {
 					::dup2(slave, 1);
 					ws.ws_col = 64;
 					ws.ws_row = 18;
-					::ioctl(slave, TIOCSWINSZ, &ws);
 					live.suspend();
+					::ioctl(slave, TIOCSWINSZ, &ws);
+					// The resize arrives AND IS DRAINED while suspended,
+					// which is how a shell-out really loses one. read_winch()
+					// empties the self-pipe before it refuses, so an
+					// application whose event loop keeps turning while the
+					// child runs -- QProcess with a nested QEventLoop -- has
+					// the byte consumed and nothing left to replay it.
+					//
+					// The first version of this fixture resized BEFORE the
+					// suspend and never raised the signal at all, so it
+					// proved the ioctl rather than the path. Measured from an
+					// application with this fix disabled: 14 rows drawn into
+					// a 12-row terminal.
+					::raise(SIGWINCH);
+					for (int i = 0; i < 20; ++i) QCoreApplication::processEvents();
 					live.resume();
 					const QSize came_back = live.size();
 					fflush(stdout);
