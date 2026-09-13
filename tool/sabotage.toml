@@ -1667,3 +1667,25 @@ find = "\t\t\t\t\t// than a bar that reads backwards consistently.\n\t\t\t\t\tif
 into = "\t\t\t\t\t// than a bar that reads backwards consistently.\n\t\t\t\t\tif (false) thumb_pos = track - thumb_len - thumb_pos;"
 count = 1
 check = "and a click lands on the row the inverted thumb is drawn in"
+
+[[sabotage]]
+# A progress bar ignoring invertedAppearance, which is how it was: an
+# inverted bar filled from the same end as an ordinary one, so a meter an
+# application had deliberately reversed read backwards at every value. 8.138.
+name = "a progress bar ignores which end it fills from"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\tconst bool from_start = horizontal != pb->invertedAppearance;"
+into = "\t\t\t\t\tconst bool from_start = horizontal;"
+count = 1
+check = "a horizontal progress bar fills from the left"
+
+[[sabotage]]
+# The reversal applied as "inverted means fill from the right" rather than as
+# an exclusive or, which reverses the horizontal case and leaves the vertical
+# one filling from the wrong end. The two reversals compose. 8.138.
+name = "a progress bar inverts without composing with its orientation"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\tconst bool from_start = horizontal != pb->invertedAppearance;"
+into = "\t\t\t\t\tconst bool from_start = !pb->invertedAppearance;"
+count = 1
+check = "and a vertical one fills upward, and downward when inverted"

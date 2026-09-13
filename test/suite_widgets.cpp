@@ -4676,6 +4676,55 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// A progress bar's fill direction, the third control in this file found
+	// ignoring invertedAppearance -- the dial and the scroll bar being the
+	// other two. Its option names the property outright rather than folding
+	// it into an upsideDown flag that means something different per control,
+	// so there is no polarity to measure here, only a reversal to apply.
+	//
+	// Asserted in BOTH orientations because the two reversals compose: a
+	// vertical bar already fills from the far end, so inverting it fills from
+	// the near one, and a fix written as "inverted means fill from the right"
+	// would leave the vertical case alone or reverse it twice.
+	//
+	// Text off, or the percentage overwrites the cells being counted.
+	{
+		const auto first_block = [](bool vertical, bool inverted) {
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *box = new QVBoxLayout(&host);
+			auto *p = new QProgressBar;
+			p->setOrientation(vertical ? Qt::Vertical : Qt::Horizontal);
+			p->setRange(0, 100);
+			p->setTextVisible(false);
+			p->setInvertedAppearance(inverted);
+			box->addWidget(p);
+			host.resize(GridMetrics::cells(12, 8));
+			host.show();
+			QCoreApplication::processEvents();
+			p->setValue(25);
+			QCoreApplication::processEvents();
+			CellBuffer b(12, 8);
+			render_once(host, b);
+			for (int y = 0; y < b.rows(); ++y)
+				for (int x = 0; x < b.cols(); ++x)
+					if (b.at(x, y).ch == QStringLiteral("\u2588"))
+						return vertical ? y : x;
+			return -1;
+		};
+		const int h_norm = first_block(false, false);
+		const int h_inv = first_block(false, true);
+		const int v_norm = first_block(true, false);
+		const int v_inv = first_block(true, true);
+		CHECK(h_norm >= 0 && h_inv >= 0 && h_norm < h_inv,
+		      "a horizontal progress bar fills from the left, and from the"
+		      " right when its appearance is inverted");
+		CHECK(v_norm >= 0 && v_inv >= 0 && v_norm > v_inv,
+		      "and a vertical one fills upward, and downward when inverted,"
+		      " the two reversals composing rather than cancelling");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

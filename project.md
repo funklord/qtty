@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1288 checks, 0 failures. `make check` is green and includes
+1290 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15934,6 +15934,45 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.138 The third control that ignored which way round it reads (2026-09-13)
+
+Following the lens once more: `QProgressBar` ignored `invertedAppearance`
+too. An inverted bar filled from the same end as an ordinary one, so a meter
+an application had deliberately reversed read backwards at every value.
+
+That is **three controls in one file** -- the dial, the scroll bar and now
+the progress bar -- each with a direction property, each unread. The pattern
+is not carelessness about any one of them: a direction is the part of a
+control that has no wrong-looking rendering. A bar filled to 25% from the
+wrong end is a perfectly good-looking bar.
+
+**This one names the property outright**, rather than folding it into an
+`upsideDown` flag that means something different per control, so there was no
+polarity to measure -- only a reversal to apply. And the reversal composes:
+
+    horizontal, normal     fills from the left
+    horizontal, inverted   fills from the right
+    vertical,   normal     fills upward
+    vertical,   inverted   fills downward
+
+A vertical bar already fills from the far end, so inverting it fills from the
+near one. Written as `from_start = horizontal != invertedAppearance` for that
+reason, with a sabotage entry for the plausible wrong version -- `inverted
+means fill from the right` -- which gets the horizontal case right and leaves
+the vertical one reversed. Both orientations are asserted, because a check on
+the horizontal case alone would pass against it.
+
+**And one clean result beside it.** A tristate `QCheckBox` draws its three
+states distinctly -- `[ ]`, `[-]`, `[x]` -- which the earlier sweep never
+asked, having tested only checked against unchecked.
+
+**Where this family ends.** The controls carrying a direction are now all
+read: slider, dial, scroll bar, progress bar. What remains unswept is whether
+any control ignores some OTHER property of its option -- and that is a
+different question, because direction was findable by rendering two states
+and comparing. A property with no visible consequence cannot be found that
+way.
 
 ### 8.137 Three controls, one option struct, three conventions (2026-09-13)
 

@@ -1846,7 +1846,22 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					// Upward: the bottom cell is the first to fill, which is
 					// what a column of liquid does and what a bar drawn from
 					// the top would get exactly backwards.
-					const bool on = horizontal ? i < filled : i >= extent - filled;
+					//
+					// And invertedAppearance, which this ignored: an inverted
+					// bar filled from the same end as an ordinary one, so a
+					// meter an application had deliberately reversed read
+					// backwards at every value. It is the third control in
+					// this file found doing that -- the dial and the scroll
+					// bar were the other two -- and the only one whose option
+					// names the property outright rather than folding it into
+					// an upsideDown flag that means something different per
+					// control.
+					//
+					// An exclusive or, because the two reversals compose: a
+					// vertical bar already fills from the far end, so
+					// inverting it fills from the near one.
+					const bool from_start = horizontal != pb->invertedAppearance;
+					const bool on = from_start ? i < filled : i >= extent - filled;
 					const QString g = on ? QStringLiteral("█") : QStringLiteral("░");
 					if (horizontal)
 						dev->buffer().put_cluster(c.left() + i, c.top(), g,
