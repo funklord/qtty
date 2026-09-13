@@ -445,6 +445,39 @@ void setup(QApplication &app) {
 		       qPrintable(problem));
 	}
 
+	// The fifth ambient lever, and it is read from the user's desktop rather
+	// than from anything qtty pins. Qt flashes a text caret every
+	// cursorFlashTime -- 1000 ms on a stock desktop -- and on a terminal the
+	// caret IS the terminal's own cursor, which the backend places with
+	// ESC[?25h. So every repaint the blink causes is a frame nobody can see:
+	// the widget is asked to paint, the compositor composes, the diff finds
+	// the one caret cell changed, and the terminal is told to paint a block
+	// under a cursor it is already drawing.
+	//
+	// Measured on the chat example, one keystroke and then nothing touched:
+	//
+	//     +   5.1 ms  234 bytes   the keystroke
+	//     + 481.5 ms   33 bytes   the caret cell cleared
+	//     + 953.1 ms   38 bytes   and painted again
+	//     +1430.6 ms   33 bytes
+	//
+	// on for ever at half the flash interval, about 75 bytes a second, for a
+	// program sitting untouched. Over ssh that is a link that can never go
+	// idle after the user has typed one character.
+	//
+	// It starts on the KEYSTROKE and not on focus, which is why this was
+	// missed: section 8.112 measured a focused QLineEdit over three idle
+	// seconds, found zero frames, and concluded that the blink cannot start
+	// because Qt only blinks for a widget in an ACTIVE window and no window
+	// activates here. The first half of that is true and the conclusion is
+	// not -- the probe never typed into the field, so it never reached the
+	// state that starts the timer.
+	//
+	// Zero rather than a smaller number: Qt documents 0 as "do not flash",
+	// and a caret that is drawn steadily is right here, since the terminal's
+	// cursor is what the user actually sees.
+	QApplication::setCursorFlashTime(0);
+
 	const QFontMetrics fm(f);
 	GridMetrics::set(fm.horizontalAdvance(u'M'), fm.height());
 	app.setFont(f);

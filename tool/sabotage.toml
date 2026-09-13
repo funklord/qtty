@@ -1508,3 +1508,16 @@ find = "\t\t\tif (!frame.images.isEmpty() || kitty_placed_)"
 into = "\t\t\tif (!frame.images.isEmpty())"
 count = 1
 check = "and the frame that stops carrying one clears it"
+
+[[sabotage]]
+# The caret blink left to the user's desktop setting. Qt flashes a caret
+# every cursorFlashTime, and on a terminal the caret is the terminal's own
+# cursor -- so after ONE keystroke a program sitting untouched produced a
+# frame every 472 ms for ever, about 75 bytes a second. It starts on the
+# keystroke and not on focus, which is why 8.114 measured zero. 8.128.
+name = "the caret blink is left to the desktop's flash time"
+file = "src/runtime/application.cpp"
+find = "\tQApplication::setCursorFlashTime(0);"
+into = "\tQApplication::setCursorFlashTime(1000);"
+count = 1
+check = "so setup() pins it to zero"

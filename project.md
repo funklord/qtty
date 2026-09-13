@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1270 checks, 0 failures. `make check` is green and includes
+1273 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15930,6 +15930,62 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.128 The caret blink that starts when you type (2026-09-13)
+
+Qt flashes a text caret every `cursorFlashTime` -- 1000 ms on a stock
+desktop -- and on a terminal the caret **is** the terminal's own cursor,
+which the backend places with `ESC[?25h`. Every repaint the blink causes is
+therefore a frame nobody can see: the widget paints, the compositor
+composes, the diff finds the one caret cell changed, and the terminal is
+told to paint a block under a cursor it is already drawing.
+
+Measured on the chat example -- one keystroke, then nothing touched:
+
+    +   5.1 ms  234 bytes   the keystroke
+    + 481.5 ms   33 bytes   the caret cell cleared
+    + 953.1 ms   38 bytes   and painted again
+    +1430.6 ms   33 bytes
+    +1902.5 ms   38 bytes
+
+on for ever at half the flash interval, about 75 bytes a second, for a
+program sitting untouched. Over ssh that is a link that can never go idle
+once the user has typed one character. `setup()` pins the flash time to
+zero now -- Qt documents 0 as "do not flash", and a steadily drawn caret is
+right here because the terminal's cursor is what the user actually sees.
+One frame for the keystroke and then silence.
+
+**8.114 recorded the opposite, with its method, and the method was the
+fault.** That entry's second lens asked exactly this question, counted
+`InputRouter::frame_requested` over three idle seconds with a focused
+`QLineEdit`, found **zero**, and wrote the absence down properly. It focused
+the field and waited. **It never typed into it, and the timer starts on the
+keystroke** -- so the probe never reached the state it was aimed at, and the
+empty result was a property of the fixture.
+
+**What made it stick for two days was the explanation beside it**, not the
+number. The entry attributed the zero to *Qt starts the blink only for a
+visible widget in an ACTIVE window, and no window activates here* -- which
+is true, is this family's own master fact, and made the zero look
+**explained** rather than merely observed. `evidence.md` names the shape as
+*a number that arrives already corrected*; this is the same mechanism one
+step over -- a number that arrives already **accounted for**. Nobody
+re-measures a result that has a reason attached, least of all a reason they
+already believe.
+
+**And it was found from outside.** Not by re-running the probe, which would
+have agreed with itself, but by reading the bytes of a running program on a
+pty for an unrelated question. **An event counter inside the process can
+only count events the fixture provokes; the wire carries whatever the
+program actually does.** That is the third finding in a row to come out of
+a hex dump taken for something else.
+
+**The control is what keeps the fix honest.** The check fires the blink
+deliberately at a 120 ms flash time and asserts Qt repaints on its own, then
+asserts zero stops it, then asserts `setup()` leaves it at zero. Without the
+first, a future Qt that stopped blinking would leave the policy passing for
+a reason nobody meant; with it, the pair goes red and says the policy is no
+longer needed.
+
 ### 8.127 Eighteen bytes a frame telling a terminal to forget nothing (2026-09-13)
 
 On a kitty terminal every frame opened with `ESC_Ga=d,d=a,q=2;ESC\` -- drop
@@ -16828,20 +16884,34 @@ stays **320x192, exactly the terminal**, through `showMaximized()`,
 there is no platform window to change state, and the offscreen plugin
 resizes nothing.
 
-**A focused text field blinks its caret.** Qt flashes a caret every
+**~~A focused text field blinks its caret.~~ It does, and this entry was
+wrong about it for two days. See 8.128.** Qt flashes a caret every
 `cursorFlashTime` -- 1000 ms here -- and on a terminal the caret is the
-terminal's own cursor, so every repaint that blink causes would be work
-nobody can see and frames nobody needs. Measured with a probe counting
-`InputRouter::frame_requested` over three idle seconds with a focused
-`QLineEdit`: **zero requests, and every frame identical to the first.**
+terminal's own cursor, so every repaint that blink causes is work nobody
+can see and frames nobody needs.
 
-The reason is the inversion worth keeping: **Qt starts the blink only for a
-visible widget in an ACTIVE window**, and no window activates here. The
-same fact that cost seven defects in this family is what makes an idle TUI
-cost nothing.
+The probe counted `InputRouter::frame_requested` over three idle seconds
+with a focused `QLineEdit` and reported **zero requests**, which was
+recorded here as an absence with its method, exactly as this entry asks
+for. **The method was the fault.** It focused the field and waited; it
+never TYPED into it, and the blink timer starts on the keystroke. So the
+lens never reached the state it was aimed at, and the empty result was a
+property of the fixture.
 
-So the lens is close to exhausted for its obvious members, and the two
-results say where not to look next.
+The explanation attached to it -- *Qt starts the blink only for a visible
+widget in an ACTIVE window, and no window activates here* -- is the part
+that did the damage. It is true, it is this family's own master fact, and
+it made the zero look **explained** rather than merely observed. A result
+with a mechanism beside it is one nobody re-measures, which is
+`evidence.md`'s *a number that arrives already corrected*, reached from
+the other side: here it was a number that arrived already **accounted
+for**.
+
+So the honest form of this half is: the lens was not exhausted, it was
+mis-aimed, and what found the truth was reading the bytes of a running
+program rather than counting events inside it.
+
+The first half stands as measured.
 
 ### 8.113 A dialog placed against a screen that does not exist (2026-09-11)
 

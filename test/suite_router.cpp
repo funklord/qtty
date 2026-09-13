@@ -3513,6 +3513,78 @@ int suite_router() {
 		CHECK(frames > after_resize,
 		      "and a focus change asks for one too, since focus is drawn");
 
+		// The caret blink, which starts when a key is TYPED and not when a
+		// field is merely focused. Qt flashes a caret every cursorFlashTime,
+		// and on a terminal the caret is the TERMINAL's own cursor -- so
+		// every repaint the blink causes is a frame nobody can see.
+		//
+		// Measured on the chat example, one keystroke and then nothing
+		// touched for three seconds:
+		//
+		//     +   5.1 ms  234 bytes   the keystroke
+		//     + 481.5 ms   33 bytes   ESC[23;3H ESC[0m SPACE ...
+		//     + 953.1 ms   38 bytes   ESC[23;3H ESC[0m ESC[40m SPACE ...
+		//     +1430.6 ms   33 bytes
+		//
+		// on for ever at half the flash interval, about 75 bytes a second.
+		//
+		// The control is the first assertion and it is the whole reason this
+		// is three checks rather than one: it fires the blink deliberately,
+		// so if Qt ever stops blinking here the pair goes red and says the
+		// policy is no longer needed, instead of passing quietly for a
+		// reason nobody meant.
+		{
+			struct Painting : QObject {
+				int n = 0;
+				bool eventFilter(QObject *, QEvent *e) override {
+					if (e->type() == QEvent::UpdateRequest) ++n;
+					return false;
+				}
+			};
+			const auto spin = [](int ms) {
+				QElapsedTimer t; t.start();
+				while (t.elapsed() < ms) {
+					QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+				}
+			};
+			const int qtty_set = QApplication::cursorFlashTime();
+
+			QWidget box;
+			box.setAttribute(Qt::WA_DontShowOnScreen);
+			box.resize(GridMetrics::cells(20, 3));
+			QLineEdit *field = new QLineEdit(&box);
+			box.show();
+			QCoreApplication::processEvents();
+			field->setFocus();
+			InputRouter typed(&box);
+
+			QApplication::setCursorFlashTime(120);
+			typed.on_key({Qt::Key_X, QStringLiteral("x"), false, false, false});
+			spin(60);
+			Painting flashing;
+			qApp->installEventFilter(&flashing);
+			spin(400);
+			qApp->removeEventFilter(&flashing);
+
+			QApplication::setCursorFlashTime(0);
+			typed.on_key({Qt::Key_Y, QStringLiteral("y"), false, false, false});
+			spin(60);
+			Painting steady;
+			qApp->installEventFilter(&steady);
+			spin(400);
+			qApp->removeEventFilter(&steady);
+
+			QApplication::setCursorFlashTime(qtty_set);
+			CHECK(flashing.n > 0,
+			      "a flash time makes Qt repaint a typed-into field on its"
+			      " own, which is the blink this policy is about");
+			CHECK(steady.n == 0,
+			      "and a flash time of zero stops it");
+			CHECK(qtty_set == 0,
+			      "so setup() pins it to zero, the caret on a terminal being"
+			      " the terminal's own cursor");
+		}
+
 		// Quit keys are matched before anything is delivered, so the key must
 		// not also reach the focus widget. Asserted by its absence rather than
 		// by quitting, which a suite cannot observe.
