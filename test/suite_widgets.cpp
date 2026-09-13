@@ -4824,6 +4824,55 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// A right-aligned column and its HEADING, asserted as sharing an edge.
+	//
+	// The heading is positioned to line up with the data rather than by its
+	// own alignment -- that decision is recorded at CE_HeaderLabel and two
+	// checks above enforce its left-hand half, because Qt centres a
+	// horizontal header by default and centring would undo it. The half that
+	// was missing is the other edge: when the data moves right, the heading
+	// stayed where it was, so a numeric column read as a right-aligned body
+	// under a left-aligned title.
+	//
+	// Asserted on the shared edge and not on a column number, so what is
+	// pinned is "they line up" rather than one table's arithmetic.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *box = new QVBoxLayout(&host);
+		box->setContentsMargins(0, 0, 0, 0);
+		auto *table = new QTableWidget(2, 1);
+		table->setFrameShape(QFrame::NoFrame);
+		table->verticalHeader()->hide();
+		auto *head = new QTableWidgetItem(QStringLiteral("Size"));
+		head->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+		table->setHorizontalHeaderItem(0, head);
+		for (int row = 0; row < 2; ++row) {
+			auto *cell = new QTableWidgetItem(row ? QStringLiteral("1234")
+			                                      : QStringLiteral("7"));
+			cell->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+			table->setItem(row, 0, cell);
+		}
+		box->addWidget(table);
+		host.resize(GridMetrics::cells(14, 5));
+		host.show();
+		QCoreApplication::processEvents();
+		table->setColumnWidth(0, 12 * GridMetrics::cw());
+		QCoreApplication::processEvents();
+		CellBuffer b(14, 5);
+		render_once(host, b);
+		const auto right_edge = [&](int y) {
+			for (int x = b.cols() - 1; x >= 0; --x)
+				if (!b.at(x, y).ch.trimmed().isEmpty()) return x;
+			return -1;
+		};
+		const int title = right_edge(0), small = right_edge(1), big = right_edge(2);
+		CHECK(title > 0 && title == small && small == big,
+		      "a right-aligned heading ends where its right-aligned data"
+		      " does, a heading being a label for what is below it");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

@@ -1734,3 +1734,15 @@ find = "\t\t\t\tif (vi->displayAlignment & Qt::AlignRight)"
 into = "\t\t\t\tif (false)"
 count = 1
 check = "a right-aligned column lines its digits up"
+
+[[sabotage]]
+# A heading that stays left while its column's data moves right. The heading
+# is positioned to line up with the data rather than by its own alignment,
+# and that argument does not stop at the left edge: a numeric column then
+# reads as a right-aligned body under a left-aligned title. 8.141.
+name = "a heading ignores the alignment its column was given"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tif (h->textAlignment & Qt::AlignRight)\n\t\t\t\t\tat = c.right() - fits + 1;"
+into = "\t\t\t\tif (false)\n\t\t\t\t\tat = c.right() - fits + 1;"
+count = 1
+check = "a right-aligned heading ends where its right-aligned data does"

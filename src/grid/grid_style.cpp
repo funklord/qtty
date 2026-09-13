@@ -1772,9 +1772,39 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// the "r0" under it at column 1, so every heading sat one cell
 				// to the left of the data it names. A header is only a label
 				// because of what is below it.
-				dev->buffer().text(c.left() + 1, c.top(),
-				                   elide_to_cells(h->text, c.width() - 1),
-				                   Color(), Color(),
+				// And the same ALIGNMENT as the data, which this ignored.
+				// The comment above is about the two lining up as a column,
+				// and that argument does not stop at the left edge: a model
+				// that right-aligns a numeric column right-aligns its
+				// heading too, and the heading stayed left while the numbers
+				// under it moved. Measured on a table whose header and cells
+				// both asked for AlignRight:
+				//
+				//     ' Size         '      before
+				//     '           7  '
+				//     '        1234  '
+				//
+				// The arithmetic is CE_ItemViewItem's, for the same reason
+				// the starting column is.
+				const QString label = elide_to_cells(h->text, c.width() - 1);
+				// AlignRight only, and CENTRING is deliberately still
+				// ignored. Qt centres a horizontal header by default, and
+				// the decision above -- line the heading up with the data --
+				// is a decision to override that default. Honouring the
+				// centre would undo it for every ordinary table, which two
+				// checks in the suite said immediately when this first
+				// honoured all three alignments.
+				//
+				// Right is different because it is not a default: a model
+				// that asks for it is expressing the same intent about the
+				// heading as it did about the cells, and the heading now
+				// follows the data to the other edge instead of only to the
+				// near one.
+				int at = c.left() + 1;
+				const int fits = text_cells(label);
+				if (h->textAlignment & Qt::AlignRight)
+					at = c.right() - fits + 1;
+				dev->buffer().text(at, c.top(), label, Color(), Color(),
 				                   label_attrs(opt, w, Attr::Bold));
 				return;
 			}

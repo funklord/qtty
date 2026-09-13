@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1298 checks, 0 failures. `make check` is green and includes
+1299 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15934,6 +15934,50 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.141 The heading that stayed left when its column moved right (2026-09-13)
+
+8.140 made a right-aligned numeric column line its digits up. That made the
+next fault visible rather than creating it: the **heading** stayed where it
+was, so the column read as a right-aligned body under a left-aligned title.
+
+    before            after
+     Size                     Size
+               7                 7
+            1234              1234
+
+**The decision it refines was already recorded, and the first attempt broke
+it.** `CE_HeaderLabel` positions a heading to line up with the DATA rather
+than by its own alignment -- *"a header is only a label because of what is
+below it"* -- which is a deliberate override of Qt, since Qt centres a
+horizontal header by default. Honouring all three alignments undid that for
+every ordinary table, and two existing checks said so within one run.
+
+So the rule honours `AlignRight` and goes on ignoring centring. The
+distinction is that **centre is a default and right is an instruction**: a
+model that asks for right is expressing the same intent about the heading as
+it did about the cells, and the heading now follows the data to the far edge
+instead of only to the near one.
+
+**The existing checks were the design speaking.** They looked like an
+obstacle for about a minute -- two red lines in the way of a fix that had
+just been measured as correct -- and they were the recorded decision
+defending itself. `working-practice.md` says a discrepancy between the code
+and what is written down is evidence that somebody's model is wrong, and
+here the wrong model was mine: I had read "line the heading up with the
+data" as being about the left edge because that is the edge the comment's
+example happens to use.
+
+The new check asserts the shared EDGE rather than a column number, so what
+is pinned is that they line up rather than one table's arithmetic.
+
+**And the field sweep that started this is finished.** Every
+`QStyleOptionViewItem` field is now read by both writers or by neither, and
+the two remaining differences are explained rather than outstanding:
+`decorationSize` is meaningless to a style that substitutes a glyph for an
+icon, and `index` reaches the delegate as a parameter instead. Two real
+defects came out of it -- `textElideMode` and `displayAlignment` -- and this
+is the third, one layer out.
 
 ### 8.140 Two writers of one rule, and the default was the wrong one (2026-09-13)
 
