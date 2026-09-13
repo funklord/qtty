@@ -1746,3 +1746,15 @@ find = "\t\t\t\tif (h->textAlignment & Qt::AlignRight)\n\t\t\t\t\tat = c.right()
 into = "\t\t\t\tif (false)\n\t\t\t\t\tat = c.right() - fits + 1;"
 count = 1
 check = "a right-aligned heading ends where its right-aligned data does"
+
+[[sabotage]]
+# The check column reserved only for checkable items, which is how it was: an
+# ordinary item in a menu with toggles began two cells to the left and the
+# menu read ragged. The comment called that the cost of Qt handing the style
+# one item at a time, and menuHasCheckableItems was in the option. 8.142.
+name = "a menu reserves its check column per item rather than per menu"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tif (mi->checkType == QStyleOptionMenuItem::NotCheckable\n\t\t\t\t    && mi->menuHasCheckableItems)\n\t\t\t\t\tlabel_at += 2;"
+into = "\t\t\t\tif (false)\n\t\t\t\t\tlabel_at += 2;"
+count = 1
+check = "every label in a menu with toggles starts in the same column"

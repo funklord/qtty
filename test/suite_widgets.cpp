@@ -1634,6 +1634,16 @@ int suite_widgets() {
 				mi.state = QStyle::State_Enabled;
 				mi.menuItemType = QStyleOptionMenuItem::Normal;
 				mi.checkType = QStyleOptionMenuItem::NotCheckable;
+				// Said outright, because the DEFAULT is the other way:
+				// QStyleOptionMenuItem constructs with
+				// menuHasCheckableItems TRUE, so an option built by hand
+				// claims its menu has toggles in it unless told otherwise --
+				// and the style then reserves the check column for this row,
+				// which is two cells of the twelve this fixture is counting.
+				// Measured rather than assumed, a real QMenu setting the
+				// field correctly and only a hand-built option meeting the
+				// default.
+				mi.menuHasCheckableItems = false;
 				mi.text = text;
 				QApplication::style()->drawControl(QStyle::CE_MenuItem, &mi,
 				                                   &mp, nullptr);
@@ -4870,6 +4880,70 @@ int suite_widgets() {
 		CHECK(title > 0 && title == small && small == big,
 		      "a right-aligned heading ends where its right-aligned data"
 		      " does, a heading being a label for what is below it");
+		GridGuard::reset();
+	}
+
+	// Every label in a menu starts in the same column, whether or not that
+	// particular item is checkable.
+	//
+	// The check cell used to be reserved only for checkable items, so an
+	// ordinary item in a menu with toggles began two cells to the left and
+	// the menu read ragged. The comment recording that called it "the cost of
+	// deciding per item, Qt handing the style one item at a time" -- and the
+	// information was in the option all along:
+	// QStyleOptionMenuItem::menuHasCheckableItems says what the MENU is like
+	// to a style being handed one row.
+	//
+	// A menu with nothing checkable reserves nothing, which the second
+	// assertion pins: the fix must not spend a column on every menu in the
+	// program to tidy the ones with toggles.
+	{
+		const auto label_columns = [](bool checkable) {
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			host.resize(GridMetrics::cells(24, 8));
+			host.show();
+			QMenu menu(&host);
+			menu.setAttribute(Qt::WA_DontShowOnScreen);
+			menu.addAction(QStringLiteral("Open"));
+			auto *wrap = menu.addAction(QStringLiteral("Word wrap"));
+			wrap->setCheckable(checkable);
+			wrap->setChecked(checkable);
+			menu.addAction(QStringLiteral("Quit"));
+			menu.resize(menu.sizeHint());
+			menu.show();
+			QCoreApplication::processEvents();
+			CellBuffer b(24, 8);
+			render_once(menu, b);
+			// The first LETTER of each row, which is the label start
+			// whatever sits before it. Scanning for the first non-blank
+			// instead counts the frame and the tick, and skips the ticked
+			// row altogether -- the first version of this did, and reported
+			// a fault that a rendering of the same menu plainly did not
+			// have.
+			QVector<int> starts;
+			for (int y = 0; y < b.rows(); ++y) {
+				for (int x = 0; x < b.cols(); ++x) {
+					const QString ch = b.at(x, y).ch;
+					if (ch.isEmpty() || !ch.at(0).isLetter()) continue;
+					starts.append(x);
+					break;
+				}
+			}
+			return starts;
+		};
+		const QVector<int> mixed = label_columns(true);
+		const QVector<int> plain = label_columns(false);
+		const auto all_same = [](const QVector<int> &v) {
+			for (int i = 1; i < v.size(); ++i)
+				if (v[i] != v[0]) return false;
+			return !v.isEmpty();
+		};
+		CHECK(all_same(mixed),
+		      "every label in a menu with toggles starts in the same column,"
+		      " checkable or not");
+		CHECK(all_same(plain) && plain.value(0) < mixed.value(0),
+		      "and a menu with nothing checkable spends no column on one");
 		GridGuard::reset();
 	}
 

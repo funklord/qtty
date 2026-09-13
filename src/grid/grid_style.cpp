@@ -1559,10 +1559,21 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// exclusive group, matching the checkbox and radio button
 				// this style already draws. The cell is reserved whenever the
 				// item is checkable, so a run of checkable items aligns; an
-				// ordinary item in the same menu starts one cell earlier,
-				// which is the cost of deciding per item, Qt handing the
-				// style one item at a time.
+				// ordinary item in the same menu RESERVES it too, so every
+				// label in the menu aligns.
+				//
+				// This said the ragged version was "the cost of deciding per
+				// item, Qt handing the style one item at a time" -- and that
+				// was not true. Qt hands the style one item at a time AND
+				// tells it about the menu: QStyleOptionMenuItem carries
+				// menuHasCheckableItems for exactly this, so the information
+				// was in the option all along. A recorded limitation whose
+				// stated cause is false is worse than an unrecorded one,
+				// because it tells the next reader not to look.
 				int label_at = c.left() + 1;
+				if (mi->checkType == QStyleOptionMenuItem::NotCheckable
+				    && mi->menuHasCheckableItems)
+					label_at += 2;
 				if (mi->checkType != QStyleOptionMenuItem::NotCheckable) {
 					const bool one_of = mi->checkType
 					                  == QStyleOptionMenuItem::Exclusive;

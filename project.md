@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1299 checks, 0 failures. `make check` is green and includes
+1301 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15934,6 +15934,54 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.142 A recorded limitation whose stated cause was false (2026-09-13)
+
+A menu mixing checkable and ordinary items read ragged: the check cell was
+reserved only for items that were checkable, so an ordinary item began two
+cells to the left of its neighbours.
+
+    before                    after
+    │ Open             │      │   Open           │
+    │ ✓ Word wrap      │      │ ✓ Word wrap      │
+    │   Line numbers   │      │   Line numbers   │
+    │ Quit             │      │   Quit           │
+
+**The limitation was recorded, and the reason given was not true.** The
+comment said an ordinary item starts one cell earlier, *"which is the cost of
+deciding per item, Qt handing the style one item at a time."* Qt does hand
+the style one item at a time **and tells it about the menu**:
+`QStyleOptionMenuItem::menuHasCheckableItems` exists for exactly this. The
+information was in the option the whole while.
+
+That is the worst shape a note can take. An unrecorded limitation gets found
+by whoever trips on it; **one recorded with a false cause tells the next
+reader not to look** -- `evidence.md`'s impossibility claim, in a comment
+rather than in a document, and this one was written by somebody who had the
+option struct open.
+
+**Found mechanically rather than by noticing.** The sweep that produced
+8.139 and 8.140 -- for each `QStyleOption` subclass, which fields does the
+style never read -- listed `menuHasCheckableItems` among the unread, and it
+was the only one of that option's four that could matter.
+
+**Two assertions, because the fix has a cost worth refusing.** Reserving a
+column for every menu would tidy the ones with toggles by spending a cell on
+the ones without, so the second pins that a menu with nothing checkable
+spends nothing.
+
+**And a default caught a fixture.** One existing check builds a
+`QStyleOptionMenuItem` by hand, and Qt constructs that field **true** --
+measured, not assumed -- so a hand-built option claims its menu has toggles
+unless told otherwise, and the check lost two of the twelve cells it was
+counting. It says `menuHasCheckableItems = false` now, which is what it
+meant.
+
+**The check's own scan was wrong first**, counting the frame and the tick as
+labels and skipping the ticked row, and reported a fault that a rendering of
+the same menu plainly did not have. It takes the first LETTER of each row
+now. The rendering was the control: without a picture of the menu to
+disagree with, the check would have been believed.
 
 ### 8.141 The heading that stayed left when its column moved right (2026-09-13)
 
