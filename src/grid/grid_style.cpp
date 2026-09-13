@@ -1735,7 +1735,13 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					text_at += 4;                  // the box and one space
 				}
 				const int room = c.right() - text_at + 1;
-				dev->buffer().text(text_at, c.top(), elide_to_cells(vi->text, room),
+				// The view's own elide mode, which Qt puts in the option and
+				// this discarded: every item was elided on the right however
+				// the application had asked. A path column set to ElideLeft
+				// showed the directory and hid the filename.
+				dev->buffer().text(text_at, c.top(),
+				                   elide_to_cells(vi->text, room,
+				                                  vi->textElideMode),
 				                   fg, bg, la);
 				return;
 			}

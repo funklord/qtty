@@ -1689,3 +1689,36 @@ find = "\t\t\t\t\tconst bool from_start = horizontal != pb->invertedAppearance;"
 into = "\t\t\t\t\tconst bool from_start = !pb->invertedAppearance;"
 count = 1
 check = "and a vertical one fills upward, and downward when inverted"
+
+[[sabotage]]
+# elide_to_cells ignoring the mode it is given, which is how it was: every
+# caller got ElideRight however the application had asked, so a path column
+# set to ElideLeft showed the directory and hid the filename. 8.139.
+name = "text is always elided on the right"
+file = "src/cell_geometry.h"
+find = "\tif (mode == Qt::ElideLeft) return dots + tail(room);"
+into = "\tif (false) return dots + tail(room);"
+count = 1
+check = "eliding left keeps the END"
+
+[[sabotage]]
+# ElideNone marking its truncation, which is the one thing that mode means it
+# must not do: the caller has said not to elide, and an ellipsis is an
+# elision. 8.139.
+name = "ElideNone marks the truncation it was told not to make"
+file = "src/cell_geometry.h"
+find = "\tif (mode == Qt::ElideNone) return head(cells);"
+into = "\tif (false) return head(cells);"
+count = 1
+check = "while ElideNone truncates and marks nothing"
+
+[[sabotage]]
+# The item view discarding the mode Qt put in its option. The helper then
+# honours a mode nobody passes it, which is the shape where a correct
+# function and an unwired feature look identical. 8.139.
+name = "an item view discards the elide mode Qt gave it"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t                                  vi->textElideMode),"
+into = "\t\t\t\t                                  Qt::ElideRight),"
+count = 1
+check = "a tree column elides the end its view asked for"

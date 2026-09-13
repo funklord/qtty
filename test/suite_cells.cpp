@@ -197,6 +197,38 @@ int suite_cells() {
 		CHECK(elide_to_cells(cjk, 1) == QString(QChar(0x2026)),
 		      "and the marker is U+2026, not a truncated byte");
 		CHECK(elide_to_cells(cjk, 0).isEmpty(), "a zero budget elides to nothing");
+
+		// The MODE, which every caller was getting as ElideRight whatever the
+		// application asked. Measured on a tree column twelve cells wide
+		// showing "/home/user/deep/dir/report.txt": all four modes rendered
+		// "/home/user/d...", and an application sets ElideLeft on a path
+		// column precisely because the END is the part worth seeing.
+		//
+		// Asserted on the SHAPE rather than on an exact string, so the rule
+		// is what is pinned and not one budget's arithmetic: which end the
+		// marker sits at, and that the kept text really comes from that end.
+		const QString path = QStringLiteral("/home/user/deep/dir/report.txt");
+		const QString right = elide_to_cells(path, 12, Qt::ElideRight);
+		const QString left = elide_to_cells(path, 12, Qt::ElideLeft);
+		const QString middle = elide_to_cells(path, 12, Qt::ElideMiddle);
+		const QString none = elide_to_cells(path, 12, Qt::ElideNone);
+		const QChar dots(0x2026);
+		CHECK(right.endsWith(dots) && path.startsWith(right.chopped(1)),
+		      "eliding right keeps the front and marks the end");
+		CHECK(left.startsWith(dots) && path.endsWith(left.mid(1)),
+		      "eliding left keeps the END, which is what a path column asks"
+		      " for and never got");
+		CHECK(middle.count(dots) == 1 && !middle.startsWith(dots)
+		          && !middle.endsWith(dots)
+		          && path.startsWith(middle.section(dots, 0, 0))
+		          && path.endsWith(middle.section(dots, 1, 1)),
+		      "and eliding in the middle keeps both ends");
+		CHECK(!none.contains(dots) && path.startsWith(none)
+		          && width(none) <= 12,
+		      "while ElideNone truncates and marks nothing, an ellipsis being"
+		      " the elision it was told not to make");
+		CHECK(width(right) <= 12 && width(left) <= 12 && width(middle) <= 12,
+		      "and none of them overruns the budget it was given");
 		// A surrogate pair must not be split: chopping a QChar would leave
 		// half of one, which is an invalid string rather than a short one.
 		const QString emoji = QString::fromUtf8("\U0001F389ok");

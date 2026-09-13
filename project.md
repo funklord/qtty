@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1290 checks, 0 failures. `make check` is green and includes
+1296 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15934,6 +15934,53 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.139 Which end the text is cut off (2026-09-13)
+
+Found by asking a mechanical question of the style: **for each
+`QStyleOption` subclass it handles, which fields does it never read?** Ten
+option types, and most of what came back is meaningless on a cell grid --
+`iconSize`, `lineWidth`, `tickPosition`, `notchTarget`. One was not.
+
+`QStyleOptionViewItem::textElideMode` was discarded by both writers, so
+every item was elided on the right whatever the application asked.
+Measured on a tree column twelve cells wide showing
+`/home/user/deep/dir/report.txt`:
+
+    before                        after
+    ElideRight   /home/user/d…    /home/user/d…
+    ElideLeft    /home/user/d…    …r/report.txt
+    ElideMiddle  /home/user/d…    /home/…rt.txt
+    ElideNone    /home/user/d…    /home/user/de
+
+An application sets `ElideLeft` on a path column **precisely because the end
+is the part worth seeing**, and it got the other half. `ElideNone` marked a
+truncation it had been told not to make, an ellipsis being an elision.
+
+**Two things this was NOT, both checked before changing anything.**
+
+A long item in a narrow view is **clipped rather than elided**, and that is
+deliberate and documented at the site: the budget is the item's rectangle,
+*"which is what Qt elides to on a pixel screen"*, and shrinking it would move
+a right-aligned label the moment a scroll bar appeared. Measured `room=43`
+for a 43-character item in an 18-cell viewport -- and Qt on a pixel screen
+does the same, so reproducing it is faithfulness, not a fault. The sweep
+found a decision, and the comment recording it is the reason that took
+minutes instead of a wrong fix.
+
+`toolButtonStyle`, also unread, is likewise settled: the style asks for
+text-only tool buttons because icons are undrawable here.
+
+**The wiring has its own check, and it needs one.** The helper honouring a
+mode nobody passes it is exactly the shape where a correct function and an
+unwired feature are indistinguishable -- so beside the helper's four
+assertions there is one that renders a real `QTreeWidget` set to `ElideLeft`
+and looks for `report.txt` in the cells. Its sabotage puts `Qt::ElideRight`
+back at the call site, which leaves every helper assertion passing.
+
+**Asserted on shape, not on strings.** Which end the marker sits at, and
+that the kept text really comes from that end -- so what is pinned is the
+rule rather than one budget's arithmetic.
 
 ### 8.138 The third control that ignored which way round it reads (2026-09-13)
 

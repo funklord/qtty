@@ -165,7 +165,9 @@ void CellItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
 
 	const int budget = c.right() - col + 1;
 	if (budget > 0 && !opt.text.isEmpty()) {
-		const QString s = elide_to_cells(opt.text, budget);
+		// The view's own elide mode, for the reason the style records at
+		// its own call: the option carries it and both writers discarded it.
+		const QString s = elide_to_cells(opt.text, budget, opt.textElideMode);
 		const int width = text_cells(s);
 		int x = col;
 		if (opt.displayAlignment & Qt::AlignRight)        x = c.right() - width + 1;

@@ -4725,6 +4725,38 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// The elide mode reaching the ITEM VIEW, which is a different claim from
+	// the helper honouring it: Qt puts textElideMode in the option and both
+	// writers -- the style and CellItemDelegate -- discarded it. A correct
+	// helper nobody passes the mode to looks exactly like a working feature.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *box = new QVBoxLayout(&host);
+		box->setContentsMargins(0, 0, 0, 0);
+		auto *tree = new QTreeWidget;
+		tree->setFrameShape(QFrame::NoFrame);
+		tree->setHeaderHidden(true);
+		tree->setColumnCount(1);
+		tree->setTextElideMode(Qt::ElideLeft);
+		const QString path = QStringLiteral("/home/user/deep/dir/report.txt");
+		new QTreeWidgetItem(tree, QStringList{path});
+		box->addWidget(tree);
+		host.resize(GridMetrics::cells(16, 3));
+		host.show();
+		QCoreApplication::processEvents();
+		tree->setColumnWidth(0, 12 * GridMetrics::cw());
+		QCoreApplication::processEvents();
+		CellBuffer b(16, 3);
+		render_once(host, b);
+		QString row;
+		for (int x = 0; x < b.cols(); ++x) row += b.at(x, 0).ch;
+		CHECK(row.contains(QStringLiteral("report.txt")),
+		      "a tree column elides the end its view asked for, so a path"
+		      " shows its filename rather than its directory");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

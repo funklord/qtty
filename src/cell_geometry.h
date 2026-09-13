@@ -308,24 +308,64 @@ inline QRect cells_of(const QRect &r, QPainter *p, CellPaintDevice *dev,
 //
 // Two implementations of one rule disagreeing is what surfaced it. Neither
 // had a test that asked about a wide cluster.
-inline QString elide_to_cells(const QString &s, int cells) {
+// The MODE is Qt's and was ignored: every caller got ElideRight, whatever the
+// application asked for. Measured on a tree column twelve cells wide showing
+// "/home/user/deep/dir/report.txt" -- all four modes rendered
+// "/home/user/d...", and an application sets ElideLeft on a path column
+// precisely because the END is the part worth seeing. It got the other half.
+//
+// ElideNone truncates with NO marker, which is the one thing that mode means:
+// the caller has said not to elide, and an ellipsis is an elision.
+inline QString elide_to_cells(const QString &s, int cells,
+                              Qt::TextElideMode mode = Qt::ElideRight) {
 	if (cells <= 0) return {};
+	const QVector<QString> clusters = to_clusters(s);
 	int width = 0;
-	for (const QString &cluster : to_clusters(s)) width += cluster_width(cluster);
+	for (const QString &cluster : clusters) width += cluster_width(cluster);
 	if (width <= cells) return s;
-	int used = 0;
-	QString out;
-	for (const QString &cluster : to_clusters(s)) {
-		const int w = cluster_width(cluster);
-		if (used + w > cells - 1) break;         // one cell reserved for U+2026
-		out += cluster;
-		used += w;
+
+	// Taken from one end while the running width fits, never by chopping
+	// QChars: `out.chop(1)` removes half a surrogate pair and splits a
+	// grapheme, which is an invalid string rather than a short one. That
+	// fault is recorded above and the rule holds for every mode here.
+	const auto head = [&](int budget) {
+		QString out;
+		int used = 0;
+		for (const QString &cluster : clusters) {
+			const int w = cluster_width(cluster);
+			if (used + w > budget) break;
+			out += cluster;
+			used += w;
+		}
+		return out;
+	};
+	const auto tail = [&](int budget) {
+		QString out;
+		int used = 0;
+		for (int i = clusters.size() - 1; i >= 0; --i) {
+			const int w = cluster_width(clusters[i]);
+			if (used + w > budget) break;
+			out.prepend(clusters[i]);
+			used += w;
+		}
+		return out;
+	};
+
+	if (mode == Qt::ElideNone) return head(cells);
+	// One cell reserved for U+2026, as a code point and never a character
+	// literal: QLatin1Char takes a char, so a UTF-8 ellipsis there is a
+	// multichar constant truncating to a broken bar.
+	const QChar dots(0x2026);
+	const int room = cells - 1;
+	if (room <= 0) return QString(dots);
+	if (mode == Qt::ElideLeft) return dots + tail(room);
+	if (mode == Qt::ElideMiddle) {
+		// The FRONT gets the odd cell. A path elided in the middle is read
+		// from both ends, and the left is where the reader starts.
+		const int right = room / 2;
+		return head(room - right) + dots + tail(right);
 	}
-	// U+2026 as a code point, never a character literal: QLatin1Char takes a
-	// char, so a UTF-8 ellipsis there is a multichar constant truncating to a
-	// broken bar.
-	out += QChar(0x2026);
-	return out;
+	return head(room) + dots;
 }
 
 // A mnemonic marker is Qt's, not the label's: "&Save" is drawn "Save" with the
