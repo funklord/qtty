@@ -238,9 +238,28 @@ private:
 	QPointer<QWidget> input_layer_;
 	Layer input_;
 	// The same pair for the popup stack, whose top owns input above any modal
-	// (section 5.5's routing order). A menu is the worst case section 7 has:
-	// one taller than the terminal cannot be Tabbed away from, and Qt will not
-	// paginate it because the offscreen QScreen is 800x800.
+	// (section 5.5's routing order).
+	//
+	// A menu taller than the terminal is section 7's hardest case and is NOT
+	// a trap, which this said it was. Qt will not paginate one -- the
+	// offscreen QScreen is 800x800, so it never decides the menu is too tall
+	// -- and section 7's scrolling carries it instead. Measured on a
+	// forty-item menu forty-two cells tall in a twenty-four row terminal:
+	//
+	//     before any key   item-00 .. item-22
+	//     after 35 Down    item-11 .. item-34
+	//     after 40 Down    item-16 .. item-39
+	//
+	// so the selection stays on screen, the last item is reachable, and
+	// Escape closes it.
+	//
+	// What this used to say was that such a menu "cannot be Tabbed away
+	// from". That is TRUE -- Qt menus ignore Tab, and the measurement above
+	// confirms the menu is still open after one -- and it is the wrong
+	// sentence, because Tab is not how anybody leaves a menu and the two
+	// facts that decide whether a user is stuck were both absent. A true
+	// statement that characterises the situation wrongly reads as a
+	// limitation nobody should try to fix.
 	QPointer<QWidget> popup_layer_;
 	Layer popup_;
 	QHash<QWidget *, PopupPlace> popup_place_;

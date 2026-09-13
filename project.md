@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1301 checks, 0 failures. `make check` is green and includes
+1305 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15934,6 +15934,45 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.143 A true sentence that characterised the situation wrongly (2026-09-14)
+
+8.142's lens turned on the source: **which comments record a limitation, and
+does the reason hold?** The sharpest hit named the one thing this project
+exists to prevent -- a keyboard user with nowhere to go.
+
+`runtime.h` said a menu is section 7's worst case: *"one taller than the
+terminal cannot be Tabbed away from, and Qt will not paginate it because the
+offscreen QScreen is 800x800."*
+
+Measured on a forty-item menu, forty-two cells tall, in a twenty-four row
+terminal:
+
+    before any key   item-00 .. item-22
+    after 35 Down    item-11 .. item-34
+    after 40 Down    item-16 .. item-39
+    Tab              still open
+    Escape           closed
+
+So the menu **scrolls to keep the selection on screen**, the last item is
+reachable, and Escape leaves. The sentence was **true** -- Qt menus do ignore
+Tab, and the measurement confirms the menu is still open after one -- and it
+is the wrong sentence, because Tab is not how anybody leaves a menu and the
+two facts that decide whether a user is stuck were both absent.
+
+**This is the other half of 8.142 and the more slippery one.** There the
+recorded cause was false and could be disproved. Here nothing is false:
+`evidence.md`'s *a true sentence is not thereby a characterisation*, met in a
+comment. A limitation that reads worse than it is has the same effect as one
+that reads better -- it tells the next reader a wrong thing about where to
+spend effort -- and it cannot be caught by checking the claim, only by
+asking what the claim leaves out.
+
+**And the behaviour had no check.** The popup layer's `follow_focus()` is the
+only thing standing between a keyboard user and a menu whose bottom half does
+not exist, and nothing tested a menu taller than the terminal. Three
+assertions now, because seeing the selection, reaching the last item and
+getting out are three promises and a menu can keep any two.
 
 ### 8.142 A recorded limitation whose stated cause was false (2026-09-13)
 

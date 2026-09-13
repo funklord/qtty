@@ -1758,3 +1758,15 @@ find = "\t\t\t\tif (mi->checkType == QStyleOptionMenuItem::NotCheckable\n\t\t\t\
 into = "\t\t\t\tif (false)\n\t\t\t\t\tlabel_at += 2;"
 count = 1
 check = "every label in a menu with toggles starts in the same column"
+
+[[sabotage]]
+# The popup layer no longer scrolling to keep its selection on screen. A menu
+# taller than the terminal then has a bottom half that does not exist: Qt
+# will not paginate one, the offscreen QScreen being 800x800, so section 7's
+# scrolling is the only thing carrying it. 8.143.
+name = "a tall menu does not follow its selection"
+file = "src/runtime/compositor.cpp"
+find = "\t\t\tfollow_focus(pop, popup_, out.cols(), out.rows());"
+into = "\t\t\tif (false) follow_focus(pop, popup_, out.cols(), out.rows());"
+count = 1
+check = "and it scrolls to keep the selection on screen"

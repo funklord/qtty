@@ -5029,5 +5029,73 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// A menu TALLER than the terminal, which section 7 calls its hardest case
+	// and which runtime.h used to call a trap.
+	//
+	// Qt will not paginate one: the offscreen QScreen is 800x800, so it never
+	// decides the menu is too tall. Section 7's scrolling carries it instead,
+	// and nothing checked that it did -- the popup layer's follow_focus() is
+	// the only thing standing between a keyboard user and a menu whose bottom
+	// half does not exist.
+	//
+	// Three assertions, because being able to SEE the selection, being able
+	// to REACH the last item, and being able to GET OUT are three different
+	// promises and a menu can keep any two.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(30, 24));
+		auto *btn = new QPushButton(QStringLiteral("Menu"), &win);
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter router(&win);
+		Compositor comp(&win, &router);
+
+		QMenu menu(&win);
+		for (int i = 0; i < 40; ++i)
+			menu.addAction(QStringLiteral("item-%1").arg(i, 2, 10, QChar('0')));
+		menu.popup(btn->mapToGlobal(QPoint(0, 0)));
+		QCoreApplication::processEvents();
+
+		const auto rows_shown = [&] {
+			CellBuffer b(30, 24);
+			comp.compose(b);
+			QStringList seen;
+			for (int y = 0; y < b.rows(); ++y) {
+				QString row;
+				for (int x = 0; x < b.cols(); ++x) row += b.at(x, y).ch;
+				const int at = row.indexOf(QStringLiteral("item-"));
+				if (at >= 0) seen << row.mid(at, 7);
+			}
+			return seen;
+		};
+		const QStringList before = rows_shown();
+		const auto press = [&](int n) {
+			for (int i = 0; i < n; ++i) {
+				router.on_key({Qt::Key_Down, QString(), false, false, false});
+				QCoreApplication::processEvents();
+			}
+		};
+		press(35);
+		const QStringList mid = rows_shown();
+		press(5);
+		const QStringList end = rows_shown();
+
+		CHECK(menu.height() > 24 * GridMetrics::ch() && !before.isEmpty(),
+		      "a forty-item menu is taller than the terminal, Qt having no"
+		      " screen small enough to paginate it against");
+		CHECK(mid != before && !mid.contains(QStringLiteral("item-00")),
+		      "and it scrolls to keep the selection on screen rather than"
+		      " leaving the caret below the last row");
+		CHECK(end.contains(QStringLiteral("item-39")),
+		      "so the last item is reachable from the keyboard");
+		router.on_key({Qt::Key_Escape, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(!menu.isVisible(),
+		      "and Escape closes it, which is how a user leaves a menu --"
+		      " Tab, which does not, is not the question");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
