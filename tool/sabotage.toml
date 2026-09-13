@@ -1555,3 +1555,25 @@ find = "\tif (cur.primed && cur.fg == kAfterReset.fg && cur.bg == kAfterReset.bg
 into = "\tif (seq.startsWith(\"\\033[0m\"))"
 count = 1
 check = "a plain run immediately after a bold one clears the bold"
+
+[[sabotage]]
+# shell_out not handing the terminal over. The child then writes onto the
+# alternate screen, in raw mode, with mouse reporting on -- which is what
+# every program that shells out from a TUI without suspending looks like.
+# 8.130.
+name = "shelling out keeps the terminal instead of handing it over"
+file = "src/runtime/application.cpp"
+find = "\tif (owner) owner->suspend();"
+into = "\tif (false) owner->suspend();"
+count = 1
+check = "having given the alternate screen back before it"
+
+[[sabotage]]
+# shell_out not taking it back. The destructor is what makes this hold when
+# the caller's body throws, which is the path nobody tests. 8.130.
+name = "shelling out never takes the terminal back"
+file = "src/runtime/application.cpp"
+find = "\t\t~Retake() { if (b) b->resume(); }"
+into = "\t\t~Retake() { if (false) b->resume(); }"
+count = 1
+check = "and taken it again afterwards"

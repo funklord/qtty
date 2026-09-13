@@ -3114,6 +3114,51 @@ int suite_backend() {
 					      " bold, the reset being the whole of what it says");
 				}
 
+				// Shelling out: give the terminal to a child and take it
+				// back. backend.h names this as suspend()'s purpose, both
+				// halves are pure virtuals on ITerminalBackend, and the
+				// public headers only ever CONSUME a backend -- exec() takes
+				// one and nothing hands one out, the only concrete
+				// implementation an installed program gets being NullBackend,
+				// whose suspend() and resume() do nothing. Measured by
+				// installing to a scratch prefix and reading what arrives:
+				// eighteen headers, no route to the running backend.
+				//
+				// Asserted on the WIRE and in order, because "it called
+				// suspend" is not the claim. The claim is that the terminal
+				// is the child's while the body runs: the alternate screen
+				// given back BEFORE it, and taken again AFTER.
+				{
+					fflush(stdout);
+					::dup2(slave, 1);
+					char eat[4096];
+					const auto take = [&] {
+						QByteArray got;
+						ssize_t n;
+						while ((n = ::read(master, eat, sizeof(eat))) > 0)
+							got.append(eat, int(n));
+						return got;
+					};
+					take();
+					bool ran = false;
+					QByteArray during;
+					const bool had_terminal = Qtty::shell_out([&] {
+						ran = true;
+						during = take();      // what went out before the body
+					});
+					const QByteArray after = take();
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					CHECK(ran && had_terminal,
+					      "shell_out runs the body and says there was a"
+					      " terminal to hand over");
+					CHECK(during.contains("\033[?1049l"),
+					      "having given the alternate screen back before it,"
+					      " so the child writes where the user can see it");
+					CHECK(after.contains("\033[?1049h"),
+					      "and taken it again afterwards");
+				}
+
 				// End to end, because the two halves being right separately
 				// is not the same fact as the chain working. The backend
 				// delivering to a sink is checked above; the router resizing

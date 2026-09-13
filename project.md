@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1277 checks, 0 failures. `make check` is green and includes
+1280 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -2089,6 +2089,11 @@ In the order I would take them:
      can redefine the quit keys it can also stop being told its terminal is
      gone. The two are one decision; see 8.122 for why the honest fix is a
      seam that carries the event rather than a chord that stands in for it.
+     **Its sibling is closed**: `suspend()`/`resume()` were unreachable by
+     the same mechanism and are reachable now through `Qtty::shell_out()`,
+     which follows `Qtty::capabilities()`' precedent (8.130). That one had a
+     decided shape to copy and this one does not -- the router is not the
+     terminal, and handing it out is a different question.
    - **The font is hardcoded and fatal.** `setup()` installs DejaVu Sans
      Mono at 16 px and `qFatal()`s when the metrics are not integral.
      There is no override, so a machine without that font cannot run a
@@ -15929,6 +15934,56 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.130 A feature implemented, maintained, and callable by nobody (2026-09-13)
+
+`ITerminalBackend::suspend()` has carried the comment *"SIGTSTP / shelling
+out"* since the seam was written. 8.123, 8.124 and 8.125 each fixed
+something about the resume path. **No application could call any of it.**
+
+Measured by installing to a scratch prefix and reading what arrives: the
+eighteen headers under `include/qtty/` only ever **consume** a backend --
+`exec(app, win, backend)` takes one, nothing hands one out, and the only
+concrete implementation an installed program gets is `NullBackend`, whose
+`suspend()` and `resume()` are empty bodies. `AnsiBackend` is named in four
+comments in those headers and declared in none of them.
+
+So the reachability gap was not in the fixes, it was under them, and none
+of the three entries noticed because each was measured through a pty
+fixture that constructs the backend directly -- which is the seat nobody
+shipping a program sits in. **A test that reaches a layer the way the
+library cannot is asking a question the application cannot ask.**
+
+**The project had already decided the shape.** `Qtty::capabilities()` exists
+because every field of `Capabilities` was *"declared and unreachable from
+the seat an application sits in"* -- the same sentence, five months earlier,
+about a different symbol. `working-practice.md` says to check whether a
+project has settled a question somewhere else under another name before
+deferring it as a design decision, and this is that check paying: the answer
+is a free function acting on whichever backend currently owns the terminal,
+and `terminal_owner.h` already tracks exactly that for the fatal path.
+
+`Qtty::shell_out(body)` is scoped rather than a `suspend()`/`resume()` pair,
+because the pair has a wrong way to use it and this does not: the terminal
+comes back if the body throws, and there is no second call to forget.
+
+**Verified through the front door, which is the whole point of the entry.**
+A program written against the installed headers only -- prepare, setup,
+exec, shell out to `echo` -- on a real pty:
+
+    alt screen GIVEN BACK    at 2618
+    child output             at 2632
+    alt screen TAKEN AGAIN   at 2650
+    title restored after     at 2713
+    screen redrawn after     at 3776
+
+The last two lines are 8.124 and 8.125 being exercised by an application for
+the first time. Until this, both were reachable only from the suite.
+
+**And the sibling gap is still open**, deliberately: `set_quit_keys()` is
+unreachable for the same reason and is on section 3's list, where it is a
+shape decision about the router rather than about the terminal. This one had
+a decided precedent and that one does not.
 
 ### 8.129 Seven per cent of a redraw spent saying nothing (2026-09-13)
 

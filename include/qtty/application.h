@@ -9,6 +9,7 @@
 //       -> Qtty::exec(app, win)  /  win.show(); app.exec()
 #pragma once
 #include <QWidget>
+#include <functional>
 #include "cell.h"
 #include "backend.h"
 
@@ -44,6 +45,30 @@ int exec(QApplication &app, QWidget &win, ITerminalBackend &backend);
 // Run `win` full-screen on the controlling terminal until quit. The
 // convenience form of the above, on the built-in AnsiBackend.
 int exec(QApplication &app, QWidget &win);
+
+// Hand the terminal back for the duration of `body`, and take it again
+// afterwards -- running an editor, a pager, or anything else that wants the
+// screen. Returns false when there was no terminal to hand over, in which
+// case `body` has still run: a program whose output is a pipe has nothing to
+// suspend and its work should happen anyway.
+//
+// It exists because the pair it wraps could not be reached. backend.h has
+// named this case from the start -- suspend() is documented as being for
+// "SIGTSTP / shelling out" -- and both halves are pure virtuals on
+// ITerminalBackend, which the public headers only ever CONSUME: exec() takes
+// a backend and nothing hands one out, and the only concrete implementation
+// an installed program gets is NullBackend, whose suspend() and resume() are
+// empty. So the feature was implemented, carefully maintained, and callable
+// by nobody.
+//
+// That is the same fault Qtty::capabilities() was added for, and this follows
+// its answer rather than inventing one: a free function acting on whichever
+// backend currently owns the terminal.
+//
+// Scoped rather than a suspend()/resume() pair, because the pair has a wrong
+// way to use it and this does not -- the terminal comes back if `body`
+// throws, and there is no way to forget the second call.
+bool shell_out(const std::function<void()> &body);
 
 // What the terminal qtty is driving turned out to be, as negotiated (section
 // 5.7). Valid while exec() is running; a default-constructed Capabilities

@@ -364,6 +364,30 @@ private:
 };
 } // namespace
 
+bool shell_out(const std::function<void()> &body) {
+	// The backend that currently has the screen, which is the same thing the
+	// fatal path asks for a few lines above. A STACK rather than a pointer
+	// because one backend may be constructed inside another's lifetime, and
+	// the top is the one drawing -- terminal_owner.h says why at length.
+	ITerminalBackend *owner = g_backend;
+	if (owner) owner->suspend();
+	// Restored by a destructor rather than by a line after the call. `body`
+	// is the caller's code and may throw; a terminal left on the alternate
+	// screen in raw mode with the cursor hidden is the damage this library
+	// takes most trouble to prevent, and it would be reintroduced here by
+	// the one path nobody tests.
+	struct Retake {
+		ITerminalBackend *b;
+		~Retake() { if (b) b->resume(); }
+	} retake{owner};
+	// Run whatever happened above: a program whose output is a pipe has no
+	// terminal to hand over and its work should still be done. That is what
+	// the false return is for -- it reports what was handed over, not
+	// whether the body ran.
+	body();
+	return owner != nullptr;
+}
+
 void setup(QApplication &app) {
 	// Held from here on, and released by the backend when it gives the
 	// terminal back. Installed in setup() rather than in the backend because

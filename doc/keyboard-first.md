@@ -703,6 +703,42 @@ deliberate choice to leave with you rather than take: a full-screen
 editor usually does NOT want `Ctrl+Z` suspending it, having its own use
 for the chord.
 
+### Running an editor, a pager, or anything else that wants the screen
+
+A TUI usually has one thing it cannot do itself, and reaches for a
+program that can. `Qtty::shell_out()` hands the terminal over for the
+duration and takes it back:
+
+    Qtty::shell_out([&] {
+        QProcess::execute(qEnvironmentVariable("EDITOR", "vi"), {path});
+    });
+
+The terminal is the child's while the body runs: qtty leaves the
+alternate screen, puts the line discipline back as it found it, turns off
+mouse reporting and shows the cursor, so the child sees an ordinary
+terminal and its output lands where the user can scroll back to it.
+Afterwards qtty takes the screen again and puts back what the handover
+cost -- the window title, the cell size if the window was resized while
+the child had it, and the whole screen, since leaving the alternate
+screen clears it.
+
+Three things are worth knowing.
+
+**Use the body, not a pair of calls.** The terminal comes back even if
+the body throws, and there is no second call to forget. That is the only
+form offered for the same reason.
+
+**It blocks, and that is the point.** Everything in *Never block the
+event loop* still applies -- timers do not fire, keys are not read, and
+the frame on the screen is the child's. Use it for something the user is
+waiting for anyway, not for background work.
+
+**It returns whether there was a terminal to hand over.** A program whose
+output is a pipe has nothing to suspend; the body still runs, and the
+result is `false`. Ignore it unless you want to behave differently in
+that case.
+
+
 ## Where your output goes
 
 A TUI owns the screen, so anything printed into it lands in the middle of
