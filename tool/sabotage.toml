@@ -1588,7 +1588,7 @@ file = "src/grid/grid_style.cpp"
 find = "\t\t\t\t           || (w && w == s_focus.data());"
 into = "\t\t\t\t           || (w && false);"
 count = 1
-check = "and exactly one standard widget draws no focus mark"
+check = "every standard widget draws a focus mark"
 
 [[sabotage]]
 # A focus mark that is only a colour. Mono is a depth qtty negotiates --
@@ -1599,4 +1599,15 @@ file = "src/grid/grid_style.cpp"
 find = "\treturn owns_focus(w) ? Attrs(Attr::Reverse) : Attrs();"
 into = "\treturn Attrs();"
 count = 1
-check = "and exactly two mark focus in colour alone"
+check = "and exactly one marks focus in colour alone"
+
+[[sabotage]]
+# The dial back to falling through to the base style, which drew a rotary
+# knob into cells -- two box-drawing characters that meant nothing and moved
+# with the value in no legible way -- and marked focus nowhere. 8.135.
+name = "the dial falls through to a knob drawn in box characters"
+file = "src/grid/grid_style.cpp"
+find = "\t\tcase CC_Dial:"
+into = "\t\tcase CC_Dial: if (true) break;"
+count = 1
+check = "every standard widget draws a focus mark"

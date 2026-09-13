@@ -15935,6 +15935,49 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.135 The dial, and a partition that made closing the gap compulsory (2026-09-13)
+
+`QDial` fell through to the base style, which drew a rotary knob into cells:
+**two box-drawing characters**, meaning nothing and moving with the value in
+no legible way. It also marked focus nowhere, which is the gap 8.133 found.
+
+It has a control implementation now, in the vocabulary a terminal user
+already has from the slider -- a groove and a handle, because a dial is a
+slider bent into a circle and the circle is the one part a cell grid cannot
+show. It carries the same three numbers in the same `QStyleOptionSlider`:
+
+    value   0:   ●─────────────────
+    value  25:   ────●─────────────
+    value  50:   ────────●─────────
+    value  75:   ────────────●─────
+
+On the MIDDLE row of its rect rather than the top, a dial's rect being
+square-ish and a groove along its top edge reading as a border.
+
+**The partition is what made this compulsory rather than optional.** 8.133
+pinned the set of focus-blind widgets as exactly `{QDial}`, deliberately
+failing in BOTH directions. Adding the dial's drawing turned both
+assertions red at once -- *"and exactly one standard widget draws no focus
+mark"* and *"and exactly two mark focus in colour alone"* -- and neither
+could be left alone. A check written as "at most one" or "QDial is allowed
+to be blind" would have gone on passing with a stale allowance in it, and
+nothing would ever have removed the exception.
+
+So the set is empty now, and the colour-only set is exactly `{QLineEdit}` --
+which is not a gap, being the widget the terminal's own cursor marks.
+
+**Two clean sweeps came with it**, recorded so the next person does not
+re-run them. **Checked state**: eight controls -- check box, radio, checkable
+push and tool buttons, checkable group box, and check states in list, tree
+and table items -- all distinguishable, and all distinguishable to a MONO
+terminal. **Disabled state**: twelve controls, the same. Colour depth
+removes colour and not attributes, so what was asked of each was whether the
+glyphs or the SGR attributes differ, with the colours section cut off.
+
+The family is done: focus, checked and disabled are all visible on every
+standard widget at every colour depth, with one documented mechanism split
+(`QLineEdit`, marked by the cursor rather than by a cell).
+
 ### 8.134 What a monochrome terminal can see of a form (2026-09-13)
 
 8.133 asked whether focus is visible and compared whole snapshots. That is

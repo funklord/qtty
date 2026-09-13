@@ -4458,11 +4458,12 @@ int suite_widgets() {
 	// whoever fixed it that the exception can go, rather than a check quietly
 	// passing for a new reason.
 	//
-	// QDial is the known exception because Fusion's dial never asks for a
-	// focus indicator at all: measured by making PE_FrameFocusRect draw a
-	// mark, which changed every other widget and left the dial identical. It
-	// would need its own control implementation, which a terminal dial has
-	// not yet earned.
+	// QDial WAS the exception and is not any more. Fusion's dial never asks
+	// for a focus indicator at all -- measured by making PE_FrameFocusRect
+	// draw a mark, which changed every other widget and left the dial
+	// byte-identical -- so it needed a control implementation of its own, and
+	// has one now: a slider's groove and handle, the circle being the single
+	// part of a dial that a cell grid cannot show.
 	{
 		struct Case { const char *name; std::function<QWidget *()> make; };
 		const QVector<Case> cases = {
@@ -4521,9 +4522,14 @@ int suite_widgets() {
 		CHECK(all_took,
 		      "every widget in the focus sweep actually took focus, so an"
 		      " identical render means the style and not the fixture");
-		CHECK(blind == QStringList{QStringLiteral("QDial")},
-		      "and exactly one standard widget draws no focus mark, the"
-		      " terminal dial Fusion never asks a focus rect for");
+		// EMPTY, and it was {QDial} until the dial was given a control
+		// implementation of its own. The partition is what forced that: it
+		// fails when a widget stops showing focus AND when the known
+		// exception starts showing it, so closing the gap could not leave a
+		// stale allowance behind, quietly passing for a new reason.
+		CHECK(blind.isEmpty(),
+		      "every standard widget draws a focus mark, so a keyboard user"
+		      " can always see where they are");
 		// And the same partition at the depth where it is hardest. Mono is a
 		// depth qtty negotiates -- TERM=dumb reaches it, and QTTY_COLOR=mono
 		// asks for it -- so a focus mark that is only a colour leaves a
@@ -4539,10 +4545,10 @@ int suite_widgets() {
 		// rather than being discovered by somebody who cannot find their
 		// place in a form.
 		QStringList by_colour_only;
-		by_colour_only << QStringLiteral("QLineEdit") << QStringLiteral("QDial");
+		by_colour_only << QStringLiteral("QLineEdit");
 		CHECK(colour_only == by_colour_only,
-		      "and exactly two mark focus in colour alone -- the line edit,"
-		      " which the terminal cursor marks instead, and the dial");
+		      "and exactly one marks focus in colour alone -- the line edit,"
+		      " which the terminal cursor marks instead");
 		GridGuard::reset();
 	}
 

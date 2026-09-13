@@ -2191,6 +2191,47 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				return;
 			}
 			break;
+		case CC_Dial:
+			// A dial is a slider that has been bent into a circle, and the
+			// circle is the one part a cell grid cannot show. It carries the
+			// same three numbers -- minimum, maximum, position -- in the same
+			// QStyleOptionSlider, so it is drawn in the vocabulary a terminal
+			// user already has from the slider above rather than in a new one
+			// invented for it.
+			//
+			// Before this it fell through to the base style, which drew a
+			// rotary knob into cells: two box-drawing characters, meaning
+			// nothing and moving with the value in no legible way. It also
+			// marked focus NOWHERE, which is the gap the widget sweep found
+			// -- and not because the focus rect was suppressed: Fusion's dial
+			// never asks for one, measured by making PE_FrameFocusRect draw a
+			// mark, which changed every other widget and left the dial
+			// identical.
+			//
+			// On the MIDDLE row of its rect rather than the top, because a
+			// dial's rect is square-ish and a groove along its top edge reads
+			// as a border.
+			if (auto *dl = qstyleoption_cast<const QStyleOptionSlider *>(opt)) {
+				const int len = c.width();
+				const int span = dl->maximum - dl->minimum;
+				const int pos = span > 0 && len > 1
+				    ? (len - 1) * (dl->sliderPosition - dl->minimum) / span : 0;
+				const int row = c.top() + c.height() / 2;
+				const Attrs a = with_state(opt);
+				const Attrs held = ((opt->state & State_Sunken) ? Attrs(Attr::Reverse)
+				                                                : Attrs())
+				                   | focus_attrs(w) | a;
+				for (int i = 0; i < len; ++i) {
+					const bool handle = i == pos;
+					const QString g = handle ? QStringLiteral("●")
+					                         : QStringLiteral("─");
+					dev->buffer().put_cluster(c.left() + i, row, g,
+					                          Color(), Color(),
+					                          handle ? held : a);
+				}
+				return;
+			}
+			break;
 		case CC_SpinBox: {
 			// Same as the combo above, and for the same reason.
 			const int row = c.top() + c.height() / 2;
