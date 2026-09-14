@@ -4529,6 +4529,17 @@ int suite_widgets() {
 			if (mono_sees(off) == mono_sees(on))
 				colour_only.append(QString::fromLatin1(c.name));
 		}
+		// The POPULATION, pinned beside the partition, which this check did
+		// not do and both of its elders do: suite_theme and suite_graphics
+		// each assert `sizeof(list)/sizeof(list[0]) == 6` next to their own
+		// "each of the six" claim. Without it a sweep that says "every
+		// standard widget" goes on passing while widgets are quietly taken
+		// OUT of the list -- the assertion under the quantifier holding while
+		// the quantifier shrinks, which is `evidence.md`'s whole point about
+		// names that claim exhaustiveness.
+		CHECK(cases.size() == 16,
+		      "the focus sweep covers sixteen standard widgets, a count that"
+		      " cannot shrink without this saying so");
 		CHECK(all_took,
 		      "every widget in the focus sweep actually took focus, so an"
 		      " identical render means the style and not the fixture");

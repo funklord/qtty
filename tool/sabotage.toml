@@ -1862,3 +1862,15 @@ find = "\t\t{ QStringLiteral(\"Ctrl+K/U\"),       QStringLiteral(\"kill to end/s
 into = ""
 count = 1
 check = "the conventions can list what they bind"
+
+[[sabotage]]
+# A widget taken out of the focus sweep. The partition then holds over a
+# smaller population and the check goes on saying "every standard widget"
+# while covering fewer -- the assertion surviving while the quantifier
+# shrinks. 8.150.
+name = "the focus sweep quietly covers fewer widgets"
+file = "test/suite_widgets.cpp"
+find = "\t\t\t{\"QDateEdit\",      [] { return new QDateEdit; }},"
+into = ""
+count = 1
+check = "the focus sweep covers sixteen standard widgets"

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1316 checks, 0 failures. `make check` is green and includes
+1317 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15960,6 +15960,45 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.150 Sweeping for checks that claim more than they check (2026-09-14)
+
+8.149's lens, turned on the suite: **which checks quantify -- every, all,
+each -- and is the quantifier verified or merely asserted?**
+
+Fifteen such checks. Most quantify over a protocol's population rather than
+the code's -- the ten SS3 finals, the twenty CSI numbers -- where a
+hand-written list IS the specification and drifts only if the specification
+does. Three quantify over a population the code owns, and the tree already
+has a convention for those:
+
+    suite_theme     sizeof(sgr)    / sizeof(sgr[0])    == 6
+    suite_graphics  sizeof(forced) / sizeof(forced[0]) == 6
+
+-- the count pinned beside the claim, so the list cannot shrink in silence.
+
+**The one that did not follow it was written today.** 8.133's focus sweep
+asserts the partition -- the set of focus-blind widgets is empty -- and
+never pinned its population, so removing widgets from the list would leave
+it passing while covering fewer, saying "every standard widget" over a
+smaller every. **The assertion under the quantifier survives while the
+quantifier shrinks**, which is exactly the shape `evidence.md` names and the
+one 8.149 had just caught in a different check.
+
+It is pinned now, at sixteen, with a sabotage entry that deletes a widget
+from the list. **And the pin caught its own number in the same edit**: the
+first attempt said seventeen, from the standalone probe that had also
+included `QScrollBar` -- which the suite version leaves out because its
+focus policy is `NoFocus`. A count written from memory of a different run is
+the invented value `evidence.md` says measuring again cannot catch, and the
+only reason this one was caught is that something compared it to the list.
+
+**Not derivable, and that is worth writing down rather than leaving as a
+gap.** C++ has no reflection, so none of these three can compute its
+population from the enum or the widget set it claims to cover. The pinned
+count is the best available, and the difference between a check with one and
+a check without is the difference between a list that changes deliberately
+and one that changes quietly.
 
 ### 8.149 A bundle that did not describe itself (2026-09-14)
 
