@@ -1770,3 +1770,36 @@ find = "\t\t\tfollow_focus(pop, popup_, out.cols(), out.rows());"
 into = "\t\t\tif (false) follow_focus(pop, popup_, out.cols(), out.rows());"
 count = 1
 check = "and it scrolls to keep the selection on screen"
+
+[[sabotage]]
+# The readline chords not reaching a text field at all. Four of the five do
+# nothing in Qt, so without this a terminal user's fingers find nothing --
+# which is how it was before the bundle gained them. 8.146.
+name = "readline chords do nothing in a text field"
+file = "src/runtime/input_router.cpp"
+find = "\tif (!s_conventions || !k.ctrl || k.alt) return false;"
+into = "\tif (true) return false;"
+count = 1
+check = "Ctrl+A and Ctrl+E move to the start and end of a line"
+
+[[sabotage]]
+# The per-widget test dropped, so Ctrl+A takes start-of-line everywhere and a
+# list view loses Qt's Select All. That is the global answer the Ctrl+C
+# precedent was chosen over. 8.146.
+name = "readline chords apply outside a text field too"
+file = "src/runtime/input_router.cpp"
+find = "\tif (!fw || !fw->testAttribute(Qt::WA_InputMethodEnabled)) return false;"
+into = "\tif (!fw) return false;"
+count = 1
+check = "and outside a text field it is still Select All"
+
+[[sabotage]]
+# The binding run BEFORE shortcut matching, which is where it was written
+# first: an application's own Ctrl+K shortcut is then swallowed by a
+# convention offered on its behalf. The window-context check caught it. 8.146.
+name = "a readline chord swallows the application's own shortcut"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (!match_shortcut(k) && !readline_edit(k)"
+into = "\t\tif (!readline_edit(k) && !match_shortcut(k)"
+count = 1
+check = "and answers again once its own window is current"

@@ -250,6 +250,9 @@ One line turns on the habits a terminal user has and Qt does not:
 | `Ctrl+PageUp`, `Ctrl+PageDown` | Move between tabs, wrapping at the ends |
 | `F6`, `Shift+F6` | Move between top-level windows |
 | `Alt` + a tab's letter | Switch to that tab |
+| `Ctrl+A`, `Ctrl+E` | Start and end of the line, **in a widget that takes text** |
+| `Ctrl+K`, `Ctrl+U` | Kill to the end of the line, and to the start |
+| `Ctrl+W` | Rub out the word before the caret |
 
 The first two are the ones that **differ** from Qt rather than merely
 adding to it, and they are why the whole set is opt-in. On a desktop a
@@ -625,14 +628,23 @@ treated as one even when `TMUX` is unset. `qtty-negotiate --probes` run
 in the terminal you care about reports what was actually measured there;
 run it over a pipe and it says so rather than guessing.
 
-**Readline editing chords are not bound, and a terminal user will try
-them.** `Ctrl+E`, `Ctrl+K`, `Ctrl+U` and `Ctrl+W` do nothing in a text
-field here -- Qt gives them no meaning and qtty binds none -- while
-`Ctrl+A` does Qt's **Select All** rather than the start-of-line a shell
-user expects. Measured on a focused `QLineEdit`. If your application
-wants them, bind them yourself; whether qtty should offer them in the
-opt-in bundle is an open question in `project.md`, and the awkward part
-is `Ctrl+A`, which cannot mean both things.
+**Readline editing works in a text field, with the conventions on.**
+`Ctrl+A` and `Ctrl+E` go to the start and end of the line, `Ctrl+K` and
+`Ctrl+U` kill forward and back, and `Ctrl+W` rubs out a word -- the
+chords a shell user's fingers already know. Four of them are free, Qt
+giving them no meaning at all.
+
+**`Ctrl+A` is the one that had to be decided, and it is decided per
+widget.** It means Select All in every Qt program and start-of-line in
+every shell, and a terminal application is both. So it follows `Ctrl+C`:
+the answer depends on whether the focused widget takes text. In a line
+edit it is start-of-line; in a list, a tree or a table it is still Qt's
+Select All, and nothing there changes.
+
+**Your own shortcut wins.** A `QShortcut` or `QAction` bound to one of
+these fires as it always did, even with a text field focused: a shortcut
+is something your program asked for by name, and these are a convention
+offered on its behalf.
 
 PRIMARY -- what a middle click pastes -- is unreachable through Qt here.
 Under the offscreen platform `QClipboard::supportsSelection()` is false

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1308 checks, 0 failures. `make check` is green and includes
+1312 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15953,6 +15953,47 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.146 Readline editing, decided per widget (2026-09-14)
+
+8.145 measured the gap and put the question. The answer was **follow the
+`Ctrl+C` precedent, per widget**, and this is it.
+
+With the conventions on, in a widget that takes text: `Ctrl+A` and `Ctrl+E`
+go to the start and end of the line, `Ctrl+K` and `Ctrl+U` kill forward and
+back, `Ctrl+W` rubs out a word.
+
+    Ctrl+A   cursor 11 -> 0
+    Ctrl+E   cursor 11 -> 17
+    Ctrl+K   "hello brave world" -> "hello brave"
+    Ctrl+U   "hello brave world" -> " world"
+    Ctrl+W   "hello brave world" -> "hello  world"
+
+**The conflict resolves both ways, which is what per-widget buys.**
+`WA_InputMethodEnabled` is the test -- the same attribute `Ctrl+C` uses, and
+the same one that decides where the terminal's cursor goes. In a line edit
+`Ctrl+A` is start-of-line; in a list it is still Qt's Select All, measured
+at five of five rows.
+
+**Synthesised as the motions Qt already has** -- Home, End, Shift+End then
+Delete, Shift+Home then Delete, and Qt's delete-previous-word -- rather than
+editing the text directly. That works the same in `QLineEdit`, `QTextEdit`
+and `QPlainTextEdit` without knowing which it has, and it goes through each
+widget's own undo stack instead of around it.
+
+**The placement was wrong first, and an existing check said so.** The block
+went in before dispatch, because `Ctrl+A` is ACCEPTED by a line edit and a
+binding that waited for the widget to decline would never fire for the one
+chord that needed deciding. But before dispatch is also before
+`match_shortcut()`, and a window-context check bound to `Ctrl+K` with a
+field focused went red immediately: **an application's own shortcut was
+being swallowed by a convention offered on its behalf.** It runs between the
+two now -- after shortcuts, before dispatch -- and that check is what
+defends the ordering, so it has a sabotage entry that swaps the two calls.
+
+**And a `goto` went in and came out.** The first draft left the switch with
+one, and this codebase has none; a flag and a test read the same and
+introduce no convention in passing.
+
 ### 8.145 Readline chords in a text field: measured, and a question (2026-09-14)
 
 A terminal user's fingers know `Ctrl+A` for the start of a line, `Ctrl+E`
@@ -15968,6 +16009,10 @@ of "hello brave world":
 
 So four of the five are inert and the fifth does something **different**
 from what the muscle memory expects, which is the worse of the two.
+
+**Settled by the copyright holder the same day: follow the `Ctrl+C`
+precedent, per widget.** Implemented in 8.146; what follows is the question
+as it was put, because the cost is the part worth keeping.
 
 **The option, its cost, and whose decision it is.**
 
@@ -15987,9 +16032,12 @@ the set half-done. The same tension already has a decided instance here --
 for copy -- and that precedent points at a per-widget answer rather than a
 global one.
 
-It is the copyright holder's decision, not this session's: it is a new
+It was the copyright holder's decision, not this session's: a new
 convention in their project rather than a defect, and `working-practice.md`
-says a convention change is its own piece of work.
+says a convention change is its own piece of work. **Asking took one
+sentence and the answer was one line**, which is the argument for naming
+the option, the cost and the owner rather than either guessing or
+deferring.
 
 **What is done meanwhile** is the part that needed no decision: the guide
 says what happens today, so a reader who presses `Ctrl+E` and gets nothing

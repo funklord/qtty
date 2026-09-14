@@ -620,6 +620,68 @@ bool InputRouter::match_shortcut(const KeyEvent &k) {
 	return false;
 }
 
+// Readline editing, in a widget that takes text and nowhere else.
+//
+// A terminal user's fingers know Ctrl+A for the start of a line, Ctrl+E
+// for the end, Ctrl+K and Ctrl+U to kill forward and back, and Ctrl+W to
+// rub out a word. Measured before any of this existed: four did nothing
+// at all and Ctrl+A did Qt's Select All -- four inert and one doing
+// something DIFFERENT from what the muscle memory expects, which is the
+// worse of the two.
+//
+// WA_InputMethodEnabled is the test, and it is the Ctrl+C precedent's
+// own: that chord is quit EXCEPT where a caret sits in a field, and it is
+// the same attribute that decides where the terminal's cursor goes. The
+// alternative was a global answer, and a global answer to Ctrl+A cannot
+// be right -- it is Select All in every Qt program and start-of-line in
+// every shell, and a terminal application is both. Per widget, the two
+// meanings stop competing: a list view keeps Qt's Select All, and a text
+// field gets the shell's.
+//
+// BEFORE dispatch rather than after, unlike the arrow keys and the tab
+// chords below, and Ctrl+A is why. Qt ACCEPTS it in a line edit, so a
+// binding that waited for the widget to decline would never fire for the
+// one chord that needed deciding. The other four are free -- Qt gives
+// them no meaning -- but they are handled here too, because a rule split
+// across two places by whether Qt happens to accept the key is a rule
+// nobody can read.
+//
+// Synthesised as the motions Qt already has rather than edited directly:
+// Home, End, Shift+End then Delete, Shift+Home then Delete, and Qt's own
+// delete-previous-word. That works the same in QLineEdit, QTextEdit and
+// QPlainTextEdit without this knowing which it has, and it goes through
+// each widget's own undo stack instead of around it.
+bool InputRouter::readline_edit(const KeyEvent &k) {
+	if (!s_conventions || !k.ctrl || k.alt) return false;
+	QWidget *const fw = key_target();
+	if (!fw || !fw->testAttribute(Qt::WA_InputMethodEnabled)) return false;
+	const auto send = [fw](int key, Qt::KeyboardModifiers mods) {
+		QKeyEvent down(QEvent::KeyPress, key, mods);
+		QApplication::sendEvent(fw, &down);
+		QKeyEvent up(QEvent::KeyRelease, key, mods);
+		QApplication::sendEvent(fw, &up);
+	};
+	switch (k.qt_key) {
+	case Qt::Key_A: send(Qt::Key_Home, Qt::NoModifier); break;
+	case Qt::Key_E: send(Qt::Key_End, Qt::NoModifier); break;
+	case Qt::Key_K:
+		send(Qt::Key_End, Qt::ShiftModifier);
+		send(Qt::Key_Delete, Qt::NoModifier);
+		break;
+	case Qt::Key_U:
+		send(Qt::Key_Home, Qt::ShiftModifier);
+		send(Qt::Key_Delete, Qt::NoModifier);
+		break;
+	case Qt::Key_W:
+		send(Qt::Key_Backspace, Qt::ControlModifier);
+		break;
+	default:
+		return false;
+	}
+	if (frame_requested) frame_requested();
+	return true;
+}
+
 void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 	const Qt::KeyboardModifiers mods = qt_modifiers(k.ctrl, k.alt, k.shift);
 	// NO TEXT when Alt is held, which is what a desktop delivers and what
@@ -871,6 +933,7 @@ void InputRouter::on_key(const KeyEvent &k) {
 			qApp->quit();
 			return;
 		}
+
 	if (k.qt_key == Qt::Key_Tab && !k.ctrl) {
 		// The widget first, and only then the focus chain. This drove the
 		// chain unconditionally, so every widget that WANTS a tab lost it:
@@ -935,7 +998,13 @@ void InputRouter::on_key(const KeyEvent &k) {
 		// The same predicate key_target() uses, deliberately: whatever owns
 		// keys owns shortcuts, so the two cannot disagree about who is on top.
 		const bool popup_owns_input = !popups().isEmpty();
-		if (!match_shortcut(k) && (popup_owns_input || !match_mnemonic(k)))
+		// After match_shortcut() and before deliver_key(). An application's
+		// own Ctrl+K must win over qtty's readline binding -- a shortcut is
+		// something the program asked for by name, and the binding is a
+		// convention offered on its behalf. Placing this earlier swallowed
+		// exactly that, and the window-context shortcut check said so.
+		if (!match_shortcut(k) && !readline_edit(k)
+		    && (popup_owns_input || !match_mnemonic(k)))
 			deliver_key(key_target(), k);
 		set_focus_widget(input_scope()->focusWidget());
 	}

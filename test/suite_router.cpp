@@ -5147,5 +5147,84 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// Readline editing in a text field, which is the opt-in bundle's newest
+	// member and the one with a conflict in it.
+	//
+	// Ctrl+E, Ctrl+K, Ctrl+U and Ctrl+W are free -- Qt gives them no meaning
+	// -- and Ctrl+A is not: it is Select All in every Qt program and
+	// start-of-line in every shell, and a terminal application is both. The
+	// answer is the Ctrl+C precedent's, decided PER WIDGET on the same
+	// attribute: a text field gets the shell's meaning, everything else
+	// keeps Qt's.
+	//
+	// Four assertions, because the feature is four claims and a fix could
+	// satisfy any three: the chords edit, the conflict resolves the right
+	// way in a text field, it resolves the OTHER way outside one, and the
+	// whole thing stays behind the opt-in.
+	{
+		const auto field = [](bool conventions, int key) {
+			set_keyboard_conventions(conventions);
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(24, 4));
+			auto *edit = new QLineEdit(&win);
+			edit->setGeometry(0, 0, 24 * GridMetrics::cw(), GridMetrics::ch());
+			edit->setText(QStringLiteral("hello brave world"));
+			win.show();
+			QCoreApplication::processEvents();
+			InputRouter r(&win);
+			edit->setFocus();
+			edit->setCursorPosition(11);
+			QCoreApplication::processEvents();
+			r.on_key({key, QString(), true, false, false});
+			QCoreApplication::processEvents();
+			return QStringList{edit->text(),
+			                   QString::number(edit->cursorPosition()),
+			                   edit->selectedText()};
+		};
+		const QStringList home = field(true, Qt::Key_A);
+		const QStringList end = field(true, Qt::Key_E);
+		const QStringList kill = field(true, Qt::Key_K);
+		const QStringList back = field(true, Qt::Key_U);
+		const QStringList word = field(true, Qt::Key_W);
+		CHECK(home.value(1) == QStringLiteral("0")
+		          && end.value(1) == QStringLiteral("17"),
+		      "Ctrl+A and Ctrl+E move to the start and end of a line, as a"
+		      " shell user's fingers expect");
+		CHECK(kill.value(0) == QStringLiteral("hello brave")
+		          && back.value(0) == QStringLiteral(" world")
+		          && word.value(0) == QStringLiteral("hello  world"),
+		      "and Ctrl+K, Ctrl+U and Ctrl+W kill forward, back and by word");
+		// The conflict, both ways round.
+		const QStringList off = field(false, Qt::Key_A);
+		CHECK(off.value(2) == QStringLiteral("hello brave world"),
+		      "while with the conventions off Ctrl+A is Qt's Select All,"
+		      " the whole bundle being opt-in");
+		{
+			set_keyboard_conventions(true);
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(24, 8));
+			auto *list = new QListWidget(&win);
+			list->setGeometry(0, 0, 24 * GridMetrics::cw(), 8 * GridMetrics::ch());
+			list->setSelectionMode(QAbstractItemView::ExtendedSelection);
+			for (int i = 0; i < 5; ++i)
+				list->addItem(QStringLiteral("row%1").arg(i));
+			win.show();
+			QCoreApplication::processEvents();
+			InputRouter r(&win);
+			list->setCurrentRow(0);
+			list->setFocus();
+			QCoreApplication::processEvents();
+			r.on_key({Qt::Key_A, QString(), true, false, false});
+			QCoreApplication::processEvents();
+			CHECK(list->selectedItems().size() == 5,
+			      "and outside a text field it is still Select All, which is"
+			      " what deciding per widget buys");
+		}
+		set_keyboard_conventions(false);
+		GridGuard::reset();
+	}
+
 	return fails;
 }

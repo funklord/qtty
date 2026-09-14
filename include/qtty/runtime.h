@@ -130,6 +130,7 @@ public:
 
 private:
 	bool match_shortcut(const KeyEvent &);
+	bool readline_edit(const KeyEvent &);
 	// Alt-<letter> against the `&` markers in action text (section 17.2). A
 	// separate matcher because a mnemonic is not a shortcut: it carries no
 	// Qt::Key at all -- a terminal sends ESC then the letter -- and it opens
