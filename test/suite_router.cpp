@@ -3304,6 +3304,78 @@ int suite_router() {
 			      " which is what stands in for deriving it from the"
 			      " bindings");
 		}
+
+		// The GUIDE is the third writer of this list, and nothing held it
+		// against the other two. `keyboard_conventions_help()` is what an
+		// application puts on its status bar; doc/keyboard-first.md is what
+		// somebody reads before writing one, and it keeps its own table of
+		// the same chords. A binding added to the bundle and not to the
+		// guide leaves the document describing a smaller library than the
+		// one that shipped, and the reader who would notice is the one who
+		// does not know the key exists.
+		//
+		// DERIVED from the bundle rather than listed beside it, which is
+		// 8.150's lesson applied to a document: every row must have a
+		// spelling here, so a row added with none fails as a message
+		// addressed to whoever added it rather than being passed over. The
+		// spellings differ on purpose -- the bundle is sized for a status
+		// bar and writes `Ctrl+PgUp/PgDn` where prose writes `Ctrl+PageUp`
+		// -- so what is asserted is that the guide DESCRIBES the chord, not
+		// that the two agree letter for letter.
+		{
+			const auto bound = keyboard_conventions_help();
+			QFile f(QStringLiteral(QTTY_SOURCE_DIR "/doc/keyboard-first.md"));
+			const bool opened = f.open(QIODevice::ReadOnly | QIODevice::Text);
+			CHECK(opened,
+			      "the guide is where the suite can read it, an unreadable "
+			      "guide being a check that cannot fail rather than one "
+			      "that passes");
+			const QString guide = opened ? QString::fromUtf8(f.readAll())
+			                             : QString();
+			// Every chord the bundle names, and a phrase the guide has
+			// to carry for it. Two rows where one bundle line covers two
+			// keys, so that losing half of a pair is a failure too.
+			static const struct { const char *key, *in_guide; } spelled[] = {
+				{"Enter",          "| `Enter` |"},
+				{"Up/Down",        "| `Up`, `Down` |"},
+				{"Ctrl+PgUp/PgDn", "`Ctrl+PageUp`"},
+				{"Ctrl+PgUp/PgDn", "`Ctrl+PageDown`"},
+				{"F6",             "`F6`"},
+				{"Alt+letter",     "`Alt` + a tab's letter"},
+				{"Ctrl+A/E",       "`Ctrl+A`"},
+				{"Ctrl+A/E",       "`Ctrl+E`"},
+				{"Ctrl+K/U",       "`Ctrl+K`"},
+				{"Ctrl+K/U",       "`Ctrl+U`"},
+				{"Ctrl+W/D",       "`Ctrl+W`"},
+				{"Ctrl+W/D",       "`Ctrl+D`"},
+				{"Menu/Shift+F10", "`Menu`, `Shift+F10`"},
+			};
+
+			QStringList unknown, undescribed;
+			for (const auto &row : bound) {
+				int named = 0;
+				for (const auto &s : spelled) {
+					if (row.first != QLatin1String(s.key)) continue;
+					++named;
+					if (!guide.contains(QLatin1String(s.in_guide)))
+						undescribed << row.first;
+				}
+				if (named == 0) unknown << row.first;
+			}
+			if (!unknown.isEmpty() || !undescribed.isEmpty())
+				printf("info: unknown to this check [%s]; missing from the "
+				       "guide [%s]\n",
+				       qPrintable(unknown.join(QStringLiteral(", "))),
+				       qPrintable(undescribed.join(QStringLiteral(", "))));
+			CHECK(unknown.isEmpty(),
+			      "every key the conventions list is one this check knows "
+			      "where to look for, so a binding cannot enter the bundle "
+			      "without the guide being asked about it");
+			CHECK(undescribed.isEmpty(),
+			      "and the guide describes every key they bind, an "
+			      "application's help and the document it was written from "
+			      "being two copies of one list");
+		}
 		set_keyboard_conventions(false);          // process-wide: put it back
 		// NOT empty, since 8.77. The contract was never "empty when
 		// off" -- it was never promise a key that does nothing, and the

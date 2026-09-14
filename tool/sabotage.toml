@@ -1874,3 +1874,15 @@ find = "\t\t\t{\"QDateEdit\",      [] { return new QDateEdit; }},"
 into = ""
 count = 1
 check = "the focus sweep covers sixteen standard widgets"
+
+[[sabotage]]
+# A chord the bundle names and the guide has never heard of. This is what
+# adding a binding looks like when the document is forgotten: the help
+# gains a row, every behavioural check stays green, and doc/keyboard-first
+# .md goes on describing a smaller library than the one that shipped. 8.152.
+name = "a chord enters the bundle without reaching the guide"
+file = "src/runtime/input_router.cpp"
+find = "\t\t{ QStringLiteral(\"Ctrl+W/D\"),       QStringLiteral(\"rub out word, delete, in text\") },"
+into = "\t\t{ QStringLiteral(\"Ctrl+W/Y\"),       QStringLiteral(\"rub out word, yank, in text\") },"
+count = 1
+check = "every key the conventions list is one this check knows where to look"

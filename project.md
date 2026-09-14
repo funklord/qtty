@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1319 checks, 0 failures. `make check` is green and includes
+1322 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15953,6 +15953,48 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.152 The guide was the third copy of the key list (2026-09-14)
+
+`keyboard_conventions_help()` exists so that an application does not keep
+its own copy of the chords the library binds -- 8.77's rule, and the check
+beside it says so in as many words. The **guide** keeps one anyway, and has
+to: `doc/keyboard-first.md` is what somebody reads before writing the
+application, and a document that names no keys is no guide. So the list has
+three writers -- the bindings in `on_key()`, the bundle that describes them,
+and the table a reader learns from -- and until now only the first two were
+held against each other.
+
+Nothing was wrong today: the nine rows and the guide's table agree. What
+was missing is any reason they would go on agreeing. A chord added to the
+bundle and not to the guide leaves the document describing a smaller
+library than the one that shipped, and **the reader who would notice is the
+one who does not know the key exists.**
+
+The check reads the guide and asks, for every row the bundle returns,
+whether the guide describes that chord. Two things make it more than a
+spelling comparison:
+
+- **It derives its population from the bundle**, so a row added with no
+  spelling entry fails as a message addressed to whoever added it. That is
+  8.150's fix applied to a document rather than to a widget list: the
+  quantifier is the thing that rots, so nothing may enter the list without
+  passing through the check.
+- **The spellings are deliberately different.** The bundle is sized for a
+  status bar and writes `Ctrl+PgUp/PgDn` where prose writes `Ctrl+PageUp`.
+  What is asserted is that the guide DESCRIBES the chord, not that two
+  copies match letter for letter -- an equality check would have forced the
+  status bar's abbreviations into the prose.
+
+**One direction, and the limit is stated rather than implied.** The
+sabotage renames a bundle row to a chord the guide has never heard of, and
+both the new check and 8.149's go red. The other direction -- the guide
+losing a mention while the binding stays -- has no entry, because every
+entry in the spec edits `src/`, `test/` or `include/`, which is exactly the
+scope of the harness's refusal to run in a dirty tree. A sabotage of
+`doc/` would modify a file that refusal does not cover, in a tree more than
+one session writes to. The check covers both directions; the harness proves
+one of them.
 
 ### 8.151 The full sabotage set, and the one check it caught (2026-09-14)
 
