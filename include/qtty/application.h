@@ -62,8 +62,17 @@ int exec(QApplication &app, QWidget &win);
 // by nobody.
 //
 // That is the same fault Qtty::capabilities() was added for, and this follows
-// its answer rather than inventing one: a free function acting on whichever
-// backend currently owns the terminal.
+// its answer rather than inventing one: a free function rather than a handle
+// nobody is given.
+//
+// WHICH backend it acts on is where the two part company, and the difference
+// is deliberate. This one asks who currently OWNS the terminal, because its
+// return value is a claim that a screen was handed over and only ownership
+// supports that claim -- a backend with no screen would make it a false one.
+// capabilities() asks which backend is DRIVING the session first, and falls
+// back to ownership; a terminal's cell size does not stop being true while a
+// child has the screen. See 8.153: the two were one sentence in this comment
+// for a while, and they are not one fact.
 //
 // Scoped rather than a suspend()/resume() pair, because the pair has a wrong
 // way to use it and this does not -- the terminal comes back if `body`
@@ -71,8 +80,11 @@ int exec(QApplication &app, QWidget &win);
 bool shell_out(const std::function<void()> &body);
 
 // What the terminal qtty is driving turned out to be, as negotiated (section
-// 5.7). Valid while exec() is running; a default-constructed Capabilities
-// before and after, which reads as "nothing known" rather than as a claim.
+// 5.7). Valid while a backend is driving -- under exec(), and equally in a
+// frame loop an application runs itself, which has no exec() to ask and was
+// answered "nothing known" until 8.153. A default-constructed Capabilities
+// when neither is true, which reads as "nothing known" rather than as a
+// claim.
 //
 // It exists because an application had no way to ask. Capabilities were
 // reachable only through ITerminalBackend, and the convenience exec() builds
@@ -86,8 +98,11 @@ bool shell_out(const std::function<void()> &body);
 // it, and a lower graphics tier needs the background to composite against.
 Capabilities capabilities();
 
-// True while exec() is driving a terminal session. Overlay uses this to pick
-// its rendering path (section 5.7); apps can branch on it for target-specific polish.
+// True while a terminal session is being driven -- by exec(), or by an
+// application's own frame loop, which is the seat 8.153 found answering
+// false beside a backend holding the alternate screen. Overlay uses this to
+// pick its rendering path (section 5.7); apps can branch on it for
+// target-specific polish.
 bool is_tui_active();
 
 // Render one frame of `win` into `buf` (and collect section 5.7 placements when

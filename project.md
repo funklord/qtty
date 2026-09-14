@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1322 checks, 0 failures. `make check` is green and includes
+1324 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15953,6 +15953,64 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.153 Two records of which backend is live (2026-09-14)
+
+The fatal-message rescue asks which backend has the screen and hands it back
+before printing, because a message on the alternate screen dies with it --
+2746 bytes of frame and no sentence, measured. That record is written by the
+BACKEND, in `resume()` and `suspend()`, and `terminal_owner.h` says at length
+why not by `exec()`: an application driving its own frame loop has no
+`exec()` to ask.
+
+`Qtty::capabilities()` and `Qtty::is_tui_active()` read a different record --
+the pointer `exec()` sets -- and `shell_out()`'s own comment claimed the
+first of them "follows capabilities()' answer ... a free function acting on
+whichever backend currently owns the terminal". It does not, and did not.
+**Two records of one fact, and every reader had picked one.**
+
+**What each one cannot see.** The ownership record is reachable only by
+qtty's own `AnsiBackend`, `take_terminal()` being internal and unshipped, so
+a backend an application WROTE is invisible to it -- including one handed to
+`exec()`, where qtty knows exactly who the backend is. The session record is
+written only by `exec()`, so a program driving its own loop -- which
+`backend.h` supports, which `qtty-replay --ansi` is, and which is what an
+adopted TUI codebase looks like -- is invisible to that.
+
+Three consequences, each in the half the other record covers:
+
+- **A consumer's last words were lost entirely.** Measured with a program
+  built against the installed prefix, its own `ITerminalBackend`, a `qFatal`
+  on the first turn of the loop, run under a pty: **228 bytes, the message
+  at offset 129, and no `1049l` anywhere in them.** Not mis-ordered --
+  absent, because nothing gave the screen back and the adopter's backend
+  arms no crash handler either.
+- **`capabilities()` answered "nothing was negotiated"** to an own-loop
+  program whose backend had negotiated everything.
+- **`is_tui_active()` answered false** in the same seat, and `Overlay` reads
+  it to decide whether the runtime is compositing -- so it built a GUI twin
+  window for a session whose frames qtty was already drawing.
+
+Each reader now consults the other record where its own is silent: the
+rescue takes the owner or, failing that, the session's backend; the two free
+functions take the session's backend or, failing that, the owner. The
+records stay two, because they answer different questions -- who HAS the
+screen, and which backend is DRIVING this session -- and `shell_out()` still
+reads ownership alone, deliberately: its return value is a claim that a
+terminal was handed over, and only ownership supports that claim. A backend
+with no screen would make it a false one.
+
+**Where the proofs live, and why they are not in one place.** The two free
+functions are checked in the suite, against a live `AnsiBackend` on a pty
+with no `exec()` on the stack, and both have sabotage entries. The rescue is
+checked in `tool/consume-check`, which builds from the INSTALLED prefix --
+the only seat from which "a consumer can implement this interface" is a
+statement rather than an assumption, and it was not checked before either.
+It cannot be a suite check: a fatal message can only be watched from a
+forked child, and a child that creates widgets makes X requests on the
+parent's connection, which broke two suites under xcb once and is why the
+existing fatal checks use no widget. Proved by reverting the fix and
+watching the gate go red, which is the measurement quoted above.
 
 ### 8.152 The guide was the third copy of the key list (2026-09-14)
 

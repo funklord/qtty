@@ -1886,3 +1886,25 @@ find = "\t\t{ QStringLiteral(\"Ctrl+W/D\"),       QStringLiteral(\"rub out word,
 into = "\t\t{ QStringLiteral(\"Ctrl+W/Y\"),       QStringLiteral(\"rub out word, yank, in text\") },"
 count = 1
 check = "every key the conventions list is one this check knows where to look"
+
+[[sabotage]]
+# The free functions back on exec()'s pointer alone. A program driving its
+# own frame loop -- no exec() anywhere -- is then told nothing was
+# negotiated and no TUI is running, beside a backend holding the alternate
+# screen. Overlay believes the second and builds a GUI twin. 8.153.
+name = "the session answers only where exec() is on the stack"
+file = "src/runtime/application.cpp"
+find = "\tconst ITerminalBackend *b = g_session ? g_session : g_backend;"
+into = "\tconst ITerminalBackend *b = g_session;"
+count = 1
+check = "a program driving its own frame loop can ask qtty what the terminal is"
+
+[[sabotage]]
+# And the other half of the same pointer, which a different consumer reads:
+# Overlay asks is_tui_active() to decide whether the runtime is compositing.
+name = "an own-loop session is not a TUI as far as the overlay is concerned"
+file = "src/runtime/application.cpp"
+find = "bool is_tui_active() { return s_tuiActive || g_backend != nullptr; }"
+into = "bool is_tui_active() { return s_tuiActive; }"
+count = 1
+check = "and is told a TUI is running"

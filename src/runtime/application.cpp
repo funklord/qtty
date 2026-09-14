@@ -66,6 +66,11 @@ QtMessageHandler g_previous = nullptr;
 // screen is not that place: see below.
 ITerminalBackend *g_backend = nullptr;         // the top of the stack below
 QVector<ITerminalBackend *> g_owners;
+// And the backend exec() was handed, declared here because the handler below
+// needs it and defined with capabilities(), where what it is for is written
+// out. The two are different questions -- who HAS the screen, and which
+// backend is driving this session -- and each answers where the other cannot.
+ITerminalBackend *g_session = nullptr;
 
 void deferring_handler(QtMsgType type, const QMessageLogContext &ctx,
                        const QString &text) {
@@ -95,7 +100,20 @@ void deferring_handler(QtMsgType type, const QMessageLogContext &ctx,
 	// so qInstallMessageHandler() returns something to fall back to. The guard
 	// matches the one below rather than asserting that.
 	if (type == QtFatalMsg) {
-		if (g_backend) g_backend->suspend();
+		// Whoever can put the screen back: the backend that HAS it, and
+		// failing that the one exec() was handed. Only qtty's own
+		// AnsiBackend can register ownership -- take_terminal() is internal
+		// and does not ship -- so a backend an application wrote reached
+		// this line as a null pointer, and the message it exists to rescue
+		// was printed onto the alternate screen after all. That is the
+		// measured 2746-byte failure above, available again by the one
+		// route the fix did not cover.
+		//
+		// Suspending a backend with no screen costs nothing: suspend() is
+		// the interface's own "give it back" call, NullBackend's is empty,
+		// and the alternative is a program's last words going missing.
+		if (ITerminalBackend *owner = g_backend ? g_backend : g_session)
+			owner->suspend();
 		flush_deferred_messages();
 		if (g_previous) g_previous(type, ctx, text);
 		return;
@@ -585,7 +603,15 @@ void render_once(QWidget &win, CellBuffer &buf, QVector<CellImage> *placements) 
 }
 
 static bool s_tuiActive = false;
-bool is_tui_active() { return s_tuiActive; }
+// True while a backend is driving, which is NOT the same question as whether
+// exec() is on the stack. backend.h supports an application running its own
+// frame loop -- qtty-replay --ansi is one, and an adopted TUI codebase is the
+// case the interface exists for -- and until this fell back to the ownership
+// record, such a program answered false while a real AnsiBackend had the
+// alternate screen. Overlay reads this to decide whether the runtime is
+// compositing (overlay.cpp), so the false answer built a GUI twin window for
+// a session whose frames qtty was already drawing.
+bool is_tui_active() { return s_tuiActive || g_backend != nullptr; }
 
 // Asked of the backend while a run is in progress, and nothing outside one.
 //
@@ -602,14 +628,22 @@ bool is_tui_active() { return s_tuiActive; }
 // A caller still cannot be handed a stale answer: outside a run the pointer
 // is null and the answer is the empty Capabilities, which is what "nothing
 // was measured" means everywhere else.
-static ITerminalBackend *s_backend = nullptr;
+// And the same fall-back, for the same seat. This asked exec()'s pointer
+// alone, so an application driving its own loop -- the one arrangement that
+// has no exec() to ask -- got the empty Capabilities, which reads as "nothing
+// was negotiated" while the backend beside it had negotiated everything. The
+// two records answer different questions and both are needed: exec() knows
+// which backend is DRIVING THIS SESSION and goes on knowing it while the
+// screen is handed to a child, and the ownership stack knows who HAS THE
+// SCREEN when no exec() was involved.
 Capabilities capabilities() {
-	return s_backend ? s_backend->capabilities() : Capabilities{};
+	const ITerminalBackend *b = g_session ? g_session : g_backend;
+	return b ? b->capabilities() : Capabilities{};
 }
 
 int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	s_tuiActive = true;
-	s_backend = &backend;
+	g_session = &backend;
 
 	const QSize cells = backend.size();
 	win.setAttribute(Qt::WA_DontShowOnScreen);
@@ -645,7 +679,7 @@ int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	scheduler.render_now();                      // initial frame
 	const int rc = app.exec();
 	s_tuiActive = false;
-	s_backend = nullptr;
+	g_session = nullptr;
 	return rc;
 }
 

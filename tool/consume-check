@@ -144,3 +144,73 @@ else
 	head -4 "$dir/headless" >&2
 	exit 1
 fi
+
+# And the OTHER adoption shape, which is the one the README advertises and
+# nothing checked: a project that already has a terminal layer writes its own
+# ITerminalBackend and hands it to exec(). Two things are proved here and
+# neither is provable from inside the tree.
+#
+# That the interface can be implemented from the INSTALLED headers alone --
+# backend.h ships, and a consumer's backend is compiled against it here with
+# no source tree in the include path.
+#
+# And that such a program's last words survive. qtty gives the screen back
+# before printing a fatal message, because a message on the alternate screen
+# dies with it; the backend that has the screen is asked to suspend. Only
+# qtty's own AnsiBackend can register ownership -- take_terminal() is
+# internal and does not ship -- so a consumer's backend was a null pointer
+# there, and the diagnostic went onto the alternate screen and vanished.
+# Measured before the fix with this program: 36 bytes out, the message at
+# offset 20, and no `1049l` anywhere in them.
+cat > "$dir/adopter.cpp" <<'ADOPTER'
+#include <qtty/qtty.h>
+#include <QApplication>
+#include <QTimer>
+#include <QWidget>
+#include <cstdio>
+
+struct ScreenBackend : Qtty::ITerminalBackend {
+	Qtty::Capabilities capabilities() const override { return {}; }
+	QSize size() const override { return {20, 5}; }
+	void present(const Qtty::CellBuffer &, const QRegion &) override {}
+	void set_cursor(std::optional<QPoint>, Qtty::CursorShape) override {}
+	void set_event_sink(Qtty::ITerminalEventSink *) override {}
+	void suspend() override { std::fputs("\033[?1049l", stdout); std::fflush(stdout); }
+	void resume() override { std::fputs("\033[?1049h", stdout); std::fflush(stdout); }
+};
+
+int main(int argc, char **argv) {
+	Qtty::prepare_environment();
+	QApplication app(argc, argv);
+	Qtty::setup(app);
+	QWidget win;
+	ScreenBackend backend;
+	backend.resume();                    // the application takes the screen
+	QTimer::singleShot(0, [] { qFatal("qtty-consumer: the last words"); });
+	return Qtty::exec(app, win, backend);
+}
+ADOPTER
+
+timeout 300 g++ -o "$dir/adopter" "$dir/adopter.cpp" \
+    $(pkg-config --cflags --libs qtty) 2>"$dir/cc2.log" || {
+	echo "consume-check: FAILED -- a consumer's own ITerminalBackend does" >&2
+	echo "               not compile against the installed headers" >&2
+	head -5 "$dir/cc2.log" >&2
+	exit 1
+}
+
+timeout 60 script -q -c "timeout 6 $dir/adopter" "$dir/fatal" >/dev/null 2>&1 || true
+python3 - "$dir/fatal" <<'PY'
+import sys
+d = open(sys.argv[1], "rb").read()
+words = d.find(b"qtty-consumer: the last words")
+leave = d.rfind(b"\x1b[?1049l")
+if words >= 0 and leave >= 0 and words > leave:
+	print("consume-check: and a consumer's own backend takes the screen, then"
+	      " gives it back before its last words")
+	sys.exit(0)
+where = "message at %d, screen given back at %d, %d bytes" % (words, leave, len(d))
+print("consume-check: FAILED -- " + where, file=sys.stderr)
+print("               A fatal diagnostic on the alternate screen dies with it.", file=sys.stderr)
+sys.exit(1)
+PY

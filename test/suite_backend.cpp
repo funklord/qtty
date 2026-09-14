@@ -1643,6 +1643,31 @@ int suite_backend() {
 				CHECK(c.mouse && c.bracketed_paste,
 				      "and with both ends a terminal the modes are claimed");
 
+				// What a program in THIS seat can ask about its own session.
+				// There is no exec() on the stack: the application drives its
+				// own frame loop, which backend.h supports, which
+				// qtty-replay --ansi is, and which is the arrangement an
+				// adopted TUI codebase arrives in. Both free functions read
+				// the pointer exec() sets, so until they fell back to the
+				// ownership record this seat was told "nothing was
+				// negotiated" and "no TUI is running" -- beside a backend
+				// that had just negotiated a kitty tier and taken the
+				// alternate screen. Overlay believes the second one and
+				// builds a GUI twin window when it is false.
+				//
+				// Against the backend's own answer rather than against
+				// literals: what is asserted is that the two agree, which
+				// cannot go stale as the negotiation learns fields.
+				CHECK(Qtty::capabilities().graphics == c.graphics
+				          && Qtty::capabilities().cell_px == c.cell_px
+				          && Qtty::capabilities().background == c.background,
+				      "a program driving its own frame loop can ask qtty what"
+				      " the terminal is, the free function answering for"
+				      " whoever has the screen");
+				CHECK(Qtty::is_tui_active(),
+				      "and is told a TUI is running, which is what Overlay"
+				      " reads to leave the compositing to the runtime");
+
 				// The resize half, which is the reason this is tied to input
 				// at all: a font change moves the pixel geometry without
 				// moving the cell count, so the backend must ask again. The
