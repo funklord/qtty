@@ -5222,6 +5222,54 @@ int suite_router() {
 			      "and outside a text field it is still Select All, which is"
 			      " what deciding per widget buys");
 		}
+		// And the same chords in a MULTI-LINE editor, where the motions they
+		// are built from are line-relative. Home and End are the start and
+		// end of the LINE in Qt, not of the document, so kill-to-end must
+		// stop at the newline -- a version built on Ctrl+Shift+End would eat
+		// the rest of the document and pass every single-line check.
+		//
+		// Both editors, because they are different classes reaching the same
+		// motions, and the claim that these behave identically in all three
+		// text widgets was written before it had been measured.
+		{
+			set_keyboard_conventions(true);
+			const auto killed = [](bool plain) {
+				QWidget win;
+				win.setAttribute(Qt::WA_DontShowOnScreen);
+				win.resize(GridMetrics::cells(30, 6));
+				QWidget *ed = plain ? static_cast<QWidget *>(new QPlainTextEdit(&win))
+				                    : static_cast<QWidget *>(new QTextEdit(&win));
+				ed->setGeometry(0, 0, 30 * GridMetrics::cw(), 5 * GridMetrics::ch());
+				const QString body =
+				    QStringLiteral("first line\nsecond brave line\nthird");
+				if (plain) static_cast<QPlainTextEdit *>(ed)->setPlainText(body);
+				else static_cast<QTextEdit *>(ed)->setPlainText(body);
+				win.show();
+				QCoreApplication::processEvents();
+				InputRouter r(&win);
+				ed->setFocus();
+				const int at = QStringLiteral("first line\nsecond brave").size();
+				if (plain) {
+					QTextCursor tc = static_cast<QPlainTextEdit *>(ed)->textCursor();
+					tc.setPosition(at);
+					static_cast<QPlainTextEdit *>(ed)->setTextCursor(tc);
+				} else {
+					QTextCursor tc = static_cast<QTextEdit *>(ed)->textCursor();
+					tc.setPosition(at);
+					static_cast<QTextEdit *>(ed)->setTextCursor(tc);
+				}
+				QCoreApplication::processEvents();
+				r.on_key({Qt::Key_K, QString(), true, false, false});
+				QCoreApplication::processEvents();
+				return plain ? static_cast<QPlainTextEdit *>(ed)->toPlainText()
+				             : static_cast<QTextEdit *>(ed)->toPlainText();
+			};
+			const QString want =
+			    QStringLiteral("first line\nsecond brave\nthird");
+			CHECK(killed(true) == want && killed(false) == want,
+			      "kill-to-end stops at the end of the LINE in both"
+			      " multi-line editors, leaving the rest of the document");
+		}
 		set_keyboard_conventions(false);
 		GridGuard::reset();
 	}

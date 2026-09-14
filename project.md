@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1312 checks, 0 failures. `make check` is green and includes
+1313 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15976,9 +15976,24 @@ at five of five rows.
 
 **Synthesised as the motions Qt already has** -- Home, End, Shift+End then
 Delete, Shift+Home then Delete, and Qt's delete-previous-word -- rather than
-editing the text directly. That works the same in `QLineEdit`, `QTextEdit`
-and `QPlainTextEdit` without knowing which it has, and it goes through each
-widget's own undo stack instead of around it.
+editing the text directly. It goes through each widget's own undo stack
+instead of around it.
+
+**That it behaves the same in all three text widgets was CLAIMED before it
+was measured**, in the commit message that shipped it. Measured afterwards,
+on `"first line / second brave line / third"` with the caret after "brave":
+
+    QPlainTextEdit  Ctrl+K   first line | second brave | third
+    QTextEdit       Ctrl+K   first line | second brave | third
+    QPlainTextEdit  Ctrl+U   first line | " line"      | third
+
+-- the motions are LINE-relative in Qt, so kill-to-end stops at the newline
+and the rest of the document survives. The claim was true. It was still a
+claim about two widget classes made from a measurement of a third, and the
+check that pins it now is the interesting one: a version built on
+`Ctrl+Shift+End` would eat everything below the caret **and pass every
+assertion written against a `QLineEdit`**, where the line end and the
+document end are the same place.
 
 **The placement was wrong first, and an existing check said so.** The block
 went in before dispatch, because `Ctrl+A` is ACCEPTED by a line edit and a

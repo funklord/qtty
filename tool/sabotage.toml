@@ -1803,3 +1803,15 @@ find = "\t\tif (!match_shortcut(k) && !readline_edit(k)"
 into = "\t\tif (!readline_edit(k) && !match_shortcut(k)"
 count = 1
 check = "and answers again once its own window is current"
+
+[[sabotage]]
+# Kill-to-end built on the DOCUMENT end rather than the line end. In a
+# single-line editor the two are the same, so every check written against a
+# QLineEdit passes while a multi-line editor loses everything below the
+# caret. 8.146.
+name = "kill-to-end eats the rest of the document"
+file = "src/runtime/input_router.cpp"
+find = "\t\tsend(Qt::Key_End, Qt::ShiftModifier);"
+into = "\t\tsend(Qt::Key_End, Qt::ShiftModifier | Qt::ControlModifier);"
+count = 1
+check = "kill-to-end stops at the end of the LINE"
