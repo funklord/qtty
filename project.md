@@ -2099,25 +2099,20 @@ In the order I would take them:
      is constructed on `exec()`'s own stack and nothing hands it out, so
      an application cannot change Ctrl-C and Ctrl-D without reimplementing
      the whole of `exec()`. Fixing it means adding API -- an overload, a
-     setter, or handing back the router -- which is a shape decision.
-     **And closing it opens 8.122's coupling**: the backend reports a
-     vanished terminal by synthesising Ctrl-D, so the moment an application
-     can redefine the quit keys it can also stop being told its terminal is
-     gone. The two are one decision; see 8.122 for why the honest fix is a
-     seam that carries the event rather than a chord that stands in for it.
+     setter, or handing back the router -- which is a shape decision, and
+     it is now the whole of what is left here.
+     **The hazard that made it delicate is gone.** This entry used to say
+     that closing it would open 8.122's coupling: the backend reported a
+     vanished terminal by synthesising Ctrl-D, so an application able to
+     redefine the quit keys could also stop being told its terminal had
+     gone, and the two were one decision. 8.148 gave that event its own
+     seam, `on_terminal_lost()`, which nothing routes and no quit key can
+     take away, so the decisions are separate again.
      **Its sibling is closed**: `suspend()`/`resume()` were unreachable by
      the same mechanism and are reachable now through `Qtty::shell_out()`,
      which follows `Qtty::capabilities()`' precedent (8.130). That one had a
      decided shape to copy and this one does not -- the router is not the
      terminal, and handing it out is a different question.
-
-     **And the reason to be careful about it is gone too.** The paragraph
-     above used to say that closing this would let an application stop being
-     told its terminal had vanished, the backend having reported that by
-     synthesising `Ctrl+D` through the quit keys. It does not any more:
-     8.148 gave the event its own seam, `on_terminal_lost()`, which nothing
-     routes and no quit key can take. What is left is the shape decision by
-     itself.
    - **The font is hardcoded and fatal.** `setup()` installs DejaVu Sans
      Mono at 16 px and `qFatal()`s when the metrics are not integral.
      There is no override, so a machine without that font cannot run a
@@ -15969,6 +15964,26 @@ Run end to end over 193 entries. It was killed at **178** -- the machine
 ran low on memory, and this is a shared one -- and the restore did its job:
 no source file was left sabotaged, no process orphaned, nothing deleted
 still held open. 176 reddened the check they name. **One did not.**
+
+The **fifteen the kill never reached** were run afterwards, one invocation
+each because `--only` matches one substring at a time rather than a range,
+and all fifteen reddened. So the set is covered end to end, by two runs
+rather than one, and the finding below is the whole of what it found.
+
+**And the first attempt at those fifteen ran two of them**, which is worth
+the sentence because nothing in its output said so. The driving loop read
+the names with `while read` and the `make` inside it swallowed the rest of
+the list from the same stdin, so the loop ran the first entry, resumed
+mid-line, and stopped. Both entries it ran reported `ok -- reddened` and
+the loop printed `done`: **a run that skipped thirteen entries and a run
+that passed all fifteen look identical unless the count is read.** The tell
+was the second entry's name, printed as `eletes` -- the tail of *Ctrl+D
+neither quits nor deletes*, which `--only` matched to exactly one entry and
+reported as a selection of one. A truncated substring does not announce
+itself: the harness says how many entries it selected and cannot say
+whether they are the ones that were asked for. Redirecting the inner
+command's stdin from `/dev/null` fixes the loop; reading the tally against
+the fifteen names is what catches it.
 
     sabotage 143/193: a window closing under the user changes nothing but the pointer
       FAILED: the named check PASSED against broken code.
