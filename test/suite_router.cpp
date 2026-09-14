@@ -1391,6 +1391,26 @@ int suite_router() {
 			      "the control: the window about to be closed is the current "
 			      "one");
 
+			// The survivor's Qt focus is CLEARED first, and that is what
+			// makes the focus check below able to fail at all.
+			//
+			// Two mechanisms produce "something inside the new window has
+			// focus", and they agree on every window that already has a Qt
+			// focus widget. adopt_window() seeds one -- but only `if
+			// (!w->focusWidget())` -- and then records it; compose()'s own
+			// re-read (8.119) records whatever Qt already has, whether or not
+			// the pick carried anything. So with a survivor that had been
+			// typed into, the sabotage for 8.118 stopped failing: the full
+			// run reported "the named check PASSED against broken code", and
+			// it was right.
+			//
+			// Cleared, only the seeding can supply a focus, and the two
+			// answers separate. This is 8.121's shape exactly -- a check that
+			// went on passing because a later fix covered its fixture by a
+			// second route -- and it is the second time a full sabotage run
+			// has been the only thing that could notice.
+			if (QWidget *had = a.focusWidget()) had->clearFocus();
+			QCoreApplication::processEvents();
 			delete doomed;               // as an application closes a window
 			QCoreApplication::processEvents();
 			CellBuffer without(70, 8);
@@ -5157,6 +5177,35 @@ int suite_router() {
 		const int home = press(Qt::Key_Home);
 		const int paged = press(Qt::Key_PageDown);
 		const int typed = press(Qt::Key_K, QStringLiteral("k"));
+		// A TREE as well, because the guide's rows say "list or tree" and a
+		// check over a list alone leaves half of each row unheld -- which is
+		// that page's own maintenance rule, not a nicety.
+		QWidget twin;
+		twin.setAttribute(Qt::WA_DontShowOnScreen);
+		twin.resize(GridMetrics::cells(24, 10));
+		auto *tree = new QTreeWidget(&twin);
+		tree->setGeometry(0, 0, 24 * GridMetrics::cw(), 10 * GridMetrics::ch());
+		tree->setColumnCount(1);
+		tree->setHeaderHidden(true);
+		for (const char *n : names)
+			new QTreeWidgetItem(tree, QStringList{QString::fromLatin1(n)});
+		twin.show();
+		QCoreApplication::processEvents();
+		InputRouter tr(&twin);
+		tree->setCurrentItem(tree->topLevelItem(0));
+		tree->setFocus();
+		QCoreApplication::processEvents();
+		const auto tpress = [&](int key, const QString &t = QString()) {
+			tr.on_key({key, t, false, false, false});
+			QCoreApplication::processEvents();
+			return tree->indexOfTopLevelItem(tree->currentItem());
+		};
+		const int t_end = tpress(Qt::Key_End);
+		const int t_home = tpress(Qt::Key_Home);
+		const int t_typed = tpress(Qt::Key_K, QStringLiteral("k"));
+		CHECK(t_end == 14 && t_home == 0 && t_typed == 10,
+		      "and a tree answers the same keys, which the guide's rows claim"
+		      " and a list-only check could not hold");
 		CHECK(down == 1 && end == 14 && home == 0,
 		      "Down, End and Home reach a focused list through the router");
 		CHECK(paged > 1 && paged < 14,

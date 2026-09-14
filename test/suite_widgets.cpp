@@ -2970,6 +2970,13 @@ int suite_widgets() {
 		// One glyph per direction, and each in its own cell: drawing them
 		// into one buffer at four columns is what catches an arrow that
 		// ignores the rect it was given, which the earlier draft did not.
+		// The POPULATION pinned beside the claim, as suite_theme and
+		// suite_graphics do for their own "each of the six". Without it an
+		// arrow taken out of the list leaves this saying "each arrow
+		// primitive" over three of them.
+		CHECK(sizeof(arrows) / sizeof(arrows[0]) == 4,
+		      "the four arrow directions are all covered, a count that cannot"
+		      " shrink without this saying so");
 		CHECK(all, "each arrow primitive draws its own glyph at its own rect");
 	}
 

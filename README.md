@@ -174,7 +174,10 @@ widget to text in one call -- glyphs, attributes and colours --  and
 `Qtty::test::check_snapshot()` holds it against a fixture, rewriting the
 fixture on request. Both are in `qtty/testing.h`.
 
-About the session itself: `Qtty::is_tui_active()` is true while `exec()`
+About the session itself: `Qtty::shell_out()` hands the terminal to a
+child for the duration -- an editor, a pager -- and takes it back with
+the window title, the cell size and the screen put back;
+`Qtty::is_tui_active()` is true while `exec()`
 is driving a terminal, so a widget can branch without being told which
 frontend built it; `Qtty::capabilities()` reports what the terminal
 negotiated; and `Qtty::flush_deferred_messages()` writes out diagnostics

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1317 checks, 0 failures. `make check` is green and includes
+1319 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -29,8 +29,6 @@ is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
 **Last re-verified under all six configurations: 2026-09-14, at 1305**,
-three checks having been added since without re-running them, which the
-two sentences below are separated precisely to allow.
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
 result. Offscreen and xcb-under-Xvfb both ran 1305, `minimal` refused and
@@ -15961,6 +15959,47 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.151 The full sabotage set, and the one check it caught (2026-09-14)
+
+Every entry added this session was proved to redden when it was written.
+That is not the same property as the set still discriminating **after
+everything since**, which is what a full run asks and nothing else does.
+
+Run end to end over 193 entries. It was killed at **178** -- the machine
+ran low on memory, and this is a shared one -- and the restore did its job:
+no source file was left sabotaged, no process orphaned, nothing deleted
+still held open. 176 reddened the check they name. **One did not.**
+
+    sabotage 143/193: a window closing under the user changes nothing but the pointer
+      FAILED: the named check PASSED against broken code.
+              check: and something inside it has focus
+
+**Two mechanisms, agreeing on the fixture.** `adopt_window()` seeds a Qt
+focus -- but only `if (!w->focusWidget())` -- and then records it.
+`compose()`'s own re-read, added by 8.119, records whatever Qt already has,
+whether or not the pick carried anything. So on a survivor that had been
+typed into, both produce "something inside the new window has focus", and
+the sabotage that stops the pick carrying anything changes nothing
+observable.
+
+8.119 was written the same day as the last full run and landed after it. The
+check has been passing for a reason nobody intended ever since, and **a full
+run is the only thing that could have said so** -- the entry was proved
+against the code of its own afternoon.
+
+Fixed in the FIXTURE, as 8.121 was: the survivor's Qt focus is cleared
+before the window is closed, so only the seeding can supply one and the two
+answers separate. Watched failing under the sabotage before being recorded
+as fixed.
+
+**Which is now twice.** 8.121 and this are the same shape -- a check that
+went on passing because a later fix covered its fixture by a second route --
+and both were found by the same instrument and by nothing else. The cost is
+hours and the yield is one finding a run, which is worth writing down
+because the temptation is to skip it on the grounds that every entry was
+proved when it was added. **Every entry WAS proved when it was added. That
+is exactly the property that decays.**
+
 ### 8.150 Sweeping for checks that claim more than they check (2026-09-14)
 
 8.149's lens, turned on the suite: **which checks quantify -- every, all,
@@ -15969,8 +16008,9 @@ each -- and is the quantifier verified or merely asserted?**
 Fifteen such checks. Most quantify over a protocol's population rather than
 the code's -- the ten SS3 finals, the twenty CSI numbers -- where a
 hand-written list IS the specification and drifts only if the specification
-does. Three quantify over a population the code owns, and the tree already
-has a convention for those:
+does. Four quantify over a population the code owns -- this entry first
+said three and missed the arrow primitives, which walk a four-element list
+and pinned nothing -- and the tree already has a convention for them:
 
     suite_theme     sizeof(sgr)    / sizeof(sgr[0])    == 6
     suite_graphics  sizeof(forced) / sizeof(forced[0]) == 6
@@ -15986,7 +16026,7 @@ quantifier shrinks**, which is exactly the shape `evidence.md` names and the
 one 8.149 had just caught in a different check.
 
 It is pinned now, at sixteen, with a sabotage entry that deletes a widget
-from the list. **And the pin caught its own number in the same edit**: the
+from the list, and the arrow primitives are pinned at four beside it. **And the pin caught its own number in the same edit**: the
 first attempt said seventeen, from the standalone probe that had also
 included `QScrollBar` -- which the suite version leaves out because its
 focus policy is `NoFocus`. A count written from memory of a different run is
