@@ -28,10 +28,26 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-12, at 1257**,
+**Last re-verified under all six configurations: 2026-09-14, at 1305**,
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
-result. The sanitized run is clean because of 8.118's fix: the same run a
+result. Offscreen and xcb-under-Xvfb both ran 1305, `minimal` refused and
+said why, the hostile environment was absorbed by the pins, the sanitized
+run reported no failure and no leak, and memcheck was clean.
+
+That re-run was worth taking rather than assuming: the entries between
+8.122 and 8.143 changed the SGR writer, the cursor path, the elision
+helper and the drawing of five controls, and only the default
+configuration had been run against any of them.
+
+**One of them failed first, and it was the invocation.** Adding `xcb` to
+`TEST_PLATFORMS` by hand on a machine with `DISPLAY` unset fails, because
+there is no display to connect to -- which is exactly why the target runs
+xcb under Xvfb itself and does not put bare xcb in its own default. The
+Makefile's own usage example passes it, and the example assumes a display.
+A red result whose cause is the command rather than the code is the shape
+`evidence.md` opens with, and the tell was that every other configuration
+agreed at 1305. The sanitized run is clean because of 8.118's fix: the same run a
 day earlier reported 7706 bytes in 48 allocations, every one indirect from
 two unparented dialogs in checks written that afternoon, and `make check`
 cannot see any of it -- the leak detector lives in this target alone.
