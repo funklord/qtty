@@ -88,6 +88,9 @@ reimplements it:
 | `Alt` + a letter that matches nothing | Nothing. It does not type the letter into whatever has focus | qtty's |
 | A `QAction` shortcut, or a `QShortcut` | Fires, and its **context** is honoured either way: a `WidgetShortcut` needs its own widget focused, an `ApplicationShortcut` fires from any window. Neither fires from behind an open menu | qtty's |
 | `Menu`, `Shift+F10` | Opens the focused widget's context menu, honouring its `contextMenuPolicy` | qtty's |
+| `Home`, `End` | Jump to the first or last item of a focused list or tree | Qt's |
+| `PageUp`, `PageDown` | Move a screenful within it | Qt's |
+| A letter, typed into a focused list or tree | Jumps to the next item beginning with it -- type-ahead, which a terminal user reaches for and which nothing here has to implement | Qt's |
 | `Ctrl+C`, `Ctrl+D` | Quit -- except in a widget that takes text, where `Ctrl+C` is left for copy. Change them with `InputRouter::set_quit_keys()` | qtty's |
 | `Ctrl+Z` | An ordinary key, **not** a suspend -- see *Never block the event loop* for why, and how to get the conventional behaviour back | qtty's |
 
@@ -133,6 +136,21 @@ exist left an `f` in whatever you were editing. The text is now withheld
 from widgets that take typing, and only from those: an open menu still
 matches its items by the letter, because with no shortcut map that is how
 it finds them.
+
+**A table is not a list, and the difference is Qt's rather than qtty's.**
+In a `QTableWidget`, `Home` and `End` move within the ROW -- to the first
+and last column -- and type-ahead does not jump. Measured against plain
+Qt with no qtty in the process, which does exactly the same, so it is
+worth knowing before you file it: `Ctrl+Home` and `Ctrl+End` are the
+first and last cell.
+
+**Focus a widget the way you would in any Qt program: `w->setFocus()`.**
+`Qtty::focusWidget()` reads qtty's own record of who has focus, which is
+process-wide where Qt's is per-window, and it is refreshed FROM Qt's --
+on the next key and on the next frame. So `setFocus()` is what an
+application calls and the record follows it. `Qtty::set_focus_widget()`
+is the other side of that pair: it writes the record, which the next
+refresh overwrites, and it exists for the runtime rather than for you.
 
 ## Moving between pages and windows
 

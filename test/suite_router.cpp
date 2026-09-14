@@ -5097,5 +5097,55 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// The keys a terminal user presses in a list without thinking, delivered
+	// through the router to a focused view.
+	//
+	// None of this is qtty's behaviour -- it is Qt's, and the point of the
+	// check is that qtty's routing does not eat it. A library that
+	// intercepts keys to implement its own conventions is one keystroke away
+	// from swallowing Home, End, the paging keys or the letter that drives
+	// type-ahead, and nothing else here would notice: the guide promises
+	// these work unmodified.
+	//
+	// Focused with setFocus() rather than set_focus_widget(), which is what
+	// an application does and what makes the record follow: qtty's focus
+	// record is re-read from Qt's on the next key.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(24, 10));
+		auto *list = new QListWidget(&win);
+		list->setGeometry(0, 0, 24 * GridMetrics::cw(), 10 * GridMetrics::ch());
+		const char *const names[] = {"alpha", "bravo", "charlie", "delta",
+		                             "echo", "foxtrot", "golf", "hotel",
+		                             "india", "juliet", "kilo", "lima",
+		                             "mike", "november", "oscar"};
+		for (const char *n : names) list->addItem(QString::fromLatin1(n));
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter router(&win);
+		list->setCurrentRow(0);
+		list->setFocus();
+		QCoreApplication::processEvents();
+		const auto press = [&](int key, const QString &t = QString()) {
+			router.on_key({key, t, false, false, false});
+			QCoreApplication::processEvents();
+			return list->currentRow();
+		};
+		const int down = press(Qt::Key_Down);
+		const int end = press(Qt::Key_End);
+		const int home = press(Qt::Key_Home);
+		const int paged = press(Qt::Key_PageDown);
+		const int typed = press(Qt::Key_K, QStringLiteral("k"));
+		CHECK(down == 1 && end == 14 && home == 0,
+		      "Down, End and Home reach a focused list through the router");
+		CHECK(paged > 1 && paged < 14,
+		      "and PageDown moves a screenful rather than to an end");
+		CHECK(typed == 10,
+		      "and a typed letter still reaches the view's own type-ahead,"
+		      " which is how a terminal user finds an item by name");
+		GridGuard::reset();
+	}
+
 	return fails;
 }

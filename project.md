@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1305 checks, 0 failures. `make check` is green and includes
+1308 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -29,6 +29,8 @@ is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
 **Last re-verified under all six configurations: 2026-09-14, at 1305**,
+three checks having been added since without re-running them, which the
+two sentences below are separated precisely to allow.
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
 result. Offscreen and xcb-under-Xvfb both ran 1305, `minimal` refused and
@@ -15950,6 +15952,41 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.144 The keys nobody thinks about, and a focus pair that reads backwards (2026-09-14)
+
+Back to the guide's own question: what does a terminal user press without
+thinking? `Home`, `End`, the paging keys, and a letter to jump to an item by
+name. None of it was checked, and none of it is qtty's behaviour -- which is
+the reason to check it. **A library that intercepts keys for its own
+conventions is one keystroke away from swallowing them**, and nothing else
+here would notice, because the guide promises they work unmodified.
+
+They do. Measured through the router into a focused list: `Down` 1, `End` 14,
+`Home` 0, `PageDown` 7, and a typed `k` jumps to `kilo`.
+
+**A table differs, and it is Qt's difference.** In a `QTableWidget`, `Home`
+and `End` move within the ROW and type-ahead does not jump. Measured against
+**plain Qt with no qtty in the process**, which does exactly the same -- so
+the guide says so, to stop somebody filing it here. That control is what
+turned "a qtty defect" into "a documented Qt behaviour" in one run.
+
+**And the focus pair reads backwards, which cost the measurement twice.**
+`Qtty::set_focus_widget()` writes qtty's process-wide record; the next key or
+frame refreshes that record FROM Qt's per-window focus and overwrites it. So
+the call that looks like "set the focus" is transient, and `w->setFocus()` --
+which looks like it does not involve qtty at all -- is what actually sticks.
+
+    after set_focus_widget     QPushButton:second
+    after one keystroke        <none>
+    after second->setFocus()   <none>
+    after one more keystroke   QPushButton:second
+
+Both halves are correct and 8.119 put the refresh there deliberately. What
+was missing is anywhere saying which one an application calls: the header
+documents the NAMING of the pair at length -- why `focusWidget` keeps Qt's
+spelling and `set_focus_widget` does not -- and never says that one of them
+is the runtime's. The guide says it now.
 
 ### 8.143 A true sentence that characterised the situation wrongly (2026-09-14)
 
