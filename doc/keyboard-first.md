@@ -625,6 +625,15 @@ treated as one even when `TMUX` is unset. `qtty-negotiate --probes` run
 in the terminal you care about reports what was actually measured there;
 run it over a pipe and it says so rather than guessing.
 
+**Readline editing chords are not bound, and a terminal user will try
+them.** `Ctrl+E`, `Ctrl+K`, `Ctrl+U` and `Ctrl+W` do nothing in a text
+field here -- Qt gives them no meaning and qtty binds none -- while
+`Ctrl+A` does Qt's **Select All** rather than the start-of-line a shell
+user expects. Measured on a focused `QLineEdit`. If your application
+wants them, bind them yourself; whether qtty should offer them in the
+opt-in bundle is an open question in `project.md`, and the awkward part
+is `Ctrl+A`, which cannot mean both things.
+
 PRIMARY -- what a middle click pastes -- is unreachable through Qt here.
 Under the offscreen platform `QClipboard::supportsSelection()` is false
 and Qt refuses `setText(.., QClipboard::Selection)` outright.

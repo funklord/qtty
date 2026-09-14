@@ -15953,6 +15953,48 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.145 Readline chords in a text field: measured, and a question (2026-09-14)
+
+A terminal user's fingers know `Ctrl+A` for the start of a line, `Ctrl+E`
+for the end, `Ctrl+K` to kill to the end, `Ctrl+U` to kill to the start and
+`Ctrl+W` to rub out a word. Measured on a focused `QLineEdit`, cursor at 11
+of "hello brave world":
+
+    Ctrl+A   selects all -- Qt's meaning, not start-of-line
+    Ctrl+E   nothing
+    Ctrl+K   nothing
+    Ctrl+U   nothing
+    Ctrl+W   nothing
+
+So four of the five are inert and the fifth does something **different**
+from what the muscle memory expects, which is the worse of the two.
+
+**The option, its cost, and whose decision it is.**
+
+The option is the existing opt-in bundle. `set_keyboard_conventions()`
+already carries Enter, Up/Down, `Ctrl+PgUp`/`PgDn`, F6, `Alt`+letter and the
+Menu key -- keys qtty binds because a terminal user expects them and Qt does
+not supply them. Readline editing is the same argument applied to a text
+field, and four of the five chords are free: Qt gives `Ctrl+E`, `Ctrl+K`,
+`Ctrl+U` and `Ctrl+W` no meaning at all.
+
+The cost is `Ctrl+A`, and it cannot be paid by measuring. It is Select All
+in every Qt program and start-of-line in every shell, and a terminal
+application is both. Binding it breaks a Qt convention inside a Qt program;
+leaving it breaks the one chord a shell user reaches for first and leaves
+the set half-done. The same tension already has a decided instance here --
+`Ctrl+C` is quit, **except** in a widget that takes text, where it is left
+for copy -- and that precedent points at a per-widget answer rather than a
+global one.
+
+It is the copyright holder's decision, not this session's: it is a new
+convention in their project rather than a defect, and `working-practice.md`
+says a convention change is its own piece of work.
+
+**What is done meanwhile** is the part that needed no decision: the guide
+says what happens today, so a reader who presses `Ctrl+E` and gets nothing
+learns why in the document rather than by filing it.
+
 ### 8.144 The keys nobody thinks about, and a focus pair that reads backwards (2026-09-14)
 
 Back to the guide's own question: what does a terminal user press without
