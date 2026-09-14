@@ -646,6 +646,16 @@ these fires as it always did, even with a text field focused: a shortcut
 is something your program asked for by name, and these are a convention
 offered on its behalf.
 
+**`Ctrl+D` is NOT one of them, and it quits.** In readline it deletes
+the character under the caret; here it is a quit key, in a text field
+like anywhere else -- measured. So a user who has just found the five
+above working will reach for it and lose their work. If your application
+takes text and you would rather that did not happen, `set_quit_keys()`
+is the lever; whether qtty should change the default is an open question
+in `project.md`, and it is harder than it looks, because `Ctrl+C` is
+already left for copy in a text field and because the backend reports a
+vanished terminal by synthesising `Ctrl+D`.
+
 PRIMARY -- what a middle click pastes -- is unreachable through Qt here.
 Under the offscreen platform `QClipboard::supportsSelection()` is false
 and Qt refuses `setText(.., QClipboard::Selection)` outright.

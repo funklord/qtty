@@ -15953,6 +15953,48 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.147 Ctrl+D is three things at once (2026-09-14)
+
+8.146 taught a user's fingers that a text field answers to readline. The
+next chord those fingers reach for is `Ctrl+D` -- delete the character under
+the caret -- and measured with the event loop running:
+
+    Ctrl+D   survived the keystroke: NO    text unchanged
+
+It quits. **The feature shipped in 8.146 makes this more likely to be hit,
+not less**, which is the reason to raise it now rather than when somebody
+loses work to it.
+
+**Why it is not simply the `Ctrl+A` answer again.** Three claims on one
+chord:
+
+1. **qtty's quit key.** `Ctrl+C` and `Ctrl+D` are the pair, and `Ctrl+C` is
+   ALREADY given up in a text field, for copy. Exempting `Ctrl+D` there too
+   leaves **no quit key at all while a text field has focus** -- and a TUI
+   usually has one focused.
+2. **readline's delete-forward**, which is what the user is now expecting.
+3. **The backend's "the terminal has gone".** `read_input()` and
+   `write_out()` both report a vanished terminal by synthesising exactly
+   `{Key_D, ctrl}` into the same sink, on the same path. A per-widget
+   exemption cannot tell the two apart, because at the router they ARE the
+   same event -- so the exemption would swallow the signal that stops a
+   program whose terminal has closed, precisely when a text field is
+   focused.
+
+The third is 8.130's recorded coupling arriving with a cost attached: *the
+machine event is expressed in a vocabulary the application is allowed to
+redefine*. It said the honest fix is a seam that carries the event rather
+than a chord standing in for it, and that it belonged with the
+`set_quit_keys()` reachability decision. **This is what makes that
+prerequisite rather than tidy-up**: until the gone-signal stops being a
+keystroke, `Ctrl+D` cannot be given to the text field without breaking it.
+
+**Whose decision.** The holder's, and it is really two: whether `Ctrl+D`
+should delete-forward in a text field, and whether the gone-signal should
+become its own sink method first. What is done meanwhile needs no decision:
+the guide says `Ctrl+D` quits in a text field, names `set_quit_keys()` as
+the lever, and says why the default is not simply changed.
+
 ### 8.146 Readline editing, decided per widget (2026-09-14)
 
 8.145 measured the gap and put the question. The answer was **follow the
