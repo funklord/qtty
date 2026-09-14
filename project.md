@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1315 checks, 0 failures. `make check` is green and includes
+1316 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -2112,6 +2112,14 @@ In the order I would take them:
      which follows `Qtty::capabilities()`' precedent (8.130). That one had a
      decided shape to copy and this one does not -- the router is not the
      terminal, and handing it out is a different question.
+
+     **And the reason to be careful about it is gone too.** The paragraph
+     above used to say that closing this would let an application stop being
+     told its terminal had vanished, the backend having reported that by
+     synthesising `Ctrl+D` through the quit keys. It does not any more:
+     8.148 gave the event its own seam, `on_terminal_lost()`, which nothing
+     routes and no quit key can take. What is left is the shape decision by
+     itself.
    - **The font is hardcoded and fatal.** `setup()` installs DejaVu Sans
      Mono at 16 px and `qFatal()`s when the metrics are not integral.
      There is no override, so a machine without that font cannot run a
@@ -15952,6 +15960,43 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.149 A bundle that did not describe itself (2026-09-14)
+
+`keyboard_conventions_help()` is what an application puts on the screen so a
+terminal user can discover the keys -- the guide asks every program to show
+it rather than keep a second copy. Six chords went into the bundle in 8.146
+and 8.148 and **none of them went into the list**, so a user shown the help
+learned about Enter, the arrows, the tab chords, F6 and Alt+letter, and never
+that a text field answers to readline at all.
+
+**The check that guards this claimed to catch exactly that, and could not.**
+Its comment said *"a key added to one and not the other fails here"*, and six
+were added with the suite green throughout -- because the list it compares
+against is written out by hand in the check and drifts with the code rather
+than deriving from it. `evidence.md` calls that a **name claiming
+exhaustiveness**, and this is the first time the tree has caught one of its
+own with a measurement rather than by reading.
+
+The honest version says which direction it covers: a key NAMED in the check
+must appear in the help. The other direction -- a binding with no line --
+cannot be derived while the bindings live in `on_key()`'s branches rather
+than in a table, so the row COUNT is pinned instead, and adding to either
+side alone moves it. **That count caught a miscount in the same edit**: the
+list is nine rows and the first attempt said eight.
+
+**The new rows are QUALIFIED, and the principle was already in the file.**
+`Ctrl+C` is deliberately absent from the help because "naming Ctrl+C would
+promise a key an application may have taken away". The readline chords are
+always available but only ever applicable where a caret is, so they say "in
+text" rather than being silently omitted -- the same rule, answered with a
+qualifier instead of a silence.
+
+**And a note elsewhere came unblocked.** Section 3's `set_quit_keys()` entry
+warned that closing it would let an application stop being told its terminal
+had vanished. 8.148's seam removed that: what is left is the shape decision
+by itself, and the entry says so now rather than carrying a hazard that no
+longer exists.
 
 ### 8.148 The seam first, then the chord (2026-09-14)
 

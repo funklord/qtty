@@ -1850,3 +1850,15 @@ find = "\t\tif (notifier_) notifier_->setEnabled(false);"
 into = "\t\tif (false) notifier_->setEnabled(false);"
 count = 1
 check = "a terminal that went away arrives once"
+
+[[sabotage]]
+# A chord bound in the bundle and absent from the list the bundle shows its
+# user. The guide asks every application to put its keys on the screen from
+# this list rather than keeping a second copy, so a binding missing here is a
+# key nobody can discover. 8.149.
+name = "a bound chord is missing from the list that describes the bundle"
+file = "src/runtime/input_router.cpp"
+find = "\t\t{ QStringLiteral(\"Ctrl+K/U\"),       QStringLiteral(\"kill to end/start, in text\") },"
+into = ""
+count = 1
+check = "the conventions can list what they bind"

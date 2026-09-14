@@ -3247,13 +3247,29 @@ int suite_router() {
 			for (const auto &row : help) keys << row.first;
 			printf("info: the conventions describe themselves as [%s]\n",
 			       qPrintable(keys.join(QStringLiteral(", "))));
-			// Every binding the block above exercised has a line, which is
-			// the property that keeps the list and the behaviour together:
-			// a key added to one and not the other fails here.
+			// Every binding the block above exercised has a line.
+			//
+			// This used to claim more than it does -- "a key added to one and
+			// not the other fails here" -- and that was false, measured: six
+			// readline chords went into the bundle and this stayed green,
+			// because the list it compares against is written out by hand
+			// here and drifts with the code rather than deriving from it.
+			// `evidence.md` calls that a name claiming exhaustiveness, and
+			// the honest version says which direction it covers.
+			//
+			// It covers this one: a key NAMED below must be in the help. The
+			// other direction -- a binding with no line -- is not mechanically
+			// checkable while the bindings live in on_key()'s branches rather
+			// than in a table, so the row COUNT is pinned instead: adding to
+			// the help without adding here, or the reverse, moves it.
 			CHECK(keys.contains(QStringLiteral("Enter"))
 			      && keys.contains(QStringLiteral("Up/Down"))
 			      && keys.contains(QStringLiteral("Ctrl+PgUp/PgDn"))
 			      && keys.contains(QStringLiteral("F6"))
+			      && keys.contains(QStringLiteral("Alt+letter"))
+			      && keys.contains(QStringLiteral("Ctrl+A/E"))
+			      && keys.contains(QStringLiteral("Ctrl+K/U"))
+			      && keys.contains(QStringLiteral("Ctrl+W/D"))
 			      && keys.contains(QStringLiteral("Menu/Shift+F10")),
 			      "the conventions can list what they bind, so an "
 			      "application shows the keys without keeping its own copy "
@@ -3263,6 +3279,10 @@ int suite_router() {
 			CHECK(!keys.isEmpty(),
 			      "and every line says what its key does, a key with no "
 			      "meaning beside it being no help at all");
+			CHECK(help.size() == 9,
+			      "and the list is exactly as long as this check knows about,"
+			      " which is what stands in for deriving it from the"
+			      " bindings");
 		}
 		set_keyboard_conventions(false);          // process-wide: put it back
 		// NOT empty, since 8.77. The contract was never "empty when

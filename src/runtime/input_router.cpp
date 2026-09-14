@@ -51,6 +51,16 @@ QVector<QPair<QString, QString>> keyboard_conventions_help() {
 		{ QStringLiteral("Ctrl+PgUp/PgDn"), QStringLiteral("tab") },
 		{ QStringLiteral("F6"),             QStringLiteral("window") },
 		{ QStringLiteral("Alt+letter"),     QStringLiteral("jump to") },
+		// The readline chords, QUALIFIED, because they answer only where a
+		// caret is. The comment above says why Ctrl+C is not named at all --
+		// naming a key the list cannot promise is the fault this function
+		// exists to avoid -- and the same principle applies here with a
+		// qualifier rather than a silence: these are always available, just
+		// not always applicable, and a user reading "in text" is told
+		// exactly when to expect them.
+		{ QStringLiteral("Ctrl+A/E"),       QStringLiteral("line start/end, in text") },
+		{ QStringLiteral("Ctrl+K/U"),       QStringLiteral("kill to end/start, in text") },
+		{ QStringLiteral("Ctrl+W/D"),       QStringLiteral("rub out word, delete, in text") },
 		menu,
 	};
 }
