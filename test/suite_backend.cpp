@@ -70,8 +70,10 @@ struct Recorder : ITerminalEventSink {
 	void on_paste(const QString &s) override { pastes.append(s); }
 	void on_resize(QSize c) override { resizes.append(c); }
 	void on_focus_change(bool f) override { focus.append(f); }
+	int lost = 0;                        // the terminal went away
+	void on_terminal_lost() override { ++lost; }
 	void clear() { keys.clear(); mice.clear(); pastes.clear();
-		           resizes.clear(); focus.clear(); }
+		           resizes.clear(); focus.clear(); lost = 0; }
 };
 
 // The backend reads from fd 0, so bytes are fed through a pipe made to be
@@ -1311,11 +1313,10 @@ int suite_backend() {
 				// suite down the real descriptor if it were left set.
 				clearerr(stdout);
 
-				CHECK(!gone.keys.isEmpty()
-				          && gone.keys.last().qt_key == Qt::Key_D
-				          && gone.keys.last().ctrl,
+				CHECK(gone.lost == 1 && gone.keys.isEmpty(),
 				      "a frame written to a terminal that has gone tells the"
-				      " sink, as EOF on the way in does");
+				      " sink on the seam, as EOF on the way in does, and"
+				      " not as a keystroke anybody could have taken");
 			}
 		}
 	}
@@ -3478,9 +3479,15 @@ int suite_backend() {
 			::dup2(keep0, 0);
 			::close(keep0);
 			::close(eof_fds[0]);
-			CHECK(!rec.keys.isEmpty() && rec.keys[0].qt_key == Qt::Key_D
-			      && rec.keys[0].ctrl,
-			      "a terminal that went away arrives as Ctrl+D");
+			// ONCE, not once per turn of the loop. A descriptor at EOF
+			// stays readable, so the notifier re-fired every time: measured
+			// at twenty reports for twenty processEvents() before the EOF
+			// path stopped listening. The router quits on the first, so the
+			// loop usually ends before it shows -- but the sink method's
+			// default does nothing, and a sink taking it would spin.
+			CHECK(rec.lost == 1 && rec.keys.isEmpty(),
+			      "a terminal that went away arrives once, on its own seam"
+			      " rather than as a chord three other things also claim");
 		} else {
 			printf("FAIL: could not build the EOF pipe\n");
 			++fails;

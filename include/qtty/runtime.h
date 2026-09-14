@@ -89,6 +89,12 @@ public:
 	void on_paste(const QString &) override;
 	void on_resize(QSize cells) override;
 	void on_focus_change(bool) override;
+	// The terminal has gone, so there is nothing left to draw on and nothing
+	// to type into. Quits unconditionally: it is NOT a quit key, and none of
+	// the things that can take a quit key away -- set_quit_keys(), a text
+	// field holding Ctrl+C, the readline binding holding Ctrl+D -- may take
+	// this, because what it reports is not a chord anybody pressed.
+	void on_terminal_lost() override;
 
 	// Keys that quit the application (default: Ctrl-C, Ctrl-D).
 	void set_quit_keys(const QVector<KeyEvent> &);

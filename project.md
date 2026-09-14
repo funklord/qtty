@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1313 checks, 0 failures. `make check` is green and includes
+1315 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15952,6 +15952,53 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.148 The seam first, then the chord (2026-09-14)
+
+Settled by the copyright holder, in that order, and the order was the whole
+of it.
+
+**The seam.** `ITerminalEventSink::on_terminal_lost()` now carries "the
+terminal has gone" -- EOF on the way in, a failed write on the way out --
+where both used to synthesise `{Key_D, ctrl}` into the sink a keystroke
+arrives on. `InputRouter` implements it by quitting **unconditionally**: it
+is not a quit key, so nothing that can take a quit key away may take it.
+
+That closes 8.130's coupling, which had been recorded as a cost with no
+price attached until 8.147 put one on it: while the machine event WAS a
+keystroke, the router could not tell it from a typed one, so neither
+`set_quit_keys()` nor a text field could be given the chord without
+swallowing it.
+
+**Then the chord.** With the conventions on and a caret in a field, `Ctrl+D`
+deletes forward. The quit-key loop gives it up on exactly the condition that
+brings it to `readline_edit()`, so the two cannot disagree about who has it,
+and a chord that neither quits nor deletes never exists. Measured from an
+application with a real event loop:
+
+    Ctrl+D, conventions on,  text field      survived: yes
+    Ctrl+D, conventions off, text field      survived: NO (quit)
+    Ctrl+D, conventions on,  a list          survived: NO (quit)
+    terminal lost, conventions on, text field  survived: NO (quit)
+
+The last row is the one the seam was for.
+
+**A defect fell out of building it.** A descriptor at EOF stays READABLE, so
+the input notifier re-fired every turn of the loop: **twenty reports for
+twenty `processEvents()`**. The router quits on the first, so it never
+showed -- but the sink method's default does nothing, by design, and a sink
+taking it would have spun at full tilt. The EOF path stops listening now,
+and the check asserts ONE report rather than at least one.
+
+**And two checks could not see what they claimed.** The quit itself is not
+observable in the suite: `QCoreApplication::quit()` is a no-op with no main
+loop running, and a nested `QEventLoop` does not see it either -- measured,
+so the four rows above are an application's and say so. Worse, the check for
+"with the conventions off it still quits" first asserted that the text had
+not changed, and a sabotage came back *the named check PASSED against broken
+code*: **a `QLineEdit` leaves its text alone whether the chord was eaten by
+the quit-key loop or delivered and ignored.** It counts what ARRIVES at the
+widget now, which separates them.
 
 ### 8.147 Ctrl+D is three things at once (2026-09-14)
 

@@ -87,6 +87,25 @@ public:
 	virtual void on_paste(const QString &) = 0;
 	virtual void on_resize(QSize cells) = 0;
 	virtual void on_focus_change(bool focused) = 0;
+
+	// The terminal has gone: its window was closed, or the output is a pipe
+	// whose reader has finished. The backend learns it from EOF on the way in
+	// and from a failed write on the way out, and both say it here.
+	//
+	// It was a synthesised Ctrl+D until now, and that cost more than it
+	// looked. Three things claimed the chord: qtty's quit key, readline's
+	// delete-forward in a text field, and this. At the router the machine
+	// event and a typed one ARE the same event, so nothing could give the
+	// chord to a text field without swallowing the signal that stops a
+	// program whose terminal has closed -- and nothing could let an
+	// application change its quit keys without the same risk.
+	//
+	// Not pure, and a default that does nothing: a sink written before this
+	// existed keeps compiling, and the one that matters -- InputRouter --
+	// implements it. That is the interface-only-as-wired-as-its-least-used-
+	// method hazard by construction, so the suite checks the wiring end to
+	// end rather than the method alone.
+	virtual void on_terminal_lost() {}
 };
 
 class ITerminalBackend {

@@ -1815,3 +1815,38 @@ find = "\t\tsend(Qt::Key_End, Qt::ShiftModifier);"
 into = "\t\tsend(Qt::Key_End, Qt::ShiftModifier | Qt::ControlModifier);"
 count = 1
 check = "kill-to-end stops at the end of the LINE"
+
+[[sabotage]]
+# Ctrl+D not given up by the quit-key loop, so it quits instead of deleting
+# even where readline_edit() would take it. That is how it was before the
+# terminal-lost seam made giving it up safe. 8.148.
+name = "Ctrl+D quits instead of deleting forward"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\tif (k.qt_key == Qt::Key_D && k.ctrl && in_text && s_conventions)"
+into = "\t\t\tif (false)"
+count = 1
+check = "Ctrl+D deletes the character under the caret"
+
+[[sabotage]]
+# The quit-key loop giving Ctrl+D up whether or not the conventions are on.
+# readline_edit() then declines it too, and the chord neither quits nor
+# deletes -- worse than either. 8.148.
+name = "Ctrl+D neither quits nor deletes"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\tif (k.qt_key == Qt::Key_D && k.ctrl && in_text && s_conventions)"
+into = "\t\t\tif (k.qt_key == Qt::Key_D && k.ctrl && in_text)"
+count = 1
+check = "and with the conventions off the quit-key loop still eats it"
+
+[[sabotage]]
+# The backend reporting a vanished terminal on every turn of the loop again.
+# A descriptor at EOF stays readable, so the notifier re-fires: measured at
+# twenty reports for twenty processEvents(). The router quits on the first,
+# but the sink method's default does nothing and a sink taking it spins at
+# full tilt. 8.148.
+name = "a vanished terminal is reported on every turn of the loop"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tif (notifier_) notifier_->setEnabled(false);"
+into = "\t\tif (false) notifier_->setEnabled(false);"
+count = 1
+check = "a terminal that went away arrives once"

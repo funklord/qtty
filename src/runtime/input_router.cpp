@@ -675,6 +675,13 @@ bool InputRouter::readline_edit(const KeyEvent &k) {
 	case Qt::Key_W:
 		send(Qt::Key_Backspace, Qt::ControlModifier);
 		break;
+	case Qt::Key_D:
+		// Delete FORWARD, which is what readline's Ctrl+D does with a
+		// character under the caret. The quit-key loop gives the chord up on
+		// the same condition that brings it here, so the two cannot disagree
+		// about who has it.
+		send(Qt::Key_Delete, Qt::NoModifier);
+		break;
 	default:
 		return false;
 	}
@@ -927,8 +934,22 @@ void InputRouter::on_key(const KeyEvent &k) {
 			// old behaviour has set_quit_keys(), and one that wants no quit
 			// key at all passes an empty list.
 			const QWidget *fw = key_target();
-			if (k.qt_key == Qt::Key_C && k.ctrl && fw
-			    && fw->testAttribute(Qt::WA_InputMethodEnabled))
+			const bool in_text =
+			    fw && fw->testAttribute(Qt::WA_InputMethodEnabled);
+			if (k.qt_key == Qt::Key_C && k.ctrl && in_text)
+				break;
+			// And Ctrl+D, on the same test and for the same reason, but ONLY
+			// where readline_edit() will take it -- with the conventions on.
+			// Off, it stays a quit key, because a chord that neither quits
+			// nor deletes is worse than either.
+			//
+			// This became safe when the terminal-lost seam landed and not
+			// before. While a vanished terminal was reported as a synthesised
+			// Ctrl+D it came through this very loop, so giving the chord to a
+			// text field would have swallowed the signal that stops a program
+			// whose terminal has closed -- exactly when a field had focus,
+			// which in a TUI is most of the time.
+			if (k.qt_key == Qt::Key_D && k.ctrl && in_text && s_conventions)
 				break;
 			qApp->quit();
 			return;
@@ -1491,5 +1512,17 @@ void InputRouter::on_resize(QSize cells) {
 }
 
 void InputRouter::on_focus_change(bool) { if (frame_requested) frame_requested(); }
+
+// The terminal has gone. Not routed, not matched against the quit keys and
+// not offered to the focused widget: there is no screen left to draw on and
+// no keyboard to read, so the only thing to do is stop.
+//
+// Unconditional, which is the whole reason the seam exists. While this
+// arrived as a synthesised Ctrl+D it went through the quit-key loop with
+// every other key, so anything that took that chord away -- set_quit_keys(),
+// or a text field claiming it -- took this with it.
+void InputRouter::on_terminal_lost() {
+	if (qApp) qApp->quit();
+}
 
 } // namespace Qtty

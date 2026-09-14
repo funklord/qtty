@@ -253,6 +253,7 @@ One line turns on the habits a terminal user has and Qt does not:
 | `Ctrl+A`, `Ctrl+E` | Start and end of the line, **in a widget that takes text** |
 | `Ctrl+K`, `Ctrl+U` | Kill to the end of the line, and to the start |
 | `Ctrl+W` | Rub out the word before the caret |
+| `Ctrl+D` | Delete the character under the caret -- a quit key everywhere else |
 
 The first two are the ones that **differ** from Qt rather than merely
 adding to it, and they are why the whole set is opt-in. On a desktop a
@@ -646,15 +647,18 @@ these fires as it always did, even with a text field focused: a shortcut
 is something your program asked for by name, and these are a convention
 offered on its behalf.
 
-**`Ctrl+D` is NOT one of them, and it quits.** In readline it deletes
-the character under the caret; here it is a quit key, in a text field
-like anywhere else -- measured. So a user who has just found the five
-above working will reach for it and lose their work. If your application
-takes text and you would rather that did not happen, `set_quit_keys()`
-is the lever; whether qtty should change the default is an open question
-in `project.md`, and it is harder than it looks, because `Ctrl+C` is
-already left for copy in a text field and because the backend reports a
-vanished terminal by synthesising `Ctrl+D`.
+**`Ctrl+D` deletes forward too**, on the same terms: with the
+conventions on, in a widget that takes text. Elsewhere, and with them
+off, it is still a quit key -- so a chord that neither quits nor deletes
+never exists.
+
+That needed one thing to land first. qtty used to report a vanished
+terminal by **synthesising `Ctrl+D`** into the same sink a keystroke
+arrives on, so giving the chord to a text field would have swallowed the
+signal that stops a program whose terminal has closed -- exactly when a
+field had focus, which in a TUI is most of the time. The backend says it
+on `ITerminalEventSink::on_terminal_lost()` now, which nothing routes and
+no binding can take.
 
 PRIMARY -- what a middle click pastes -- is unreachable through Qt here.
 Under the offscreen platform `QClipboard::supportsSelection()` is false

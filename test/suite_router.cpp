@@ -5222,6 +5222,72 @@ int suite_router() {
 			      "and outside a text field it is still Select All, which is"
 			      " what deciding per widget buys");
 		}
+		// Ctrl+D, which is the chord three things claimed until the
+		// terminal-lost seam took one of them away.
+		//
+		// With the conventions on and a caret in a field it deletes forward,
+		// as readline's does. With them off it is a quit key and must NOT
+		// delete -- a chord that neither quits nor deletes would be worse
+		// than either, which is why the quit-key loop gives it up on exactly
+		// the condition that brings it here.
+		//
+		// What this canNOT check is the quit itself: QCoreApplication::quit()
+		// is a no-op with no main loop running, and the suite has none, so
+		// aboutToQuit never fires -- measured. The four quit cases are in
+		// project.md, taken from an application with a real exec().
+		{
+			// The widget is WATCHED rather than the text compared, and the
+			// sabotage run is why. "The text did not change" cannot tell a
+			// chord consumed by the quit-key loop from one delivered to a
+			// QLineEdit that has no use for it -- both leave the text alone
+			// -- so an entry that stopped the loop giving Ctrl+D up came back
+			// "the named check PASSED against broken code". Counting what
+			// ARRIVES separates them.
+			struct Watch : QObject {
+				int ctrl_d = 0;
+				bool eventFilter(QObject *, QEvent *e) override {
+					if (e->type() == QEvent::KeyPress) {
+						auto *k = static_cast<QKeyEvent *>(e);
+						if (k->key() == Qt::Key_D
+						    && (k->modifiers() & Qt::ControlModifier))
+							++ctrl_d;
+					}
+					return false;
+				}
+			};
+			const auto after_ctrl_d = [](bool conventions, int *arrived) {
+				set_keyboard_conventions(conventions);
+				QWidget win;
+				win.setAttribute(Qt::WA_DontShowOnScreen);
+				win.resize(GridMetrics::cells(24, 4));
+				auto *edit = new QLineEdit(&win);
+				edit->setGeometry(0, 0, 24 * GridMetrics::cw(), GridMetrics::ch());
+				edit->setText(QStringLiteral("hello brave world"));
+				win.show();
+				QCoreApplication::processEvents();
+				InputRouter r(&win);
+				Watch watch;
+				edit->installEventFilter(&watch);
+				edit->setFocus();
+				edit->setCursorPosition(5);
+				QCoreApplication::processEvents();
+				r.on_key({Qt::Key_D, QString(), true, false, false});
+				QCoreApplication::processEvents();
+				*arrived = watch.ctrl_d;
+				return edit->text();
+			};
+			int on_arrived = -1, off_arrived = -1;
+			const QString on_text = after_ctrl_d(true, &on_arrived);
+			const QString off_text = after_ctrl_d(false, &off_arrived);
+			CHECK(on_text == QStringLiteral("hellobrave world") && on_arrived == 0,
+			      "Ctrl+D deletes the character under the caret, which the"
+			      " terminal-lost seam had to land before it could");
+			CHECK(off_text == QStringLiteral("hello brave world")
+			          && off_arrived == 0,
+			      "and with the conventions off the quit-key loop still eats"
+			      " it, rather than passing a chord that does nothing");
+		}
+
 		// And the same chords in a MULTI-LINE editor, where the motions they
 		// are built from are line-relative. Home and End are the start and
 		// end of the LINE in Qt, not of the document, so kill-to-end must

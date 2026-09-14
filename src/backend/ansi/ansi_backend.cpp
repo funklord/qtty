@@ -984,7 +984,7 @@ void AnsiBackend::terminal_gone() {
 	if (gone_ || !sink_) return;
 	gone_ = true;
 	clearerr(stdout);
-	sink_->on_key({Qt::Key_D, QString(), true, false, false});
+	sink_->on_terminal_lost();
 }
 
 void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
@@ -1486,8 +1486,21 @@ void AnsiBackend::read_input() {
 	if (escape_timer_) escape_timer_->stop();
 	char buf[256];
 	ssize_t n = ::read(0, buf, sizeof buf);
-	if (n <= 0) {                                     // EOF: quit politely
-		if (sink_) sink_->on_key({Qt::Key_D, QString(), true, false, false});
+	if (n <= 0) {                                     // EOF: say so, once
+		// Once, and the notifier is why. A pipe or a pty at EOF stays
+		// READABLE for ever, so this fires again on every turn of the event
+		// loop: measured at twenty reports for twenty processEvents() while
+		// the seam was being built. The router quits on the first, so the
+		// loop usually ends before it matters -- but ITerminalEventSink's
+		// default does nothing, by design, and a sink that takes it would
+		// spin at full tilt until somebody killed the program.
+		//
+		// There is nothing further to read from a descriptor at EOF, so the
+		// honest thing is to stop listening to it. That also makes the
+		// report match write_out()'s, which latches on gone_ for the same
+		// reason: a terminal goes away once.
+		if (notifier_) notifier_->setEnabled(false);
+		if (sink_) sink_->on_terminal_lost();
 		return;
 	}
 	pending_.append(buf, n);
