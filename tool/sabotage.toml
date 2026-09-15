@@ -2140,3 +2140,23 @@ find = "\t\tif (!a->isEnabled() || a->isSeparator()) continue;\n\t\tif (counted.
 into = "\t\tif (a->isSeparator()) continue;\n\t\tif (counted.contains(a)) continue;"
 count = 1
 check = "while an action the application hid answers nothing"
+
+[[sabotage]]
+# The calendar's arrows unnamed again, so a previous and a next month are
+# two identical empty brackets. 8.169.
+name = "a calendar's month arrows say nothing"
+file = "src/grid/grid_style.cpp"
+find = "\t\tif (n == QLatin1String(\"qt_calendar_prevmonth\"))\n\t\t\treturn QStringLiteral(\"\u25C2\");"
+into = "\t\tif (false)\n\t\t\treturn QStringLiteral(\"\u25C2\");"
+count = 1
+check = "a calendar's month arrows say which way they go"
+
+[[sabotage]]
+# Both arrows drawn the same way round, which is what a single glyph for
+# the pair would look like and which the obvious check cannot see.
+name = "a calendar's arrows point the same way"
+file = "src/grid/grid_style.cpp"
+find = "\t\tif (n == QLatin1String(\"qt_calendar_nextmonth\"))\n\t\t\treturn QStringLiteral(\"\u25B8\");"
+into = "\t\tif (n == QLatin1String(\"qt_calendar_nextmonth\"))\n\t\t\treturn QStringLiteral(\"\u25C2\");"
+count = 1
+check = "and the previous one is on the left"

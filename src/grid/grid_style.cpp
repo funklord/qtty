@@ -73,6 +73,16 @@ static QString tool_button_label(const QStyleOptionToolButton *tb, const QWidget
 			return QStringLiteral("✕");
 		if (n == QLatin1String("qt_dockwidget_floatbutton"))
 			return QStringLiteral("↗");
+		// A calendar's month arrows, which are the same case one widget
+		// along: Qt draws them as PIXMAPS rather than setting arrowType, so
+		// the branch above cannot see them and they carry no text, no tool
+		// tip and no action -- measured, every one of those is empty. They
+		// came out as `[]` twice, a previous and a next that a terminal user
+		// could not tell apart, in Qt's own QCalendarWidget.
+		if (n == QLatin1String("qt_calendar_prevmonth"))
+			return QStringLiteral("◂");
+		if (n == QLatin1String("qt_calendar_nextmonth"))
+			return QStringLiteral("▸");
 	}
 	QString text = strip_mnemonic(tb->text);
 	// An icon-only action, which is the common toolbar shape and had nothing

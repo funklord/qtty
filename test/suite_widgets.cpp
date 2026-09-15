@@ -1902,6 +1902,32 @@ int suite_widgets() {
 		      "sizeHint reserves the decoration and the gap, in whole cells");
 	}
 
+	// A CALENDAR's month arrows, which Qt draws as pixmaps rather than by
+	// setting arrowType -- so the arrow branch cannot see them -- and which
+	// carry no text, no tool tip and no action: measured, every one of those
+	// is empty. They came out as `[]` twice, a previous and a next nobody
+	// could tell apart, in Qt's own QCalendarWidget.
+	//
+	// Named from the widget, which is the dock buttons' rule one widget
+	// along: identity read from the object rather than from a picture.
+	{
+		QCalendarWidget cal;
+		cal.setAttribute(Qt::WA_DontShowOnScreen);
+		cal.setSelectedDate(QDate(2026, 9, 15));
+		cal.resize(GridMetrics::cells(34, 12));
+		cal.show();
+		QCoreApplication::processEvents();
+		CellBuffer buf(34, 12);
+		Qtty::render_once(cal, buf);
+		const QString top = buf.to_text().section(QLatin1Char('\n'), 0, 0);
+		CHECK(top.contains(QStringLiteral("◂")) && top.contains(QStringLiteral("▸")),
+		      "a calendar's month arrows say which way they go, Qt giving "
+		      "them a pixmap and nothing else a terminal can read");
+		CHECK(top.indexOf(QStringLiteral("◂")) < top.indexOf(QStringLiteral("▸")),
+		      "and the previous one is on the left, which is the half a "
+		      "single glyph for both would have hidden");
+	}
+
 	// A SMALL icon beside the text costs no second row, which is what a
 	// terminal can afford to be strict about: the icon is drawn as a glyph in
 	// the item's own row, so a row measured for 16 pixels of picture shows

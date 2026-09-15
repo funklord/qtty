@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1354 checks, 0 failures. `make check` is green and includes
+1356 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15987,6 +15987,42 @@ measures neither, and the order was the second thing.
 
 Re-pointed at the original walk -- reverse, raw -- it stops the suite at 250
 checks, which is what the entry claims.
+
+### 8.169 A pixmap is not a name, and Qt names its own widgets (2026-09-15)
+
+More of Qt's composites through the seam. A `QCalendarWidget` renders its
+grid, its week numbers and its month and year buttons -- and its two
+navigation arrows came out as `[]` and `[]`, a previous and a next that a
+terminal user cannot tell apart.
+
+Measured before reaching for anything:
+
+    objectName[qt_calendar_prevmonth] text[] tip[] icon=1 arrowType=0
+    objectName[qt_calendar_nextmonth] text[] tip[] icon=1 arrowType=0
+
+Every route this style already has was empty. The arrow branch reads
+`arrowType`, and Qt draws these as PIXMAPS instead; the tool-tip fallback
+(8.something, the one that makes a file dialog's toolbar readable) has
+nothing to read, because these carry no tool tip and no action either.
+
+What they do carry is Qt's own object name, which is the dock buttons' rule
+one widget along -- identity read from the OBJECT rather than from a
+picture, and the reason that case was not the iconography question it was
+first filed as. `◂` and `▸` now.
+
+**The check asserts the pair rather than the glyphs.** One that looked for
+two arrows would pass if both pointed the same way, which is exactly what a
+single glyph for the pair would produce -- so the second half asserts that
+the previous one is to the LEFT of the next one, and the sabotage that
+points them both the same way reddens it.
+
+**And the same session confirmed two things that are already decided**,
+which is worth a line so the next reader does not re-open them: a
+`QGraphicsView` renders as a labelled placeholder, exactly as design.md's
+unsupported row says; and an HTML table's borders arrive as coloured blocks
+rather than box-drawing glyphs, which is section 0b's standing question
+about a rule drawn as a thin rectangle, re-measured here through a
+`QTextEdit`.
 
 ### 8.168 What a narrow terminal takes away, and what it does not (2026-09-15)
 
