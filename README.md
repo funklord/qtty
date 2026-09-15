@@ -169,8 +169,15 @@ that answer so a status bar keeps no second copy of them,
 every control is on it, `Qtty::mnemonic_conflicts()` names the `Alt`+letters
 two controls both claim and `Qtty::shortcut_conflicts()` the chords two
 things answer -- collisions nothing else can show, since the loser simply
-never fires and Qt's own ambiguity report needs an active window -- and `Qtty::focusWidget()` says who has focus --
-which `QWidget::hasFocus()` cannot here, no window ever being active.
+never fires and Qt's own ambiguity report needs an active window -- and
+`Qtty::focusWidget()` says who has focus, which `QWidget::hasFocus()` cannot
+here, no window ever being active.
+
+The conventions carry one thing that is not a key: **a status tip follows
+focus**, which is what Qt does on hover and what a terminal user can never
+ask for. Every `setStatusTip()` an application has already written then
+explains its control to somebody, and a `QMainWindow` shows it with no code
+at all.
 
 For testing without a terminal: `Qtty::test::snapshot_of()` renders a
 widget to text in one call -- glyphs, attributes and colours --  and

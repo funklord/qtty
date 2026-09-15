@@ -656,6 +656,57 @@ static QVector<ShortcutClaim> shortcut_claims(QWidget *scope) {
 	return out;
 }
 
+// How far a claim's owner is from the focused widget, walking up. 0 when the
+// owner IS the focus widget, 1 for its parent, and so on; a large number when
+// the owner is not above the focus at all -- an application-context claim from
+// another window, or an action belonging to no widget.
+//
+// This is what decides between claims that ALL apply. Qt's own MDI is the
+// case that asked for it: every subwindow's system menu carries the same
+// `&Close` on Ctrl+F4, with window context, in one window -- so the chord is
+// ambiguous by construction, and answering the first in enumeration order
+// closed a document the user was not in. The nearest owner is the subwindow
+// the focus is inside, which is the one they meant.
+//
+// A desktop Qt does not decide this either: QShortcutMap reports an ambiguity
+// and cycles between the claimants. Cycling needs a memory of what answered
+// last and gives a user a chord that does something different each press;
+// nearest-to-focus gives the same answer every time and the answer they
+// expect.
+static int claim_distance(const ShortcutClaim &c, const QWidget *fw) {
+	const int far = 1000;
+	if (!fw || c.application) return far;
+	QVector<const QWidget *> owners;
+	if (const auto *a = qobject_cast<const QAction *>(c.who))
+		owners = owners_of(a);
+	else if (const auto *sc = qobject_cast<const QShortcut *>(c.who)) {
+		if (auto *pw = qobject_cast<QWidget *>(sc->parent())) owners.append(pw);
+	}
+	if (owners.isEmpty()) return far;
+	// Identity, and only identity. A containment test was written here first
+	// -- the nearest ancestor that IS the owner or CONTAINS it -- on the
+	// theory that an action's owner is often a menu and a menu is nobody's
+	// ancestor. It is not needed: Qt associates `&Close` with the SUBWINDOW
+	// as well as with its system menu, so the subwindow the focus sits in
+	// answers by identity alone.
+	//
+	// Removed rather than kept as insurance, because nothing could prove it:
+	// its sabotage reddened no check, which is the harness saying a rule has
+	// no defender. What had actually failed while it looked necessary was a
+	// check asserting on a QPointer to a subwindow that QMdiArea deletes a
+	// turn after closing.
+	int best = far;
+	for (const QWidget *o : std::as_const(owners)) {
+		int steps = 0;
+		for (const QWidget *w = fw; w; w = w->parentWidget(), ++steps)
+			if (w == o) {
+				best = qMin(best, steps);
+				break;
+			}
+	}
+	return best;
+}
+
 // Whether a claim answers with `fw` focused. An application-context claim
 // from another window answers wherever you are -- that is what the context
 // means -- and the rest are asked through the router's own predicates.
@@ -695,11 +746,24 @@ QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope) {
 		seen.append(c.key);
 		QStringList who;
 		for (QWidget *fw : std::as_const(focuses)) {
-			QStringList here;
+			// Nearest first, because that is the order the matcher picks in
+			// and the report promises the winner is named first. Sorted for
+			// THIS focus, since which claim is nearest is a property of
+			// where the focus is rather than of the claims.
+			QVector<QPair<int, QString>> here;
 			for (const ShortcutClaim &other : claims)
 				if (other.key == c.key && claim_applies(other, scope, fw))
-					here << other.text;
-			if (here.size() > who.size()) who = here;
+					here.append({claim_distance(other, fw), other.text});
+			std::stable_sort(here.begin(), here.end(),
+			                 [](const QPair<int, QString> &a,
+			                    const QPair<int, QString> &b) {
+				                 return a.first < b.first;
+			                 });
+			if (here.size() > who.size()) {
+				who.clear();
+				for (const auto &entry : std::as_const(here))
+					who << entry.second;
+			}
 		}
 		if (who.size() > 1) out.append({c.key, who});
 	}
@@ -759,9 +823,25 @@ bool InputRouter::match_shortcut(const KeyEvent &k) {
 	// at all: by definition it does not care which window you are in, so the
 	// scope cannot find it. Deliberately narrow -- a WINDOW-context shortcut
 	// in another window must not fire, and there is a check for each.
-	for (const ShortcutClaim &claim : shortcut_claims(scope)) {
+	// NEAREST THE FOCUS, not first in the list. Several claims can apply at
+	// once -- Qt's own MDI gives every subwindow the same Ctrl+F4 -- and
+	// enumeration order then answers with whichever the walk reached first,
+	// which is not the one the user is in. Ties keep enumeration order, so
+	// nothing that had exactly one claimant changes.
+	const QVector<ShortcutClaim> claims = shortcut_claims(scope);
+	const ShortcutClaim *best = nullptr;
+	int best_distance = 0;
+	for (const ShortcutClaim &claim : claims) {
 		if (claim.key != pressed) continue;
 		if (!claim_applies(claim, scope, focusWidget())) continue;
+		const int d = claim_distance(claim, focusWidget());
+		if (!best || d < best_distance) {
+			best = &claim;
+			best_distance = d;
+		}
+	}
+	if (best) {
+		const ShortcutClaim &claim = *best;
 		if (auto *a = qobject_cast<QAction *>(claim.who)) {
 			if (popup_owns_input) return true;   // swallowed, not fired
 			a->trigger();

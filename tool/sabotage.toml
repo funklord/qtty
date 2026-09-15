@@ -2180,3 +2180,14 @@ find = "\tcase PM_TitleBarHeight:                                return ch;"
 into = "\tcase PM_TitleBarHeight:                                return 24;"
 count = 1
 check = "the title bar itself measures one row"
+
+[[sabotage]]
+# Shortcut resolution back to first-in-the-walk. Qt's own MDI gives every
+# subwindow the same Ctrl+F4, so the chord then closes whichever the
+# enumeration reached first rather than the one the focus is in. 8.174.
+name = "a chord answers by walk order rather than by nearness"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (!best || d < best_distance) {"
+into = "\t\tif (!best) {"
+count = 1
+check = "and the chord answers for the container the focus is in"

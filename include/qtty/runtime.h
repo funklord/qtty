@@ -88,7 +88,9 @@ QVector<QWidget *> keyboard_reachable(QWidget *scope);
 QVector<QPair<QChar, QStringList>> mnemonic_conflicts(QWidget *scope);
 
 // And the same question for chords: the key sequences more than one thing in
-// `scope` answers, with the winner named first. Actions and QShortcuts both,
+// `scope` answers, with the winner named first -- which is the NEAREST
+// claimant to the focus rather than the first the walk finds, since that is
+// how the router chooses (8.174). Actions and QShortcuts both,
 // including the application-context ones in other windows, because those
 // answer here by definition.
 //

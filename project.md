@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1359 checks, 0 failures. `make check` is green and includes
+1363 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16216,6 +16216,139 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.174 Nearest wins, and two rules that could not be proved (2026-09-15)
+
+8.173's finding, fixed: where several claims answer one chord and all of
+them apply, the **nearest to the focus** answers rather than the first the
+walk reaches. Distance is the number of steps from the focus widget up to
+the claim's owner; ties keep enumeration order, so a chord with one claimant
+behaves exactly as before.
+
+Qt's own MDI is the case. Every subwindow's system menu carries `&Close` on
+`Ctrl+F4`, all in one window, so the chord was ambiguous before an
+application did anything -- and it closed the subwindow the walk reached
+first. Measured, focus inside the second subwindow:
+
+    first's  action   distance 2
+    second's action   distance 1
+
+`Qtty::shortcut_conflicts()` sorts the same way now, or its promise -- the
+winner is named first -- would have stopped being true the moment the
+matcher stopped choosing that way. The header and the guide say so too.
+
+**Two checks flipped and that is the evidence the pair is coherent.** A
+window-scoped action and a widget-scoped `QShortcut` on the same chord used
+to resolve to the action, because the enumeration reaches the window's
+actions first; now the `QShortcut` on the FOCUSED widget answers, and the
+report names it first. They flipped together, which is what says the report
+and the matcher still describe one program. The opposite direction is
+checked as well: from a widget the narrow claim does not cover, the window's
+own action answers.
+
+**And two rules were written that nothing could prove.** A containment test
+-- nearest ancestor that IS the owner or CONTAINS it -- was added on the
+theory that an action's owner is often a menu and a menu is nobody's
+ancestor. Its sabotage reddened nothing: Qt associates `&Close` with the
+SUBWINDOW as well as its menu, so identity alone decides. Removed. What had
+failed while it looked necessary was a check asserting on a `QPointer` to a
+subwindow, which `QMdiArea` deletes a turn after closing -- the behaviour
+was right and the check was measuring the timing.
+
+That is twice in one day that the harness refused a rule rather than a
+defect (8.171 was the first), and both times the rule looked reasonable and
+changed nothing. **A sabotage that reddens no check is the tool saying the
+code has no defender**, which is worth as much as one that catches a bug.
+
+**And the xcb arm refused the FIXTURE twice, for two different reasons** --
+which is what that arm is for, and neither would have been found by the
+default run:
+
+- The first version asserted through `QMdiArea` itself, and Qt does not
+  build a subwindow's system menu on every platform: **two `&Close` actions
+  with `Ctrl+F4` under the offscreen plugin and none under xcb**. A check
+  resting on them passes in one arm and fails in the other for a reason that
+  has nothing to do with the rule. The fixture builds its own ambiguity now;
+  Qt's MDI stays here as the instance that motivated it.
+- The second version set the focus RECORD before draining the events, and
+  under xcb a window that has just been shown activates asynchronously and
+  moves Qt's focus to the first widget in the chain. The record was
+  overwritten and the chord answered for the wrong container. Setting the
+  record last, immediately before the key, is right on both platforms.
+
+### 8.173 Qt's own ambiguity, found by the tool built for it (2026-09-15)
+
+A sentence written into the guide about MDI -- *"Qt's own `Ctrl+Tab` inside
+the area still does"* -- was checked before it was left there, and it was
+false. Measured:
+
+    after Ctrl+Tab:  the active subwindow is unchanged
+    QShortcut children of the area: 0
+    the only shortcut-bearing actions: &Close, Ctrl+F4, WindowShortcut
+
+`Ctrl+Tab` is implemented in a filter the key never reaches: the focused
+editor takes it first. That is Qt's arrangement meeting this runtime's
+delivery rather than a binding anybody forgot.
+
+**What the same probe found is better than the correction.** `Ctrl+F4`
+DOES close a subwindow -- and it closed one that was not the active one.
+Every subwindow's system menu carries the same `&Close` on `Ctrl+F4` and on
+`Ctrl+W`, all with `WindowShortcut` context and all in one window, so the
+chord is **ambiguous by construction in Qt's own widget**. Asked about it,
+8.156's helper says exactly that:
+
+    clash [Ctrl+F4] answered by &Close / &Close
+    clash [Ctrl+W]  answered by &Close / &Close
+
+That is the tool validated against third-party code, which is the only
+validation that counts for a report: it was built from this tree's own
+fixtures, and the first real application-shaped thing it was pointed at had
+a genuine collision in it.
+
+On a desktop `QShortcutMap` detects such an ambiguity and cycles between the
+claimants; here the first in enumeration order answered, which is why the
+wrong document closed. **8.174 is the pass that fixed it**, taken separately
+as this entry said it should be.
+
+### 8.172 What the third-party sweep covered, and what it cost (2026-09-15)
+
+8.165 to 8.171 came out of one exercise: running code **nobody wrote for
+this library** through the installed seam. The map is worth keeping, because
+an empty result only counts where the method is recorded, and because the
+next lens should not re-run this one.
+
+What was rendered, and what each produced:
+
+    Qt's menus example       renders; the status tips work; found the
+                             double-counted action (8.165)
+    Qt's widget gallery      every standard control renders; found the two
+                             lines sharing a row (8.166)
+    QFileDialog              renders; found the doubled item row (8.167)
+    QMessageBox, QInputDialog,
+    QWizard                  render; nothing found
+    a toolbar that overflows found what a narrow terminal keeps (8.168)
+    QCalendarWidget          found the unnamed month arrows (8.169)
+    QMdiArea                 found the covered subwindow name (8.170)
+    QFontDialog              a group box overlap that was Qt's layout and
+                             not this style's sizing (8.171)
+    QColorDialog             renders, swatches and all -- the grid is
+                             coloured cells with no glyphs, which is why
+                             the text plane looked empty
+    QGraphicsView            a labelled placeholder, exactly as design.md's
+                             unsupported row says
+    rich text with a table   renders; the borders arrive as coloured blocks,
+                             which is section 0b's standing question
+    QSplitter                renders; Tab reaches what Qt makes focusable
+
+**The cost of the exercise was five defects and one retraction**, and the
+retraction is the one worth remembering: a plausible mechanism can survive
+a visible improvement and still be wrong (8.171).
+
+**What it did not cover**, so the next reader knows where the map ends:
+printing, drag and drop between applications, anything needing a real
+window manager, and Qt's own examples that open a modal dialog on startup --
+`richtext/orderform` hangs under a driver with no one to close it, which is
+a property of the example rather than of the library.
 
 ### 8.165 Qt's own example, run through the seam (2026-09-15)
 

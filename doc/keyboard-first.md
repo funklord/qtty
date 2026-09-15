@@ -362,7 +362,11 @@ means the first one the router reaches answers and the other never does.
 
 It covers `QAction` and `QShortcut` alike, including the
 `ApplicationShortcut` ones in your other windows, since those answer here by
-definition. **Context decides**, so this is not a list of sequences used
+definition. The list names the **nearest** claimant first, which is the one
+that answers: where several apply at once, the one owned by the widget the
+focus is in -- or by the nearest thing around it -- wins. Qt's own MDI is
+why: every subwindow carries the same `Ctrl+F4`, so without that rule the
+chord closes whichever subwindow the search happened to reach first. **Context decides**, so this is not a list of sequences used
 twice: two `WidgetShortcut` claims on different widgets are not a collision,
 only one of them ever being in play, and a chord is reported where some
 focus a user can reach makes two of them answer at once.
@@ -457,6 +461,23 @@ change it, as well as pressing `F6`. This is the terminal's answer to a
 task bar, and it is better than the window title for the purpose, since
 it names all of them rather than only the one you are looking at.
 
+**A subwindow is not a window here.** If your application uses `QMdiArea`,
+its subwindows are children rather than top-levels, so the strip does not
+name them and `F6` does not reach them. Each wears its name on its top
+border instead, since a terminal has no row to spare for a title bar.
+
+Measured, rather than assumed, in case you are counting on either: **`Ctrl+Tab`
+does not switch subwindows here** -- Qt implements that in a filter the key
+never reaches, the focused editor having taken it -- and **`Ctrl+F4` closes
+one but not always the one you are in.** Every subwindow's system menu
+carries the same `&Close` on `Ctrl+F4` and on `Ctrl+W`, so the chord is
+ambiguous by construction: `Qtty::shortcut_conflicts()` reports it as
+`Ctrl+F4 answered by &Close / &Close`, and the first claimant answers.
+
+So consider whether you want MDI at all on a terminal: it is a window
+manager inside a window, the strip is already one, and the keyboard route
+Qt gives it is ambiguous before your application has done anything.
+
 **It costs a row, and that is worth knowing before it surprises you.**
 The strip takes the top row and everything below moves down by one, so a
 layout that exactly filled the terminal loses its last row the moment a
@@ -485,6 +506,12 @@ the icon and a word is what the action already has. Measured before that
 existed, two icon-only actions **occupied four cells between them and
 drew nothing**. So do not depend on a tool tip *appearing* -- it never
 will -- and do write one, or your toolbar is a row of blank cells.
+
+**The same goes for a status tip, and it is read more literally.** With
+the conventions on, `setStatusTip()` follows FOCUS rather than the pointer
+-- see *The terminal's own keys* -- so the sentence you wrote for a mouse
+that will never hover is shown to a user who tabs onto the control. A
+`QMainWindow` puts it in its status bar with no code at all.
 
 The reason is not that a terminal has no pointer -- this guide said that
 and it was wrong. qtty sends `QEvent::MouseMove`, so Qt sets `WA_Hover`,

@@ -1196,6 +1196,82 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- two containers claiming one chord, which is nearest-wins ---------
+	//
+	// Qt's own MDI is where this was found: every QMdiSubWindow's system menu
+	// carries the same `&Close` on Ctrl+F4, all with window context and all
+	// in one window, so the chord is ambiguous before an application binds
+	// anything -- and with the first claimant answering it closed a
+	// subwindow the user was not in.
+	//
+	// The fixture is built here rather than borrowed from QMdiArea, because
+	// Qt itself does not create those actions on every platform: measured,
+	// two of them under the offscreen plugin and NONE under xcb, so a check
+	// resting on them passes in one arm and fails in another for a reason
+	// that has nothing to do with this rule. What is asserted is the rule.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(30, 8));
+		auto *left = new QWidget(&host);
+		left->setGeometry(0, 0, 14 * GridMetrics::cw(), 4 * GridMetrics::ch());
+		auto *right = new QWidget(&host);
+		right->setGeometry(15 * GridMetrics::cw(), 0,
+		                   14 * GridMetrics::cw(), 4 * GridMetrics::ch());
+		auto *in_left = new QLineEdit(left);
+		auto *in_right = new QLineEdit(right);
+		int closed_left = 0, closed_right = 0;
+		const auto claim = [](QWidget *owner, const char *name, int *counter) {
+			auto *a = new QAction(QString::fromLatin1(name), owner);
+			a->setShortcut(QKeySequence(QStringLiteral("Ctrl+F4")));
+			a->setShortcutContext(Qt::WindowShortcut);
+			QObject::connect(a, &QAction::triggered, [counter] { ++*counter; });
+			owner->addAction(a);
+		};
+		claim(left, "close left", &closed_left);
+		claim(right, "close right", &closed_right);
+		host.show();
+		QCoreApplication::processEvents();
+
+		const auto clash = shortcut_conflicts(&host);
+		bool ambiguous = false;
+		for (const auto &c : clash)
+			if (c.first == QKeySequence(QStringLiteral("Ctrl+F4"))
+			    && c.second.size() == 2)
+				ambiguous = true;
+		CHECK(ambiguous,
+		      "one chord claimed by two containers in one window is a "
+		      "collision, which is the shape Qt's own MDI ships");
+
+		InputRouter cr(&host);
+		Qtty::set_current_window(&host);
+		// The RECORD is set last, after the events. Under xcb a window that
+		// has just been shown activates asynchronously, and the activation
+		// moves Qt's focus to the first widget in the chain -- so a record
+		// set before processEvents() was overwritten and the chord answered
+		// for the wrong container. Measured: this fixture passed under the
+		// offscreen plugin and failed under xcb until the two lines swapped.
+		in_right->setFocus();
+		QCoreApplication::processEvents();
+		set_focus_widget(in_right);
+		cr.on_key({Qt::Key_F4, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		CHECK(closed_right == 1 && closed_left == 0,
+		      "and the chord answers for the container the focus is in "
+		      "rather than whichever the walk reached first");
+
+		in_left->setFocus();
+		QCoreApplication::processEvents();
+		set_focus_widget(in_left);
+		cr.on_key({Qt::Key_F4, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		CHECK(closed_left == 1 && closed_right == 1,
+		      "and it follows the focus to the other one, which a rule that "
+		      "merely reversed the order would not do");
+		host.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// ---- a button with no room, and an action with no business -----------
 	//
 	// A toolbar too narrow for its actions hides the buttons it cannot fit
@@ -1328,9 +1404,11 @@ int suite_router() {
 		CHECK(clash.size() == 1
 		          && clash[0].first == QKeySequence(QStringLiteral("Ctrl+S"))
 		          && clash[0].second.size() == 2
-		          && clash[0].second.first() == QStringLiteral("&Save"),
+		          && clash[0].second.first() == QStringLiteral("the rival"),
 		      "a chord two things answer under one focus is reported, with "
-		      "the one that wins named first");
+		      "the NEAREST claimant named first -- the one scoped to the "
+		      "widget that has the focus, over the one scoped to the window "
+		      "around it");
 
 		InputRouter sr(&host);
 		two->setFocus();
@@ -1338,9 +1416,23 @@ int suite_router() {
 		QCoreApplication::processEvents();
 		sr.on_key({Qt::Key_S, QString(), true, false, false});
 		QCoreApplication::processEvents();
-		CHECK(saved == 1 && rivals == 0,
-		      "and the chord does what the report said: the action answers "
-		      "and the QShortcut beside it never will");
+		CHECK(rivals == 1 && saved == 0,
+		      "and the chord does what the report said: the nearest claimant "
+		      "answers, which is the whole of why the report is ordered that "
+		      "way rather than by the order the walk found them");
+
+		// THE OTHER DIRECTION, which is what stops this being a rule that
+		// always prefers a QShortcut: with the focus on a widget the rival
+		// does not own, the window's own action is the nearest thing left
+		// and answers.
+		one->setFocus();
+		set_focus_widget(one);
+		QCoreApplication::processEvents();
+		sr.on_key({Qt::Key_S, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		CHECK(saved == 1 && rivals == 1,
+		      "while from a widget the narrow claim does not cover, the "
+		      "window's own action answers");
 		host.hide();
 		QCoreApplication::processEvents();
 	}
