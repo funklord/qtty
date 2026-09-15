@@ -15988,6 +15988,46 @@ measures neither, and the order was the second thing.
 Re-pointed at the original walk -- reverse, raw -- it stops the suite at 250
 checks, which is what the entry claims.
 
+### 8.171 A fix that looked right and did nothing (2026-09-15)
+
+Qt's `QFontDialog` draws a check box ON the bottom border of its *Effects*
+group box, at the size the dialog itself asks for. The mechanism was
+obvious: Fusion's margins are pixels -- a title's 25 and a frame's two, under
+two cells between them -- while `subControlRect()` computes the contents in
+whole ROWS, so a box sized from pixels has no row left for its last child.
+
+So `CT_GroupBox` was changed to ask for its contents plus three rows: the
+title, the top border and the bottom one. The font dialog improved: one of
+the two check boxes moved inside the box. A check was written, and the
+**sabotage refused it** -- reverting the rule left the check green. A second
+fixture, squeezed to the box's own minimum, was refused the same way.
+
+Measured directly, with and without the rule, on a group box holding two
+check boxes:
+
+    without    box 280x152 px, margins 10,38,10,19, layout min 180x95
+    with       box 280x152 px, margins 10,38,10,19, layout min 180x95
+
+**Identical.** `QGroupBox::minimumSizeHint()` takes the larger of the
+style's answer and its own layout's minimum, and the layout's is larger --
+so the rule changed nothing a group box does. What it did change was one
+DIALOG's `sizeHint`, by a row, and that extra row is what moved the check
+box. A real effect, and not the one the change claimed.
+
+Reverted, with the checks and the sabotage entry. **What is left is a
+finding about Qt's dialog rather than about this style**: `QFontDialog`
+squeezes its own layout below what its children ask for, and on a cell grid
+the overflow lands on a border rather than in a gap. The style sizes a group
+box correctly, measured standalone -- title row, both borders, both children
+inside.
+
+The reason this entry exists at all is the order it happened in: a plausible
+mechanism, a change that appeared to help, and a check that could not tell
+the two apart. The harness asked the question the measurement then answered,
+which is what it is for -- `evidence.md` calls it a comfortable explanation
+that ends an investigation, and the cost of keeping one is a rule nobody can
+justify and nobody can remove.
+
 ### 8.170 The row a title bar and a border were both claiming (2026-09-15)
 
 A `QMdiArea` with two subwindows drew two identical boxes and no names. The
