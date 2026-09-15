@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1344 checks, 0 failures. `make check` is green and includes
+1346 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -28,12 +28,15 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-15, at 1344**,
+**Last re-verified under all six configurations: 2026-09-15, at 1346**,
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
 result. Offscreen and xcb-under-Xvfb both ran 1344, `minimal` refused and
 said why, the hostile environment was absorbed by the pins, the sanitized
-run reported no failure and no leak, and memcheck was clean.
+run reported no failure and no leak, and memcheck was clean. Re-run at 1346
+rather than quoted from 1344: the two checks added since are a popup whose
+closing DELETES another popup, which is precisely the kind of fixture those
+two slow arms exist to watch, so the earlier run could not have covered it.
 
 The sanitized and memcheck arms earned their place that day rather than
 merely passing: 8.161 put `QPointer`s where raw pointers were held across
@@ -15962,6 +15965,27 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.163 The same rule, met in a list (2026-09-15)
+
+8.161's lens run once more: a press outside an open popup closes the stack
+from the top down, and `close()` runs the application's own code. The list
+being walked is a snapshot of **raw** pointers taken before any of it ran, so
+a popup whose closing deletes another popup -- supported Qt, neither being
+the widget the event is being delivered to -- leaves the rest of the walk
+calling `close()` on freed memory. Held weakly now, and checked each turn.
+
+**The check's own sabotage was wrong first, and the harness said so**, which
+is the part worth recording. The entry replaced the guarded reverse walk with
+a forward one over raw pointers -- and a forward walk closes the doomed popup
+BEFORE the one that deletes it, so nothing ever touches freed memory. The
+suite ran to the end, and the `expect = "crash"` branch added an hour earlier
+failed the entry with exactly the right sentence: *the guard was removed and
+the suite ran to the end*. A sabotage that changes two things at once
+measures neither, and the order was the second thing.
+
+Re-pointed at the original walk -- reverse, raw -- it stops the suite at 250
+checks, which is what the entry claims.
 
 ### 8.162 The set run whole, for the first time (2026-09-15)
 

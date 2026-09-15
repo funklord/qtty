@@ -900,6 +900,52 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- a popup that takes another one with it ---------------------------
+	//
+	// A press outside an open popup closes the stack from the top down, and
+	// close() runs the application's own code. One popup deleting another is
+	// supported Qt -- neither is the widget being delivered to -- and the
+	// list this walks was snapshotted before any of it ran, so the entries
+	// below the one that fired can be gone by the time the walk reaches
+	// them. 8.161's rule, met in a list rather than in a variable.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(30, 8));
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter pr(&host);
+
+		auto *under = new QMenu(&host);
+		under->addAction(QStringLiteral("under"));
+		struct Taking : QMenu {
+			QWidget *other = nullptr;
+			void closeEvent(QCloseEvent *e) override {
+				delete other;               // another popup, not this one
+				other = nullptr;
+				QMenu::closeEvent(e);
+			}
+		};
+		auto *over = new Taking;
+		over->setParent(&host, Qt::Popup);
+		over->addAction(QStringLiteral("over"));
+		over->other = under;
+		under->popup(QPoint(0, 0));
+		over->popup(QPoint(4 * GridMetrics::cw(), 2 * GridMetrics::ch()));
+		QCoreApplication::processEvents();
+		CHECK(pr.popups().size() == 2,
+		      "two popups are on the stack, the second over the first");
+
+		QPointer<QWidget> gone(under);
+		pr.on_mouse({QPoint(25, 7), 1, true, false, false, 0});   // outside both
+		QCoreApplication::processEvents();
+		CHECK(gone.isNull() && pr.popups().isEmpty(),
+		      "and a press outside closes the stack even when closing one of "
+		      "them destroys another, the walk holding what it walks weakly");
+		host.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// ---- a target deleted before the event reaches it ---------------------
 	//
 	// The router holds a raw pointer across code that runs the application's

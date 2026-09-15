@@ -1313,7 +1313,16 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 		// a slider dragged off the edge of the menu it sits in would lose the
 		// rest of the drag to this rule.
 		if (m.press) {
-			for (auto it = ps.rbegin(); it != ps.rend(); ++it) (*it)->close();
+			// WEAKLY, because close() runs the application's own code and
+			// this list is a snapshot taken before any of it ran. A handler
+			// that closes a menu and deletes the submenu under it -- or any
+			// popup deleting another, which is supported Qt since neither is
+			// the one being delivered to -- leaves the rest of this walk
+			// holding freed memory. 8.161's rule, met in a list.
+			QVector<QPointer<QWidget>> stack;
+			for (QWidget *w : ps) stack.append(w);
+			for (auto it = stack.rbegin(); it != stack.rend(); ++it)
+				if (QWidget *w = it->data()) w->close();
 			QCoreApplication::processEvents();
 			if (frame_requested) frame_requested();
 		}

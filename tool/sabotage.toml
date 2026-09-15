@@ -2071,3 +2071,15 @@ into = "\thovered_ = now;"
 count = 1
 check = "a press is not delivered to a widget the hover before it destroyed"
 expect = "crash"
+
+[[sabotage]]
+# The popup stack walked as raw pointers again. Closing one popup runs the
+# application's code, which may delete another still in the snapshot, and
+# the rest of the walk then calls close() on freed memory. 8.163.
+name = "the popup stack is walked without holding it weakly"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\tfor (auto it = stack.rbegin(); it != stack.rend(); ++it)\n\t\t\t\tif (QWidget *w = it->data()) w->close();"
+into = "\t\t\tfor (auto it = ps.rbegin(); it != ps.rend(); ++it) (*it)->close();"
+count = 1
+check = "and a press outside closes the stack even when closing one of them"
+expect = "crash"
