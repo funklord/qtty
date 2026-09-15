@@ -329,7 +329,10 @@ list names the claimants **in the order the router tries them**, so the
 first is the one that wins and the rest are the ones to rename -- and it
 reads the router's own enumeration rather than a second copy, so it cannot
 send you to the control that works. Menu actions come before buttons and
-buddy labels, which is why `&File` on a menu beats `&Format` on a button.
+buddy labels, which is why `&File` on a menu beats `&Format` on a button;
+a **tab** comes last of all, because its letter is answered only after the
+key has been delivered and refused, and only with the conventions on. With
+them off a tab's letter is not a claim at all, and the list says so.
 
 **2. Give every dialog a default button.**
 

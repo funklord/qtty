@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1328 checks, 0 failures. `make check` is green and includes
+1332 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15953,6 +15953,42 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.155 The fourth population the report could not see (2026-09-15)
+
+8.154 shipped `mnemonic_conflicts()` describing "the Alt+letters two
+controls both claim". A tab is a control, and the report could not see one:
+its claim is answered nowhere near the mnemonic matcher -- not by
+`match_mnemonic()` at all, but in the conventions block below delivery,
+after the key has been offered to the focused widget and refused.
+
+So an application whose tab `&Summary` is shadowed by a button `&Save all`
+was told its mnemonics were unique. **A report naming three of four
+populations is worse than no report**, because the empty answer is the one a
+test asserts, and an application that asserts it stops looking.
+
+Found one day after shipping the helper, by asking the question the helper's
+own sentence invites -- which populations claim a letter? -- rather than by a
+failure. `evidence.md` calls it a name that claims exhaustiveness: the thing
+to verify is the quantifier, not the assertion under it.
+
+Two properties come with the fourth population, and both are about WHERE it
+is resolved rather than about tabs:
+
+- **A tab claims last**, because a letter an action, a button or a buddy
+  label also claims is taken by the matcher before delivery ever happens. The
+  report's order is the keys' order, and the check asserts the pair: the
+  action fires and the tab does not move.
+- **A tab claims nothing with the conventions off**, since that is the gate
+  its answer sits behind. Listing it there would invent a collision the user
+  cannot meet.
+
+The conventions block walks the shared enumeration now rather than scanning
+tab bars itself, which is what keeps the two from parting company again --
+the same fix as 8.154's, applied to the population 8.154 missed. The
+existing sabotage entry for that block had to be re-pointed at the rewritten
+line, which is the harness's other service: an anchor that stops matching is
+a check nothing defends, and `--validate` said so before the run did.
 
 ### 8.154 The collision the first practice creates (2026-09-15)
 

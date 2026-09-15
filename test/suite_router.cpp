@@ -850,6 +850,52 @@ int suite_router() {
 		CHECK(still.size() == 1 && still[0].second.size() == 2,
 		      "while a claim whose buddy is hidden is no claim, the report "
 		      "and the router agreeing about who is out of play");
+		// A TAB is the fourth population, and it is answered somewhere
+		// else: not by the mnemonic matcher but by the conventions block
+		// below delivery, so it LOSES to an action, a button or a buddy
+		// label claiming the same letter -- and it claims nothing at all
+		// with the conventions off. A report that could not see tab bars
+		// told an application its letters were unique when they were not,
+		// which is the failure this whole helper exists to end.
+		auto *tabs = new QTabWidget(&host);
+		tabs->setGeometry(0, 5 * GridMetrics::ch(), 20 * GridMetrics::cw(),
+		                  2 * GridMetrics::ch());
+		tabs->addTab(new QWidget, QStringLiteral("&Summary"));
+		tabs->addTab(new QWidget, QStringLiteral("&Detail"));
+		tabs->show();
+		QCoreApplication::processEvents();
+
+		const auto quiet = mnemonic_conflicts(&host);
+		CHECK(quiet.size() == 1 && quiet[0].second.size() == 2,
+		      "with the conventions off a tab's letter is not a claim, "
+		      "because nothing answers it");
+
+		set_keyboard_conventions(true);
+		const auto loud = mnemonic_conflicts(&host);
+		QStringList tab_claimants;
+		for (const auto &c : loud)
+			if (c.first == QLatin1Char('s')) tab_claimants = c.second;
+		CHECK(tab_claimants.size() == 3
+		          && tab_claimants.last() == QStringLiteral("&Summary"),
+		      "and with them on it is, named last because a tab is answered "
+		      "after the matcher has had the key and refused it");
+
+		triggered = 0;
+		clicked = 0;
+		InputRouter tr(&host);
+		tr.on_key({0, QStringLiteral("s"), false, true, false});
+		QCoreApplication::processEvents();
+		CHECK(triggered == 1 && tabs->currentIndex() == 0,
+		      "and the order is the keys' own: the action answers and the "
+		      "tab does not move");
+
+		// The tab's own letter still works where nothing else claims it,
+		// which is the half a collision must not break.
+		tr.on_key({0, QStringLiteral("d"), false, true, false});
+		QCoreApplication::processEvents();
+		CHECK(tabs->currentIndex() == 1,
+		      "while an uncontested tab letter still switches to it");
+		set_keyboard_conventions(false);
 		host.hide();
 		QCoreApplication::processEvents();
 	}

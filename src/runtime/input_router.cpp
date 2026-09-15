@@ -293,6 +293,7 @@ struct MnemonicClaim {
 	QChar letter;
 	QObject *who;
 	QString text;
+	int index = -1;               // the tab, where `who` is a QTabBar
 };
 
 static QVector<MnemonicClaim> mnemonic_claims(QWidget *scope) {
@@ -313,6 +314,24 @@ static QVector<MnemonicClaim> mnemonic_claims(QWidget *scope) {
 			if (!buddy || !buddy->isVisible() || !buddy->isEnabled()) continue;
 			const QChar m = mnemonic_of(l->text());
 			if (!m.isNull()) out.append({m, l, l->text()});
+		}
+	}
+	// TABS LAST, and only with the conventions on, because both facts are
+	// about where this claim is resolved. A tab's letter is not matched by
+	// match_mnemonic() at all -- it is answered further down, after the key
+	// has been delivered and refused, in the block the conventions gate. So
+	// it loses to an action, a button or a buddy label claiming the same
+	// letter, and the order here is what makes the report say so; and with
+	// the conventions off it answers nothing, so listing it would invent a
+	// collision rather than report one.
+	if (keyboard_conventions()) {
+		for (QTabBar *bar : scope->findChildren<QTabBar *>()) {
+			if (!bar->isVisible()) continue;
+			for (int i = 0; i < bar->count(); ++i) {
+				if (!bar->isTabEnabled(i)) continue;
+				const QChar m = mnemonic_of(bar->tabText(i));
+				if (!m.isNull()) out.append({m, bar, bar->tabText(i), i});
+			}
 		}
 	}
 	return out;
@@ -897,18 +916,23 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 		// terminal should switch tabs this way at all -- an application
 		// that asked for the terminal's conventions has answered it for
 		// itself, and the default is untouched.
+		//
+		// Through the same enumeration the mnemonic matcher walks, so that
+		// mnemonic_conflicts() cannot describe a program whose keys behave
+		// differently. This scanned the tab bars itself until 8.155, which
+		// made the tab bars the one population the collision report could
+		// not see -- a report that names three of four claimants tells an
+		// application its letters are unique when they are not.
 		if (k.alt && k.text.size() == 1) {
 			const QChar want = k.text.at(0).toLower();
-			for (QTabBar *bar : scope->findChildren<QTabBar *>()) {
-				if (!bar->isVisible()) continue;
-				for (int i = 0; i < bar->count(); ++i) {
-					if (!bar->isTabEnabled(i)) continue;
-					if (mnemonic_of(bar->tabText(i)) != want) continue;
-					bar->setCurrentIndex(i);
-					set_focus_widget(scope->focusWidget());
-					if (frame_requested) frame_requested();
-					return;
-				}
+			for (const MnemonicClaim &claim : mnemonic_claims(scope)) {
+				if (claim.letter != want) continue;
+				auto *bar = qobject_cast<QTabBar *>(claim.who);
+				if (!bar) continue;
+				bar->setCurrentIndex(claim.index);
+				set_focus_widget(scope->focusWidget());
+				if (frame_requested) frame_requested();
+				return;
 			}
 		}
 		// F6 between top-level windows, which had no key at all: this

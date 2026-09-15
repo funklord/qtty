@@ -903,8 +903,8 @@ check = "F6 moves to the next window and Shift+F6 comes back"
 [[sabotage]]
 name = "a tab's own letter reaches nothing"
 file = "src/runtime/input_router.cpp"
-find = "\t\t\t\t\tbar->setCurrentIndex(i);"
-into = "\t\t\t\t\t;"
+find = "\t\t\t\tbar->setCurrentIndex(claim.index);"
+into = "\t\t\t\t;"
 count = 1
 check = "a tab's own letter reaches it"
 
@@ -1942,3 +1942,26 @@ find = "\t\tif (!m.isNull()) out.append({m, a, a->text()});"
 into = ""
 count = 1
 check = "and the key does what the report said it would"
+
+[[sabotage]]
+# The tab bars dropped from the claim enumeration, which is the state the
+# report shipped in for a day: three populations of four, so an application
+# whose tab letter is shadowed by a button is told its mnemonics are
+# unique. 8.155.
+name = "the collision report cannot see a tab bar"
+file = "src/runtime/input_router.cpp"
+find = "\tif (keyboard_conventions()) {\n\t\tfor (QTabBar *bar : scope->findChildren<QTabBar *>()) {"
+into = "\tif (false) {\n\t\tfor (QTabBar *bar : scope->findChildren<QTabBar *>()) {"
+count = 1
+check = "and with them on it is, named last"
+
+[[sabotage]]
+# A tab claiming its letter whether or not anything answers it. With the
+# conventions off the key does nothing, so the report would name a
+# collision the user cannot meet.
+name = "a tab claims its letter with the conventions off"
+file = "src/runtime/input_router.cpp"
+find = "\tif (keyboard_conventions()) {\n\t\tfor (QTabBar *bar : scope->findChildren<QTabBar *>()) {"
+into = "\tif (true) {\n\t\tfor (QTabBar *bar : scope->findChildren<QTabBar *>()) {"
+count = 1
+check = "with the conventions off a tab's letter is not a claim"
