@@ -2083,3 +2083,14 @@ into = "\t\t\tfor (auto it = ps.rbegin(); it != ps.rend(); ++it) (*it)->close();
 count = 1
 check = "and a press outside closes the stack even when closing one of them"
 expect = "crash"
+
+[[sabotage]]
+# An action counted once per route rather than once per object, which is
+# how a report comes to accuse a control of colliding with itself -- and
+# how somebody comes to rename a letter only one thing answers. 8.165.
+name = "an action reached twice is counted twice"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (counted.contains(a)) continue;\n\t\tcounted.insert(a);"
+into = "\t\tif (false) continue;"
+count = 1
+check = "an action reached by two routes is one claim"

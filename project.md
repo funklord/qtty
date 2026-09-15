@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1346 checks, 0 failures. `make check` is green and includes
+1347 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -604,6 +604,7 @@ Owned by the copyright holder:
 
 | Question | Where |
 |---|---|
+| **Should a menu item's mnemonic answer while its menu is CLOSED?** It does here, deliberately -- a terminal user reaching an item directly is worth something -- and a desktop Qt answers an item's letter only while its menu is open. The cost is now measured rather than supposed: in Qt's own `menus` example, thirty actions produce **five letters with more than one claimant**, and only the first answers (`&Print...` takes `p` from `&Paste` and *Set &Paragraph Spacing...*). Keeping it means an application with menus needs `Qtty::mnemonic_conflicts()` to find what it has lost; narrowing it to open menus costs the direct reach the conventions were added for | 8.165 |
 | **Should the terminal's background be re-measured, and how?** It is asked once at startup and the half-block tier composites against it for the life of the session, so a user who toggles their desktop theme -- or a `shell_out()` that returns from a program which changed it -- leaves every translucent edge composited against a ground that has gone. Re-asking at each handover costs one query and needs the decoder to stop discarding an OSC 11 reply; subscribing with `DECSET 2031` costs nothing per frame and needs capability detection; leaving it costs the fallback tier only, kitty-tier sessions sending alpha and never compositing | 8.160 |
 | **Should the conventions offer a key for Qt's own pointer-only furniture?** Measured with plain Qt and no qtty: a closable `QTabWidget` ignores `Ctrl+W`, `Ctrl+F4` and `Delete` -- `tabCloseRequested` never fires -- and a closable `QDockWidget` ignores `Ctrl+W` and `Esc`. So the `x` on a tab and a dock's close button have no keyboard route ANYWHERE, which on a desktop is a mouse away and here may be nothing away. The option is one convention binding each; the cost is that both plausible keys are ones applications mean something by (`Ctrl+W` closes a document in most, and a shortcut an application binds wins anyway, so the convention would answer only where the application is silent -- which is exactly where the user has no other route). The guide names the gap and tells an application to bind its own; whether the library should offer one is the holder's | 8.159 |
 | A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. Cheaper to answer after the picture-rule entry below, which is the same question seen from the other end | *Qt's standard iconography* |
@@ -15986,6 +15987,81 @@ measures neither, and the order was the second thing.
 
 Re-pointed at the original walk -- reverse, raw -- it stops the suite at 250
 checks, which is what the entry claims.
+
+### 8.165 Qt's own example, run through the seam (2026-09-15)
+
+The premise on the front of the README is that an **unmodified** Qt Widgets
+application renders here. Everything that has tested it so far was written
+in this tree. So: Qt's own `widgets/mainwindows/menus` example, its
+`mainwindow.cpp` untouched, built against the INSTALLED prefix through
+`pkg-config`, with a `main()` doing the documented three calls and nothing
+else.
+
+**It renders.** The menu bar draws `File Edit Help`, the central label and
+its frame come out on the grid, the status bar's own text is there. `Alt+F`
+opens the File menu -- one popup on the stack -- and `Down` puts *Create a
+new file* on the status bar, which is the 8.157 feature meeting twenty
+`setStatusTip()` calls somebody else wrote for a mouse.
+
+**And it found a defect in the day's own work.** `mnemonic_conflicts()`
+reported seven collisions, two of which were `&Edit` with `&Edit` and
+`&Help` with `&Help`. Measured with a probe mirroring the enumeration: **32
+actions enumerate to 30 distinct ones** -- Qt puts a menu's own action where
+this walk reaches it twice -- so the report accused two controls of
+colliding with themselves. One claim per OBJECT now, in both the mnemonic
+and the shortcut enumerations. The matcher never cared, acting on the first
+match either way; a report of collisions cares completely, and the direction
+of the error is the bad one: it sends somebody to rename a letter only one
+thing answers.
+
+**The five that remain are real, and they are a cost this project chose.**
+
+    f   &File / &Format
+    p   &Print... / &Paste / Set &Paragraph Spacing...
+    r   &Redo / &Right Align
+    c   &Copy / &Center
+    l   &Left Align / Set &Line Spacing...
+
+On a desktop none of these collide: a menu item's letter answers only while
+its menu is open. Here an item's mnemonic is live whether or not its menu
+is -- deliberate, and checked since the mnemonic work landed, because a
+terminal user reaching an item directly is worth something. The price is
+visible for the first time: **in thirty actions of ordinary Qt, five letters
+have more than one claimant and only the first answers.** Whether that trade
+is right is §0b's now; what is settled is that it is a trade.
+
+### 8.164 Where the lens stops, and why that is a measurement (2026-09-15)
+
+The sweep for *a pointer held across code that runs the application's own
+handlers* is finished, and what it did NOT guard is worth recording, since
+an empty result with no method behind it licenses nothing.
+
+**Guarded**, because deletion there is legitimate and ordinary: the key path
+after a press, the mouse path after the hover and the press, the popup stack
+while closing it, the window entry after dismissing popups, the hover chains
+themselves, and the status tip's focus hook against re-entrancy.
+
+**Not guarded, deliberately:**
+
+- **`compose()` holds its tab list across the rendering of the windows**, and
+  rendering runs the application's `paintEvent`. Left alone: a `paintEvent`
+  that deletes a widget is an application defect rather than a supported
+  pattern -- Qt gives no promise about reentrancy there and neither does
+  this -- so a guard would be buying a case nobody may rely on, at the cost
+  of implying they may.
+- **`readline_edit()` sends two synthetic keys to the same widget**, and the
+  first could in principle destroy it. That is the RECEIVER deleting itself
+  during its own event, which is the case Qt does not support at all: it
+  crashes inside `QWidget::event()` before this library is reached, so
+  nothing here can defend it.
+- **`TitleKeeper`** was checked and needed nothing: its `target_` is already
+  a `QPointer` and was from the start.
+
+The distinction that decides all three is the same one 8.161 measured: Qt
+supports a handler deleting **another** widget and does not support one
+deleting the widget the event is being delivered to. A guard is worth having
+exactly where the first can happen, and is a false comfort where only the
+second can.
 
 ### 8.162 The set run whole, for the first time (2026-09-15)
 

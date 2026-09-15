@@ -299,8 +299,17 @@ struct MnemonicClaim {
 static QVector<MnemonicClaim> mnemonic_claims(QWidget *scope) {
 	QVector<MnemonicClaim> out;
 	if (!scope) return out;
+	// ONE CLAIM PER OBJECT. An action reached by two routes is one action,
+	// and counting it twice makes it collide with itself -- measured against
+	// Qt's own `menus` example, where 32 actions enumerate to 30 distinct
+	// ones and the report accused `&Edit` and `&Help` of claiming their own
+	// letters twice. The matcher does not care, since it acts on the first
+	// match either way; a report of collisions cares completely.
+	QSet<const QObject *> counted;
 	for (QAction *a : mnemonic_actions(scope)) {
 		if (!a->isEnabled() || a->isSeparator()) continue;
+		if (counted.contains(a)) continue;
+		counted.insert(a);
 		const QChar m = mnemonic_of(a->text());
 		if (!m.isNull()) out.append({m, a, a->text()});
 	}
@@ -610,9 +619,16 @@ static QString claim_label(const QObject *who, const QKeySequence &key) {
 static QVector<ShortcutClaim> shortcut_claims(QWidget *scope) {
 	QVector<ShortcutClaim> out;
 	if (!scope) return out;
-	const auto add_action = [&out](QAction *a, bool app) {
+	// One claim per object, for the reason mnemonic_claims() gives: an action
+	// added to a window and to a menu is reached twice by this walk and is
+	// still one action. Kept by object rather than by (object, sequence),
+	// since the second visit brings the same sequences as the first.
+	QSet<const QObject *> counted;
+	const auto add_action = [&out, &counted](QAction *a, bool app) {
 		if (!a->isEnabled()) return;
 		if (app && a->shortcutContext() != Qt::ApplicationShortcut) return;
+		if (counted.contains(a)) return;
+		counted.insert(a);
 		const auto keys = a->shortcuts();
 		for (const QKeySequence &s : keys)
 			if (!s.isEmpty()) out.append({s, a, claim_label(a, s), app});
@@ -625,9 +641,11 @@ static QVector<ShortcutClaim> shortcut_claims(QWidget *scope) {
 		for (QWidget *c : w->findChildren<QWidget *>()) theirs += c->actions();
 		for (QAction *a : std::as_const(theirs)) add_action(a, true);
 	}
-	const auto add_shortcut = [&out](QShortcut *sc, bool app) {
+	const auto add_shortcut = [&out, &counted](QShortcut *sc, bool app) {
 		if (!sc->isEnabled() || sc->key().isEmpty()) return;
 		if (app && sc->context() != Qt::ApplicationShortcut) return;
+		if (counted.contains(sc)) return;
+		counted.insert(sc);
 		out.append({sc->key(), sc, claim_label(sc, sc->key()), app});
 	};
 	for (QShortcut *sc : scope->findChildren<QShortcut *>())

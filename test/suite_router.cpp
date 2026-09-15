@@ -850,6 +850,28 @@ int suite_router() {
 		CHECK(still.size() == 1 && still[0].second.size() == 2,
 		      "while a claim whose buddy is hidden is no claim, the report "
 		      "and the router agreeing about who is out of play");
+		// ONE ACTION REACHED TWICE IS ONE CLAIM. An action added to a
+		// window and to a menu -- or a menu's own action, which Qt puts
+		// where this walk finds it twice -- would otherwise be reported as
+		// colliding with itself, which sends somebody to rename a letter
+		// only one control answers.
+		//
+		// Measured against Qt's own `menus` example before this was fixed:
+		// 32 actions enumerate to 30 distinct ones, and the report accused
+		// `&Edit` and `&Help` of claiming their own letters twice.
+		{
+			auto *twice = new QAction(QStringLiteral("&Zoom"), &host);
+			host.addAction(twice);
+			file->addAction(twice);           // the same object, second route
+			QCoreApplication::processEvents();
+			bool z_reported = false;
+			for (const auto &c : mnemonic_conflicts(&host))
+				if (c.first == QLatin1Char('z')) z_reported = true;
+			CHECK(!z_reported,
+			      "an action reached by two routes is one claim, not a "
+			      "collision with itself");
+		}
+
 		// A TAB is the fourth population, and it is answered somewhere
 		// else: not by the mnemonic matcher but by the conventions block
 		// below delivery, so it LOSES to an action, a button or a buddy
