@@ -1902,6 +1902,39 @@ int suite_widgets() {
 		      "sizeHint reserves the decoration and the gap, in whole cells");
 	}
 
+	// AN MDI SUBWINDOW'S NAME, which had nowhere to go. A desktop gives it a
+	// title bar of its own; here that row IS the top border, and the two were
+	// fighting over it -- Qt sizes the bar at 24 pixels against a 19-pixel
+	// row, and the frame is painted after the title bar and twice, so the
+	// name was written and then covered. Two subwindows showed two identical
+	// boxes and nothing to tell them apart.
+	{
+		QMdiArea mdi;
+		mdi.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *sub = mdi.addSubWindow(new QTextEdit(QStringLiteral("body")));
+		sub->setWindowTitle(QStringLiteral("Report.txt"));
+		mdi.resize(GridMetrics::cells(40, 10));
+		mdi.show();
+		sub->resize(GridMetrics::cells(30, 7));
+		QCoreApplication::processEvents();
+		CellBuffer buf(40, 10);
+		Qtty::render_once(mdi, buf);
+		const QString top = buf.to_text().section(QLatin1Char('\n'), 0, 0);
+		CHECK(top.contains(QStringLiteral("Report.txt")),
+		      "an MDI subwindow wears its name on its top border, a terminal "
+		      "having no row to spare for a title bar of its own");
+		CHECK(top.startsWith(QStringLiteral("\u250c\u2500 ")),
+		      "and the border is still a border either side of it, rather "
+		      "than a line of text where a frame should be");
+
+		// The title bar is one row, which is what lets the name share the
+		// border rather than straddling two.
+		CHECK(mdi.style()->pixelMetric(QStyle::PM_TitleBarHeight, nullptr, sub)
+		          == GridMetrics::ch(),
+		      "the title bar itself measures one row, Qt's own 24 pixels "
+		      "against nineteen being what put it between two");
+	}
+
 	// A CALENDAR's month arrows, which Qt draws as pixmaps rather than by
 	// setting arrowType -- so the arrow branch cannot see them -- and which
 	// carry no text, no tool tip and no action: measured, every one of those

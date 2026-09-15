@@ -2160,3 +2160,23 @@ find = "\t\tif (n == QLatin1String(\"qt_calendar_nextmonth\"))\n\t\t\treturn QSt
 into = "\t\tif (n == QLatin1String(\"qt_calendar_nextmonth\"))\n\t\t\treturn QStringLiteral(\"\u25C2\");"
 count = 1
 check = "and the previous one is on the left"
+
+[[sabotage]]
+# The name off the border again, so two subwindows are two identical boxes.
+# 8.170.
+name = "an MDI subwindow wears no name"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\tif (pe == PE_FrameWindow && w && !w->windowTitle().isEmpty()"
+into = "\t\t\tif (false && w && !w->windowTitle().isEmpty()"
+count = 1
+check = "an MDI subwindow wears its name on its top border"
+
+[[sabotage]]
+# The title bar back to Qt's 24 pixels against a 19-pixel row, which is
+# what put it between two rows and its name in neither.
+name = "the title bar straddles two rows again"
+file = "src/grid/grid_style.cpp"
+find = "\tcase PM_TitleBarHeight:                                return ch;"
+into = "\tcase PM_TitleBarHeight:                                return 24;"
+count = 1
+check = "the title bar itself measures one row"

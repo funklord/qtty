@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1356 checks, 0 failures. `make check` is green and includes
+1359 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15987,6 +15987,39 @@ measures neither, and the order was the second thing.
 
 Re-pointed at the original walk -- reverse, raw -- it stops the suite at 250
 checks, which is what the entry claims.
+
+### 8.170 The row a title bar and a border were both claiming (2026-09-15)
+
+A `QMdiArea` with two subwindows drew two identical boxes and no names. The
+cause took four measurements and none of the first three was it:
+
+    PM_TitleBarHeight                24 px, against a 19-pixel row
+    CC_TitleBar reached?             yes, once, text[second] rect 260x19
+    the label rect it computes       cells 2,0 24x1 -- on screen, not empty
+    what the buffer held after       [-#Report.txtort.txt------|]
+
+So the title WAS written -- twice, as it happens, the base style drawing it
+and this style drawing it again -- and then **the frame was painted over
+it**. `QMdiSubWindow` paints its frame after its title bar, and twice per
+render, so anything the title bar writes is covered by a border.
+
+**The fix is the arrangement a terminal has always used: the name goes ON
+the top border.** `┌─ Report.txt ─────┐`. It is drawn in the frame
+primitive rather than in the title bar, which is the only place it survives,
+and the title bar's height is pinned to one row so that the bar and the
+border are the same row rather than one straddling the other.
+
+Three checks, and the second is the one that would not have been written
+without asking what else could pass: that the border is still a border on
+either side of the name. A title drawn over the whole top row would satisfy
+"the name is there" and would have replaced the frame with a line of text.
+
+**What this did not fix, and is worth knowing before somebody tries MDI on a
+terminal.** Two cascaded subwindows in a forty-column area overlap so
+heavily that one covers the other's border entirely: the offset Qt uses is
+about thirty pixels, which is one and a half cells. MDI is a window manager
+inside a window, and a terminal already has one -- qtty's own window tabs.
+The names make a subwindow identifiable; they do not make MDI a good fit.
 
 ### 8.169 A pixmap is not a name, and Qt names its own widgets (2026-09-15)
 

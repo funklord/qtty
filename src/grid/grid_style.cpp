@@ -659,6 +659,12 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 	case PM_ExclusiveIndicatorHeight:                      return ch;
 	// section 17.1 audit -- every metric that shapes geometry lands on the grid:
 	case PM_SplitterWidth:                                 return cw;
+	// An MDI subwindow's title bar, which Qt sizes at 24 pixels against a
+	// 19-pixel row -- measured. Off the grid, so the bar straddled two rows
+	// and its title landed in neither: two frame lines and no name, in a
+	// window whose whole point is being one of several. One row, like every
+	// other thing here that holds a line of text.
+	case PM_TitleBarHeight:                                return ch;
 	case PM_MenuHMargin:                                   return 0;
 	// The vertical half of a popup's frame, which PM_MenuPanelWidth cannot
 	// supply: it is one number and a cell is not square. A panel of `cw` is a
@@ -1436,6 +1442,33 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 					return;
 				}
 			draw_box(dev->buffer(), c, owns_focus(w), with_state(opt));
+			// AND THE WINDOW'S NAME ON ITS TOP BORDER, which is where a
+			// terminal has always put it. An MDI subwindow's title bar is a
+			// row of its own on a desktop; here that row IS the top border,
+			// and the two were fighting over it -- measured, the title was
+			// written and the frame was then drawn again over it, so two
+			// subwindows showed two identical boxes and nothing to tell them
+			// apart.
+			//
+			// Drawn HERE rather than in CC_TitleBar for that reason: the
+			// frame is painted after the title bar, and twice, so the only
+			// way the name survives is to be part of the frame.
+			if (pe == PE_FrameWindow && w && !w->windowTitle().isEmpty()
+			    && c.width() > 6) {
+				const QString name =
+				    elide_to_cells(w->windowTitle(), c.width() - 6);
+				int x = c.left() + 2;
+				const Attrs a = with_state(opt);
+				dev->buffer().put_cluster(x++, c.top(), QStringLiteral(" "),
+				                          Color(), Color(), a);
+				for (const QString &cl : to_clusters(name)) {
+					dev->buffer().put_cluster(x, c.top(), cl, Color(),
+					                          Color(), a);
+					x += cluster_width(cl);
+				}
+				dev->buffer().put_cluster(x, c.top(), QStringLiteral(" "),
+				                          Color(), Color(), a);
+			}
 			return;
 		// A one-row line edit is bracketed, the way the combo box and the spin
 		// box below already are and for the reason written there: the control
