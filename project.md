@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1352 checks, 0 failures. `make check` is green and includes
+1354 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15987,6 +15987,37 @@ measures neither, and the order was the second thing.
 
 Re-pointed at the original walk -- reverse, raw -- it stops the suite at 250
 checks, which is what the entry claims.
+
+### 8.168 What a narrow terminal takes away, and what it does not (2026-09-15)
+
+A `QMainWindow` with nine toolbar actions in a forty-column terminal, and a
+dock beside it. Five buttons fit; **four are hidden behind the extension
+chevron**, which on a desktop a pointer clicks and which no key here opens.
+That looked like the same finding as 8.159 -- Qt's own furniture reachable
+only by pointer -- and it is not:
+
+    the &Quit action: visible=1, its button visible=0
+    Alt+Q fired it:   1
+
+**The BUTTON is hidden; the ACTION is not.** So a narrow terminal loses
+toolbar buttons and keeps every command, provided the actions carry letters
+-- which is a reason for the guide's first practice that had not been
+written down, and now is.
+
+The other half is the distinction that makes that safe, and it was measured
+rather than assumed: an action the application HID answers nothing here,
+while `QAction::trigger()` on the same hidden action fires. So it is not Qt
+refusing a hidden trigger -- Qt reports an invisible action as DISABLED, and
+the claim enumeration's existing `isEnabled()` filter is what stops it.
+Asserted as a pair: hidden answers nothing, shown answers again. Silence
+alone would also be what a letter that never worked looks like.
+
+**Two other things that window showed, neither chased.** A dock six cells
+wide elides its title to a single ellipsis, which is what six cells buys. And
+`Tab` reaches exactly one widget in that window -- the text edit -- because
+Qt gives a `QToolButton` `NoFocus`, which is Qt's decision and the reason
+the guide tells an application to put its commands somewhere a key can
+reach.
 
 ### 8.167 The row a glyph did not need (2026-09-15)
 

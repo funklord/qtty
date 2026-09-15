@@ -2117,3 +2117,26 @@ find = "\t\t\tconst bool fits = vi->decorationSize.height() <= ch;"
 into = "\t\t\tconst bool fits = true;"
 count = 1
 check = "while a decoration taller than a row keeps its rows"
+
+[[sabotage]]
+# The claim enumeration reaching only the scope's own actions, not those of
+# the widgets inside it. A toolbar's actions then answer nothing, which is
+# how a narrow terminal would lose its commands rather than its buttons.
+# 8.168.
+name = "the mnemonic walk stops at the window's own actions"
+file = "src/runtime/input_router.cpp"
+find = "static QList<QAction *> mnemonic_actions(QWidget *scope) {\n\tQList<QAction *> actions = scope->actions();\n\tconst auto children = scope->findChildren<QWidget *>();\n\tfor (QWidget *c : children) actions += c->actions();"
+into = "static QList<QAction *> mnemonic_actions(QWidget *scope) {\n\tQList<QAction *> actions = scope->actions();"
+count = 1
+check = "an action whose toolbar button had no room still answers its letter"
+
+[[sabotage]]
+# Disabled actions counted as claimants. Qt reports an invisible action as
+# disabled, so this is also how an action the application hid comes back to
+# life and answers a key nobody expects.
+name = "a disabled action still claims its letter"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (!a->isEnabled() || a->isSeparator()) continue;\n\t\tif (counted.contains(a)) continue;"
+into = "\t\tif (a->isSeparator()) continue;\n\t\tif (counted.contains(a)) continue;"
+count = 1
+check = "while an action the application hid answers nothing"

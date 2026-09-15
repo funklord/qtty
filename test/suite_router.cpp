@@ -1196,6 +1196,72 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- a button with no room, and an action with no business -----------
+	//
+	// A toolbar too narrow for its actions hides the buttons it cannot fit
+	// and puts them behind an extension chevron -- which a pointer clicks
+	// and a keyboard cannot reach at all. The ACTION is still there, so its
+	// letter still answers, and on a terminal that is the difference
+	// between a narrow window losing commands and merely losing buttons.
+	//
+	// The other half is the distinction that makes it safe: an action the
+	// APPLICATION hid must answer nothing. Qt reports an invisible action as
+	// disabled -- measured, `QAction::trigger()` on one still fires, so it
+	// is the enabled flag rather than Qt refusing the trigger that stops it
+	// here -- and the claim enumeration already skips what is disabled.
+	{
+		QMainWindow win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *bar = win.addToolBar(QStringLiteral("Main"));
+		const char *const names[] = {"&New", "&Open", "&Save", "Save &As",
+		                             "&Print", "Pr&eview", "&Quit"};
+		for (const char *n : names) bar->addAction(QString::fromLatin1(n));
+		win.setCentralWidget(new QTextEdit(QStringLiteral("central")));
+		win.resize(GridMetrics::cells(24, 8));          // too narrow for them
+		win.show();
+		QCoreApplication::processEvents();
+
+		QAction *last = nullptr;
+		for (QAction *a : bar->actions())
+			if (a->text() == QStringLiteral("&Quit")) last = a;
+		QToolButton *its_button = nullptr;
+		for (QToolButton *b : bar->findChildren<QToolButton *>())
+			if (b->defaultAction() == last) its_button = b;
+		int fired = 0;
+		QObject::connect(last, &QAction::triggered, [&fired] { ++fired; });
+
+		InputRouter tr(&win);
+		Qtty::set_current_window(&win);
+		tr.on_key({0, QStringLiteral("q"), false, true, false});
+		QCoreApplication::processEvents();
+		CHECK(its_button && !its_button->isVisible() && last->isVisible()
+		      && fired == 1,
+		      "an action whose toolbar button had no room still answers its "
+		      "letter, the chevron hiding it being a thing only a pointer "
+		      "can open");
+
+		int ghost_fired = 0;
+		auto *ghost = new QAction(QStringLiteral("&Zap"), &win);
+		QObject::connect(ghost, &QAction::triggered,
+		                 [&ghost_fired] { ++ghost_fired; });
+		win.addAction(ghost);
+		ghost->setVisible(false);
+		QCoreApplication::processEvents();
+		tr.on_key({0, QStringLiteral("z"), false, true, false});
+		QCoreApplication::processEvents();
+		const int while_hidden = ghost_fired;
+		ghost->setVisible(true);
+		QCoreApplication::processEvents();
+		tr.on_key({0, QStringLiteral("z"), false, true, false});
+		QCoreApplication::processEvents();
+		CHECK(while_hidden == 0 && ghost_fired == 1,
+		      "while an action the application hid answers nothing, and the "
+		      "same action shown answers again -- asserted as a pair, since "
+		      "silence alone would also be a letter that never worked");
+		win.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// ---- chords two things answer, which Qt would report and cannot -------
 	//
 	// QShortcutMap is what detects an ambiguous binding on a desktop, it

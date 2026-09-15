@@ -393,6 +393,15 @@ menu, a hover reveal, a drag: each needs a keyboard route beside it. Put
 the same action in a menu, give it a shortcut, or both. `QAction` in a
 `QMenu` gets you a mnemonic and a shortcut at once.
 
+**A narrow terminal loses toolbar BUTTONS and keeps the commands.** When a
+`QToolBar` has more actions than fit, Qt hides the surplus behind an
+extension chevron -- which only a pointer can open. Their actions are still
+there, so **their mnemonics still answer**: measured, `Alt+Q` on a toolbar
+too narrow to show *&Quit* triggers it anyway. That is a reason to give
+every toolbar action a letter, rather than trusting the button to be there.
+An action you hide yourself answers nothing, as it should: Qt reports an
+invisible action as disabled.
+
 **Qt ships two of these itself**, which is worth knowing before you audit
 your own code for them. The `x` on a closable tab and a dock widget's
 close button have **no keyboard route at all** -- not in qtty, and not on
