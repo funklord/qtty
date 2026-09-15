@@ -267,6 +267,12 @@ controls that explain nothing: qtty takes back only tips it put up.
 
     hostEdit->setStatusTip("the host to connect to");   // already yours
 
+**Your menu items' tips already work**, with or without the conventions,
+because that half is Qt's own: a `QMenu` sends the highlighted action's
+status tip to whoever opened it, and qtty opens menus through the bar that
+owns them precisely so that chain survives. Arrow through a menu and the
+status bar follows.
+
 The first two rows are the ones that **differ** from Qt rather than merely
 adding to it, and they are why the whole set is opt-in. On a desktop a
 focused button answers to `Space` and not to `Enter` -- except inside a

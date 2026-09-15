@@ -2021,3 +2021,15 @@ find = "\t\tif (!tip.isEmpty() || s_tip_shown) {"
 into = "\t\tif (true) {"
 count = 1
 check = "while a message the application wrote survives tabbing"
+
+[[sabotage]]
+# The menu opened the convenient way instead of through the bar that owns
+# it. popup() leaves QMenuPrivate::causedPopup unset, so QMenu has no chain
+# to walk and an application silently loses a Qt behaviour it had: the
+# status tip its menu items carry. 8.158.
+name = "a menu is opened without the bar that owns it"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\t\t\tbar->setActiveAction(a);"
+into = "\t\t\t\t\tsub->popup(QPoint(0, 0));"
+count = 1
+check = "a menu item's own status tip still reaches the status bar"

@@ -983,6 +983,47 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// A MENU action's status tip is Qt's own, not this library's, and it
+	// arrives only if the menu knows which bar opened it: QMenu walks
+	// causedPopup to find who should hear the tip, and popup() leaves that
+	// unset. Measured in plain Qt with no qtty present -- opened with
+	// popup(), the keyboard moves the highlight and the bar stays empty;
+	// opened through setActiveAction(), each Down puts the action's tip on
+	// the status bar.
+	//
+	// That is exactly the chain 8.31 chose the mnemonic path for, so what is
+	// asserted here is that an application keeps a Qt behaviour it already
+	// had -- with the conventions OFF, because this one is not ours to turn
+	// on. A router that opened menus the convenient way would take it away
+	// and nothing else would say so.
+	{
+		QMainWindow win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(40, 8));
+		QMenu *file = win.menuBar()->addMenu(QStringLiteral("&File"));
+		QAction *open = file->addAction(QStringLiteral("&Open"));
+		open->setStatusTip(QStringLiteral("open a file"));
+		win.setCentralWidget(new QWidget);
+		win.statusBar()->showMessage(QString());
+		win.show();
+		QCoreApplication::processEvents();
+		set_keyboard_conventions(false);
+
+		InputRouter mr(&win);
+		Qtty::set_current_window(&win);
+		mr.on_key({0, QStringLiteral("f"), false, true, false});
+		QCoreApplication::processEvents();
+		mr.on_key({Qt::Key_Down, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(win.statusBar()->currentMessage()
+		          == QStringLiteral("open a file"),
+		      "a menu item's own status tip still reaches the status bar "
+		      "here, the menu being opened through the bar that owns it");
+		file->close();
+		win.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// ---- chords two things answer, which Qt would report and cannot -------
 	//
 	// QShortcutMap is what detects an ambiguous binding on a desktop, it

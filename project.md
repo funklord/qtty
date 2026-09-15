@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1340 checks, 0 failures. `make check` is green and includes
+1341 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15953,6 +15953,36 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.158 A Qt behaviour kept by a choice nobody had connected to it (2026-09-15)
+
+Asking what else a pointer owns turned up the other half of 8.157, and it
+turned out to be working: a `QMenu` sends the highlighted action's status tip
+to whoever opened the menu, so an application arrowing through a menu gets
+its own sentences on the status bar here, conventions or no conventions --
+that half is Qt's, not this library's.
+
+**It works because of a decision taken for a different reason.** `QMenu`
+finds the hearer by walking `QMenuPrivate::causedPopup`, and `popup()` leaves
+that unset. 8.31 opened menus through `QMenuBar::setActiveAction()` instead,
+to fix the bar not knowing its own menu was open and `Right` doing nothing --
+and the status tips came along silently. Measured in plain Qt with no qtty in
+it:
+
+    opened with popup()            Down moves the highlight, bar stays empty
+    opened with setActiveAction()  each Down puts the action's tip on the bar
+
+So an application-visible behaviour rested on a routing choice made for
+another purpose, with nothing recording the connection. **A future
+simplification back to `popup()` would have taken it away and no check would
+have noticed.** There is one now, and the sabotage is exactly that
+simplification.
+
+This is the shape worth keeping from the entry rather than the tip: a
+property nobody chose is still a property somebody relies on. The lens that
+found it was 8.157's own question -- what does a pointer own that a terminal
+user cannot reach -- asked one step further, at the things that were already
+working.
 
 ### 8.157 The sentences an application had already written (2026-09-15)
 
