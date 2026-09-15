@@ -28,12 +28,19 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-14, at 1305**,
+**Last re-verified under all six configurations: 2026-09-15, at 1344**,
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
-result. Offscreen and xcb-under-Xvfb both ran 1305, `minimal` refused and
+result. Offscreen and xcb-under-Xvfb both ran 1344, `minimal` refused and
 said why, the hostile environment was absorbed by the pins, the sanitized
 run reported no failure and no leak, and memcheck was clean.
+
+The sanitized and memcheck arms earned their place that day rather than
+merely passing: 8.161 put `QPointer`s where raw pointers were held across
+the application's own handlers, and the fixture that found the crash --
+a `leaveEvent` deleting the widget the pointer is moving onto -- is in the
+suite those two arms run. A guard of that kind is defended by an
+instrument, not by a green line in the default build.
 
 That re-run was worth taking rather than assuming: the entries between
 8.122 and 8.143 changed the SGR writer, the cursor path, the elision
