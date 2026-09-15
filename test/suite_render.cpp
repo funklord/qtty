@@ -137,6 +137,65 @@ int suite_render(bool record) {
 		}
 	}
 	{
+		// TWO LINES A CELL APART BOTH SURVIVE, and two lines closer than
+		// that do not. The second half is a limit rather than a defect to
+		// fix here, and it is pinned so that it is a known shape rather
+		// than a surprise: a cell row is the unit, so a widget drawing its
+		// lines 14 pixels apart in a 19-pixel grid has asked for one row
+		// twice and the later line wins.
+		//
+		// Measured against Qt's own QCommandLinkButton, which paints its
+		// title and description itself rather than through the style:
+		//
+		//     text [Link Button] at 33.0,21.0 -> row 1 col 3
+		//     text [Description] at 33.0,35.0 -> row 1 col 3
+		//
+		// -- so the title vanished under the description, in Qt's own
+		// widget, with the application doing nothing wrong. project.md
+		// 8.166 carries the finding and what the options cost.
+		const double a = QFontMetricsF(QGuiApplication::font()).ascent();
+		const double ch = GridMetrics::ch();
+		Qtty::CellBuffer b(24, 4);
+		{
+			Qtty::CellPaintDevice dev(b);
+			QPainter p(&dev);
+			p.drawText(QPoint(0, GridMetrics::ch() - 4), QStringLiteral("first"));
+			p.drawText(QPoint(0, 2 * GridMetrics::ch() - 4), QStringLiteral("second"));
+		}
+		// The collision in a buffer of its own, built from the metrics
+		// rather than from a number that happens to work here: the row is
+		// round((baseline - ascent) / ch), so baselines at 0.6 and 1.3 of a
+		// row above the ascent both round to row 1 -- which is the 21-and-35
+		// pair Qt's own command link button produces.
+		Qtty::CellBuffer c(24, 4);
+		{
+			Qtty::CellPaintDevice dev(c);
+			QPainter p(&dev);
+			p.drawText(QPointF(0, a + ch * 0.6), QStringLiteral("apart"));
+			p.drawText(QPointF(0, a + ch * 1.3), QStringLiteral("collided"));
+		}
+		const QString text = b.to_text() + c.to_text();
+		if (b.to_text().contains(QStringLiteral("first"))
+		    && b.to_text().contains(QStringLiteral("second")))
+			printf("PASS: lines a cell apart each keep their own row\n");
+		else {
+			printf("FAIL: lines a cell apart each keep their own row\n");
+			++r;
+		}
+		if (!text.contains(QStringLiteral("apart"))
+		    && text.contains(QStringLiteral("collided")))
+			printf("PASS: and two lines closer than a row share one, the "
+			       "later one winning -- a limit, pinned so it cannot "
+			       "change unnoticed\n");
+		else {
+			printf("FAIL: and two lines closer than a row share one, the "
+			       "later one winning -- a limit, pinned so it cannot "
+			       "change unnoticed\n");
+			++r;
+		}
+	}
+
+	{
 		// The control for that suppression, and it is the whole of why it
 		// is narrow: a rule the APPLICATION draws below underlined text
 		// must survive. Only a horizontal line inside the band the last

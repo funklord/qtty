@@ -896,10 +896,11 @@ same reason every trap on this page is a trap.
 
 ## If you are writing a custom widget
 
-Four things a standard Qt widget gets and yours does not. **Each is one
-line, each fails silently, and each fails only on the terminal** -- the
-desktop build hides all four, which is what makes them worth collecting
-in one place rather than leaving scattered above.
+Five things a standard Qt widget gets and yours does not. **Each fails
+silently, and each fails only on the terminal** -- the desktop build hides
+all five, which is what makes them worth collecting in one place rather
+than leaving scattered above. The first four are one line each; the fifth
+is a fact about the grid.
 
 | Do this | Or else |
 |---|---|
@@ -907,8 +908,14 @@ in one place rather than leaving scattered above.
 | Draw a focus mark, asking `Qtty::focusWidget()` (practice 10) | nothing marks you, and `hasFocus()` is permanently false here |
 | `setAttribute(Qt::WA_InputMethodEnabled)` if you edit text (practice 11) | `Ctrl+C` quits instead of copying, and no cursor is placed on you |
 | Fold pasted newlines if you are single-line (*Copy and paste*) | you get the raw ones: the fold is by type and your type is not on the list |
+| Put your text lines at least `Qtty::GridMetrics::ch()` apart | two lines closer than a cell row share one, and the later one wins -- measured in Qt's own `QCommandLinkButton`, whose title and description sit 14 pixels apart and whose title therefore vanishes |
 
-None of these is a limitation of the library so much as the price of Qt
+The fifth is the one that is a limitation rather than a price: a cell row
+is the unit, so a widget laying its own lines out in pixels can ask for the
+same row twice. Qt's own command link button does exactly that, which is
+worth knowing before you conclude your own painting is at fault.
+
+The others are not limitations of the library so much as the price of Qt
 having no way to ask a widget what it is. Where a question could be put
 to the widget, qtty puts it -- `WA_InputMethodEnabled` is exactly that,
 and it is why the list is four items rather than a class list nobody

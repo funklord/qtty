@@ -68,8 +68,24 @@ def compiles(cxx, flags, names):
 	failing correctly the whole time, the probe being capable and misaimed
 	rather than broken.
 	"""
-	body = "\n".join("namespace probe_%d { using %s; }" % (i, n)
-	                 for i, n in enumerate(names))
+	# A MEMBER cannot be introduced by a using-declaration at namespace
+	# scope -- `using Qtty::GridMetrics::ch;` is ill-formed however public
+	# the member is -- so a document naming one made this gate refuse code
+	# that was reachable all along. Members get a decltype instead, which
+	# asks the same question (is this name declared) of a function or a data
+	# member alike.
+	#
+	# The limit, written down rather than met later: decltype of an address
+	# is AMBIGUOUS for an overloaded member, so a document naming one would
+	# be reported unreachable. No document names one today; the next one to
+	# do so gets this comment rather than a puzzle.
+	lines = []
+	for i, n in enumerate(names):
+		member = n.count("::") == 2
+		lines.append("namespace probe_%d { %s }" % (
+		    i, ("using X = decltype(&%s);" % n) if member
+		       else ("using %s;" % n)))
+	body = "\n".join(lines)
 	src = "#include <qtty/qtty.h>\n#include <QWidget>\n" + body + "\n"
 	with tempfile.TemporaryDirectory() as tmp:
 		path = os.path.join(tmp, "probe.cpp")

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1347 checks, 0 failures. `make check` is green and includes
+1349 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15987,6 +15987,58 @@ measures neither, and the order was the second thing.
 
 Re-pointed at the original walk -- reverse, raw -- it stops the suite at 250
 checks, which is what the entry claims.
+
+### 8.166 Two lines closer than a row (2026-09-15)
+
+Qt's widget gallery -- every standard control in one window, its source
+untouched -- renders here. Buttons, radios, tri-state check box, sliders,
+scroll bars, tree and table views, text edits, a progress bar, date edit,
+dials: all on the grid. One thing in it was wrong, and it is Qt's own
+widget rather than an application's:
+
+    <>
+     ▀▀Descriptionk Button
+
+A `QCommandLinkButton`'s title had vanished under its description. Isolated
+and traced at the paint engine:
+
+    text [Link Button] at 33.0,21.0 ascent 11.0 -> row 1 col 3
+    text [Description] at 33.0,35.0 ascent 11.0 -> row 1 col 3
+
+**Two baselines 14 pixels apart, and a cell row is 19.** The row is
+`round((baseline - ascent) / ch)`, so both land in row 1 and the later one
+wins. Nothing is clipped, nothing is dropped for its font -- both were
+checked and neither is the cause: a two-times font renders, and text inside
+its own clip rect renders.
+
+**Why this widget and not the others.** Everything else in that gallery is
+drawn through `QStyle`, and `GridStyle` answers in CELLS, so its lines are a
+row apart by construction. `QCommandLinkButton` paints its own text --
+`drawItemText` twice, with rects it computed in pixels -- and a widget that
+lays itself out in pixels can ask for the same row twice. Any custom widget
+doing the same meets this, which is why the guide's custom-widget table
+gains a fifth row rather than the entry stopping at Qt's button.
+
+**The guide gate refused the sentence that documents this**, which was the
+gate being wrong rather than the documentation. `guide-check` proves a
+documented name reachable with a using-declaration, and a class MEMBER
+cannot be introduced that way at namespace scope -- `using
+Qtty::GridMetrics::ch;` is ill-formed however public `ch()` is. Members get
+a `decltype(&...)` probe now, checked in both directions before being
+believed: a real member compiles, an absent member and an absent class do
+not, and the gate's own control still fails. Its limit is written beside it
+-- `decltype` of an address is ambiguous for an OVERLOADED member, so a
+document naming one would be reported unreachable; none does today.
+
+**Not fixed, and the options are worth stating rather than the fix being
+picked here.** A rule could push a run onto the next row when it lands on
+one already written at a DIFFERENT pixel baseline -- which would separate
+these two lines and leave a redrawn selection alone, since that redraw
+shares a baseline. It would also be a change to the most heavily checked
+path in the tree, arrived at from one widget. The alternative is what is
+recorded: a limit, pinned by a check in both directions -- lines a row apart
+keep their rows, lines closer than a row share one -- so that the behaviour
+cannot change unnoticed whichever way it is settled.
 
 ### 8.165 Qt's own example, run through the seam (2026-09-15)
 
