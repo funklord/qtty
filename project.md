@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1324 checks, 0 failures. `make check` is green and includes
+1328 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15953,6 +15953,43 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.154 The collision the first practice creates (2026-09-15)
+
+`doc/keyboard-first.md`'s first practice is "give every control a mnemonic",
+and it calls itself the single highest-value thing on the page. It is. It
+also creates a failure that **scales with how well it is followed**: the more
+letters an application claims, the likelier two claims collide, and a
+collision is silent. Nothing is drawn differently, nothing is logged, the
+first control the router reaches answers and the other never does. The page
+gave the advice and said nothing about the cost of taking it.
+
+`Qtty::mnemonic_conflicts(scope)` names the letters more than one control
+answers to, and who answers, **in the order the router tries them** -- so the
+first name in each list is the winner and the rest are the ones to rename.
+Empty is what an application's test asserts, which is `keyboard_reachable()`'s
+shape: the library owns the traversal, the application owns the assertion.
+
+**It reads the router's own enumeration, which is the whole design.** The
+matcher used to walk two loops -- actions, then buttons and buddy labels --
+and a report built from a second copy of that walk could name a different
+winner from the one the keys reach, which would send somebody to rename the
+control that works. Both now walk one list, `mnemonic_claims()`, and the
+check asserts the pair: the report's winner is triggered and the loser is
+not. That is 8.152's and 8.153's lesson arriving before the defect rather
+than after it.
+
+**The filters belong to the claim, not to the matching.** A disabled action,
+a hidden button, a label whose buddy is hidden: the router walks past all
+three, so counting them would invent a collision that does not exist.
+
+**And the sabotage run found this entry's own check defective**, which is the
+part worth keeping. The case for the hidden buddy built its label AFTER the
+window was shown, and a child built then is not visible until it is told to
+be -- so the label was skipped for being invisible and the buddy rule was
+never reached. The check passed with that rule deleted. It is `evidence.md`'s
+"a test can name the hazard exactly and cover only the safe path", found by
+the instrument rather than by reading, four minutes after it was written.
 
 ### 8.153 Two records of which backend is live (2026-09-14)
 

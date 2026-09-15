@@ -277,6 +277,76 @@ static QChar mnemonic_of(const QString &text) {
 	return QChar();
 }
 
+// Everything in `scope` that claims an Alt+letter, in the ORDER THE ROUTER
+// TRIES THEM: actions first, then buttons and buddy labels. One enumeration
+// rather than two, because the matcher and mnemonic_conflicts() disagreeing
+// about who claims what would make the report describe a different program
+// from the one the keys reach -- and a report nobody can trust is worse than
+// none.
+//
+// The filters are part of the claim rather than of the matching. A disabled
+// action, a hidden button and a label whose buddy is hidden do not claim
+// their letter at all: the router walks past them to whatever is next, so
+// naming them in a conflict report would invent a collision that does not
+// exist.
+struct MnemonicClaim {
+	QChar letter;
+	QObject *who;
+	QString text;
+};
+
+static QVector<MnemonicClaim> mnemonic_claims(QWidget *scope) {
+	QVector<MnemonicClaim> out;
+	if (!scope) return out;
+	for (QAction *a : mnemonic_actions(scope)) {
+		if (!a->isEnabled() || a->isSeparator()) continue;
+		const QChar m = mnemonic_of(a->text());
+		if (!m.isNull()) out.append({m, a, a->text()});
+	}
+	for (QWidget *w : scope->findChildren<QWidget *>()) {
+		if (!w->isVisible() || !w->isEnabled()) continue;
+		if (auto *b = qobject_cast<QAbstractButton *>(w)) {
+			const QChar m = mnemonic_of(b->text());
+			if (!m.isNull()) out.append({m, b, b->text()});
+		} else if (auto *l = qobject_cast<QLabel *>(w)) {
+			QWidget *buddy = l->buddy();
+			if (!buddy || !buddy->isVisible() || !buddy->isEnabled()) continue;
+			const QChar m = mnemonic_of(l->text());
+			if (!m.isNull()) out.append({m, l, l->text()});
+		}
+	}
+	return out;
+}
+
+// The letters more than one control answers to, and who answers -- in the
+// order above, so the first name in each list is the one that WINS and the
+// rest are unreachable by that key.
+//
+// It exists because doc/keyboard-first.md's first and highest-value practice
+// is "give every control a mnemonic", and the failure that practice creates
+// scales with how well it is followed: the more letters an application
+// claims, the likelier two claims collide, and the loser is silent. There is
+// nothing to see on the screen and nothing in the log -- the key simply does
+// the other thing, for ever.
+//
+// Empty is the answer an application's test asserts, which is the same shape
+// as keyboard_reachable(): the library owns the traversal, the application
+// owns the assertion.
+QVector<QPair<QChar, QStringList>> mnemonic_conflicts(QWidget *scope) {
+	QVector<QPair<QChar, QStringList>> out;
+	QVector<QChar> seen;
+	const QVector<MnemonicClaim> claims = mnemonic_claims(scope);
+	for (const MnemonicClaim &c : claims) {
+		if (seen.contains(c.letter)) continue;
+		seen.append(c.letter);
+		QStringList who;
+		for (const MnemonicClaim &other : claims)
+			if (other.letter == c.letter) who << other.text;
+		if (who.size() > 1) out.append({c.letter, who});
+	}
+	return out;
+}
+
 bool InputRouter::match_mnemonic(const KeyEvent &k) {
 	// A mnemonic arrives as Alt with text and no Qt::Key: the terminal sends
 	// ESC then the letter, and there is no key code to be had. That is why
@@ -286,74 +356,76 @@ bool InputRouter::match_mnemonic(const KeyEvent &k) {
 	const QChar want = k.text.at(0).toLower();
 	if (!want.isLetterOrNumber()) return false;
 
-	for (QAction *a : mnemonic_actions(input_scope())) {
-		if (!a->isEnabled() || a->isSeparator()) continue;
-		if (mnemonic_of(a->text()) != want) continue;
-		if (QMenu *sub = a->menu()) {
-			// A menu opens rather than triggers.
-			QWidget *owner = a->associatedObjects().isEmpty()
-			    ? nullptr
-			    : qobject_cast<QWidget *>(a->associatedObjects().first());
-			if (auto *bar = qobject_cast<QMenuBar *>(owner)) {
-				// The BAR opens it, rather than this function calling
-				// popup() at a position it worked out itself. The position
-				// was the visible half and the smaller half: popup() leaves
-				// QMenuPrivate::causedPopup unset, so the menu does not know
-				// which bar it belongs to and the bar does not know it is
-				// open. QMenu::keyPressEvent's menu-bar traversal tests
-				// qobject_cast<QMenuBar *>(topCausedWidget()) and could
-				// therefore never fire, and QMenu::hideEvent's matching
-				// clean-up could not either.
-				//
-				// Measured, Alt-F against a bar holding File and Edit:
-				// with popup(), activeAction() stayed null, the bar drew
-				// "File" no differently from "Edit", and Right did nothing.
-				// With setActiveAction() the bar reports &File, draws it
-				// marked, and Right closes File and opens Edit.
-				//
-				// QMenuBarPrivate::popupAction() does the placing, under the
-				// item the menu belongs to, which is the same position the
-				// hand-computed one aimed at -- so this drops code rather
-				// than adding it.
-				bar->setActiveAction(a);
+	// ONE list, in the router's own order, and the same list the conflict
+	// report reads. It used to be two loops here -- actions, then buttons and
+	// buddy labels -- and a second copy of the enumeration would have meant a
+	// report that could disagree with the keys.
+	//
+	// After the actions, not before: a menu's `&File` and a button's `&File`
+	// in the same window is a collision the application made, and the menu is
+	// the older meaning. mnemonic_conflicts() is how an application finds out
+	// it made one.
+	for (const MnemonicClaim &claim : mnemonic_claims(input_scope())) {
+		if (claim.letter != want) continue;
+		if (auto *a = qobject_cast<QAction *>(claim.who)) {
+			if (QMenu *sub = a->menu()) {
+				// A menu opens rather than triggers.
+				QWidget *owner = a->associatedObjects().isEmpty()
+				    ? nullptr
+				    : qobject_cast<QWidget *>(a->associatedObjects().first());
+				if (auto *bar = qobject_cast<QMenuBar *>(owner)) {
+					// The BAR opens it, rather than this function calling
+					// popup() at a position it worked out itself. The
+					// position was the visible half and the smaller half:
+					// popup() leaves QMenuPrivate::causedPopup unset, so the
+					// menu does not know which bar it belongs to and the bar
+					// does not know it is open. QMenu::keyPressEvent's
+					// menu-bar traversal tests
+					// qobject_cast<QMenuBar *>(topCausedWidget()) and could
+					// therefore never fire, and QMenu::hideEvent's matching
+					// clean-up could not either.
+					//
+					// Measured, Alt-F against a bar holding File and Edit:
+					// with popup(), activeAction() stayed null, the bar drew
+					// "File" no differently from "Edit", and Right did
+					// nothing. With setActiveAction() the bar reports &File,
+					// draws it marked, and Right closes File and opens Edit.
+					//
+					// QMenuBarPrivate::popupAction() does the placing, under
+					// the item the menu belongs to, which is the same
+					// position the hand-computed one aimed at -- so this
+					// drops code rather than adding it.
+					bar->setActiveAction(a);
+					return true;
+				}
+				// Anywhere else there is no bar to ask, so the widget's own
+				// corner it is: a submenu at the terminal's origin -- which
+				// is what a null owner gives -- appears with nothing beside
+				// it to say what it belongs to.
+				sub->popup(owner ? owner->mapToGlobal(QPoint(0, 0))
+				                 : QPoint(0, 0));
 				return true;
 			}
-			// Anywhere else there is no bar to ask, so the widget's own
-			// corner it is: a submenu at the terminal's origin -- which is
-			// what a null owner gives -- appears with nothing beside it to
-			// say what it belongs to.
-			sub->popup(owner ? owner->mapToGlobal(QPoint(0, 0)) : QPoint(0, 0));
+			a->trigger();
 			return true;
 		}
-		a->trigger();
-		return true;
-	}
-	// BUTTONS AND BUDDIES, which are not actions and were therefore
-	// unreachable. On a desktop `&Apply` on a push button is activated by
-	// Alt+A -- Qt registers a shortcut for the ampersand -- and `&Name:` on
-	// a label moves focus to the field it is the buddy of. Both are how a
-	// person without a mouse reaches a control DIRECTLY rather than tabbing
-	// to it, so on a terminal they matter more than on the desktop, and
-	// this router reached neither: it searched `QAction`s and a button is
-	// not one.
-	//
-	// After the actions, not before: a menu's `&File` and a button's
-	// `&File` in the same window is a collision the application made, and
-	// the menu is the older meaning.
-	for (QWidget *w : input_scope()->findChildren<QWidget *>()) {
-		if (!w->isVisible() || !w->isEnabled()) continue;
-		if (auto *b = qobject_cast<QAbstractButton *>(w)) {
-			if (mnemonic_of(b->text()) != want) continue;
-			// click() rather than animateClick(): a terminal has no
-			// animation to wait for, and animateClick defers the signal
-			// by a timer an application would have to spin for.
+		// BUTTONS AND BUDDIES, which are not actions and were therefore
+		// unreachable before 8.31. On a desktop `&Apply` on a push button is
+		// activated by Alt+A -- Qt registers a shortcut for the ampersand --
+		// and `&Name:` on a label moves focus to the field it is the buddy
+		// of. Both are how a person without a mouse reaches a control
+		// DIRECTLY rather than tabbing to it, so on a terminal they matter
+		// more than on the desktop.
+		if (auto *b = qobject_cast<QAbstractButton *>(claim.who)) {
+			// click() rather than animateClick(): a terminal has no animation
+			// to wait for, and animateClick defers the signal by a timer an
+			// application would have to spin for.
 			b->click();
 			return true;
 		}
-		if (auto *l = qobject_cast<QLabel *>(w)) {
+		if (auto *l = qobject_cast<QLabel *>(claim.who)) {
 			QWidget *buddy = l->buddy();
-			if (!buddy || mnemonic_of(l->text()) != want) continue;
-			if (!buddy->isVisible() || !buddy->isEnabled()) continue;
+			if (!buddy) continue;
 			buddy->setFocus(Qt::ShortcutFocusReason);
 			set_focus_widget(buddy);
 			return true;

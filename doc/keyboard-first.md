@@ -316,6 +316,21 @@ with several fields wants labels and mnemonics, and a single input that
 which is what `example/chat` does, and why it does not contradict this
 page. **Count the keystrokes you are saving before you spend the row.**
 
+**And the failure this practice creates is silent, so ask about it.** Two
+controls claiming one letter is not drawn differently and is not logged:
+the first one the router reaches answers, and the other never does. The
+more of this page you follow, the likelier it is.
+
+    for (const auto &clash : Qtty::mnemonic_conflicts(&window))
+        qWarning() << clash.first << "is claimed by" << clash.second;
+
+Empty is the answer to assert in the test this page asks you to write. The
+list names the claimants **in the order the router tries them**, so the
+first is the one that wins and the rest are the ones to rename -- and it
+reads the router's own enumeration rather than a second copy, so it cannot
+send you to the control that works. Menu actions come before buttons and
+buddy labels, which is why `&File` on a menu beats `&Format` on a button.
+
 **2. Give every dialog a default button.**
 
     buttons->button(QDialogButtonBox::Ok)->setDefault(true);

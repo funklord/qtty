@@ -1908,3 +1908,37 @@ find = "bool is_tui_active() { return s_tuiActive || g_backend != nullptr; }"
 into = "bool is_tui_active() { return s_tuiActive; }"
 count = 1
 check = "and is told a TUI is running"
+
+[[sabotage]]
+# Every letter reported as a collision, including the ones claimed once. A
+# report that cries wolf is worse than none: an application told that all
+# four of its mnemonics clash stops reading it. 8.154.
+name = "the collision report cannot tell one claim from two"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (who.size() > 1) out.append({c.letter, who});"
+into = "\t\tif (who.size() > 0) out.append({c.letter, who});"
+count = 1
+check = "two controls claiming one Alt+letter are reported"
+
+[[sabotage]]
+# A claim the router walks past, counted as a claim. A label whose buddy is
+# hidden answers nothing, so naming it invents a collision that does not
+# exist -- and sends somebody to rename a control that was never in the way.
+name = "a mnemonic nobody can reach is counted as a claimant"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\tif (!buddy || !buddy->isVisible() || !buddy->isEnabled()) continue;"
+into = "\t\t\tif (!buddy) continue;"
+count = 1
+check = "while a claim whose buddy is hidden is no claim"
+
+[[sabotage]]
+# The enumeration forgetting a whole population. Actions drop out of it, so
+# the router reaches the button instead of the menu item and the report
+# describes a program whose keys do something else -- the two-writers fault
+# the shared list exists to prevent, arrived at from the other side.
+name = "the mnemonic list forgets the actions"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (!m.isNull()) out.append({m, a, a->text()});"
+into = ""
+count = 1
+check = "and the key does what the report said it would"

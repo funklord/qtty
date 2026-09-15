@@ -772,6 +772,88 @@ int suite_router() {
 		CHECK(opened == before, "an unmatched mnemonic triggers nothing");
 	}
 
+	// ---- mnemonic collisions, which an application cannot otherwise see ----
+	//
+	// The guide's first and highest-value practice is "give every control a
+	// mnemonic", and the failure it creates scales with how well it is
+	// followed: the more letters an application claims, the likelier two
+	// claims collide. Nothing says so. The screen is unchanged, nothing is
+	// logged, and one of the two controls simply never answers its key.
+	//
+	// Asserted against what the KEYS do rather than against the report's own
+	// contents, because the report is only worth anything if it names the
+	// same winner the router picks -- a report that could disagree with the
+	// keys would send an application to fix the control that works.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(40, 8));
+		auto *bar = new QMenuBar(&host);
+		QMenu *file = bar->addMenu(QStringLiteral("&File"));
+		int triggered = 0;
+		QAction *act = file->addAction(QStringLiteral("&Save"));
+		QObject::connect(act, &QAction::triggered, [&] { ++triggered; });
+		int clicked = 0;
+		auto *button = new QPushButton(QStringLiteral("&Save all"), &host);
+		button->setGeometry(0, GridMetrics::ch(), 12 * GridMetrics::cw(),
+		                    GridMetrics::ch());
+		QObject::connect(button, &QPushButton::clicked, [&] { ++clicked; });
+		auto *edit = new QLineEdit(&host);
+		edit->setGeometry(0, 2 * GridMetrics::ch(), 12 * GridMetrics::cw(),
+		                  GridMetrics::ch());
+		auto *label = new QLabel(QStringLiteral("&Host"), &host);
+		label->setBuddy(edit);
+		label->setGeometry(0, 3 * GridMetrics::ch(), 12 * GridMetrics::cw(),
+		                   GridMetrics::ch());
+		host.show();
+		QCoreApplication::processEvents();
+
+		const auto clash = mnemonic_conflicts(&host);
+		QStringList letters;
+		for (const auto &c : clash) letters << QString(c.first);
+		printf("info: letters claimed twice [%s]\n",
+		       qPrintable(letters.join(QStringLiteral(", "))));
+		CHECK(clash.size() == 1 && clash[0].first == QLatin1Char('s')
+		          && clash[0].second.size() == 2,
+		      "two controls claiming one Alt+letter are reported, which is "
+		      "the only way an application is told at all");
+		CHECK(!clash.isEmpty()
+		          && clash[0].second.first() == QStringLiteral("&Save"),
+		      "and the winner is named first, in the order the router tries "
+		      "them, so the report cannot send anybody to the control that "
+		      "works");
+
+		InputRouter cr(&host);
+		cr.on_key({0, QStringLiteral("s"), false, true, false});
+		QCoreApplication::processEvents();
+		CHECK(triggered == 1 && clicked == 0,
+		      "and the key does what the report said it would, the report "
+		      "and the matcher reading one enumeration rather than two");
+
+		// A letter claimed once is not a conflict, and neither is a claim
+		// the router would walk past: a hidden buddy means the label does
+		// not answer at all, so naming it would invent a collision.
+		auto *shadow = new QLabel(QStringLiteral("&Save it"), &host);
+		auto *hidden = new QLineEdit(&host);
+		// SHOWN, and its buddy hidden. A child built after its parent was
+		// shown is not visible until it is told to be, so without this line
+		// the label is skipped for being invisible and the buddy is never
+		// asked about -- the check would pass with the buddy rule deleted,
+		// which is how the sabotage run found it.
+		shadow->setGeometry(0, 4 * GridMetrics::ch(), 12 * GridMetrics::cw(),
+		                    GridMetrics::ch());
+		shadow->show();
+		hidden->hide();
+		shadow->setBuddy(hidden);
+		QCoreApplication::processEvents();
+		const auto still = mnemonic_conflicts(&host);
+		CHECK(still.size() == 1 && still[0].second.size() == 2,
+		      "while a claim whose buddy is hidden is no claim, the report "
+		      "and the router agreeing about who is out of play");
+		host.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// ---- submenus (section 17.2) ---------------------------------------------
 	//
 	// Recorded as absent -- "nothing opens or routes a submenu" -- and it

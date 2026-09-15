@@ -73,6 +73,19 @@ QVector<QPair<QString, QString>> keyboard_conventions_help();
 // each control it owns can be reached without a mouse.
 QVector<QWidget *> keyboard_reachable(QWidget *scope);
 
+// The Alt+letters more than one control in `scope` answers to, with the text
+// of each claimant in the order the router tries them -- so the first name in
+// each list is the one that wins and the rest cannot be reached by that key.
+// Empty when every mnemonic is unique, which is what a test asserts.
+//
+// The first practice in `doc/keyboard-first.md` is "give every control a
+// mnemonic", and the failure it creates scales with how well it is followed:
+// two controls claiming one letter is silent. Nothing is drawn differently,
+// nothing is logged, and the key does the other thing for ever. This is the
+// only way an application can be told, and it reads the router's own
+// enumeration rather than a second copy of it.
+QVector<QPair<QChar, QStringList>> mnemonic_conflicts(QWidget *scope);
+
 // ---------------------------------------------------------------- InputRouter
 // Owns everything Qt's platform layer would normally own (measured F3/F4):
 // the shortcut table (synthetic keys never reach QShortcutMap), focus

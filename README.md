@@ -166,7 +166,9 @@ For the keyboard: `Qtty::set_keyboard_conventions()` turns on the habits a
 terminal user expects, `Qtty::keyboard_conventions_help()` names the keys
 that answer so a status bar keeps no second copy of them,
 `Qtty::keyboard_reachable()` lists what `Tab` reaches so a test can assert
-every control is on it, and `Qtty::focusWidget()` says who has focus --
+every control is on it, `Qtty::mnemonic_conflicts()` names the `Alt`+letters
+two controls both claim -- a collision nothing else can show, since the
+loser simply never answers -- and `Qtty::focusWidget()` says who has focus --
 which `QWidget::hasFocus()` cannot here, no window ever being active.
 
 For testing without a terminal: `Qtty::test::snapshot_of()` renders a
