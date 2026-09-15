@@ -1902,6 +1902,77 @@ int suite_widgets() {
 		      "sizeHint reserves the decoration and the gap, in whole cells");
 	}
 
+	// A SMALL icon beside the text costs no second row, which is what a
+	// terminal can afford to be strict about: the icon is drawn as a glyph in
+	// the item's own row, so a row measured for 16 pixels of picture shows
+	// nothing in its lower half.
+	//
+	// Measured in Qt's own QFileDialog before this: every file was followed
+	// by a blank line, so a twenty-row terminal listed ten files. A
+	// QTreeWidget item with an icon measured 38 pixels against a 19-pixel
+	// row -- the base style wants the icon plus margins, and the snap to
+	// whole rows then takes it to two.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		// THROUGH A REAL VIEW, because a bare option does not reach the
+		// case: with no widget to ask, the base style answers one row for a
+		// 16-pixel icon anyway, so an option-only check passes whatever this
+		// style does -- the sabotage run said so, reverting the rule and
+		// watching the check stay green. What changes is a view's own row,
+		// which is the thing the terminal shows.
+		QPixmap icon(16, 16);
+		icon.fill(Qt::red);
+		QTreeWidget tree;
+		tree.setAttribute(Qt::WA_DontShowOnScreen);
+		tree.setColumnCount(1);
+		auto *plain_row = new QTreeWidgetItem(&tree, QStringList{QStringLiteral("plain")});
+		auto *iconed = new QTreeWidgetItem(&tree, QStringList{QStringLiteral("iconed")});
+		iconed->setIcon(0, QIcon(icon));
+		tree.resize(GridMetrics::cells(30, 8));
+		tree.show();
+		QCoreApplication::processEvents();
+		CHECK(tree.visualItemRect(iconed).height() == ch
+		      && tree.visualItemRect(plain_row).height() == ch,
+		      "an item whose icon sits beside its text is one row tall, the "
+		      "icon being a glyph here rather than a picture needing room");
+
+		QStyleOptionViewItem option;
+		option.text = QStringLiteral("file");
+		option.features = QStyleOptionViewItem::HasDecoration;
+		option.decorationPosition = QStyleOptionViewItem::Left;
+
+		// The first exception: an application asking for a decoration
+		// TALLER than a row has asked for an avatar, and a style that
+		// shrank it would be overruling a request rather than declining to
+		// waste a row on a 16-pixel icon.
+		option.decorationSize = QSize(4 * cw, 2 * ch);
+		const QSize avatar = QApplication::style()->sizeFromContents(
+		    QStyle::CT_ItemViewItem, &option, QSize(cw, ch), nullptr);
+		CHECK(avatar.height() >= 2 * ch,
+		      "while a decoration taller than a row keeps its rows, an "
+		      "application that asked for an avatar having asked for it");
+
+		// The second exception is ICON MODE, and it is asserted through a
+		// real view rather than through a bare option: with no widget to ask,
+		// the base style answers one row for a top decoration as readily as
+		// for a side one, so an option-only check would pass whatever this
+		// style did. A QListView in IconMode puts the picture above the
+		// caption, and one row would leave the caption nowhere.
+		QPixmap dot(16, 16);
+		dot.fill(Qt::blue);
+		QListWidget icons;
+		icons.setAttribute(Qt::WA_DontShowOnScreen);
+		icons.setViewMode(QListView::IconMode);
+		auto *tile = new QListWidgetItem(QIcon(dot), QStringLiteral("name"));
+		icons.addItem(tile);
+		icons.resize(GridMetrics::cells(20, 6));
+		icons.show();
+		QCoreApplication::processEvents();
+		CHECK(icons.visualItemRect(tile).height() >= 2 * ch,
+		      "and an icon-mode tile keeps room for the caption under its "
+		      "picture");
+	}
+
 	// Qt::ForegroundRole and Qt::BackgroundRole, which reached nothing at all
 	// -- and were deferred once as a design question, wrongly. The project had
 	// already decided this somewhere else under a different name:

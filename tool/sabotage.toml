@@ -2094,3 +2094,26 @@ find = "\t\tif (counted.contains(a)) continue;\n\t\tcounted.insert(a);"
 into = "\t\tif (false) continue;"
 count = 1
 check = "an action reached by two routes is one claim"
+
+[[sabotage]]
+# A decorated item back to two rows, which is where it was: the base style
+# wants the icon plus margins and the snap takes that to a second row the
+# terminal shows nothing in. Measured in Qt's own file dialog, where every
+# file was followed by a blank line. 8.167.
+name = "a decorated item spends a second row on a glyph"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\treturn QSize(qMax(width, cells * cw),\n\t\t\t             beside && fits ? ch : snapped);"
+into = "\t\t\treturn QSize(qMax(width, cells * cw), snapped);"
+count = 1
+check = "an item whose icon sits beside its text is one row tall"
+
+[[sabotage]]
+# And the rule applied where it should not be: an avatar an application
+# asked for, squashed into one row by a style that was meant to decline a
+# wasted row rather than to overrule a request.
+name = "an avatar is squashed to one row"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\tconst bool fits = vi->decorationSize.height() <= ch;"
+into = "\t\t\tconst bool fits = true;"
+count = 1
+check = "while a decoration taller than a row keeps its rows"

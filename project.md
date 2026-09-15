@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1349 checks, 0 failures. `make check` is green and includes
+1352 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15987,6 +15987,43 @@ measures neither, and the order was the second thing.
 
 Re-pointed at the original walk -- reverse, raw -- it stops the suite at 250
 checks, which is what the entry claims.
+
+### 8.167 The row a glyph did not need (2026-09-15)
+
+Qt's own dialogs, rendered through the seam: a message box, an input dialog,
+a wizard and a **file dialog** -- sidebar, header, sorted tree, scroll bars,
+buttons, all legible on the grid. One thing was wasteful rather than wrong:
+
+    rc2.d                Folder   9/7/26
+                                          <- a blank row after every file
+    etckeeper            Folder   8/6/26
+
+Measured: a plain item is 19 pixels, one cell row; **an item with an icon is
+38** -- the base style wants sixteen pixels of picture plus margins, and the
+snap to whole rows takes that to two. So a twenty-row terminal listed ten
+files, and the rows between them showed nothing at all, because the icon is
+drawn as a GLYPH in the item's own row here.
+
+One row now, where the decoration sits beside the text and fits in a row.
+The two exceptions are the reason it is a rule and not a clamp: an
+application that set a decoration TALLER than a row asked for an avatar, and
+icon MODE puts the picture above its caption, where one row leaves the
+caption nowhere.
+
+**Both of my first two checks for this were wrong, and both were caught.**
+The exception check asserted icon mode through a bare `QStyleOptionViewItem`
+-- and with no widget to ask, the base style answers one row for a top
+decoration as readily as for a side one, so it would have passed whatever
+the style did. The main check had the same fault from the other side, and
+the SABOTAGE run said so: reverting the rule left it green, because a bare
+option never reaches the 38-pixel case. Both are measured through a real
+view now, which is where the terminal's rows come from.
+
+**What is left, and why it is not chased here.** The file dialog's own
+SIDEBAR still doubles: its views report no icon size of their own, so the
+cause is inside `QSidebar`'s delegate rather than in this style, and it is
+Qt's dialog furniture rather than an application's list. Recorded rather
+than pursued.
 
 ### 8.166 Two lines closer than a row (2026-09-15)
 

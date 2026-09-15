@@ -1278,7 +1278,28 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 				cells += CellItemDelegate::check_cells();
 			for (const QString &cl : to_clusters(vi->text))
 				cells += cluster_width(cl);
-			return QSize(qMax(width, cells * cw), snapped);
+			// ONE ROW, where the icon sits BESIDE the text. A decorated item
+			// measured 38 pixels against a 19-pixel row -- the base style
+			// wants 16 for the icon plus margins, and the snap above then
+			// takes it to two rows. A terminal draws that icon as a glyph in
+			// the item's own row, so the second row shows nothing and the
+			// list shows half as much: measured in Qt's own QFileDialog,
+			// where every file was followed by a blank line.
+			//
+			// TWO conditions, and the second was learned by breaking a
+			// check that was right. Not where the decoration is ABOVE the
+			// text -- that is icon mode, where the icon is the item and the
+			// text its caption, and one row would have nowhere to put it.
+			// And not where the decoration is TALLER than a row: an
+			// application setting a decorationSize of two rows has asked for
+			// an avatar, and a style that shrinks it to one is overruling a
+			// request rather than declining to waste a row on a 16-pixel
+			// icon.
+			const bool beside = vi->decorationPosition == QStyleOptionViewItem::Left
+			                 || vi->decorationPosition == QStyleOptionViewItem::Right;
+			const bool fits = vi->decorationSize.height() <= ch;
+			return QSize(qMax(width, cells * cw),
+			             beside && fits ? ch : snapped);
 		}
 		return QSize(width, snapped);
 	case CT_HeaderSection:
