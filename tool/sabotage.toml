@@ -1996,8 +1996,8 @@ check = "a chord two things answer under one focus is reported"
 # unmodified application. 8.157.
 name = "a status tip follows focus without being asked for"
 file = "src/grid/grid_style.cpp"
-find = "\tif (w && keyboard_conventions()) {"
-into = "\tif (w) {"
+find = "\tif (w && s_focus.data() == w && keyboard_conventions()) {"
+into = "\tif (w && s_focus.data() == w) {"
 count = 1
 check = "with the conventions off a status tip stays where Qt left it"
 
@@ -2033,3 +2033,41 @@ find = "\t\t\t\t\tbar->setActiveAction(a);"
 into = "\t\t\t\t\tsub->popup(QPoint(0, 0));"
 count = 1
 check = "a menu item's own status tip still reaches the status bar"
+
+[[sabotage]]
+# The tip sent for the widget focus has already left. A container that
+# hands focus on from its own focusInEvent re-enters set_focus_widget(),
+# and the outer call is the stale one -- last writer wins, and the bar
+# explains the control the user went THROUGH. 8.160.
+name = "the status tip describes the widget focus passed through"
+file = "src/grid/grid_style.cpp"
+find = "\tif (w && s_focus.data() == w && keyboard_conventions()) {"
+into = "\tif (w && keyboard_conventions()) {"
+count = 1
+check = "and a widget that passes focus straight on leaves the tip of"
+
+[[sabotage]]
+# The press delivered to a widget the hover before it destroyed. A
+# leaveEvent that deletes the widget the pointer is moving onto is
+# supported Qt -- the widget is not on the delivery stack -- and without
+# the guard the press lands on freed memory. 8.161.
+name = "a press is delivered to what the hover destroyed"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (alive && m.press) {"
+into = "\t\tif (m.press) {"
+count = 1
+check = "a press is not delivered to a widget the hover before it destroyed"
+expect = "crash"
+
+[[sabotage]]
+# The arriving widget recorded as a raw pointer rather than as the weak
+# reference taken before the handlers ran. This is the exact crash that
+# found the class: assigning a dangling pointer into a QPointer is not a
+# null assignment, it is a read of freed bookkeeping. 8.161.
+name = "the hover records a pointer taken after the handlers ran"
+file = "src/runtime/input_router.cpp"
+find = "\thovered_ = arriving;"
+into = "\thovered_ = now;"
+count = 1
+check = "a press is not delivered to a widget the hover before it destroyed"
+expect = "crash"

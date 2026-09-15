@@ -393,6 +393,18 @@ menu, a hover reveal, a drag: each needs a keyboard route beside it. Put
 the same action in a menu, give it a shortcut, or both. `QAction` in a
 `QMenu` gets you a mnemonic and a shortcut at once.
 
+**Qt ships two of these itself**, which is worth knowing before you audit
+your own code for them. The `x` on a closable tab and a dock widget's
+close button have **no keyboard route at all** -- not in qtty, and not on
+the desktop either. Measured with plain Qt and no qtty in it: `Ctrl+W`,
+`Ctrl+F4` and `Delete` reach a closable `QTabWidget` and `tabCloseRequested`
+never fires; `Ctrl+W` and `Esc` reach a closable `QDockWidget` and it stays
+visible. On a desktop that is a mouse away. Here it may be nothing away at
+all, so if your application uses either, give the same action a menu entry
+or a shortcut of your own -- this practice applied to Qt's furniture rather
+than to yours. The tab bar itself is fine: it takes `Tab` focus and the
+arrows move between pages.
+
 A right-click menu is the exception you get for free: `Menu` and
 `Shift+F10` open it, and your `contextMenuPolicy` is honoured exactly as
 on a desktop. That was not true until the library was measured against
@@ -637,9 +649,9 @@ there -- and you can ask from anywhere, not just from `main()`:
 
     if (!Qtty::is_tui_active()) setStyleSheet(...);
 
-`Qtty::is_tui_active()` is true while `exec()` is driving a terminal
-session, so a widget deep in a tree can branch without being told which
-frontend built it. That is the general escape for anything a desktop
+`Qtty::is_tui_active()` is true while a terminal session is being driven --
+by `exec()`, or by an application's own frame loop -- so a widget deep in a
+tree can branch without being told which frontend built it. That is the general escape for anything a desktop
 wants and a terminal cannot use.
 
 **13. Prefer stepping to dragging.** A splitter, a slider and a scroll bar
@@ -939,10 +951,10 @@ fixture under `<root>/test/snapshot/`, prints both sides on a mismatch,
 and rewrites the fixture when you pass `record = true` -- so capturing a
 screen before you change it is one call and a flag.
 
-### One test that uses all three
+### One test that uses them together
 
-Assembled rather than left as fragments, since the three answer different
-questions and an application wants all of them:
+Assembled rather than left as fragments, since each answers a different
+question and an application wants all of them:
 
     void LoginTest::terminal()
     {
@@ -965,15 +977,23 @@ questions and an application wants all of them:
         QCoreApplication::processEvents();
         QCOMPARE(win.focusWidget(), win.password());
 
-        // 3. And it still LOOKS right, attributes included.
+        // 3. No two controls claim one key (practice 1). Empty is the
+        //    assertion; the lists are for the day it is not.
+        QVERIFY(Qtty::mnemonic_conflicts(&win).isEmpty());
+        QVERIFY(Qtty::shortcut_conflicts(&win).isEmpty());
+
+        // 4. And it still LOOKS right, attributes included.
         const QString got = Qtty::test::snapshot_of(win, 40, 12);
         QVERIFY(!Qtty::test::check_snapshot(MY_SOURCE_DIR, "login", got));
     }
 
-**The first is the one people skip and the one that rots.** Tab order
-follows construction order until somebody inserts a widget, and nothing
-about that edit looks like it touched the keyboard. The other two fail
-loudly when they break; a control quietly leaving the tab chain does not.
+**The first two are the ones people skip and the ones that rot.** Tab
+order follows construction order until somebody inserts a widget, and
+nothing about that edit looks like it touched the keyboard; a mnemonic
+collision arrives the day a second `&S` is typed, and the control that
+stops answering is not the one that was edited. The snapshot fails loudly
+when it breaks. A control quietly leaving the tab chain, or quietly losing
+its letter, does not.
 
 `Qtty::NullBackend` captures frames the same way for what the screen
 *shows*. Between them an application can assert that every control it

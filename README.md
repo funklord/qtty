@@ -180,9 +180,9 @@ fixture on request. Both are in `qtty/testing.h`.
 About the session itself: `Qtty::shell_out()` hands the terminal to a
 child for the duration -- an editor, a pager -- and takes it back with
 the window title, the cell size and the screen put back;
-`Qtty::is_tui_active()` is true while `exec()`
-is driving a terminal, so a widget can branch without being told which
-frontend built it; `Qtty::capabilities()` reports what the terminal
+`Qtty::is_tui_active()` is true while a terminal
+session is being driven -- by `exec()` or by an application's own frame
+loop -- so a widget can branch without being told which frontend built it; `Qtty::capabilities()` reports what the terminal
 negotiated; and `Qtty::flush_deferred_messages()` writes out diagnostics
 held back while the screen was in use.
 

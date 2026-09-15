@@ -900,6 +900,84 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- a target deleted before the event reaches it ---------------------
+	//
+	// The router holds a raw pointer across code that runs the application's
+	// own handlers -- update_hover() sends Leave and Enter before a press is
+	// delivered, and dismiss_popups() closes popups before a window is
+	// entered -- and then uses it. What can actually destroy a widget there
+	// was MEASURED rather than assumed, because the obvious fixtures test
+	// nothing:
+	//
+	//   delete this, inside the widget's own handler   unsupported in Qt; it
+	//                                                  crashes inside
+	//                                                  QWidget::event() before
+	//                                                  this library sees it
+	//   deleteLater() inside the handler, then a
+	//   nested processEvents()                         does NOT destroy: a
+	//                                                  deferred delete posted
+	//                                                  during delivery waits
+	//                                                  for the loop level it
+	//                                                  was posted at
+	//   another widget's handler deleting this one     supported, immediate,
+	//                                                  and the case below
+	//
+	// So the fixture is a leaveEvent that deletes the widget the pointer is
+	// moving ONTO -- legal Qt, since that widget is not on the delivery
+	// stack -- and the press that follows would land on freed memory.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(20, 4));
+		int presses = 0;
+		struct Doomed : QWidget {
+			int *presses = nullptr;
+			void mousePressEvent(QMouseEvent *) override { ++*presses; }
+		};
+		struct Leaver : QWidget {
+			QWidget *kill = nullptr;
+			void leaveEvent(QEvent *) override { delete kill; kill = nullptr; }
+		};
+		auto *leaver = new Leaver;
+		leaver->setParent(&host);
+		leaver->setGeometry(0, 0, 8 * GridMetrics::cw(), GridMetrics::ch());
+		auto *doomed = new Doomed;
+		doomed->setParent(&host);
+		doomed->presses = &presses;
+		doomed->setGeometry(8 * GridMetrics::cw(), 0, 8 * GridMetrics::cw(),
+		                    GridMetrics::ch());
+		leaver->kill = doomed;
+		QPointer<QWidget> alive(doomed);
+		host.show();
+		QCoreApplication::processEvents();
+
+		InputRouter mr(&host);
+		mr.on_mouse({QPoint(1, 0), 0, false, false, true, 0});   // over the leaver
+		QCoreApplication::processEvents();
+		mr.on_mouse({QPoint(10, 0), 1, true, false, false, 0});  // press on the doomed one
+		QCoreApplication::processEvents();
+		CHECK(alive.isNull() && presses == 0,
+		      "a press is not delivered to a widget the hover before it "
+		      "destroyed, which is the one deletion route Qt supports here");
+
+		// And the router is still usable, which a crash would have taken
+		// with it.
+		auto *after = new QLineEdit(&host);
+		after->setGeometry(0, GridMetrics::ch(), 10 * GridMetrics::cw(),
+		                   GridMetrics::ch());
+		after->show();
+		after->setFocus();
+		set_focus_widget(after);
+		QCoreApplication::processEvents();
+		mr.on_key({Qt::Key_Z, QStringLiteral("z"), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(after->text() == QStringLiteral("z"),
+		      "and the next key still arrives, the window having lost a "
+		      "widget rather than the router its footing");
+		host.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// ---- a status tip follows focus, since nobody can hover --------------
 	//
 	// Qt shows a statusTip when the mouse rests on a control. A terminal
@@ -978,6 +1056,32 @@ int suite_router() {
 		      "while a message the application wrote survives tabbing "
 		      "between controls that explain nothing, qtty clearing only "
 		      "tips it put up itself");
+		// A widget that moves focus ON from its own focusInEvent, which is
+		// what a container handing focus to the field inside it does. The
+		// inner call runs to the end and then the outer one resumes, so
+		// without a guard the bar would end up explaining the control
+		// focus has already left -- the last writer being the outer call
+		// and the outer call being the stale one.
+		struct Forwarder : QWidget {
+			QWidget *onward = nullptr;
+			void focusInEvent(QFocusEvent *) override {
+				if (onward) set_focus_widget(onward);
+			}
+		};
+		auto *gate = new Forwarder;
+		gate->setParent(central);
+		gate->setStatusTip(QStringLiteral("not where focus ends up"));
+		gate->onward = host;
+		set_keyboard_conventions(true);
+		set_focus_widget(nullptr);
+		win.statusBar()->showMessage(QString());
+		set_focus_widget(gate);
+		QCoreApplication::processEvents();
+		CHECK(win.statusBar()->currentMessage()
+		          == QStringLiteral("the host to connect to"),
+		      "and a widget that passes focus straight on leaves the tip of "
+		      "the control focus reached, not of the one it went through");
+
 		set_keyboard_conventions(false);
 		win.hide();
 		QCoreApplication::processEvents();

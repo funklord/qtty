@@ -863,11 +863,23 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 	// out above, and it is the same question.
 	const bool types = target && target->testAttribute(Qt::WA_InputMethodEnabled);
 	const QString text = (k.alt && types) ? QString() : k.text;
+	// A HANDLER MAY DELETE THE TARGET, and everything below this line uses
+	// it: the fabricated release, the context-menu branch, the scroll
+	// fallback. An application that deletes a page in a slot -- Qt permits
+	// it and recommends deleteLater() instead, which is not the same as
+	// nobody doing it -- would have every one of those reading freed
+	// memory. A QPointer costs one word and turns a crash into a return.
+	//
+	// The press is still read afterwards because it is a stack object: what
+	// dies is the widget, not the event.
+	QPointer<QWidget> alive(target);
 	QKeyEvent press(QEvent::KeyPress, k.qt_key, mods, text);
 	QApplication::sendEvent(target, &press);
+	if (!alive) return;
 	// Terminals have no key-release; fabricate one immediately (section 5.5).
 	QKeyEvent release(QEvent::KeyRelease, k.qt_key, mods, text);
 	QApplication::sendEvent(target, &release);
+	if (!alive) return;
 
 	// Arrow keys nothing wanted fall back to scrolling a scroll area -- the
 	// TUI convention (section 5.5).
@@ -1479,8 +1491,18 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 			QCoreApplication::processEvents();
 			return;
 		}
+		// The same lifetime guard as deliver_key()'s, and the likelier of
+		// the two to be met: a press reaches a button whose slot closes the
+		// dialog it is in, and the release, the context-menu event and the
+		// hover update below all use the same raw pointer afterwards.
+		// GUARDED, NOT RETURNED FROM: the tail of this function runs
+		// processEvents() and asks for a frame, and a widget that has just
+		// been destroyed is exactly when the screen needs redrawing. An
+		// early return here would leave the deleted panel on the terminal
+		// until the next event happened along.
+		QPointer<QWidget> alive(target);
 		update_hover(target, pos);
-		if (m.press) {
+		if (alive && m.press) {
 			prime_menu_motion(target, screen, mods);
 			grab_ = target;
 			// A second press on the same cell with the same button, inside
@@ -1517,7 +1539,7 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 				last_press_button_ = m.button;
 			}
 		}
-		if (m.motion) {
+		if (alive && m.motion) {
 			// Held-button state matters: a widget reads buttons() to tell a
 			// drag from a hover, so a move sent with Qt::NoButton while
 			// grabbed would arrive as the pointer merely passing over.
@@ -1526,7 +1548,7 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 			               Qt::NoButton, held, mods);
 			QApplication::sendEvent(target, &ev);
 		}
-		if (m.press && btn == Qt::RightButton) {
+		if (alive && m.press && btn == Qt::RightButton) {
 			// The platform layer is what normally turns a right press into a
 			// context menu event; there is no platform here, so nothing ever
 			// asked for one. QWidget::event() reads contextMenuPolicy from
@@ -1537,9 +1559,14 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 			QApplication::sendEvent(target, &ev);
 		}
 		if (m.release) {
-			QMouseEvent ev(QEvent::MouseButtonRelease, QPointF(pos), QPointF(screen),
-			               btn, Qt::NoButton, mods);
-			QApplication::sendEvent(target, &ev);
+			if (alive) {
+				QMouseEvent ev(QEvent::MouseButtonRelease, QPointF(pos),
+				               QPointF(screen), btn, Qt::NoButton, mods);
+				QApplication::sendEvent(target, &ev);
+			}
+			// The grab goes whether or not the widget survived: a grab
+			// pointing at a destroyed widget is the same fault one frame
+			// later.
 			grab_ = nullptr;
 		}
 		set_focus_widget(input_scope()->focusWidget());
@@ -1575,8 +1602,15 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 // The early return is an optimisation, not the mechanism. Without it the two
 // chains are equal and every widget is skipped anyway; with it, a move
 // within one widget does not build them.
-static QVector<QWidget *> hover_chain(QWidget *w) {
-	QVector<QWidget *> c;
+// QPointers, because the loops below send events and an application's
+// leaveEvent may delete a widget that is still in one of these lists. That
+// is not the unsupported case -- a widget deleting ITSELF while handling its
+// own event -- it is the supported one: the pointer moves off A onto B, A's
+// handler deletes B, and B is not on the delivery stack at all. Measured
+// with a fixture that does exactly that, against raw pointers: a segmentation
+// fault inside the second loop, in mapFrom() on a destroyed widget.
+static QVector<QPointer<QWidget>> hover_chain(QWidget *w) {
+	QVector<QPointer<QWidget>> c;
 	for (QWidget *a = w; a; a = a->parentWidget()) {
 		c.append(a);
 		if (a->isWindow()) break;
@@ -1584,23 +1618,50 @@ static QVector<QWidget *> hover_chain(QWidget *w) {
 	return c;
 }
 
+// Membership by identity, since a QPointer that has gone null is not the
+// widget it used to hold and must not match anything.
+static bool chain_holds(const QVector<QPointer<QWidget>> &chain,
+                        const QWidget *w) {
+	for (const QPointer<QWidget> &p : chain)
+		if (p.data() == w) return true;
+	return false;
+}
+
 void InputRouter::update_hover(QWidget *now, const QPoint &window_pos) {
 	if (now == hovered_) return;
-	const QVector<QWidget *> was = hovered_ ? hover_chain(hovered_)
-	                                        : QVector<QWidget *>();
-	const QVector<QWidget *> is = now ? hover_chain(now) : QVector<QWidget *>();
-	for (QWidget *w : was) {
-		if (is.contains(w)) continue;
+	// The arriving widget, weakly, BEFORE any handler runs. The tail of this
+	// function records it, and a leaveEvent below may have destroyed it by
+	// then -- at which point `now` is a dangling raw pointer and assigning
+	// it to a QPointer is not a null assignment but undefined behaviour:
+	// QWeakPointer has to read the object's own bookkeeping to attach, so it
+	// reads freed memory. Measured, with a fixture whose leaveEvent deletes
+	// the widget the pointer is moving onto: a segmentation fault inside
+	// QtSharedPointer::ExternalRefCountData::getAndRef, at the assignment.
+	//
+	// A QPointer taken here attaches while the widget is alive and goes null
+	// on its own when it dies, which is the whole difference.
+	const QPointer<QWidget> arriving(now);
+	const QVector<QPointer<QWidget>> was =
+	    hovered_ ? hover_chain(hovered_) : QVector<QPointer<QWidget>>();
+	const QVector<QPointer<QWidget>> is =
+	    now ? hover_chain(now) : QVector<QPointer<QWidget>>();
+	for (const QPointer<QWidget> &p : was) {
+		QWidget *const w = p.data();
+		if (!w || chain_holds(is, w)) continue;
 		QEvent leave(QEvent::Leave);
 		QApplication::sendEvent(w, &leave);
 	}
-	for (QWidget *w : is) {
-		if (was.contains(w)) continue;
+	for (const QPointer<QWidget> &p : is) {
+		QWidget *const w = p.data();
+		if (!w || chain_holds(was, w)) continue;
 		const QPointF local = w->mapFrom(w->window(), window_pos);
 		QEnterEvent enter(local, local, local);
 		QApplication::sendEvent(w, &enter);
 	}
-	hovered_ = now;
+	// And what is recorded is the weak reference, so a widget destroyed by
+	// one of the handlers above is recorded as nothing -- rather than as
+	// something the next move would send a Leave to.
+	hovered_ = arriving;
 }
 
 void InputRouter::on_paste(const QString &text) {

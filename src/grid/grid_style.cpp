@@ -186,7 +186,15 @@ void set_focus_widget(QWidget *w) {
 	// application shows: a program using its status bar for its own messages
 	// would find them replaced as the user tabs. The same clearing Qt does
 	// when the mouse leaves, and the same reason it is opt-in here.
-	if (w && keyboard_conventions()) {
+	//
+	// AFTER THE EVENTS, and only if the focus is still where this call put
+	// it. A widget that moves focus on from its own focusInEvent -- a
+	// container handing it to the field inside it -- re-enters here, and
+	// the inner call runs to the end before this one resumes. Without the
+	// guard the outer call would then send the tip of the widget focus has
+	// already left, and the bar would explain the wrong control, with
+	// s_tip_shown recording the wrong answer as well.
+	if (w && s_focus.data() == w && keyboard_conventions()) {
 		QString tip;
 		for (const QWidget *p = w; p && tip.isEmpty(); p = p->parentWidget())
 			tip = p->statusTip();

@@ -419,7 +419,12 @@ static void adopt_window(QWidget *w)
 static void enter_window(QWidget *w)
 {
 	if (!w) return;
+	// Closing a popup runs the application's own code, which may close or
+	// delete the window being entered -- and adopt_window() dereferences it
+	// on the next line. Same class as the router's key and mouse paths.
+	QPointer<QWidget> alive(w);
 	dismiss_popups();
+	if (!alive) return;
 	adopt_window(w);
 }
 

@@ -68,6 +68,13 @@ class Restorer:
 			try:
 				with open(path, "wb") as f:
 					f.write(data)
+				# And make the file newer than anything built from the
+				# broken version of it. The write above already does that
+				# in the ordinary case; this is for the interrupted one,
+				# where a compile that was in flight may have finished in
+				# between. An object newer than its source is a rebuild
+				# that will not happen.
+				os.utime(path, None)
 			except OSError as exc:
 				say("sabotage: COULD NOT RESTORE %s: %s" % (path, exc))
 
@@ -78,6 +85,35 @@ class Restorer:
 				if f.read() != data:
 					bad.append(path)
 		return bad
+
+
+# The build or suite this is waiting on, so that a signal can stop it before
+# the sources go back. None between steps.
+g_child = None
+
+
+def stop_child():
+	"""Kill whatever is running, and wait for it to actually be gone.
+
+	The wait is the point. Restoring the sources while a compiler is still
+	reading them is the race this exists to close, and a kill that is not
+	waited for is a kill that has not happened yet.
+	"""
+	global g_child
+	child, g_child = g_child, None
+	if child is None or child.poll() is not None:
+		return
+	child.terminate()
+	try:
+		child.wait(timeout=20)
+	except subprocess.TimeoutExpired:
+		child.kill()
+		try:
+			child.wait(timeout=10)
+		except subprocess.TimeoutExpired:
+			say("sabotage: a build would not die; the tree is restored but")
+			say("          the build directory may hold objects from broken")
+			say("          source. Run `make` again before believing it.")
 
 
 def run(cmd, timeout, cwd=ROOT):
@@ -95,11 +131,31 @@ def run(cmd, timeout, cwd=ROOT):
 		# that did not fail -- which this harness reports as "the code was
 		# broken and nothing noticed", the one alarm it exists to raise.
 		# Parsing a stream nobody else writes to removes the whole class.
-		return subprocess.run(cmd, cwd=cwd, env=env, timeout=timeout,
-		                      stdout=subprocess.PIPE,
-		                      stderr=subprocess.PIPE,
-		                      text=True, errors="replace")
+		#
+		# Popen rather than run(), so that a signal can reach the CHILD.
+		# Stopping this harness with SIGTERM used to leave whatever build
+		# was in flight running: it finished a few seconds later, wrote an
+		# object compiled from the sabotaged source, and did it AFTER the
+		# restore had put the real source back. The tree then looked clean,
+		# `make` saw an object newer than its source and rebuilt nothing,
+		# and the next suite run reported a failure in code nobody had
+		# touched. Measured 2026-09-15: a stopped run left
+		# build/src/cell_paint.o two seconds newer than the file it was
+		# built from, and "a transparent pen draws no rule" failed against
+		# a clean tree.
+		global g_child
+		g_child = subprocess.Popen(cmd, cwd=cwd, env=env,
+		                           stdout=subprocess.PIPE,
+		                           stderr=subprocess.PIPE,
+		                           text=True, errors="replace")
+		try:
+			out, err = g_child.communicate(timeout=timeout)
+		finally:
+			rc = g_child.returncode
+			child, g_child = g_child, None
+		return subprocess.CompletedProcess(cmd, rc, out, err)
 	except subprocess.TimeoutExpired:
+		stop_child()
 		return None
 
 
@@ -236,8 +292,15 @@ def main():
 
 	restorer = Restorer()
 	atexit.register(restorer.restore)
+	def on_signal(*_):
+		# The child first, then the sources: see stop_child(). atexit runs
+		# the restore, and it must not race a compiler that is still
+		# reading what it is putting back.
+		stop_child()
+		sys.exit(130)
+
 	for sig in (signal.SIGINT, signal.SIGTERM):
-		signal.signal(sig, lambda *a: sys.exit(130))
+		signal.signal(sig, on_signal)
 
 	rc = 0
 	try:
@@ -316,6 +379,38 @@ def main():
 				say("                No check ran, so this says nothing about"
 				    " the one named.")
 				rc = 1
+				continue
+
+			# A sabotage whose honest outcome is a DEAD SUITE rather than a
+			# red line, declared per entry. A lifetime guard is the case:
+			# remove it and the next event lands on freed memory, so the
+			# suite does not report a failure -- it stops. Measured on the
+			# first of these: dropping the hover guard took the run out at
+			# 250 checks with no summary line, which the default branch
+			# below calls INCONCLUSIVE and is right to, because for every
+			# other entry that is what a hang looks like.
+			#
+			# Kept narrow deliberately. It accepts only a run that produced
+			# output and no summary; a run that timed out never reaches here
+			# (ok is None above), so "expect = crash" cannot quietly pass an
+			# entry that hung. And a suite that RUNS TO THE END under this
+			# expectation is a failure: the guard was removed and nothing
+			# happened, which means the check does not defend what it says.
+			if item.get("expect") == "crash":
+				if not suite_finished(out):
+					say("  ok -- the suite could not finish, which is what"
+					    " this entry expects")
+					say("     (%d check(s) ran before it stopped)"
+					    % len(passing_checks(out)))
+				else:
+					say("  FAILED: the guard was removed and the suite ran"
+					    " to the end.")
+					say("          check: %s" % check)
+					say("          An entry declaring `expect = \"crash\"`"
+					    " says the code cannot")
+					say("          survive without it. It survived, so one"
+					    " of the two is wrong.")
+					rc = 1
 				continue
 
 			red = [c for c in failing_checks(out) if check in c]

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1341 checks, 0 failures. `make check` is green and includes
+1344 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -594,6 +594,8 @@ Owned by the copyright holder:
 
 | Question | Where |
 |---|---|
+| **Should the terminal's background be re-measured, and how?** It is asked once at startup and the half-block tier composites against it for the life of the session, so a user who toggles their desktop theme -- or a `shell_out()` that returns from a program which changed it -- leaves every translucent edge composited against a ground that has gone. Re-asking at each handover costs one query and needs the decoder to stop discarding an OSC 11 reply; subscribing with `DECSET 2031` costs nothing per frame and needs capability detection; leaving it costs the fallback tier only, kitty-tier sessions sending alpha and never compositing | 8.160 |
+| **Should the conventions offer a key for Qt's own pointer-only furniture?** Measured with plain Qt and no qtty: a closable `QTabWidget` ignores `Ctrl+W`, `Ctrl+F4` and `Delete` -- `tabCloseRequested` never fires -- and a closable `QDockWidget` ignores `Ctrl+W` and `Esc`. So the `x` on a tab and a dock's close button have no keyboard route ANYWHERE, which on a desktop is a mouse away and here may be nothing away. The option is one convention binding each; the cost is that both plausible keys are ones applications mean something by (`Ctrl+W` closes a document in most, and a shortcut an application binds wins anyway, so the convention would answer only where the application is silent -- which is exactly where the user has no other route). The guide names the gap and tells an application to bind its own; whether the library should offer one is the holder's | 8.159 |
 | A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. Cheaper to answer after the picture-rule entry below, which is the same question seen from the other end | *Qt's standard iconography* |
 | **A rule drawn as a thin RECTANGLE becomes a coloured background; the same rule drawn as a LINE becomes a box-drawing glyph.** Measured through an HTML table: its borders arrive as `drawRects` of `11x1` and `1x19` and come out as grey blocks, while `drawLines` of the same shape draws `-` and `\|`. The horizontal case could be told from a caret by shape; **the vertical case cannot -- a caret and a one-cell vertical rule are the same `1x19` rectangle**, which is what stops this being a small fix | 8.65 |
 | **An HTML bullet list loses its bullets.** Measured through a `QTextBrowser`: `<ul><li>one</li></ul>` renders the text indented with a one-cell BACKGROUND block where the bullet belongs and no glyph -- `bg=#000000` on the default dark ground. Qt draws the bullet as `drawPath` with a 6x6 bounding rect, and `is_thin` (`width*2 < cw \|\| height*2 < ch`) is true of it, so a bullet takes the hairline road meant for carets and rules. **The discriminator is clean and is the finding**: a shape smaller than one cell in BOTH dimensions is a mark, not a hairline -- a caret is 1x19 and a rule 50x1, and neither is. What a mark should BECOME is the choice, and it is the holder's | 8.64 |
@@ -15953,6 +15955,151 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.161 A pointer held across somebody else's code (2026-09-15)
+
+One lens, swept: **where does this library hold a raw pointer across code
+that runs the application's own handlers?** Five sites -- the status tip's
+focus hook, `deliver_key()`'s release and the branches after it, three in
+the mouse path, `enter_window()`'s dismiss-then-adopt, and `update_hover()`,
+which walks two chains of raw pointers and sends an event to each.
+
+**What can actually destroy a widget there was measured, and two of the
+three obvious answers are wrong:**
+
+    delete this, in the widget's own handler    unsupported in Qt: it
+                                                crashes inside QWidget::
+                                                event() before this library
+                                                sees anything
+    deleteLater() + a nested processEvents()    does NOT destroy. A deferred
+                                                delete posted during delivery
+                                                waits for the loop level it
+                                                was posted at -- measured,
+                                                still alive after two turns
+    another widget's handler deleting this one  supported, immediate, and the
+                                                one that bites
+
+So the fixture is a `leaveEvent` that deletes the widget the pointer is
+moving ONTO -- legal Qt, that widget not being on the delivery stack -- and
+it found a **real crash**, not the one the guards were written for.
+`update_hover()` ended with `hovered_ = now`, and by then `now` could be
+destroyed: assigning a dangling pointer into a `QPointer` is not a null
+assignment but a read of the object's own bookkeeping, so it faults.
+`QtSharedPointer::ExternalRefCountData::getAndRef`, 250 checks into the run.
+
+The guards hold the weak reference **before** the foreign code runs, which
+is the whole rule: a `QPointer` taken while the widget is alive goes null on
+its own; one taken afterwards is undefined behaviour dressed as caution.
+
+**And the harness could not defend any of it**, which is the other half of
+this entry. Remove one of these guards and the suite does not go red -- it
+DIES, and `sabotage.py` calls that INCONCLUSIVE, correctly, because for
+every other entry a missing summary line means a hang. So the spec learned
+an expectation: `expect = "crash"` accepts a run that produced output and no
+summary, refuses one that timed out (that path never reaches the branch),
+and **fails if the suite runs to the end** -- a guard whose absence changes
+nothing is a guard whose check proves nothing. Two entries use it, and both
+were watched doing what they claim.
+
+Two other things the stopped run taught, both operational:
+
+- **A killed sabotage run can leave the build poisoned.** The restore put
+  the sources back while a compile was still in flight; that compile
+  finished two seconds later and wrote an object from the broken source,
+  newer than the file it came from. `make` then rebuilt nothing and a clean
+  tree failed a paint check. The harness kills its child and waits before
+  restoring now, and touches each restored file afterwards.
+- **Judging a suite after a killed run means rebuilding first.** That is the
+  staleness trap `sabotage.py`'s own header warns about, met from the one
+  direction it did not cover.
+
+### 8.160 A measurement taken once, about a thing that changes (2026-09-15)
+
+The terminal's own background colour is asked for at startup -- OSC 11, in
+the capability query -- and stored in `caps_.bg`. `present()` composites the
+half-block tier against it, and the comment there records why: guessing a
+dark grey haloed every translucent edge on a light terminal, and *"the value
+was always askable"*.
+
+**It is asked once and never again, and a terminal's background is not a
+constant.** A user toggling their desktop between light and dark, a terminal
+profile switched between two sessions of the same program, `shell_out()`
+returning from a program that changed it: after any of those, every
+translucent edge is composited against a ground that is no longer there --
+the exact defect the startup query was added to fix, arriving by the clock
+instead of by a guess.
+
+**And the path that could carry a fresh answer discards it.**
+`parse_string_sequence()` finds the end of an OSC, DCS, APC, PM or SOS
+sequence and drops the bytes, which is right for the fault it was written for
+-- before it, one OSC 11 reply became 23 fake keystrokes. A terminal that
+volunteers a theme change, or answers a question nobody asked twice, is
+therefore swallowed correctly and understood not at all.
+
+Three ways forward, with their costs, and the choice is the holder's:
+
+- **Re-ask at each handover.** `resume()` already re-measures the geometry
+  for exactly this reason -- the terminal may have changed while it was
+  somebody else's -- and the ground is as likely to have moved as the size.
+  One query per handover, and it needs the drop path above to keep an OSC 11
+  reply rather than discard it.
+- **Subscribe.** kitty, ghostty and foot implement a colour-scheme change
+  notification (`DECSET 2031`), which is the answer that costs nothing per
+  frame and nothing per handover. It needs capability detection and a second
+  branch in the decoder, and terminals without it stay where they are.
+- **Leave it and say so.** The only internal consumer is the half-block
+  composite -- measured by reading every use of `caps_.bg`, which is that
+  one line -- and a kitty-tier session sends alpha to the terminal and
+  never composites at all.
+
+  **But it does not stay internal**, which is the half that turns this from
+  a tier's problem into an interface's. `Capabilities::background` is
+  published: `Qtty::capabilities()` hands it to any application, `README.md`
+  tells one to composite against it at a lower tier, and `qtty-negotiate`
+  prints it as what the terminal reported. So a stale measurement is handed
+  out as a current fact, which is `evidence.md`'s shelf-life rule at its
+  sharpest -- a number with no method attached, quoted by somebody who
+  cannot re-take it.
+
+What is NOT open is whether the value goes stale: it does, measured by
+reading the code that takes it and the code that drops the only message that
+could refresh it. `evidence.md`'s shelf-life rule names this shape -- a fact
+recorded without a way to re-take it -- and the fix for the geometry was
+already written, one function away.
+
+### 8.159 Qt's own controls that no key can reach (2026-09-15)
+
+The lens that produced 8.157 and 8.158 -- what does a pointer own that a
+terminal user cannot reach -- run once more, this time at Qt's furniture
+rather than at an application's data. Two controls Qt ships have **no
+keyboard route at all**, measured with plain Qt and no qtty in it:
+
+    Ctrl+W on a closable tab       tabCloseRequested did not fire
+    Ctrl+F4 on a closable tab      tabCloseRequested did not fire
+    Delete on the tab bar          tabCloseRequested did not fire
+    Ctrl+W, Esc on a closable dock the dock stayed visible
+
+So the `x` on a closable tab and a dock widget's close button are reachable
+only with a pointer. **That is Qt's property, not a defect here**, and the
+distinction matters: on a desktop the route is a mouse away, and this
+library's premise is a user who may not have one.
+
+The tab bar itself is fine and was checked rather than assumed: its focus
+policy is `Qt::TabFocus`, so `Tab` reaches it and the arrows move between
+pages. It is the close button that has nothing.
+
+The guide now names both under practice 4 -- *never let an action be
+reachable only by pointer* -- as the two cases where **Qt** breaks that
+practice on the application's behalf, with the remedy an application
+already knows: give the same action a menu entry or a shortcut.
+
+**Whether the library should offer a convention binding instead is §0b's,
+and the cost is why.** Both plausible keys are ones applications already
+mean something by, an application's own shortcut wins over a convention in
+any case, and so a binding would answer exactly where the application is
+silent -- which is also exactly where the user has no other route. That is
+an argument for it as much as against, which is what makes it a decision
+rather than a defect.
 
 ### 8.158 A Qt behaviour kept by a choice nobody had connected to it (2026-09-15)
 
