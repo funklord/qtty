@@ -465,7 +465,9 @@ internals:
 ```
 backend escape decoding → KeyEvent/MouseEvent
     → InputRouter
-        → shortcut table (ours) ─ match? → QAction::trigger()
+        → shortcut table (ours) ─ match? → QAction::trigger() / QShortcut::activated
+        → readline chord in a text field? → the editing key it stands for
+        → Alt+letter ─ mnemonic? → menu, button, or a label's buddy
         → grab widget? else popup? else modal? else window->focusWidget()
             → QKeyEvent / QMouseEvent / QWheelEvent via QApplication::sendEvent
 ```
@@ -489,12 +491,28 @@ known limitation.
 synthetic `QKeyEvent` does *not* reach Qt's shortcut map — measured across all three
 shortcut contexts and both delivery targets (focus widget and `QWindow`), zero
 activations. Because no window is active, `QShortcutMap` never matches. `InputRouter`
-therefore maintains its own table, built by walking `QAction`s from the active window
-and its children, and matches before dispatching the key onward. Manual
+therefore maintains its own table and matches before dispatching the key onward. Manual
 `QAction::trigger()` on a match works correctly.
 
+**What the table is built from grew twice after this was written, and the shape
+matters.** It is one enumeration, in the order the router tries it: `QAction`s from the
+input scope and its children; application-context `QAction`s in *other* windows, since
+`Qt::ApplicationShortcut` by definition does not care which window you are in;
+`QShortcut`s in the scope, which are not `QAction`s and were invisible to the first
+version of this table (project.md 8.86 — `new QShortcut(...)` is the commonest Qt idiom
+there is, and it did nothing at all on the terminal); and application-context
+`QShortcut`s elsewhere. All four contexts are honoured, using `Qtty::focusWidget()`
+rather than `hasFocus()`, which is permanently false here.
+
+One enumeration rather than four loops, because `Qtty::shortcut_conflicts()` reads it
+too (8.156). That function is the second silver lining below: Qt reports an ambiguous
+binding through `QShortcutMap`, which is exactly the machinery that cannot work here, so
+the library reports it instead.
+
 This is a small amount of code and it has a silver lining: shortcut precedence becomes
-explicit and testable rather than depending on Qt's context rules.
+explicit and testable rather than depending on Qt's context rules — and, since 8.154 and
+8.156, *reportable*: `Qtty::mnemonic_conflicts()` and `Qtty::shortcut_conflicts()` name
+the letters and chords more than one thing answers, in the order the router tries them.
 
 **Cursor placement.** Elegant trick worth adopting: query the focus widget generically
 rather than special-casing input classes.

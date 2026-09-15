@@ -15956,6 +15956,34 @@ and the check reddens.
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
 
+### 8.162 The set run whole, for the first time (2026-09-15)
+
+**210 of 210.** Every entry reddened the check it names -- 208 as a failing
+line, and the two declaring `expect = "crash"` by stopping the suite, which
+is what they say they will do. No refused anchor, no inconclusive verdict,
+the tree restored to eighteen files and rebuilt afterwards.
+
+It is the first run of the set that finished. The one before it was killed
+at 178 by a machine short of memory (8.151), and the one this morning was
+stopped by hand at 44 to get the tree back for the lifetime work -- which
+is where the poisoned-build lesson in 8.161 came from.
+
+**What a full run is FOR is the part worth saying, because the tally does
+not say it.** Each entry was proved when it was written; that property
+decays as the code moves, and only a whole run asks whether it still holds.
+Today the router's shortcut matcher went from four loops to one shared
+enumeration, twice, and the mnemonic matcher with it -- exactly the kind of
+restructure that leaves old checks passing for new reasons. 8.151 found one
+such check the last time it was asked. **This time there was none**, which
+is a real answer rather than a quiet one: the enumerations changed shape and
+every check that depended on them still separates the broken code from the
+working code.
+
+The run took about 40 minutes for 210 entries on a quiet machine, which is
+worth recording as a price: it is an hour's wait to learn whether a day's
+restructuring broke the instruments, and the two occasions it has been
+skipped are the two occasions something was found later.
+
 ### 8.161 A pointer held across somebody else's code (2026-09-15)
 
 One lens, swept: **where does this library hold a raw pointer across code
