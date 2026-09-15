@@ -334,6 +334,21 @@ a **tab** comes last of all, because its letter is answered only after the
 key has been delivered and refused, and only with the conventions on. With
 them off a tab's letter is not a claim at all, and the list says so.
 
+**And the same question for your chords.** Qt reports an ambiguous
+shortcut on a desktop; here it cannot, because `QShortcutMap` gates on the
+window being active and no window activates. Two things claiming `Ctrl+S`
+means the first one the router reaches answers and the other never does.
+
+    for (const auto &clash : Qtty::shortcut_conflicts(&window))
+        qWarning() << clash.first.toString() << "is answered by" << clash.second;
+
+It covers `QAction` and `QShortcut` alike, including the
+`ApplicationShortcut` ones in your other windows, since those answer here by
+definition. **Context decides**, so this is not a list of sequences used
+twice: two `WidgetShortcut` claims on different widgets are not a collision,
+only one of them ever being in play, and a chord is reported where some
+focus a user can reach makes two of them answer at once.
+
 **2. Give every dialog a default button.**
 
     buttons->button(QDialogButtonBox::Ok)->setDefault(true);

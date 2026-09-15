@@ -8,6 +8,7 @@
 #include <QImage>
 #include <QRegion>
 #include <QVector>
+#include <QKeySequence>          // shortcut_conflicts(), below
 #include <QElapsedTimer>
 #include <functional>
 #include <QTimer>
@@ -85,6 +86,22 @@ QVector<QWidget *> keyboard_reachable(QWidget *scope);
 // only way an application can be told, and it reads the router's own
 // enumeration rather than a second copy of it.
 QVector<QPair<QChar, QStringList>> mnemonic_conflicts(QWidget *scope);
+
+// And the same question for chords: the key sequences more than one thing in
+// `scope` answers, with the winner named first. Actions and QShortcuts both,
+// including the application-context ones in other windows, because those
+// answer here by definition.
+//
+// Qt reports this on a desktop and cannot here. QShortcutMap is what detects
+// an ambiguous binding, it gates on the window being active, and no window
+// activates under qtty -- so the toolkit's own answer is gone and this
+// replaces it.
+//
+// CONTEXT DECIDES, so the answer is not a list of repeated sequences. Two
+// Qt::WidgetShortcut claims on different widgets are not a conflict, only
+// one of them ever being in play; a chord is reported where some focus a
+// user can reach makes two claims answer at once.
+QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope);
 
 // ---------------------------------------------------------------- InputRouter
 // Owns everything Qt's platform layer would normally own (measured F3/F4):

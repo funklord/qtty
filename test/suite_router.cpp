@@ -900,6 +900,89 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- chords two things answer, which Qt would report and cannot -------
+	//
+	// QShortcutMap is what detects an ambiguous binding on a desktop, it
+	// gates on the window being active, and no window activates here. So
+	// Qt's own answer to "two things claim Ctrl+S" is gone: the router fires
+	// the first and the other is silent for ever, with nothing to ask.
+	//
+	// CONTEXT is the half that makes the report worth reading. Two
+	// WidgetShortcut claims on different widgets are not a collision -- only
+	// one can ever be in play -- and a report that could not tell the
+	// difference would be a list of every sequence used twice, which every
+	// real application has.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(30, 6));
+		auto *one = new QLineEdit(&host);
+		one->setGeometry(0, 0, 10 * GridMetrics::cw(), GridMetrics::ch());
+		auto *two = new QLineEdit(&host);
+		two->setGeometry(0, GridMetrics::ch(), 10 * GridMetrics::cw(),
+		                 GridMetrics::ch());
+		host.show();
+		QCoreApplication::processEvents();
+
+		// The same chord on two widgets, each asking for its OWN widget.
+		// This is the arrangement an application reaches for deliberately,
+		// and it is not a conflict.
+		int narrow = 0;
+		for (QLineEdit *e : {one, two}) {
+			auto *sc = new QShortcut(QKeySequence(QStringLiteral("Ctrl+B")),
+			                         e);
+			sc->setContext(Qt::WidgetShortcut);
+			QObject::connect(sc, &QShortcut::activated, [&] { ++narrow; });
+		}
+		QCoreApplication::processEvents();
+		CHECK(shortcut_conflicts(&host).isEmpty(),
+		      "one chord on two widgets, each scoped to its own, is not a "
+		      "conflict: only one of them is ever in play");
+
+		// A window-context action and a widget-context shortcut on the same
+		// chord. With focus in that widget both answer, and only the first
+		// the router reaches ever fires.
+		auto *act = new QAction(QStringLiteral("&Save"), &host);
+		act->setShortcut(QKeySequence(QStringLiteral("Ctrl+S")));
+		act->setShortcutContext(Qt::WindowShortcut);
+		int saved = 0;
+		QObject::connect(act, &QAction::triggered, [&] { ++saved; });
+		host.addAction(act);
+		auto *rival = new QShortcut(QKeySequence(QStringLiteral("Ctrl+S")),
+		                            two);
+		rival->setContext(Qt::WidgetShortcut);
+		rival->setObjectName(QStringLiteral("the rival"));
+		int rivals = 0;
+		QObject::connect(rival, &QShortcut::activated, [&] { ++rivals; });
+		QCoreApplication::processEvents();
+
+		const auto clash = shortcut_conflicts(&host);
+		QStringList names;
+		for (const auto &c : clash)
+			names << c.first.toString() + QStringLiteral(": ")
+			         + c.second.join(QStringLiteral(" / "));
+		printf("info: chords answered twice [%s]\n",
+		       qPrintable(names.join(QStringLiteral("; "))));
+		CHECK(clash.size() == 1
+		          && clash[0].first == QKeySequence(QStringLiteral("Ctrl+S"))
+		          && clash[0].second.size() == 2
+		          && clash[0].second.first() == QStringLiteral("&Save"),
+		      "a chord two things answer under one focus is reported, with "
+		      "the one that wins named first");
+
+		InputRouter sr(&host);
+		two->setFocus();
+		set_focus_widget(two);
+		QCoreApplication::processEvents();
+		sr.on_key({Qt::Key_S, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		CHECK(saved == 1 && rivals == 0,
+		      "and the chord does what the report said: the action answers "
+		      "and the QShortcut beside it never will");
+		host.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// ---- submenus (section 17.2) ---------------------------------------------
 	//
 	// Recorded as absent -- "nothing opens or routes a submenu" -- and it

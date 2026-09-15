@@ -167,8 +167,9 @@ terminal user expects, `Qtty::keyboard_conventions_help()` names the keys
 that answer so a status bar keeps no second copy of them,
 `Qtty::keyboard_reachable()` lists what `Tab` reaches so a test can assert
 every control is on it, `Qtty::mnemonic_conflicts()` names the `Alt`+letters
-two controls both claim -- a collision nothing else can show, since the
-loser simply never answers -- and `Qtty::focusWidget()` says who has focus --
+two controls both claim and `Qtty::shortcut_conflicts()` the chords two
+things answer -- collisions nothing else can show, since the loser simply
+never fires and Qt's own ambiguity report needs an active window -- and `Qtty::focusWidget()` says who has focus --
 which `QWidget::hasFocus()` cannot here, no window ever being active.
 
 For testing without a terminal: `Qtty::test::snapshot_of()` renders a

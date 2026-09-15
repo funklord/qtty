@@ -1027,8 +1027,8 @@ check = "qtty names the focused widget at the moment Qt's own"
 # which is how it shipped until 8.83, with nothing to report it.
 name = "a QShortcut is never matched"
 file = "src/runtime/input_router.cpp"
-find = "\tconst auto owned = scope->findChildren<QShortcut *>();"
-into = "\tconst QList<QShortcut *> owned;"
+find = "\tfor (QShortcut *sc : scope->findChildren<QShortcut *>())\n\t\tadd_shortcut(sc, false);"
+into = "\t;"
 count = 1
 check = "a QShortcut fires, which is the commonest way"
 
@@ -1039,8 +1039,8 @@ check = "a QShortcut fires, which is the commonest way"
 # is a key the desktop would not have answered.
 name = "a QShortcut fires from behind an open menu"
 file = "src/runtime/input_router.cpp"
-find = "\t\tif (popup_owns_input) return true;       // swallowed, not fired\n\t\treturn fire(sc);"
-into = "\t\treturn fire(sc);"
+find = "\t\t\tif (popup_owns_input) return true;   // swallowed (a QShortcut)\n\t\t\treturn fire(sc);"
+into = "\t\t\treturn fire(sc);"
 count = 1
 check = "a QShortcut does not fire from behind an open menu"
 
@@ -1143,8 +1143,8 @@ check = "the terminal takes its title from the window switched to"
 # because input_scope() answers the current window now. 8.109.
 name = "an application-context shortcut cannot be found in another window"
 file = "src/runtime/input_router.cpp"
-find = "\tif (QShortcut *sc = app_shortcut_for(pressed, scope)) {"
-into = "\tif (QShortcut *sc = nullptr) {"
+find = "\t\t\tadd_shortcut(sc, true);"
+into = "\t\t\t;"
 count = 1
 check = "an application-context shortcut fires from a window that does not own it"
 
@@ -1155,8 +1155,8 @@ check = "an application-context shortcut fires from a window that does not own i
 # obvious check cannot see.
 name = "the cross-window search ignores the shortcut's context"
 file = "src/runtime/input_router.cpp"
-find = "\t\t\tif (sc->context() != Qt::ApplicationShortcut) continue;"
-into = "\t\t\tif (false) continue;"
+find = "\t\tif (app && sc->context() != Qt::ApplicationShortcut) return;"
+into = "\t\tif (false) return;"
 count = 1
 check = "while a window-context shortcut in the window you left stays quiet"
 
@@ -1166,8 +1166,8 @@ check = "while a window-context shortcut in the window you left stays quiet"
 # would have been the one exception nothing asked about.
 name = "an application-context shortcut fires from behind a menu"
 file = "src/runtime/input_router.cpp"
-find = "\t\tif (popup_owns_input) return true;       // swallowed (application)"
-into = "\t\tif (false) return true;       // swallowed (application)"
+find = "\t\t\tif (popup_owns_input) return true;   // swallowed (a QShortcut)"
+into = "\t\t\tif (false) return true;   // swallowed (a QShortcut)"
 count = 1
 check = "an application-context shortcut is swallowed behind an open menu"
 
@@ -1177,7 +1177,7 @@ check = "an application-context shortcut is swallowed behind an open menu"
 # fired, so a WidgetShortcut answered from a widget that was not focused.
 name = "an action's shortcut context is ignored again"
 file = "src/runtime/input_router.cpp"
-find = "\t\tif (!action_context_applies(a, scope, focusWidget())) continue;"
+find = "\t\tif (!claim_applies(claim, scope, focusWidget())) continue;"
 into = "\t\tif (false) continue;"
 count = 1
 check = "an action asking for WidgetShortcut fires only while its own widget"
@@ -1965,3 +1965,26 @@ find = "\tif (keyboard_conventions()) {\n\t\tfor (QTabBar *bar : scope->findChil
 into = "\tif (true) {\n\t\tfor (QTabBar *bar : scope->findChildren<QTabBar *>()) {"
 count = 1
 check = "with the conventions off a tab's letter is not a claim"
+
+[[sabotage]]
+# The report ignoring context, so every sequence used twice is called a
+# collision. Two widget-scoped claims on different widgets are the
+# arrangement an application reaches for deliberately, and a report that
+# cries wolf about them is one nobody reads. 8.156.
+name = "the chord report calls every repeat a collision"
+file = "src/runtime/input_router.cpp"
+find = "\tif (c.application) return true;"
+into = "\treturn true;"
+count = 1
+check = "one chord on two widgets, each scoped to its own, is not a conflict"
+
+[[sabotage]]
+# Only the focus a window starts with considered, so a collision that needs
+# a caret somewhere reachable is never seen. The chord still fires for one
+# claimant and the other stays silent -- which is the whole subject.
+name = "the chord report never moves the focus it asks about"
+file = "src/runtime/input_router.cpp"
+find = "\tQVector<QWidget *> focuses = keyboard_reachable(scope);\n\tfocuses.append(nullptr);"
+into = "\tQVector<QWidget *> focuses;\n\tfocuses.append(nullptr);"
+count = 1
+check = "a chord two things answer under one focus is reported"

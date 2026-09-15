@@ -564,34 +564,128 @@ static bool action_context_applies(const QAction *a, const QWidget *scope,
 	return false;
 }
 
-static QAction *app_action_for(const QKeySequence &pressed,
-                              const QWidget *scope) {
-	for (QWidget *w : other_windows(scope)) {
-		QList<QAction *> actions = w->actions();
-		const auto children = w->findChildren<QWidget *>();
-		for (QWidget *c : children) actions += c->actions();
-		for (QAction *a : std::as_const(actions)) {
-			if (!a->isEnabled()) continue;
-			if (a->shortcutContext() != Qt::ApplicationShortcut) continue;
-			const auto shortcuts = a->shortcuts();
-			for (const QKeySequence &s : shortcuts)
-				if (!s.isEmpty() && s == pressed) return a;
-		}
-	}
-	return nullptr;
+// Whether a QShortcut's context lets it answer with `fw` focused. Extracted
+// so that the matcher and shortcut_conflicts() cannot disagree: the report
+// exists to say which chord answers twice, and one built on its own copy of
+// this rule would be describing a different program.
+static bool shortcut_context_applies(const QShortcut *sc, const QWidget *fw) {
+	const QWidget *const owner = qobject_cast<QWidget *>(sc->parent());
+	if (sc->context() == Qt::WidgetShortcut)
+		return owner && owner == fw;
+	if (sc->context() == Qt::WidgetWithChildrenShortcut)
+		return owner && fw && (owner == fw || owner->isAncestorOf(fw));
+	return true;
 }
 
-static QShortcut *app_shortcut_for(const QKeySequence &pressed,
-                                   const QWidget *scope) {
-	for (QWidget *w : other_windows(scope)) {
-		const auto owned = w->findChildren<QShortcut *>();
-		for (QShortcut *sc : owned) {
-			if (!sc->isEnabled() || sc->key().isEmpty()) continue;
-			if (sc->context() != Qt::ApplicationShortcut) continue;
-			if (sc->key() == pressed) return sc;
-		}
+// Everything that claims a chord, in THE ORDER match_shortcut() tries them:
+// actions in the scope, application-context actions in other windows, the
+// scope's QShortcuts, and application-context QShortcuts elsewhere. Four
+// populations, named here once, because a report that knows three of them
+// tells an application its chords are unique when they are not -- which is
+// 8.155 exactly, and it cost a day the first time.
+//
+// A claim per (object, sequence): an action may carry several, and a chord
+// claimed by one of them is claimed.
+struct ShortcutClaim {
+	QKeySequence key;
+	QObject *who;
+	QString text;
+	bool application = false;     // reached from outside the scope
+};
+
+static QString claim_label(const QObject *who, const QKeySequence &key) {
+	if (const auto *a = qobject_cast<const QAction *>(who)) {
+		if (!a->text().isEmpty()) return a->text();
+		if (!a->objectName().isEmpty()) return a->objectName();
+		return QStringLiteral("a QAction");
 	}
-	return nullptr;
+	if (!who->objectName().isEmpty()) return who->objectName();
+	const QObject *const owner = who->parent();
+	return QStringLiteral("a QShortcut(%1) on %2")
+	    .arg(key.toString(),
+	         owner ? QString::fromLatin1(owner->metaObject()->className())
+	               : QStringLiteral("nothing"));
+}
+
+static QVector<ShortcutClaim> shortcut_claims(QWidget *scope) {
+	QVector<ShortcutClaim> out;
+	if (!scope) return out;
+	const auto add_action = [&out](QAction *a, bool app) {
+		if (!a->isEnabled()) return;
+		if (app && a->shortcutContext() != Qt::ApplicationShortcut) return;
+		const auto keys = a->shortcuts();
+		for (const QKeySequence &s : keys)
+			if (!s.isEmpty()) out.append({s, a, claim_label(a, s), app});
+	};
+	QList<QAction *> actions = scope->actions();
+	for (QWidget *c : scope->findChildren<QWidget *>()) actions += c->actions();
+	for (QAction *a : std::as_const(actions)) add_action(a, false);
+	for (QWidget *w : other_windows(scope)) {
+		QList<QAction *> theirs = w->actions();
+		for (QWidget *c : w->findChildren<QWidget *>()) theirs += c->actions();
+		for (QAction *a : std::as_const(theirs)) add_action(a, true);
+	}
+	const auto add_shortcut = [&out](QShortcut *sc, bool app) {
+		if (!sc->isEnabled() || sc->key().isEmpty()) return;
+		if (app && sc->context() != Qt::ApplicationShortcut) return;
+		out.append({sc->key(), sc, claim_label(sc, sc->key()), app});
+	};
+	for (QShortcut *sc : scope->findChildren<QShortcut *>())
+		add_shortcut(sc, false);
+	for (QWidget *w : other_windows(scope))
+		for (QShortcut *sc : w->findChildren<QShortcut *>())
+			add_shortcut(sc, true);
+	return out;
+}
+
+// Whether a claim answers with `fw` focused. An application-context claim
+// from another window answers wherever you are -- that is what the context
+// means -- and the rest are asked through the router's own predicates.
+static bool claim_applies(const ShortcutClaim &c, QWidget *scope,
+                          const QWidget *fw) {
+	if (c.application) return true;
+	if (const auto *a = qobject_cast<const QAction *>(c.who))
+		return action_context_applies(a, scope, fw);
+	if (const auto *sc = qobject_cast<const QShortcut *>(c.who))
+		return shortcut_context_applies(sc, fw);
+	return false;
+}
+
+// The chords more than one thing answers, and who answers -- first the one
+// that wins, then the ones that never fire.
+//
+// Qt reports this on a desktop and cannot here: QShortcutMap is what detects
+// an ambiguous binding, it gates on the window being active, and no window
+// activates under qtty (section F4). So the toolkit's own answer to the
+// question is gone, and this is what replaces it.
+//
+// CONTEXT DECIDES, which is what keeps the answer honest. Two
+// WidgetShortcut claims on different widgets are not a conflict -- only one
+// of them can ever be in play -- so the chord is reported only where some
+// focus a user can reach makes two claims answer at once. The focus
+// candidates are keyboard_reachable(), plus nothing focused at all, which is
+// the state a window starts in.
+QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope) {
+	QVector<QPair<QKeySequence, QStringList>> out;
+	if (!scope) return out;
+	const QVector<ShortcutClaim> claims = shortcut_claims(scope);
+	QVector<QWidget *> focuses = keyboard_reachable(scope);
+	focuses.append(nullptr);
+	QVector<QKeySequence> seen;
+	for (const ShortcutClaim &c : claims) {
+		if (seen.contains(c.key)) continue;
+		seen.append(c.key);
+		QStringList who;
+		for (QWidget *fw : std::as_const(focuses)) {
+			QStringList here;
+			for (const ShortcutClaim &other : claims)
+				if (other.key == c.key && claim_applies(other, scope, fw))
+					here << other.text;
+			if (here.size() > who.size()) who = here;
+		}
+		if (who.size() > 1) out.append({c.key, who});
+	}
+	return out;
 }
 
 bool InputRouter::match_shortcut(const KeyEvent &k) {
@@ -636,87 +730,40 @@ bool InputRouter::match_shortcut(const KeyEvent &k) {
 	// shortcut, falls through, and reaches QMenu::keyPressEvent, which is
 	// where the desktop answers it from.
 	const bool popup_owns_input = !popups().isEmpty();
-	for (QAction *a : std::as_const(actions)) {
-		if (!a->isEnabled()) continue;
-		if (!action_context_applies(a, scope, focusWidget())) continue;
-		const auto shortcuts = a->shortcuts();
-		for (const QKeySequence &s : shortcuts)
-			if (!s.isEmpty() && s == pressed) {
-				if (popup_owns_input) return true;   // swallowed, not fired
-				a->trigger();
-				return true;
-			}
-	}
-
-	// Qt::ApplicationShortcut, which by definition does not care which window
-	// you are in -- so the scope above cannot find it, and the scope is now
-	// the CURRENT window rather than always the primary one. That change
-	// (8.107) is what made this reachable: before it, an application-wide
-	// shortcut parented to the primary window fired from anywhere because
-	// every key went to the primary window, which was the defect rather than
-	// the feature. Correct for the window and widget contexts, wrong for this
-	// one, and nothing said so -- `shortcutContext` and `ApplicationShortcut`
-	// appeared nowhere in this tree.
+	// ONE list, in this function's own order, and the same one
+	// shortcut_conflicts() reads: actions here, application-context actions
+	// in other windows, this scope's QShortcuts, then application-context
+	// QShortcuts elsewhere. It was four loops, and a report built beside
+	// four loops is a report that can describe a different program -- 8.155,
+	// which is what taught this file to enumerate once.
 	//
-	// Deliberately narrow: only the application context reaches out of the
-	// scope. A window-context shortcut in another window must NOT fire, which
-	// is the half a broader search would break, and there is a check for each.
-	if (QAction *a = app_action_for(pressed, scope)) {
-		if (popup_owns_input) return true;           // swallowed, not fired
-		a->trigger();
-		return true;
-	}
-
-	// QShortcut, which is NOT a QAction and was therefore invisible to
-	// everything above. An application writing the commonest Qt idiom there
-	// is --
-	//
-	//     new QShortcut(QKeySequence("Ctrl+S"), this, ...)
-	//
-	// -- got a shortcut that worked in the desktop build and did nothing at
-	// all on the terminal. Nothing reported it: the table above found no
-	// QAction to match, Qt's own QShortcutMap gates on an active window and
-	// none activates here, so the key fell through to the focused widget and
-	// was ignored. A silent half of the toolkit, in a library whose premise
-	// is that an unmodified Qt application runs.
-	//
-	// CONTEXT IS HONOURED because leaving it out would fire a shortcut the
-	// desktop would not. findChildren already limits the search to the input
-	// scope, which is what Qt::WindowShortcut means here; the two widget
-	// contexts need the focused widget, and that is Qtty::focusWidget()
-	// rather than hasFocus(), which is permanently false under this platform.
-	//
-	// invokeMethod because activated() is a signal and a signal cannot be
-	// emitted from outside its class. The meta-object system can, which is
-	// the one supported way to do this; the return value is read rather than
-	// discarded, since a rename upstream would otherwise fail silently and
-	// leave the shortcut dead again for a new reason.
-	const auto owned = scope->findChildren<QShortcut *>();
-	for (QShortcut *sc : owned) {
-		if (!sc->isEnabled() || sc->key().isEmpty()) continue;
-		if (sc->key() != pressed) continue;
-		const QWidget *const owner = qobject_cast<QWidget *>(sc->parent());
-		const QWidget *const fw = focusWidget();
-		if (sc->context() == Qt::WidgetShortcut) {
-			if (!owner || owner != fw) continue;
-		} else if (sc->context() == Qt::WidgetWithChildrenShortcut) {
-			if (!owner || !fw
-			    || !(owner == fw || owner->isAncestorOf(fw)))
-				continue;
+	// Qt::ApplicationShortcut is why two of the four reach out of the scope
+	// at all: by definition it does not care which window you are in, so the
+	// scope cannot find it. Deliberately narrow -- a WINDOW-context shortcut
+	// in another window must not fire, and there is a check for each.
+	for (const ShortcutClaim &claim : shortcut_claims(scope)) {
+		if (claim.key != pressed) continue;
+		if (!claim_applies(claim, scope, focusWidget())) continue;
+		if (auto *a = qobject_cast<QAction *>(claim.who)) {
+			if (popup_owns_input) return true;   // swallowed, not fired
+			a->trigger();
+			return true;
 		}
-		if (popup_owns_input) return true;       // swallowed, not fired
-		return fire(sc);
-	}
-
-	// The same reach for a QShortcut, and for the same reason.
-	if (QShortcut *sc = app_shortcut_for(pressed, scope)) {
-		// Swallowed behind a menu exactly as the others are. The comment
-		// differs from its twin above deliberately: the two arms were
-		// textually identical, which made an existing sabotage anchor match
-		// twice and stop being applicable -- uniqueness is a property of the
-		// file at the moment of the edit, not of the string.
-		if (popup_owns_input) return true;       // swallowed (application)
-		return fire(sc);
+		if (auto *sc = qobject_cast<QShortcut *>(claim.who)) {
+			// QShortcut is NOT a QAction and was invisible to the action
+			// table until 8.86. An application writing the commonest Qt
+			// idiom there is --
+			//
+			//     new QShortcut(QKeySequence("Ctrl+S"), this, ...)
+			//
+			// -- got a shortcut that worked in the desktop build and did
+			// nothing at all on the terminal, with nothing reporting it:
+			// Qt's own QShortcutMap gates on an active window and none
+			// activates here, so the key fell through to the focused widget
+			// and was ignored.
+			if (popup_owns_input) return true;   // swallowed (a QShortcut)
+			return fire(sc);
+		}
 	}
 	return false;
 }

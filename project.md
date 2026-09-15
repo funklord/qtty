@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1332 checks, 0 failures. `make check` is green and includes
+1335 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15953,6 +15953,41 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.156 The ambiguity Qt reports and this cannot (2026-09-15)
+
+A desktop Qt tells an application when two things claim one chord:
+`QShortcutMap` detects it. That map gates on the window being ACTIVE and no
+window activates under qtty, which is F4's finding and the reason the router
+matches shortcuts itself -- so the detection went with it. Two actions
+claiming `Ctrl+S` here means the first the router reaches fires and the other
+is silent for ever, with nothing to ask and nothing to see.
+
+`Qtty::shortcut_conflicts(scope)` is that answer put back: the chords more
+than one thing answers, with the winner named first. It is 8.154's helper for
+the other half of the keyboard, and it was written knowing 8.155's lesson --
+**all four populations up front**: actions in the scope, application-context
+actions in other windows, the scope's `QShortcut`s, and application-context
+`QShortcut`s elsewhere. The last two answer here by definition, so a report
+that skipped them would be wrong about exactly the bindings that reach
+furthest.
+
+**Context decides, which is what makes the report worth reading.** A list of
+sequences used twice would fire on every real application: two
+`Qt::WidgetShortcut` claims on different widgets are the arrangement an
+application reaches for deliberately, and only one of them is ever in play.
+So a chord is reported where **some focus a user can reach** makes two claims
+answer at once -- the candidates being `keyboard_reachable()` plus nothing
+focused, which is the state a window starts in -- and the applicability is
+asked of the router's own predicates rather than a copy of them.
+
+**The matcher was four loops and is now one walk of that enumeration.** Same
+order, same swallowing behind a popup, same contexts; every existing check
+holds, which is the evidence that the restructure is faithful. Two functions
+disappeared into it, and **six sabotage anchors had to be re-pointed** --
+`--validate` named all six before a run, which is that half of the harness
+earning its place: an anchor that has stopped matching is a check nothing
+defends, and nothing else in the tree would have said so.
 
 ### 8.155 The fourth population the report could not see (2026-09-15)
 
