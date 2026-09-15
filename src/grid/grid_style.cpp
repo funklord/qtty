@@ -2,6 +2,7 @@
 #include "qtty/grid.h"
 #include "qtty/delegate.h"
 #include "qtty/paint.h"
+#include "qtty/runtime.h"          // keyboard_conventions(), for the tip below
 #include "../cell_geometry.h"
 // QAction, which this file uses through QToolButton::defaultAction() and had
 // never included. It compiled because something else drags it in -- and that
@@ -13,6 +14,7 @@
 // position on which versions are supported (section 8.1).
 #include <QPointer>
 #include <QFocusEvent>
+#include <QStatusTipEvent>
 #include <QAction>
 #include <QFontDatabase>
 #include <QStyleFactory>
@@ -148,6 +150,11 @@ QWidget *focusWidget() { return s_focus.data(); }
 // s_focus is assigned BEFORE the events go out, so a handler that moves focus
 // again re-enters with the new value already in place and the equality guard
 // above stops the recursion rather than the stack.
+// Whether the tip now on the status bar is one this put there. An empty tip
+// CLEARS whatever the bar holds, so it is sent only to take back a tip of
+// our own -- never over a message the application itself wrote.
+static bool s_tip_shown = false;
+
 void set_focus_widget(QWidget *w) {
 	QWidget *const before = s_focus.data();
 	if (before == w) return;
@@ -159,6 +166,35 @@ void set_focus_widget(QWidget *w) {
 	if (w) {
 		QFocusEvent in(QEvent::FocusIn, Qt::OtherFocusReason);
 		QCoreApplication::sendEvent(w, &in);
+	}
+	// A STATUS TIP FOLLOWS FOCUS, which is what Qt does on hover and what a
+	// terminal user can never ask for: there is no pointer to rest anywhere.
+	// So every `setStatusTip()` an application has already written is
+	// invisible here -- text it wrote to explain a control, shown to nobody.
+	//
+	// Sent exactly as Qt sends it on hover: a QStatusTipEvent at the widget,
+	// which nothing handles until it reaches a QMainWindow, whose own
+	// event() puts it in the status bar. An application that has a status
+	// bar therefore needs no code at all, and one that has none is
+	// unaffected, the event dying unhandled at the top.
+	//
+	// The parent chain is walked for the first non-empty tip, because a tip
+	// on a group box describes the fields inside it -- again Qt's own rule
+	// for the mouse.
+	//
+	// UNDER THE CONVENTIONS, because it changes what an unmodified
+	// application shows: a program using its status bar for its own messages
+	// would find them replaced as the user tabs. The same clearing Qt does
+	// when the mouse leaves, and the same reason it is opt-in here.
+	if (w && keyboard_conventions()) {
+		QString tip;
+		for (const QWidget *p = w; p && tip.isEmpty(); p = p->parentWidget())
+			tip = p->statusTip();
+		if (!tip.isEmpty() || s_tip_shown) {
+			QStatusTipEvent ev(tip);
+			QCoreApplication::sendEvent(w, &ev);
+			s_tip_shown = !tip.isEmpty();
+		}
 	}
 }
 

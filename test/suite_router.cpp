@@ -900,6 +900,89 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- a status tip follows focus, since nobody can hover --------------
+	//
+	// Qt shows a statusTip when the mouse rests on a control. A terminal
+	// user has no pointer to rest, so every setStatusTip() an application
+	// has written is text explaining a control to nobody -- and an
+	// application gets a status bar for free from QMainWindow, which is
+	// where the tip lands.
+	//
+	// Asserted through the STATUS BAR rather than by counting events: what
+	// an application gets out of this is the sentence on the screen, and a
+	// check on the event would pass with the propagation broken.
+	{
+		QMainWindow win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *central = new QWidget(&win);
+		auto *host = new QLineEdit(central);
+		host->setStatusTip(QStringLiteral("the host to connect to"));
+		auto *port = new QLineEdit(central);
+		auto *box = new QGroupBox(QStringLiteral("where"), central);
+		box->setStatusTip(QStringLiteral("where to connect"));
+		auto *inside = new QLineEdit(box);
+		win.setCentralWidget(central);
+		win.statusBar()->showMessage(QString());
+		win.resize(GridMetrics::cells(40, 8));
+		win.show();
+		QCoreApplication::processEvents();
+
+		set_keyboard_conventions(false);
+		set_focus_widget(nullptr);
+		set_focus_widget(host);
+		QCoreApplication::processEvents();
+		CHECK(win.statusBar()->currentMessage().isEmpty(),
+		      "with the conventions off a status tip stays where Qt left "
+		      "it, which is on the mouse nobody has");
+
+		set_keyboard_conventions(true);
+		set_focus_widget(nullptr);
+		set_focus_widget(host);
+		QCoreApplication::processEvents();
+		CHECK(win.statusBar()->currentMessage()
+		          == QStringLiteral("the host to connect to"),
+		      "and with them on the focused control's own status tip is on "
+		      "the status bar, which an unmodified application already "
+		      "wrote and nobody could read");
+
+		set_focus_widget(inside);
+		QCoreApplication::processEvents();
+		CHECK(win.statusBar()->currentMessage()
+		          == QStringLiteral("where to connect"),
+		      "a field with no tip of its own shows the one its group box "
+		      "carries, as the mouse would find it");
+
+		set_focus_widget(port);
+		QCoreApplication::processEvents();
+		CHECK(win.statusBar()->currentMessage().isEmpty(),
+		      "and moving to a control nothing explains takes the last "
+		      "explanation away rather than leaving it under the wrong "
+		      "field");
+
+		// The application's OWN message is not ours to clear, and this is
+		// the case the flag exists for: tabbing between two controls that
+		// explain nothing must leave a sentence the program put there
+		// itself alone. Without the flag every focus move would send an
+		// empty tip and the bar would be blanked by the act of tabbing.
+		//
+		// Chosen so the two answers differ: a check that moved focus onto a
+		// control WITH a tip would be satisfied either way, Qt's hover
+		// overwriting the message as well.
+		win.statusBar()->showMessage(QStringLiteral("connecting..."));
+		set_focus_widget(port);
+		set_focus_widget(nullptr);
+		set_focus_widget(port);
+		QCoreApplication::processEvents();
+		CHECK(win.statusBar()->currentMessage()
+		          == QStringLiteral("connecting..."),
+		      "while a message the application wrote survives tabbing "
+		      "between controls that explain nothing, qtty clearing only "
+		      "tips it put up itself");
+		set_keyboard_conventions(false);
+		win.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// ---- chords two things answer, which Qt would report and cannot -------
 	//
 	// QShortcutMap is what detects an ambiguous binding on a desktop, it

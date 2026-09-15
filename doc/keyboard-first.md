@@ -255,7 +255,19 @@ One line turns on the habits a terminal user has and Qt does not:
 | `Ctrl+W` | Rub out the word before the caret |
 | `Ctrl+D` | Delete the character under the caret -- a quit key everywhere else |
 
-The first two are the ones that **differ** from Qt rather than merely
+One thing in the bundle is not a key. **A status tip follows focus**, which
+is what Qt does when the mouse rests on a control and what a terminal user
+can never ask for -- there is no pointer to rest anywhere, so every
+`setStatusTip()` an application has written explains a control to nobody.
+With the conventions on, moving focus sends the tip exactly as a hover
+would, and a `QMainWindow` puts it in its status bar with no code at all.
+The parent chain is searched, so a tip on a group box explains the fields
+inside it. A message the application wrote itself survives tabbing past
+controls that explain nothing: qtty takes back only tips it put up.
+
+    hostEdit->setStatusTip("the host to connect to");   // already yours
+
+The first two rows are the ones that **differ** from Qt rather than merely
 adding to it, and they are why the whole set is opt-in. On a desktop a
 focused button answers to `Space` and not to `Enter` -- except inside a
 dialog, where `autoDefault` makes a focused button take `Enter` for

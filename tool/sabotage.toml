@@ -1988,3 +1988,36 @@ find = "\tQVector<QWidget *> focuses = keyboard_reachable(scope);\n\tfocuses.app
 into = "\tQVector<QWidget *> focuses;\n\tfocuses.append(nullptr);"
 count = 1
 check = "a chord two things answer under one focus is reported"
+
+[[sabotage]]
+# Status tips shown whether or not the application asked for the terminal's
+# habits. A program using its status bar for its own messages then finds
+# them replaced as the user tabs, which is a visible change to an
+# unmodified application. 8.157.
+name = "a status tip follows focus without being asked for"
+file = "src/grid/grid_style.cpp"
+find = "\tif (w && keyboard_conventions()) {"
+into = "\tif (w) {"
+count = 1
+check = "with the conventions off a status tip stays where Qt left it"
+
+[[sabotage]]
+# Only the focused widget's own tip, so a field inside a group box that
+# explains it shows nothing -- which is where a form puts the sentence.
+name = "a status tip is not looked for above the widget"
+file = "src/grid/grid_style.cpp"
+find = "\t\tfor (const QWidget *p = w; p && tip.isEmpty(); p = p->parentWidget())"
+into = "\t\tfor (const QWidget *p = w; p && tip.isEmpty(); p = nullptr)"
+count = 1
+check = "a field with no tip of its own shows the one its group box carries"
+
+[[sabotage]]
+# An empty tip sent on every focus move, whoever wrote what is on the bar.
+# Tabbing then wipes the application's own message, which is the damage the
+# flag exists to prevent and which no check on the tips themselves sees.
+name = "tabbing wipes a message the application wrote"
+file = "src/grid/grid_style.cpp"
+find = "\t\tif (!tip.isEmpty() || s_tip_shown) {"
+into = "\t\tif (true) {"
+count = 1
+check = "while a message the application wrote survives tabbing"

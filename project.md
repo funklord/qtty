@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1335 checks, 0 failures. `make check` is green and includes
+1340 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -15953,6 +15953,40 @@ and the check reddens.
 
 **And every line must say what its key DOES.** A key with no meaning
 beside it is no help at all, so an empty meaning fails too.
+
+### 8.157 The sentences an application had already written (2026-09-15)
+
+Qt shows a `statusTip` when the mouse rests on a control. There is no
+pointer here to rest anywhere, so **every `setStatusTip()` in an adopted
+application is text explaining a control to nobody** -- written, shipped,
+and unreachable. That is the library's own premise pointed at a feature
+rather than a widget: the application already has the data, and what was
+missing was the event.
+
+Sent exactly as Qt sends it on hover -- a `QStatusTipEvent` at the focused
+widget, which nothing handles until it reaches a `QMainWindow`, whose
+`event()` puts it in the status bar. Measured before anything was written,
+with a plain Qt program and no qtty in it: a tip sent to the child shows in
+the bar, and an empty one clears it. So an application with a status bar
+needs no code, and one without is unaffected, the event dying unhandled.
+
+Three decisions, each of which could have gone the other way:
+
+- **Under the conventions**, because it changes what an unmodified
+  application shows. A program using its status bar for its own messages
+  would find them replaced as the user tabs, and that is exactly the kind
+  of visible difference the opt-in exists to hold back.
+- **The parent chain is searched** for the first non-empty tip, so a tip on
+  a group box explains the fields inside it -- Qt's rule for the mouse, kept.
+- **Only tips qtty put up are taken back.** An empty tip CLEARS the bar, so
+  sending one on every focus move would blank a sentence the application
+  wrote by the act of tabbing. A flag records whose message is up.
+
+The last one is where the check had to be chosen rather than written. The
+obvious fixture -- show a message, move onto a control WITH a tip -- passes
+either way, Qt's hover overwriting the message too. What separates them is
+tabbing between controls that explain NOTHING, which is the case an
+application actually meets and the only one where the flag decides.
 
 ### 8.156 The ambiguity Qt reports and this cannot (2026-09-15)
 
