@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1392 checks, 0 failures. `make check` is green and includes
+1397 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16227,6 +16227,52 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.187 The list that cannot see the window it is shown in (2026-09-16)
+
+`keyboard_conventions_help()` exists so that an application never
+hand-writes qtty's keys into its own status bar, and its comment states the
+contract it was built for: **never promise a key that does nothing.** It is
+a free function with no window to ask, so what it promises is what the
+LIBRARY answers to -- and that is not the same statement as what the
+application's own window answers to.
+
+Measured, conventions on, with a window binding `Ctrl+K` to Insert Link and
+`F6` to a panel of its own:
+
+    Ctrl+K   the action fired, and "hello brave world" was left whole
+    F6       the action fired, and no window moved
+
+Both conventions were gone, and the help list went on promising them --
+to the very status bar that application was drawing from it. **The
+contract's own failure, arriving from the one side the function cannot
+see.**
+
+`Qtty::conventions_shadowed(scope)` answers it: the rows this window has
+taken back, and who took each. Keyed by the row as the help list spells
+it, so a status bar can strike out or drop exactly the row it was about to
+show. Empty is the usual answer and the one a test asserts.
+
+**Only the chord-shaped rows, and the exclusions are the interesting
+part.** `Enter` and the arrows answer only where the focused widget ignored
+the key, so a widget wanting them is not shadowing a convention -- it is
+the case the conventions were written to yield to. `Alt+letter` is
+`mnemonic_conflicts()`'s question and is answered there in more detail than
+a row could carry. What is left is `F6`, `Ctrl+PgUp/PgDn`, the readline
+chords and `Menu/Shift+F10`.
+
+**Two lists of one binding drift, so the table sits beside the list it
+describes** -- the same file and the same edit, which is the rule that list
+already states about itself -- while the walk lives where the claim
+enumeration is in scope. A check asserts that every row the report names is
+spelled exactly as the help list spells it, and an entry that respells one
+reddens it: a status bar handed two spellings cannot match them up at all.
+
+**And the report is asserted against the keys rather than against itself.**
+The check presses `Ctrl+K` in a focused field and requires the
+application's action to fire with the line left whole, then `F6` and
+requires the application's action again. A check on the report alone would
+pass just as loudly if the conventions had never been shadowed.
 
 ### 8.186 Twelve checks nothing could name, and the one that could not fail (2026-09-16)
 

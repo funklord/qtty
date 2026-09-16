@@ -65,6 +65,25 @@ QVector<QPair<QString, QString>> keyboard_conventions_help() {
 	};
 }
 
+// The chords behind the rows above, in the same file and the same edit as
+// the list itself, for the reason that list states: two copies of a binding
+// drift, and the drift is silent. A check reads both.
+struct ConventionRow {
+	const char *shown;
+	Qt::Modifier mod;
+	Qt::Key keys[2];
+};
+
+static const ConventionRow k_convention_rows[] = {
+	{ "F6",             Qt::Modifier(0), { Qt::Key_F6,       Qt::Key(0) } },
+	{ "Ctrl+PgUp/PgDn", Qt::CTRL,        { Qt::Key_PageUp,   Qt::Key_PageDown } },
+	{ "Ctrl+A/E",       Qt::CTRL,        { Qt::Key_A,        Qt::Key_E } },
+	{ "Ctrl+K/U",       Qt::CTRL,        { Qt::Key_K,        Qt::Key_U } },
+	{ "Ctrl+W/D",       Qt::CTRL,        { Qt::Key_W,        Qt::Key_D } },
+	{ "Menu/Shift+F10", Qt::SHIFT,       { Qt::Key_F10,      Qt::Key(0) } },
+};
+
+
 InputRouter::InputRouter(QWidget *window) : win_(window) {
 	quit_keys_ = { KeyEvent{Qt::Key_C, QString(), true, false, false},
 		          KeyEvent{Qt::Key_D, QString(), true, false, false} };
@@ -866,6 +885,35 @@ static QVector<QWidget *> focus_candidates(QWidget *scope) {
 	const QVector<MnemonicClaim> letters = mnemonic_claims(scope);
 	for (const MnemonicClaim &c : letters)
 		if (auto *l = qobject_cast<QLabel *>(c.who)) add(l->buddy());
+	return out;
+}
+
+// Which rows of keyboard_conventions_help() this window has taken back. The
+// TABLE lives beside that list, where the rule about two copies of a binding
+// put it; the walk lives here, where the claim enumeration it has to read is
+// finally in scope.
+QVector<QPair<QString, QStringList>> conventions_shadowed(QWidget *scope) {
+	QVector<QPair<QString, QStringList>> out;
+	if (!scope) return out;
+	const QVector<ShortcutClaim> claims = shortcut_claims(scope);
+	for (const ConventionRow &row : k_convention_rows) {
+		// The context-menu row answers whether or not the bundle was asked
+		// for (8.77), so it is the only one to report while the rest are
+		// off: reporting a row the library is not answering to would be
+		// naming a shadow over nothing.
+		const bool always = qstrcmp(row.shown, "Menu/Shift+F10") == 0;
+		if (!keyboard_conventions() && !always) continue;
+		QStringList who;
+		for (const Qt::Key k : row.keys) {
+			if (k == 0) continue;
+			const QKeySequence want(QKeyCombination(
+			    Qt::KeyboardModifiers(int(row.mod)), k).toCombined());
+			for (const ShortcutClaim &c : claims)
+				if (c.key == want && !who.contains(c.text)) who << c.text;
+		}
+		if (!who.isEmpty())
+			out.append({QString::fromLatin1(row.shown), who});
+	}
 	return out;
 }
 

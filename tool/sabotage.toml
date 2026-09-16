@@ -2339,3 +2339,24 @@ find = "\treturn QRect(l, t, qMax(0, r - l), qMax(0, b - t));"
 into = "\treturn QRect(l + 1, t, qMax(0, r - l), qMax(0, b - t));"
 count = 1
 check = "every widget geometry landed on the grid (render)"
+
+[[sabotage]]
+# The shadow report blind to the application's own claims, so a window that
+# has taken Ctrl+K back is told it still has the convention. 8.187.
+name = "the shadow report sees none of the window's claims"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\tfor (const ShortcutClaim &c : claims)\n\t\t\t\tif (c.key == want && !who.contains(c.text)) who << c.text;"
+into = "\t\t\t(void)want;"
+count = 1
+check = "the rows an application's own shortcuts have taken back are named"
+
+[[sabotage]]
+# A row spelled differently from the help list, which is the drift the table
+# and the list are kept in one file to prevent: a status bar then cannot
+# match the report against the row it is showing.
+name = "a shadowed row is spelled its own way"
+file = "src/runtime/input_router.cpp"
+find = "\t{ \"Ctrl+K/U\",       Qt::CTRL,        { Qt::Key_K,        Qt::Key_U } },"
+into = "\t{ \"Ctrl+K\",         Qt::CTRL,        { Qt::Key_K,        Qt::Key_U } },"
+count = 1
+check = "every row it names is spelled exactly as the help list spells it"

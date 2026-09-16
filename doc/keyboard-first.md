@@ -563,6 +563,22 @@ and the copy is wrong the day the binding moves -- which it did: the
 context-menu row appeared after this guide was first written, and an
 application asking for the list got it without an edit.
 
+**And take back the rows you have taken.** That list has no window to
+look at, so it promises what the library answers to -- while your own
+`Ctrl+K` for Insert Link, or `F6` for a panel, has quietly removed that
+convention from your window. Measured: the action fires and the line the
+readline kill would have taken is whole. `Qtty::conventions_shadowed()`
+names the rows your bindings have taken, spelled exactly as the help list
+spells them:
+
+    const auto taken = Qtty::conventions_shadowed(&window);
+    for (const auto &[row, who] : taken)
+        hints.removeAll(rowText(row));   // or strike it through
+
+Empty is the usual answer and the one to assert in a test. What it
+cannot see is the reverse -- a key you bound that the conventions do not
+name -- because that one is yours and was never promised.
+
 **9. In a custom widget, ignore keys that carry `Alt`.** qtty withholds
 the letter from widgets Qt marks as taking text, which covers every
 standard input widget. A widget of your own that reads
@@ -987,7 +1003,7 @@ straight after practice 10: it is `hasFocus()` on the widget, and
 own idea of its focus widget; what it never sets is the ACTIVE window,
 which is what the other two read.
 
-**Four questions the library will answer about your window**, so that a
+**Five questions the library will answer about your window**, so that a
 test can assert on them rather than a person noticing:
 
 | call | what it returns | what to assert |
@@ -996,8 +1012,9 @@ test can assert on them rather than a person noticing:
 | `Qtty::pointer_only(scope)` | the buttons no key reaches | empty (Qt's own furniture aside) |
 | `Qtty::mnemonic_conflicts(scope)` | the `Alt`+letters two controls claim | empty |
 | `Qtty::shortcut_conflicts(scope)` | the chords two things answer at once | empty |
+| `Qtty::conventions_shadowed(scope)` | the convention rows your own keys took | empty, or drop those rows |
 
-**Three of the four are asserted EMPTY, and that is the property worth
+**Four of the five are asserted EMPTY, and that is the property worth
 having.** A list you check by name needs updating every time the window
 grows a control; an empty assertion needs nothing, and goes red the day
 somebody adds one that collides or that only a mouse can press. Each of

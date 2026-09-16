@@ -68,6 +68,28 @@ bool keyboard_conventions();
 // right either way, which is the only version that cannot lie to a user.
 QVector<QPair<QString, QString>> keyboard_conventions_help();
 
+// Which of those rows this window has taken back, and who took them.
+//
+// `keyboard_conventions_help()` has no scope to ask, so it promises what the
+// library answers to -- and an application that binds `Ctrl+K` to Insert Link
+// or `F6` to a panel of its own has removed that convention from its own
+// window while still showing the row. Measured, with the conventions on: a
+// `Ctrl+K` action fires and the line is left whole, and an `F6` action fires
+// instead of the window moving. So the list is a true statement about the
+// library and a false one about that window, which is the failure the help
+// function exists to prevent, arriving from the side it cannot see.
+//
+// Keyed by the row as `keyboard_conventions_help()` spells it, so a status
+// bar can strike out or drop exactly the row it would otherwise show. Empty
+// when nothing is shadowed, which is what a test asserts.
+//
+// ONLY THE CHORD-SHAPED ROWS. `Enter`, `Up/Down` and the arrows answer only
+// where the focused widget ignored the key, so a widget that wants them is
+// not shadowing a convention -- it is the case the conventions were built to
+// yield to. `Alt+letter` is `mnemonic_conflicts()`'s question and is
+// reported there, in far more detail than a row could carry.
+QVector<QPair<QString, QStringList>> conventions_shadowed(QWidget *scope);
+
 // Every widget Tab reaches inside `scope`, in the order it reaches them,
 // using the router's own traversal rather than a second copy of it. For
 // the test `doc/keyboard-first.md` asks every application to write: that

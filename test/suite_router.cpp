@@ -4672,6 +4672,84 @@ int suite_router() {
 		      "was opted into");
 	}
 
+	// ---- and which of those rows this window has taken back. The help
+	// list has no scope to ask, so it promises what the LIBRARY answers to
+	// -- and an application that binds Ctrl+K to Insert Link has removed
+	// that convention from its own window while still showing the row to a
+	// user. The list is then true about the library and false about the
+	// window, which is the fault it exists to prevent arriving from the one
+	// side it cannot see.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(40, 8));
+		auto *field = new QLineEdit(&host);
+		field->setGeometry(0, 0, 20 * GridMetrics::cw(), GridMetrics::ch());
+		int linked = 0, panels = 0;
+		auto *link = new QAction(QStringLiteral("Insert &Link"), &host);
+		link->setShortcut(QKeySequence(QStringLiteral("Ctrl+K")));
+		QObject::connect(link, &QAction::triggered, [&] { ++linked; });
+		host.addAction(link);
+		auto *six = new QAction(QStringLiteral("Panels"), &host);
+		six->setShortcut(QKeySequence(Qt::Key_F6));
+		QObject::connect(six, &QAction::triggered, [&] { ++panels; });
+		host.addAction(six);
+		host.show();
+		QCoreApplication::processEvents();
+
+		CHECK(conventions_shadowed(&host).isEmpty(),
+		      "with the conventions off nothing is shadowed, the rows they "
+		      "would have promised not being promised");
+
+		set_keyboard_conventions(true);
+		const auto taken = conventions_shadowed(&host);
+		QStringList rows;
+		for (const auto &t : taken) rows << t.first;
+		printf("info: convention rows this window has taken back [%s]\n",
+		       qPrintable(rows.join(QStringLiteral(", "))));
+		CHECK(rows.contains(QStringLiteral("Ctrl+K/U"))
+		          && rows.contains(QStringLiteral("F6")),
+		      "the rows an application's own shortcuts have taken back are "
+		      "named, which nothing else can tell it");
+
+		// EVERY ROW NAMED IS A ROW THE HELP LIST SHOWS. Two lists of the
+		// same bindings drift, and the drift is silent -- a row spelled
+		// one way here and another there would leave a status bar unable
+		// to match them up at all.
+		const auto help = keyboard_conventions_help();
+		QStringList shown;
+		for (const auto &h : help) shown << h.first;
+		bool all_shown = !taken.isEmpty();
+		for (const auto &t : taken)
+			if (!shown.contains(t.first)) all_shown = false;
+		CHECK(all_shown,
+		      "and every row it names is spelled exactly as the help list "
+		      "spells it, so a status bar can strike out the row it was "
+		      "about to show");
+
+		// THE RELATIONSHIP, which is what makes the report worth reading:
+		// the keys really are gone. Ctrl+K leaves the line whole and fires
+		// the application's action instead of killing to end of line.
+		InputRouter cr(&host);
+		field->setText(QStringLiteral("hello brave world"));
+		field->setCursorPosition(11);
+		field->setFocus();
+		set_focus_widget(host.focusWidget());
+		QCoreApplication::processEvents();
+		cr.on_key({Qt::Key_K, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		CHECK(linked == 1
+		          && field->text() == QStringLiteral("hello brave world"),
+		      "and the key really is gone: Ctrl+K fires the application's "
+		      "action and the line it would have killed is whole");
+		cr.on_key({Qt::Key_F6, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(panels == 1,
+		      "as is F6, which answers the application rather than moving "
+		      "between windows");
+		set_keyboard_conventions(false);
+	}
+
 	// ------------------------------------------------ section 5.5: drags
 	// Motion was parsed by the backend and dropped by the router, and there
 	// was no grab, so nothing that needs a drag worked -- section 7.2 recorded
