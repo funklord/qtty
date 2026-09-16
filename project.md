@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1384 checks, 0 failures. `make check` is green and includes
+1388 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -28,7 +28,7 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-16, at 1376**,
+**Last re-verified under all six configurations: 2026-09-16, at 1384**,
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
 result. Offscreen and xcb-under-Xvfb both ran 1344, `minimal` refused and
@@ -42,9 +42,12 @@ could not see -- at 1374 for the window-order work of 8.176 to 8.179,
 which keeps a list of `QPointer`s to windows across their whole lifetime and
 is exactly the shape those two slow arms exist to watch, and at 1376 for
 8.180's font checks, which install a proportional font process-wide and hand
-it back. **The reason is written each time rather than the re-run being a
-habit**: a record that says which change it covers is one a reader can judge,
-and one taken on a schedule is a date.
+it back, and at 1384 for `pointer_only()` (8.181) -- a public function that
+walks every button in a scope and holds them, plus the harness change of
+8.182, which alters how a stopped run leaves this tree and so is worth one
+run that does not trust the build it inherited. **The reason is written each
+time rather than the re-run being a habit**: a record that says which change
+it covers is one a reader can judge, and one taken on a schedule is a date.
 
 The sanitized and memcheck arms earned their place that day rather than
 merely passing: 8.161 put `QPointer`s where raw pointers were held across
@@ -16225,6 +16228,41 @@ recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
 
+### 8.183 The three ways a report can name a working control (2026-09-16)
+
+`pointer_only()` (8.181) exists to be believed, and the error that costs
+something is the FALSE name: it sends somebody to fix a control that already
+answers a key. Its own entry found one -- the action behind a toolbar's
+button -- and reading the code back found the other two.
+
+    the action behind a button      subtracted (8.181)
+    a dialog's DEFAULT button       subtracted here
+    a QShortcut's connection        cannot be subtracted, and is pinned
+
+**The default button was live and measured rather than argued.** A
+`Qt::NoFocus` default button in a dialog was named, and Enter pressed in the
+field beside it fired it -- `QDialog::keyPressEvent` goes looking for the
+default, so the focus policy says nothing about whether a key reaches it.
+That is the toolbar's fault by another route: a key reaches the control and
+the walk this subtracts from cannot see the route. The check asserts both
+halves, the report's silence and the key that justifies it, because a check
+on the report alone would pass if Enter stopped working too.
+
+**The third cannot be fixed and is recorded as a limit with a check on it.**
+A `QShortcut` claims a key and says nothing about what it activates; Qt
+publishes no way to ask what a connection reaches, so a button wired to
+`QShortcut::activated` is named although Ctrl+K clicks it. An application
+that wants the report quiet says the same thing in a form this can see -- a
+mnemonic, or a `QAction` -- and the guide says so. The check pins the
+current answer in both directions, so the day the report stops naming it is
+a day somebody has to look.
+
+**Both limit checks were watched failing by hand**, since neither defends a
+rule a sabotage entry can break: prepending the scope to the walk reddens
+the one about the population's boundary, and a report that names nothing at
+all reddens the QShortcut one along with three others. The default-button
+rule has an entry of its own, and it reddens its check.
+
 ### 8.182 The stop that still poisoned the build (2026-09-16)
 
 The sabotage harness has carried a fix for this since yesterday: stopping a
@@ -16325,6 +16363,24 @@ report that hid the toolkit's own worst case would be hiding the practice.
 **Four sabotages, one per rule**, and the discriminating one is the action
 subtraction: with it removed the toolbar's button is named, which is the
 false report the population argument above exists to prevent.
+
+**The lens, swept to the end, and it found nothing else.** *Which recorded
+refusal is right in general and wrong for one narrow population?* The one
+that failed was a comment in the source rather than an entry here, so the
+record was swept separately: `grep` for *deliberately not*, *is not built*,
+*declined to* and *not offered* gives twenty lines, of which one describes
+this file's own scope and one is a cell in a table of skips. Of the
+eighteen sentences left, two are the same refusal (`setCompact`) written
+down twice and one is a 0b deferral that is the holder's; the other fifteen
+were re-read and asked the question directly, and **all fifteen hold.**
+
+The reason is worth more than the count. Every one of them names the
+population it declines to serve -- the fill that carries state and not
+font, zero width against a capability that has said nothing about it, the
+branches guarding a configuration `prepare_environment()` pins this machine
+out of, a timing threshold that would go red for a concurrent build. The
+refusal that failed named a population it could not characterise, *which
+widgets are controls*, and answered it by declining to have one at all.
 
 **And the report was pointed at the case this library is usually in.** A
 toolbar of eight actions in a terminal eight columns wide:
@@ -16975,6 +17031,13 @@ any case, and so a binding would answer exactly where the application is
 silent -- which is also exactly where the user has no other route. That is
 an argument for it as much as against, which is what makes it a decision
 rather than a defect.
+
+**Two is not the count: a dock widget's FLOAT button is a third** (8.181).
+This audit recognised rather than enumerated, so it found the controls it
+went looking for; `Qtty::pointer_only()` walks the population instead and
+named the float button on its first fixture. The entry above is what was
+measured on the day, and this line is the correction a reader needs before
+quoting the number.
 
 ### 8.158 A Qt behaviour kept by a choice nobody had connected to it (2026-09-15)
 

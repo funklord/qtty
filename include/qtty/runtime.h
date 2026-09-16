@@ -117,6 +117,12 @@ QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope);
 // the button itself is `Qt::NoFocus` and in nobody's tab chain, so a sweep
 // over the focus chain alone reports it pointer-only and is wrong.
 //
+// TWO LIMITS. A `QShortcut` wired straight to a button's `click()` is
+// invisible -- Qt publishes no way to ask what a connection reaches -- so
+// that button is named although a key does reach it; a mnemonic or a
+// `QAction` says the same thing in a form this can see. And the scope itself
+// is not examined, only what is inside it.
+//
 // Practice 4 of `doc/keyboard-first.md` is "never let an action be reachable
 // only by pointer", and this is how an application asserts it. Empty is the
 // answer to assert -- with the caveat that Qt breaks the practice on the

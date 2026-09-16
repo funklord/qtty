@@ -3487,6 +3487,75 @@ int suite_router() {
 			      "button keyed by the letter on its own action");
 		}
 
+		// THE THREE WAYS THIS CAN NAME A CONTROL A KEY DOES REACH, which
+		// is the error direction that matters: a false name sends
+		// somebody to fix the control that works. Two are subtracted --
+		// the action behind a toolbar button, above, and a dialog's
+		// default button here -- and the third cannot be, so it is
+		// pinned instead.
+		{
+			QDialog dlg;
+			dlg.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *dv = new QVBoxLayout(&dlg);
+			auto *field = new QLineEdit;
+			dv->addWidget(field);
+			int accepted = 0;
+			auto *ok = new QPushButton(QStringLiteral("OK"));
+			ok->setDefault(true);
+			ok->setFocusPolicy(Qt::NoFocus);
+			QObject::connect(ok, &QPushButton::clicked, [&] { ++accepted; });
+			dv->addWidget(ok);
+			int wired = 0;
+			auto *shortcut_only = new QPushButton(QStringLiteral("Wired"));
+			shortcut_only->setFocusPolicy(Qt::NoFocus);
+			QObject::connect(shortcut_only, &QPushButton::clicked,
+			                 [&] { ++wired; });
+			dv->addWidget(shortcut_only);
+			auto *sc = new QShortcut(QKeySequence(QStringLiteral("Ctrl+K")),
+			                         &dlg);
+			QObject::connect(sc, &QShortcut::activated, shortcut_only,
+			                 &QPushButton::click);
+			dlg.resize(GridMetrics::cells(30, 8));
+			dlg.show();
+			QCoreApplication::processEvents();
+
+			const QVector<QWidget *> named = pointer_only(&dlg);
+			CHECK(!named.contains(ok),
+			      "a dialog's default button is not named, Enter reaching "
+			      "it without its ever holding the focus");
+
+			InputRouter dr(&dlg);
+			field->setFocus();
+			set_focus_widget(dlg.focusWidget());
+			QCoreApplication::processEvents();
+			dr.on_key({Qt::Key_Return, QStringLiteral("\r"), false, false,
+			           false});
+			QCoreApplication::processEvents();
+			CHECK(accepted == 1,
+			      "and Enter in the field really does fire it, which is "
+			      "what makes leaving it out of the report right");
+
+			// THE LIMIT, pinned rather than fixed. A QShortcut claims a
+			// key and says nothing about what it activates; Qt publishes
+			// no way to read a connection's other end. So this button is
+			// named though Ctrl+K clicks it -- asserted in both halves,
+			// because a check on the report alone would pass if the key
+			// stopped working too.
+			bool shortcut_named = named.contains(shortcut_only);
+			dr.on_key({Qt::Key_K, QStringLiteral("k"), true, false, false});
+			QCoreApplication::processEvents();
+			CHECK(shortcut_named && wired == 1,
+			      "while a button reached only through a QShortcut's "
+			      "connection IS named, the one route nothing in Qt can "
+			      "be asked about");
+
+			// And the population is what is INSIDE the scope: asking
+			// about a button answers about its children, not about it.
+			CHECK(pointer_only(shortcut_only).isEmpty(),
+			      "asking about a button itself names nothing, the scope "
+			      "being what the walk looks inside of");
+		}
+
 		// Ctrl+PageUp and Ctrl+PageDown between tabs. Qt gives a
 		// QTabWidget Ctrl+Tab and Ctrl+Shift+Tab and not these, and these
 		// are what somebody coming from a browser or an editor tries.

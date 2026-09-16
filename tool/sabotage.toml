@@ -2308,3 +2308,13 @@ find = "\t\tif (!b->isVisible() || !b->isEnabled()) continue;\n\t\tif (keyed.con
 into = "\t\tif (keyed.contains(b)) continue;"
 count = 1
 check = "not a hidden or a disabled one"
+
+[[sabotage]]
+# A dialog's default button not counted as keyed, so the report names a
+# button Enter fires -- the toolbar's false report by another route. 8.183.
+name = "a dialog's default button is called pointer-only"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (b->isDefault() && qobject_cast<QDialog *>(b->window()))\n\t\t\tkeyed.insert(b);"
+into = "\t\tif (false) keyed.insert(b);"
+count = 1
+check = "a dialog's default button is not named, Enter reaching it"

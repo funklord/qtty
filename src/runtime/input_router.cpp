@@ -883,6 +883,15 @@ QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope) {
 // check box a label names -- and the report would otherwise accuse a control
 // the user can reach with one key.
 //
+// TWO LIMITS, pinned by checks so they cannot move unnoticed. A QShortcut
+// claims a key and says nothing about what it activates, so nothing is keyed
+// for one: measured, a button wired to `QShortcut::activated` is named here
+// though Ctrl+K clicks it, and there is no fix -- Qt publishes no way to ask
+// what a connection reaches. An application wanting the report quiet says the
+// same thing in a form this can see, with a mnemonic or a QAction. And the
+// scope itself is not examined, only what is inside it, so asking about a
+// button answers about its children.
+//
 // Not filtered to the ones an application can fix. Qt's own closable-tab and
 // dock-widget buttons are QAbstractButtons with Qt::NoFocus and no action
 // (8.159), so they are named, and that is the finding rather than noise: the
@@ -906,6 +915,17 @@ QVector<QWidget *> pointer_only(QWidget *scope) {
 	for (const MnemonicClaim &c : mnemonics) claimed(c.who);
 	const QVector<ShortcutClaim> shortcuts = shortcut_claims(scope);
 	for (const ShortcutClaim &c : shortcuts) claimed(c.who);
+	// A DIALOG's default button answers Enter without holding the focus --
+	// QDialog::keyPressEvent goes looking for it -- so it is keyed however
+	// its focus policy reads. Measured: a Qt::NoFocus default button fires
+	// on Enter pressed in a field beside it, and without this the report
+	// named it. That is the toolbar's false report again, one route along:
+	// a key reaches the control and the walk this subtracts from cannot see
+	// the route.
+	const auto defaults = scope->findChildren<QPushButton *>();
+	for (QPushButton *b : defaults)
+		if (b->isDefault() && qobject_cast<QDialog *>(b->window()))
+			keyed.insert(b);
 	const auto buttons = scope->findChildren<QAbstractButton *>();
 	for (QAbstractButton *b : buttons) {
 		if (!b->isVisible() || !b->isEnabled()) continue;

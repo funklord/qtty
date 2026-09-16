@@ -406,8 +406,9 @@ every toolbar action a letter, rather than trusting the button to be there.
 An action you hide yourself answers nothing, as it should: Qt reports an
 invisible action as disabled.
 
-**Qt ships two of these itself**, which is worth knowing before you audit
-your own code for them. The `x` on a closable tab and a dock widget's
+**Qt ships several of these itself**, which is worth knowing before you
+audit your own code for them. Two were measured first, and a third is
+named below. The `x` on a closable tab and a dock widget's
 close button have **no keyboard route at all** -- not in qtty, and not on
 the desktop either. Measured with plain Qt and no qtty in it: `Ctrl+W`,
 `Ctrl+F4` and `Delete` reach a closable `QTabWidget` and `tabCloseRequested`
@@ -1036,7 +1037,13 @@ question and an application wants all of them:
         QVERIFY(Qtty::mnemonic_conflicts(&win).isEmpty());
         QVERIFY(Qtty::shortcut_conflicts(&win).isEmpty());
 
-        // 4. And it still LOOKS right, attributes included.
+        // 4. And nothing is left that only a mouse could press
+        //    (practice 4 from the other side). A window with a closable
+        //    tab or a dock widget will name Qt's own buttons here until
+        //    you give those actions a key of your own.
+        QVERIFY(Qtty::pointer_only(&win).isEmpty());
+
+        // 5. And it still LOOKS right, attributes included.
         const QString got = Qtty::test::snapshot_of(win, 40, 12);
         QVERIFY(!Qtty::test::check_snapshot(MY_SOURCE_DIR, "login", got));
     }
