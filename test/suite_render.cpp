@@ -1286,7 +1286,8 @@ int suite_render(bool record) {
 		Qtty::render_once(host, buf);
 
 		if (drawn->calls == 0) {
-			printf("FAIL: ICellPainted widget was never asked to paint cells\n");
+			printf("FAIL: an ICellPainted widget paints itself in cells --"
+			       " it was never asked to\n");
 			++r;
 		} else printf("PASS: an ICellPainted widget paints itself in cells\n");
 

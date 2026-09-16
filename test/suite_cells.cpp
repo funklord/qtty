@@ -375,8 +375,8 @@ int suite_cells() {
 			CellBuffer c(2, 1);
 			c.put_cluster(0, 0, QString(QChar(u)), Color(), Color(), Attrs());
 			if (c.at(0, 0).ch != QStringLiteral(" ")) {
-				printf("FAIL: control U+%04X reaches a cell as itself\n",
-				       unsigned(u));
+				printf("FAIL: no C0, C1 or DEL character reaches a cell as"
+				       " itself -- U+%04X does\n", unsigned(u));
 				++fails;
 			}
 		}

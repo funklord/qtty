@@ -16265,6 +16265,24 @@ leaves the guard silent, because the fixtures' own geometry is mostly
 aligned already. One pixel off is what the guard exists to see -- 24
 geometries in one suite, and 23 other checks with it.
 
+**The class was then swept, because one instance is an instance.** A
+detector over every hand-written verdict in `test/` -- the `printf("PASS:`
+and `printf("FAIL:` pairs, the `CHECK` macro carrying its own text through
+`%s` -- asked which failures share no sentence with any pass. **Nine real
+checks did**, all of the same shape: a sweep over widgets or characters
+that prints one failure per offender and a single pass if there were none,
+so the failure names the offender and never the check. *focus on a QSlider
+shows nothing at all* against *every widget that can take focus shows that
+it has it*; *control U+0007 reaches a cell as itself* against *no C0, C1 or
+DEL character reaches a cell as itself*. Each leads with the check's own
+sentence now and keeps its detail after a dash.
+
+**What is left is not the same thing and was left alone**: fifteen
+failures that report a fixture the suite could not build -- no
+pseudo-terminal, an unreadable snapshot, a pipe that would not open. They
+have no pass to share because they are not checks; they are the honest
+version of a skip, which `evidence.md` prefers to a silent one.
+
 **The other two duplicate pairs were the same fault in miniature**: a
 per-fixture legend check that did not name its fixture, and an assertion
 inside a block that runs twice with the conventions on and off. Every

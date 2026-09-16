@@ -3992,7 +3992,9 @@ int suite_widgets() {
 			     y <= g.bottom() / GridMetrics::ch() && y < shot.size(); ++y)
 				if (base[y] != shot[y]) own = true;
 			if (!own && cur == base_cur) {
-				printf("FAIL: focus on a %s shows nothing at all\n", r.what);
+				printf("FAIL: every widget that can take focus shows that"
+				       " it has it -- focus on a %s shows nothing at"
+				       " all\n", r.what);
 				++invisible;
 			}
 		}
@@ -4009,12 +4011,15 @@ int suite_widgets() {
 			shoot(r.w, &cur);
 			const bool edits = r.w->testAttribute(Qt::WA_InputMethodEnabled);
 			if (!edits && cur != QStringLiteral("none")) {
-				printf("FAIL: a %s is not a text field and got the cursor at %s\n",
-				       r.what, qPrintable(cur));
+				printf("FAIL: and the terminal's cursor goes only where text"
+				       " is edited -- a %s is not a text field and got it"
+				       " at %s\n", r.what, qPrintable(cur));
 				++stray;
 			}
 			if (edits && cur == QStringLiteral("none")) {
-				printf("FAIL: a %s edits text and got no cursor\n", r.what);
+				printf("FAIL: and the terminal's cursor goes only where text"
+				       " is edited -- a %s edits text and got none\n",
+				       r.what);
 				++stray;
 			}
 		}
@@ -4209,8 +4214,8 @@ int suite_widgets() {
 			// satisfy every claim below.
 			survey(g, &glyphs, &undimmed, &rgb);
 			if (glyphs == 0 || undimmed != glyphs) {
-				printf("FAIL: an enabled %s is not drawn at full brightness"
-				       " (%d of %d glyphs dim)\n",
+				printf("FAIL: an enabled widget is drawn at full brightness"
+				       " -- a %s has %d of %d glyphs dim\n",
 				       r.what, glyphs - undimmed, glyphs);
 				++bad_enabled;
 			}
@@ -4219,7 +4224,8 @@ int suite_widgets() {
 			survey(g, &glyphs, &undimmed, &rgb);
 			r.w->setEnabled(true);
 			if (glyphs == 0 || undimmed != 0) {
-				printf("FAIL: a disabled %s has %d of %d glyphs undimmed\n",
+				printf("FAIL: and every cell of a disabled one is dim, both"
+				       " channels -- a %s has %d of %d undimmed\n",
 				       r.what, undimmed, glyphs);
 				++bad_dim;
 			}
@@ -4228,8 +4234,8 @@ int suite_widgets() {
 			// a colour no palette role explains, and the Disabled group's
 			// grey has a role like any other.
 			if (rgb != 0) {
-				printf("FAIL: a disabled %s spends true colour on %d cells\n",
-				       r.what, rgb);
+				printf("FAIL: and disabling spends no true colour -- a %s"
+				       " spends it on %d cell(s)\n", r.what, rgb);
 				++bad_rgb;
 			}
 		}
@@ -4340,7 +4346,8 @@ int suite_widgets() {
 						if (own.contains(QPoint(x, y))) ++inside; else ++outside;
 					}
 				if (outside) {
-					printf("FAIL: a %dx%d %s drew %d cell(s) outside itself\n",
+					printf("FAIL: and none of them wrote a cell outside its"
+					       " own rectangle -- a %dx%d %s wrote %d\n",
 					       sz.width(), sz.height(), c.what, outside);
 					++leaked;
 				}
