@@ -1300,7 +1300,7 @@ file = "src/runtime/compositor.cpp"
 find = "\tif (root && is_compositable(root)) out.append(root);"
 into = "\tif (root) out.append(root);"
 count = 1
-check = "closing the current one still leaves a window the terminal can draw"
+check = "and the strip does not name a window the terminal cannot draw"
 
 [[sabotage]]
 # The focus record left to the router and the window switch alone. An

@@ -1323,11 +1323,24 @@ int suite_router() {
 		wc.compose(frame);
 		const QVector<QWidget *> after = Qtty::window_tabs();
 		QWidget *const now = Qtty::current_window();
-		CHECK(now == after.at(qBound(0, was_at, after.size() - 1)),
+		// GUARDED, because the strip can be empty here and this check used
+		// to crash the suite when it was: `window_tabs()` answers nothing
+		// while fewer than two windows are on it, so `after.size() - 1` is
+		// -1 and qBound(0, was_at, -1) trips Qt's own assertion. A sabotage
+		// that removes the strip row produced exactly that, and the harness
+		// reported it as a run cut off rather than as a check -- which is
+		// the honest verdict and cost a backtrace to read.
+		CHECK(!after.isEmpty()
+		      && now == after.at(qBound(0, was_at, after.size() - 1)),
 		      "closing the current window hands you its NEIGHBOUR on the "
 		      "strip rather than the far end, which is what every tabbed "
 		      "thing a terminal user knows does");
-		CHECK(now != before.first() || was_at == 0,
+		// Guarded for the same reason as the line above: `before` is the
+		// strip, and a sabotage that removes the strip row leaves it empty,
+		// so `first()` on it is Qt's assertion rather than a check. The
+		// harness found both in one run, as a suite cut off twice.
+		CHECK(!before.isEmpty()
+		      && (now != before.first() || was_at == 0),
 		      "and that is a different window from the first one, which is "
 		      "what this used to answer whatever you had been looking at");
 		root.hide();
@@ -2287,15 +2300,21 @@ int suite_router() {
 			// went on passing because a later fix covered its fixture by a
 			// second route -- and it is the second time a full sabotage run
 			// has been the only thing that could notice.
+			// EVERY window the close could land on, not just this one.
+			// 8.151 cleared the survivor's Qt focus so that only
+			// adopt_window()'s seeding could supply one -- and 8.176 changed
+			// which window survives, so clearing the main window alone left
+			// the neighbour arriving with a focus of its own and the check
+			// passing by the route it exists to exclude. The full run said
+			// so: "the named check PASSED against broken code", twice in two
+			// days, for the same check and two different reasons.
+			for (QWidget *w : Qtty::window_tabs())
+				if (QWidget *had = w->focusWidget()) had->clearFocus();
 			if (QWidget *had = a.focusWidget()) had->clearFocus();
-			// And the windows this suite has left on the strip with NOTHING
-			// focusable in them are hidden, because 8.176 changed where a
-			// close lands you: the far end used to be the main window, which
-			// always has a field, and the neighbour can be `flat`, whose own
-			// comment says nothing in it may take focus. Landing there is
-			// correct behaviour and would make the check below fail for a
-			// reason that is not the one it exists for -- so the fixture says
-			// which window it means rather than relying on the pick.
+			// And the windows with NOTHING focusable in them are hidden,
+			// because landing on one is correct behaviour and would make the
+			// check below fail for a reason that is not the one it exists
+			// for: `flat`'s own comment says nothing in it may take focus.
 			flat.hide();
 			QCoreApplication::processEvents();
 			delete doomed;               // as an application closes a window
@@ -2338,6 +2357,19 @@ int suite_router() {
 			CHECK(!a.isVisible() && Qtty::current_window() == doomed2,
 			      "the control: the main window is hidden and another is "
 			      "current");
+			// AND THE STRIP DOES NOT NAME IT. This is what
+			// `is_compositable(root)` actually guards, and the check below
+			// used to stand in for it: with the root smuggled into the tab
+			// list, the pick landed on a window the terminal cannot draw.
+			// 8.176's pick no longer can -- it walks outwards and takes the
+			// first SURVIVING candidate, so any visible window is chosen
+			// before an invisible root -- and the full run said so, reporting
+			// that check as passing against broken code. The strip's own
+			// contents are the honest subject: a tab nobody can switch to is
+			// a tab that should not be drawn.
+			CHECK(!Qtty::window_tabs().contains(&a),
+			      "and the strip does not name a window the terminal cannot "
+			      "draw, a tab nobody can switch to being worse than no tab");
 
 			delete doomed2;
 			QCoreApplication::processEvents();

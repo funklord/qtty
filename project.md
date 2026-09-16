@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1371 checks, 0 failures. `make check` is green and includes
+1372 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16218,6 +16218,45 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.178 Three findings, all of them mine (2026-09-16)
+
+The full set run after 8.174 to 8.177: **221 reddened, 3 crash-expected, and
+three findings** -- every one of them caused by the changes those entries
+made, and none of them visible to `make check`.
+
+    32/227   INCONCLUSIVE   the suite was cut off before the named check
+    143/227  FAILED         the named check PASSED against broken code
+    144/227  FAILED         the named check PASSED against broken code
+
+**32 was my own check crashing the suite.** A sabotage that removes the
+strip row leaves `window_tabs()` empty, and the neighbour check did
+`qBound(0, was_at, after.size() - 1)` -- which is `qBound(0, -1, -1)` and
+trips Qt's own assertion. A second line did `first()` on the same empty
+list. Both are guarded now, and the harness's verdict was exactly right: a
+run that was cut off is not a check that passed, and saying so cost one
+backtrace to read rather than a wrong conclusion.
+
+**143 was 8.151's fault returning by a new route.** That check asserts the
+survivor of a close has focus, and it only bites while the survivor's Qt
+focus has been cleared -- so that `adopt_window()`'s seeding is the only
+thing that can supply one. 8.176 changed WHICH window survives, and the
+fixture went on clearing the main window. It clears every window on the
+strip now. **That is twice this check has stopped biting for a reason
+outside itself, and both times only a full run could say so.**
+
+**144 was a check standing in for a guard it no longer tests.** The
+sabotage smuggles an invisible root into the tab list; the check asserted
+that the pick still lands on a drawable window, and 8.176's pick cannot do
+otherwise -- it walks outward and takes the first SURVIVING candidate, so
+any visible window is chosen before an invisible root. The guard's real
+subject is the strip's own contents, and there is a check for that now: a
+tab nobody can switch to is worse than no tab.
+
+The lesson is the one the harness exists to teach, and it landed three times
+in one run: **a behavioural change does not only risk breaking checks, it
+risks making them stop testing anything** -- and the second failure mode is
+silent in every gate except this one.
 
 ### 8.177 A strip that reordered itself (2026-09-16)
 
