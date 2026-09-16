@@ -418,6 +418,12 @@ or a shortcut of your own -- this practice applied to Qt's furniture rather
 than to yours. The tab bar itself is fine: it takes `Tab` focus and the
 arrows move between pages.
 
+There is a third, and the check below found it where the audit above had
+not: a dock widget's **float** button sits beside its close button, is
+`Qt::NoFocus`, carries no action, and nothing claims a key for it either.
+`Qtty::pointer_only()` names all of them, and the section on testing says
+how to read that list.
+
 A right-click menu is the exception you get for free: `Menu` and
 `Shift+F10` open it, and your `contextMenuPolicy` is honoured exactly as
 on a desktop. That was not true until the library was measured against
@@ -1063,7 +1069,24 @@ walk reports a control reachable that a person cannot get to, which is
 the one answer it exists to rule out. The function is the traversal the
 router itself moves through, so what it lists is what will happen.
 
-There is deliberately no `unreachable_controls()`. Naming what *should*
-have been reachable means deciding which widgets are controls, and that
-is a guess; a list of what *is* reachable is a measurement. You know
-which of your widgets matter, so assert on those.
+**The complement asks a different question, and one control type can
+answer it.** `Qtty::pointer_only()` returns the buttons in a scope that
+no key reaches -- visible, enabled, and claimed by nothing: not `Tab`,
+not a mnemonic, not a chord, and not any of those on an action the button
+carries.
+
+    for (QWidget *w : Qtty::pointer_only(&window))
+        qWarning("only a pointer reaches %s", qUtf8Printable(w->objectName()));
+
+The population is `QAbstractButton`, which is Qt's own word for a control
+that answers a click rather than a judgement about which of your widgets
+matter -- that is why this one is offered and a general
+`unreachable_controls()` is not. The subtraction is the part you cannot
+write yourself: a toolbar's button is `Qt::NoFocus` and in no tab chain,
+and `&Save` on the action behind it reaches it perfectly well, so a sweep
+of the focus chain alone reports a fault that is not there.
+
+Empty is the assertion -- **unless you use a closable tab or a dock
+widget**, in which case Qt's own buttons are in the list until you give
+the same action a key. That is not noise; it is the paragraph above,
+arriving as a list.

@@ -2266,3 +2266,45 @@ find = "\t\tif (e->type() != QEvent::Polish && e->type() != QEvent::FontChange)\
 into = "\t\treturn false;"
 count = 1
 check = "a font set on every widget is put back by the enforcer"
+
+[[sabotage]]
+# The action behind a button forgotten, so a toolbar's button -- Qt::NoFocus
+# and in no tab chain -- is reported as pointer-only while `&Save` reaches it.
+# The report then sends an application to fix the control that works. 8.181.
+name = "a button's action does not count as a key"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (auto *a = qobject_cast<QAction *>(who))\n\t\t\tfor (const QWidget *o : owners_of(a)) keyed.insert(o);"
+into = "\t\t(void)who;"
+count = 1
+check = "a toolbar's button is not named, its action's mnemonic"
+
+[[sabotage]]
+# A claim on the button itself ignored, so the letter Qt bound for
+# `&Lettered` stops counting and a button one key reaches is named.
+name = "a button's own letter does not count as a key"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (auto *w = qobject_cast<QWidget *>(who)) keyed.insert(w);"
+into = "\t\tif (false) keyed.insert(qobject_cast<QWidget *>(who));"
+count = 1
+check = "nor a button whose own letter Qt bound for it"
+
+[[sabotage]]
+# The population narrowed to the buttons an application writes itself, which
+# drops exactly the two controls Qt leaves pointer-only on its behalf. 8.159
+# is the measurement; this is the check that keeps it reported.
+name = "only the application's own buttons are asked about"
+file = "src/runtime/input_router.cpp"
+find = "\tconst auto buttons = scope->findChildren<QAbstractButton *>();"
+into = "\tconst auto buttons = scope->findChildren<QPushButton *>();"
+count = 1
+check = "Qt's own close button on a closable tab is named"
+
+[[sabotage]]
+# A hidden or disabled button reported, which a pointer cannot press either.
+# A report that names them is one an application learns to skim.
+name = "a hidden button is called pointer-only"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (!b->isVisible() || !b->isEnabled()) continue;\n\t\tif (keyed.contains(b)) continue;"
+into = "\t\tif (keyed.contains(b)) continue;"
+count = 1
+check = "not a hidden or a disabled one"

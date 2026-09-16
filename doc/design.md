@@ -514,6 +514,13 @@ explicit and testable rather than depending on Qt's context rules — and, since
 8.156, *reportable*: `Qtty::mnemonic_conflicts()` and `Qtty::shortcut_conflicts()` name
 the letters and chords more than one thing answers, in the order the router tries them.
 
+Both enumerations have a third reader since 8.181. `Qtty::pointer_only()` subtracts them
+from the visible, enabled `QAbstractButton`s in a scope, which leaves the buttons no key
+reaches — including the ones Qt itself leaves that way on a closable tab and a dock
+widget's title bar. It is the guide's fourth practice made checkable, and it cannot be
+written outside the library: a toolbar's button is `Qt::NoFocus` and in no tab chain, so
+only the claim tables know that the mnemonic on the action behind it already answers.
+
 **Cursor placement.** Elegant trick worth adopting: query the focus widget generically
 rather than special-casing input classes.
 

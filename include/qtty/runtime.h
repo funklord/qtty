@@ -106,6 +106,25 @@ QVector<QPair<QChar, QStringList>> mnemonic_conflicts(QWidget *scope);
 // user can reach makes two claims answer at once.
 QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope);
 
+// The buttons in `scope` that only a pointer can press: visible, enabled,
+// and reached by no key at all -- not by Tab, not by a mnemonic, and not by
+// any chord that would fire the action they carry.
+//
+// The population is `QAbstractButton`, which is Qt's own word for a control
+// that answers a click rather than a judgement about which widgets matter.
+// The subtraction is the part an application cannot write for itself: a
+// toolbar button holds an action whose mnemonic and shortcut reach it while
+// the button itself is `Qt::NoFocus` and in nobody's tab chain, so a sweep
+// over the focus chain alone reports it pointer-only and is wrong.
+//
+// Practice 4 of `doc/keyboard-first.md` is "never let an action be reachable
+// only by pointer", and this is how an application asserts it. Empty is the
+// answer to assert -- with the caveat that Qt breaks the practice on the
+// application's behalf in two places (8.159), so a closable tab or a dock
+// widget puts Qt's own buttons in the list until the application gives the
+// same action a key.
+QVector<QWidget *> pointer_only(QWidget *scope);
+
 // ---------------------------------------------------------------- InputRouter
 // Owns everything Qt's platform layer would normally own (measured F3/F4):
 // the shortcut table (synthetic keys never reach QShortcutMap), focus

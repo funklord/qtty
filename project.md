@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1376 checks, 0 failures. `make check` is green and includes
+1382 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16082,8 +16082,8 @@ Measured before reaching for anything:
     objectName[qt_calendar_nextmonth] text[] tip[] icon=1 arrowType=0
 
 Every route this style already has was empty. The arrow branch reads
-`arrowType`, and Qt draws these as PIXMAPS instead; the tool-tip fallback
-(8.something, the one that makes a file dialog's toolbar readable) has
+`arrowType`, and Qt draws these as PIXMAPS instead; the tool-tip
+fallback (8.8, the words an icon-only action keeps for a hover) has
 nothing to read, because these carry no tool tip and no action either.
 
 What they do carry is Qt's own object name, which is the dock buttons' rule
@@ -16224,6 +16224,52 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.181 The complement, and the population that makes it a measurement (2026-09-16)
+
+`keyboard_reachable()` has carried a refusal since it was written: no
+complement, no `unreachable_controls()`, because naming what SHOULD have
+been reachable means deciding which widgets are controls and that is a
+heuristic. The guide repeated it. Both were half right, and the half they
+missed is why `Qtty::pointer_only()` now exists.
+
+**`QAbstractButton` is not a judgement.** It is Qt's own word for a widget
+that answers a click, so a report over that population decides nothing
+about which of an application's widgets matter -- and it is exactly the
+population the guide's fourth practice is about, *never let an action be
+reachable only by pointer*, which until now nothing could check.
+
+**The half that cannot be written outside the library is the
+SUBTRACTION.** Measured on a main window with a toolbar:
+
+    CloseButton             policy=NoFocus  tab stop=no  keyed by nothing
+    QDockWidgetTitleButton  policy=NoFocus  tab stop=no  keyed by nothing
+    QToolButton [Save]      policy=NoFocus  tab stop=no  keyed by `&Save`
+    QPushButton [&Lettered] policy=NoFocus  tab stop=no  keyed by Alt+L
+
+The third row is the one that decides the design. A toolbar's button is in
+nobody's tab chain and a mnemonic on the action behind it reaches it
+perfectly well -- so the three-line version an application writes for
+itself, findChildren minus keyboard_reachable, reports a fault that is not
+there and sends somebody to fix the control that works. Only the router's
+own claim tables know better, which is the same argument keyboard_reachable
+made for owning the traversal, one question along.
+
+So the entry and the guide paragraph are rewritten rather than appended to:
+the refusal was right about widgets in general and wrong about one
+population, and a reader who found both would believe the older one.
+
+**The check found a third instance of 8.159.** That entry named two controls
+Qt leaves pointer-only -- a closable tab's `x` and a dock widget's close
+button. A dock's FLOAT button is the same shape and was not on the list;
+the report names it because it enumerates rather than recognises, which is
+`evidence.md`'s point about a count inheriting its detector. Qt's four are
+named rather than filtered out: the remedy is the application's, and a
+report that hid the toolkit's own worst case would be hiding the practice.
+
+**Four sabotages, one per rule**, and the discriminating one is the action
+subtraction: with it removed the toolbar's button is named, which is the
+false report the population argument above exists to prevent.
 
 ### 8.180 What is measured once and what follows (2026-09-16)
 

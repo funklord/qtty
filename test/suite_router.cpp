@@ -3356,6 +3356,96 @@ int suite_router() {
 			      "end of a group");
 		}
 
+		// ---- the other side of the same question: what only a POINTER
+		// reaches. Practice 4 of the guide is "never let an action be
+		// reachable only by pointer", and until now nothing could check
+		// it -- keyboard_reachable() names what Tab visits, which is not
+		// the same list, because a button a mnemonic or a chord reaches
+		// is keyed and in nobody's tab chain.
+		//
+		// The TOOLBAR is the case that decides the design. Its button is
+		// Qt::NoFocus and not a tab stop, and `&Save` on the action it
+		// carries reaches it perfectly well -- so an application sweeping
+		// the focus chain for its own buttons reports a fault that is not
+		// there. Only the library can subtract it, holding the claim
+		// enumerations the router itself matches against.
+		{
+			QMainWindow win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *tabs = new QTabWidget;
+			tabs->setTabsClosable(true);
+			tabs->addTab(new QLineEdit, QStringLiteral("One"));
+			win.setCentralWidget(tabs);
+			auto *bar = win.addToolBar(QStringLiteral("Main"));
+			int saved = 0;
+			QAction *save = bar->addAction(QStringLiteral("&Save"));
+			QObject::connect(save, &QAction::triggered, [&] { ++saved; });
+			int lettered = 0, silent = 0;
+			auto *keyed = new QPushButton(QStringLiteral("&Lettered"), tabs);
+			keyed->setFocusPolicy(Qt::NoFocus);
+			QObject::connect(keyed, &QPushButton::clicked, [&] { ++lettered; });
+			auto *mouse = new QPushButton(QStringLiteral("No focus"), tabs);
+			mouse->setFocusPolicy(Qt::NoFocus);
+			QObject::connect(mouse, &QPushButton::clicked, [&] { ++silent; });
+			auto *gone = new QPushButton(QStringLiteral("Hidden"), tabs);
+			gone->setFocusPolicy(Qt::NoFocus);
+			auto *off = new QPushButton(QStringLiteral("Disabled"), tabs);
+			off->setFocusPolicy(Qt::NoFocus);
+			off->setEnabled(false);
+			win.resize(GridMetrics::cells(60, 10));
+			win.show();
+			gone->hide();
+			QCoreApplication::processEvents();
+
+			const QVector<QWidget *> only = pointer_only(&win);
+			QStringList named;
+			for (QWidget *w : only)
+				named << QString::fromLatin1(w->metaObject()->className());
+			printf("info: pointer-only [%s]\n",
+			       qPrintable(named.join(QStringLiteral(", "))));
+			CHECK(only.contains(mouse),
+			      "pointer_only names a button no key reaches, which is "
+			      "the practice the guide asks for and the one thing an "
+			      "application could not ask about");
+			CHECK(!only.contains(gone) && !only.contains(off),
+			      "and not a hidden or a disabled one, neither of which a "
+			      "pointer reaches either");
+
+			// The two exclusions, each proved by the key that makes it
+			// true rather than by the report agreeing with itself.
+			QWidget *button = nullptr;
+			for (QToolButton *t : bar->findChildren<QToolButton *>())
+				if (t->defaultAction() == save) button = t;
+			CHECK(button && !only.contains(button),
+			      "a toolbar's button is not named, its action's mnemonic "
+			      "reaching it while Tab does not -- the case a sweep of "
+			      "the focus chain alone gets wrong");
+			CHECK(!only.contains(keyed),
+			      "nor a button whose own letter Qt bound for it");
+
+			InputRouter pr(&win);
+			pr.on_key({0, QStringLiteral("s"), false, true, false});
+			QCoreApplication::processEvents();
+			pr.on_key({0, QStringLiteral("l"), false, true, false});
+			QCoreApplication::processEvents();
+			CHECK(saved == 1 && lettered == 1 && silent == 0,
+			      "and both of those keys do reach their button, so the "
+			      "report is excluding what a person can actually press");
+
+			// QT'S OWN, which is 8.159 measured from the widget side: the
+			// `x` on a closable tab is a real QAbstractButton with no
+			// focus, no action and no key anywhere. Named, because the
+			// remedy is the application's -- an entry in a menu -- and a
+			// report that hid it would hide the practice's worst case.
+			bool tab_close = false;
+			for (QWidget *w : only)
+				if (w->parentWidget() == tabs->tabBar()) tab_close = true;
+			CHECK(tab_close,
+			      "and Qt's own close button on a closable tab is named, "
+			      "which is where the toolkit breaks the practice on the "
+			      "application's behalf");
+		}
+
 		// Ctrl+PageUp and Ctrl+PageDown between tabs. Qt gives a
 		// QTabWidget Ctrl+Tab and Ctrl+Shift+Tab and not these, and these
 		// are what somebody coming from a browser or an editor tries.

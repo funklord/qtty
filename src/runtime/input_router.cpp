@@ -251,10 +251,15 @@ static bool move_focus(QWidget *scope, bool forward) {
 // A test built on that reports controls reachable that a user cannot get
 // to, which is the one answer it exists to rule out.
 //
-// Deliberately no complement -- no `unreachable_controls`. Naming what
-// SHOULD have been reachable means deciding which widgets are controls,
-// and that is a heuristic; a list of what IS reachable is a measurement.
-// The application knows which of its widgets matter and can say so.
+// The complement was refused here for a while, on the grounds that naming
+// what SHOULD have been reachable means deciding which widgets are
+// controls. That is right about widgets in general and wrong about one
+// population: `QAbstractButton` is Qt's own word for a thing that answers
+// a click, so pointer_only() below asks the question over a set nobody
+// has to judge. What that entry missed is the other half -- the
+// subtraction needs the claim enumerations, and an application writing
+// the complement itself gets it wrong in the direction that invents a
+// fault, naming a toolbar button whose action a mnemonic already reaches.
 QVector<QWidget *> keyboard_reachable(QWidget *scope) {
 	QVector<QWidget *> out;
 	if (!scope) return out;
@@ -858,6 +863,54 @@ QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope) {
 			}
 		}
 		if (who.size() > 1) out.append({c.key, who});
+	}
+	return out;
+}
+
+// Every button in `scope` that no key reaches: the QAbstractButtons that are
+// visible and enabled, less the ones something keyed can activate.
+//
+// Three routes key a button, and the last two are why this cannot live in an
+// application. Tab reaches it, which is keyboard_reachable(). A mnemonic or
+// a chord claims the button ITSELF -- Qt gives `&Lettered` the shortcut
+// Alt+L whatever its focus policy. Or a claim names an ACTION the button
+// carries: a toolbar's button is Qt::NoFocus and in no tab chain, and
+// `&Save` on the action behind it reaches it perfectly well. Measured, a
+// sweep of the focus chain alone calls that button pointer-only.
+//
+// A buddy label's claim keys the field it names rather than the label, which
+// is what that mnemonic does. Kept because a buddy can be a button -- a
+// check box a label names -- and the report would otherwise accuse a control
+// the user can reach with one key.
+//
+// Not filtered to the ones an application can fix. Qt's own closable-tab and
+// dock-widget buttons are QAbstractButtons with Qt::NoFocus and no action
+// (8.159), so they are named, and that is the finding rather than noise: the
+// remedy is the application's, and it is the one practice 4 already asks for.
+QVector<QWidget *> pointer_only(QWidget *scope) {
+	QVector<QWidget *> out;
+	if (!scope) return out;
+	QSet<const QWidget *> keyed;
+	const QVector<QWidget *> reach = keyboard_reachable(scope);
+	for (QWidget *w : reach) keyed.insert(w);
+	const auto claimed = [&keyed](QObject *who) {
+		if (auto *l = qobject_cast<QLabel *>(who)) {
+			if (l->buddy()) keyed.insert(l->buddy());
+			return;
+		}
+		if (auto *w = qobject_cast<QWidget *>(who)) keyed.insert(w);
+		if (auto *a = qobject_cast<QAction *>(who))
+			for (const QWidget *o : owners_of(a)) keyed.insert(o);
+	};
+	const QVector<MnemonicClaim> mnemonics = mnemonic_claims(scope);
+	for (const MnemonicClaim &c : mnemonics) claimed(c.who);
+	const QVector<ShortcutClaim> shortcuts = shortcut_claims(scope);
+	for (const ShortcutClaim &c : shortcuts) claimed(c.who);
+	const auto buttons = scope->findChildren<QAbstractButton *>();
+	for (QAbstractButton *b : buttons) {
+		if (!b->isVisible() || !b->isEnabled()) continue;
+		if (keyed.contains(b)) continue;
+		out.append(b);
 	}
 	return out;
 }
