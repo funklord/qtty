@@ -16346,6 +16346,18 @@ What was rendered, and what each produced:
 retraction is the one worth remembering: a plausible mechanism can survive
 a visible improvement and still be wrong (8.171).
 
+**A second axis was then swept -- not which widget, but how small the
+terminal is -- and it found nothing, which is worth recording with its
+method.** Qt's message box and file dialog on terminals of 24x6 and 30x8,
+composed through `exec()` rather than through `render_once()`: the first
+attempt used the latter and measured nothing but its own driver, since
+section 7's drop-then-scroll policy lives in the compositor and
+`render_once()` does not run it. Through the runtime, the documented
+behaviour holds on a dialog nobody wrote for it -- content wider than the
+terminal shows its left edge, and **the view follows the focus**: with the
+buttons off the right edge the row read `<Save`, and with the focus moved
+to *Discard* it read `Save>   <Discard>  <Canc`.
+
 **What it did not cover**, so the next reader knows where the map ends:
 printing, drag and drop between applications, anything needing a real
 window manager, and Qt's own examples that open a modal dialog on startup --
