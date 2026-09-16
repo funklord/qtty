@@ -2253,3 +2253,16 @@ find = "\tg_seen.append(w);"
 into = "\tg_seen.prepend(w);"
 count = 1
 check = "a window shown later joins the end of the strip"
+
+[[sabotage]]
+# The font enforcer standing down, so an application's own font sticks to
+# the widgets. A proportional family then lays a form out in advances that
+# are not one cell each, and the grid's columns stop meaning anything --
+# which is what every application letting a user choose a font would do to
+# this library without the filter. 8.180.
+name = "the application's font is left on the widgets"
+file = "src/runtime/application.cpp"
+find = "\t\tif (e->type() != QEvent::Polish && e->type() != QEvent::FontChange)\n\t\t\treturn false;"
+into = "\t\treturn false;"
+count = 1
+check = "a font set on every widget is put back by the enforcer"

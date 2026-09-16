@@ -137,6 +137,89 @@ int suite_render(bool record) {
 		}
 	}
 	{
+		// THE APPLICATION'S FONT DOES NOT MOVE THE GRID. setup() installs a
+		// monospace font and derives the cell from it; an application is
+		// free to call QApplication::setFont() afterwards -- a settings
+		// dialog, a theme, a zoom control -- and a terminal's columns must
+		// not move when it does.
+		//
+		// A PROPORTIONAL family is the case that could hurt, since its
+		// advances are not one cell each. What makes this hold is that the
+		// engine walks clusters by cell width rather than by the font's
+		// advances; a change reaching for font metrics to place columns
+		// would break it quietly, and this is what would say so.
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		auto *edit = new QLineEdit(QStringLiteral("iiiii WWWWW"));
+		v->addWidget(edit);
+		win.resize(GridMetrics::cells(20, 4));
+		win.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer before(20, 4);
+		Qtty::render_once(win, before);
+		const int cell_w = GridMetrics::cw(), cell_h = GridMetrics::ch();
+
+		const QFont kept = QApplication::font();
+		QFont proportional(QStringLiteral("DejaVu Sans"));
+		proportional.setPixelSize(cell_h - 3);
+		QApplication::setFont(proportional);
+		for (QWidget *w : QApplication::allWidgets()) w->setFont(proportional);
+		QCoreApplication::processEvents();
+		// Read WHILE the proportional font is installed: an assertion taken
+		// after the restore below is true whatever the enforcer did, which
+		// is how the first version of this passed against broken code.
+		const QString family_while_set = edit->font().family();
+		Qtty::CellBuffer after(20, 4);
+		Qtty::render_once(win, after);
+		QApplication::setFont(kept);
+		for (QWidget *w : QApplication::allWidgets()) w->setFont(kept);
+		QCoreApplication::processEvents();
+		// The guard is told to forget what the proportional font did to the
+		// widgets while it was installed. Laying a form out in a font whose
+		// advances are not one cell each puts geometries off the grid by
+		// definition -- that is the state under test, not a fault -- and the
+		// suite's own idiom for a fixture that produces one deliberately is
+		// to reset afterwards, as the wheel and show() cases do.
+		Qtty::GridGuard::reset();
+
+		// TWO MECHANISMS, and the check below cannot tell which one held --
+		// which is why this line is here. setup() installs a font enforcer
+		// that puts the grid's family back on every widget at FontChange, so
+		// the proportional font never reaches the paint engine; and if it
+		// did, the engine walks clusters by CELL width rather than by the
+		// font's advances. Either alone is enough, so no single sabotage can
+		// redden the picture comparison -- 8.151's shape, met while writing
+		// the check rather than a run later.
+		//
+		// This one names the mechanism a sabotage can reach: the enforcer.
+		if (family_while_set == kept.family())
+			printf("PASS: a font set on every widget is put back by the "
+			       "enforcer, which is the first of the two things keeping "
+			       "the grid still\n");
+		else {
+			printf("FAIL: a font set on every widget is put back by the "
+			       "enforcer, which is the first of the two things keeping "
+			       "the grid still\n");
+			printf("      the field kept [%s]\n",
+			       qPrintable(family_while_set));
+			++r;
+		}
+		if (after.to_text() == before.to_text()
+		    && GridMetrics::cw() == cell_w && GridMetrics::ch() == cell_h)
+			printf("PASS: a font the application changes after setup moves "
+			       "neither the cell nor a glyph\n");
+		else {
+			printf("FAIL: a font the application changes after setup moves "
+			       "neither the cell nor a glyph\n");
+			printf("      before [%s]\n      after  [%s]\n",
+			       qPrintable(before.to_text()), qPrintable(after.to_text()));
+			++r;
+		}
+	}
+
+	{
 		// TWO LINES A CELL APART BOTH SURVIVE, and two lines closer than
 		// that do not. The second half is a limit rather than a defect to
 		// fix here, and it is pinned so that it is a known shape rather

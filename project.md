@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1374 checks, 0 failures. `make check` is green and includes
+1376 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16220,6 +16220,63 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.180 What is measured once and what follows (2026-09-16)
+
+A sweep with one question: **which of this library's answers are taken once
+and which follow the thing they describe?** Four, measured against the
+installed prefix rather than reasoned about:
+
+    the application's FONT      changed after setup(): nothing moves.
+                                Measured with a PROPORTIONAL family applied
+                                to every widget -- the cell stays 10x19, the
+                                field stays 180x19, and `iiiii WWWWW` puts
+                                every glyph on its own cell, because the
+                                engine walks clusters by CELL width rather
+                                than by the font's advances.
+
+    the THEME                   follows. Measured with a control, which is
+                                the half that makes it a measurement: with
+                                the theme changed the backend presented a
+                                second frame, and without it the same
+                                program presented one.
+
+    the terminal's BACKGROUND   does NOT follow, and cannot: 8.160 has it,
+                                and it is the holder's.
+
+    the terminal's SIZE         follows, through SIGWINCH, and is checked.
+
+**The theme's route turned out to be one already checked, and reading it was
+the point.** `set_theme()` is an assignment and notifies nobody; what carries
+it to the screen is the scheduler's 100 ms idle tick, whose own check in
+suite_runtime says why it exists -- a widget drawn from state rather than
+from a repaint produces a different frame with nothing to say so. So the
+theme reaching the screen is that heartbeat's doing, not the setter's, and
+the entry records the mechanism rather than adding a second check for the
+same thing.
+
+The font's indifference had no check and now has two, and the reason there
+are two is the interesting part: **it holds twice over, so no single sabotage
+could redden a check on the picture.**
+
+    the enforcer      setup() installs an event filter that puts the grid's
+                      family and size back on every widget at Polish and at
+                      FontChange, so an application's font never reaches the
+                      paint engine at all
+    the engine        and if it did, clusters advance by CELL width rather
+                      than by the font's advances
+
+Three sabotages were written before that was understood -- placing a column
+from the font's advance, advancing a cluster by it, and standing the enforcer
+down -- and every one of them left the picture identical, because whichever
+was broken the other still held. That is 8.151's shape met while writing a
+check rather than a run later, and the answer is the same: name the mechanism
+a sabotage can reach. The enforcer is checked directly now, by reading the
+widget's family WHILE the application's font is installed -- the first
+version read it after restoring and was true whatever the enforcer did -- and
+the end-to-end picture check stays beside it with its limit written down.
+
+
 
 ### 8.179 The other consumer of the order 8.177 replaced (2026-09-16)
 
