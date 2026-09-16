@@ -37,6 +37,9 @@ import tomllib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPEC = os.path.join(ROOT, "tool", "sabotage.toml")
+# Held for the length of a run, so that anything else asking this tree a
+# question can find out that the answer would be about broken source.
+LOCK = os.path.join(ROOT, "build", "sabotage.lock")
 
 # Bounds. The spec is a finite list and each entry costs one build and one
 # suite run, so the run terminates when the list is exhausted; these are
@@ -244,7 +247,108 @@ def passing_checks(output):
 	        for ln in output.splitlines() if ln.startswith("PASS: ")]
 
 
+# What the docstring says, reachable from the program -- and the arguments,
+# which were documented only beside the code that parses them. This tool
+# already had the defect its own tree records for the four binaries: every
+# flag explained in a comment nobody running it could see, and an unknown
+# one answered by doing the ordinary work. Here the ordinary work edits the
+# sources and takes an hour, so `sabotage.py --help` was the worst version
+# of that trap available.
+USAGE = """\
+sabotage.py -- break the code on purpose and confirm the suite says so.
+
+usage: sabotage.py [--validate] [--only TEXT] [--from N] [--dirty-ok]
+
+Runs every entry in tool/sabotage.toml: applies it, builds, runs the
+suite, and requires the check the entry names to go red. Restores the
+tree under every exit path, including a signal.
+
+  --validate     check that every anchor still matches its source, and
+                 nothing else. Milliseconds rather than an hour, so this
+                 is what `make check` runs.
+  --only TEXT    run the entries whose name contains TEXT. Refuses when
+                 it matches none, rather than reporting a green run over
+                 an empty list.
+  --from N       start at the Nth entry of the spec, numbered as the
+                 per-entry line prints it. For resuming a run that was
+                 interrupted: `sabotage 212/233` means `--from 212`.
+  --dirty-ok     run although src/, test/ or include/ has uncommitted
+                 changes. The refusal exists because more than one
+                 session works these trees.
+"""
+
+
+def known_arguments(argv):
+	"""Refuse a flag this does not understand, rather than ignoring it.
+
+	Ignoring one means `--halp` runs the whole spec, and so did `--help`
+	until this was written. A tool that edits the tree owes its caller a
+	refusal it can read instead of an hour of work it did not ask for.
+	"""
+	takes_value = {"--only", "--from"}
+	flags = takes_value | {"--validate", "--dirty-ok", "--help", "-h"}
+	i = 0
+	while i < len(argv):
+		a = argv[i]
+		if a not in flags:
+			return a
+		i += 2 if a in takes_value else 1
+	return None
+
+
+def lock_holder():
+	"""The pid of a sabotage run in flight, or None.
+
+	A run edits the sources under everything else in this tree, so a
+	reading taken while one is going describes the sabotage rather than
+	the code. `--validate` met this exactly: run during a sabotage of
+	compositor.cpp it reported the entry anchored there as unappliable and
+	"the check it names is undefended" -- alarming, and false.
+
+	A stale lock is not a lock. The pid is checked rather than trusted,
+	because a run that was killed hard leaves the file behind and a lock
+	nobody can clear is worse than none.
+	"""
+	try:
+		with open(LOCK) as f:
+			pid = int(f.read().split()[0])
+	except (OSError, ValueError, IndexError):
+		return None
+	try:
+		os.kill(pid, 0)
+	except ProcessLookupError:
+		return None
+	except PermissionError:
+		return pid                      # alive and somebody else's
+	return pid
+
+
+def take_lock():
+	"""Claim the tree, and give it back however this process ends."""
+	os.makedirs(os.path.dirname(LOCK), exist_ok=True)
+	with open(LOCK, "w") as f:
+		f.write("%d\n" % os.getpid())
+	atexit.register(drop_lock)
+
+
+def drop_lock():
+	if lock_holder() == os.getpid():
+		try:
+			os.remove(LOCK)
+		except OSError:
+			pass
+
+
 def main():
+	if "--help" in sys.argv or "-h" in sys.argv:
+		sys.stdout.write(USAGE)
+		return 0
+	unknown = known_arguments(sys.argv[1:])
+	if unknown is not None:
+		say("sabotage: unknown argument %r. Nothing was run." % unknown)
+		say("          sabotage.py --help says what it takes.")
+		return 2
+
 	if not os.path.isfile(SPEC):
 		say("sabotage: no spec at %s" % SPEC)
 		return 2
@@ -254,6 +358,14 @@ def main():
 	# that declines while the tree has uncommitted source is a gate that is
 	# off during exactly the work that breaks anchors.
 	if "--validate" in sys.argv:
+		held = lock_holder()
+		if held:
+			say("sabotage: a run is in flight (pid %d), so the sources are"
+			    " not the" % held)
+			say("          tree's own right now and every anchor read here"
+			    " would be")
+			say("          a fact about a sabotage. Nothing was checked.")
+			return 2
 		with open(SPEC, "rb") as f:
 			spec = tomllib.load(f).get("sabotage", [])
 	# It
@@ -324,16 +436,62 @@ def main():
 	for i, a in enumerate(sys.argv):
 		if a == "--only" and i + 1 < len(sys.argv):
 			only = sys.argv[i + 1]
+	# Resume, because a long run is interrupted more often than it is
+	# finished in one sitting: 90 minutes for 233 entries is an outer
+	# `timeout` away from stopping at 212, which is what happened the day
+	# this was added. Without it the remaining 21 cost either a whole run
+	# again or 21 invocations, each paying for its own baseline.
+	#
+	# The index is the spec's own order, 1-based, as the per-entry line
+	# prints it -- so `--from 213` starts where "sabotage 212/233" left off.
+	start = 1
+	for i, a in enumerate(sys.argv):
+		if a == "--from" and i + 1 < len(sys.argv):
+			try:
+				start = max(1, int(sys.argv[i + 1]))
+			except ValueError:
+				say("sabotage: --from wants a number")
+				return 2
+	if start > 1:
+		if start > len(spec):
+			say("sabotage: --from %d is past the end of a %d-entry spec"
+			    % (start, len(spec)))
+			return 2
+		say("sabotage: --from %d, so %d of %d entries are being skipped"
+		    % (start, start - 1, len(spec)))
+		spec = spec[start - 1:]
+
+	# Number the entries as the WHOLE spec numbers them, so that the line a
+	# reader copies into the next --from is the one they just saw. Only
+	# where the set has not also been filtered: an --only selects a sparse
+	# handful, and numbering those against the full spec would invent an
+	# order they do not have.
+	first, total = (start, start - 1 + len(spec)) if only is None else (1, 0)
+
 	if only is not None:
 		spec = [e for e in spec if only in e["name"]]
 		if not spec:
 			say("sabotage: --only %r matched no entry" % only)
 			return 2
 		say("sabotage: --only %r selected %d of the spec" % (only, len(spec)))
+		total = len(spec)
 
 	if not spec:
 		say("sabotage: the spec is empty, so this run proves nothing")
 		return 2
+
+	# One run at a time, and everything else told which tree it is looking
+	# at. Two runs in one tree would restore each other's sources from
+	# their own copies, and the second's baseline would be built from the
+	# first's sabotage -- which reads as a suite that has started failing.
+	held = lock_holder()
+	if held:
+		say("sabotage: another run holds this tree (pid %d). Two at once"
+		    " would" % held)
+		say("          restore each other's sources, so this one is"
+		    " declining.")
+		return 2
+	take_lock()
 
 	restorer = Restorer()
 	atexit.register(restorer.restore)
@@ -363,6 +521,10 @@ def main():
 		signal.signal(sig, on_signal)
 
 	rc = 0
+	# Declared out here, not beside its first use: the summary below runs
+	# after the `finally`, and a failure on the way to the baseline would
+	# otherwise reach it with the name unbound.
+	reddened = set()
 	try:
 		say("sabotage: baseline -- building and running the suite unbroken")
 		ok, out = build_and_test()
@@ -377,7 +539,14 @@ def main():
 		green = set(passing_checks(out))
 		say("sabotage: baseline green, %d checks passing" % len(green))
 
-		for i, item in enumerate(spec, 1):
+		# Every check any entry reddens, kept so the run can say what the
+		# SET defends rather than only that each entry did its own job. An
+		# entry names one check and usually takes others down with it, and
+		# the count of those is printed per entry and then lost -- so the
+		# question a reader actually has, how much of the suite this spec
+		# is able to move, had no answer anywhere.
+
+		for i, item in enumerate(spec, first):
 			name = item["name"]
 			path = os.path.join(ROOT, item["file"])
 			find, into = item["find"], item["into"]
@@ -385,7 +554,7 @@ def main():
 			check = item["check"]
 
 			say("")
-			say("sabotage %d/%d: %s" % (i, len(spec), name))
+			say("sabotage %d/%d: %s" % (i, total, name))
 
 			# The named check has to be passing before, or its failure
 			# afterwards is not attributable to anything.
@@ -476,6 +645,7 @@ def main():
 			red = [c for c in failing_checks(out) if check in c]
 			if red:
 				say("  ok -- reddened: %s" % red[0])
+				reddened.update(failing_checks(out))
 				others = [c for c in failing_checks(out) if check not in c]
 				if others:
 					say("     and %d other check(s) with it" % len(others))
@@ -559,6 +729,14 @@ def main():
 		    " binary in the tree")
 		return 2
 
+	# The set's reach, which is a different fact from every entry passing:
+	# 233 entries that all redden the same twenty checks would report the
+	# same line as 233 that redden four hundred. Entries declaring
+	# `expect = "crash"` contribute nothing here, a stopped suite printing
+	# no FAIL line to count.
+	if reddened:
+		say("sabotage: between them the entries redden %d distinct check(s)"
+		    " of the %d the suite runs" % (len(reddened), len(green)))
 	if rc == 0:
 		say("sabotage: %d sabotage(s), each reddened the check it names"
 		    % len(spec))

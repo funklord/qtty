@@ -12,8 +12,9 @@ where it is qtty's it says which.
 **If you came here with a job**, rather than to read it through:
 
 - *writing a widget of your own* -- **If you are writing a custom widget**
-  has the four things a standard one gets free, and practices 9 to 11
-  explain each;
+  has the five things a standard one gets and yours does not; practices 9
+  to 11 explain the first three, the fourth is in *Copy and paste*, and
+  the fifth is the grid's own limit rather than a price;
 - *your control does not look like a control* -- practice 12, on style
   sheets;
 - *your form is bigger than the terminal* -- **When the terminal is
@@ -310,8 +311,9 @@ application a terminal user can operate into one they can operate
 comfortably. **Practices 9 to 12 are traps rather than advice** -- each
 breaks something silently, and breaks it only on the terminal, so the
 desktop build hides every one. Nine to eleven concern a widget of your
-own; twelve concerns styling a standard one. They sit last because that
-is where the material belongs, not because they matter least. If you are
+own; twelve concerns styling a standard one. They sit near the end because
+that is where the material belongs, not because they matter least -- only
+thirteen, which is ordinary advice again, comes after them. If you are
 writing a custom widget, read 9 to 11 first: they are collected, with a
 fourth from *Copy and paste*, in the table under *If you are writing a
 custom widget*.
@@ -984,6 +986,23 @@ straight after practice 10: it is `hasFocus()` on the widget, and
 `QApplication::focusWidget()`, that are dead here. Qt keeps the window's
 own idea of its focus widget; what it never sets is the ACTIVE window,
 which is what the other two read.
+
+**Four questions the library will answer about your window**, so that a
+test can assert on them rather than a person noticing:
+
+| call | what it returns | what to assert |
+|---|---|---|
+| `Qtty::keyboard_reachable(scope)` | the widgets `Tab` visits, in order | your controls are in it |
+| `Qtty::pointer_only(scope)` | the buttons no key reaches | empty (Qt's own furniture aside) |
+| `Qtty::mnemonic_conflicts(scope)` | the `Alt`+letters two controls claim | empty |
+| `Qtty::shortcut_conflicts(scope)` | the chords two things answer at once | empty |
+
+**Three of the four are asserted EMPTY, and that is the property worth
+having.** A list you check by name needs updating every time the window
+grows a control; an empty assertion needs nothing, and goes red the day
+somebody adds one that collides or that only a mouse can press. Each of
+them walks the router's own tables rather than a second copy, so what
+they report is what the keys will do.
 
 **There is a snapshot harness for what the screen shows.**
 `qtty/testing.h` ships with every install:

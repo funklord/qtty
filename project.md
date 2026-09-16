@@ -16228,6 +16228,101 @@ recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
 
+### 8.185 The set run whole, and the instrument taught to say more (2026-09-16)
+
+**The set was run whole on a quiet machine, and nothing had weakened.**
+211 entries of 233 before an outer `timeout` stopped it at 212, then the
+rest from `--from 212`: **208 reddened the check they name, 3 stopped the
+suite as their entry declares they must, and there was no FAILED, no
+INCONCLUSIVE and no REFUSED.** The three commits since the last whole run
+added a public function and a rule inside it, and the run says no check
+that already existed has started passing for a new reason.
+
+**What the set reaches, which is a different number from its size.** 96 of
+the entries take other checks down with the one they name -- 441 of them
+between them -- so a spec of 233 entries moves far more of the suite than
+233 checks. That count was printed per entry and then lost until today;
+the harness accumulates it now and says so at the end.
+
+**The interruption is worth as much as the run.** It is the first
+unattended test of 8.182's fix: the outer timeout killed the harness
+mid-entry, and the tree came back whole -- *stopped -- 18 file(s) put
+back, and touched so a build in flight cannot leave an object newer than
+its source*, no stray compiler, and `make` plus the suite green
+immediately afterwards. Before that fix this is exactly the shape that
+left an object built from a sabotage sitting newer than its own source.
+
+**Two things the harness could not say, and one it said wrongly.**
+
+**A run now holds a lock, and everything else is told.** `--validate` was
+run while the set had `compositor.cpp` sabotaged: it reported the entry
+anchored there as unappliable and said *the check it names is undefended*
+-- alarming, false, and produced by reading a tree that belonged to
+somebody else at the time. The harness's own code already warns that
+"anything that builds in this tree while this runs will do the same"; the
+lock is that warning made mechanical. A live holder makes `--validate`
+refuse and say why, and makes a second run decline rather than restore the
+first one's sources from its own copy. The pid is checked rather than
+trusted: a run killed hard leaves the file behind, and a lock nobody can
+clear is worse than none. Both halves were watched -- a live pid refuses,
+a dead one is ignored.
+
+**And the run reports the SET's reach, not only each entry's.** Every
+entry names one check and usually takes others down with it; that count
+was printed per entry and then lost, so the question a reader has -- how
+much of the suite this spec can move -- had no answer anywhere. Two
+hundred entries reddening the same twenty checks would have printed the
+same closing line as two hundred reddening four hundred.
+
+**A number the change turned up: the suite prints more PASS lines than it
+has distinct checks.** The baseline counts them as a set, and 1388 lines
+are 1375 texts. Twelve of the duplicates are one assertion -- *every
+widget geometry landed on the grid* -- run at the end of twelve suites,
+and two more are pairs. It matters twice: a FAIL line naming that
+assertion does not say which suite it came from, and an entry naming it
+would be refused for matching twelve passing checks rather than one.
+
+**And it answers `--help`, which it did not.** Section 8's own record says
+of the four binaries that each "documented itself thoroughly in a comment
+nobody running it could see, and answered `--help` by doing its ordinary
+work -- which reads as if the flag had been understood". This tool had
+exactly that, and worse: its ordinary work edits the sources and takes an
+hour, so asking it for help started a full run. An unknown flag is refused
+now rather than ignored, which is the same fault seen from the other side
+-- `--halp` ran the whole spec.
+
+**The documents were swept for the claims that rot, and two had.**
+`evidence.md` names the shape: a present-tense countable claim about the
+tree's own shape, which nothing downstream re-derives. Neither of the two
+named a symbol, which is why `guide-check` -- the gate that proves every
+symbol the documentation names resolves from a public header -- could not
+have found either.
+
+- The reader's index said **If you are writing a custom widget** has "the
+  four things a standard one gets free, and practices 9 to 11 explain
+  each". The table has five rows: 9 to 11 explain three, the fourth comes
+  from *Copy and paste*, and the fifth is the grid's limit rather than a
+  price. The table grew and the index did not.
+- The practices preamble said the traps "sit last". They stopped sitting
+  last when practice 13 arrived after them.
+
+Nothing else in either document: the README's counts re-derive (four tools
+under `tool/`, six programs at the root, four things `fmake.toml` says),
+and *Copy and paste*'s behavioural claims hold against the source -- `TERM`
+beginning `screen` or `tmux`, a refusal that logs the size and the bound it
+broke, and `clipboard_limit()` living in a header that is not installed.
+
+**Section 0b was swept the same way and holds.** An open question is the
+entry that decays most quietly -- nobody re-reads the open ones while
+closing one -- so every row whose claim names a symbol or a quantity was
+put to the source: `CursorShape`'s four values against
+`AnsiBackend::set_cursor`, which still tells Hidden from the other three
+and nothing else; `Overlay::set_z()`, which still only stores; a read-only
+line edit, which the cell style still has no branch for; and the clipboard
+limit, which is still declared in a header that is not installed. The rows
+that name a judgement rather than a quantity cannot be checked this way and
+were left alone, which is the honest half of the method.
+
 ### 8.183 The three ways a report can name a working control (2026-09-16)
 
 `pointer_only()` (8.181) exists to be believed, and the error that costs
