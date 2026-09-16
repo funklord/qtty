@@ -28,15 +28,17 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-15, at 1346**,
+**Last re-verified under all six configurations: 2026-09-16, at 1363**,
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
 result. Offscreen and xcb-under-Xvfb both ran 1344, `minimal` refused and
 said why, the hostile environment was absorbed by the pins, the sanitized
-run reported no failure and no leak, and memcheck was clean. Re-run at 1346
-rather than quoted from 1344: the two checks added since are a popup whose
-closing DELETES another popup, which is precisely the kind of fixture those
-two slow arms exist to watch, so the earlier run could not have covered it.
+run reported no failure and no leak, and memcheck was clean. Re-run rather
+than quoted each time the suite grew: at 1346 for a popup whose closing
+DELETES another popup, and at 1363 for the shortcut resolution of 8.174 --
+which is not a memory change, but whose fixtures build and tear down windows
+full of actions, and the xcb arm had already refused two of them for reasons
+the default run could not see.
 
 The sanitized and memcheck arms earned their place that day rather than
 merely passing: 8.161 put `QPointer`s where raw pointers were held across
