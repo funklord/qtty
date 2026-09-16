@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1382 checks, 0 failures. `make check` is green and includes
+1384 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16270,6 +16270,19 @@ report that hid the toolkit's own worst case would be hiding the practice.
 **Four sabotages, one per rule**, and the discriminating one is the action
 subtraction: with it removed the toolbar's button is named, which is the
 false report the population argument above exists to prevent.
+
+**And the report was pointed at the case this library is usually in.** A
+toolbar of eight actions in a terminal eight columns wide:
+
+    narrow   1 named -- qt_toolbar_ext_button, the overflow chevron
+    wide     0 named -- every button keyed by the letter on its action
+
+Which is the guide's own paragraph arriving as a list: the chevron is
+pointer-only and the actions behind it are not, so an application that
+gives every toolbar action a letter loses buttons on a narrow terminal and
+keeps its commands. Both checks were watched failing through existing
+entries rather than new ones -- narrowing the population loses the chevron,
+dropping the action subtraction names all eight.
 
 ### 8.180 What is measured once and what follows (2026-09-16)
 

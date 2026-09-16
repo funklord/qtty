@@ -3446,6 +3446,47 @@ int suite_router() {
 			      "application's behalf");
 		}
 
+		// THE NARROW TERMINAL, which is this library's ordinary condition
+		// rather than an edge: a toolbar with more actions than fit hides
+		// the surplus behind a chevron only a pointer can open, and the
+		// guide says so. The report agrees with the guide, and -- widened
+		// -- goes quiet with eight buttons on the bar, every one of them
+		// keyed by the letter on its own action. A report that named them
+		// is one nobody would read twice.
+		{
+			QMainWindow win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.setCentralWidget(new QLineEdit);
+			auto *bar = win.addToolBar(QStringLiteral("Main"));
+			for (const char *t : { "&Open", "&Save", "&Print", "&Quit",
+			                       "&Find", "&Replace", "&Zoom", "&Help" })
+				bar->addAction(QString::fromLatin1(t));
+			win.resize(GridMetrics::cells(60, 10));
+			win.show();
+			win.resize(GridMetrics::cells(8, 10));
+			QCoreApplication::processEvents();
+
+			const QVector<QWidget *> tight = pointer_only(&win);
+			bool chevron = false;
+			for (QWidget *w : tight)
+				if (w->objectName()
+				    == QStringLiteral("qt_toolbar_ext_button"))
+					chevron = true;
+			CHECK(chevron,
+			      "a toolbar too narrow for its actions puts the chevron "
+			      "in the report, which is the one thing the overflow "
+			      "leaves that only a pointer opens");
+
+			win.resize(GridMetrics::cells(60, 10));
+			QCoreApplication::processEvents();
+			const QVector<QWidget *> roomy = pointer_only(&win);
+			printf("info: toolbar pointer-only, narrow %d, wide %d\n",
+			       int(tight.size()), int(roomy.size()));
+			CHECK(roomy.isEmpty(),
+			      "and with room for all eight the report is empty, each "
+			      "button keyed by the letter on its own action");
+		}
+
 		// Ctrl+PageUp and Ctrl+PageDown between tabs. Qt gives a
 		// QTabWidget Ctrl+Tab and Ctrl+Shift+Tab and not these, and these
 		// are what somebody coming from a browser or an editor tries.
