@@ -368,14 +368,17 @@ int suite_render(bool record) {
 			// legend does not define is a fixture nobody can read, and the
 			// serialiser has a branch that emits `?` once it runs out of
 			// alphabet -- which would land here.
+			// Named, like its sibling above: this runs once per fixture,
+			// and a verdict that does not say which one is a verdict
+			// whose reader has to count lines to find out.
 			if (undefined.isEmpty())
-				printf("PASS: and every symbol its attribute plane uses is "
-				       "named in its legend\n");
+				printf("PASS: and every symbol %s's attribute plane uses is "
+				       "named in its legend\n", fx.name);
 			else {
-				printf("FAIL: and every symbol its attribute plane uses is "
+				printf("FAIL: and every symbol %s's attribute plane uses is "
 				       "named in its legend\n"
 				       "      condition: %s defines no [%s]\n",
-				       fx.name, qPrintable(undefined));
+				       fx.name, fx.name, qPrintable(undefined));
 				++r;
 			}
 		}

@@ -135,10 +135,30 @@ int main(int argc, char **argv) {
 		// attribute. It is a real check and counts as one.
 		const int off = Qtty::GridGuard::violations();
 		if (off == 0) {
-			printf("PASS: every widget geometry landed on the grid\n");
+			// NAMED, which this comment claimed before the line did. The
+			// suite's own header sits above it, so a person reading the
+			// run in order always knew which one -- and a person reading
+			// a FAIL line, or grepping for it, did not, and twelve
+			// identical PASS lines are what the sabotage harness counts
+			// as one check named twelve times. An entry naming this
+			// assertion was refused for matching twelve passing checks
+			// rather than one, so the strongest guard in the tree could
+			// not defend the guard.
+			printf("PASS: every widget geometry landed on the grid (%s)\n",
+			       s.name);
 		} else {
-			printf("FAIL: %d widget geometry/geometries off the grid "
-			       "(see the qtty: warnings above)\n", off);
+			// THE SAME SENTENCE as the pass, with the count after it. The
+			// two used to word the claim differently -- "24 widget
+			// geometry/geometries off the grid in render" against "every
+			// widget geometry landed on the grid" -- and a check whose
+			// failure does not contain its own name cannot be named by a
+			// sabotage entry at all: the harness looks for the check's
+			// text inside a FAIL line, finds nothing, and reports that the
+			// suite finished without running it. Measured while writing
+			// the entry that defends this.
+			printf("FAIL: every widget geometry landed on the grid (%s)"
+			       " -- %d did not (see the qtty: warnings above)\n",
+			       s.name, off);
 			++failures;
 		}
 

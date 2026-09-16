@@ -16228,6 +16228,50 @@ recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
 
+### 8.186 Twelve checks nothing could name, and the one that could not fail (2026-09-16)
+
+8.185 measured the suite printing more PASS lines than it has distinct
+texts -- 1392 lines, 1379 texts -- and twelve of the duplicates were one
+assertion, *every widget geometry landed on the grid*, run at the end of
+each suite. Naming the suite in it was meant to be a legibility fix. It
+turned out to be the thing standing between the strongest guard in this
+tree and any defence at all.
+
+**A check that shares its text with eleven others cannot be named.** The
+sabotage harness requires the check an entry names to match exactly one
+passing check, so an entry for the grid guard was refused by construction.
+Twelve suites' worth of the property this whole library rests on --
+geometry landing on cell boundaries -- had no entry, and the reason was a
+`printf` rather than anything anybody had decided.
+
+**And when the entry could finally be written, the check could not fail
+in a way the harness recognises.** Its two verdicts worded the same claim
+differently:
+
+    PASS: every widget geometry landed on the grid
+    FAIL: 24 widget geometry/geometries off the grid in render
+
+The harness looks for the check's own text inside a FAIL line. It is not
+there, so the entry would have been reported INCONCLUSIVE -- *the suite
+finished without the named check* -- which reads as a suite that skipped
+it rather than a check that fired. **A check's failure has to contain its
+own name**, and this one's did not. It does now, with the count after it.
+
+**What the entry breaks, and why that shape.** `GridSnap::snap()` rounds
+each edge to the nearest cell; the entry makes it round the left edge and
+then add a pixel. An inert snapper was tried first and is the wrong
+sabotage: it reddens the three checks that test the snapper directly and
+leaves the guard silent, because the fixtures' own geometry is mostly
+aligned already. One pixel off is what the guard exists to see -- 24
+geometries in one suite, and 23 other checks with it.
+
+**The other two duplicate pairs were the same fault in miniature**: a
+per-fixture legend check that did not name its fixture, and an assertion
+inside a block that runs twice with the conventions on and off. Every
+check text in the suite is distinct now -- 1392 lines, 1392 texts -- which
+is the property that makes each one nameable, and the harness's baseline
+count now agrees with `count-check` instead of differing by thirteen.
+
 ### 8.185 The set run whole, and the instrument taught to say more (2026-09-16)
 
 **The set was run whole on a quiet machine, and nothing had weakened.**

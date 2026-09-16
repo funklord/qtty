@@ -2329,3 +2329,13 @@ find = "\tQVector<QWidget *> focuses = focus_candidates(scope);"
 into = "\tQVector<QWidget *> focuses = keyboard_reachable(scope);"
 count = 1
 check = "the chord two claims answer there IS reported"
+
+[[sabotage]]
+# Geometry snapped one pixel off the grid, which is what GridGuard exists to
+# notice and what nothing had ever made it report. 8.186.
+name = "a snapped geometry lands one pixel off the grid"
+file = "src/grid/grid_style.cpp"
+find = "\treturn QRect(l, t, qMax(0, r - l), qMax(0, b - t));"
+into = "\treturn QRect(l + 1, t, qMax(0, r - l), qMax(0, b - t));"
+count = 1
+check = "every widget geometry landed on the grid (render)"

@@ -3762,11 +3762,19 @@ int suite_router() {
 				// pinning it means a Qt that changed the default
 				// reddens the explanation rather than silently
 				// moving the behaviour.
+				// Says which pass it is, because the block runs
+				// twice and the fact is the same both times: two
+				// identical verdicts are one check named twice to
+				// anything reading the log rather than the screen.
 				CHECK(oth->autoDefault() && !apply->autoDefault(),
-				      "autoDefault is set for a button in a dialog and "
-				      "clear for one in a plain widget, which is why "
-				      "Enter reaches the focused button in the first "
-				      "and not the second");
+				      conv ? "autoDefault is set for a button in a dialog "
+				             "and clear for one in a plain widget, which is "
+				             "why Enter reaches the focused button in the "
+				             "first and not the second (conventions on)"
+				           : "autoDefault is set for a button in a dialog "
+				             "and clear for one in a plain widget, which is "
+				             "why Enter reaches the focused button in the "
+				             "first and not the second (conventions off)");
 				CHECK(okf == 1 && othf == 0,
 				      conv ? "and with them on, Enter in a field still "
 				             "commits the dialog through its default button"
