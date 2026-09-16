@@ -439,8 +439,10 @@ arrows move between pages.
 There is a third, and the check below found it where the audit above had
 not: a dock widget's **float** button sits beside its close button, is
 `Qt::NoFocus`, carries no action, and nothing claims a key for it either.
-`Qtty::pointer_only()` names all of them, and the section on testing says
-how to read that list.
+A fourth is not a button at all -- a `QSplitter`'s handle, which practice
+13 measures: no focus, no tab stop, and no answer to the arrows even with
+the focus forced onto it. `Qtty::pointer_only()` names all four, and the
+section on testing says how to read that list.
 
 A right-click menu is the exception you get for free: `Menu` and
 `Shift+F10` open it, and your `contextMenuPolicy` is honoured exactly as
@@ -748,10 +750,25 @@ by `exec()`, or by an application's own frame loop -- so a widget deep in a
 tree can branch without being told which frontend built it. That is the general escape for anything a desktop
 wants and a terminal cannot use.
 
-**13. Prefer stepping to dragging.** A splitter, a slider and a scroll bar
-all respond to arrows when focused, but only if a user can reach them.
-Give a splitter a keyboard route or a menu action that sets the split;
-"drag the handle" is not available to everybody.
+**13. Prefer stepping to dragging.** The three controls people drag are
+not one case, and this practice used to say they were. Measured, with the
+focus put on each by hand:
+
+| control | focus policy | a `Tab` stop | arrows when focused |
+|---|---|---|---|
+| `QSlider` | `StrongFocus` | yes | 50 → 53 |
+| `QScrollBar` | `NoFocus` | no | 50 → 47 |
+| `QSplitter`'s handle | `NoFocus` | no | **nothing at all** |
+
+So a slider is fine as it stands. A scroll bar answers arrows and cannot
+be reached -- which costs nothing, because the view it scrolls takes focus
+and scrolls with the same keys. **A splitter has no keyboard route
+anywhere in Qt**: not merely unreachable, unanswering, so no focus policy
+you set will help. Give the split a menu action of your own that sets the
+sizes; "drag the handle" is not available to everybody.
+
+`Qtty::pointer_only()` names splitter handles for exactly this reason,
+beside the buttons.
 
 ## Copy and paste
 
@@ -1037,7 +1054,7 @@ test can assert on them rather than a person noticing:
 | call | what it returns | what to assert |
 |---|---|---|
 | `Qtty::keyboard_reachable(scope)` | the widgets `Tab` visits, in order | your controls are in it |
-| `Qtty::pointer_only(scope)` | the buttons no key reaches | empty (Qt's own furniture aside) |
+| `Qtty::pointer_only(scope)` | the controls no key reaches | empty (Qt's own furniture aside) |
 | `Qtty::mnemonic_conflicts(scope)` | the `Alt`+letters two controls claim | empty |
 | `Qtty::shortcut_conflicts(scope)` | the chords two things answer at once | empty |
 | `Qtty::conventions_shadowed(scope)` | the convention rows your own keys took | empty, or drop those rows |

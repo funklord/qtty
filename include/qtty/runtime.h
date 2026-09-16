@@ -138,8 +138,9 @@ QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope);
 // and reached by no key at all -- not by Tab, not by a mnemonic, and not by
 // any chord that would fire the action they carry.
 //
-// The population is `QAbstractButton`, which is Qt's own word for a control
-// that answers a click rather than a judgement about which widgets matter.
+// The population is `QAbstractButton` and `QSplitterHandle` -- Qt's own words
+// for a control you click and one you drag, rather than a judgement about
+// which widgets matter.
 // The subtraction is the part an application cannot write for itself: a
 // toolbar button holds an action whose mnemonic and shortcut reach it while
 // the button itself is `Qt::NoFocus` and in nobody's tab chain, so a sweep

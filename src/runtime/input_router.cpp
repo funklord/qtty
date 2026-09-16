@@ -1063,6 +1063,20 @@ QVector<QWidget *> pointer_only(QWidget *scope) {
 		if (keyed.contains(b)) continue;
 		out.append(b);
 	}
+	// AND THE THING YOU DRAG. `QSplitterHandle` is Qt's own word for it, the
+	// way QAbstractButton is Qt's word for a thing you click, so this is the
+	// same population argument rather than a second judgement. Measured: the
+	// handle is Qt::NoFocus, is no tab stop, and three Right presses with
+	// the focus forced onto it move the split by nothing at all -- so unlike
+	// a scroll bar, which answers arrows and merely cannot be reached, a
+	// splitter has no keyboard route anywhere. The guide's remedy is an
+	// action of the application's own that sets the sizes.
+	const auto handles = scope->findChildren<QSplitterHandle *>();
+	for (QSplitterHandle *h : handles) {
+		if (!h->isVisible() || !h->isEnabled()) continue;
+		if (keyed.contains(h)) continue;
+		out.append(h);
+	}
 	return out;
 }
 

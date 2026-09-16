@@ -3513,6 +3513,52 @@ int suite_router() {
 			      "application's behalf");
 		}
 
+		// A SPLITTER is the same finding in a control you drag rather than
+		// one you click, and the guide had it wrong: it said a splitter, a
+		// slider and a scroll bar all answer arrows when focused and are
+		// merely hard to reach. Measured, with the focus forced onto each:
+		//
+		//     QSlider      StrongFocus, a tab stop,  50 -> 53
+		//     QScrollBar   NoFocus, no tab stop,     50 -> 47
+		//     QSplitter    NoFocus, no tab stop,     287/287 unchanged
+		//
+		// So a scroll bar answers and cannot be reached, while a splitter
+		// does not answer at all -- there is no keyboard route to a split
+		// anywhere in Qt, and the remedy is an action of the application's.
+		{
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			host.resize(GridMetrics::cells(40, 10));
+			auto *lay = new QVBoxLayout(&host);
+			auto *split = new QSplitter(Qt::Horizontal);
+			split->addWidget(new QLineEdit);
+			split->addWidget(new QLineEdit);
+			lay->addWidget(split);
+			host.show();
+			QCoreApplication::processEvents();
+
+			QSplitterHandle *const grip = split->handle(1);
+			CHECK(grip && pointer_only(&host).contains(grip),
+			      "a splitter's handle is named, Qt's own word for a thing "
+			      "you drag having no keyboard route at all");
+
+			// THE RELATIONSHIP: not merely unreachable, unanswering. The
+			// focus is put on the handle by hand -- which a user cannot
+			// do -- and the arrows still move nothing.
+			const QList<int> before = split->sizes();
+			InputRouter sr(&host);
+			grip->setFocus();
+			set_focus_widget(host.focusWidget());
+			QCoreApplication::processEvents();
+			for (int i = 0; i < 3; ++i)
+				sr.on_key({Qt::Key_Right, QString(), false, false, false});
+			QCoreApplication::processEvents();
+			CHECK(split->sizes() == before,
+			      "and even with the focus put on it by hand the arrows "
+			      "move the split by nothing, which is what makes it a "
+			      "different case from a scroll bar");
+		}
+
 		// THE NARROW TERMINAL, which is this library's ordinary condition
 		// rather than an edge: a toolbar with more actions than fit hides
 		// the surplus behind a chevron only a pointer can open, and the

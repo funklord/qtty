@@ -2403,3 +2403,13 @@ find = "\t\tconst auto *b = qobject_cast<QAbstractButton *>(w);\n\t\tif (b && b-
 into = "\t\t(void)w;"
 count = 1
 check = "nor an icon-only button, whose tool tip this style draws as its label"
+
+[[sabotage]]
+# The thing you drag dropped from the population, so a splitter -- which has
+# no keyboard route anywhere in Qt -- is reported as reachable. 8.191.
+name = "a splitter handle is not asked about"
+file = "src/runtime/input_router.cpp"
+find = "\tconst auto handles = scope->findChildren<QSplitterHandle *>();"
+into = "\tconst QVector<QSplitterHandle *> handles;"
+count = 1
+check = "a splitter's handle is named, Qt's own word for a thing you drag"
