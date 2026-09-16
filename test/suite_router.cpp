@@ -3740,6 +3740,73 @@ int suite_router() {
 			GridSnap::install(*qApp);
 		}
 
+		// ---- practice 7, from the side an application can check. A tool
+		// tip is never shown here -- no QEvent::ToolTip is raised, even
+		// after its timer -- so a sentence that lives only in one is a
+		// sentence a terminal user cannot reach. A status tip can be
+		// reached: with the conventions on it follows focus.
+		{
+			QMainWindow win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *central = new QWidget(&win);
+			win.setCentralWidget(central);
+			auto *host = new QLineEdit(central);
+			host->setGeometry(0, 0, 20 * GridMetrics::cw(), GridMetrics::ch());
+			host->setToolTip(QStringLiteral("host:port, or a bare host"));
+			auto *user = new QLineEdit(central);
+			user->setGeometry(0, GridMetrics::ch(), 20 * GridMetrics::cw(),
+			                  GridMetrics::ch());
+			user->setToolTip(QStringLiteral("the user to log in as"));
+			user->setStatusTip(QStringLiteral("the user to log in as"));
+			// An icon-only button, whose tip this style draws as its label
+			// (8.8). It hides nothing, and without the exclusion every
+			// file dialog would report six of these.
+			auto *icon = new QToolButton(central);
+			icon->setGeometry(0, 2 * GridMetrics::ch(), 4 * GridMetrics::cw(),
+			                  GridMetrics::ch());
+			icon->setToolTip(QStringLiteral("Parent Directory"));
+			win.resize(GridMetrics::cells(40, 10));
+			win.show();
+			QCoreApplication::processEvents();
+
+			const QVector<QWidget *> hidden = hover_only(&win);
+			CHECK(hidden.contains(host),
+			      "a field whose format lives only in a tool tip is named, "
+			      "there being no way to raise one here at all");
+			CHECK(!hidden.contains(user),
+			      "and one that says the same thing in a status tip is "
+			      "not, that being the tip a keyboard can reach");
+			CHECK(!hidden.contains(icon),
+			      "nor an icon-only button, whose tool tip this style "
+			      "draws as its label rather than hiding");
+
+			// THE RELATIONSHIP, and it is the reason the report exists:
+			// the status tip really does arrive on focus, and the tool
+			// tip really does not arrive at all.
+			// The state is RESTORED rather than set to off, because this
+			// block sits inside a section that runs with the conventions
+			// on: forcing them off here took Ctrl+PageUp/PageDown and a
+			// tab's own letter away from three checks below, which is a
+			// fixture reaching outside itself.
+			const bool was_on = keyboard_conventions();
+			set_keyboard_conventions(true);
+			win.statusBar()->showMessage(QString());
+			user->setFocus();
+			set_focus_widget(win.focusWidget());
+			QCoreApplication::processEvents();
+			const QString shown = win.statusBar()->currentMessage();
+			host->setFocus();
+			set_focus_widget(win.focusWidget());
+			QCoreApplication::processEvents();
+			const QString none = win.statusBar()->currentMessage();
+			set_keyboard_conventions(was_on);
+			CHECK(shown == QStringLiteral("the user to log in as")
+			          && none.isEmpty(),
+			      "and the difference is what a user sees: the status tip "
+			      "reaches the status bar on focus and the tool tip "
+			      "reaches nothing");
+		}
+
 		// Ctrl+PageUp and Ctrl+PageDown between tabs. Qt gives a
 		// QTabWidget Ctrl+Tab and Ctrl+Shift+Tab and not these, and these
 		// are what somebody coming from a browser or an editor tries.

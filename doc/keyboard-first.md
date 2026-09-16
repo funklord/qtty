@@ -557,6 +557,19 @@ on, since it works in the widget you wrote and nowhere else. A keyboard
 user never produces it at all. Whether either should change is an open
 question in `project.md`, not a gap.
 
+**So find the sentences that live only in a tool tip.**
+`Qtty::hover_only()` returns the widgets that have one and no status tip:
+
+    QVERIFY(Qtty::hover_only(&window).isEmpty());
+
+The remedy is usually one line -- `setStatusTip()` with the same words,
+which the conventions then show on focus. Icon-only buttons are not
+named, since this library already draws their tip as their label; without
+that exclusion every `QFileDialog` would report its six navigation
+buttons. And where the widget cannot take focus at all, a status tip on
+*it* will not show either: put the words in its label, or on the control
+the user will actually be standing on.
+
 **8. Say what the keys are.** A status bar line, a `?` page, a footer of
 hints -- a terminal user cannot discover a binding by looking for a
 button. This costs one `QLabel` and is the difference between an
@@ -1018,7 +1031,7 @@ straight after practice 10: it is `hasFocus()` on the widget, and
 own idea of its focus widget; what it never sets is the ACTIVE window,
 which is what the other two read.
 
-**Six questions the library will answer about your window**, so that a
+**Seven questions the library will answer about your window**, so that a
 test can assert on them rather than a person noticing:
 
 | call | what it returns | what to assert |
@@ -1029,8 +1042,9 @@ test can assert on them rather than a person noticing:
 | `Qtty::shortcut_conflicts(scope)` | the chords two things answer at once | empty |
 | `Qtty::conventions_shadowed(scope)` | the convention rows your own keys took | empty, or drop those rows |
 | `Qtty::tab_order_anomalies(scope)` | the tab steps that read backwards | empty |
+| `Qtty::hover_only(scope)` | the words only a hover would reveal | empty |
 
-**Five of the six are asserted EMPTY, and that is the property worth
+**Six of the seven are asserted EMPTY, and that is the property worth
 having.** A list you check by name needs updating every time the window
 grows a control; an empty assertion needs nothing, and goes red the day
 somebody adds one that collides or that only a mouse can press. Each of

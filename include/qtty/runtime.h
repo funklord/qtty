@@ -182,6 +182,28 @@ QVector<QWidget *> pointer_only(QWidget *scope);
 // container for the next says nothing about either one's order.
 QVector<QPair<QWidget *, QWidget *>> tab_order_anomalies(QWidget *scope);
 
+// The widgets whose words only a hover reveals: a tool tip, no status tip.
+//
+// Practice 7 of `doc/keyboard-first.md` is "do not depend on hover or
+// tooltips", and the reason is measured rather than assumed -- no
+// `QEvent::ToolTip` is ever raised here, even after its timer, so whatever a
+// tool tip says cannot be got at by any means a keyboard offers. A status
+// tip can: with the conventions on it follows FOCUS, and a `QMainWindow`
+// shows it with no code at all.
+//
+// NOT the icon-only buttons, whose tip this library already draws AS the
+// label (8.8) -- those hide nothing. Measured, that exclusion is what keeps
+// the answer usable: `QFileDialog`'s six navigation buttons are all tip-only
+// and all of them are labels here, so without it every file dialog would
+// report six findings nobody can act on.
+//
+// A tool tip that merely repeats a label is still named, because the library
+// cannot tell a repeat from an elaboration and the remedy is one line
+// either way. And where the widget cannot take focus at all, a status tip on
+// IT will not show -- the words belong in its label, or on the control the
+// user will be standing on.
+QVector<QWidget *> hover_only(QWidget *scope);
+
 // ---------------------------------------------------------------- InputRouter
 // Owns everything Qt's platform layer would normally own (measured F3/F4):
 // the shortcut table (synthetic keys never reach QShortcutMap), focus

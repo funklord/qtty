@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1402 checks, 0 failures. `make check` is green and includes
+1406 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16227,6 +16227,47 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.190 The words a hover keeps (2026-09-16)
+
+Practice 7 is *do not depend on hover or tooltips*, and it rests on a
+measurement this section already carries: **no `QEvent::ToolTip` is ever
+raised here**, even after its timer. So a sentence that lives only in a
+tool tip is a sentence a terminal user cannot reach by any means -- while
+a status tip can be reached, following FOCUS with the conventions on.
+`Qtty::hover_only()` names the widgets with the first and not the second.
+
+**The exclusion is what makes the answer usable, and it was measured
+rather than guessed:**
+
+    QFileDialog     tip-only 0, tip-as-label 6
+    QColorDialog    tip-only 0
+    QFontDialog     tip-only 0
+    an application  tip-only 2   a field's format, a toolbar button's words
+
+`QFileDialog`'s six navigation buttons carry a tool tip and no text, and
+this style already draws that tip AS their label (8.8) -- they hide
+nothing. Without the exclusion every file dialog would report six findings
+nobody can act on, which is how a report gets skimmed rather than read.
+
+**A tool tip that merely repeats a label is still named**, because the
+library cannot tell a repeat from an elaboration and the remedy is one
+line either way. And where the widget takes no focus, a status tip on IT
+will not show either -- the words belong in its label or on the control
+the user will be standing on. Both limits are in the header rather than
+left to be discovered.
+
+**The check asserts what a user sees**: with the conventions on, the field
+carrying a status tip puts its sentence in the status bar on focus and the
+field carrying only a tool tip puts nothing there. A check on the report
+alone would pass just as well if neither tip reached anybody.
+
+**And the fixture reached outside itself once.** It set the conventions
+off when it finished rather than restoring what it found, which took
+`Ctrl+PageUp`, `Ctrl+PageDown` and a tab's own letter away from three
+checks further down the file -- all three red, none of them about tool
+tips. A fixture that changes process-wide state owes the next one the
+state it was handed.
 
 ### 8.189 The practice with nothing to check it (2026-09-16)
 

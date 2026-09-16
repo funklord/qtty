@@ -2381,3 +2381,25 @@ find = "\t\tconst int ra = pa.y() / GridMetrics::ch();\n\t\tconst int rb = pb.y(
 into = "\t\tconst int ra = pa.y(), rb = pb.y();"
 count = 1
 check = "a walk right to left along one row is reported"
+
+[[sabotage]]
+# The status tip ignored, so a field that says the same thing in both tips is
+# reported as hiding it -- and the remedy the report asks for is the thing it
+# would then be refusing to see. 8.190.
+name = "a status tip does not count as reachable words"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (w->toolTip().isEmpty() || !w->statusTip().isEmpty()) continue;"
+into = "\t\tif (w->toolTip().isEmpty()) continue;"
+count = 1
+check = "one that says the same thing in a status tip is not"
+
+[[sabotage]]
+# The icon-only exclusion dropped, which is what keeps the answer usable:
+# every file dialog would report its six navigation buttons, whose tips this
+# style draws as their labels.
+name = "an icon-only button is called hover-only"
+file = "src/runtime/input_router.cpp"
+find = "\t\tconst auto *b = qobject_cast<QAbstractButton *>(w);\n\t\tif (b && b->text().isEmpty()) continue;"
+into = "\t\t(void)w;"
+count = 1
+check = "nor an icon-only button, whose tool tip this style draws as its label"

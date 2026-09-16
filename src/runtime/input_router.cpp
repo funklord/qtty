@@ -982,6 +982,26 @@ QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope) {
 // dock-widget buttons are QAbstractButtons with Qt::NoFocus and no action
 // (8.159), so they are named, and that is the finding rather than noise: the
 // remedy is the application's, and it is the one practice 4 already asks for.
+// The words a terminal user cannot reach: see runtime.h for the rule and the
+// one exclusion. Actions are deliberately not walked -- Qt derives an
+// action's tool tip from its own text when none is set, so asking the
+// question of actions would name every action in the program -- and an
+// explicit tip on one arrives here anyway, through the button that carries
+// it.
+QVector<QWidget *> hover_only(QWidget *scope) {
+	QVector<QWidget *> out;
+	if (!scope) return out;
+	const auto kids = scope->findChildren<QWidget *>();
+	for (QWidget *w : kids) {
+		if (!w->isVisible() || !w->isEnabled()) continue;
+		if (w->toolTip().isEmpty() || !w->statusTip().isEmpty()) continue;
+		const auto *b = qobject_cast<QAbstractButton *>(w);
+		if (b && b->text().isEmpty()) continue;
+		out.append(w);
+	}
+	return out;
+}
+
 // Where Tab goes backwards against the reading order. The rule and the one
 // exception are in runtime.h; what is worth saying beside the code is that
 // the comparison is in CELL ROWS rather than pixels. Two widgets a few
