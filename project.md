@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1388 checks, 0 failures. `make check` is green and includes
+1392 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16322,6 +16322,47 @@ line edit, which the cell style still has no branch for; and the clipboard
 limit, which is still declared in a header that is not installed. The rows
 that name a judgement rather than a quantity cannot be checked this way and
 were left alone, which is the honest half of the method.
+
+### 8.184 A focus the report could not ask about (2026-09-16)
+
+`shortcut_conflicts()` asks which chords answer twice, and it asks the
+question once per focus a user could be sitting in. The candidate list was
+`keyboard_reachable()` -- **the tab chain**, where the function's own
+comment promises *some focus a user can reach*. Those are not the same set,
+and the difference is reachable with one key.
+
+Measured, with plain Qt and this library:
+
+    a Qt::ClickFocus field named by a `&Notes` label
+      tab stops: 1, and the field is not among them
+      Alt+N puts the focus on it                       yes
+      two WidgetShortcut claims on Ctrl+G, both there  reported: 0 chords
+
+So two claims answered at one focus, one of them silently, and the report
+that exists to find exactly that said there was nothing. **An under-report
+is the worse direction** -- 8.183's false name costs somebody an afternoon,
+and a missing one leaves the defect in place under a green assertion.
+
+**Three routes put focus somewhere, and only one was being asked about.**
+Tab and Backtab walk the tab stops. A click reaches anything that is not
+`Qt::NoFocus`, a terminal having a mouse like any other screen. And a
+label's mnemonic calls `setFocus()` on its buddy, which does not consult
+the buddy's focus policy at all -- so a `NoFocus` buddy can hold focus and
+no policy test would have found it. `focus_candidates()` is the three of
+them, and the conflict above is reported now.
+
+**The check asserts the relationship rather than the report.** That the
+field is no tab stop, that `Alt+N` really lands on it, that the chord fires
+one claim there and the other never fires, and only then that the report
+names the pair. A check on the report alone would pass if the key had
+stopped working too.
+
+**The entry that broke is the one worth reading.** Widening the candidate
+list moved a line an older sabotage anchored on, and `--validate` said so
+before anything was committed: *the entry cannot be applied, so the check
+it names is undefended*. That is the gate doing precisely its job -- an
+anchor is a claim about a file that nobody re-reads until it is run, and at
+one build apiece a run is rare. Re-anchored and re-proved.
 
 ### 8.183 The three ways a report can name a working control (2026-09-16)
 

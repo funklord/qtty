@@ -104,6 +104,12 @@ QVector<QPair<QChar, QStringList>> mnemonic_conflicts(QWidget *scope);
 // Qt::WidgetShortcut claims on different widgets are not a conflict, only
 // one of them ever being in play; a chord is reported where some focus a
 // user can reach makes two claims answer at once.
+//
+// "A focus a user can reach" is wider than the tab chain, and saying so is
+// not pedantry: a `Qt::ClickFocus` field named by a `&Notes` label is no tab
+// stop, `Alt+N` focuses it, and claims that answer only there were invisible
+// to this until 8.184. Tab stops, a click, and the buddy of every mnemonic,
+// whatever its focus policy.
 QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope);
 
 // The buttons in `scope` that only a pointer can press: visible, enabled,

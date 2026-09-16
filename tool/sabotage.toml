@@ -1984,7 +1984,7 @@ check = "one chord on two widgets, each scoped to its own, is not a conflict"
 # claimant and the other stays silent -- which is the whole subject.
 name = "the chord report never moves the focus it asks about"
 file = "src/runtime/input_router.cpp"
-find = "\tQVector<QWidget *> focuses = keyboard_reachable(scope);\n\tfocuses.append(nullptr);"
+find = "\tQVector<QWidget *> focuses = focus_candidates(scope);\n\tfocuses.append(nullptr);"
 into = "\tQVector<QWidget *> focuses;\n\tfocuses.append(nullptr);"
 count = 1
 check = "a chord two things answer under one focus is reported"
@@ -2318,3 +2318,14 @@ find = "\t\tif (b->isDefault() && qobject_cast<QDialog *>(b->window()))\n\t\t\tk
 into = "\t\tif (false) keyed.insert(b);"
 count = 1
 check = "a dialog's default button is not named, Enter reaching it"
+
+[[sabotage]]
+# The conflict report back to asking only about tab stops, which loses every
+# claim that answers on a buddy or a click-focusable field -- the silent
+# loser it exists to name, unnamed. 8.184.
+name = "the conflict report asks only about tab stops"
+file = "src/runtime/input_router.cpp"
+find = "\tQVector<QWidget *> focuses = focus_candidates(scope);"
+into = "\tQVector<QWidget *> focuses = keyboard_reachable(scope);"
+count = 1
+check = "the chord two claims answer there IS reported"

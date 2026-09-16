@@ -1751,6 +1751,73 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- a focus the tab chain cannot reach, which the report used to
+	// miss. The candidates were keyboard_reachable(), and a user reaches
+	// focus by three routes rather than one: Tab, a click, and a label's
+	// mnemonic, which calls setFocus() on its buddy whatever the buddy's
+	// policy. A claim that answers only there was reported as no conflict
+	// at all -- the direction that leaves the silent loser in place.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(40, 10));
+		auto *lay = new QVBoxLayout(&host);
+		auto *tabbable = new QLineEdit;
+		lay->addWidget(tabbable);
+		auto *clicky = new QLineEdit;
+		clicky->setFocusPolicy(Qt::ClickFocus);
+		lay->addWidget(clicky);
+		auto *label = new QLabel(QStringLiteral("&Notes"));
+		label->setBuddy(clicky);
+		lay->addWidget(label);
+
+		int first = 0, second = 0;
+		auto *one = new QShortcut(QKeySequence(QStringLiteral("Ctrl+G")),
+		                          clicky);
+		one->setContext(Qt::WidgetShortcut);
+		one->setObjectName(QStringLiteral("the first"));
+		QObject::connect(one, &QShortcut::activated, [&] { ++first; });
+		auto *two = new QShortcut(QKeySequence(QStringLiteral("Ctrl+G")),
+		                          clicky);
+		two->setContext(Qt::WidgetShortcut);
+		two->setObjectName(QStringLiteral("the second"));
+		QObject::connect(two, &QShortcut::activated, [&] { ++second; });
+		host.show();
+		QCoreApplication::processEvents();
+
+		const QVector<QWidget *> stops = keyboard_reachable(&host);
+		CHECK(!stops.contains(clicky),
+		      "a ClickFocus field is no tab stop, which is why the report "
+		      "could not see a claim that answers only while it has focus");
+		const auto clash = shortcut_conflicts(&host);
+		CHECK(clash.size() == 1
+		          && clash[0].first == QKeySequence(QStringLiteral("Ctrl+G"))
+		          && clash[0].second.size() == 2,
+		      "and the chord two claims answer there IS reported, the "
+		      "candidates being every focus a user can reach rather than "
+		      "the ones Tab walks");
+
+		// THE RELATIONSHIP: the key really does reach that focus, and the
+		// loser really is silent. Without both halves this is a check on
+		// the report agreeing with itself.
+		InputRouter br(&host);
+		tabbable->setFocus();
+		set_focus_widget(host.focusWidget());
+		QCoreApplication::processEvents();
+		br.on_key({0, QStringLiteral("n"), false, true, false});
+		QCoreApplication::processEvents();
+		CHECK(host.focusWidget() == clicky,
+		      "a label's letter puts focus on a buddy Tab never visits, "
+		      "which is the focus the conflict lives in");
+		br.on_key({Qt::Key_G, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		CHECK(first == 1 && second == 0,
+		      "and there the chord answers one of the two and the other "
+		      "never fires, which is the collision the report now names");
+		host.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// ---- submenus (section 17.2) ---------------------------------------------
 	//
 	// Recorded as absent -- "nothing opens or routes a submenu" -- and it

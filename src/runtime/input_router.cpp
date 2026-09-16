@@ -831,11 +831,49 @@ static bool claim_applies(const ShortcutClaim &c, QWidget *scope,
 // focus a user can reach makes two claims answer at once. The focus
 // candidates are keyboard_reachable(), plus nothing focused at all, which is
 // the state a window starts in.
+// Every focus a user can reach in `scope`, which is what the report above
+// promises and is NOT the tab chain. Three routes put focus somewhere here,
+// and only the first is keyboard_reachable():
+//
+//   Tab and Backtab        the tab stops
+//   a label's mnemonic     its buddy, whatever the buddy's focus policy --
+//                          match_mnemonic() calls setFocus() on it, and
+//                          Qt's setFocus() does not consult the policy
+//   a click                anything not Qt::NoFocus, a terminal having a
+//                          mouse like any other screen
+//
+// Measured before this existed: a `Qt::ClickFocus` line edit named by a
+// `&Notes` label is no tab stop, `Alt+N` focuses it, and two WidgetShortcut
+// claims on it both answer there -- an ambiguity a user reaches with one
+// key, reported as no conflict at all. An under-report is the worse
+// direction here: a false name wastes somebody's afternoon, and a missing
+// one leaves the silent loser this function exists to find.
+static QVector<QWidget *> focus_candidates(QWidget *scope) {
+	QVector<QWidget *> out;
+	if (!scope) return out;
+	const auto add = [&out](QWidget *w) {
+		if (w && !out.contains(w)) out.append(w);
+	};
+	const auto focusable = [](const QWidget *w) {
+		return w->isVisible() && w->isEnabled()
+		       && w->focusPolicy() != Qt::NoFocus;
+	};
+	for (QWidget *w : keyboard_reachable(scope)) add(w);
+	if (focusable(scope)) add(scope);
+	const auto children = scope->findChildren<QWidget *>();
+	for (QWidget *w : children)
+		if (focusable(w)) add(w);
+	const QVector<MnemonicClaim> letters = mnemonic_claims(scope);
+	for (const MnemonicClaim &c : letters)
+		if (auto *l = qobject_cast<QLabel *>(c.who)) add(l->buddy());
+	return out;
+}
+
 QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope) {
 	QVector<QPair<QKeySequence, QStringList>> out;
 	if (!scope) return out;
 	const QVector<ShortcutClaim> claims = shortcut_claims(scope);
-	QVector<QWidget *> focuses = keyboard_reachable(scope);
+	QVector<QWidget *> focuses = focus_candidates(scope);
 	focuses.append(nullptr);
 	QVector<QKeySequence> seen;
 	for (const ShortcutClaim &c : claims) {
