@@ -2222,3 +2222,34 @@ find = "\t\t\tif (w == o || w->isAncestorOf(o)) {"
 into = "\t\t\tif (w == o) {"
 count = 1
 check = "a letter two buttons claim answers for the one in the panel"
+
+[[sabotage]]
+# Back to the far end: closing the window you are in sends you to the first
+# on the strip rather than to its neighbour. 8.176.
+name = "closing a window sends you to the far end"
+file = "src/runtime/compositor.cpp"
+find = "\t\t\tif (candidate && tabs.contains(candidate)) return candidate;"
+into = "\t\t\tif (false) return candidate;"
+count = 1
+check = "closing the current window hands you its NEIGHBOUR"
+
+[[sabotage]]
+# The position never recorded, so the neighbour is whatever index happened
+# to be left over -- which is the same fault wearing the fix's clothes.
+name = "the strip forgets where you were"
+file = "src/runtime/compositor.cpp"
+find = "\t\t\tg_current_index = at;"
+into = "\t\t\tg_current_index = 0;"
+count = 1
+check = "closing the current window hands you its NEIGHBOUR"
+
+[[sabotage]]
+# The strip taking its order from Qt's list again, so a window hidden and
+# shown comes back somewhere else and the tabs shuffle under the user.
+# 8.177.
+name = "a new window joins the front of the strip"
+file = "src/runtime/compositor.cpp"
+find = "\tg_seen.append(w);"
+into = "\tg_seen.prepend(w);"
+count = 1
+check = "a window shown later joins the end of the strip"

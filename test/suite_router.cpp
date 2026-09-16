@@ -1196,6 +1196,145 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- the strip keeps its order ----------------------------------------
+	//
+	// It did not. The list came from QApplication::topLevelWidgets(), whose
+	// order is Qt's own bookkeeping and is not promised: measured across five
+	// runs of one program, three windows created first, second, third drew as
+	// `[first, second, third]` four times and `[first, third, second]` once.
+	//
+	// A strip that reorders itself is bad on its own -- the second tab
+	// becomes the third while the user is looking at it -- and it makes
+	// anything derived from the order unstable. That is how it was found: the
+	// neighbour rule below picked a different survivor run to run, and a
+	// focus check three hundred lines away failed one run in three.
+	//
+	// Asserted through hide and show, which is what an application does and
+	// what moves a window in Qt's list.
+	{
+		QWidget one, two, three;
+		for (QWidget *w : {&one, &two, &three}) {
+			w->setAttribute(Qt::WA_DontShowOnScreen);
+			w->resize(GridMetrics::cells(16, 3));
+			(new QLineEdit(w))->setGeometry(0, 0, 8 * cw, ch);
+		}
+		one.setWindowTitle(QStringLiteral("one"));
+		two.setWindowTitle(QStringLiteral("two"));
+		three.setWindowTitle(QStringLiteral("three"));
+		one.show();
+		two.show();
+		three.show();
+		QCoreApplication::processEvents();
+		InputRouter orr(&one);
+		Compositor oc(&one, &orr);
+		CellBuffer ob(40, 8);
+		oc.compose(ob);
+		const QVector<QWidget *> first_order = Qtty::window_tabs();
+
+		two.hide();
+		QCoreApplication::processEvents();
+		oc.compose(ob);
+		two.show();
+		QCoreApplication::processEvents();
+		oc.compose(ob);
+		const QVector<QWidget *> after = Qtty::window_tabs();
+		CHECK(after == first_order,
+		      "a window hidden and shown again comes back where it was on "
+		      "the strip, rather than at the end of it");
+		// AND A NEW WINDOW GOES TO THE END, which is the control: a strip
+		// that never changed at all would satisfy the check above, and this
+		// one says it still takes newcomers.
+		//
+		// The limit worth knowing, since the check is shaped around it:
+		// windows first seen in the SAME pass arrive in whatever order Qt's
+		// list had them, because that is the pass that discovers them. What
+		// this rule promises is that the order does not change afterwards --
+		// which is what a user watching the strip cares about.
+		QWidget late;
+		late.setAttribute(Qt::WA_DontShowOnScreen);
+		late.setWindowTitle(QStringLiteral("late"));
+		late.resize(GridMetrics::cells(16, 3));
+		(new QLineEdit(&late))->setGeometry(0, 0, 8 * cw, ch);
+		late.show();
+		QCoreApplication::processEvents();
+		oc.compose(ob);
+		const QVector<QWidget *> grown = Qtty::window_tabs();
+		CHECK(grown.size() == after.size() + 1 && grown.last() == &late,
+		      "and a window shown later joins the end of the strip rather "
+		      "than the middle of it");
+		late.hide();
+		one.hide();
+		two.hide();
+		three.hide();
+		QCoreApplication::processEvents();
+	}
+
+	// ---- which window a closing one hands you to --------------------------
+	//
+	// The far end, until this: `tabs.first()` was the simplest thing to
+	// write and was never a user's expectation. Every tabbed thing a
+	// terminal user knows -- a browser, an editor, a multiplexer -- selects
+	// the tab BESIDE the one that closed. Measured before the fix with three
+	// windows: switch to the third, close it, and the terminal showed the
+	// first.
+	//
+	// Composed frame by frame rather than driven by timers, because the
+	// position is the one the strip last DREW: a probe that closed the
+	// window before any frame had been composed with it current read a
+	// stale index and reported the old behaviour, which cost a wrong
+	// conclusion before the timing was noticed.
+	{
+		QWidget root;
+		root.setAttribute(Qt::WA_DontShowOnScreen);
+		root.setWindowTitle(QStringLiteral("root"));
+		root.resize(GridMetrics::cells(40, 6));
+		auto *in_root = new QLineEdit(&root);
+		in_root->setGeometry(0, 0, 10 * cw, ch);
+		root.show();
+		QWidget middle;
+		middle.setAttribute(Qt::WA_DontShowOnScreen);
+		middle.setWindowTitle(QStringLiteral("middle"));
+		middle.resize(GridMetrics::cells(20, 4));
+		(new QLineEdit(&middle))->setGeometry(0, 0, 10 * cw, ch);
+		middle.show();
+		auto *last = new QWidget;
+		last->setAttribute(Qt::WA_DontShowOnScreen);
+		last->setWindowTitle(QStringLiteral("last"));
+		last->resize(GridMetrics::cells(20, 4));
+		(new QLineEdit(last))->setGeometry(0, 0, 10 * cw, ch);
+		last->show();
+		QCoreApplication::processEvents();
+
+		InputRouter wr(&root);
+		Compositor wc(&root, &wr);
+		CellBuffer frame(40, 6);
+		wc.compose(frame);                       // the strip exists
+		Qtty::set_current_window(last);
+		QCoreApplication::processEvents();
+		wc.compose(frame);                       // and last is current in it
+		const QVector<QWidget *> before = Qtty::window_tabs();
+		const int was_at = before.indexOf(last);
+		CHECK(was_at >= 0 && Qtty::current_window() == last,
+		      "the control: the window about to close is current and is on "
+		      "the strip");
+
+		delete last;
+		QCoreApplication::processEvents();
+		wc.compose(frame);
+		const QVector<QWidget *> after = Qtty::window_tabs();
+		QWidget *const now = Qtty::current_window();
+		CHECK(now == after.at(qBound(0, was_at, after.size() - 1)),
+		      "closing the current window hands you its NEIGHBOUR on the "
+		      "strip rather than the far end, which is what every tabbed "
+		      "thing a terminal user knows does");
+		CHECK(now != before.first() || was_at == 0,
+		      "and that is a different window from the first one, which is "
+		      "what this used to answer whatever you had been looking at");
+		root.hide();
+		middle.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// ---- and the same for a letter, within its population -----------------
 	//
 	// 8.154 settled the order BETWEEN populations: a menu's letter beats a
@@ -2149,6 +2288,15 @@ int suite_router() {
 			// second route -- and it is the second time a full sabotage run
 			// has been the only thing that could notice.
 			if (QWidget *had = a.focusWidget()) had->clearFocus();
+			// And the windows this suite has left on the strip with NOTHING
+			// focusable in them are hidden, because 8.176 changed where a
+			// close lands you: the far end used to be the main window, which
+			// always has a field, and the neighbour can be `flat`, whose own
+			// comment says nothing in it may take focus. Landing there is
+			// correct behaviour and would make the check below fail for a
+			// reason that is not the one it exists for -- so the fixture says
+			// which window it means rather than relying on the pick.
+			flat.hide();
 			QCoreApplication::processEvents();
 			delete doomed;               // as an application closes a window
 			QCoreApplication::processEvents();

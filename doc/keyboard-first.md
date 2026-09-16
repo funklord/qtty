@@ -454,6 +454,11 @@ until either you bind `Qtty::next_window()` yourself or you turn on the
 conventions, which put it on `F6`. Do one of the two: a window nobody can
 get to is worse than one that was never opened.
 
+**Closing the window you are in hands you its neighbour** on the strip,
+not the first one -- the same thing a browser, an editor or a multiplexer
+does, and the same thing your users will expect without being able to say
+why.
+
 **What you get for free, once there is more than one window**: qtty draws
 a window strip along the top row, every window named, the current one in
 brackets -- so a person can see which one they are in and click a tab to

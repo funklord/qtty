@@ -274,6 +274,10 @@ namespace {
 
 QPointer<QWidget> g_current;
 QVector<QPointer<QWidget>> g_tabs;
+// Where the current window sat in the strip when it was last drawn. Kept so
+// that a window CLOSING sends the user to its neighbour rather than to the
+// far end: see choose_current_window().
+int g_current_index = 0;
 // Where each tab's name sits, so a press can be turned back into a window.
 // Rebuilt every frame, because a window can be opened or closed between two.
 QVector<QPair<int, int>> g_tab_spans;      // first column, last column
@@ -288,6 +292,30 @@ QString window_name(const QWidget *w, int index)
 	    w->metaObject()->className())).arg(index + 1);
 }
 
+// The order windows were first SEEN in, which is the order the strip shows
+// them in. QApplication::topLevelWidgets() is not that: its order is Qt's
+// own bookkeeping and is not promised to be stable. Measured, three windows
+// created first, second, third across five runs of one program: four gave
+// `[first, second, third]` and one gave `[first, third, second]`.
+//
+// A tab strip that reorders itself between frames is bad on its own -- the
+// user's second tab becomes their third while they are looking at it -- and
+// it also makes anything derived from the order unstable, which is how it
+// was found: the neighbour rule below picked a different survivor run to
+// run, and a focus check three hundred lines away in the suite failed one
+// run in three.
+//
+// Entries are never reordered once made, and dead ones are dropped rather
+// than reused, so a window that closes does not shuffle the rest.
+QVector<QPointer<QWidget>> g_seen;
+
+static void remember(QWidget *w)
+{
+	for (const QPointer<QWidget> &p : std::as_const(g_seen))
+		if (p.data() == w) return;
+	g_seen.append(w);
+}
+
 QVector<QWidget *> collect_window_tabs(QWidget *root)
 {
 	QVector<QWidget *> out;
@@ -298,7 +326,22 @@ QVector<QWidget *> collect_window_tabs(QWidget *root)
 	// window you are in with the main one hidden, and the strip says
 	// "[primary]" over a frame that does not hold it.
 	if (root && is_compositable(root)) out.append(root);
+	// Everything else in the order it was first seen. The sweep over Qt's
+	// list is still what finds a new window; what it decides is membership,
+	// not position.
 	for (QWidget *w : QApplication::topLevelWidgets()) {
+		if (w == root || !is_compositable(w)) continue;
+		if (InputRouter::is_popup_layer(w)) continue;
+		if (w->isModal()) continue;
+		remember(w);
+	}
+	for (int i = 0; i < g_seen.size();) {
+		QWidget *const w = g_seen.at(i).data();
+		if (!w) {                       // gone for good: drop the slot
+			g_seen.remove(i);
+			continue;
+		}
+		++i;
 		if (w == root || !is_compositable(w)) continue;
 		if (InputRouter::is_popup_layer(w)) continue;
 		if (w->isModal()) continue;
@@ -321,7 +364,33 @@ QWidget *choose_current_window(const QVector<QWidget *> &tabs, QWidget *root)
 	// names it, nothing has focus, and the next keystroke goes nowhere.
 	// compose() hands the answer to enter_window(), so both routes carry the
 	// same things.
-	return tabs.isEmpty() ? root : tabs.first();
+	// THE NEIGHBOUR, not the first. Landing at the far end of the strip is
+	// what every tabbed thing a terminal user knows does NOT do -- a browser,
+	// an editor, a multiplexer all select the tab beside the one that closed
+	// -- and `tabs.first()` was an accident of writing the simplest thing
+	// that was never a user's expectation. Measured before this: three
+	// windows, switch to the third, close it, and the terminal showed the
+	// FIRST.
+	//
+	// Anchored to WIDGETS rather than to a number. The first version kept the
+	// departed window's index and clamped it into the new list, and a bare
+	// index outlives the windows it described: carried across unrelated
+	// windows in one process it picked by a number that meant nothing, and
+	// the suite went intermittent -- 1369 checks on three runs and 1368 on
+	// the fourth, a focus check failing because a different window had
+	// become current. Walking the strip THIS list was drawn from, outwards
+	// from where the current one sat, cannot do that: every candidate is a
+	// window that still exists and is still on the strip.
+	if (tabs.isEmpty()) return root;
+	for (int step = 0; step < g_tabs.size(); ++step) {
+		for (const int dir : {1, -1}) {
+			const int at = g_current_index + dir * step;
+			if (at < 0 || at >= g_tabs.size()) continue;
+			QWidget *const candidate = g_tabs.at(at).data();
+			if (candidate && tabs.contains(candidate)) return candidate;
+		}
+	}
+	return tabs.first();
 }
 
 } // namespace
@@ -546,6 +615,15 @@ void Compositor::compose(CellBuffer &out) {
 	// row off the top, which is a row the policy does not have to spend.
 	const QVector<QWidget *> tabs = collect_window_tabs(win_);
 	QWidget *const shown = choose_current_window(tabs, win_);
+	// AFTER the choice, so the value read above is the previous frame's --
+	// where the window that has just gone used to sit. Recorded against the
+	// STRIP's order rather than this list's, because that is the list the
+	// walk above searches and the one the user is looking at.
+	for (int at = 0; at < g_tabs.size(); ++at)
+		if (g_tabs.at(at).data() == shown) {
+			g_current_index = at;
+			break;
+		}
 	const int strip = tabs.size() > 1 ? 1 : 0;
 
 	// design.md section 7's policy in the order it names: drop what the

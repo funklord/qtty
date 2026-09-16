@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1366 checks, 0 failures. `make check` is green and includes
+1371 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16218,6 +16218,75 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.177 A strip that reordered itself (2026-09-16)
+
+8.176's fix went in, and the suite went INTERMITTENT: 1369 checks on three
+runs and 1368 on the fourth, with a focus check three hundred lines away
+failing about one run in three. The count-check gate exists for exactly that
+-- a number that moves is a check that sometimes does not run or sometimes
+does not pass -- and it is the first time it has caught a flake rather than
+a stale number.
+
+**The cause was underneath the fix rather than in it.** The tab strip took
+its order from `QApplication::topLevelWidgets()`, whose order is Qt's own
+bookkeeping and is not promised. Measured across five runs of one program,
+three windows created first, second, third:
+
+    [first, second, third]   four runs
+    [first, third, second]   one run
+
+So the strip could reorder itself between runs -- and anything derived from
+the order, which 8.176 had just made the survivor of a close, moved with it.
+A user's second tab becoming their third while they are looking at it is bad
+on its own; it took a rule that depended on the order to make it visible.
+
+The strip now keeps the order windows were first SEEN in: entries are never
+reordered once made, and dead ones are dropped rather than reused. **The
+limit is written into the check that guards it**: windows first seen in the
+same pass arrive in whatever order Qt's list had them, because that is the
+pass that discovers them. What is promised is that the order does not change
+afterwards, which is what somebody watching the strip cares about, and the
+control is that a window shown LATER joins the end.
+
+**Two other things this cost, both worth keeping.** 8.176's first fix
+recorded a bare index and clamped it into the new list, and a bare index
+outlives the windows it described -- it is anchored to surviving widgets
+now. And the focus check that flaked was not wrong: with a different
+survivor it lands on the suite's `flat` window, whose own comment says
+nothing in it may take focus. That is correct behaviour meeting a fixture
+that had never had to name the window it meant, and it names it now.
+
+### 8.176 The third picker, and the one a user feels (2026-09-16)
+
+The lens run to the end. Where this library picks one of several
+candidates: chords (8.174), letters (8.175), and **which window a closing
+one hands you to**. The first two were ambiguities nobody had noticed; this
+one is the one a user feels every time.
+
+    three windows, switch to the third, close it
+    the terminal showed:  first
+
+`choose_current_window()` answered `tabs.first()` -- the simplest thing to
+write, and never anybody's expectation. A browser, an editor and a
+multiplexer all select the tab BESIDE the one that closed. It hands you the
+neighbour now: the position the strip last drew, clamped, since the window
+that went may have been the last.
+
+**The probe reported the old behaviour after the fix, and the probe was
+wrong.** It closed the window 40 ms after switching to it, and no frame had
+composed in between -- so the recorded position was still the one from
+before the switch. The fix depends on a frame having been drawn with that
+window current, which is exactly the condition under which a user could have
+seen it. The suite's check composes frame by frame rather than trusting
+timers, and says so.
+
+**And the strip's order is not creation order**, which the same probe showed
+and is worth knowing before reading any of this: three windows created
+first, second, third drew as `[first, third, second]`. So "the neighbour"
+means the neighbour on the STRIP, which is what the user is looking at,
+rather than the neighbour in the order the application happened to construct
+them.
 
 ### 8.175 The same accident, one mechanism along (2026-09-16)
 
