@@ -294,6 +294,14 @@ struct MnemonicClaim {
 	QObject *who;
 	QString text;
 	int index = -1;               // the tab, where `who` is a QTabBar
+	// WHICH POPULATION, because the order between them is a decision and the
+	// order within one is an accident. 8.154 settled the first: a menu's
+	// `&File` beats a button's `&Format`, the menu being the older meaning.
+	// Nothing settled the second, so two buttons claiming one letter were
+	// answered in findChildren order -- measured, with the focus in the
+	// right-hand panel, Alt+S fired the LEFT panel's button. Same shape as
+	// the chord ambiguity of 8.174, one mechanism along.
+	int rank = 0;                 // 0 actions, 1 buttons and labels, 2 tabs
 };
 
 static QVector<MnemonicClaim> mnemonic_claims(QWidget *scope) {
@@ -311,18 +319,18 @@ static QVector<MnemonicClaim> mnemonic_claims(QWidget *scope) {
 		if (counted.contains(a)) continue;
 		counted.insert(a);
 		const QChar m = mnemonic_of(a->text());
-		if (!m.isNull()) out.append({m, a, a->text()});
+		if (!m.isNull()) out.append({m, a, a->text(), -1, 0});
 	}
 	for (QWidget *w : scope->findChildren<QWidget *>()) {
 		if (!w->isVisible() || !w->isEnabled()) continue;
 		if (auto *b = qobject_cast<QAbstractButton *>(w)) {
 			const QChar m = mnemonic_of(b->text());
-			if (!m.isNull()) out.append({m, b, b->text()});
+			if (!m.isNull()) out.append({m, b, b->text(), -1, 1});
 		} else if (auto *l = qobject_cast<QLabel *>(w)) {
 			QWidget *buddy = l->buddy();
 			if (!buddy || !buddy->isVisible() || !buddy->isEnabled()) continue;
 			const QChar m = mnemonic_of(l->text());
-			if (!m.isNull()) out.append({m, l, l->text()});
+			if (!m.isNull()) out.append({m, l, l->text(), -1, 1});
 		}
 	}
 	// TABS LAST, and only with the conventions on, because both facts are
@@ -339,11 +347,51 @@ static QVector<MnemonicClaim> mnemonic_claims(QWidget *scope) {
 			for (int i = 0; i < bar->count(); ++i) {
 				if (!bar->isTabEnabled(i)) continue;
 				const QChar m = mnemonic_of(bar->tabText(i));
-				if (!m.isNull()) out.append({m, bar, bar->tabText(i), i});
+				if (!m.isNull()) out.append({m, bar, bar->tabText(i), i, 2});
 			}
 		}
 	}
 	return out;
+}
+
+// How far a mnemonic claim is from the focus, by the same measure the chord
+// matcher uses: steps from the focused widget up to the claim's own widget,
+// or to a widget the claim's action belongs to. Far when it is not above the
+// focus at all -- a menu bar's action, a button in another panel.
+// Defined with the chord matcher below, and needed here: a claim's widgets
+// are the same question for a letter as for a chord.
+static QVector<const QWidget *> owners_of(const QAction *a);
+
+static int mnemonic_distance(const MnemonicClaim &c, const QWidget *fw) {
+	const int far = 1000;
+	if (!fw) return far;
+	QVector<const QWidget *> owners;
+	if (const auto *a = qobject_cast<const QAction *>(c.who))
+		owners = owners_of(a);
+	else if (const auto *w = qobject_cast<const QWidget *>(c.who))
+		owners.append(w);
+	// CONTAINMENT, not identity, and the difference decides the case this
+	// exists for. A button claiming a letter is a SIBLING of the focused
+	// field rather than an ancestor of it, so an identity test scores every
+	// button `far` and the tie goes back to construction order -- measured,
+	// with both panels' buttons scoring far and the left one answering. What
+	// separates them is which enclosing widget holds each: the focused
+	// panel holds one of them at distance 1, the window holds the other at
+	// 2.
+	//
+	// The chord matcher below measures identity and is right to: an action
+	// is associated with the container itself, so containment buys it
+	// nothing -- and its sabotage said so by reddening no check.
+	int best = far;
+	for (const QWidget *o : std::as_const(owners)) {
+		int steps = 0;
+		for (const QWidget *w = fw; w; w = w->parentWidget(), ++steps)
+			if (w == o || w->isAncestorOf(o)) {
+				best = qMin(best, steps);
+				break;
+			}
+	}
+	return best;
 }
 
 // The letters more than one control answers to, and who answers -- in the
@@ -393,8 +441,27 @@ bool InputRouter::match_mnemonic(const KeyEvent &k) {
 	// in the same window is a collision the application made, and the menu is
 	// the older meaning. mnemonic_conflicts() is how an application finds out
 	// it made one.
-	for (const MnemonicClaim &claim : mnemonic_claims(input_scope())) {
+	// BY POPULATION FIRST, THEN BY NEARNESS. The order between populations
+	// is 8.154's decision and is kept: a menu's letter beats a button's. The
+	// order WITHIN one was findChildren order, which is where the widgets
+	// happen to have been built -- so two buttons claiming one letter
+	// answered the same way wherever the focus was. Ties keep enumeration
+	// order, so a letter with one claimant is untouched.
+	const QVector<MnemonicClaim> claims = mnemonic_claims(input_scope());
+	const MnemonicClaim *pick = nullptr;
+	int pick_rank = 0, pick_distance = 0;
+	for (const MnemonicClaim &claim : claims) {
 		if (claim.letter != want) continue;
+		const int d = mnemonic_distance(claim, focusWidget());
+		if (!pick || claim.rank < pick_rank
+		    || (claim.rank == pick_rank && d < pick_distance)) {
+			pick = &claim;
+			pick_rank = claim.rank;
+			pick_distance = d;
+		}
+	}
+	if (pick) {
+		const MnemonicClaim &claim = *pick;
 		if (auto *a = qobject_cast<QAction *>(claim.who)) {
 			if (QMenu *sub = a->menu()) {
 				// A menu opens rather than triggers.
@@ -452,11 +519,16 @@ bool InputRouter::match_mnemonic(const KeyEvent &k) {
 			return true;
 		}
 		if (auto *l = qobject_cast<QLabel *>(claim.who)) {
-			QWidget *buddy = l->buddy();
-			if (!buddy) continue;
-			buddy->setFocus(Qt::ShortcutFocusReason);
-			set_focus_widget(buddy);
-			return true;
+			// A buddy that has gone since the claim was made: the letter
+			// answers nothing rather than reaching for a null. It cannot
+			// fall through to another claimant here -- the pick above is
+			// the claimant -- and a label whose buddy is missing claimed
+			// nothing in the first place.
+			if (QWidget *buddy = l->buddy()) {
+				buddy->setFocus(Qt::ShortcutFocusReason);
+				set_focus_widget(buddy);
+				return true;
+			}
 		}
 	}
 	return false;

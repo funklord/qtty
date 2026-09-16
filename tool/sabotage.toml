@@ -1938,7 +1938,7 @@ check = "while a claim whose buddy is hidden is no claim"
 # the shared list exists to prevent, arrived at from the other side.
 name = "the mnemonic list forgets the actions"
 file = "src/runtime/input_router.cpp"
-find = "\t\tif (!m.isNull()) out.append({m, a, a->text()});"
+find = "\t\tif (!m.isNull()) out.append({m, a, a->text(), -1, 0});"
 into = ""
 count = 1
 check = "and the key does what the report said it would"
@@ -2191,3 +2191,34 @@ find = "\t\tif (!best || d < best_distance) {"
 into = "\t\tif (!best) {"
 count = 1
 check = "and the chord answers for the container the focus is in"
+
+[[sabotage]]
+# The letter answered by construction order again, so a button in another
+# panel takes a key from the one the user is looking at. 8.175.
+name = "a letter answers by build order rather than by nearness"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (!pick || claim.rank < pick_rank\n\t\t    || (claim.rank == pick_rank && d < pick_distance)) {"
+into = "\t\tif (!pick) {"
+count = 1
+check = "a letter two buttons claim answers for the one in the panel"
+
+[[sabotage]]
+# Nearness ignoring the population, so a button near the focus takes a
+# letter from the menu that claims it -- which reverses 8.154's decision
+# rather than settling what it left open.
+name = "nearness overrules the population order"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (!pick || claim.rank < pick_rank\n\t\t    || (claim.rank == pick_rank && d < pick_distance)) {"
+into = "\t\tif (!pick || d < pick_distance) {"
+count = 1
+check = "while a menu claiming the same letter still takes it from"
+
+[[sabotage]]
+# Nearness measured by identity rather than containment, which scores every
+# sibling button the same and hands the tie back to build order.
+name = "a letter's nearness cannot see a panel"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\tif (w == o || w->isAncestorOf(o)) {"
+into = "\t\t\tif (w == o) {"
+count = 1
+check = "a letter two buttons claim answers for the one in the panel"

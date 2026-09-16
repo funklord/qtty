@@ -343,11 +343,11 @@ more of this page you follow, the likelier it is.
         qWarning() << clash.first << "is claimed by" << clash.second;
 
 Empty is the answer to assert in the test this page asks you to write. The
-list names the claimants **in the order the router tries them**, so the
-first is the one that wins and the rest are the ones to rename -- and it
-reads the router's own enumeration rather than a second copy, so it cannot
-send you to the control that works. Menu actions come before buttons and
-buddy labels, which is why `&File` on a menu beats `&Format` on a button;
+list names every claimant, and **which one answers depends on where the
+focus is**: menu actions come before buttons and buddy labels, so `&File` on
+a menu beats `&Format` on a button wherever you are -- and between two
+buttons, the one in the panel you are in wins. So a letter shared by two
+panels is not the bug a letter shared by a menu and a button is;
 a **tab** comes last of all, because its letter is answered only after the
 key has been delivered and refused, and only with the conventions on. With
 them off a tab's letter is not a claim at all, and the list says so.

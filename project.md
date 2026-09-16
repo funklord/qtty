@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1363 checks, 0 failures. `make check` is green and includes
+1366 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16218,6 +16218,37 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.175 The same accident, one mechanism along (2026-09-16)
+
+8.174 fixed chord resolution and left the question it raises: **where else
+does this library pick one of several candidates, and is the pick the one a
+user expects?** The mnemonic matcher is the neighbour, and it had the same
+accident. Measured with two panels, each holding a button marked `&Save`,
+and the focus in the right-hand one:
+
+    focus in the RIGHT panel: left fired 1, right fired 0
+
+**The order between populations is a decision and was kept; the order within
+one was an accident and is now settled.** 8.154 decided that a menu's letter
+beats a button's -- the menu being the older meaning -- and that is
+untouched, checked, and defended by a sabotage that makes nearness overrule
+it. What was never decided is which of two buttons answers, and it was
+`findChildren` order: where the widgets happened to be built.
+
+**Containment, not identity, and this is where 8.174's removed rule earns its
+place after all.** A button claiming a letter is a SIBLING of the focused
+field rather than an ancestor of it, so measuring to the owner alone scores
+every button `far` and hands the tie straight back to build order --
+measured, the left button still answered. What separates them is the
+enclosing widget: the focused panel holds one at distance 1, the window
+holds the other at 2. The chord matcher keeps identity, because there an
+action IS associated with its container and the sabotage proved containment
+bought nothing.
+
+So the two matchers measure differently, deliberately, and each measure is
+the one its own sabotage defends. That is the opposite of the symmetry a
+reader would assume, which is why it is written in both places.
 
 ### 8.174 Nearest wins, and two rules that could not be proved (2026-09-15)
 

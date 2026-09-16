@@ -1196,6 +1196,80 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- and the same for a letter, within its population -----------------
+	//
+	// 8.154 settled the order BETWEEN populations: a menu's letter beats a
+	// button's, the menu being the older meaning. The order WITHIN one was
+	// never settled -- it was findChildren order, which is where the widgets
+	// happen to have been built -- so two buttons claiming `S` answered the
+	// same way wherever the focus was. Measured before this: with the focus
+	// in the right-hand panel, Alt+S fired the LEFT panel's button.
+	//
+	// Both halves are asserted, because a rule that fixed the second by
+	// breaking the first would look like a pass from the failing side.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(30, 6));
+		auto *left = new QWidget(&host);
+		left->setGeometry(0, 0, 14 * cw, 4 * ch);
+		auto *right = new QWidget(&host);
+		right->setGeometry(15 * cw, 0, 14 * cw, 4 * ch);
+		int in_left = 0, in_right = 0;
+		auto *bl = new QPushButton(QStringLiteral("&Save"), left);
+		bl->setGeometry(0, 0, 10 * cw, ch);
+		QObject::connect(bl, &QPushButton::clicked, [&in_left] { ++in_left; });
+		auto *br = new QPushButton(QStringLiteral("&Save"), right);
+		br->setGeometry(0, 0, 10 * cw, ch);
+		QObject::connect(br, &QPushButton::clicked, [&in_right] { ++in_right; });
+		auto *field = new QLineEdit(right);
+		field->setGeometry(0, ch, 10 * cw, ch);
+		auto *far_field = new QLineEdit(left);
+		far_field->setGeometry(0, ch, 10 * cw, ch);
+		host.show();
+		QCoreApplication::processEvents();
+
+		InputRouter nr(&host);
+		Qtty::set_current_window(&host);
+		field->setFocus();
+		QCoreApplication::processEvents();
+		set_focus_widget(field);
+		nr.on_key({0, QStringLiteral("s"), false, true, false});
+		QCoreApplication::processEvents();
+		CHECK(in_right == 1 && in_left == 0,
+		      "a letter two buttons claim answers for the one in the panel "
+		      "the focus is in, rather than for whichever was built first");
+
+		far_field->setFocus();
+		QCoreApplication::processEvents();
+		set_focus_widget(far_field);
+		nr.on_key({0, QStringLiteral("s"), false, true, false});
+		QCoreApplication::processEvents();
+		CHECK(in_left == 1 && in_right == 1,
+		      "and it follows the focus to the other panel");
+
+		// THE POPULATION ORDER IS UNTOUCHED, which is 8.154's decision: a
+		// menu's letter still beats a button's, however far the menu is
+		// from the focus.
+		auto *bar = new QMenuBar(&host);
+		bar->setGeometry(0, 5 * ch, 30 * cw, ch);
+		QMenu *menu = bar->addMenu(QStringLiteral("&Save as"));
+		menu->addAction(QStringLiteral("nothing"));
+		QCoreApplication::processEvents();
+		const int before_left = in_left, before_right = in_right;
+		field->setFocus();
+		QCoreApplication::processEvents();
+		set_focus_widget(field);
+		nr.on_key({0, QStringLiteral("s"), false, true, false});
+		QCoreApplication::processEvents();
+		CHECK(in_left == before_left && in_right == before_right,
+		      "while a menu claiming the same letter still takes it from "
+		      "both buttons, near or far -- the order between populations "
+		      "being a decision and the order within one an accident");
+		host.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// ---- two containers claiming one chord, which is nearest-wins ---------
 	//
 	// Qt's own MDI is where this was found: every QMdiSubWindow's system menu

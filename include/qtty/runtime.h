@@ -75,9 +75,10 @@ QVector<QPair<QString, QString>> keyboard_conventions_help();
 QVector<QWidget *> keyboard_reachable(QWidget *scope);
 
 // The Alt+letters more than one control in `scope` answers to, with the text
-// of each claimant in the order the router tries them -- so the first name in
-// each list is the one that wins and the rest cannot be reached by that key.
-// Empty when every mnemonic is unique, which is what a test asserts.
+// of each claimant. Which one answers depends on where the focus is: a menu
+// action beats a button or a buddy label wherever it sits, and between two of
+// the same kind the one nearest the focus wins (8.175). Empty when every
+// mnemonic is unique, which is what a test asserts.
 //
 // The first practice in `doc/keyboard-first.md` is "give every control a
 // mnemonic", and the failure it creates scales with how well it is followed:
