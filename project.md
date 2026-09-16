@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1372 checks, 0 failures. `make check` is green and includes
+1374 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16218,6 +16218,54 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.179 The other consumer of the order 8.177 replaced (2026-09-16)
+
+`other_windows()` searched `QApplication::topLevelWidgets()`, and an
+application-context claim in another window is far from the focus by
+definition -- so every one of them ties and the tie goes to that order.
+Measured, four windows in one program:
+
+    strip [root, b, a, c]      Qt [b, root, a, c]
+
+They disagree, so which window answered an application-wide chord was
+decided by bookkeeping nobody can see. It is the strip's order now: the one
+the tab row shows.
+
+**The first check for it could not tell the two apart, and the sabotage said
+so.** The fixture showed both windows in one pass -- and a pass that
+discovers two windows at once inherits Qt's order for them, which is 8.177's
+own recorded limit. So the strip and the list agreed, the winner was the
+same either way, and the check passed against the broken code.
+
+**8.177's limit is also what makes a discriminating fixture possible.** Qt's
+list is built when a widget is CREATED; the strip records one when it is
+first SEEN by a compose. Create `late` first, show `early` first, compose
+between the two, and the orders end up opposite:
+
+    info: strip has early first: 1; Qt's list: [late, early]
+
+With that divergence in place the sabotage reddens -- and then, two runs
+later, it did not, because **the divergence itself cannot be relied on**.
+`QApplication::topLevelWidgets()` has no promised order, so a fixture can
+arrange for it to disagree with the strip and cannot make it stay
+disagreeing. A control asserting the disagreement went red on an ordinary
+run of `make check`, which is a flaky check -- the one thing worse than an
+unproved rule.
+
+**So the check keeps the half that is deterministic and the sabotage entry
+is gone.** What is asserted is this library's own order: the window shown
+first is ahead on the strip, and the chord answers for it. The info line
+prints both orders, so a reader of a failing run can see which case they
+were in. What is NOT defended is the difference between that and Qt's
+order -- because the fault would be invisible whenever the two agree, and
+nothing can make them disagree on purpose.
+
+That is the third rule this week that could not be given a defender, and the
+only one kept anyway: 8.171's was reverted for changing nothing, 8.174's was
+removed as unnecessary, and this one replaces an UNSPECIFIED order with a
+specified one, which is worth having even where a sabotage cannot tell the
+two apart.
 
 ### 8.178 Three findings, all of them mine (2026-09-16)
 

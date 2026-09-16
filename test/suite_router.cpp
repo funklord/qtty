@@ -1196,6 +1196,94 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- which other window answers an application-wide chord -------------
+	//
+	// An application-context claim in another window is far from the focus by
+	// definition, so every one of them ties and the tie goes to the order the
+	// windows are searched in. That order was
+	// QApplication::topLevelWidgets(), which is Qt's bookkeeping: measured,
+	// four windows in one program gave the strip as [root, b, a, c] and Qt's
+	// list as [b, root, a, c]. They disagree, so which window answered a
+	// chord was decided by something no user can see.
+	//
+	// The strip's order is the one they can: it is what the tab row shows.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.setWindowTitle(QStringLiteral("current"));
+		host.resize(GridMetrics::cells(20, 4));
+		auto *here = new QLineEdit(&host);
+		here->setGeometry(0, 0, 10 * cw, ch);
+		// BUILT SO THE TWO ORDERS DISAGREE, or the check cannot tell them
+		// apart -- and the first version could not: its sabotage reddened
+		// nothing, because the strip and Qt's list happened to agree.
+		//
+		// 8.177's own limit is what makes this constructible. Qt's list is
+		// built when a widget is CREATED; the strip records a window when it
+		// is first SEEN by a compose. So `late` is created first and shown
+		// second, and the two lists end up in opposite orders.
+		auto *late = new QWidget;
+		auto *early = new QWidget;
+		int early_fired = 0, late_fired = 0;
+		const auto claim = [](QWidget *w, const char *name, int *counter) {
+			w->setAttribute(Qt::WA_DontShowOnScreen);
+			w->setWindowTitle(QString::fromLatin1(name));
+			w->resize(GridMetrics::cells(14, 3));
+			auto *a = new QAction(QString::fromLatin1(name), w);
+			a->setShortcut(QKeySequence(QStringLiteral("Ctrl+G")));
+			a->setShortcutContext(Qt::ApplicationShortcut);
+			QObject::connect(a, &QAction::triggered, [counter] { ++*counter; });
+			w->addAction(a);
+		};
+		claim(late, "late", &late_fired);
+		claim(early, "early", &early_fired);
+		host.show();
+		early->show();
+		QCoreApplication::processEvents();
+
+		InputRouter ar(&host);
+		Compositor ac(&host, &ar);
+		CellBuffer ab(20, 4);
+		ac.compose(ab);                          // early is seen first
+		late->show();
+		QCoreApplication::processEvents();
+		ac.compose(ab);                          // and late after it
+		Qtty::set_current_window(&host);
+		QCoreApplication::processEvents();
+		ac.compose(ab);
+		const QVector<QWidget *> strip = Qtty::window_tabs();
+		const bool early_first = strip.indexOf(early) < strip.indexOf(late);
+		QStringList qt_order;
+		for (QWidget *w : QApplication::topLevelWidgets())
+			if (w == early || w == late)
+				qt_order << w->windowTitle();
+		printf("info: strip has early first: %d; Qt's list: [%s]\n",
+		       int(early_first), qPrintable(qt_order.join(QStringLiteral(", "))));
+		here->setFocus();
+		QCoreApplication::processEvents();
+		set_focus_widget(here);
+		ar.on_key({Qt::Key_G, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		// The control asserts the STRIP's order, which is this library's and
+		// is deterministic. It does NOT assert that Qt's list disagrees: a
+		// version of this check did, and went red on a later run, because
+		// `QApplication::topLevelWidgets()` has no promised order and
+		// sometimes agrees. The info line above prints both, so a reader of
+		// a failing run can see which case they are in.
+		CHECK(strip.contains(early) && strip.contains(late) && early_first,
+		      "the control: both other windows are on the strip, with the "
+		      "one shown first ahead of the other");
+		CHECK(early_first ? (early_fired == 1 && late_fired == 0)
+		                  : (late_fired == 1 && early_fired == 0),
+		      "an application-wide chord is answered by the window that "
+		      "comes first on the STRIP, which is the order a user can see, "
+		      "rather than by Qt's own list order");
+		delete early;
+		delete late;
+		host.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// ---- the strip keeps its order ----------------------------------------
 	//
 	// It did not. The list came from QApplication::topLevelWidgets(), whose

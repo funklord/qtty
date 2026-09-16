@@ -562,10 +562,30 @@ static bool fire(QShortcut *sc) {
 // popups, whose keys the caller has already decided about.
 static QVector<QWidget *> other_windows(const QWidget *scope) {
 	QVector<QWidget *> out;
-	for (QWidget *w : QApplication::topLevelWidgets()) {
+	// THE STRIP'S ORDER FIRST, which is the order the user sees. An
+	// application-context claim in another window is `far` from the focus by
+	// definition, so every one of them ties and the tie goes to this list --
+	// and this list used to be QApplication::topLevelWidgets(), whose order
+	// is Qt's bookkeeping. Measured, four windows in one program:
+	//
+	//     strip [root, b, a, c]      Qt [b, root, a, c]
+	//
+	// They disagree, so which window answered a chord was decided by
+	// something no user can see. 8.177 gave the strip an order that does not
+	// change; this is the other consumer of the one it replaced.
+	for (QWidget *w : window_tabs()) {
 		if (w == scope || !w->isVisible()) continue;
 		if (InputRouter::is_popup_layer(w)) continue;
 		out.append(w);
+	}
+	// Then whatever the strip does not carry: a modal is not on it, and
+	// neither is anything while there is only one window. Qt's order for
+	// these, because there is nothing better and they are the exception
+	// rather than the rule.
+	for (QWidget *w : QApplication::topLevelWidgets()) {
+		if (w == scope || !w->isVisible()) continue;
+		if (InputRouter::is_popup_layer(w)) continue;
+		if (!out.contains(w)) out.append(w);
 	}
 	return out;
 }
