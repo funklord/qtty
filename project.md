@@ -16228,6 +16228,34 @@ recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
 
+### 8.188 The rebuild that did not reach the suite (2026-09-16)
+
+The sabotage harness ends by rebuilding, and its comment says why in as
+many words: *a session that ran this and then judged a test result from
+the last sabotage's binary is the staleness trap this file is about.* The
+rebuild was `make`, and **this tree's default target does not build
+tests** -- `build-and-commit.md` requires that, so a plain build stays
+fast.
+
+So the library was relinked and `build-test/qtty-tests` was left linked
+against the last sabotage's library. Measured straight after a run that
+printed *restored 1 file(s); rebuilding to the real source*:
+
+    1395 passes, 2 failures     the two checks that entry had just broken
+    1397 passes, 0 failures     after `make tests-build`
+
+A whole tree, a green gate, and a binary reporting failures in code that
+is not broken -- which is the trap the line was written to close, reached
+by the one route it did not cover. **The mitigation had been written for a
+build system where one target covers everything, and this project
+deliberately is not one.** `make tests-build` now.
+
+**How it surfaced is the part worth keeping.** Nothing failed. The suite
+run straight after a sabotage said 1395 where `count-check` said 1397, and
+the two numbers disagreeing is the only thing that pointed at it -- the
+same shape as 8.182's object newer than its source, and found the same
+way, by two measurements of one tree that should have agreed.
+
 ### 8.187 The list that cannot see the window it is shown in (2026-09-16)
 
 `keyboard_conventions_help()` exists so that an application never

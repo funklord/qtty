@@ -720,10 +720,22 @@ def main():
 	# Rebuild, so that whatever is on disk matches the source again. A
 	# session that ran this and then judged a test result from the last
 	# sabotage's binary is the staleness trap this file is about.
+	#
+	# `make tests-build` rather than `make`, and the difference is the whole
+	# of the trap rather than a detail. This tree's default target does not
+	# build tests -- build-and-commit.md requires that, so a plain build
+	# stays fast -- so `make` relinked the library and left
+	# build-test/qtty-tests linked against the LAST SABOTAGE's library.
+	# Measured 2026-09-16, straight after a run that printed "restored 1
+	# file(s); rebuilding to the real source": the binary reported 1395
+	# passes and two failures, both of them the checks that entry had just
+	# broken, in a tree whose source was whole. The mitigation had been
+	# written for a build system where one target covers everything, and
+	# this is not one.
 	say("")
-	say("sabotage: restored %d file(s); rebuilding to the real source"
+	say("sabotage: restored %d file(s); rebuilding the library and the suite"
 	    % len(restorer.saved))
-	b = run(["make"], BUILD_TIMEOUT)
+	b = run(["make", "tests-build"], BUILD_TIMEOUT)
 	if b is None or b.returncode != 0:
 		say("sabotage: the rebuild after restoring FAILED -- do not trust any"
 		    " binary in the tree")
