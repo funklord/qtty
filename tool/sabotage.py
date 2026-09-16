@@ -92,22 +92,53 @@ class Restorer:
 g_child = None
 
 
+def kill_group(child, sig):
+	"""Signal a child and everything it started, falling back to the one.
+
+	The group id is the child's own pid, every child here being started in
+	a new session. A group that has already gone leaves nothing to signal,
+	which is not an error.
+	"""
+	try:
+		os.killpg(os.getpgid(child.pid), sig)
+	except (ProcessLookupError, PermissionError):
+		try:
+			child.send_signal(sig)
+		except ProcessLookupError:
+			pass
+
+
 def stop_child():
 	"""Kill whatever is running, and wait for it to actually be gone.
 
 	The wait is the point. Restoring the sources while a compiler is still
 	reading them is the race this exists to close, and a kill that is not
 	waited for is a kill that has not happened yet.
+
+	THE GROUP, not the process. Killing `make` leaves the compiler it
+	started running: cc1 is make's child, not this one's, so it is
+	reparented rather than stopped, finishes a second or two later, and
+	writes an object compiled from the sabotaged source AFTER the restore
+	has put the real source back -- the object newer than the file it came
+	from, so the next `make` rebuilds nothing and the next suite run
+	reports failures in code nobody has touched. Measured 2026-09-16, and
+	the earlier mitigation did not reach it: the restore touches each file
+	it puts back, and a compile still in flight simply lands after the
+	touch. build/src/input_router.o came out 2.3 seconds newer than its
+	source, and two checks failed against a clean tree.
+
+	So every child is started in its own session (`start_new_session`) and
+	the signal goes to the whole group.
 	"""
 	global g_child
 	child, g_child = g_child, None
 	if child is None or child.poll() is not None:
 		return
-	child.terminate()
+	kill_group(child, signal.SIGTERM)
 	try:
 		child.wait(timeout=20)
 	except subprocess.TimeoutExpired:
-		child.kill()
+		kill_group(child, signal.SIGKILL)
 		try:
 			child.wait(timeout=10)
 		except subprocess.TimeoutExpired:
@@ -143,16 +174,30 @@ def run(cmd, timeout, cwd=ROOT):
 		# build/src/cell_paint.o two seconds newer than the file it was
 		# built from, and "a transparent pen draws no rule" failed against
 		# a clean tree.
+		#
+		# The handle is held LOCALLY as well, because the signal handler
+		# clears the global one. Reading the global in the `finally` was
+		# how stopping a run ended in a traceback rather than in the exit
+		# this file designed: SIGTERM inside communicate() runs the
+		# handler, stop_child() sets g_child to None, sys.exit(130) then
+		# unwinds through a `finally` that asked None for its return code
+		# -- and the AttributeError REPLACED the SystemExit, so a clean
+		# stop printed like a crash. The sources were restored throughout,
+		# atexit not caring how the process ends, but nothing in the
+		# output said so, and a stop that looks like a crash is one nobody
+		# will trust the tree after.
 		global g_child
-		g_child = subprocess.Popen(cmd, cwd=cwd, env=env,
-		                           stdout=subprocess.PIPE,
-		                           stderr=subprocess.PIPE,
-		                           text=True, errors="replace")
+		child = subprocess.Popen(cmd, cwd=cwd, env=env,
+		                         stdout=subprocess.PIPE,
+		                         stderr=subprocess.PIPE,
+		                         text=True, errors="replace",
+		                         start_new_session=True)
+		g_child = child
 		try:
-			out, err = g_child.communicate(timeout=timeout)
+			out, err = child.communicate(timeout=timeout)
 		finally:
-			rc = g_child.returncode
-			child, g_child = g_child, None
+			rc = child.returncode
+			g_child = None
 		return subprocess.CompletedProcess(cmd, rc, out, err)
 	except subprocess.TimeoutExpired:
 		stop_child()
@@ -293,10 +338,25 @@ def main():
 	restorer = Restorer()
 	atexit.register(restorer.restore)
 	def on_signal(*_):
-		# The child first, then the sources: see stop_child(). atexit runs
-		# the restore, and it must not race a compiler that is still
-		# reading what it is putting back.
+		# The child first, then the sources: see stop_child(). The restore
+		# must not race a compiler that is still reading what it is putting
+		# back.
+		#
+		# And it SAYS so, rather than leaving atexit to do it quietly. A
+		# stopped run edits this tree and the operator's next question is
+		# whether it put the file back; silence answers that exactly as
+		# loudly as a failure would. atexit still holds the guarantee --
+		# restore() runs once however the process ends -- so this line is
+		# the report and not the mechanism.
 		stop_child()
+		restorer.restore()
+		if restorer.saved:
+			say("sabotage: stopped -- %d file(s) put back, and touched so a"
+			    % len(restorer.saved))
+			say("          build in flight cannot leave an object newer"
+			    " than its source")
+		else:
+			say("sabotage: stopped before any source was edited")
 		sys.exit(130)
 
 	for sig in (signal.SIGINT, signal.SIGTERM):

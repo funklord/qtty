@@ -1076,7 +1076,7 @@ not a mnemonic, not a chord, and not any of those on an action the button
 carries.
 
     for (QWidget *w : Qtty::pointer_only(&window))
-        qWarning("only a pointer reaches %s", qUtf8Printable(w->objectName()));
+        qWarning("no key reaches %s", w->metaObject()->className());
 
 The population is `QAbstractButton`, which is Qt's own word for a control
 that answers a click rather than a judgement about which of your widgets
@@ -1088,5 +1088,5 @@ of the focus chain alone reports a fault that is not there.
 
 Empty is the assertion -- **unless you use a closable tab or a dock
 widget**, in which case Qt's own buttons are in the list until you give
-the same action a key. That is not noise; it is the paragraph above,
-arriving as a list.
+the same action a key. That is not noise: it is practice 4's own note
+about Qt's furniture, arriving as a list you can act on.

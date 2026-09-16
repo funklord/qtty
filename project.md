@@ -614,7 +614,7 @@ Owned by the copyright holder:
 |---|---|
 | **Should a menu item's mnemonic answer while its menu is CLOSED?** It does here, deliberately -- a terminal user reaching an item directly is worth something -- and a desktop Qt answers an item's letter only while its menu is open. The cost is now measured rather than supposed: in Qt's own `menus` example, thirty actions produce **five letters with more than one claimant**, and only the first answers (`&Print...` takes `p` from `&Paste` and *Set &Paragraph Spacing...*). Keeping it means an application with menus needs `Qtty::mnemonic_conflicts()` to find what it has lost; narrowing it to open menus costs the direct reach the conventions were added for | 8.165 |
 | **Should the terminal's background be re-measured, and how?** It is asked once at startup and the half-block tier composites against it for the life of the session, so a user who toggles their desktop theme -- or a `shell_out()` that returns from a program which changed it -- leaves every translucent edge composited against a ground that has gone. Re-asking at each handover costs one query and needs the decoder to stop discarding an OSC 11 reply; subscribing with `DECSET 2031` costs nothing per frame and needs capability detection; leaving it costs the fallback tier only, kitty-tier sessions sending alpha and never compositing | 8.160 |
-| **Should the conventions offer a key for Qt's own pointer-only furniture?** Measured with plain Qt and no qtty: a closable `QTabWidget` ignores `Ctrl+W`, `Ctrl+F4` and `Delete` -- `tabCloseRequested` never fires -- and a closable `QDockWidget` ignores `Ctrl+W` and `Esc`. So the `x` on a tab and a dock's close button have no keyboard route ANYWHERE, which on a desktop is a mouse away and here may be nothing away. The option is one convention binding each; the cost is that both plausible keys are ones applications mean something by (`Ctrl+W` closes a document in most, and a shortcut an application binds wins anyway, so the convention would answer only where the application is silent -- which is exactly where the user has no other route). The guide names the gap and tells an application to bind its own; whether the library should offer one is the holder's | 8.159 |
+| **Should the conventions offer a key for Qt's own pointer-only furniture?** Measured with plain Qt and no qtty: a closable `QTabWidget` ignores `Ctrl+W`, `Ctrl+F4` and `Delete` -- `tabCloseRequested` never fires -- and a closable `QDockWidget` ignores `Ctrl+W` and `Esc`. So the `x` on a tab and a dock's close button have no keyboard route ANYWHERE, which on a desktop is a mouse away and here may be nothing away. The option is one convention binding each; the cost is that both plausible keys are ones applications mean something by (`Ctrl+W` closes a document in most, and a shortcut an application binds wins anyway, so the convention would answer only where the application is silent -- which is exactly where the user has no other route). The guide names the gap and tells an application to bind its own; whether the library should offer one is the holder's. **Three controls, not two, and the gap is visible now**: `Qtty::pointer_only()` (8.181) enumerates rather than recognises, and it named a dock widget's FLOAT button beside the two above -- so an application can at least see what it is being asked to bind, which is a cost this question no longer carries. | 8.159, 8.181 |
 | A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. Cheaper to answer after the picture-rule entry below, which is the same question seen from the other end | *Qt's standard iconography* |
 | **A rule drawn as a thin RECTANGLE becomes a coloured background; the same rule drawn as a LINE becomes a box-drawing glyph.** Measured through an HTML table: its borders arrive as `drawRects` of `11x1` and `1x19` and come out as grey blocks, while `drawLines` of the same shape draws `-` and `\|`. The horizontal case could be told from a caret by shape; **the vertical case cannot -- a caret and a one-cell vertical rule are the same `1x19` rectangle**, which is what stops this being a small fix | 8.65 |
 | **An HTML bullet list loses its bullets.** Measured through a `QTextBrowser`: `<ul><li>one</li></ul>` renders the text indented with a one-cell BACKGROUND block where the bullet belongs and no glyph -- `bg=#000000` on the default dark ground. Qt draws the bullet as `drawPath` with a 6x6 bounding rect, and `is_thin` (`width*2 < cw \|\| height*2 < ch`) is true of it, so a bullet takes the hairline road meant for carets and rules. **The discriminator is clean and is the finding**: a shape smaller than one cell in BOTH dimensions is a mark, not a hairline -- a caret is 1x19 and a rule 50x1, and neither is. What a mark should BECOME is the choice, and it is the holder's | 8.64 |
@@ -16224,6 +16224,61 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.182 The stop that still poisoned the build (2026-09-16)
+
+The sabotage harness has carried a fix for this since yesterday: stopping a
+run kills the child, waits for it, and touches every restored file, so that
+a compile in flight cannot leave an object newer than the source it was
+built from. Measured today, **it does not reach the compiler.**
+
+`make` is the harness's child. `cc1plus` is MAKE's child, so terminating
+make reparents it rather than stopping it, it finishes a second or two
+later, and it writes an object compiled from the sabotaged source -- after
+the restore, and after the touch that was supposed to make that harmless:
+
+    build/src/input_router.o   13:34:16
+    src/runtime/input_router.cpp   13:34:13     restored, and 2.3s older
+
+`make` then had nothing to do, and the next run reported **two checks
+failing against a clean tree** -- both explained by one sabotage still
+compiled into the binary. This is the incident the earlier fix was written
+for, arriving by the one route it did not cover.
+
+**It was found by accident, and the accident is the part worth keeping.**
+The next thing run after the stop was another sabotage entry, which begins
+by asserting its baseline is green and said it was not. Anything else --
+`make check`, the suite, a commit -- would have reported a regression in
+code nobody had touched, which is a day's hunt for a phantom.
+
+**Every child is started in its own session now, and the stop signals the
+GROUP.** That takes make and its compiler together, which is what "wait for
+it to actually be gone" was always supposed to mean. Proved by interrupting
+a run while `cc1plus` was running on the sabotaged file: the source comes
+back newer than the object, no compiler survives the signal, and the next
+run's baseline is green -- the exact state that was red before.
+
+**And the stop says what it put back.** It restored silently before, which
+answers *did it restore my tree?* exactly as loudly as a failure would.
+`atexit` still holds the guarantee; the line is the report.
+
+**A second fault found on the way there**, smaller and the same shape: the
+signal handler cleared the global child handle and a `finally` then asked
+`None` for its return code, so the `SystemExit(130)` was replaced by an
+`AttributeError` and a clean stop printed like a crash. The handle is held
+locally as well now. The sources were restored throughout -- `atexit` does
+not care how a process ends -- but nothing in the output said so, and a
+stop that looks like a crash is one nobody will trust the tree after.
+
+**Why a run was being stopped at all, which is a measurement too.** The
+full set was started after 8.181 and was running at about **2.8 minutes an
+entry** against the 11 seconds 8.162 recorded on a quiet machine -- another
+session in this workspace was compiling and running a large suite
+throughout. That is eleven hours for 232 entries rather than forty minutes,
+and it holds `src/` exclusively for all of it. So the full set is owed on a
+quiet machine rather than skipped: what was run by hand is the four new
+entries of 8.181, plus the two existing ones that redden its narrow-toolbar
+checks, each watched failing through the check it names.
 
 ### 8.181 The complement, and the population that makes it a measurement (2026-09-16)
 
