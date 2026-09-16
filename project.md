@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1397 checks, 0 failures. `make check` is green and includes
+1402 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16227,6 +16227,46 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.189 The practice with nothing to check it (2026-09-16)
+
+Practice 3 of the guide -- *make the tab order the reading order* -- was
+the last piece of advice there with no instrument behind it. Qt's order is
+construction order, it is usually right, and it stops being right the
+moment somebody inserts a widget into a layout: nothing about that edit
+looks like it touched the keyboard, and on a terminal the tab order is the
+only order a user has.
+
+**A rule was measured before it was built**, because the obvious one
+over-reports. Consecutive stops sharing a parent, where the second sits
+above the first or level and to its left:
+
+    QFileDialog  QColorDialog  QInputDialog  QMessageBox      0 anomalies
+    QFontDialog                                               1
+    a form whose second row was inserted after its third      1, correctly
+
+`QFontDialog` lays its columns side by side and is walked down one and up
+to the top of the next, which is right and is what the rule called a
+fault. **Going up AND to the right is a new column**, and with that
+exception the corpus is nine layouts clean -- five dialogs, a wizard, a
+tab widget, two panels, a form -- with the broken form still reported.
+
+**Both of the first checks passed for the wrong reason, and the harness
+said so.** Two entries came back *the named check PASSED against broken
+code*:
+
+- The side-by-side fixture put each column in its own `QGroupBox`, so the
+  jump between columns crossed a PARENT boundary and was skipped before
+  the new-column exception was ever consulted. One parent now.
+- The pixel-versus-cell rule could not be observed at all, because
+  `GridSnap` rounds every geometry to whole cells: under it the two
+  comparisons agree by construction. The fixture takes the snapper out,
+  asks the question, and puts it back -- and the entry that judges the
+  order in pixels reddens.
+
+The second is worth more than the fix. **A rule that is true and cannot
+be observed is one a sabotage cannot defend**, and the reason here was
+another part of the library doing its job upstream of the question.
 
 ### 8.188 The rebuild that did not reach the suite (2026-09-16)
 

@@ -159,6 +159,29 @@ QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope);
 // same action a key.
 QVector<QWidget *> pointer_only(QWidget *scope);
 
+// Consecutive tab stops that go BACKWARDS against the reading order: each
+// pair is a widget and the one Tab reaches after it, where the second sits
+// above the first, or level with it and to its left.
+//
+// Practice 3 of `doc/keyboard-first.md` is "make the tab order the reading
+// order", and it is the one piece of advice there with nothing to check it:
+// Qt's order is construction order, which is usually right and silently
+// stops being right when somebody inserts a widget into a layout. On a
+// terminal that order is the only one a user experiences -- there is no
+// glancing across to the field they wanted.
+//
+// GOING UP AND TO THE RIGHT IS NOT AN ANOMALY, because that is how a
+// side-by-side layout is meant to be walked: down one column, then up to the
+// top of the next. Qt's own `QFontDialog` does exactly that, and without the
+// exception it was the only false report in the corpus this was measured
+// against -- five of Qt's dialogs, a wizard, two panels, a tab widget and a
+// form, all clean, with a form whose second row was inserted after the third
+// reported correctly.
+//
+// Only pairs that share an immediate parent, since a walk leaving one
+// container for the next says nothing about either one's order.
+QVector<QPair<QWidget *, QWidget *>> tab_order_anomalies(QWidget *scope);
+
 // ---------------------------------------------------------------- InputRouter
 // Owns everything Qt's platform layer would normally own (measured F3/F4):
 // the shortcut table (synthetic keys never reach QShortcutMap), focus

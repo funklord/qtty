@@ -3623,6 +3623,123 @@ int suite_router() {
 			      "being what the walk looks inside of");
 		}
 
+		// ---- practice 3, which had nothing to check it. Qt's tab order
+		// is construction order, and that stops being the reading order
+		// the moment somebody inserts a widget into a layout -- silently,
+		// since nothing about that edit looks like it touched the
+		// keyboard. On a terminal it is the only order a user has.
+		{
+			QWidget form;
+			form.setAttribute(Qt::WA_DontShowOnScreen);
+			form.resize(GridMetrics::cells(30, 8));
+			auto *fl = new QFormLayout(&form);
+			auto *host = new QLineEdit;
+			auto *user = new QLineEdit;
+			fl->addRow(QStringLiteral("Host"), host);
+			fl->addRow(QStringLiteral("User"), user);
+			form.show();
+			QCoreApplication::processEvents();
+			CHECK(tab_order_anomalies(&form).isEmpty(),
+			      "a form built in the order it reads has no tab-order "
+			      "anomaly, which is the answer a test asserts");
+
+			// The edit nobody notices: a row inserted into the layout by
+			// a widget constructed after the ones below it.
+			auto *port = new QLineEdit;
+			fl->insertRow(1, QStringLiteral("Port"), port);
+			QCoreApplication::processEvents();
+			const auto bad = tab_order_anomalies(&form);
+			CHECK(bad.size() == 1 && bad[0].first == user
+			          && bad[0].second == port,
+			      "and a row inserted above the one built before it is "
+			      "reported as the pair it is, which is the only way an "
+			      "application learns its form now reads backwards");
+
+			// THE RELATIONSHIP: Tab really does go that way. The report
+			// reads keyboard_reachable(), and the suite already proves
+			// that list is what Tab visits -- but the pair is the claim
+			// here, so the pair is what gets pressed.
+			InputRouter tr(&form);
+			user->setFocus();
+			set_focus_widget(form.focusWidget());
+			QCoreApplication::processEvents();
+			tr.on_key({Qt::Key_Tab, QStringLiteral("\t"), false, false,
+			           false});
+			QCoreApplication::processEvents();
+			CHECK(form.focusWidget() == port,
+			      "and Tab from the first of the pair really does land on "
+			      "the second, a row above it");
+
+			// A SIDE-BY-SIDE layout is walked down one column and up to
+			// the top of the next, and that is not an anomaly. Qt's own
+			// QFontDialog does it, and it was the only false report in
+			// the corpus this rule was measured against.
+			//
+			// ONE PARENT, and that is the whole fixture. The first
+			// version put each column in its own QGroupBox, so the jump
+			// between columns crossed a parent boundary and was skipped
+			// before the exception was ever consulted -- the check passed
+			// because of a different rule than the one it names, and the
+			// sabotage entry for the exception said so: the named check
+			// PASSED against broken code.
+			QWidget panels;
+			panels.setAttribute(Qt::WA_DontShowOnScreen);
+			panels.resize(GridMetrics::cells(40, 8));
+			QVector<QLineEdit *> column;
+			for (int i = 0; i < 6; ++i) {
+				auto *e = new QLineEdit(&panels);
+				e->setGeometry((i / 3) * 18 * GridMetrics::cw(),
+				               (i % 3) * GridMetrics::ch(),
+				               16 * GridMetrics::cw(), GridMetrics::ch());
+				column.append(e);
+			}
+			for (int i = 0; i + 1 < column.size(); ++i)
+				QWidget::setTabOrder(column[i], column[i + 1]);
+			panels.show();
+			QCoreApplication::processEvents();
+			CHECK(tab_order_anomalies(&panels).isEmpty(),
+			      "while going up and to the right is a new column rather "
+			      "than a fault, which is how a side-by-side layout is "
+			      "meant to be walked");
+
+			// AND THE ROWS ARE CELLS, not pixels. Two fields a person
+			// sees on one row can sit a few pixels apart, and a pixel
+			// comparison then reads the right-hand one as LOWER -- so a
+			// walk that goes right to left along a row, which is
+			// backwards to the eye, measures as forwards and is not
+			// reported at all.
+			//
+			// WITHOUT GridSnap, and that is the only way to ask. The
+			// snapper rounds every geometry to whole cells, so under it
+			// pixels and rows agree by construction and the distinction
+			// cannot be observed -- measured: the entry that judges the
+			// order in pixels left this check green until the snapper
+			// was taken out of the fixture. Put back below, because
+			// every case after this one runs under the library as an
+			// application gets it.
+			GridSnap::remove();
+			QWidget row;
+			row.setAttribute(Qt::WA_DontShowOnScreen);
+			row.resize(GridMetrics::cells(40, 4));
+			auto *right = new QLineEdit(&row);
+			right->setGeometry(20 * GridMetrics::cw(), 0,
+			                   10 * GridMetrics::cw(), GridMetrics::ch());
+			auto *left = new QLineEdit(&row);
+			left->setGeometry(2 * GridMetrics::cw(), GridMetrics::ch() / 3,
+			                  10 * GridMetrics::cw(), GridMetrics::ch());
+			QWidget::setTabOrder(right, left);
+			row.show();
+			QCoreApplication::processEvents();
+			const auto sideways = tab_order_anomalies(&row);
+			CHECK(sideways.size() == 1 && sideways[0].first == right
+			          && sideways[0].second == left,
+			      "and a walk right to left along one row is reported, the "
+			      "row being a cell row rather than a pixel -- the two "
+			      "fields are a few pixels apart and a person sees one "
+			      "line");
+			GridSnap::install(*qApp);
+		}
+
 		// Ctrl+PageUp and Ctrl+PageDown between tabs. Qt gives a
 		// QTabWidget Ctrl+Tab and Ctrl+Shift+Tab and not these, and these
 		// are what somebody coming from a browser or an editor tries.

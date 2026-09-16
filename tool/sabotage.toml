@@ -2360,3 +2360,24 @@ find = "\t{ \"Ctrl+K/U\",       Qt::CTRL,        { Qt::Key_K,        Qt::Key_U }
 into = "\t{ \"Ctrl+K\",         Qt::CTRL,        { Qt::Key_K,        Qt::Key_U } },"
 count = 1
 check = "every row it names is spelled exactly as the help list spells it"
+
+[[sabotage]]
+# The new-column exception dropped, so a side-by-side layout walked down one
+# column and up to the next is called a fault -- the one false report the
+# corpus found, reintroduced. 8.189.
+name = "a new column reads as a backwards tab order"
+file = "src/runtime/input_router.cpp"
+find = "\t\tconst bool backwards = (rb < ra && pb.x() <= pa.x())\n\t\t                       || (rb == ra && pb.x() < pa.x());"
+into = "\t\tconst bool backwards = rb < ra || (rb == ra && pb.x() < pa.x());"
+count = 1
+check = "going up and to the right is a new column rather than a fault"
+
+[[sabotage]]
+# Rows compared in pixels rather than cells, so two fields a few pixels
+# apart -- one row to a terminal user -- are an order they cannot see.
+name = "the tab order is judged in pixels"
+file = "src/runtime/input_router.cpp"
+find = "\t\tconst int ra = pa.y() / GridMetrics::ch();\n\t\tconst int rb = pb.y() / GridMetrics::ch();"
+into = "\t\tconst int ra = pa.y(), rb = pb.y();"
+count = 1
+check = "a walk right to left along one row is reported"

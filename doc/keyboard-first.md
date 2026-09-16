@@ -394,6 +394,21 @@ order, which is usually right and silently is not after a refactor.
 ordering a user experiences -- there is no glancing across to the field
 they wanted.
 
+**And this one you can check.** `Qtty::tab_order_anomalies()` returns the
+consecutive tab stops that go backwards against the reading order -- the
+pair where the second sits above the first, or level with it and to its
+left:
+
+    QVERIFY(Qtty::tab_order_anomalies(&window).isEmpty());
+
+Going up *and to the right* is not reported, because that is a new column
+and how a side-by-side layout is meant to be walked; Qt's own
+`QFontDialog` does exactly that. Measured against five of Qt's dialogs, a
+wizard, a tab widget, two panels and a form: all clean, while a form whose
+second row was inserted after its third is reported as the pair it is.
+That insert is the failure this practice is about, and nothing about
+making it looks like it touched the keyboard.
+
 **4. Never let an action be reachable only by pointer.** A right-click
 menu, a hover reveal, a drag: each needs a keyboard route beside it. Put
 the same action in a menu, give it a shortcut, or both. `QAction` in a
@@ -1003,7 +1018,7 @@ straight after practice 10: it is `hasFocus()` on the widget, and
 own idea of its focus widget; what it never sets is the ACTIVE window,
 which is what the other two read.
 
-**Five questions the library will answer about your window**, so that a
+**Six questions the library will answer about your window**, so that a
 test can assert on them rather than a person noticing:
 
 | call | what it returns | what to assert |
@@ -1013,8 +1028,9 @@ test can assert on them rather than a person noticing:
 | `Qtty::mnemonic_conflicts(scope)` | the `Alt`+letters two controls claim | empty |
 | `Qtty::shortcut_conflicts(scope)` | the chords two things answer at once | empty |
 | `Qtty::conventions_shadowed(scope)` | the convention rows your own keys took | empty, or drop those rows |
+| `Qtty::tab_order_anomalies(scope)` | the tab steps that read backwards | empty |
 
-**Four of the five are asserted EMPTY, and that is the property worth
+**Five of the six are asserted EMPTY, and that is the property worth
 having.** A list you check by name needs updating every time the window
 grows a control; an empty assertion needs nothing, and goes red the day
 somebody adds one that collides or that only a mouse can press. Each of

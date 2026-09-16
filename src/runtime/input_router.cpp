@@ -982,6 +982,31 @@ QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope) {
 // dock-widget buttons are QAbstractButtons with Qt::NoFocus and no action
 // (8.159), so they are named, and that is the finding rather than noise: the
 // remedy is the application's, and it is the one practice 4 already asks for.
+// Where Tab goes backwards against the reading order. The rule and the one
+// exception are in runtime.h; what is worth saying beside the code is that
+// the comparison is in CELL ROWS rather than pixels. Two widgets a few
+// pixels apart are the same row on a terminal -- that is the whole of what
+// a grid is -- so a pixel comparison would report an order a user cannot
+// see, and the row is the unit they actually move through.
+QVector<QPair<QWidget *, QWidget *>> tab_order_anomalies(QWidget *scope) {
+	QVector<QPair<QWidget *, QWidget *>> out;
+	if (!scope) return out;
+	const QVector<QWidget *> stops = keyboard_reachable(scope);
+	for (int i = 0; i + 1 < stops.size(); ++i) {
+		QWidget *const a = stops[i];
+		QWidget *const b = stops[i + 1];
+		if (a->parentWidget() != b->parentWidget()) continue;
+		const QPoint pa = a->mapTo(scope, QPoint());
+		const QPoint pb = b->mapTo(scope, QPoint());
+		const int ra = pa.y() / GridMetrics::ch();
+		const int rb = pb.y() / GridMetrics::ch();
+		const bool backwards = (rb < ra && pb.x() <= pa.x())
+		                       || (rb == ra && pb.x() < pa.x());
+		if (backwards) out.append(qMakePair(a, b));
+	}
+	return out;
+}
+
 QVector<QWidget *> pointer_only(QWidget *scope) {
 	QVector<QWidget *> out;
 	if (!scope) return out;

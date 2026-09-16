@@ -168,7 +168,8 @@ that answer so a status bar keeps no second copy of them,
 `Qtty::keyboard_reachable()` lists what `Tab` reaches so a test can assert
 every control is on it, `Qtty::pointer_only()` the buttons no key reaches
 at all, `Qtty::conventions_shadowed()` the convention rows an application's
-own shortcuts have taken back, `Qtty::mnemonic_conflicts()` names the `Alt`+letters
+own shortcuts have taken back, `Qtty::tab_order_anomalies()` the tab steps
+that read backwards, `Qtty::mnemonic_conflicts()` names the `Alt`+letters
 two controls both claim and `Qtty::shortcut_conflicts()` the chords two
 things answer -- collisions nothing else can show, since the loser simply
 never fires and Qt's own ambiguity report needs an active window -- and
