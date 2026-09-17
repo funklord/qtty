@@ -16276,6 +16276,24 @@ each time.**
   than the one that decides membership, which is the same fault one step
   along.
 
+**The lens, swept: where else is a Qt bitfield asked with `&` where the
+member is a composite?** Four window-flag sites, all correct -- two masked
+comparisons against `Qt::Desktop`, the predicate above, and one
+`testFlag(Qt::WindowTransparentForInput)`, which is a standalone bit and
+not a type at all. `Qt::FocusPolicy` has the same shape (`StrongFocus` is
+`0xb` and contains both `TabFocus` and `ClickFocus`) and both of its uses
+are right: `(policy & Qt::TabFocus) != 0` asks whether Tab reaches it,
+which a composite must answer yes to, and `policy != Qt::NoFocus` asks
+whether it can hold focus at all. One instance, fixed, and nothing else of
+the shape.
+
+**And practice 6 wants no report after this.** A helper naming the windows
+a key cannot reach would have an empty population by construction now:
+every visible, non-modal window that can take input is a strip member, and
+the two kinds that are not -- a popup, and a window transparent for input
+-- are ones a person has no business being moved to. The question answers
+itself, which is a better outcome than a report that always says nothing.
+
 ### 8.193 Eight questions, read as a set (2026-09-17)
 
 The eight reports of 8.181 to 8.192 arrived one at a time, each with its
