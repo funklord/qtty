@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1486 checks, 0 failures. `make check` is green and includes
+1488 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16318,6 +16318,45 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.219 Three sweeps that found nothing, and what they cost
+(2026-09-17)
+
+8.218 ended with a fixture that passed where it was written and nowhere
+else. Three sweeps follow from that, and all three came back empty --
+recorded because an absence with no method behind it licenses nothing,
+and because each says a different family has been looked at.
+
+**Does any fixture depend on the working directory?** The whole suite
+run from `/tmp` against the same binary: **1486 and 1486, no failure
+either way.** The one cwd-dependent check was the file dialog's, fixed
+in 8.218 by waiting for the model rather than composing on the timing
+this directory happens to give.
+
+**Does any fixture depend on timing?** Three consecutive runs, the check
+lists diffed pairwise: **identical, to the line.** Worth knowing
+precisely because the suite now drives nested event loops, a threaded
+file model and a queued focus repair, none of which existed a day ago.
+
+**Does anything grow in a program that runs all afternoon?** Every
+fixture here opens a layer, asks one question and exits; a terminal
+program opens thousands, and this library keeps registries keyed by
+window -- the strip's remembered order, the popup stack, the modal
+placements, the focus pointer. Measured over 200 dialogs, 200 menus and
+200 secondary windows, each composed:
+
+    startup        RSS 38.6 MB   tabs 0  popups 0  focus intact
+    50 dialogs         39.4 MB   tabs 0  popups 0  focus intact
+    200 dialogs        39.4 MB   tabs 0  popups 0  focus intact
+    +200 menus         40.7 MB   tabs 0  popups 0  focus intact
+    +200 windows       40.7 MB   tabs 0  popups 0  focus intact
+
+Flat where it matters -- 39,388 kB at fifty dialogs and 39,384 at two
+hundred -- and every registry back to empty. A check holds the state
+rather than the megabytes: sixty rounds of a dialog, a menu and a
+window, then the registries and the focus asserted, and the frame
+asserted to hold none of them. **A byte count is the machine's answer
+and varies with it; a registry that is not empty is the fault itself.**
 
 ### 8.218 Seventeen errors, and four wrong explanations (2026-09-17)
 
