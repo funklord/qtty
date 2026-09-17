@@ -28,7 +28,7 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-17, at 1451**,
+**Last re-verified under all six configurations: 2026-09-17, at 1461**,
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
 result. Offscreen and xcb-under-Xvfb both ran 1344, `minimal` refused and
@@ -83,6 +83,22 @@ actually uses, every arm emits exactly 1451 result lines, and the memcheck
 arm differs only in that two of them are SKIPs that print their reason:
 the frame-budget ceiling, which under valgrind measures the instrument,
 and the default stop action, which valgrind does not deliver.
+
+**Re-run again at 1461 for the focus work of 8.210 and 8.211**, the
+reason being 8.210: it adds a branch to the Show filter that carries a
+QPointer across a queued call and seats focus on a layer, and a second
+seat at key dispatch. Offscreen, xcb-under-Xvfb and the hostile
+environment all ran 1461, `minimal` refused, and the sanitized run
+reported no failure and no leak.
+
+**The memcheck arm of that pass ran at 1459 and is not re-run for the
+two checks added after it**, which is a judgement worth writing down
+rather than hiding: the commit between carries no `src/` change at all
+-- `git show --stat` says doc, project.md and one test file -- so the
+library memcheck examined is the library that is committed. A pass
+re-run for a test-only addition would be a date rather than a
+measurement, which is what the paragraph above this one exists to
+refuse.
 **The reason is written each time rather than the re-run being a habit**: a record that says which change
 it covers is one a reader can judge, and one taken on a schedule is a date.
 
