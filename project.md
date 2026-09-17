@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1427 checks, 0 failures. `make check` is green and includes
+1433 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16235,6 +16235,86 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.201 A completer's list is a layer that defers its keys (2026-09-17)
+
+The parallel sweep's sharpest finding. `QCompleter` on a `QLineEdit` is as
+common a widget as Qt has, and **autocomplete was unusable here**: typing
+`a`, `l`, `p` gave a list that appeared, vanished, appeared -- and after
+any even-numbered letter the list was gone, so `Down` reached nothing.
+
+**The mechanism was isolated in plain Qt before anything was changed.**
+Qt's `QCompleter::eventFilter` forwards an ordinary key to the edited
+widget and then hides its own popup if that widget does not have focus.
+`hasFocus()` is permanently false here -- no window activates -- so every
+letter the editor accepted hid the list. A two-cell control, no qtty in
+it, settles it: with focus the popup survives the key, with
+`clearFocus()` it does not.
+
+**Neither arrangement alone is right, and measuring both is what found the
+rule.**
+
+    the list owns the keys (a desktop's popup grab)   hidden on alternate letters
+    the editor owns the keys                          Down/Return never reach it
+    text to the editor, navigation to the list        works
+
+Qt's filter handles the navigation keys explicitly and returns before the
+focus test; only the ordinary-key branch reaches the hide. So the split is
+exactly the one Qt's own code implies.
+
+**And the discriminator is Qt's, not a guess.** `QCompleter::setPopup()`
+points the popup's focus proxy at the widget being edited; a `QMenu` has
+none, though both are `Qt::NoFocus`:
+
+    completer popup   policy=NoFocus  focusProxy=QLineEdit
+    QMenu             policy=NoFocus  focusProxy=none
+
+A drawn layer whose focus proxy lies outside it is a layer that defers its
+keys. `input_popups()` leaves it out, and the router sends it `Up`, `Down`,
+`PageUp`, `PageDown`, `Return`, `Enter` and `Escape` and nothing else --
+`Home` and `End` deliberately among the nothing, since they move a caret in
+the text.
+
+### 8.200 Six idioms measured in parallel, and what a drag really does (2026-09-17)
+
+The lens that found 8.196 -- *an idiom an application writes that no
+fixture here runs* -- was put to six more at once, each measured by its
+own worker against the built library, each required to bisect against
+plain Qt before calling anything a defect. Three have reported so far.
+
+**`QMenu::exec()` is sound, including the case that matters.** The nested
+loop entered from inside `contextMenuEvent()` -- so the loop starts while
+the router is still dispatching the press that opened it -- returns the
+action the keys chose, twice in a row and over a 25-round soak, with the
+stack unwinding to nothing each time and the compositor drawing the menu
+while the loop spins. Every fixture here had used `popup()`, which returns
+at once. Pinned by two checks now.
+
+**`QSplashScreen` and `QWizard` hold.** The splash is classified by the
+masked window type rather than the bits, so `input_popups()` is empty and
+nothing is deafened -- the reclassification of 8.194 measured on the class
+it was most likely to break. The wizard is fully keyboard-drivable: one
+`Tab` from the field reaches *Next*, `Enter` advances the page,
+`pointer_only()` is empty on both pages and `tab_order_anomalies()` finds
+nothing, and plain Qt names the same buttons in the same order.
+
+**And a drag does something rather than nothing, which `drag.h` did not
+say.** That header records the shortfall exactly -- the offscreen platform
+has no drag half, so `QDrag::exec()` returns `Qt::IgnoreAction` in under a
+millisecond and no target hears anything -- and the worker confirmed it
+independently, control and all. What nobody had measured is what the USER
+gets:
+
+    QListWidget, InternalMove, dragged     order unchanged
+    what actually happened                 the item under the pointer
+                                           became the selection
+
+Qt enters `startDrag()`, it returns instantly, the view falls back to
+rubber-band selection, and a reorder silently becomes a selection change.
+That is worse than inert, because inert is visible and this is not. The
+guide says so now, beside `Qtty::exec_drag()`, which is the spelling that
+works and which needs a release or an `Escape` -- and on a terminal a user
+with no mouse has only the `Escape`.
 
 ### 8.199 The whole set, and the one entry that was resting on luck (2026-09-17)
 

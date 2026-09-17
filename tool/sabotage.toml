@@ -1799,8 +1799,8 @@ check = "and outside a text field it is still Select All"
 # convention offered on its behalf. The window-context check caught it. 8.146.
 name = "a readline chord swallows the application's own shortcut"
 file = "src/runtime/input_router.cpp"
-find = "\t\tif (!match_shortcut(k) && !readline_edit(k)"
-into = "\t\tif (!readline_edit(k) && !match_shortcut(k)"
+find = "\t\t} else if (!match_shortcut(k) && !readline_edit(k)"
+into = "\t\t} else if (!readline_edit(k) && !match_shortcut(k)"
 count = 1
 check = "and answers again once its own window is current"
 
@@ -2474,3 +2474,24 @@ into = ""
 count = 1
 check = "three dialogs opened and closed in turn"
 expect = "crash"
+
+[[sabotage]]
+# The completer's list given the keys again, so Qt's own filter hides it
+# after every letter the editor accepts -- hasFocus() being permanently
+# false here. 8.201.
+name = "a deferring popup owns the keys"
+file = "src/runtime/input_router.cpp"
+find = "\t\tQWidget *const proxy = w->focusProxy();\n\t\tif (proxy && !w->isAncestorOf(proxy)) continue;"
+into = "\t\t(void)w;"
+count = 1
+check = "a completer's list survives every letter typed at it"
+
+[[sabotage]]
+# The navigation half of the split removed, so the list is drawn and cannot
+# be walked: Down and Return reach the editor instead.
+name = "a completer's list cannot be navigated"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (defers && navigates_a_list(k)) {"
+into = "\t\tif (false) {"
+count = 1
+check = "Down and Return DO reach it"

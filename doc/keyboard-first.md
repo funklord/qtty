@@ -176,6 +176,16 @@ top-level windows are reachable through `Qtty::next_window()` and
 nothing binds a key to them at all** -- a second window could be on the
 screen and unreachable without a mouse.
 
+**A completer's list is a layer, not a window**, and it works: type into a
+`QLineEdit` with a `QCompleter` and the candidates appear, `Up`/`Down`
+walk them, `Enter` takes one, `Escape` dismisses the list and leaves the
+field. Qt marks such a popup by pointing its focus proxy at the field
+being edited, which is how this library knows to draw it without handing
+it the keyboard -- the text keeps going to your field and only the
+navigation keys reach the list. Getting that split wrong is visible
+immediately: give the list everything and Qt's own filter hides it after
+every letter, give the field everything and the list cannot be walked.
+
 **Not every top-level is a window in that sense**, and which ones are was
 measured over every kind Qt has:
 
@@ -814,6 +824,25 @@ sizes; "drag the handle" is not available to everybody.
 
 `Qtty::pointer_only()` names splitter handles for exactly this reason,
 beside the buttons.
+
+**And dragging BETWEEN widgets does not happen at all.** `QDrag::exec()`
+is the platform's half of drag and drop, and the offscreen platform has
+none: measured, it returns `Qt::IgnoreAction` in under a millisecond and
+no target hears a thing. Plain Qt offscreen does the same, so this is the
+platform rather than the library -- but what your user sees is worth
+knowing, because it is not "nothing":
+
+    a QListWidget set to InternalMove, dragged      order unchanged
+    the same gesture, what actually happened        the item under the
+                                                    pointer got SELECTED
+
+Qt enters `startDrag()`, it returns instantly, the view falls back to
+rubber-band selection, and the reorder silently becomes a selection
+change. `Qtty::exec_drag()` in `qtty/drag.h` is the spelling that works
+here -- the library owns the pointer, so it can carry the drag Qt cannot
+-- and it needs a release or an `Escape` to end it, which on a terminal
+means a user with no mouse needs the `Escape`. Give the reorder a
+keyboard route regardless: that is this practice.
 
 ## Copy and paste
 

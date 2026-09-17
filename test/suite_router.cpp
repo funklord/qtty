@@ -2074,6 +2074,118 @@ int suite_router() {
 		QCoreApplication::processEvents();
 		CHECK(fired == 1, "Return in the submenu fires its item, not the parent's");
 	}
+
+	// ---- the menu idiom an application actually writes: exec(), which runs
+	// a NESTED event loop, re-entered from inside contextMenuEvent() -- so
+	// the loop starts while the router is still dispatching the press that
+	// opened it. Every fixture above uses popup(), which returns at once,
+	// and 8.196 showed what "nested loop, never run here" can hide.
+	//
+	// Driven by a timer inside the loop, bounded by TRIES rather than by the
+	// clock: under valgrind a wall-clock bound shrinks while the work does
+	// not, which is how a timing fix becomes a second timing bug.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(30, 8));
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter mr(&host);
+		Compositor mc(&host, &mr);
+		CellBuffer mb(30, 8);
+		mc.compose(mb);
+
+		int chosen = 0, drawn_while_up = 0, gave_up = 0;
+		for (int round = 0; round < 2; ++round) {      // twice: one proves
+			QMenu menu(&host);                         // only the first
+			menu.addAction(QStringLiteral("Alpha"));
+			QAction *bravo = menu.addAction(QStringLiteral("Bravo"));
+			QTimer driver;
+			int tries = 0;
+			driver.setInterval(5);
+			QObject::connect(&driver, &QTimer::timeout, [&] {
+				CellBuffer inner(30, 8);
+				mc.compose(inner);
+				if (inner.to_text().contains(QStringLiteral("Bravo")))
+					++drawn_while_up;
+				mr.on_key({Qt::Key_Down, QString(), false, false, false});
+				mr.on_key({Qt::Key_Down, QString(), false, false, false});
+				mr.on_key({Qt::Key_Return, QStringLiteral("\r"), false,
+				           false, false});
+				if (++tries > 200) { gave_up = 1; menu.close(); }
+			});
+			driver.start();
+			if (menu.exec(QPoint(0, 0)) == bravo) ++chosen;
+			driver.stop();
+			QCoreApplication::processEvents();
+		}
+		CHECK(chosen == 2 && !gave_up,
+		      "a context menu run with exec() returns the action the keys "
+		      "chose, twice in a row -- the idiom an application writes, "
+		      "and a nested loop inside the router's own dispatch");
+		CHECK(drawn_while_up > 0 && mr.popups().isEmpty(),
+		      "and the terminal drew the menu while that loop was spinning, "
+		      "then the stack unwound to nothing");
+	}
+
+	// ---- a QCompleter, which is the other common popup and behaves
+	// nothing like a menu. Qt marks its list by pointing the popup's focus
+	// proxy at the widget being edited, and its own event filter hides that
+	// list after any key the editor ACCEPTS unless `widget->hasFocus()` --
+	// which is permanently false here. Measured before the split: typing
+	// a-l-p gave visible, hidden, visible, so Down after a two-letter
+	// prefix reached nothing at all.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(40, 10));
+		auto *edit = new QLineEdit(&host);
+		edit->setGeometry(0, 0, 30 * GridMetrics::cw(), GridMetrics::ch());
+		QStringList words;
+		words << QStringLiteral("alpha") << QStringLiteral("alpine")
+		      << QStringLiteral("alps");
+		auto *comp = new QCompleter(words, edit);
+		edit->setCompleter(comp);
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter cr(&host);
+		edit->setFocus();
+		set_focus_widget(host.focusWidget());
+		QCoreApplication::processEvents();
+
+		int visible_after = 0;
+		for (const char *ch : { "a", "l", "p" }) {
+			cr.on_key({0, QString::fromLatin1(ch), false, false, false});
+			QCoreApplication::processEvents();
+			if (comp->popup()->isVisible()) ++visible_after;
+		}
+		CHECK(visible_after == 3 && edit->text() == QStringLiteral("alp"),
+		      "a completer's list survives every letter typed at it, rather "
+		      "than flickering out on the ones the editor accepts");
+		CHECK(cr.input_popups().isEmpty() && !cr.popups().isEmpty(),
+		      "and it is a layer this draws without giving it the keys, "
+		      "which is what Qt's own focus proxy on it says to do");
+
+		cr.on_key({Qt::Key_Down, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		cr.on_key({Qt::Key_Down, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		cr.on_key({Qt::Key_Return, QStringLiteral("\r"), false, false,
+		           false});
+		QCoreApplication::processEvents();
+		CHECK(edit->text() == QStringLiteral("alpine"),
+		      "while Down and Return DO reach it, so a completion can be "
+		      "chosen with the keyboard -- the half a desktop's popup grab "
+		      "does and neither arrangement here managed alone");
+
+		// AND THE EDITOR IS STILL AN EDITOR afterwards, which is the
+		// lockout question asked of this layer too.
+		cr.on_key({0, QStringLiteral("!"), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(edit->text().endsWith(QLatin1Char('!')),
+		      "and typing goes on reaching the field once the list has "
+		      "answered");
+	}
 	// What Qt tells a widget when focus LEAVES it. Qt delivers a QFocusEvent
 	// only for an ACTIVE window, and no qtty window ever activates -- every
 	// one carries WA_DontShowOnScreen -- so focusInEvent() and

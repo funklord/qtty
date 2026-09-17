@@ -125,6 +125,25 @@ QVector<QWidget *> InputRouter::input_popups() const {
 	for (QWidget *w : drawn) {
 		if (w->windowType() == Qt::ToolTip) continue;
 		if (w->windowFlags().testFlag(Qt::WindowTransparentForInput)) continue;
+		// A LAYER THAT DEFERS ITS KEYS, said by Qt rather than guessed at.
+		// `QCompleter::setPopup()` points its popup's focus proxy at the
+		// widget being edited; a QMenu has none. Both are Qt::NoFocus, so
+		// the policy cannot tell them apart and the proxy can.
+		//
+		// It matters because the completer's own event filter hides the
+		// popup when the edited widget does not have focus -- and
+		// hasFocus() is permanently false here. With the popup owning the
+		// keys, every second letter typed went to the popup, the filter
+		// forwarded it and then hid itself, so the list flickered out on
+		// alternate keystrokes and Down/Return after a two-letter prefix
+		// reached nothing. Measured before this: typing a-l-p-h-a gave
+		// visible, hidden, visible, hidden, visible.
+		//
+		// On a desktop the keys go to the line edit, which HAS focus, and
+		// the completer forwards them to the list itself. Leaving such a
+		// popup out of this list puts the keys back where Qt expects them.
+		QWidget *const proxy = w->focusProxy();
+		if (proxy && !w->isAncestorOf(proxy)) continue;
 		out.append(w);
 	}
 	return out;
@@ -179,6 +198,50 @@ void InputRouter::set_input_window(QWidget *w) {
 	// windows with THOSE -- calling this one directly would move input
 	// without moving what is drawn, which is the defect it exists to fix.
 	cur_ = w;
+}
+
+// A drawn layer that defers its keys to the widget being edited -- today
+// that is a QCompleter's list, which Qt marks by pointing the popup's focus
+// proxy at the editor (see input_popups()). Null unless such a layer is up
+// and its proxy is where the focus actually is.
+//
+// It exists because the keys have to be SPLIT, which neither arrangement
+// alone gets right. Give the popup everything, as a desktop's popup grab
+// does, and Qt's own completer filter hides it after any key the editor
+// accepts, because that branch checks `widget->hasFocus()` and no window
+// activates here: measured, typing a-l-p-h-a flickered the list out on
+// alternate letters. Give the editor everything and the list never sees
+// Down, so it cannot be navigated at all -- measured too, Down Down Return
+// leaving the text as typed.
+//
+// Qt's filter handles the navigation keys explicitly and returns before the
+// focus test; only its ordinary-key branch reaches the hide. So the split
+// is exactly that: navigation to the list, everything else to the editor.
+QWidget *InputRouter::deferring_layer() const {
+	QWidget *const fw = focusWidget();
+	if (!fw) return nullptr;
+	const auto drawn = popups();
+	for (QWidget *w : drawn) {
+		QWidget *const proxy = w->focusProxy();
+		if (!proxy || w->isAncestorOf(proxy)) continue;
+		if (proxy == fw || proxy->isAncestorOf(fw)) return w;
+	}
+	return nullptr;
+}
+
+// The keys a deferring layer answers: the ones Qt's completer filter handles
+// itself, and no others. Home and End are deliberately absent -- they move a
+// caret in the editor, which is where the text is.
+static bool navigates_a_list(const KeyEvent &k) {
+	switch (k.qt_key) {
+	case Qt::Key_Up: case Qt::Key_Down:
+	case Qt::Key_PageUp: case Qt::Key_PageDown:
+	case Qt::Key_Return: case Qt::Key_Enter:
+	case Qt::Key_Escape:
+		return true;
+	default:
+		return false;
+	}
 }
 
 QWidget *InputRouter::key_target() const {
@@ -1713,8 +1776,14 @@ void InputRouter::on_key(const KeyEvent &k) {
 		// something the program asked for by name, and the binding is a
 		// convention offered on its behalf. Placing this earlier swallowed
 		// exactly that, and the window-context shortcut check said so.
-		if (!match_shortcut(k) && !readline_edit(k)
-		    && (popup_owns_input || !match_mnemonic(k)))
+		QWidget *const defers = deferring_layer();
+		if (defers && navigates_a_list(k)) {
+			// Straight to the list, and not through match_shortcut() or
+			// the mnemonic table: a desktop's popup grab puts these keys
+			// in front of everything else while the list is up.
+			deliver_key(defers, k);
+		} else if (!match_shortcut(k) && !readline_edit(k)
+		           && (popup_owns_input || !match_mnemonic(k)))
 			deliver_key(key_target(), k);
 		set_focus_widget(input_scope()->focusWidget());
 	}

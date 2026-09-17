@@ -278,6 +278,10 @@ public:
 	// the application declared transparent for input. The compositor draws
 	// popups(); input asks this one (8.195).
 	QVector<QWidget *> input_popups() const;
+	// The drawn layer, if any, that defers its keys to the widget being
+	// edited -- a QCompleter's list. Navigation goes to it, text to the
+	// editor; see the implementation for why neither alone works.
+	QWidget *deferring_layer() const;
 
 	// The widget key events target right now (popup > modal > window focus).
 	// Nothing outside the active modal is ever returned: section 8.3 requires
