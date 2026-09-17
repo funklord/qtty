@@ -22,6 +22,15 @@ DEFINES += QTTY_SOURCE_DIR=\\\"$$QTTY_ROOT\\\"
 # in the public headers, the same way tool/replay reaches AnsiBackend.
 INCLUDEPATH += $$QTTY_ROOT
 
+# THE PROJECT'S OWN EXAMPLE, built into the suite so that the reports
+# doc/keyboard-first.md tells applications to assert empty are asserted on
+# the application this project ships. It caught one the day it was wired:
+# the chat list was named by focus_invisible(), because a custom delegate
+# that paints its own rows draws no panel and the panel is where the focus
+# mark lives. A guide whose own example fails it is a guide nobody has run.
+INCLUDEPATH += $$QTTY_ROOT/example/chat
+HEADERS += $$QTTY_ROOT/example/chat/chat.h
+
 SOURCES += main.cpp \
            suite_cells.cpp \
            suite_theme.cpp \

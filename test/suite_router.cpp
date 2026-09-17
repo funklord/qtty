@@ -6,6 +6,7 @@
 #include <qtty/windows.h>
 #include <QtWidgets>
 #include <QTemporaryDir>
+#include "chat.h"
 #include <QShortcut>
 #include <cstdio>
 
@@ -7944,6 +7945,128 @@ int suite_router() {
 		      "changing a stacked page leaves focus on the page that arrived,"
 		      " the repair standing aside where Qt has already chosen");
 		set_keyboard_conventions(had_conv);
+		GridGuard::reset();
+	}
+
+	// ---- the project's own example, held to its own guide ------------------
+	//
+	// The guide tells an application to assert seven of the eight reports
+	// empty. Nothing had ever asked them of the application THIS project
+	// ships, and the answer was not empty: `focus_invisible()` named the
+	// chat window's message list. Measured -- the frame with the focus on
+	// the list and the frame with it in the input box were byte-identical,
+	// so a keyboard user tabbing into the conversation had nothing on the
+	// screen telling them they had arrived.
+	//
+	// The cause is general and is worth more than the example: a custom
+	// QStyledItemDelegate that paints its own rows draws no panel, and the
+	// panel is where selection and the focus mark live. The remedy is one
+	// line of ordinary Qt -- ask the style to draw the panel, which is what
+	// Qt's own documentation tells a delegate to do -- and the example
+	// carries it now, still with zero qtty types in it.
+	{
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+		ChatWindow chat;
+		chat.setAttribute(Qt::WA_DontShowOnScreen);
+		chat.show();
+		QCoreApplication::processEvents();
+		InputRouter chat_router(&chat);
+		QCoreApplication::processEvents();
+		CHECK(Qtty::focus_invisible(&chat).isEmpty(),
+		      "the project's own example shows where the focus is, which "
+		      "it did not until the report was asked of it");
+		CHECK(Qtty::pointer_only(&chat).isEmpty()
+		      && Qtty::mnemonic_conflicts(&chat).isEmpty()
+		      && Qtty::shortcut_conflicts(&chat).isEmpty()
+		      && Qtty::conventions_shadowed(&chat).isEmpty()
+		      && Qtty::tab_order_anomalies(&chat).isEmpty()
+		      && Qtty::hover_only(&chat).isEmpty(),
+		      "and passes the other six reports the guide tells an "
+		      "application to assert empty, which is the guide run against "
+		      "the program this project ships rather than read");
+		CHECK(!Qtty::keyboard_reachable(&chat).isEmpty(),
+		      "with something reachable to begin with, an empty window "
+		      "passing every report by having no controls at all");
+		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
+	// ---- a custom delegate's focus mark ------------------------------------
+	//
+	// The library half of the finding above. A delegate that draws its
+	// panel through the style gets the row's marks; one that paints
+	// straight over the rect gets nothing, and on a frameless view -- which
+	// a grid-disciplined application wants, a frame costing a row and a
+	// column -- there is then nothing that changes when the focus arrives.
+	{
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+		struct Bare : QStyledItemDelegate {
+			bool ask_the_style = true;
+			using QStyledItemDelegate::QStyledItemDelegate;
+			void paint(QPainter *p, const QStyleOptionViewItem &o,
+			           const QModelIndex &ix) const override {
+				if (ask_the_style) {
+					QStyle *st = o.widget ? o.widget->style()
+					                      : QApplication::style();
+					st->drawPrimitive(QStyle::PE_PanelItemViewItem, &o, p,
+					                  o.widget);
+				}
+				p->drawText(o.rect.x(),
+				            o.rect.y() + QFontMetrics(o.font).ascent(),
+				            ix.data().toString());
+			}
+		};
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(30, 10));
+		auto *field = new QLineEdit(&host);
+		field->setGeometry(0, 0, 12 * cw, ch);
+		auto *view = new QListView(&host);
+		view->setFrameShape(QFrame::NoFrame);
+		// A READ-ONLY model, and that is the fixture's load-bearing
+		// choice. QStringListModel's items are editable by default, and
+		// an item view whose current item can be edited acquires
+		// WA_InputMethodEnabled -- which focus_invisible() skips, on the
+		// grounds that a widget taking text shows focus with the
+		// terminal's cursor. So the first version of this control asked
+		// the report about a widget the report deliberately does not
+		// examine, and read the silence as a pass. Recorded as a
+		// separate finding in project.md 8.220; here the model simply
+		// refuses editing, which is what a message list is anyway.
+		struct ReadOnly : QStringListModel {
+			using QStringListModel::QStringListModel;
+			Qt::ItemFlags flags(const QModelIndex &ix) const override {
+				return QStringListModel::flags(ix) & ~Qt::ItemIsEditable;
+			}
+		};
+		auto *model = new ReadOnly(
+		    QStringList{QStringLiteral("one"), QStringLiteral("two")}, &host);
+		view->setModel(model);
+		auto *mine = new Bare(&host);
+		view->setItemDelegate(mine);
+		view->setGeometry(0, 2 * ch, 12 * cw, 4 * ch);
+		view->setCurrentIndex(model->index(0, 0));
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter dr(&host);
+		QCoreApplication::processEvents();
+		CHECK(Qtty::focus_invisible(&host).isEmpty(),
+		      "a custom delegate that draws its panel through the style "
+		      "shows the focus on a frameless view, the style knowing what "
+		      "the delegate cannot");
+		mine->ask_the_style = false;
+		QCoreApplication::processEvents();
+		CHECK(Qtty::focus_invisible(&host).contains(view),
+		      "and one that paints straight over the rect is named, which "
+		      "is the report earning its place on the very widget kind it "
+		      "could not see before");
+		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
 		GridGuard::reset();
 	}
 

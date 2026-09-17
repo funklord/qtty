@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1488 checks, 0 failures. `make check` is green and includes
+1493 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16318,6 +16318,66 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.220 The guide's own example failed the guide (2026-09-18)
+
+The reports exist so an application can assert them empty. **Nobody had
+ever asked them of the application this project ships.** Asked:
+`focus_invisible()` named the chat example's message list, and the frame
+with the focus on the list was byte-identical to the frame with it in the
+input box. A keyboard user tabbing into the conversation had nothing on
+the screen telling them they had arrived, in the demonstration attached
+to the guide that tells everyone else not to do that.
+
+**The cause is general and the remedy is one line of vanilla Qt.** A
+custom `QStyledItemDelegate` that paints its own rows draws no panel, and
+the panel is where selection and the focus mark live. Qt's own
+documentation asks a delegate to draw it:
+
+    st->drawPrimitive(QStyle::PE_PanelItemViewItem, &o, p, o.widget);
+
+The example carries that now and still contains zero qtty types, which
+its first line promises.
+
+**The library half: this style suppressed that primitive outright.**
+`PE_PanelItemViewItem` and `PE_PanelItemViewRow` returned without
+drawing, with a comment saying selection is handled semantically in
+`CE_ItemViewItem` -- true, and `CE_ItemViewItem` is the path the DEFAULT
+delegate takes. An application's own delegate calls the primitive, got
+nothing, and had no vanilla route to either mark. It draws the same marks
+now, by the same rule: reverse for a selected row, underline for the
+current one, the current mark only while the view owns the focus.
+
+**The index has to be asked for, which took measuring.** The option a
+delegate is handed carries `index` UNSET -- counted, ten paints and not
+one valid index -- so `item_view_current()` could never answer through
+that door and the first version of the branch was dead code that read as
+working. `QAbstractItemView::indexAt()` maps the rect being painted back
+to its row, which is the same question asked of something that can
+answer it.
+
+**A limit worth stating: the underline survives only where the delegate
+leaves the cells alone.** Text written after the panel keeps the cell's
+reverse video and not its underline, so a delegate that paints every cell
+of its row keeps the mark only on the cells it does not cover. Visible in
+practice -- the example passes -- and honest to write down rather than
+discover.
+
+**And a second finding, recorded and not acted on: an item view whose
+items are editable is treated as a text widget.** `QStringListModel`'s
+items are editable by default, and such a view acquires
+`WA_InputMethodEnabled` once it has a current index. Two things key off
+that attribute: the compositor places the terminal cursor on it --
+measured, focus on such a list parks the cursor at cell (4,2), inside the
+first row, where no caret exists -- and `focus_invisible()` skips it
+entirely, on the grounds that a widget taking text shows focus with the
+cursor. So the commonest list model in Qt both attracts a cursor it has
+no caret for and exempts itself from the report. **The control in the
+check below walked straight into it**: the first version asked the report
+about a widget the report does not examine and read the silence as a
+pass. Whether the cursor belongs on a focused list at all -- type-ahead
+does go there -- is a question for the holder rather than a defect to
+fix in passing.
 
 ### 8.219 Three sweeps that found nothing, and what they cost
 (2026-09-17)

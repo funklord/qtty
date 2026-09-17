@@ -2702,3 +2702,25 @@ find = "\tif (ring.left() < 0 || ring.top() < 0) return;\n\tif (ring.right() >= 
 into = "\tif (false) return;"
 count = 1
 check = "a terminal with no room for the ring gets no box"
+
+[[sabotage]]
+# The item panel suppressed again, so an application's own delegate has no
+# route to a selection or a focus mark and a frameless view shows nothing
+# when the focus arrives. 8.220.
+name = "an item view's panel draws nothing for a custom delegate"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\tif (!mark) return;"
+into = "\t\t\treturn;"
+count = 1
+check = "a custom delegate that draws its panel through the style"
+
+[[sabotage]]
+# The current-row mark dropped, leaving only selection -- which does not
+# change when the focus arrives, so a focused list looks like an unfocused
+# one. 8.220.
+name = "the current row is not marked for a custom delegate"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tif (at.isValid() && at == view->currentIndex())\n\t\t\t\t\tmark |= Attr::Underline;"
+into = "\t\t\t\t(void)at;"
+count = 1
+check = "a custom delegate that draws its panel through the style"

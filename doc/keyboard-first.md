@@ -826,6 +826,28 @@ qtty instead:
 
     if (Qtty::focusWidget() == this) drawFocusMark();
 
+**If you write an item delegate, draw its panel through the style.** This
+is ordinary Qt -- the documentation asks for it and a desktop needs it
+for selection -- and on a terminal it is what puts the focus mark on your
+rows at all:
+
+```cpp
+void paint(QPainter *p, const QStyleOptionViewItem &o,
+           const QModelIndex &ix) const override {
+    QStyle *st = o.widget ? o.widget->style() : QApplication::style();
+    st->drawPrimitive(QStyle::PE_PanelItemViewItem, &o, p, o.widget);
+    ...                                   // then your own drawing
+}
+```
+
+A delegate that paints straight over its rect draws no panel, so it gets
+no selection and no focus mark -- and on a view with `NoFrame`, which a
+grid-disciplined layout wants because a frame costs a row and a column,
+**nothing at all changes when the focus arrives.** This project's own
+chat example had exactly that, and `focus_invisible()` named its message
+list until the line above was added; it is one line of vanilla Qt and the
+example still contains no qtty types.
+
 **And you can check that you did it.** `Qtty::focus_invisible()` renders
 your window once with the focus on each control and once without, and
 names the ones that come out identical inside their own rectangle:

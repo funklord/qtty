@@ -85,6 +85,16 @@ public:
 	}
 	void paint(QPainter *p, const QStyleOptionViewItem &o, const QModelIndex &ix) const override {
 		const Msg &msg = m->msgs[ix.row()];
+		// The panel through the STYLE before anything of our own, which
+		// is what Qt asks a delegate to do and is the line this example
+		// was missing. It is what draws the row's selection and, on a
+		// terminal, the mark that says the list has the focus: without
+		// it `Qtty::focus_invisible()` named this very list, and the
+		// frame with the focus here was byte-identical to the frame with
+		// it in the input box. Still zero qtty types -- the style the
+		// application asks is whichever one is installed.
+		QStyle *st = o.widget ? o.widget->style() : QApplication::style();
+		st->drawPrimitive(QStyle::PE_PanelItemViewItem, &o, p, o.widget);
 		QFont bold = o.font; bold.setBold(true);
 		p->setFont(bold);
 		p->drawText(o.rect.x() + cw, o.rect.y() + QFontMetrics(bold).ascent(),

@@ -1592,9 +1592,54 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 		// Suppress pixel-noise primitives; selection is handled semantically
 		// in CE_ItemViewItem, focus by the router-owned focus attr.
 		case PE_FrameFocusRect:
-		case PE_PanelItemViewItem:
-		case PE_PanelItemViewRow:
 			return;
+		// EXCEPT FOR AN APPLICATION'S OWN DELEGATE, which is the one
+		// caller that reaches these. Both were suppressed outright, and
+		// the cost is a whole practice: a QStyledItemDelegate that paints
+		// its own rows -- the ordinary way to draw anything Qt's delegate
+		// cannot -- had NO route to a selection or a focus mark here.
+		// CE_ItemViewItem carries them, and a custom delegate does not
+		// call it; it draws its panel through this primitive, which is
+		// what Qt's documentation tells it to do, and got nothing back.
+		//
+		// Measured on this project's own example, whose chat list uses a
+		// custom delegate: the frame with the focus on the message list
+		// and the frame with it in the input box were byte-identical, so
+		// `focus_invisible()` named the list -- the library's own
+		// example failing the report its guide tells applications to
+		// assert empty.
+		//
+		// The SAME rule CE_ItemViewItem applies, asked through the same
+		// helper rather than copied: reverse for a selected row,
+		// underline for the current one, and the current mark only while
+		// the view owns the focus. qtty's own path does not come through
+		// here -- CE_ItemViewItem writes its cells directly -- so there
+		// is nothing to double-draw.
+		case PE_PanelItemViewItem:
+		case PE_PanelItemViewRow: {
+			Attrs mark = (opt->state & State_Selected) ? Attrs(Attr::Reverse)
+			                                           : Attrs();
+			// THE INDEX HAS TO BE ASKED FOR, which took measuring: the
+			// option a delegate is handed carries `index` UNSET --
+			// counted, ten paints and not one valid index -- so
+			// item_view_current() can never answer through this door
+			// and the first version of this branch was dead code that
+			// read as working. The view maps a point back to a row, and
+			// the rect being painted is that row's.
+			const auto *view = qobject_cast<const QAbstractItemView *>(w);
+			if (view && owns_focus(w)) {
+				const QModelIndex at =
+				    view->indexAt(opt->rect.center());
+				if (at.isValid() && at == view->currentIndex())
+					mark |= Attr::Underline;
+			}
+			if (!mark) return;
+			for (int y = c.top(); y <= c.bottom(); ++y)
+				for (int x = c.left(); x <= c.right(); ++x)
+					if (dev->buffer().writable(x, y))
+						dev->buffer().at(x, y).attrs |= mark;
+			return;
+		}
 		default:
 			break;
 		}
