@@ -5601,7 +5601,7 @@ int suite_router() {
 			CHECK(!keys.isEmpty(),
 			      "and every line says what its key does, a key with no "
 			      "meaning beside it being no help at all");
-			CHECK(help.size() == 9,
+			CHECK(help.size() == 10,
 			      "and the list is exactly as long as this check knows about,"
 			      " which is what stands in for deriving it from the"
 			      " bindings");
@@ -5643,6 +5643,7 @@ int suite_router() {
 				{"Ctrl+PgUp/PgDn", "`Ctrl+PageUp`"},
 				{"Ctrl+PgUp/PgDn", "`Ctrl+PageDown`"},
 				{"F6",             "`F6`"},
+				{"F10",            "`F10`"},
 				{"Alt+letter",     "`Alt` + a tab's letter"},
 				{"Ctrl+A/E",       "`Ctrl+A`"},
 				{"Ctrl+A/E",       "`Ctrl+E`"},
@@ -7941,6 +7942,109 @@ int suite_router() {
 		CHECK(Qtty::focusWidget() == page1,
 		      "changing a stacked page leaves focus on the page that arrived,"
 		      " the repair standing aside where Qt has already chosen");
+		set_keyboard_conventions(had_conv);
+		GridGuard::reset();
+	}
+
+	// ---- F10 into the menu bar -------------------------------------------
+	//
+	// A QMenuBar is reached by Alt, and Alt needs a mnemonic -- so a bar
+	// whose titles carry no `&` had no keyboard route at all: measured,
+	// F10 did nothing, the bar is Qt::NoFocus and no tab stop, and its
+	// menus were reachable only by a pointer. In a library about the user
+	// without one, that is the whole subject failing quietly.
+	{
+		const bool had_conv = keyboard_conventions();
+		QMainWindow win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(40, 10));
+		auto *field = new QLineEdit;
+		win.setCentralWidget(field);
+		// NO mnemonics anywhere, which is the case with no other way in.
+		QMenu *file = win.menuBar()->addMenu(QStringLiteral("File"));
+		QMenu *edit = win.menuBar()->addMenu(QStringLiteral("Edit"));
+		int opened = 0, pasted = 0;
+		QObject::connect(file->addAction(QStringLiteral("Open")),
+		                 &QAction::triggered, [&] { ++opened; });
+		QObject::connect(edit->addAction(QStringLiteral("Paste")),
+		                 &QAction::triggered, [&] { ++pasted; });
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter mr(&win);
+		field->setFocus();
+		set_focus_widget(field);
+
+		set_keyboard_conventions(false);
+		mr.on_key({Qt::Key_F10, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(mr.popups().isEmpty(),
+		      "F10 does nothing with the conventions off, this library "
+		      "binding no key of its own by default");
+
+		set_keyboard_conventions(true);
+		mr.on_key({Qt::Key_F10, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(mr.popups().size() == 1,
+		      "and opens the first menu with them on, which is the only "
+		      "way into a menu bar whose titles carry no mnemonic");
+		mr.on_key({Qt::Key_Down, QString(), false, false, false});
+		mr.on_key({Qt::Key_Return, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(opened == 1,
+		      "so Down and Return reach the item, the open menu owning "
+		      "the keys as any other popup does");
+
+		// RIGHT walks the bar, which is what makes one key enough: the
+		// first menu is a way in to all of them rather than to one.
+		mr.on_key({Qt::Key_F10, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		mr.on_key({Qt::Key_Right, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		mr.on_key({Qt::Key_Down, QString(), false, false, false});
+		mr.on_key({Qt::Key_Return, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(pasted == 1,
+		      "and Right moves along the bar to the next menu, so one key "
+		      "reaches every menu rather than the first");
+
+		// Escape, the way back, which every layer in this library owes.
+		mr.on_key({Qt::Key_F10, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		const bool opened_again = mr.popups().size() == 1;
+		mr.on_key({Qt::Key_Escape, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(opened_again && mr.popups().isEmpty(),
+		      "and Escape closes it again, leaving the keys where they "
+		      "were");
+		// AND THE FOCUS COMES BACK, which it did not until this was
+		// measured. Qt puts the bar into keyboard mode when a menu opens
+		// from it and restores the previous focus when that mode ends --
+		// reading QApplication::focusWidget(), which is null here, so it
+		// restored nothing and the BAR kept the focus. Every later key
+		// went there: measured, Shift+F10 after an Escape asked the menu
+		// bar for a context menu instead of the field the user was in.
+		CHECK(Qtty::focusWidget() == field,
+		      "and the focus is back in the widget F10 took it from, "
+		      "rather than left on the menu bar");
+
+		// SHIFT+F10 is the context-menu key and must not have been
+		// swallowed by the new branch -- the two differ by a modifier and
+		// share a keycode, which is exactly how a binding eats its
+		// neighbour.
+		field->setContextMenuPolicy(Qt::CustomContextMenu);
+		int asked = 0;
+		QObject::connect(field, &QWidget::customContextMenuRequested,
+		                 [&] { ++asked; });
+		// KeyEvent spells its modifiers ctrl, alt, shift -- in that
+		// order -- and the first version of this line put `true` in the
+		// alt slot and asserted a context menu that was never asked for.
+		// The code was right and the fixture was not, which is the
+		// direction this suite catches most often.
+		mr.on_key({Qt::Key_F10, QString(), false, false, true});
+		QCoreApplication::processEvents();
+		CHECK(asked == 1 && mr.popups().isEmpty(),
+		      "while Shift+F10 still asks the focused widget for its "
+		      "context menu, the two differing by one modifier");
 		set_keyboard_conventions(had_conv);
 		GridGuard::reset();
 	}

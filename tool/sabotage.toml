@@ -2656,3 +2656,24 @@ find = "\tif (QWidget *g = QWidget::keyboardGrabber()) {"
 into = "\tif (QWidget *g = nullptr) {"
 count = 1
 check = "a widget that grabbed the keyboard gets the keys"
+
+[[sabotage]]
+# F10 taken back out of the bundle, so a menu bar whose titles carry no
+# mnemonic has no keyboard route at all. 8.214.
+name = "F10 does not reach the menu bar"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (k.qt_key == Qt::Key_F10 && !k.shift && !k.ctrl && !k.alt) {"
+into = "\t\tif (false) {"
+count = 1
+check = "and opens the first menu with them on"
+
+[[sabotage]]
+# The focus left on the menu bar after the menu closes, which is what Qt's
+# own restore does here -- it reads a focus widget that is always null.
+# 8.214.
+name = "the menu bar keeps the focus after its menu closes"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\t\t\tback->setFocus(Qt::OtherFocusReason);\n\t\t\t\t\tset_focus_widget(back);"
+into = "\t\t\t\t\t(void)back;"
+count = 1
+check = "and the focus is back in the widget F10 took it from"

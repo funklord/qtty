@@ -194,6 +194,7 @@ it. Measured:
 | Arrows on a focused tab bar | Move between tabs | Qt's |
 | `Ctrl+PageDown`, `Ctrl+PageUp` | Move between tabs, and wrap at the ends | qtty's, opt-in |
 | `F6`, `Shift+F6` | Move between top-level windows | qtty's, opt-in |
+| `F10` | Opens the window's menu bar, the only key that reaches one whose titles have no mnemonic | qtty's, opt-in |
 
 The last two are part of the opt-in below. `Ctrl+PageUp`/`PageDown` is
 what somebody coming from a browser, an editor or a multiplexer reaches
@@ -326,11 +327,31 @@ One line turns on the habits a terminal user has and Qt does not:
 | `Up`, `Down` | Move between controls |
 | `Ctrl+PageUp`, `Ctrl+PageDown` | Move between tabs, wrapping at the ends |
 | `F6`, `Shift+F6` | Move between top-level windows |
+| `F10` | Open the window's menu bar |
 | `Alt` + a tab's letter | Switch to that tab |
 | `Ctrl+A`, `Ctrl+E` | Start and end of the line, **in a widget that takes text** |
 | `Ctrl+K`, `Ctrl+U` | Kill to the end of the line, and to the start |
 | `Ctrl+W` | Rub out the word before the caret |
 | `Ctrl+D` | Delete the character under the caret -- a quit key everywhere else |
+
+**`F10` is the way into a menu bar whose titles carry no mnemonic**, and
+without it there is none: a `QMenuBar` is `Qt::NoFocus`, is in no tab
+chain, and Qt reaches it by `Alt` -- which needs a `&` in the title. So a
+program whose menus read *File*, *Edit*, *View* had no keyboard route to
+any of them at all. Measured before it was added: `F10` did nothing and
+the menus were reachable only by a pointer.
+
+It **opens** the first menu rather than merely highlighting the bar,
+which is where this parts company with a desktop deliberately -- a
+highlight is a state a terminal shows poorly, and once a menu is open
+everything already works: the popup owns the keys, `Up`/`Down` walk it,
+`Left`/`Right` move along the bar to the next menu, `Enter` triggers and
+`Escape` closes. Focus goes back to the widget you were in, which Qt
+would normally restore itself and cannot here.
+
+`Shift+F10` is unaffected and still asks the focused widget for its
+context menu -- the two differ by one modifier, and a check holds them
+apart.
 
 One thing in the bundle is not a key. **A status tip follows focus**, which
 is what Qt does when the mouse rests on a control and what a terminal user

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1468 checks, 0 failures. `make check` is green and includes
+1475 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16280,6 +16280,49 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.214 A menu bar no key could reach (2026-09-17)
+
+The last member of the sweep and the plainest: **a `QMenuBar` whose
+titles carry no `&` had no keyboard route at all.** Qt reaches a menu bar
+by `Alt`, and `Alt` needs a mnemonic; the bar is `Qt::NoFocus` and in no
+tab chain; `F10` did nothing. So a program whose menus read *File*,
+*Edit*, *View* -- which is most programs -- offered its entire menu
+structure to the pointer only, in the library whose subject is the user
+without one.
+
+`F10` joins the conventions bundle: **opt-in, and offered only where the
+focused widget ignored the key**, which is the rule `F6` already
+follows. It OPENS the first menu rather than highlighting the bar, which
+parts company with a desktop deliberately -- a highlight is a state a
+terminal shows poorly, and once a menu is open every key already works:
+the popup owns input, arrows walk it, `Left`/`Right` move along the bar,
+`Enter` triggers, `Escape` closes.
+
+**And it took the focus with it, which is the master lens again.** Qt
+puts the bar into keyboard mode when a menu opens from it and restores
+the previous focus when that mode ends -- reading
+`QApplication::focusWidget()`, which is permanently null here, so it
+saved nothing and the BAR kept the focus after `Escape`. Measured: every
+later key went to the menu bar, and `Shift+F10` asked the bar for a
+context menu rather than the field the user was in. The router remembers
+who had it and gives it back, **queued**, because asked inside the hide
+the bar has not taken the focus yet -- the same deferral 8.210 needed and
+for the same reason.
+
+**The bundle's own gates refused the binding until it was documented**,
+which is worth recording as the guard working rather than as friction.
+Adding the key reddened two checks at once: the one pinning how many rows
+the help list has, and the one that cross-reads every bound key against
+`doc/keyboard-first.md` -- *"a binding cannot enter the bundle without the
+guide being asked about it"*. Three writers of one list, held together by
+a test.
+
+**And one failure was my own fixture.** `KeyEvent` spells its modifiers
+`ctrl, alt, shift`, in that order; the first version of the `Shift+F10`
+check put `true` in the alt slot and then asserted a context menu nobody
+had asked for. The code was right and the fixture was not, which is the
+direction this suite catches most often -- four times today.
 
 ### 8.213 A keyboard grab nobody honoured (2026-09-17)
 

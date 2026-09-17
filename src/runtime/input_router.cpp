@@ -53,6 +53,7 @@ QVector<QPair<QString, QString>> keyboard_conventions_help() {
 		{ QStringLiteral("Up/Down"),        QStringLiteral("move") },
 		{ QStringLiteral("Ctrl+PgUp/PgDn"), QStringLiteral("tab") },
 		{ QStringLiteral("F6"),             QStringLiteral("window") },
+		{ QStringLiteral("F10"),            QStringLiteral("menu bar") },
 		{ QStringLiteral("Alt+letter"),     QStringLiteral("jump to") },
 		// The readline chords, QUALIFIED, because they answer only where a
 		// caret is. The comment above says why Ctrl+C is not named at all --
@@ -79,6 +80,7 @@ struct ConventionRow {
 
 static const ConventionRow k_convention_rows[] = {
 	{ "F6",             Qt::Modifier(0), { Qt::Key_F6,       Qt::Key(0) } },
+	{ "F10",            Qt::Modifier(0), { Qt::Key_F10,      Qt::Key(0) } },
 	{ "Ctrl+PgUp/PgDn", Qt::CTRL,        { Qt::Key_PageUp,   Qt::Key_PageDown } },
 	{ "Ctrl+A/E",       Qt::CTRL,        { Qt::Key_A,        Qt::Key_E } },
 	{ "Ctrl+K/U",       Qt::CTRL,        { Qt::Key_K,        Qt::Key_U } },
@@ -464,6 +466,30 @@ bool InputRouter::eventFilter(QObject *o, QEvent *e) {
 		if (auto *w = qobject_cast<QWidget *>(o)) {
 			if (popups_.removeAll(QPointer<QWidget>(w)) && frame_requested)
 				frame_requested();
+			// The menu bar's keyboard mode is over when the last popup
+			// goes, so give the focus back to whoever F10 took it from.
+			// Only when it is the BAR that holds it: a menu item that
+			// moved the focus itself has said where it wants it, and an
+			// application closing its own menu is not asking for this.
+			//
+			// QUEUED, for the reason 8.210 records: asked inside the
+			// hide, the bar has not taken the focus yet -- Qt moves it
+			// on the way OUT of keyboard mode, after this event -- so
+			// the condition read false and the repair did nothing.
+			// Measured exactly that way before the deferral went in.
+			if (popups_.isEmpty() && before_menu_bar_) {
+				QPointer<QWidget> back = before_menu_bar_;
+				before_menu_bar_.clear();
+				QMetaObject::invokeMethod(this, [this, back] {
+					if (!back || !back->isVisible()) return;
+					QWidget *const scope = input_scope();
+					if (!scope) return;
+					if (!qobject_cast<QMenuBar *>(scope->focusWidget()))
+						return;
+					back->setFocus(Qt::OtherFocusReason);
+					set_focus_widget(back);
+				}, Qt::QueuedConnection);
+			}
 		}
 	}
 	return false;                                                  // observe only
@@ -1868,6 +1894,57 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 				if (k.shift) previous_window(); else next_window();
 				if (frame_requested) frame_requested();
 				return;
+			}
+		}
+		// F10 INTO THE MENU BAR, which is the desktop's way in and the
+		// terminal's alike -- mc and nano put the menu on F9, a desktop
+		// puts the focus on the bar with F10, and Qt offers neither here
+		// because a menu bar is reached by Alt and Alt needs a mnemonic.
+		//
+		// Measured before this: a QMenuBar whose titles carry no `&` had
+		// NO keyboard route at all. F10 did nothing, the bar is
+		// Qt::NoFocus and no tab stop, and its menus were reachable only
+		// by a pointer -- in a library whose whole subject is the user
+		// without one.
+		//
+		// It OPENS the first menu rather than merely highlighting the
+		// bar, which is where this parts company with a desktop on
+		// purpose: highlighting is a state a terminal cannot show well,
+		// and once a menu is open every key already works -- the popup
+		// owns input, arrows walk it, Left and Right move between menus
+		// through QMenuBar, Escape closes it.
+		//
+		// Shift+F10 is the context-menu key and is tested first, above;
+		// this branch takes a bare F10 only.
+		if (k.qt_key == Qt::Key_F10 && !k.shift && !k.ctrl && !k.alt) {
+			if (QWidget *scope = input_scope()) {
+				if (auto *bar = scope->findChild<QMenuBar *>()) {
+					const QList<QAction *> acts = bar->actions();
+					QAction *first = nullptr;
+					for (QAction *a : acts)
+						if (a->menu() && a->isVisible() && a->isEnabled()) {
+							first = a;
+							break;
+						}
+					if (first && bar->isVisible()) {
+						// REMEMBER WHO HAD IT. Qt puts the bar into
+						// keyboard mode when a menu opens from it and
+						// restores the previous focus when that mode
+						// ends -- reading QApplication::focusWidget(),
+						// which is null here, so it saves nothing and
+						// the bar keeps the focus after Escape.
+						// Measured: F10 then Escape left every later
+						// key going to the menu bar, and Shift+F10
+						// asked the BAR for a context menu instead of
+						// the field the user was in.
+						before_menu_bar_ = scope->focusWidget();
+						bar->setActiveAction(first);
+						first->menu()->popup(bar->mapToGlobal(
+						    bar->actionGeometry(first).bottomLeft()));
+						if (frame_requested) frame_requested();
+						return;
+					}
+				}
 			}
 		}
 		if (k.qt_key == Qt::Key_Return || k.qt_key == Qt::Key_Enter) {

@@ -341,6 +341,12 @@ private:
 	// its own window -- keeps the window it was built with.
 	QPointer<QWidget> cur_;
 	QVector<QPointer<QWidget>> popups_;
+	// Who had the focus before F10 put the menu bar into keyboard mode.
+	// Qt remembers this itself and restores it when the bar leaves that
+	// mode -- from QApplication::focusWidget(), which is permanently null
+	// here, so it remembers nothing and the bar keeps the focus after the
+	// menu closes. See the F10 branch in on_key().
+	QPointer<QWidget> before_menu_bar_;
 	QVector<KeyEvent> quit_keys_;
 	// The widget a press grabbed, held until the release (section 5.5). A
 	// QPointer because a press can destroy its own target -- a button that
