@@ -700,6 +700,26 @@ the conventions on, `setStatusTip()` follows FOCUS rather than the pointer
 that will never hover is shown to a user who tabs onto the control. A
 `QMainWindow` puts it in its status bar with no code at all.
 
+**And `setWhatsThis()` has a key: `Shift+F1`.** Qt's What's This mode
+works here, which is worth saying because nothing suggests it would:
+`Shift+F1` opens it, the **focused** widget's `whatsThis()` appears in a
+window this library draws, and `Escape` -- or the next key you press --
+takes it away. Measured, all four steps. So where a tool tip's words
+cannot be reached at all, a `whatsThis()` on the same control can be, and
+it is the right home for the sentence that does not fit on the screen:
+
+```cpp
+field->setToolTip(tr("host name"));          // read, never shown
+field->setWhatsThis(tr("the host to connect to, with an "
+                       "optional :port"));   // Shift+F1 shows this
+```
+
+**Only the focused widget's, though.** A `QLabel` is `Qt::NoFocus`, so
+`Shift+F1` cannot be aimed at it and its `whatsThis()` is as far out of
+reach as its tool tip. `Qtty::hover_only()` follows exactly that line: it
+spares a focusable control that carries both, and still names one nothing
+can focus.
+
 The reason is not that a terminal has no pointer -- this guide said that
 and it was wrong. qtty sends `QEvent::MouseMove`, so Qt sets `WA_Hover`,
 delivers `Enter` and `HoverEnter`, and `underMouse()` answers true: a

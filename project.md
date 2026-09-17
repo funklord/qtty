@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1496 checks, 0 failures. `make check` is green and includes
+1500 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16332,6 +16332,37 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.222 What's This works, and nothing said so (2026-09-18)
+
+Practice 7 says a tool tip's words cannot be reached from a keyboard
+here, and that is measured and true -- no `QEvent::ToolTip` is ever
+raised. **The other half of Qt's help machinery had never been tried,
+and it works end to end.** Measured, four steps:
+
+    Shift+F1                 What's This mode opens
+    the focused widget's     whatsThis() appears in a Qt::ToolTip
+    help is drawn            window, a kind this library composites
+    Escape, or any key       closes it again -- and the dismissing key
+                             is swallowed, which is Qt's own behaviour
+
+So `setWhatsThis()` is the remedy practice 7 was missing: a place to put
+the sentence a tool tip cannot deliver, with a key that reaches it. The
+guide says so now, and four checks hold it, because nothing in this tree
+exercised Qt's help mode at all.
+
+**`hover_only()` follows the route rather than the widget.** A tip is no
+longer the only way to those words when the same control carries a
+`whatsThis()` AND a key can get to it -- and BOTH halves are required,
+which the measurement settles rather than taste: Shift+F1 shows the
+FOCUSED widget's help and nothing else's, so a `QLabel`'s `whatsThis()`
+is as unreachable as its tip and is still named. Same shape as the clear
+button of 8.212: the report asks whether the thing the user needs is
+reachable, not whether this particular widget offers it.
+
+**What made this findable was asking what an application writes that no
+fixture here writes.** `setWhatsThis()` is ordinary in a form-heavy Qt
+program and appears nowhere in this tree's own code.
 
 ### 8.221 A caret is a place to type, not a way to say what has focus
 (2026-09-18)

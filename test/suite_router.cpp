@@ -7948,6 +7948,76 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// ---- What's This, which works and nothing said so ----------------------
+	//
+	// Practice 7 says a tool tip's words cannot be got at from a keyboard
+	// here, and that is true and measured: no QEvent::ToolTip is ever
+	// raised. What nobody had tried is the other half of Qt's help
+	// machinery. `QWhatsThis` works end to end -- Shift+F1 opens What's
+	// This mode, the FOCUSED widget's whatsThis() appears in a Qt::ToolTip
+	// window, which is a window kind this library draws, and Escape or the
+	// next key closes it again.
+	//
+	// That makes setWhatsThis() the remedy practice 7 was missing, and it
+	// is worth pinning because nothing else in the tree exercises Qt's
+	// help mode at all.
+	{
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(40, 12));
+		auto *field = new QLineEdit(&host);
+		field->setGeometry(0, 0, 20 * cw, ch);
+		field->setToolTip(QStringLiteral("host name"));
+		field->setWhatsThis(QStringLiteral("FIELDHELP the host to reach"));
+		auto *label = new QLabel(QStringLiteral("Server"), &host);
+		label->setGeometry(0, 2 * ch, 20 * cw, ch);
+		label->setToolTip(QStringLiteral("which server"));
+		label->setWhatsThis(QStringLiteral("LABELHELP not reachable"));
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter hr(&host);
+		Compositor hc(&host, &hr);
+		field->setFocus();
+		set_focus_widget(field);
+		const auto frame = [&] {
+			QCoreApplication::processEvents();
+			CellBuffer b(40, 12);
+			hc.compose(b);
+			return b.to_text();
+		};
+		const bool quiet_at_rest =
+		    !frame().contains(QStringLiteral("FIELDHELP"));
+		hr.on_key({Qt::Key_F1, QString(), false, false, true});
+		const QString shown = frame();
+		CHECK(quiet_at_rest && shown.contains(QStringLiteral("FIELDHELP")),
+		      "Shift+F1 shows the focused widget's whatsThis, which is a "
+		      "keyboard route to an explanation and the one practice 7 "
+		      "was missing");
+		CHECK(!shown.contains(QStringLiteral("LABELHELP")),
+		      "and only the focused one's, so a label's whatsThis is as "
+		      "far out of reach as its tool tip");
+		hr.on_key({Qt::Key_Escape, QString(), false, false, false});
+		CHECK(!frame().contains(QStringLiteral("FIELDHELP"))
+		      && hr.popups().isEmpty(),
+		      "and Escape takes it away again, which every layer here "
+		      "owes a user");
+
+		// THE REPORT FOLLOWS THE ROUTE. A tip whose words Shift+F1 can
+		// reach is no longer the only way to them; one on a widget no key
+		// can focus still is.
+		const QVector<QWidget *> tips = Qtty::hover_only(&host);
+		CHECK(!tips.contains(field) && tips.contains(label),
+		      "so hover_only() spares a focusable widget that also has a "
+		      "whatsThis and still names one that cannot be focused at "
+		      "all");
+		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	// ---- the cursor belongs to a caret, not to a focus ---------------------
 	//
 	// An item view acquires WA_InputMethodEnabled as soon as its current

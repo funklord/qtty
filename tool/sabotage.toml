@@ -2745,3 +2745,13 @@ find = "\t\tif (w->testAttribute(Qt::WA_InputMethodEnabled)\n\t\t    && !qobject
 into = "\t\tif (w->testAttribute(Qt::WA_InputMethodEnabled)) continue;"
 count = 1
 check = "a list over an editable model is examined by focus_invisible"
+
+[[sabotage]]
+# The What's This route ignored again, so a widget whose explanation a
+# keyboard user can actually reach is still reported as hover-only. 8.222.
+name = "hover_only ignores a reachable whatsThis"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (!w->whatsThis().isEmpty() && reachable.contains(w)) continue;"
+into = "\t\tif (false) continue;"
+count = 1
+check = "hover_only() spares a focusable widget that also has a whatsThis"

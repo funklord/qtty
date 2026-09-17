@@ -1370,10 +1370,25 @@ QVector<QWidget *> focus_invisible(QWidget *scope) {
 QVector<QWidget *> hover_only(QWidget *scope) {
 	QVector<QWidget *> out;
 	if (!scope) return out;
+	// NOR A WIDGET WHOSE WORDS SHIFT+F1 REACHES, which took measuring to
+	// be sure of: `QWhatsThis` works here end to end, and nothing said so.
+	// Qt's What's This mode opens on Shift+F1, shows the FOCUSED widget's
+	// whatsThis() in a Qt::ToolTip window -- a window kind this library
+	// draws -- and Escape or the next key closes it again. Measured, all
+	// four steps, including that the key which dismisses is swallowed,
+	// which is Qt's own behaviour on a desktop.
+	//
+	// So a tip is not the only way to those words when the same widget
+	// carries a whatsThis AND a key can get to it. Both halves are
+	// required: measured, Shift+F1 shows the focused widget's help and
+	// nothing else's, so a QLabel's whatsThis is as unreachable as its
+	// tool tip and it is still named.
+	const QVector<QWidget *> reachable = keyboard_reachable(scope);
 	const auto kids = scope->findChildren<QWidget *>();
 	for (QWidget *w : kids) {
 		if (!w->isVisible() || !w->isEnabled()) continue;
 		if (w->toolTip().isEmpty() || !w->statusTip().isEmpty()) continue;
+		if (!w->whatsThis().isEmpty() && reachable.contains(w)) continue;
 		const auto *b = qobject_cast<QAbstractButton *>(w);
 		if (b && b->text().isEmpty()) continue;
 		out.append(w);
