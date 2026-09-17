@@ -805,14 +805,31 @@ is the mark on the screen.** A control that cannot show it is a control a
 keyboard user has to find by trial.
 
 **And it follows `setFocus()` when you call it yourself**, which is worth
-saying because nothing in Qt makes that true here. A window that never
+saying because nothing in *Qt* makes that true here: a window that never
 activates emits no `focusChanged` signal and delivers no `FocusIn` or
-`FocusOut` event -- measured -- so `edit->setFocus()` in one of your slots
-moves Qt's focus and announces it to nobody. qtty re-reads the window's
-focus widget when it composes a frame and again when a key arrives, so the
-mark, the widget-shortcut contexts and `Qtty::focusWidget()` all agree with
-where your keystroke is actually going. You do not have to tell it, and
-there is nothing to call.
+`FocusOut` event of its own, so `edit->setFocus()` in one of your slots
+moves Qt's focus and Qt tells nobody. qtty re-reads the window's focus
+widget when it composes a frame and again when a key arrives, so the mark,
+the widget-shortcut contexts and `Qtty::focusWidget()` all agree with where
+your keystroke is actually going. You do not have to tell it, and there is
+nothing to call.
+
+**Your `focusInEvent` and `focusOutEvent` do run** -- this library sends
+them when it re-reads the focus, so what Qt builds on them works too:
+`QLineEdit::editingFinished` fires when a user tabs out of a field they
+edited, which is the signal a form actually depends on. The timing is the
+part to know: focus you move yourself is announced **at the next frame**,
+not inside your `setFocus()` call. Measured -- immediately after the call
+the old field has had no `focusOutEvent` and the new one no
+`focusInEvent`; after one composed frame, both have, and
+`Qtty::focusWidget()` agrees.
+
+**`QApplication::focusChanged` is the one that never comes**, and no
+library can emit it on Qt's behalf -- it belongs to the activation path
+that does not run here. A program that watches focus centrally should
+watch the *events*, with an event filter on `QEvent::FocusIn`, rather than
+connecting to that signal and hearing nothing. A check pins both halves,
+so the day Qt starts emitting it the suite says so.
 
 **The same trap has one more member, and this one qtty cannot repair.**
 `QApplication::keyboardModifiers()` is filled by Qt from *platform* events,

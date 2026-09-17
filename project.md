@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1459 checks, 0 failures. `make check` is green and includes
+1461 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16264,6 +16264,40 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.211 What reaches an application when focus moves (2026-09-17)
+
+Continuing the same lens, and this one found a stale claim in the guide
+rather than a defect in the code -- which is worth an entry because the
+sentence would have sent a reader to write a workaround they do not need.
+
+The guide said, of a window that never activates, that it *"emits no
+`focusChanged` signal and delivers no `FocusIn` or `FocusOut` event --
+measured"*. True of Qt, and it stopped being true of this library when
+`set_focus_widget()` began sending those events itself. Measured now, an
+application moving focus in its own slot with nothing of qtty's called:
+
+    right after two->setFocus()   one.out 0   two.in 0   focusChanged 0
+    after one composed frame      one.out 1   two.in 1   focusChanged 0
+    after the next key            the key lands in two
+
+So focus events DO reach an application, **one frame later** rather than
+inside the call -- which is neither of the two answers the old sentence
+allowed -- and what Qt builds on them works with them:
+`QLineEdit::editingFinished` fires when a user tabs out of a field they
+edited.
+
+**That last one nearly went into the record as a defect.** The first
+measurement showed `focusOutEvent` firing and `editingFinished` not, which
+reads as a broken repair. Qt gates the signal on the field having been
+EDITED; typing one character first makes it fire. The discriminating case
+cost one line and kept a false finding out of this file.
+
+**`QApplication::focusChanged` is the member that cannot be repaired**, it
+being emitted only by Qt's own activation path, and it is now asserted
+silent rather than described as silent. A program watching focus centrally
+should filter `QEvent::FocusIn` instead -- and the day Qt emits the signal
+here, the check says the limit has lifted.
 
 ### 8.210 A dialog opened with nobody in it (2026-09-17)
 

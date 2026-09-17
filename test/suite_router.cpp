@@ -2336,6 +2336,70 @@ int suite_router() {
 	// authority for focus is exactly the kind of thing this tree has
 	// already been bitten by keeping two of.
 
+	// WHAT REACHES AN APPLICATION when the application itself moves the
+	// focus, which is the other half of the entry above and the half the
+	// guide had stale. It said a window that never activates delivers no
+	// FocusIn or FocusOut -- true of QT, and no longer true of this
+	// library, which sends them itself. What an application can rely on is
+	// worth pinning precisely, because the answer is "yes, one frame
+	// later" and that is neither of the two obvious answers.
+	{
+		struct Watch : QLineEdit {
+			int in = 0, out = 0;
+			using QLineEdit::QLineEdit;
+			void focusInEvent(QFocusEvent *e) override {
+				++in;
+				QLineEdit::focusInEvent(e);
+			}
+			void focusOutEvent(QFocusEvent *e) override {
+				++out;
+				QLineEdit::focusOutEvent(e);
+			}
+		};
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(40, 8));
+		auto *one = new Watch(&host);
+		one->setGeometry(0, 0, 20 * cw, ch);
+		auto *two = new Watch(&host);
+		two->setGeometry(0, 2 * ch, 20 * cw, ch);
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter fr(&host);
+		Compositor fc(&host, &fr);
+		int app_signal = 0;
+		const QMetaObject::Connection sig =
+		    QObject::connect(qApp, &QApplication::focusChanged,
+		                     [&](QWidget *, QWidget *) { ++app_signal; });
+		one->setFocus();
+		set_focus_widget(one);
+		QCoreApplication::processEvents();
+		one->in = one->out = two->in = two->out = 0;
+		app_signal = 0;
+
+		// The application moves focus in a slot, calling nothing of ours.
+		two->setFocus();
+		const bool silent_at_first = one->out == 0 && two->in == 0;
+		CellBuffer fb(40, 8);
+		fc.compose(fb);
+		CHECK(silent_at_first && one->out == 1 && two->in == 1
+		      && Qtty::focusWidget() == two,
+		      "focus events reach a widget the APPLICATION focused, at the "
+		      "next frame rather than at the call -- Qt sends none here at "
+		      "all, and this library sends them when it re-reads the focus");
+
+		// THE LIMIT, asserted rather than described: this one cannot be
+		// repaired from outside Qt, QApplication::focusChanged being
+		// emitted only by Qt's own activation path. An application told
+		// that focus events work would otherwise reasonably reach for it.
+		CHECK(app_signal == 0,
+		      "while QApplication::focusChanged stays silent throughout, "
+		      "which no library can emit on Qt's behalf -- so a program "
+		      "watching focus watches the events, not the signal");
+		QObject::disconnect(sig);
+		GridGuard::reset();
+	}
+
 	// A ONE-CELL scroll bar's hit test. Its drawing learned about one cell;
 	// subControlRect did not, so it fell through to Fusion's pixel
 	// rectangles below two cells -- which is exactly what the comment above
