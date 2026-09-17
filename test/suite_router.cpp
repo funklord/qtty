@@ -7689,5 +7689,90 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// ---- the cursor sits where the text being edited is ---------------------
+	//
+	// THE RELATIONSHIP, not a row number: compose the frame, find the row the
+	// editor's own character was drawn on, and ask the compositor where it
+	// put the terminal cursor. Pinning a number would say nothing about the
+	// pair, and the pair is the whole property -- a screen reader announces
+	// the cell the cursor is in.
+	//
+	// Both geometries, because only one of them was ever wrong. A view at
+	// fixed geometry sits on a cell boundary and every reading agrees; a
+	// view in a LAYOUT does not, and that is what every real application
+	// does.
+	{
+		const bool had_conv = keyboard_conventions();
+		set_keyboard_conventions(true);
+		// Compositor::compose() walks EVERY top-level and the cases above
+		// leave theirs alive and visible, so take the screen for the length
+		// of these two and give it back -- the idiom the menu-click check
+		// further up already needed, for the same reason. Without it the
+		// frame searched here is somebody else's window and the cursor
+		// belongs to a layer this fixture never built.
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+		for (int in_layout = 0; in_layout < 2; ++in_layout) {
+			QWidget win;
+			auto *table = new QTableWidget(3, 2, &win);
+			for (int row = 0; row < 3; ++row)
+				for (int col = 0; col < 2; ++col)
+					table->setItem(row, col, new QTableWidgetItem(
+					    QStringLiteral("r%1c%2").arg(row).arg(col)));
+			table->horizontalHeader()->hide();
+			table->verticalHeader()->hide();
+			if (in_layout) {
+				auto *lay = new QVBoxLayout(&win);
+				lay->setContentsMargins(0, 0, 0, 0);
+				lay->setSpacing(0);
+				lay->addWidget(table);
+			} else {
+				table->setGeometry(0, 0, cw * 30, ch * 6);
+			}
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(40, 12));
+			win.show();
+			QCoreApplication::processEvents();
+			InputRouter cr_router(&win);
+			Compositor cr_comp(&win, &cr_router);
+			table->setFocus();
+			set_focus_widget(table);
+			bool agreed = true, measured = false;
+			for (int row = 0; row < 3; ++row) {
+				table->setCurrentCell(row, 0);
+				cr_router.on_key({Qt::Key_F2, QString(), false, false, false});
+				cr_router.on_key({0, QStringLiteral("Q"), false, false, false});
+				QCoreApplication::processEvents();
+				CellBuffer frame(40, 12);
+				cr_comp.compose(frame);
+				int drawn = -1;
+				for (int y = 0; y < 12 && drawn < 0; ++y)
+					for (int x = 0; x < 40; ++x)
+						if (frame.at(x, y).ch == QStringLiteral("Q")) {
+							drawn = y;
+							break;
+						}
+				const auto at = cr_comp.cursor_cell();
+				if (drawn >= 0 && at) measured = true;
+				if (drawn < 0 || !at || at->y() != drawn) agreed = false;
+				cr_router.on_key({Qt::Key_Escape, QString(), false, false,
+				                  false});
+				QCoreApplication::processEvents();
+			}
+			CHECK(measured && agreed,
+			      in_layout
+			          ? "the cursor lands on the row the edited text is drawn"
+			            " on, with the view in a layout"
+			          : "and the same with the view at fixed geometry, where"
+			            " it agreed all along");
+			GridGuard::reset();
+		}
+		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
+		set_keyboard_conventions(had_conv);
+		GridGuard::reset();
+	}
+
 	return fails;
 }

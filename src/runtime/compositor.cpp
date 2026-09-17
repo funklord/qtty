@@ -981,12 +981,37 @@ void Compositor::compose(CellBuffer &out) {
 			// 10x20+-3+0, a rectangle starting outside the widget, whose
 			// centre is the caret at +2.
 			//
-			// Vertically the top is right: the rectangle is the line's full
-			// height and its top is the caret's top.
+			// AND THE VERTICAL CENTRE, for the same reason, which this
+			// comment used to deny: it said the top was right because
+			// the rectangle is the line's full height and its top is the
+			// caret's top. That holds only while the widget happens to
+			// sit on a cell boundary, and a widget in a LAYOUT does not.
+			// Measured on a 19-pixel cell, a QTableWidget's editor, with
+			// the table at fixed geometry and then in a QVBoxLayout:
+			//
+			//   fixed    viewport at y=19   editor tops 19, 38, 57
+			//            top -> rows 1,2,3        text drawn on 1,2,3
+			//   layout   viewport at y=10   editor tops 10, 29, 48
+			//            top -> rows 0,1,2        text drawn on 1,2,3
+			//
+			// Nine pixels above a cell boundary every time, so the
+			// division floored to the row above and the terminal cursor
+			// sat one row over the text being edited -- in every real
+			// application, a view being in a layout rather than at fixed
+			// geometry being the ordinary case.
+			//
+			// The caret rectangle is a whole line high -- measured 20 on
+			// a 19-pixel cell, inflated like the horizontal one -- so its
+			// centre is inside the line's own cell whatever the sub-cell
+			// offset, and both readings agree where the widget IS
+			// aligned. Taking an edge of an inflated rectangle was the
+			// same mistake in both axes; it was found in one of them
+			// first.
 			const QRect cr = v.toRect();
 			QPoint g = cursor_origin
 			           + owner->mapTo(cursor_layer,
-			                          QPoint(cr.x() + cr.width() / 2, cr.y()));
+			                          QPoint(cr.x() + cr.width() / 2,
+			                                 cr.y() + cr.height() / 2));
 			QPoint cell(g.x() / cw, g.y() / ch);
 			if (cell.x() >= 0 && cell.y() >= 0
 			    && cell.x() < out.cols() && cell.y() < out.rows())

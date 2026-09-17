@@ -2579,3 +2579,14 @@ find = "\t\t\t\tmine = p == win_;"
 into = "\t\t\t\tmine = true;"
 count = 1
 check = "committing an item view's edit hands focus back to the view"
+
+[[sabotage]]
+# The caret rectangle's TOP taken again instead of its centre, which puts
+# the terminal cursor a row above the text whenever the widget does not sit
+# on a cell boundary -- that is, in any view inside a layout. 8.207.
+name = "the cursor takes the caret rect's top edge"
+file = "src/runtime/compositor.cpp"
+find = "\t\t\t                                 cr.y() + cr.height() / 2));"
+into = "\t\t\t                                 cr.y()));"
+count = 1
+check = "the cursor lands on the row the edited text is drawn on"

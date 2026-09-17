@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1446 checks, 0 failures. `make check` is green and includes
+1448 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16235,6 +16235,55 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.207 The cursor sat a row above the text being edited (2026-09-17)
+
+The item-view worker's third finding, reported with the honest caveat
+that the configuration it appears in is also the one where the offscreen
+platform refuses size-hint propagation, and that they could not rule that
+out as a contributor. It is not a contributor: the only difference
+between the two runs below is whether a layout positions the view, and
+the cause is arithmetic.
+
+    at fixed geometry   viewport at y=19   editor tops 19, 38, 57
+                        cursor rows 1,2,3        text drawn on 1,2,3
+    in a QVBoxLayout    viewport at y=10   editor tops 10, 29, 48
+                        cursor rows 0,1,2        text drawn on 1,2,3
+
+**A view in a layout does not sit on a cell boundary.** Nine pixels above
+one, every row, on a 19-pixel cell -- so `cr.y() / ch` floored to the row
+above and the terminal cursor sat over the text being edited rather than
+in it. A screen reader announces the cell the cursor is in, which is the
+reason design.md 5.5 gives for placing it accurately at all, so this is
+read out wrong as well as drawn wrong. And a view in a layout is what
+every real application has; fixed geometry is what the fixtures had.
+
+**The fix is the one the horizontal axis already carries, and the comment
+above it denied that it was needed vertically.** It said the top was
+right because the rectangle is the line's full height and its top is the
+caret's top -- true only while the widget is aligned. The caret rectangle
+is inflated in both directions (measured 10x20 on a 10x19 cell), so an
+EDGE of it is not a position in either axis, and its centre is inside the
+line's own cell whatever the sub-cell offset. Both readings agree where
+the widget is aligned, which is why the fixed-geometry case never showed
+it.
+
+**The check asserts the RELATIONSHIP rather than a row number**: compose
+the frame, find the row the editor's own character was drawn on, and ask
+the compositor where it put the cursor. A pinned number says nothing
+about the pair, and the pair is the property. The fixed-geometry case is
+kept beside it as the control -- it agreed before the fix and after, so
+the sabotage reddens the layout check alone, which is the discrimination
+this pair exists to make.
+
+**Two fixtures in a row now needed the screen to themselves**, and the
+suite already knew: `Compositor::compose()` walks every top-level, the
+cases above leave theirs visible, and a frame searched without hiding
+them is somebody else's window. The first version of both checks failed
+for exactly that and passed as standalone probes -- the same shape as
+8.206's two routers, which is worth naming as one thing. **A fixture that
+passes alone and fails in the suite is measuring the suite's leftovers,
+and the suite is right.**
 
 ### 8.206 Nothing handed focus back when a widget was hidden (2026-09-17)
 
