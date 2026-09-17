@@ -28,7 +28,7 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-17, at 1427**,
+**Last re-verified under all six configurations: 2026-09-17, at 1451**,
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
 result. Offscreen and xcb-under-Xvfb both ran 1344, `minimal` refused and
@@ -53,7 +53,36 @@ for the week's three faults in the input core: two lockouts (8.194, 8.195)
 that moved which layer owns the keyboard, and the crash of 8.196, which
 changed WHEN every top-level in every application is stamped -- the second
 being the reason to re-run rather than to reason, since a stamp that
-arrives at a different moment is exactly what the last one got wrong.
+arrives at a different moment is exactly what the last one got wrong. And
+at **1451** for the day's four fixes in the drawing and focus cores
+(8.205 to 8.208): two of them change what every widget in every window
+does -- a text run's placement and a panel's ground -- one adds an
+event-filter branch that takes a QPointer across a queued call and touches
+focus after the widget that had it is gone, which is the exact shape these
+two slow arms exist to watch, and one walks a QTextDocument per label in a
+public report.
+
+**What the memcheck arm reports needs reading rather than grepping, and
+this pass is the record of how.** The suite FORKS -- it is how a terminal
+library watches a process die -- and each child is a copy of the parent
+that exits without the parent's teardown, so each prints its own summary
+with the parent's live allocations counted as lost: 13,696 bytes in 55
+blocks, identically, twelve times over. The PARENT's summary is the one
+that means anything and is the last one in the log: 0 definitely lost, 0
+indirectly lost, 0 possibly lost, 0 errors from 0 contexts. A reader who
+greps the log for `definitely lost` finds twelve alarming lines and no
+fault.
+
+**And the check counts across configurations have to be compared with the
+suite's own environment, or the comparison invents a discrepancy.** Read
+with `QTTY_QPA_PLATFORM` unset, or without the two crash-dump variables
+the test target exports, a run drops checks that are perfectly present --
+which looked at first like the sanitized arm running two fewer, and then
+like valgrind running three fewer. With the environment the Makefile
+actually uses, every arm emits exactly 1451 result lines, and the memcheck
+arm differs only in that two of them are SKIPs that print their reason:
+the frame-budget ceiling, which under valgrind measures the instrument,
+and the default stop action, which valgrind does not deliver.
 **The reason is written each time rather than the re-run being a habit**: a record that says which change
 it covers is one a reader can judge, and one taken on a schedule is a date.
 
