@@ -1100,6 +1100,28 @@ in it.
 `Esc` rejects such a dialog and its default button answers `Enter`, both
 Qt's own; see the first table.
 
+**`QFileDialog` works, and you need no option to make it.** The whole
+widget arrives -- the places sidebar, the file list with its columns, the
+name field, the filter combo, Open and Cancel -- and a person can drive
+it with no pointer at all: type a name, press `Return`, and your
+`selectedFiles()` holds the path. You do **not** need
+`DontUseNativeDialog`: this platform offers no native dialog, so Qt uses
+its own without being asked. Measured end to end, with and without the
+option.
+
+**What a dialog does NOT get here is a title bar.** A desktop's window
+manager draws the frame and the title; a terminal has neither, and qtty
+draws a modal's contents straight over the window behind it. So
+`setWindowTitle("Preferences")` is written nowhere a user can read, and
+the edge of the dialog is wherever its own widgets happen to stop. **Put
+anything the title was carrying into the dialog itself** -- a heading
+label, or a group box around the contents, which draws a real box and
+can carry a title of its own:
+
+```cpp
+auto *box = new QGroupBox(tr("Preferences"), &dialog);
+```
+
 **A dialog opens with its first field focused, and that one is not Qt's
 here.** On a desktop Qt seats focus when the window *activates*, and no
 window activates under this platform -- so a dialog used to come up with

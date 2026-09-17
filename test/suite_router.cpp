@@ -5,6 +5,7 @@
 #include <qtty/drag.h>
 #include <qtty/windows.h>
 #include <QtWidgets>
+#include <QTemporaryDir>
 #include <QShortcut>
 #include <cstdio>
 
@@ -7944,6 +7945,74 @@ int suite_router() {
 		      " the repair standing aside where Qt has already chosen");
 		set_keyboard_conventions(had_conv);
 		GridGuard::reset();
+	}
+
+	// ---- a file dialog, end to end, by keyboard alone ---------------------
+	//
+	// The biggest composite widget an ordinary application opens, and
+	// nothing in this tree had ever opened one: a sidebar, a tree view
+	// with a sortable header, a filename field, a filter combo and two
+	// buttons, all inside a dialog. If it did not work here, every
+	// application with an Open item would be unusable, and nobody would
+	// have found out from a fixture built out of line edits and buttons.
+	//
+	// Driven the way a person drives it -- type a name, press Return --
+	// and asserted on what the application receives, not on what the
+	// widget looks like.
+	{
+		QTemporaryDir tmp;
+		if (!tmp.isValid()) {
+			printf("FAIL: could not make a directory for the file dialog\n");
+			++fails;
+		} else {
+			for (const char *name : { "alpha.txt", "beta.txt" }) {
+				QFile f(tmp.filePath(QString::fromLatin1(name)));
+				f.open(QIODevice::WriteOnly);
+				f.close();
+			}
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			host.resize(GridMetrics::cells(80, 24));
+			host.show();
+			QCoreApplication::processEvents();
+			InputRouter fr(&host);
+			QFileDialog dlg(&host, QStringLiteral("Open"), tmp.path());
+			dlg.setOption(QFileDialog::DontUseNativeDialog, true);
+			dlg.setFileMode(QFileDialog::ExistingFile);
+			dlg.setAttribute(Qt::WA_DontShowOnScreen);
+			dlg.resize(GridMetrics::cells(60, 18));
+			bool listed = false;
+			QTimer::singleShot(0, &dlg, [&] {
+				QCoreApplication::processEvents();
+				Compositor fc(&host, &fr);
+				CellBuffer fb(80, 24);
+				fc.compose(fb);
+				const QString shown = fb.to_text();
+				// The frame really does hold the directory's contents,
+				// or "it accepted a name" would be a claim about a
+				// dialog nobody could have read.
+				listed = shown.contains(QStringLiteral("alpha.txt"))
+				      && shown.contains(QStringLiteral("beta.txt"));
+				for (QChar c : QStringLiteral("alpha.txt"))
+					fr.on_key({0, QString(c), false, false, false});
+				QCoreApplication::processEvents();
+				fr.on_key({Qt::Key_Return, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				if (dlg.isVisible()) dlg.reject();
+			});
+			const int answer = dlg.exec();
+			const QStringList picked = dlg.selectedFiles();
+			CHECK(listed,
+			      "a file dialog draws the directory it was opened on, "
+			      "names and all -- the largest composite widget an "
+			      "application opens, and the one nothing here had tried");
+			CHECK(answer == QDialog::Accepted && picked.size() == 1
+			      && picked.first().endsWith(QStringLiteral("alpha.txt")),
+			      "and a name typed into it and accepted with Return "
+			      "reaches the application, so Open works with no mouse "
+			      "anywhere in it");
+			GridGuard::reset();
+		}
 	}
 
 	// ---- F10 into the menu bar -------------------------------------------

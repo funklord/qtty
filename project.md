@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1475 checks, 0 failures. `make check` is green and includes
+1477 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16304,6 +16304,62 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.215 The biggest widget nobody had opened, and what it showed
+(2026-09-17)
+
+The lens moved from *what does Qt gate on activation* to *what does an
+ordinary application open that no fixture here opens*, and the first
+answer is `QFileDialog` -- a sidebar, a tree view with a sortable header,
+a name field, a filter combo and two buttons, all in one dialog. Nothing
+in this tree had ever opened one. **It works**, which is worth a check
+rather than a shrug:
+
+    Look in: [ /tmp/.../sample  v ]
+    +-----------+ +----------------------------------+
+    | Computer  | | Name          ^  Size      Type   |
+    | claude    | | alpha.txt        0 bytes   Plain  |
+    |           | | beta.txt         0 bytes   Plain  |
+    +-----------+ +----------------------------------+
+    File name:     [                    ]  <Open>
+    Files of type: [All Files (*)      v]  <Cancel>
+
+Typing `alpha.txt` and pressing Return returns `Accepted` with the path
+in `selectedFiles()`. **No `DontUseNativeDialog` is needed** -- this
+platform offers none, so Qt falls back by itself; measured both ways, so
+the guide can say so rather than recommending an option out of caution.
+
+**And the fixture found something it was not looking for: a modal dialog
+has no boundary and no title.** Measured, a `QDialog` titled
+*Preferences* over a window of labelled rows:
+
+    | window row 1  Theme:   |
+    | window row 2  [ ] Dark |
+    | window row 3  <OK>     |
+
+The dialog's own widgets erase what they cover, so nothing is corrupted
+-- but there is no frame, no ground of its own and no title, so its
+contents read as extra columns of the window behind it. A desktop's
+window manager supplies all three. `window_name()` exists and is used by
+the F6 strip only, so `setWindowTitle()` on a dialog is written nowhere
+a user can see.
+
+**This one is not settled here, and the reason is its blast radius**: it
+is a change to how every dialog in every application is drawn, it would
+move the snapshot fixtures, and it spends two rows and two columns of a
+layer on a terminal where section 7 already has a policy for not having
+enough of either. The options, their costs, and whose decision it is:
+
+- **Draw a box with the title in it** around any modal, the way every
+  terminal UI from `dialog(1)` to Midnight Commander does. `draw_box()`
+  already exists in GridStyle. Costs two rows and two columns of the
+  dialog's own space, and changes every fixture that has a modal in it.
+- **Draw nothing and say so**, which is today's behaviour, and tell
+  applications to carry their own heading -- a `QGroupBox` draws a real
+  box with a title and needs nothing from this library. That is in the
+  guide now either way, because it is true today.
+- **It is the copyright holder's call**, being a visual convention for
+  every application rather than a defect in one.
 
 ### 8.214 A menu bar no key could reach (2026-09-17)
 
