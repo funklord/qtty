@@ -2517,3 +2517,14 @@ find = "\t\tif (!h->isSortIndicatorShown()) continue;"
 into = "\t\tif (h->isSortIndicatorShown()) continue;"
 count = 1
 check = "a header that offers sorting is named"
+
+[[sabotage]]
+# The text-half guard removed, which is the tree as it stood before 8.204:
+# a copy with no text writes an OSC 52 with an empty payload, and the
+# terminal reads that as "clear the clipboard". 8.204.
+name = "a copy with no text wipes the terminal's clipboard"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tif (!held || !held->hasText()) return;"
+into = "\t\tif (false) return;"
+count = 1
+check = "a copy with no text half"

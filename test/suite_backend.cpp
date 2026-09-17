@@ -4637,6 +4637,7 @@ int suite_exec() {
 		    QString::fromUtf8("h\xc3\xa9llo \xe4\xb8\x96 \xf0\x9f\x8e\x89");
 		const QString via_qt = QStringLiteral("through QClipboard");
 		QByteArray w_plain, w_wide, w_prim, w_qt, w_at, w_over, w_suspended;
+		QByteArray w_image, w_html, w_empty;
 		bool r_plain = false, r_at = false, r_over = false, r_suspended = false;
 		if (built) {
 			{
@@ -4665,6 +4666,37 @@ int suite_exec() {
 				    QString(cap_bytes + 1, QLatin1Char('x')));
 				qInstallMessageHandler(prev_h);
 				w_over = cap.taken();
+
+				// A copy with NO text half. The wipe this pair exists
+				// for: text() is empty for an image, an empty OSC 52
+				// payload clears the terminal's selection, and the
+				// watcher fires on every change -- so copying a picture
+				// destroyed whatever the user had.
+				{
+					QImage img(4, 4, QImage::Format_RGB32);
+					img.fill(Qt::red);
+					QGuiApplication::clipboard()->setImage(img);
+				}
+				QCoreApplication::processEvents();
+				w_image = cap.taken();
+
+				// HTML alone, which is the same absence by a second
+				// route -- a rich-text editor's copy, not an exotic one.
+				{
+					auto *rich = new QMimeData;
+					rich->setHtml(QStringLiteral("<b>bold</b>"));
+					QGuiApplication::clipboard()->setMimeData(rich);
+				}
+				QCoreApplication::processEvents();
+				w_html = cap.taken();
+
+				// And the control that makes the pair a discrimination
+				// rather than a silence: an application saying the text
+				// is now EMPTY still reaches the terminal, because that
+				// is a copy qtty can carry exactly.
+				QGuiApplication::clipboard()->setText(QString());
+				QCoreApplication::processEvents();
+				w_empty = cap.taken();
 
 				out_backend.suspend();
 				r_suspended = out_backend.write_clipboard(one);
@@ -4710,6 +4742,22 @@ int suite_exec() {
 			      "a copy exactly at the size bound goes out whole");
 			CHECK(!r_over && !w_over.contains("\033]52;"),
 			      "and one past it is REFUSED rather than silently truncated");
+			// The wipe. NOT payload_of() == empty, which is what the bug
+			// produced: the assertion is that no OSC 52 was written AT
+			// ALL, because an empty payload is the destructive thing.
+			CHECK(!w_image.contains("\033]52;"),
+			      "a copy with no text half -- an image -- writes nothing,"
+			      " an empty OSC 52 being a wipe of the user's clipboard");
+			CHECK(!w_html.contains("\033]52;"),
+			      "and so does HTML alone, which is a rich-text editor's"
+			      " ordinary copy rather than an exotic one");
+			// The control, and it has to fail the way the bug failed: with
+			// this check absent, a watcher that simply never wrote would
+			// pass the two above and lose the feature instead.
+			CHECK(w_empty.contains("\033]52;c;")
+			      && payload_of(w_empty, 'c').isEmpty(),
+			      "while an application setting the text to EMPTY is carried"
+			      " out as an empty payload, which is what a clear means");
 			// The SENTENCE, not just the refusal. A copy that does not
 			// happen is invisible -- the selection is still highlighted and
 			// the clipboard simply holds what it held before -- so this

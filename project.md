@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1437 checks, 0 failures. `make check` is green and includes
+1440 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16235,6 +16235,59 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.204 A copy with no text wiped the user's clipboard (2026-09-17)
+
+A worker put practice 4's question to links and the clipboard and came
+back with a data-loss defect in the backend. `watch_clipboard()` forwarded
+**every** `QClipboard::changed` as `write_clipboard(clipboard()->text())`,
+unconditionally. A clipboard holding an image or HTML alone answers empty
+to `text()`, and an OSC 52 with an empty payload is not a copy of nothing
+-- **it tells the terminal to clear the clipboard.** Measured on the wire,
+with real copies through the identical path as the control: the sequence
+went out framed exactly like a genuine copy, with a zero-length payload.
+
+So a *Copy chart* button in an ordinary application destroyed whatever the
+user had on their clipboard, silently, with nothing in the program having
+asked to copy text at all. No crash, no diagnostic; both the application
+and the user find out by pasting.
+
+**The discrimination is Qt's own and is exact**, measured under the
+offscreen platform this library pins:
+
+    setText("hello")    hasText 1    text/plain
+    setText("")         hasText 1    text/plain      <- a deliberate empty
+    setImage(...)       hasText 0    x-qt-image
+    setHtml(...)        hasText 0    text/html
+    clear()             mimeData is null
+
+`hasText()` separates *the application says the text is now empty*, which
+is carried faithfully and still is, from *there is no text here*, which
+qtty cannot represent and must not guess at. A null `mimeData()` is the
+second kind. **Leaving what the user had is the error that costs nothing;
+destroying it cannot be undone** -- the same asymmetry `harmonization.md`
+draws for a wrong dark guess, arriving here as a rule about somebody
+else's data rather than their eyes.
+
+`write_clipboard()` itself is unchanged: a caller naming the selection and
+the text has said what it wants, and an empty string there is still
+written.
+
+**Three checks and the control is the load-bearing one.** Two assert that
+an image copy and an HTML copy write no OSC 52 *at all* -- not that the
+payload is empty, which is what the bug produced. The third asserts that
+`setText(QString())` still goes out with an empty payload, because without
+it a watcher that simply stopped writing would pass the first two and lose
+the feature instead. The sabotage reddens the pair.
+
+**And `pointer_only()` was silent here too**, from the same worker: a
+`QLabel` carrying a link with Qt's default flags is `Qt::NoFocus`, in no
+tab chain, reachable by no key, and drawn underlined and blue --
+byte-identical to a link that IS reachable, so nothing on the screen
+separates them. Still open; the predicate is there for the taking
+(`textInteractionFlags()` has `LinksAccessibleByMouse` and not
+`LinksAccessibleByKeyboard`, and the text holds an anchor), and it is the
+same shape as 8.203.
 
 ### 8.203 The report was silent where the practice was broken (2026-09-17)
 

@@ -7,6 +7,7 @@
 #include <QSocketNotifier>
 #include <QTimer>
 #include <QClipboard>
+#include <QMimeData>
 #include <QGuiApplication>
 #include <QImage>
 #include <QCoreApplication>
@@ -2075,6 +2076,38 @@ void AnsiBackend::watch_clipboard() {
 		// unsupported clipboard mode" -- so the Selection half of Qt's API
 		// is unreachable and write_clipboard() is the only way to it.
 		if (mode != QClipboard::Clipboard) return;
+		// ONLY when there is a text half to carry, and this is a data-loss
+		// fix rather than a tidy-up. text() answers empty for a clipboard
+		// holding an image or HTML alone, an OSC 52 with an empty payload
+		// CLEARS the terminal's selection, and this watcher fires on every
+		// change -- so a "Copy chart" button in an ordinary application
+		// wiped whatever the user had on their clipboard, silently, with
+		// nothing in the program having asked for a copy of text at all.
+		// Measured on the wire: the sequence went out with a zero-length
+		// payload, framed exactly like a real copy.
+		//
+		// The discrimination is Qt's own and is exact, measured under the
+		// offscreen platform prepare_environment() pins:
+		//
+		//   setText("hello")     hasText 1   text/plain
+		//   setText("")          hasText 1   text/plain      <- a deliberate
+		//   setImage(...)        hasText 0   x-qt-image         empty copy
+		//   setHtml(...)         hasText 0   text/html
+		//   clear()              mimeData is null
+		//
+		// So hasText() separates "the application says the text is now
+		// empty", which is a copy qtty can carry faithfully and does, from
+		// "there is no text here", which it cannot represent and must not
+		// guess at. A null mimeData() -- clear() -- is the second kind: the
+		// application emptied ITS clipboard, and the terminal's is the
+		// user's rather than the application's. Leaving what the user had
+		// is the error that costs nothing; destroying it cannot be undone.
+		//
+		// write_clipboard() itself is unchanged and still writes an empty
+		// payload when a caller passes one, because a caller that names the
+		// selection and the text has said what it wants.
+		const QMimeData *const held = QGuiApplication::clipboard()->mimeData();
+		if (!held || !held->hasText()) return;
 		write_clipboard(QGuiApplication::clipboard()->text(),
 		                Selection::Clipboard);
 	});

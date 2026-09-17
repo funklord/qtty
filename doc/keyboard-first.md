@@ -873,6 +873,23 @@ out, deliberately -- a truncated copy the user believes went out is worse
 than a refused one. The same holds when stdout is not a terminal, and
 while the terminal is suspended.
 
+**And a copy with no TEXT in it does not go out either -- which your
+application wants, whatever it may look like.** A clipboard holding only
+an image or only HTML answers empty to `QClipboard::text()`, and an OSC
+52 carrying an empty payload does not copy nothing: it tells the terminal
+to CLEAR the clipboard. So a *Copy chart* button would have thrown away
+whatever the user had, with nothing in your program having asked to copy
+any text at all. The watcher now forwards a change only when there is a
+text half to forward. An application setting the text to the empty
+string is a different thing and is still carried out: that one said what
+it wanted.
+
+The limit of it is worth knowing, since it is your program that will meet
+it: **a terminal clipboard holds text, so the picture is not going to
+arrive by this route.** If copying an image matters to your application,
+offer *Copy as text* -- a path, a table, a URL -- beside it, and the
+keyboard user gets something they can paste.
+
 **Your application cannot tell that it was refused; the user eventually
 can.** The `QClipboard` watcher discards the result, and neither the
 limit nor the writing call is in an installed header, so you cannot ask
