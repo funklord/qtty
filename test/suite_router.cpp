@@ -7947,6 +7947,98 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// ---- the box around a modal ------------------------------------------
+	//
+	// A desktop's window manager draws a dialog's frame and title; this
+	// platform has nobody to draw either, and before this a modal's
+	// contents read as extra columns of the window behind it -- measured,
+	// "window row 1  Theme:" on one line, with no way to tell which half
+	// was the dialog. setWindowTitle() was written nowhere at all.
+	//
+	// Only when it fits, which is the decision this implements: the ring
+	// needs a row above and below and a column either side, and a
+	// terminal without them is one where section 7 is already dropping
+	// content to fit the dialog.
+	{
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(50, 12));
+		auto *behind = new QLabel(QStringLiteral("BEHIND"), &host);
+		behind->setGeometry(0, 6 * ch, 10 * cw, ch);
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter br(&host);
+		Compositor bc(&host, &br);
+
+		QDialog dlg(&host);
+		dlg.setWindowTitle(QStringLiteral("Preferences"));
+		auto *inside = new QLabel(QStringLiteral("Theme:"), &dlg);
+		inside->setGeometry(0, 0, 10 * cw, ch);
+		dlg.setModal(true);
+		dlg.setAttribute(Qt::WA_DontShowOnScreen);
+		dlg.resize(GridMetrics::cells(20, 4));
+		dlg.show();
+		QCoreApplication::processEvents();
+		CellBuffer bb(50, 12);
+		bc.compose(bb);
+		const QString framed = bb.to_text();
+		CHECK(framed.contains(QStringLiteral("┌─ Preferences "))
+		      && framed.contains(QStringLiteral("│"))
+		      && framed.contains(QStringLiteral("└")),
+		      "a modal gets a box with its title in the top rule, which a "
+		      "window manager draws on a desktop and nobody draws here");
+		CHECK(framed.contains(QStringLiteral("Theme:"))
+		      && framed.contains(QStringLiteral("BEHIND")),
+		      "and the box costs the dialog none of its contents, nor the "
+		      "window behind any of its own");
+
+		// THE CRAMPED TERMINAL, where the ring does not fit. The dialog
+		// still has to be drawn whole: chrome losing to content is the
+		// whole point of deciding it this way round.
+		//
+		// TWO CELLS WIDER THAN THE DIALOG AND NO TALLER, which took a
+		// failed sabotage to get right. With a buffer exactly the
+		// dialog's size every ring cell falls outside it and writable()
+		// clips them all, so the check passed with the fit test deleted
+		// -- it was measuring the buffer's bounds rather than the test.
+		// Here the ring's sides WOULD land inside and only the fit test
+		// keeps them out, which is the discrimination the pair needs.
+		CellBuffer tight(22, 4);
+		bc.compose(tight);
+		const QString small = tight.to_text();
+		CHECK(!small.contains(QStringLiteral("│"))
+		      && !small.contains(QStringLiteral("┌"))
+		      && small.contains(QStringLiteral("Theme:")),
+		      "while a terminal with no room for the ring gets no box and "
+		      "keeps the dialog's own contents");
+
+		// A DIALOG WITH NO TITLE still gets the box: the frame says where
+		// the dialog is, which is worth having without a name on it.
+		QDialog plain(&host);
+		auto *word = new QLabel(QStringLiteral("Body"), &plain);
+		word->setGeometry(0, 0, 8 * cw, ch);
+		plain.setModal(true);
+		plain.setAttribute(Qt::WA_DontShowOnScreen);
+		plain.resize(GridMetrics::cells(12, 3));
+		dlg.close();
+		plain.show();
+		QCoreApplication::processEvents();
+		CellBuffer nb(50, 12);
+		bc.compose(nb);
+		CHECK(nb.to_text().contains(QStringLiteral("┌──"))
+		      && nb.to_text().contains(QStringLiteral("Body")),
+		      "and a dialog with no title gets the box without one, the "
+		      "frame being what says where it is");
+		plain.close();
+		QCoreApplication::processEvents();
+		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	// ---- a file dialog, end to end, by keyboard alone ---------------------
 	//
 	// The biggest composite widget an ordinary application opens, and

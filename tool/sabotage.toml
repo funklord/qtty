@@ -2677,3 +2677,28 @@ find = "\t\t\t\t\tback->setFocus(Qt::OtherFocusReason);\n\t\t\t\t\tset_focus_wid
 into = "\t\t\t\t\t(void)back;"
 count = 1
 check = "and the focus is back in the widget F10 took it from"
+
+[[sabotage]]
+# The frame around a modal removed, so a dialog's contents read as extra
+# columns of the window behind it and its title is drawn nowhere. 8.216.
+name = "a modal is drawn with no box around it"
+file = "src/runtime/compositor.cpp"
+find = "\t\tframe_layer(out, QRect(at.x() / cw, at.y() / ch,"
+into = "\t\tif (false) frame_layer(out, QRect(at.x() / cw, at.y() / ch,"
+count = 1
+check = "a modal gets a box with its title in the top rule"
+
+[[sabotage]]
+# The fit test dropped, so the ring is drawn on a terminal that has no
+# room for it and the dialog loses content to its own chrome. 8.216.
+#
+# BOTH lines, because they are one test and the first version of this
+# entry removed only the second: a dialog as wide as the terminal trips
+# the left/top guard first, so the check stayed green against code whose
+# other half was gone. The harness reported exactly that.
+name = "a modal's box is drawn whether it fits or not"
+file = "src/runtime/compositor.cpp"
+find = "\tif (ring.left() < 0 || ring.top() < 0) return;\n\tif (ring.right() >= out.cols() || ring.bottom() >= out.rows()) return;"
+into = "\tif (false) return;"
+count = 1
+check = "a terminal with no room for the ring gets no box"

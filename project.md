@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1477 checks, 0 failures. `make check` is green and includes
+1481 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16304,6 +16304,49 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.216 A box around a modal, when there is room for one (2026-09-17)
+
+8.215 found that a modal has no boundary and no title and recorded the
+options rather than choosing; the copyright holder chose **box only when
+it fits**, on 2026-09-17. Implemented as `frame_layer()` in the
+compositor: the ring one cell outside the modal's own rectangle, cleared
+and drawn with the light box glyphs, the window title sitting in the top
+rule with a space either side.
+
+**Not `draw_box()` from grid_style.cpp, and the difference is a reason
+rather than a duplication.** That one writes glyphs and keeps whatever
+background it finds, which is right for a frame inside a widget's own
+cleared area and wrong here: every cell of this ring still holds the
+window behind, so it must be cleared first. It also carries a title,
+which no box in the style does.
+
+**The fit test is the decision.** The ring needs a row above and below
+and a column either side; without them the dialog is drawn bare. A
+terminal that cannot spare them is one where section 7's policy is
+already dropping content to make the dialog fit at all, and chrome that
+pushed a field off the screen would be the frame beating the thing it
+frames. The title is dropped whole rather than elided when the rule is
+too short, because half a title in a border reads as a drawing fault.
+
+**The suite was green the moment it was written, which is the finding
+underneath the finding.** Not one snapshot fixture draws a modal over a
+window, so a change to how every dialog in every application looks moved
+nothing at all. That is the same shape as 8.215 itself -- the largest
+widget an application opens had never been opened here -- and it says
+where to look next: the fixtures are made of the parts, and the
+arrangements are what nobody has tried.
+
+**And a sabotage failed twice before it worked, both times honestly.**
+The fit test is two lines and the first entry removed only the second,
+so a dialog as wide as the terminal tripped the other and the check
+stayed green. Anchored across both lines it still stayed green -- with a
+buffer exactly the dialog's size EVERY ring cell falls outside it and
+`writable()` clips them, so the check was measuring the buffer's bounds
+rather than the test. A buffer two cells wider is the fixture where the
+ring's sides would land inside and only the fit test keeps them out.
+**A control that cannot express the failure is not a control**, and the
+harness said so twice rather than letting it pass.
 
 ### 8.215 The biggest widget nobody had opened, and what it showed
 (2026-09-17)

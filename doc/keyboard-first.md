@@ -1109,18 +1109,27 @@ it with no pointer at all: type a name, press `Return`, and your
 its own without being asked. Measured end to end, with and without the
 option.
 
-**What a dialog does NOT get here is a title bar.** A desktop's window
-manager draws the frame and the title; a terminal has neither, and qtty
-draws a modal's contents straight over the window behind it. So
-`setWindowTitle("Preferences")` is written nowhere a user can read, and
-the edge of the dialog is wherever its own widgets happen to stop. **Put
-anything the title was carrying into the dialog itself** -- a heading
-label, or a group box around the contents, which draws a real box and
-can carry a title of its own:
+**A modal gets a box, and its title goes in the top rule.** A desktop's
+window manager draws a dialog's frame and name; a terminal has no window
+manager, so qtty draws them -- without it a dialog's contents read as
+extra columns of the window behind, which is what they did until this
+was measured:
 
-```cpp
-auto *box = new QGroupBox(tr("Preferences"), &dialog);
 ```
+             ┌─ Preferences ──────┐
+ window row 0│                    │
+ window row 1│ Theme:             │
+             │ [ ] Dark           │
+ window row 2│ <OK>               │
+             └────────────────────┘
+ window row 3 ...............
+```
+
+So `setWindowTitle()` on a dialog is worth setting: it is the only place
+that name is shown. **The box is drawn only when there is room for it**
+-- a row above and below, a column either side -- and on a terminal
+without them the dialog is drawn bare rather than losing a field to its
+own chrome. Nothing is asked of you either way.
 
 **A dialog opens with its first field focused, and that one is not Qt's
 here.** On a desktop Qt seats focus when the window *activates*, and no

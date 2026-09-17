@@ -305,6 +305,67 @@ int g_current_index = 0;
 // Rebuilt every frame, because a window can be opened or closed between two.
 QVector<QPair<int, int>> g_tab_spans;      // first column, last column
 
+// The box a terminal draws around a dialog, which a desktop's window manager
+// draws and this platform has nobody to draw. Measured without it: a QDialog
+// titled "Preferences" over a window of labelled rows composed to
+//
+//     | window row 1  Theme:   |
+//     | window row 2  [ ] Dark |
+//
+// -- nothing corrupted, since the dialog's widgets erase what they cover, and
+// no way for a person to tell which columns are the dialog. `setWindowTitle()`
+// was written nowhere at all: window_name() below serves the F6 strip, and a
+// modal is not in it.
+//
+// NOT draw_box() from grid_style.cpp, and the difference is the reason rather
+// than an oversight: that one writes glyphs and keeps whatever background it
+// finds, which is right for a frame drawn INSIDE a widget's own cleared area
+// and wrong here, where every cell of the ring still holds the window behind.
+// This clears the ring first and carries a title.
+//
+// ONLY WHEN IT FITS, which is the holder's decision of 2026-09-17: the ring
+// needs a row above and below and a column either side, and on a terminal
+// that has not got them section 7 is already dropping content to make the
+// dialog fit at all. A frame that pushed a field off the screen would be
+// chrome winning over the thing it frames.
+static void frame_layer(CellBuffer &out, const QRect &cells,
+                        const QString &title) {
+	const QRect ring = cells.adjusted(-1, -1, 1, 1);
+	if (ring.left() < 0 || ring.top() < 0) return;
+	if (ring.right() >= out.cols() || ring.bottom() >= out.rows()) return;
+	if (ring.width() < 2 || ring.height() < 2) return;
+	const auto put = [&out](int x, int y, const QString &g) {
+		if (!out.writable(x, y)) return;
+		out.at(x, y) = Cell{};
+		out.at(x, y).ch = g;
+	};
+	for (int x = ring.left() + 1; x < ring.right(); ++x) {
+		put(x, ring.top(), QStringLiteral("─"));
+		put(x, ring.bottom(), QStringLiteral("─"));
+	}
+	for (int y = ring.top() + 1; y < ring.bottom(); ++y) {
+		put(ring.left(), y, QStringLiteral("│"));
+		put(ring.right(), y, QStringLiteral("│"));
+	}
+	put(ring.left(), ring.top(), QStringLiteral("┌"));
+	put(ring.right(), ring.top(), QStringLiteral("┐"));
+	put(ring.left(), ring.bottom(), QStringLiteral("└"));
+	put(ring.right(), ring.bottom(), QStringLiteral("┘"));
+	// The title sits IN the top rule with a space either side, which is what
+	// every terminal dialog does, and is dropped whole rather than elided
+	// when the rule is too short to hold it: half a title in a border reads
+	// as a drawing fault, where a plain rule reads as a plain rule.
+	if (title.isEmpty()) return;
+	const QString label = QStringLiteral(" ") + title + QStringLiteral(" ");
+	const int room = ring.width() - 3;             // corners, and one rule
+	if (label.size() > room) return;
+	int x = ring.left() + 2;
+	for (const QString &cl : to_clusters(label)) {
+		put(x, ring.top(), cl);
+		x += cluster_width(cl);
+	}
+}
+
 QString window_name(const QWidget *w, int index)
 {
 	if (!w->windowTitle().isEmpty()) return w->windowTitle();
@@ -838,6 +899,13 @@ void Compositor::compose(CellBuffer &out) {
 		}
 		if (ours) mine.insert(w, at);
 		draw(w, at);
+		// AFTER the layer, because the ring is cells the window behind
+		// drew and the modal did not: drawn first, the dialog's own
+		// background would have painted over it.
+		frame_layer(out, QRect(at.x() / cw, at.y() / ch,
+		                       qMax(1, w->width() / cw),
+		                       qMax(1, w->height() / ch)),
+		            w->windowTitle());
 		if (w == active_modal) { cursor_layer = w; cursor_origin = at; }
 	}
 	// Only what is still up, so a closed dialog's record cannot dangle -- the
