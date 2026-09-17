@@ -2173,6 +2173,16 @@ void InputRouter::update_hover(QWidget *now, const QPoint &window_pos) {
 	//
 	// A QPointer taken here attaches while the widget is alive and goes null
 	// on its own when it dies, which is the whole difference.
+	//
+	// RE-MEASURED 2026-09-17, and the fault is no longer observable here:
+	// with this line changed back to the raw pointer the suite runs green,
+	// and the SANITIZED build -- which reports a read of freed memory
+	// deterministically where a segfault is luck -- says nothing either.
+	// The sabotage entry that used to take the run out was removed rather
+	// than kept as a green line, since an entry the harness cannot satisfy
+	// is worse than none. The guard stays because taking a weak reference
+	// while the object is alive is right, not because anything here can
+	// still prove it; 8.199 records what changed and what was tried.
 	const QPointer<QWidget> arriving(now);
 	const QVector<QPointer<QWidget>> was =
 	    hovered_ ? hover_chain(hovered_) : QVector<QPointer<QWidget>>();

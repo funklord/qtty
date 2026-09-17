@@ -16231,6 +16231,48 @@ recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
 
+### 8.199 The whole set, and the one entry that was resting on luck (2026-09-17)
+
+The set was run end to end at 249 entries after two days of work on the
+router and the compositor. **248 did their job. One failed, and it is the
+only interesting line in the run.**
+
+**What the run says about the set, for the first time:** *between them the
+entries redden 523 distinct checks of the 1427 the suite runs.* That
+number did not exist before this morning, and it is the answer to the
+question a count of entries cannot give -- 249 entries all reddening the
+same twenty checks would print the same closing line as these.
+
+**The failure: an entry declaring `expect = "crash"` whose sabotage no
+longer crashes.** It removes the hover lifetime guard -- the arriving
+widget recorded as a raw pointer rather than as the weak reference taken
+before the handlers ran -- and 8.161 recorded a segmentation fault inside
+`QtSharedPointer::ExternalRefCountData::getAndRef` when it was written.
+Now:
+
+    the suite under that sabotage        ran to the end, 0 failures
+    the named check                      PASSED
+    the SANITIZED build under it         0 failures, no ASan report
+
+The fixture is not at fault and was read before anything else: its
+`leaveEvent` still deletes the widget the pointer is moving onto, which
+is the case the guard exists for.
+
+**So the fault stopped being observable, and an entry cannot rest on
+that.** A crash from reading freed memory is luck: the allocator may hand
+back a page that faults or one that does not, and two days of changes
+around this code moved that. The sanitized arm was the honest place to
+look, because it reports a read of freed memory deterministically where a
+segfault is chance -- and it reported nothing, which says the read is not
+happening on this Qt at all.
+
+**The entry is removed and the guard stays.** Taking a weak reference
+while the object is alive is right whether or not anything here can prove
+it wrong; what cannot stand is an entry the harness can never satisfy,
+which would either fail every run or be quietly downgraded to a green
+line that defends nothing. The code says so where somebody would go
+looking, with the date and what was tried.
+
 ### 8.198 Qt's own message boxes have no default button (2026-09-17)
 
 Practice 2 says *give every dialog a default button*, and the message-box

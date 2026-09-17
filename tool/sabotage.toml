@@ -2060,19 +2060,6 @@ check = "a press is not delivered to a widget the hover before it destroyed"
 expect = "crash"
 
 [[sabotage]]
-# The arriving widget recorded as a raw pointer rather than as the weak
-# reference taken before the handlers ran. This is the exact crash that
-# found the class: assigning a dangling pointer into a QPointer is not a
-# null assignment, it is a read of freed bookkeeping. 8.161.
-name = "the hover records a pointer taken after the handlers ran"
-file = "src/runtime/input_router.cpp"
-find = "\thovered_ = arriving;"
-into = "\thovered_ = now;"
-count = 1
-check = "a press is not delivered to a widget the hover before it destroyed"
-expect = "crash"
-
-[[sabotage]]
 # The popup stack walked as raw pointers again. Closing one popup runs the
 # application's code, which may delete another still in the snapshot, and
 # the rest of the walk then calls close() on freed memory. 8.163.
