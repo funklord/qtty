@@ -16305,6 +16305,67 @@ recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
 
+### 8.218 Seventeen errors, and four wrong explanations (2026-09-17)
+
+The memcheck arm went from 0 errors to **17 conditional jumps on
+uninitialised values** after the file-dialog fixture landed. It took five
+experiments to name, and the four that failed are worth more than the
+one that worked.
+
+**What it is.** Qt's own text shaping. Identified by attaching gdb
+through vgdb at the first error (`--vgdb=yes --vgdb-error=1`), which
+resolved what valgrind could not:
+
+    QTextEngine::shapeTextWithHarfbuzzNG   libQt6Gui
+    QTextEngine::shapeText                 libQt6Gui
+    QTextEngine::boundingBox               libQt6Gui
+    QWidgetItemV2::updateCacheIfNecessary  libQt6Widgets
+    QGridLayout::sizeHint                  libQt6Widgets
+
+A layout asking a widget how big it wants to be. **Nothing of this
+library's is on that stack.** Suppressed in `tool/valgrind.supp`, with
+the backtrace in the file so the next reader can judge the entry rather
+than inherit it, and `--suppressions` added to the target: 0 errors, 17
+suppressed.
+
+**The suppression cannot name a function, and that is the tool rather
+than the writer.** `--num-callers=25`, `--keep-debuginfo=yes` and
+`--track-origins=yes` all give `???` with no object and no origin --
+HarfBuzz's hot loops carry no unwind information valgrind follows, while
+gdb's unwinder does. So it matches `obj:*` twice, which is tolerable only
+because everything this project builds carries symbols and cannot hide
+behind it.
+
+**The four wrong explanations:**
+
+- **PCRE2's JIT**, because anonymous executable memory is what a JIT
+  looks like and `QFileDialog` filters with `QRegularExpression`.
+  Tested with a regex-heavy program under valgrind: **0 errors, no `???`
+  at all.** Disproved rather than doubted, which is what removes a
+  branch.
+- **`frame_layer()`, my own new code.** Toggling it off gave 0 errors
+  and toggling it on gave 17 -- except the toggle was done IN A
+  WORKTREE, where both sides are 0. A comparison between two arms that
+  are both zero says nothing, and it read as a clean bisect.
+- **A stale incremental build**, since the main tree's `build-dbg` had
+  been rebuilt across six commits. Removed both debug directories and
+  rebuilt from nothing: 17, 17, 17.
+- **The working directory**, which is real and was still the wrong
+  conclusion: the same binary gives 17 from the tree and 0 from `/tmp`.
+  The reason is not the tree -- it is that a file dialog shapes the
+  strings it is given, and **every "clean" run outside the tree had also
+  FAILED a check.** A measurement taken from a run that did less is the
+  vacuous pass wearing the costume of a clean result, and this
+  investigation spent three experiments inside it.
+
+**And the fixture underneath was wrong too.** `QFileSystemModel` fills
+itself on another thread, so a frame composed straight after showing the
+dialog holds an empty list; the check passed from this directory by the
+timing it happened to get and failed from any other. It waits for the
+list now, bounded, so it fails rather than hangs if nothing ever
+arrives. **A check that passes where it was written and nowhere else is
+not a check yet.**
+
 ### 8.217 Arrangements, rather than parts (2026-09-17)
 
 8.216's own finding pointed here: a change to how every modal is drawn

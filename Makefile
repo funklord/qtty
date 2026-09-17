@@ -904,6 +904,7 @@ test-valgrind:
 	}; \
 	QTTY_UNDER_VALGRIND=1 QTTY_TEST_TIMEOUT=3000 \
 		valgrind --tool=memcheck --track-origins=yes --num-callers=25 \
+		--suppressions=tool/valgrind.supp \
 		--error-exitcode=99 --log-file="$$log" \
 		$(DBG_BUILD_DIR)-test/qtty-tests; \
 	rc=$$?; \

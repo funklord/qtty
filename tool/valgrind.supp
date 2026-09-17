@@ -1,0 +1,44 @@
+# Suppressions for `make test-valgrind`. One entry, and it is written out
+# at length because a suppression is a gate switched off in one place: the
+# next person has to be able to judge it rather than inherit it.
+#
+# WHAT IT IS. Qt's own text shaping reads an uninitialised value.
+# Identified 2026-09-17 by attaching gdb through vgdb at the first error
+# (`--vgdb=yes --vgdb-error=1`), which resolved what valgrind could not:
+#
+#     QTextEngine::shapeTextWithHarfbuzzNG(...) const   libQt6Gui.so.6
+#     QTextEngine::shapeText(int) const                 libQt6Gui.so.6
+#     QTextEngine::boundingBox(int, int) const          libQt6Gui.so.6
+#     QWidgetItemV2::updateCacheIfNecessary() const     libQt6Widgets.so.6
+#     QWidgetItemV2::minimumSize() const                libQt6Widgets.so.6
+#     QGridLayout::sizeHint() const                     libQt6Widgets.so.6
+#
+# A layout asking a widget how big it wants to be, which shapes the text
+# in it. Nothing of this library's is on that stack.
+#
+# WHY IT CANNOT BE NARROWER. Valgrind's unwinder stops after two frames
+# here and names neither -- `--num-callers=25`, `--keep-debuginfo=yes` and
+# `--track-origins=yes` all give `???` with no object, which is why the
+# generated suppression below matches on `obj:*` rather than on a
+# function. HarfBuzz's hot loops carry no unwind information valgrind can
+# follow; gdb's unwinder can. So the entry is as specific as the tool
+# permits, and no more.
+#
+# WHAT IT COSTS. Any Memcheck:Cond whose top two frames have no object at
+# all is now silent. Everything this project builds carries symbols, so a
+# fault of ours cannot hide behind it -- that is the property that makes
+# the entry tolerable, and it is the one to re-check if the build ever
+# stops emitting debug information.
+#
+# HOW IT WAS FOUND, in case it needs finding again: 17 errors appeared in
+# the router suite after a QFileDialog fixture was added, in 4 runs of 5,
+# and vanished when the suite was run from another directory -- because
+# the strings a file dialog shapes depend on where it is opened. Every
+# "clean" run outside the tree was a run that had also FAILED a check,
+# which is the vacuous pass wearing the costume of a clean measurement.
+{
+   Qt text shaping reads uninitialised data (HarfBuzz, no unwind info)
+   Memcheck:Cond
+   obj:*
+   obj:*
+}

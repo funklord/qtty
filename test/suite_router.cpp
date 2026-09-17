@@ -8221,14 +8221,25 @@ int suite_router() {
 			QTimer::singleShot(0, &dlg, [&] {
 				QCoreApplication::processEvents();
 				Compositor fc(&host, &fr);
-				CellBuffer fb(80, 24);
-				fc.compose(fb);
-				const QString shown = fb.to_text();
-				// The frame really does hold the directory's contents,
-				// or "it accepted a name" would be a claim about a
-				// dialog nobody could have read.
-				listed = shown.contains(QStringLiteral("alpha.txt"))
-				      && shown.contains(QStringLiteral("beta.txt"));
+				// WAITED FOR, because QFileSystemModel fills itself on
+				// another thread and a frame composed before it has
+				// finished holds an empty list. The first version of
+				// this check composed once and passed -- from THIS
+				// directory, by the timing it happened to get; run from
+				// elsewhere the same check failed, which is a fixture
+				// that works for a reason it does not state. Bounded,
+				// so a dialog that never lists anything fails rather
+				// than hanging.
+				for (int spin = 0; spin < 200 && !listed; ++spin) {
+					QCoreApplication::processEvents();
+					QThread::msleep(5);
+					QCoreApplication::processEvents();
+					CellBuffer probe(80, 24);
+					fc.compose(probe);
+					const QString seen = probe.to_text();
+					listed = seen.contains(QStringLiteral("alpha.txt"))
+					      && seen.contains(QStringLiteral("beta.txt"));
+				}
 				for (QChar c : QStringLiteral("alpha.txt"))
 					fr.on_key({0, QString(c), false, false, false});
 				QCoreApplication::processEvents();
