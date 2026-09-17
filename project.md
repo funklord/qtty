@@ -16231,6 +16231,29 @@ recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
 
+### 8.198 Qt's own message boxes have no default button (2026-09-17)
+
+Practice 2 says *give every dialog a default button*, and the message-box
+sweep of 8.196 answered a question nobody had asked of it. Measured with
+plain Qt and nothing of this library in it:
+
+    QMessageBox Ok                    defaultButton() null, before and after show
+    QMessageBox Ok|Cancel             null
+    QMessageBox Yes|No                null
+    QMessageBox Save|Discard|Cancel   null
+
+What answers `Enter` in all four is the button that happens to have the
+FOCUS, through the same `autoDefault` the practice already describes --
+and the sweep confirms it does answer: every set closes on `Enter` and on
+`Escape`.
+
+So the practice is right and its subject is narrower than it reads. For a
+dialog of your own, marking a default is something you control. For a
+message box there is nothing to mark: Qt marks none, and which button
+takes `Enter` is whichever one it focused. The guide says that now, with
+the measurement, because an implementer copying a message box's shape
+would otherwise expect a default that is not there.
+
 ### 8.197 What "MUST precede widget construction" actually costs (2026-09-17)
 
 The same lens -- *what do the fixtures do that an application does not* --

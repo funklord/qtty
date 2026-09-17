@@ -409,6 +409,16 @@ without. It is the behaviour you want -- `Enter` on a highlighted
 that `Enter` always commits, and a form whose first `Tab` lands on a
 button will commit somewhere else than you drew it.
 
+**Qt's own message boxes set no default at all**, which is worth knowing
+before you copy their shape. Measured with plain Qt and nothing of this
+library in it: `QMessageBox` with `Ok`, with `Ok|Cancel`, with `Yes|No`
+and with `Save|Discard|Cancel` all report `defaultButton()` as null,
+before showing and after. What answers `Enter` there is the button that
+happens to have focus, through the same `autoDefault`. So for a message
+box the question is which button is focused, and for a dialog of your own
+it is which one you marked -- and only the second is something you
+control.
+
 **3. Make the tab order the reading order.** Qt's default is construction
 order, which is usually right and silently is not after a refactor.
 `QWidget::setTabOrder()` fixes it. On a terminal this is the *only*
