@@ -611,6 +611,64 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- and a tooltip window, which was the same lockout one layer
+	// along. A Qt::ToolTip top-level is a drawn layer that owns no input
+	// anywhere: on a desktop it is a label that appears and goes away, and
+	// Qt's own QWidget::keyPressEvent closes a popup on Escape only when
+	// `windowType() == Qt::Popup` -- 0xd does not match, so Qt offers no
+	// way out of one either. Measured over every window kind Qt has, it
+	// was the only row where a key never came back.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(30, 8));
+		auto *field = new QLineEdit(&host);
+		field->setGeometry(0, 0, 20 * GridMetrics::cw(), GridMetrics::ch());
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter tr(&host);
+		Compositor tc(&host, &tr);
+		CellBuffer tb(30, 8);
+		tc.compose(tb);
+
+		QWidget tip(nullptr, Qt::ToolTip);
+		tip.setAttribute(Qt::WA_DontShowOnScreen);
+		tip.resize(GridMetrics::cells(12, 2));
+		tip.show();
+		QCoreApplication::processEvents();
+		tc.compose(tb);
+
+		CHECK(tr.popups().contains(&tip) && !tr.input_popups().contains(&tip),
+		      "a tooltip window is a layer the compositor draws and not one "
+		      "that owns keys, which is the split the stack needed");
+
+		field->setText(QString());
+		field->setFocus();
+		set_focus_widget(host.focusWidget());
+		QCoreApplication::processEvents();
+		tr.on_key({0, QStringLiteral("t"), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(field->text() == QStringLiteral("t"),
+		      "so typing still reaches the window a person is in, which a "
+		      "tooltip took away with no Escape to give it back");
+
+		// AND A MENU STILL OWNS THEM, which is the half the split must
+		// not cost: the two readers agree about a real popup.
+		QMenu menu(&host);
+		menu.addAction(QStringLiteral("Item"));
+		menu.popup(QPoint(0, 0));
+		QCoreApplication::processEvents();
+		field->setText(QString());
+		tr.on_key({0, QStringLiteral("m"), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(tr.input_popups().contains(&menu) && field->text().isEmpty(),
+		      "while a menu is in both lists and still takes the keys away "
+		      "from the window behind it");
+		menu.close();
+		tip.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// Where the keys go once the picture has moved. Two windows with a field
 	// each, because a window holding only a label has no tab stop and cannot
 	// answer this at all -- the `second` above is that window, which is why

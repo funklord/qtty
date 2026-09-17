@@ -2454,3 +2454,23 @@ find = "\tif (w->windowFlags().testFlag(Qt::WindowTransparentForInput)) return f
 into = "\tif (false) return false;"
 count = 1
 check = "a window transparent for input is not in the strip at all"
+
+[[sabotage]]
+# Input reading the drawn stack again, so a tooltip window owns the keys and
+# Qt offers no Escape out of one -- the second lockout of 8.195.
+name = "a tooltip window owns the keys again"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (w->windowType() == Qt::ToolTip) continue;"
+into = "\t\tif (false) continue;"
+count = 1
+check = "typing still reaches the window a person is in"
+
+[[sabotage]]
+# The key target reading the drawn stack rather than the input one, which is
+# the same fault at the other end of the split.
+name = "the key target reads the drawn stack"
+file = "src/runtime/input_router.cpp"
+find = "\tconst QVector<QWidget *> open = input_popups();"
+into = "\tconst QVector<QWidget *> open = popups();"
+count = 1
+check = "typing still reaches the window a person is in"

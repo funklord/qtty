@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1422 checks, 0 failures. `make check` is green and includes
+1425 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16230,6 +16230,43 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.195 Every window kind, asked the same four questions (2026-09-17)
+
+8.194 was found by guessing at one window type. The obvious next move was
+not another guess: **ask every kind Qt has, in one table**, which is what
+would have found the first one. Nine types as top-levels, each opened over
+a window whose field has the focus:
+
+    kind          strip  popup  types  types after Esc
+    Window            1      0      1      1
+    Dialog            1      0      1      1
+    Sheet             1      0      1      1
+    Drawer            1      0      1      1
+    Popup             0      1      0      1
+    Tool              1      0      1      1
+    ToolTip           0      1      0      0      <- no way back
+    SplashScreen      1      0      1      1
+    SubWindow         1      0      1      1
+
+`Popup` is right: a menu owns the keys while it is up and `Escape` gives
+them back. **`ToolTip` was the second lockout.** It owned the keys, did
+nothing with them, and Qt would not release it -- `QWidget::keyPressEvent`
+closes a popup on `Escape` only when `windowType() == Qt::Popup`, and a
+tooltip is `0xd`, so the toolkit's own way out does not apply to it
+either.
+
+**A layer that is DRAWN is not always a layer that takes keys**, and the
+stack was being read as though it were. It has two readers now:
+`popups()` is what the compositor draws and still carries everything;
+`input_popups()` is what owns keys, shortcuts and the suppression that
+keeps a shortcut from firing behind an open menu, and it leaves out the
+layers that cannot answer -- a tooltip, and anything the application
+declared transparent for input.
+
+**The sweep is the finding as much as the fix.** One guess found one
+lockout; the table found the other and proved the other seven kinds safe
+in the same run, which is the difference between a sweep and a hunch.
 
 ### 8.194 A palette window was a lockout (2026-09-17)
 

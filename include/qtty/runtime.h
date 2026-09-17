@@ -274,6 +274,10 @@ public:
 
 	// Visible popup stack in z-order, maintained by the stamping filter.
 	QVector<QWidget *> popups() const;
+	// The subset of those that can own keys: not a tooltip, not a window
+	// the application declared transparent for input. The compositor draws
+	// popups(); input asks this one (8.195).
+	QVector<QWidget *> input_popups() const;
 
 	// The widget key events target right now (popup > modal > window focus).
 	// Nothing outside the active modal is ever returned: section 8.3 requires

@@ -103,6 +103,33 @@ QVector<QWidget *> InputRouter::popups() const {
 	return out;
 }
 
+// A layer that is DRAWN is not always a layer that takes keys, and reading
+// the stack as though it were is a second lockout of 8.194's shape.
+//
+// A Qt::ToolTip top-level owns no input anywhere: on a desktop it is a label
+// that appears and goes away, and Qt's own QWidget::keyPressEvent closes a
+// popup on Escape only when `windowType() == Qt::Popup` -- a tooltip is
+// 0xd and does not match, so Qt offers no way out of one either. Measured
+// before this split: with a Qt::ToolTip window up, keys went to it, nothing
+// happened, and Escape did not give them back. Every other window kind
+// recovers.
+//
+// So the stack has two readers now. popups() is what the COMPOSITOR draws,
+// and it still carries every layer. input_popups() is what owns keys,
+// shortcuts and the modal-style suppression, and it leaves out the layers
+// that cannot answer: a tooltip, and anything the application declared
+// transparent for input.
+QVector<QWidget *> InputRouter::input_popups() const {
+	QVector<QWidget *> out;
+	const auto drawn = popups();
+	for (QWidget *w : drawn) {
+		if (w->windowType() == Qt::ToolTip) continue;
+		if (w->windowFlags().testFlag(Qt::WindowTransparentForInput)) continue;
+		out.append(w);
+	}
+	return out;
+}
+
 // THE MASKED TYPE, not the bits. Qt's window types are a bitfield in which
 // the interesting ones are supersets of each other: Qt::Popup is 0x9, and
 // Qt::Tool is 0xb and Qt::SplashScreen 0xf -- both of which CONTAIN it. So
@@ -175,7 +202,7 @@ QWidget *InputRouter::key_target() const {
 	//
 	// activeModalWidget() below is NOT affected: Qt tracks a modal through
 	// setWindowModality and show, which stamping does not disturb.
-	const QVector<QWidget *> open = popups();
+	const QVector<QWidget *> open = input_popups();
 	if (!open.isEmpty()) {
 		QWidget *p = open.last();                 // topmost
 		return p->focusWidget() ? p->focusWidget() : p;
@@ -1205,7 +1232,7 @@ bool InputRouter::match_shortcut(const KeyEvent &k) {
 	// Only a chord that MATCHES is swallowed. A bare letter matches no
 	// shortcut, falls through, and reaches QMenu::keyPressEvent, which is
 	// where the desktop answers it from.
-	const bool popup_owns_input = !popups().isEmpty();
+	const bool popup_owns_input = !input_popups().isEmpty();
 	// ONE list, in this function's own order, and the same one
 	// shortcut_conflicts() reads: actions here, application-context actions
 	// in other windows, this scope's QShortcuts, then application-context
@@ -1675,7 +1702,7 @@ void InputRouter::on_key(const KeyEvent &k) {
 		//
 		// The same predicate key_target() uses, deliberately: whatever owns
 		// keys owns shortcuts, so the two cannot disagree about who is on top.
-		const bool popup_owns_input = !popups().isEmpty();
+		const bool popup_owns_input = !input_popups().isEmpty();
 		// After match_shortcut() and before deliver_key(). An application's
 		// own Ctrl+K must win over qtty's readline binding -- a shortcut is
 		// something the program asked for by name, and the binding is a
