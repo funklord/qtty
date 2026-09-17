@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1448 checks, 0 failures. `make check` is green and includes
+1451 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16235,6 +16235,43 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.208 A link nothing on the screen marks as unreachable (2026-09-17)
+
+Closing the half of 8.204 that was left open, and it is the same shape as
+8.203 one member along: the thing clicked is an anchor inside a label
+rather than a widget, so a report whose population is widgets passed over
+it. `pointer_only()` answered EMPTY on a window whose only link no key
+can follow.
+
+**It is the worse of the two for a user, and the reason is drawing rather
+than routing.** A header that cannot be sorted by key at least looks like
+a header. A link a key cannot follow is drawn underlined and coloured in
+exactly the same cells as one it can -- byte-identical -- so a user
+without a mouse is shown an invitation with nothing to take it with, and
+the author, who has a mouse, sees a link that works.
+
+**The anchor is the predicate, not the flag, and that had to be measured
+because the obvious test names every label in the program:**
+
+    default flags                 focusPolicy 0    flags 0x04
+    LinksAccessibleByMouse set    focusPolicy 0    flags 0x04
+    + LinksAccessibleByKeyboard   focusPolicy 11   flags 0x0c
+    plain words, no link at all   focusPolicy 0    flags 0x04
+
+Qt gives EVERY `QLabel` `LinksAccessibleByMouse`, so the flag says nothing
+-- this is `sectionsClickable()` met a second time, one entry after the
+first. What separates them is whether the text holds an anchor, asked of a
+`QTextDocument` rather than of the string, because the answer depends on
+how the label reads its own text: `Qt::PlainText` showing the characters
+`<a href=...>` offers nothing, `Qt::AutoText` decides with
+`mightBeRichText()`, and Markdown spells a link differently again.
+
+The keyboard-accessible case needs no special handling and is not given
+any: Qt sets `StrongFocus` when the flag is set, so such a label is
+already a tab stop and is already in the keyed set this report subtracts.
+The third check -- a label with no link, carrying the identical flag --
+is what makes the trio a discrimination rather than a flag test.
 
 ### 8.207 The cursor sat a row above the text being edited (2026-09-17)
 

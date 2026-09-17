@@ -3910,6 +3910,49 @@ int suite_router() {
 			      "one nobody reads");
 		}
 
+		// A LINK NO KEY CAN FOLLOW, the same shape one member along: the
+		// thing clicked is an anchor inside a label rather than a widget.
+		// It is the worse of the two for a user, because nothing on the
+		// screen separates a link they can reach from one they cannot --
+		// both are drawn underlined and coloured.
+		//
+		// Three labels, and the third is why this is a discrimination
+		// rather than a flag test: Qt gives EVERY QLabel
+		// Qt::LinksAccessibleByMouse, so a report keyed on the flag names
+		// every label in the program. Measured -- default flags and an
+		// explicit LinksAccessibleByMouse are the same 0x04, and plain
+		// words carry it too.
+		{
+			QWidget page;
+			page.setAttribute(Qt::WA_DontShowOnScreen);
+			page.resize(GridMetrics::cells(40, 8));
+			auto *mouse_only = new QLabel(
+			    QStringLiteral("see <a href=\"http://x\">the docs</a>"), &page);
+			mouse_only->setGeometry(0, 0, 30 * GridMetrics::cw(),
+			                        GridMetrics::ch());
+			auto *keyed_link = new QLabel(
+			    QStringLiteral("or <a href=\"http://y\">the manual</a>"), &page);
+			keyed_link->setTextInteractionFlags(
+			    Qt::LinksAccessibleByMouse | Qt::LinksAccessibleByKeyboard);
+			keyed_link->setGeometry(0, 2 * GridMetrics::ch(),
+			                        30 * GridMetrics::cw(), GridMetrics::ch());
+			auto *no_link = new QLabel(QStringLiteral("just words"), &page);
+			no_link->setGeometry(0, 4 * GridMetrics::ch(),
+			                     30 * GridMetrics::cw(), GridMetrics::ch());
+			page.show();
+			QCoreApplication::processEvents();
+			const QVector<QWidget *> found = pointer_only(&page);
+			CHECK(found.contains(mouse_only),
+			      "a link only a click can follow is named, and it is drawn "
+			      "exactly like one a key can reach");
+			CHECK(!found.contains(keyed_link),
+			      "a link with LinksAccessibleByKeyboard is not, Qt having "
+			      "made it a tab stop");
+			CHECK(!found.contains(no_link),
+			      "and a label with no link in it is not, though it carries "
+			      "the very same interaction flag every label carries");
+		}
+
 		// THE NARROW TERMINAL, which is this library's ordinary condition
 		// rather than an edge: a toolbar with more actions than fit hides
 		// the surplus behind a chevron only a pointer can open, and the

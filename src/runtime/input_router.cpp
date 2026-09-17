@@ -11,6 +11,8 @@
 #include "qtty/grid.h"
 #include "qtty/application.h"
 #include <QtWidgets>
+#include <QTextDocument>
+#include <QTextBlock>
 #include <QShortcut>
 
 namespace Qtty {
@@ -1295,6 +1297,33 @@ QVector<QPair<QWidget *, QWidget *>> tab_order_anomalies(QWidget *scope) {
 	return out;
 }
 
+// Does this label actually offer a link, as opposed to merely being allowed
+// to? Asked of the DOCUMENT rather than of the string, because the answer
+// depends on how the label reads its own text: Qt::PlainText showing the
+// characters `<a href=...>` offers nothing, and Qt::AutoText -- the default
+// -- decides with mightBeRichText(). Markdown is asked in its own spelling
+// for the same reason.
+static bool holds_a_link(const QLabel *l) {
+	const QString text = l->text();
+	if (text.isEmpty()) return false;
+	const Qt::TextFormat fmt = l->textFormat();
+	QTextDocument doc;
+	if (fmt == Qt::MarkdownText) {
+		doc.setMarkdown(text);
+	} else if (fmt == Qt::RichText
+	           || (fmt == Qt::AutoText && Qt::mightBeRichText(text))) {
+		doc.setHtml(text);
+	} else {
+		return false;
+	}
+	for (QTextBlock b = doc.begin(); b.isValid(); b = b.next())
+		for (QTextBlock::iterator it = b.begin(); !it.atEnd(); ++it) {
+			const QTextCharFormat cf = it.fragment().charFormat();
+			if (cf.isAnchor() && !cf.anchorHref().isEmpty()) return true;
+		}
+	return false;
+}
+
 QVector<QWidget *> pointer_only(QWidget *scope) {
 	QVector<QWidget *> out;
 	if (!scope) return out;
@@ -1370,6 +1399,40 @@ QVector<QWidget *> pointer_only(QWidget *scope) {
 		if (!h->isSortIndicatorShown()) continue;
 		if (keyed.contains(h)) continue;
 		out.append(h);
+	}
+	// AND A LINK NO KEY CAN FOLLOW. Same shape as the header above and
+	// found in the same sweep: the thing clicked is not a widget, so a
+	// report whose population is widgets passed straight over it.
+	//
+	// What makes it worse than the header is that nothing on the screen
+	// tells the two apart. A link in a QLabel is drawn underlined and
+	// coloured whether or not a key can reach it -- byte-identical cells --
+	// so a user without a mouse sees an invitation and has no way to take
+	// it, and the author sees a link that works.
+	//
+	// THE ANCHOR IS THE PREDICATE, NOT THE FLAG, and that had to be
+	// measured. Qt gives EVERY QLabel Qt::LinksAccessibleByMouse:
+	//
+	//   default flags               focusPolicy 0    flags 0x04
+	//   LinksAccessibleByMouse      focusPolicy 0    flags 0x04
+	//   + LinksAccessibleByKeyboard focusPolicy 11   flags 0x0c
+	//   plain words, same flags     focusPolicy 0    flags 0x04
+	//
+	// So testing the flag alone would name every label in every program --
+	// the sectionsClickable() mistake the header above records, met again
+	// one member later. A label carrying an anchor and lacking
+	// LinksAccessibleByKeyboard is the case where a click does something
+	// no key can; Qt gives the keyboard-accessible one StrongFocus, so it
+	// is already a tab stop and is already in `keyed`.
+	const auto labels = scope->findChildren<QLabel *>();
+	for (QLabel *l : labels) {
+		if (!l->isVisible() || !l->isEnabled()) continue;
+		if (keyed.contains(l)) continue;
+		const Qt::TextInteractionFlags f = l->textInteractionFlags();
+		if (!(f & Qt::LinksAccessibleByMouse)) continue;
+		if (f & Qt::LinksAccessibleByKeyboard) continue;
+		if (!holds_a_link(l)) continue;
+		out.append(l);
 	}
 	return out;
 }

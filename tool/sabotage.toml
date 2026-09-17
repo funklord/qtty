@@ -2590,3 +2590,14 @@ find = "\t\t\t                                 cr.y() + cr.height() / 2));"
 into = "\t\t\t                                 cr.y()));"
 count = 1
 check = "the cursor lands on the row the edited text is drawn on"
+
+[[sabotage]]
+# The link population dropped from pointer_only, so a link a keyboard user
+# cannot follow is drawn exactly like one they can and named nowhere.
+# 8.208.
+name = "a mouse-only link is left out of pointer_only"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (!holds_a_link(l)) continue;"
+into = "\t\tif (holds_a_link(l)) continue;"
+count = 1
+check = "a link only a click can follow is named"

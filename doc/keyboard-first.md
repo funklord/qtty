@@ -517,7 +517,27 @@ which data you are shown, and a report that flagged every header in
 every program is one nobody would read. If either matters in your
 application, the remedy is the same: an action with a key on it.
 
-`Qtty::pointer_only()` names all five, and the section on testing says
+**A sixth is the one a user is most likely to blame themselves for: a
+link in a `QLabel`.** Qt gives every label `Qt::LinksAccessibleByMouse`,
+so a link in rich text is clickable the moment you write it -- and the
+label is `Qt::NoFocus`, in no tab chain, and reachable by no key. What
+makes it worse than the header is that **nothing on the screen tells the
+two apart**: a link a key can follow and a link it cannot are drawn
+underlined and coloured in exactly the same cells. The remedy is one
+line, and it is Qt's:
+
+```cpp
+label->setTextInteractionFlags(Qt::LinksAccessibleByMouse
+                               | Qt::LinksAccessibleByKeyboard);
+```
+
+Qt then gives the label `Qt::StrongFocus` by itself, so it becomes a tab
+stop and `Enter` follows the link. `Qtty::pointer_only()` names a label
+that carries an anchor and lacks that flag, and stays quiet about one
+that has it -- and about a label with no link in it, whose interaction
+flags are identical.
+
+`Qtty::pointer_only()` names all six, and the section on testing says
 how to read that list.
 
 A right-click menu is the exception you get for free: `Menu` and
