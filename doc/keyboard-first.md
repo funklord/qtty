@@ -176,6 +176,24 @@ top-level windows are reachable through `Qtty::next_window()` and
 nothing binds a key to them at all** -- a second window could be on the
 screen and unreachable without a mouse.
 
+**Not every top-level is a window in that sense**, and which ones are was
+measured over every kind Qt has:
+
+| your window's type | in the `F6` strip | takes the keys | Escape gives them back |
+|---|---|---|---|
+| `Window`, `Dialog`, `Sheet`, `Drawer`, `SubWindow` | yes | no | -- |
+| `Tool` (a palette), `SplashScreen` | yes | no | -- |
+| `Popup` (a menu) | no | **yes**, while it is up | yes |
+| `ToolTip` | no | no | -- |
+
+So a palette you open with `Qt::Tool` is a window like any other here:
+`F6` reaches it and the window you were in keeps its keys. A menu owns
+the keyboard while it is open, which is what a menu is for, and `Escape`
+closes it. A tooltip window is drawn and takes nothing. **Both of the
+first two were once wrong** -- a palette and a tooltip each deafened the
+application with no way back -- which is why the table is in the guide
+rather than in somebody's head.
+
 **A tab's mnemonic works only with the conventions on.** `Alt+S` on a tab
 labelled `&Second` switches to it once `set_keyboard_conventions(true)`
 has been called, and does nothing otherwise -- whether a terminal should
