@@ -7605,5 +7605,89 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// ---- focus after a widget that had it is hidden ------------------------
+	//
+	// Qt moves focus on when a focused widget is hidden, and cannot do it
+	// here: QWidget::setVisible(false) and QAbstractItemView::closeEditor()
+	// are both gated on hasFocus(), which reads Qt's own focus_widget and is
+	// set only for an ACTIVE window. No qtty window activates. So the
+	// runtime does what the platform layer would have done, and the third
+	// check below is what keeps it from doing more than that.
+	{
+		const bool had_conv = keyboard_conventions();
+		set_keyboard_conventions(true);
+		QWidget win;
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		auto *field = new QLineEdit(&win);
+		field->setObjectName(QStringLiteral("field"));
+		auto *table = new QTableWidget(2, 2, &win);
+		for (int row = 0; row < 2; ++row)
+			for (int col = 0; col < 2; ++col)
+				table->setItem(row, col, new QTableWidgetItem(
+				    QStringLiteral("r%1c%2").arg(row).arg(col)));
+		auto *stack = new QStackedWidget(&win);
+		auto *page0 = new QLineEdit(QStringLiteral("page0"));
+		auto *page1 = new QLineEdit(QStringLiteral("page1"));
+		stack->addWidget(page0);
+		stack->addWidget(page1);
+		v->addWidget(field);
+		v->addWidget(table);
+		v->addWidget(stack);
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(40, 16));
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+
+		// AN ITEM VIEW'S EDITOR. The cost of getting this wrong is one dead
+		// keystroke after EVERY commit and every cancel: the value reaches
+		// the model, the editor goes, the window is left with no focus
+		// widget at all, and the next F2 reaches the window and does
+		// nothing. Asserted as the user meets it -- a second F2 with no
+		// key in between has to open an editor again.
+		table->setFocus();
+		set_focus_widget(table);
+		table->setCurrentCell(0, 0);
+		r.on_key({Qt::Key_F2, QString(), false, false, false});
+		r.on_key({0, QStringLiteral("Z"), false, false, false});
+		r.on_key({Qt::Key_Return, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		const bool committed = table->item(0, 0)->text() == QStringLiteral("Z");
+		const bool back = Qtty::focusWidget() == table
+		               && win.focusWidget() == table;
+		CHECK(committed && back,
+		      "committing an item view's edit hands focus back to the view,"
+		      " which Qt cannot do here because no window activates");
+		r.on_key({Qt::Key_F2, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		const bool editing_again =
+		    Qtty::focusWidget() && Qtty::focusWidget() != table
+		    && table->isAncestorOf(Qtty::focusWidget());
+		CHECK(editing_again,
+		      "so the next F2 edits rather than being spent putting the focus"
+		      " back");
+		r.on_key({Qt::Key_Escape, QString(), false, false, false});
+		QCoreApplication::processEvents();
+
+		// A STACKED WIDGET, which is the control and is why the repair is
+		// deferred to the end of the event rather than run inside the hide.
+		// Qt hides the old page BEFORE showing the new one, so a repair that
+		// acts immediately walks straight past the page about to appear and
+		// lands on the first tab stop in the window -- measured, this check
+		// read `field`, and a user changing page would find focus at the top
+		// of the form. Asked once the event has finished, the condition is
+		// the one actually meant: the window has no focus widget at all.
+		page0->setFocus();
+		set_focus_widget(page0);
+		stack->setCurrentIndex(1);
+		QCoreApplication::processEvents();
+		CHECK(Qtty::focusWidget() == page1,
+		      "changing a stacked page leaves focus on the page that arrived,"
+		      " the repair standing aside where Qt has already chosen");
+		set_keyboard_conventions(had_conv);
+		GridGuard::reset();
+	}
+
 	return fails;
 }

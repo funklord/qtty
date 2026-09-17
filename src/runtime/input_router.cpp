@@ -274,11 +274,100 @@ QWidget *InputRouter::key_target() const {
 	return scope->focusWidget() ? scope->focusWidget() : scope;
 }
 
+// Defined below, beside the Tab handling it was written for. Declared here
+// because the hide repair in the filter asks the same question Tab does.
+static bool move_focus(QWidget *scope, bool forward);
+
 bool InputRouter::eventFilter(QObject *o, QEvent *e) {
 	if (e->type() == QEvent::Polish) {
 		if (auto *w = qobject_cast<QWidget *>(o))
 			if (w->isWindow() && w != win_)
 				w->setAttribute(Qt::WA_DontShowOnScreen);
+	}
+	// A WIDGET THAT HAD FOCUS AND IS BEING HIDDEN HANDS IT BACK.
+	//
+	// Qt does this itself and cannot do it here, for the reason this class
+	// exists: QWidget::setVisible(false) moves focus on only when the widget
+	// hasFocus(), which reads Qt's own focus_widget and is set only for an
+	// ACTIVE window -- and no qtty window activates. QAbstractItemView's
+	// closeEditor() is gated on the same predicate and so does the same
+	// nothing, where on a desktop it calls setFocus() on the view.
+	//
+	// What that cost is one dead keystroke after EVERY commit and every
+	// cancel in an item view. Measured: F2, type, Return -- the value is in
+	// the model, the editor is gone, and the window's focusWidget is null,
+	// so the next F2 reaches the window and does nothing at all. With the
+	// conventions on, Down or Tab silently spends itself putting focus back;
+	// with them off, only Tab does. F2 pressed twice edits one cell.
+	//
+	// The nearest focusable ANCESTOR, which for an editor is the view -- the
+	// same widget Qt would have chosen -- and is reached without knowing
+	// anything about item views. The walk stops at an ancestor that is
+	// itself invisible, which is what keeps a closing dialog from handing
+	// focus to the window behind it: hiding a parent hides its children
+	// first, so the chain above a field in a dialog is already invisible by
+	// the time this runs.
+	if (e->type() == QEvent::Hide) {
+		if (auto *w = qobject_cast<QWidget *>(o)) {
+			QWidget *const had = Qtty::focusWidget();
+			// AND ONLY FOR A WIDGET THIS ROUTER OWNS. The filter is
+			// installed on the application, so every router alive sees
+			// every hide -- and a router whose own window is untouched
+			// would answer by syncing the focus to ITS window, which is
+			// to say by throwing away the answer the right one just
+			// worked out. Two routers is the test suite's ordinary
+			// state and it is what caught this; an application has one,
+			// so the fault would have waited for the first program that
+			// opened a second window.
+			//
+			// The walk uses parentWidget() rather than isAncestorOf(),
+			// which stops at a window boundary: a dialog is a window
+			// and is still this router's to answer for.
+			bool mine = false;
+			for (QWidget *p = w; p && !mine; p = p->parentWidget())
+				mine = p == win_;
+			if (mine && had && (had == w || w->isAncestorOf(had))) {
+				// The nearest focusable ANCESTOR, captured NOW while the
+				// chain is still whole -- for an item view's editor that
+				// is the view, the same widget Qt would have chosen, and
+				// it is reached without knowing anything about item
+				// views. The walk stops at an ancestor that is itself
+				// invisible, which is a dialog closing: its children are
+				// hidden with it, so there is nothing to hand focus to
+				// inside it.
+				QPointer<QWidget> up = w->parentWidget();
+				while (up && (up->focusPolicy() == Qt::NoFocus
+				              || !up->isVisible() || !up->isEnabled()))
+					up = up->isWindow() ? nullptr : up->parentWidget();
+				// QUEUED, and that is the whole of what took three
+				// measurements to get right. Acting inside the hide
+				// repairs a focus Qt has not finished moving: a
+				// QStackedWidget hides the old page BEFORE it shows the
+				// new one, so a repair that runs here walks past the
+				// page about to appear and lands on the first tab stop
+				// in the window -- a user changing page would find
+				// focus at the top of the form.
+				//
+				// Asked after the event completes, the condition is
+				// exact and is the one actually meant: the window has
+				// no focus widget at all. Where something else has
+				// already chosen one, this does nothing.
+				QMetaObject::invokeMethod(this, [this, up] {
+					QWidget *const scope = input_scope();
+					if (!scope || !scope->isVisible()) return;
+					QWidget *const now = scope->focusWidget();
+					if (now && now->isVisible()) {
+						set_focus_widget(now);
+						return;
+					}
+					if (up && up->isVisible() && up->isEnabled())
+						up->setFocus(Qt::OtherFocusReason);
+					else
+						move_focus(scope, true);
+					set_focus_widget(scope->focusWidget());
+				}, Qt::QueuedConnection);
+			}
+		}
 	}
 	if (e->type() == QEvent::Show) {
 		if (auto *w = qobject_cast<QWidget *>(o)) {

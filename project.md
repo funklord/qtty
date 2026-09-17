@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1443 checks, 0 failures. `make check` is green and includes
+1446 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16235,6 +16235,61 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.206 Nothing handed focus back when a widget was hidden (2026-09-17)
+
+The item-view worker's second finding, and the master lens again: after
+every commit and every cancel in an item view, **one keystroke was dead**.
+F2, type, Return -- the value reaches the model, the editor goes, and the
+window is left with no focus widget at all, so the next F2 arrives at the
+window and does nothing. With the conventions on, Down or Tab silently
+spends itself putting focus back; with them off, only Tab does. F2 pressed
+twice edits one cell.
+
+**Their third control is what made it diagnosable rather than mysterious.**
+The same fixture in plain Qt with an INACTIVE window reproduces it exactly;
+the same fixture with `activateWindow()` and `isActiveWindow` 1 does not,
+and the next F2 edits. So the cause is not the router: Qt hands focus back
+only when the editor `hasFocus()`, which is `QApplication::focusWidget() ==
+this`, which is permanently false here. `QAbstractItemView::closeEditor()`
+and `QWidget::setVisible(false)` are both gated on it, so both do nothing.
+
+The repair is the one this library already describes as its job -- the
+platform layer's work, done by the runtime. The editor receives `Hide`
+while it is still alive with its parent chain whole, measured as 18, then
+27, then 52 `DeferredDelete`, then 16 `Destroy`. On that `Hide` the router
+gives focus to the nearest focusable ANCESTOR, which for an editor is the
+view, the same widget Qt would have chosen, reached without knowing
+anything about item views.
+
+**Three things had to be right, and two of them were found by being
+wrong.**
+
+**It must not run inside the hide.** A `QStackedWidget` hides the old page
+BEFORE it shows the new one, so a repair that acts immediately walks
+straight past the page about to appear and lands on the first tab stop in
+the window -- measured: a user changing page would find focus at the top of
+the form. Deferred to the end of the event, the condition is the one
+actually meant: the window has no focus widget at all. Where Qt has already
+chosen, this stands aside.
+
+**It must mind its own window.** The filter is installed on the
+application, so every router alive sees every hide, and a router whose own
+window is untouched answers by syncing focus to ITS window -- throwing away
+the answer the right one has just worked out. **The suite caught this and a
+standalone probe could not**, because two routers is the suite's ordinary
+state and one router is an application's; the fault would otherwise have
+waited for the first program that opened a second window.
+
+**And a probe can be wrong about the tree rather than the tree about
+itself.** The first version put the stacked widget in a SECOND top-level
+the router does not own, and read the repair working correctly within its
+own scope as a wrong answer.
+
+Two more instances of the same lens were measured and are fixed by the
+same code: closing a dialog left focus on the field INSIDE the closed
+dialog, and a page change left it on the field of the page that had gone.
+Both now land on a widget the user can see.
 
 ### 8.205 A widget did not cover what it was drawn over (2026-09-17)
 

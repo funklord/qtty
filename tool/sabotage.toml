@@ -2549,3 +2549,33 @@ find = "\t\t\tdev->buffer().fill(c, Cell{});\n\t\t\tif (le && !le->hasFrame()) r
 into = "\t\t\tif (le && !le->hasFrame()) return;"
 count = 1
 check = "and its ground erases the text it covers"
+
+[[sabotage]]
+# The whole hide repair removed, so an item view's editor leaves the window
+# with no focus widget and the next key is spent putting it back. 8.206.
+name = "nothing hands focus back when a widget is hidden"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\tif (mine && had && (had == w || w->isAncestorOf(had))) {"
+into = "\t\t\tif (false && mine && had && (had == w || w->isAncestorOf(had))) {"
+count = 1
+check = "committing an item view's edit hands focus back to the view"
+
+[[sabotage]]
+# The repair run inside the hide instead of after it, which is how it walks
+# past a stacked page that has not been shown yet. 8.206.
+name = "the focus repair runs before the hide has settled"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\t\t}, Qt::QueuedConnection);"
+into = "\t\t\t\t}, Qt::DirectConnection);"
+count = 1
+check = "changing a stacked page leaves focus on the page that arrived"
+
+[[sabotage]]
+# A router answering for a window it does not own, which is two routers
+# taking turns to throw away each other's answer. 8.206.
+name = "a router repairs focus in somebody else's window"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\t\tmine = p == win_;"
+into = "\t\t\t\tmine = true;"
+count = 1
+check = "committing an item view's edit hands focus back to the view"

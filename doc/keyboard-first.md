@@ -97,6 +97,23 @@ reimplements it:
 | A letter, typed into a focused list or tree | Jumps to the next item beginning with it -- type-ahead, which a terminal user reaches for and which nothing here has to implement | Qt's |
 | `Ctrl+C`, `Ctrl+D` | Quit -- except in a widget that takes text, where `Ctrl+C` is left for copy. Change them with `InputRouter::set_quit_keys()` | qtty's |
 | `Ctrl+Z` | An ordinary key, **not** a suspend -- see *Never block the event loop* for why, and how to get the conventional behaviour back | qtty's |
+| `F2` | Opens the editor on the current cell or item of an editable view, and `Enter` commits, `Escape` cancels, `Tab` moves to the next cell's editor | Qt's |
+
+**Editing in a table or a tree works, and one thing about it is Qt's
+behaviour rather than this library's.** Typing a printable character
+straight into a `QTableView` starts an edit and the character lands in
+the editor; typing into a `QTreeView` does **not** -- the letter goes to
+type-ahead search, which is the row above. Measured against plain Qt on
+a desktop, where it behaves the same way, so an application wanting
+type-to-edit in a tree has to ask for it there too.
+
+The editor is a real widget while it is open: it takes the keys,
+`Qtty::keyboard_reachable()` grows by one and names it, and the cell
+underneath it is erased, so what the user types is what the user reads.
+**Focus comes back to the view when the edit ends**, which is qtty's
+doing rather than Qt's -- Qt returns it only for an active window, and
+none activates here, so without that a keystroke after every commit and
+every cancel would be spent putting the focus back.
 
 **Your shortcuts are matched by the router, not by Qt.** Qt's shortcut
 map gates on the window being *active* and none activates here, so
