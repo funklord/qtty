@@ -28,7 +28,7 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-17, at 1415**,
+**Last re-verified under all six configurations: 2026-09-17, at 1427**,
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
 result. Offscreen and xcb-under-Xvfb both ran 1344, `minimal` refused and
@@ -48,7 +48,12 @@ walks every button in a scope and holds them, plus the harness change of
 run that does not trust the build it inherited, and at 1415 for the eight
 questions of 8.181 to 8.192 -- five new public functions, one of which
 renders the window twice per control and moves the focus while it looks,
-which is the shape the sanitized and memcheck arms exist to watch.
+which is the shape the sanitized and memcheck arms exist to watch. At 1427
+for the week's three faults in the input core: two lockouts (8.194, 8.195)
+that moved which layer owns the keyboard, and the crash of 8.196, which
+changed WHEN every top-level in every application is stamped -- the second
+being the reason to re-run rather than to reason, since a stamp that
+arrives at a different moment is exactly what the last one got wrong.
 **The reason is written each time rather than the re-run being a habit**: a record that says which change
 it covers is one a reader can judge, and one taken on a schedule is a date.
 
@@ -17654,6 +17659,13 @@ assignment but a read of the object's own bookkeeping, so it faults.
 The guards hold the weak reference **before** the foreign code runs, which
 is the whole rule: a `QPointer` taken while the widget is alive goes null on
 its own; one taken afterwards is undefined behaviour dressed as caution.
+
+**That crash no longer happens, re-measured 2026-09-17** -- the same
+sabotage on the same fixture now runs the suite to the end with the named
+check passing, and the sanitized build reports nothing either. The rule is
+unchanged and the guard stays; what went is the entry that defended it,
+because a crash from reading freed memory is luck and an entry cannot rest
+on luck. 8.199 has the measurement and the reasoning.
 
 **And the harness could not defend any of it**, which is the other half of
 this entry. Remove one of these guards and the suite does not go red -- it
