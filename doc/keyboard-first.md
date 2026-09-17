@@ -115,6 +115,16 @@ doing rather than Qt's -- Qt returns it only for an active window, and
 none activates here, so without that a keystroke after every commit and
 every cancel would be spent putting the focus back.
 
+**`grabKeyboard()` works, and it did not until it was measured.** If your
+program takes the keyboard for a widget -- a custom overlay, a
+key-capture field -- every key goes there until `releaseKeyboard()`,
+exactly as on a desktop. The platform prints *"This plugin does not
+support grabbing the keyboard"* on stderr and refuses the real grab, which
+is what made this look like something no library could fix; Qt records the
+grabber anyway, so qtty asks it. **An open menu still wins over a grab**,
+which is Qt's own order and matters: get it the other way round and a grab
+taken for something else makes every menu in the program unusable.
+
 **Your shortcuts are matched by the router, not by Qt.** Qt's shortcut
 map gates on the window being *active* and none activates here, so
 neither a `QAction`'s shortcut nor a `QShortcut` would ever fire if qtty

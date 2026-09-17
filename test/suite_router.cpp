@@ -7945,6 +7945,85 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// ---- a keyboard grab, which an application asks for and this router
+	// used to ignore. grabKeyboard() means every key goes to that widget
+	// until it is released, and the offscreen plugin refuses the grab and
+	// says so on stderr -- which is what made this look like a platform
+	// limit. Qt records the grabber regardless, so the router can just ask.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(40, 8));
+		auto *focused = new QLineEdit(&host);
+		focused->setGeometry(0, 0, 20 * cw, ch);
+		auto *grabber = new QLineEdit(&host);
+		grabber->setGeometry(0, 2 * ch, 20 * cw, ch);
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter gr(&host);
+		focused->setFocus();
+		set_focus_widget(focused);
+
+		grabber->grabKeyboard();
+		gr.on_key({0, QStringLiteral("k"), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(grabber->text() == QStringLiteral("k") && focused->text().isEmpty(),
+		      "a widget that grabbed the keyboard gets the keys, though "
+		      "another widget has the focus");
+		grabber->releaseKeyboard();
+		gr.on_key({0, QStringLiteral("f"), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(focused->text() == QStringLiteral("f")
+		      && grabber->text() == QStringLiteral("k"),
+		      "and releaseKeyboard() gives them back to the focused one");
+
+		// PRECEDENCE, which is Qt's own: QApplication::notify() tests
+		// popup mode BEFORE the grabber, so a menu opened by a program
+		// that had grabbed the keyboard still answers its own keys. Get
+		// this backwards and a grab taken for some other purpose makes
+		// every menu in the program unusable.
+		grabber->grabKeyboard();
+		QMenu menu(&host);
+		QAction *cut = menu.addAction(QStringLiteral("Cut"));
+		int cuts = 0;
+		QObject::connect(cut, &QAction::triggered, [&] { ++cuts; });
+		menu.popup(QPoint(0, 0));
+		QCoreApplication::processEvents();
+		const QString before = grabber->text();
+		gr.on_key({Qt::Key_Down, QString(), false, false, false});
+		gr.on_key({Qt::Key_Return, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(cuts == 1 && grabber->text() == before,
+		      "while an open menu still wins over a grab, which is the "
+		      "order Qt itself applies");
+		menu.close();
+		grabber->releaseKeyboard();
+		QCoreApplication::processEvents();
+
+		// AND ONLY THIS ROUTER'S OWN. A grab taken in a window this
+		// router does not own is not its business, the same ownership
+		// rule the focus repairs follow.
+		QWidget elsewhere;
+		elsewhere.setAttribute(Qt::WA_DontShowOnScreen);
+		elsewhere.resize(GridMetrics::cells(20, 4));
+		auto *stranger = new QLineEdit(&elsewhere);
+		stranger->setGeometry(0, 0, 10 * cw, ch);
+		elsewhere.show();
+		QCoreApplication::processEvents();
+		stranger->grabKeyboard();
+		focused->setText(QString());
+		gr.on_key({0, QStringLiteral("m"), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(focused->text() == QStringLiteral("m")
+		      && stranger->text().isEmpty(),
+		      "and a grab in a window this router does not own takes "
+		      "nothing from the window it does");
+		stranger->releaseKeyboard();
+		elsewhere.hide();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	// ---- a layer that opens with nothing focused ---------------------------
 	//
 	// Qt gives a window its first tab stop when the window ACTIVATES, and

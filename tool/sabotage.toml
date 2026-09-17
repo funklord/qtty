@@ -2646,3 +2646,13 @@ find = "\t\tif (qt_clear_button) continue;"
 into = "\t\tif (false) continue;"
 count = 1
 check = "a line edit's own clear button is not reported"
+
+[[sabotage]]
+# The keyboard grab ignored again, so grabKeyboard() means nothing and
+# the keys go to whatever happens to have focus. 8.213.
+name = "a keyboard grab is ignored"
+file = "src/runtime/input_router.cpp"
+find = "\tif (QWidget *g = QWidget::keyboardGrabber()) {"
+into = "\tif (QWidget *g = nullptr) {"
+count = 1
+check = "a widget that grabbed the keyboard gets the keys"

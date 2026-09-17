@@ -272,6 +272,29 @@ QWidget *InputRouter::key_target() const {
 		QWidget *p = open.last();                 // topmost
 		return p->focusWidget() ? p->focusWidget() : p;
 	}
+	// A KEYBOARD GRAB, which an application asks for with grabKeyboard()
+	// and which this router used to ignore entirely. Measured before:
+	// with the focus on one field and grabKeyboard() called on another,
+	// a typed letter went to the FOCUSED one -- the opposite of what the
+	// call means and of what every desktop does.
+	//
+	// The offscreen plugin refuses the grab and says so on stderr, which
+	// is what made this look unfixable; Qt records the grabber anyway, so
+	// QWidget::keyboardGrabber() is an honest answer and the router can
+	// simply ask. Measured, none of Qt's OWN layers sets one here -- a
+	// QMenu, a modal dialog and a combo box's dropdown all leave it null
+	// -- so a non-null answer means the application asked, and nothing
+	// else does.
+	//
+	// AFTER the popup stack, which is Qt's own order in
+	// QApplication::notify(): popup mode is tested before the grabber, so
+	// a menu opened by a program that had grabbed the keyboard still
+	// answers its own arrows. And only for a grabber inside this router's
+	// window, the same ownership rule the focus repairs follow.
+	if (QWidget *g = QWidget::keyboardGrabber()) {
+		for (QWidget *p = g; p; p = p->parentWidget())
+			if (p == win_) return g;
+	}
 	QWidget *scope = input_scope();
 	return scope->focusWidget() ? scope->focusWidget() : scope;
 }

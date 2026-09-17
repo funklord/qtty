@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1464 checks, 0 failures. `make check` is green and includes
+1468 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16280,6 +16280,35 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.213 A keyboard grab nobody honoured (2026-09-17)
+
+`QWidget::grabKeyboard()` means every key goes to that widget until it is
+released. This router ignored it: measured, with the focus on one field
+and the grab on another, a typed letter went to the FOCUSED one -- the
+opposite of what the call means and of what every desktop does.
+
+**What made it look unfixable is the platform saying so out loud.** The
+offscreen plugin prints *"This plugin does not support grabbing the
+keyboard"* and refuses the grab, which reads as an answer. It is not the
+whole answer: Qt records the grabber in its own bookkeeping regardless,
+so `QWidget::keyboardGrabber()` returns the widget and the router can
+simply ask. **A refusal from one layer is not a fact about the layer
+above it.**
+
+**Measured before trusting it: none of Qt's OWN layers sets a grabber
+here.** A QMenu, a modal dialog and a combo box's dropdown all leave
+`keyboardGrabber()` null, so a non-null answer means the application
+asked and nothing else does. That is what makes honouring it
+unambiguous rather than a guess about who wanted the keys.
+
+**Precedence is Qt's, not invented**: `QApplication::notify()` tests
+popup mode BEFORE the grabber, so an open menu still answers its own
+arrows in a program that has grabbed the keyboard. Getting that backwards
+would make every menu in such a program unusable, which is why it has a
+check of its own rather than a comment. And the grab is honoured only
+inside this router's own window -- the same ownership rule 8.206 and
+8.210 arrived at, applied before it could be got wrong a third time.
 
 ### 8.212 The report's own noise (2026-09-17)
 
