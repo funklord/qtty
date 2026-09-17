@@ -156,7 +156,14 @@ QVector<QPair<QString, QStringList>> conventions_shadowed(QWidget *scope);
 //
 // The population is `QAbstractButton` and `QSplitterHandle` -- Qt's own words
 // for a control you click and one you drag, rather than a judgement about
-// which widgets matter.
+// which widgets matter -- plus a `QHeaderView` that is showing a sort
+// indicator, which is the one case where the thing a pointer acts on is a
+// SECTION rather than a widget. Nothing sorts a column from the keyboard,
+// in this library or in Qt: `QHeaderView` has four mouse handlers and no
+// `keyPressEvent` (8.203). Resizing and reordering columns are pointer-only
+// too and are deliberately not named -- they change how the data looks
+// rather than which data is shown, and naming every header in every
+// application makes a report nobody reads.
 // The subtraction is the part an application cannot write for itself: a
 // toolbar button holds an action whose mnemonic and shortcut reach it while
 // the button itself is `Qt::NoFocus` and in nobody's tab chain, so a sweep

@@ -220,6 +220,62 @@ int suite_render(bool record) {
 	}
 
 	{
+		// WHAT THE ENFORCER LEAVES ALONE, which is the half an application
+		// depends on and nothing asserted. It replaces the FACE and the
+		// SIZE, because a cell is one glyph wide and the grid rests on
+		// that; it keeps bold, italic and underline, because those are the
+		// application's meaning rather than the grid's measurement.
+		//
+		// Nothing said so, and the direction of a silent failure here is
+		// bad: every bold label in a program would go plain with no error
+		// anywhere, and the check above -- which asks only whether the
+		// family came back -- would pass throughout.
+		//
+		// The measurement an application would make, since a font's return
+		// value is the only thing it can read: `QFontDialog::currentFont()`
+		// is defined as the sample widget's font, so a font chooser here
+		// hands back the weight the user picked and the grid's face. 8.202
+		// records that with the numbers.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(20, 4));
+		auto *field = new QLineEdit(&host);
+		host.show();
+		QCoreApplication::processEvents();
+		const QFont grid = QApplication::font();
+		QFont want(QStringLiteral("Courier"), 10);
+		want.setBold(true);
+		want.setItalic(true);
+		want.setUnderline(true);
+		field->setFont(want);
+		QCoreApplication::processEvents();
+		const QFont kept = field->font();
+		printf("info: asked Courier 10 bold+italic+underline, kept [%s] "
+		       "px=%d b=%d i=%d u=%d\n", qPrintable(kept.family()),
+		       kept.pixelSize(), int(kept.bold()), int(kept.italic()),
+		       int(kept.underline()));
+		if (kept.family() == grid.family()
+		    && kept.pixelSize() == grid.pixelSize())
+			printf("PASS: a face an application asks for is replaced by the "
+			       "grid's, which is the measurement a cell rests on\n");
+		else {
+			printf("FAIL: a face an application asks for is replaced by the "
+			       "grid's, which is the measurement a cell rests on\n");
+			++r;
+		}
+		if (kept.bold() && kept.italic() && kept.underline())
+			printf("PASS: and its bold, italic and underline are kept, "
+			       "those being the application's meaning rather than the "
+			       "grid's measurement\n");
+		else {
+			printf("FAIL: and its bold, italic and underline are kept, "
+			       "those being the application's meaning rather than the "
+			       "grid's measurement\n");
+			++r;
+		}
+	}
+
+	{
 		// TWO LINES A CELL APART BOTH SURVIVE, and two lines closer than
 		// that do not. The second half is a limit rather than a defect to
 		// fix here, and it is pinned so that it is a known shape rather

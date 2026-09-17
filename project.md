@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1433 checks, 0 failures. `make check` is green and includes
+1437 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16235,6 +16235,91 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.203 The report was silent where the practice was broken (2026-09-17)
+
+A worker put practice 4's question to a `QHeaderView` -- *can a keyboard
+user sort a table?* -- and the answer is no, in this library and in Qt
+alike. Two witnesses that could not have agreed by construction: **45 key
+combinations** across both builds moved neither the sort column nor the
+order, and `qheaderview.h` declares `mousePressEvent`, `mouseMoveEvent`,
+`mouseReleaseEvent` and `mouseDoubleClickEvent` and **no `keyPressEvent`
+at all**. A synthetic click sorts, so the instrument fires; the keyboard
+has no route, and there is no context menu either.
+
+**The finding is not Qt's limitation, which Qt never hid. It is that
+`pointer_only()` returned EMPTY on that window.** The report an
+application is told to assert empty -- the one that exists to make
+practice 4 checkable -- passed over a table whose sorting is reachable
+only by pointer, because its population is widgets and **a header section
+is not a widget**. Qt never promised the practice; this guide does, and
+its audience is the user without a mouse. For them a `QTableView` with
+`setSortingEnabled(true)` is a table whose sorting is decoration.
+
+**`isSortIndicatorShown()` is the predicate, and it had to be measured to
+find that out.** The obvious one is wrong:
+
+    a plain QTableWidget's headers     sectionsClickable = 1, indicator = 0
+    with setSortingEnabled(true)       sectionsClickable = 1, indicator = 1
+    a QTreeWidget's header             sectionsClickable = 0, indicator = 0
+
+Every table header is clickable by default, so naming those would put two
+findings in every application that has a table. The indicator is shown
+exactly when `setSortingEnabled(true)` was called, which is exactly when a
+click does something no key can.
+
+**Resizing and reordering columns are pointer-only too and are not
+named.** They change how the data looks rather than which data is shown,
+and a report that names every header in every program is one nobody reads.
+The guide records them as limits instead.
+
+**And the same shape turned up a second time in the same sweep**, from a
+different worker: a `QLabel` carrying a link with Qt's default interaction
+flags is `Qt::NoFocus`, in no tab chain, activated by no key -- and drawn
+underlined and blue, *byte-identical* to a link that IS reachable. Nothing
+on the screen separates them. `pointer_only()` is empty there too, for the
+same reason: the clickable thing is an anchor inside a label rather than a
+widget. Not acted on yet; recorded here so the next pass has the
+measurement.
+
+### 8.202 What a font keeps, and what a font chooser can tell you (2026-09-17)
+
+A worker sweeping Qt's static dialogs found `QFontDialog::getFont()`
+returning `DejaVu Sans Mono` where plain Qt returns the seeded `Courier
+10` -- and traced it, correctly, to the grid font enforcer rather than to
+the dialog. Reproduced here, and the first line of the reproduction is the
+larger fact:
+
+    an application's own setFont, read back   qtty: the grid's face
+                                              plain: Courier 10
+
+So this is not the dialog. **Any font an application sets is replaced**,
+which is 8.180's invariant working: a cell is one glyph wide, and a
+proportional face makes the grid mean nothing.
+
+**What the enforcer keeps is the part nobody had written down.** It
+replaces the family and the pixel size and preserves bold, italic and
+underline -- the application's MEANING rather than the grid's
+measurement. Measured:
+
+    asked for          Courier 10, bold italic underline
+    the widget kept    the grid's face at 16 px, bold italic underline
+
+**And nothing defended that half.** The existing check asks only whether
+the family came back; an enforcer that dropped the weight would turn every
+bold label in every program plain, with no error anywhere and that check
+still green. There is a check now, and an entry that drops the weight
+reddens it.
+
+**The consequence for an application is worth stating rather than
+leaving to be discovered.** `QFontDialog::currentFont()` is defined as its
+sample widget's font, so a font chooser returns the weight the user picked
+and the grid's face -- measured, a dialog seeded bold comes back bold at
+the grid's family and size. An application needing the user's FACE, for
+export or a document property, cannot read it out of the returned `QFont`
+at all. The guide says so now. That is a limit of having one face, not a
+defect to fix: the alternative is a widget rendering in a face the grid
+cannot measure.
 
 ### 8.201 A completer's list is a layer that defers its keys (2026-09-17)
 

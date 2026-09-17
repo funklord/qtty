@@ -1256,6 +1256,32 @@ QVector<QWidget *> pointer_only(QWidget *scope) {
 		if (keyed.contains(h)) continue;
 		out.append(h);
 	}
+	// AND A HEADER THAT SORTS. This one is not a widget you click but a
+	// widget whose SECTIONS a click acts on, and it is here because the
+	// report was silent exactly where the practice was broken: measured,
+	// a QTableView with sorting on has no key that changes the column or
+	// the order -- 45 key combinations across this library and plain Qt
+	// moved nothing -- and `QHeaderView` declares four mouse handlers and
+	// no keyPressEvent at all. Qt never promised the practice; this
+	// library's guide does, and its audience is the one without a mouse.
+	//
+	// `isSortIndicatorShown()` rather than `sectionsClickable()`, which is
+	// true on every table header by default and would name two headers in
+	// every application that has a table. The indicator is shown when
+	// setSortingEnabled(true) was called, which is exactly the case where
+	// a click does something a key cannot.
+	//
+	// Resizing and reordering columns are pointer-only in Qt too, and are
+	// NOT named: they change how the data looks rather than which data you
+	// are looking at, and a report that names every table's every header
+	// is one nobody reads. The guide records them as limits instead.
+	const auto headers = scope->findChildren<QHeaderView *>();
+	for (QHeaderView *h : headers) {
+		if (!h->isVisible() || !h->isEnabled()) continue;
+		if (!h->isSortIndicatorShown()) continue;
+		if (keyed.contains(h)) continue;
+		out.append(h);
+	}
 	return out;
 }
 

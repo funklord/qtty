@@ -2495,3 +2495,25 @@ find = "\t\tif (defers && navigates_a_list(k)) {"
 into = "\t\tif (false) {"
 count = 1
 check = "Down and Return DO reach it"
+
+[[sabotage]]
+# The enforcer taking the application's meaning with the grid's
+# measurement: every bold label in a program goes plain, silently. 8.202.
+name = "the enforcer drops the weight with the face"
+file = "src/runtime/application.cpp"
+find = "\t\twant.setBold(had.bold());"
+into = "\t\twant.setBold(false);"
+count = 1
+check = "its bold, italic and underline are kept"
+
+[[sabotage]]
+# The sorting header dropped from the population, so pointer_only() is
+# silent about a table whose sorting no key can reach -- which is what it
+# did before 8.203, and what makes the report pass over the practice it
+# exists to check.
+name = "a sorting header is left out of pointer_only"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (!h->isSortIndicatorShown()) continue;"
+into = "\t\tif (h->isSortIndicatorShown()) continue;"
+count = 1
+check = "a header that offers sorting is named"

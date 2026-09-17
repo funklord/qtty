@@ -482,8 +482,26 @@ not: a dock widget's **float** button sits beside its close button, is
 `Qt::NoFocus`, carries no action, and nothing claims a key for it either.
 A fourth is not a button at all -- a `QSplitter`'s handle, which practice
 13 measures: no focus, no tab stop, and no answer to the arrows even with
-the focus forced onto it. `Qtty::pointer_only()` names all four, and the
-section on testing says how to read that list.
+the focus forced onto it.
+
+**A fifth is not a widget at all: the header of a table you have made
+sortable.** `setSortingEnabled(true)` puts a sort on a click, and there
+is no key anywhere that changes the sort column or reverses the order --
+measured, 45 combinations in this library and in plain Qt moved neither,
+and `QHeaderView` declares four mouse handlers and no `keyPressEvent`.
+So a table whose sorting is the point of it offers a keyboard user one
+fixed order. Give the sorts you care about a menu entry or a shortcut of
+your own, calling `sortByColumn()`; that is the same remedy as the
+toolbar chevron above, and it is the only one available.
+
+**Resizing and reordering columns are pointer-only too, and are
+deliberately NOT named** -- they change how the data looks rather than
+which data you are shown, and a report that flagged every header in
+every program is one nobody would read. If either matters in your
+application, the remedy is the same: an action with a key on it.
+
+`Qtty::pointer_only()` names all five, and the section on testing says
+how to read that list.
 
 A right-click menu is the exception you get for free: `Menu` and
 `Shift+F10` open it, and your `contextMenuPolicy` is honoured exactly as
@@ -1099,6 +1117,22 @@ The fifth is the one that is a limitation rather than a price: a cell row
 is the unit, so a widget laying its own lines out in pixels can ask for the
 same row twice. Qt's own command link button does exactly that, which is
 worth knowing before you conclude your own painting is at fault.
+
+**A font you set keeps its style and loses its face.** The grid rests on
+one glyph per cell, so the library replaces the family and the size on
+every widget and keeps what an application MEANS by a font -- bold,
+italic, underline. Measured, asking for bold italic underlined Courier
+10:
+
+    asked for          Courier         bold italic underline
+    the widget kept    the grid's face bold italic underline
+
+The consequence worth knowing is at the other end: `QFontDialog` returns
+its sample widget's font, so a font chooser hands you the weight the user
+picked and the grid's face. If your application needs the user's FACE --
+for export, for a document property, for printing elsewhere -- do not
+read it out of the returned `QFont`, because on a terminal there is one
+face and it is the cell's.
 
 **And call `Qtty::setup()` before you build anything**, which matters for
 one reason rather than the general one. A window of ordinary widgets built

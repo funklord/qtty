@@ -3879,6 +3879,37 @@ int suite_router() {
 			      "different case from a scroll bar");
 		}
 
+		// A SORTING HEADER is the third shape: what a pointer acts on is a
+		// SECTION rather than a widget, so the report was silent on a
+		// window where sorting is reachable only by pointer. Measured, in
+		// this library and in plain Qt alike: 45 key combinations moved
+		// neither the sort column nor the order, and QHeaderView declares
+		// four mouse handlers and no keyPressEvent at all. Qt never
+		// promised the practice; this guide does.
+		{
+			QWidget tables;
+			tables.setAttribute(Qt::WA_DontShowOnScreen);
+			tables.resize(GridMetrics::cells(30, 12));
+			auto *sorted = new QTableWidget(2, 2, &tables);
+			sorted->setGeometry(0, 0, 20 * GridMetrics::cw(),
+			                    4 * GridMetrics::ch());
+			sorted->setSortingEnabled(true);
+			auto *plainly = new QTableWidget(2, 2, &tables);
+			plainly->setGeometry(0, 5 * GridMetrics::ch(),
+			                     20 * GridMetrics::cw(),
+			                     4 * GridMetrics::ch());
+			tables.show();
+			QCoreApplication::processEvents();
+			const QVector<QWidget *> named = pointer_only(&tables);
+			CHECK(named.contains(sorted->horizontalHeader()),
+			      "a header that offers sorting is named, the click that "
+			      "sorts it having no key anywhere");
+			CHECK(!named.contains(plainly->horizontalHeader()),
+			      "and a header that offers none is not, since every table "
+			      "has clickable sections and a report of all of them is "
+			      "one nobody reads");
+		}
+
 		// THE NARROW TERMINAL, which is this library's ordinary condition
 		// rather than an edge: a toolbar with more actions than fit hides
 		// the surplus behind a chevron only a pointer can open, and the
