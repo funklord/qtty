@@ -468,7 +468,8 @@ backend escape decoding → KeyEvent/MouseEvent
         → shortcut table (ours) ─ match? → QAction::trigger() / QShortcut::activated
         → readline chord in a text field? → the editing key it stands for
         → Alt+letter ─ mnemonic? → menu, button, or a label's buddy
-        → grab widget? else popup? else modal? else window->focusWidget()
+        → grab widget? else popup that takes input? else modal?
+          else window->focusWidget()
             → QKeyEvent / QMouseEvent / QWheelEvent via QApplication::sendEvent
 ```
 
@@ -515,11 +516,33 @@ explicit and testable rather than depending on Qt's context rules — and, since
 the letters and chords more than one thing answers, in the order the router tries them.
 
 Both enumerations have a third reader since 8.181. `Qtty::pointer_only()` subtracts them
-from the visible, enabled `QAbstractButton`s in a scope, which leaves the buttons no key
-reaches — including the ones Qt itself leaves that way on a closable tab and a dock
-widget's title bar. It is the guide's fourth practice made checkable, and it cannot be
-written outside the library: a toolbar's button is `Qt::NoFocus` and in no tab chain, so
-only the claim tables know that the mnemonic on the action behind it already answers.
+from the visible, enabled `QAbstractButton`s and `QSplitterHandle`s in a scope, which
+leaves the controls no key reaches — including the ones Qt itself leaves that way: a
+closable tab's `x`, a dock widget's close and float buttons, and a splitter's handle,
+which answers no key even with the focus forced onto it (8.191). It is the guide's
+fourth practice made checkable, and it cannot be written outside the library: a
+toolbar's button is `Qt::NoFocus` and in no tab chain, so only the claim tables know
+that the mnemonic on the action behind it already answers.
+
+**Eight questions, one shape.** The reports grew into a set between 8.181 and 8.192,
+and what they have in common is the argument for having them at all: each answers
+something an application cannot find out for itself, because the answer lives in this
+library's claim tables or in what a frame actually drew.
+
+| call | the part an application could not write |
+|---|---|
+| `keyboard_reachable()` | the router's own traversal rather than a walk of the focus chain |
+| `pointer_only()` | subtracting the claims, so an action behind a button counts as a key |
+| `mnemonic_conflicts()` | the matcher's own order, so the report names the winner first |
+| `shortcut_conflicts()` | context and nearness, asked at every focus a user can reach |
+| `conventions_shadowed()` | which convention rows this window's own shortcuts took back |
+| `tab_order_anomalies()` | reading order in CELL rows, and the new-column exception |
+| `hover_only()` | that an icon-only button's tip is already drawn as its label |
+| `focus_invisible()` | rendering the window twice and comparing the control's own cells |
+
+Seven are asserted empty; `keyboard_reachable()` is the one an application checks by
+name. They are diagnostics for a test rather than calls for a frame loop — one renders
+the window twice per control and moves the focus while it looks.
 
 **Cursor placement.** Elegant trick worth adopting: query the focus widget generically
 rather than special-casing input classes.
@@ -826,14 +849,32 @@ ourselves, and their activation/grab semantics assume a window manager that is n
 
 *Mitigation:* `Compositor` treats `QApplication::activePopupWidget()` and
 `activeModalWidget()` as an explicit z-ordered stack rather than trusting window flags;
+
+**A layer that is drawn is not always a layer that takes keys** (8.195), so the stack
+has two readers: `popups()` for the compositor, and `input_popups()` for keys,
+shortcuts and the suppression behind an open menu. A `Qt::ToolTip` window is in the
+first and not the second — it owns no input anywhere, and Qt's own `Escape` handling
+does not apply to it, so treating it as an input layer was a lockout. Membership is
+asked by the MASKED window type rather than by flag bits, because `Qt::Tool` (`0xb`)
+and `Qt::SplashScreen` (`0xf`) both contain every bit of `Qt::Popup` (`0x9`) — which
+made a palette window a popup, and that was the first lockout (8.194).
+
 popups get `WA_DontShowOnScreen` too and are positioned by us, clamped to the terminal
 rectangle (a menu opening at x=78 must flip left, which the desktop code never had to do).
 
 *Measured (§16.1, F7):* internally-created popups do **not** inherit
 `WA_DontShowOnScreen` — `QComboBoxPrivateContainer` arrives with the attribute unset.
-Harmless under the offscreen platform, but the runtime stamps it anyway via a global
-`QEvent::Show`/`ChildAdded` filter so behaviour never depends on the platform being
-windowless. Discovery is easy: `combo->view()->window()` and `activePopupWidget()` both
+The runtime stamps it via a global filter so behaviour never depends on the platform
+being windowless.
+
+**On `QEvent::Polish`, and this sentence used to say `Show`.** It was not harmless:
+Qt delivers `Show` *after* `QWidgetPrivate::create()` has made the platform window, so
+a dialog was created as a real window and stamped afterwards — and its teardown left
+Qt's blocked-window bookkeeping holding a dead handle, which the next dialog's
+`setTransientParent()` walked. The second `QMessageBox` an application opened took the
+process down (8.196). `Polish` is delivered by `ensurePolished()` before `create()`,
+which is where the stamp belongs; the `Show` branch stays for anything already
+polished. Discovery is easy: `combo->view()->window()` and `activePopupWidget()` both
 report it correctly, it composites with its items visible, and synthetic
 Down/Down/Enter selects the right item and closes it.
 
