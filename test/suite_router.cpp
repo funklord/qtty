@@ -7947,6 +7947,150 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// ---- arrangements, rather than parts ----------------------------------
+	//
+	// 8.216 found that a change to how every modal is drawn moved no
+	// fixture at all, because not one of them draws a modal over a
+	// window. The fixtures here are made of the PARTS -- a line edit, a
+	// button, a list -- and what an application builds is arrangements of
+	// them. These are the three commonest that nothing had composed, and
+	// all three work; they are pinned rather than reported, since an
+	// arrangement that works today is one a layering change can break
+	// tomorrow without touching any part.
+	{
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(60, 16));
+		auto *behind = new QLabel(QStringLiteral("BEHIND"), &host);
+		behind->setGeometry(0, 12 * ch, 10 * cw, ch);
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter ar(&host);
+		Compositor ac(&host, &ar);
+
+		// A COMBO BOX'S DROPDOWN INSIDE A MODAL, which is a popup over a
+		// modal over a window: three layers, and the popup has to draw
+		// above the dialog AND take the keys from it.
+		QDialog dlg(&host);
+		dlg.setWindowTitle(QStringLiteral("Settings"));
+		auto *combo = new QComboBox(&dlg);
+		combo->addItems({QStringLiteral("Light"), QStringLiteral("Dark")});
+		combo->setGeometry(0, 2 * ch, 16 * cw, ch);
+		dlg.setModal(true);
+		dlg.setAttribute(Qt::WA_DontShowOnScreen);
+		dlg.resize(GridMetrics::cells(24, 5));
+		dlg.move(2 * cw, 2 * ch);
+		dlg.show();
+		QCoreApplication::processEvents();
+		combo->setFocus();
+		set_focus_widget(dlg.focusWidget());
+		combo->showPopup();
+		QCoreApplication::processEvents();
+		CellBuffer ab(60, 16);
+		ac.compose(ab);
+		const QString three = ab.to_text();
+		CHECK(three.contains(QStringLiteral("Dark"))
+		      && three.contains(QStringLiteral("┌─ Settings"))
+		      && three.contains(QStringLiteral("BEHIND")),
+		      "a combo box's dropdown inside a modal draws above the "
+		      "dialog and the dialog above the window, three layers in "
+		      "one frame");
+		ar.on_key({Qt::Key_Down, QString(), false, false, false});
+		ar.on_key({Qt::Key_Return, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(combo->currentText() == QStringLiteral("Dark")
+		      && ar.popups().isEmpty(),
+		      "and the dropdown owns the keys while it is up, so Down and "
+		      "Return choose in it rather than in the dialog behind");
+
+		// A MODAL OVER A MODAL, which every application with a confirm
+		// step builds and nothing here had.
+		QDialog second(&dlg);
+		second.setWindowTitle(QStringLiteral("Confirm"));
+		auto *yes = new QPushButton(QStringLiteral("Yes"), &second);
+		yes->setGeometry(0, ch, 8 * cw, ch);
+		second.setModal(true);
+		second.setAttribute(Qt::WA_DontShowOnScreen);
+		second.resize(GridMetrics::cells(18, 4));
+		// PLACED, so the inner box does not land on the outer's title
+		// row -- which it did in the first version of this check, and
+		// the failure was the fixture rather than the layering. A
+		// parented dialog keeps its own geometry: the compositor
+		// centres only the ones nobody placed.
+		second.move(8 * cw, 8 * ch);
+		second.show();
+		QCoreApplication::processEvents();
+		int said_yes = 0;
+		QObject::connect(yes, &QPushButton::clicked, [&] { ++said_yes; });
+		CellBuffer nb(60, 16);
+		ac.compose(nb);
+		const QString nested = nb.to_text();
+		CHECK(nested.contains(QStringLiteral("┌─ Confirm"))
+		      && nested.contains(QStringLiteral("┌─ Settings")),
+		      "a modal opened from a modal draws over it, each with a box "
+		      "of its own");
+		yes->setFocus();
+		set_focus_widget(second.focusWidget());
+		ar.on_key({Qt::Key_Return, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(said_yes == 1,
+		      "and the inner one owns the keyboard, which is what a modal "
+		      "over a modal is for");
+		second.close();
+		dlg.close();
+		QCoreApplication::processEvents();
+
+		// A WHOLE QMainWindow: menu bar, toolbar, dock, central widget
+		// and status bar in one frame. Every part is tested; the
+		// arrangement is what an application actually is.
+		//
+		// The host goes away first. A second top-level is a strip window
+		// and only the current one is drawn -- 8.209's own behaviour,
+		// which the first version of this check walked straight into and
+		// read as a QMainWindow that would not compose.
+		host.hide();
+		QCoreApplication::processEvents();
+		QMainWindow full;
+		full.setAttribute(Qt::WA_DontShowOnScreen);
+		full.resize(GridMetrics::cells(60, 16));
+		full.menuBar()->addMenu(QStringLiteral("&File"))
+		    ->addAction(QStringLiteral("&Open"));
+		full.addToolBar(QStringLiteral("Main"))
+		    ->addAction(QStringLiteral("&Save"));
+		auto *dock = new QDockWidget(QStringLiteral("Outline"), &full);
+		auto *tree = new QTreeWidget;
+		tree->setHeaderLabel(QStringLiteral("Sections"));
+		tree->addTopLevelItem(new QTreeWidgetItem(
+		    QStringList(QStringLiteral("part 0"))));
+		dock->setWidget(tree);
+		full.addDockWidget(Qt::LeftDockWidgetArea, dock);
+		full.setCentralWidget(new QPlainTextEdit(
+		    QStringLiteral("the document")));
+		full.statusBar()->showMessage(QStringLiteral("Ready"));
+		full.show();
+		QCoreApplication::processEvents();
+		InputRouter fr2(&full);
+		Compositor fc2(&full, &fr2);
+		CellBuffer fb2(60, 16);
+		fc2.compose(fb2);
+		const QString whole = fb2.to_text();
+		CHECK(whole.contains(QStringLiteral("File"))
+		      && whole.contains(QStringLiteral("Save"))
+		      && whole.contains(QStringLiteral("part 0"))
+		      && whole.contains(QStringLiteral("the document"))
+		      && whole.contains(QStringLiteral("Ready")),
+		      "and a whole QMainWindow puts its menu bar, toolbar, dock, "
+		      "central widget and status bar in one frame");
+		full.hide();
+		QCoreApplication::processEvents();
+		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	// ---- the box around a modal ------------------------------------------
 	//
 	// A desktop's window manager draws a dialog's frame and title; this

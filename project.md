@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1481 checks, 0 failures. `make check` is green and includes
+1486 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16304,6 +16304,45 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.217 Arrangements, rather than parts (2026-09-17)
+
+8.216's own finding pointed here: a change to how every modal is drawn
+moved no fixture at all, because not one of them draws a modal over a
+window. **The fixtures in this tree are made of the PARTS** -- a line
+edit, a button, a list, a menu -- **and what an application is, is an
+arrangement of them.** So the next lens is arrangements nobody has
+composed.
+
+Swept, and **all three work**, which is why they are pinned rather than
+reported:
+
+    a combo's dropdown inside a modal     popup over modal over window:
+                                          three layers in one frame, the
+                                          dropdown owning the keys, Down
+                                          and Return choosing in it
+    a modal opened from a modal           both boxes drawn, the inner one
+                                          over the outer, Return reaching
+                                          the inner dialog's button
+    a whole QMainWindow                   menu bar, toolbar, dock with a
+                                          tree, central editor and status
+                                          bar, all five in one frame
+
+An arrangement that works today is one a layering change breaks tomorrow
+without touching any part, so five checks hold them. And the
+`QMainWindow` sweep turned up nothing new about reachability either:
+`pointer_only()` names its two `QDockWidgetTitleButton`s, which the
+guide already records as Qt's own furniture, and nothing else.
+
+**Both failures in writing these were the fixture, again.** The nested
+dialogs are centred only when nobody placed them -- a parented dialog
+keeps its own geometry -- so the inner box landed on the outer's title
+row and the check read a layering fault. And the `QMainWindow` was a
+SECOND top-level while the host was still up, which makes it a strip
+window that is not drawn: 8.209's own behaviour, walked into by the
+check written two entries after it. **Six of today's fixture errors are
+one shape -- a fixture that does not hold what it thinks it holds** --
+and each was caught by the suite rather than by review.
 
 ### 8.216 A box around a modal, when there is room for one (2026-09-17)
 
