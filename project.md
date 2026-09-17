@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1425 checks, 0 failures. `make check` is green and includes
+1426 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16230,6 +16230,50 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.196 The second message box took the process down (2026-09-17)
+
+Sweeping the standard `QMessageBox` button sets -- the commonest dialog
+there is, and practice 2's own subject -- the probe **segfaulted**. Not a
+report, not a wrong answer: a crash, in a library that has 1425 checks and
+six configurations green.
+
+    #0  QWindow::handle()
+    #1  QWindow::isAncestorOf()
+    #2  QGuiApplicationPrivate::isWindowBlocked()
+    #3  QGuiApplicationPrivate::updateBlockedStatus()
+    #4  QWindow::setTransientParent()
+    #5  QWidgetPrivate::create()
+    #7  QDialogPrivate::setVisible()
+
+**Bisected rather than reasoned about.** Plain Qt with the same widgets:
+survives. `Qtty::setup()` alone: survives. **`InputRouter` alone: dies**,
+with no key ever delivered -- `box.close()` is enough. And it needs a
+`QMessageBox`: three `QDialog`s open and close happily.
+
+**The mechanism is one event too late.** The router's filter stamps
+`WA_DontShowOnScreen` on every top-level from `QEvent::Show`, and Qt sends
+`Show` AFTER `QWidgetPrivate::create()` has made the platform window. So
+the first box is created as a real window and stamped afterwards; its
+teardown leaves Qt's blocked-window bookkeeping holding a handle that is
+gone, and the next box's `setTransientParent()` walks it. `QEvent::Polish`
+is delivered by `ensurePolished()` BEFORE `create()`, which is where the
+stamp belongs; the `Show` branch stays, idempotent, for anything already
+polished.
+
+**Why 1425 checks never saw it, which is the part to keep.** Every fixture
+in this suite sets `WA_DontShowOnScreen` itself before showing, because a
+headless run demands it -- and that makes the filter's stamp a no-op and
+the hazard unreachable. **The suite's own necessity hid the defect from
+it.** The new check therefore does what no other fixture here does: it
+leaves the attribute alone and lets the filter be the only thing that sets
+it, which is exactly an application's arrangement.
+
+**And the check had to be built twice.** The first version used a
+`QDialog` and passed with the fix removed -- the entry, which declares
+`expect = "crash"`, reported that the suite ran to the end. A `QMessageBox`
+is what reaches the hazard. With it, removing the stamp takes the run out
+at 245 checks, which is the entry doing its job.
 
 ### 8.195 Every window kind, asked the same four questions (2026-09-17)
 

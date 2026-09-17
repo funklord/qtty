@@ -669,6 +669,56 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- a second dialog, which used to be a SEGMENTATION FAULT. The
+	// stamping filter set WA_DontShowOnScreen from QEvent::Show, and Qt
+	// sends Show AFTER it has created the platform window: the attribute
+	// arrived too late, the first dialog's teardown left Qt's blocked-window
+	// bookkeeping holding a dead handle, and the next dialog's
+	// setTransientParent() walked it. Measured in gdb --
+	// QWindow::handle() inside QGuiApplicationPrivate::isWindowBlocked --
+	// and an ordinary application reaches it by opening a message box,
+	// dismissing it, and opening another.
+	//
+	// NOTHING IN THIS SUITE COULD SEE IT, and that is the part worth
+	// keeping. Every fixture here sets WA_DontShowOnScreen itself before
+	// showing, because a headless run demands it -- which makes the filter's
+	// stamp a no-op and the hazard unreachable. This block deliberately does
+	// NOT pre-stamp, so the filter is the only thing setting the attribute,
+	// which is exactly an application's arrangement.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(30, 8));
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter dr(&host);
+		int shown = 0;
+		for (int round = 0; round < 3; ++round) {
+			// A QMessageBox rather than a bare QDialog, and the
+			// difference is the whole fixture: measured against the
+			// unfixed library, three QDialogs open and close happily
+			// and the SECOND QMessageBox takes the process down. Its
+			// own show path is what reaches the hazard, so a check
+			// built on the simpler dialog defends nothing -- the
+			// entry below said so, running to the end where it
+			// expects a crash.
+			QMessageBox box(QMessageBox::Question, QStringLiteral("t"),
+			                QStringLiteral("body"), QMessageBox::Ok,
+			                &host);                 // NOT pre-stamped
+			box.show();
+			QCoreApplication::processEvents();
+			if (box.isVisible()
+			    && box.testAttribute(Qt::WA_DontShowOnScreen))
+				++shown;
+			box.close();
+			QCoreApplication::processEvents();
+		}
+		CHECK(shown == 3,
+		      "three dialogs opened and closed in turn, each stamped by the "
+		      "filter rather than by the fixture -- the second one used to "
+		      "take the process down");
+	}
+
 	// Where the keys go once the picture has moved. Two windows with a field
 	// each, because a window holding only a label has no tab stop and cannot
 	// answer this at all -- the `second` above is that window, which is why

@@ -2474,3 +2474,16 @@ find = "\tconst QVector<QWidget *> open = input_popups();"
 into = "\tconst QVector<QWidget *> open = popups();"
 count = 1
 check = "typing still reaches the window a person is in"
+
+[[sabotage]]
+# The stamp back to Show alone, which is after Qt has created the platform
+# window: the second dialog then takes the process down. 8.196. The suite
+# cannot report a failure it does not survive, so this entry expects the
+# crash rather than a red line.
+name = "a window is stamped only once it is being shown"
+file = "src/runtime/input_router.cpp"
+find = "\tif (e->type() == QEvent::Polish) {\n\t\tif (auto *w = qobject_cast<QWidget *>(o))\n\t\t\tif (w->isWindow() && w != win_)\n\t\t\t\tw->setAttribute(Qt::WA_DontShowOnScreen);\n\t}\n"
+into = ""
+count = 1
+check = "three dialogs opened and closed in turn"
+expect = "crash"

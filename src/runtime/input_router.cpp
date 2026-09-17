@@ -212,6 +212,11 @@ QWidget *InputRouter::key_target() const {
 }
 
 bool InputRouter::eventFilter(QObject *o, QEvent *e) {
+	if (e->type() == QEvent::Polish) {
+		if (auto *w = qobject_cast<QWidget *>(o))
+			if (w->isWindow() && w != win_)
+				w->setAttribute(Qt::WA_DontShowOnScreen);
+	}
 	if (e->type() == QEvent::Show) {
 		if (auto *w = qobject_cast<QWidget *>(o)) {
 			if (w->isWindow() && w != win_) {
