@@ -28,7 +28,7 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-17, at 1461**,
+**Last re-verified under all six configurations: 2026-09-17, at 1475**,
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
 result. Offscreen and xcb-under-Xvfb both ran 1344, `minimal` refused and
@@ -99,6 +99,30 @@ library memcheck examined is the library that is committed. A pass
 re-run for a test-only addition would be a date rather than a
 measurement, which is what the paragraph above this one exists to
 refuse.
+
+**And again at 1475 for the three routing changes of 8.212 to 8.214** --
+a report population narrowed, a keyboard grab honoured, and F10 added to
+the bundle with a queued focus restore behind it. All four platform arms
+ran 1475, the sanitized run reported no failure and no sanitizer output
+at all, and memcheck's parent summary was 0 bytes lost on each of its
+three counts with 0 errors.
+
+**Two near-misses in that pass are worth more than the pass.** The
+sanitized arm first reported a clean 1461 -- and 1461 was the PREVIOUS
+count, because its build step had been terminated while valgrind held
+the machine and the run had used a stale binary. A green suite from a
+binary the build did not produce is the failure `build-and-commit.md`
+names outright, and the only thing that caught it was the count being
+one a reader could recognise as yesterday's. **Run the two slow arms one
+at a time**, which the paragraph above already said and this pass
+ignored.
+
+Then the rebuilt arm reported 1474 against 1475, which looked like a
+check that does not run under the sanitizer and was a Qt warning
+interleaved into stdout, splitting one `PASS:` line in two. Captured
+with `2>` to its own file the count is 1475 exactly. **Merging stderr
+into a stream you are going to COUNT is the same mistake as piping a
+check's output before reading it**, one step further along.
 **The reason is written each time rather than the re-run being a habit**: a record that says which change
 it covers is one a reader can judge, and one taken on a schedule is a date.
 
