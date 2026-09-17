@@ -1011,6 +1011,21 @@ void Compositor::compose(CellBuffer &out) {
 	// caret too, which is right.
 	QWidget *fw = cursor_layer->focusWidget();
 	if (fw && !fw->testAttribute(Qt::WA_InputMethodEnabled)) fw = nullptr;
+	// AND NOT THE ITEM VIEW ITSELF, which carries that attribute the
+	// moment its current item is editable -- which QStringListModel,
+	// QStandardItemModel and every QTableWidget item are by default. The
+	// attribute says the widget can accept input-method text, and the rule
+	// above wants the narrower thing: a caret that exists right now.
+	//
+	// Measured on a focused QListView over the default list model: the
+	// cursor was parked at cell (4,2), inside the first row, with no caret
+	// anywhere on the screen -- the same fault the comment above records
+	// fixing for a check box and a slider, arriving by a second route.
+	// Nothing is lost by refusing it: while such a view IS editing, the
+	// editor is a child QLineEdit and the FOCUS WIDGET, so it takes the
+	// cursor on its own account -- measured, (4,3) on the editor with the
+	// list at (4,2) before and after.
+	if (qobject_cast<QAbstractItemView *>(fw)) fw = nullptr;
 	if (fw) {
 		QVariant v = fw->inputMethodQuery(Qt::ImCursorRectangle);
 		// A widget that delegates editing to an internal editor forwards this

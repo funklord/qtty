@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1493 checks, 0 failures. `make check` is green and includes
+1496 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16326,6 +16326,44 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.221 A caret is a place to type, not a way to say what has focus
+(2026-09-18)
+
+The open half of 8.220, settled -- and it turned out not to need the
+holder after all, because the rule it needed was already written in the
+compositor: *a caret does not mean "this is focused", it means "type
+here"*. Two things keyed off `WA_InputMethodEnabled` and both were wrong
+for an item view, which acquires that attribute the moment its current
+item is editable -- the default for `QStringListModel`,
+`QStandardItemModel` and every `QTableWidget` item.
+
+    a focused QListView, not editing    cursor (4,2)   no caret there
+    the same list, an editor open       cursor (4,3)   on the editor
+    after Escape                        cursor (4,2)   again
+    a QLineEdit, for contrast           cursor (1,0)   correct
+
+**Nothing is lost by refusing the view the cursor**, which is what makes
+this a defect rather than a decision: while the view is editing, the
+editor is a child `QLineEdit` and IS the focus widget, so it takes the
+cursor on its own account. The measurement above is the whole argument --
+(4,3) on the editor, (none) on the list before and after.
+
+**And `focus_invisible()` exempted the same widgets**, on the same
+attribute, letting the commonest list in Qt out of the report entirely. A
+view with no caret has nothing to show focus with unless it draws a mark,
+which is exactly what the report exists to ask about.
+
+**Two controls had to be repaired before either change was defended, and
+the harness caught both.** The first asked the report about a widget the
+report does not examine and read the silence as a pass -- fixed in 8.220
+with a read-only model. The second, written for this entry, asserted that
+an EXAMINED list comes out clean; a list the report skips also comes out
+clean, so it stayed green with the exemption widened back. It asks now
+with a list that would be named -- frameless, editable model, a delegate
+that draws no panel -- so the only question left is whether the report
+looks. **A control has to be able to fail the way the thing it controls
+for fails**, and twice in two entries it could not.
 
 ### 8.220 The guide's own example failed the guide (2026-09-18)
 

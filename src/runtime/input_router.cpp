@@ -1314,7 +1314,19 @@ QVector<QWidget *> focus_invisible(QWidget *scope) {
 	for (QWidget *w : stops) {
 		// A widget that takes text shows focus with the terminal's cursor,
 		// which is placed on exactly this attribute. Nothing for it to draw.
-		if (w->testAttribute(Qt::WA_InputMethodEnabled)) continue;
+		//
+		// EXCEPT AN ITEM VIEW, which acquires the attribute as soon as its
+		// current item is editable -- true of QStringListModel,
+		// QStandardItemModel and QTableWidget by default -- and has no
+		// caret to show focus with unless an editor is actually open, in
+		// which case the editor holds the focus rather than the view. So
+		// the exemption let the commonest list in Qt out of this report
+		// entirely: measured, a frameless QListView with a custom delegate
+		// showed nothing at all when focused and was never named, and a
+		// control written to prove the report could speak read that
+		// silence as a pass.
+		if (w->testAttribute(Qt::WA_InputMethodEnabled)
+		    && !qobject_cast<QAbstractItemView *>(w)) continue;
 		QWidget *other = nullptr;
 		for (QWidget *o : stops)
 			if (o != w) { other = o; break; }

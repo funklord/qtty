@@ -859,7 +859,18 @@ line edit, check box, radio, combo, spin box, slider, list, tab widget,
 scroll bar -- and the ones that fail are the ones somebody wrote. A widget that edits text is not asked, because the terminal's
 cursor is its mark -- that is the same `WA_InputMethodEnabled` practice 11
 is about, and the check confirms the cursor really does follow the focus
-onto it. It moves the focus while it looks and puts it back, so it belongs
+onto it.
+
+**A list, a tree or a table IS asked, even though it carries that same
+attribute.** Qt sets `WA_InputMethodEnabled` on an item view as soon as
+its current item is editable, which is the default for
+`QStringListModel`, `QStandardItemModel` and every `QTableWidget` item --
+and such a view has no caret to show focus with unless an editor is
+actually open, in which case the editor holds the focus rather than the
+view. **The terminal's cursor stays off it for the same reason**: a caret
+means *type here*, and measured, a focused list used to park one at a
+cell where nothing was being typed. So an item view has to draw its own
+mark, and the report checks that it does. It moves the focus while it looks and puts it back, so it belongs
 in a test rather than in a frame loop.
 
 On a terminal this matters more than on a desktop. There is no pointer

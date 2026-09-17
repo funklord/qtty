@@ -2417,8 +2417,8 @@ check = "a custom widget that asks hasFocus() is named"
 # line edit in every application is reported.
 name = "a text field is asked to draw a focus mark"
 file = "src/runtime/input_router.cpp"
-find = "\t\tif (w->testAttribute(Qt::WA_InputMethodEnabled)) continue;"
-into = "\t\tif (false) continue;"
+find = "\t\tif (w->testAttribute(Qt::WA_InputMethodEnabled)\n\t\t    && !qobject_cast<QAbstractItemView *>(w)) continue;"
+into = "\t\tif (false\n\t\t    && !qobject_cast<QAbstractItemView *>(w)) continue;"
 count = 1
 check = "nor a custom widget that edits text and draws nothing new"
 
@@ -2724,3 +2724,24 @@ find = "\t\t\t\tif (at.isValid() && at == view->currentIndex())\n\t\t\t\t\tmark 
 into = "\t\t\t\t(void)at;"
 count = 1
 check = "a custom delegate that draws its panel through the style"
+
+[[sabotage]]
+# The terminal cursor parked on an item view again, which carries
+# WA_InputMethodEnabled for an editable model and has no caret to put it
+# on. 8.221.
+name = "an item view takes the terminal cursor"
+file = "src/runtime/compositor.cpp"
+find = "\tif (qobject_cast<QAbstractItemView *>(fw)) fw = nullptr;"
+into = "\tif (false) fw = nullptr;"
+count = 1
+check = "a focused list carries no terminal cursor"
+
+[[sabotage]]
+# The exemption widened again, so an item view over an editable model is
+# never examined by focus_invisible. 8.221.
+name = "an item view is exempt from focus_invisible"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (w->testAttribute(Qt::WA_InputMethodEnabled)\n\t\t    && !qobject_cast<QAbstractItemView *>(w)) continue;"
+into = "\t\tif (w->testAttribute(Qt::WA_InputMethodEnabled)) continue;"
+count = 1
+check = "a list over an editable model is examined by focus_invisible"

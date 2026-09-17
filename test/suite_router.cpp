@@ -7948,6 +7948,98 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// ---- the cursor belongs to a caret, not to a focus ---------------------
+	//
+	// An item view acquires WA_InputMethodEnabled as soon as its current
+	// item is editable, which QStringListModel, QStandardItemModel and
+	// every QTableWidget item are by default. Two things keyed off that
+	// attribute and both were wrong for a view: the compositor placed the
+	// terminal cursor on it -- measured, cell (4,2) inside the first row
+	// of a focused list, with no caret anywhere -- and focus_invisible()
+	// exempted it, letting the commonest list in Qt out of the report.
+	//
+	// Nothing is lost by refusing the view the cursor, and that is the
+	// pair this checks: while the view IS editing, the editor is a child
+	// and the focus widget, so it takes the cursor on its own account.
+	{
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(30, 10));
+		auto *field = new QLineEdit(&host);
+		field->setGeometry(0, 0, 12 * cw, ch);
+		auto *list = new QListView(&host);
+		auto *model = new QStringListModel(
+		    {QStringLiteral("one"), QStringLiteral("two")}, &host);
+		list->setModel(model);
+		list->setGeometry(0, 2 * ch, 12 * cw, 3 * ch);
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter ir(&host);
+		Compositor ic(&host, &ir);
+		list->setCurrentIndex(model->index(0, 0));
+		list->setFocus();
+		set_focus_widget(host.focusWidget());
+		QCoreApplication::processEvents();
+		CellBuffer ib(30, 10);
+		ic.compose(ib);
+		const bool none_on_the_list = !ic.cursor_cell().has_value();
+		list->edit(model->index(0, 0));
+		QCoreApplication::processEvents();
+		set_focus_widget(host.focusWidget());
+		ic.compose(ib);
+		const auto editing = ic.cursor_cell();
+		const bool on_the_editor =
+		    editing.has_value()
+		    && qobject_cast<QLineEdit *>(Qtty::focusWidget()) != nullptr
+		    && Qtty::focusWidget() != field;
+		CHECK(none_on_the_list && on_the_editor,
+		      "a focused list carries no terminal cursor and its editor "
+		      "does, a caret being a place to type rather than a way to "
+		      "say what has the focus");
+		ir.on_key({Qt::Key_Escape, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		set_focus_widget(host.focusWidget());
+		ic.compose(ib);
+		CHECK(!ic.cursor_cell().has_value(),
+		      "and it goes away again when the editor closes, rather than "
+		      "staying where a caret used to be");
+
+		// AND THE REPORT EXAMINES SUCH A LIST NOW, which has to be
+		// asked with a list that WOULD be named -- the first version
+		// asserted that an examined list came out clean, and a list the
+		// report skips also comes out clean, so it passed with the
+		// exemption widened back. The harness said so.
+		//
+		// So: frameless, an editable model, and a delegate that paints
+		// straight over its rect and draws no panel. Nothing about it
+		// changes when the focus arrives, and the only question left is
+		// whether the report looks.
+		struct Bare : QStyledItemDelegate {
+			using QStyledItemDelegate::QStyledItemDelegate;
+			void paint(QPainter *p, const QStyleOptionViewItem &o,
+			           const QModelIndex &ix) const override {
+				p->drawText(o.rect.x(),
+				            o.rect.y() + QFontMetrics(o.font).ascent(),
+				            ix.data().toString());
+			}
+		};
+		list->setFrameShape(QFrame::NoFrame);
+		list->setItemDelegate(new Bare(&host));
+		field->setFocus();
+		set_focus_widget(host.focusWidget());
+		QCoreApplication::processEvents();
+		CHECK(Qtty::focus_invisible(&host).contains(list),
+		      "and a list over an editable model is examined by "
+		      "focus_invisible rather than exempted for an attribute "
+		      "meant for text widgets");
+		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	// ---- the project's own example, held to its own guide ------------------
 	//
 	// The guide tells an application to assert seven of the eight reports
