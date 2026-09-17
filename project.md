@@ -28,7 +28,7 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-18, at 1493**,
+**Last re-verified under all six configurations: 2026-09-18, at 1496**,
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
 result. Offscreen and xcb-under-Xvfb both ran 1344, `minimal` refused and
@@ -130,6 +130,12 @@ application draws, which is the memcheck arm's own subject. All four
 platform arms ran 1486, the sanitized run reported no failure and no
 sanitizer output, and memcheck reported **0 errors with 17 suppressed**
 and nothing lost on any of its three counts.
+
+**And at 1496**, for the cursor and report changes of 8.221 -- what the
+compositor puts on the screen for every focused item view, and which
+widgets a public report examines. Four platform arms at 1496, the
+sanitized run clean with no sanitizer output, memcheck 0 errors with the
+same 17 suppressed.
 
 **And at 1493 on 2026-09-18**, for the item-panel change of 8.220 --
 a drawing change reaching every item view in every application, which
