@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1426 checks, 0 failures. `make check` is green and includes
+1427 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16274,6 +16274,22 @@ it, which is exactly an application's arrangement.
 `expect = "crash"`, reported that the suite ran to the end. A `QMessageBox`
 is what reaches the hazard. With it, removing the stamp takes the run out
 at 245 checks, which is the entry doing its job.
+
+**The idiom an application actually writes is now run too.**
+`QMessageBox::question()` is a static that constructs, `exec()`s a nested
+loop and destroys, and nothing in this suite had ever called one -- the
+existing nested-loop check builds its own `QDialog`, which is precisely
+the kind that does NOT reach the crash. Two in a row, through the real
+`exec()` with a backend, because one proves only that the first survives.
+
+**That check failed first for a reason of its own**, and it is the
+fixture's rather than the library's: it closed the box with `accept()`,
+which leaves `clickedButton()` null, so `QMessageBox::exec()` returned
+`NoButton` -- zero -- and the first reading of that was a defect in the
+library. Clicking the button the question offers is what an application's
+user does, and it returns `Yes`. **A dialog answered by the wrong door
+gives the wrong answer, and the wrong answer looks like a fault
+downstream.**
 
 ### 8.195 Every window kind, asked the same four questions (2026-09-17)
 

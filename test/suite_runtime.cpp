@@ -227,6 +227,72 @@ int suite_runtime() {
 		      "which is what an application asking with exec() depends on");
 	}
 
+	// ------------------- the idiom an application actually writes: the
+	// static QMessageBox helpers, which construct, exec() and destroy in
+	// one call. Nothing here had ever run one, and the difference is not
+	// academic: 8.196's crash needed a QMessageBox specifically -- three
+	// QDialogs opened and closed happily against the unfixed library and
+	// the second message box took the process down. Two in a row, because
+	// one proves only that the first survives.
+	{
+		NullBackend backend(QSize(40, 12));
+		QWidget win;
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		v->addWidget(new QLabel(QStringLiteral("under"), &win));
+		v->addStretch();
+
+		int answered = 0;
+		bool asked = false;
+		QTimer opener;
+		opener.setInterval(10);
+		QObject::connect(&opener, &QTimer::timeout, [&] {
+			if (asked) return;
+			asked = true;
+			// The box answers itself: a timer inside the nested loop
+			// presses its default. Bounded by tries rather than by the
+			// clock, for the reason the block above gives.
+			for (int round = 0; round < 2; ++round) {
+				QTimer closer;
+				int tries = 0;
+				closer.setInterval(10);
+				QObject::connect(&closer, &QTimer::timeout, [&] {
+					// CLICK the button rather than accept() the
+					// dialog. QMessageBox::exec() returns the standard
+					// button that was clicked, and a bare accept()
+					// leaves clickedButton() null -- so it returned
+					// NoButton, which is 0, and the first version of
+					// this check read that as a failure of the library
+					// rather than of the fixture.
+					if (auto *box = qobject_cast<QMessageBox *>(
+					        QApplication::activeModalWidget())) {
+						if (auto *yes = box->button(QMessageBox::Yes))
+							yes->click();
+						return;
+					}
+					if (++tries > 400) qApp->quit();
+				});
+				closer.start();
+				const int got = QMessageBox::question(
+				    &win, QStringLiteral("t"), QStringLiteral("body"));
+				if (got == QMessageBox::Yes) ++answered;
+				printf("info: message box %d answered %s after %d idle "
+				       "turn(s)\n", round,
+				       got == QMessageBox::Yes ? "Yes" : "something else",
+				       tries);
+				closer.stop();
+			}
+			qApp->quit();
+		});
+		opener.start();
+		const int rc = exec(*qApp, win, backend);
+		opener.stop();
+		CHECK(rc == 0 && answered == 2,
+		      "two QMessageBox::question() calls in a row each open, run "
+		      "their nested loop and answer -- the commonest dialog idiom "
+		      "in Qt, and the one no fixture here had ever run");
+	}
+
 	// --------------------------------------- font provisioning (5.3, risk R3)
 	{
 		// The font setup() installed, rather than a second one built here to
