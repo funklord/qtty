@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1461 checks, 0 failures. `make check` is green and includes
+1464 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16280,6 +16280,46 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.212 The report's own noise (2026-09-17)
+
+Sweeping the rest of Qt's furniture for pointer-only actions turned up
+the opposite of a gap: `pointer_only()` was naming a widget it should
+not. Qt adds a clear button to every field that calls
+`setClearButtonEnabled(true)`, it is `Qt::NoFocus` and no key reaches the
+button -- and the ACTION it performs has a key in both modes:
+
+    conventions ON    Ctrl+U empties the field (readline kill-back)
+    conventions OFF   Ctrl+A then Delete empties it (Qt's select-all)
+
+Practice 4 asks whether the action is reachable, not whether the widget
+is. So every field with a clear button produced a finding whose remedy
+already existed -- **the shape that gets a report ignored rather than
+acted on**, which is the cost this project has already recorded for a
+gate carrying a long ignore list.
+
+**Qt's own marker decides it**, which is the same idiom the completer
+work of 8.201 used: there Qt marks a deferring layer by pointing its
+focus proxy at the edited field, here it names the clear button's action
+`_q_qlineeditclearaction`. An action the APPLICATION adds with
+`QLineEdit::addAction()` keeps its own name and is still reported -- a
+reveal toggle in a password field is exactly what the report is for, and
+excluding by parent class would have swallowed it.
+
+**The exclusion is pinned by its reason, not only by its effect.** A
+third check empties the field by key in both convention modes, so if that
+ever stops being true the justification fails loudly instead of leaving a
+silent hole. And if Qt renames its internal action the button returns to
+the report rather than disappearing from it, which is the safe direction
+for a private name to break in.
+
+**Two instrument errors on the way, both mine, both caught by a control
+rather than by care.** A probe measured the field as unclearable by key
+-- it was a top-level outside the router's window, so no key ever reached
+it, the same mistake 8.207's first stacked-widget probe made. And
+`defaultAction()` is `QToolButton`'s rather than `QAbstractButton`'s, so
+the first predicate did not compile; the action is in `actions()` for
+both.
 
 ### 8.211 What reaches an application when focus moves (2026-09-17)
 

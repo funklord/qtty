@@ -1402,10 +1402,37 @@ QVector<QWidget *> pointer_only(QWidget *scope) {
 	for (QPushButton *b : defaults)
 		if (b->isDefault() && qobject_cast<QDialog *>(b->window()))
 			keyed.insert(b);
+	// A LINE EDIT'S CLEAR BUTTON IS NOT A FINDING, and leaving it in was
+	// the kind of false positive that gets a whole report ignored: Qt adds
+	// the button whenever an application calls setClearButtonEnabled(true),
+	// so every such field produced one, and the remedy it asks for already
+	// exists. Measured, on a field holding text:
+	//
+	//   conventions ON    Ctrl+U empties it (the readline kill-back)
+	//   conventions OFF   Ctrl+A then Delete empties it (Qt's select-all)
+	//
+	// So the ACTION a click there performs has a keyboard route in both
+	// modes, which is the question practice 4 asks -- unlike a splitter
+	// handle or a sorting header, where it has none anywhere.
+	//
+	// Qt's own marker decides it, the way QCompleter::setPopup() marks a
+	// deferring layer by its focus proxy: the clear button's default action
+	// is named `_q_qlineeditclearaction`, while an action the APPLICATION
+	// adds with QLineEdit::addAction() keeps the name the application gave
+	// it and is still named here -- a reveal toggle in a password field is
+	// exactly the pointer-only case this report exists for. If Qt ever
+	// renames that action the button comes back into the report rather than
+	// vanishing from it, and the check below fails loudly saying so.
 	const auto buttons = scope->findChildren<QAbstractButton *>();
 	for (QAbstractButton *b : buttons) {
 		if (!b->isVisible() || !b->isEnabled()) continue;
 		if (keyed.contains(b)) continue;
+		bool qt_clear_button = false;
+		for (const QAction *a : b->actions())
+			qt_clear_button = qt_clear_button
+			    || a->objectName()
+			       == QLatin1String("_q_qlineeditclearaction");
+		if (qt_clear_button) continue;
 		out.append(b);
 	}
 	// AND THE THING YOU DRAG. `QSplitterHandle` is Qt's own word for it, the

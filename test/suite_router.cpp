@@ -4096,6 +4096,76 @@ int suite_router() {
 			      "the very same interaction flag every label carries");
 		}
 
+		// A LINE EDIT'S CLEAR BUTTON, which is the report's own noise
+		// rather than an application's fault. Qt adds it whenever
+		// setClearButtonEnabled(true) is called, so naming it put a
+		// finding in every field that has one -- and the remedy it asks
+		// for already exists, which is the shape that gets a whole report
+		// ignored rather than acted on.
+		//
+		// Three checks, and the third is the one that keeps the exclusion
+		// honest: it pins the REASON. If a field ever stops being
+		// clearable by key, the justification for skipping its button has
+		// gone and this says so.
+		{
+			QWidget form;
+			form.setAttribute(Qt::WA_DontShowOnScreen);
+			form.resize(GridMetrics::cells(40, 6));
+			auto *field = new QLineEdit(&form);
+			field->setClearButtonEnabled(true);
+			field->setText(QStringLiteral("typed text"));
+			field->setGeometry(0, 0, 30 * cw, ch);
+			QAction *reveal = field->addAction(QIcon(),
+			                                   QLineEdit::LeadingPosition);
+			reveal->setObjectName(QStringLiteral("reveal"));
+			form.show();
+			QCoreApplication::processEvents();
+			QWidget *clear_button = nullptr, *reveal_button = nullptr;
+			for (QToolButton *b : field->findChildren<QToolButton *>()) {
+				bool is_clear = false;
+				for (const QAction *a : b->actions())
+					is_clear = is_clear
+					    || a->objectName()
+					       == QLatin1String("_q_qlineeditclearaction");
+				if (is_clear) clear_button = b;
+				else reveal_button = b;
+			}
+			const QVector<QWidget *> named = pointer_only(&form);
+			CHECK(clear_button && !named.contains(clear_button),
+			      "a line edit's own clear button is not reported, Qt "
+			      "adding one to every field that asks and the action it "
+			      "performs having a key already");
+			CHECK(reveal_button && named.contains(reveal_button),
+			      "while an icon action the APPLICATION put in the same "
+			      "field still is, which is the case the report exists "
+			      "for -- a reveal toggle no key reaches");
+
+			// THE REASON, in both modes, because the readline bundle is
+			// only one of the two routes and an application may run
+			// without it.
+			InputRouter cr(&form);
+			const bool had_conv = keyboard_conventions();
+			set_keyboard_conventions(true);
+			field->setFocus();
+			set_focus_widget(field);
+			field->setText(QStringLiteral("typed text"));
+			cr.on_key({Qt::Key_U, QString(), true, false, false});
+			QCoreApplication::processEvents();
+			const bool killed_by_readline = field->text().isEmpty();
+			set_keyboard_conventions(false);
+			field->setText(QStringLiteral("typed again"));
+			cr.on_key({Qt::Key_A, QString(), true, false, false});
+			cr.on_key({Qt::Key_Delete, QString(), false, false, false});
+			QCoreApplication::processEvents();
+			const bool cleared_by_selection = field->text().isEmpty();
+			set_keyboard_conventions(had_conv);
+			CHECK(killed_by_readline && cleared_by_selection,
+			      "and the reason it is skipped holds both ways: Ctrl+U "
+			      "empties the field with the conventions on, Ctrl+A then "
+			      "Delete with them off");
+			GridGuard::reset();
+		}
+
 		// THE NARROW TERMINAL, which is this library's ordinary condition
 		// rather than an edge: a toolbar with more actions than fit hides
 		// the surplus behind a chevron only a pointer can open, and the

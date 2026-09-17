@@ -529,6 +529,17 @@ fixed order. Give the sorts you care about a menu entry or a shortcut of
 your own, calling `sortByColumn()`; that is the same remedy as the
 toolbar chevron above, and it is the only one available.
 
+**A line edit's clear button is deliberately not named either**, and for
+a different reason worth knowing: the little `x` Qt adds when you call
+`setClearButtonEnabled(true)` has no key of its own, but *what it does*
+has one in both modes -- `Ctrl+U` empties the field with the conventions
+on, `Ctrl+A` then `Delete` with them off. Practice 4 asks whether the
+**action** is reachable, not whether the widget is, so a finding there
+would be one you could not act on. An icon action **you** add to a field
+with `QLineEdit::addAction()` is named, because that one does something
+of your own that no key reaches -- a reveal toggle in a password field
+is the case to have in mind.
+
 **Resizing and reordering columns are pointer-only too, and are
 deliberately NOT named** -- they change how the data looks rather than
 which data you are shown, and a report that flagged every header in

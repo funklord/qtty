@@ -2635,3 +2635,14 @@ find = "\t\tif (scope != win_ && !scope->focusWidget() && input_popups().isEmpty
 into = "\t\tif (false) move_focus(scope, true);"
 count = 1
 check = "and the same through exec()"
+
+[[sabotage]]
+# Qt's clear button back in the report, which puts a finding in every
+# field an application asks a clear button for -- and one whose remedy
+# already exists. 8.212.
+name = "a line edit's clear button is reported"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (qt_clear_button) continue;"
+into = "\t\tif (false) continue;"
+count = 1
+check = "a line edit's own clear button is not reported"
