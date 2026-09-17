@@ -386,6 +386,54 @@ bool InputRouter::eventFilter(QObject *o, QEvent *e) {
 					popups_.removeAll(QPointer<QWidget>(w));
 					popups_.append(w);                             // top of stack
 					if (frame_requested) frame_requested();
+				} else {
+					// A LAYER THAT OPENS WITH NOTHING FOCUSED SWALLOWS
+					// WHAT THE USER TYPES FIRST. Qt gives a window its
+					// first tab stop when the window ACTIVATES, and none
+					// activates here -- the same predicate behind the
+					// repair in the Hide branch above.
+					//
+					// Measured, with a QDialog holding two fields and a
+					// default button: `dlg.focusWidget()` is null,
+					// key_target() is the QDialog itself, and the two
+					// keys a user types next land nowhere at all. Tab
+					// rescues it and nothing else does. Through exec(),
+					// which is how dialogs are actually opened, the
+					// answer is the same.
+					//
+					// A QMessageBox is FINE, because Qt focuses its own
+					// default button on the way up -- so the case that
+					// breaks is the ordinary application's own dialog,
+					// and the case that works is the one a library
+					// author would have tested with.
+					//
+					// Queued, and that is what keeps this from fighting
+					// the widgets that do it themselves: by the time it
+					// runs, a QMessageBox already has a focus widget and
+					// this does nothing. It also declines to overrule an
+					// application that called setFocus() before show().
+					// AND ONLY A LAYER THIS ROUTER OWNS, which the
+					// stamping above deliberately does NOT ask -- a
+					// window must be stamped by whoever sees it first,
+					// while a focus repair belongs to one router. The
+					// suite caught this the same way it caught the
+					// identical omission in the Hide branch: a fixture
+					// whose window an EARLIER router repaired had its
+					// paging key answered by a widget that should not
+					// have had focus, and PageUp scrolled three rows
+					// where the arrow fallback gives five.
+					bool mine = false;
+					for (QWidget *p = w; p && !mine; p = p->parentWidget())
+						mine = p == win_;
+					if (!mine) return false;
+					QPointer<QWidget> layer = w;
+					QMetaObject::invokeMethod(this, [this, layer] {
+						if (!layer || !layer->isVisible()) return;
+						if (layer->focusWidget()) return;
+						move_focus(layer, true);
+						if (input_scope() == layer)
+							set_focus_widget(layer->focusWidget());
+					}, Qt::QueuedConnection);
 				}
 			}
 		}
@@ -1819,9 +1867,35 @@ void InputRouter::on_key(const KeyEvent &k) {
 	// decided against it -- measured: after `b->setFocus()`, B's own
 	// Qt::WidgetShortcut refused to fire, because the repair at the end of
 	// this function happens after the matching.
-	if (QWidget *scope = input_scope())
+	if (QWidget *scope = input_scope()) {
+		// NOBODY HOME, so seat somebody before the key is spent. The
+		// repair on Show does this eagerly, and eagerly is not a
+		// guarantee: it runs from the event queue, and an application's
+		// own zero-timer can reach the loop first. Measured exactly that
+		// way -- a QDialog opened with exec(), a singleShot(0) that types
+		// into it, and the queued repair arriving after the dialog had
+		// already been accepted and hidden, so the keystroke was lost
+		// anyway.
+		//
+		// Here there is no race to lose: a key is about to be delivered,
+		// and a layer with no focus widget would swallow it. This is the
+		// same answer Qt gives on activation and the same call the hide
+		// repair makes, asked at the last moment instead of the first.
+		//
+		// NOT the primary window, and that limit is measured rather than
+		// cautious. With the conventions on this library offers arrow and
+		// paging keys as a FALLBACK for when nothing takes them, and the
+		// window's own no-focus state is how that fallback is reached: a
+		// window whose only child is a QScrollArea pages five rows that
+		// way, where seating focus on the area first gives Qt's own three.
+		// A dialog has no such fallback to lose and everything to lose by
+		// swallowing a key, so the repair stops at the window that owns
+		// the fallback.
+		if (scope != win_ && !scope->focusWidget() && input_popups().isEmpty())
+			move_focus(scope, true);
 		if (scope->focusWidget() != focusWidget())
 			set_focus_widget(scope->focusWidget());
+	}
 	// Escape cancels a drag, which is what it does on every desktop -- and
 	// before this nothing called drag_cancel() at all. It was written,
 	// exported and never wired: an interface is only as wired as its

@@ -1041,6 +1041,21 @@ in it.
 `Esc` rejects such a dialog and its default button answers `Enter`, both
 Qt's own; see the first table.
 
+**A dialog opens with its first field focused, and that one is not Qt's
+here.** On a desktop Qt seats focus when the window *activates*, and no
+window activates under this platform -- so a dialog used to come up with
+nothing focused at all, and the first keys a user typed went nowhere.
+Measured, before the fix: a two-field dialog with a default button,
+`focusWidget()` null, `ab` typed into it, and both fields still empty.
+A `QMessageBox` was unaffected, because Qt focuses its own default
+button -- which is precisely why the fault survived being tested with
+one.
+
+You need do nothing for this, and there is one thing you can do with it:
+**call `setFocus()` on the field you want before showing the dialog and
+your choice is kept.** The runtime only seats focus where nobody else
+has.
+
 **Where a dialog lands, and the one case worth knowing about.** Give a
 dialog a parent and Qt centres it over that parent, which is inside the
 terminal, and qtty leaves it there. Give it **no** parent -- which is what

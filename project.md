@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1454 checks, 0 failures. `make check` is green and includes
+1459 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16264,6 +16264,69 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.210 A dialog opened with nobody in it (2026-09-17)
+
+The lens from 8.206 and 8.207 pointed at the rest of its family -- what
+else does Qt do only for an ACTIVE window? -- and the answer is the
+commonest widget interaction there is. **Every dialog opened with
+nothing focused, and the first keys a user typed were lost.** Measured
+on a two-field dialog with a default button:
+
+    dlg.show(), modal      focusWidget null, key_target the QDialog,
+                           "ab" typed -> both fields still empty
+    dlg.exec()             the same
+    QMessageBox            focusWidget is its default QPushButton, and
+                           Return activates it
+
+Qt seats a window's first tab stop when the window activates, and none
+activates here. `QMessageBox` escapes because Qt focuses its own default
+button on the way up -- **which is exactly why this survived: it is the
+dialog a library author reaches for when testing dialogs.** The one that
+breaks is the application's own.
+
+**The repair is in two places and needs to be, which took a measurement
+to learn.** On Show, queued, seat the first tab stop of a layer this
+router owns that has none. That is eager and it is not a guarantee: the
+queued call competes with whatever else is in the loop, and an
+application's own `singleShot(0)` can reach it first. Measured exactly
+that way -- a dialog opened with `exec()`, a zero-timer that types into
+it, and the repair arriving after the dialog had been accepted and
+hidden, so the keystroke was lost anyway. So the second place is at key
+DISPATCH, where there is no race left to lose: a key is about to be
+delivered, and a layer with nobody focused would swallow it.
+
+Each buys something the other cannot, and each has a sabotage naming it.
+The dispatch repair saves the keystroke; **the Show repair is what puts
+the cursor in the field in the FIRST frame**, before any key -- which is
+what a terminal draws immediately and what a screen reader reads out.
+
+**Three limits, all of them measured rather than chosen:**
+
+- **Not the primary window.** With the conventions on this library
+  offers arrows and paging as a fallback for when nothing takes them,
+  and a window's own no-focus state is how that fallback is reached: a
+  window whose only child is a `QScrollArea` pages five rows that way,
+  where seating focus on the area first gives Qt's own three. The suite
+  said so by reddening `PageUp scrolls five rows, not one`, a check
+  written for 8.66 and older than any of this.
+- **Not a layer this router does not own**, which is the same omission
+  the hide repair made in 8.206 and the same fixture caught it -- a
+  foreign router seating focus in a window whose paging key then
+  answered from the wrong widget. Stamping in the same branch is
+  deliberately global; a focus repair belongs to one router.
+- **Never over a choice already made.** A dialog whose application
+  called `setFocus()` before showing it keeps that widget, and a
+  `QMessageBox` keeps the button Qt chose. Both are checks, and they are
+  the controls that make this a repair rather than a policy.
+
+**And three sabotage anchors stopped being unique the moment this
+landed**, because the Show branch now holds the same ownership walk and
+the same queued call as the Hide branch. `--validate` refused all three
+rather than applying them to the wrong site, which is the guard working:
+an anchor is unique as a property of the file at a moment, not of the
+string. Re-anchored with their own surrounding lines and re-proved, each
+reddening the check it names.
 
 ### 8.209 A transient window is treated as a peer (2026-09-17)
 

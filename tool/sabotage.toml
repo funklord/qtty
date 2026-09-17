@@ -1319,8 +1319,8 @@ check = "composing a frame re-reads who has focus"
 # which is when a widget-context shortcut is decided against it.
 name = "a key is matched against the focus record before it is refreshed"
 file = "src/runtime/input_router.cpp"
-find = "\tif (QWidget *scope = input_scope())\n\t\tif (scope->focusWidget() != focusWidget())\n\t\t\tset_focus_widget(scope->focusWidget());"
-into = "\tif (QWidget *scope = input_scope())\n\t\tif (false)\n\t\t\tset_focus_widget(scope->focusWidget());"
+find = "\t\tif (scope->focusWidget() != focusWidget())\n\t\t\tset_focus_widget(scope->focusWidget());\n\t}"
+into = "\t\tif (false)\n\t\t\tset_focus_widget(scope->focusWidget());\n\t}"
 count = 1
 check = "the first key after that move is judged against the widget that has focus"
 
@@ -2565,8 +2565,8 @@ check = "committing an item view's edit hands focus back to the view"
 # past a stacked page that has not been shown yet. 8.206.
 name = "the focus repair runs before the hide has settled"
 file = "src/runtime/input_router.cpp"
-find = "\t\t\t\t}, Qt::QueuedConnection);"
-into = "\t\t\t\t}, Qt::DirectConnection);"
+find = "\t\t\t\t\tset_focus_widget(scope->focusWidget());\n\t\t\t\t}, Qt::QueuedConnection);"
+into = "\t\t\t\t\tset_focus_widget(scope->focusWidget());\n\t\t\t\t}, Qt::DirectConnection);"
 count = 1
 check = "changing a stacked page leaves focus on the page that arrived"
 
@@ -2575,8 +2575,8 @@ check = "changing a stacked page leaves focus on the page that arrived"
 # taking turns to throw away each other's answer. 8.206.
 name = "a router repairs focus in somebody else's window"
 file = "src/runtime/input_router.cpp"
-find = "\t\t\t\tmine = p == win_;"
-into = "\t\t\t\tmine = true;"
+find = "\t\t\tfor (QWidget *p = w; p && !mine; p = p->parentWidget())\n\t\t\t\tmine = p == win_;"
+into = "\t\t\tfor (QWidget *p = w; p && !mine; p = p->parentWidget())\n\t\t\t\tmine = true;"
 count = 1
 check = "committing an item view's edit hands focus back to the view"
 
@@ -2611,3 +2611,27 @@ find = "\treturn !w->isModal();"
 into = "\treturn true;"
 count = 1
 check = "the same dialog made modal is drawn over the window"
+
+[[sabotage]]
+# The eager repair removed, so a dialog's first frame is drawn with the
+# cursor nowhere -- the key that follows still lands, the repair at
+# dispatch seeing to that, but the user is told nothing until they press
+# it. 8.210.
+name = "a dialog's first frame has no cursor in it"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\t\t\t\tif (layer->focusWidget()) return;\n\t\t\t\t\t\tmove_focus(layer, true);"
+into = "\t\t\t\t\t\tif (layer->focusWidget()) return;"
+count = 1
+check = "the very first frame of a dialog already has the cursor in its field"
+
+[[sabotage]]
+# The repair at dispatch removed, so a layer that opens with nothing
+# focused swallows what the user types -- which the eager repair alone
+# cannot prevent, an application's own zero-timer being free to reach the
+# loop first. 8.210.
+name = "a key is delivered to a layer with nobody focused"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (scope != win_ && !scope->focusWidget() && input_popups().isEmpty())\n\t\t\tmove_focus(scope, true);"
+into = "\t\tif (false) move_focus(scope, true);"
+count = 1
+check = "and the same through exec()"

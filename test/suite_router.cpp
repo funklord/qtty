@@ -7811,6 +7811,159 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// ---- a layer that opens with nothing focused ---------------------------
+	//
+	// Qt gives a window its first tab stop when the window ACTIVATES, and
+	// none activates here. Measured before the repair: a QDialog holding
+	// two fields and a default button came up with focusWidget() null,
+	// key_target() the QDialog itself, and the keys a user types next
+	// landing nowhere at all -- Tab rescued it and nothing else did.
+	//
+	// The two controls matter as much as the repair. A QMessageBox focuses
+	// its own default button on the way up, which is exactly why a library
+	// author testing with one would never see this; and an application
+	// that called setFocus() before show() has said what it wants. Neither
+	// may be overruled.
+	{
+		const bool had_conv = keyboard_conventions();
+		set_keyboard_conventions(true);
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(40, 12));
+		auto *behind = new QLineEdit(&host);
+		behind->setGeometry(0, 0, 20 * cw, ch);
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter dr(&host);
+		behind->setFocus();
+		set_focus_widget(behind);
+
+		{
+			QDialog dlg(&host);
+			auto *first = new QLineEdit(&dlg);
+			first->setGeometry(0, 0, 20 * cw, ch);
+			auto *second = new QLineEdit(&dlg);
+			second->setGeometry(0, 2 * ch, 20 * cw, ch);
+			dlg.setModal(true);
+			dlg.setAttribute(Qt::WA_DontShowOnScreen);
+			dlg.resize(GridMetrics::cells(30, 6));
+			dlg.show();
+			QCoreApplication::processEvents();
+			dr.on_key({0, QStringLiteral("a"), false, false, false});
+			dr.on_key({0, QStringLiteral("b"), false, false, false});
+			QCoreApplication::processEvents();
+			CHECK(dlg.focusWidget() == first
+			      && first->text() == QStringLiteral("ab")
+			      && behind->text().isEmpty(),
+			      "a modal dialog opens with its first field focused, so "
+			      "what the user types next goes into the dialog rather "
+			      "than nowhere");
+			dlg.close();
+			QCoreApplication::processEvents();
+		}
+
+		// AND BEFORE ANY KEY AT ALL, which is what the repair on Show
+		// buys that the one at dispatch cannot. A terminal draws a frame
+		// as soon as the dialog opens, and the cursor in that frame is
+		// where the user is told they are -- a screen reader says it out
+		// loud. Waiting for the first keystroke would place it correctly
+		// one frame too late.
+		{
+			QVector<QWidget *> hidden;
+			for (QWidget *t : QApplication::topLevelWidgets())
+				if (t->isVisible()) { t->hide(); hidden.append(t); }
+			QWidget owner;
+			owner.setAttribute(Qt::WA_DontShowOnScreen);
+			owner.resize(GridMetrics::cells(40, 12));
+			owner.show();
+			QCoreApplication::processEvents();
+			InputRouter er(&owner);
+			Compositor ec(&owner, &er);
+			QDialog dlg(&owner);
+			auto *field = new QLineEdit(&dlg);
+			field->setGeometry(0, 0, 20 * cw, ch);
+			dlg.setModal(true);
+			dlg.setAttribute(Qt::WA_DontShowOnScreen);
+			dlg.resize(GridMetrics::cells(30, 4));
+			dlg.show();
+			QCoreApplication::processEvents();
+			CellBuffer eb(40, 12);
+			ec.compose(eb);
+			CHECK(dlg.focusWidget() == field && ec.cursor_cell().has_value(),
+			      "and the very first frame of a dialog already has the "
+			      "cursor in its field, no keystroke having been spent to "
+			      "put it there");
+			dlg.close();
+			QCoreApplication::processEvents();
+			for (QWidget *t : hidden) t->show();
+			QCoreApplication::processEvents();
+			GridGuard::reset();
+		}
+
+		// THROUGH exec(), which is how a dialog is actually opened, and
+		// with the loop allowed to settle the way it has by the time a
+		// key arrives from a terminal. The first version of this probe
+		// asked before the queued repair had run and read a stale null,
+		// which is a fixture measuring its own timing.
+		{
+			QDialog dlg(&host);
+			auto *field = new QLineEdit(&dlg);
+			field->setGeometry(0, 0, 20 * cw, ch);
+			dlg.setAttribute(Qt::WA_DontShowOnScreen);
+			dlg.resize(GridMetrics::cells(30, 4));
+			bool typed_in = false;
+			QTimer::singleShot(0, &dlg, [&] {
+				QCoreApplication::processEvents();
+				dr.on_key({0, QStringLiteral("z"), false, false, false});
+				QCoreApplication::processEvents();
+				typed_in = field->text() == QStringLiteral("z");
+				dlg.accept();
+			});
+			dlg.exec();
+			CHECK(typed_in,
+			      "and the same through exec(), where a lost keystroke is "
+			      "what an application would actually ship");
+		}
+
+		// CONTROL ONE: the application chose, and keeps its choice.
+		{
+			QDialog dlg(&host);
+			auto *first = new QLineEdit(&dlg);
+			first->setGeometry(0, 0, 20 * cw, ch);
+			auto *chosen = new QLineEdit(&dlg);
+			chosen->setGeometry(0, 2 * ch, 20 * cw, ch);
+			dlg.setModal(true);
+			dlg.setAttribute(Qt::WA_DontShowOnScreen);
+			dlg.resize(GridMetrics::cells(30, 6));
+			chosen->setFocus();
+			dlg.show();
+			QCoreApplication::processEvents();
+			CHECK(dlg.focusWidget() == chosen,
+			      "while a dialog whose application called setFocus() "
+			      "before showing it keeps the widget it named");
+			dlg.close();
+			QCoreApplication::processEvents();
+		}
+
+		// CONTROL TWO: Qt chose, and keeps its choice. This is the case a
+		// library author tests with, and the reason the defect survived.
+		{
+			QMessageBox box(QMessageBox::Question, QStringLiteral("Quit?"),
+			                QStringLiteral("Save first?"),
+			                QMessageBox::Save | QMessageBox::Cancel, &host);
+			box.setAttribute(Qt::WA_DontShowOnScreen);
+			box.show();
+			QCoreApplication::processEvents();
+			CHECK(qobject_cast<QPushButton *>(box.focusWidget()) != nullptr,
+			      "and a QMessageBox keeps the default button Qt focused "
+			      "itself, which this must not overrule");
+			box.close();
+			QCoreApplication::processEvents();
+		}
+		set_keyboard_conventions(had_conv);
+		GridGuard::reset();
+	}
+
 	// ---- the cursor sits where the text being edited is ---------------------
 	//
 	// THE RELATIONSHIP, not a row number: compose the frame, find the row the
