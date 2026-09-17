@@ -1497,6 +1497,22 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 			// two corners. Measured: the spin box says hasFrame=1, its
 			// editor says hasFrame=0, and the editor got a box regardless.
 			const auto *le = qobject_cast<const QLineEdit *>(w);
+			// CLEAR THE GROUND FIRST, frame or none. A panel is what a
+			// widget paints to say "these cells are mine now", and this
+			// one painted nothing at all -- so a line edit laid over
+			// anything left what was under it standing. It cost the item
+			// views the worst of it: an editor opened over a table cell
+			// did not erase the cell, so `Wednesday` with `M` typed into
+			// it read `MWednesday` and a keyboard user could not see what
+			// they were typing. Same lens as CC_ToolButton's clear below,
+			// which was written when a toolbar's own background showed
+			// through between a label and its bracket.
+			//
+			// Before the early return as well as after it: setFrame(false)
+			// asks for no BOUNDARY, which is not the same as asking to be
+			// transparent, and the frameless editor is exactly the one an
+			// item view opens.
+			dev->buffer().fill(c, Cell{});
 			if (le && !le->hasFrame()) return;
 			if (c.height() >= 2) {
 				draw_box(dev->buffer(), c, owns_focus(w), with_state(opt));

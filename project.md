@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1440 checks, 0 failures. `make check` is green and includes
+1443 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16235,6 +16235,64 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.205 A widget did not cover what it was drawn over (2026-09-17)
+
+The item-view worker reported that an editor opened over a table cell
+does not erase the cell, so a keyboard user cannot read what they are
+typing: `Wednesday` with `M` typed into it reads `MWednesday`.
+Reproduced OUTSIDE item views in six lines -- a `QLineEdit` holding
+`MXYZ` laid over a `QLabel` holding `Wednesday` renders `WednesdayMXYZ`
+-- which is what made it worth chasing. The editor was the symptom and
+the renderer was the fault.
+
+**Two independent defects, and each alone leaves the other's symptom.**
+
+**One: the run-continuation rule reached across widgets.**
+`drawTextItem()` remembers where the last run ended in CELLS and starts
+no earlier, because Qt positions runs by font advances and a run of wide
+clusters is narrower in pixels than in cells. Correct, measured, and
+scoped to nothing: a window is drawn by ONE `QWidget::render()` with
+DrawChildren, so a single painter pass covers every widget in it. The
+rule therefore joined runs belonging to two DIFFERENT widgets and pushed
+the second out of its own geometry. The column was not wrong, it was
+discarded:
+
+    label "Wednesday", edit "MXYZ" at column 0      WednesdayMXYZ
+    the same edit moved to column 4                 WednesdayMXYZ
+    the label replaced by twelve spaces                         MXYZ
+
+The tell is in the third row -- the text always begins exactly where the
+previous widget's text ENDED. The system clip is the boundary, and
+`clip_cells()` already rests on the fact that Qt sets one on every child
+when it renders a window. Two runs of one text layout share it; two
+widgets do not.
+
+**Two: `PE_PanelLineEdit` painted no ground at all.** A panel is what a
+widget paints to say *these cells are mine now*, and `GridStyle` drew a
+box, or two brackets, or nothing -- never a clear. So a line edit laid
+over anything left what was under it standing. `CC_ToolButton` in the
+same file had already met this and already clears, having been written
+when a toolbar's background showed through between a label and its
+bracket; this is that lens applied where it had not been.
+
+**And a third edit that was tried, was inert, and was reverted -- which
+is the part worth keeping.** `fill_rectf()`'s erase branch refuses to
+erase anything less than two cells in each direction, a guard that
+arrived in a bulk conventions commit carrying no reason anywhere. That
+looked like the same defect, so it was relaxed to plain `!thin`, a check
+was written for it, and **the sabotage that restores the guard left that
+check green.** The probe agrees: the same fixture erases identically
+either way. What actually erases there is the OPAQUE path, the theme
+having named Window, and that path has never had a cell-count guard.
+
+So the branch is reached by nothing in the suite, the guard is an
+untested difference rather than a known-good one, and the change was
+reverted because *no recorded reason* is not evidence that a guard is
+wrong. Settling it needs a fixture whose surface role the theme leaves
+at `Color::Default`, which is the thing none of today's fixtures have.
+**The sabotage harness found this, and it found it by refusing to
+redden** -- the one outcome that cannot be read as success.
 
 ### 8.204 A copy with no text wiped the user's clipboard (2026-09-17)
 

@@ -232,6 +232,7 @@ bool CellPaintEngine::begin(QPaintDevice *pdev) {
 	last_row_ = -1;
 	last_end_col_ = 0;
 	last_x_ = 0;
+	last_clip_.reset();
 	underline_bands_.clear();
 	return true;
 }
@@ -426,7 +427,24 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	// either one alone shows the other. A genuinely consecutive run always
 	// advances -- a zero-advance run is empty and returns above -- so nothing
 	// this guard exists for is lost by demanding it.
-	if (row == last_row_ && q.x() > last_x_ && col < last_end_col_)
+	//
+	// AND ONLY WITHIN ONE WIDGET. A window is drawn by a single
+	// QWidget::render() with DrawChildren, so one QPainter pass covers every
+	// widget in it and this rule joined runs belonging to two different
+	// ones: a widget whose text began left of where an unrelated earlier
+	// widget's text ended was pushed right, OUT of its own geometry, leaving
+	// the text underneath it standing. Measured -- a QLineEdit holding "M"
+	// laid over a QLabel holding "Wednesday" composed to "WednesdayM", and
+	// moving the edit to column 4 changed nothing, because the column it was
+	// given was being discarded. The item-view editor met it as its own
+	// symptom: an editor opened over a cell did not erase the cell, so a
+	// keyboard user could not read what they were typing.
+	//
+	// The system clip is the boundary, because Qt sets one on every child
+	// when it renders a window -- the same fact clip_cells() already rests
+	// on. Two runs of one text layout share it; two widgets do not.
+	if (row == last_row_ && q.x() > last_x_ && col < last_end_col_
+	    && clip == last_clip_)
 		col = last_end_col_;
 	// The pen carries the state as well as the colour. Qt paints a disabled
 	// widget with the palette's Disabled group, and text_style_for() now
@@ -453,6 +471,7 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	last_row_ = row;
 	last_end_col_ = x;
 	last_x_ = q.x();
+	last_clip_ = clip;
 	// Qt draws an underline TWICE for a rich-text run: once as
 	// QFont::underline() on the text item, which becomes Attr::Underline
 	// above, and once as a separate line primitive just below the
@@ -833,6 +852,14 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 
 	const FillCell f = brush_cell();
 	if (f.erase) {
+		// More than one cell in EACH direction, which the opaque fill
+		// below does not ask for -- so the two answers differ on nothing
+		// but whether the theme named the colour. It arrived with a bulk
+		// conventions commit carrying no reason anywhere, and relaxing it
+		// to plain `!thin` was tried and reverted: no check in the suite
+		// changed, because nothing here reaches this branch. It is an
+		// untested difference rather than a known-good one, recorded in
+		// project.md 8.205 with what it would take to settle it.
 		if (!thin && c.width() > 1 && c.height() > 1) dev_->buffer().fill(c, Cell{});
 		return;
 	}

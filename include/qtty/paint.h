@@ -175,6 +175,13 @@ private:
 	// tail. See drawTextItem() for the measurement.
 	int last_row_ = -1, last_end_col_ = 0;
 	qreal last_x_ = 0;
+	// And WHOSE run it was. One QPainter pass draws a whole window --
+	// QWidget::render() with DrawChildren -- so without this the rule above
+	// joined two runs belonging to two different widgets, and the second was
+	// pushed out of its own geometry. The system clip is the widget
+	// boundary: rendering a window sets it on every child, which
+	// clip_cells() already relies on.
+	std::optional<QRect> last_clip_;
 	// The underline bands of every run in this pass that carried
 	// Attr::Underline, in device pixels, so line() can tell Qt's own
 	// underline decoration from a rule the application drew.

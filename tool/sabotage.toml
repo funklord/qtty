@@ -18,16 +18,16 @@
 [[sabotage]]
 name = "text runs at the same origin are consecutive"
 file = "src/render/cell_paint.cpp"
-find = "if (row == last_row_ && q.x() > last_x_ && col < last_end_col_)"
-into = "if (row == last_row_ && q.x() >= last_x_ && col < last_end_col_)"
+find = "if (row == last_row_ && q.x() > last_x_ && col < last_end_col_\n\t    && clip == last_clip_)"
+into = "if (row == last_row_ && q.x() >= last_x_ && col < last_end_col_\n\t    && clip == last_clip_)"
 count = 1
 check = "selecting a field's text does not draw it twice"
 
 [[sabotage]]
 name = "no wide-cluster overlap guard at all"
 file = "src/render/cell_paint.cpp"
-find = "if (row == last_row_ && q.x() > last_x_ && col < last_end_col_)"
-into = "if (false && row == last_row_ && q.x() > last_x_ && col < last_end_col_)"
+find = "if (row == last_row_ && q.x() > last_x_ && col < last_end_col_\n\t    && clip == last_clip_)"
+into = "if (false && row == last_row_ && q.x() > last_x_\n\t    && col < last_end_col_ && clip == last_clip_)"
 count = 1
 check = "a line edit keeps every one of them"
 
@@ -2528,3 +2528,24 @@ find = "\t\tif (!held || !held->hasText()) return;"
 into = "\t\tif (false) return;"
 count = 1
 check = "a copy with no text half"
+
+[[sabotage]]
+# The run-continuation rule unscoped again, so it joins runs belonging to
+# two different widgets and pushes the second out of its own geometry.
+# 8.205.
+name = "the run guard reaches across widgets"
+file = "src/render/cell_paint.cpp"
+find = "\t    && clip == last_clip_)"
+into = "\t    )"
+count = 1
+check = "a widget drawn over another's text lands in its own columns"
+
+[[sabotage]]
+# The line edit's panel painting no ground, so an item view's editor leaves
+# the cell it is editing legible underneath what is being typed. 8.205.
+name = "a line edit's panel clears nothing"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\tdev->buffer().fill(c, Cell{});\n\t\t\tif (le && !le->hasFrame()) return;"
+into = "\t\t\tif (le && !le->hasFrame()) return;"
+count = 1
+check = "and its ground erases the text it covers"

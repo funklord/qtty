@@ -1325,6 +1325,109 @@ int suite_render(bool record) {
 			       "      condition: row '%s'\n", qPrintable(row));
 			++r;
 		}
+
+		// A widget laid OVER another one's text, which is what an item
+		// view's editor is and what nothing here had ever drawn. Two
+		// separate faults met in this fixture and each alone leaves the
+		// other's symptom, so the pair below asks two questions of one
+		// frame:
+		//
+		//   columns          0123456789...
+		//   the label        Wednesday
+		//   the edit, 4..13      MXYZ------
+		//
+		//   both wrong       WednesdayMXYZ   text pushed past the label,
+		//                                    nothing erased
+		//   erase only       Wedn     MXYZ   erased, still pushed
+		//   placement only   WednMXYZy       placed, label's tail left
+		//   both right       WednMXYZ
+		QWidget ov;
+		ov.setAttribute(Qt::WA_DontShowOnScreen);
+		ov.resize(GridMetrics::cells(20, 2));
+		auto *beneath = new QLabel(QStringLiteral("Wednesday"), &ov);
+		beneath->setGeometry(0, 0, cw * 14, ch);
+		auto *on_top = new QLineEdit(QStringLiteral("MXYZ"), &ov);
+		on_top->setFrame(false);
+		on_top->setGeometry(cw * 4, 0, cw * 10, ch);
+		ov.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer ob(20, 2);
+		Qtty::render_once(ov, ob);
+		const QString orow = ob.to_text().section(QLatin1Char('\n'), 0, 0);
+		// Its OWN columns. A single painter pass draws the whole window,
+		// so the rule that keeps consecutive runs of one text layout from
+		// overlapping used to join two unrelated widgets and push the
+		// second out of its geometry -- the column it was given was
+		// discarded, and moving this edit changed nothing at all.
+		if (orow.mid(4, 4) == QStringLiteral("MXYZ"))
+			printf("PASS: a widget drawn over another's text lands in its"
+			       " own columns\n");
+		else {
+			printf("FAIL: a widget drawn over another's text lands in its"
+			       " own columns\n      condition: row '%s'\n",
+			       qPrintable(orow));
+			++r;
+		}
+		// And covers what it was drawn over. One cell high is the ordinary
+		// height of a single-line widget in a terminal, and the erase was
+		// gated on more than one cell in each direction -- so the text
+		// beneath survived beside the text on top, which is how an item
+		// view's editor left the cell it was editing legible underneath
+		// what the user was typing.
+		if (orow.mid(8, 6).trimmed().isEmpty())
+			printf("PASS: and its ground erases the text it covers, a widget"
+			       " one cell high included\n");
+		else {
+			printf("FAIL: and its ground erases the text it covers, a widget"
+			       " one cell high included\n      condition: row '%s'\n",
+			       qPrintable(orow));
+			++r;
+		}
+
+		// The same question of the OTHER channel, because the two answer
+		// it separately and a line edit only exercises one. A plain
+		// QWidget with autoFillBackground reaches no style primitive at
+		// all: its ground is a fill on the paint engine.
+		//
+		// It takes the OPAQUE path there -- the theme names Window, so
+		// the fill writes whole cells -- and that path has never had a
+		// cell-count guard. Worth saying precisely, because the guess it
+		// replaces was wrong and a sabotage caught it: fill_rectf()'s
+		// OTHER branch, the one for a surface role the theme leaves at
+		// Color::Default, still refuses to erase anything narrower or
+		// shorter than two cells. Restoring that guard leaves this check
+		// green, which is how the wrong guess was found -- so the branch
+		// is reached by no check in this suite, and this one does not
+		// reach it either. Recorded in project.md 8.205 rather than
+		// pretended away.
+		QWidget fb;
+		fb.setAttribute(Qt::WA_DontShowOnScreen);
+		fb.resize(GridMetrics::cells(20, 2));
+		auto *word = new QLabel(QStringLiteral("Wednesday"), &fb);
+		word->setGeometry(0, 0, cw * 14, ch);
+		auto *ground = new QWidget(&fb);
+		ground->setAutoFillBackground(true);
+		ground->setGeometry(cw * 4, 0, cw * 10, ch);
+		fb.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer fbb(20, 2);
+		Qtty::render_once(fb, fbb);
+		const QString frow = fbb.to_text().section(QLatin1Char('\n'), 0, 0);
+		ground->setGeometry(cw * 4, 0, cw * 10, ch * 2);
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer fbb2(20, 2);
+		Qtty::render_once(fb, fbb2);
+		const QString frow2 = fbb2.to_text().section(QLatin1Char('\n'), 0, 0);
+		if (frow.trimmed() == QStringLiteral("Wedn")
+		    && frow2.trimmed() == QStringLiteral("Wedn"))
+			printf("PASS: a plain autoFillBackground widget erases too, at one"
+			       " cell high as at two\n");
+		else {
+			printf("FAIL: a plain autoFillBackground widget erases too, at one"
+			       " cell high as at two\n      condition: one row '%s',"
+			       " two rows '%s'\n", qPrintable(frow), qPrintable(frow2));
+			++r;
+		}
 	}
 
 
