@@ -611,6 +611,85 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- the two remaining rows of the guide's window-kind table, and
+	// what they COST an application, which nothing had pinned.
+	//
+	// A non-modal dialog and a splash screen are strip windows, exactly as
+	// the guide says. The consequence is the part worth asserting: a strip
+	// window that is not current is not DRAWN, so a QProgressDialog left
+	// non-modal -- the ordinary Qt idiom for a long operation -- shows a
+	// tab label and no bar, and a splash shows nobody anything. The modal
+	// case beside it is the contrast that makes this a measurement rather
+	// than a complaint: the same dialog, made modal, draws over the window.
+	{
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(50, 10));
+		auto *body = new QLabel(QStringLiteral("MAIN"), &host);
+		body->setGeometry(0, 4 * GridMetrics::ch(), 10 * GridMetrics::cw(),
+		                  GridMetrics::ch());
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter wr(&host);
+		Compositor wc(&host, &wr);
+
+		auto *loose = new QProgressDialog(QStringLiteral("Copying files"),
+		                                  QString(), 0, 100, &host);
+		loose->setWindowModality(Qt::NonModal);
+		loose->setMinimumDuration(0);
+		loose->setValue(40);
+		loose->show();
+		QCoreApplication::processEvents();
+		CellBuffer wb(50, 10);
+		wc.compose(wb);
+		const QString loose_frame = wb.to_text();
+		CHECK(Qtty::window_tabs().contains(loose)
+		      && !loose_frame.contains(QStringLiteral("Copying files")),
+		      "a NON-MODAL dialog is a strip window, so its contents are "
+		      "not drawn while another window is current -- a progress "
+		      "dialog left non-modal shows a tab label and no bar");
+		loose->close();
+		QCoreApplication::processEvents();
+
+		auto *tight = new QProgressDialog(QStringLiteral("Copying files"),
+		                                  QString(), 0, 100, &host);
+		tight->setWindowModality(Qt::ApplicationModal);
+		tight->setMinimumDuration(0);
+		tight->setValue(40);
+		tight->show();
+		QCoreApplication::processEvents();
+		CellBuffer mb(50, 10);
+		wc.compose(mb);
+		CHECK(!Qtty::window_tabs().contains(tight)
+		      && mb.to_text().contains(QStringLiteral("Copying files")),
+		      "while the same dialog made modal is drawn over the window "
+		      "and is in no strip, which is the remedy an application has "
+		      "today");
+		tight->close();
+		QCoreApplication::processEvents();
+
+		QPixmap art(GridMetrics::cw() * 20, GridMetrics::ch() * 3);
+		art.fill(Qt::darkBlue);
+		QSplashScreen splash(art);
+		splash.setAttribute(Qt::WA_DontShowOnScreen);
+		splash.show();
+		QCoreApplication::processEvents();
+		wc.compose(wb);
+		CHECK(Qtty::window_tabs().contains(&splash),
+		      "and a QSplashScreen is a strip window too, which is the "
+		      "guide's table pinned rather than asserted in prose");
+		splash.finish(&host);
+		QCoreApplication::processEvents();
+
+		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	// ---- and a tooltip window, which was the same lockout one layer
 	// along. A Qt::ToolTip top-level is a drawn layer that owns no input
 	// anywhere: on a desktop it is a label that appears and goes away, and

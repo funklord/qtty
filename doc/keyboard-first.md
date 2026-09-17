@@ -213,6 +213,24 @@ measured over every kind Qt has:
 | `Popup` (a menu) | no | **yes**, while it is up | yes |
 | `ToolTip` | no | no | -- |
 
+**What that table costs you, in the one case where it bites.** A strip
+window that is not the current one is *not drawn* -- the strip is a row
+of names and one view at a time -- so anything you put in a second
+window is invisible until the user presses `F6`. Two ordinary Qt idioms
+land on that:
+
+- **A non-modal `QProgressDialog` shows a tab label and no bar.**
+  Measured: with one up, the frame carries `[Your Window] QProgressDialog`
+  in the strip and the main window underneath, and the words *Copying
+  files* appear nowhere. A user watching a long operation sees nothing
+  happening. **Make it modal** -- `setWindowModality(Qt::ApplicationModal)`
+  -- and the same dialog draws over the window, bar and all, which is
+  also what you want on a desktop while an operation blocks.
+- **A `QSplashScreen` is a strip window too**, so its artwork and
+  `showMessage()` are never seen and the strip appears and disappears
+  around startup. If the splash is telling the user something, tell them
+  in the window instead.
+
 So a palette you open with `Qt::Tool` is a window like any other here:
 `F6` reaches it and the window you were in keeps its keys. A menu owns
 the keyboard while it is open, which is what a menu is for, and `Escape`

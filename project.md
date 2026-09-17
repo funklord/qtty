@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1451 checks, 0 failures. `make check` is green and includes
+1454 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16264,6 +16264,63 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.209 A transient window is treated as a peer (2026-09-17)
+
+The last two observations from the sweep, measured here rather than
+relayed. Both are the documented behaviour working exactly as the guide's
+window-kind table says, and both cost an application something nobody had
+written down:
+
+    non-modal QProgressDialog    strip carries [QWidget 1] QProgressDialog 2
+                                 the frame says nothing about "Copying files"
+    the same one, modal          "Copying files..." and a 40% bar, over the
+                                 window, in no strip
+    QSplashScreen (type 0xf)     a strip tab; its artwork drawn to nobody,
+                                 and the strip appears and vanishes around
+                                 startup
+
+A strip window that is not current is not DRAWN. So the ordinary Qt idiom
+for a long operation -- show a non-modal `QProgressDialog` and pump events
+-- shows a tab label and no bar, and a user watching a copy sees nothing
+happening at all.
+
+**The remedy an application has today is one line and is in the guide
+now**: make the dialog modal, which is also what a desktop wants while an
+operation blocks. The splash has no remedy beyond not using one.
+
+**The design question underneath is not mine to settle, and it is worth
+stating precisely because the tension is already in the tree.**
+`windows.h` explains the strip's membership rule as *a dialog belongs to
+the window that opened it*, and then excludes only MODALS from the strip.
+A non-modal dialog belongs to its opener by exactly the same reasoning --
+on a desktop it is a transient of its parent, floating above it, with no
+task-bar entry of its own -- and it is in the strip. A splash is the same
+shape again. So the rule as implemented is *modal or not*, while the
+sentence justifying it is *a dialog or not*, and those pick out different
+sets.
+
+The option, its cost, and whose it is:
+
+- **Draw a parented non-modal dialog above its parent, as a modal is,
+  while leaving it reachable.** It would make a progress dialog work the
+  way the idiom expects, and it matches what a desktop does with a
+  transient.
+- **The cost is a contract change.** `window_tabs()` membership is public
+  and documented, the guide's table states it, and a layer drawn above
+  its parent needs a key route INTO and OUT of it that F6 currently
+  provides by virtue of the thing being a tab. That is a new rule about
+  input, not just about drawing.
+- **It is the copyright holder's call**, being a change to the documented
+  window model rather than a defect in it.
+
+What this entry does do is pin the table. The `Qt::Tool` row has had a
+check since 8.194; `Dialog` and `SplashScreen` had none, so the two rows
+naming them were prose. They are checks now -- including the modal
+contrast, which is the discrimination that makes the finding a
+measurement rather than a complaint -- and a sabotage puts a modal in the
+strip, since *a user could tab away from it* is what `windows.h` calls the
+one thing a modal must never be.
 
 ### 8.208 A link nothing on the screen marks as unreachable (2026-09-17)
 

@@ -2601,3 +2601,13 @@ find = "\t\tif (!holds_a_link(l)) continue;"
 into = "\t\tif (holds_a_link(l)) continue;"
 count = 1
 check = "a link only a click can follow is named"
+
+[[sabotage]]
+# A modal put in the F6 strip, which makes it a layer the user can tab AWAY
+# from -- windows.h calls that the one thing a modal must not be. 8.209.
+name = "a modal is offered in the window strip"
+file = "src/runtime/compositor.cpp"
+find = "\treturn !w->isModal();"
+into = "\treturn true;"
+count = 1
+check = "the same dialog made modal is drawn over the window"
