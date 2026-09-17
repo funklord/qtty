@@ -16231,6 +16231,38 @@ recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
 
+### 8.197 What "MUST precede widget construction" actually costs (2026-09-17)
+
+The same lens -- *what do the fixtures do that an application does not* --
+put the next question to `setup()`, whose header says it MUST precede
+widget construction because "the shared UI derives its metrics from the
+application font". No fixture can test that: the suite's own `setup()` has
+run before any fixture exists, so the wrong order is unreachable from
+inside. Measured with a standalone program instead, building the same
+window twice.
+
+**A window of ordinary widgets does not care.** Built before the call and
+built after, the two render byte-for-byte the same -- the font enforcer
+(8.180) puts the grid font back on every widget, and a layout measures at
+layout time rather than at construction. The rule as written implies
+otherwise.
+
+**A constructor that measures does care, and nothing can save it.**
+
+    built before setup()   cached 17 px a row, fixed itself at 34 px
+    built after setup()    cached 19 px a row, fixed itself at 38 px
+    the grid's row                            19 px
+
+The enforcer replaces a FONT; it cannot unwrite a number. So the rule is
+real and its reason is narrower than the sentence: call `setup()` first so
+that a constructor which measures is measuring the grid. Both the header
+and the guide say that now, with the numbers.
+
+**And this is a claim the suite structurally cannot hold**, which is worth
+saying next to it: a check would have to run before the suite's own
+`setup()`, and there is no such moment. Measured by a program written for
+the purpose, recorded here, and re-measurable by writing it again.
+
 ### 8.196 The second message box took the process down (2026-09-17)
 
 Sweeping the standard `QMessageBox` button sets -- the commonest dialog

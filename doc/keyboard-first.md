@@ -1043,6 +1043,17 @@ is the unit, so a widget laying its own lines out in pixels can ask for the
 same row twice. Qt's own command link button does exactly that, which is
 worth knowing before you conclude your own painting is at fault.
 
+**And call `Qtty::setup()` before you build anything**, which matters for
+one reason rather than the general one. A window of ordinary widgets built
+before that call renders byte-for-byte the same as one built after -- the
+library puts the grid font back on every widget, and layouts measure at
+layout time. What it cannot put back is a number your constructor already
+wrote down: a widget doing
+`setFixedHeight(QFontMetrics(font()).height() * 2)` before `setup()`
+measured 17 pixels a row where the grid's is 19, fixed itself at 34, and
+no later font change moved it. Measure in a constructor and you are
+measuring whatever font the application had at that moment.
+
 The others are not limitations of the library so much as the price of Qt
 having no way to ask a widget what it is. Where a question could be put
 to the widget, qtty puts it -- `WA_InputMethodEnabled` is exactly that,

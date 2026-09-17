@@ -22,6 +22,21 @@ void prepare_environment();
 
 // Installs the cell-metric font and GridStyle. MUST precede widget
 // construction: the shared UI derives its metrics from the application font.
+//
+// WHAT "MUST" MEANS HERE, measured rather than asserted, because the font
+// enforcer (8.180) covers more of this than the rule implies. A window of
+// ordinary widgets built BEFORE this call renders byte-for-byte the same as
+// one built after: the enforcer puts the grid font back on every widget, and
+// a layout measures at layout time, not at construction.
+//
+// What it cannot put back is a number somebody already wrote down. A widget
+// that measures in its CONSTRUCTOR --
+// `setFixedHeight(QFontMetrics(font()).height() * 2)` -- gets whatever font
+// the application had at that moment. Measured: 17 px a row before this call
+// against the grid's 19, so the widget fixes itself at 34 px where two rows
+// are 38, and no later font change moves it. The rule is therefore real and
+// its reason is narrow: call this first, and a constructor that measures is
+// measuring the grid.
 void setup(QApplication &app);
 
 // Write out any diagnostics that were held back while qtty owned the terminal,
