@@ -670,6 +670,19 @@ qtty instead:
 
     if (Qtty::focusWidget() == this) drawFocusMark();
 
+**And you can check that you did it.** `Qtty::focus_invisible()` renders
+your window once with the focus on each control and once without, and
+names the ones that come out identical inside their own rectangle:
+
+    QVERIFY(Qtty::focus_invisible(&window).isEmpty());
+
+Every widget Qt ships passes; the ones that fail are the ones somebody
+wrote. A widget that edits text is not asked, because the terminal's
+cursor is its mark -- that is the same `WA_InputMethodEnabled` practice 11
+is about, and the check confirms the cursor really does follow the focus
+onto it. It moves the focus while it looks and puts it back, so it belongs
+in a test rather than in a frame loop.
+
 On a terminal this matters more than on a desktop. There is no pointer
 hovering near the thing a person is about to use, and no window manager
 drawing a focus ring: **the only way to know where a keystroke will land
@@ -1048,7 +1061,7 @@ straight after practice 10: it is `hasFocus()` on the widget, and
 own idea of its focus widget; what it never sets is the ACTIVE window,
 which is what the other two read.
 
-**Seven questions the library will answer about your window**, so that a
+**Eight questions the library will answer about your window**, so that a
 test can assert on them rather than a person noticing:
 
 | call | what it returns | what to assert |
@@ -1060,8 +1073,9 @@ test can assert on them rather than a person noticing:
 | `Qtty::conventions_shadowed(scope)` | the convention rows your own keys took | empty, or drop those rows |
 | `Qtty::tab_order_anomalies(scope)` | the tab steps that read backwards | empty |
 | `Qtty::hover_only(scope)` | the words only a hover would reveal | empty |
+| `Qtty::focus_invisible(scope)` | the controls that look the same focused | empty |
 
-**Six of the seven are asserted EMPTY, and that is the property worth
+**Seven of the eight are asserted EMPTY, and that is the property worth
 having.** A list you check by name needs updating every time the window
 grows a control; an empty assertion needs nothing, and goes red the day
 somebody adds one that collides or that only a mouse can press. Each of

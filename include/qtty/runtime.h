@@ -205,6 +205,29 @@ QVector<QPair<QWidget *, QWidget *>> tab_order_anomalies(QWidget *scope);
 // user will be standing on.
 QVector<QWidget *> hover_only(QWidget *scope);
 
+// The controls that look the same focused and unfocused: rendered once with
+// the focus on them and once without, and identical inside their own
+// rectangle -- glyphs, attributes and colours, since focus here is usually
+// spelled with an attribute rather than a glyph.
+//
+// Practice 10 of `doc/keyboard-first.md` is "in a custom widget, draw your
+// own focus mark", and it is a trap rather than advice: `hasFocus()` is
+// permanently false here, so a widget that asks Qt whether it has focus
+// draws nothing, on the terminal only, with no error anywhere. Every widget
+// Qt ships passes this; the ones that fail are the ones somebody wrote.
+//
+// WIDGETS THAT EDIT TEXT ARE NOT NAMED. They show focus with the terminal's
+// own cursor, which is placed on whatever sets `WA_InputMethodEnabled` --
+// the same attribute practice 11 asks a custom text widget to set, and the
+// same one this library already keys the quit keys on. A line edit draws no
+// mark and needs none.
+//
+// IT MOVES THE FOCUS while it looks, and puts back the widget and the
+// library's own record of it. An application whose focus handlers do work
+// will see that work happen, which is why this belongs in a test rather than
+// in a frame loop.
+QVector<QWidget *> focus_invisible(QWidget *scope);
+
 // ---------------------------------------------------------------- InputRouter
 // Owns everything Qt's platform layer would normally own (measured F3/F4):
 // the shortcut table (synthetic keys never reach QShortcutMap), focus

@@ -2413,3 +2413,24 @@ find = "\tconst auto handles = scope->findChildren<QSplitterHandle *>();"
 into = "\tconst QVector<QSplitterHandle *> handles;"
 count = 1
 check = "a splitter's handle is named, Qt's own word for a thing you drag"
+
+[[sabotage]]
+# The comparison widened from the widget's own rectangle to the whole
+# window, so focusing anything changes SOMETHING -- the control that lost
+# its mark -- and every widget looks as though it draws one. 8.192.
+name = "focus visibility judged over the whole window"
+file = "src/runtime/input_router.cpp"
+find = "\t\tconst QRect cells(at.x() / GridMetrics::cw(), at.y() / GridMetrics::ch(),\n\t\t                  qMax(1, w->width() / GridMetrics::cw()),\n\t\t                  qMax(1, w->height() / GridMetrics::ch()));"
+into = "\t\tconst QRect cells(0, 0, scope->width() / GridMetrics::cw(),\n\t\t                  scope->height() / GridMetrics::ch());"
+count = 1
+check = "a custom widget that asks hasFocus() is named"
+
+[[sabotage]]
+# A widget that takes text asked to draw a mark it does not need, so every
+# line edit in every application is reported.
+name = "a text field is asked to draw a focus mark"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (w->testAttribute(Qt::WA_InputMethodEnabled)) continue;"
+into = "\t\tif (false) continue;"
+count = 1
+check = "nor a custom widget that edits text and draws nothing new"

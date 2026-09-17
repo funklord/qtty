@@ -3853,6 +3853,147 @@ int suite_router() {
 			      "reaches nothing");
 		}
 
+		// ---- practice 10, which is a trap rather than advice: hasFocus()
+		// is permanently false here, so a custom widget that asks Qt
+		// whether it has the focus draws nothing -- on the terminal only,
+		// with no error anywhere. Every widget Qt ships passes this; the
+		// ones that fail are the ones somebody wrote.
+		{
+			// Local classes, one asking each way. Neither needs moc: a
+			// paintEvent override is a virtual, not a signal.
+			struct Naive : QWidget {
+				void paintEvent(QPaintEvent *) override {
+					QPainter p(this);
+					p.drawText(rect(), Qt::AlignLeft,
+					           hasFocus() ? QStringLiteral("[me]")
+					                      : QStringLiteral(" me "));
+				}
+			};
+			struct Correct : QWidget {
+				void paintEvent(QPaintEvent *) override {
+					QPainter p(this);
+					p.drawText(rect(), Qt::AlignLeft,
+					           Qtty::focusWidget() == this
+					               ? QStringLiteral("[ok]")
+					               : QStringLiteral(" ok "));
+				}
+			};
+			// A custom widget that EDITS TEXT and draws no mark of its
+			// own, which is the case the exclusion exists for. Qt's own
+			// QLineEdit does not need it -- measured, its rendering
+			// changes on focus anyway -- so an entry that removes the
+			// exclusion left the line edit's check green and said so.
+			struct Editor : QWidget {
+				void paintEvent(QPaintEvent *) override {
+					QPainter p(this);
+					p.drawText(rect(), Qt::AlignLeft, QStringLiteral("text"));
+				}
+				QVariant inputMethodQuery(Qt::InputMethodQuery q) const override {
+					if (q == Qt::ImCursorRectangle)
+						return QRect(0, 0, 1, GridMetrics::ch());
+					return QWidget::inputMethodQuery(q);
+				}
+			};
+
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *lay = new QVBoxLayout(&host);
+			auto *button = new QPushButton(QStringLiteral("Push"));
+			lay->addWidget(button);
+			auto *field = new QLineEdit;
+			lay->addWidget(field);
+			auto *naive = new Naive;
+			naive->setFocusPolicy(Qt::StrongFocus);
+			naive->setMinimumHeight(2 * GridMetrics::ch());
+			lay->addWidget(naive);
+			auto *correct = new Correct;
+			correct->setFocusPolicy(Qt::StrongFocus);
+			correct->setMinimumHeight(2 * GridMetrics::ch());
+			lay->addWidget(correct);
+			auto *editor = new Editor;
+			editor->setFocusPolicy(Qt::StrongFocus);
+			editor->setAttribute(Qt::WA_InputMethodEnabled);
+			editor->setMinimumHeight(GridMetrics::ch());
+			lay->addWidget(editor);
+			host.resize(GridMetrics::cells(30, 10));
+			host.show();
+			QCoreApplication::processEvents();
+
+			const QVector<QWidget *> blind = focus_invisible(&host);
+			CHECK(blind.contains(naive),
+			      "a custom widget that asks hasFocus() is named, since "
+			      "that answer is permanently false here and its focus "
+			      "mark therefore never draws");
+			CHECK(!blind.contains(correct),
+			      "and one that asks Qtty::focusWidget() is not, which is "
+			      "the whole of practice 10");
+			CHECK(!blind.contains(button) && !blind.contains(field),
+			      "nor Qt's own controls: the button draws a mark and the "
+			      "field shows focus with the terminal's cursor, which is "
+			      "why a widget that takes text is not asked");
+
+			CHECK(!blind.contains(editor),
+			      "nor a custom widget that edits text and draws nothing "
+			      "new, since the terminal's cursor is what shows its "
+			      "focus -- the case practice 11 is about");
+
+			// AND THE CURSOR REALLY GOES THERE, which is what makes that
+			// exclusion right rather than merely convenient.
+			//
+			// The DIFFERENCE between two focuses rather than an absolute
+			// row: the compositor composes a screen, and a window may sit
+			// below a strip, so the cursor's row and a widget's row inside
+			// its window are not in the same coordinates -- measured, an
+			// editor at window row 7 put the cursor at screen row 8. The
+			// difference cancels whatever the offset is and says the
+			// stronger thing anyway, that the cursor FOLLOWS the focus.
+			{
+				InputRouter fr(&host);
+				Compositor fc(&host, &fr);
+				auto cursor_row = [&](QWidget *on) {
+					on->setFocus();
+					set_focus_widget(host.focusWidget());
+					QCoreApplication::processEvents();
+					CellBuffer fb(30, 12);
+					fc.compose(fb);
+					return fc.cursor_cell() ? fc.cursor_cell()->y() : -1;
+				};
+				const int at_field = cursor_row(field);
+				const int at_editor = cursor_row(editor);
+				const int rows_apart =
+				    (editor->mapTo(&host, QPoint()).y()
+				     - field->mapTo(&host, QPoint()).y()) / GridMetrics::ch();
+				CHECK(at_field >= 0 && at_editor - at_field == rows_apart,
+				      "the cursor follows the focus onto the custom text "
+				      "widget, exactly as many rows down as the widget is, "
+				      "which is the mark it draws instead of one of its "
+				      "own");
+			}
+
+			// THE RELATIONSHIP, read off the screen rather than off the
+			// report: the correct widget's cells change when it takes
+			// focus and the naive one's do not.
+			auto shot = [&](QWidget *on) {
+				on->setFocus();
+				set_focus_widget(host.focusWidget());
+				QCoreApplication::processEvents();
+				CellBuffer b(30, 10);
+				render_once(host, b);
+				return b.to_text();
+			};
+			const QString on_button = shot(button);
+			const QString on_naive = shot(naive);
+			const QString on_correct = shot(correct);
+			CHECK(on_correct.contains(QStringLiteral("[ok]"))
+			          && !on_button.contains(QStringLiteral("[ok]")),
+			      "and the screen agrees: the widget that asks the library "
+			      "draws its mark when focused and not otherwise");
+			CHECK(!on_naive.contains(QStringLiteral("[me]")),
+			      "while the one that asks Qt draws the same thing focused "
+			      "as unfocused, which is the fault itself rather than the "
+			      "report of it");
+		}
+
 		// Ctrl+PageUp and Ctrl+PageDown between tabs. Qt gives a
 		// QTabWidget Ctrl+Tab and Ctrl+Shift+Tab and not these, and these
 		// are what somebody coming from a browser or an editor tries.

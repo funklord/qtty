@@ -9,6 +9,7 @@
 #include "qtty/drag.h"
 #include "qtty/windows.h"
 #include "qtty/grid.h"
+#include "qtty/application.h"
 #include <QtWidgets>
 #include <QShortcut>
 
@@ -982,6 +983,74 @@ QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope) {
 // dock-widget buttons are QAbstractButtons with Qt::NoFocus and no action
 // (8.159), so they are named, and that is the finding rather than noise: the
 // remedy is the application's, and it is the one practice 4 already asks for.
+// Rendered twice per candidate and compared inside its own rectangle. The
+// rectangle matters: focusing one widget usually takes the mark OFF another,
+// so "the screen changed" is satisfied by the widget that LOST focus and
+// would pass whatever the candidate did -- measured in this suite's own
+// sweep, which restricts the comparison the same way and says why.
+static QString focus_signature(QWidget *scope, const QRect &cells) {
+	CellBuffer b(qMax(1, scope->width() / GridMetrics::cw()),
+	             qMax(1, scope->height() / GridMetrics::ch()));
+	render_once(*scope, b);
+	QString sig;
+	for (int y = cells.top(); y <= cells.bottom() && y < b.rows(); ++y) {
+		if (y < 0) continue;
+		for (int x = cells.left(); x <= cells.right() && x < b.cols(); ++x) {
+			if (x < 0) continue;
+			const Cell &c = b.at(x, y);
+			sig += c.ch.isEmpty() ? QStringLiteral(".") : c.ch;
+			sig += QString::number(int(c.attrs));
+			sig += QString::number(c.fg.value());
+			sig += QString::number(c.bg.value());
+		}
+	}
+	return sig;
+}
+
+QVector<QWidget *> focus_invisible(QWidget *scope) {
+	QVector<QWidget *> out;
+	if (!scope) return out;
+	const QVector<QWidget *> stops = keyboard_reachable(scope);
+	if (stops.size() < 2) return out;
+	QWidget *const had = focusWidget();
+	for (QWidget *w : stops) {
+		// A widget that takes text shows focus with the terminal's cursor,
+		// which is placed on exactly this attribute. Nothing for it to draw.
+		if (w->testAttribute(Qt::WA_InputMethodEnabled)) continue;
+		QWidget *other = nullptr;
+		for (QWidget *o : stops)
+			if (o != w) { other = o; break; }
+		if (!other) continue;
+		const QPoint at = w->mapTo(scope, QPoint());
+		const QRect cells(at.x() / GridMetrics::cw(), at.y() / GridMetrics::ch(),
+		                  qMax(1, w->width() / GridMetrics::cw()),
+		                  qMax(1, w->height() / GridMetrics::ch()));
+		other->setFocus();
+		set_focus_widget(scope->focusWidget());
+		QCoreApplication::processEvents();
+		const QString without = focus_signature(scope, cells);
+		// NOTHING TO COMPARE is not the same finding as nothing to see. A
+		// widget squeezed to no rows, or laid out past the bottom of the
+		// window, has an empty signature both times -- and naming it would
+		// report a focus mark missing from a control that is not on the
+		// screen at all. Measured on a fixture where a list took the space
+		// and left two widgets 38x0 cells at row 14 of a 14-row window:
+		// both were named, and neither was visible to anybody.
+		if (without.isEmpty()) continue;
+		w->setFocus();
+		set_focus_widget(scope->focusWidget());
+		QCoreApplication::processEvents();
+		const QString with = focus_signature(scope, cells);
+		if (with == without) out.append(w);
+	}
+	if (had) {
+		had->setFocus();
+		set_focus_widget(had);
+		QCoreApplication::processEvents();
+	}
+	return out;
+}
+
 // The words a terminal user cannot reach: see runtime.h for the rule and the
 // one exclusion. Actions are deliberately not walked -- Qt derives an
 // action's tool tip from its own text when none is set, so asking the

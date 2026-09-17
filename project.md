@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1408 checks, 0 failures. `make check` is green and includes
+1415 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16227,6 +16227,49 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.192 The trap that draws nothing, made assertable (2026-09-17)
+
+Practice 10 is the one the guide calls the hardest bite: `hasFocus()` is
+permanently false here, so a custom widget that asks Qt whether it has the
+focus draws no mark, on the terminal only, with no error anywhere. The
+suite has swept for it since the widget work; an application could not.
+`Qtty::focus_invisible()` hands that sweep over -- render the window with
+the focus on each control and without it, compare inside the control's own
+rectangle, name what does not change.
+
+**Measured, with two custom widgets written both ways:**
+
+    QPushButton QCheckBox QLineEdit QListWidget    not named
+    a widget asking hasFocus()                     named
+    a widget asking Qtty::focusWidget()            not named
+
+**Three things had to be got right, and two of them were found by getting
+them wrong.**
+
+- **The rectangle.** Focusing one control takes the mark OFF another, so
+  "the screen changed" is satisfied by the control that LOST focus and
+  would pass whatever the candidate did. The entry that widens the
+  comparison to the whole window reddens the check.
+- **An empty comparison is not a finding.** The first fixture let a list
+  take the space and left both custom widgets 38x0 cells at row 14 of a
+  14-row window: no cells either way, equal, named -- a focus mark
+  reported missing from a control that is not on the screen at all. A
+  signature with nothing in it is skipped now.
+- **A widget that edits text draws no mark and needs none**, the
+  terminal's cursor being its mark. Qt's own `QLineEdit` did not prove
+  that exclusion -- measured, its rendering changes on focus anyway, so
+  the entry removing the exclusion left the check green and said *the
+  named check PASSED against broken code*. The fixture grew a custom text
+  widget that draws the same thing always, which is the case practice 11
+  is actually about, and the entry reddens.
+
+**And the cursor check had to learn which coordinates it was in.** An
+editor at window row 7 puts the cursor at screen row 8: the compositor
+composes a SCREEN, and a window sits below the strip. Asserting the
+DIFFERENCE between two focuses cancels the offset and says the stronger
+thing anyway -- that the cursor follows the focus, exactly as many rows
+down as the widget is.
 
 ### 8.191 The three controls people drag are not one case (2026-09-16)
 
