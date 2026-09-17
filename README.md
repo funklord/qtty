@@ -163,20 +163,29 @@ installs, and `Qtty::ICellPainted` lets a widget paint cells directly
 instead of going through a `QPainter`.
 
 For the keyboard: `Qtty::set_keyboard_conventions()` turns on the habits a
-terminal user expects, `Qtty::keyboard_conventions_help()` names the keys
-that answer so a status bar keeps no second copy of them,
-`Qtty::keyboard_reachable()` lists what `Tab` reaches so a test can assert
-every control is on it, `Qtty::pointer_only()` the buttons no key reaches
-at all, `Qtty::conventions_shadowed()` the convention rows an application's
-own shortcuts have taken back, `Qtty::tab_order_anomalies()` the tab steps
-that read backwards, `Qtty::hover_only()` the words a tool tip keeps out of
-a keyboard user's reach, `Qtty::focus_invisible()` the custom widgets that
-look the same focused as not, `Qtty::mnemonic_conflicts()` names the `Alt`+letters
-two controls both claim and `Qtty::shortcut_conflicts()` the chords two
-things answer -- collisions nothing else can show, since the loser simply
-never fires and Qt's own ambiguity report needs an active window -- and
+terminal user expects and `Qtty::keyboard_conventions_help()` names the keys
+that answer, so a status bar keeps no second copy of them.
 `Qtty::focusWidget()` says who has focus, which `QWidget::hasFocus()` cannot
 here, no window ever being active.
+
+**And eight questions a test can put to a window**, none of which an
+application has another way to answer:
+
+| call | what it names |
+|---|---|
+| `Qtty::keyboard_reachable()` | what `Tab` reaches, in the order it reaches it |
+| `Qtty::pointer_only()` | the controls no key reaches at all |
+| `Qtty::mnemonic_conflicts()` | the `Alt`+letters two controls both claim |
+| `Qtty::shortcut_conflicts()` | the chords two things answer at once |
+| `Qtty::conventions_shadowed()` | the convention rows the window took back |
+| `Qtty::tab_order_anomalies()` | the tab steps that read backwards |
+| `Qtty::hover_only()` | the words only a hover would reveal |
+| `Qtty::focus_invisible()` | the controls that look the same focused |
+
+Seven of the eight are asserted **empty**, which is the assertion that keeps
+working as a window grows. The collisions are what nothing else can show:
+the loser simply never fires, and Qt's own ambiguity report needs an active
+window.
 
 The conventions carry one thing that is not a key: **a status tip follows
 focus**, which is what Qt does on hover and what a terminal user can never

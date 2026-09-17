@@ -3994,6 +3994,48 @@ int suite_router() {
 			      "report of it");
 		}
 
+		// ---- the eight questions as a POPULATION, rather than one at a
+		// time. Each is asked about nothing at all and about a window with
+		// nothing in it, and each has to answer empty rather than refuse,
+		// crash, or invent a finding. The list is written out so that a
+		// ninth question added without a line here is a ninth question
+		// nobody asked this of -- which is the honest version of a rule
+		// that cannot enumerate itself.
+		{
+			QWidget bare;
+			bare.setAttribute(Qt::WA_DontShowOnScreen);
+			bare.resize(GridMetrics::cells(20, 6));
+			bare.show();
+			QCoreApplication::processEvents();
+
+			const bool null_quiet =
+			    keyboard_reachable(nullptr).isEmpty()
+			    && pointer_only(nullptr).isEmpty()
+			    && mnemonic_conflicts(nullptr).isEmpty()
+			    && shortcut_conflicts(nullptr).isEmpty()
+			    && conventions_shadowed(nullptr).isEmpty()
+			    && tab_order_anomalies(nullptr).isEmpty()
+			    && hover_only(nullptr).isEmpty()
+			    && focus_invisible(nullptr).isEmpty();
+			CHECK(null_quiet,
+			      "all eight questions answer empty when asked about "
+			      "nothing, rather than refusing or reaching through a "
+			      "null scope");
+
+			const bool bare_quiet =
+			    keyboard_reachable(&bare).isEmpty()
+			    && pointer_only(&bare).isEmpty()
+			    && mnemonic_conflicts(&bare).isEmpty()
+			    && shortcut_conflicts(&bare).isEmpty()
+			    && conventions_shadowed(&bare).isEmpty()
+			    && tab_order_anomalies(&bare).isEmpty()
+			    && hover_only(&bare).isEmpty()
+			    && focus_invisible(&bare).isEmpty();
+			CHECK(bare_quiet,
+			      "and empty about a window with nothing in it, which is "
+			      "the answer a report invents a finding to avoid giving");
+		}
+
 		// Ctrl+PageUp and Ctrl+PageDown between tabs. Qt gives a
 		// QTabWidget Ctrl+Tab and Ctrl+Shift+Tab and not these, and these
 		// are what somebody coming from a browser or an editor tries.

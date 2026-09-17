@@ -33,10 +33,16 @@ QVector<QWidget *> window_tabs();
 QWidget *current_window();
 void set_current_window(QWidget *);
 
-// For an application that wants to bind keys to this, which it must: a
-// terminal user needs a keyboard route, and qtty deliberately binds no
-// shortcut of its own -- every combination a tab switch conventionally uses
-// is one some application already means something else by.
+// For an application that wants to bind keys to this: a terminal user needs
+// a keyboard route, and by default qtty binds no shortcut of its own --
+// every combination a tab switch conventionally uses is one some
+// application already means something else by.
+//
+// WITH THE CONVENTIONS ON there is one, and this sentence used to read as
+// though there were not: `set_keyboard_conventions(true)` offers `F6`, and
+// offers it only where the focused widget ignored the key, so an
+// application that uses F6 itself keeps it. Binding your own is still the
+// answer for an application that does not want the bundle.
 void next_window();
 void previous_window();
 

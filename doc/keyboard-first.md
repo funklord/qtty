@@ -27,7 +27,10 @@ where it is qtty's it says which.
   block the event loop**, which on a terminal is a lockout rather than a
   slow window;
 - *a user cannot select text with the mouse any more* -- **Copy and
-  paste**, which names the modifier that still works.
+  paste**, which names the modifier that still works;
+- *you want a test rather than an opinion* -- **Checking it without a
+  terminal**, which lists the eight questions this library will answer
+  about a window, seven of them asserted empty.
 
 That is organised by task rather than mirroring every heading below --
 though it does name some of them, so it is a smaller copy rather than
@@ -676,8 +679,9 @@ names the ones that come out identical inside their own rectangle:
 
     QVERIFY(Qtty::focus_invisible(&window).isEmpty());
 
-Every widget Qt ships passes; the ones that fail are the ones somebody
-wrote. A widget that edits text is not asked, because the terminal's
+The ten Qt controls this library's own suite sweeps all pass -- button,
+line edit, check box, radio, combo, spin box, slider, list, tab widget,
+scroll bar -- and the ones that fail are the ones somebody wrote. A widget that edits text is not asked, because the terminal's
 cursor is its mark -- that is the same `WA_InputMethodEnabled` practice 11
 is about, and the check confirms the cursor really does follow the focus
 onto it. It moves the focus while it looks and puts it back, so it belongs
@@ -1140,7 +1144,14 @@ question and an application wants all of them:
         //    you give those actions a key of your own.
         QVERIFY(Qtty::pointer_only(&win).isEmpty());
 
-        // 5. And it still LOOKS right, attributes included.
+        // 5. And the rest of the window's questions, each of them empty
+        //    and each staying empty as the window grows.
+        QVERIFY(Qtty::tab_order_anomalies(&win).isEmpty());
+        QVERIFY(Qtty::hover_only(&win).isEmpty());
+        QVERIFY(Qtty::focus_invisible(&win).isEmpty());
+        QVERIFY(Qtty::conventions_shadowed(&win).isEmpty());
+
+        // 6. And it still LOOKS right, attributes included.
         const QString got = Qtty::test::snapshot_of(win, 40, 12);
         QVERIFY(!Qtty::test::check_snapshot(MY_SOURCE_DIR, "login", got));
     }

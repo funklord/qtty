@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1415 checks, 0 failures. `make check` is green and includes
+1417 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -28,7 +28,7 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-16, at 1384**,
+**Last re-verified under all six configurations: 2026-09-17, at 1415**,
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
 result. Offscreen and xcb-under-Xvfb both ran 1344, `minimal` refused and
@@ -45,8 +45,11 @@ is exactly the shape those two slow arms exist to watch, and at 1376 for
 it back, and at 1384 for `pointer_only()` (8.181) -- a public function that
 walks every button in a scope and holds them, plus the harness change of
 8.182, which alters how a stopped run leaves this tree and so is worth one
-run that does not trust the build it inherited. **The reason is written each
-time rather than the re-run being a habit**: a record that says which change
+run that does not trust the build it inherited, and at 1415 for the eight
+questions of 8.181 to 8.192 -- five new public functions, one of which
+renders the window twice per control and moves the focus while it looks,
+which is the shape the sanitized and memcheck arms exist to watch.
+**The reason is written each time rather than the re-run being a habit**: a record that says which change
 it covers is one a reader can judge, and one taken on a schedule is a date.
 
 The sanitized and memcheck arms earned their place that day rather than
@@ -16227,6 +16230,53 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.193 Eight questions, read as a set (2026-09-17)
+
+The eight reports of 8.181 to 8.192 arrived one at a time, each with its
+own checks, and nothing had yet asked anything of them as a POPULATION.
+Two things came of doing that.
+
+**They are asked about nothing, and about nothing in particular.** Every
+one answers empty for a null scope and for a window with no children --
+rather than refusing, reaching through the null, or inventing a finding
+about an empty room. The check writes the eight out by name, which is
+deliberate: a ninth added without a line there is a ninth nobody asked
+this of, and that is the honest version of a rule that cannot enumerate
+itself.
+
+**And a claim that had outgrown its measurement.** Two documents said
+*every widget Qt ships passes this* of `focus_invisible()`, which is a
+claim about Qt rather than about anything measured here. What is measured
+is ten controls -- button, line edit, check box, radio, combo, spin box,
+slider, list, tab widget, scroll bar -- swept by this suite every run.
+That is better evidence than the sentence it replaces and a smaller
+claim, which is the usual direction when a number is put back in.
+
+**A third, found by reading a neighbour**: `windows.h` told an
+application it *must* bind its own window key, because "qtty deliberately
+binds no shortcut of its own". True the day it was written and true with
+the conventions off; with them on, `F6` moves between windows and is
+offered only where the focused widget ignored it. A header that tells a
+reader to write code they do not need is the same fault as one that
+promises a key that does nothing, pointed the other way.
+
+**And the documents were rearranged for the reader, since eight of these
+arrived in two days.** The README's keyboard paragraph had become a
+nine-function sentence nobody would finish; it is a table now, with the
+prose keeping only what a table cannot say. The guide's task index gained
+a row for *you want a test rather than an opinion*, its assembled example
+runs all eight, and `runtime.h` gained a banner over them saying what they
+have in common: each answers something an application cannot find out for
+itself, seven of the eight are asserted empty, and all of them are
+diagnostics for a test rather than calls for a frame loop -- one renders
+the window twice per control and moves the focus while it looks.
+
+**The six configurations were re-earned at 1415** before any of this
+landed: offscreen and xcb-under-Xvfb green, `minimal` refused and said
+why, the hostile environment absorbed, ASan/UBSan/LSan clean over all
+1415 with leak detection on, and memcheck 0 errors from 0 contexts with
+nothing lost.
 
 ### 8.192 The trap that draws nothing, made assertable (2026-09-17)
 
