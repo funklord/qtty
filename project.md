@@ -28,7 +28,7 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-17, at 1486**,
+**Last re-verified under all six configurations: 2026-09-18, at 1493**,
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
 result. Offscreen and xcb-under-Xvfb both ran 1344, `minimal` refused and
@@ -130,6 +130,14 @@ application draws, which is the memcheck arm's own subject. All four
 platform arms ran 1486, the sanitized run reported no failure and no
 sanitizer output, and memcheck reported **0 errors with 17 suppressed**
 and nothing lost on any of its three counts.
+
+**And at 1493 on 2026-09-18**, for the item-panel change of 8.220 --
+a drawing change reaching every item view in every application, which
+is what the memcheck and sanitized arms are for. All four platform arms
+ran 1493, the sanitized run reported no failure and no sanitizer
+output, and memcheck reported 0 errors with the same 17 suppressed and
+nothing lost. Run one arm at a time, which is the rule the pass before
+this one learned the hard way.
 
 **The 17 are Qt's text shaping and are named in `tool/valgrind.supp`**,
 which 8.218 records at length. What matters for this paragraph is that
