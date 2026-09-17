@@ -103,9 +103,24 @@ QVector<QWidget *> InputRouter::popups() const {
 	return out;
 }
 
+// THE MASKED TYPE, not the bits. Qt's window types are a bitfield in which
+// the interesting ones are supersets of each other: Qt::Popup is 0x9, and
+// Qt::Tool is 0xb and Qt::SplashScreen 0xf -- both of which CONTAIN it. So
+// `(flags & Qt::Popup) == Qt::Popup`, which reads as "is this a popup", is
+// true for a palette window and for a splash screen as well.
+//
+// What that cost is measured in 8.194 and it is a lockout. A Qt::Tool window
+// went on the popup stack, so the top popup owned input: keys typed with the
+// focus in the MAIN window landed nowhere at all, the strip carried nothing
+// so F6 had nowhere to go, and Esc does not dismiss a tool window. An
+// application that opens a palette had a terminal it could not type into and
+// could not get back from.
+//
+// windowType() is the same flags masked to WindowType_Mask, which is how Qt
+// itself asks the question.
 bool InputRouter::is_popup_layer(const QWidget *w) {
-	const Qt::WindowFlags f = w->windowFlags();
-	return (f & Qt::Popup) == Qt::Popup || f.testFlag(Qt::ToolTip);
+	const Qt::WindowType t = w->windowType();
+	return t == Qt::Popup || t == Qt::ToolTip;
 }
 
 // section 8.3: while a modal is up it is the whole of the input tree. Nothing

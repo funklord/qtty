@@ -2434,3 +2434,23 @@ find = "\t\tif (w->testAttribute(Qt::WA_InputMethodEnabled)) continue;"
 into = "\t\tif (false) continue;"
 count = 1
 check = "nor a custom widget that edits text and draws nothing new"
+
+[[sabotage]]
+# Back to asking the flag bits, which makes a palette a popup because Qt's
+# Qt::Tool contains every bit Qt::Popup has -- the lockout of 8.194.
+name = "a palette window counts as a popup again"
+file = "src/runtime/input_router.cpp"
+find = "\tconst Qt::WindowType t = w->windowType();\n\treturn t == Qt::Popup || t == Qt::ToolTip;"
+into = "\tconst Qt::WindowFlags f = w->windowFlags();\n\treturn (f & Qt::Popup) == Qt::Popup || f.testFlag(Qt::ToolTip);"
+count = 1
+check = "a person can still type in the window they are in"
+
+[[sabotage]]
+# A window nobody can type into offered as somewhere to switch to, which is
+# what qtty's own overlay twins are.
+name = "a window transparent for input joins the strip"
+file = "src/runtime/compositor.cpp"
+find = "\tif (w->windowFlags().testFlag(Qt::WindowTransparentForInput)) return false;"
+into = "\tif (false) return false;"
+count = 1
+check = "a window transparent for input is not in the strip at all"

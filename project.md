@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1417 checks, 0 failures. `make check` is green and includes
+1422 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16230,6 +16230,51 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.194 A palette window was a lockout (2026-09-17)
+
+Asking *which of my windows can a key reach* -- practice 6, and the one
+question left with no instrument -- found something worse than a missing
+report. **An application that opens a `Qt::Tool` window had a terminal it
+could not type into and could not get back from.**
+
+Measured, with a palette open and the focus in the MAIN window's field:
+
+    the palette went on the popup stack, so the top layer owned input
+    two letters typed at the main window landed NOWHERE at all
+    window_tabs() was empty, so F6 had nowhere to move
+    Esc does not dismiss a tool window
+
+**Qt's window types are a bitfield whose interesting members contain each
+other.** `Qt::Popup` is `0x9`; `Qt::Tool` is `0xb` and `Qt::SplashScreen`
+`0xf`, and both contain every bit `Qt::Popup` has. So
+`(flags & Qt::Popup) == Qt::Popup`, which reads in English as *is this a
+popup*, is true for a palette and for a splash screen. `windowType()` is
+the same flags masked to `WindowType_Mask`, which is how Qt itself asks
+the question, and it is what the predicate asks now.
+
+**The fix had a second half, and the suite found it rather than the
+reasoning.** Three graphics checks about damage rectangles went red: with
+the type fix alone, qtty's OWN overlay twins -- frameless, always-on-top
+`Qt::Tool` windows carrying `Qt::WindowTransparentForInput` -- became
+strip members, so every graphics fixture grew a strip row and everything
+moved down one. A window nobody can type into is not a window to switch
+to, and the strip says so explicitly now.
+
+**Three of my own checks did not reach the fault, and the harness said so
+each time.**
+
+- The typing check called `set_current_window()` first. That enters the
+  window, which dismisses the popup stack -- so the check passed with the
+  defect present. What a person does is open the palette and keep typing,
+  and that is what it does now.
+- The strip's membership test was written out in two loops, so an entry
+  removing one copy changed nothing: either copy alone keeps a window
+  out. It is one predicate with two readers now, which is what this tree
+  does everywhere else and what makes the rule breakable by one entry.
+- The first attempt at that entry sabotaged the loop that EMITS rather
+  than the one that decides membership, which is the same fault one step
+  along.
 
 ### 8.193 Eight questions, read as a set (2026-09-17)
 

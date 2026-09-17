@@ -511,6 +511,106 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- a palette window, which was a lockout. Qt's window types are a
+	// bitfield whose interesting members are supersets of each other:
+	// Qt::Popup is 0x9, Qt::Tool is 0xb and Qt::SplashScreen 0xf, so
+	// `(flags & Qt::Popup) == Qt::Popup` -- which reads as "is this a
+	// popup" -- was true for a palette. Measured before the fix, with a
+	// Qt::Tool window open:
+	//
+	//     it went on the popup stack, so the top layer owned input
+	//     keys typed with the focus in the MAIN window landed NOWHERE
+	//     the strip carried nothing, so F6 had nowhere to go
+	//     Esc does not dismiss a tool window
+	//
+	// A terminal the user could not type into and could not get back
+	// from. windowType() is the same flags masked, which is how Qt asks.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(30, 8));
+		auto *field = new QLineEdit(&host);
+		field->setGeometry(0, 0, 20 * GridMetrics::cw(), GridMetrics::ch());
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter pr(&host);
+		Compositor pc(&host, &pr);
+		CellBuffer pb(30, 8);
+		pc.compose(pb);
+
+		QWidget palette(nullptr, Qt::Tool);
+		palette.setAttribute(Qt::WA_DontShowOnScreen);
+		palette.setWindowTitle(QStringLiteral("palette"));
+		palette.resize(GridMetrics::cells(20, 4));
+		auto *tool_field = new QLineEdit(&palette);
+		tool_field->setGeometry(0, 0, 10 * GridMetrics::cw(),
+		                        GridMetrics::ch());
+		palette.show();
+		QCoreApplication::processEvents();
+		pc.compose(pb);
+		QCoreApplication::processEvents();
+
+		CHECK(pr.popups().isEmpty(),
+		      "a Qt::Tool window is not a popup layer, though Qt's flag "
+		      "for it contains every bit Qt::Popup has");
+		CHECK(Qtty::window_tabs().contains(&palette),
+		      "and the strip carries it, so F6 reaches a palette rather "
+		      "than leaving it somewhere no key goes");
+
+		// THE LOCKOUT ITSELF: type at the main window and the letters
+		// have to arrive there. Before the fix they arrived nowhere at
+		// all -- the popup owned input and had no focus widget.
+		//
+		// NO set_current_window() FIRST, and that is the whole fixture.
+		// Calling it enters the window, which dismisses the popup stack
+		// -- so with the call in place this check passed even with the
+		// defect present, and the entry that restores the bit test said
+		// so: the named check PASSED against broken code. What a person
+		// does is open the palette and keep typing.
+		field->setText(QString());
+		field->setFocus();
+		set_focus_widget(host.focusWidget());
+		QCoreApplication::processEvents();
+		pr.on_key({0, QStringLiteral("h"), false, false, false});
+		pr.on_key({0, QStringLiteral("i"), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(field->text() == QStringLiteral("hi"),
+		      "and a person can still type in the window they are in, "
+		      "which a palette took away entirely");
+
+		// A REAL popup still is one, which is the other half: the fix
+		// must not stop a menu owning input while it is up.
+		QMenu menu(&host);
+		menu.addAction(QStringLiteral("Item"));
+		menu.popup(QPoint(0, 0));
+		QCoreApplication::processEvents();
+		CHECK(pr.popups().size() == 1 && pr.popups().first() == &menu,
+		      "while a QMenu is still a popup layer and still owns the "
+		      "input while it is up");
+		menu.close();
+		QCoreApplication::processEvents();
+
+		// AND A WINDOW NOBODY CAN TYPE INTO is not a window to switch
+		// to. qtty's own overlay twins are exactly this -- frameless,
+		// always on top, Qt::WindowTransparentForInput -- and with the
+		// type fix alone they became strip entries, which added a strip
+		// row to every graphics fixture and moved the damage under three
+		// checks that had nothing to do with windows.
+		QWidget ghost(nullptr, Qt::Tool | Qt::WindowTransparentForInput);
+		ghost.setAttribute(Qt::WA_DontShowOnScreen);
+		ghost.resize(GridMetrics::cells(10, 2));
+		ghost.show();
+		QCoreApplication::processEvents();
+		pc.compose(pb);
+		CHECK(!Qtty::window_tabs().contains(&ghost),
+		      "and a window transparent for input is not in the strip at "
+		      "all, there being nothing a person could do once they got "
+		      "there");
+		ghost.hide();
+		palette.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// Where the keys go once the picture has moved. Two windows with a field
 	// each, because a window holding only a label has no tab stop and cannot
 	// answer this at all -- the `second` above is that window, which is why

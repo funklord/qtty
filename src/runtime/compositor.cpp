@@ -24,6 +24,29 @@ bool is_compositable(const QWidget *w) {
 	return w && w->isVisible() && w->windowType() != Qt::Desktop && !w->size().isEmpty();
 }
 
+// Whether a top-level belongs in the window strip, asked in ONE place
+// because two loops need it: the sweep over Qt's list, which decides
+// membership, and the walk over the remembered order, which decides
+// position. Written out twice it could not be broken by a single sabotage
+// -- either copy alone keeps a window out, so an entry removing one left
+// every check green and reported that the code was broken and nothing
+// noticed.
+//
+// A POPUP is not a window to switch to, nor is a modal -- the modal is the
+// whole input tree while it is up (section 8.3). Nor is a window that
+// cannot take input at all: qtty's own overlay twins are frameless,
+// always-on-top Qt::Tool windows carrying Qt::WindowTransparentForInput,
+// and offering one as somewhere to go would put a person in a window where
+// nothing they pressed could do anything. Measured when they briefly became
+// strip members: every graphics fixture grew a strip row, which moved the
+// damage under three checks that have nothing to do with windows.
+bool strip_member(const QWidget *w) {
+	if (!is_compositable(w)) return false;
+	if (InputRouter::is_popup_layer(w)) return false;
+	if (w->windowFlags().testFlag(Qt::WindowTransparentForInput)) return false;
+	return !w->isModal();
+}
+
 // Where a layer goes inside the terminal rectangle (section 8.1).
 //
 // `flip` is for anchored layers -- menus, combo drop-downs, tooltips -- whose
@@ -330,10 +353,7 @@ QVector<QWidget *> collect_window_tabs(QWidget *root)
 	// list is still what finds a new window; what it decides is membership,
 	// not position.
 	for (QWidget *w : QApplication::topLevelWidgets()) {
-		if (w == root || !is_compositable(w)) continue;
-		if (InputRouter::is_popup_layer(w)) continue;
-		if (w->isModal()) continue;
-		remember(w);
+		if (w != root && strip_member(w)) remember(w);
 	}
 	for (int i = 0; i < g_seen.size();) {
 		QWidget *const w = g_seen.at(i).data();
@@ -342,10 +362,7 @@ QVector<QWidget *> collect_window_tabs(QWidget *root)
 			continue;
 		}
 		++i;
-		if (w == root || !is_compositable(w)) continue;
-		if (InputRouter::is_popup_layer(w)) continue;
-		if (w->isModal()) continue;
-		out.append(w);
+		if (w != root && strip_member(w)) out.append(w);
 	}
 	return out;
 }
