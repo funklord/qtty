@@ -28,7 +28,7 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-17, at 1475**,
+**Last re-verified under all six configurations: 2026-09-17, at 1486**,
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
 result. Offscreen and xcb-under-Xvfb both ran 1344, `minimal` refused and
@@ -123,6 +123,20 @@ interleaved into stdout, splitting one `PASS:` line in two. Captured
 with `2>` to its own file the count is 1475 exactly. **Merging stderr
 into a stream you are going to COUNT is the same mistake as piping a
 check's output before reading it**, one step further along.
+
+**And again at 1486, for the modal frame of 8.216 and the arrangements
+of 8.217** -- the first being a change to what every dialog in every
+application draws, which is the memcheck arm's own subject. All four
+platform arms ran 1486, the sanitized run reported no failure and no
+sanitizer output, and memcheck reported **0 errors with 17 suppressed**
+and nothing lost on any of its three counts.
+
+**The 17 are Qt's text shaping and are named in `tool/valgrind.supp`**,
+which 8.218 records at length. What matters for this paragraph is that
+the arm went red on a tree whose code was sound, cost five experiments
+to explain, and is only meaningful again because the noise was
+identified rather than tolerated: a run reporting 17 unexplained errors
+every time is a run nobody reads the eighteenth error of.
 **The reason is written each time rather than the re-run being a habit**: a record that says which change
 it covers is one a reader can judge, and one taken on a schedule is a date.
 
