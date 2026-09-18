@@ -3482,3 +3482,66 @@ find = "\t\tif (k.qt_key == Qt::Key_Return || k.qt_key == Qt::Key_Enter) {"
 into = "\t\tif (k.qt_key == Qt::Key_Return) {"
 count = 1
 check = "the keypad's Enter activates the focused button"
+
+
+# 8.244. Seven entries for seven checks, and the two at the end exist
+# because their checks cannot go red against the unfixed code: nothing
+# dimmed at all before, so "a plain cell is untouched" and "a pair already
+# under the floor is left alone" both passed for the wrong reason. A check
+# the defect cannot redden is proved here or it is not proved.
+
+[[sabotage]]
+name = "the rasteriser draws a dim cell at full strength"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\t\tconst QRgb ink = (c.attrs & Attr::Dim)\n\t\t\t\t    ? dim_toward_ground(fg, bg) : fg;"
+into = "\t\t\t\tconst QRgb ink = fg;"
+count = 1
+check = "a dim cell is rasterised to different pixels from a plain"
+
+[[sabotage]]
+name = "every cell is dimmed, not only the dim ones"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\t\tconst QRgb ink = (c.attrs & Attr::Dim)\n\t\t\t\t    ? dim_toward_ground(fg, bg) : fg;"
+into = "\t\t\t\tconst QRgb ink = dim_toward_ground(fg, bg);"
+count = 1
+check = "a cell with no attributes reaches its declared foreground"
+
+[[sabotage]]
+name = "dim is scaled toward black instead of toward the ground"
+file = "src/graphics/graphics.cpp"
+find = "\t\tconst QRgb faint = blend(fg, 255 - n * 255 / 16, bg);"
+into = "\t\tconst QRgb faint = blend(fg, 255 - n * 255 / 16, qRgb(0, 0, 0));"
+count = 1
+check = "and on a light ground too, where dimming toward black"
+
+[[sabotage]]
+name = "the dim blend is not clamped to the contrast floor"
+file = "src/graphics/graphics.cpp"
+find = "\t\tif (has_minimum_contrast(Color::rgb(faint), Color::rgb(bg)))\n\t\t\treturn faint;"
+into = "\t\treturn faint;"
+count = 1
+check = "a pair too close together to halve is dimmed only as far"
+
+[[sabotage]]
+name = "dim goes as faint as it likes, floor and all"
+file = "src/graphics/graphics.cpp"
+find = "\tfor (int n = 8; n > 0; --n) {                     // sixteenths, 8/16 = half\n\t\tconst QRgb faint = blend(fg, 255 - n * 255 / 16, bg);\n\t\tif (has_minimum_contrast(Color::rgb(faint), Color::rgb(bg)))\n\t\t\treturn faint;\n\t}\n\treturn fg;"
+into = "\treturn blend(fg, 16, bg);"
+count = 1
+check = "and on a dark ground it is fainter than plain text"
+
+[[sabotage]]
+name = "a pair already under the floor is dimmed anyway"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\treturn faint;\n\t}\n\treturn fg;\n}"
+into = "\t\t\treturn faint;\n\t}\n\treturn blend(fg, 128, bg);\n}"
+count = 1
+check = "and a pair already under the floor is not dimmed at all"
+
+[[sabotage]]
+name = "bold is dropped when a cell is also dim"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\t\tf.setBold(c.attrs & Attr::Bold);"
+into = "\t\t\t\tf.setBold((c.attrs & Attr::Bold) && !(c.attrs & Attr::Dim));"
+count = 1
+check = "bold and dim together are heavier than dim alone"

@@ -354,6 +354,91 @@ QByteArray encode_iterm2(const QImage &img, int w_cells, int h_cells) {
 }
 
 // ---- rasterizer ------------------------------------------------------------
+static QRgb blend(QRgb over, int a, QRgb under);          // halfblock fallback
+
+// Attr::Dim, drawn rather than dropped, and the rule is this function's own
+// rather than something Qt handed it -- which is why it is written down here
+// and not just applied.
+//
+// There is no font property for faint. ECMA-48 calls SGR 2 "faint, decreased
+// intensity" and terminals implement it by drawing the glyph in a dimmer
+// FOREGROUND, so honouring it is a colour operation and the only question was
+// which one. Three were available and two were rejected:
+//
+//   * Scale the foreground toward BLACK. This is what a naive implementation
+//     does and it is wrong in a way that only half of terminals ever see: it
+//     is defined against black rather than against the ground, so it means
+//     opposite things in the two schemes. On a dark ground it walks the glyph
+//     toward the background and does look faint; on a LIGHT one black is the
+//     far end of the range, so "dim" text comes out DARKER than ordinary text
+//     -- stronger, not fainter, which is the attribute rendered backwards.
+//     Half of terminals are each, so an effect that only works in one scheme
+//     is not an effect.
+//
+//   * An alpha on the pen. It composites correctly here and is not wrong:
+//     dst is ARGB32_Premultiplied, the painter is in the default SourceOver
+//     mode, and the cell's ground has just been laid down, so an alpha glyph
+//     lands on very nearly the colour the blend below computes. What it
+//     cannot do is be CHECKED. The blend is a value that exists before
+//     anything is drawn, so it can be put to has_minimum_contrast() and
+//     walked back when it fails; an alpha result exists only after
+//     compositing, and by then there is no colour to test and nothing to walk
+//     back. The floor is the whole reason this is safe on a theme nobody here
+//     has seen, so an option that forecloses it loses on that alone. It is
+//     also a function of the PIXELS rather than of the cell: the ground is
+//     filled only when it differs from the default, so what an alpha glyph
+//     lands on is whatever the region fill left rather than anything this
+//     cell said, and the same cell would rasterise differently depending on
+//     what had been drawn there before.
+//
+//   * Blend the foreground toward THIS CELL'S OWN background, which is what a
+//     terminal actually produces and what is done. The ground is right here
+//     -- bg is resolved a few lines above, after the Reverse swap -- so the
+//     effect is defined against the thing the glyph is standing on and means
+//     the same in either scheme: half as far from the ground is half as far
+//     whether the ground is #101418 or #ffffff.
+//
+// HALF the distance, because the fraction is what a reader perceives and half
+// is unmistakably fainter while nowhere near the edge: section 8.59 measured
+// this path's own default pair and found blends up to 70% still clearing the
+// floor and 80% not, so 50% leaves the clamp below as a guard rather than as
+// the rule. No tunable, and deliberately: an amount an application can set is
+// an amount somebody sets to zero.
+//
+// And then walked back until the pair clears has_minimum_contrast(), the
+// section 6 floor this library already enforces on every theme it is given.
+// A fixed fraction is safe on the default ground and cannot be safe on all of
+// them -- a cell carrying a theme colour has its own, and a pair that starts
+// close to the floor has no half to give. So the fraction is a ceiling on how
+// faint this gets and the floor decides the rest, which is the shape
+// harmonization.md records beerssh's ensure_contrast using.
+//
+// The walk is written as a walk rather than as arithmetic on purpose. Solving
+// for the fraction would need luminance() to be linear in the channels, which
+// it is today and is not this function's to depend on; stepping and asking
+// the library's own predicate stays right if that formula is ever made
+// gamma-correct.
+//
+// A pair that ALREADY fails the floor gets no dimming at all. That is the
+// deliberate end of the walk rather than a gap in it: dimming an illegible
+// cell makes it worse, and the contrast fault is the theme's to fix, so the
+// worst this can do to a cell is leave it exactly as it was.
+static QRgb dim_toward_ground(QRgb fg, QRgb bg) {
+	for (int n = 8; n > 0; --n) {                     // sixteenths, 8/16 = half
+		const QRgb faint = blend(fg, 255 - n * 255 / 16, bg);
+		if (has_minimum_contrast(Color::rgb(faint), Color::rgb(bg)))
+			return faint;
+	}
+	return fg;
+}
+
+// WHICH TIERS ARRIVE HERE, because two comments in this file had it wrong
+// and project.md had it wrong twice more. There is one production caller,
+// compositor.cpp's software-composite branch, and it is taken only for
+// Sixel, ITerm2 and Kitty. Half-blocks and KittyAlpha both present the
+// frame as TEXT -- compose_halfblocks() writes Cells and KittyAlpha sends
+// the overlay beside an ordinary present() -- so an attribute dropped here
+// is lost on three tiers and kept on the rest. section 8.244.
 QRect rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
                      const QRect &cells) {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
@@ -391,19 +476,22 @@ QRect rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
 				// Strike was the one QFont-expressible attribute this did
 				// not map, so a struck heading kept its line on a terminal
 				// with no graphics and lost it on one with pictures --
-				// sixel, iTerm2 and the half-blocks built on this same
-				// rasteriser. The other three were here from the start,
-				// which is what made the omission read as deliberate.
+				// sixel, iTerm2 and kitty. The other three were here from
+				// the start, which is what made the omission read as
+				// deliberate.
 				//
-				// Dim is NOT here and is a different question: it has no
-				// QFont equivalent and would be a colour operation,
-				// blending the foreground toward the ground. That one is a
-				// policy and is left in 0b.
+				// Dim is not a font property and is applied to the PEN
+				// below instead -- see dim_toward_ground() above, which
+				// carries the rule and the two options it was chosen
+				// over. It is named here because a reader counting rows
+				// in this block is asking which attributes reach the
+				// pixels, and the answer for Dim is now yes.
+				// section 8.244.
 				//
 				// Blink is not here either, and unlike Dim it is not a
 				// policy anybody can settle. This function rasterises ONE
 				// still frame for a terminal with a picture protocol --
-				// sixel, iTerm2, the half-block tiers built on it -- and a
+				// sixel, iTerm2 and kitty -- and a
 				// blink is a property of a sequence of frames. There is no
 				// image of blinking text; there is an image of it lit and
 				// an image of it dark, and choosing either silently answers
@@ -419,7 +507,19 @@ QRect rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
 				// nothing failing to report it. section 8.238.
 				f.setStrikeOut(c.attrs & Attr::Strike);
 				p.setFont(f);
-				p.setPen(QColor::fromRgb(fg));
+				// Bold and Dim together do NOT cancel, and this matches
+				// what the text tier already sends: sgr_sequence() emits 1
+				// and 2 both, so a terminal doing its own text draws a
+				// heavy stroke in a faint colour. f.setBold() is above and
+				// the faint pen is here, so the pixel tiers say the same
+				// thing rather than one attribute eating the other.
+				// ECMA-48 gives the two a single cancelling code, SGR 22
+				// "normal intensity", which is what says they are two ends
+				// of one property rather than two properties -- and is
+				// also why neither is allowed to silently win here.
+				const QRgb ink = (c.attrs & Attr::Dim)
+				    ? dim_toward_ground(fg, bg) : fg;
+				p.setPen(QColor::fromRgb(ink));
 				p.drawText(x * cw, y * ch + fm.ascent(), c.ch);
 			}
 		}

@@ -737,6 +737,183 @@ int suite_graphics() {
 			      "a struck cell is rasterised with its line, so a terminal "
 			      "with pictures shows what one without already showed");
 		}
+		{
+			// DIM through the rasteriser, which had no row for it at all.
+			// Bold, Italic, Underline and Strike are all QFont switches and
+			// are all thrown above; Dim is not a font property, so it was
+			// dropped here while sgr_sequence() went on emitting SGR 2 --
+			// and the tiers that go through these pixels are the ones that
+			// CANNOT fall back to the terminal's own faint. A disabled
+			// widget therefore rendered identically to a live one on sixel,
+			// iTerm2 and kitty, which is every disabled widget in every
+			// application, since cell_geometry.h sets Dim wherever
+			// State_Enabled is absent.
+			//
+			// Measured on TWO grounds, and that is the point of the block
+			// rather than thoroughness. Dim is a colour effect, so the
+			// obvious implementation -- scale the foreground toward black --
+			// is defined against black instead of against the ground, and
+			// means opposite things in the two schemes: faint on a dark
+			// terminal, and DARKER THAN ORDINARY TEXT on a light one, which
+			// is the attribute rendered backwards. A one-ground fixture
+			// passes that implementation, and half of terminals are each.
+			//
+			// The numbers below are luminance separations from the cell's
+			// own ground, computed with the library's own weights so that
+			// what is asserted is what has_minimum_contrast() decides on
+			// rather than a second opinion about brightness.
+			auto lum = [](QRgb c) {
+				return (qRed(c) * 299 + qGreen(c) * 587 + qBlue(c) * 114) / 1000;
+			};
+			auto cell_image = [&](QRgb fg, QRgb bg, Attrs a) {
+				CellBuffer one(2, 1);
+				one.text(0, 0, QStringLiteral("M"), Color::rgb(fg),
+				         Color::rgb(bg), a);
+				return rasterize(one, QGuiApplication::font());
+			};
+			// The FURTHEST any pixel in the cell gets from its ground: the
+			// ink at the glyph's core, which is the thing a reader has to
+			// tell from the background. Sampling a coordinate would be
+			// asserting on where the font puts the stem of an M.
+			auto separation = [&](const QImage &img, QRgb bg) {
+				int worst = 0;
+				for (int y = 0; y < ch; ++y)
+					for (int x = 0; x < cw; ++x)
+						worst = qMax(worst,
+						             qAbs(lum(img.pixel(x, y)) - lum(bg)));
+				return worst;
+			};
+			auto changed = [&](const QImage &a, const QImage &b) {
+				int n = 0;
+				for (int y = 0; y < ch; ++y)
+					for (int x = 0; x < cw; ++x)
+						if (a.pixel(x, y) != b.pixel(x, y)) ++n;
+				return n;
+			};
+			auto inked = [&](const QImage &img, QRgb bg) {
+				int n = 0;
+				for (int y = 0; y < ch; ++y)
+					for (int x = 0; x < cw; ++x)
+						if (qAbs(lum(img.pixel(x, y)) - lum(bg)) > 8) ++n;
+				return n;
+			};
+
+			// This path's own defaults on one side, and a real light scheme
+			// on the other rather than the same pair swapped -- a swap would
+			// share every channel value and could agree with a toward-black
+			// implementation by arithmetic accident.
+			const QRgb dark_bg = qRgb(16, 20, 24), dark_fg = qRgb(215, 218, 220);
+			const QRgb light_bg = qRgb(255, 255, 255), light_fg = qRgb(32, 32, 32);
+			const int floor_delta = 48;      // has_minimum_contrast()'s default
+
+			const QImage dark_plain = cell_image(dark_fg, dark_bg, Attrs());
+			const QImage dark_dim   = cell_image(dark_fg, dark_bg, Attrs(Attr::Dim));
+			const QImage light_plain = cell_image(light_fg, light_bg, Attrs());
+			const QImage light_dim   = cell_image(light_fg, light_bg, Attrs(Attr::Dim));
+			const int dark_sep_plain = separation(dark_plain, dark_bg);
+			const int dark_sep_dim   = separation(dark_dim, dark_bg);
+			const int light_sep_plain = separation(light_plain, light_bg);
+			const int light_sep_dim   = separation(light_dim, light_bg);
+			printf("info: dim on a dark ground: %d pixel(s) differ, separation"
+			       " %d plain and %d dim\n",
+			       changed(dark_plain, dark_dim), dark_sep_plain, dark_sep_dim);
+			printf("info: dim on a light ground: %d pixel(s) differ, separation"
+			       " %d plain and %d dim\n",
+			       changed(light_plain, light_dim), light_sep_plain, light_sep_dim);
+
+			CHECK(changed(dark_plain, dark_dim) > 0,
+			      "a dim cell is rasterised to different pixels from a plain "
+			      "one, so the pixel tiers show what the text tier already "
+			      "showed");
+			// Both directions on each ground, because each alone passes
+			// something wrong: "fainter" alone is satisfied by text dimmed
+			// into invisibility, and "still legible" alone is satisfied by
+			// not dimming at all.
+			CHECK(dark_sep_dim < dark_sep_plain && dark_sep_dim >= floor_delta,
+			      "and on a dark ground it is fainter than plain text while "
+			      "still clearing the contrast floor the library enforces");
+			CHECK(light_sep_dim < light_sep_plain && light_sep_dim >= floor_delta,
+			      "and on a light ground too, where dimming toward black "
+			      "would make it darker than plain text rather than fainter");
+
+			// BOLD AND DIM TOGETHER. ECMA-48 gives them one cancelling code
+			// between them -- SGR 22, "normal intensity" -- so they are two
+			// ends of one property, and sgr_sequence() emits both when a
+			// cell carries both. Matching that here means the weight comes
+			// from the font and the faintness from the pen, and neither eats
+			// the other. Asserted as a pair of relationships rather than as
+			// pixel counts: heavier than dim alone, fainter than bold alone.
+			const Attrs bold = Attr::Bold, bold_dim = Attr::Bold | Attr::Dim;
+			const QImage dark_bold     = cell_image(dark_fg, dark_bg, bold);
+			const QImage dark_bold_dim = cell_image(dark_fg, dark_bg, bold_dim);
+			const int ink_dim      = inked(dark_dim, dark_bg);
+			const int ink_bold_dim = inked(dark_bold_dim, dark_bg);
+			const int sep_bold     = separation(dark_bold, dark_bg);
+			const int sep_bold_dim = separation(dark_bold_dim, dark_bg);
+			printf("info: bold+dim inks %d pixel(s) against dim's %d, and its"
+			       " separation is %d against bold's %d\n",
+			       ink_bold_dim, ink_dim, sep_bold_dim, sep_bold);
+			CHECK(ink_bold_dim > ink_dim && sep_bold_dim < sep_bold,
+			      "bold and dim together are heavier than dim alone and "
+			      "fainter than bold alone, which is the pair not cancelling");
+
+			// THE CLAMP, which is the half a default-coloured fixture
+			// cannot reach. Halving the distance to the ground is safe on
+			// the pairs this path ships with and cannot be safe on every
+			// theme: a pair that starts near the contrast floor has no half
+			// to give. So the fraction is a ceiling and has_minimum_contrast
+			// decides the rest, and this is the pair that makes the two
+			// disagree -- 70 apart, where half is 35 and the floor is 48.
+			//
+			// Asserted in both directions again. "Clears the floor" alone is
+			// satisfied by not dimming at all, which is the failure this
+			// whole entry is about, so the check also has to see it move.
+			const QRgb near_fg = qRgb(150, 150, 150), near_bg = qRgb(80, 80, 80);
+			const QImage near_plain = cell_image(near_fg, near_bg, Attrs());
+			const QImage near_dim   = cell_image(near_fg, near_bg, Attrs(Attr::Dim));
+			const int near_sep_plain = separation(near_plain, near_bg);
+			const int near_sep_dim   = separation(near_dim, near_bg);
+			printf("info: a pair %d apart dims to %d, floor %d\n",
+			       near_sep_plain, near_sep_dim, floor_delta);
+			CHECK(near_sep_dim >= floor_delta && near_sep_dim < near_sep_plain,
+			      "a pair too close together to halve is dimmed only as far "
+			      "as the contrast floor allows, rather than through it");
+
+			// And the end of that walk, pinned as the limit it is: a pair
+			// that was ALREADY below the floor gets no dimming at all. The
+			// contrast fault is the theme's and dimming would compound it,
+			// so the worst this path can do to a cell is leave it alone.
+			// Recorded rather than left to be discovered, because a check
+			// whose limits are unwritten gets quoted for guarantees it never
+			// made.
+			const QRgb flat_fg = qRgb(100, 100, 100), flat_bg = qRgb(80, 80, 80);
+			const QImage flat_plain = cell_image(flat_fg, flat_bg, Attrs());
+			const QImage flat_dim   = cell_image(flat_fg, flat_bg, Attrs(Attr::Dim));
+			printf("info: a pair %d apart, under the floor already, changes"
+			       " %d pixel(s) when dimmed\n",
+			       separation(flat_plain, flat_bg), changed(flat_plain, flat_dim));
+			CHECK(changed(flat_plain, flat_dim) == 0,
+			      "and a pair already under the floor is not dimmed at all, "
+			      "since dimming an illegible cell only compounds a fault "
+			      "that is the theme's");
+
+			// The CONTROL, and it is about confinement rather than about
+			// dim: a cell carrying no attribute must be untouched by any of
+			// this. Its strongest ink is the foreground it was given,
+			// exactly -- not a colour a fraction of the way toward the
+			// ground -- so a dimming rule that leaked into the plain path
+			// would show up here as a separation short of the full one.
+			printf("info: a plain cell's separation is %d dark and %d light,"
+			       " the declared pairs are %d and %d apart\n",
+			       dark_sep_plain, light_sep_plain,
+			       qAbs(lum(dark_fg) - lum(dark_bg)),
+			       qAbs(lum(light_fg) - lum(light_bg)));
+			CHECK(dark_sep_plain == qAbs(lum(dark_fg) - lum(dark_bg))
+			      && light_sep_plain == qAbs(lum(light_fg) - lum(light_bg)),
+			      "a cell with no attributes reaches its declared foreground "
+			      "exactly, on both grounds, so the dimming is confined to "
+			      "the attribute it is about");
+		}
 		bool red_seen = false;
 		for (int y = 0; y < ch && !red_seen; ++y)
 			for (int x = cw; x < 3 * cw; ++x) {

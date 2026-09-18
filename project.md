@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1612 checks, 0 failures. `make check` is green and includes
+1619 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -797,7 +797,7 @@ Owned by the copyright holder:
 | **~~A tab's mnemonic does nothing.~~ It works with the conventions on (8.67); what is left is the DEFAULT.** `Alt+S` on a tab labelled "&Second" does not switch to it: the router matches Alt against ACTION text and a tab is not an action. It is therefore left unmarked, on the rule that underlining a key that does nothing is worse than leaving it bare. Whether a terminal should switch tabs by mnemonic at all is the question -- the marking follows the answer | 8.37 |
 | **Three of `CursorShape`'s four values do nothing.** `AnsiBackend::set_cursor` tells Hidden from the rest and emits no shape selection, so Block, Underline and Bar are the same two bytes. DECSCUSR would set it in one line -- but its parameters pair each shape with a blink or steady variant that the enum cannot express, so honouring it means choosing on the application's behalf, and the prior question is whether a TUI should touch the cursor shape at all. design.md declares the method and never says what the shapes mean | 8.51 |
 | **A `QMainWindow` application sees nine off-grid warnings it cannot act on.** The suite works around this with `GridGuard::reset()` and an application has no equivalent. `is_exempt()`'s PRINCIPLE covers them exactly -- *"widgets Qt builds for itself, which the application never constructs and cannot size"* -- and its mechanism does not: it keys on `qt_` object names and `Private` class names, and `QStatusBar`, `QSizeGrip` and a central widget placed by `QMainWindowLayout` carry neither. Measured on a window shaped like netcfgd's: **9 violations, 0 forgiven**. The fix is not obviously a longer list -- the code warns in as many words that a list is what somebody adds a tenth entry to without deciding anything | 8.61 |
-| **A disabled widget is indistinguishable from an enabled one on the pixel tiers.** Measured, not inferred: `Attr::Dim` is set for EVERY disabled widget (`cell_geometry.h`), the rasteriser has no row for it, and the two render byte-identically -- same 123 lit pixels, same channel sum. ~~How far fidelity goes between tiers~~ is no longer the question; the question is how faint "faint" should be. Blends toward the ground up to **70%** clear qtty's own `has_minimum_contrast` floor and 80% does not, so the range is measured. No mechanism exists, unlike `Strike` in 8.58, so every option means choosing a rule -- a fixed factor, or "as faint as the floor permits" the way beerssh's `ensure_contrast` walks a colour | 8.50, 8.59 |
+| **~~A disabled widget is indistinguishable from an enabled one on the pixel tiers.~~ Answered on the holder's instruction, and closed -- see 8.244.** `Attr::Dim` is set for EVERY disabled widget (`cell_geometry.h`), the rasteriser had no row for it, and the two rendered byte-identically. The rule is **half the distance to the cell's own background, walked back until the pair clears `has_minimum_contrast`**: the clamping form this row named, with the fixed factor as a ceiling on it rather than as the whole rule, since 8.59 had already shown a factor safe on the default pair cannot be safe on a theme nobody here has seen. What made it decidable rather than a taste question is that the obvious alternative is not neutral -- an amount defined against black instead of against the ground renders the attribute BACKWARDS on a light terminal, and half of terminals are each | 8.50, 8.59, 8.244 |
 | **`Overlay::set_z()` does nothing in a GUI build.** `visible_overlays()` sorts by z and its only production caller is the compositor, which is the TUI path; the GUI twin never reads `z_`, so stacking there falls to the window manager. design.md presents `Overlay` as target-independent and lists `setZ` unqualified, so this is a scope question -- does the twin owe z ordering? -- rather than a defect. Not a one-liner: the twins are frameless always-on-top `Qt::Tool` windows, and it cannot be verified headlessly here | 8.47 |
 | **`design.md` recommends a function the library cannot call.** Its focus section says `focusNextPrevChild()` "walks the focus chain correctly", citing spike F4 -- and 8.71 removed the only call to it, because it is **protected**: reaching it from outside means declaring a fake derived class and casting a widget that is not one, which is undefined behaviour and which UBSan named. A spike can call it, being a subclass; the library walks widgets it does not own and cannot. Neither side is wrong -- the spike's finding holds and the code is right to refuse the cast -- but the naked recommendation is a trap for the next reader, and this tree's habit is to record design.md's lag rather than edit it (README carries the same caution about its API chapter, and 8.2 the same about `qtty::Application`). Whether design.md gains a sentence is the holder's | 8.71, F4 |
 | **Should the clipboard limit be public?** `AnsiBackend::clipboard_limit()` says in its own comment that it is "public so an application can ask before it offers the user a Copy that cannot work" -- and `make install` ships `include/qtty/*.h` only, so `ansi_backend.h` does not leave the tree and **no installed header mentions the clipboard at all**. The consequence is not cosmetic: a copy past the limit is refused whole, by design and rightly, the `QClipboard` watcher discards the result, and an application therefore cannot detect the refusal OR pre-empt it. **The user is not left in silence, which the first version of this row got wrong**: a refused copy logs a sentence naming the size and the bound, pinned by a check that asserts the wording rather than the refusal, and the deferring handler prints it when the terminal is given back -- so a person learns why after they have stopped needing to know. What no code can do is ask beforehand. Three shapes are available -- a free `Qtty::clipboard_limit()`, a field on `Capabilities` where it arguably belongs since it is a property of the terminal, or leaving it internal and saying so in the header rather than claiming an audience it cannot reach. Which one is an API decision, and the holder's | 8.83 |
@@ -2893,7 +2893,9 @@ directions (the corruption case design.md §5.2 names), and a run-based
   `qtty.blink` property. The rasteriser deliberately has no row for it:
   a still frame cannot express a blink, which is a different kind of
   gap from `Dim`'s in the same function and is recorded as a limit
-  rather than left open.
+  rather than left open. `Dim` is closed since 8.244, and the difference
+  is the one 8.58 drew: Dim had a mechanism and needed a rule chosen,
+  where a still frame has no mechanism for Blink to choose between.
 - `include/qtty/cell.h` includes `QPixmap`, so **L2 is not GUI-free.**
   That matters beyond tidiness: `doc/beerssh.md` §1 proposes beerssh link
   or vendor L2 so both ends compute Unicode width from one table, and the
@@ -15350,15 +15352,24 @@ are compared against THEMSELVES, so a fixture recorded with `itallic` in
 it agrees with every later run for ever. Four of the six words had never
 been printed by anything.
 
-**A gap left open rather than closed: the rasteriser has no row for `Dim`
-or `Strike`.** ~~Both~~ -- **`Strike` is closed, see 8.58.** Four of the six reach the pixel tiers -- sixel, iTerm2 and
-half-blocks -- and two are dropped, so the same application renders
-differently depending on what the terminal can do. `Strike` is a one-line
-`QFont::setStrikeOut`; `Dim` has no font equivalent and would be a colour
-operation, blending the foreground toward the ground. **Whether the pixel
+~~**A gap left open rather than closed: the rasteriser has no row for `Dim`
+or `Strike`.**~~ **Both are closed** -- `Strike` in 8.58, `Dim` in 8.244.
+Four of the six reached the pixel tiers and two were dropped, so the same
+application rendered differently depending on what the terminal could do.
+`Strike` was a one-line `QFont::setStrikeOut`; `Dim` has no font
+equivalent and is a colour operation, blending the foreground toward the
+cell's own ground and clamping to the contrast floor. ~~Whether the pixel
 tiers owe both is a question about how far fidelity goes between tiers,
-and it is the holder's**; recorded in 0b rather than answered while
-writing a check.
+and it is the holder's~~ -- 8.59 retired the fidelity framing, a defect on
+three tiers not being a nicety, and the rest was settled on instruction.
+
+**And the tier list in the sentence above was wrong, which 8.244 found
+when it went to check it.** The rasteriser is reached from one place,
+`compositor.cpp`'s software-composite branch, and that branch is taken
+only for Sixel, ITerm2 and Kitty. Half-blocks never reach it:
+`compose_halfblocks()` writes CELLS, so a cell it does not cover keeps its
+attributes and goes out through `sgr_sequence()` with SGR 2 on it. The
+exposure was three tiers rather than the four counted here.
 
 ### 8.51 The same question of a second enum (2026-09-08)
 
@@ -15638,10 +15649,14 @@ the wrong way round for a tier that exists to be more faithful. **Three of
 four present is what made the fourth read as deliberate**, and it was
 written up as a scope question on that reading.
 
-**`Dim` is a real decision and stays open.** No font expresses it, so
-honouring it means a colour operation -- blending the foreground toward
-the ground -- and choosing how far is a policy about what the tiers owe
-each other. That is the holder's, and 0b keeps it.
+~~**`Dim` is a real decision and stays open.**~~ **Decided, in 8.244.** No
+font expresses it, so honouring it means a colour operation -- blending
+the foreground toward the ground -- and choosing how far was the
+decision. It is half the distance, clamped to `has_minimum_contrast`.
+What this entry could not see is that the choice is not symmetric: the
+obvious alternative, scaling toward black, renders the attribute
+backwards on a light terminal, so one of the candidate rules was wrong
+rather than merely different.
 
 **The distinction is not fidelity-in-general but whether a mechanism
 exists.** `Strike` needed no choice: Qt already has the switch, and three
@@ -15672,9 +15687,14 @@ and an inactive field all carry it.
 **And on the pixel tiers they are byte-identical to the enabled ones.**
 Rendered through `rasterize()` with and without the attribute: the same
 123 lit pixels and the same channel sum, 185881 both times. A user on
-sixel, iTerm2 or half-blocks **cannot tell a disabled control from a live
-one** -- while the same application on a terminal with no graphics shows
-it faint, because `sgr_sequence` emits `\033[2m` and the terminal obeys.
+sixel, iTerm2 or ~~half-blocks~~ kitty **cannot tell a disabled control
+from a live one** -- while the same application on a terminal with no
+graphics shows it faint, because `sgr_sequence` emits `\033[2m` and the
+terminal obeys. **Half-blocks was wrong and 8.244 re-measured it**: that
+tier composites into CELLS and never reaches the rasteriser, so its
+uncovered cells keep `Attr::Dim` and go out as SGR like any other text.
+Three tiers, not four -- which does not soften the finding, since the
+three are exactly the ones a terminal cannot fall back from.
 
 **That changes the question's character rather than answering it.** It is
 not "how far does fidelity go between tiers" -- a defect on three tiers is
@@ -15689,14 +15709,18 @@ arithmetic:**
       70%                     #4b4f52    yes
       80%                     #373b3f    NO
 
-**Still the holder's, and for a reason that survived the measurement.**
-`Strike` was closed because Qt already had the switch and three of its
-siblings were thrown; **`Dim` has no mechanism at all**, so every option
-is a rule somebody chooses -- a fixed factor, or "as faint as the floor
-permits", which is the shape `harmonization.md` records beerssh using. And
-the numbers above are for the rasteriser's own default ground; a cell
-carrying a theme colour has a different one, so a fixed factor safe here
-is not safe everywhere, which is an argument for the clamping form.
+~~**Still the holder's, and for a reason that survived the
+measurement.**~~ **Answered in 8.244, and this paragraph's last sentence
+is what decided it.** `Strike` was closed because Qt already had the
+switch and three of its siblings were thrown; **`Dim` has no mechanism at
+all**, so every option is a rule somebody chooses -- a fixed factor, or
+"as faint as the floor permits", which is the shape `harmonization.md`
+records beerssh using. And the numbers above are for the rasteriser's own
+default ground; a cell carrying a theme colour has a different one, so a
+fixed factor safe here is not safe everywhere, which is an argument for
+the clamping form. The rule taken is both: the factor is a ceiling and
+the floor decides the rest, so the two candidates were not alternatives
+after all.
 
 **The measurement is the deliverable.** A question that survives it is a
 real decision and goes to whoever owns it -- with its cost named, which is
@@ -16474,8 +16498,9 @@ a question the cell did not ask. So a blinking cell rasterises as ordinary
 text and the attribute is dropped there and nowhere else: the SGR path still
 emits it, so a terminal doing its own text keeps the blink and only the
 pixels lose it. **This is a different kind of gap from `Dim`'s in the same
-function** (8.50, 8.59): Dim has a mechanism nobody has chosen a rule for,
-and Blink has no mechanism a still frame could have.
+function** (8.50, 8.59): Dim ~~has~~ had a mechanism nobody had chosen a
+rule for -- it has one since 8.244 -- and Blink has no mechanism a still
+frame could have, which is why the two did not close together.
 
 **The checks split the way the defect splits, which is the point of writing
 them.** Against a half-fix -- the enum value added, the SGR row added, the
@@ -25445,6 +25470,132 @@ entry is a use-after-free rather than a lucky crash.
 **Both findings are the same shape as 8.68's**: a thing that looked
 verified was not, and only running the whole set said so. Individually,
 each of these entries had been proved by hand on the day it was written.
+
+### 8.244 The attribute that was a colour, on two grounds (2026-09-18)
+
+`Attr::Dim` reached the rasteriser and was dropped there. 8.50 found it,
+8.58 separated it from `Strike` and closed the half that had a switch,
+8.59 measured what leaving it cost and handed the rest to the holder. This
+closes it on the holder's instruction to decide the rule and say why.
+
+**Verified before it was built on, and one of the three claims did not
+hold.** The text tier does emit it: `sgr_sequence()` writes `\033[2m` for
+`Attr::Dim`, so a terminal with no graphics has always shown a disabled
+widget faint. The rasteriser did not: `rasterize_into()` had rows for
+Bold, Italic, Underline and Strike and none for Dim, so the inconsistency
+is real and is exactly the shape 8.59 described. **The tier list was the
+claim that was wrong.** `rasterize_into()` has one production caller,
+`compositor.cpp`'s software-composite branch, and that branch is taken
+only when an overlay is up and the graphics mode is Sixel, ITerm2 or
+Kitty. Half-blocks -- named in 8.50, in 8.59 and in this function's own
+comment -- never reach it: `compose_halfblocks()` writes CELLS, and a cell
+it leaves alone keeps its attributes and goes out through the SGR path.
+KittyAlpha is the same, presenting the frame as text and sending the
+overlay beside it. **Three tiers, not four**, and the correction does not
+soften anything: the three that lose it are precisely the three that
+cannot fall back to the terminal's own faint, and the loss is not local
+to the overlay: once that branch is taken the WHOLE frame is a picture,
+so a disabled control three panes away from a popup loses its Dim too.
+
+**There is no font property for faint, which is the whole reason this
+outlived `Strike`.** ECMA-48 calls SGR 2 "faint, decreased intensity" and
+terminals implement it by drawing the glyph in a dimmer FOREGROUND. So
+the mapping is a colour operation and the question was which one. Three
+candidates, and the two rejected are rejected for different reasons:
+
+- **Scale the foreground toward black.** This is the naive implementation
+  and it is not merely a different amount, it is *the attribute rendered
+  backwards on half of terminals*. Black is a fixed end of the range
+  rather than the ground the glyph is standing on, so on a dark terminal
+  it walks the glyph toward the background and looks faint, and on a
+  light one it walks it AWAY from the background: dim text comes out
+  darker and stronger than ordinary text. **Measured by building it**,
+  since a rejected option argued rather than run is a preference: with
+  the third argument of the blend changed to black and nothing else, a
+  `#202020`-on-white cell separates from its ground by **239** where
+  plain text separates by 223. Fainter is the one thing it is not. And
+  the trap is in the other row of the same run -- on the dark ground it
+  reads **89** against plain's 198, which looks entirely correct, so a
+  fixture on this path's own default colours passes it.
+- **An alpha on the pen.** This one composites correctly and that is
+  worth saying rather than implying otherwise: the destination is
+  `ARGB32_Premultiplied`, the painter is in the default SourceOver mode,
+  and the cell's ground is laid down immediately above, so an alpha glyph
+  lands on very nearly the colour a blend would compute. It is rejected
+  for what it cannot do. **A blend is a value that exists before anything
+  is drawn**, so it can be put to `has_minimum_contrast()` and walked
+  back when it fails; an alpha result exists only after compositing, and
+  by then there is nothing left to test or to walk back. The floor is the
+  whole reason the rule is safe on a theme nobody here has seen, so an
+  option that forecloses it loses on that alone. It is also a function of
+  the pixels rather than of the cell -- the ground is filled only when it
+  differs from the default, so what an alpha glyph lands on is whatever
+  the region fill left rather than anything this cell said.
+- **Blend toward the cell's own background**, which is what a terminal
+  actually produces and what is done. `bg` is resolved a few lines above,
+  after the Reverse swap, so the effect is defined against the thing the
+  glyph is standing on and means the same in either scheme.
+
+**Half the distance, and then the floor.** 50% because the fraction is
+what a reader perceives and half is unmistakably fainter while nowhere
+near the edge -- 8.59 measured this path's own default pair and found
+blends up to 70% still clearing `has_minimum_contrast` and 80% not, so
+the factor leaves the clamp as a guard rather than as the rule. Then
+walked back a sixteenth at a time until the pair clears that floor,
+because 8.59's own closing sentence is right that a factor safe on the
+default ground cannot be safe on every theme. **The two candidates that
+paragraph offered were not alternatives**: the factor is a ceiling on how
+faint this gets and the floor decides the rest, which is the shape
+`harmonization.md` records beerssh's `ensure_contrast` using. No tunable
+and no environment variable, deliberately -- an amount an application can
+set is an amount somebody sets to zero.
+
+**Written as a walk rather than as arithmetic, on purpose.** Solving for
+the fraction directly would need `Color::luminance()` to be linear in the
+channels. It is today, and that is not this function's to depend on;
+stepping and asking the library's own predicate stays right if that
+formula is ever made gamma-correct.
+
+**And the walk has an end that is a decision rather than a gap.** A pair
+that already fails the floor gets no dimming at all: dimming an illegible
+cell compounds a fault that is the theme's, so the worst this can do to a
+cell is leave it exactly as it was. That is pinned by a check of its own,
+because a limit nobody wrote down gets quoted as a guarantee.
+
+**Bold and Dim do not cancel, and the reason is ECMA-48's rather than
+this tree's.** The two have one cancelling code between them -- SGR 22,
+"normal intensity" -- which is what says they are two ends of one
+property; and `sgr_sequence()` emits 1 and 2 both when a cell carries
+both, so a terminal doing its own text draws a heavy stroke in a faint
+colour. The rasteriser now says the same: the weight comes from
+`f.setBold()` and the faintness from the pen.
+
+**Seven checks, and the pair of directions is the point of each.** Every
+legibility assertion is made in both directions, because each half alone
+passes something wrong -- "fainter than plain" alone is satisfied by text
+dimmed into invisibility, and "clears the floor" alone is satisfied by
+not dimming at all, which is the defect being fixed. Measured:
+
+    ground              plain   dim   floor
+    #101418 dark         198     99     48    <- 85 pixels differ
+    #ffffff light        223    112     48    <- 85 pixels differ
+    a pair 70 apart       70     48     48    <- clamped, backed off to 5/16
+    a pair 20 apart       20     20     48    <- under the floor, left alone
+
+**The light row is the one that earns its place.** A fixture on the
+default ground alone passes the toward-black implementation, and the
+project's own guidelines name exactly this asymmetry: a wrong choice that
+merely looks plain in one scheme is unreadable in the other. Two of the
+seven checks would pass against a rule that is wrong for half of users,
+and the light-ground check is the only one that separates them.
+
+**Two of the seven do not go red against the unfixed code, and that is
+what they are for.** The control -- a cell with no attributes reaches its
+declared foreground exactly, on both grounds -- and the under-the-floor
+limit both pass today, because today nothing dims at all. Neither is
+therefore proved by the red run, and both are proved by sabotage instead:
+one entry dims every cell rather than the dim ones, and one dims a pair
+that was already under the floor.
 
 ## 11. What is next, in order
 
