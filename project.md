@@ -28,7 +28,21 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-18, at 1516**,
+**Last re-verified under all six configurations: 2026-09-18, at 1605**
+(`174cc0a`), and that run is the one the entries from 8.227 to 8.242 owed:
+offscreen, xcb under Xvfb and the hostile environment all ran 1605,
+`minimal` refused and said why, AddressSanitizer with
+UndefinedBehaviorSanitizer and the leak detector reported nothing, and
+memcheck was clean. **It took three attempts and the first two are worth
+more than the third.** The first was spent deliberately: three worker
+builds were started in other worktrees while it ran, the load average went
+to 59, and a verification whose slowest arm is timing-sensitive says
+nothing measured under that -- so it was stopped rather than reported. The
+second found two real faults in the xcb arm, 8.231 and 8.240, and the
+second of those was a check nobody could have caught by reading. Only the
+third was clean, and it is the only one quoted.
+
+**The same claim before that: 2026-09-18, at 1516**,
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
 result. Offscreen and xcb-under-Xvfb both ran 1344, `minimal` refused and
