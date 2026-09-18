@@ -28,7 +28,7 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-18, at 1505**,
+**Last re-verified under all six configurations: 2026-09-18, at 1511**,
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
 result. Offscreen and xcb-under-Xvfb both ran 1344, `minimal` refused and
@@ -130,6 +130,25 @@ application draws, which is the memcheck arm's own subject. All four
 platform arms ran 1486, the sanitized run reported no failure and no
 sanitizer output, and memcheck reported **0 errors with 17 suppressed**
 and nothing lost on any of its three counts.
+
+**And at 1511**, for the new public API of 8.224 and the quit-key match
+under it. Four platform arms at 1511, the sanitized run clean with no
+sanitizer output, memcheck 0 errors with the same 17 suppressed and
+nothing lost.
+
+**The stale-binary trap caught this pass too, and the count is what
+caught it.** The sanitized arm reported a clean 1505 -- last pass's
+number -- because its build had again been terminated under a bounded
+command while the machine sat at load 40. Built in a command of its own
+and re-run, it reads 1511. **A build and a run in one bounded command
+is the shape that fails this way**, since the bound kills the build and
+the run then finds yesterday's binary sitting there.
+
+And memcheck's own count read 1510 against 1511, which is the
+interleaving artefact recorded above rather than a missing check: one
+`PASS:` line is prefixed by the backend's terminal-reset bytes, so a
+`^PASS:` count misses it. Verified by grepping for that signature --
+exactly one -- rather than by running the arm again.
 
 **And at 1505**, for the two routing changes of 8.223: which widget the
 quit keys stand down for, and which the readline chords fire on. Both
