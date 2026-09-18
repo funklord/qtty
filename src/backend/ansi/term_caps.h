@@ -36,6 +36,16 @@ struct TermCaps {
 	bool truecolor = false;     // XTGETTCAP confirmed RGB or Tc
 	bool bg_known = false;
 	unsigned char bg[3] = {0, 0, 0};
+	// And the foreground, from OSC 10. It is here because the BACKGROUND
+	// ALONE CANNOT SAY WHETHER A TERMINAL IS DARK: that answer is a
+	// comparison between a background and its own foreground, and a
+	// background compared against a fixed midpoint has no contrast floor
+	// between its operands to make the comparison safe. A mid-grey
+	// terminal -- #636464 is one a real desktop ships -- lands on
+	// whichever side of the midpoint the constant was chosen to put it,
+	// and the foreground it is actually paired with decides the truth.
+	bool fg_known = false;
+	unsigned char fg[3] = {0, 0, 0};
 	QSize cell_px;              // one cell in pixels, invalid until reported
 	QSize text_px;              // the text area in pixels, invalid until reported
 

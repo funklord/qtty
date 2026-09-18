@@ -106,8 +106,8 @@ check = "and one placed at a point with no size does not"
 [[sabotage]]
 name = "a malformed background reply abandons the whole scan"
 file = "src/backend/ansi/term_caps.cpp"
-find = "\t\tif (!ok) continue;\n\t\tout.bg_known = true;"
-into = "\t\tif (!ok) return;\n\t\tout.bg_known = true;"
+find = "\t\tif (!ok) continue;\n\t\tknown = true;"
+into = "\t\tif (!ok) return;\n\t\tknown = true;"
 count = 1
 check = "and is still read when a truncated one precedes it"
 
@@ -3545,3 +3545,77 @@ find = "\t\t\t\tf.setBold(c.attrs & Attr::Bold);"
 into = "\t\t\t\tf.setBold((c.attrs & Attr::Bold) && !(c.attrs & Attr::Dim));"
 count = 1
 check = "bold and dim together are heavier than dim alone"
+
+[[sabotage]]
+# The query. OSC 10 is one more OSC in a batch that already carries four,
+# and without it the foreground is never asked for -- so the terminal is
+# silent about it for ever and every scheme answer is Unknown. Asking and
+# parsing are separate halves and each has its own entry, because a
+# scanner nobody asks and a question nobody answers look identical from
+# the capability. 8.243.
+name = "the foreground is never asked for"
+file = "src/backend/ansi/term_caps.cpp"
+find = "\t    \"\\033]10;?\\033\\\\\""
+into = "\t    \"\\033]11;?\\033\\\\\""
+count = 1
+check = "the foreground query goes out on the wire with the rest"
+
+[[sabotage]]
+# The parse, the other half. The query goes out and the answer is
+# dropped, which is the shape that reads as a silent terminal rather than
+# as a defect. 8.243.
+name = "the foreground reply is asked for and then dropped"
+file = "src/backend/ansi/term_caps.cpp"
+find = "\tscan_osc_color(buf, QByteArrayLiteral(\"\\033]10;rgb:\"), out.fg_known, out.fg);"
+into = "\tif (false) scan_osc_color(buf, QByteArrayLiteral(\"\\033]10;rgb:\"), out.fg_known, out.fg);"
+count = 1
+check = "an OSC 10 reply is read as the foreground"
+
+[[sabotage]]
+# The comparison, which is the whole of harmonization.md's rule: a
+# background against ITS OWN foreground, never against a constant. The
+# midpoint version passes every check written from a dark terminal and a
+# light one, because those are the cases it was fitted to; it separates
+# from the real one only on a mid-grey ground, which is why the control
+# uses one a desktop actually ships. 8.243.
+name = "the colour scheme is decided against a midpoint"
+file = "src/runtime/application.cpp"
+find = "\treturn bg < fg ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;"
+into = "\treturn bg < 128 ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;"
+count = 1
+check = "one mid-grey background answers differently under a lighter"
+
+[[sabotage]]
+# The direction, which the midpoint entry above cannot reach: it is wrong
+# about which ground is dark and right about everything else. Darker than
+# its own foreground is dark, and the reverse paints an application's
+# light palette onto a dark terminal. 8.243.
+name = "a dark terminal is reported as a light one"
+file = "src/runtime/application.cpp"
+find = "\treturn bg < fg ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;"
+into = "\treturn bg > fg ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;"
+count = 1
+check = "a terminal reporting a dark background under a light foreground"
+
+[[sabotage]]
+# Half the abstention. A terminal that answered OSC 11 and ignored OSC 10
+# has said nothing about which scheme it is, and guessing from the one
+# colour it did report is the error this whole function exists to refuse
+# -- a wrong DARK is pale text on a pale ground. 8.243.
+name = "an unanswered foreground is guessed at"
+file = "src/runtime/application.cpp"
+find = "\tif (!c.background_known || !c.foreground_known) return Qt::ColorScheme::Unknown;"
+into = "\tif (!c.background_known) return Qt::ColorScheme::Unknown;"
+count = 1
+check = "answered OSC 11 and not OSC 10 answers Unknown"
+
+[[sabotage]]
+# And the other half, which fails separately. Either guard alone leaves
+# the other half of the pair unchecked, and one entry breaking both would
+# not say which of them was load-bearing. 8.243.
+name = "an unanswered background is guessed at"
+file = "src/runtime/application.cpp"
+find = "\tif (!c.background_known || !c.foreground_known) return Qt::ColorScheme::Unknown;"
+into = "\tif (!c.foreground_known) return Qt::ColorScheme::Unknown;"
+count = 1
+check = "answered OSC 10 and not OSC 11, the"

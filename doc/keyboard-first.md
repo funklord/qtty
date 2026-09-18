@@ -1053,6 +1053,46 @@ here -- the library owns the pointer, so it can carry the drag Qt cannot
 means a user with no mouse needs the `Escape`. Give the reorder a
 keyboard route regardless: that is this practice.
 
+**14. If you pick your own colours, ask the terminal which way round it
+is.** An application that leaves the default `CellTheme` alone needs
+none of this: it renders in the terminal's own colours, whatever they
+are, and a dark terminal and a light one both come out right. The one
+that breaks is the application that chooses a palette of its own -- and
+choosing one without asking is choosing correctly on about half of all
+terminals, with nothing on screen to say which half you are on.
+
+The spelling you already know does not work here, and it fails silently:
+
+    qApp->styleHints()->colorScheme()      Qt::ColorScheme::Unknown, always
+
+`Qtty::prepare_environment()` pins the platform theme empty on purpose --
+a desktop theme reaching into a terminal program supplied proportional
+fonts and twenty of Qt's seventy-one key bindings -- and Qt's generic
+theme reports no scheme at all. So ask qtty, which asked the terminal:
+
+    switch (Qtty::color_scheme()) {
+    case Qt::ColorScheme::Dark:  apply_dark();  break;
+    case Qt::ColorScheme::Light: apply_light(); break;
+    case Qt::ColorScheme::Unknown: break;       // keep your own default
+    }
+
+`Qtty::color_scheme()` compares the background the terminal reported
+against the foreground it reported, and darker-than-its-own-foreground
+is dark. Not against a threshold: the two colours a terminal reports are
+a pair somebody reads text with, so a legible scheme keeps them well
+apart, while a single colour weighed against a midpoint is decided by
+the midpoint. A mid-grey ground is where the two answers part company,
+and mid-grey grounds ship on real desktops.
+
+**Handle `Unknown` by doing nothing.** It is what you get before a run,
+from a terminal that answered neither query, and from one that answered
+only one of them -- and it is the common case rather than the exotic
+one, because plenty of terminals answer nothing. The two wrong answers
+are not worth the same: guessing light when the terminal is dark leaves
+your application looking plain, and guessing dark when it is light puts
+pale text on a pale ground, which cannot be read at all. So there is no
+coin to toss, and qtty does not toss one on your behalf.
+
 ## The shape of the caret
 
 **Overwrite mode changes the caret, and you get that by setting the mode

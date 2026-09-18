@@ -883,6 +883,50 @@ void bell() {
 	if (ITerminalBackend *b = g_session ? g_session : g_backend) b->bell();
 }
 
+// And the same two records once more, asked in the same order and for the
+// same reason -- exec() knows which backend was handed the session and goes
+// on knowing it while the screen is with a child; the ownership stack knows
+// who HAS the screen when no exec() was involved, which is the seat an
+// application running its own frame loop sits in.
+//
+// Qt's own answer is Unknown here and stays Unknown: prepare_environment()
+// pins QT_QPA_PLATFORMTHEME empty, and Qt's generic theme reports no colour
+// scheme. Measured. So the answer comes from the terminal, which was already
+// asked -- OSC 11 for the background, and OSC 10 beside it for the
+// foreground, added for this.
+//
+// The comparison is a background against ITS OWN FOREGROUND, which is
+// harmonization.md's rule and not a choice made here. The reason the pair
+// matters rather than one colour and a threshold: the terminal's two colours
+// are a pair somebody reads text with, so a legible scheme keeps them well
+// apart and the comparison cannot be close. A background weighed against a
+// fixed midpoint has no such floor -- #636464 is a mid-grey a real desktop
+// ships as a panel colour, and which side of a midpoint it falls on is a
+// property of the midpoint. Its own foreground decides it correctly either
+// way, and that is the whole difference.
+//
+// Color::luminance() is the library's own, the one has_minimum_contrast()
+// uses for the section 6 contrast rule. A second luminance here would be a
+// second thing to be wrong.
+//
+// Every abstention is Unknown and means the caller keeps its own default:
+// no backend, neither colour, ONE colour -- a terminal that answers OSC 11
+// and ignores OSC 10 has said nothing about which scheme it is -- and two
+// colours of equal luminance, which is a terminal reporting an unreadable
+// pair rather than a dark one. Abstaining rather than guessing is not
+// caution for its own sake: a wrong LIGHT leaves an application plain, and a
+// wrong DARK paints pale text onto a pale ground.
+Qt::ColorScheme color_scheme() {
+	const ITerminalBackend *b = g_session ? g_session : g_backend;
+	if (!b) return Qt::ColorScheme::Unknown;
+	const Capabilities c = b->capabilities();
+	if (!c.background_known || !c.foreground_known) return Qt::ColorScheme::Unknown;
+	const int bg = Color::rgb(c.background).luminance(false);
+	const int fg = Color::rgb(c.foreground).luminance(true);
+	if (bg == fg) return Qt::ColorScheme::Unknown;
+	return bg < fg ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;
+}
+
 int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	s_tuiActive = true;
 	g_session = &backend;

@@ -193,6 +193,143 @@ int suite_runtime() {
 		CHECK(!is_tui_active(), "exec() clears the TUI flag on the way out");
 	}
 
+	// ----------------- whether the terminal is dark, which Qt cannot say
+	//
+	// The premise first, because the whole function rests on it: Qt's own
+	// spelling is permanently Unknown under qtty. prepare_environment()
+	// pins QT_QPA_PLATFORMTHEME empty on purpose, and Qt's generic theme
+	// reports no colour scheme -- so an application asking the way it knows
+	// how gets nothing, for ever, and would have no signal that it had.
+	// Asserted rather than assumed: if a Qt release ever answers here, this
+	// reddens and somebody re-reads the paragraph above.
+	{
+		printf("info: qApp->styleHints()->colorScheme() is %d, Qt's"
+		       " Unknown being %d\n",
+		       int(qApp->styleHints()->colorScheme()),
+		       int(Qt::ColorScheme::Unknown));
+		CHECK(qApp->styleHints()->colorScheme() == Qt::ColorScheme::Unknown,
+		      "Qt's own colour scheme is Unknown under qtty's pinned"
+		      " platform theme, which is why the terminal is asked instead");
+
+		// Mutable colours, so one run can be asked about several terminals.
+		// The same shape as TellingBackend above and for the same reason: a
+		// value read once before the loop cannot show that the answer is
+		// being computed rather than remembered.
+		struct SchemeBackend : NullBackend {
+			using NullBackend::NullBackend;
+			bool bg_known = true, fg_known = true;
+			QColor bg = QColor(0x1c, 0x1c, 0x1c);
+			QColor fg = QColor(0xd0, 0xd0, 0xd0);
+			Capabilities capabilities() const override {
+				Capabilities c = NullBackend::capabilities();
+				c.background_known = bg_known;
+				c.background = bg;
+				c.foreground_known = fg_known;
+				c.foreground = fg;
+				return c;
+			}
+		};
+		SchemeBackend backend(QSize(20, 6));
+		QWidget win;
+		win.resize(GridMetrics::cells(20, 6));
+
+		// Before the run, for the same reason capabilities() and
+		// terminal_cells() are asked before theirs: with no backend there is
+		// nothing to know, and saying so is what stops a caller acting on a
+		// default that happens to look plausible.
+		CHECK(Qtty::color_scheme() == Qt::ColorScheme::Unknown,
+		      "before a run the terminal's colour scheme is Unknown, there"
+		      " being no terminal to have asked");
+
+		// Each configuration read from INSIDE the run, which is the only
+		// seat an application could read it from.
+		Qt::ColorScheme dark_seen = Qt::ColorScheme::Light;
+		Qt::ColorScheme light_seen = Qt::ColorScheme::Dark;
+		Qt::ColorScheme no_bg = Qt::ColorScheme::Dark;
+		Qt::ColorScheme no_fg = Qt::ColorScheme::Dark;
+		Qt::ColorScheme grey_light_fg = Qt::ColorScheme::Unknown;
+		Qt::ColorScheme grey_dark_fg = Qt::ColorScheme::Unknown;
+		int step = 0;
+		QTimer stepper;
+		stepper.setInterval(5);
+		QObject::connect(&stepper, &QTimer::timeout, qApp, [&] {
+			switch (step) {
+			case 0:
+				dark_seen = Qtty::color_scheme();
+				// The reverse terminal: a light ground under dark text.
+				backend.bg = QColor(0xff, 0xff, 0xff);
+				backend.fg = QColor(0x20, 0x20, 0x20);
+				break;
+			case 1:
+				light_seen = Qtty::color_scheme();
+				// A terminal that answered OSC 11 and ignored OSC 10.
+				backend.bg = QColor(0x1c, 0x1c, 0x1c);
+				backend.fg = QColor(0xd0, 0xd0, 0xd0);
+				backend.fg_known = false;
+				break;
+			case 2:
+				no_fg = Qtty::color_scheme();
+				backend.fg_known = true;
+				backend.bg_known = false;
+				break;
+			case 3:
+				no_bg = Qtty::color_scheme();
+				backend.bg_known = true;
+				// THE CONTROL. A mid-grey ground -- #636464 is one a real
+				// desktop ships -- with a foreground on either side of it.
+				// A comparison against a fixed midpoint answers the same
+				// thing twice here, because the background it is weighing
+				// has not moved; only the pair the terminal actually
+				// reports separates them.
+				backend.bg = QColor(0x63, 0x64, 0x64);
+				backend.fg = QColor(0xd0, 0xd0, 0xd0);
+				break;
+			case 4:
+				grey_light_fg = Qtty::color_scheme();
+				backend.fg = QColor(0x20, 0x20, 0x20);
+				break;
+			case 5:
+				grey_dark_fg = Qtty::color_scheme();
+				break;
+			default:
+				QCoreApplication::quit();
+				return;
+			}
+			++step;
+		});
+		stepper.start();
+		const int scheme_rc = exec(*qApp, win, backend);
+		stepper.stop();
+
+		CHECK(scheme_rc == 0, "the colour-scheme run returns cleanly");
+		CHECK(dark_seen == Qt::ColorScheme::Dark,
+		      "a terminal reporting a dark background under a light"
+		      " foreground answers Dark");
+		CHECK(light_seen == Qt::ColorScheme::Light,
+		      "and the reverse pair answers Light");
+		CHECK(no_fg == Qt::ColorScheme::Unknown,
+		      "a terminal that answered OSC 11 and not OSC 10 answers"
+		      " Unknown, one colour saying nothing about a comparison");
+		CHECK(no_bg == Qt::ColorScheme::Unknown,
+		      "and so does one that answered OSC 10 and not OSC 11, the"
+		      " two halves failing separately");
+		printf("info: mid-grey #636464 answers %d under a light foreground"
+		       " and %d under a dark one, Dark being %d\n",
+		       int(grey_light_fg), int(grey_dark_fg),
+		       int(Qt::ColorScheme::Dark));
+		CHECK(grey_light_fg == Qt::ColorScheme::Dark
+		      && grey_dark_fg == Qt::ColorScheme::Light,
+		      "and one mid-grey background answers differently under a"
+		      " lighter foreground than under a darker one, which a"
+		      " comparison against a fixed midpoint cannot do");
+
+		// Cleared afterwards, like capabilities() and terminal_cells(): a
+		// scheme from a run that has ended is a claim about a screen nobody
+		// owns, and a caller cannot tell a stale answer from a current one.
+		CHECK(Qtty::color_scheme() == Qt::ColorScheme::Unknown,
+		      "and afterwards it goes back to Unknown");
+	}
+
 	// ------------------------- a modal dialog run with exec() (nested loop)
 	{
 		// `if (d.exec() == QDialog::Accepted)` is how a large share of Qt

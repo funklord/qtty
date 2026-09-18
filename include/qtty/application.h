@@ -182,6 +182,45 @@ QSize terminal_cells();
 // changes or nothing rings.
 void bell();
 
+// Whether the terminal is dark, light, or has not said. The same two
+// records again, asked in the same order and for the same reason: which
+// backend is driving this program.
+//
+// IT EXISTS BECAUSE QT'S OWN ANSWER IS PERMANENTLY UNKNOWN HERE.
+// qApp->styleHints()->colorScheme() is the spelling an application already
+// knows, and under qtty it never returns anything else: prepare_environment()
+// pins QT_QPA_PLATFORMTHEME empty on purpose -- a desktop theme reaching
+// into a terminal program supplied proportional fonts and 20 of the 71 key
+// bindings -- and Qt's generic theme reports no scheme at all. Measured, and
+// the pin is not going away, so the answer had to come from the terminal.
+//
+// The terminal was ALREADY ASKED. OSC 11 has been in the startup query since
+// the graphics negotiation needed something to composite alpha against, and
+// OSC 10 is beside it now for this. An application keeping the default
+// CellTheme never needed either -- it renders in the terminal's own colours,
+// whatever they are. The one that breaks is the application that picks its
+// own dark or light palette, and it picks wrong on half of all terminals
+// with nothing to tell it.
+//
+// HOW IT DECIDES, which is the workspace rule in harmonization.md and not
+// this library's invention: compare the luminance of the background against
+// the luminance of ITS OWN FOREGROUND, and a background darker than its
+// foreground means dark. Not against a midpoint -- the pair the terminal
+// reports is a pair somebody has to read, so a legible scheme keeps the two
+// well apart, and that floor is what makes the comparison safe. A colour
+// weighed against a constant has no floor between its operands, so a
+// mid-grey terminal is decided by the constant rather than by the terminal.
+// Qtty::Color::luminance() does the arithmetic, which is the one this
+// library already uses for its own contrast rule.
+//
+// UNKNOWN IS AN ANSWER AND IS THE IMPORTANT ONE. No backend, a terminal that
+// answered neither query, a terminal that answered only one, or two colours
+// of equal luminance: all Unknown, and a caller that gets it keeps its own
+// default. The two errors are not symmetric -- a wrong LIGHT leaves an
+// application looking plain, a wrong DARK puts pale text on a pale ground
+// and it cannot be read -- so there is no coin to toss here.
+Qt::ColorScheme color_scheme();
+
 // The font qtty lays its grid on, chosen before setup() installs it.
 // DejaVu Sans Mono at 16 pixels otherwise.
 //

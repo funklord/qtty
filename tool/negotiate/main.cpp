@@ -164,9 +164,16 @@ int main(int argc, char **argv) {
 	}
 
 	Capabilities c;
+	// Read INSIDE the backend's scope, below, and not beside the report.
+	// Qtty::color_scheme() answers for whoever is driving the terminal, and
+	// once this scope ends nobody is -- so a call placed with the printing
+	// would report "not known" for every terminal there has ever been,
+	// which is a line that cannot fail rather than a measurement.
+	Qt::ColorScheme scheme = Qt::ColorScheme::Unknown;
 	{
 		AnsiBackend backend;                      // asks on construction
 		c = backend.capabilities();
+		scheme = Qtty::color_scheme();
 	}
 
 	static const char *graphics[] = {"NoGraphics", "Halfblocks", "Sixel",
@@ -202,6 +209,15 @@ int main(int argc, char **argv) {
 		             " allowWindowOps on\n");
 	fprintf(out, "background           %s\n",
 	        c.background_known ? qPrintable(c.background.name()) : "not reported");
+	fprintf(out, "foreground           %s\n",
+	        c.foreground_known ? qPrintable(c.foreground.name()) : "not reported");
+	// The pair, which is the only thing either colour is for here: whether
+	// the terminal is dark is a comparison between the two, and a report
+	// naming both and not their verdict leaves the reader to redo it.
+	fprintf(out, "colour scheme        %s\n",
+	        scheme == Qt::ColorScheme::Dark    ? "dark"
+	        : scheme == Qt::ColorScheme::Light ? "light"
+	                                           : "not known");
 	// The palette is not on Capabilities: it is consumed by the colour model
 	// rather than reported to an application, so it is read from there.
 	const QVector<QRgb> pal = terminal_palette();
@@ -228,6 +244,7 @@ int main(int argc, char **argv) {
 		fprintf(out, "DA1 attribute 4      %s\n", probed.sixel ? "present" : "absent");
 		fprintf(out, "XTGETTCAP RGB/Tc     %s\n", probed.truecolor ? "confirmed" : "not confirmed");
 		fprintf(out, "OSC 11 background    %s\n", probed.bg_known ? "answered" : "silent");
+		fprintf(out, "OSC 10 foreground    %s\n", probed.fg_known ? "answered" : "silent");
 		fprintf(out, "CSI 16t cell size    %s\n", probed.cell_px.isValid() ? "answered" : "silent");
 		fprintf(out, "CSI 14t text size    %s\n", probed.text_px.isValid() ? "answered" : "silent");
 		fprintf(out, "OSC 4 palette        %s\n",

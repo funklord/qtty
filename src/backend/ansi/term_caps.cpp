@@ -137,14 +137,23 @@ void scan_tcap(const QByteArray &b, TermCaps &out) {
 	}
 }
 
-// The OSC 11 reply, ESC ] 11 ; rgb:<r>/<g>/<b> ST.
+// The OSC 11 and OSC 10 replies -- the background and the foreground --
+// ESC ] 1N ; rgb:<r>/<g>/<b> ST. One function because the two differ in
+// exactly one digit, and a second copy of this loop would be a second thing
+// to be wrong about digit scaling.
 //
 // Each component is one to four hex digits and is scaled to eight bits by ITS
 // OWN width: "rgb:f/f/f" is white, and reading the first two digits of each
 // field would make it near-black on every terminal that answers in the short
 // form.
-void scan_osc11(const QByteArray &b, TermCaps &out) {
-	static const QByteArray prefix("\033]11;rgb:");
+//
+// `known` and `rgb_out` are passed rather than the whole TermCaps so that the
+// caller names which colour it is asking for. The two answers are separate
+// facts and must stay separate: a terminal that reports its background and
+// not its foreground has said nothing about whether it is dark, and merging
+// them into one "colours known" flag would turn that silence into an answer.
+void scan_osc_color(const QByteArray &b, const QByteArray &prefix,
+                    bool &known, unsigned char *rgb_out) {
 	for (int i = 0; i + prefix.size() < b.size(); ++i) {
 		if (b.mid(i, prefix.size()) != prefix) continue;
 		int j = i + prefix.size();
@@ -176,8 +185,8 @@ void scan_osc11(const QByteArray &b, TermCaps &out) {
 			}
 		}
 		if (!ok) continue;
-		out.bg_known = true;
-		out.bg[0] = rgb[0]; out.bg[1] = rgb[1]; out.bg[2] = rgb[2];
+		known = true;
+		rgb_out[0] = rgb[0]; rgb_out[1] = rgb[1]; rgb_out[2] = rgb[2];
 		return;
 	}
 }
@@ -292,6 +301,16 @@ QByteArray caps_query() {
 	    // Background, which every tier below kitty needs: they composite an
 	    // image's alpha against it themselves.
 	    "\033]11;?\033\\"
+	    // And the foreground, which is asked for ONE reason: the background
+	    // alone cannot say whether the terminal is dark. That answer is the
+	    // comparison between a background and its OWN foreground -- a pair a
+	    // legible scheme keeps well apart -- and a background weighed
+	    // against a fixed midpoint instead has no such floor between its
+	    // operands, so a mid-grey terminal is decided by the constant rather
+	    // than by the terminal. One more OSC in a query already carrying
+	    // four, ignored by anything that does not implement it exactly as
+	    // OSC 11 is.
+	    "\033]10;?\033\\"
 	    // The text area and one cell, both in pixels. The cell is what keeps
 	    // an image's aspect ratio: a half-block pixel is one cell wide and
 	    // half a cell tall, and treating that as square squashes every
@@ -334,7 +353,8 @@ QVector<int> queried_modes() {
 void scan_caps(const QByteArray &buf, TermCaps &out) {
 	if (find_kitty(buf)) out.kitty = true;
 	scan_tcap(buf, out);
-	scan_osc11(buf, out);
+	scan_osc_color(buf, QByteArrayLiteral("\033]11;rgb:"), out.bg_known, out.bg);
+	scan_osc_color(buf, QByteArrayLiteral("\033]10;rgb:"), out.fg_known, out.fg);
 	scan_osc4(buf, out);
 	scan_winop(buf, out);
 	scan_decrqm(buf, out);

@@ -57,6 +57,20 @@ struct Capabilities {
 	// to guess -- and guessing black on a light terminal haloes every icon.
 	bool background_known = false;
 	QColor background;
+
+	// And the terminal's foreground, if it answered OSC 10. It is a pair
+	// with the background rather than a second colour of its own: whether
+	// the terminal is dark is the comparison between the two, which is what
+	// Qtty::color_scheme() answers.
+	//
+	// Separate flags, because the two replies are separate facts. A terminal
+	// that answered one and not the other has said nothing about which
+	// scheme it is, and that silence has to survive as silence -- the wrong
+	// answers here are not symmetric. Guessing LIGHT wrongly leaves an
+	// application looking plain; guessing DARK wrongly puts pale text on a
+	// pale ground, which is unreadable.
+	bool foreground_known = false;
+	QColor foreground;
 };
 
 enum class CursorShape { Block, Underline, Bar, Hidden };

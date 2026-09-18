@@ -204,7 +204,10 @@ the window title, the cell size and the screen put back;
 `Qtty::is_tui_active()` is true while a terminal
 session is being driven -- by `exec()` or by an application's own frame
 loop -- so a widget can branch without being told which frontend built it; `Qtty::capabilities()` reports what the terminal
-negotiated; and `Qtty::flush_deferred_messages()` writes out diagnostics
+negotiated; `Qtty::color_scheme()` says whether the terminal is dark,
+light, or has not said, which an application picking its own palette
+needs and which Qt's own `colorScheme()` cannot answer here; and
+`Qtty::flush_deferred_messages()` writes out diagnostics
 held back while the screen was in use.
 
 Each is documented in its own header, and `doc/keyboard-first.md` is the

@@ -830,6 +830,29 @@ int suite_backend() {
 		CHECK(!caps_of("\033]11;rgb:\033\\").bg_known,
 		      "a truncated colour reply sets nothing");
 
+		// -- OSC 10, the FOREGROUND, read by the same scanner with one
+		//    digit changed. It is asked for because the background alone
+		//    cannot say whether the terminal is dark: that is a comparison
+		//    between a background and its own foreground, and a background
+		//    weighed against a fixed midpoint has no floor between its
+		//    operands to make the comparison safe.
+		const TermCaps pale = caps_of("\033]10;rgb:d0d0/d0d0/d0d0\033\\");
+		CHECK(pale.fg_known && pale.fg[0] == 0xd0 && pale.fg[1] == 0xd0
+		      && pale.fg[2] == 0xd0, "an OSC 10 reply is read as the foreground");
+		CHECK(!pale.bg_known,
+		      "and lands in the foreground only -- the two replies are"
+		      " separate facts and a terminal may answer either alone");
+		CHECK(caps_of("\033]10;rgb:f/f/f\033\\").fg[0] == 255,
+		      "and is scaled by its own digit width like the background");
+		CHECK(!caps_of("\033]10;rgb:\033\\").fg_known,
+		      "a truncated foreground reply sets nothing either");
+		const TermCaps both =
+		    caps_of("\033]11;rgb:1c1c/1c1c/1c1c\033\\\033]10;rgb:d0d0/d0d0/d0d0\033\\");
+		CHECK(both.bg_known && both.fg_known && both.bg[0] == 0x1c
+		      && both.fg[0] == 0xd0,
+		      "and both replies in one buffer are read into their own"
+		      " fields, neither overwriting the other");
+
 		// -- additive, which is what lets the collector rescan as bytes
 		//    arrive. Replies routinely arrive split over ssh, and a scan that
 		//    reset would report "no graphics" for an answer that was merely
@@ -914,6 +937,9 @@ int suite_backend() {
 		CHECK(q.contains("\033_G") && q.contains("+q524742")
 		      && q.contains("\033]11;?") && q.contains("\033[16t"),
 		      "and asks for kitty, direct colour, the background and the cell");
+		CHECK(q.contains("\033]10;?"),
+		      "and for the foreground, without which the background cannot"
+		      " say whether the terminal is dark");
 		CHECK(q.contains("\033]4;0;?") && q.contains(";15;?"),
 		      "and for the low sixteen of the palette, not all 256");
 		CHECK(q.contains("\033[?1006$p") && q.contains("\033[?2004$p")
@@ -1243,6 +1269,23 @@ int suite_backend() {
 			      "a background reply is read");
 			CHECK(after.bg_known && after.bg[0] == 255,
 			      "and is still read when a truncated one precedes it");
+		}
+
+		// The foreground on the wire, through the same fixture: the query
+		// must GO OUT and the reply must come back parsed. Either half
+		// alone is satisfiable by a scanner nobody asks or a question
+		// nobody answers, and the pair is what says the round trip works.
+		{
+			QByteArray fg_asked;
+			const TermCaps lit = ask("\033]10;rgb:d0d0/d0d0/d0d0\033\\"
+			                         "\033]11;rgb:1c1c/1c1c/1c1c\033\\"
+			                         "\033[?62;4;22c", 200, &fg_asked);
+			CHECK(fg_asked.contains("\033]10;?"),
+			      "the foreground query goes out on the wire with the rest");
+			CHECK(lit.fg_known && lit.fg[0] == 0xd0 && lit.bg_known
+			      && lit.bg[0] == 0x1c,
+			      "and the terminal's answer to it comes back in the"
+			      " capability, beside the background's");
 		}
 
 		// A terminal that DRIBBLES. Every check above writes one burst and

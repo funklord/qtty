@@ -249,6 +249,13 @@ Capabilities AnsiBackend::capabilities() const {
 	c.background_known = caps_.bg_known;
 	if (caps_.bg_known)
 		c.background = QColor(caps_.bg[0], caps_.bg[1], caps_.bg[2]);
+	// Reported independently of the background, because the two replies are
+	// independent: a terminal that answers OSC 11 and ignores OSC 10 exists,
+	// and the pair is what Qtty::color_scheme() needs before it will answer
+	// anything but Unknown.
+	c.foreground_known = caps_.fg_known;
+	if (caps_.fg_known)
+		c.foreground = QColor(caps_.fg[0], caps_.fg[1], caps_.fg[2]);
 
 	// These four were fields nobody set and nobody read. They are answers
 	// about this backend now, and each is answerable because resume() asks

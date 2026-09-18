@@ -15,9 +15,9 @@ open, and how to work in the tree. Where design.md holds the detail, this
 document states the substance in a sentence or two and cites the section
 number rather than restating it.
 
-## 0a. State, 2026-09-07
+## 0a. State, 2026-09-18
 
-1619 checks, 0 failures. `make check` is green and includes
+1636 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16718,6 +16718,156 @@ and not in the table of what Qt already does -- and Qt really does nothing
 here, a plain `QPushButton` outside a dialog not answering Return at all.
 The fixture had not turned the conventions on. A check that cannot reach
 the branch it names looks exactly like a branch that does not work.
+### 8.243 The terminal said whether it was dark and qtty never asked
+(2026-09-18)
+
+An application that keeps the default `CellTheme` needs none of this: it
+renders in the terminal's own colours and comes out right on a dark
+terminal and a light one alike. The one that breaks is the application
+that picks a palette of its own, and it picks wrong on about half of all
+terminals with nothing on screen to say which half it is on.
+
+**The spelling it would reach for is permanently Unknown here, and fails
+silently.** `qApp->styleHints()->colorScheme()` returns
+`Qt::ColorScheme::Unknown` under qtty and always will:
+`prepare_environment()` pins `QT_QPA_PLATFORMTHEME` empty on purpose --
+8.x's measurement of a gtk3 theme supplying proportional fonts and 20 of
+Qt's 71 key bindings to a terminal program -- and Qt's generic theme
+reports no scheme. **Measured rather than assumed, and now asserted**:
+the suite prints the value and checks it, so a Qt release that starts
+answering reddens a check instead of leaving a dead paragraph.
+
+**Half the answer was already in the tree.** `Capabilities::background`
+has carried the terminal's OSC 11 reply since the graphics negotiation
+needed something to composite an image's alpha against, and it was used
+for nothing else.
+
+## The rule, and why one colour could not satisfy it
+
+`~/.claude/guidelines/harmonization.md` settles this workspace-wide and
+it is not this library's to re-derive: **compare the luminance of the
+background against the luminance of ITS OWN foreground, and background
+darker than foreground means dark.** The caveat travels with it -- that
+rule holds for a background against its own foreground, where a legible
+scheme guarantees the two are well apart, and **a colour compared
+against a fixed midpoint has no such floor between its operands** and is
+to be settled separately rather than inherited.
+
+So the background alone could not answer, and `TermCaps` had `bg_known`
+and `bg[3]` and no foreground at all. **OSC 10 is asked for now**, beside
+OSC 11 in the same batched query, parsed by the same scanner with one
+digit changed. `scan_osc11()` became `scan_osc_color()` taking the prefix
+and the destination, because the two replies differ in exactly one byte
+and a second copy of the digit-width scaling would be a second thing to
+be wrong about -- that scaling is what makes `rgb:f/f/f` white rather
+than near-black.
+
+**The luminance is the library's own and not a fourth copy.**
+`Qtty::Color::luminance()` already exists and is what
+`has_minimum_contrast()` uses for the section 6 contrast rule; it is the
+601 weighting rather than 709 or WCAG, which the harmonization rule
+explicitly permits -- *the rule is the comparison, not the constant*.
+Nothing else in this tree computes a luminance.
+
+## The control, which is the part worth keeping
+
+A midpoint implementation and a correct one agree on every terminal
+anybody would think to write a check from. Dark ground, light text: both
+say Dark. Light ground, dark text: both say Light. They part company on
+**one mid-grey background with a foreground on either side of it**, and
+the check uses `#636464` because that is a ground a real desktop ships
+(harmonization.md's own measurement: LXQt's `Silver`).
+
+    background #636464, foreground #d0d0d0     Dark
+    background #636464, foreground #202020     Light
+
+**Proved by sabotage rather than by argument.** The entry *the colour
+scheme is decided against a midpoint* replaces the comparison with
+`bg < 128`, and it reddens **exactly one check of the 1622** -- the
+mid-grey one. Every other colour-scheme check passes under it. That is
+the control doing the only job it was written for, and it says plainly
+that a suite written from dark and light terminals alone would have
+shipped the midpoint version.
+
+## Abstaining is the important half
+
+`Qt::ColorScheme::Unknown` is returned when no backend is driving, when
+the terminal answered neither query, when it answered **one** of them,
+and when the two luminances are equal. The two wrong answers are not
+worth the same: a wrong *light* leaves an application looking plain, and
+a wrong *dark* puts pale text on a pale ground, which cannot be read.
+There is no coin to toss, so qtty does not toss one.
+
+The one-colour case has **two** sabotage entries rather than one, and
+they redden two different checks: a single entry breaking both halves of
+`if (!c.background_known || !c.foreground_known)` would not have said
+which half was load-bearing.
+
+`color_scheme()` reads the same two records `capabilities()`,
+`terminal_cells()` and `bell()` read, in the same order and for the same
+reason (8.153): `exec()`'s session pointer first, the ownership stack
+second.
+
+## `is_tui_active()` in a self-driven loop: measured, and left alone
+
+The survey that prompted this said a program driving its own
+`FrameScheduler` gets `is_tui_active() == false`. **Re-measured, that is
+out of date in one direction and understated in the other.**
+
+It is not the loop that decides, it is **whose backend**. An own loop
+over qtty's `AnsiBackend` already answers true -- 8.153 gave both free
+functions the ownership fallback and the suite checks it on a pty with no
+`exec()` on the stack. What still answers false is an application's OWN
+`ITerminalBackend`, and `is_tui_active()` is not alone there. Measured
+with a program built against the installed headers, its own backend,
+qtty's `InputRouter`, `Compositor` and `FrameScheduler`, after a frame had
+been presented:
+
+    frames presented      1
+    is_tui_active()       false
+    capabilities().bg     not known
+    terminal_cells()      -1x-1
+    color_scheme()        Unknown
+
+**The name is not what is wrong.** The contract is written in three
+places -- the header, the README and the guide -- and every one of them
+says "by `exec()`, or by an application's own frame loop". Renaming it to
+"is exec() running" would be amending the document to match the code,
+which is the resolution `working-practice.md` refuses.
+
+**And the loop cannot take a record, because there is no loop object to
+take one.** `qtty-replay --ansi` is the program this library's own
+documents cite as the own-loop case, and it drives `Compositor` directly
+with **no `FrameScheduler` at all**. A record written by `FrameScheduler`
+would therefore cover some own-loop programs and not others while reading
+as complete, which is worse than none. Writing into the EXISTING
+ownership record from there is positively wrong besides:
+`take_terminal()`/`release_terminal()` is keyed on the backend pointer and
+is not refcounted, so `exec()`'s scheduler destructor would release a
+terminal `AnsiBackend` still holds.
+
+**So the code is unchanged, and this is what it would take.** The only
+record that can be complete is one the APPLICATION writes, which means
+shipping the ownership declaration `terminal_owner.h` deliberately
+withholds -- *"INTERNAL. Not shipped in `include/qtty/`, because no
+application needs it and a header that leaves the tree is a promise about
+its contents."* That is a change to the public interface and a decision
+for the copyright holder, not one to make while adding a colour query.
+Recorded here rather than done.
+
+## What else changed
+
+`tool/negotiate` prints the foreground and the verdict beside the
+background, and `OSC 10 foreground` in its probe list -- a report that
+names four queries and sends five is the drift that section already
+records itself paying for. The verdict is read **inside** the
+`AnsiBackend` scope: `color_scheme()` answers for whoever is driving, and
+a call placed with the printing would have said "not known" about every
+terminal there has ever been, which is a line that cannot fail rather
+than a measurement.
+
+**No header was added.** `application.h` and `backend.h` are both already
+in `INSTALLED_HEADERS`.
 
 ### 8.242 A picture re-encoded on every frame that changed a clock
 (2026-09-18)
