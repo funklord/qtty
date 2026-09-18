@@ -158,6 +158,31 @@ public:
 	virtual int handovers() const { return 0; }
 };
 
+// The MIME type a mirrored terminal paste carries, and it exists so that a
+// backend forwarding QClipboard to the terminal can tell a COPY from an ECHO.
+//
+// InputRouter mirrors an arriving paste into QClipboard, because otherwise
+// Ctrl+V inside the application pastes whatever the program itself last
+// copied -- nothing at all, in a program that has copied nothing -- while the
+// user has just demonstrated what they meant to paste. Qt's clipboard is the
+// only store a widget reads, so agreeing with the terminal means writing it.
+//
+// That write is a clipboard change like any other, and a backend watching for
+// changes would send it straight back out as OSC 52. Harmless when the paste
+// came from the terminal's own clipboard and destructive when it did not: a
+// middle-click pastes the PRIMARY selection, so echoing it would overwrite
+// the clipboard the user had, which is the loss this library already fixed
+// once for a copy with no text half.
+//
+// A marker on the data rather than a flag or a timer, because the question is
+// about THIS clipboard content and travels with it: a later copy of the same
+// text by the application carries no marker and goes out normally.
+//
+// A backend that forwards the clipboard must skip a change carrying it.
+inline const char *terminal_paste_format() {
+	return "application/x-qtty-terminal-paste";
+}
+
 // Optional extension -- only for backends whose terminal accepts pixel data.
 // Legacy backends need not implement it: the Halfblocks fallback is a pure L2
 // transform reaching them through present() with zero changes (section 5.7).

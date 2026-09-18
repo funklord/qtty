@@ -976,6 +976,44 @@ int suite_router() {
 		pr.on_paste(QStringLiteral("a\nb"));
 		CHECK(doc->toPlainText() == QStringLiteral("a\nb"),
 		      "a multi-line editor keeps the newline it can hold");
+
+		// And the paste reaches QClipboard, which is the only store a widget
+		// reads. Without it the two ways of pasting disagreed: the terminal's
+		// paste arrived and Ctrl+V beside it inserted whatever the program
+		// itself had last copied -- nothing, in a program that has copied
+		// nothing at all.
+		//
+		// Asserted through Ctrl+V rather than on clipboard()->text(), because
+		// the value is not the point: what was wrong is that the user's two
+		// ways of asking for the same text gave different answers. The
+		// clipboard is seeded with something else first, so a check that
+		// passed before the mirror existed would have to insert THAT.
+		QClipboard *const board = QGuiApplication::clipboard();
+		board->setText(QStringLiteral("what the program copied"));
+		line->clear();
+		line->setFocus();
+		set_focus_widget(line);
+		pr.on_paste(QStringLiteral("what the terminal sent"));
+		line->clear();
+		pr.on_key({Qt::Key_V, QStringLiteral("v"), true, false, false});
+		CHECK(line->text() == QStringLiteral("what the terminal sent"),
+		      "Ctrl+V after a terminal paste inserts what was pasted, the"
+		      " arriving text having gone into QClipboard");
+
+		// Marked, because a backend forwarding the clipboard has to tell this
+		// write from a copy -- see backend.h. Unmarked, a middle-click paste
+		// would go back out as OSC 52 and replace the clipboard the user had.
+		const QMimeData *const held = board->mimeData();
+		CHECK(held && held->hasFormat(QLatin1String(terminal_paste_format())),
+		      "and it is marked as a terminal paste rather than a copy");
+
+		// The fold is the field's, not the text's: a single-line target still
+		// gets spaces, and the clipboard still holds the newline.
+		line->clear();
+		pr.on_paste(QStringLiteral("one\ntwo"));
+		CHECK(line->text() == QStringLiteral("one two")
+		      && board->text() == QStringLiteral("one\ntwo"),
+		      "and the clipboard keeps the newline a single-line field folded");
 	}
 
 	// ---- mnemonics (section 17.2) --------------------------------------------

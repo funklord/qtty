@@ -2108,6 +2108,22 @@ void AnsiBackend::watch_clipboard() {
 		// selection and the text has said what it wants.
 		const QMimeData *const held = QGuiApplication::clipboard()->mimeData();
 		if (!held || !held->hasText()) return;
+		// And not an echo of a paste this backend just delivered. The router
+		// mirrors an arriving paste into QClipboard so that Ctrl+V inside the
+		// application agrees with what the user pasted, and that write is a
+		// clipboard change like any other -- so without this the text goes
+		// straight back out as OSC 52.
+		//
+		// It is the middle-click case that makes this a data-loss fix rather
+		// than a tidy-up: a middle click pastes the PRIMARY selection, the
+		// clipboard holds something else, and echoing the paste replaces what
+		// the user had with something they never copied. Same shape as the
+		// image copy above, by a different route.
+		//
+		// The marker travels with the data, so a later copy of the same text
+		// by the application carries none and goes out normally. See
+		// backend.h, which names the format for an adopter's own backend.
+		if (held->hasFormat(QLatin1String(terminal_paste_format()))) return;
 		write_clipboard(QGuiApplication::clipboard()->text(),
 		                Selection::Clipboard);
 	});

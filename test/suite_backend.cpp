@@ -4803,7 +4803,7 @@ int suite_exec() {
 		    QString::fromUtf8("h\xc3\xa9llo \xe4\xb8\x96 \xf0\x9f\x8e\x89");
 		const QString via_qt = QStringLiteral("through QClipboard");
 		QByteArray w_plain, w_wide, w_prim, w_qt, w_at, w_over, w_suspended;
-		QByteArray w_image, w_html, w_empty;
+		QByteArray w_image, w_html, w_empty, w_marked;
 		bool r_plain = false, r_at = false, r_over = false, r_suspended = false;
 		if (built) {
 			{
@@ -4855,6 +4855,29 @@ int suite_exec() {
 				}
 				QCoreApplication::processEvents();
 				w_html = cap.taken();
+
+				// An ECHO of a terminal paste, which has a text half
+				// and must still not go out. The router mirrors an
+				// arriving paste into QClipboard so Ctrl+V inside the
+				// application agrees with the terminal, and forwarding
+				// that back would replace the user's clipboard with a
+				// middle-click's PRIMARY selection.
+				//
+				// Written here exactly as the router writes it, which is
+				// what makes this the backend's half of the contract
+				// rather than a test of both halves at once: the router
+				// suite checks that a paste produces this, and this
+				// checks what the backend does when it sees one.
+				{
+					auto *echo = new QMimeData;
+					echo->setText(QStringLiteral("pasted, not copied"));
+					echo->setData(
+					    QLatin1String(terminal_paste_format()),
+					    QByteArray("1"));
+					QGuiApplication::clipboard()->setMimeData(echo);
+				}
+				QCoreApplication::processEvents();
+				w_marked = cap.taken();
 
 				// And the control that makes the pair a discrimination
 				// rather than a silence: an application saying the text
@@ -4917,6 +4940,12 @@ int suite_exec() {
 			CHECK(!w_html.contains("\033]52;"),
 			      "and so does HTML alone, which is a rich-text editor's"
 			      " ordinary copy rather than an exotic one");
+			// The echo. It HAS a text half, so hasText() lets it through
+			// and only the marker stops it -- which is why this is a
+			// separate check rather than a second case of the two above.
+			CHECK(!w_marked.contains("\033]52;"),
+			      "a mirrored terminal paste is not sent back out, an echo"
+			      " of a middle click being a wipe of the user's clipboard");
 			// The control, and it has to fail the way the bug failed: with
 			// this check absent, a watcher that simply never wrote would
 			// pass the two above and lose the feature instead.

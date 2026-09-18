@@ -2812,6 +2812,36 @@ void InputRouter::on_paste(const QString &text) {
 	// Widgets, and QAbstractSpinBox embeds one, so focus lands on a QLineEdit
 	// for both. A third-party single-line editor would still get the raw
 	// newlines, and that is a known edge rather than a hidden one.
+	// The arriving text goes into QClipboard as well, unfolded, because Qt's
+	// clipboard is the only store a widget reads and without this Ctrl+V
+	// inside the application pastes whatever the program itself last copied
+	// -- nothing at all, in a program that has copied nothing. Measured: a
+	// terminal paste into a QLineEdit worked and Ctrl+V beside it inserted
+	// an empty string, so the two ways of pasting disagreed about what the
+	// clipboard held.
+	//
+	// The RAW text, not the folded payload below: the clipboard holds what
+	// the terminal sent, and the fold is a property of the single-line field
+	// the paste happened to land in rather than of the text.
+	//
+	// Marked with terminal_paste_format() so a backend forwarding QClipboard
+	// to the terminal can tell this from a copy -- see backend.h, where the
+	// echo it prevents is a middle-click overwriting the user's clipboard.
+	//
+	// NOT a query. OSC 52 can ask the terminal what it holds, which would
+	// make Ctrl+V read the real clipboard rather than the last paste, and it
+	// is declined on purpose: xterm refuses a read by default and says so in
+	// its own documentation, because a program that can read the clipboard
+	// can read every password the user has copied. The mirror needs no
+	// permission and cannot be used to look.
+	if (QClipboard *const board = QGuiApplication::clipboard()) {
+		auto *const mime = new QMimeData;
+		mime->setText(text);
+		mime->setData(QLatin1String(terminal_paste_format()),
+		              QByteArray("1"));
+		board->setMimeData(mime);
+	}
+
 	QString payload = text;
 	if (qobject_cast<QLineEdit *>(target)) {
 		payload.replace(QLatin1Char('\r'), QLatin1Char(' '));

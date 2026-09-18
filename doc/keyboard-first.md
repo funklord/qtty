@@ -1076,6 +1076,33 @@ learns why their copy did not arrive -- **after they have stopped
 needing to know.** Whether the limit belongs in the public API is an open
 question in `project.md`.
 
+**Paste needs no code either, and `Ctrl+V` agrees with it.** A terminal
+paste arrives as one event carrying the whole text -- that is what
+bracketed paste is for, so the newlines in it do not fire your default
+button -- and the arriving text also goes into `QClipboard`. That second
+half is what makes `Ctrl+V` work: Qt's clipboard is the only store a
+widget reads, so without it your program's own paste shortcut inserted
+whatever your program had last copied, which in a program that has
+copied nothing is nothing at all. The two ways of pasting now give the
+same answer.
+
+**What it is not is a read of the terminal's clipboard.** OSC 52 can ask
+a terminal what it holds, and qtty does not ask -- xterm refuses the
+question by default and says why: a program that can read the clipboard
+can read every password its user has copied. So `Ctrl+V` pastes the last
+thing the *user* pasted into your program, not whatever is on their
+clipboard now. For a terminal application that is the whole of what is
+knowable without asking permission nobody grants.
+
+**And a paste is not a copy.** The mirrored text carries
+`Qtty::terminal_paste_format()` on the clipboard data so the backend can
+tell it from a copy and does not send it back out. That matters because a
+middle click pastes the PRIMARY selection while the clipboard holds
+something else, and echoing the paste would replace what the user had
+with something they never copied. If you write your own
+`ITerminalBackend` and forward `QClipboard` to the terminal, skip a
+change carrying that format -- `backend.h` says so beside the name.
+
 **If you are wondering which graphics tier your program is on**, three
 things in the environment decide it before any of your code runs, and two
 are easy to be inside without noticing. `QTTY_GRAPHICS` names a tier

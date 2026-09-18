@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1520 checks, 0 failures. `make check` is green and includes
+1524 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16369,6 +16369,81 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.228 Paste was a one-way street (2026-09-18)
+
+Found by the same survey as 8.227, asking what an ordinary Qt
+application can no longer do. Copy works and has since 8.83: the backend
+watches `QClipboard` and an ordinary `setText()` reaches the terminal as
+OSC 52. Paste came in the other direction and stopped at the widget --
+`InputRouter::on_paste()` sent the text as one key event and touched the
+clipboard not at all.
+
+**So an application had two pastes that disagreed.** Measured:
+
+    a terminal paste (Ctrl+Shift+V, middle click)   the text arrives
+    Ctrl+V in the same field, straight afterwards   inserts nothing
+
+Nothing, because Qt's clipboard is the only store `QLineEdit::paste()`
+reads and a program that has copied nothing has put nothing in it. The
+first Ctrl+V of a session is dead in every qtty application, and the
+user has just demonstrated, one keystroke earlier, exactly what they
+meant to paste.
+
+**The fix is to mirror the arriving text into `QClipboard`**, raw rather
+than newline-folded -- the fold belongs to the single-line field a paste
+happened to land in, not to the text. Three lines in `on_paste()`.
+
+**The half that is not obvious is the echo, and it is a data-loss
+defect.** The backend watches `QClipboard` for changes, so the mirror IS
+a change and goes straight back out as OSC 52. Harmless where the paste
+came from the terminal's own clipboard, since the terminal already holds
+it. Not harmless for a middle click:
+
+    the user's clipboard holds        X
+    they middle-click, pasting        Y   (the PRIMARY selection)
+    the mirror writes                 Y   to QClipboard
+    the watcher sends OSC 52 c        Y   -- and X is gone
+
+That is the same loss 8.83's own fix closed for a copy with no text
+half, reached by a different route, and it would have shipped inside a
+convenience feature.
+
+**A marker on the data, not a flag or a timer.** `terminal_paste_format()`
+in `backend.h` names a MIME type the mirror carries, and the watcher
+declines a change holding it. The alternatives were considered and are
+worse: a bool round the `setMimeData()` call assumes `QClipboard::changed`
+is synchronous, which is true under the offscreen platform and is not a
+promise; a comparison against the last text delivered would also suppress
+a genuine copy of the same text later. The marker is a statement about
+THIS clipboard content and travels with it, so a later copy of the same
+string carries none and goes out normally.
+
+It is in an INSTALLED header because it is a contract between the router
+and whatever backend is under it. An adopter forwarding `QClipboard` to
+their own terminal has the same echo waiting, and the only way they can
+know is if the name is where they can read it.
+
+**What is deliberately NOT done: reading the terminal's clipboard.**
+OSC 52 can query -- `ESC ] 52 ; c ; ? ST` -- and that would make Ctrl+V
+paste whatever is on the clipboard now rather than whatever the user last
+pasted. xterm refuses the query by default and its own documentation says
+why: a program that can read the clipboard can read every password its
+user has copied. The mirror needs no permission and cannot be used to
+look, so it is what a terminal application is entitled to. The honest
+statement of the limit, which the guide now carries: **Ctrl+V pastes the
+last thing the user pasted into this program.**
+
+**Four checks, each where its half lives.** `suite_router` asserts
+through Ctrl+V rather than on `clipboard()->text()` -- the value is not
+what was wrong, the disagreement was -- with the clipboard seeded
+beforehand so a check that passed before the mirror existed would have
+to insert the seed; that the mirror is marked; and that the clipboard
+keeps a newline a single-line field folded. `suite_backend` writes the
+marked data itself, exactly as the router writes it, and asserts no
+OSC 52 leaves the wire -- the backend's half of the contract, tested
+without the router, beside the image and HTML cases it belongs with.
+Three sabotage entries, each proved to redden.
 
 ### 8.227 A quit key that destroyed unsaved work (2026-09-18)
 

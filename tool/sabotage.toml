@@ -2837,3 +2837,37 @@ find = "\t\t\tif (win_ && !win_->close()) return;"
 into = "\t\t\tif (false) return;"
 count = 1
 check = "a quit key asks the window to close, takes no for an answer"
+
+[[sabotage]]
+# The mirror removed, so Ctrl+V inside the application is back to
+# pasting whatever the program itself last copied -- nothing, in a
+# program that has copied nothing -- while the terminal's paste
+# works. 8.228.
+name = "a terminal paste does not reach QClipboard"
+file = "src/runtime/input_router.cpp"
+find = "\t\tmime->setText(text);"
+into = "\t\tmime->setText(QStringLiteral(\"\"));"
+count = 1
+check = "Ctrl+V after a terminal paste inserts what was pasted"
+
+[[sabotage]]
+# The marker dropped, so the router's own mirror is indistinguishable
+# from a copy and a backend forwarding the clipboard sends it back
+# out. 8.228.
+name = "a mirrored paste is not marked as one"
+file = "src/runtime/input_router.cpp"
+find = "\t\tmime->setData(QLatin1String(terminal_paste_format()),\n\t\t              QByteArray(\"1\"));"
+into = "\t\t(void)terminal_paste_format();"
+count = 1
+check = "and it is marked as a terminal paste rather than a copy"
+
+[[sabotage]]
+# The echo let through, which is the middle-click wipe: a paste of the
+# PRIMARY selection goes straight back out as OSC 52 and replaces the
+# clipboard the user had. 8.228.
+name = "a backend echoes a mirrored paste back out"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tif (held->hasFormat(QLatin1String(terminal_paste_format()))) return;"
+into = "\t\t(void)terminal_paste_format();"
+count = 1
+check = "a mirrored terminal paste is not sent back out"
