@@ -139,6 +139,49 @@ Capabilities capabilities();
 // behind "is this terminal narrow enough that the sidebar should go".
 QSize terminal_cells();
 
+// Ring the terminal's bell, which is what a terminal has instead of a beep
+// and instead of a taskbar entry that flashes. Nothing happens when no
+// backend is driving -- the same "nothing was measured" the empty
+// Capabilities above means, and for the same reason: there is no terminal to
+// ring, and ringing the process's controlling one behind the library's back
+// would be a write to a screen qtty does not own.
+//
+// It is worth more than a noise. Most terminal emulators map BEL to the
+// window-urgency hint -- the thing that marks a background tab -- so one
+// signal covers what QApplication::beep() means and what
+// QApplication::alert() means, which on a desktop are two different
+// mechanisms.
+//
+// AN APPLICATION HAS TO CALL THIS, and that is a real shortfall stated
+// rather than hidden. It is the same one Qtty::exec_drag() and
+// Qtty::SystemTrayIcon state in drag.h and tray.h, and it has the same
+// cause -- Qt asks the platform, and the platform is a stub -- but it is
+// worse here, because BOTH of the ordinary spellings are closed:
+//
+//   QApplication::beep()      is static and non-virtual, and its whole body
+//                             is QPlatformIntegration::beep(), whose base
+//                             implementation is an empty function the
+//                             offscreen plugin does not override. Measured
+//                             in Qt 6.12.0's sources: there is no seat
+//                             between the call and the empty body.
+//   QApplication::alert(w)    is static too, and reaches QWindow::alert(),
+//                             which is not virtual either and returns at
+//                             once when the window has no platform window.
+//                             qtty sets Qt::WA_DontShowOnScreen on every top
+//                             level, so QWidgetPrivate::show_sys() returns
+//                             before anything is created and there never is
+//                             one. Even given one, QPlatformWindow's
+//                             setAlertState() is empty and isAlertState()
+//                             answers false, and the offscreen plugin
+//                             overrides neither.
+//
+// So neither is interceptable, and NEITHER STARTS WORKING because this
+// exists. This is not QDesktopServices::openUrl(), where Qt publishes a
+// handler in front of the platform and qtty registers one, so the standard
+// spelling keeps its meaning with no application change. Here the call site
+// changes or nothing rings.
+void bell();
+
 // The font qtty lays its grid on, chosen before setup() installs it.
 // DejaVu Sans Mono at 16 pixels otherwise.
 //

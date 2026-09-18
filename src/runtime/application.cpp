@@ -861,6 +861,23 @@ QSize terminal_cells() {
 	return b ? b->size() : QSize();
 }
 
+// The same two records again, asked in the same order and for the same
+// reason: which backend is driving this program. exec() knows which backend
+// was handed the session and goes on knowing it while the screen is with a
+// child; the ownership stack knows who HAS the screen when no exec() was
+// involved, which is the seat an application running its own frame loop
+// sits in.
+//
+// Nothing happens when neither answers, and that is the "nothing was
+// measured" state the two above already have rather than a failure. There
+// is no terminal qtty is entitled to ring: writing a BEL to the process's
+// controlling terminal anyway would be a write to a screen the library was
+// never given, which is the line write_clipboard() and resume() already
+// draw on the other side of the seam.
+void bell() {
+	if (ITerminalBackend *b = g_session ? g_session : g_backend) b->bell();
+}
+
 int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	s_tuiActive = true;
 	g_session = &backend;

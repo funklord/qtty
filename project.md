@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1572 checks, 0 failures. `make check` is green and includes
+1580 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16369,6 +16369,114 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.239 The bell nothing could ring (2026-09-18)
+
+A Qt program calls `QApplication::beep()` to get the user's attention and
+`QApplication::alert(w)` to mark a window that wants it. Under qtty both
+did nothing at all -- not a warning, not a log line, nothing. Read in Qt
+6.12.0's own sources rather than inferred:
+
+    QApplication::beep()     -> QPlatformIntegration::beep(), and the
+                                base implementation is `{ }`. The
+                                offscreen plugin does not override it:
+                                grep for "beep" under
+                                src/plugins/platforms/offscreen returns
+                                nothing.
+    QApplication::alert(w)   -> QWindow::alert(), which opens
+                                `if (!d->platformWindow || ...) return;`
+
+**Both are silent, and neither is interceptable, which is the finding
+rather than the silence.** 8.236 closed the same shape for
+`QDesktopServices::openUrl()` with no application change at all, because
+Qt publishes `setUrlHandler()` in front of the platform. There is no
+equivalent here. `QApplication::beep()` and `QApplication::alert()` are
+both static and non-virtual, `QWindow::alert()` is not virtual either,
+and the only seat that could answer is the platform plugin -- which qtty
+does not supply, it pins Qt's offscreen one. So the shortfall is the one
+`drag.h` and `tray.h` already state, and it is stated the same way in
+`application.h` and in the guide: **the application changes its call, or
+nothing rings.** `Qtty::bell()` does not make `beep()` start working and
+the header says so in as many words.
+
+**`alert()` is the worse of the two and was measured rather than
+assumed.** It fails twice over: qtty sets `Qt::WA_DontShowOnScreen` on
+every top level, so `QWidgetPrivate::show_sys()` returns before any
+platform window is created and `QWindow::alert()` takes its early return;
+and given one anyway, `QPlatformWindow::setAlertState()` is empty and
+`isAlertState()` answers false, which the offscreen plugin overrides
+neither of. There is no arrangement under qtty in which it does anything.
+
+**The scope of "does nothing", measured rather than waved at.** It is a
+property of the platform, so it is the offscreen one `prepare_environment()`
+pins: under `QTTY_QPA_PLATFORM=xcb` -- the second configuration the suite
+runs, which needs an X display -- `QXcbIntegration::beep()` and
+`QXcbWindow::setAlertState()` both exist and both do something. That is a
+test arrangement rather than a terminal, so it changes nothing about the
+shortfall and is recorded so the next reader does not have to re-measure it
+to find out the claim was narrower than it looked.
+
+**One signal covers both, which is why this is one function and not
+two.** BEL is C0 0x07, and most terminal emulators map it to the
+window-urgency hint -- the thing that marks a background tab. So the
+terminal's single bell carries what `beep()` means (say something
+happened) and what `alert()` means (this window wants you) at once, where
+a desktop keeps them apart as a sound and a flashing taskbar entry.
+
+**Nothing in the tree emitted a bare BEL, and that was deliberate on the
+other side.** The three 0x07 bytes written or parsed are OSC framing:
+`encode_iterm2()` terminates with one, and `parse_string_sequence()`
+accepts one as a terminator. `set_title()` and `caps_query()` use ST
+instead, and `ansi_backend.cpp` says why -- "BEL is a character a
+terminal may also ring". The project had reasoned about the bell already,
+only about not ringing it by accident.
+
+**`ITerminalBackend::bell()` is NOT pure, and that is a decision rather
+than a convenience.** This interface ships: `tool/consume-check` builds a
+program against the installed headers precisely to prove an adopter can
+reach it. A pure virtual here would stop every adopter's backend
+compiling on an upgrade that promised them nothing, and a backend that
+cannot ring anything is normal rather than broken -- `NullBackend` and
+every test double are the case in this tree. Same reasoning as
+`set_title()` and `handovers()`, and the control that makes it real is a
+suite backend that overrides the pure virtuals and nothing else: were
+`bell()` pure, that block would not COMPILE, which is the half no runner
+can print.
+
+**The gates are write_clipboard()'s, copied rather than re-derived.**
+`tty_out_`, because terminal control goes to a terminal and nowhere else
+-- `present()` writes a frame to a pipe because `qtty-replay --ansi >
+corpus` asks for exactly that, while `resume()` writes modes only to a
+terminal. And `active_`, because while suspended the terminal belongs to
+whatever the application shelled out to, so a BEL rings for that editor
+instead -- the same misdelivery `read_winch()` refuses a geometry query
+for. Both are checks rather than claims: each has a sabotage entry that
+removes half the gate and reddens its own check.
+
+**The wire check asserts EXACT equality, not a `contains()`.** A bell is
+one byte, so "contains a BEL" would pass for an implementation that wrote
+an OSC whose terminator happened to be one -- which is the only 0x07 this
+tree has ever written. `w_bell == QByteArray(1, '\a')` says both halves
+at once: one byte, and it is that one. It reuses the OSC 52 pty-and-file
+fixture rather than a second one, and obeys that fixture's warning --
+nothing is asserted while fd 1 is diverted.
+
+**`Qtty::bell()` asks the same two records in the same order as
+`Qtty::capabilities()` and `Qtty::terminal_cells()`**: the backend exec()
+was handed, then the one that owns the screen. The two answer different
+questions -- which backend is DRIVING this session, and who HAS the
+screen -- and an application running its own frame loop is answered only
+by the second. Outside a run it does nothing, which is the same "nothing
+was measured" state those two already have a check for.
+
+**`NullBackend` counts bells** the way it counts frames and titles, and a
+COUNT rather than a flag for the reason `handovers()` is one: a bell is
+an event, and "did that action ring once" cannot be answered by a boolean
+a second ring leaves as it found it.
+
+**No header was added**, so `INSTALLED_HEADERS` is unchanged --
+`application.h`, `backend.h` and `null_backend.h` are all already in the
+list and all already installed.
 
 ### 8.240 A check that pinned the platform, not the library (2026-09-18)
 

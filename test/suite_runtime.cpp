@@ -3013,6 +3013,97 @@ int suite_runtime() {
 		GridGuard::reset();
 	}
 
+	// ------------------------------------- the terminal's bell (8.239)
+	//
+	// QApplication::beep() reaches QPlatformIntegration::beep(), whose base
+	// implementation is an empty function the offscreen plugin does not
+	// override, and QApplication::alert() reaches QWindow::alert(), which
+	// returns at once when there is no platform window -- which under
+	// Qt::WA_DontShowOnScreen there never is. Neither call is interceptable,
+	// so the bell is reached by name; what is checked here is that the name
+	// works, and that it is silent everywhere it has no terminal to ring.
+	{
+		NullBackend backend(QSize(30, 8));
+		QWidget win;
+		auto *label = new QLabel(QStringLiteral("bell"), &win);
+		label->move(0, 0);
+
+		// Outside a run, and FIRST, so the counter this reads is one nothing
+		// has touched yet. It is the same "nothing was measured" state
+		// capabilities() and terminal_cells() are checked in above: there is
+		// no terminal qtty was given, and ringing the process's controlling
+		// one anyway would be a write to a screen the library does not own.
+		Qtty::bell();
+		CHECK(backend.bell_count() == 0,
+		      "Qtty::bell() before a run rings nothing, there being no"
+		      " terminal the library was given");
+
+		int rang_during = -1;
+		QTimer quitter;                       // repeating, per the note above
+		quitter.setInterval(10);
+		QObject::connect(&quitter, &QTimer::timeout, qApp, [&] {
+			if (rang_during < 0) {
+				Qtty::bell();
+				rang_during = backend.bell_count();
+			}
+			QCoreApplication::quit();
+		});
+		quitter.start();
+		const int rc = exec(*qApp, win, backend);
+		quitter.stop();
+
+		CHECK(rc == 0 && rang_during == 1,
+		      "Qtty::bell() during a run reaches the backend driving it,"
+		      " exactly once per call");
+		// And stops again, for the reason the capabilities pointer is
+		// cleared on the way out: a run that has ended is a claim about a
+		// screen nobody owns.
+		Qtty::bell();
+		CHECK(backend.bell_count() == 1,
+		      "and rings nothing after the run, the backend it reached"
+		      " having stopped driving anything");
+	}
+
+	// The control that makes ITerminalBackend::bell() a decision rather than
+	// an accident. This backend implements the pure virtuals and NOTHING
+	// else, which is what an adopter's backend written before the bell
+	// existed looks like -- and tool/consume-check builds against the
+	// installed headers for the same reason. Were bell() pure, this would not
+	// COMPILE, which is the half of the check no runner can print; what it
+	// can print is that a run over such a backend survives a bell and does
+	// nothing with it.
+	{
+		struct AdopterBackend : ITerminalBackend {
+			Capabilities capabilities() const override { return {}; }
+			QSize size() const override { return QSize(24, 6); }
+			void present(const CellBuffer &, const QRegion &) override {
+				++frames;
+			}
+			void set_cursor(std::optional<QPoint>, CursorShape) override {}
+			void set_event_sink(ITerminalEventSink *) override {}
+			void suspend() override {}
+			void resume() override {}
+			int frames = 0;
+		};
+		AdopterBackend backend;
+		QWidget win;
+		bool rang = false;
+		QTimer quitter;
+		quitter.setInterval(10);
+		QObject::connect(&quitter, &QTimer::timeout, qApp, [&] {
+			Qtty::bell();              // the inherited default, doing nothing
+			rang = true;
+			QCoreApplication::quit();
+		});
+		quitter.start();
+		const int rc = exec(*qApp, win, backend);
+		quitter.stop();
+		CHECK(rc == 0 && rang && backend.frames > 0,
+		      "a backend overriding nothing but the pure virtuals still"
+		      " compiles and runs, a bell reaching its inherited default"
+		      " and doing nothing");
+	}
+
 	return fails;
 }
 

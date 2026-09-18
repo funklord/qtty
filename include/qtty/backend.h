@@ -137,6 +137,22 @@ public:
 	// says whether anything will happen.
 	virtual void set_title(const QString &) {}
 
+	// Ring the terminal's bell -- BEL, 0x07, the one attention signal a
+	// terminal has. It is worth more than a noise: most emulators map it to
+	// the window-urgency hint, which is what marks a background tab, so it
+	// carries what QApplication::alert() means as well as what
+	// QApplication::beep() does.
+	//
+	// NOT pure, for the reason set_title() is not: this interface ships, and
+	// tool/consume-check builds a program against the installed headers to
+	// prove an adopter can reach it. A pure virtual added here would stop
+	// every adopter's backend compiling on an upgrade that promised them
+	// nothing, and a backend that cannot ring anything is a normal thing
+	// rather than a broken one -- NullBackend and any test double are the
+	// case in this tree. The default does nothing, which is exactly what a
+	// backend with no terminal should do.
+	virtual void bell() {}
+
 	virtual void suspend() = 0;                     // SIGTSTP / shelling out
 	virtual void resume() = 0;
 

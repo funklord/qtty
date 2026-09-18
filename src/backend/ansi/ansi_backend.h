@@ -65,6 +65,10 @@ public:
 		// key that waits for ever.
 		arm_escape_timer();
 	}
+	// Ring the terminal's bell. Written only to a terminal and only while
+	// this backend has it, which is write_clipboard()'s gate rather than a
+	// new one -- see the definition for both halves.
+	void bell() override;
 	void suspend() override;
 	void resume() override;
 	int handovers() const override { return handovers_; }

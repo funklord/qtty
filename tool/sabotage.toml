@@ -3179,3 +3179,43 @@ find = "\t\treturn key == o.key && cell_rect == o.cell_rect && z == o.z;"
 into = "\t\treturn key == o.key && cell_rect == o.cell_rect;"
 count = 1
 check = "and the frame gate still calls that a different frame"
+
+[[sabotage]]
+name = "a bell reaches no backend at all"
+file = "src/runtime/application.cpp"
+find = "\tif (ITerminalBackend *b = g_session ? g_session : g_backend) b->bell();"
+into = "\t;"
+count = 1
+check = "Qtty::bell() during a run reaches the backend driving it"
+
+[[sabotage]]
+name = "a bell puts a byte on the wire that is not BEL"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\twrite_out(QByteArray(1, '\\a'));"
+into = "\twrite_out(QByteArray(1, '\\b'));"
+count = 1
+check = "bell() puts exactly one BEL on the wire and nothing else"
+
+[[sabotage]]
+name = "a bell rings twice for one call"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\twrite_out(QByteArray(1, '\\a'));"
+into = "\twrite_out(QByteArray(2, '\\a'));"
+count = 1
+check = "and exactly one of them, a bell rung twice being an annoyance"
+
+[[sabotage]]
+name = "a bell rings into whatever was shelled out to"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (!tty_out_ || !active_) return;"
+into = "\tif (!tty_out_) return;"
+count = 1
+check = "and nothing is rung while the terminal is suspended"
+
+[[sabotage]]
+name = "a bell is written into a stream that is not a terminal"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (!tty_out_ || !active_) return;"
+into = "\tif (!active_) return;"
+count = 1
+check = "and no bell, nothing downstream of a pipe having one to ring"

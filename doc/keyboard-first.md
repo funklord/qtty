@@ -1289,6 +1289,58 @@ Enter -- which was exactly the link whose activation did nothing. The
 audit was right and the thing it cleared was broken; it is worth knowing
 that a clean report means reachable, not that the control does something.
 
+## Getting the user's attention
+
+**`Qtty::bell()` rings the terminal's bell, and your application has to
+call it.** BEL is the one attention signal a terminal has, and it is
+worth more than a noise: most emulators map it to the window-urgency
+hint -- the thing that marks a background tab -- so one call covers both
+of the things a desktop keeps apart, the sound and the flashing taskbar
+entry.
+
+It does nothing when no backend is driving, which is the same "nothing
+was measured" answer `Qtty::capabilities()` and `Qtty::terminal_cells()`
+give outside a run. There is no terminal the library was given, and
+ringing your process's controlling one behind its back would be a write
+to a screen qtty does not own.
+
+**`QApplication::beep()` and `QApplication::alert()` do nothing under the
+offscreen platform qtty pins, and neither of them starts working.** That is the shortfall `Qtty::exec_drag()`
+and `Qtty::SystemTrayIcon` already state in their own headers, and it is
+stated here for the same reason: an adopter should find out from the
+documentation rather than from a user. Both calls are static and
+non-virtual, and both end at the platform:
+
+- `beep()` is one line, `QPlatformIntegration::beep()`, whose base
+  implementation is an empty function body. The offscreen platform
+  `Qtty::prepare_environment()` pins does not override it, so there is
+  no seat anywhere between your call and nothing happening.
+- `alert(widget)` reaches `QWindow::alert()`, which returns immediately
+  when the window has no platform window -- and under
+  `Qt::WA_DontShowOnScreen`, which qtty sets on every top level, there
+  never is one. Even given one, `QPlatformWindow::setAlertState()` is
+  empty and `isAlertState()` answers false.
+
+This is the opposite case from **Opening a link**, where Qt publishes a
+handler in front of the platform, `Qtty::setup()` registers one, and
+`QDesktopServices::openUrl()` keeps its ordinary spelling with nothing in
+your application changed. There is no such hook for either of these two.
+So change the call site, or nothing rings:
+
+```cpp
+// QApplication::beep();          // silent under qtty
+// QApplication::alert(this);     // silent under qtty
+Qtty::bell();
+```
+
+**The backend decides whether anything is written, and two cases write
+nothing.** A stream that is not a terminal is sent no bell -- nothing
+downstream of a pipe rings, and the byte would only land in somebody's
+captured output as a control character to step over. And nothing is rung
+while `Qtty::shell_out()` has handed the screen to an editor or a pager:
+the terminal is that program's for the duration, and a BEL arriving then
+rings for it rather than for you.
+
 ## Modal dialogs and `exec()`
 
 `if (dialog.exec() == QDialog::Accepted)` works, and the terminal goes on

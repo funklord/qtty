@@ -1443,6 +1443,33 @@ void AnsiBackend::clear_overlay(int id) {
 	write_out(out);
 }
 
+void AnsiBackend::bell() {
+	// Gated exactly as write_clipboard() is, and for the two reasons written
+	// out there rather than a new pair.
+	//
+	// On tty_out_, because a BEL is terminal control and belongs to a
+	// terminal: present() writes a frame to a pipe because
+	// `qtty-replay --ansi > corpus` asks for exactly that, while resume()
+	// writes the alternate-screen and reporting modes only to a terminal. A
+	// bell is the second kind -- nothing downstream of a pipe rings, and the
+	// byte would sit in somebody's captured corpus as a control character
+	// their parser has to step over.
+	//
+	// And on active_, because while suspended the terminal belongs to
+	// whatever the application shelled out to. A BEL arriving then rings for
+	// the EDITOR the user is in, or is read by it as a keystroke -- the same
+	// misdelivery read_winch() refuses to send a geometry query into.
+	if (!tty_out_ || !active_) return;
+
+	// One byte, and deliberately nothing else. There is no OSC and no
+	// parameter: BEL is C0 0x07 and every terminal that has a bell rings on
+	// it, which is why this needs no capability and no negotiation. What the
+	// terminal DOES with it is the user's own configuration -- a sound, a
+	// visual flash, the urgency hint that marks a background tab -- and none
+	// of those is qtty's to choose.
+	write_out(QByteArray(1, '\a'));
+}
+
 void AnsiBackend::set_title(const QString &title) {
 	if (!tty_out_) return;                 // nothing is reading the escapes
 

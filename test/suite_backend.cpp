@@ -4909,6 +4909,7 @@ int suite_exec() {
 		const QString via_qt = QStringLiteral("through QClipboard");
 		QByteArray w_plain, w_wide, w_prim, w_qt, w_at, w_over, w_suspended;
 		QByteArray w_image, w_html, w_empty, w_marked;
+		QByteArray w_bell, w_bell_suspended;
 		bool r_plain = false, r_at = false, r_over = false, r_suspended = false;
 		if (built) {
 			{
@@ -4992,9 +4993,18 @@ int suite_exec() {
 				QCoreApplication::processEvents();
 				w_empty = cap.taken();
 
+				// The BELL, on the same wire and through the same
+				// fixture: it is one byte rather than a burst of
+				// base64, but it is gated on the same two things and
+				// an ungated one arrives in the same wrong places.
+				out_backend.bell();
+				w_bell = cap.taken();
+
 				out_backend.suspend();
 				r_suspended = out_backend.write_clipboard(one);
 				w_suspended = cap.taken();
+				out_backend.bell();
+				w_bell_suspended = cap.taken();
 				out_backend.resume();
 			}
 			cap.restore();
@@ -5079,6 +5089,33 @@ int suite_exec() {
 			// being a burst of base64 nobody asked for.
 			CHECK(!r_suspended && !w_suspended.contains("\033]52;"),
 			      "and nothing is written while the terminal is suspended");
+
+			// ---- the bell (8.239) ---------------------------------
+			//
+			// EXACT equality rather than a contains(), and that is the
+			// check rather than pedantry: a bell is one C0 byte, so
+			// "contains a BEL" would pass for an implementation that
+			// wrote an OSC whose terminator happened to be one --
+			// which is the only 0x07 this tree wrote before this, and
+			// set_title() explicitly avoids even that because BEL is a
+			// character a terminal may also ring. One byte, and it is
+			// 0x07, says both halves at once.
+			CHECK(w_bell == QByteArray(1, '\a'),
+			      "bell() puts exactly one BEL on the wire and nothing"
+			      " else");
+			CHECK(w_bell.count('\a') == 1,
+			      "and exactly one of them, a bell rung twice being an"
+			      " annoyance rather than a signal");
+			// suspend() hands the terminal to whatever the application
+			// shelled out to. A BEL arriving then rings for the EDITOR
+			// the user is in -- or is read as a keystroke by one -- and
+			// is the same misdelivery read_winch() refuses a geometry
+			// query for. A gate the code has is only a claim until
+			// something watches it hold.
+			CHECK(!w_bell_suspended.contains('\a'),
+			      "and nothing is rung while the terminal is suspended,"
+			      " the screen then belonging to whatever was shelled"
+			      " out to");
 		}
 	}
 
@@ -5100,6 +5137,7 @@ int suite_exec() {
 				{
 					AnsiBackend b;
 					b.write_clipboard(QStringLiteral("into a pipe"));
+					b.bell();
 				}
 				fflush(stdout);
 				::dup2(keep, 1);
@@ -5114,6 +5152,13 @@ int suite_exec() {
 			::close(fds[0]);
 			CHECK(!on_pipe.contains("\033]52;"),
 			      "a stream that is not a terminal is sent no clipboard write");
+			// And no bell either, for the same reason and with the
+			// same asymmetry: nothing downstream of a pipe rings, so
+			// the byte would only sit in somebody's captured corpus as
+			// a control character their parser has to step over.
+			CHECK(!on_pipe.contains('\a'),
+			      "and no bell, nothing downstream of a pipe having one"
+			      " to ring");
 		} else {
 			printf("FAIL: could not build the clipboard pipe\n");
 			++fails;

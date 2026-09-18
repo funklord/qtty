@@ -41,6 +41,11 @@ public:
 	// reporting no graphics.
 	void set_title(const QString &t) override { title_ = t; ++titles_; }
 	void set_event_sink(ITerminalEventSink *s) override { sink_ = s; }
+	// Counted like the frames, and a COUNT rather than a flag for the reason
+	// handovers() is one: a bell is an event rather than a state, and a test
+	// asking "did that action ring once" cannot be answered by a boolean that
+	// a second ring leaves exactly as it found it.
+	void bell() override { ++bells_; }
 	void suspend() override {}
 	void resume() override {}
 
@@ -51,6 +56,7 @@ public:
 	CursorShape cursor_shape() const { return shape_; }
 	QString last_title() const { return title_; }
 	int title_count() const { return titles_; }
+	int bell_count() const { return bells_; }
 	ITerminalEventSink *sink() const { return sink_; }
 
 private:
@@ -63,6 +69,7 @@ private:
 	CursorShape shape_ = CursorShape::Hidden;
 	QString title_;
 	int titles_ = 0;
+	int bells_ = 0;
 	ITerminalEventSink *sink_ = nullptr;
 };
 
