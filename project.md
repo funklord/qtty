@@ -28,7 +28,7 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-18, at 1500**,
+**Last re-verified under all six configurations: 2026-09-18, at 1505**,
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
 result. Offscreen and xcb-under-Xvfb both ran 1344, `minimal` refused and
@@ -130,6 +130,13 @@ application draws, which is the memcheck arm's own subject. All four
 platform arms ran 1486, the sanitized run reported no failure and no
 sanitizer output, and memcheck reported **0 errors with 17 suppressed**
 and nothing lost on any of its three counts.
+
+**And at 1505**, for the two routing changes of 8.223: which widget the
+quit keys stand down for, and which the readline chords fire on. Both
+decide where a keystroke goes for every application, which is the
+narrowest possible change with the widest possible blast radius. Four
+platform arms at 1505, sanitized clean, memcheck 0 errors with the same
+17 suppressed.
 
 **And at 1500**, for 8.222 -- a public report gained a call that builds
 a widget vector, and the new checks open Qt's What's This window, a
