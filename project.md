@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1539 checks, 0 failures. `make check` is green and includes
+1549 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16561,6 +16561,105 @@ mid-line breaks a `PASS:` prefix -- so counting `^PASS` from the merged
 stream under-reports. It read 1527 where the suite runs 1528. `count-check`
 is not affected, discarding stderr before it counts, which is why the gate
 was right while the reading was wrong.
+
+### 8.230 The document-window idiom, broken at both ends (2026-09-18)
+
+`setWindowTitle("notes.txt[*]")` with `setWindowModified(true)` is the
+standard Qt document window, and under qtty **both halves were broken,
+on screen for every second such a program ran.** Measured with a
+standalone program under the offscreen platform this library pins:
+
+    windowTitle() = notes.txt[*]   (WindowTitleChange delivered: 1)
+    after setWindowModified(true): isWindowModified=1
+                                   WindowTitleChange still 1
+                                   ModifiedChange 1
+
+So the placeholder reached the terminal **literally** -- `TitleKeeper`
+published `windowTitle()`, which is the caption as the application set
+it, and `AnsiBackend::set_title()` keeps every character `>= 0x20`, so
+`[`, `*` and `]` all survive the sanitiser. A tab read `notes.txt[*]`
+for the life of the program. And `setWindowModified()` was **inert**:
+it sends no `WindowTitleChange` at all, so the filter never heard it.
+`QEvent::ModifiedChange` is delivered, which is the whole of the fix on
+that side.
+
+**The reason given for the first half was wrong, and the defect was
+real anyway.** The account was that qtty has no platform window --
+`WA_DontShowOnScreen` on every top level -- so Qt's substitution in
+`qt_setWindowTitle_helperHelper()` never runs. Measured: a widget with
+that attribute set **does** get a `QWindow` on `show()`
+(`windowHandle()` non-null, `WA_WState_Created` set), and Qt resolves
+the caption into it. The placeholder reaches the terminal for a simpler
+reason that needs no claim about platform windows: `windowTitle()`
+returns the unresolved caption to *everybody*, and this keeper is not a
+platform window. Worth recording because the wrong mechanism sends the
+next reader to the wrong file.
+
+**It reimplements Qt's rule rather than linking it, and linking was
+never on offer.** `qt_setWindowTitle_helperHelper` is declared `extern`
+at each use site inside qtbase and exported from nothing:
+`nm -D --defined-only libQt6Widgets.so.6` finds no such symbol, so a
+consumer naming it would not link. The comment in `title_keeper.h` says
+which function it reproduces, so the next reader knows what to compare
+against if Qt changes.
+
+**The expected strings in the checks are Qt's own, not this
+implementation's read back.** A frozen copy of one's own output is one
+witness twice. The oracle used instead was Qt itself: give a shown
+widget each caption and read the resolved one out of `QWindow::title()`,
+which is what `setWindowTitle_sys()` wrote. **44 cases over both
+modified states, 0 disagreements** -- and the oracle was shown able to
+disagree by deleting the collapse clause from the copy under test, which
+produced **18 DIFFs**. Without that second run, "0 disagreements" is a
+constant rather than a measurement.
+
+**`QStyle::SH_TitleBar_ModifyNotification` is deliberately not
+consulted, and Qt consults it.** The hint exists so a platform that
+shows modification some other way can suppress the asterisk -- macOS
+puts a dot in the close button and does not want a second mark in the
+caption. A terminal title has no other way: no close button, no
+titlebar widget, no dot. Honouring a style that answered 0 would put the
+modified flag back exactly where this found it, invisible. The hint also
+belongs to the *application's* style, which an application may replace
+for its widget metrics, and a style chosen for how a scrollbar looks
+should not decide whether a terminal tab can show unsaved work.
+
+Measured rather than assumed, which is the part that settled it: under
+`GridStyle` -- a `QProxyStyle` over `QFusionStyle` -- the hint answers
+**1**. So consulting it would change nothing today, and **no check could
+tell the two implementations apart.** A branch nothing can distinguish
+is the vacuous pass this project spends its time hunting, so it is not
+written.
+
+**What is left out, and it is a third spelling of the same idiom.**
+`setWindowFilePath()` works at install time and only there. Qt's
+`windowTitle()` falls back to the file name with `[*]` appended when no
+caption was set -- measured, `setWindowFilePath("/tmp/report.md")` makes
+`windowTitle()` answer `report.md[*]` -- so a keeper installed
+afterwards resolves it correctly, and there is a check pinning that. A
+**later** `setWindowFilePath()` sends nothing: measured, zero
+`WindowTitleChange` and zero `ModifiedChange`, because Qt's non-macOS
+path calls `setWindowTitle_helper()` straight through. Hearing it would
+mean polling or an application-wide filter, which is the cost this class
+exists to avoid. Open, and small.
+
+**Ten checks, seven of which go red against the unfixed code.** The
+three that do not are controls and are why the section is worth
+anything: a title with no placeholder must reach the terminal unchanged
+(a fix that mangles ordinary titles passes everything else), the
+modified flag must put nothing on the wire when the title has nowhere to
+show it, and the caption must be untouched through all three
+publications -- the last a precondition control on Qt rather than on
+this library, with no sabotage entry, because nothing in this tree can
+redden it.
+
+Two existing sabotage anchors in `title_keeper.h` moved with the edit
+and were re-proved rather than assumed; four new entries cover the two
+defects and the two clauses of Qt's rule most likely to be dropped --
+the `[*][*]` collapse, which is silent when missing because only a
+doubled placeholder comes out wrong, and the run counting, without which
+a title carrying three consecutive placeholders resolves to the wrong
+string in both states.
 
 ### 8.231 A configuration that failed and left nothing (2026-09-18)
 

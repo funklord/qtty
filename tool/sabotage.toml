@@ -544,18 +544,64 @@ check = "taking the terminal pushes the title it already had"
 [[sabotage]]
 name = "the keeper ignores a title that changes later"
 file = "src/runtime/title_keeper.h"
-find = "\t\tif (e->type() == QEvent::WindowTitleChange && o == target_)"
-into = "\t\tif (false)"
+find = "\t\tif (e->type() == QEvent::WindowTitleChange) publish_current();"
+into = "\t\tif (false) publish_current();"
 count = 1
 check = "and a later change reaches it too"
 
 [[sabotage]]
 name = "the keeper waits for a change rather than reading what is there"
 file = "src/runtime/title_keeper.h"
-find = "\t\tpublish(win.windowTitle());"
-into = "\t\t;"
+find = "\t\twin.installEventFilter(this);\n\t\tpublish_current();"
+into = "\t\twin.installEventFilter(this);\n\t\t;"
 count = 1
 check = "a window's existing title reaches the backend when the keeper is"
+
+[[sabotage]]
+# 8.230, the first half: the keeper published the caption as the
+# application SET it, so Qt's "[*]" placeholder reached the terminal
+# literally and a tab read "notes.txt[*]" for the life of the program.
+name = "the keeper publishes the caption with its [*] unresolved"
+file = "src/runtime/title_keeper.h"
+find = "\t\tpublish(resolve_modified_marker(target_->windowTitle(),\n\t\t                                target_->isWindowModified()));"
+into = "\t\tpublish(target_->windowTitle());"
+count = 1
+check = "an unmodified document window puts no placeholder on the terminal"
+
+[[sabotage]]
+# 8.230, the second half, and the one that was inert rather than wrong:
+# setWindowModified() sends ModifiedChange and NO WindowTitleChange, so a
+# filter watching only the title never learned the document was edited.
+name = "setWindowModified is inert again"
+file = "src/runtime/title_keeper.h"
+find = "\t\telse if (e->type() == QEvent::ModifiedChange) publish_current();"
+into = "\t\telse if (false) publish_current();"
+count = 1
+check = "and marking it modified reaches the terminal as an asterisk"
+
+[[sabotage]]
+# The clause a reimplementation of Qt's rule is likeliest to drop, and it
+# is silent when dropped: every single-placeholder title still resolves
+# correctly, and only a DOUBLED one -- an application writing a literal
+# "[*]" -- comes out wrong.
+name = "a doubled placeholder does not collapse to a literal"
+file = "src/runtime/title_keeper.h"
+find = "\t\tcap.replace(QStringLiteral(\"[*][*]\"), mark);"
+into = "\t\t;"
+count = 1
+check = "a doubled placeholder is one literal [*] and takes no asterisk"
+
+[[sabotage]]
+# The other half of the same rule: Qt spends a placeholder only where the
+# RUN of consecutive "[*]" is odd. Counting the run is what an
+# implementation that merely searched for "[*]" would leave out, and the
+# run of three is where the two answers part company.
+name = "the run of consecutive placeholders is never counted"
+file = "src/runtime/title_keeper.h"
+find = "\t\t\twhile (cap.indexOf(mark, index) == index) {"
+into = "\t\t\twhile (false) {"
+count = 1
+check = "a run of three spends its last one and collapses the pair"
 
 [[sabotage]]
 name = "the width table ignores the terminal's answer"

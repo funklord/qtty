@@ -2368,6 +2368,167 @@ int suite_runtime() {
 		      "takes one without complaint, and says it cannot show it");
 	}
 
+	// ----------------------------- the document-window idiom (section 11)
+	//
+	// setWindowTitle("notes.txt[*]") with setWindowModified() is how every
+	// Qt document window says "unsaved", and BOTH halves of it were broken
+	// here -- on screen every second such a program ran. See 8.230.
+	//
+	// The expected strings below are not this reimplementation's output
+	// read back. They were taken from Qt ITSELF, by giving a shown widget
+	// each caption and reading the resolved one out of
+	// QWindow::title() -- 44 cases over both modified states, 0
+	// disagreements, and the oracle shown able to disagree by deleting the
+	// collapse clause from the copy under test (18 DIFFs). Freezing this
+	// implementation's own answers would have been one witness twice.
+	{
+		NullBackend b;
+		QWidget win;
+		win.setWindowTitle(QStringLiteral("notes.txt[*]"));
+		TitleKeeper keeper(win, b);
+
+		// The placeholder is Qt's, not the user's, and a terminal tab has
+		// no business showing it. Measured before the fix: windowTitle()
+		// answers the caption as SET, so "notes.txt[*]" went out whole and
+		// the sanitiser kept every byte of it.
+		CHECK(b.title_count() == 1
+		      && b.last_title() == QStringLiteral("notes.txt"),
+		      "an unmodified document window puts no placeholder on the "
+		      "terminal");
+
+		// The half that was inert. No WindowTitleChange is sent for this
+		// -- measured, the count stays at one -- so a keeper watching only
+		// that event never learned the document had been edited.
+		win.setWindowModified(true);
+		QCoreApplication::processEvents();
+		CHECK(b.title_count() == 2
+		      && b.last_title() == QStringLiteral("notes.txt*"),
+		      "and marking it modified reaches the terminal as an asterisk");
+
+		// BOTH directions, which is the check a fix that only resolved the
+		// placeholder would fail: it would satisfy the two above by
+		// reading the flag at install time and never hear it move.
+		win.setWindowModified(false);
+		QCoreApplication::processEvents();
+		CHECK(b.title_count() == 3
+		      && b.last_title() == QStringLiteral("notes.txt"),
+		      "and saving it takes the asterisk away again");
+
+		// A PRECONDITION CONTROL on Qt, not on this library, and it has no
+		// sabotage entry because nothing in this tree can redden it. What
+		// it pins is the reading of the two checks above: the caption is
+		// untouched through all three publications, so what moved the
+		// terminal was the modified flag and not a changed title. Without
+		// it, a reader could take those two for the WindowTitleChange
+		// route working and the inert half still inert.
+		CHECK(win.windowTitle() == QStringLiteral("notes.txt[*]"),
+		      "with the application's own caption untouched throughout");
+	}
+
+	// The escape, and the clause a reimplementation is likeliest to get
+	// wrong. Qt's rule counts each RUN of consecutive "[*]": an odd run
+	// spends its last one as the placeholder, and "[*][*]" then collapses
+	// to a literal "[*]". So a doubled placeholder is how an application
+	// writes a title that really does contain those three characters --
+	// and the modified flag becomes invisible in it, correctly.
+	{
+		NullBackend b;
+		QWidget win;
+		win.setWindowTitle(QStringLiteral("log[*][*]"));
+		TitleKeeper keeper(win, b);
+		const QString unmodified = b.last_title();
+		win.setWindowModified(true);
+		QCoreApplication::processEvents();
+		CHECK(unmodified == QStringLiteral("log[*]")
+		      && b.last_title() == QStringLiteral("log[*]")
+		      && b.title_count() == 1,
+		      "a doubled placeholder is one literal [*] and takes no "
+		      "asterisk in either state");
+
+		// An ODD run of three: two collapse to a literal and the third is
+		// spent. A port that tested "contains [*]" rather than counting
+		// the run gets this one wrong in both states.
+		//
+		// A DIFFERENT stem from the window above, on purpose. publish()
+		// drops a title equal to the one already sent, so reusing "log"
+		// here would let this check pass on the previous window's
+		// publication -- right by coincidence, and it would go on passing
+		// with the follow wiring cut out entirely.
+		QWidget three;
+		three.setWindowTitle(QStringLiteral("run[*][*][*]"));
+		Qtty::set_current_window(&three);
+		QCoreApplication::processEvents();
+		const QString odd_clean = b.last_title();
+		three.setWindowModified(true);
+		QCoreApplication::processEvents();
+		CHECK(odd_clean == QStringLiteral("run[*]")
+		      && b.last_title() == QStringLiteral("run[*]*"),
+		      "a run of three spends its last one and collapses the pair");
+
+		// "[[*]]" is a placeholder inside literal brackets, which is NOT
+		// the doubled form and does not behave like it.
+		QWidget nested;
+		nested.setWindowTitle(QStringLiteral("[[*]]"));
+		Qtty::set_current_window(&nested);
+		QCoreApplication::processEvents();
+		const QString nested_clean = b.last_title();
+		nested.setWindowModified(true);
+		QCoreApplication::processEvents();
+		CHECK(nested_clean == QStringLiteral("[]")
+		      && b.last_title() == QStringLiteral("[*]"),
+		      "and a placeholder inside brackets leaves the brackets");
+		Qtty::set_current_window(&win);
+		QCoreApplication::processEvents();
+	}
+
+	// THE CONTROL, and the section is worth nothing without it: a fix that
+	// mangles ordinary titles passes every check above. Most windows carry
+	// no placeholder at all and must reach the terminal byte for byte.
+	{
+		NullBackend b;
+		QWidget win;
+		win.setWindowTitle(QStringLiteral("Editor -- plain.txt"));
+		TitleKeeper keeper(win, b);
+		CHECK(b.title_count() == 1
+		      && b.last_title() == QStringLiteral("Editor -- plain.txt"),
+		      "a title with no placeholder reaches the terminal unchanged");
+
+		// And costs nothing when the flag moves. Qt sends ModifiedChange
+		// either way and warns that there is nowhere to put the mark; the
+		// resolved caption is the string already on the wire, so publish()
+		// drops it. Without this, a keeper could re-send the same title on
+		// every edit an application makes.
+		win.setWindowModified(true);
+		win.setWindowModified(false);
+		QCoreApplication::processEvents();
+		CHECK(b.title_count() == 1,
+		      "and the modified flag puts nothing on the wire when the "
+		      "title has nowhere to show it");
+	}
+
+	// setWindowFilePath() is the third spelling of the idiom, and this is
+	// the half of it that works. Qt's windowTitle() falls back to the file
+	// name with "[*]" appended when no caption was set -- measured,
+	// setWindowFilePath("/tmp/report.md") makes windowTitle() answer
+	// "report.md[*]" -- so resolving the placeholder is all it needs.
+	//
+	// NOT IN SCOPE, and deliberately: a LATER setWindowFilePath() sends no
+	// event of any kind. Measured, zero WindowTitleChange and zero
+	// ModifiedChange, because Qt's non-macOS path calls
+	// setWindowTitle_helper() straight through. Hearing it would mean
+	// polling or an application-wide filter, which is the cost this class
+	// exists to avoid. 8.230 records it as open.
+	{
+		NullBackend b;
+		QWidget win;
+		win.setWindowFilePath(QStringLiteral("/tmp/report.md"));
+		TitleKeeper keeper(win, b);
+		CHECK(b.title_count() == 1
+		      && b.last_title() == QStringLiteral("report.md"),
+		      "a window named by its file path reaches the terminal with "
+		      "the placeholder Qt appended already resolved");
+	}
+
 	// ------------------------------------ the cursor reaches the backend
 	//
 	// `NullBackend::cursor()` is a shipped harness accessor that no line of
