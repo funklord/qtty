@@ -1012,6 +1012,18 @@ void AnsiBackend::terminal_gone() {
 	sink_->on_terminal_lost();
 }
 
+ImageEncodeKey AnsiBackend::image_key(quint64 key, const QRect &source,
+                                      const QSize &extent) const {
+	ImageEncodeKey k;
+	k.key = key;
+	k.source = source;
+	k.extent = extent;
+	k.cell_px = caps_.cell_px;
+	k.font_px = QSize(GridMetrics::cw(), GridMetrics::ch());
+	k.mode = int(mode_);
+	return k;
+}
+
 void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 	// Damage-limited where the caller says what changed, whole-frame where it
 	// does not. An EMPTY region means "everything", which is what every
@@ -1169,6 +1181,9 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 		// placing it whole drew outside the terminal -- or, scrolled off the
 		// top, at a negative row.
 		const QSize grid(composed.cols(), composed.rows());
+		// What this frame asked for, so that what it did not ask for can be
+		// dropped at the bottom of the block.
+		QSet<ImageEncodeKey> live_images;
 		if (mode_ == Capabilities::Kitty || mode_ == Capabilities::KittyAlpha) {
 			// Only when there is something to clear or something to put in
 			// its place. This was unconditional, and the condition it sits
@@ -1236,9 +1251,18 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 				if (cp.cells.isEmpty()) continue;
 				out += moveTo(cp.cells.topLeft());
 				// No source-rectangle mechanism here, so the image itself is
-				// cropped. Safe: sixel is re-encoded every frame and cached by
-				// nothing, so there is no stored copy to poison.
-				out += encode_sixel(for_terminal(img.copy(cp.source)));
+				// cropped -- which is why the crop is IN the key. This was
+				// safe to ignore while nothing cached, and the comment that
+				// stood here said exactly that; it is the stored copy the key
+				// exists to keep unpoisoned now that something does.
+				const ImageEncodeKey ek =
+				    image_key(ci.key, cp.source, cp.cells.size());
+				auto sx = image_bytes_.find(ek);
+				if (sx == image_bytes_.end())
+					sx = image_bytes_.insert(
+					    ek, encode_sixel(for_terminal(img.copy(cp.source))));
+				live_images.insert(ek);
+				out += *sx;
 			}
 		} else if (mode_ == Capabilities::ITerm2) {
 			for (const CellImage &ci : frame.images) {
@@ -1251,9 +1275,37 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 				// the image in cells, so cropping one without the other would
 				// squeeze the whole picture into the visible rows instead of
 				// hiding the part that is off screen.
-				out += encode_iterm2(img.copy(cp.source),
-				                     cp.cells.width(), cp.cells.height());
+				//
+				// Both are in the cache key for that reason: the cell extent
+				// is on this tier's wire, where sixel states only pixels.
+				const ImageEncodeKey ek =
+				    image_key(ci.key, cp.source, cp.cells.size());
+				auto it2 = image_bytes_.find(ek);
+				if (it2 == image_bytes_.end())
+					it2 = image_bytes_.insert(
+					    ek, encode_iterm2(img.copy(cp.source),
+					                      cp.cells.width(),
+					                      cp.cells.height()));
+				live_images.insert(ek);
+				out += *it2;
 			}
+		}
+		// Bounded by the screen rather than by the run. An entry is the
+		// whole encoded picture -- tens of kilobytes for a photograph --
+		// so one per picture the program has EVER shown is a slow leak,
+		// and what this frame did not draw goes. A picture that comes back
+		// pays one encode, which is what it paid on every frame before
+		// this cache existed.
+		//
+		// Inside the pixel branch deliberately. A frame that degraded to
+		// the half-block mosaic while a placement was scrolling drew no
+		// pixels and asked for no bytes, so pruning there would throw the
+		// screen away for the length of a scroll and re-encode all of it
+		// on the frame that settles -- which is the frame the settle
+		// policy exists to make cheap.
+		for (auto it = image_bytes_.begin(); it != image_bytes_.end(); ) {
+			if (live_images.contains(it.key())) ++it;
+			else it = image_bytes_.erase(it);
 		}
 	}
 	if (placeholders || (pixel_placements && handles)) retire_uploads(frame, out);

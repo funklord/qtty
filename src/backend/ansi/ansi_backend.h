@@ -12,6 +12,8 @@
 #include "scroll_settle.h"
 #include <QElapsedTimer>
 #include <QSet>
+#include <QHash>
+#include <QRect>
 #include <QVector>
 
 class QTimer;
@@ -40,6 +42,73 @@ bool use_placeholders(const TermCaps &caps, Capabilities::ColorDepth depth);
 // dialog. Named here rather than written into the decoder so that a test reads
 // the shipped number instead of repeating it.
 int escape_flush_ms();
+
+// Everything the bytes an image tier puts on the wire are a function of.
+//
+// present() re-encoded every placement on every frame that carried any cell
+// damage, because compositor.cpp calls it whenever the damage region is
+// non-empty -- so a clock ticking in a corner re-encoded every picture on
+// the screen. Measured on a 40x12-cell placement against the release
+// library, best of twenty:
+//
+//     one flat colour       3.6 -   4.6 ms      339 bytes
+//     a line chart          4.8 -   6.5 ms    3 234 bytes
+//     a smooth gradient   146   - 180   ms   15 795 bytes
+//
+// against design.md section 11's 16 ms local frame budget, so a
+// photographic placement was roughly ten times the whole budget per frame
+// and a flat one about a quarter of it, for pictures that had not changed.
+//
+// An encode is a pure function of its inputs, so the answer is to remember
+// it, and the whole risk is in the key: one short of a field serves a STALE
+// picture, which is worse than the cost it saves. Each field is one input
+// of that function, and each is here for a reason rather than for safety:
+//
+//   key      CellImage::key, the pixmap's own identity. Two placements
+//            carrying different pixels never share one, which is the
+//            property the kitty upload cache in cell.h already rests on.
+//   source   the rectangle of the image ACTUALLY encoded. Sixel has no
+//            source-rectangle mechanism, so a clipped placement encodes
+//            cropped pixels under the unchanged image identity -- exactly
+//            the poisoning the comment beside that branch used to say could
+//            not happen here, on the grounds that nothing cached.
+//   extent   the placement's size in cells. iTerm2 states it on the wire,
+//            so it is part of the bytes there. Sixel's bytes do not depend
+//            on it and it is in the key anyway: one key shape for both
+//            tiers costs sixel a re-encode of a picture somebody resized,
+//            and a key exactly right for one tier and nearly right for the
+//            other is how a field comes to be dropped from both.
+//   cell_px  the terminal's cell, which for_terminal() scales by. It is NOT
+//            fixed for the life of a backend: a font-size change in the
+//            terminal moves it, the answer arrives as an ordinary CSI in
+//            dispatch_csi(), and the kitty upload cache is cleared there
+//            for precisely this reason. Keying on it means this cache needs
+//            no such site -- a stale entry cannot be reached rather than
+//            being deleted by somebody remembering to.
+//   font_px  this build's cell, the other half of that ratio. for_terminal()
+//            is the quotient of the two and returns its argument unchanged
+//            when they agree, so neither one alone says what it will do.
+//   mode     which encoder produced the bytes. A backend negotiates its tier
+//            once and never changes it, so this one is defensive rather than
+//            load-bearing, and is here so the key states what the function
+//            depends on rather than what today's call sites happen to reach.
+struct ImageEncodeKey {
+	quint64 key = 0;
+	QRect   source;
+	QSize   extent;
+	QSize   cell_px;
+	QSize   font_px;
+	int     mode = 0;
+	bool operator==(const ImageEncodeKey &o) const {
+		return key == o.key && source == o.source && extent == o.extent
+		    && cell_px == o.cell_px && font_px == o.font_px && mode == o.mode;
+	}
+};
+
+inline size_t qHash(const ImageEncodeKey &k, size_t seed = 0) {
+	return qHashMulti(seed, k.key, k.source, k.extent, k.cell_px, k.font_px,
+	                  k.mode);
+}
 
 class AnsiBackend : public QObject, public ITerminalBackend,
                     public IGraphicsOutput {
@@ -112,6 +181,14 @@ public:
 	// work, and so a test reads the shipped bound rather than repeating it.
 	static int clipboard_limit();
 
+	// How many encoded placements the tier cache is holding. Public for
+	// the suite, which asserts the BOUND rather than inferring it: the
+	// cache must hold what the last frame drew and nothing it has stopped
+	// drawing, or a program that shows one picture an hour accumulates an
+	// 80 KB entry per picture it has ever shown. That has an exact answer,
+	// and a duration is the wrong instrument for a question that does.
+	int cached_images() const { return image_bytes_.size(); }
+
 private:
 	void read_input();
 	// The pending-Escape window (section 5.1). arm_ starts it only when
@@ -153,6 +230,17 @@ private:
 	bool sync_frames() const;                     // DEC 2026, confirmed only
 	Capabilities::ColorDepth depth_;             // negotiated (section 6)
 	QSet<quint64> uploaded_;                     // kitty upload-once cache
+	// The bytes each sixel or iTerm2 placement last put on the wire, under
+	// everything they are a function of. Pruned at the end of every frame
+	// that painted pixels, so it is bounded by what is on the screen
+	// rather than by how long the program has run -- present() says why
+	// the pruning sits where it does.
+	QHash<ImageEncodeKey, QByteArray> image_bytes_;
+	// Gathered in one place because the two tiers must agree about it: a
+	// field added to one call site and not the other is a cache that is
+	// complete for sixel and stale for iTerm2.
+	ImageEncodeKey image_key(quint64 key, const QRect &source,
+	                         const QSize &extent) const;
 	// Least-recently-referenced first. The cache above is upload-ONCE and
 	// was also upload-forever: see retire_uploads().
 	QList<quint64> upload_order_;

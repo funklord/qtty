@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1597 checks, 0 failures. `make check` is green and includes
+1605 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16625,6 +16625,149 @@ a second ring leaves as it found it.
 **No header was added**, so `INSTALLED_HEADERS` is unchanged --
 `application.h`, `backend.h` and `null_backend.h` are all already in the
 list and all already installed.
+
+### 8.242 A picture re-encoded on every frame that changed a clock
+(2026-09-18)
+
+`AnsiBackend::present()` re-encoded every `CellImage` on every frame that
+carried **any** cell damage. compositor.cpp:1374 calls it whenever the
+damage region is non-empty, and the two positional tiers looped
+`frame.images` unconditionally underneath -- so one digit of a clock
+ticking in a corner paid for a fresh sixel of every picture on the screen.
+
+**Measured before believing it**, against the release library with a
+standalone program, `encode_sixel` on a 400x228 image (40x12 cells at
+10x19), best of twenty, four rounds on a machine at load average 36:
+
+    one flat colour       3.6 -   4.6 ms      339 bytes
+    a line chart          4.8 -   6.5 ms    3 234 bytes
+    a smooth gradient   146   - 180   ms   15 795 bytes
+
+design.md section 11 budgets 16 ms local and 50 ms over ssh. So a
+photographic placement was about ten times the whole frame budget, per
+frame, and even a flat widget graphic was a quarter to a third of it --
+for pictures nothing had touched.
+
+The same fixture measured through `present()` rather than through the
+encoder alone, inside the suite: **203.985 ms for the first frame and
+0.247 ms for the same frame again**, a ratio of about 830 to one. The
+first number is larger than the encoder's own because `present()` also
+composes a 60x16 text frame and converts the pixmap; the second is what
+all of that costs once the encode is not in it.
+
+**An encode is a pure function of its inputs, so the fix is to remember
+it, and the whole risk is in the key.** `ImageEncodeKey` carries six
+fields and each one is an input of that function rather than a
+precaution:
+
+- **`key`** -- the pixmap's own identity, the same one the kitty upload
+  cache rests on.
+- **`source`** -- the rectangle actually encoded. Sixel has no
+  source-rectangle mechanism, so a clipped placement encodes cropped
+  pixels under an unchanged image identity. The comment that stood beside
+  that branch said in as many words that this was safe because "sixel is
+  re-encoded every frame and cached by nothing, so there is no stored copy
+  to poison". That sentence was true and this change is what ends it.
+- **`extent`** -- the size in cells. iTerm2 states it on the wire; sixel's
+  bytes do not depend on it. It is in the one shared key anyway, because a
+  key exactly right for one tier and nearly right for the other is how a
+  field comes to be dropped from both. The cost is a sixel re-encode of a
+  picture somebody resized.
+- **`cell_px`** -- the terminal's cell, which `for_terminal()` scales by.
+  **This one is not constant**: a font-size change in the terminal answers
+  CSI 16t with a new cell, `dispatch_csi()` receives it, and that site
+  already clears the kitty upload cache for exactly this reason. Keying on
+  it means a stale entry cannot be reached, rather than being deleted by
+  somebody remembering the site exists.
+- **`font_px`** -- this build's cell, the other half of that ratio.
+- **`mode`** -- which encoder wrote the bytes.
+
+**Two of the six are defensive and are marked as such rather than
+claimed.** `GridMetrics::set()` has one caller, in `Qtty::setup()`, and
+`mode_` is assigned once in the constructor, so neither `font_px` nor
+`mode` can move within the life of a backend today. They are in the key
+because the key is a statement about what the function depends on, not
+about what today's call sites reach -- and there is no sabotage entry for
+either, because no check could redden.
+
+**The bound.** An entry is a whole encoded picture, tens of kilobytes, so
+one per picture the program has ever drawn is a slow leak. Whatever the
+frame did not ask for is dropped at the end of `present()`, which makes
+the cache bounded by the screen instead of by the run. The pruning sits
+INSIDE the pixel branch deliberately: a frame that degraded to the
+half-block mosaic while a placement was scrolling drew no pixels and asked
+for no bytes, and pruning there would throw the screen away for the length
+of a scroll and re-encode all of it on the frame that settles -- which is
+the frame the settle policy exists to make cheap.
+
+**What the checks are, and what a baseline run can and cannot say.** Eight
+checks, of which **seven could be run against the unfixed library at all**.
+Six of those seven passed and one failed, and that is the honest result
+rather than a disappointing one:
+
+    PASS  the same frame presented twice puts the same bytes on the wire
+    PASS  and a frame whose picture changed does not
+    PASS  one image at two crops in one frame is two different sixels
+    PASS  and one image over two cell extents is two iTerm2 frames
+    PASS  the terminal answers with a new cell size (the premise)
+    PASS  and the same picture is re-encoded at the terminal's new cell
+    FAIL  and an unchanged picture costs a fraction of what encoding it did
+          info: 230.780 ms to present, 288.874 ms to present again
+
+Only the last one is about the defect. The staleness checks are controls
+on a KEY that did not yet exist, so code with no cache passes all of them
+by construction -- **an unfixed-code run is the wrong control for them**,
+and the right one is the sabotage spec, which removes one key field at a
+time and watches each check go red. The bound check could not be run at
+all against the unfixed backend: it reads `cached_images()`, which is part
+of the fix.
+
+**And the spec earned its keep at once: one of the six did not redden,
+and the fixture was at fault rather than the key.** The crop check
+compared a whole placement against a clipped one -- which reads as the
+obvious fixture and cannot discriminate, because clipping moves the
+source rectangle and the visible cell EXTENT together. Two keys carrying
+either field therefore stay distinct, the cache never collides, and with
+`k.source` deliberately dropped the check stayed green:
+
+    FAILED: the named check PASSED against broken code.
+            check: one image at two crops in one frame is two
+
+The pair is now one picture over two cells against the same picture over
+four cells clipped down to two: same extent, different crop, and exactly
+one field left in the key that can tell them apart. **A control that
+cannot fail through the field it is named for is the thing this spec
+exists to catch, and it caught one written the same hour.**
+
+**The fixture had to move, and the reason is a hazard this file already
+records twice in the other direction.** It was first written inside the
+long pty block, and it **hung the suite** -- stopped at 1585 checks,
+`/proc/<pid>/syscall` reading `read(0, ...)`, and stayed there. That
+fixture's `live` backend is active for everything below it and holds a
+`QSocketNotifier` on descriptor 0; a second backend adds a second
+notifier on the same descriptor; one readable event activates both, the
+first `read_input()` takes the bytes, and the second blocks on a
+descriptor nobody else will write to. The file already warns twice that
+`live` answers SIGWINCH for everybody; **the input channel's version of it
+is worse than a wrong answer, it is a stopped run.** The block has its own
+pty now, at the top level, with nothing else alive on it.
+
+**A second finding, recorded and not acted on: the budget gate has never
+measured the most expensive thing qtty can do.** design.md section 11 says
+the budget is "enforced by a benchmark test on a 200x60 grid with a
+5000-row table", and `test/suite_budget.cpp` builds exactly that fixture
+-- and it is **all text**. It contains no `CellImage` and no
+`frame.images` anywhere, so the placement path this entry is about is
+outside the population it measures. It does reach `encode_sixel`, through
+`present_pixels()` on a rasterised screen, but only to compare **file
+sizes**: there is no timer anywhere near it. So a 200 ms encode sat
+directly beside a gate whose one asserted duration is a 160 ms ceiling on
+a text render, and the two never met. That is a gap in what the gate
+covers rather than a bug in the gate, which measures what it claims to.
+**Whether the benchmark should grow an image case is for the copyright
+holder** -- it would put a wall-clock encode in the one suite that has
+argued at length for printing durations rather than asserting them, and
+that argument may well still hold. Open.
 
 ### 8.241 A caret with four shapes, three of them the same byte (2026-09-18)
 

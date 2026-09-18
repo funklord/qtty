@@ -3356,3 +3356,89 @@ find = "\t\t\t\tif (c.ch == QStringLiteral(\" \")) continue;"
 into = "\t\t\t\tif (false) continue;"
 count = 1
 check = "and on no blank cell"
+
+
+[[sabotage]]
+# The defect itself. The lookup always misses, so every frame pays the
+# encode again -- 146 to 180 ms for a photographic placement against
+# section 11's 16 ms budget -- while every byte on the wire stays exactly
+# right. That is what makes a duration the only instrument that can see
+# it, and why the check it reddens is the one timing assertion in the
+# backend suite. 8.242.
+name = "every frame re-encodes a picture that has not changed"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\t\tauto sx = image_bytes_.find(ek);"
+into = "\t\t\t\tauto sx = image_bytes_.end();"
+count = 1
+check = "and an unchanged picture costs a fraction of what encoding it did"
+
+[[sabotage]]
+# The image's own identity out of the key, so every placement at one
+# position and crop shares one entry whatever picture it carries. This is
+# the worst of the four key faults -- it serves the PREVIOUS picture, and
+# the frame gate has already decided the frame is worth sending. 8.242.
+name = "the encode cache is keyed without the image"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tk.key = key;"
+into = "\tk.key = 0;"
+count = 1
+check = "and a frame whose picture changed does not"
+
+[[sabotage]]
+# The crop out of the key. Sixel has no source-rectangle mechanism, so a
+# clipped placement encodes cropped pixels under an unchanged image
+# identity: the first sighting of a picture decides what every later crop
+# of it looks like. Caught in ONE frame by two placements of one image,
+# because moving a placement to clip it would degrade the frame to the
+# mosaic and never reach the encoder at all.
+#
+# This entry did NOT redden the first time it was run, and the fixture was
+# at fault rather than the key: it compared a whole placement against a
+# clipped one, and clipping moves the source rectangle and the visible
+# cell extent together -- so the two keys stayed distinct through the
+# extent and never collided. The pair is now one picture over two cells
+# and the same picture over four clipped to two, which differ in the crop
+# and in nothing else. 8.242.
+name = "the encode cache is keyed without the crop"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tk.source = source;"
+into = "\tk.source = QRect();"
+count = 1
+check = "one image at two crops in one frame is two"
+
+[[sabotage]]
+# The cell extent out of the key. Invisible to sixel, whose bytes state
+# pixels and not cells -- so this is the field only the iTerm2 check can
+# see the absence of, and the reason that check exists. 8.242.
+name = "the encode cache is keyed without the cell extent"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tk.extent = extent;"
+into = "\tk.extent = QSize();"
+count = 1
+check = "and one image over two cell extents is two"
+
+[[sabotage]]
+# The terminal's cell out of the key. for_terminal() scales by it, and it
+# MOVES: a font-size change in the terminal answers CSI 16t with a new
+# one, which is why dispatch_csi() drops the kitty upload cache at the
+# same arrival. Without it in the key a picture goes on being sent at the
+# old scale for as long as it stays on the screen. 8.242.
+name = "the encode cache is keyed without the terminal's cell"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tk.cell_px = caps_.cell_px;"
+into = "\tk.cell_px = QSize();"
+count = 1
+check = "and the same picture is re-encoded at the terminal's new cell"
+
+[[sabotage]]
+# The bound. Nothing is wrong on the wire and nothing is ever wrong on
+# the wire: the cache simply keeps an entry per picture the program has
+# ever drawn, tens of kilobytes each, for the life of the run. A leak
+# that no byte comparison can reach, which is why the check counts the
+# entries rather than reading them. 8.242.
+name = "the encode cache is never pruned"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\tif (live_images.contains(it.key())) ++it;"
+into = "\t\t\tif (true) ++it;"
+count = 1
+check = "the cache holds what the last frame drew"

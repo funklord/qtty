@@ -4852,6 +4852,409 @@ int suite_exec() {
 			if (master >= 0) ::close(master);
 		}
 	};
+	// ---- one picture, encoded once ------------------------------------------
+	//
+	// present() re-encoded every placement on every frame that carried any
+	// cell damage, because compositor.cpp calls it whenever the damage region
+	// is non-empty -- so a clock ticking in a corner re-encoded every picture
+	// on the screen. Measured against the release library on a 40x12-cell
+	// placement, best of twenty, four rounds:
+	//
+	//     one flat colour       3.6 -   4.6 ms      339 bytes
+	//     a line chart          4.8 -   6.5 ms    3 234 bytes
+	//     a smooth gradient   146   - 180   ms   15 795 bytes
+	//
+	// against design.md section 11's 16 ms local budget. So a photographic
+	// placement was roughly ten times the entire frame budget, every frame,
+	// for a picture that had not changed -- and even a flat one was a quarter
+	// of it.
+	//
+	// The INVARIANT is asserted first: the same frame must put the same bytes
+	// on the wire with a cache as without one. Then the ways a key short of a
+	// field serves a STALE picture, which are the checks that matter, because
+	// a wrong picture is worse than a slow one. The saving is last, and is
+	// the only one of the six a duration can see at all.
+	//
+	// ITS OWN PTY, AND NOTHING ELSE ALIVE ON IT. The first version of this
+	// block sat inside the long pty fixture above, and the cell-size half
+	// could not work there: that fixture's `live` backend is active for
+	// everything below it, its QSocketNotifier is on descriptor 0, and the
+	// reply this feeds in goes to whichever backend the event loop reaches
+	// first. That file already records the same hazard twice for SIGWINCH;
+	// this is the input channel's version of it.
+	{
+		int master = -1, slave = -1;
+		if (::openpty(&master, &slave, nullptr, nullptr, nullptr) != 0) {
+			printf("FAIL: no pty for the image cache fixture\n");
+			++fails;
+		} else {
+			::fcntl(master, F_SETFL, O_NONBLOCK);
+			const QByteArray had_term = qgetenv("TERM");
+			const QByteArray had_tmux = qgetenv("TMUX");
+			const QByteArray had_gfx = qgetenv("QTTY_GRAPHICS");
+			// $TERM explicitly and $TMUX away, as the fixture above does and
+			// for the same reason: this machine's is "screen", which
+			// inside_tmux() correctly reads as a multiplexer.
+			qputenv("TERM", "xterm");
+			qunsetenv("TMUX");
+			qputenv("QTTY_GRAPHICS", "sixel");
+			winsize ws{};
+			ws.ws_col = 80;
+			ws.ws_row = 24;
+			::ioctl(slave, TIOCSWINSZ, &ws);
+			// A terminal whose cell is 10x19, pre-loaded so it is already
+			// readable when the constructor asks. Deliberately WITHOUT the
+			// kitty acknowledgement the fixture above sends: with it, and a
+			// colour depth that can carry an image id, placements would go
+			// out as Unicode placeholders and never reach an encoder here.
+			const QByteArray hello = "\033[?2026;1$y"
+			                         "\033]11;rgb:1c1c/1c1c/1c1c\033\\"
+			                         "\033[6;19;10t"
+			                         "\033[?62;4;22c";
+			{
+				const ssize_t wh = ::write(master, hello.constData(),
+				                           hello.size());
+				(void)wh;
+			}
+			// A FILE for the frames, not the pty, and that is not a
+			// preference: a photographic sixel is tens of kilobytes, a pty
+			// holds a few, and nothing drains it while present() is writing
+			// -- so the write blocks for ever and the suite HANGS rather
+			// than fails. The fixture above records that costing a bisect.
+			char sink_name[] = "/tmp/qtty-imgcache-XXXXXX";
+			const int sink = ::mkstemp(sink_name);
+			if (sink >= 0) ::unlink(sink_name);
+			const int keep_in = ::dup(0), keep_out = ::dup(1);
+			fflush(stdout);
+			::dup2(slave, 0);
+			::dup2(slave, 1);
+			if (sink < 0) {
+				fflush(stdout);
+				::dup2(keep_in, 0);
+				::dup2(keep_out, 1);
+				printf("FAIL: no sink for the image cache fixture\n");
+				++fails;
+			} else {
+				char drain[4096];
+				// What went down fd 1 since the last call, the file
+				// truncated afterwards so each frame is read on its own.
+				const auto taken = [&] {
+					fflush(stdout);
+					QByteArray got;
+					const off_t end = ::lseek(sink, 0, SEEK_CUR);
+					if (end > 0) {
+						::lseek(sink, 0, SEEK_SET);
+						got.resize(int(end));
+						const ssize_t n = ::read(sink, got.data(),
+						                         size_t(end));
+						got.resize(int(n > 0 ? n : 0));
+					}
+					const int rc = ::ftruncate(sink, 0);
+					(void)rc;
+					::lseek(sink, 0, SEEK_SET);
+					return got;
+				};
+				// Every DCS payload in a frame, so that two placements in ONE
+				// frame can be compared against each other rather than
+				// against a literal nobody can maintain.
+				const auto sixels = [](const QByteArray &wire) {
+					QVector<QByteArray> out;
+					int at = 0;
+					for (;;) {
+						const int b = wire.indexOf("\033P", at);
+						if (b < 0) break;
+						int e = wire.indexOf("\033\\", b);
+						if (e < 0) e = wire.size();
+						out.append(wire.mid(b, e - b));
+						at = e + 2;
+					}
+					return out;
+				};
+				// The same for the other tier, whose frames are OSC rather
+				// than DCS and end at a BEL.
+				const auto iterms = [](const QByteArray &wire) {
+					QVector<QByteArray> out;
+					int at = 0;
+					for (;;) {
+						const int b = wire.indexOf("\033]1337;", at);
+						if (b < 0) break;
+						int e = wire.indexOf('\a', b);
+						if (e < 0) e = wire.size();
+						out.append(wire.mid(b, e - b));
+						at = e + 1;
+					}
+					return out;
+				};
+
+				const int icw6 = GridMetrics::cw();
+				const int ich6 = GridMetrics::ch();
+				// A gradient rather than a fill, at the size the measurement
+				// above was taken at. The encoder's cost is in the colours:
+				// a flat picture is the cheap case, and choosing it would
+				// make the saving look small and the timing check fragile.
+				QImage photo(icw6 * 40, ich6 * 12, QImage::Format_ARGB32);
+				for (int y = 0; y < photo.height(); ++y) {
+					QRgb *row = reinterpret_cast<QRgb *>(photo.scanLine(y));
+					for (int x = 0; x < photo.width(); ++x)
+						row[x] = qRgb(x * 255 / photo.width(),
+						              y * 255 / photo.height(),
+						              (x + y) * 255
+						              / (photo.width() + photo.height()));
+				}
+				QImage flat(icw6 * 40, ich6 * 12, QImage::Format_ARGB32);
+				flat.fill(QColor(200, 30, 10));
+				// Two halves in different colours, so that a crop of one
+				// half cannot encode to the same bytes as the whole however
+				// the quantiser rounds.
+				QImage halves(icw6 * 4, ich6 * 2, QImage::Format_ARGB32);
+				for (int y = 0; y < halves.height(); ++y) {
+					QRgb *row = reinterpret_cast<QRgb *>(halves.scanLine(y));
+					for (int x = 0; x < halves.width(); ++x)
+						row[x] = x * 2 < halves.width()
+						    ? qRgb(20, 180, 90) : qRgb(180, 20, 90);
+				}
+				const QPixmap pm_photo = QPixmap::fromImage(photo);
+				const QPixmap pm_flat = QPixmap::fromImage(flat);
+				const QPixmap pm_half = QPixmap::fromImage(halves);
+				const auto place = [](const QPixmap &p, const QRect &at) {
+					CellImage ci;
+					ci.key = quint64(p.cacheKey());
+					ci.cell_rect = at;
+					ci.pixmap = p;
+					return ci;
+				};
+				// Each picture keeps ONE cell_rect for the whole fixture. A
+				// placement that MOVES degrades to the half-block mosaic
+				// under design.md section 5.7's settle policy, which emits
+				// no pixels at all -- so a fixture that moved one would be
+				// asserting about frames that never reached an encoder.
+				const QRect at_big(2, 1, 40, 12);
+				const QRect at_half(0, 14, 4, 2);
+				// The crop pair, and the two rectangles are chosen so that
+				// only the CROP differs. The obvious fixture -- one
+				// placement whole and the same one clipped -- cannot
+				// discriminate, because clipping moves the source rectangle
+				// and the visible cell extent together, so two keys that
+				// carry either field stay distinct and the cache never
+				// collides. Measured: with the crop deliberately dropped
+				// from the key, that fixture stayed green and the sabotage
+				// spec reported the code broken with nothing noticing.
+				//
+				// So both of these occupy TWO cells: one of them the whole
+				// picture over two cells, the other four cells' worth
+				// clipped down to its right half. Same extent, different
+				// source, and the key has exactly one field left that can
+				// tell them apart.
+				const QRect at_narrow(0, 12, 2, 2);
+				const QRect at_clipped(-2, 14, 4, 2);
+
+				CellBuffer f_photo(60, 16);
+				f_photo.images.append(place(pm_photo, at_big));
+				CellBuffer f_flat(60, 16);
+				f_flat.images.append(place(pm_flat, at_big));
+				CellBuffer f_two(60, 16);
+				f_two.images.append(place(pm_flat, at_big));
+				f_two.images.append(place(pm_half, at_half));
+				// The same image key twice in ONE frame, one of them clipped
+				// by the viewport. Two source rectangles under one identity,
+				// with no second frame and no clock -- which is what makes
+				// it reachable at all, since moving a placement to clip it
+				// would degrade the frame to the mosaic.
+				CellBuffer f_crop(60, 16);
+				f_crop.images.append(place(pm_half, at_narrow));
+				f_crop.images.append(place(pm_half, at_clipped));
+				// The other tier's fixture: one picture at one crop over two
+				// different cell extents, both wholly on the grid.
+				CellBuffer f_extent(60, 16);
+				f_extent.images.append(place(pm_half, at_half));
+				f_extent.images.append(place(pm_half, QRect(10, 14, 8, 2)));
+
+				QByteArray wire_first, wire_again, wire_changed;
+				QByteArray wire_before_cell, wire_after_cell;
+				QVector<QByteArray> cropped, stretched;
+				int held_photo = 0, held_changed = 0;
+				int held_two = 0, held_again = 0;
+				double first_ms = 0.0, again_ms = 0.0;
+				QSize cell_first, cell_moved;
+				// Every backend is born and dies with descriptor 1 on the
+				// pty. It decides once whether stdout is a terminal, and its
+				// destructor hands the terminal back -- so one destroyed on
+				// the real stdout writes its mode resets into the middle of
+				// this suite's own output.
+				{
+					AnsiBackend ic;
+					Recorder ic_rec;
+					ic.set_event_sink(&ic_rec);
+					cell_first = ic.capabilities().cell_px;
+					while (::read(master, drain, sizeof(drain)) > 0) { }
+					fflush(stdout);
+					::dup2(sink, 1);
+
+					QElapsedTimer spent;
+					spent.start();
+					ic.present(f_photo, QRegion());
+					first_ms = double(spent.nsecsElapsed()) / 1e6;
+					wire_first = taken();
+					spent.restart();
+					ic.present(f_photo, QRegion());
+					again_ms = double(spent.nsecsElapsed()) / 1e6;
+					wire_again = taken();
+					held_photo = ic.cached_images();
+
+					ic.present(f_flat, QRegion());
+					wire_changed = taken();
+					held_changed = ic.cached_images();
+					ic.present(f_two, QRegion());
+					(void)taken();
+					held_two = ic.cached_images();
+					ic.present(f_flat, QRegion());
+					(void)taken();
+					held_again = ic.cached_images();
+
+					ic.present(f_crop, QRegion());
+					cropped = sixels(taken());
+
+					// The other tier, and the one key field that is
+					// load-bearing only there. OSC 1337 states an image's
+					// size in CELLS, so one picture at one crop stretched
+					// over two different cell extents is two different sets
+					// of bytes. On sixel those same two placements really
+					// are one encode and share an entry, which is the cache
+					// working -- so the extent is the field sixel cannot see
+					// the absence of, and this is the check that can.
+					//
+					// Scoped so its backend is gone before the cell-size
+					// test: two live backends are two notifiers on
+					// descriptor 0, and the one the event loop reaches first
+					// takes the reply the other is waiting for.
+					{
+						fflush(stdout);
+						::dup2(slave, 1);
+						qputenv("QTTY_GRAPHICS", "iterm2");
+						{
+							const ssize_t wi = ::write(master,
+							    hello.constData(), hello.size());
+							(void)wi;
+						}
+						AnsiBackend i2;
+						Recorder i2_rec;
+						i2.set_event_sink(&i2_rec);
+						(void)i2.capabilities();
+						while (::read(master, drain, sizeof(drain)) > 0) { }
+						fflush(stdout);
+						::dup2(sink, 1);
+						i2.present(f_extent, QRegion());
+						stretched = iterms(taken());
+						fflush(stdout);
+						::dup2(slave, 1);
+						qputenv("QTTY_GRAPHICS", "sixel");
+					}
+					::dup2(sink, 1);
+
+					// The terminal's cell moves when its font size does, and
+					// the answer arrives as an ordinary CSI on the input
+					// channel -- the same route as the keys. dispatch_csi()
+					// already drops the kitty upload cache there, which is
+					// this same staleness at the tier that has a handle.
+					ic.present(f_flat, QRegion());
+					wire_before_cell = taken();
+					{
+						const QByteArray moved =
+						    "\033[6;" + QByteArray::number(ich6 * 2) + ";"
+						    + QByteArray::number(icw6 * 2) + "t";
+						const ssize_t wm = ::write(master, moved.constData(),
+						                           moved.size());
+						(void)wm;
+					}
+					for (int i = 0; i < 50; ++i)
+						QCoreApplication::processEvents();
+					cell_moved = ic.capabilities().cell_px;
+					ic.present(f_flat, QRegion());
+					wire_after_cell = taken();
+					fflush(stdout);
+					::dup2(slave, 1);
+				}
+
+				fflush(stdout);
+				::dup2(keep_in, 0);
+				::dup2(keep_out, 1);
+				// Both halves: the frame really did go out as sixel, and it
+				// went out the same twice. "Equal" on its own is satisfied
+				// by two empty captures, which is what a fixture whose tier
+				// had fallen back to the mosaic would produce.
+				CHECK(wire_first.contains("\033P0;1;0q")
+				      && wire_first == wire_again,
+				      "the same frame presented twice puts the same bytes on"
+				      " the wire, cache or no cache");
+				CHECK(!wire_changed.isEmpty() && wire_changed != wire_first,
+				      "and a frame whose picture changed does not");
+				CHECK(cropped.size() == 2 && cropped[0] != cropped[1],
+				      "one image at two crops in one frame is two different"
+				      " sixels, not the first one twice");
+				// Named sizes rather than "they differ": two frames that
+				// differed for the WRONG reason -- a crop that should not
+				// have happened, say -- would satisfy inequality and fail
+				// this.
+				CHECK(stretched.size() == 2
+				      && stretched[0].contains("width=4")
+				      && stretched[1].contains("width=8"),
+				      "and one image over two cell extents is two iTerm2"
+				      " frames, each stating its own size");
+				CHECK(held_photo == 1 && held_changed == 1 && held_two == 2
+				      && held_again == 1,
+				      "the cache holds what the last frame drew and nothing"
+				      " it has stopped drawing");
+				CHECK(cell_first == QSize(10, 19)
+				      && cell_moved == QSize(icw6 * 2, ich6 * 2)
+				      && cell_moved != cell_first,
+				      "the terminal answers with a new cell size, which is"
+				      " the next check's premise");
+				CHECK(!wire_before_cell.isEmpty()
+				      && wire_after_cell != wire_before_cell,
+				      "and the same picture is re-encoded at the terminal's"
+				      " new cell rather than served at the old one");
+				printf("info: a 40x12-cell photographic placement: %.3f ms to"
+				       " present, %.3f ms to present again unchanged\n",
+				       first_ms, again_ms);
+				// A duration is the weakest instrument in this file, and it
+				// is the ONLY one that can see a cache whose output is
+				// byte-identical. What makes this one trustworthy is the
+				// margin: the encode is two orders of magnitude dearer than
+				// everything else present() does for this frame. Measured
+				// here, 203.985 ms and then 0.247 ms -- about 830 to one,
+				// against a threshold of four. A machine running four other
+				// builds stretched the same encode from 146 ms to 180 ms,
+				// measured rather than guessed, which is nowhere near enough
+				// to reach it, and the load would have to slow the cached
+				// present by two hundredfold WITHOUT touching the first one.
+				// A tighter
+				// number would be a truer statement of the saving and a test
+				// that goes red for reasons that are not the code's.
+				//
+				// Skipped under the instrument that multiplies durations, as
+				// suite_budget's one asserted duration is and for the same
+				// reason.
+				if (!qEnvironmentVariableIsEmpty("QTTY_UNDER_VALGRIND")) {
+					printf("SKIP: the encode saving measures the instrument"
+					       " under valgrind, not the code\n");
+				} else {
+					CHECK(again_ms * 4 <= first_ms,
+					      "and an unchanged picture costs a fraction of what"
+					      " encoding it did");
+				}
+				::close(sink);
+			}
+			::close(keep_in);
+			::close(keep_out);
+			::close(master);
+			::close(slave);
+			if (had_term.isEmpty()) qunsetenv("TERM");
+			else qputenv("TERM", had_term);
+			if (!had_tmux.isEmpty()) qputenv("TMUX", had_tmux);
+			if (had_gfx.isEmpty()) qunsetenv("QTTY_GRAPHICS");
+			else qputenv("QTTY_GRAPHICS", had_gfx);
+		}
+	}
 
 	// ---- OSC 52: the clipboard going OUT -------------------------------------
 	//
