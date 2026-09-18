@@ -28,8 +28,22 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-18, at 1605**
-(`174cc0a`), and that run is the one the entries from 8.227 to 8.242 owed:
+**Last re-verified under all six configurations: 2026-09-18, at 1664**
+(`f9211b9`), covering 8.243 to 8.248 -- the colour scheme, Dim in the
+rasteriser, the keypad, the theme roles and the three remaining instances
+of the raw-window family. Offscreen, xcb under Xvfb and the hostile
+environment all ran 1664, `minimal` refused and said why, the sanitized
+arm reported nothing from AddressSanitizer, UndefinedBehaviorSanitizer or
+the leak detector, and memcheck was clean. **This one took 8 minutes
+where the previous took 19**, on a machine at load 2.6 rather than 25 --
+worth knowing before reading a slow run as a hanging one.
+
+The counts were read out of each arm rather than taken from its exit
+status, which is the same distinction 8.231 was written about: an arm
+that silently runs fewer checks is green on the status alone.
+
+**The claim before that: 2026-09-18, at 1605**
+(`174cc0a`), the run the entries from 8.227 to 8.242 owed:
 offscreen, xcb under Xvfb and the hostile environment all ran 1605,
 `minimal` refused and said why, AddressSanitizer with
 UndefinedBehaviorSanitizer and the leak detector reported nothing, and
