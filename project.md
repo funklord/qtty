@@ -28,7 +28,7 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-18, at 1511**,
+**Last re-verified under all six configurations: 2026-09-18, at 1516**,
 run one at a time rather than together, since two builds in one tree is
 how a session reads somebody else's half-written artifact as its own
 result. Offscreen and xcb-under-Xvfb both ran 1344, `minimal` refused and
@@ -130,6 +130,23 @@ application draws, which is the memcheck arm's own subject. All four
 platform arms ran 1486, the sanitized run reported no failure and no
 sanitizer output, and memcheck reported **0 errors with 17 suppressed**
 and nothing lost on any of its three counts.
+
+**And at 1516**, for the font choice of 8.225 -- which decides the cell
+every widget in every application is measured against, so it is the
+memcheck and sanitized arms' own subject. Four platform arms at 1516,
+sanitized clean with no sanitizer output, memcheck 0 errors with the
+same 17 suppressed and nothing lost. Memcheck's own count read 1515,
+the one interleaved `PASS:` line again, confirmed by grepping for the
+signature rather than by re-running.
+
+**Both slow builds had to be detached to finish at all**, the machine
+sitting at load 40 from other work: a bounded foreground build is
+killed at its limit and leaves yesterday's binary in place, which is
+the stale-binary trap this record already carries twice. Detached under
+`setsid` with a 2400-second bound, then watched by PID rather than by
+`pgrep -f` -- a watcher matching a pattern its own command line
+contains never exits, which running-code.md documents and this session
+still walked into once.
 
 **And at 1511**, for the new public API of 8.224 and the quit-key match
 under it. Four platform arms at 1511, the sanitized run clean with no
