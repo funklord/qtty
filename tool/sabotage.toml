@@ -1144,8 +1144,8 @@ check = "a menu wider than the terminal shows its item names"
 # second window appears in the first one, off screen. 8.107.
 name = "input goes to the router's own window rather than the current one"
 file = "src/runtime/input_router.cpp"
-find = "\treturn cur_ ? cur_.data() : win_;"
-into = "\treturn win_;"
+find = "\treturn cur_ ? cur_.data() : win_.data();"
+into = "\treturn win_.data();"
 count = 1
 check = "on screen and not the one left behind"
 

@@ -215,7 +215,14 @@ QWidget *InputRouter::input_scope() const {
 	// over their own windows, so the global names a window most routers do
 	// not serve. Measured: nine checks in two sections failed that way,
 	// every one a router that had been sent keys meant for its own window.
-	return cur_ ? cur_.data() : win_;
+	//
+	// Null once the window has been destroyed, which is a state this class
+	// can reach while it is still running: it posts a queued focus repair
+	// from inside the window's own destructor (runtime.h says why), and
+	// the repair is delivered after the memory is gone. Every caller that
+	// dereferences this either checks it or sits behind one of the guards
+	// at the top of on_key(), on_mouse(), on_paste() and on_resize().
+	return cur_ ? cur_.data() : win_.data();
 }
 
 void InputRouter::set_input_window(QWidget *w) {
@@ -320,6 +327,10 @@ QWidget *InputRouter::key_target() const {
 			if (p == win_) return g;
 	}
 	QWidget *scope = input_scope();
+	// No window, no target. A router whose window has been destroyed is
+	// answering for nothing, and saying so is the only honest answer -- the
+	// alternative was reading the focus widget out of a freed QWidget.
+	if (!scope) return nullptr;
 	return scope->focusWidget() ? scope->focusWidget() : scope;
 }
 
@@ -2063,7 +2074,23 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 	}
 }
 
+// A ROUTER WHOSE WINDOW IS GONE DOES NOTHING, and the four entry points say
+// so once each rather than every line below testing for it.
+//
+// exec() gets the ordering right -- `InputRouter router(&win)` is a local
+// declared after the window reference, so it goes down first -- and that is
+// not the same as the ordering being guaranteed. The window is the CALLER's:
+// `exec(QApplication &, QWidget &)` borrows it, and an application that sets
+// Qt::WA_DeleteOnClose on that window, or that owns a second one, can have it
+// destroyed while the loop is still running. The backend is holding the
+// router as its event sink by then (application.cpp, `set_event_sink`), so
+// bytes keep arriving and keep being routed at a window that is gone.
+//
+// Which is the general shape rather than the test's particular one: nothing
+// tells this class its window died, so it has to ask, and the answer has to
+// mean something. See win_ in runtime.h.
 void InputRouter::on_key(const KeyEvent &k) {
+	if (!input_scope()) return;
 	// The record before the match, not only after it. An application that
 	// moved focus in a slot left this stale, and a widget-context shortcut is
 	// decided against it -- measured: after `b->setFocus()`, B's own
@@ -2396,6 +2423,7 @@ static void prime_menu_motion(QWidget *target, const QPoint &screen,
 }
 
 void InputRouter::on_mouse(const MouseEvent &m) {
+	if (!input_scope()) return;                 // see on_key(), above
 	const QPoint px(m.cell.x() * GridMetrics::cw() + GridMetrics::cw() / 2,
 	                m.cell.y() * GridMetrics::ch() + GridMetrics::ch() / 2);
 	// Where the pointer is, recorded where the rest of Qt looks for it.
@@ -2506,7 +2534,7 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 			if (!modal->geometry().contains(px)) return;
 			top = modal;
 		} else {
-			top = win_;
+			top = win_.data();
 		}
 	}
 	// The ROOT is drawn at -scroll cells when the terminal is too small for
@@ -2530,7 +2558,7 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 	// The offset belongs to whichever window is being SHOWN, which with a
 	// tab strip up is not necessarily win_. Before tabs the two were always
 	// the same and the test could be written against win_ alone.
-	QWidget *const base = current_window() ? current_window() : win_;
+	QWidget *const base = current_window() ? current_window() : win_.data();
 	const QPoint screen = (top == win_ || top == base)
 	    ? px + QPoint(root_scroll_.x() * GridMetrics::cw(),
 	                  root_scroll_.y() * GridMetrics::ch())
@@ -2832,6 +2860,7 @@ void InputRouter::update_hover(QWidget *now, const QPoint &window_pos) {
 
 void InputRouter::on_paste(const QString &text) {
 	QWidget *target = key_target();
+	if (!target) return;                        // see on_key(), above
 
 	// A paste is text, not typing, which is the whole reason bracketed paste
 	// exists: delivering the newlines as Return would fire the default button
@@ -2895,7 +2924,7 @@ void InputRouter::on_paste(const QString &text) {
 void InputRouter::on_resize(QSize cells) {
 	const QSize px(cells.width() * GridMetrics::cw(),
 	               cells.height() * GridMetrics::ch());
-	win_->resize(px);
+	if (win_) win_->resize(px);                 // see on_key(), above
 
 	// EVERY window that takes a turn at the terminal, not only the one this
 	// router was built with. A terminal is one rectangle and the windows take

@@ -335,7 +335,41 @@ private:
 	// one, else the window (section 8.3).
 	QWidget *input_scope() const;
 
-	QWidget *win_;
+	// A QPointer, because THIS ROUTER OUTLIVES ITS WINDOW AND POSTS WORK
+	// FROM INSIDE THAT WINDOW'S OWN DESTRUCTOR.
+	//
+	// Deleting a visible widget sends QEvent::Hide -- measured, to the
+	// QWidgetWindow, the widget and each visible child -- so the focus
+	// repair in eventFilter() fires while the window is being destroyed
+	// and posts a queued call to this router. The call is delivered on
+	// the next pass of the event loop, by which time the window's memory
+	// is gone, and `input_scope()` handed the lambda the freed pointer:
+	// heap-use-after-free at input_router.cpp:406, on the 40 bytes of a
+	// QWidget, caught by the sanitized suite.
+	//
+	// QCoreApplication::removePostedEvents() does not reach it, and the
+	// reason is worth stating rather than rediscovering: it is keyed on
+	// the RECEIVER, and the receiver is this router, which is perfectly
+	// alive. What died is a widget the receiver points at, and Qt has no
+	// way to know that. The lambda's own captures were QPointers already;
+	// the one pointer it did not have to capture, because it came in
+	// through `this`, is the one that dangled.
+	//
+	// The quieter half is the reason every other widget this class
+	// remembers is a QPointer too, and is the argument grid_style.cpp
+	// makes about its own focus record: Qt reuses heap addresses, so a
+	// new window landing where the old one was compares EQUAL to `win_`
+	// in the ownership tests scattered through input_router.cpp -- the
+	// `p == win_` walks that decide which router answers a Hide or a
+	// Show -- and a dead router would start answering for somebody
+	// else's window. A crash is the loud version of that; the silent
+	// version is worse, and the regression fixture caught it happening
+	// on the first run.
+	//
+	// So a router whose window is gone has no input scope, and everything
+	// that needs one does nothing. See input_scope() and the guards at
+	// the top of on_key(), on_mouse(), on_paste() and on_resize().
+	QPointer<QWidget> win_;
 	// The window the compositor is drawing, once it has said so. Null until
 	// then, which means win_: a router with no compositor -- a test's, over
 	// its own window -- keeps the window it was built with.

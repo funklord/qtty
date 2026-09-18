@@ -9473,5 +9473,100 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// ---- a router that outlives its own window ---------------------------
+	//
+	// DELETING A VISIBLE WIDGET SENDS QEvent::Hide -- measured, to the
+	// QWidgetWindow, to the widget and to each visible child -- so the focus
+	// repair in InputRouter::eventFilter() fires from inside the window's own
+	// DESTRUCTOR and posts a queued call to the router. The router is a
+	// separate object and is perfectly alive, so
+	// QCoreApplication::removePostedEvents() has nothing to remove: it is
+	// keyed on the RECEIVER, and what died is a widget the receiver points
+	// at. The call then arrives on the next pass of the loop and asks
+	// input_scope() for a window that is gone.
+	//
+	// Measured before the fix, on this exact shape, by the sanitized suite:
+	//
+	//     ERROR: AddressSanitizer: heap-use-after-free
+	//     READ of size 8 ... src/runtime/input_router.cpp:406
+	//     0 bytes inside of 40-byte region      <- sizeof(QWidget) is 40
+	//     freed by ... delete of the window
+	//
+	// ALL THREE WERE WATCHED FAILING, with the library reverted and these
+	// checks left in place, and the plain build said more than the sanitized
+	// one. Sanitized, the process aborts here and prints nothing. At -Os with
+	// no sanitizer:
+	//
+	//     FAIL: a router whose window has been destroyed answers no key ...
+	//     FAIL: and does not begin answering for a window built after ...
+	//     Segmentation fault
+	//
+	// -- two honest FAILs, then a crash on the third check's own action.
+	//
+	// The second line is why win_ is a QPointer rather than a null test
+	// bolted onto one place. Qt reuses heap addresses, so a raw pointer to a
+	// destroyed window compares EQUAL to a new window that lands on it, and
+	// the dead router began answering for a window built after its own was
+	// freed -- on the first run, glibc having handed the 40 bytes straight
+	// back. grid_style.cpp makes that argument about its own focus record;
+	// this is the measurement behind it. A crash is the loud version, and
+	// answering for somebody else's window is the version nobody sees.
+	{
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+		{
+			auto *gone = new QWidget;
+			gone->setAttribute(Qt::WA_DontShowOnScreen);
+			gone->resize(GridMetrics::cells(40, 12));
+			auto *field = new QLineEdit(gone);
+			field->setGeometry(0, 0, cw * 20, ch);
+			gone->show();
+			QCoreApplication::processEvents();
+			InputRouter orphan(gone);
+			field->setFocus();
+			set_focus_widget(gone->focusWidget());
+			QCoreApplication::processEvents();
+			// BOTH LINES ARE THE FIXTURE. The delete is what posts the
+			// repair, and only the processEvents delivers it -- without
+			// the second, the call sits in the queue and nothing ever
+			// reads the freed window.
+			delete gone;
+			QCoreApplication::processEvents();
+			CHECK(orphan.key_target() == nullptr,
+			      "a router whose window has been destroyed answers no key"
+			      " target, rather than reading one out of the freed window");
+
+			// A SECOND WINDOW, so the question is not only whether the
+			// router refuses but whether it refuses the right thing. Two
+			// fields, because a Tab that moves nothing would pass this
+			// check for the wrong reason in a window with one.
+			auto *after = new QWidget;
+			after->setAttribute(Qt::WA_DontShowOnScreen);
+			after->resize(GridMetrics::cells(40, 12));
+			auto *one = new QLineEdit(after);
+			one->setGeometry(0, 0, cw * 20, ch);
+			auto *two = new QLineEdit(after);
+			two->setGeometry(0, ch * 2, cw * 20, ch);
+			after->show();
+			QCoreApplication::processEvents();
+			one->setFocus();
+			QCoreApplication::processEvents();
+			CHECK(orphan.key_target() == nullptr,
+			      "and does not begin answering for a window built after"
+			      " its own was freed, which is what a reused address"
+			      " gives a raw pointer");
+			orphan.on_key({Qt::Key_Tab, QString(), false, false, false});
+			QCoreApplication::processEvents();
+			CHECK(after->focusWidget() == one,
+			      "and a key handed to it moves the focus in nobody's"
+			      " window");
+			delete after;
+		}
+		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	return fails;
 }

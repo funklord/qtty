@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1569 checks, 0 failures. `make check` is green and includes
+1572 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16369,6 +16369,93 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.237 A router that outlived its window (2026-09-18)
+
+`make test-sanitize` aborted on the differential test 8.226 had just
+written, and the report named the library rather than the fixture:
+
+    ERROR: AddressSanitizer: heap-use-after-free
+    READ of size 8 at ... src/runtime/input_router.cpp:406
+    0 bytes inside of 40-byte region
+    freed by     test/suite_render.cpp:2724   delete t.win
+    allocated by test/suite_render.cpp:2586   t.win = new QWidget
+
+**The 40 bytes are the QWidget, and reading them as anything else sends
+you to the wrong file.** The obvious first guess from the stack -- which
+names `QCallableObject<InputRouter::eventFilter(...)::lambda#1>::impl`
+as frame 0 -- is that the SLOT OBJECT is being called after being freed:
+a QSlotObjectBase plus a captured `this` plus one QPointer comes to 40
+bytes exactly, and a queued call surviving its own cleanup is a far more
+interesting bug than a stale pointer. It is not what happened.
+`sizeof(QWidget)` is also 40 here -- QObject's 16, QPaintDevice's 16 and
+one `QWidgetData *` -- and the allocation frame is a plain `new QWidget`
+in the fixture's builder. **Two structures of the same size, and only
+the allocation site tells them apart**; the `-Os` build the sanitizer
+arm uses gives no line numbers, which is what left the size doing the
+work. Rebuilding the same arm with `-g` added and nothing removed
+answered it in one run.
+
+**The mechanism, which is a property of this class rather than of that
+test.** Deleting a visible widget sends `QEvent::Hide` -- measured with
+a twenty-line probe: to the QWidgetWindow, to the widget, and to each
+visible child. So the focus repair in `eventFilter()` fires from inside
+the window's own DESTRUCTOR, sees a focus widget that is still its own,
+and posts a queued call to the router. The window then finishes dying.
+The call is delivered on the next pass of the loop, `input_scope()`
+hands the lambda `win_`, and line 406 dereferences it.
+
+**Why `QCoreApplication::removePostedEvents()` does not save it, which
+is the part worth keeping.** It is keyed on the RECEIVER, and the
+receiver is the router -- alive, unharmed, and destroyed a dozen lines
+later. What died is a widget the receiver points at, and Qt has no way
+to know a queued call depends on one. The lambda's own captures were
+`QPointer` already and did their job; the pointer that dangled is the
+one it never had to capture, because it arrived through `this`.
+
+**The fixture is not wrong and that matters for where the fix went.**
+Deleting a window while a stack-scoped router is still in scope is legal
+use of a class that takes a `QWidget *` and keeps no ownership. The
+library is the half that has to survive it: `win_` was the one widget
+this class remembered through a raw pointer, where `cur_`, `popups_`,
+`before_menu_bar_`, `grab_` and `hovered_` are all QPointers, each for a
+reason its own comment records. It is a `QPointer<QWidget>` now, and the
+four entry points say once each that a router with no scope does
+nothing.
+
+**The quieter half is the reason a null test in one place would not have
+done.** Qt reuses heap addresses, so a raw `win_` pointing at a freed
+window compares EQUAL to a new window that lands on it, and the four
+ownership tests in the filter -- `p == win_`, the ones that decide which
+router answers a Hide or a Show -- would start answering for somebody
+else's window. That is `grid_style.cpp`'s own argument about `s_focus`,
+met a second time in the same tree; the crash is the loud version of it
+and the wrong answer is the version nobody sees.
+
+**The regression fixture reproduces the fault rather than the fix**, and
+was watched doing it twice, with the library reverted and the checks
+left in place. Under the sanitizers it aborts at `input_router.cpp:406`
+on a 40-byte region allocated at `suite_router.cpp:9428` and freed at
+`9443` -- the same site, reached by a fixture eleven lines long.
+
+**And the plain build was the more useful of the two runs, which was not
+the expectation.** The entry first said here that only the sanitized arm
+could see this, on the reasoning that undefined behaviour in an ordinary
+build reads the stale contents of a freed QWidget and passes. Measured,
+`-Os` with no sanitizer:
+
+    FAIL: a router whose window has been destroyed answers no key target
+    FAIL: and does not begin answering for a window built after its own
+          was freed, which is what a reused address gives a raw pointer
+    Segmentation fault
+
+Two honest FAILs and then a crash on the third check's own action. **The
+second one is the interesting line**: the address-reuse hazard this fix
+is really about is not a story about what Qt might do, it happened on
+the first run -- the dead router answered for a window built after its
+own was freed, because glibc handed the 40 bytes straight back. So all
+three checks have been seen to fail through the defect they were written
+for, two as FAILs and the third as the segfault it exists to prevent.
 
 ### 8.236 A link nobody could open, cleared by the audit for links (2026-09-18)
 
