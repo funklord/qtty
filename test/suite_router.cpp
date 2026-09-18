@@ -7948,6 +7948,68 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// ---- Ctrl+A in a list, which the guide promises is Select All ----------
+	//
+	// The fourth reader of WA_InputMethodEnabled, and the one that broke a
+	// promise the guide makes in as many words: Ctrl+A is decided per
+	// widget, start of line where a caret is and Qt's Select All in a
+	// list. For the commonest list in Qt it was neither -- a QListView
+	// over QStringListModel has editable items, so it carries the
+	// attribute, so the readline chords fired on it. Measured, five rows
+	// with the current one at the bottom:
+	//
+	//     QListWidget, items not editable   Ctrl+A selected 5
+	//     QListView + QStringListModel      Ctrl+A selected 1, current
+	//                                       row jumped 4 -> 0
+	//
+	// The existing check for this promise uses a QListWidget, whose items
+	// are NOT editable by default -- so it passed throughout, on the one
+	// list shape where the attribute is absent.
+	{
+		const bool had_conv = keyboard_conventions();
+		set_keyboard_conventions(true);
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(30, 12));
+		auto *view = new QListView(&host);
+		auto *model = new QStringListModel(&host);
+		model->setStringList({QStringLiteral("v0"), QStringLiteral("v1"),
+		                      QStringLiteral("v2"), QStringLiteral("v3"),
+		                      QStringLiteral("v4")});
+		view->setModel(model);
+		view->setSelectionMode(QAbstractItemView::ExtendedSelection);
+		view->setGeometry(0, 0, 18 * cw, 5 * ch);
+		auto *field = new QLineEdit(QStringLiteral("some text"), &host);
+		field->setGeometry(0, 6 * ch, 18 * cw, ch);
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter sr(&host);
+		view->setCurrentIndex(model->index(4, 0));
+		view->clearSelection();
+		view->setFocus();
+		set_focus_widget(host.focusWidget());
+		QCoreApplication::processEvents();
+		sr.on_key({Qt::Key_A, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		CHECK(view->selectionModel()->selectedIndexes().size() == 5
+		      && view->currentIndex().row() == 4,
+		      "Ctrl+A in a list over an ordinary editable model is Qt's "
+		      "Select All, which the guide promises and the readline "
+		      "chords were taking");
+		field->setFocus();
+		set_focus_widget(host.focusWidget());
+		field->setCursorPosition(field->text().size());
+		QCoreApplication::processEvents();
+		sr.on_key({Qt::Key_A, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		CHECK(field->cursorPosition() == 0,
+		      "and in a field it is still start of line, the chord being "
+		      "decided by where the caret is rather than by an attribute a "
+		      "model sets");
+		set_keyboard_conventions(had_conv);
+		GridGuard::reset();
+	}
+
 	// ---- the quit key an item view was eating ------------------------------
 	//
 	// The quit-key loop gives Ctrl+C up where a caret sits in a field,

@@ -2765,3 +2765,13 @@ find = "\t\t\t    && !qobject_cast<const QAbstractItemView *>(fw);"
 into = "\t\t\t    ;"
 count = 1
 check = "Ctrl+C on a list over an ordinary editable model is taken by the quit keys"
+
+[[sabotage]]
+# The readline chords handed back to item views, so Ctrl+A in the
+# commonest list in Qt is Home rather than Select All. 8.223.
+name = "the readline chords fire on an item view"
+file = "src/runtime/input_router.cpp"
+find = "\tif (qobject_cast<QAbstractItemView *>(fw)) return false;"
+into = "\tif (false) return false;"
+count = 1
+check = "Ctrl+A in a list over an ordinary editable model is Qt's Select All"

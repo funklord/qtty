@@ -1719,6 +1719,23 @@ bool InputRouter::readline_edit(const KeyEvent &k) {
 	if (!s_conventions || !k.ctrl || k.alt) return false;
 	QWidget *const fw = key_target();
 	if (!fw || !fw->testAttribute(Qt::WA_InputMethodEnabled)) return false;
+	// AND NOT AN ITEM VIEW, the fourth place this attribute was asked a
+	// question it does not answer. The guide promises that Ctrl+A is
+	// decided per widget -- start of line where a caret is, Qt's Select
+	// All in a list, a tree or a table -- and for the commonest list in
+	// Qt that promise was false: a QListView over QStringListModel has
+	// editable items, so it carries WA_InputMethodEnabled and these
+	// chords fired on it. Measured, with five rows and the current one at
+	// the bottom:
+	//
+	//     QListWidget, items not editable   Ctrl+A selected 5
+	//     QListView + QStringListModel      Ctrl+A selected 1, and the
+	//                                       current row jumped 4 -> 0
+	//
+	// Home wearing Select All's clothes. An open editor is a QLineEdit
+	// and is the key target in its own right, so a real caret inside a
+	// view keeps every chord.
+	if (qobject_cast<QAbstractItemView *>(fw)) return false;
 	const auto send = [fw](int key, Qt::KeyboardModifiers mods) {
 		QKeyEvent down(QEvent::KeyPress, key, mods);
 		QApplication::sendEvent(fw, &down);

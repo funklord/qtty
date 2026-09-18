@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1503 checks, 0 failures. `make check` is green and includes
+1505 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16367,15 +16367,38 @@ attribute on its own account, so a real caret still takes the key -- a
 third check holds that, because the hatch closing entirely would be the
 opposite defect.
 
-**Three entries now turn on one attribute.** `WA_InputMethodEnabled`
-means *this widget can accept input-method text*, and three places wanted
-the narrower *there is a caret here right now*: the terminal cursor
-(8.221), `focus_invisible()` (8.221) and the quit keys (this one). Qt
-sets it on an item view whose current item is editable, which is a fact
-about the MODEL rather than about what the user is doing. **A predicate
-borrowed for a question it does not answer is worth hunting through a
-tree once the first instance turns up** -- the other two were found by
-asking what else read that attribute.
+**FOUR places turn on one attribute, and the sweep for them is the
+finding.** `WA_InputMethodEnabled` means *this widget can accept
+input-method text*; four readers wanted the narrower *there is a caret
+here right now*, and Qt sets it on an item view whose current item is
+editable -- a fact about the MODEL rather than about what the user is
+doing. Grepping the tree for the attribute took minutes and turned up
+all of them:
+
+    the terminal cursor        parked in a focused list      8.221
+    focus_invisible()          exempted the commonest list   8.221
+    the quit keys              Ctrl+C did nothing at all     this entry
+    readline_edit()            Ctrl+A was Home, not Select
+                               All -- against a promise the
+                               guide makes in as many words  this entry
+
+The fourth is the sharpest. The guide says Ctrl+A is decided per widget:
+start of line where a caret is, Qt's Select All in a list. Measured on
+five rows with the current one at the bottom, a `QListWidget` selected
+five and a `QListView` over `QStringListModel` selected one and moved
+the current row from 4 to 0. **The check that had defended that promise
+all along uses a `QListWidget`, whose items are not editable by
+default** -- so it passed on the one list shape where the attribute is
+absent, which is the fixture-shape trap this project has now met a dozen
+times.
+
+**And the fifth reader was RIGHT, which is worth as much as the four.**
+`deliver_key()` empties an Alt+letter's text for a widget that "takes
+typing", so a mnemonic is not typed into it -- and for a list that
+suppresses type-ahead on Alt+X, which is exactly what should happen. The
+broad attribute answers that question correctly. **A sweep that changed
+every site it found would have broken it**, and the only thing
+separating the four from the fifth is reading what each one is for.
 
 ### 8.222 What's This works, and nothing said so (2026-09-18)
 
