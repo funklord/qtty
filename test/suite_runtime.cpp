@@ -2957,11 +2957,50 @@ int suite_runtime() {
 		// invisible.
 		install_url_handlers();
 
-		CHECK(!QDesktopServices::openUrl(
-		          QUrl(QStringLiteral("mailto:someone@qtty.invalid"))),
-		      "a scheme qtty does not claim still falls through to the "
-		      "platform's refusal, so the registration is scoped rather "
-		      "than global and mailto: stays the application's to answer");
+		// SCOPE, asserted through qtty's OWN side effects rather than
+		// through what openUrl() returns -- and the xcb arm of
+		// `make test-platforms` is what taught this fixture the
+		// difference, which is the whole argument for that arm existing.
+		//
+		// The first version read `!openUrl("mailto:...")`. That is a
+		// claim about the PLATFORM, not about qtty: the offscreen
+		// platform this suite normally runs under cannot open anything
+		// and answers false, while a real one can and answers true. It
+		// passed everywhere the suite is usually run and failed the
+		// moment anybody ran it under xcb. The claim being made is that
+		// qtty's registration is scoped to http and https; whether the
+		// desktop underneath could have opened a mailto: is no part of
+		// it.
+		//
+		// The polarity is the smaller half. The old version let the call
+		// REACH the platform, and under xcb it does what it says:
+		// measured with a standalone program under Xvfb, `openUrl` on a
+		// mailto: URL ran `xdg-open`, which launched **mutt** -- found
+		// orphaned to init and still running five minutes later, with
+		// the program that started it long gone. A check that launches a
+		// mail client nothing reaps is worse than a check that is
+		// occasionally wrong.
+		//
+		// So the call is intercepted before it can get out. An
+		// application's own handler for the scheme proves the same thing
+		// better: it runs, and qtty's does not -- no box, and the
+		// clipboard qtty's handler would have written is untouched.
+		{
+			AppUrlHandler mail;
+			QDesktopServices::setUrlHandler(QStringLiteral("mailto"),
+			                                &mail, "handle");
+			board->setText(QStringLiteral("not qtty's doing"));
+			const QUrl to(QStringLiteral("mailto:someone@qtty.invalid"));
+			const bool took = QDesktopServices::openUrl(to);
+			QCoreApplication::processEvents();
+			QDesktopServices::unsetUrlHandler(QStringLiteral("mailto"));
+			CHECK(took && mail.count == 1 && mail.seen == to
+			      && boxes().isEmpty()
+			      && board->text() == QStringLiteral("not qtty's doing"),
+			      "a scheme qtty does not claim is left to the "
+			      "application: its handler got the link, qtty's put up "
+			      "no box and wrote no clipboard");
+		}
 
 		board->setText(QString());
 		host.hide();

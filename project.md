@@ -16370,6 +16370,57 @@ recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
 
+### 8.240 A check that pinned the platform, not the library (2026-09-18)
+
+The xcb arm of `make test-platforms` failed, on a check written hours
+earlier for 8.236:
+
+    CHECK(!QDesktopServices::openUrl(QUrl("mailto:someone@qtty.invalid")),
+          "a scheme qtty does not claim still falls through to the "
+          "platform's refusal ...")
+
+**The library was right and the check was wrong**, which is the order this
+project's rule asks them to be suspected in. qtty's URL registration really
+is scoped to `http` and `https`; what the check asserted was that the
+PLATFORM underneath cannot open a `mailto:`, and that is a property of the
+platform rather than of anything qtty does. Measured with a standalone
+program:
+
+    offscreen   openUrl(mailto:) returned 0
+    xcb         openUrl(mailto:) does not return promptly at all
+
+So it passed under the platform the suite normally runs on and could only
+ever fail under the one arm that runs a real window system. **A check that
+asserts the behaviour of the platform is a check only that arm can catch**,
+and there is no way to see it by reading, because under offscreen it is
+true.
+
+**The polarity is the smaller half.** The old version let the call reach
+the platform, and under xcb the platform does what it is asked: `xdg-open`
+ran and launched **mutt**, which was found orphaned to init and still
+running five minutes later, the program that started it long gone. A
+suite that launches a mail client nothing reaps is worse than one that is
+occasionally wrong -- and it would have done that on every run of
+`make test-platforms` on any developer machine with a desktop installed.
+
+It also cost the measurement that found it. The probe was bounded with
+`timeout 120 xvfb-run ...`, and the bound stopped the wrapper while
+`xdg-open` and its child carried on: `running-code.md`'s rule about a
+wrapper bounding the wrapper rather than what it launches, met while
+investigating.
+
+**The replacement intercepts the call rather than inverting the
+assertion.** An application handler is registered for `mailto`, so nothing
+escapes to the desktop, and the scope claim is made through qtty's own
+observable behaviour -- the application's handler ran, qtty's put up no box
+and wrote no clipboard. That is true on every platform, and it tests the
+sentence the check is named for instead of something correlated with it.
+
+**What this says about the arm.** The xcb configuration has now justified
+itself twice in one day: once here, and once by failing with no evidence at
+all, which is what produced 8.231. Neither fault was visible from the
+default run, and neither was findable by reading.
+
 ### 8.237 A router that outlived its window (2026-09-18)
 
 `make test-sanitize` aborted on the differential test 8.226 had just
