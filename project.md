@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-18
 
-1652 checks, 0 failures. `make check` is green and includes
+1659 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16853,6 +16853,138 @@ cannot reach them. Neither holds a link or a placeholder either.
   `Default` under GridStyle and so is not blended at all -- measured --
   but it is the next instance of "the authored spelling did not survive
   the trip".
+
+### 8.247 Two more pointers held across the application (2026-09-18)
+
+A survey for the family 8.237 named -- a raw pointer to something the
+library can outlive, held across code the application is allowed to run --
+found two more, in files nobody was touching. They are the same shape in
+different rooms: **something runs the application's own handlers, and the
+pointer read before it is used after it.**
+
+**`Qtty::exec_drag()` held a `QDrag *` across a nested event loop.**
+`drag.h` offers the function as a drop-in for `QDrag::exec()`, so what
+arrives is whatever the application already wrote for QDrag -- and the
+spelling in Qt's own documentation is `new QDrag(this)`, which parents the
+QDrag to the drag source. `loop.exec()` then runs the application for as
+long as the button is down. A drop handler that closes the panel the item
+came out of, which is an ordinary thing for a drop handler to do, takes
+that QDrag with it, and the line after the loop was `drag->deleteLater()`.
+Before the fix, `make test-sanitize`:
+
+    ERROR: AddressSanitizer: heap-use-after-free
+    READ of size 8 ... in Qtty::exec_drag(QDrag*, ...)
+    0 bytes inside of 16-byte region      <- sizeof(QDrag)
+    freed by  QObjectPrivate::deleteChildren()
+    allocated by  suite_router()          <- new QDrag(panel)
+
+**The free stack is the whole diagnosis and is worth reading before the
+crash line.** `deleteChildren()` says the QDrag was not deleted, it was
+*inherited into* somebody else's death: nothing in this library or this
+fixture asked for it to go. That is the difference between a lifetime bug
+and a double delete, and it is the reason the fix cannot be "delete it
+earlier".
+
+**A second pointer rides with it, and it is the quiet one.** The live-drag
+record kept the `QMimeData` the QDrag OWNS and deletes, so a death during
+the loop leaves every later move and the drop itself carrying a freed
+payload -- and a drop target reads its payload, that being what a drop
+target is for. A QMimeData reallocated where the old one stood answers
+`text()` with somebody else's string and crashes nothing at all. The
+survey called that pointer "dereferenced on every move and on the drop",
+and strictly it is not: `drag.cpp` only hands it to the QDragMoveEvent and
+QDropEvent constructors, which store it. **The dereference belongs to the
+application, which makes it worse rather than better** -- the library's
+fault is handing a freed pointer out across an API.
+
+**Three guards, because the death has three arrival times, and the third
+was not in the survey.** The QDrag is checked at the top of
+`drag_move_to()`, which catches a death in the PREVIOUS move; again inside
+`drag_drop_at()` AFTER the move it sends itself, which catches a death in
+the last handler run before every drop -- `drag_drop_at()` sends a move
+first on purpose, so the application always gets one more chance to die
+there, and a guard at the top of that function has already run by then;
+and once more after the loop, where the QDrag is deleted. Each is a check
+a fixture reddens on its own.
+
+**And a guard here has to END the drag, not refuse.** A bare `return`
+would leave the nested loop with nothing to quit it: the release arrives
+at `drag_drop_at()`, is refused in the same way, and the drag hangs the
+program. A hang produces neither a PASS nor a FAIL, which this tree has
+already paid for once in the Escape check above.
+
+**`set_focus_widget()` sent FocusIn to a raw pointer after running the
+application.** Delivering the FocusOut above it is the whole purpose of
+the function -- Qt sends focus events only for an ACTIVE window and no
+qtty window ever activates, so `QLineEdit::editingFinished()` fired
+nowhere until this library started sending them itself. An
+`editingFinished` slot that rebuilds a form is ordinary Qt, and what it
+rebuilds includes the field the focus was moving to. The widget is always
+the application's: eleven of `input_router.cpp`'s fifteen call sites pass
+a `focusWidget()` straight through.
+
+**The two faces of that one are worth separating, because they need
+different fixtures.** Before the fix, under the sanitizers:
+
+    FAIL: a widget standing where the one focus was moving to was
+          destroyed is not told it has the focus ...
+    FAIL: and the next focus move works ...
+    ERROR: AddressSanitizer: SEGV on unknown address 0x16b05
+      #0 QMetaObject::cast(QObject const*) const
+      #1 QApplication::notify(QObject*, QEvent*)
+      #3 Qtty::set_focus_widget(QWidget*, Qt::FocusReason)
+
+**A SEGV and not a heap-use-after-free, and the reason matters for what
+the sanitized arm can be trusted to see here.** The read of the freed
+QWidget happens inside libQt6Core, which is not instrumented, so ASan
+never sees the load at all -- what it reports is the wild pointer that
+comes back out of it. A qtty-owned read of freed memory is named
+precisely, as the drag one above is; a freed pointer handed into Qt is
+only ever a crash somewhere downstream.
+
+**The quiet half was measured rather than argued.** With the fix reverted
+in an ordinary build, the field's replacement landed on its exact bytes
+and was told it had the focus:
+
+    info: ... stood at 0x55a1f0aaeca0 and its replacement is at
+          0x55a1f0aaeca0 (the same bytes), FocusIn count 1
+
+**What that run also showed is that the outcome is a coin toss, and the
+coin is not the code.** The same sabotage, run twice, crashed at check 708
+once and printed those two FAILs the other time. The difference that can
+be named between the runs is how stdout was buffered -- a pipe in one, an
+unbuffered file in the other -- which is enough to move the heap and
+decide whether anything lands on the freed bytes. **A check that
+depends on the allocator's mood is a check that cannot be relied on to
+fail**, so the fixture stops depending on it: the field the focus moves to
+is constructed in a block of the fixture's own stack, destroyed in place
+by the slot, and its replacement constructed in the same block. The reused
+address is then a fact of the fixture rather than a favour from glibc, and
+the quiet half reddens every time. The loud half keeps a block of its own,
+over the heap, and the quiet half `fflush`es before reaching it -- a FAIL
+line still in stdio's buffer when the process dies is a FAIL line nobody
+sees, which is how the first attempt at this entry lost its evidence.
+
+**One check here cannot fail in an ordinary build and says so in the
+fixture.** `Qtty::focusWidget()` answers null whether or not the FocusIn
+went out, s_focus having been a QPointer all along; that block exists to
+make the library perform the send so the sanitized arm has something to
+catch. Recorded rather than dressed up, because a check quoted later as
+evidence of something it cannot see is worse than no check.
+
+**Both fixes are 8.237's, and both are one pointer wide.** `Live::drag` is
+a `QPointer<QDrag>`, and the three guards make a drag whose QDrag is gone
+into a drag that is over. `set_focus_widget()` takes a
+`QPointer<QWidget>` across the FocusOut and tests it before the FocusIn --
+which is the guard that already existed three lines further down, the
+status-tip block having re-read `s_focus` since the day it was written,
+for re-entrancy rather than for this. It was protected by accident; the
+first use now is too.
+
+**1605 checks to 1612**, and the four sabotage entries are `--only`-proven:
+three redden the check they name, and the QDrag one declares
+`expect = "crash"` -- deleting a QDrag that its own source already took
+away does not produce a red line, it takes the suite out at 670 checks.
 
 ### 8.245 The numeric keypad produced nothing (2026-09-18)
 

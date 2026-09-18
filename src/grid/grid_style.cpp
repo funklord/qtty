@@ -169,13 +169,47 @@ void set_focus_widget(QWidget *w, Qt::FocusReason reason) {
 	QWidget *const before = s_focus.data();
 	if (before == w) return;
 	s_focus = w;
+	// A QPointer HELD ACROSS THE FocusOut, because delivering that event is
+	// this function's whole purpose and it RUNS THE APPLICATION -- which may
+	// destroy the widget that is about to be sent the FocusIn.
+	//
+	// The comment above s_focus says what the FocusOut buys: Qt sends a
+	// QFocusEvent only for an ACTIVE window and no qtty window ever
+	// activates, so QLineEdit::editingFinished() never fired and a form only
+	// ever heard about the field the user pressed Return in. An
+	// editingFinished slot that rebuilds or clears a form is ordinary Qt, so
+	// the sequence is one a person performs by pressing Tab: focus is in
+	// field A, it moves to field B, A's slot rebuilds the form, and the
+	// widgets it rebuilt -- B among them -- are gone by the time the line
+	// below sends B its FocusIn. What every caller hands in is a widget the
+	// application owns and may delete -- eleven of input_router.cpp's
+	// fifteen call sites pass a `focusWidget()` straight through, and the
+	// compositor and application.cpp pass one each.
+	//
+	// The loud failure is a heap-use-after-free inside
+	// QCoreApplication::sendEvent. The quiet one is the reason s_focus is a
+	// QPointer rather than a bare pointer, and it is the same argument
+	// twelve lines up met from the other side: Qt reuses heap addresses, so
+	// the replacement the rebuild allocated where B stood is told it has the
+	// focus, while s_focus -- correctly -- says nobody has. Nothing crashes
+	// and a widget draws itself focused in a form the focus has left.
+	//
+	// `before` needs no such guard: nothing runs between reading it and
+	// sending to it, and s_focus being a QPointer means a widget destroyed
+	// before this call reads as null rather than as a stale address.
+	//
+	// The status-tip block below has re-read s_focus since it was written --
+	// for re-entrancy rather than for this -- so that use was protected by
+	// accident. This is the same re-read at the FIRST use instead of the
+	// third.
+	const QPointer<QWidget> gaining(w);
 	if (before) {
 		QFocusEvent out(QEvent::FocusOut, reason);
 		QCoreApplication::sendEvent(before, &out);
 	}
-	if (w) {
+	if (gaining) {
 		QFocusEvent in(QEvent::FocusIn, reason);
-		QCoreApplication::sendEvent(w, &in);
+		QCoreApplication::sendEvent(gaining.data(), &in);
 	}
 	// A STATUS TIP FOLLOWS FOCUS, which is what Qt does on hover and what a
 	// terminal user can never ask for: there is no pointer to rest anywhere.

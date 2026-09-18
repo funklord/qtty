@@ -3691,3 +3691,56 @@ find = "\tcase QPalette::Link:            c = link; break;"
 into = "\tcase QPalette::Link:            c = window_text; break;"
 count = 1
 check = "and carries the palette's own colour still"
+
+
+[[sabotage]]
+# The QDrag deleted after the loop again, where the loop is the thing that
+# may have destroyed it. drag.h asks for `new QDrag(this)`, so the QDrag is
+# the drag source's child and a drop handler that closes the source frees
+# it -- and exec_drag() then calls deleteLater() on the freed object. The
+# suite cannot report a failure it does not survive, so this entry expects
+# the crash rather than a red line. 8.247.
+name = "a drag deletes a QDrag its own source already took with it"
+file = "src/runtime/drag.cpp"
+find = "\tif (live.drag) live.drag->deleteLater();"
+into = "\tdrag->deleteLater();"
+count = 1
+check = "leaves exec_drag returning the action the target took"
+expect = "crash"
+
+[[sabotage]]
+# The drag carried on after the QDrag was destroyed by a dragMoveEvent,
+# handing the target another move built around the QMimeData the QDrag had
+# already deleted. 8.247.
+name = "a drag goes on after a move handler destroyed the QDrag"
+file = "src/runtime/drag.cpp"
+find = "\tif (!g_live->drag) { drag_cancel(); return; }\n\tQWidget *const target = drop_target(under);"
+into = "\tQWidget *const target = drop_target(under);"
+count = 1
+check = "a drag whose source is destroyed while the loop is still running"
+
+[[sabotage]]
+# The second look, after the move drag_drop_at() sends itself and before
+# the drop it sends next. Without it the last handler the application runs
+# before a drop can free the payload that drop carries. 8.247.
+name = "the drop is sent without asking again whether the QDrag lived"
+file = "src/runtime/drag.cpp"
+find = "\tif (!g_live->drag) { drag_cancel(); return; }\n\n\tQWidget *const target = g_live->over;"
+into = "\tQWidget *const target = g_live->over;"
+count = 1
+check = "a source closed by the last move before the button came up"
+
+[[sabotage]]
+# FocusIn sent to the raw pointer again, after the FocusOut has run the
+# application's editingFinished slot -- which is allowed to delete the
+# widget focus is moving to. The check named is the QUIET half, where the
+# rebuilt form has put a live widget at the old address: the fixture
+# constructs it there deliberately, so this reddens rather than crashing.
+# The loud half is in the block after it and takes the suite down, which
+# is why the fixture flushes before reaching it. 8.247.
+name = "focus is handed on without re-reading who is still there"
+file = "src/grid/grid_style.cpp"
+find = "\tconst QPointer<QWidget> gaining(w);\n\tif (before) {\n\t\tQFocusEvent out(QEvent::FocusOut, reason);\n\t\tQCoreApplication::sendEvent(before, &out);\n\t}\n\tif (gaining) {\n\t\tQFocusEvent in(QEvent::FocusIn, reason);\n\t\tQCoreApplication::sendEvent(gaining.data(), &in);\n\t}"
+into = "\tif (before) {\n\t\tQFocusEvent out(QEvent::FocusOut, reason);\n\t\tQCoreApplication::sendEvent(before, &out);\n\t}\n\tif (w) {\n\t\tQFocusEvent in(QEvent::FocusIn, reason);\n\t\tQCoreApplication::sendEvent(w, &in);\n\t}"
+count = 1
+check = "is not told it has the focus"

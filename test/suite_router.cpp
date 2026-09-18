@@ -9626,5 +9626,411 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// ---- a drag whose source dies under it -------------------------------
+	//
+	// THE QDrag BELONGS TO THE WIDGET THE DRAG STARTED FROM, which is what
+	// drag.h asks for: exec_drag() is a drop-in for QDrag::exec(), so what an
+	// application brings to it is whatever it wrote for QDrag -- and the
+	// spelling in Qt's own documentation is `new QDrag(this)` inside a mouse
+	// handler. That parents the QDrag to the SOURCE WIDGET and ties its
+	// lifetime to it, and exec_drag() then runs a nested event loop --
+	// arbitrary application code, for as long as the button is held down.
+	//
+	// The sequence an application performs to reach it is ordinary. An item
+	// is dragged out of a panel; the drop handler takes it; the panel is now
+	// empty and closes itself, or the dialog it lived in is dismissed.
+	// `delete panel` runs inside dropEvent(), the QDrag parented to it dies
+	// with it, drag_drop_at() quits the loop, and exec_drag() resumes at
+	// `drag->deleteLater()` holding freed memory. THAT IS THE LOUD ONE: a
+	// heap-use-after-free on the QDrag, which the sanitized suite aborts on.
+	//
+	// The same death can arrive EARLIER, while the loop is still running, and
+	// that half is why a null test at the end alone would not do. The
+	// live-drag record keeps the QMimeData the QDrag OWNS and deletes, so
+	// every move after the source died handed the target a freed payload --
+	// and a drop target reads its payload, that being what a drop target is
+	// for. The quiet version of that one is the worse: a QMimeData
+	// reallocated where the old one stood answers text() with somebody
+	// else's string and nothing crashes at all.
+	//
+	// Ending the drag is also the only answer that TERMINATES. A guard that
+	// merely returned from drag_move_to() and drag_drop_at() would leave the
+	// nested loop with nothing left to quit it, and a hang is worse than a
+	// crash -- it produces neither a PASS nor a FAIL. `!rescued` is what
+	// asserts the drag ended on its own, and the rescue timers are the ones
+	// the drag checks above already carry, for that reason.
+	{
+		struct Taker : QWidget {
+			int drops = 0;
+			QString got;
+			QWidget **kill = nullptr;
+			explicit Taker(QWidget *p) : QWidget(p) { setAcceptDrops(true); }
+			void dragEnterEvent(QDragEnterEvent *e) override {
+				e->setDropAction(Qt::MoveAction); e->accept();
+			}
+			void dragMoveEvent(QDragMoveEvent *e) override {
+				e->setDropAction(Qt::MoveAction); e->accept();
+			}
+			void dropEvent(QDropEvent *e) override {
+				++drops;
+				got = e->mimeData()->text();
+				e->setDropAction(Qt::MoveAction); e->accept();
+				// The panel the item came out of closes behind it, which
+				// is what takes the QDrag parented to it.
+				if (kill && *kill) { delete *kill; *kill = nullptr; }
+			}
+		};
+		QWidget h;
+		h.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *t = new Taker(&h);
+		t->setGeometry(0, 0, cw * 10, ch * 2);
+		auto *panel = new QWidget(&h);
+		panel->setGeometry(0, ch * 2, cw * 10, ch);
+		h.resize(GridMetrics::cells(12, 4));
+		h.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&h);
+
+		auto *mime = new QMimeData;
+		mime->setText(QStringLiteral("torn out"));
+		auto *drag = new QDrag(panel);       // Qt's own `new QDrag(this)`
+		drag->setMimeData(mime);
+		QWidget *doomed = panel;
+		t->kill = &doomed;
+		QTimer::singleShot(0, [&] {
+			r.on_mouse({QPoint(2, 0), 1, false, false, true, 0});
+			r.on_mouse({QPoint(4, 1), 1, false, false, true, 0});
+			r.on_mouse({QPoint(4, 1), 1, false, true, false, 0});
+		});
+		bool rescued = false;
+		QTimer::singleShot(2000, [&] {
+			if (Qtty::drag_active()) { rescued = true; Qtty::drag_cancel(); }
+		});
+		const Qt::DropAction took =
+		    Qtty::exec_drag(drag, Qt::CopyAction | Qt::MoveAction);
+		QCoreApplication::processEvents();
+		printf("info: a drop that closed the drag source: drops=%d payload"
+		       " \"%s\", the source is %s, exec_drag returned %d\n",
+		       t->drops, qPrintable(t->got), doomed ? "alive" : "gone",
+		       int(took));
+		CHECK(!rescued && t->drops == 1 && doomed == nullptr
+		      && took == Qt::MoveAction,
+		      "a drop handler that closes the drag source, deleting the "
+		      "QDrag parented to it, leaves exec_drag returning the action "
+		      "the target took rather than deleting a QDrag already gone");
+
+		// AND THE SAME DEATH DURING THE LOOP, which is the other half. A
+		// dragMoveEvent handler that closes the source -- a panel that
+		// collapses as its last item leaves it, a dialog dismissed while
+		// the button is still down -- kills the QDrag in the MIDDLE of the
+		// drag rather than at the end of it, and what the unfixed code
+		// does next is hand the target another move, and then a drop,
+		// carrying the QMimeData the QDrag deleted on its way out.
+		//
+		// Asserted as "nothing more was delivered" rather than by reading
+		// the payload. A fixture that dereferenced the freed QMimeData
+		// itself would be diagnosing its own line rather than the
+		// library's, and under the sanitizers it would abort before any of
+		// this could print.
+		{
+			struct Fragile : QWidget {
+				int moves = 0, drops = 0, leaves = 0, after_death = 0;
+				QWidget **kill = nullptr;
+				explicit Fragile(QWidget *p) : QWidget(p) {
+					setAcceptDrops(true);
+				}
+				void dragEnterEvent(QDragEnterEvent *e) override {
+					e->setDropAction(Qt::MoveAction); e->accept();
+				}
+				void dragMoveEvent(QDragMoveEvent *e) override {
+					++moves;
+					if (kill && *kill) { delete *kill; *kill = nullptr; }
+					else ++after_death;
+					e->setDropAction(Qt::MoveAction); e->accept();
+				}
+				void dragLeaveEvent(QDragLeaveEvent *) override { ++leaves; }
+				void dropEvent(QDropEvent *e) override {
+					++drops; e->setDropAction(Qt::MoveAction); e->accept();
+				}
+			};
+			QWidget h2;
+			h2.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *f = new Fragile(&h2);
+			f->setGeometry(0, 0, cw * 10, ch * 2);
+			auto *panel2 = new QWidget(&h2);
+			panel2->setGeometry(0, ch * 2, cw * 10, ch);
+			h2.resize(GridMetrics::cells(12, 4));
+			h2.show();
+			QCoreApplication::processEvents();
+			InputRouter r2(&h2);
+
+			auto *mime2 = new QMimeData;
+			mime2->setText(QStringLiteral("half way"));
+			auto *drag2 = new QDrag(panel2);
+			drag2->setMimeData(mime2);
+			QWidget *doomed2 = panel2;
+			f->kill = &doomed2;
+			// FOUR events, not three: the first motion is the enter, which
+			// returns before any move is delivered, so the kill happens on
+			// the second and the third is the one that would carry a freed
+			// payload.
+			QTimer::singleShot(0, [&] {
+				r2.on_mouse({QPoint(2, 0), 1, false, false, true, 0});
+				r2.on_mouse({QPoint(4, 1), 1, false, false, true, 0});
+				r2.on_mouse({QPoint(5, 1), 1, false, false, true, 0});
+				r2.on_mouse({QPoint(5, 1), 1, false, true, false, 0});
+			});
+			bool rescued2 = false;
+			QTimer::singleShot(2000, [&] {
+				if (Qtty::drag_active()) {
+					rescued2 = true; Qtty::drag_cancel();
+				}
+			});
+			const Qt::DropAction stopped =
+			    Qtty::exec_drag(drag2, Qt::CopyAction | Qt::MoveAction);
+			QCoreApplication::processEvents();
+			printf("info: the source died mid-drag: moves=%d after_death=%d"
+			       " leave=%d drop=%d, returned %d\n", f->moves,
+			       f->after_death, f->leaves, f->drops, int(stopped));
+			CHECK(!rescued2 && doomed2 == nullptr && f->after_death == 0
+			      && f->drops == 0 && f->leaves >= 1
+			      && stopped == Qt::IgnoreAction,
+			      "a drag whose source is destroyed while the loop is "
+			      "still running ends there and tells the target it was "
+			      "left, rather than offering it another move and a drop "
+			      "carrying a QMimeData the QDrag freed");
+
+			// AND THE DEATH INSIDE THE MOVE THE RELEASE ITSELF SENDS,
+			// which neither of the two above reaches. drag_drop_at()
+			// delivers a move before the drop, and its own comment says
+			// why: a target that has never seen this position has to
+			// decide on it before being asked to take a drop there. So
+			// the last handler run before every drop is one the
+			// application wrote, and it can close the source just as the
+			// drop handler can -- at which point the drop below it would
+			// carry a QMimeData that no longer exists.
+			//
+			// A guard at the TOP of drag_drop_at() cannot see this: it
+			// has already run. What catches it is the second look, after
+			// the move and before the drop, and this is the check that
+			// holds that one -- two events, so the only move in the whole
+			// drag is the one the release sends.
+			QWidget h_late;
+			h_late.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *f_late = new Fragile(&h_late);
+			f_late->setGeometry(0, 0, cw * 10, ch * 2);
+			auto *panel_late = new QWidget(&h_late);
+			panel_late->setGeometry(0, ch * 2, cw * 10, ch);
+			h_late.resize(GridMetrics::cells(12, 4));
+			h_late.show();
+			QCoreApplication::processEvents();
+			InputRouter r_late(&h_late);
+
+			auto *mime_late = new QMimeData;
+			mime_late->setText(QStringLiteral("on the way up"));
+			auto *drag_late = new QDrag(panel_late);
+			drag_late->setMimeData(mime_late);
+			QWidget *doomed_late = panel_late;
+			f_late->kill = &doomed_late;
+			QTimer::singleShot(0, [&] {
+				r_late.on_mouse({QPoint(2, 0), 1, false, false, true, 0});
+				r_late.on_mouse({QPoint(4, 1), 1, false, true, false, 0});
+			});
+			bool rescued_late = false;
+			QTimer::singleShot(2000, [&] {
+				if (Qtty::drag_active()) {
+					rescued_late = true; Qtty::drag_cancel();
+				}
+			});
+			const Qt::DropAction ended =
+			    Qtty::exec_drag(drag_late,
+			                    Qt::CopyAction | Qt::MoveAction);
+			QCoreApplication::processEvents();
+			printf("info: the source died in the release's own move:"
+			       " moves=%d leave=%d drop=%d, returned %d\n",
+			       f_late->moves, f_late->leaves, f_late->drops,
+			       int(ended));
+			CHECK(!rescued_late && doomed_late == nullptr
+			      && f_late->moves == 1 && f_late->drops == 0
+			      && f_late->leaves >= 1 && ended == Qt::IgnoreAction,
+			      "and a source closed by the last move before the button "
+			      "came up takes the drop with it, rather than being "
+			      "handed one whose payload the QDrag has already freed");
+		}
+		GridGuard::reset();
+	}
+
+	// ---- focus handed to a widget the focus-out handler destroyed --------
+	//
+	// DELIVERING THE FocusOut IS THE WHOLE POINT OF THIS FUNCTION, and the
+	// comment above s_focus in grid_style.cpp says what it buys: Qt sends a
+	// QFocusEvent only for an ACTIVE window and no qtty window ever
+	// activates, so QLineEdit::editingFinished() never fired and a form only
+	// ever heard about the field the user pressed Return in. Sending it
+	// means running the application's slot, and an editingFinished slot that
+	// rebuilds or clears a form is ordinary Qt.
+	//
+	// So the sequence is one a person performs by pressing Tab: focus is in
+	// field A, it moves to field B, A's slot rebuilds the form and deletes
+	// the widgets in it -- B among them -- and set_focus_widget() then sends
+	// FocusIn to a QWidget that is gone.
+	//
+	// THE DEFECT HAS TWO FACES AND THEY NEED DIFFERENT FIXTURES, which is
+	// why there are two blocks below rather than one. If the bytes B stood
+	// in are still free, the send reads them and the process dies -- that is
+	// the loud half, and only a sanitizer makes it reliable. If something
+	// has moved in, the send reaches a LIVE widget that never gained the
+	// focus, which is the quiet half: nothing crashes, and a control in a
+	// rebuilt form draws itself focused while Qtty::focusWidget() correctly
+	// says nobody is. Measured here, running the same sabotage twice: the
+	// first run crashed at this fixture and the second printed two FAILs
+	// and the same address twice. The difference that can be named between
+	// them is how stdout was buffered -- a pipe in one, an unbuffered file
+	// in the other -- which is enough to move the heap and decide whether
+	// anything lands on the freed bytes. So the quiet half is put beyond
+	// the allocator's mood below rather than waited for.
+	//
+	// The guard this needs already existed A FEW LINES TOO LATE: the
+	// status-tip block re-reads s_focus and compares it against `w`, so that
+	// third use has been protected by accident since it was written. The fix
+	// is the same re-read at the first use.
+	{
+		struct Field : QLineEdit {
+			int in = 0;
+			explicit Field(QWidget *p) : QLineEdit(p) {}
+			void focusInEvent(QFocusEvent *e) override {
+				++in;
+				QLineEdit::focusInEvent(e);
+			}
+		};
+
+		// THE QUIET HALF, with the address reuse made certain instead of
+		// hoped for. The field the focus is moving to is constructed in a
+		// block of THIS FUNCTION'S STACK, destroyed in place by the slot,
+		// and the replacement is constructed in the same block -- so "a
+		// widget built where the old one stood" is a fact of the fixture
+		// rather than a favour from the allocator. 8.237 had that reuse by
+		// luck and said so; this is the same event, arranged.
+		{
+			QWidget h;
+			h.setAttribute(Qt::WA_DontShowOnScreen);
+			h.resize(GridMetrics::cells(20, 6));
+			auto *a = new Field(&h);
+			a->setGeometry(0, 0, cw * 10, ch);
+			alignas(Field) unsigned char slab[sizeof(Field)];
+			auto *b = new (slab) Field(&h);
+			b->setGeometry(0, ch * 2, cw * 10, ch);
+			h.show();
+			QCoreApplication::processEvents();
+			set_focus_widget(a);
+			QCoreApplication::processEvents();
+			// TYPED INTO, and that is not decoration: Qt 6 gates
+			// editingFinished on the field having actually been edited, so
+			// an untouched one emits nothing on focus-out and this fixture
+			// would reach the hazard by no path at all. The check above it
+			// paid for that lesson first.
+			QKeyEvent typed(QEvent::KeyPress, Qt::Key_X, Qt::NoModifier,
+			                QStringLiteral("x"));
+			QCoreApplication::sendEvent(a, &typed);
+
+			Field *rebuilt = nullptr;
+			QObject::connect(a, &QLineEdit::editingFinished, [&] {
+				// The form is rebuilt from inside the slot, which is what
+				// an application does here: the old fields go and new ones
+				// are made. Destroyed in place and rebuilt in place, so
+				// the replacement is at the old one's address by
+				// construction.
+				b->~Field();
+				b = nullptr;
+				rebuilt = new (slab) Field(&h);
+				rebuilt->setGeometry(0, ch * 2, cw * 10, ch);
+				rebuilt->show();
+			});
+			Field *const doomed = b;
+			set_focus_widget(doomed);
+			QCoreApplication::processEvents();
+			printf("info: the field focus was moving to and the one that"
+			       " replaced it share the address %p, and the replacement"
+			       " has had %d FocusIn(s)\n",
+			       static_cast<const void *>(slab),
+			       rebuilt ? rebuilt->in : -1);
+			CHECK(rebuilt && rebuilt->in == 0,
+			      "a widget standing where the one focus was moving to was "
+			      "destroyed is not told it has the focus, which is what a "
+			      "raw pointer gives when the address is handed back");
+			CHECK(Qtty::focusWidget() == nullptr,
+			      "and the focus is left nowhere, rather than on a widget "
+			      "the application destroyed on its way out of the field");
+			set_focus_widget(rebuilt);
+			CHECK(rebuilt && rebuilt->in == 1
+			      && Qtty::focusWidget() == rebuilt,
+			      "and the next focus move works, the destroyed one having "
+			      "left no half-finished state behind");
+			// FLUSHED, because the block below is allowed to take the
+			// process down: this is the half a sabotage run has to be able
+			// to read, and a FAIL line still in stdio's buffer when the
+			// process dies is a FAIL line nobody ever sees.
+			fflush(stdout);
+			set_focus_widget(nullptr);
+			// In place, as it was built. `h` must not be left a child it
+			// would try to `delete`.
+			if (rebuilt) rebuilt->~Field();
+			QCoreApplication::processEvents();
+			GridGuard::reset();
+		}
+
+		// AND THE LOUD HALF, which is the same sequence over the heap: the
+		// slot destroys the field and puts nothing in its place, so the
+		// FocusIn is sent to memory that is still free.
+		//
+		// THIS CHECK CANNOT FAIL IN AN ORDINARY BUILD, and saying so is the
+		// point of it. Qtty::focusWidget() answers null either way, s_focus
+		// being a QPointer already; what this block is for is to make the
+		// library perform the send, so that the sanitized arm has something
+		// to catch. Measured before the fix, `make test-sanitize`:
+		//
+		//     ERROR: AddressSanitizer: SEGV on unknown address 0x16a9b
+		//       #0 QMetaObject::cast(QObject const*) const
+		//       #1 QApplication::notify(QObject*, QEvent*)
+		//       #3 Qtty::set_focus_widget(QWidget*, Qt::FocusReason)
+		//
+		// -- a SEGV rather than a heap-use-after-free, and the reason is
+		// worth keeping: the read of the freed QWidget happens inside
+		// libQt6Core, which is not instrumented, so the sanitizer never
+		// sees it and reports only the wild pointer that comes back out.
+		{
+			QWidget h;
+			h.setAttribute(Qt::WA_DontShowOnScreen);
+			h.resize(GridMetrics::cells(20, 6));
+			auto *a = new Field(&h);
+			a->setGeometry(0, 0, cw * 10, ch);
+			auto *b = new Field(&h);
+			b->setGeometry(0, ch * 2, cw * 10, ch);
+			h.show();
+			QCoreApplication::processEvents();
+			set_focus_widget(a);
+			QCoreApplication::processEvents();
+			QKeyEvent typed(QEvent::KeyPress, Qt::Key_X, Qt::NoModifier,
+			                QStringLiteral("x"));
+			QCoreApplication::sendEvent(a, &typed);
+
+			Field *const doomed = b;
+			bool cleared = false;
+			QObject::connect(a, &QLineEdit::editingFinished, [&] {
+				delete b;
+				b = nullptr;
+				cleared = true;
+			});
+			set_focus_widget(doomed);
+			QCoreApplication::processEvents();
+			CHECK(cleared && Qtty::focusWidget() == nullptr,
+			      "and a form that clears the field focus was moving to, "
+			      "rather than replacing it, leaves the focus nowhere and "
+			      "sends nothing to the widget it freed");
+			set_focus_widget(nullptr);
+			GridGuard::reset();
+		}
+	}
+
 	return fails;
 }

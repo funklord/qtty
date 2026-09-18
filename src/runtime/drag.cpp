@@ -22,7 +22,40 @@ namespace {
 // mouse event that knows nothing about the drag, and threading it through
 // the router's signature would put drag and drop in the way of every click.
 struct Live {
-	QDrag *drag = nullptr;
+	// A QPointer, because THE NESTED LOOP RUNS THE APPLICATION AND THE
+	// APPLICATION OWNS THIS QDrag.
+	//
+	// drag.h asks an application to call exec_drag(drag, actions) where it
+	// would have called drag->exec(actions), so what arrives here is
+	// whatever the application wrote for QDrag -- and the spelling in Qt's
+	// own documentation is `new QDrag(this)` inside a mouse handler. That
+	// makes the QDrag a CHILD OF THE SOURCE WIDGET, dying exactly when the
+	// source widget does. exec_drag() then runs a nested event loop for as
+	// long as the button is held, which is arbitrary application code, and
+	// the sequence that kills the source from inside it is an ordinary
+	// one: an item is dragged out of a panel, the drop handler takes it, and
+	// the panel that is now empty closes itself -- or the dialog it was in is
+	// dismissed. `delete panel` inside dropEvent() takes this QDrag with it.
+	//
+	// What the raw pointer cost is two things, and the second is the quiet
+	// one. exec_drag() resumed after the loop at `drag->deleteLater()`,
+	// which is a heap-use-after-free on the QDrag: the loud version, and the
+	// one the sanitized suite aborts on. And `mime` below is the QMimeData
+	// this QDrag OWNS and deletes, so every move delivered after the death
+	// handed the target a payload that had been freed -- a target reads its
+	// payload, that being what a target is for, and a QMimeData reallocated
+	// where the old one stood answers text() with somebody else's string
+	// while nothing crashes at all. That is the argument runtime.h makes
+	// about win_ and grid_style.cpp makes about s_focus, met a third time.
+	//
+	// So a drag whose QDrag is gone is a drag that is OVER: drag_move_to()
+	// and drag_drop_at() end it rather than merely refusing, because the
+	// nested loop has nothing else left to quit it and a hang is worse than
+	// either failure above -- it produces neither a PASS nor a FAIL.
+	QPointer<QDrag> drag;
+	// Valid exactly as long as `drag` is: QDrag::setMimeData() takes
+	// ownership and ~QDrag deletes it, so the guard that ends a drag whose
+	// QDrag has gone is what keeps this from being followed afterwards.
 	const QMimeData *mime = nullptr;
 	Qt::DropActions supported = Qt::IgnoreAction;
 	Qt::DropAction preferred = Qt::IgnoreAction;
@@ -51,6 +84,17 @@ bool drag_active() { return g_live != nullptr; }
 void drag_move_to(QWidget *under, const QPoint &local, const QPoint &screen)
 {
 	if (!g_live) return;
+	// THE QDrag DIED WHILE THE DRAG WAS UP, which is a state this function
+	// can be entered in: the previous move ran the application's
+	// dragMoveEvent, and that handler is allowed to destroy the widget the
+	// QDrag is parented to. Nothing tells this file when that happens, so it
+	// has to ask -- and `mime` is the QDrag's own property, so asking here
+	// is what keeps the events below from carrying a freed payload.
+	//
+	// Ending the drag rather than returning, for the reason `drag` in Live
+	// records: a bare return would leave the nested loop in exec_drag() with
+	// nothing to quit it.
+	if (!g_live->drag) { drag_cancel(); return; }
 	QWidget *const target = drop_target(under);
 	Q_UNUSED(screen);
 
@@ -94,6 +138,15 @@ void drag_drop_at(QWidget *under, const QPoint &local, const QPoint &screen)
 	// straight after a press -- a click that never moved -- reaches a widget
 	// that was never offered the drag at all.
 	drag_move_to(under, local, screen);
+
+	// AND THE SAME QUESTION AFTER IT, because the move above ran the
+	// application's dragMoveEvent -- the last handler of the application's
+	// that runs before the drop -- and it can destroy the widget the QDrag
+	// is parented to just as a drop handler can. A check at the TOP of this
+	// function cannot see that: it has already run. This is the one that
+	// keeps the QDropEvent below from carrying a QMimeData the QDrag freed
+	// on its way out. See drag_move_to(), and `drag` in Live.
+	if (!g_live->drag) { drag_cancel(); return; }
 
 	QWidget *const target = g_live->over;
 	if (target && g_live->over_accepts) {
@@ -159,8 +212,11 @@ Qt::DropAction exec_drag(QDrag *drag, Qt::DropActions supported,
 
 	g_live = nullptr;
 	// QDrag::exec() deletes the QDrag, and the header says so, so a caller
-	// porting from it must not be left holding one.
-	drag->deleteLater();
+	// porting from it must not be left holding one -- but only if it is
+	// still there to delete. The loop above ran the application, and the
+	// application owns this object: see `drag` in Live, which is why that
+	// member is a QPointer and why this reads it rather than the argument.
+	if (live.drag) live.drag->deleteLater();
 	return live.result;
 }
 
