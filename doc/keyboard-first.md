@@ -909,6 +909,14 @@ the widget-shortcut contexts and `Qtty::focusWidget()` all agree with where
 your keystroke is actually going. You do not have to tell it, and there is
 nothing to call.
 
+**Tabbing into a field selects its contents**, as on a desktop, because
+the focus event this library synthesises carries the REASON Qt would
+have carried -- `Qt::TabFocusReason` going forward, `Backtab` coming
+back, `ShortcutFocusReason` when a mnemonic put you there. `QLineEdit`
+selects on exactly those and leaves the text alone otherwise, so a
+custom widget of yours that reads `e->reason()` gets the same answer it
+would on a desktop.
+
 **Your `focusInEvent` and `focusOutEvent` do run** -- this library sends
 them when it re-reads the focus, so what Qt builds on them works too:
 `QLineEdit::editingFinished` fires when a user tabs out of a field they

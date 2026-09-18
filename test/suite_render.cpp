@@ -2537,5 +2537,196 @@ int suite_render(bool record) {
 		}
 	}
 
+
+	// ---- the differential test design.md section 9 asks for ---------------
+	//
+	// "The same model driven through GUI and TUI builds must produce the
+	// same observable state after the same event script -- catching logic
+	// that accidentally lives in the view." project.md 7.5 listed it as
+	// absent entirely, and it was.
+	//
+	// A REAL GUI reference is possible here, which is what makes the test
+	// worth writing: a window that is mapped and activated -- no
+	// WA_DontShowOnScreen, activateWindow() -- gets Qt's own focus,
+	// hasFocus() and shortcut map under the offscreen platform. Measured:
+	// isActiveWindow 1, Tab moves through Qt's chain, Ctrl+S fires a
+	// QAction. So one side is Qt deciding everything and the other is this
+	// library deciding it, and the comparison means something.
+	//
+	// WITH THE CONVENTIONS OFF, because the bundle exists to diverge: with
+	// them on, Ctrl+A is start-of-line in a field where Qt selects all,
+	// and the differential would be measuring the feature. Off is the
+	// unmodified-application contract, and that is the one worth holding.
+	//
+	// It found one the day it was written -- the focus reason, 8.226.
+	//
+	// AND IT LIVES IN THIS SUITE BECAUSE NO ROUTER DOES. A live
+	// Qtty::InputRouter stamps WA_DontShowOnScreen on every top-level shown
+	// while it exists, which is its job (F7) and which stops the GUI side
+	// ever mapping -- so written in suite_router, beside the other input
+	// checks, the control below failed at once and said why. The control
+	// is what made that legible rather than puzzling.
+	{
+		const bool had_conv = Qtty::keyboard_conventions();
+		Qtty::set_keyboard_conventions(false);
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+
+		struct Tree {
+			QWidget *win = nullptr;
+			QLineEdit *first = nullptr, *second = nullptr;
+			QCheckBox *check = nullptr;
+			QListWidget *list = nullptr;
+			QPushButton *button = nullptr;
+		};
+		// ONE builder, so the two trees cannot differ by construction.
+		const auto build = [](bool tui) {
+			Tree t;
+			t.win = new QWidget;
+			if (tui) t.win->setAttribute(Qt::WA_DontShowOnScreen);
+			t.win->resize(400, 300);
+			t.first = new QLineEdit(t.win);
+			t.first->setGeometry(0, 0, 200, 20);
+			t.second = new QLineEdit(t.win);
+			t.second->setGeometry(0, 30, 200, 20);
+			t.check = new QCheckBox(QStringLiteral("on"), t.win);
+			t.check->setGeometry(0, 60, 200, 20);
+			t.list = new QListWidget(t.win);
+			for (int i = 0; i < 4; ++i)
+				t.list->addItem(QStringLiteral("row %1").arg(i));
+			t.list->setGeometry(0, 90, 200, 80);
+			t.button = new QPushButton(QStringLiteral("Go"), t.win);
+			t.button->setGeometry(0, 180, 100, 20);
+			return t;
+		};
+		const auto state = [](const Tree &t, int clicks) {
+			QWidget *f = t.win->focusWidget();
+			QString who = QStringLiteral("none");
+			if (f == t.first) who = QStringLiteral("first");
+			else if (f == t.second) who = QStringLiteral("second");
+			else if (f == t.check) who = QStringLiteral("check");
+			else if (f == t.list) who = QStringLiteral("list");
+			else if (f == t.button) who = QStringLiteral("button");
+			return QStringLiteral("[%1][%2] check=%3 row=%4 clicks=%5 on=%6")
+			    .arg(t.first->text(), t.second->text())
+			    .arg(int(t.check->isChecked()))
+			    .arg(t.list->currentRow()).arg(clicks).arg(who);
+		};
+		struct Act { int key; const char *text; Qt::KeyboardModifiers mods; };
+		static const Act script[] = {
+			{0, "a", Qt::NoModifier}, {0, "b", Qt::NoModifier},
+			{Qt::Key_Tab, "", Qt::NoModifier},
+			{0, "c", Qt::NoModifier},
+			{Qt::Key_Backspace, "", Qt::NoModifier},
+			{0, "d", Qt::NoModifier},
+			{Qt::Key_Tab, "", Qt::NoModifier},
+			{Qt::Key_Space, " ", Qt::NoModifier},
+			{Qt::Key_Tab, "", Qt::NoModifier},
+			{Qt::Key_Down, "", Qt::NoModifier},
+			{Qt::Key_Down, "", Qt::NoModifier},
+			{Qt::Key_Up, "", Qt::NoModifier},
+			{Qt::Key_Tab, "", Qt::NoModifier},
+			{Qt::Key_Space, " ", Qt::NoModifier},
+			{Qt::Key_Backtab, "", Qt::ShiftModifier},
+			{Qt::Key_Backtab, "", Qt::ShiftModifier},
+			{Qt::Key_A, "a", Qt::ControlModifier},
+			{Qt::Key_Delete, "", Qt::NoModifier},
+			{0, "z", Qt::NoModifier},
+			{Qt::Key_Home, "", Qt::NoModifier},
+			{Qt::Key_Right, "", Qt::NoModifier},
+			{Qt::Key_End, "", Qt::NoModifier},
+			{Qt::Key_Left, "", Qt::ShiftModifier},
+			{Qt::Key_Escape, "", Qt::NoModifier},
+			{Qt::Key_Tab, "", Qt::NoModifier},
+			{Qt::Key_Tab, "", Qt::NoModifier},
+			{Qt::Key_Tab, "", Qt::NoModifier},
+			{Qt::Key_Return, "", Qt::NoModifier},
+			{Qt::Key_Space, " ", Qt::NoModifier},
+		};
+
+		Tree g = build(false);
+		int gui_clicks = 0;
+		QObject::connect(g.button, &QPushButton::clicked,
+		                 [&gui_clicks] { ++gui_clicks; });
+		g.win->show();
+		g.win->activateWindow();
+		g.first->setFocus();
+		QCoreApplication::processEvents();
+		const bool gui_is_real = g.win->isActiveWindow() && g.first->hasFocus();
+		QStringList gui_trace;
+		for (const Act &a : script) {
+			QWidget *target = QApplication::focusWidget();
+			if (!target) target = g.win;
+			QKeyEvent down(QEvent::KeyPress, a.key, a.mods,
+			               QString::fromLatin1(a.text));
+			QApplication::sendEvent(target, &down);
+			QKeyEvent up(QEvent::KeyRelease, a.key, a.mods,
+			             QString::fromLatin1(a.text));
+			QApplication::sendEvent(target, &up);
+			QCoreApplication::processEvents();
+			gui_trace << state(g, gui_clicks);
+		}
+		g.win->hide();
+		QCoreApplication::processEvents();
+
+		Tree t = build(true);
+		int tui_clicks = 0;
+		QObject::connect(t.button, &QPushButton::clicked,
+		                 [&tui_clicks] { ++tui_clicks; });
+		t.win->show();
+		QCoreApplication::processEvents();
+		Qtty::InputRouter dr(t.win);
+		t.first->setFocus();
+		Qtty::set_focus_widget(t.win->focusWidget());
+		QCoreApplication::processEvents();
+		QStringList tui_trace;
+		for (const Act &a : script) {
+			dr.on_key({a.key, QString::fromLatin1(a.text),
+			           bool(a.mods & Qt::ControlModifier),
+			           bool(a.mods & Qt::AltModifier),
+			           bool(a.mods & Qt::ShiftModifier)});
+			QCoreApplication::processEvents();
+			tui_trace << state(t, tui_clicks);
+		}
+
+		// THE CONTROL FIRST. A GUI side that was not really active would
+		// make every step agree for the wrong reason -- two windows
+		// neither of which Qt is driving.
+		if (gui_is_real)
+			printf("PASS: the GUI side of the differential is a genuinely"
+			       " active window, so what it does is Qt's answer rather"
+			       " than a second copy of this library's\n");
+		else {
+			printf("FAIL: the GUI side of the differential is a genuinely"
+			       " active window, so what it does is Qt's answer rather"
+			       " than a second copy of this library's\n");
+			++r;
+		}
+		int first_diff = -1;
+		for (int i = 0; i < gui_trace.size() && first_diff < 0; ++i)
+			if (gui_trace[i] != tui_trace[i]) first_diff = i;
+		if (first_diff >= 0)
+			printf("info: step %d\n  GUI %s\n  TUI %s\n", first_diff,
+			       qPrintable(gui_trace[first_diff]),
+			       qPrintable(tui_trace[first_diff]));
+		if (first_diff < 0)
+			printf("PASS: and the same event script leaves the same model"
+			       " state in both builds, which is the differential test"
+			       " design.md section 9 asks for\n");
+		else {
+			printf("FAIL: and the same event script leaves the same model"
+			       " state in both builds, which is the differential test"
+			       " design.md section 9 asks for\n");
+			++r;
+		}
+		delete g.win;
+		delete t.win;
+		for (QWidget *w : hidden) w->show();
+		QCoreApplication::processEvents();
+		Qtty::set_keyboard_conventions(had_conv);
+		Qtty::GridGuard::reset();
+	}
+
 	return r;
 }

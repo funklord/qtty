@@ -871,7 +871,7 @@ bool InputRouter::match_mnemonic(const KeyEvent &k) {
 			// nothing in the first place.
 			if (QWidget *buddy = l->buddy()) {
 				buddy->setFocus(Qt::ShortcutFocusReason);
-				set_focus_widget(buddy);
+				set_focus_widget(buddy, Qt::ShortcutFocusReason);
 				return true;
 			}
 		}
@@ -2237,7 +2237,13 @@ void InputRouter::on_key(const KeyEvent &k) {
 			// executed it.
 			move_focus(scope, !k.shift);
 		}
-		set_focus_widget(scope->focusWidget());
+		// WITH THE REASON, which is what makes a field's contents
+		// selected when Tab arrives at it -- Qt's own behaviour, and
+		// invisible here until a differential run compared the two
+		// builds after the same script.
+		set_focus_widget(scope->focusWidget(),
+		                 k.shift ? Qt::BacktabFocusReason
+		                         : Qt::TabFocusReason);
 	} else {
 		// The tables do not run while a popup owns input. Section 5.5's order
 		// is popup > modal > window, and key_target() already applies it to

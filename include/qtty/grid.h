@@ -212,7 +212,15 @@ public:
 // one thing and is not: the argument is Qt's PER-WINDOW focus and the call is
 // qtty's PROCESS-WIDE one. Four sites in the library read that way.
 QWidget *focusWidget();
-void set_focus_widget(QWidget *);
+// The REASON is Qt's and is not decoration: QLineEdit selects its contents
+// when focus arrives by Tab, Backtab or a shortcut, and leaves them alone
+// otherwise. Qt delivers no focus event here at all, so the reason this
+// carries is the only one a widget ever sees -- and with everything
+// arriving as OtherFocusReason, tabbing into a field left its text
+// unselected where a desktop would have selected it. Found by driving one
+// event script through the GUI and TUI builds and comparing the model
+// afterwards, which is design.md section 9's differential test.
+void set_focus_widget(QWidget *, Qt::FocusReason reason = Qt::OtherFocusReason);
 
 // design.md section 8.6: a substitution registry mapping an icon to a glyph.
 //

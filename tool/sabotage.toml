@@ -2816,3 +2816,14 @@ find = "\t\tif (ok && want > 0 && want <= 512) pixels = want;"
 into = "\t\tpixels = want;"
 count = 1
 check = "is larger than any terminal leaves the default standing"
+
+[[sabotage]]
+# The focus reason thrown away again, so a field tabbed into does not
+# select its contents the way every desktop does -- and the two builds
+# part company on the next key typed. 8.226.
+name = "a synthetic focus event forgets why focus moved"
+file = "src/runtime/input_router.cpp"
+find = "\t\tset_focus_widget(scope->focusWidget(),\n\t\t                 k.shift ? Qt::BacktabFocusReason\n\t\t                         : Qt::TabFocusReason);"
+into = "\t\tset_focus_widget(scope->focusWidget());"
+count = 1
+check = "the same event script leaves the same model state in both builds"

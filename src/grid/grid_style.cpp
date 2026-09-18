@@ -165,16 +165,16 @@ QWidget *focusWidget() { return s_focus.data(); }
 // our own -- never over a message the application itself wrote.
 static bool s_tip_shown = false;
 
-void set_focus_widget(QWidget *w) {
+void set_focus_widget(QWidget *w, Qt::FocusReason reason) {
 	QWidget *const before = s_focus.data();
 	if (before == w) return;
 	s_focus = w;
 	if (before) {
-		QFocusEvent out(QEvent::FocusOut, Qt::OtherFocusReason);
+		QFocusEvent out(QEvent::FocusOut, reason);
 		QCoreApplication::sendEvent(before, &out);
 	}
 	if (w) {
-		QFocusEvent in(QEvent::FocusIn, Qt::OtherFocusReason);
+		QFocusEvent in(QEvent::FocusIn, reason);
 		QCoreApplication::sendEvent(w, &in);
 	}
 	// A STATUS TIP FOLLOWS FOCUS, which is what Qt does on hover and what a

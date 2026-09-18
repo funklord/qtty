@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1516 checks, 0 failures. `make check` is green and includes
+1518 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -12083,9 +12083,9 @@ which is design.md §16's figure.
   report every cell damaged. Without it, a `diff()` that returned nothing
   whatever it was handed would satisfy every empty-diff check in the file
   and fail none.
-- The design.md §9 differential test (the same model driven through GUI
-  and TUI builds must reach the same observable state), and the
-  render-twice-diff-must-be-empty invariant.
+- ~~The design.md §9 differential test~~ **Done** (8.226), and it found
+  a divergence the day it was written. ~~The render-twice-diff-must-be-empty
+  invariant~~ is done too and is asserted in the budget suite.
 
 ### 7.6 One question found three bugs: which hard case does nothing test?
 
@@ -16369,6 +16369,55 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.226 The differential test, and the divergence it found first
+(2026-09-18)
+
+design.md §9 asks for it in one sentence -- *the same model driven
+through GUI and TUI builds must produce the same observable state after
+the same event script, catching logic that accidentally lives in the
+view* -- and §7.5 listed it as absent entirely. It is written now, and
+it earned its place immediately.
+
+**A REAL GUI reference is possible here, which is what makes it worth
+having.** A window that is mapped and activated -- no
+`WA_DontShowOnScreen`, `activateWindow()` -- gets Qt's own focus,
+`hasFocus()` and shortcut map under the offscreen platform. Measured:
+`isActiveWindow` 1, Tab walking Qt's chain, `Ctrl+S` firing a QAction.
+So one side is Qt deciding everything and the other is this library
+deciding it, and a disagreement means something. **A control asserts
+that the GUI side really is active**, because two windows neither of
+which Qt is driving would agree with each other perfectly.
+
+**With the conventions OFF**, since the bundle exists to diverge: with
+them on, `Ctrl+A` is start-of-line where Qt selects all, and the
+differential would be measuring the feature rather than the contract.
+
+**What it found: the focus REASON was being thrown away.** A 29-step
+script agreed for 28 steps and parted at the 29th:
+
+    after Tab into a field holding "d", then Space
+      GUI   the field holds " "      -- Qt selected the text on Tab in
+      TUI   the field holds "d "     -- qtty's focus arrived unselected
+
+`move_focus()` does call `setFocus(Qt::TabFocusReason)`, and Qt delivers
+nothing here because no window activates -- so the only focus event a
+widget ever sees is the one this library synthesises, and that one
+carried `Qt::OtherFocusReason` for everything. `QLineEdit` selects its
+contents on Tab, Backtab and Shortcut reasons and on no other, so
+tabbing into a field left its text unselected where every desktop
+selects it. The reason is threaded through `set_focus_widget()` now, and
+the three callers that already knew it pass it.
+
+**And the test had to move suites to work at all, which the control made
+legible.** Written beside the other input checks in `suite_router`, the
+GUI side could not map: a live `InputRouter` stamps
+`WA_DontShowOnScreen` on every top-level shown while it exists, which is
+its job. `suite_render` has no router in it, and there the GUI side
+activates. **A fixture that needs the absence of this library's own
+machinery has to be put where that absence is real** -- and without the
+control it would have read as a divergence in every step rather than as
+a fixture in the wrong room.
 
 ### 8.225 A font nobody could choose (2026-09-18)
 
