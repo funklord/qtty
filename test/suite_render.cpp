@@ -2432,5 +2432,110 @@ int suite_render(bool record) {
 		}
 	}
 
+
+	// ---- which font the grid is laid on ------------------------------------
+	//
+	// The family and the size were hardcoded, so an application that wanted
+	// another mono font could not have one and a user whose machine could
+	// not carry the default had a fatal message naming a font they had no
+	// way to change. project.md 0e carried it; grid_font_request() is the
+	// answer, and it is asked here rather than through setup() because
+	// setup() runs once per process and the question is which font it would
+	// ask for.
+	{
+		const QByteArray had_family = qgetenv("QTTY_FONT");
+		const QByteArray had_size = qgetenv("QTTY_FONT_SIZE");
+		qunsetenv("QTTY_FONT");
+		qunsetenv("QTTY_FONT_SIZE");
+		Qtty::set_font(QString(), 0);                 // nothing chosen
+
+		const QFont fallback = Qtty::grid_font_request();
+		const bool default_ok =
+		    fallback.family() == QStringLiteral("DejaVu Sans Mono")
+		    && fallback.pixelSize() == 16
+		    && fallback.hintingPreference() == QFont::PreferFullHinting;
+		if (default_ok)
+			printf("PASS: with nobody asking, the grid is laid on DejaVu Sans"
+			       " Mono at 16 pixels with full hinting\n");
+		else {
+			printf("FAIL: with nobody asking, the grid is laid on DejaVu Sans"
+			       " Mono at 16 pixels with full hinting\n");
+			++r;
+		}
+
+		qputenv("QTTY_FONT", "Liberation Mono");
+		qputenv("QTTY_FONT_SIZE", "18");
+		const QFont from_env = Qtty::grid_font_request();
+		if (from_env.family() == QStringLiteral("Liberation Mono")
+		    && from_env.pixelSize() == 18
+		    && from_env.hintingPreference() == QFont::PreferFullHinting)
+			printf("PASS: the environment can name the family and the size,"
+			       " which is the lever a user has when a machine cannot"
+			       " carry the default\n");
+		else {
+			printf("FAIL: the environment can name the family and the size,"
+			       " which is the lever a user has when a machine cannot"
+			       " carry the default\n");
+			++r;
+		}
+
+		Qtty::set_font(QStringLiteral("Noto Mono"), 20);
+		const QFont from_app = Qtty::grid_font_request();
+		if (from_app.family() == QStringLiteral("Noto Mono")
+		    && from_app.pixelSize() == 20)
+			printf("PASS: and an application's own choice wins over it, a"
+			       " program that names a font having usually measured"
+			       " something against it\n");
+		else {
+			printf("FAIL: and an application's own choice wins over it, a"
+			       " program that names a font having usually measured"
+			       " something against it\n");
+			++r;
+		}
+
+		// A SIZE THAT IS NOT A SIZE is ignored rather than obeyed: a cell of
+		// zero pixels divides into everything the grid computes.
+		Qtty::set_font(QString(), 0);
+		qputenv("QTTY_FONT_SIZE", "nonsense");
+		const int junk = Qtty::grid_font_request().pixelSize();
+		qputenv("QTTY_FONT_SIZE", "0");
+		const int zero = Qtty::grid_font_request().pixelSize();
+		// AND ONE THAT IS ABSURD, which is the half the other two cannot
+		// ask: nonsense and zero both come back as 0 and the default
+		// below catches them whatever the range test does, so a check
+		// resting on those two passed with the range test deleted -- the
+		// harness said so. A cell of 100000 pixels is larger than any
+		// terminal, and a grid computed from it has one column.
+		qputenv("QTTY_FONT_SIZE", "100000");
+		const int absurd = Qtty::grid_font_request().pixelSize();
+		if (junk == 16 && zero == 16 && absurd == 16)
+			printf("PASS: while a size that is not a number, is zero, or is"
+			       " larger than any terminal leaves the default standing"
+			       " rather than laying the grid on it\n");
+		else {
+			printf("FAIL: while a size that is not a number, is zero, or is"
+			       " larger than any terminal leaves the default standing"
+			       " rather than laying the grid on it\n");
+			++r;
+		}
+
+		if (had_family.isEmpty()) qunsetenv("QTTY_FONT");
+		else qputenv("QTTY_FONT", had_family);
+		if (had_size.isEmpty()) qunsetenv("QTTY_FONT_SIZE");
+		else qputenv("QTTY_FONT_SIZE", had_size);
+		Qtty::set_font(QString(), 0);
+		if (Qtty::grid_font_request().family()
+		    == QStringLiteral("DejaVu Sans Mono"))
+			printf("PASS: and the process is left as it was found, this being"
+			       " the one check that can change what every later font"
+			       " is\n");
+		else {
+			printf("FAIL: and the process is left as it was found, this being"
+			       " the one check that can change what every later font"
+			       " is\n");
+			++r;
+		}
+	}
+
 	return r;
 }

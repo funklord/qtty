@@ -113,6 +113,24 @@ bool shell_out(const std::function<void()> &body);
 // it, and a lower graphics tier needs the background to composite against.
 Capabilities capabilities();
 
+// The font qtty lays its grid on, chosen before setup() installs it.
+// DejaVu Sans Mono at 16 pixels otherwise.
+//
+// A terminal cell is one glyph, so the font decides the cell: the grid is
+// sound only when one cell is a whole number of pixels and every glyph
+// advances by exactly that, which setup() checks and refuses. Until this
+// existed the family and the size were hardcoded, so an application that
+// wanted another mono font could not have one, and a user whose machine
+// could not carry the default had a fatal message naming a font they had no
+// way to change. `QTTY_FONT` and `QTTY_FONT_SIZE` are the user's end of the
+// same lever, and this beats them -- a program that names a font has
+// usually measured something against it.
+//
+// The hinting is qtty's either way and is not offered here: it decides
+// whether the metrics are integral at all rather than how the text looks,
+// and setup() records the measurement.
+void set_font(const QString &family, int pixel_size);
+
 // The keys that quit, for an application that uses exec() and therefore
 // never sees the router. Ctrl-C and Ctrl-D by default; an empty list means
 // no quit key at all, and the application is then responsible for offering

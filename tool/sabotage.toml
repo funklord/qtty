@@ -2796,3 +2796,23 @@ find = "\tfor (InputRouter *r : std::as_const(s_live_routers))\n\t\tr->set_quit_
 into = "\t(void)0;"
 count = 1
 check = "the router already running follows it"
+
+[[sabotage]]
+# The environment ignored, so a user whose machine cannot carry the
+# default font is back to a fatal message naming a font they cannot
+# change. 8.225.
+name = "QTTY_FONT is not read"
+file = "src/grid/grid_style.cpp"
+find = "\t\tif (!env.isEmpty()) family = QString::fromLocal8Bit(env);"
+into = "\t\tif (false) family = QString::fromLocal8Bit(env);"
+count = 1
+check = "the environment can name the family and the size"
+
+[[sabotage]]
+# An absurd size obeyed, which divides the grid by zero pixels. 8.225.
+name = "a font size of zero is obeyed"
+file = "src/grid/grid_style.cpp"
+find = "\t\tif (ok && want > 0 && want <= 512) pixels = want;"
+into = "\t\tpixels = want;"
+count = 1
+check = "is larger than any terminal leaves the default standing"

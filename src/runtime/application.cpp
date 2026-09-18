@@ -424,9 +424,11 @@ void setup(QApplication &app) {
 	// which is the abrupt path and is what the control check asserts.
 	std::atexit(flush_deferred_messages);
 	// Bundled-font provisioning (section 5.3) is later Phase-2 work; DejaVu Sans
-	// Mono is the interim source of integral metrics, asserted as designed.
-	QFont f(QStringLiteral("DejaVu Sans Mono"));
-	f.setPixelSize(16);
+	// Mono is the interim source of integral metrics, asserted as designed --
+	// and now the default rather than the only answer. grid_font_request()
+	// reads the application's set_font() and the user's QTTY_FONT, in that
+	// order, and says why in grid.h.
+	QFont f = grid_font_request();
 
 	// Hinting is the fourth ambient lever, and it was the one nothing pinned.
 	// The first three -- platform, platform theme, scaling -- are environment
@@ -461,6 +463,11 @@ void setup(QApplication &app) {
 	//
 	// The guard below stays, and now guards the case it was written for: a
 	// font that cannot carry the grid even when asked properly.
+	// Asked for in grid_font_request() now, so that a font named by an
+	// application or by the environment is hinted the same way the default
+	// is -- the lever decides whether metrics are integral, and a font
+	// chosen elsewhere needs it at least as much. Repeated here costs
+	// nothing and keeps this function readable on its own.
 	f.setHintingPreference(QFont::PreferFullHinting);
 
 	// A hard startup error, not a rendering glitch (section 5.3, risk R3). The

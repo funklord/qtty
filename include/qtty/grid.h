@@ -40,6 +40,28 @@ public:
 // not in place in any shipping build.
 QString grid_font_problem(const QFont &font);
 
+// The font setup() will install: DejaVu Sans Mono at 16 pixels unless
+// something says otherwise, with full hinting asked for either way -- that
+// last is not a preference and is why this returns a QFont rather than a
+// name and a size (see setup() for the measurement).
+//
+// TWO WAYS TO SAY OTHERWISE, and they are for different people.
+// `Qtty::set_font()` is the application's, called before setup(). The
+// environment is the USER'S, and that is the one that was missing: the
+// family and size were hardcoded, so a machine whose fonts cannot carry the
+// grid refused to start with a message naming a font nobody could change.
+// Qt substitutes a missing family and often lands somewhere serviceable --
+// measured, with DejaVu Sans Mono removed the whole suite ran on Noto Mono
+// at the same 10x19 cell -- but where the substitute's metrics are not
+// integral, grid_font_problem() refuses and there was no way round it.
+//
+//     QTTY_FONT="Liberation Mono"    the family
+//     QTTY_FONT_SIZE=18              the pixel size
+//
+// The application's choice wins over the environment's, since a program
+// that names a font has usually shipped assets measured against it.
+QFont grid_font_request();
+
 // What `font` actually resolved to, when that is not what was asked for.
 // Empty when the family Qt found is the family requested.
 //

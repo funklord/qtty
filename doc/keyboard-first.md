@@ -1097,6 +1097,16 @@ these fires as it always did, even with a text field focused: a shortcut
 is something your program asked for by name, and these are a convention
 offered on its behalf.
 
+**You can choose the font, and a user can override you.** qtty lays its
+grid on DejaVu Sans Mono at 16 pixels; `Qtty::set_font(family, pixels)`
+before `Qtty::setup()` names another, and `QTTY_FONT` and
+`QTTY_FONT_SIZE` let whoever runs your program name one instead. That
+last is the one that matters on a strange machine: the cell is whatever
+the font advances, `setup()` refuses a font whose metrics are not whole
+numbers, and until this existed the refusal named a font nobody could
+change. The hinting is qtty's either way -- it decides whether the
+metrics are integral at all rather than how the text looks.
+
 **You can change the quit keys, and an application using `exec()` could
 not until it was asked for.** `Qtty::set_quit_keys()` takes the list:
 name a letter, name a chord, or pass an empty list for no quit key at

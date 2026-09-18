@@ -381,6 +381,44 @@ QString grid_font_leading(const QFont &font) {
 	    .arg(fm.lineSpacing(), 0, 'g', 4);
 }
 
+// The application's choice, if it made one. A family and a size rather than
+// a QFont, so that the hinting below stays qtty's: it decides whether the
+// metrics are integral at all, which is not a preference to hand out.
+static QString s_font_family;
+static int s_font_pixels = 0;
+
+void set_font(const QString &family, int pixel_size) {
+	s_font_family = family;
+	s_font_pixels = pixel_size;
+}
+
+QFont grid_font_request() {
+	// The application first, then the user's environment, then the default
+	// this library has always installed. An empty QTTY_FONT is read as
+	// unset rather than as a request for the empty family, which is what a
+	// shell leaves behind when somebody clears a variable.
+	QString family = s_font_family;
+	int pixels = s_font_pixels;
+	if (family.isEmpty()) {
+		const QByteArray env = qgetenv("QTTY_FONT");
+		if (!env.isEmpty()) family = QString::fromLocal8Bit(env);
+	}
+	if (pixels <= 0) {
+		bool ok = false;
+		const int want = qgetenv("QTTY_FONT_SIZE").toInt(&ok);
+		// A size that is not a number, or is absurd, is ignored rather
+		// than obeyed: the alternative is a cell of zero pixels, which
+		// divides into everything the grid computes.
+		if (ok && want > 0 && want <= 512) pixels = want;
+	}
+	if (family.isEmpty()) family = QStringLiteral("DejaVu Sans Mono");
+	if (pixels <= 0) pixels = 16;
+	QFont f(family);
+	f.setPixelSize(pixels);
+	f.setHintingPreference(QFont::PreferFullHinting);
+	return f;
+}
+
 QString grid_font_problem(const QFont &font) {
 	const QFontInfo info(font);
 	// Asked before fixed-pitch, because "which is not fixed pitch" about an

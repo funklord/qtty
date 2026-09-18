@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1511 checks, 0 failures. `make check` is green and includes
+1516 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -2261,11 +2261,12 @@ In the order I would take them:
      -- an application picks its quit keys while building its window, so
      it sets the default every router starts from as well as reaching
      the ones already running.
-   - **The font is hardcoded and fatal.** `setup()` installs DejaVu Sans
-     Mono at 16 px and `qFatal()`s when the metrics are not integral.
-     There is no override, so a machine without that font cannot run a
-     qtty program at all. §0b's bundled-font question is the other end of
-     this.
+   - **The font can be chosen now** (8.225). `setup()` still installs
+     DejaVu Sans Mono at 16 px and still refuses a font whose metrics
+     are not integral -- that is R3 and stays -- but
+     `Qtty::set_font()` names another for an application and
+     `QTTY_FONT`/`QTTY_FONT_SIZE` for whoever runs it. §0b's
+     bundled-font question is the other end of this and is untouched.
    - **An application's own `QStyle` is discarded.** `GridStyle` is
      constructed on a hardwired Fusion base, and design.md section 12
      promises the opposite: "an app's custom style is not lost -- it
@@ -16351,6 +16352,41 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.225 A font nobody could choose (2026-09-18)
+
+0e's second adoption decision. `setup()` built `QFont("DejaVu Sans
+Mono")` at 16 pixels, and that was the whole of the policy: an
+application that wanted another mono font could not have one, and a user
+whose machine could not carry the default met `qFatal()` naming a font
+they had no way to change.
+
+**The entry overstated it slightly and the code said so.** "A machine
+without that font cannot run a qtty program at all" is not quite right:
+Qt substitutes a missing family, and `grid_font_substitution()`'s own
+comment records the whole suite running green on Noto Mono at the same
+10x19 cell. The hazard is narrower and still real -- where the
+substitute's metrics are not integral, the refusal is correct and there
+was no way round it.
+
+`grid_font_request()` is the answer: the application's `set_font()`
+first, then `QTTY_FONT` and `QTTY_FONT_SIZE`, then the default. **The
+hinting is not offered**, because it is not a preference: measured, the
+same font at the same size gives advance 10.0 under full hinting and
+9.625 under the stock Debian default, and the second is what
+`grid_font_problem()` refuses. A font chosen by an application or a user
+needs that pin at least as much as the default does.
+
+**A size is validated rather than obeyed**, and the sabotage for that
+refused to redden until the check asked the right question. Nonsense and
+zero both arrive as 0 and the `pixels <= 0` default catches them
+whichever way the range test goes -- so a check resting on those two
+passed with the test deleted. What only the range test prevents is an
+ABSURD size: 100000 pixels is a cell larger than any terminal and a grid
+with one column. **Two entries running, a sabotage has caught a check
+that tested the fix rather than the defect** -- the same shape as
+8.224's quit key, and it is becoming the most common way a new check is
+wrong here.
 
 ### 8.224 The quit keys an application could not change (2026-09-18)
 
