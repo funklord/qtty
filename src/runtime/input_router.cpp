@@ -2091,9 +2091,32 @@ void InputRouter::on_key(const KeyEvent &k) {
 			// the one place a user means copy. An application that wants the
 			// old behaviour has set_quit_keys(), and one that wants no quit
 			// key at all passes an empty list.
+			//
+			// AND NOT AN ITEM VIEW, which the sentence above says quits
+			// and which did not. A list, tree or table acquires
+			// WA_InputMethodEnabled as soon as its current item is
+			// editable -- the default for QStringListModel,
+			// QStandardItemModel and every QTableWidget item -- so the
+			// escape hatch written for a caret in a field was taken by
+			// the commonest list in Qt. Measured, with no Copy action
+			// bound anywhere:
+			//
+			//     a push button          Ctrl+C quits
+			//     a read-only list       Ctrl+C quits
+			//     the DEFAULT list       nothing at all happened
+			//     a line edit            copy, as intended
+			//
+			// Nothing at all is what makes it a defect rather than a
+			// trade: the user pressed the key every terminal program
+			// answers and got silence. While such a view IS editing the
+			// editor is the key target and carries the attribute on its
+			// own account, so a caret still takes the key away -- which
+			// is the whole of what the hatch was for. Same root as
+			// 8.221, one branch along.
 			const QWidget *fw = key_target();
 			const bool in_text =
-			    fw && fw->testAttribute(Qt::WA_InputMethodEnabled);
+			    fw && fw->testAttribute(Qt::WA_InputMethodEnabled)
+			    && !qobject_cast<const QAbstractItemView *>(fw);
 			if (k.qt_key == Qt::Key_C && k.ctrl && in_text)
 				break;
 			// And Ctrl+D, on the same test and for the same reason, but ONLY

@@ -7948,6 +7948,100 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// ---- the quit key an item view was eating ------------------------------
+	//
+	// The quit-key loop gives Ctrl+C up where a caret sits in a field,
+	// because that is where a user means copy, and its comment says a form
+	// is mostly buttons, lists and tables and that Ctrl+C quits from all of
+	// them. It did not: an item view acquires WA_InputMethodEnabled as soon
+	// as its current item is editable -- the default for QStringListModel,
+	// QStandardItemModel and every QTableWidget item -- so the hatch was
+	// taken by the commonest list in Qt, and with no Copy action bound the
+	// key did NOTHING. Measured with a real exec(), before the fix:
+	//
+	//     a push button       Ctrl+C quits
+	//     a read-only list    Ctrl+C quits
+	//     the DEFAULT list    nothing at all
+	//     a line edit         copy, as intended
+	//
+	// The quit cannot be observed here -- QCoreApplication::quit() is a
+	// no-op with no main loop and this suite has none -- so the check
+	// counts what ARRIVES, which is the same instrument the Ctrl+D case
+	// below uses and for the same reason: a key the loop consumed never
+	// reaches the widget, and one it gave up does.
+	{
+		struct Watch : QObject {
+			int ctrl_c = 0;
+			bool eventFilter(QObject *, QEvent *e) override {
+				if (e->type() == QEvent::KeyPress) {
+					auto *k = static_cast<QKeyEvent *>(e);
+					if (k->key() == Qt::Key_C
+					    && (k->modifiers() & Qt::ControlModifier))
+						++ctrl_c;
+				}
+				return false;
+			}
+		};
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(30, 10));
+		auto *list = new QListView(&host);
+		auto *model = new QStringListModel(
+		    {QStringLiteral("one"), QStringLiteral("two")}, &host);
+		list->setModel(model);
+		list->setGeometry(0, 0, 18 * cw, 4 * ch);
+		auto *field = new QLineEdit(&host);
+		field->setGeometry(0, 5 * ch, 18 * cw, ch);
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter qr(&host);
+		Watch on_list, on_field;
+		list->installEventFilter(&on_list);
+		field->installEventFilter(&on_field);
+
+		list->setCurrentIndex(model->index(0, 0));
+		list->setFocus();
+		set_focus_widget(host.focusWidget());
+		QCoreApplication::processEvents();
+		qr.on_key({Qt::Key_C, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		CHECK(on_list.ctrl_c == 0,
+		      "Ctrl+C on a list over an ordinary editable model is taken by "
+		      "the quit keys, which the hatch for a caret in a field had "
+		      "been swallowing");
+
+		field->setFocus();
+		set_focus_widget(host.focusWidget());
+		QCoreApplication::processEvents();
+		qr.on_key({Qt::Key_C, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		CHECK(on_field.ctrl_c == 1,
+		      "while a caret in a field still takes it, which is the whole "
+		      "of what that hatch is for");
+
+		// AND WHILE THE LIST IS EDITING, where there IS a caret: the editor
+		// is the key target and carries the attribute on its own account,
+		// so copy wins again without the view ever being asked.
+		list->setFocus();
+		set_focus_widget(host.focusWidget());
+		list->edit(model->index(0, 0));
+		QCoreApplication::processEvents();
+		set_focus_widget(host.focusWidget());
+		QWidget *editor = nullptr;
+		for (QWidget *c : list->viewport()->findChildren<QWidget *>())
+			if (c->isVisible()) editor = c;
+		Watch on_editor;
+		if (editor) editor->installEventFilter(&on_editor);
+		qr.on_key({Qt::Key_C, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		CHECK(editor && on_editor.ctrl_c == 1,
+		      "and an open editor in that same list takes it too, a caret "
+		      "being the test rather than the widget it sits in");
+		qr.on_key({Qt::Key_Escape, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	// ---- What's This, which works and nothing said so ----------------------
 	//
 	// Practice 7 says a tool tip's words cannot be got at from a keyboard

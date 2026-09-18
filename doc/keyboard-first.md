@@ -95,7 +95,7 @@ reimplements it:
 | `Home`, `End` | Jump to the first or last item of a focused list or tree | Qt's |
 | `PageUp`, `PageDown` | Move a screenful within it | Qt's |
 | A letter, typed into a focused list or tree | Jumps to the next item beginning with it -- type-ahead, which a terminal user reaches for and which nothing here has to implement | Qt's |
-| `Ctrl+C`, `Ctrl+D` | Quit -- except in a widget that takes text, where `Ctrl+C` is left for copy. Change them with `InputRouter::set_quit_keys()` | qtty's |
+| `Ctrl+C`, `Ctrl+D` | Quit -- except where a **caret** is, in a widget that takes text, where `Ctrl+C` is left for copy. A list, tree or table quits like anything else, and its open editor does not. Change them with `InputRouter::set_quit_keys()` | qtty's |
 | `Ctrl+Z` | An ordinary key, **not** a suspend -- see *Never block the event loop* for why, and how to get the conventional behaviour back | qtty's |
 | `F2` | Opens the editor on the current cell or item of an editable view, and `Enter` commits, `Escape` cancels, `Tab` moves to the next cell's editor | Qt's |
 

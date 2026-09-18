@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1500 checks, 0 failures. `make check` is green and includes
+1503 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16337,6 +16337,45 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.223 The quit key an item view was eating (2026-09-18)
+
+The same root as 8.221 and 8.222, one branch further along, and this one
+cost a user the key every terminal program answers. The quit-key loop
+gives `Ctrl+C` up where a caret sits in a field, and its comment says a
+form is mostly buttons, lists and tables and that `Ctrl+C` quits from all
+of them. **It did not.** An item view acquires `WA_InputMethodEnabled` as
+soon as its current item is editable -- the default for
+`QStringListModel`, `QStandardItemModel` and every `QTableWidget` item --
+so the hatch written for a caret was taken by the commonest list in Qt.
+Measured with a real `exec()`, before the fix:
+
+    a push button       Ctrl+C quits
+    a read-only list    Ctrl+C quits
+    the DEFAULT list    nothing at all happened
+    a line edit         copy, as intended
+
+**Nothing at all is what makes it a defect rather than a trade.** With no
+Copy action bound -- which is most programs -- the key neither quit nor
+copied. With one bound it copied, which is why a fixture with a Copy
+action would have looked fine: the first probe written for this had one,
+and read a Copy that fired as the system working.
+
+The fix is the same shape as 8.221: an item view is not a caret. While
+such a view IS editing, the editor is the key target and carries the
+attribute on its own account, so a real caret still takes the key -- a
+third check holds that, because the hatch closing entirely would be the
+opposite defect.
+
+**Three entries now turn on one attribute.** `WA_InputMethodEnabled`
+means *this widget can accept input-method text*, and three places wanted
+the narrower *there is a caret here right now*: the terminal cursor
+(8.221), `focus_invisible()` (8.221) and the quit keys (this one). Qt
+sets it on an item view whose current item is editable, which is a fact
+about the MODEL rather than about what the user is doing. **A predicate
+borrowed for a question it does not answer is worth hunting through a
+tree once the first instance turns up** -- the other two were found by
+asking what else read that attribute.
 
 ### 8.222 What's This works, and nothing said so (2026-09-18)
 

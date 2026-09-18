@@ -2755,3 +2755,13 @@ find = "\t\tif (!w->whatsThis().isEmpty() && reachable.contains(w)) continue;"
 into = "\t\tif (false) continue;"
 count = 1
 check = "hover_only() spares a focusable widget that also has a whatsThis"
+
+[[sabotage]]
+# The copy hatch handed back to item views, so a list over the default
+# model swallows Ctrl+C and the user who pressed it gets silence. 8.223.
+name = "an item view eats the quit key"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\t    && !qobject_cast<const QAbstractItemView *>(fw);"
+into = "\t\t\t    ;"
+count = 1
+check = "Ctrl+C on a list over an ordinary editable model is taken by the quit keys"
