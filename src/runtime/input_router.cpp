@@ -2191,6 +2191,27 @@ void InputRouter::on_key(const KeyEvent &k) {
 			// which in a TUI is most of the time.
 			if (k.qt_key == Qt::Key_D && k.ctrl && in_text && s_conventions)
 				break;
+			// THROUGH THE WINDOW, which is what a desktop's close box
+			// does and what this called nobody about. `qApp->quit()`
+			// ends the loop without a QCloseEvent, so every Qt
+			// application's "you have unsaved changes" -- a
+			// closeEvent() that calls ignore() -- was skipped in
+			// silence. Measured through a real exec() with a window
+			// that refuses the first close: closeEvent asked 0 times,
+			// exec returned 0, the work gone.
+			//
+			// close() returns false when the application refused, and
+			// then nothing happens: the program stays up, having said
+			// so, exactly as it would on a desktop. A program that
+			// asks nothing is unaffected -- close() accepts by
+			// default -- so this costs the ordinary case nothing.
+			//
+			// THE WINDOW THIS ROUTER OWNS, not every window: quitting
+			// is about the program, and the program's own close
+			// handler is where it keeps that decision. An application
+			// that wants the old behaviour has an empty quit-key list
+			// and its own binding.
+			if (win_ && !win_->close()) return;
 			qApp->quit();
 			return;
 		}

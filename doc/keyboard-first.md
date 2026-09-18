@@ -1115,6 +1115,23 @@ numbers, and until this existed the refusal named a font nobody could
 change. The hinting is qtty's either way -- it decides whether the
 metrics are integral at all rather than how the text looks.
 
+**A quit key asks your window to close, and takes no for an answer.**
+`Ctrl+C` is the close gesture a terminal has -- there is no title bar to
+click -- so it goes through `QWidget::close()` and your `closeEvent()`
+runs exactly as it does on a desktop:
+
+```cpp
+void MainWindow::closeEvent(QCloseEvent *e) {
+    if (!dirty || askToSave() == QMessageBox::Discard) e->accept();
+    else e->ignore();                 // and the program stays up
+}
+```
+
+Until this was measured it did not: the key ended the event loop behind
+the window's back, so an unsaved-changes prompt was skipped in silence.
+A program that asks nothing is unaffected -- a close nobody refuses is
+accepted.
+
 **You can change the quit keys, and an application using `exec()` could
 not until it was asked for.** `Qtty::set_quit_keys()` takes the list:
 name a letter, name a chord, or pass an empty list for no quit key at

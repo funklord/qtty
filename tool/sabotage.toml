@@ -2827,3 +2827,13 @@ find = "\t\tset_focus_widget(scope->focusWidget(),\n\t\t                 k.shift
 into = "\t\tset_focus_widget(scope->focusWidget());"
 count = 1
 check = "the same event script leaves the same model state in both builds"
+
+[[sabotage]]
+# The quit key ending the loop behind the window's back again, so a
+# closeEvent that refuses is never asked and unsaved work goes. 8.227.
+name = "a quit key does not ask the window"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\tif (win_ && !win_->close()) return;"
+into = "\t\t\tif (false) return;"
+count = 1
+check = "a quit key asks the window to close, takes no for an answer"

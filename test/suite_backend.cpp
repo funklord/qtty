@@ -4035,6 +4035,86 @@ int suite_exec() {
 	CHECK(got == QStringLiteral("hi"),
 	      "and a byte typed during the run reaches the widget");
 
+	// ---- a quit key asks the window, and takes no for an answer ----
+	//
+	// The branch called qApp->quit() directly, so a QCloseEvent never
+	// happened and every Qt application's "you have unsaved changes" --
+	// a closeEvent() that calls ignore() -- was skipped in silence.
+	// Measured through a real exec() with a window that refuses the
+	// first close and accepts the second: closeEvent asked 0 times and
+	// exec returned 0, the work gone.
+	//
+	// Through exec() because the quit itself is only observable with a
+	// loop running: QCoreApplication::quit() is a no-op without one,
+	// which is why the suite's other quit checks count what ARRIVES
+	// instead.
+	{
+		struct Guarded : QWidget {
+			int asked = 0;
+			bool refuse_once = true;
+			void closeEvent(QCloseEvent *e) override {
+				++asked;
+				if (refuse_once) { refuse_once = false; e->ignore(); return; }
+				e->accept();
+			}
+		};
+		const int m3 = ::posix_openpt(O_RDWR | O_NOCTTY);
+		bool ok3 = m3 >= 0 && ::grantpt(m3) == 0 && ::unlockpt(m3) == 0;
+		const char *n3 = ok3 ? ::ptsname(m3) : nullptr;
+		const int s3 = n3 ? ::open(n3, O_RDWR | O_NOCTTY) : -1;
+		ok3 = ok3 && s3 >= 0;
+		if (!ok3) {
+			printf("FAIL: could not make a pty for the close-on-quit run\n");
+			++fails;
+		} else {
+			::fcntl(m3, F_SETFL, O_NONBLOCK);
+			const int in3 = ::dup(0), out3 = ::dup(1);
+			fflush(stdout);
+			::dup2(s3, 0);
+			::dup2(s3, 1);
+			Guarded guarded;
+			// A BUTTON rather than a field: Ctrl+C stands down where a
+			// caret is, so a focused line edit would defeat the probe --
+			// as the first version of this one did.
+			auto *go = new QPushButton(QStringLiteral("Go"), &guarded);
+			go->setGeometry(0, 0, 100, GridMetrics::ch());
+			go->setFocus();
+			int beat = 0;
+			bool driver_stopped = false;
+			QTimer pulse;
+			pulse.setInterval(10);
+			QObject::connect(&pulse, &QTimer::timeout, qApp, [&] {
+				char sink[4096];
+				while (::read(m3, sink, sizeof(sink)) > 0) { }
+				if (beat == 1 || beat == 6) {
+					const ssize_t typed = ::write(m3, "\003", 1);
+					(void)typed;
+				}
+				if (beat >= 16) {
+					driver_stopped = true;
+					QCoreApplication::exit(7);
+				}
+				++beat;
+			});
+			pulse.start();
+			auto *qa3 = qobject_cast<QApplication *>(qApp);
+			const int rc3 = qa3 ? Qtty::exec(*qa3, guarded) : -1;
+			pulse.stop();
+			fflush(stdout);
+			::dup2(in3, 0);
+			::dup2(out3, 1);
+			::close(in3);
+			::close(out3);
+			::close(m3);
+			::close(s3);
+			CHECK(guarded.asked == 2 && rc3 == 0 && !driver_stopped,
+			      "a quit key asks the window to close, takes no for an "
+			      "answer the first time and quits on the second, which is "
+			      "what every Qt application's unsaved-changes prompt "
+			      "depends on");
+		}
+	}
+
 	// ---- the quit keys an exec() application can now change ----
 	//
 	// InputRouter::set_quit_keys() was reachable by nobody here: exec()

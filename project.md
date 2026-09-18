@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1518 checks, 0 failures. `make check` is green and includes
+1520 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16369,6 +16369,38 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.227 A quit key that destroyed unsaved work (2026-09-18)
+
+Found by a worker asking what an ordinary Qt application can no longer
+do, and the answer was the one every application has: refuse to close.
+The quit-key branch called `qApp->quit()` directly, which ends the loop
+without a `QCloseEvent` -- so a `closeEvent()` that calls `ignore()`,
+which is where every Qt program keeps its unsaved-changes prompt, was
+skipped in silence. Measured through a real `exec()` with a window that
+refuses the first close:
+
+    closeEvent asked 0 time(s), exec returned 0
+
+The work gone, no prompt, no diagnostic.
+
+**`Ctrl+C` is the close gesture a terminal has** -- there is no title bar
+to click -- so it goes through `QWidget::close()` now and quits only if
+the close was accepted. Measured after: refused once then accepted,
+`closeEvent` asked twice, `exec` returning 0 on the second; and with a
+window that always refuses, asked once and the program still running. A
+program that asks nothing is unaffected, `close()` accepting by default.
+
+**The fixture for 8.223 had to be told.** Its quit-key check used to be
+free: with no main loop `qApp->quit()` did nothing at all, so the window
+survived and the rest of the block kept using it. `close()` does
+something. The block re-shows the window now and asserts the close --
+**a check that was passing because the thing it triggered was inert.**
+
+**The escape hatch the worker measured is worth recording**: an
+application that wants the old behaviour can pass an empty quit-key list
+and bind its own key to whatever it likes. So the default is the
+question, and the default was wrong.
 
 ### 8.226 The differential test, and the divergence it found first
 (2026-09-18)

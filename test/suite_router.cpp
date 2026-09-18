@@ -8206,6 +8206,18 @@ int suite_router() {
 		      "Ctrl+C on a list over an ordinary editable model is taken by "
 		      "the quit keys, which the hatch for a caret in a field had "
 		      "been swallowing");
+		// AND THE WINDOW IS SHUT, which is new: a quit key asks the
+		// window to close now (8.227) rather than ending the loop
+		// behind its back. With no main loop the old qApp->quit() did
+		// nothing at all and this fixture never noticed; close() does
+		// something, so the rest of the block has to put the window
+		// back before using it again.
+		CHECK(!host.isVisible(),
+		      "and the window it asked to close is shut, a quit key being "
+		      "the close gesture a terminal has rather than a way round "
+		      "the application");
+		host.show();
+		QCoreApplication::processEvents();
 
 		field->setFocus();
 		set_focus_widget(host.focusWidget());
