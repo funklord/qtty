@@ -2775,3 +2775,24 @@ find = "\tif (qobject_cast<QAbstractItemView *>(fw)) return false;"
 into = "\tif (false) return false;"
 count = 1
 check = "Ctrl+A in a list over an ordinary editable model is Qt's Select All"
+
+[[sabotage]]
+# The quit-key match back to comparing key codes alone, which makes a
+# letter unusable as a quit key -- a terminal sends one as text with a
+# key code of zero. 8.224.
+name = "a quit key is matched by key code alone"
+file = "src/runtime/input_router.cpp"
+find = "\t\tconst bool same_key = q.text.isEmpty()\n\t\t    ? (q.qt_key != 0 && q.qt_key == k.qt_key)\n\t\t    : (q.text == k.text);"
+into = "\t\tconst bool same_key = q.qt_key == k.qt_key;"
+count = 1
+check = "and only that letter: every other printable key still reaches the widget"
+
+[[sabotage]]
+# The free function unable to reach a router that already exists, so an
+# application changing its quit keys from a slot is ignored. 8.224.
+name = "set_quit_keys does not reach a live router"
+file = "src/runtime/input_router.cpp"
+find = "\tfor (InputRouter *r : std::as_const(s_live_routers))\n\t\tr->set_quit_keys(keys);"
+into = "\t(void)0;"
+count = 1
+check = "the router already running follows it"

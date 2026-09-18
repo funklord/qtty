@@ -7948,6 +7948,141 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// ---- quit keys an application using exec() can actually change --------
+	//
+	// InputRouter::set_quit_keys() has always existed and was reachable by
+	// nobody: exec() builds the router on its own stack and hands it out
+	// to no one, so an application could not change Ctrl-C and Ctrl-D
+	// without reimplementing exec() entire. project.md 0e carried that as
+	// the last of the adoption decisions.
+	//
+	// Qtty::set_quit_keys() is the free function, shaped after
+	// capabilities() and shell_out(), with one difference those two do not
+	// need: an application picks its quit keys while building its window,
+	// long before any router exists, so this sets the default every router
+	// starts from AND reaches the ones already running.
+	{
+		// MATCHED THE WAY THE EVENT IS SPELLED. A control chord arrives
+		// with a key code; an ordinary letter arrives as TEXT with a code
+		// of zero, which is what the backend produces and what this
+		// block now sends. A watch that only knew key codes counted
+		// nothing for the letters and read as two failures.
+		struct Watch : QObject {
+			int arrived = 0;
+			int key = 0;
+			QString text;
+			bool eventFilter(QObject *, QEvent *e) override {
+				if (e->type() != QEvent::KeyPress) return false;
+				auto *k = static_cast<QKeyEvent *>(e);
+				if (!text.isEmpty() ? k->text() == text : k->key() == key)
+					++arrived;
+				return false;
+			}
+		};
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(20, 4));
+		auto *button = new QPushButton(QStringLiteral("Go"), &host);
+		button->setGeometry(0, 0, 8 * cw, ch);
+		host.show();
+		QCoreApplication::processEvents();
+
+		// BEFORE the router exists, which is when an application would
+		// call it.
+		const KeyEvent quit_q{0, QStringLiteral("q"), false, false, false};
+		Qtty::set_quit_keys({quit_q});
+		InputRouter qk(&host);
+		Watch on_q, on_c;
+		on_q.text = QStringLiteral("q");
+		on_c.key = Qt::Key_C;
+		button->installEventFilter(&on_q);
+		button->installEventFilter(&on_c);
+		button->setFocus();
+		set_focus_widget(host.focusWidget());
+		QCoreApplication::processEvents();
+		// THE SHAPE A TERMINAL SENDS, which is text-only: the backend
+		// decodes an ordinary character to qt_key 0 with the letter in
+		// text. The first version of this check fed {Qt::Key_Q, "q"} and
+		// passed against an event the backend never produces -- the
+		// exec() check in suite_backend caught it, and matching on text
+		// is what the router learned from it.
+		qk.on_key({0, QStringLiteral("q"), false, false, false});
+		qk.on_key({Qt::Key_C, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		CHECK(on_q.arrived == 0 && on_c.arrived == 1,
+		      "a router built after Qtty::set_quit_keys() quits on the key "
+		      "the application named and lets Ctrl+C through, which no "
+		      "application using exec() could ask for before");
+
+		// AND ONLY THAT LETTER, which is the half a code-only match
+		// cannot give. A terminal sends every ordinary character with a
+		// key code of zero, so comparing codes alone makes a spec of
+		// {0, "q"} equal to EVERY printable key -- the whole keyboard
+		// quitting, quietly. Naming q must not do that.
+		Watch on_z;
+		on_z.text = QStringLiteral("z");
+		button->installEventFilter(&on_z);
+		qk.on_key({0, QStringLiteral("z"), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(on_z.arrived == 1,
+		      "and only that letter: every other printable key still "
+		      "reaches the widget, which a match on key codes alone "
+		      "cannot manage when a terminal sends them all as zero");
+
+		// AND WHILE ONE IS RUNNING, for the application that changes them
+		// from a slot.
+		const KeyEvent quit_x{0, QStringLiteral("x"), false, false, false};
+		Qtty::set_quit_keys({quit_x});
+		Watch on_x;
+		on_x.text = QStringLiteral("x");
+		button->installEventFilter(&on_x);
+		qk.on_key({0, QStringLiteral("x"), false, false, false});
+		qk.on_key({0, QStringLiteral("q"), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(on_x.arrived == 0 && on_q.arrived == 1,
+		      "and the router already running follows it, so a program can "
+		      "change them from a slot as well as before the run");
+
+		// AN EMPTY LIST is a documented answer rather than an oversight:
+		// no quit key at all, and the application owes its user a way out.
+		Qtty::set_quit_keys({});
+		qk.on_key({Qt::Key_C, QString(), true, false, false});
+		qk.on_key({0, QStringLiteral("x"), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(on_c.arrived == 2 && on_x.arrived == 1,
+		      "and an empty list leaves nothing quitting at all, which the "
+		      "header promises and an application with its own Quit item "
+		      "wants");
+
+		// PUT BACK, because this default is process-wide and every router
+		// built after this block would inherit it -- the fixture reaching
+		// outside itself, which this suite has been bitten by before.
+		const KeyEvent ctrl_c{Qt::Key_C, QString(), true, false, false};
+		const KeyEvent ctrl_d{Qt::Key_D, QString(), true, false, false};
+		Qtty::set_quit_keys({ctrl_c, ctrl_d});
+		QWidget after;
+		after.setAttribute(Qt::WA_DontShowOnScreen);
+		after.resize(GridMetrics::cells(20, 4));
+		auto *later = new QPushButton(QStringLiteral("Go"), &after);
+		later->setGeometry(0, 0, 8 * cw, ch);
+		after.show();
+		QCoreApplication::processEvents();
+		InputRouter fresh(&after);
+		Watch on_c2;
+		on_c2.key = Qt::Key_C;
+		later->installEventFilter(&on_c2);
+		later->setFocus();
+		set_focus_widget(after.focusWidget());
+		QCoreApplication::processEvents();
+		fresh.on_key({Qt::Key_C, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		CHECK(on_c2.arrived == 0,
+		      "and a router built afterwards is back to Ctrl+C and Ctrl+D, "
+		      "so this check cannot leave the rest of the suite holding "
+		      "its quit keys");
+		GridGuard::reset();
+	}
+
 	// ---- Ctrl+A in a list, which the guide promises is Select All ----------
 	//
 	// The fourth reader of WA_InputMethodEnabled, and the one that broke a

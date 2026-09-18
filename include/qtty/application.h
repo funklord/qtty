@@ -113,6 +113,33 @@ bool shell_out(const std::function<void()> &body);
 // it, and a lower graphics tier needs the background to composite against.
 Capabilities capabilities();
 
+// The keys that quit, for an application that uses exec() and therefore
+// never sees the router. Ctrl-C and Ctrl-D by default; an empty list means
+// no quit key at all, and the application is then responsible for offering
+// a way out of its own.
+//
+// It exists because there was NO way to change them. exec() builds the
+// router on its own stack and hands it to nobody, so
+// InputRouter::set_quit_keys() -- which has always existed -- was reachable
+// only by reimplementing the whole of exec(). project.md 0e carried that as
+// the last of the adoption decisions, and its shape is taken from the
+// sibling that was closed the same way: capabilities() and shell_out() are
+// free functions that reach what exec() owns.
+//
+// PROCESS-WIDE AND BEFORE THE RUN, which is the difference from those two.
+// An application decides its quit keys while building its window, long
+// before any router exists, so this sets the default every router starts
+// from rather than poking a live one -- and it also reaches the routers
+// already running, so a call from inside a slot takes effect at once.
+// InputRouter::set_quit_keys() still overrides it for one router.
+//
+// THE HAZARD THAT MADE THIS DELICATE IS GONE. While a vanished terminal was
+// reported by synthesising Ctrl-D, an application able to redefine the quit
+// keys could also stop being told its terminal had closed; 8.148 gave that
+// its own seam, on_terminal_lost(), which nothing routes and no quit key
+// can take away.
+void set_quit_keys(const QVector<KeyEvent> &keys);
+
 // True while a terminal session is being driven -- by exec(), or by an
 // application's own frame loop, which is the seat 8.153 found answering
 // false beside a backend holding the alternate screen. Overlay uses this to

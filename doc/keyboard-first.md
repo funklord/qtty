@@ -95,7 +95,7 @@ reimplements it:
 | `Home`, `End` | Jump to the first or last item of a focused list or tree | Qt's |
 | `PageUp`, `PageDown` | Move a screenful within it | Qt's |
 | A letter, typed into a focused list or tree | Jumps to the next item beginning with it -- type-ahead, which a terminal user reaches for and which nothing here has to implement | Qt's |
-| `Ctrl+C`, `Ctrl+D` | Quit -- except where a **caret** is, in a widget that takes text, where `Ctrl+C` is left for copy. A list, tree or table quits like anything else, and its open editor does not. Change them with `InputRouter::set_quit_keys()` | qtty's |
+| `Ctrl+C`, `Ctrl+D` | Quit -- except where a **caret** is, in a widget that takes text, where `Ctrl+C` is left for copy. A list, tree or table quits like anything else, and its open editor does not. Change them with `Qtty::set_quit_keys()`, before your run or during it | qtty's |
 | `Ctrl+Z` | An ordinary key, **not** a suspend -- see *Never block the event loop* for why, and how to get the conventional behaviour back | qtty's |
 | `F2` | Opens the editor on the current cell or item of an editable view, and `Enter` commits, `Escape` cancels, `Tab` moves to the next cell's editor | Qt's |
 
@@ -1096,6 +1096,23 @@ Select All, and nothing there changes.
 these fires as it always did, even with a text field focused: a shortcut
 is something your program asked for by name, and these are a convention
 offered on its behalf.
+
+**You can change the quit keys, and an application using `exec()` could
+not until it was asked for.** `Qtty::set_quit_keys()` takes the list:
+name a letter, name a chord, or pass an empty list for no quit key at
+all -- and then your program owes its user a way out of its own.
+
+```cpp
+Qtty::set_quit_keys({{0, "q", false, false, false}});   // q quits
+Qtty::set_quit_keys({});                                // nothing does
+```
+
+**A letter is spelled as text, which is how a terminal sends one.** An
+ordinary character arrives with no key code at all and the letter in
+`text`, so `{0, "q"}` is the quit key *q*; a control chord carries a key
+code and no text, which is how `Ctrl+C` is written. Call it before
+`Qtty::exec()` or from a slot during the run -- both take effect, and a
+router built afterwards starts from it.
 
 **`Ctrl+D` deletes forward too**, on the same terms: with the
 conventions on, in a widget that takes text. Elsewhere, and with them

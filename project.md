@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1505 checks, 0 failures. `make check` is green and includes
+1511 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -2236,24 +2236,12 @@ In the order I would take them:
    Every one of these is reachable, understood, and waiting on somebody's
    judgement rather than on work:
 
-   - **`set_quit_keys()` cannot be reached through `exec()`.** The router
-     is constructed on `exec()`'s own stack and nothing hands it out, so
-     an application cannot change Ctrl-C and Ctrl-D without reimplementing
-     the whole of `exec()`. Fixing it means adding API -- an overload, a
-     setter, or handing back the router -- which is a shape decision, and
-     it is now the whole of what is left here.
-     **The hazard that made it delicate is gone.** This entry used to say
-     that closing it would open 8.122's coupling: the backend reported a
-     vanished terminal by synthesising Ctrl-D, so an application able to
-     redefine the quit keys could also stop being told its terminal had
-     gone, and the two were one decision. 8.148 gave that event its own
-     seam, `on_terminal_lost()`, which nothing routes and no quit key can
-     take away, so the decisions are separate again.
-     **Its sibling is closed**: `suspend()`/`resume()` were unreachable by
-     the same mechanism and are reachable now through `Qtty::shell_out()`,
-     which follows `Qtty::capabilities()`' precedent (8.130). That one had a
-     decided shape to copy and this one does not -- the router is not the
-     terminal, and handing it out is a different question.
+   - **`set_quit_keys()` through `exec()` is done** (8.224), by the
+     shape this entry pointed at: a free function, as `capabilities()`
+     and `shell_out()` are, with the one difference those two do not need
+     -- an application picks its quit keys while building its window, so
+     it sets the default every router starts from as well as reaching
+     the ones already running.
    - **The font is hardcoded and fatal.** `setup()` installs DejaVu Sans
      Mono at 16 px and `qFatal()`s when the metrics are not integral.
      There is no override, so a machine without that font cannot run a
@@ -16344,6 +16332,60 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.224 The quit keys an application could not change (2026-09-18)
+
+The last of the adoption decisions in 0e, implemented rather than
+deferred further. `InputRouter::set_quit_keys()` has existed all along
+and was reachable by nobody: `exec()` builds the router on its own stack
+and hands it to no one, so changing Ctrl-C and Ctrl-D meant
+reimplementing `exec()` entire.
+
+**The shape is the one 0e pointed at** -- a free function, as
+`capabilities()` and `shell_out()` are -- **with one difference those two
+do not need.** They are called during a run, from a slot. Quit keys are
+chosen while an application is building its window, before any router
+exists. So `Qtty::set_quit_keys()` sets the default every router starts
+from AND reaches the ones already running, and
+`InputRouter::set_quit_keys()` still overrides one router.
+
+**Then checking it through a real `exec()` found a defect in the feature
+itself, which driving `on_key()` never would have.** The match compared
+key CODES only:
+
+    a terminal sends 'q' as        qt_key 0, text "q"
+    an application writes          {Qt::Key_Q, "q"}
+    the comparison asked           q.qt_key == k.qt_key
+
+-- so a letter, the first thing anybody names as a quit key, matched
+nothing at all. And the same omission the other way round is worse: a
+spec of `{0, "q"}` compared equal to EVERY printable key, both codes
+being zero. A spec that names text is matched on its text now, and one
+that names only a code on the code; Ctrl-C and Ctrl-D carry a code and
+no text and are unaffected.
+
+**The in-suite check passed against an event the backend does not
+produce.** It fed `{Qt::Key_Q, "q"}` to `on_key()` directly -- a shape a
+terminal never sends -- so it was green while a real run was not. The
+exec() check is what caught it, and both are kept: the direct one now
+sends text-only events, and the exec() one drives a pty exactly as the
+`"hi"` fixture beside it does. **A synthetic event is a fixture's
+invention until something real produces it.**
+
+**And the fixture hung the first time**, because the pty master was left
+blocking and the drain loop waits for ever on an empty one. The suite's
+own watchdog stopped it and said so -- *a hang, not a slow machine* --
+which is the bound that exists for exactly this.
+
+**Then the sabotage for the match refused to redden, and was right
+to.** With the spec written the way the guide teaches -- `{0, "q"}` --
+restoring the code-only comparison still quits on q, because both codes
+are zero. What it ALSO does is quit on every other printable key, and
+nothing asked about that. The check that discriminates presses `z` and
+requires it to arrive: naming q must not hand the whole keyboard to the
+quit path. **The first check was of the fix and the second is of the
+defect** -- and only the second can tell the two implementations
+apart.
 
 ### 8.223 The quit key an item view was eating (2026-09-18)
 

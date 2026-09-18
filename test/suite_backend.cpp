@@ -4035,6 +4035,92 @@ int suite_exec() {
 	CHECK(got == QStringLiteral("hi"),
 	      "and a byte typed during the run reaches the widget");
 
+	// ---- the quit keys an exec() application can now change ----
+	//
+	// InputRouter::set_quit_keys() was reachable by nobody here: exec()
+	// builds the router on its own stack and hands it out to no one, so
+	// changing Ctrl-C and Ctrl-D meant reimplementing exec() entire.
+	// project.md 0e carried that as the last adoption decision and
+	// Qtty::set_quit_keys() closes it.
+	//
+	// Checked THROUGH exec(), because that is the whole claim: the
+	// process-wide default has to reach a router the application never
+	// sees. The key is typed into the pty exactly as "hi" is above, and
+	// what says it worked is exec() returning before the driver's own
+	// quit -- a quit nobody asked for otherwise.
+	{
+		const int m2 = ::posix_openpt(O_RDWR | O_NOCTTY);
+		bool built = m2 >= 0 && ::grantpt(m2) == 0 && ::unlockpt(m2) == 0;
+		const char *name2 = built ? ::ptsname(m2) : nullptr;
+		const int s2 = name2 ? ::open(name2, O_RDWR | O_NOCTTY) : -1;
+		built = built && s2 >= 0;
+		if (!built) {
+			printf("FAIL: could not make a pty for the quit-key run\n");
+			++fails;
+		} else {
+			// NON-BLOCKING, which the fixture above sets and this one
+			// omitted: the drain loop below reads until the master is
+			// empty, and on a blocking fd "empty" means it waits for
+			// ever. The suite's own watchdog caught it -- a hang, not a
+			// slow machine, exactly as it says.
+			::fcntl(m2, F_SETFL, O_NONBLOCK);
+			const int in2 = ::dup(0), out2 = ::dup(1);
+			fflush(stdout);
+			::dup2(s2, 0);
+			::dup2(s2, 1);
+			QWidget qwin;
+			auto *field = new QLineEdit(&qwin);
+			field->setGeometry(0, 0, GridMetrics::cw() * 10,
+			                   GridMetrics::ch());
+			field->setFocus();
+			// Spelled as a terminal sends it: no key code, the letter
+			// in the text. That is what the guide tells an application
+			// to write, and what this run will actually decode.
+			const KeyEvent quit_on_q{0, QStringLiteral("q"), false,
+			                         false, false};
+			Qtty::set_quit_keys({quit_on_q});
+			int tick = 0;
+			bool driver_quit = false;
+			QTimer drive2;
+			drive2.setInterval(10);
+			QObject::connect(&drive2, &QTimer::timeout, qApp, [&] {
+				char sink[4096];
+				while (::read(m2, sink, sizeof(sink)) > 0) { }
+				if (tick == 1) {
+					const ssize_t typed = ::write(m2, "q", 1);
+					(void)typed;
+				}
+				// The fallback, so a failure is a red check rather than
+				// a suite that never ends.
+				if (tick >= 12) {
+					driver_quit = true;
+					QCoreApplication::quit();
+				}
+				++tick;
+			});
+			drive2.start();
+			auto *qa2 = qobject_cast<QApplication *>(qApp);
+			const int rc2 = qa2 ? Qtty::exec(*qa2, qwin) : -1;
+			drive2.stop();
+			fflush(stdout);
+			::dup2(in2, 0);
+			::dup2(out2, 1);
+			::close(in2);
+			::close(out2);
+			::close(m2);
+			::close(s2);
+			// Put the default back before anything else in this process
+			// builds a router.
+			const KeyEvent back_c{Qt::Key_C, QString(), true, false, false};
+			const KeyEvent back_d{Qt::Key_D, QString(), true, false, false};
+			Qtty::set_quit_keys({back_c, back_d});
+			CHECK(rc2 == 0 && !driver_quit && field->text().isEmpty(),
+			      "a quit key named with Qtty::set_quit_keys() ends an "
+			      "exec() run, which is the router an application never "
+			      "sees taking an instruction it could not give before");
+		}
+	}
+
 	// ---- a signal restores the terminal ----
 	{
 		// suspend() undoes everything resume() did and runs from the

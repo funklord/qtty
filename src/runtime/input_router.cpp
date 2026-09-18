@@ -89,13 +89,35 @@ static const ConventionRow k_convention_rows[] = {
 };
 
 
+// The quit keys an application asked for before any router existed, and the
+// routers that are running now. Both halves are needed and neither is
+// enough: an application picks its quit keys while building its window,
+// which is long before exec() constructs a router, and one that changes
+// them from a slot is talking about the router already driving the screen.
+//
+// A LIST of live routers rather than one pointer. exec() builds one, and
+// this library's own suite builds hundreds -- and "the quit keys" is a
+// property of the process, not of whichever router happens to be last.
+static QVector<KeyEvent> s_quit_default = {
+	KeyEvent{Qt::Key_C, QString(), true, false, false},
+	KeyEvent{Qt::Key_D, QString(), true, false, false},
+};
+static QVector<InputRouter *> s_live_routers;
+
+void set_quit_keys(const QVector<KeyEvent> &keys) {
+	s_quit_default = keys;
+	for (InputRouter *r : std::as_const(s_live_routers))
+		r->set_quit_keys(keys);
+}
+
 InputRouter::InputRouter(QWidget *window) : win_(window) {
-	quit_keys_ = { KeyEvent{Qt::Key_C, QString(), true, false, false},
-		          KeyEvent{Qt::Key_D, QString(), true, false, false} };
+	quit_keys_ = s_quit_default;
+	s_live_routers.append(this);
 	qApp->installEventFilter(this);
 }
 
 InputRouter::~InputRouter() {
+	s_live_routers.removeAll(this);
 	if (qApp) qApp->removeEventFilter(this);
 }
 
@@ -2083,8 +2105,28 @@ void InputRouter::on_key(const KeyEvent &k) {
 		drag_cancel();
 		return;
 	}
-	for (const KeyEvent &q : std::as_const(quit_keys_))
-		if (q.qt_key == k.qt_key && q.ctrl == k.ctrl && q.alt == k.alt) {
+	// THE TEXT COUNTS, and leaving it out made a letter unusable as a quit
+	// key -- which is the first thing an application asks for. A terminal
+	// decodes an ordinary character to `qt_key = 0` with the letter in
+	// `text` (ansi_backend.cpp), so a spec of {Qt::Key_Q, "q"} matched
+	// nothing at all: the event's qt_key is 0 and the spec's is Key_Q. The
+	// same omission the other way round is worse -- a spec of {0, "q"}
+	// compared equal to EVERY printable key, because only qt_key was
+	// looked at and both are 0.
+	//
+	// So: a spec that names text is matched on its text, and one that
+	// names only a key code on the code. Ctrl-C and Ctrl-D carry a code
+	// and no text and are unaffected.
+	//
+	// Found by checking the new free function through a real exec() rather
+	// than by driving on_key() directly -- the synthetic event carried a
+	// qt_key that a terminal never sends, so the in-suite check passed
+	// against a shape the backend does not produce.
+	for (const KeyEvent &q : std::as_const(quit_keys_)) {
+		const bool same_key = q.text.isEmpty()
+		    ? (q.qt_key != 0 && q.qt_key == k.qt_key)
+		    : (q.text == k.text);
+		if (same_key && q.ctrl == k.ctrl && q.alt == k.alt) {
 			// ...unless a text field has focus, where the same chord is copy
 			// on every desktop there is. Measured: with the whole of a
 			// QLineEdit selected, Ctrl+X cut it and put it on the clipboard,
@@ -2152,6 +2194,7 @@ void InputRouter::on_key(const KeyEvent &k) {
 			qApp->quit();
 			return;
 		}
+	}
 
 	if (k.qt_key == Qt::Key_Tab && !k.ctrl) {
 		// The widget first, and only then the focus chain. This drove the
