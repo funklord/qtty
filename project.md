@@ -16986,6 +16986,74 @@ three redden the check they name, and the QDrag one declares
 `expect = "crash"` -- deleting a QDrag that its own source already took
 away does not produce a red line, it takes the suite out at 670 checks.
 
+### 8.249 Swept, measured, and not yet acted on (2026-09-18)
+
+Four findings from the two audit sweeps of 2026-09-18 that are real and
+are NOT fixed. They are written down because a measured finding that lives
+only in a session is a finding that gets made again.
+
+**1. The terminal's background reaches one of three compositing sites.**
+`Capabilities::background` is filled from OSC 11 and its own header comment
+says why -- "guessing black on a light terminal haloes every icon". It is
+consumed at the `CellImage` mosaic site in `ansi_backend.cpp` and at
+neither of the other two: the overlay fallback in `compositor.cpp` omits
+the argument and takes `compose_halfblocks()`' default `qRgb(16,20,24)`,
+and `rasterize_into()` hardcodes `default_bg`/`default_fg`.
+
+What that costs: on a light terminal with no pixel protocol, a translucent
+`Qtty::Overlay` is haloed dark at every edge while a `CellImage` in the
+same frame is not. On a light terminal driving sixel or iTerm2, **showing
+any overlay switches the whole screen to the pixel path and every
+`Color::Default` cell ships as `#101418`** -- the pixel tier draws a dark
+screen over a light terminal while the text tier is correct.
+
+`project.md` records this as landed, and that is true of the one call
+site. The claim wants narrowing when the rest is done.
+
+**2. `InputRouter::on_focus_change(bool)` accepts its argument and
+discards it.** The body is `{ if (frame_requested) frame_requested(); }`;
+both values do the same thing. The producing end is complete -- focus
+reporting is requested unconditionally, both directions decode, and the
+stated purpose is "a TUI dims its selection when the terminal loses focus,
+the way a desktop window does". Nothing learns it: no `WindowDeactivate`,
+`applicationState()` never leaves Active, and qtty's own focus
+reverse-video stays lit, so a selection keeps its active highlight after
+the user switches terminal window or tab. The existing check drives only
+`true` and asserts only that a frame was requested, so it would pass with
+the parameter deleted.
+
+**3. `CursorShape::Underline` has a consumer and no producer**, residue of
+8.241: the encoder emits `ESC[4 q` and `Compositor::shape_for()` returns
+only `Block` or `Bar`. Nothing observable today, which is why it is third.
+Worth a line because 8.241's own comment records fixing exactly this for
+`Block` without noting `Underline` was left behind -- and because the
+section 7 row reading "Three of `CursorShape`'s four values do nothing" is
+now stale and should be corrected by whoever closes this.
+
+**4. `QTTY_GRAPHICS=none` parses and does nothing, and this one is not
+ours to settle.** `NoGraphics` is produced only by someone asking for it
+-- `negotiate_graphics()`'s floor is `Halfblocks` -- and consumed nowhere:
+the pixel gate is `mode_ >= Sixel` and the overlay gate names the four
+pixel tiers, so `NoGraphics` and `Halfblocks` are byte-identical and there
+is **no way to turn graphics off**. The tree holds three incompatible
+readings: a suite check asserting "QTTY_GRAPHICS=none disables graphics"
+while testing only that the string parses; another grouping the two as one
+tier; and a header comment using "the NoGraphics mosaic tier" as the name
+for the mosaic. `doc/beerssh.md` meanwhile promises a cooperating terminal
+that exports its tier and "qtty obeys -- exact, no sniffing".
+
+Whatever `none` comes to mean also decides what a snapshot contains,
+`NullBackend::capabilities()` returning `{}`. **A decision for the
+copyright holder, recorded rather than taken.**
+
+**Three further questions the same day's work raised and did not answer**,
+each recorded in its own entry and collected here so they are in one
+place: whether section 11's benchmark should grow an image case, it being
+a 200x60 text fixture that has never timed the graphics path (8.242);
+whether `is_tui_active()`'s remaining gap justifies shipping the ownership
+header `terminal_owner.h` deliberately withholds (8.243); and the public
+API growth in `CellTheme` with `accent`'s changed default (8.248).
+
 ### 8.246 The same raw pointer, twice more (2026-09-18)
 
 8.237 made `InputRouter::win_` a `QPointer` and closed **one instance of
