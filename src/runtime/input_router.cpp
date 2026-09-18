@@ -1887,8 +1887,17 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 	    && (k.qt_key == Qt::Key_Menu
 	        || (k.qt_key == Qt::Key_F10 && k.shift))) {
 		const QPoint local = target->rect().center();
-		QContextMenuEvent menu(QContextMenuEvent::Keyboard, local,
-		                       target->mapToGlobal(local));
+		const QPoint global = target->mapToGlobal(local);
+		// And the recorded pointer goes with it, because this event's global
+		// position is one qtty INVENTED -- there was no pointer involved --
+		// and an application reading QCursor::pos() instead of
+		// event->globalPos() must not get a different answer from the same
+		// keystroke. A desktop does not move the pointer for a keyboard
+		// context menu, and a desktop also has a real one to leave alone;
+		// here the alternative is not fidelity but a constant, and the two
+		// spellings disagreeing is the fault being fixed above.
+		QCursor::setPos(global);
+		QContextMenuEvent menu(QContextMenuEvent::Keyboard, local, global);
 		QApplication::sendEvent(target, &menu);
 		return;
 	}
@@ -2389,6 +2398,35 @@ static void prime_menu_motion(QWidget *target, const QPoint &screen,
 void InputRouter::on_mouse(const MouseEvent &m) {
 	const QPoint px(m.cell.x() * GridMetrics::cw() + GridMetrics::cw() / 2,
 	                m.cell.y() * GridMetrics::ch() + GridMetrics::ch() / 2);
+	// Where the pointer is, recorded where the rest of Qt looks for it.
+	//
+	// QCursor::pos() is not unanswered under this platform, it is answered
+	// WRONG, which is what makes it worth a write on every event. Measured on
+	// Qt 6 under the offscreen platform prepare_environment() pins:
+	// QOffscreenCursor is constructed at (10, 10), and QCursor::pos() returns
+	// the platform cursor's position whenever the platform has one -- so it
+	// answers (10, 10) for the life of the program.
+	//
+	// That is cell (1, 0). An application writing the standard
+	// menu.exec(QCursor::pos()) opened its context menu in the top-left
+	// corner of the terminal on every click, while the same application
+	// written against event->globalPos() was correct. Both spellings are
+	// idiomatic Qt and they disagreed, with nothing reporting a failure: the
+	// compositor faithfully anchors the popup to the position it was given
+	// (section 5.5), so the program looks broken rather than unsupported.
+	//
+	// setPos() rather than QGuiApplicationPrivate::lastCursorPosition, which
+	// is private -- and which the menu-motion comment below already records
+	// as unreachable for the same reason.
+	//
+	// It moves no real pointer and raises nothing. QOffscreenCursor::setPos()
+	// does synthesise an enter, a leave and a MouseMove into whatever exposed
+	// window contains the point, which would fight update_hover() below --
+	// but every top level here carries WA_DontShowOnScreen, so none is
+	// exposed and none is found. Measured before relying on it: five setPos()
+	// calls across a shown WA_DontShowOnScreen widget delivered 0 moves,
+	// 0 enters and 0 leaves, and left pos() reading back what was written.
+	QCursor::setPos(px);
 	// Popups first (top of stack down), then the modal, then the window
 	// (section 5.5 routing order).
 	const Qt::KeyboardModifiers mods = qt_modifiers(m.ctrl, m.alt, m.shift);

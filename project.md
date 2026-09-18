@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1524 checks, 0 failures. `make check` is green and includes
+1528 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16369,6 +16369,70 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.232 QCursor::pos() answered wrong, not nothing (2026-09-18)
+
+Found by a survey asking what an ordinary Qt call does under qtty, and
+verified here with a standalone program before anything was changed.
+
+Qt's offscreen plugin -- the one `prepare_environment()` pins -- installs a
+platform cursor, and `QOffscreenCursor` is constructed at `(10, 10)`.
+`QCursor::pos()` returns the platform cursor's position whenever the
+platform has one, so it answered `(10, 10)` for the life of every qtty
+program. That is cell (1, 0).
+
+**The failure is that two idiomatic spellings disagreed.** Both of these
+are ordinary Qt, written by the same author on the same afternoon:
+
+    menu.exec(event->globalPos())   correct -- the router synthesises it
+    menu.exec(QCursor::pos())       opens in the terminal's top-left corner
+
+and nothing reports the second. The compositor faithfully anchors the popup
+to the position it was handed (section 5.5), so the program looks broken
+rather than unsupported. **A wrong answer is worse than a missing one**,
+which is why this is worth a write on every mouse event rather than an
+entry in the list of things a terminal cannot do.
+
+The tree already knew the adjacent half and stopped one step short: the
+menu-motion comment in `input_router.cpp` records that
+`QGuiApplicationPrivate::lastCursorPosition` is only updated by the
+platform's own mouse events, and works around it for
+`QMenuPrivate::hasMouseMoved()` -- without ever closing the loop on
+`QCursor::pos()` itself.
+
+**Both synthesis sites write it.** `on_mouse()` records where the terminal
+reported the pointer. The keyboard context-menu path records the position
+it invented, and that one needs its own argument: a desktop does not move
+the pointer for Shift+F10, and a desktop also has a real pointer to leave
+alone. Here the alternative is not fidelity but a constant, and qtty has
+already decided that event's `globalPos()` -- leaving `QCursor::pos()`
+disagreeing with a value this library made up is the fault being fixed, not
+a smaller version of it.
+
+**The hazard that had to be measured first.** `QOffscreenCursor::setPos()`
+is not a store: it synthesises an enter, a leave and a `MouseMove` into
+whatever EXPOSED window contains the point, which would fight
+`update_hover()` in the same function. Measured before relying on it --
+five `setPos()` calls across a shown `WA_DontShowOnScreen` widget delivered
+**0 moves, 0 enters, 0 leaves**, and `pos()` read back what was written,
+because nothing under this runtime is ever exposed. That measurement is now
+a check, so a later change that exposes a window cannot make the router
+start inventing pointer motion in silence.
+
+**Four checks, and the third is the one that cannot go stale.** The
+constant is pinned first, by hand, so the move afterwards is a measurement
+rather than a coincidence. The mouse path is pinned against the cell it was
+given. Then the RELATIONSHIP: a keyboard context menu must leave
+`QCursor::pos()` equal to the `globalPos()` the event carried -- neither
+value alone, because either would need rewriting the next time the
+synthesis moves and the pair would not. The fourth is the control above.
+
+**An instrument note, which cost a detour.** `make test` prints the suite
+and the GridGuard warnings to the same terminal, and a warning landing
+mid-line breaks a `PASS:` prefix -- so counting `^PASS` from the merged
+stream under-reports. It read 1527 where the suite runs 1528. `count-check`
+is not affected, discarding stderr before it counts, which is why the gate
+was right while the reading was wrong.
 
 ### 8.231 A configuration that failed and left nothing (2026-09-18)
 

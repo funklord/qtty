@@ -7008,6 +7008,92 @@ int suite_router() {
 	}
 
 
+	// ---- where QCursor::pos() says the pointer is ----
+	{
+		// QCursor::pos() was not unanswered here, it was answered WRONG,
+		// which is a worse failure than the absent Enter and Leave above:
+		// nothing reports it, and the application looks broken rather than
+		// unsupported. Qt's offscreen plugin installs a platform cursor
+		// constructed at (10, 10), and QCursor::pos() returns the platform
+		// cursor's position whenever there is one -- so it answered cell
+		// (1, 0) for the life of every program, while the router knew
+		// exactly where the terminal had reported a press.
+		//
+		// The cost is that two idiomatic spellings disagreed:
+		// menu.exec(QCursor::pos()) opened in the terminal's top-left
+		// corner and menu.exec(event->globalPos()) opened correctly, in
+		// code a reader would call the same thing.
+		struct Watch : QWidget {
+			int moves = 0, menus = 0;
+			QPoint ctx;
+			using QWidget::QWidget;
+			void mouseMoveEvent(QMouseEvent *) override { ++moves; }
+			void contextMenuEvent(QContextMenuEvent *e) override {
+				++menus;
+				ctx = e->globalPos();
+				e->accept();
+			}
+		};
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(40, 12));
+		auto *w = new Watch(&win);
+		w->setFocusPolicy(Qt::StrongFocus);
+		w->setGeometry(GridMetrics::cw() * 4, GridMetrics::ch() * 2,
+		               GridMetrics::cw() * 10, GridMetrics::ch() * 3);
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+
+		// The starting constant, put back by hand and asserted -- so this
+		// cannot pass because some earlier fixture happened to leave the
+		// right number there, and so the next line is measuring a move
+		// rather than a coincidence.
+		QCursor::setPos(10, 10);
+		CHECK(QCursor::pos() == QPoint(10, 10),
+		      "the offscreen platform starts its cursor at (10, 10), which "
+		      "is what every program used to read for ever");
+
+		MouseEvent m;
+		m.cell = QPoint(20, 5);
+		m.button = 0;
+		m.press = true;
+		r.on_mouse(m);
+		QCoreApplication::processEvents();
+		const QPoint want(20 * GridMetrics::cw() + GridMetrics::cw() / 2,
+		                  5 * GridMetrics::ch() + GridMetrics::ch() / 2);
+		CHECK(QCursor::pos() == want,
+		      "a mouse report moves the pointer QCursor::pos() reports, so "
+		      "menu.exec(QCursor::pos()) opens where the user clicked");
+
+		// THE RELATIONSHIP, which is the assertion that matters: the two
+		// ways an application can ask must not give different answers. A
+		// check pinning either value alone goes stale the moment the
+		// synthesis changes; this one cannot, because it compares them.
+		w->setFocus();
+		set_focus_widget(win.focusWidget());
+		w->menus = 0;
+		w->moves = 0;
+		r.on_key({Qt::Key_Menu, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(w->menus == 1 && w->ctx == QCursor::pos(),
+		      "and a keyboard context menu leaves QCursor::pos() agreeing "
+		      "with the globalPos() the event carried");
+
+		// THE CONTROL, and it guards a real hazard rather than a
+		// hypothetical one. QOffscreenCursor::setPos() synthesises an
+		// enter, a leave and a MouseMove into whatever EXPOSED window
+		// contains the point -- which would fight the router's own hover
+		// bookkeeping. Nothing here is exposed, every top level carrying
+		// WA_DontShowOnScreen, so nothing is found and nothing is sent.
+		// Measured that way before the write was relied on; asserted here
+		// so a later change that exposes a window cannot make the router
+		// start inventing pointer motion in silence.
+		CHECK(w->moves == 0,
+		      "and recording the position raises no mouse motion of its "
+		      "own, the window it would be delivered to being unexposed");
+	}
+
 	// ---- a second click is a double click ----
 	{
 		// Measured before this existed: two clicks in the same cell gave two

@@ -992,8 +992,8 @@ check = "so a custom widget CAN know the pointer is on it"
 # menu that never opens looks like a widget with no context menu.
 name = "the Menu key and Shift+F10 open nothing"
 file = "src/runtime/input_router.cpp"
-find = "\t\tQContextMenuEvent menu(QContextMenuEvent::Keyboard, local,\n\t\t                       target->mapToGlobal(local));\n\t\tQApplication::sendEvent(target, &menu);"
-into = "\t\t(void)local;"
+find = "\t\tQContextMenuEvent menu(QContextMenuEvent::Keyboard, local, global);\n\t\tQApplication::sendEvent(target, &menu);"
+into = "\t\t(void)global;"
 count = 1
 check = "the Menu key opens a context menu"
 
@@ -2871,3 +2871,24 @@ find = "\t\tif (held->hasFormat(QLatin1String(terminal_paste_format()))) return;
 into = "\t\t(void)terminal_paste_format();"
 count = 1
 check = "a mirrored terminal paste is not sent back out"
+
+[[sabotage]]
+# The pointer left at the platform's constant, so QCursor::pos() is
+# back to cell (1, 0) and menu.exec(QCursor::pos()) opens in the
+# terminal's top-left corner on every click. 8.232.
+name = "a mouse report does not move the recorded pointer"
+file = "src/runtime/input_router.cpp"
+find = "\tQCursor::setPos(px);"
+into = "\t(void)px;"
+count = 1
+check = "a mouse report moves the pointer QCursor::pos() reports"
+
+[[sabotage]]
+# The invented position not recorded, so the two ways of asking where
+# a keyboard context menu happened give different answers. 8.232.
+name = "a keyboard context menu leaves the pointer behind"
+file = "src/runtime/input_router.cpp"
+find = "\t\tQCursor::setPos(global);"
+into = "\t\tQCursor::setPos(10, 10);"
+count = 1
+check = "agreeing with the globalPos() the event carried"
