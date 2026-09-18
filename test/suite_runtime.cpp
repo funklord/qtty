@@ -43,6 +43,12 @@ int suite_runtime() {
 			// before the loop would size every image for the rest of the
 			// session by the cell the terminal had at startup.
 			QSize cell{7, 13};
+			// And the terminal's own size, mutable for the same reason: a
+			// user drags the window while the program runs, and an
+			// application that read the count once would lay itself out
+			// for a terminal that is no longer there.
+			QSize extent{40, 12};
+			QSize size() const override { return extent; }
 			Capabilities capabilities() const override {
 				Capabilities c = NullBackend::capabilities();
 				c.cell_px = cell;
@@ -78,17 +84,22 @@ int suite_runtime() {
 		QTimer quitter;
 		quitter.setInterval(10);
 		Capabilities after_move;
+		QSize cells_seen, cells_after;
 		bool asked_again = false;
 		QObject::connect(&quitter, &QTimer::timeout, qApp, [&] {
 			if (!asked_during) {
 				seen = Qtty::capabilities();
+				cells_seen = Qtty::terminal_cells();
 				asked_during = true;
 				// The terminal's font changes under the running program.
 				backend.cell = QSize(8, 16);
+				// And the user drags the window wider.
+				backend.extent = QSize(97, 31);
 				return;                       // ask again on the next tick
 			}
 			if (!asked_again) {
 				after_move = Qtty::capabilities();
+				cells_after = Qtty::terminal_cells();
 				asked_again = true;
 			}
 			QCoreApplication::quit();
@@ -96,6 +107,10 @@ int suite_runtime() {
 		quitter.start();
 		CHECK(!Qtty::capabilities().cell_px.isValid(),
 		      "before a run there is nothing to know, and it says so");
+		CHECK(Qtty::terminal_cells().isEmpty(),
+		      "and the terminal has no size before a run either, an empty"
+		      " QSize meaning nothing was measured rather than nothing is"
+		      " there");
 		const int rc = exec(*qApp, win, backend);
 		quitter.stop();
 
@@ -114,10 +129,30 @@ int suite_runtime() {
 		CHECK(asked_again && after_move.cell_px == QSize(8, 16),
 		      "and a later read gets the current answer, not the one taken"
 		      " when the run began");
+		// HOW BIG THE TERMINAL IS, which was measured, used to size the
+		// window, and then withheld: ITerminalBackend::size() returns cells
+		// and the convenience exec() builds its backend internally, so the
+		// value an application most obviously wants -- how many columns have
+		// I got -- could be reached from no installed header.
+		//
+		// Asked against the BACKEND rather than against a literal, so this
+		// says the two agree rather than restating a number the fixture
+		// already chose; and asked twice across a resize, because the
+		// failure worth guarding is not an absent answer but a cached one.
+		CHECK(asked_during && cells_seen == QSize(40, 12),
+		      "an application can read the terminal's size in cells during"
+		      " a run");
+		CHECK(asked_again && cells_after == QSize(97, 31),
+		      "and a later read gets the size the terminal is NOW, the user"
+		      " having dragged the window in between");
+
 		// Cleared afterwards, because a stale answer is worse than none: a
 		// caller cannot tell one from a current one.
 		CHECK(!Qtty::capabilities().cell_px.isValid(),
 		      "and afterwards it goes back to knowing nothing");
+		CHECK(Qtty::terminal_cells().isEmpty(),
+		      "and so does the terminal's size, a size from a run that has"
+		      " ended being a claim about a screen nobody owns");
 
 		CHECK(rc == 0, "exec() on an injected backend returns cleanly");
 		CHECK(backend.frame_count() > 0, "the injected backend received a frame");

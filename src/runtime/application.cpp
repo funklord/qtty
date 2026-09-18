@@ -648,6 +648,16 @@ Capabilities capabilities() {
 	return b ? b->capabilities() : Capabilities{};
 }
 
+// The same two records, asked the same way and in the same order, because
+// the question is the same one: which backend is driving this program. What
+// differs is only that the answer is read live rather than out of a
+// negotiated snapshot -- see application.h for why it is not a field on
+// Capabilities.
+QSize terminal_cells() {
+	const ITerminalBackend *b = g_session ? g_session : g_backend;
+	return b ? b->size() : QSize();
+}
+
 int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	s_tuiActive = true;
 	g_session = &backend;

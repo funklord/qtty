@@ -315,6 +315,22 @@ becoming narrower. Marking the parts that can go is the lever you have,
 and it is worth setting before somebody meets the form on a phone-sized
 terminal rather than after.
 
+**If you would rather reflow it yourself, ask how big the terminal is.**
+`Qtty::terminal_cells()` answers in cells while a program is running, and
+an empty `QSize` when none is -- so a narrow terminal can collapse a
+sidebar, choose a one-column form, or shorten a table, the way the same
+application would against a small window on a desktop. It asks the live
+backend each time rather than handing back something measured at startup,
+because a user resizes a terminal whenever they like.
+
+**What it is not is the room you have to draw in**, and the difference
+catches people. The window bar takes a row off the top when it is shown,
+and a layout that refuses to shrink leaves the window LARGER than the
+terminal -- so neither this nor `win.height() / GridMetrics::ch()` tells
+you how many rows your widget got. For that, ask the widget. What this
+answers is how big the screen is, which is the question behind *is this
+terminal narrow enough that the sidebar should go*.
+
 ## The terminal's own keys, and how to ask for them
 
 One line turns on the habits a terminal user has and Qt does not:

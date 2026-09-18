@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1528 checks, 0 failures. `make check` is green and includes
+1532 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16369,6 +16369,66 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.233 The terminal's size was measured and withheld (2026-09-18)
+
+Found by the same survey as 8.232, asking what an ordinary Qt application
+cannot reach.
+
+`ITerminalBackend::size()` returns the terminal's size in cells, `exec()`
+calls it to size the window, and the convenience `exec()` builds its
+backend on its own stack and hands it to nobody. So the value an
+application most obviously wants -- **how many columns have I got** -- was
+measured on the first line of every run and reachable from no installed
+header.
+
+`Qtty::capabilities()` exists precisely to close that class of fault and is
+one field short of it: it carries `cell_px`, `color`, `graphics`,
+`background` and no cell count. `GridMetrics` is pixels-per-cell only and
+converts the wrong way.
+
+**The workaround an application would reach for is measurably wrong**, by
+this project's own recorded numbers. `win.width() / GridMetrics::cw()`
+reads the window, and the compositor's own comment records a 20x3 terminal
+whose window stayed 200x133 px -- seven rows on a three-row screen -- when
+a layout refused to shrink. The screen is no use either:
+`prepare_environment()` pins a synthetic 10000x10000 one deliberately, so
+an application sizing itself from `primaryScreen()` gets about 1000x526
+cells.
+
+**A free function, not a field on `Capabilities`, and that is the decision
+worth recording.** `Capabilities` is a snapshot of what was NEGOTIATED. A
+terminal is resized by the user at any moment, so a cached size would be
+the one field on that struct capable of being confidently wrong, and every
+backend would have to remember to fill it. `Qtty::terminal_cells()` asks
+the live backend, through the same two records `capabilities()` already
+consults and in the same order -- so it cannot go stale, and no adopter's
+backend needs a line changed.
+
+**What it deliberately does NOT answer is the usable area.** The window bar
+takes a row when shown, and a window can be larger than the terminal, so
+neither this nor `win.height() / ch()` says how many rows a widget got. A
+second function for that would need the compositor and is a bigger
+question; it is recorded here rather than guessed at. This answers how big
+the screen is, which is the question behind *is this terminal narrow enough
+that the sidebar should go*.
+
+**Four checks, and two of them are about staleness rather than about the
+value.** Empty before a run and empty after it, because a size from a run
+that has ended is a claim about a screen nobody owns. Then read DURING the
+run and read again after the fixture drags the terminal from 40x12 to
+97x31 -- the second is the one a cached implementation fails, and its
+sabotage is exactly that: a `static` that remembers the first answer. The
+during-run check compares against the backend rather than against a
+literal, so it asserts the two agree rather than restating a number the
+fixture chose.
+
+**A sabotage anchor broke while this was written**, which is the documented
+hazard arriving on schedule: `terminal_cells()` repeats
+`const ITerminalBackend *b = g_session ? g_session : g_backend;`, which was
+a unique anchor until it was not. Uniqueness is a property of the file at
+the moment of the edit, and the existing entry was re-anchored on its own
+return line and re-proved.
 
 ### 8.232 QCursor::pos() answered wrong, not nothing (2026-09-18)
 

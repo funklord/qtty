@@ -1894,8 +1894,8 @@ check = "every key the conventions list is one this check knows where to look"
 # screen. Overlay believes the second and builds a GUI twin. 8.153.
 name = "the session answers only where exec() is on the stack"
 file = "src/runtime/application.cpp"
-find = "\tconst ITerminalBackend *b = g_session ? g_session : g_backend;"
-into = "\tconst ITerminalBackend *b = g_session;"
+find = "\tconst ITerminalBackend *b = g_session ? g_session : g_backend;\n\treturn b ? b->capabilities() : Capabilities{};"
+into = "\tconst ITerminalBackend *b = g_session;\n\treturn b ? b->capabilities() : Capabilities{};"
 count = 1
 check = "a program driving its own frame loop can ask qtty what the terminal is"
 
@@ -2892,3 +2892,24 @@ find = "\t\tQCursor::setPos(global);"
 into = "\t\tQCursor::setPos(10, 10);"
 count = 1
 check = "agreeing with the globalPos() the event carried"
+
+[[sabotage]]
+# The size withheld again, so an application is back to having no way
+# to ask how many columns the terminal has. 8.233.
+name = "the terminal's size is not reachable"
+file = "src/runtime/application.cpp"
+find = "\treturn b ? b->size() : QSize();"
+into = "\t(void)b;\n\treturn QSize();"
+count = 1
+check = "an application can read the terminal's size in cells during a run"
+
+[[sabotage]]
+# The answer cached on first sight, which is the failure this function
+# exists to avoid: a terminal is resized while the program runs, and a
+# stale count lays the program out for a screen that is gone. 8.233.
+name = "the terminal's size is cached and goes stale"
+file = "src/runtime/application.cpp"
+find = "QSize terminal_cells() {\n\tconst ITerminalBackend *b = g_session ? g_session : g_backend;"
+into = "QSize terminal_cells() {\n\tconst ITerminalBackend *b = g_session ? g_session : g_backend;\n\tstatic QSize cached;\n\tif (cached.isEmpty() && b) cached = b->size();\n\tif (!cached.isEmpty()) return cached;"
+count = 1
+check = "a later read gets the size the terminal is NOW"

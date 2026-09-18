@@ -113,6 +113,32 @@ bool shell_out(const std::function<void()> &body);
 // it, and a lower graphics tier needs the background to composite against.
 Capabilities capabilities();
 
+// How big the terminal is, in cells, while a backend is driving. An empty
+// QSize when none is -- the same "nothing was measured" the empty
+// Capabilities above means, and for the same reason: a stale answer is
+// worse than none, because a caller cannot tell one from a current one.
+//
+// It exists because the number was measured, used to size the window, and
+// then withheld. ITerminalBackend::size() returns cells and the convenience
+// exec() builds its backend internally, so this was the one arrangement
+// where the value an application most obviously wants -- how many columns
+// have I got -- could not be reached from any installed header.
+//
+// NOT a field on Capabilities, deliberately. Capabilities is a snapshot of
+// what was NEGOTIATED, and a terminal is resized by the user at any moment;
+// a cached copy of the size would be the one field on that struct capable
+// of being confidently wrong. This asks the live backend every time, so it
+// cannot go stale and no backend has to remember to fill it in.
+//
+// AND NOT THE USABLE AREA, which is the distinction to hold on to. This is
+// the terminal's extent. The window bar takes a row off the top when it is
+// shown, and a window whose layout refuses to shrink can be LARGER than the
+// terminal, so neither this nor win.height() / GridMetrics::ch() answers
+// "how many rows may I draw in" -- for that, ask the widget you are laying
+// out. What this answers is how big the screen is, which is the question
+// behind "is this terminal narrow enough that the sidebar should go".
+QSize terminal_cells();
+
 // The font qtty lays its grid on, chosen before setup() installs it.
 // DejaVu Sans Mono at 16 pixels otherwise.
 //
