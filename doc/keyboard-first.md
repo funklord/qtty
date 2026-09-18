@@ -1053,6 +1053,39 @@ here -- the library owns the pointer, so it can carry the drag Qt cannot
 means a user with no mouse needs the `Escape`. Give the reorder a
 keyboard route regardless: that is this practice.
 
+## The shape of the caret
+
+**Overwrite mode changes the caret, and you get that by setting the mode
+rather than by asking for a shape.** A `QTextEdit` or `QPlainTextEdit`
+whose `overwriteMode()` is true is given the terminal's block caret;
+everything else keeps a bar. That is the convention every terminal editor
+already follows, and it is the one thing about a caret a terminal user
+reads without being told -- a bar sits *between* two characters, which is
+where an inserted one goes, and a block sits *on* one, which is the
+character about to be replaced.
+
+    edit->setOverwriteMode(true);     // the caret becomes a block
+    edit->setOverwriteMode(false);    // and a bar again
+
+Nothing else is needed and there is nothing else to call. The shape is
+recomputed with each frame from the widget that has focus, so an
+application that toggles the mode from an `Insert` key gets the caret
+change with it.
+
+**There is deliberately no way to ask for a shape directly.** The shapes
+`Qtty::CursorShape` names are the backend's vocabulary, not an
+application-facing control: a second way to say "block" would be a second
+thing to keep in step with the mode, and the two would drift. If you have
+a case that wants a caret shape the mode cannot express, that is worth
+raising rather than working around.
+
+**Your caret does not outlive your program.** When qtty gives the terminal
+back -- on exit, on `Ctrl+Z`, on a crash -- it restores the caret the user
+configured, the same way it puts back the title it pushed. A terminal that
+does not implement caret shapes at all ignores the whole exchange; the
+request is consumed rather than printed, measured on xterm, GNU screen,
+tmux and kitty.
+
 ## Copy and paste
 
 **Copy needs no code.** The ANSI backend watches `QClipboard`, so an

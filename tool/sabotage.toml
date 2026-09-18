@@ -834,11 +834,17 @@ into = "\tif (a & Attr::Italic)    on << QStringLiteral(\"itallic\");"
 count = 1
 check = "a snapshot spells each of the six attributes by name"
 
+# RE-ANCHORED 2026-09-18. This read the second line of a two-line call whose
+# shape argument was the literal `comp_->cursor_cell() ? CursorShape::Bar :
+# CursorShape::Hidden`. 8.241 replaced that literal with the compositor's own
+# answer and the call became one line, so the anchor matched nothing -- which
+# `--validate` refuses rather than reports, the whole point of the count.
+# The sabotage is unchanged in meaning: force every frame to report Hidden.
 [[sabotage]]
 name = "every frame reports its cursor as hidden"
 file = "src/runtime/compositor.cpp"
-find = "\t                    comp_->cursor_cell() ? CursorShape::Bar : CursorShape::Hidden);"
-into = "\t                    CursorShape::Hidden);"
+find = "\tbackend_->set_cursor(comp_->cursor_cell(), comp_->cursor_shape());"
+into = "\tbackend_->set_cursor(comp_->cursor_cell(), CursorShape::Hidden);"
 count = 1
 check = "a rendered frame tells the backend where the cursor is"
 
@@ -3219,3 +3225,85 @@ find = "\tif (!tty_out_ || !active_) return;"
 into = "\tif (!active_) return;"
 count = 1
 check = "and no bell, nothing downstream of a pipe having one to ring"
+# ---- 8.241: the caret's shape ------------------------------------------
+#
+# Five entries, and they are not all the same kind. THREE revert a defect
+# that was really there: a backend that discarded the shape, a caret
+# nobody put back, and a compositor that could express two of the four
+# values. TWO guard a way the FIX could be silently wrong instead -- a
+# shape written but not recorded, and a decision nobody consults -- and
+# those exist because both wrong versions leave a green suite, which is
+# the only reason a sabotage entry is worth anything.
+#
+# They are separate entries rather than one because they fail
+# independently and in two different files.
+
+[[sabotage]]
+# The parameter accepted and thrown away, which is how the interface stood
+# from the day CursorShape was declared: `shape` was read once, to compare
+# it against Hidden, so Block, Underline and Bar were the same bytes on the
+# wire. The suite could not see it, having nothing that asserted on those
+# bytes.
+name = "the backend takes a cursor shape and discards it"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t    ? moveTo(*cell) + decscusr(shape) + \"\\033[?25h\""
+into = "\t    ? moveTo(*cell) + \"\\033[?25h\""
+count = 1
+check = "a Block cursor asks the terminal for a steady block"
+
+[[sabotage]]
+# The shape emitted but not RECORDED, which is the way of getting this
+# wrong that leaves the 130-bytes-a-second measurement intact and breaks
+# the other half: every repeat still writes nothing, and so does every
+# shape CHANGE, because the record compared is the one from before the
+# shape existed. A caret would then take whatever shape the first frame
+# asked for and keep it for the life of the program.
+name = "a cursor's shape is written but not remembered"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (want == last_cursor_) return;\n\twrite_out(want);\n\tlast_cursor_ = want;"
+into = "\tconst QByteArray bare = cell && shape != CursorShape::Hidden\n\t    ? moveTo(*cell) + \"\\033[?25h\" : QByteArray(\"\\033[?25l\");\n\tif (bare == last_cursor_) return;\n\twrite_out(want);\n\tlast_cursor_ = bare;"
+count = 1
+# The Underline check rather than the tell-them-apart one, and the
+# difference is worth naming: under this sabotage the FIRST shape asked for
+# still goes out in full, so the block check and the tell-them-apart check
+# both stay green. What breaks is every shape asked for AFTER one, which is
+# the second and third writes.
+check = "an Underline cursor asks for a steady underline"
+
+[[sabotage]]
+# The caret left as qtty set it when qtty gives the terminal back. Nothing
+# else in the suite reads the tail of kLeave, so this was invisible: the
+# program exits, the shell prompt returns, and the user's caret is a block
+# for the rest of that terminal's life with nothing to say what did it.
+name = "the user's caret is not put back on the way out"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\"\\033[?1006l\\033[0m\\033[?1049l\\033[?25h\\033[0 q\";"
+into = "\"\\033[?1006l\\033[0m\\033[?1049l\\033[?25h\";"
+count = 1
+check = "restores the caret the user configured"
+
+[[sabotage]]
+# The chooser back to a literal, which is the state that left Block and
+# Underline with no producer anywhere in the tree: the only code in qtty
+# that picked a shape could express two of the four values.
+name = "the only chooser can ask for a bar and nothing else"
+file = "src/runtime/compositor.cpp"
+find = "\tbackend_->set_cursor(comp_->cursor_cell(), comp_->cursor_shape());"
+into = "\tbackend_->set_cursor(comp_->cursor_cell(),\n\t                    comp_->cursor_cell() ? CursorShape::Bar : CursorShape::Hidden);"
+count = 1
+check = "the same editor in overwrite mode asks for a block"
+
+[[sabotage]]
+# And the decision itself, with the wiring left intact. This is the half a
+# check on the caller cannot see: cursor_shape() is consulted on every
+# frame and answers Bar for everything, so the accessor, the reset and the
+# call are all correct and the caret never changes. QPlainTextEdit is the
+# arm reverted rather than QTextEdit because the suite's fixture is a
+# plain one -- the two are siblings, not parent and child, and a cast to
+# one answers false for the other.
+name = "an overwriting editor is offered the inserting caret"
+file = "src/runtime/compositor.cpp"
+find = "\t\treturn pe->overwriteMode() ? CursorShape::Block : CursorShape::Bar;"
+into = "\t\treturn CursorShape::Bar;"
+count = 1
+check = "the same editor in overwrite mode asks for a block"

@@ -425,6 +425,10 @@ public:
 	// calls it, and calls it again for whichever layer owns input.
 	void apply_priority(int cols, int rows);
 	std::optional<QPoint> cursor_cell() const;             // after compose()
+	// And what shape the caret there should be, decided by the same pass
+	// and for the same widget. Hidden exactly when cursor_cell() is empty,
+	// so the two are one answer read two ways and cannot disagree.
+	CursorShape cursor_shape() const;                      // after compose()
 
 private:
 	// What section 7's policy remembers about ONE layer. It belongs to the
@@ -507,6 +511,15 @@ private:
 	QWidget *win_;
 	InputRouter *router_;
 	std::optional<QPoint> cursor_;
+	CursorShape cursor_shape_ = CursorShape::Hidden;
+	// Which caret a focused widget asks for. Static and private: it reads
+	// the widget and nothing else, and the way to ask it anything from
+	// outside is compose() then cursor_shape(), which is what an application
+	// gets. A suite calling this directly would be testing the helper
+	// through the same function the caller uses and could not see a wrong
+	// caller at all -- the one defect worth guarding here being that nobody
+	// consults it.
+	static CursorShape shape_for(QWidget *fw);
 };
 
 // ------------------------------------------------------------- FrameScheduler

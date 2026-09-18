@@ -2757,6 +2757,89 @@ int suite_runtime() {
 		      "caret is Hidden rather than a shape at no position");
 	}
 
+	// ------------------------------- and the shape says which caret to draw
+	//
+	// The scheduler used to write the shape itself, as a literal:
+	//
+	//     backend_->set_cursor(comp_->cursor_cell(),
+	//                          comp_->cursor_cell() ? CursorShape::Bar
+	//                                               : CursorShape::Hidden);
+	//
+	// so qtty's only chooser could produce exactly two of the four values
+	// CursorShape declares, and Block and Underline had no producer anywhere
+	// in the tree. The check above passes against that code -- it asks only
+	// that the shape is not Hidden -- which is what made this worth a check
+	// of its own rather than a stronger assertion there.
+	//
+	// Asserted THROUGH the scheduler, not against Compositor's helper. A test
+	// that called the shape function directly would agree with it by
+	// construction and could not see the defect actually being closed, which
+	// was that nothing consulted it: the whole fault was in the caller.
+	//
+	// A bar sits BETWEEN two characters and a block sits ON one, which is
+	// the convention every terminal editor already follows -- so overwrite
+	// mode is the thing the caret should follow, and it is a fact the
+	// application has already given Qt rather than a new thing to ask it for.
+	{
+		QWidget win;
+		win.resize(30 * cw, 6 * ch);
+		auto *doc = new QPlainTextEdit(&win);
+		doc->setGeometry(0, 0, 20 * cw, 4 * ch);
+		doc->setPlainText(QStringLiteral("hello"));
+		doc->setFocus();
+		QCoreApplication::processEvents();
+
+		NullBackend b;
+		Compositor comp(&win, nullptr);
+		FrameScheduler sched(&b, &comp, &win);
+
+		// Inserting: the default, and the case every other focused widget
+		// falls into as well.
+		doc->setOverwriteMode(false);
+		QCoreApplication::processEvents();
+		sched.render_now();
+		const CursorShape inserting = b.cursor_shape();
+
+		// Overwriting: the same widget, the same frame, one property
+		// different. Choosing the fixture this way is what makes the pair
+		// mean something -- two different widgets could differ for any
+		// reason, while one widget toggled can only differ for this one.
+		doc->setOverwriteMode(true);
+		QCoreApplication::processEvents();
+		sched.render_now();
+		const CursorShape overwriting = b.cursor_shape();
+
+		CHECK(inserting == CursorShape::Bar,
+		      "a text editor that inserts asks for a bar, which sits "
+		      "between the characters where the next one will go");
+		CHECK(overwriting == CursorShape::Block,
+		      "and the same editor in overwrite mode asks for a block, "
+		      "which sits on the character about to be replaced");
+	}
+
+	// THE CONTROL, and it is the reason the pair above is not enough on its
+	// own: a widget with no overwrite mode at all must keep the bar. Without
+	// this, a compositor that answered Block for everything focused would
+	// pass the overwrite half and fail nothing -- and QLineEdit is where that
+	// would be seen first, being the widget almost every form is made of.
+	{
+		QWidget win;
+		win.resize(20 * cw, 4 * ch);
+		auto *edit = new QLineEdit(&win);
+		edit->setGeometry(0, 0, 10 * cw, ch);
+		edit->setText(QStringLiteral("ab"));
+		edit->setFocus();
+		QCoreApplication::processEvents();
+
+		NullBackend b;
+		Compositor comp(&win, nullptr);
+		FrameScheduler sched(&b, &comp, &win);
+		sched.render_now();
+		CHECK(b.cursor_shape() == CursorShape::Bar,
+		      "a focused line edit, which has no overwrite mode to read, "
+		      "keeps the bar");
+	}
+
 	// ------------------------------------- the width capability is absorbed
 	//
 	// The suite_cells checks prove the width table obeys the flag. They would

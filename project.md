@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1580 checks, 0 failures. `make check` is green and includes
+1590 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16477,6 +16477,184 @@ a second ring leaves as it found it.
 **No header was added**, so `INSTALLED_HEADERS` is unchanged --
 `application.h`, `backend.h` and `null_backend.h` are all already in the
 list and all already installed.
+
+### 8.241 A caret with four shapes, three of them the same byte (2026-09-18)
+
+`backend.h` declared the vocabulary and `set_cursor()` took it:
+
+    enum class CursorShape { Block, Underline, Bar, Hidden };
+    virtual void set_cursor(std::optional<QPoint> cell, CursorShape shape) = 0;
+
+Both halves were fiction, from opposite ends. **Nothing in qtty ever asked
+for `Block` or `Underline`** -- a grep of `src/` and `include/` returned
+nothing, because the only chooser in the tree was a literal written inline
+at the call site:
+
+    backend_->set_cursor(comp_->cursor_cell(),
+                         comp_->cursor_cell() ? CursorShape::Bar
+                                              : CursorShape::Hidden);
+
+**And `AnsiBackend::set_cursor()` read the parameter once, to compare it
+against `Hidden`**, then emitted a move and `ESC[?25h` or an `ESC[?25l`.
+No DECSCUSR anywhere. So three of the four values produced identical bytes,
+and the two with no producer had nothing to be distinguishable from.
+
+That is *an interface is only as wired as its least-used method* with both
+ends unwired at once, and it is worse than the usual shape: a method with
+no caller at least looks like something to grep for. **An argument that is
+accepted and discarded looks like a working feature from every angle** --
+the declaration is complete, the call site passes something, the suite is
+green, and the only place the truth is visible is the wire, which nothing
+was reading.
+
+**The fix is in the direction of making the parameter mean something**,
+rather than deleting two enumerators nothing used. DECSCUSR -- `CSI Ps SP
+q` -- gives 2 for a steady block, 4 for a steady underline, 6 for a steady
+bar, and the compositor now derives the shape from the focus widget's
+`overwriteMode()`: a block where the next character replaces one, a bar
+where it is inserted between two. That is the convention every terminal
+editor follows and the one thing about a caret a terminal user reads
+without being told.
+
+**Steady rather than blinking at every shape, and the reason is what this
+project can check.** DECSCUSR's odd parameters blink and its even ones do
+not. A blink is a timer inside the terminal, running on its own clock:
+nothing in this tree can observe its phase, assert on it, or reproduce a
+capture of it. A deterministic caret is what the snapshot fixtures CAN
+pin, and the application asked for a block rather than for a block that
+blinks.
+
+**The half most likely to be forgotten is the way out.** A shape is
+terminal state exactly as a title is -- it outlives the process that set
+it -- so a program that exits leaving the user's caret a block has changed
+something that was not its to change, with nothing to say what did it.
+`CSI 0 SP q` went into `kLeave`, beside the `ESC[23;2t` that pops the title
+stack, for the identical reason and in the identical place. That matters
+more than it sounds: there are two routes out of the terminal and only one
+of them is a call. The fatal-signal handler and SIGTSTP reach
+`leave_terminal()`, which writes the same string, so a reset living in
+`suspend()` would have covered the clean exit and missed every crash and
+every `Ctrl+Z`. That is precisely the trap `read_winch()` records paying
+for with the title -- "the suite went green while the chat example, stopped
+and resumed through a real bash, still showed the shell's title".
+
+**Sending it blind was measured rather than argued, because the argument
+this tree already had does not carry over.** `write_clipboard()` sends OSC
+52 with no capability query, and its reasoning is that an OSC is a STRING
+sequence in ECMA-48: a conformant parser reads to the terminator and
+discards what it does not recognise, so nothing reaches the screen.
+DECSCUSR is a CONTROL sequence with an INTERMEDIATE byte, and the clause
+that protects it is a different one -- a parser implementing the syntax
+consumes parameters and intermediates up to a final byte in `0x40..0x7e`
+whether or not it implements the function. **The failure that clause admits
+and the OSC one does not** is a parser that ends the sequence at the `SP`
+and PRINTS the `q`, which would be a stray letter on the user's screen on
+every frame.
+
+So it was probed. The probe homes the cursor, writes the sequence, and asks
+DSR-CPR where the cursor ended up: consumed leaves column 1, printed leaves
+column 2. Its control writes a literal `X` and must report column 2 --
+without that, a terminal whose CPR does not answer is indistinguishable
+from one that consumed the sequence.
+
+    terminal              control X   nothing   2 SP q   4 SP q   6 SP q   0 SP q
+    xterm 398             col 2       col 1     col 1    col 1    col 1    col 1
+    GNU screen 4.09.01    col 2       col 1     col 1    col 1    col 1    col 1
+    tmux 3.5a             col 2       col 1     col 1    col 1    col 1    col 1
+    kitty 0.41.1          col 2       col 1     col 1    col 1    col 1    col 1
+
+**GNU screen is the only load-bearing row** and it is the same witness
+`write_clipboard()` cites: that version implements no DECSCUSR at all, and
+it is the version measured swallowing OSC 52 whole. The other three
+implement DECSCUSR, so they show the probe works and say nothing about the
+unrecognised case. What the sweep cannot reach is a terminal not on this
+machine, and the asymmetry is what settles it anyway: a wrong yes costs a
+caret in the terminal's default shape, which is what happens today, and a
+wrong no costs the feature everywhere it would have worked.
+
+**The de-duplication was the constraint the fix had to fit through, not an
+afterthought.** `render_now()` calls `set_cursor()` after every frame, and
+before `last_cursor_` existed an idle program wrote 130 bytes a second for
+ever. There are two ways to get the shape wrong here and they fail in
+opposite directions: put it in the write and not in the record, and every
+shape CHANGE is swallowed while the repeat check still passes; put it in
+neither, and the caret is right and costs thirteen writes a second. It
+works because `last_cursor_` holds the BYTES rather than the request -- the
+DECSCUSR goes into the same string as the move, so a shape change is
+different bytes and a repeat is not. Both sabotage entries below exist
+because both wrong versions leave a green suite.
+
+**Ten checks, of which only five could fail against the code before this
+-- and the other five are the point rather than padding.** The five that
+went red are the three shapes on the wire, the reset on the way out, and
+the overwriting editor. The five that were green before and are green
+after are controls: that the three shapes are told APART, that a repeat
+still writes nothing, that hiding asks for no shape, that an inserting
+editor keeps the bar, and that a `QLineEdit` does.
+
+**One of those five was green before for a reason worth writing down.**
+Against the old code the tell-them-apart check passed *vacuously*: with no
+DECSCUSR in the write at all, the second and third requests were identical
+bytes to the first and were de-duplicated away, so two of the three
+captures were empty and "neither contains the other's sequence" was true
+of nothing. It is a real check now and it was a green light then, which is
+this project's own rule about a passing check arriving in the one place
+nobody looks for it -- inside a check being added to catch something else.
+
+The wire checks assert the bytes rather than an accessor: one reading back
+a stored shape would pass against a backend that recorded it and wrote
+nothing, which is the defect being closed rather than a different one. And
+the compositor ones go through `FrameScheduler::render_now()` rather than
+calling the shape function -- **the whole fault was in the caller**, and a
+test that called the helper would have agreed with it by construction.
+
+The overwrite pair is one widget toggled rather than two widgets compared,
+because two widgets can differ for any reason and one widget with one
+property changed can only differ for this one. `QLineEdit` is the control:
+it has no overwrite mode at all, and without it a compositor answering
+`Block` for everything focused would pass the overwrite half and fail
+nothing.
+
+**No application-facing API for choosing a caret was added, and that is a
+decision rather than an omission.** `overwriteMode()` is a fact the
+application has already stated to Qt, so the caret follows it with nothing
+added anywhere; a second way to say "block" would be a second thing to keep
+in step, and two of them drift. `doc/keyboard-first.md` says so, and says
+that a case the mode cannot express is worth raising rather than working
+around. Left open: whether one is ever wanted.
+
+`QTextEdit` and `QPlainTextEdit` are both tested because neither derives
+from the other -- they are siblings under `QAbstractScrollArea`, so a
+`qobject_cast` to the first answers false for the second. Nothing else in
+Qt Widgets has an overwrite mode.
+
+**`test-tools` caught this change, which is the gate working and is worth
+recording as a pass rather than a nuisance.** It pins the number of escape
+sequences `qtty-negotiate --probes` puts on a terminal nothing can answer
+from -- pinned rather than bounded, so a sequence ARRIVING is caught as
+well as one going where it should not. It went 15 to 16, and the sixteenth
+was read off the capture rather than reasoned about:
+
+    sed 's/\x1b/\n<ESC>/g' neg.out
+
+which lists kEnter's seven, kLeave's nine, and the new `ESC[0 q` last. The
+Makefile comment above that target already said what to do -- "the number
+is updated with the change rather than loosened to stop noticing" -- and it
+had been through this once before, 13 to 15, when the title push and pop
+arrived. **Unlike that pair this one is deliberately unbalanced**: the
+reset is on the way out with nothing on the way in, because a shape is
+asked for per frame through `set_cursor()` and there is none to establish
+on entry. That asymmetry is in the comment, since a later reader counting
+`kEnter` against `kLeave` would otherwise read it as a missing line.
+
+**One existing sabotage entry had to be re-anchored**, which is the
+mechanical cost of this change and is recorded because the next person
+making one will pay it too. `every frame reports its cursor as hidden`
+anchored on the second line of the two-line call above; replacing the
+literal made the call one line and the anchor matched nothing. `--validate`
+refuses that rather than reporting it, which is the whole point of the
+count -- an anchor that has stopped matching and a check that cannot fail
+are indistinguishable from the output.
 
 ### 8.240 A check that pinned the platform, not the library (2026-09-18)
 

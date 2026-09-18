@@ -451,10 +451,34 @@ namespace {
 // A terminal that does not implement the pair ignores both, and then a
 // title we set simply outlives us -- the same as any other TUI that sets
 // one without pushing.
+//
+// `0 q` closing kLeave is DECSCUSR's reset, and it is in this string for
+// exactly the reason `23;2t` is. set_cursor() now names a caret shape
+// (see below), and a shape is terminal state the way a title is: it
+// outlives the process that set it. A program that exits leaving the
+// user's cursor a block has changed something that was not its to change,
+// and the user has no way to know what did it -- the caret is simply
+// wrong in every shell command after, until they reset it by hand or
+// start a new terminal.
+//
+// Here rather than in suspend() alone because there are two routes out
+// and only one of them is a call: the fatal handler and SIGTSTP reach
+// leave_terminal(), which writes this same string, and a reset living in
+// suspend() would cover the clean exit and miss every crash and every
+// Ctrl+Z. That is the shape read_winch()'s comment records paying for
+// with the title -- "the suite went green while the chat example, stopped
+// and resumed through a real bash, still showed the shell's title".
+//
+// 0 rather than 1 or 2: DECSCUSR's parameter 0 means "the terminal's
+// configured default", which is the user's own setting, while 1 and 2
+// would both be this library choosing a caret for them on the way out.
+// A terminal that does not implement DECSCUSR consumes it -- measured,
+// see set_cursor() -- and was never going to have a shape of ours to
+// put back anyway.
 const char kEnter[] = "\033[?1049h\033[?25l\033[?1006h\033[?1002h"
                       "\033[?2004h\033[?1004h\033[22;2t";
 const char kLeave[] = "\033[23;2t\033[?1004l\033[?2004l\033[?1002l"
-                      "\033[?1006l\033[0m\033[?1049l\033[?25h";
+                      "\033[?1006l\033[0m\033[?1049l\033[?25h\033[0 q";
 
 struct Restore {
 	struct termios saved {};      // as the terminal was before qtty
@@ -1502,6 +1526,78 @@ void AnsiBackend::set_title(const QString &title) {
 	write_out(last_title_);
 }
 
+// The caret the terminal draws, as DECSCUSR: `CSI Ps SP q`, where Ps is
+// 1/2 for a block, 3/4 for an underline and 5/6 for a bar -- odd blinking,
+// even steady.
+//
+// STEADY, at every shape, and the reason is what this project can check
+// rather than a preference about how a caret should look. qtty repaints the
+// screen itself and the suite asserts on the bytes that leave the backend;
+// a blink is the one part of a caret no check here can observe, because it
+// is a timer inside the terminal running on its own clock. Nothing in this
+// tree can say what phase it was in, so nothing can assert on it and nothing
+// can reproduce a screenshot of it. A deterministic caret is what the
+// snapshot fixtures CAN pin.
+//
+// It is also the honest reading of what was asked for: the application said
+// "a block", not "a block that blinks". Qt's own cursorFlashTime governs a
+// caret Qt draws into a widget, and this is the terminal's hardware one,
+// which the terminal's user configures for themselves.
+//
+// CursorShape::Hidden has no sequence and is not reachable here: the caller
+// below branches on it first, because hiding a cursor and giving it a shape
+// are different requests and a hide must not also announce a shape -- the
+// shape would then be set on a caret nobody can see, and be sitting there
+// when something else shows it.
+static QByteArray decscusr(CursorShape shape) {
+	switch (shape) {
+	case CursorShape::Block:     return QByteArrayLiteral("\033[2 q");
+	case CursorShape::Underline: return QByteArrayLiteral("\033[4 q");
+	case CursorShape::Bar:       return QByteArrayLiteral("\033[6 q");
+	case CursorShape::Hidden:    break;
+	}
+	return QByteArray();
+}
+
+// SENT BLIND, with no capability query, and the argument is the one
+// write_clipboard() makes for OSC 52 -- but it is not the SAME argument, and
+// the difference is worth writing down because the structural half does not
+// carry over.
+//
+// write_clipboard() relies on OSC being a STRING sequence in ECMA-48: a
+// conformant parser reads to the terminator and discards what it does not
+// recognise, so the payload cannot reach the screen. DECSCUSR is a CONTROL
+// sequence with an INTERMEDIATE byte -- CSI, parameter bytes, SP at 0x20,
+// final `q` -- and the rule that protects it is a different clause: a parser
+// implementing the SYNTAX consumes parameters and intermediates up to a final
+// byte in 0x40..0x7e whether or not it implements the FUNCTION. The failure
+// that clause admits and the OSC one does not is a parser that dispatches on
+// the final byte while ignoring intermediates, which would read `ESC[6 q` as
+// DECLL, or one that ends the sequence at the SP and PRINTS the `q` -- a
+// stray letter on the user's screen on every frame.
+//
+// So it was measured rather than asserted. The probe homes the cursor,
+// writes the sequence, and asks DSR-CPR where the cursor ended up: consumed
+// leaves column 1, printed leaves column 2. Its control writes a literal `X`
+// and must report column 2, so a terminal whose CPR does not work cannot be
+// read as a terminal that consumed the sequence -- the two are identical from
+// outside without it. Measured 2026-09-18:
+//
+//   xterm 398            control X -> col 2   all four shapes -> col 1
+//   GNU screen 4.09.01   control X -> col 2   all four shapes -> col 1
+//   tmux 3.5a            control X -> col 2   all four shapes -> col 1
+//   kitty 0.41.1         control X -> col 2   all four shapes -> col 1
+//
+// GNU screen is the load-bearing row and is the same witness write_clipboard()
+// cites: that version implements no DECSCUSR at all and swallowed OSC 52
+// whole, so it is a terminal known NOT to have the feature, consuming the
+// request for it silently. The other three implement DECSCUSR, so they show
+// the probe works and say nothing about the unrecognised case.
+//
+// What that measurement cannot reach is a terminal not on this machine, and
+// the asymmetry is what makes sending it anyway right: a wrong yes costs a
+// caret drawn in the terminal's default shape, which is what happens today.
+// A wrong no costs the feature everywhere it would have worked.
 void AnsiBackend::set_cursor(std::optional<QPoint> cell, CursorShape shape) {
 	// Skipped when the terminal is already like this, and the reason is a
 	// measurement rather than tidiness: render_now() calls this after EVERY
@@ -1514,8 +1610,18 @@ void AnsiBackend::set_cursor(std::optional<QPoint> cell, CursorShape shape) {
 	// Safe only because write_out() clears the record: the frame this follows
 	// writes cells, which moves the cursor, so the placement after a frame
 	// that drew anything is never the one skipped.
+	//
+	// THE SHAPE IS PART OF WHAT IS COMPARED, and it is because `want` holds
+	// the whole write rather than because anything here tests the shape: the
+	// DECSCUSR goes into the same byte string as the move, so a caret that
+	// changes shape in place produces different bytes and is not skipped,
+	// while the idle program the measurement above describes still writes
+	// nothing. Recording the bytes rather than the request is what makes the
+	// two true at once -- a record that held the cell alone would have
+	// swallowed every shape change, and one that held the request would have
+	// had to be extended by hand every time the write gained a part.
 	const QByteArray want = cell && shape != CursorShape::Hidden
-	    ? moveTo(*cell) + "\033[?25h"
+	    ? moveTo(*cell) + decscusr(shape) + "\033[?25h"
 	    : QByteArray("\033[?25l");
 	if (want == last_cursor_) return;
 	write_out(want);

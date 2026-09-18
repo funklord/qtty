@@ -4796,6 +4796,63 @@ int suite_exec() {
 		}
 	}
 
+	// The pty capture fixture, at function scope because TWO blocks use
+	// it: the OSC 52 checks below and the cursor-shape checks further
+	// down. One fixture rather than two, so the descriptor discipline in
+	// its comment -- and the warning about asserting while fd 1 is
+	// redirected -- is stated once and cannot drift between copies.
+	struct WireCapture {
+		int master = -1, slave = -1, saved_out = -1, sink = -1;
+		WireCapture() {
+			if (::openpty(&master, &slave, nullptr, nullptr, nullptr) != 0)
+				return;
+			::fcntl(master, F_SETFL, O_NONBLOCK);
+			char name[] = "/tmp/qtty-osc52-XXXXXX";
+			sink = ::mkstemp(name);
+			if (sink >= 0) ::unlink(name);
+			fflush(stdout);
+			saved_out = ::dup(1);
+			::dup2(slave, 1);
+		}
+		bool ok() const { return slave >= 0 && sink >= 0 && saved_out >= 0; }
+		// Everything written from here on goes to the file instead.
+		void to_file() { fflush(stdout); ::dup2(sink, 1); }
+		QByteArray taken() {
+			fflush(stdout);
+			const off_t end = ::lseek(sink, 0, SEEK_CUR);
+			QByteArray out;
+			if (end > 0) {
+				::lseek(sink, 0, SEEK_SET);
+				out.resize(int(end));
+				const ssize_t n = ::read(sink, out.data(), size_t(end));
+				out.resize(int(n > 0 ? n : 0));
+			}
+			// Truncated, so each check reads only its own write.
+			const int rc = ::ftruncate(sink, 0);
+			(void)rc;
+			::lseek(sink, 0, SEEK_SET);
+			return out;
+		}
+		// Idempotent, and called by hand before the CHECKs rather than
+		// left to the destructor: the backend has to be destroyed while
+		// the descriptor is still diverted, or suspend()'s mode resets
+		// land in the middle of this suite's own output.
+		void restore() {
+			fflush(stdout);
+			if (saved_out >= 0) {
+				::dup2(saved_out, 1);
+				::close(saved_out);
+				saved_out = -1;
+			}
+		}
+		~WireCapture() {
+			restore();
+			if (sink >= 0) ::close(sink);
+			if (slave >= 0) ::close(slave);
+			if (master >= 0) ::close(master);
+		}
+	};
+
 	// ---- OSC 52: the clipboard going OUT -------------------------------------
 	//
 	// qtty decoded bracketed paste, so text came IN, and nothing ever went the
@@ -4825,57 +4882,6 @@ int suite_exec() {
 		// reader on the same thread, which is a hang rather than a failure.
 		// The file is unlinked at once, so nothing survives the block, and its
 		// size is bounded by the same limit the checks below pin.
-		struct WireCapture {
-			int master = -1, slave = -1, saved_out = -1, sink = -1;
-			WireCapture() {
-				if (::openpty(&master, &slave, nullptr, nullptr, nullptr) != 0)
-					return;
-				::fcntl(master, F_SETFL, O_NONBLOCK);
-				char name[] = "/tmp/qtty-osc52-XXXXXX";
-				sink = ::mkstemp(name);
-				if (sink >= 0) ::unlink(name);
-				fflush(stdout);
-				saved_out = ::dup(1);
-				::dup2(slave, 1);
-			}
-			bool ok() const { return slave >= 0 && sink >= 0 && saved_out >= 0; }
-			// Everything written from here on goes to the file instead.
-			void to_file() { fflush(stdout); ::dup2(sink, 1); }
-			QByteArray taken() {
-				fflush(stdout);
-				const off_t end = ::lseek(sink, 0, SEEK_CUR);
-				QByteArray out;
-				if (end > 0) {
-					::lseek(sink, 0, SEEK_SET);
-					out.resize(int(end));
-					const ssize_t n = ::read(sink, out.data(), size_t(end));
-					out.resize(int(n > 0 ? n : 0));
-				}
-				// Truncated, so each check reads only its own write.
-				const int rc = ::ftruncate(sink, 0);
-				(void)rc;
-				::lseek(sink, 0, SEEK_SET);
-				return out;
-			}
-			// Idempotent, and called by hand before the CHECKs rather than
-			// left to the destructor: the backend has to be destroyed while
-			// the descriptor is still diverted, or suspend()'s mode resets
-			// land in the middle of this suite's own output.
-			void restore() {
-				fflush(stdout);
-				if (saved_out >= 0) {
-					::dup2(saved_out, 1);
-					::close(saved_out);
-					saved_out = -1;
-				}
-			}
-			~WireCapture() {
-				restore();
-				if (sink >= 0) ::close(sink);
-				if (slave >= 0) ::close(slave);
-				if (master >= 0) ::close(master);
-			}
-		};
 
 		// The payload out of a captured write, decoded. Returns a null
 		// QByteArray when there is no OSC 52 in it at all, which is a
@@ -5247,6 +5253,114 @@ int suite_exec() {
 			      "taking the terminal pushes the title it already had");
 			CHECK(exit_bytes.contains("\033[23;2t"),
 			      "and giving it back pops it");
+		}
+	}
+
+	// ---- the caret's SHAPE on the wire (DECSCUSR) ----------------------------
+	//
+	// backend.h has declared CursorShape{Block, Underline, Bar, Hidden} and
+	// taken a shape in set_cursor() from the start, and until now the
+	// parameter was read once, to compare it against Hidden. Block,
+	// Underline and Bar all emitted the same bytes -- a move and ESC[?25h --
+	// so three of the four values were indistinguishable on the wire, and
+	// two of them had no producer anywhere in the tree to be
+	// indistinguishable FROM. An interface that accepts an argument and
+	// discards it reports success exactly as loudly as one that honours it.
+	//
+	// Asserted on the BYTES rather than on the backend agreeing with itself.
+	// A check reading some `last_shape()` accessor would pass against a
+	// backend that stored the shape and wrote nothing, which is the defect
+	// being closed here rather than a different one.
+	//
+	// NOTHING IS CHECKED WHILE fd 1 IS REDIRECTED, per the warning the OSC 52
+	// block above pays for in full: every write is taken into a local, the
+	// descriptor goes back, and only then does anything assert.
+	{
+		WireCapture cap;
+		const bool built = cap.ok();
+		QByteArray w_block, w_under, w_bar, w_same, w_hidden, w_leave;
+		if (built) {
+			{
+				// Constructed BEFORE to_file(), because resume() decides once
+				// whether stdout is a terminal and the file is not one.
+				AnsiBackend b;
+				cap.to_file();
+
+				// The same cell each time, so the only thing that differs
+				// between these three writes is the shape -- which is also
+				// what makes them a control for the de-duplication below: a
+				// backend that skipped them as identical would write nothing
+				// at all and every one of the three checks would fail.
+				b.set_cursor(QPoint(3, 1), CursorShape::Block);
+				w_block = cap.taken();
+				b.set_cursor(QPoint(3, 1), CursorShape::Underline);
+				w_under = cap.taken();
+				b.set_cursor(QPoint(3, 1), CursorShape::Bar);
+				w_bar = cap.taken();
+
+				// And now ASK FOR THE SAME THING AGAIN. The de-duplication
+				// this must not defeat is a measurement rather than a
+				// preference: render_now() calls set_cursor() after every
+				// frame, and before the record existed an idle program wrote
+				// 130 bytes a second for ever. Adding the shape to the write
+				// without adding it to the record would have skipped every
+				// shape CHANGE; adding it to neither would have written the
+				// shape thirteen times a second.
+				b.set_cursor(QPoint(3, 1), CursorShape::Bar);
+				w_same = cap.taken();
+
+				// Hiding is a different request from shaping, and must not
+				// smuggle a shape out with it: a shape set here would be
+				// sitting on a caret nobody can see, waiting for whatever
+				// shows it next.
+				b.set_cursor(std::nullopt, CursorShape::Hidden);
+				w_hidden = cap.taken();
+
+				// Destroyed while the descriptor is still diverted, per the
+				// fixture's own note: ~AnsiBackend() calls suspend(), and
+				// this is the write being asserted on.
+				b.suspend();
+				w_leave = cap.taken();
+			}
+			cap.restore();
+		} else {
+			printf("FAIL: could not build the cursor-shape capture\n");
+			++fails;
+		}
+
+		if (built) {
+			// Steady rather than blinking at every shape, which is the half a
+			// reader cannot infer from "the shape is honoured": DECSCUSR's
+			// odd parameters blink and its even ones do not, and a blink is a
+			// timer inside the terminal that nothing in this suite can
+			// observe or reproduce.
+			CHECK(w_block.contains("\033[2 q"),
+			      "a Block cursor asks the terminal for a steady block");
+			CHECK(w_under.contains("\033[4 q"),
+			      "an Underline cursor asks for a steady underline");
+			CHECK(w_bar.contains("\033[6 q"),
+			      "a Bar cursor asks for a steady bar");
+			// The three are DIFFERENT, which is the property that was missing
+			// and is not implied by any one of the checks above: each could
+			// pass alone against a backend that emitted all three sequences
+			// every time.
+			CHECK(!w_block.contains("\033[6 q") && !w_bar.contains("\033[2 q"),
+			      "and the three shapes are told apart on the wire, each "
+			      "asking for its own and no other");
+
+			CHECK(w_same.isEmpty(),
+			      "asking twice for the cursor the terminal already has, "
+			      "shape and all, still writes nothing");
+
+			CHECK(w_hidden.contains("\033[?25l") && !w_hidden.contains(" q"),
+			      "hiding the cursor hides it and asks for no shape");
+
+			// The one a reader will most want to trust. A program that exits
+			// leaving the user's caret a block has changed something that was
+			// not its to change, and nothing tells the user what did it.
+			CHECK(w_leave.contains("\033[0 q"),
+			      "and giving the terminal back restores the caret the user "
+			      "configured");
 		}
 	}
 

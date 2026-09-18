@@ -1067,6 +1067,12 @@ void Compositor::compose(CellBuffer &out) {
 	// (section 5.5). A modal owns input while it is up (section 8.3), so it owns
 	// the cursor too; a popup has no text cursor of its own.
 	cursor_.reset();
+	// Reset BESIDE the cell rather than anywhere else, because the pair is
+	// one answer: Hidden is what "there is no caret" means on the wire, and
+	// a shape left over from the last frame would be a stale request sitting
+	// behind a cursor that has since moved to a different widget. Every path
+	// below that sets a cell sets a shape with it.
+	cursor_shape_ = CursorShape::Hidden;
 	// design.md 5.5 adopts a generic trick -- ask the focus widget for
 	// ImCursorRectangle rather than special-casing input classes -- on the
 	// premise that "any widget that supports input methods reports its caret
@@ -1174,13 +1180,49 @@ void Compositor::compose(CellBuffer &out) {
 			                                 cr.y() + cr.height() / 2));
 			QPoint cell(g.x() / cw, g.y() / ch);
 			if (cell.x() >= 0 && cell.y() >= 0
-			    && cell.x() < out.cols() && cell.y() < out.rows())
+			    && cell.x() < out.cols() && cell.y() < out.rows()) {
 				cursor_ = cell;
+				cursor_shape_ = shape_for(fw);
+			}
 		}
 	}
 }
 
+// A bar by default, a block where the widget is OVERWRITING rather than
+// inserting. That is the convention every terminal editor already follows
+// and the one thing about a caret a terminal user reads without being told:
+// a bar sits BETWEEN two characters, which is where an inserted one goes,
+// and a block sits ON one, which is the character about to be replaced.
+//
+// It is derived from the widget rather than chosen by the application on
+// purpose. `overwriteMode()` is a fact the application has already stated
+// to Qt -- usually by handing the user an Insert key -- so the caret follows
+// the mode with nothing added to any API, and an application that toggles
+// the mode gets the caret change for free. Asking for a shape directly would
+// be a second way to say the same thing, and two of them drift.
+//
+// QTextEdit and QPlainTextEdit are BOTH tested because neither derives from
+// the other: they are siblings under QAbstractScrollArea, so a qobject_cast
+// to the first answers false for the second. Nothing else in Qt Widgets has
+// an overwrite mode -- QLineEdit has no such property at all, which is why
+// it is the control the suite checks: a focused line edit must stay a bar
+// however this is written.
+//
+// The FOCUS widget, not the rectangle's `owner`. The two differ for a widget
+// that delegates editing to an inner QLineEdit -- a spin box, an item view --
+// and in every one of those the inner editor is the line edit above, which
+// has no overwrite mode to read. The mode belongs to the widget the
+// application configured.
+CursorShape Compositor::shape_for(QWidget *fw) {
+	if (auto *te = qobject_cast<QTextEdit *>(fw))
+		return te->overwriteMode() ? CursorShape::Block : CursorShape::Bar;
+	if (auto *pe = qobject_cast<QPlainTextEdit *>(fw))
+		return pe->overwriteMode() ? CursorShape::Block : CursorShape::Bar;
+	return CursorShape::Bar;
+}
+
 std::optional<QPoint> Compositor::cursor_cell() const { return cursor_; }
+CursorShape Compositor::cursor_shape() const { return cursor_shape_; }
 
 // ------------------------------------------------------------- FrameScheduler
 FrameScheduler::FrameScheduler(ITerminalBackend *backend, Compositor *compositor,
@@ -1393,8 +1435,13 @@ void FrameScheduler::render_now() {
 			live_overlay_ids_ = id;
 		}
 	}
-	backend_->set_cursor(comp_->cursor_cell(),
-	                    comp_->cursor_cell() ? CursorShape::Bar : CursorShape::Hidden);
+	// The shape comes from the compositor rather than being decided here.
+	// It was a literal Bar-or-Hidden written inline, which is the whole
+	// reason CursorShape::Block and ::Underline had no producer anywhere in
+	// the tree: the only chooser in qtty could not express them. The
+	// compositor has the focus widget and so can answer; this has the
+	// backend and cannot.
+	backend_->set_cursor(comp_->cursor_cell(), comp_->cursor_shape());
 	prev_ = std::make_unique<CellBuffer>(frame);
 	// Beside prev_, and for the same reason: the next frame's damage cannot
 	// be computed from this one's geometry alone.

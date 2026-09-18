@@ -726,6 +726,15 @@ test-install: $(LIB) $(INSPECT) $(REPLAY)
 # (section 8.42), and both are correct and balanced: `22;2t` in, `23;2t` out.
 # The number is updated with the change rather than loosened to stop noticing.
 #
+# 15 -> 16 when the caret gained a shape (section 8.241): kLeave ends with
+# DECSCUSR's `0 q`, which puts the user's configured cursor back the way
+# `23;2t` puts their title back. This one is deliberately NOT balanced -- the
+# reset is on the way out with nothing on the way in, because qtty asks for a
+# shape per frame through set_cursor() rather than once at startup, and there
+# is no shape to establish on entry. Measured rather than reasoned: the
+# sixteen are kEnter's seven and kLeave's nine, and the sixteenth is the
+# `0 q`, read off the capture with `sed 's/\x1b/\n<ESC>/g'`.
+#
 # And a comment cannot go INSIDE the recipe below, which is why this one is
 # here. The whole recipe is one shell command joined by backslashes, so a
 # `#` line in the middle comments out the join: everything after it became a
@@ -866,7 +875,7 @@ test-tools: all
 			< /dev/null" $(BUILD_DIR)/neg.out > /dev/null 2>&1; \
 		n=$$(tr -cd '\033' < $(BUILD_DIR)/neg.out | wc -c); \
 		case "$$n:$$(cat $(BUILD_DIR)/neg.out)" in \
-		15:*"stdin is not a terminal"*) \
+		16:*"stdin is not a terminal"*) \
 			echo "    negotiate --probes, stdout only: ok";; \
 		*) echo "    negotiate --probes, stdout only: FAILED -- $$n escape"; \
 		   echo "                        sequence(s) on a terminal nothing"; \
