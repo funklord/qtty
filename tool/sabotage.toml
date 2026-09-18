@@ -3442,3 +3442,43 @@ find = "\t\t\tif (live_images.contains(it.key())) ++it;"
 into = "\t\t\tif (true) ++it;"
 count = 1
 check = "the cache holds what the last frame drew"
+
+[[sabotage]]
+# The keypad's Enter dropped again, so a user pressing it on a
+# terminal in application keypad mode activates nothing. 8.245.
+name = "the keypad's Enter is consumed and discarded"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\tcase 'M': k.qt_key = Qt::Key_Enter; break;"
+into = "\t\t\tcase 'M': pending_.remove(0, 3); return true;"
+count = 1
+check = "SS3 M decodes as the keypad's Enter"
+
+[[sabotage]]
+# The keypad digits dropped, so typing a number on the keypad puts
+# nothing in the field. 8.245.
+name = "the keypad's digits reach no field"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\t\tk.text = QString(QChar('0' + (pending_[2] - 'p')));"
+into = "\t\t\t\tk.text = QString();"
+count = 1
+check = "SS3 u is the keypad's 5"
+
+[[sabotage]]
+# The digit row read from the wrong end, which is the off-by-one a
+# contiguous range invites: p would be 9 and y would be 0. 8.245.
+name = "the keypad's digit row runs backwards"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\t\tk.text = QString(QChar('0' + (pending_[2] - 'p')));"
+into = "\t\t\t\tk.text = QString(QChar('9' - (pending_[2] - 'p')));"
+count = 1
+check = "SS3 p is its 0"
+
+[[sabotage]]
+# The router accepting only one spelling of Enter, which is what the
+# suite could not see until the decoder produced the other. 8.245.
+name = "the router knows only the main keyboard's Return"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (k.qt_key == Qt::Key_Return || k.qt_key == Qt::Key_Enter) {"
+into = "\t\tif (k.qt_key == Qt::Key_Return) {"
+count = 1
+check = "the keypad's Enter activates the focused button"

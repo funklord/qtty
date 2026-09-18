@@ -2051,6 +2051,41 @@ bool AnsiBackend::decode_one() {
 			case 'D': k.qt_key = Qt::Key_Left; break;
 			case 'H': k.qt_key = Qt::Key_Home; break;
 			case 'F': k.qt_key = Qt::Key_End; break;
+			// THE NUMERIC KEYPAD, which arrives here too and was being
+			// dropped. In application keypad mode every key on it is an
+			// SS3, and the default below consumed them without producing
+			// anything -- so the whole keypad, Enter included, was
+			// silently dead. Not a hypothetical state: qtty's entry
+			// sequence does not reset the mode, so a program the
+			// application shells out to can set it (vi does) and leave it
+			// set by dying, and the keypad is then dead for the rest of
+			// the session with nothing to say why.
+			//
+			// Decoded rather than reset, which is the choice worth
+			// recording. Writing DECKPNM into the entry string would make
+			// the mode go away and would also be this library insisting
+			// on one of the two states a terminal may legitimately be in,
+			// clobbering a user who set the other deliberately. Handling
+			// both costs a dozen lines and cannot take anything away.
+			//
+			// Enter gets a key and the rest get TEXT, which is this
+			// decoder's own rule a few lines below: a named key carries
+			// qt_key, a character carries text. So a keypad 5 reaches a
+			// field as the character 5, indistinguishable from the one on
+			// the main keyboard, which is what somebody typing a number
+			// into a form means by it.
+			case 'M': k.qt_key = Qt::Key_Enter; break;
+			case 'p': case 'q': case 'r': case 's': case 't':
+			case 'u': case 'v': case 'w': case 'x': case 'y':
+				k.text = QString(QChar('0' + (pending_[2] - 'p')));
+				break;
+			case 'j': k.text = QStringLiteral("*"); break;
+			case 'k': k.text = QStringLiteral("+"); break;
+			case 'l': k.text = QStringLiteral(","); break;
+			case 'm': k.text = QStringLiteral("-"); break;
+			case 'n': k.text = QStringLiteral("."); break;
+			case 'o': k.text = QStringLiteral("/"); break;
+			case 'X': k.text = QStringLiteral("="); break;
 			default:  pending_.remove(0, 3); return true;   // consumed
 			}
 			pending_.remove(0, 3);

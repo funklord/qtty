@@ -7094,6 +7094,64 @@ int suite_router() {
 		      "own, the window it would be delivered to being unexposed");
 	}
 
+	// ---- the keypad's Enter is an Enter ----
+	{
+		// The router has accepted Qt::Key_Enter beside Qt::Key_Return
+		// since both branches were written -- in the button activation
+		// and in navigates_a_list() -- and NOTHING PRODUCED IT. The
+		// shipped decoder turns a carriage return into Key_Return and had
+		// no mapping for the keypad at all, so the second spelling was an
+		// accepted value no test exercised and no backend could send.
+		//
+		// That is an interface promise with nothing holding it: collapse
+		// the two cases to one and every check stays green, while every
+		// adopter's keypad Enter stops working. The decoder produces the
+		// spelling now, and this is the half that says the router still
+		// means it.
+		struct Counting : QPushButton {
+			int clicks = 0;
+			using QPushButton::QPushButton;
+		};
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(30, 6));
+		auto *b = new Counting(&win);
+		b->setText(QStringLiteral("Go"));
+		b->setGeometry(0, 0, GridMetrics::cw() * 8, GridMetrics::ch());
+		b->setFocusPolicy(Qt::StrongFocus);
+		QObject::connect(b, &QPushButton::clicked, [b] { ++b->clicks; });
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		b->setFocus();
+		set_focus_widget(win.focusWidget());
+
+		// WITH THE CONVENTIONS ON, because activating the focused control
+		// with Enter is one of them -- the guide lists it in the
+		// convention table and not in the table of what Qt already does,
+		// and Qt really does nothing here: a plain QPushButton outside a
+		// dialog does not answer Return at all. The first version of this
+		// fixture left them off and measured 0 clicks for both spellings,
+		// which is the fixture failing to reach the branch rather than
+		// the branch being wrong.
+		const bool had_conventions = keyboard_conventions();
+		set_keyboard_conventions(true);
+
+		r.on_key({Qt::Key_Return, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		const int after_return = b->clicks;
+		r.on_key({Qt::Key_Enter, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		// The RELATIONSHIP rather than either count: what is being
+		// asserted is that the two spellings do the same thing, which
+		// stays true if the activation rule changes and would need
+		// rewriting if it were pinned to a number.
+		set_keyboard_conventions(had_conventions);
+		CHECK(after_return == 1 && b->clicks == 2,
+		      "the keypad's Enter activates the focused button exactly as"
+		      " the main keyboard's Return does");
+	}
+
 	// ---- a second click is a double click ----
 	{
 		// Measured before this existed: two clicks in the same cell gave two

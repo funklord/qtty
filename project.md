@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1605 checks, 0 failures. `make check` is green and includes
+1612 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16639,6 +16639,60 @@ a second ring leaves as it found it.
 **No header was added**, so `INSTALLED_HEADERS` is unchanged --
 `application.h`, `backend.h` and `null_backend.h` are all already in the
 list and all already installed.
+
+### 8.245 The numeric keypad produced nothing (2026-09-18)
+
+Found by auditing the guide's tables against the suite. 8.73 did that once
+and reported **seventeen rows**; the guide has **48** now, so the coverage
+claim had gone stale by construction -- a present-tense count about the
+tree's own shape, which `evidence.md` names as the kind that rots.
+
+The audit's first row was `Enter`, and the grep behind it turned up
+something better than a missing check. `Qt::Key_Enter` appears twice in
+`input_router.cpp` -- in the button activation and in
+`navigates_a_list()` -- and **zero times in any suite**, because the
+shipped decoder cannot produce it: `\r` and `\n` become `Key_Return` and
+nothing else ever set the other spelling.
+
+**Following that back found a live defect.** In application keypad mode
+every key on the numeric keypad arrives as SS3, `ESC O <final>`, and the
+decoder's switch handled `P`-`S` (F1 to F4), `A`-`D` (the cursor keys) and
+`H`/`F` -- then consumed everything else silently. So the whole keypad,
+Enter included, produced nothing at all.
+
+**It is reachable, which is what makes it a defect rather than an
+omission.** qtty's entry sequence does not reset the keypad mode, so a
+program the application shells out to can set it -- `vi` does -- and leave
+it set by dying. The keypad is then dead for the rest of the session with
+nothing to say why.
+
+**Decoded rather than reset, and that is the decision.** Writing DECKPNM
+into the entry string would make the mode go away, and would also be this
+library insisting on one of two states a terminal may legitimately be in,
+clobbering a user who chose the other. Handling both costs a dozen lines
+and cannot take anything away.
+
+Enter gets a key and the rest get TEXT, which is this decoder's own rule:
+a named key carries `qt_key`, a character carries `text`. A keypad 5
+reaches a field as the character 5, indistinguishable from the one on the
+main keyboard -- which is what somebody typing a number into a form means
+by it.
+
+**And the router's second spelling now has a producer and a check.**
+Before this, collapsing `case Qt::Key_Return: case Qt::Key_Enter:` to one
+case left every check green and broke every adopter's keypad Enter. The
+new check asserts the RELATIONSHIP -- the two spellings do the same thing
+-- rather than a click count, so it survives a change to the activation
+rule.
+
+**The fixture was wrong first, and the way it was wrong is worth
+keeping.** It measured 0 clicks for both spellings, which reads as the
+router being broken. It is not: activating the focused control with Enter
+is one of the OPT-IN conventions, listed in the guide's convention table
+and not in the table of what Qt already does -- and Qt really does nothing
+here, a plain `QPushButton` outside a dialog not answering Return at all.
+The fixture had not turned the conventions on. A check that cannot reach
+the branch it names looks exactly like a branch that does not work.
 
 ### 8.242 A picture re-encoded on every frame that changed a clock
 (2026-09-18)

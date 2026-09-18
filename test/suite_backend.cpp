@@ -302,6 +302,39 @@ int suite_backend() {
 	// assigned, and a decoder that mapped them would be inventing keys.
 	feed("\033[16~");
 	CHECK(rec.keys.isEmpty(), "and 16~ is consumed without inventing a key");
+
+	// THE NUMERIC KEYPAD, which arrives as SS3 too and was being dropped.
+	// In application keypad mode every key on it is an SS3, and the
+	// decoder's default consumed them silently -- so the whole keypad,
+	// Enter included, produced nothing. The state is reachable: qtty's
+	// entry sequence does not reset the mode, so a program the application
+	// shells out to can set it and leave it set by dying.
+	feed("\033OM");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Enter,
+	      "SS3 M decodes as the keypad's Enter");
+	// As TEXT, and as the same text the main keyboard sends, because a
+	// keypad 5 is a 5: a field cannot tell the two apart and a person
+	// typing a number into a form does not mean it to.
+	feed("\033Ou");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == 0
+	      && rec.keys[0].text == QStringLiteral("5"),
+	      "and SS3 u is the keypad's 5, arriving as the character it is");
+	feed("\033Op");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].text == QStringLiteral("0"),
+	      "and SS3 p is its 0, the row running p to y for 0 to 9");
+	feed("\033Oy");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].text == QStringLiteral("9"),
+	      "and SS3 y is its 9, the far end of that row");
+	feed("\033Ok");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].text == QStringLiteral("+"),
+	      "and the operators come with it, SS3 k being plus");
+	// The control that keeps the addition honest: an SS3 final this
+	// decoder does not know is still consumed without inventing a key,
+	// which is what the F-key block above asserts for CSI and what a
+	// careless switch would have broken while adding cases to it.
+	feed("\033Oz");
+	CHECK(rec.keys.isEmpty(),
+	      "while an SS3 nobody has assigned is still consumed silently");
 	// The modifier parameter reaches a function key too, by the same 1 + bits
 	// mask the cursor keys use.
 	feed("\033[15;5~");
