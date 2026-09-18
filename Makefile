@@ -452,10 +452,33 @@ sabotage:
 test-consume:
 	@./tool/consume-check
 
+# WHAT A FAILING ARM LEAVES BEHIND is the reason `keep` exists, and it was
+# paid for. Every arm below ran with `2>/dev/null` and its stdout in one
+# scratch file the recipe deleted on the way out, so a configuration that
+# failed reported the word FAILED and nothing else -- no assertion, no
+# message, no exit status. Measured 2026-09-18: the xcb arm failed here and
+# left NOTHING to diagnose, while the same binary under the same command by
+# hand reported rc=0 and a full count. Whether that was a real fault or a
+# collision with another session's Xvfb is now unknowable, which is the
+# whole cost.
+#
+# That is `evidence.md`'s rule -- never reduce a check's output before you
+# know it passed -- broken in the one target whose entire job is to catch
+# what the default run cannot see. The arms that pass are quiet as before;
+# a failing one writes both streams to a file named after it, says where,
+# and prints the FAIL lines it did manage.
 test-platforms: tests-build
 	@failed=0; ran=0; expect=; \
 	out=$(dir $(TEST_BIN))platform.out; \
+	err=$(dir $(TEST_BIN))platform.err; \
 	cnt() { grep -cE '^(PASS|FAIL|SKIP):' "$$1" || true; }; \
+	keep() { \
+		k="$(dir $(TEST_BIN))platform-$$1.failed"; \
+		{ echo "=== $$1 exited $$2"; echo "--- stdout"; cat "$$out"; \
+		  echo "--- stderr"; cat "$$err"; } > "$$k" 2>/dev/null; \
+		grep -E '^FAIL:' "$$out" 2>/dev/null | head -20 | sed 's/^/    /'; \
+		echo "    what it printed is kept in $$k"; \
+	}; \
 	agree() { \
 		n=$$(cnt "$$1"); \
 		if [ -z "$$expect" ]; then \
@@ -477,22 +500,24 @@ test-platforms: tests-build
 		ran=$$((ran + 1)); \
 		echo "--- $(TEST_BIN) on $$platform"; \
 		if QTTY_QPA_PLATFORM=$$platform $(TEST_CRASH_ENV) \
-		     timeout $(TEST_TIMEOUT) $(TEST_BIN) > "$$out" 2>/dev/null; then \
+		     timeout $(TEST_TIMEOUT) $(TEST_BIN) > "$$out" 2>"$$err"; then \
 			if expect=$$(agree "$$out"); \
 			then echo "    ok ($$(cnt "$$out") checks)"; \
 			else failed=$$((failed + 1)); fi; \
-		else echo "    FAILED"; failed=$$((failed + 1)); fi; \
+		else rc=$$?; echo "    FAILED"; keep "$$platform" "$$rc"; \
+		     failed=$$((failed + 1)); fi; \
 	done; \
 	if command -v xvfb-run >/dev/null 2>&1; then \
 		echo "--- $(TEST_BIN) on xcb, under Xvfb"; \
 		ran=$$((ran + 1)); \
 		if xvfb-run -a -s "-screen 0 1280x1024x24" \
 		     env QTTY_QPA_PLATFORM=xcb QTEST_DISABLE_STACK_DUMP=1 \
-		     timeout $(TEST_TIMEOUT) $(TEST_BIN) > "$$out" 2>/dev/null; then \
+		     timeout $(TEST_TIMEOUT) $(TEST_BIN) > "$$out" 2>"$$err"; then \
 			if expect=$$(agree "$$out"); \
 			then echo "    ok ($$(cnt "$$out") checks)"; \
 			else failed=$$((failed + 1)); fi; \
-		else echo "    FAILED"; failed=$$((failed + 1)); fi; \
+		else rc=$$?; echo "    FAILED"; keep xcb "$$rc"; \
+		     failed=$$((failed + 1)); fi; \
 	else \
 		echo "    note: xvfb-run is absent, so the xcb configuration is not" >&2; \
 		echo "          run and only $(TEST_PLATFORMS) was tested." >&2; \
@@ -527,12 +552,13 @@ test-platforms: tests-build
 	fi; \
 	echo "--- $(TEST_BIN) with a hostile environment: $$hostile"; \
 	if env $$hostile $(TEST_CRASH_ENV) \
-	     timeout $(TEST_TIMEOUT) $(TEST_BIN) > "$$out" 2>/dev/null; then \
+	     timeout $(TEST_TIMEOUT) $(TEST_BIN) > "$$out" 2>"$$err"; then \
 		if expect=$$(agree "$$out"); \
 		then echo "    ok, the pins absorbed it ($$(cnt "$$out") checks)"; \
 		else failed=$$((failed + 1)); fi; \
-	else echo "    FAILED"; failed=$$((failed + 1)); fi; \
-	rm -f "$$out"; \
+	else rc=$$?; echo "    FAILED"; keep hostile "$$rc"; \
+	     failed=$$((failed + 1)); fi; \
+	rm -f "$$out" "$$err"; \
 	echo "test-platforms: $$ran platform(s), 1 refusal and 1 hostile environment, $$failed failed"; \
 	if [ "$$ran" -eq 0 ]; then \
 		echo "test-platforms: TEST_PLATFORMS is empty, so the suite ran under" >&2; \

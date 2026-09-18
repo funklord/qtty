@@ -16370,6 +16370,54 @@ recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
 
+### 8.231 A configuration that failed and left nothing (2026-09-18)
+
+Found by running the six configurations and having one of them fail.
+
+`make test-platforms` runs the suite under offscreen, under xcb, under
+`minimal` (which must refuse), and in a hostile environment. Each arm
+redirected stderr to `/dev/null` and its stdout into one scratch file the
+recipe deleted on the way out. So an arm that failed printed the word
+`FAILED` and nothing else: no assertion, no message, not even the exit
+status.
+
+**Measured 2026-09-18.** The xcb arm failed in a chain run. Nothing was
+kept. The same binary under the same command, run by hand a few minutes
+later, reported `rc=0` and 1524 checks -- and **whether the first run was a
+real fault or a collision with another session's Xvfb is now permanently
+unknowable.** Not a mystery to be solved later: the evidence was deleted by
+the tool that produced it.
+
+That is `evidence.md`'s *never reduce a check's output before you know it
+passed*, broken in the one target whose entire job is to see what the
+default run cannot. The other five configurations all report their own
+failures usefully; this one was the exception, and it is the one that runs
+the suite under a real window system where a fault the offscreen platform
+cannot express would first appear.
+
+**A failing arm now writes both streams to `platform-<arm>.failed`**, says
+where, prints the `FAIL:` lines it managed, and reports the exit status. A
+passing arm is as quiet as before -- the change costs nothing on a green
+run, which is the property that makes it safe to leave on.
+
+**Proved by making an arm fail**, since a check that has not been seen to
+fail is not a check:
+
+    make test-platforms TEST_PLATFORMS=nosuchplatform
+      --- build-test/qtty-tests on nosuchplatform
+          FAILED
+          what it printed is kept in build-test/platform-nosuchplatform.failed
+      === nosuchplatform exited 134
+      --- stderr
+      qt.qpa.plugin: Could not find the Qt platform plugin "nosuchplatform"
+
+A bogus platform name rather than a broken source file, so the control
+needs nothing put back afterwards and can be re-run by anyone.
+
+**What it cannot do is recover the run that prompted it**, and that is worth
+saying rather than leaving implied. The xcb failure of 2026-09-18 has no
+diagnosis and will not get one.
+
 ### 8.228 Paste was a one-way street (2026-09-18)
 
 Found by the same survey as 8.227, asking what an ordinary Qt
