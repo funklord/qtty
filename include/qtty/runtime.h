@@ -504,10 +504,29 @@ public:
 	void render_now();                                      // immediate (initial frame)
 	bool eventFilter(QObject *, QEvent *) override;        // UpdateRequest watcher
 
+	// How long a burst of damage is coalesced before a frame goes out, in
+	// milliseconds. design.md section 5.4 has described this as
+	// "configurable" since it was written, and section 11 goes further --
+	// "16 ms local, 50 ms over ssh; FrameScheduler coalesces to whichever
+	// applies" -- while the number was a bare literal in one expression with
+	// nothing able to reach it.
+	//
+	// 0 is legal and means "as soon as the event loop comes back", which is
+	// what an application driving its own loop may want; the coalescing is
+	// then only what the loop itself merges. Negative is refused rather than
+	// clamped, because a caller passing one has made a mistake and a silent
+	// 0 would hide it.
+	void set_frame_interval(int ms);
+	int frame_interval() const { return frame_ms_; }
+
 private:
 	ITerminalBackend *backend_;
 	Compositor *comp_;
 	QWidget *win_;
+	// Declared after win_ so the initialiser list runs in declaration order;
+	// -Wreorder is right that the two disagreeing is a trap waiting for
+	// whoever adds a member that reads another.
+	int frame_ms_;
 	QTimer coalesce_;
 	QTimer idle_;
 	QElapsedTimer since_last_;

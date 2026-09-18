@@ -2913,3 +2913,68 @@ find = "QSize terminal_cells() {\n\tconst ITerminalBackend *b = g_session ? g_se
 into = "QSize terminal_cells() {\n\tconst ITerminalBackend *b = g_session ? g_session : g_backend;\n\tstatic QSize cached;\n\tif (cached.isEmpty() && b) cached = b->size();\n\tif (!cached.isEmpty()) return cached;"
 count = 1
 check = "a later read gets the size the terminal is NOW"
+
+[[sabotage]]
+# The literal back in the frame loop, so the interval is a knob the
+# getter reports and the loop ignores -- a correct function and no
+# working feature. 8.234.
+name = "the frame loop ignores the interval it was given"
+file = "src/runtime/compositor.cpp"
+find = "\tconst int wait = qMax(0, frame_ms_ - int(since_last_.elapsed()));"
+into = "\tconst int wait = qMax(0, 16 - int(since_last_.elapsed()));"
+count = 1
+check = "a long frame interval holds a requested frame back"
+
+[[sabotage]]
+# The link undetected, so design.md section 11's "50 ms over ssh" is a
+# sentence nothing holds again. 8.234.
+name = "nothing notices the terminal is over ssh"
+file = "src/runtime/compositor.cpp"
+find = "\tif ((conn && *conn) || (tty && *tty)) return 50;   // section 11, remote"
+into = "\t(void)conn; (void)tty;"
+count = 1
+check = "over ssh it is the 50 ms section 11 names"
+
+[[sabotage]]
+# The override dropped, leaving only the guess -- and the guess is
+# wrong for mosh and for a reattached tmux, which is why it exists.
+# 8.234.
+name = "QTTY_FRAME_MS is not read"
+file = "src/runtime/compositor.cpp"
+find = "\t\tif (v >= 0 && v <= 1000) return v;"
+into = "\t\tif (false) return v;"
+count = 1
+check = "QTTY_FRAME_MS beats the guess"
+
+[[sabotage]]
+# An exported-but-empty SSH_CONNECTION read as a link, so anybody
+# whose profile writes it unconditionally gets the remote budget on
+# their own machine. 8.234.
+name = "an empty SSH_CONNECTION counts as a link"
+file = "src/runtime/compositor.cpp"
+find = "\tif ((conn && *conn) || (tty && *tty)) return 50;   // section 11, remote"
+into = "\tif (conn || tty) return 50;"
+count = 1
+check = "an empty SSH_CONNECTION is not a link"
+
+[[sabotage]]
+# A negative interval clamped rather than refused, which renders as
+# fast as the event loop allows -- the failure the budget exists to
+# prevent. 8.234.
+name = "a negative frame interval is accepted"
+file = "src/runtime/compositor.cpp"
+find = "\tif (ms < 0) return;\n\tframe_ms_ = ms;"
+into = "\tframe_ms_ = ms < 0 ? 0 : ms;"
+count = 1
+check = "a negative interval is refused rather than clamped"
+
+[[sabotage]]
+# The waiting frame left on the old clock, so the first call after a
+# burst of damage does nothing -- which is exactly when an application
+# decides the link is slower than it thought. 8.234.
+name = "a pending frame keeps the old interval"
+file = "src/runtime/compositor.cpp"
+find = "\tif (coalesce_.isActive()) {\n\t\tcoalesce_.stop();\n\t\trequest_frame();\n\t}"
+into = "\t(void)0;"
+count = 1
+check = "re-times the frame already waiting"

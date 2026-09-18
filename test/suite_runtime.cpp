@@ -1566,6 +1566,133 @@ int suite_runtime() {
 		GridGuard::reset();
 	}
 
+	// ---- the frame interval, which design.md has always called configurable
+	{
+		// Two claims in the design document that the code did not hold.
+		// Section 5.4: "FrameScheduler coalesces to at most one frame per
+		// ~16 ms (configurable; terminals over ssh want less)". Section 11,
+		// going further: "frame budget 16 ms local, 50 ms over ssh;
+		// FrameScheduler coalesces to whichever applies". The number was a
+		// bare literal 16 inside one expression -- nothing could reach it,
+		// nothing detected a link, and no environment variable touched it,
+		// while eleven other knobs in this tree are read from the
+		// environment.
+		const QByteArray had_ms = qgetenv("QTTY_FRAME_MS");
+		const QByteArray had_conn = qgetenv("SSH_CONNECTION");
+		const QByteArray had_tty = qgetenv("SSH_TTY");
+		qunsetenv("QTTY_FRAME_MS");
+		qunsetenv("SSH_CONNECTION");
+		qunsetenv("SSH_TTY");
+
+		NullBackend backend(QSize(40, 12));
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(40, 12));
+		auto *label = new QLabel(QStringLiteral("frame"), &win);
+		label->move(0, 0);
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter router(&win);
+		Compositor comp(&win, &router);
+
+		// Each in its own scope: a scheduler filters the application for
+		// UpdateRequest and runs an idle timer, so two alive at once would
+		// each answer the same damage and the frame counts below would be
+		// measuring the fixture.
+		{
+			FrameScheduler local(&backend, &comp, &win);
+			CHECK(local.frame_interval() == 16,
+			      "with nothing said, the frame interval is section 11's"
+			      " local budget of 16 ms");
+		}
+		{
+			qputenv("SSH_CONNECTION", "10.0.0.2 51000 10.0.0.1 22");
+			FrameScheduler remote(&backend, &comp, &win);
+			qunsetenv("SSH_CONNECTION");
+			CHECK(remote.frame_interval() == 50,
+			      "and over ssh it is the 50 ms section 11 names, which"
+			      " nothing detected before");
+		}
+		{
+			// An exported-but-empty variable is a shell artefact, not a
+			// statement about the link. Without this the guess fires for
+			// anybody whose profile writes SSH_CONNECTION= unconditionally.
+			qputenv("SSH_CONNECTION", "");
+			FrameScheduler empty(&backend, &comp, &win);
+			qunsetenv("SSH_CONNECTION");
+			CHECK(empty.frame_interval() == 16,
+			      "while an empty SSH_CONNECTION is not a link, so the"
+			      " local budget stands");
+		}
+		{
+			// The override in front of the guess, because the guess has
+			// real limits -- a tmux session started over ssh and reattached
+			// locally keeps a stale SSH_CONNECTION, and mosh sets neither.
+			qputenv("QTTY_FRAME_MS", "7");
+			qputenv("SSH_CONNECTION", "10.0.0.2 51000 10.0.0.1 22");
+			FrameScheduler named(&backend, &comp, &win);
+			qunsetenv("QTTY_FRAME_MS");
+			qunsetenv("SSH_CONNECTION");
+			CHECK(named.frame_interval() == 7,
+			      "and QTTY_FRAME_MS beats the guess, which is why the"
+			      " guess is allowed to be a guess");
+		}
+
+		// THE PART THAT MATTERS, because an accessor agreeing with a setter
+		// proves the setter. What was wrong is that request_frame() used a
+		// literal, so a knob could be right while the frame loop ignored it
+		// entirely -- a correct function and no working feature.
+		//
+		// Long against zero rather than two close numbers, so this measures
+		// a decision and not the clock: a few turns of the event loop take
+		// microseconds, so 5000 ms cannot elapse by accident and 0 cannot
+		// fail to.
+		{
+			// A REAL event loop for a measured stretch, because
+			// processEvents() returns the moment the queue is empty and
+			// never waits for a timer -- so pumping it, however many
+			// times, cannot tell a 16 ms deadline from a 5000 ms one.
+			// The sabotage harness said so twice: the check passed with
+			// the literal put back until this went in.
+			const auto spin = [](int ms) {
+				QEventLoop loop;
+				QTimer::singleShot(ms, &loop, &QEventLoop::quit);
+				loop.exec();
+			};
+			FrameScheduler s(&backend, &comp, &win);
+			const int before = backend.frame_count();
+			s.set_frame_interval(5000);
+			s.request_frame();
+			// Three hundred milliseconds: long enough that the old 16 ms
+			// budget must fire, short enough that 5000 cannot.
+			spin(300);
+			CHECK(backend.frame_count() == before,
+			      "a long frame interval holds a requested frame back, so"
+			      " the interval reaches the loop and not only the getter");
+			// And the pending frame is re-timed rather than left on the old
+			// clock: without that, the first call after a burst of damage
+			// does nothing, which is exactly when an application decides
+			// the link is slower than it thought.
+			s.set_frame_interval(0);
+			spin(50);
+			CHECK(backend.frame_count() > before,
+			      "and lowering it re-times the frame already waiting"
+			      " rather than leaving it on the old clock");
+		}
+		{
+			FrameScheduler s(&backend, &comp, &win);
+			const int was = s.frame_interval();
+			s.set_frame_interval(-1);
+			CHECK(s.frame_interval() == was,
+			      "a negative interval is refused rather than clamped to"
+			      " zero, which would render as fast as the loop allows");
+		}
+
+		if (!had_ms.isEmpty()) qputenv("QTTY_FRAME_MS", had_ms);
+		if (!had_conn.isEmpty()) qputenv("SSH_CONNECTION", had_conn);
+		if (!had_tty.isEmpty()) qputenv("SSH_TTY", had_tty);
+	}
+
 	// ---- where a dialog lands when nobody said -----------------------------
 	//
 	// Qt places an unparented dialog by centring it on the primary screen,

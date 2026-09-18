@@ -10,6 +10,7 @@
 #include "qtty/overlay.h"
 #include "title_keeper.h"
 #include <QtWidgets>
+#include <cstdlib>
 
 namespace Qtty {
 
@@ -471,6 +472,47 @@ QWidget *choose_current_window(const QVector<QWidget *> &tabs, QWidget *root)
 	return tabs.first();
 }
 
+// How long to coalesce damage before sending a frame, when nobody has said.
+//
+// design.md section 5.4 has called this "configurable" since it was written
+// and section 11 goes further -- "frame budget 16 ms local, 50 ms over ssh;
+// FrameScheduler coalesces to whichever applies" -- while the number was a
+// literal 16 inside one expression, reachable by nothing and adapting to
+// nothing. Two claims in the design document that the code did not hold.
+//
+// QTTY_FRAME_MS first, in the shape and with the bounds QTTY_ESCAPE_MS and
+// QTTY_PROBE_MS already use, because the person who needs a different number
+// is on a link nobody here can measure. 0 is accepted and means "next time
+// the event loop comes back"; the upper bound is a second, past which a
+// program stops feeling like it is responding at all.
+//
+// Then the link. SSH_CONNECTION is what every tool uses for this and it is
+// the only signal available: the client sets it in the session's
+// environment, and there is nothing to ask the terminal. Its limits are
+// real and are the reason the override comes first -- a tmux session
+// started over ssh and later reattached locally keeps a stale value in the
+// server's environment, and mosh sets neither variable, so the two errors
+// are a local program pacing itself for a slow link and a slow link paced
+// for a local one.
+//
+// Both errors are cheap, which is what makes the guess worth making at all.
+// Nothing is incorrect either way: frames are coalesced more or less
+// aggressively, and section 11's own numbers are the two answers. A wrong
+// guess costs latency or bandwidth, never a wrong picture -- and the
+// environment variable is in front of it for anyone the guess fails.
+int default_frame_ms() {
+	if (const char *env = ::getenv("QTTY_FRAME_MS")) {
+		const int v = ::atoi(env);
+		if (v >= 0 && v <= 1000) return v;
+	}
+	// Non-empty, not merely present: an exported-but-empty variable is a
+	// shell artefact rather than a statement about the link.
+	const char *const conn = ::getenv("SSH_CONNECTION");
+	const char *const tty = ::getenv("SSH_TTY");
+	if ((conn && *conn) || (tty && *tty)) return 50;   // section 11, remote
+	return 16;                                         // section 11, local
+}
+
 } // namespace
 
 QVector<QWidget *> window_tabs()
@@ -671,13 +713,6 @@ void Compositor::compose(CellBuffer &out) {
 		          QWidget::RenderFlags(QWidget::DrawWindowBackground | QWidget::DrawChildren));
 		p.end();
 	};
-	// Move a layer inside the terminal rectangle and report where it landed.
-	auto place = [&](QWidget *w, bool flip) {
-		const QPoint pos = placed_at(w->geometry(), out.cols(), out.rows(), cw, ch, flip);
-		if (pos != w->geometry().topLeft()) w->move(pos);
-		return pos;
-	};
-
 	// section 5.4 step 3: walk QApplication::topLevelWidgets(), rather than
 	// rendering the one window we were handed. The primary window is the base
 	// layer and is drawn at the origin; every other plain top-level follows at
@@ -1108,7 +1143,8 @@ std::optional<QPoint> Compositor::cursor_cell() const { return cursor_; }
 // ------------------------------------------------------------- FrameScheduler
 FrameScheduler::FrameScheduler(ITerminalBackend *backend, Compositor *compositor,
                                QWidget *window)
-    : backend_(backend), comp_(compositor), win_(window) {
+    : backend_(backend), comp_(compositor), win_(window),
+      frame_ms_(default_frame_ms()) {
 	// The terminal's answer about wide clusters, taken once, here, because
 	// this is where qtty is handed a backend: exec() builds one of these,
 	// and so does an application running its own loop with a scheduler.
@@ -1143,9 +1179,28 @@ QRegion FrameScheduler::pixel_damage(const QRegion &cells,
 }
 
 void FrameScheduler::request_frame() {
-	// 16 ms local budget (section 11); coalesce bursts into one frame.
-	const int wait = qMax(0, 16 - int(since_last_.elapsed()));
+	// Section 11's budget; coalesce bursts into one frame.
+	const int wait = qMax(0, frame_ms_ - int(since_last_.elapsed()));
 	if (!coalesce_.isActive()) coalesce_.start(wait);
+}
+
+void FrameScheduler::set_frame_interval(int ms) {
+	// Refused rather than clamped. A caller passing a negative interval has
+	// made a mistake, and quietly treating it as 0 would turn that mistake
+	// into a program that renders as fast as its event loop will let it --
+	// on a slow link, the exact failure the budget exists to prevent.
+	if (ms < 0) return;
+	frame_ms_ = ms;
+	// A frame already coalescing is re-timed on the new interval rather than
+	// left running on the old one. Without this the setting takes effect
+	// "from the next frame", which is a rule nobody could discover and which
+	// makes the first call after a burst of damage do nothing at all -- and
+	// damage is exactly what is happening when an application decides the
+	// link is slower than it thought.
+	if (coalesce_.isActive()) {
+		coalesce_.stop();
+		request_frame();
+	}
 }
 
 void FrameScheduler::render_now() {

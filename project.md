@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1532 checks, 0 failures. `make check` is green and includes
+1539 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16369,6 +16369,74 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.234 Two sentences in design.md the code did not hold (2026-09-18)
+
+Section 5.4 has said since it was written that `FrameScheduler` "coalesces
+to at most one frame per ~16 ms (configurable; terminals over ssh want
+less)". Section 11 goes further: "frame budget 16 ms local, 50 ms over ssh;
+`FrameScheduler` coalesces to whichever applies."
+
+What the code had was a bare literal inside one expression:
+
+    const int wait = qMax(0, 16 - int(since_last_.elapsed()));
+
+No constant, no member, no setter, no environment variable, and nothing
+anywhere in the tree that detects a link -- `grep -rn ssh src/ include/`
+returns comments. So "configurable" was false and "coalesces to whichever
+applies" was false twice over, in a document this project treats as
+authoritative over the code.
+
+**Implemented rather than amended.** Both sentences describe something
+worth having, and the project's rule is that where the document and the
+code disagree the document wins unless somebody decides otherwise --
+nobody had, because nobody had noticed.
+
+`QTTY_FRAME_MS` first, in the shape and with the bounds `QTTY_ESCAPE_MS`
+and `QTTY_PROBE_MS` already use. Then `SSH_CONNECTION` or `SSH_TTY`,
+non-empty, for section 11's 50 ms. Then 16.
+
+**The guess is a guess and the override is in front of it for that
+reason.** `SSH_CONNECTION` is what every tool uses and there is nothing
+else to ask -- no terminal reports its own latency. Its limits are real: a
+tmux session started over ssh and reattached locally keeps a stale value in
+the server's environment, and mosh sets neither variable. **Both errors are
+cheap, which is what makes the guess worth making at all** -- a local
+program paced for a slow link, or the reverse. Nothing renders incorrectly
+either way; section 11's own two numbers are the two answers, and the cost
+of a wrong one is latency or bandwidth, never a wrong picture.
+
+The empty case is its own check, because it is the one that would bite
+silently: a profile that exports `SSH_CONNECTION=` unconditionally would
+otherwise put every local program on the remote budget.
+
+**A pending frame is re-timed rather than left on the old clock.** Without
+that, a setting takes effect "from the next frame" -- a rule nobody could
+discover, and one that makes the first call after a burst of damage do
+nothing, which is exactly when an application decides the link is slower
+than it thought.
+
+**The sabotage harness caught a defective check of mine, twice, and that is
+the part worth recording.** The behavioural check -- does the interval
+reach the loop, or only the getter -- first pumped `processEvents()` twenty
+times and asserted no frame arrived. That is true at 5000 ms and equally
+true at 16, because twenty turns of an idle loop take microseconds, so the
+check passed with the literal put back and tested nothing. The second
+attempt used `processEvents(AllEvents, 300)` and failed the same way, for a
+reason worth knowing: **`processEvents` with a time argument returns as
+soon as the queue is empty and never waits for a timer.** What works is a
+real nested `QEventLoop` quit by a single-shot -- then 300 ms is long
+enough that the old budget must fire and short enough that 5000 cannot.
+
+Neither version would have been caught by reading it, and a suite of six
+entries where one silently tests nothing is the failure this harness exists
+to remove.
+
+**A ride-along.** `Compositor::compose()` carried a `place` lambda with no
+callers anywhere -- a leftover from the refactor that made the three sites
+call `placed_at()` directly and do their own `move()`. It produced a
+`-Wunused-but-set-variable` on every build. Removed, having checked that
+each direct caller does move the widget, so nothing is lost.
 
 ### 8.233 The terminal's size was measured and withheld (2026-09-18)
 
