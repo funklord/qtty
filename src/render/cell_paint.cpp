@@ -457,8 +457,14 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	// the painter's opacity, so both routes to invisibility are honoured.
 	const QColor ink = pen_ink();
 	if (ink.alpha() == 0) return;
-	const TextStyle ts = text_style_for(qRgb(ink.red(), ink.green(),
-	                                         ink.blue()));
+	// THE WHOLE rgba, alpha included, because the alpha is part of which
+	// role a colour is. This asked with qRgb() -- alpha discarded -- and
+	// Fusion spells PlaceholderText 0x80000000, so the query was opaque
+	// black, which is WindowText's colour: a field's hint resolved to the
+	// BODY TEXT role and came out at its index 7, indistinguishable from a
+	// field holding a value. text_style_for() strips the byte itself, once
+	// it has an answer. 8.248.
+	const TextStyle ts = text_style_for(ink.rgba());
 	int x = col;
 	for (const QString &cl : to_clusters(text)) {
 		const Attrs had = dev_->buffer().at(x, row).attrs & Attrs(Attr::Reverse);

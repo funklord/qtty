@@ -3619,3 +3619,75 @@ find = "\tif (!c.background_known || !c.foreground_known) return Qt::ColorScheme
 into = "\tif (!c.foreground_known) return Qt::ColorScheme::Unknown;"
 count = 1
 check = "answered OSC 10 and not OSC 11, the"
+
+
+[[sabotage]]
+# The foreground role list as it stood: four of the nine the table authors.
+# Five hand-written spellings with no route to a cell, and a link carried
+# out as the application's own 24-bit blue for a nearest match to finish
+# off. 8.248.
+name = "the foreground role list is back to its four roles"
+file = "src/cell_geometry.h"
+find = "\t\t                                      QPalette::HighlightedText,\n\t\t                                      QPalette::BrightText,\n\t\t                                      QPalette::PlaceholderText,\n\t\t                                      QPalette::Link,\n\t\t                                      QPalette::LinkVisited,\n\t\t                                      QPalette::Accent},"
+into = "\t\t                                      QPalette::HighlightedText},"
+count = 1
+check = "a QLabel's link draws in the 12 the role table authors"
+
+[[sabotage]]
+# ToolTipText at the head of the list, which is the way of making these
+# roles reachable that would have been WRONG. Fusion spells it the same
+# black as WindowText, so every body glyph in the program takes the
+# tooltip's authored 0. It is what the control exists for, and it reddens
+# nothing else. 8.248.
+name = "tooltip ink at the head of the foreground role list"
+file = "src/cell_geometry.h"
+find = "role_of(c, {QPalette::WindowText, QPalette::Text,"
+into = "role_of(c, {QPalette::ToolTipText,\n\t\t                                      QPalette::WindowText, QPalette::Text,"
+count = 1
+check = "and ordinary body text still draws at 7"
+
+[[sabotage]]
+# The pen's alpha discarded before the role is asked for, which is how it
+# stood. PlaceholderText is 0x80000000 and the query was opaque black --
+# WindowText's colour -- so a field's hint resolved to body text and drew
+# at its 7. Listing the role without this changes nothing. 8.248.
+name = "the pen's alpha is discarded before the role is asked for"
+file = "src/render/cell_paint.cpp"
+find = "\tconst TextStyle ts = text_style_for(ink.rgba());"
+into = "\tconst TextStyle ts = text_style_for(qRgb(ink.red(), ink.green(),\n\t                                         ink.blue()));"
+count = 1
+check = "a QLineEdit's placeholder draws at the authored 8"
+
+[[sabotage]]
+# from_palette() skipping the accent, which is where it stood: eight
+# siblings captured and this one left at whatever the struct's initialiser
+# said, so an application's accent never reached the theme at all. 8.248.
+name = "from_palette captures every role but the accent"
+file = "src/core/theme.cpp"
+find = "\tt.accent           = opaque(p.color(QPalette::Accent));"
+into = "\tt.accent           = Color();"
+count = 1
+check = "from_palette() captures the accent"
+
+[[sabotage]]
+# foreground() with no case for the accent, which is the other end of the
+# same dead field: even a theme that had captured one would have answered
+# with window_text. 8.248.
+name = "the theme resolves an accent to ordinary window text"
+file = "src/core/theme.cpp"
+find = "\tcase QPalette::Accent:          c = accent; break;"
+into = "\tcase QPalette::Accent:          c = window_text; break;"
+count = 1
+check = "and an application that sets theme.accent sees it on the"
+
+[[sabotage]]
+# The cheap fix for the whole finding: list the roles, attach the authored
+# index, and let every one of them fall through to window_text. The
+# sixteen-colour tier goes green and a link comes out the colour of body
+# text on the other two, which is what this check is for. 8.248.
+name = "a link keeps its authored index and loses its colour"
+file = "src/core/theme.cpp"
+find = "\tcase QPalette::Link:            c = link; break;"
+into = "\tcase QPalette::Link:            c = window_text; break;"
+count = 1
+check = "and carries the palette's own colour still"

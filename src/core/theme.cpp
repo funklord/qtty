@@ -5,16 +5,42 @@ namespace Qtty {
 
 CellTheme CellTheme::terminal_default() { return CellTheme{}; }
 
+// A palette colour as a terminal colour: OPAQUE, always.
+//
+// A Color is a terminal colour and a terminal has no alpha channel, so an
+// alpha byte carried into one buys nothing and costs something real -- two
+// cells of the same visible colour compare unequal, which the frame diff
+// reads as a change and retransmits. brush_cell() normalises a fill for
+// exactly that reason; this is the same rule on the capture side, written
+// once rather than thirteen times.
+//
+// It is not theoretical. Fusion spells PlaceholderText 0x80000000, a half
+// transparent black, and it is the only one of the roles below whose alpha
+// is not 0xff -- so the eight captured before 8.248 come out byte for byte
+// as they did, and the five added with it need this.
+static Color opaque(const QColor &c) {
+	return Color::rgb(qRgb(c.red(), c.green(), c.blue()));
+}
+
 CellTheme CellTheme::from_palette(const QPalette &p) {
 	CellTheme t;
-	t.window_text       = Color::rgb(p.color(QPalette::WindowText));
-	t.text             = Color::rgb(p.color(QPalette::Text));
-	t.button_text       = Color::rgb(p.color(QPalette::ButtonText));
-	t.window           = Color::rgb(p.color(QPalette::Window));
-	t.base             = Color::rgb(p.color(QPalette::Base));
-	t.button           = Color::rgb(p.color(QPalette::Button));
-	t.highlight        = Color::rgb(p.color(QPalette::Highlight));
-	t.highlighted_text  = Color::rgb(p.color(QPalette::HighlightedText));
+	t.window_text      = opaque(p.color(QPalette::WindowText));
+	t.text             = opaque(p.color(QPalette::Text));
+	t.button_text      = opaque(p.color(QPalette::ButtonText));
+	t.window           = opaque(p.color(QPalette::Window));
+	t.base             = opaque(p.color(QPalette::Base));
+	t.button           = opaque(p.color(QPalette::Button));
+	t.highlight        = opaque(p.color(QPalette::Highlight));
+	t.highlighted_text = opaque(p.color(QPalette::HighlightedText));
+	// The foreground half the table authors and this did not capture
+	// (8.248). Without them, listing the roles in the paint path would
+	// have sent every one of them to window_text: the sixteen-colour tier
+	// fixed at the price of the other two.
+	t.accent           = opaque(p.color(QPalette::Accent));
+	t.bright_text      = opaque(p.color(QPalette::BrightText));
+	t.placeholder_text = opaque(p.color(QPalette::PlaceholderText));
+	t.link             = opaque(p.color(QPalette::Link));
+	t.link_visited     = opaque(p.color(QPalette::LinkVisited));
 	return t;
 }
 
@@ -131,6 +157,15 @@ Color CellTheme::foreground(QPalette::ColorRole r) const {
 	case QPalette::Text:            c = text; break;
 	case QPalette::ButtonText:      c = button_text; break;
 	case QPalette::HighlightedText: c = highlighted_text; break;
+	// The five the table authored and this could not answer for (8.248).
+	// Falling to window_text here would have been the cheap fix and the
+	// wrong one: the authored index would arrive, and the 24-bit and
+	// 256-colour tiers would get body text's colour for a link.
+	case QPalette::BrightText:      c = bright_text; break;
+	case QPalette::PlaceholderText: c = placeholder_text; break;
+	case QPalette::Link:            c = link; break;
+	case QPalette::LinkVisited:     c = link_visited; break;
+	case QPalette::Accent:          c = accent; break;
 	default:                        c = window_text; break;
 	}
 	return c.with_ansi16(ansi16_for_role(r));

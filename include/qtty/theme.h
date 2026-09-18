@@ -22,7 +22,23 @@ struct CellTheme {
 	Color window_text, text, button_text;         // foregrounds
 	Color window, base, button;                 // backgrounds
 	Color highlight, highlighted_text;
-	Color accent = Color::indexed(4);
+	// `accent` was declared long before anything set or read it (8.248):
+	// from_palette() filled its eight siblings and skipped it, and neither
+	// foreground() nor background() had a case for it, so an application
+	// assigning it got a silent no-op. Its `= Color::indexed(4)`
+	// initialiser went with the wiring -- it was the one field that did
+	// not default to Color::Default, which quietly made terminal_default()
+	// name a colour for one role while its own contract says it names
+	// none.
+	Color accent;
+	// The rest of the foreground half of the ANSI-16 role table, which
+	// ansi16_for_role() authors an index and a reason for and which
+	// nothing could reach. They are FIELDS rather than a fallback to
+	// window_text because a terminal that can say 24 bits should still get
+	// the palette's own link colour: attaching only the authored index
+	// would have fixed the sixteen-colour tier by making every link, hint
+	// and accent the colour of body text on the other two.
+	Color bright_text, placeholder_text, link, link_visited;
 
 	static CellTheme terminal_default();          // all Default (recommended)
 	static CellTheme from_palette(const QPalette &p);   // true-colour capture

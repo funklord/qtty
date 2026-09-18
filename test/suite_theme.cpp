@@ -413,5 +413,287 @@ int suite_theme() {
 		      "one of the sixteen");
 	}
 
+	// ---- the authored table's foreground half (8.248) ---------------------
+	//
+	// ansi16_for_role() authors twenty roles and sorts them, in the source,
+	// into foregrounds, backgrounds and bevel roles. Each of those three
+	// sections is a list somewhere in the paint path: the surfaces are
+	// bg_for()'s and brush_cell()'s, the bevels are line_for()'s, and the
+	// foregrounds are text_style_for()'s. Only the surface half was
+	// complete. The foreground list named four of the nine the table
+	// spells, so BrightText, PlaceholderText, Link, LinkVisited and Accent
+	// each carried a hand-authored index, a paragraph of reasoning beside
+	// it, and no route to a cell -- and a colour no role explains is
+	// carried out as the application's own 24-bit value and nearest-matched
+	// at Ansi16, which is the outcome the note at the top of theme.cpp says
+	// the table exists to prevent.
+	//
+	// THE PALETTE AS IT STANDS CANNOT SEPARATE THE ANSWERS, which is why
+	// this fixture installs one. Fusion's Link is pure blue and the nearest
+	// of the sixteen to pure blue IS the authored 12; its LinkVisited is
+	// pure magenta and the nearest is the authored 13. A check reading the
+	// emitted index on the palette as it stands would pass just as loudly
+	// against a library that had never heard of either role. Every fixture
+	// colour below is therefore chosen so that its nearest match is NOT its
+	// authored index, and that separation is asserted first.
+	//
+	// A from_palette theme, because the table is observable in no other
+	// regime: terminal_default() is Color::Default everywhere and
+	// with_ansi16() refuses to name an index on a Default colour.
+	{
+		const QPalette saved_palette = QGuiApplication::palette();
+		const CellTheme saved_theme = theme();
+
+		// Teal for the link, deliberately: 0x0e6b6b nearest-matches to 6,
+		// which is the same wrong answer the measurement at the top of
+		// theme.cpp records for Fusion's own highlight. The hand-authored
+		// answer is 12.
+		const QColor fx_link(0x0e, 0x6b, 0x6b);          // nearest 6, authored 12
+		const QColor fx_visited(0x2a, 0x6b, 0x0e);       // nearest 2, authored 13
+		const QColor fx_bright(0x7a, 0x0e, 0x0e);        // nearest 1, authored 15
+		QPalette fx = saved_palette;
+		fx.setColor(QPalette::Link, fx_link);
+		fx.setColor(QPalette::LinkVisited, fx_visited);
+		fx.setColor(QPalette::BrightText, fx_bright);
+		QGuiApplication::setPalette(fx);
+		set_theme(CellTheme::from_palette(QGuiApplication::palette()));
+
+		const QPalette live = QGuiApplication::palette();
+		const QColor fx_accent = live.color(QPalette::Accent);
+		// Each fixture colour must belong to exactly one of the roles the
+		// foreground list carries, across all three colour groups, or the
+		// lookup could reach it by a route other than the one under test
+		// and the checks below would prove nothing.
+		const QVector<QPalette::ColorRole> fg_roles{
+			QPalette::WindowText, QPalette::Text, QPalette::ButtonText,
+			QPalette::HighlightedText, QPalette::BrightText,
+			QPalette::PlaceholderText, QPalette::Link,
+			QPalette::LinkVisited, QPalette::Accent};
+		const QVector<QPalette::ColorGroup> groups{
+			QPalette::Active, QPalette::Inactive, QPalette::Disabled};
+		const auto owners = [&](const QColor &c) {
+			int n = 0;
+			for (QPalette::ColorRole r : fg_roles)
+				for (QPalette::ColorGroup g : groups)
+					if (live.color(g, r).rgba() == c.rgba()) { ++n; break; }
+			return n;
+		};
+		CHECK(owners(fx_link) == 1 && owners(fx_visited) == 1
+		      && owners(fx_bright) == 1 && owners(fx_accent) == 1,
+		      "the fixture separates the four roles it reads: each of their "
+		      "colours belongs to exactly one foreground role");
+		CHECK(Color::rgb(fx_link).to_ansi16() == 6
+		      && Color::rgb(fx_visited).to_ansi16() == 2
+		      && Color::rgb(fx_bright).to_ansi16() == 1
+		      && Color::rgb(fx_accent).to_ansi16() == 6,
+		      "and not one of them nearest-matches to the index its role "
+		      "authors, or these checks could not tell the two apart");
+
+		// THE HEADLINE. Links are live in this library -- holds_a_link()
+		// decides whether a label is offered to the pointer -- so a QLabel
+		// carrying an anchor is a case a user reaches, and it was reaching
+		// a cell as a literal 24-bit colour with no authored index at all.
+		{
+			QLabel lab(QStringLiteral(
+			    "<a href=\"https://example.invalid\">link</a>"));
+			lab.setAttribute(Qt::WA_DontShowOnScreen);
+			lab.resize(GridMetrics::cells(10, 1));
+			lab.show();
+			QCoreApplication::processEvents();
+			CellBuffer b(10, 1);
+			render_once(lab, b);
+			const Cell &c = b.at(0, 0);
+			CHECK(c.ch == QStringLiteral("l") && c.fg.to_ansi16() == 12,
+			      "a QLabel's link draws in the 12 the role table authors, "
+			      "not the 6 its palette colour nearest-matches to");
+			// And the 24-bit tier is unchanged, which is the half the fix
+			// could easily have paid with: the theme NAMES Link now, so a
+			// terminal that can say 0x0e6b6b still gets 0x0e6b6b. Attaching
+			// only the authored index would have sent every link out in the
+			// window's text colour on the two deeper tiers.
+			CHECK(c.fg.kind() == Color::Rgb
+			      && (c.fg.value() & 0xffffff) == 0x0e6b6bu,
+			      "and carries the palette's own colour still, so the true-"
+			      "colour tier did not pay for the sixteen-colour one");
+		}
+
+		// A QLineEdit's hint, the other case a user meets without the
+		// application doing anything unusual. It came out at 7 -- BODY
+		// TEXT -- so a field holding a hint was indistinguishable from one
+		// holding a value.
+		//
+		// The alpha is why, and it is why this needed more than a longer
+		// list. Fusion spells PlaceholderText 0x80000000, a half
+		// transparent black, and the pen path asked role_of() with qRgb()
+		// -- alpha discarded -- so the query was opaque black, which IS
+		// WindowText's colour. The role could not have matched even once
+		// it was listed, and the wrong one matched every time.
+		{
+			QLineEdit e;
+			e.setPlaceholderText(QStringLiteral("hint"));
+			e.setAttribute(Qt::WA_DontShowOnScreen);
+			e.resize(GridMetrics::cells(10, 1));
+			e.show();
+			QCoreApplication::processEvents();
+			CellBuffer b(10, 1);
+			render_once(e, b);
+			const Cell &c = b.at(1, 0);
+			CHECK(c.ch == QStringLiteral("h") && c.fg.to_ansi16() == 8,
+			      "a QLineEdit's placeholder draws at the authored 8, which "
+			      "reads as dimmed, and not at body text's 7");
+		}
+
+		// The remaining three have no widget in Qt that paints in them
+		// here: nothing sends a QEvent::ToolTip (section 7), QLabel keeps
+		// no visited-link state, and GridStyle draws its own buttons rather
+		// than asking for BrightText. What an application reaches them with
+		// is a palette -- tinting a label with the product's own accent is
+		// the ordinary way -- and role_of() keys on the colour, so that is
+		// the whole of the path either way.
+		{
+			struct { QColor colour; int authored; const char *sentence; }
+			tinted[] = {
+				{fx_accent, 12,
+				 "a label tinted with the palette's accent draws at the "
+				 "authored 12, not the 6 that accent nearest-matches to"},
+				{fx_visited, 13,
+				 "and one tinted with LinkVisited at 13, not 2"},
+				{fx_bright, 15,
+				 "and one tinted with BrightText at 15, not 1"},
+			};
+			for (const auto &t : tinted) {
+				QLabel lab(QStringLiteral("x"));
+				QPalette lp = lab.palette();
+				lp.setColor(QPalette::WindowText, t.colour);
+				lab.setPalette(lp);
+				lab.setAttribute(Qt::WA_DontShowOnScreen);
+				lab.resize(GridMetrics::cells(6, 1));
+				lab.show();
+				QCoreApplication::processEvents();
+				CellBuffer b(6, 1);
+				render_once(lab, b);
+				CHECK(b.at(0, 0).fg.to_ansi16() == t.authored, t.sentence);
+			}
+		}
+
+		// THE CONTROL, and it is not a formality. The one way to make these
+		// five roles reachable that would have been WRONG is to put a role
+		// whose colour collides with body text's ahead of the roles that
+		// already resolved -- ToolTipText is black here, exactly as
+		// WindowText is -- and that mistake shows up in this check and in
+		// no other.
+		{
+			QLabel lab(QStringLiteral("body"));
+			lab.setAttribute(Qt::WA_DontShowOnScreen);
+			lab.resize(GridMetrics::cells(8, 1));
+			lab.show();
+			QCoreApplication::processEvents();
+			CellBuffer b(8, 1);
+			render_once(lab, b);
+			CHECK(b.at(0, 0).ch == QStringLiteral("b")
+			      && b.at(0, 0).fg.to_ansi16() == 7,
+			      "and ordinary body text still draws at 7, so the five new "
+			      "roles took nothing from the four that already resolved");
+		}
+
+		set_theme(saved_theme);
+		QGuiApplication::setPalette(saved_palette);
+		CHECK(QGuiApplication::palette().color(QPalette::Link)
+		          == saved_palette.color(QPalette::Link)
+		      && theme().window_text == saved_theme.window_text
+		      && theme().accent == saved_theme.accent,
+		      "and both the palette and the theme are put back, so no later "
+		      "check inherits this fixture");
+	}
+
+	// ---- the two roles that stay out of the foreground list, and why ------
+	//
+	// TOOLTIPTEXT IS THE ONE FOREGROUND STILL OMITTED, and the reason is a
+	// collision rather than an oversight. role_of() keys on the colour, and
+	// Fusion spells ToolTipText 0xff000000 -- the same black as WindowText,
+	// Text and ButtonText. Wherever it sat in the list it would either be
+	// shadowed by them or shadow them, and the second is the expensive
+	// direction: every body glyph in the program would take the tooltip's
+	// authored 0, black ink on a terminal whose ground is black. Section 7
+	// records separately that no QEvent::ToolTip is ever sent, so nothing
+	// draws in the role today either -- but that is a second reason, and
+	// the exclusion would stand if tooltips started popping tomorrow.
+	//
+	// ACCENT IS IN THE FOREGROUND LIST AND IN NEITHER SURFACE LIST. The
+	// table authors 12 for it, an ink index picked so that an accented
+	// widget inside a selection is still visible, and 12 as a GROUND would
+	// be a bright blue surface nobody asked for. The second half is the
+	// measurement below: Accent and Highlight are one colour here, so an
+	// Accent entry in a surface list could never win against the Highlight
+	// entry already ahead of it -- a line that cannot execute.
+	//
+	// Both are asserted rather than merely written down, so that a Qt or a
+	// platform theme separating either pair reddens a check instead of
+	// leaving two paragraphs of reasoning quietly false.
+	{
+		const QPalette live = QGuiApplication::palette();
+		CHECK(live.color(QPalette::ToolTipText).rgba()
+		      == live.color(QPalette::WindowText).rgba(),
+		      "ToolTipText and WindowText are one colour here, which is why "
+		      "ToolTipText is not in the foreground list -- revisit the list "
+		      "if this goes red");
+		CHECK(live.color(QPalette::Accent).rgba()
+		      == live.color(QPalette::Highlight).rgba(),
+		      "and Accent and Highlight are one colour here, which is why "
+		      "Accent is a foreground role only -- revisit the surface lists "
+		      "if this goes red");
+	}
+
+	// ---- CellTheme::accent, which was dead at both ends (8.248) -----------
+	//
+	// The field was declared, from_palette() set its eight siblings and not
+	// it, and neither foreground() nor background() had a case for it. An
+	// application assigning theme.accent got a silent no-op, and the
+	// authored 12 beside QPalette::Accent had no colour to attach itself to.
+	//
+	// Its initialiser went with the wiring. It was the one field in the
+	// struct that did not default to Color::Default, so terminal_default()
+	// -- whose whole contract is that it names no colour and lets the
+	// terminal's own scheme stand -- was quietly naming a hard indexed blue
+	// for one role. Nothing read it, so nothing noticed.
+	{
+		const CellTheme d = CellTheme::terminal_default();
+		CHECK(d.accent == Color(),
+		      "the default theme names no accent either, so every field of "
+		      "it really is the terminal's own colour");
+
+		QPalette pal = QGuiApplication::palette();
+		pal.setColor(QPalette::Accent, QColor(0x8a, 0x1f, 0x5c));
+		const CellTheme t = CellTheme::from_palette(pal);
+		CHECK(t.accent == Color::rgb(qRgb(0x8a, 0x1f, 0x5c)),
+		      "from_palette() captures the accent, which it did not");
+		CHECK(t.foreground(QPalette::Accent).value() == qRgb(0x8a, 0x1f, 0x5c)
+		      && t.foreground(QPalette::Accent).to_ansi16() == 12,
+		      "and foreground() answers with it, carrying the authored 12");
+
+		// The case the field exists for: an application's own theme, with
+		// an accent of its own, reaching a cell.
+		const CellTheme saved_theme = theme();
+		CellTheme mine = CellTheme::from_palette(QGuiApplication::palette());
+		mine.accent = Color::rgb(qRgb(0x8a, 0x1f, 0x5c));
+		set_theme(mine);
+		QLabel lab(QStringLiteral("x"));
+		QPalette lp = lab.palette();
+		lp.setColor(QPalette::WindowText,
+		            QGuiApplication::palette().color(QPalette::Accent));
+		lab.setPalette(lp);
+		lab.setAttribute(Qt::WA_DontShowOnScreen);
+		lab.resize(GridMetrics::cells(6, 1));
+		lab.show();
+		QCoreApplication::processEvents();
+		CellBuffer b(6, 1);
+		render_once(lab, b);
+		set_theme(saved_theme);
+		CHECK(b.at(0, 0).fg.kind() == Color::Rgb
+		      && (b.at(0, 0).fg.value() & 0xffffff) == 0x8a1f5cu,
+		      "and an application that sets theme.accent sees it on the "
+		      "wire, where the field used to be a no-op");
+	}
+
 	return fails;
 }

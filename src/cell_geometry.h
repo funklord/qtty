@@ -105,20 +105,72 @@ inline QPalette::ColorRole role_of(QRgb c,
 	return QPalette::NoRole;
 }
 
-// A text colour, by that rule. The role list is the one CellPaintEngine's pen
-// path uses, and is deliberately the same list rather than a similar one.
 // A text colour and the emphasis that belongs with it, by that rule. The
 // emphasis is the half that had nowhere to go: the role's own colour is what
 // the theme says text looks like, and "disabled" is Attr::Dim on top of it,
 // which is exactly what GridStyle's with_state() has always written.
+//
+// THE LIST IS THE AUTHORED TABLE'S FOREGROUND HALF, and it was four of nine.
+// ansi16_for_role() sorts every role it spells into foregrounds, backgrounds
+// and bevel roles, and each of those three sections is a list: the surfaces
+// are bg_for()'s and brush_cell()'s, the bevels are line_for()'s, and this
+// is the foregrounds. The surface half named all six of its roles. This one
+// named four, so BrightText, PlaceholderText, Link, LinkVisited and Accent
+// each carried a hand-authored index, a paragraph saying why it was that
+// index, and no route to a cell -- and a colour no role explains is carried
+// out as the application's own 24 bits and nearest-matched at Ansi16, which
+// is the outcome the table exists to prevent. Measured on a QLabel carrying
+// <a href>: the cell held 0x0000ff with authored_ansi16() == -1. 8.248.
+//
+// THE EXISTING FOUR STAY AHEAD OF THE NEW FIVE, so that nothing which
+// resolved before resolves differently now. That is not decoration: the
+// order decides a collision, and there are two here.
+//
+// BrightText and HighlightedText are BOTH 0xffffffff under Fusion, so on
+// this palette HighlightedText wins and BrightText is reachable only under
+// a palette that separates them -- which is what its check installs, and
+// both author 15, so nothing is lost meanwhile.
+//
+// TOOLTIPTEXT IS THE ONE FOREGROUND LEFT OUT, and by measurement rather
+// than oversight. Fusion spells it 0xff000000, the same black as WindowText,
+// Text and ButtonText, and role_of() keys on the colour -- so wherever it
+// sat it would be shadowed by them or shadow them, and the second is the
+// expensive direction: every body glyph in the program would take the
+// tooltip's authored 0, black ink on a terminal whose ground is black.
+// Section 7 records separately that no QEvent::ToolTip is ever sent, so
+// nothing paints in the role today either; that is a second reason, and the
+// exclusion would stand if tooltips started popping tomorrow.
+//
+// ACCENT IS HERE AND IN NEITHER SURFACE LIST. The table authors 12 for it,
+// an ink index chosen so an accented widget inside a selection stays
+// visible, and 12 as a GROUND would be a bright blue surface nobody asked
+// for. And measured here, QPalette::Accent and QPalette::Highlight are one
+// colour under Fusion, so an Accent entry in a surface list could never win
+// against the Highlight entry already ahead of it -- a line that cannot
+// execute. In this list there is no Highlight to shadow it.
 struct TextStyle { Color color; Attrs attrs; };
 inline TextStyle text_style_for(QRgb c) {
 	bool disabled = false;
 	const QPalette::ColorRole r = role_of(c, {QPalette::WindowText, QPalette::Text,
 		                                      QPalette::ButtonText,
-		                                      QPalette::HighlightedText},
+		                                      QPalette::HighlightedText,
+		                                      QPalette::BrightText,
+		                                      QPalette::PlaceholderText,
+		                                      QPalette::Link,
+		                                      QPalette::LinkVisited,
+		                                      QPalette::Accent},
 		                                  &disabled);
-	if (r == QPalette::NoRole) return TextStyle{ Color::rgb(c), Attrs() };
+	// Opaque only HERE, after the question has been asked. The alpha is
+	// part of the colour's identity to role_of() -- Fusion spells
+	// PlaceholderText 0x80000000, and with the byte gone the query is
+	// opaque black, which IS WindowText's colour, so the role could not
+	// have matched even once it was listed and the wrong one matched every
+	// time. It goes before the value reaches a Color, because a terminal
+	// has no alpha channel and the byte only makes two cells of one
+	// visible colour compare unequal -- the same normalisation, and the
+	// same reason, as brush_cell()'s.
+	const Color literal = Color::rgb(qRgb(qRed(c), qGreen(c), qBlue(c)));
+	if (r == QPalette::NoRole) return TextStyle{ literal, Attrs() };
 	return TextStyle{ theme().foreground(r),
 		              disabled ? Attrs(Attr::Dim) : Attrs() };
 }

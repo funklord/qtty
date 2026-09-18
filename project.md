@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-18
 
-1636 checks, 0 failures. `make check` is green and includes
+1652 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -790,7 +790,7 @@ Owned by the copyright holder:
 | **An HTML bullet list loses its bullets.** Measured through a `QTextBrowser`: `<ul><li>one</li></ul>` renders the text indented with a one-cell BACKGROUND block where the bullet belongs and no glyph -- `bg=#000000` on the default dark ground. Qt draws the bullet as `drawPath` with a 6x6 bounding rect, and `is_thin` (`width*2 < cw \|\| height*2 < ch`) is true of it, so a bullet takes the hairline road meant for carets and rules. **The discriminator is clean and is the finding**: a shape smaller than one cell in BOTH dimensions is a mark, not a hairline -- a caret is 1x19 and a rule 50x1, and neither is. What a mark should BECOME is the choice, and it is the holder's | 8.64 |
 | Whether the "too small to be a picture" rule moves to the backend. Nothing left unmeasured: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()`; no widget icon reaches the branch today; and the cost is **1.4 KB once per distinct icon, 35 bytes a frame after** -- eight of them together less than the one 48x48 icon the library already uploads | §7.2 |
 | **Right-to-left: does qtty support it at all?** design.md never says, and nothing in the tree mentions it -- so this is a scope question rather than a defect. Measured: under `Qt::RightToLeft` a check box mirrors and a combo box's text does, while its arrow, a progress bar's fill, a label's alignment and a line edit's text do not. §7.2 has the rendered pair | *undesigned* |
-| **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise | §7.2 |
+| **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise. 8.248 adds a second obstacle on the ink half alone: ToolTipText is the same black as WindowText here, and `role_of()` keys on the colour, so a hover timer would light the tooltip's ground and leave its text at body text's index | §7.2 |
 | **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect. **Both halves are asserted since 8.75** -- the hover arrives, and the render is byte-identical with the pointer on the control and off it | §7.2 |
 | **Two frames nested with no layout margin draw two rules in adjacent columns.** Faithful to the widget tree -- in pixels they are 1px lines 1px apart -- and on a grid they read as two rules. Merging is not a paint-time trick: the edges are in DIFFERENT cells because the inner rect is one cell inside the outer. Three options with their costs are recorded; the cheapest is to suppress a rule whose neighbour already holds one, which cannot tell nesting from two adjacent framed widgets. Reported by fuzzypickles, and reached again by a QScrollArea | 8.25, 8.26, 8.27 |
 | **A read-only line edit is not marked.** Measured: it renders identically to an editable one, so a user cannot tell they cannot type. Marking it needs vocabulary, and the obvious candidate collides -- disabled already uses Dim, and read-only is a different state, focusable and selectable. Unlike Enter's target it has no consequence a user cannot discover by typing | 8.33 |
@@ -5671,6 +5671,16 @@ to send them, what else? Measured on a widget with a tooltip set:
   `WA_Hover`: the parts are there and the event that would use them
   cannot arrive. Whether a terminal should pop a tooltip at all is the
   hover question again, and §0b carries it.
+
+  **The two halves of that pairing are not equally ready, which 8.248
+  found while wiring the rest of the role table.** `ToolTipBase` is in
+  both surface lists and would resolve the moment a tooltip appeared;
+  `ToolTipText` is in no list and deliberately stays out, because
+  `role_of()` keys on the colour and Fusion spells it the same black as
+  `WindowText`. Listing it would give every body glyph in the program
+  the tooltip's authored 0. So a hover timer alone would draw bright
+  yellow under ordinary-coloured text, and the ink half needs a route
+  that is not a colour.
 
 **Cut and paste worked; copy ended the application.** The same question a
 third time, and the answer was not a missing event but an ordering.
@@ -13246,12 +13256,16 @@ Makefile's own `QMAKE=` override is all it takes:
 **The public headers are clean.** A translation unit that includes
 `qtty/qtty.h` and nothing else compiles under Qt 5.15 with no errors, so
 an application on Qt 5 could include qtty today. What does not compile is
-**three usages in two implementation files** -- and it has been three,
-then four, then three again, which is the point:
+**three names, across `theme.cpp`, `cell_geometry.h` and
+`input_router.cpp`** -- and the shape has been three, then four, then
+three again, which is the point. The site count moves under ordinary work
+and the name count does not, so the names are what this counts: 8.248
+took `QPalette::Accent` from one site to four without changing anything
+a Qt 5 port would have to decide.
 
 | Usage | Where | Qt 5 equivalent |
 |---|---|---|
-| `QPalette::Accent` | `src/core/theme.cpp` | absent before Qt 6.6 |
+| `QPalette::Accent` | `src/core/theme.cpp`, three sites; `src/cell_geometry.h`, one, which reaches every file including it | absent before Qt 6.6 |
 | `QAction::associatedObjects()` | `src/runtime/input_router.cpp`, twice | `associatedWidgets()` |
 | `QKeyCombination` | `src/runtime/input_router.cpp` | the older combined `int` |
 
@@ -16664,6 +16678,181 @@ a second ring leaves as it found it.
 **No header was added**, so `INSTALLED_HEADERS` is unchanged --
 `application.h`, `backend.h` and `null_backend.h` are all already in the
 list and all already installed.
+
+### 8.248 Five authored colours with no route to a cell (2026-09-18)
+
+`ansi16_for_role()` authors twenty `QPalette` roles and sorts them, in the
+source, into foregrounds, backgrounds and bevel roles. Each of those three
+sections is a list somewhere in the paint path: the surfaces are
+`bg_for()`'s and `brush_cell()`'s, the bevels are `line_for()`'s, and the
+foregrounds are `text_style_for()`'s. **The surface half named all six of
+its roles. The foreground half named four of nine.**
+
+So `BrightText`, `PlaceholderText`, `Link`, `LinkVisited` and `Accent`
+each carried a hand-written index and a paragraph saying why it was that
+index -- and nothing that could ask for it. A colour no role explains is
+carried out as the application's own 24 bits and nearest-matched at
+Ansi16, which is the outcome the note at the top of `theme.cpp` says the
+table exists to prevent. The table was being overruled by the fallback it
+was written to replace.
+
+**Measured before the change, under a `from_palette` theme** -- the only
+regime in which the table is observable at all, `terminal_default()` being
+`Color::Default` everywhere and `with_ansi16()` refusing to name an index
+on a Default colour:
+
+    QLabel with <a href>      cell fg 0x0000ff, authored -1, to_ansi16() 12
+    QLineEdit placeholder     cell fg 0x000000, authored  7
+    label tinted with Accent  cell fg 0x308cc6, authored -1, to_ansi16()  6
+
+**The placeholder is the one that shows what "unreachable" costs.** It did
+not fall through to true colour. It matched **WindowText** -- the role
+whose colour it shares once the alpha is gone -- so a field holding a hint
+drew at body text's 7 and was indistinguishable from a field holding a
+value. The accent line is the failure the table's own opening note
+describes: 6 is teal, and `0x308cc6` is the very colour that note
+measures.
+
+**Links are a case a user reaches, not a hypothetical.** `holds_a_link()`
+in `input_router.cpp` decides whether a label is offered to the pointer,
+so a `QLabel` carrying an anchor is live in this library today.
+
+**And Fusion's own palette cannot tell a fixed library from a broken one,
+which is why the fixture installs another.** Its `Link` is pure blue and
+the nearest of the sixteen to pure blue IS the authored 12; its
+`LinkVisited` is pure magenta and the nearest is the authored 13. A check
+reading the emitted index on the palette as it stands would have passed
+just as loudly against a library that had never heard of either role. Each
+fixture colour is chosen so that its nearest match is **not** its authored
+index -- `0x0e6b6b` nearest-matches to 6, `0x2a6b0e` to 2, `0x7a0e0e` to 1
+-- and the separation is asserted before anything else is asked.
+
+#### Fields on the theme, not a fallback to window text
+
+`CellTheme` has no field for a role it does not name, and `foreground()`
+sends those to `window_text`. Listing the five roles and stopping there
+would have gone green on every check about the sixteen-colour tier, and
+**paid for it on the other two**: the authored index would arrive, and a
+link on a true-colour terminal would come out the colour of body text.
+That is a worse library for most users than the one being fixed, since
+most terminals are not sixteen-colour.
+
+So `bright_text`, `placeholder_text`, `link` and `link_visited` join
+`accent` as fields, `from_palette()` captures all five, and `foreground()`
+answers with them. A link is now `0x0e6b6b` on the wire at TrueColor --
+exactly what it was -- and 12 at Ansi16, which it was not. The check that
+holds the second half is paired with one that holds the first, and there
+is a sabotage entry for the cheap fix so that the pair cannot quietly
+collapse into one.
+
+#### The alpha was the whole of why PlaceholderText could not match
+
+`role_of()` keys on `rgba()`, and the pen path asked it with `qRgb()`.
+Fusion spells `PlaceholderText` `0x80000000`, a half-transparent black, so
+the query was opaque black -- **which is WindowText's colour**. The role
+could not have matched even once it was listed, and the wrong one matched
+every time. The call passes `ink.rgba()` now and `text_style_for()` strips
+the byte itself, after it has an answer, because a `Color` is a terminal
+colour and a terminal has no alpha channel. That is `brush_cell()`'s
+normalisation, in the one place the text path was missing it.
+
+`from_palette()` needed the same rule on the capture side, and it is one
+function now rather than thirteen spellings: `opaque()`. The eight roles
+captured before this come out byte for byte as they did, every one of them
+already having an alpha of `0xff`.
+
+#### ToolTipText stays out, and that reconciles with section 7
+
+Section 7 records the tooltip machinery as built and unreachable because
+no `QEvent::ToolTip` is ever sent. **That is a second reason, not the
+operative one.** `ToolTipText` is `0xff000000` here -- the same black as
+`WindowText`, `Text` and `ButtonText` -- and `role_of()` keys on the
+colour, so wherever it sat in the list it would be shadowed by them or
+shadow them. The second is the expensive direction: every body glyph in
+the program would take the tooltip's authored 0, black ink on a terminal
+whose ground is black. **The exclusion would stand if tooltips started
+popping tomorrow**, and the list would need a route that is not a colour.
+
+`ToolTipBase` is unaffected and was already in both surface lists; the two
+halves of one pairing had different fates, which is what made the gap easy
+to miss.
+
+#### Accent is a foreground, and it was dead at both ends
+
+The field was declared, `from_palette()` set its eight siblings and not
+it, and neither `foreground()` nor `background()` had a case for it. An
+application assigning `theme.accent` got a silent no-op.
+
+It is in the foreground list and in neither surface list, for two reasons
+that agree. The table authors **12** for it -- an ink index, chosen so
+that an accented widget inside a selection stays visible -- and 12 as a
+*ground* would be a bright blue surface nobody asked for. And measured
+here, `QPalette::Accent` and `QPalette::Highlight` are **one colour** under
+Fusion with the offscreen platform: `0xff308cc6` in Active and Inactive,
+`0xff919191` in Disabled. `role_of()` returns the first role that matches,
+so an `Accent` entry in a surface list could never win against the
+`Highlight` entry already ahead of it -- a line that cannot execute. In
+the foreground list there is no `Highlight` to shadow it, so it resolves.
+
+That collision is now **asserted rather than written down**, along with
+the `ToolTipText`/`WindowText` one. Both checks pin the measurement the
+two paragraphs above rest on, so a Qt or a platform theme that separates
+either pair reddens a check instead of leaving the reasoning quietly
+false.
+
+**Its `= Color::indexed(4)` initialiser went with the wiring.** It was the
+one field in the struct that did not default to `Color::Default`, so
+`terminal_default()` -- whose whole contract is that it names no colour
+and lets the terminal's own scheme stand -- was quietly naming a hard
+indexed blue for one role. Nothing read it, so nothing noticed, and the
+existing check that the default theme is all-default looked at `text` and
+`window` only. It looks at `accent` too now.
+
+#### The control, and what it is a control against
+
+Ordinary body text still draws at 7. That is not a formality: the one way
+of making these five roles reachable that would have been **wrong** is to
+put a role whose colour collides with body text's ahead of the four that
+already resolved, and that mistake shows up in this check and in no other.
+The sabotage entry for it puts `ToolTipText` at the head of the list and
+watches the control go red.
+
+**Six entries in all**, one per thing that could silently stop
+discriminating: the list back to four roles, tooltip ink at its head, the
+alpha discarded again, `from_palette()` skipping the accent,
+`foreground()` resolving an accent to window text, and the cheap fix that
+keeps the authored index and loses the colour.
+
+**Each reddened the check it names, and the counts are the interesting
+part**: 6 checks for the list, 3 for the uncaptured accent, 2 for the
+unresolved one -- and **exactly 1** each for tooltip ink at the head of
+the list and for the cheap fix. Those two are the sharp ones. A sabotage
+that reddens one check and no other says that check is aimed at something
+nothing else covers, which is what the control and the true-colour half
+each needed to demonstrate rather than assert.
+
+**Neither snapshot fixture moved, and the reason is worth stating so the
+next reader does not go looking.** Both are recorded under
+`terminal_default()`, where every role is `Color::Default` and
+`with_ansi16()` refuses to name an index on one -- so the authored table
+is inert in the regime the fixtures were taken in, and widening the list
+cannot reach them. Neither holds a link or a placeholder either.
+
+#### Two of the same family, left alone deliberately
+
+- **`AlternateBase` and `ToolTipBase` have no field either**, so they
+  resolve to `window` at TrueColor and carry only their authored index.
+  They are *reachable* -- both are in the surface lists -- so this is the
+  second half of the same defect rather than the same one, and closing it
+  would change what an item view's alternating rows look like on a
+  true-colour terminal. Recorded rather than done.
+- **`ink_over()` drops the authored index when it blends.** A translucent
+  role colour over a themed ground comes back as a fresh `Color::rgb()`,
+  so the role's terminal spelling is lost at exactly the depth it was
+  authored for. It does not bite the placeholder, whose ground is
+  `Default` under GridStyle and so is not blended at all -- measured --
+  but it is the next instance of "the authored spelling did not survive
+  the trip".
 
 ### 8.245 The numeric keypad produced nothing (2026-09-18)
 
