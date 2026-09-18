@@ -3024,3 +3024,93 @@ find = "\tif (coalesce_.isActive()) {\n\t\tcoalesce_.stop();\n\t\trequest_frame(
 into = "\t(void)0;"
 count = 1
 check = "re-times the frame already waiting"
+
+
+[[sabotage]]
+# No handler registered at all, which is where 8.236 started: openUrl()
+# returns false, Qt's refusal goes into the deferred buffer, and a link
+# activation changes nothing on the screen until the program exits.
+name = "no handler for a link at all"
+file = "src/runtime/application.cpp"
+find = "\tinstall_url_handlers();"
+into = "\t// install_url_handlers();"
+count = 1
+check = "QDesktopServices::openUrl() is accepted"
+
+[[sabotage]]
+# The box goes up and the link is never copied, so the one mechanism
+# that still works when the program is remote is the one missing. 8.236.
+name = "a link is shown but never copied"
+file = "src/runtime/application.cpp"
+find = "\t\tboard->setText(text);"
+into = "\t\t(void)board;"
+count = 1
+check = "the link goes on the clipboard"
+
+[[sabotage]]
+# The dialog put up INSIDE the handler, so openUrl() no longer returns
+# before there is a modal on the screen -- the contract every desktop
+# platform keeps, and the one an application's code is written against.
+# 8.236.
+name = "the link dialog runs inside the handler"
+file = "src/runtime/application.cpp"
+find = "\tQTimer::singleShot(0, qApp, [text] {"
+into = "\tstd::invoke([text] {"
+count = 1
+check = "the handler RETURNS before the dialog exists"
+
+[[sabotage]]
+# A box that says something was copied without saying what, which
+# leaves the user with a clipboard they have to paste somewhere to
+# find out. 8.236.
+name = "the link dialog does not name the link"
+file = "src/runtime/application.cpp"
+find = "\t\t    text + QStringLiteral("
+into = "\t\t    QStringLiteral("
+count = 1
+check = "the dialog NAMES the link"
+
+[[sabotage]]
+# A box that is not modal, so input_scope() never reaches it and the
+# keys that dismiss it go to the window behind. The user is left with a
+# dialog drawn over their program and no way to close it. 8.236.
+name = "the link dialog is not modal"
+file = "src/runtime/application.cpp"
+find = "\t\tbox->setWindowModality(Qt::ApplicationModal);"
+into = "\t\tbox->setWindowModality(Qt::NonModal);"
+count = 1
+check = "Escape dismisses the link dialog"
+
+[[sabotage]]
+# qtty taking the scheme back when the run starts, which is the failure
+# the setup()/exec() ordering exists to prevent: an application that
+# registered its own handler is overridden in silence. 8.236.
+name = "a run re-registers the link handler over the application's"
+file = "src/runtime/application.cpp"
+find = "\ts_tuiActive = true;"
+into = "\ts_tuiActive = true;\n\tinstall_url_handlers();"
+count = 1
+check = "keeps the scheme through a run"
+
+[[sabotage]]
+# A scheme claimed that has no right answer on a terminal, so an
+# application that would have handled mailto: itself -- or read the
+# false and said something useful -- never hears about it. 8.236.
+name = "the link handler claims mailto as well"
+file = "src/runtime/application.cpp"
+find = "\tQDesktopServices::setUrlHandler(QStringLiteral(\"https\"), opener, \"open_url\");"
+into = "\tQDesktopServices::setUrlHandler(QStringLiteral(\"https\"), opener, \"open_url\");\n\tQDesktopServices::setUrlHandler(QStringLiteral(\"mailto\"), opener, \"open_url\");"
+count = 1
+check = "a scheme qtty does not claim"
+
+[[sabotage]]
+# The fold widened out of reach, which is the state the first version of
+# this dialog shipped in: one long line handed to a QLabel, which will
+# not break a word, so the box is as wide as the link and the terminal
+# clips the rest. 8.236.
+name = "the link dialog is not folded to the terminal"
+file = "src/runtime/application.cpp"
+find = "\tconst int width = qMax(8, cols);"
+into = "\tconst int width = qMax(8, cols) * 100;"
+count = 1
+check = "a link longer than the terminal is copied whole and folded"

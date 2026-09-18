@@ -1234,6 +1234,61 @@ write one, fold them yourself. This is the fourth thing on this page a
 custom widget must do that a standard one gets free, with practices 9,
 10 and 11; they are worth reading together before writing one.
 
+## Opening a link
+
+**`QDesktopServices::openUrl()` works, and your program keeps its usual
+spelling.** A *Help -> Website* action, a link in an About box, a
+`QLabel::linkActivated`, a `QTextBrowser::anchorClicked` -- all of them
+reach the handler `Qtty::setup()` registers, which puts the URL on the
+clipboard and then shows a box naming it. Nothing in your application
+changes, which is what separates this from the tray and the drag.
+
+Before it did, the call returned false and Qt warned -- into the deferred
+diagnostics, so your user pressed Enter on a link, nothing on the screen
+moved, and the explanation reached them at the shell prompt after your
+program had exited.
+
+**It does not launch a browser, deliberately.** `xdg-open` is wrong in
+both of the places a terminal program usually runs: over ssh it opens a
+browser on the machine your program is on rather than the one your user
+is sitting at, and on a headless host it opens one nobody can see. The
+clipboard goes the other way -- the write leaves as OSC 52 and the
+terminal *emulator* performs it, on the user's own machine -- so the link
+lands where the browser is.
+
+**The box is queued rather than synchronous.** `openUrl()` returns at
+once, as it does on a desktop, and the dialog goes up on the next turn of
+the event loop. A link activated from inside one of your slots does not
+re-enter it.
+
+**A link longer than the terminal is folded, not elided.** The box is
+sized to the terminal rather than to the link -- a URL is one word, so a
+wrapping label would leave it whole and make the dialog wider than the
+screen. The clipboard has the link exactly; the screen has all of it,
+across as many rows as it takes.
+
+**`http` and `https` only.** `mailto:` and `file:` fall through and
+return false, which is the honest answer: neither has a single right
+meaning on a terminal, and a false is something your application can see
+and act on.
+
+**You can take a scheme over, and there is no qtty API for it.**
+`Qtty::setup()` registers before your widgets exist, and Qt keeps one
+handler per scheme with the last registration winning -- so your own
+handler, registered any time afterwards, is the one that gets the link:
+
+```cpp
+Qtty::setup(app);
+QDesktopServices::setUrlHandler(QStringLiteral("https"), &opener, "open");
+```
+
+**A keyboard-reachable link is not named by `Qtty::pointer_only()`, and
+that was the sharp end of this.** That report lists controls only a mouse
+can reach, so it clears a label that is a tab stop and activates on
+Enter -- which was exactly the link whose activation did nothing. The
+audit was right and the thing it cleared was broken; it is worth knowing
+that a clean report means reachable, not that the control does something.
+
 ## Modal dialogs and `exec()`
 
 `if (dialog.exec() == QDialog::Accepted)` works, and the terminal goes on

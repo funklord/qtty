@@ -3,10 +3,30 @@
 #include <qtty/qtty.h>
 #include <qtty/null_backend.h>
 #include "src/runtime/title_keeper.h"
+// Internal, and included for one check: proving that an application's own
+// QDesktopServices::setUrlHandler() overrides qtty's DESTROYS qtty's, Qt
+// keeping one handler per scheme. Without a way to put it back, the check
+// that defends the escape hatch would leave every suite after this one with
+// no handler at all.
+#include "src/runtime/url_opener.h"
 #include <QtWidgets>
 #include <cstdio>
 
 using namespace Qtty;
+
+// An application's own URL handler, which is the escape hatch qtty's
+// registration is designed to lose to. A moc'd class rather than a lambda
+// because QDesktopServices invokes by method NAME through the meta-object
+// -- the same constraint the library's own handler is shaped by, and the
+// reason this file ends with a .moc include.
+class AppUrlHandler : public QObject {
+	Q_OBJECT
+public:
+	QUrl seen;
+	int count = 0;
+public slots:
+	void handle(const QUrl &url) { seen = url; ++count; }
+};
 
 static int fails = 0;
 // The failure carries the condition that was false, not only the sentence.
@@ -2608,5 +2628,191 @@ int suite_runtime() {
 		}
 	}
 
+	// ---- a link an application offers (8.236) ------------------------------
+	//
+	// QDesktopServices::openUrl() is the standard spelling -- a Help ->
+	// Website action, an About box, QLabel::linkActivated -- and under the
+	// offscreen platform prepare_environment() pins it returns false and
+	// warns. The warning goes into the deferred buffer, so before setup()
+	// registered a handler the user pressed Enter on a link, nothing on the
+	// screen changed, and the explanation arrived at the shell prompt after
+	// the program had exited.
+	{
+		const QString link = QStringLiteral("https://qtty.invalid/page");
+		QClipboard *const board = QGuiApplication::clipboard();
+		board->setText(QStringLiteral("something else"));
+
+		// The VISIBLE message boxes, which is the population every check
+		// below counts. Visibility rather than existence, because a box
+		// dismissed with WA_DeleteOnClose is hidden at once and deleted on
+		// the next turn -- counting existence would report a box that is
+		// gone from the screen.
+		const auto boxes = [] {
+			QVector<QMessageBox *> out;
+			for (QWidget *w : QApplication::topLevelWidgets())
+				if (auto *b = qobject_cast<QMessageBox *>(w))
+					if (b->isVisible()) out.append(b);
+			return out;
+		};
+		CHECK(boxes().isEmpty(),
+		      "no message box is up before a link is opened, so counting "
+		      "them below discriminates rather than finding one already "
+		      "there");
+
+		const bool accepted = QDesktopServices::openUrl(QUrl(link));
+		// Read with NOTHING processed in between. This is the whole of the
+		// queuing check: a handler that put its dialog up synchronously
+		// would already have one here.
+		const QVector<QMessageBox *> at_once = boxes();
+		const QString copied = board->text();
+		QCoreApplication::processEvents();
+		const QVector<QMessageBox *> after = boxes();
+
+		CHECK(accepted,
+		      "an application's QDesktopServices::openUrl() is accepted, "
+		      "where the platform Qt is running on refuses it");
+		CHECK(copied == link,
+		      "and the link goes on the clipboard, which is the one "
+		      "mechanism here that is still right when the program is "
+		      "remote -- the terminal emulator does the write");
+		CHECK(at_once.isEmpty() && after.size() == 1,
+		      "the handler RETURNS before the dialog exists -- no box the "
+		      "instant openUrl() returned, one on the next turn of the "
+		      "loop -- because openUrl() promises an immediate return and "
+		      "a nested modal loop inside the handler would break it");
+
+		QString drawn;
+		if (after.size() == 1) {
+			QMessageBox *const box = after.first();
+			CellBuffer b((box->width() + cw - 1) / cw,
+			             (box->height() + ch - 1) / ch);
+			render_once(*box, b);
+			for (int y = 0; y < b.rows(); ++y)
+				for (int x = 0; x < b.cols(); ++x) drawn += b.at(x, y).ch;
+		}
+		CHECK(drawn.contains(link),
+		      "and the dialog NAMES the link, drawn in cells -- a box "
+		      "saying only that something was copied would leave the user "
+		      "guessing what");
+
+		// Enter and Escape dismiss it. An ordinary QMessageBox is supposed
+		// to give both away free, which is why it was chosen -- and a
+		// runtime where no window ever activates is exactly the sort of
+		// place a free thing stops being free, so it is asserted here
+		// rather than assumed. Through the ROUTER, because that is the
+		// road a terminal key takes to a widget.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(40, 12));
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter router(&host);
+
+		const bool up_before_escape = boxes().size() == 1;
+		router.on_key({Qt::Key_Escape, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(up_before_escape && boxes().isEmpty(),
+		      "Escape dismisses the link dialog");
+
+		QDesktopServices::openUrl(QUrl(link));
+		QCoreApplication::processEvents();
+		const bool up_before_enter = boxes().size() == 1;
+		router.on_key({Qt::Key_Return, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(up_before_enter && boxes().isEmpty(),
+		      "and Enter dismisses it too, so a keyboard-only user is not "
+		      "left with a box they cannot close");
+
+		// A LINK LONGER THAN THE TERMINAL, which is the case that made the
+		// box unusable before it was folded: QMessageBox hands one line to
+		// a QLabel, a QLabel word-wraps and a URL is one word, so the
+		// window came out 1115 pixels -- 111 cells against an 80-column
+		// terminal, with the rest of it clipped. Measured by GridGuard
+		// printing the geometry; nothing else in the tree would have said
+		// anything, the box being correct on a desktop.
+		const QString long_link = QStringLiteral("https://qtty.invalid/")
+		                          + QString(300, QLatin1Char('a'));
+		QDesktopServices::openUrl(QUrl(long_link));
+		QCoreApplication::processEvents();
+		const QVector<QMessageBox *> wide = boxes();
+		const int box_cells = wide.isEmpty() ? -1
+		                      : (wide.first()->width() + cw - 1) / cw;
+		CHECK(board->text() == long_link && box_cells > 0 && box_cells <= 80,
+		      "a link longer than the terminal is copied whole and folded "
+		      "to fit the screen, rather than making a dialog wider than "
+		      "the terminal it is drawn on");
+		if (!wide.isEmpty()) wide.first()->close();
+		QCoreApplication::processEvents();
+
+		// THE ESCAPE HATCH, and it is checked DURING A RUN on purpose.
+		//
+		// That an application's handler registered after setup() wins is
+		// Qt's own last-registration-wins, so a check made outside a run
+		// would pass against a library that had never registered anything
+		// -- and would go on passing if qtty took the scheme back when
+		// exec() started. Opening the link from inside exec() is what
+		// pins the ordering claim rather than Qt's behaviour: the
+		// application registers, the run starts, and the application's
+		// handler is still the one that gets the link.
+		AppUrlHandler own;
+		QDesktopServices::setUrlHandler(QStringLiteral("https"), &own,
+		                                "handle");
+		{
+			NullBackend backend(QSize(40, 12));
+			QWidget win;
+			auto *v = new QVBoxLayout(&win);
+			v->setContentsMargins(0, 0, 0, 0);
+			v->addWidget(new QLabel(QStringLiteral("under"), &win));
+			v->addStretch();
+			bool asked = false;
+			// Repeating rather than singleShot(0), for the reason the
+			// blocks above give: a zero timer fires before there is a
+			// loop to quit.
+			QTimer opener;
+			opener.setInterval(10);
+			QObject::connect(&opener, &QTimer::timeout, [&] {
+				if (!asked) {
+					asked = true;
+					QDesktopServices::openUrl(QUrl(link));
+					return;              // let a turn pass for a box
+				}
+				QCoreApplication::quit();
+			});
+			opener.start();
+			exec(*qApp, win, backend);
+			opener.stop();
+		}
+		QCoreApplication::processEvents();
+		CHECK(own.count == 1 && own.seen.toString() == link
+		      && boxes().isEmpty(),
+		      "an application's own setUrlHandler() registered after "
+		      "setup() keeps the scheme through a run -- its handler got "
+		      "the link, and qtty's put up no box");
+
+		// qtty's handler back, because Qt keeps one per scheme and the
+		// check above replaced it. Nothing else in the suite opens a URL
+		// today, which is exactly why leaving it broken would be
+		// invisible.
+		install_url_handlers();
+
+		CHECK(!QDesktopServices::openUrl(
+		          QUrl(QStringLiteral("mailto:someone@qtty.invalid"))),
+		      "a scheme qtty does not claim still falls through to the "
+		      "platform's refusal, so the registration is scoped rather "
+		      "than global and mailto: stays the application's to answer");
+
+		board->setText(QString());
+		host.hide();
+		QCoreApplication::processEvents();
+		// The off-grid geometries this fixture made on purpose, disowned
+		// the way the other fifty-nine in this suite are: a QMessageBox
+		// shown with no compositor is not placed by one, and
+		// Compositor::compose() is what snaps a top-level (GridSnap leaves
+		// windows alone, and says why).
+		GridGuard::reset();
+	}
+
 	return fails;
 }
+
+#include "suite_runtime.moc"

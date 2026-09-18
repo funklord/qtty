@@ -3,6 +3,7 @@
 #include "qtty/application.h"
 #include "terminal_owner.h"
 #include "title_keeper.h"
+#include "url_opener.h"
 #include "qtty/grid.h"
 #include "qtty/paint.h"
 #include "qtty/runtime.h"
@@ -382,6 +383,201 @@ private:
 };
 } // namespace
 
+// ---- a link the application offers, and a terminal with no browser --------
+//
+// QDesktopServices::openUrl() is what an ordinary Qt program calls from a
+// Help -> Website action, from an About box, from QLabel::linkActivated and
+// from QTextBrowser::anchorClicked. Measured with a standalone program under
+// the offscreen platform prepare_environment() pins, before any of this was
+// written:
+//
+//     openUrl("https://...")              false, and a qWarning
+//     openUrl("mailto:...")               false, and a qWarning
+//     with a setUrlHandler registered     TRUE, and the handler got the QUrl
+//     a scheme with no handler            still false
+//
+// The warning is Qt's own -- "This plugin does not support
+// QPlatformServices::openUrl() for '<url>'" -- and qtty makes it QUIETER
+// than bare offscreen would. The deferring handler at the top of this file
+// holds it while stderr is the terminal and flushes it at exit, which is
+// right for every other diagnostic and is exactly wrong for this one: the
+// user presses Enter on a link, no frame changes, nothing happens, and the
+// only explanation arrives at the shell prompt after the program has gone.
+//
+// That the registry intercepts at all is the whole reason this is fixed
+// here rather than application by application: an unmodified program keeps
+// the standard spelling and starts working. Compare the tray and the drag,
+// where an adopter has to write something.
+//
+// WHY setup() AND NOT exec(). The documented call order is
+// prepare_environment() -> QApplication -> setup() -> build the widgets ->
+// exec(), so a handler installed here is in place BEFORE any application
+// code that might install one of its own -- and Qt keeps one handler per
+// scheme, the last registration winning. An application that wants
+// something else therefore gets it by writing ordinary Qt, with no qtty API
+// to learn and nothing to switch off. Installing from exec() would reverse
+// that and silently override the application.
+//
+// WHY http AND https ONLY. Those two have an answer that is right on every
+// terminal, because a link is text and text is what a terminal carries.
+// mailto: and file: have no such answer -- a mail composer is a different
+// program, and a file: URL on a remote host names a file the user is not
+// looking at -- so they fall through to Qt's false, which an application
+// can see and act on. A guess made on its behalf is worse than a refusal it
+// can read.
+//
+// WHY NOT LAUNCH A BROWSER. shell_out() plus xdg-open is the obvious answer
+// and it is wrong in both of the situations a terminal program is actually
+// in: over ssh it opens a browser on the WRONG MACHINE, and on a headless
+// host it opens one nobody can see. qtty cannot tell either state from the
+// inside -- DISPLAY says whether this machine has a display, not whether
+// the terminal is on it -- so the choice is not between a good mechanism
+// and a safe one. It is between a mechanism that is right everywhere and
+// one that is right where its author happened to be sitting.
+//
+// WHY THE CLIPBOARD. It is the only mechanism available here with that
+// property. AnsiBackend::watch_clipboard() forwards a QClipboard change as
+// OSC 52, and the terminal EMULATOR executes it -- on the user's own
+// machine, at the far end of the ssh connection -- so the link lands where
+// the user's browser is rather than where the process is. That path is
+// already measured through tmux and over ssh.
+//
+// WHY A DIALOG, AND WHY IT IS NOT INTRUSIVE. On a desktop this same call
+// opens an ENTIRE BROWSER WINDOW over whatever the user was doing. A box
+// naming the link is less than the platform contract rather than more --
+// and since the defect being fixed is an activation that changes nothing on
+// screen, silence is the one answer that cannot be right.
+namespace {
+
+// The object QDesktopServices hands the link to. A named class with a slot
+// rather than a lambda, because the registration has only one shape:
+// setUrlHandler() takes a receiver and a method NAME and invokes it through
+// the meta-object, so the receiver has to be moc'd. That is what the .moc
+// at the bottom of this file is for -- the arrangement tray.cpp already
+// uses, and the reason this file has one at all.
+class UrlOpener : public QObject {
+	Q_OBJECT
+public:
+	using QObject::QObject;
+public slots:
+	void open_url(const QUrl &url);
+};
+
+// How wide the box's text may be, in characters.
+//
+// Measured rather than chosen: the first version of this dialog handed
+// QMessageBox one 104-character line and came out 1115 pixels -- 111 cells,
+// wider than the 80-column terminal it would have been drawn on, with the
+// difference clipped. GridGuard printed the geometry; nothing else would
+// have said a word, because the box is correct on a desktop and correct on
+// a wide terminal.
+//
+// The terminal's own width when a backend is driving, which is the case
+// that matters, and 80 otherwise -- the width a terminal has when nobody
+// has said. Ten cells come off for what is not text: the icon, the frame
+// and the margins, which measured about seven and a half above.
+int message_columns() {
+	const QSize cells = terminal_cells();
+	return qMax(16, (cells.width() > 0 ? cells.width() : 80) - 10);
+}
+
+// Fold `text` to `cols` columns, breaking at a space where it can and
+// through a word where it cannot.
+//
+// The second half is the reason this is here rather than QLabel's own word
+// wrap: a URL is ONE WORD, so a wrapping label leaves it whole and makes
+// the box as wide as the link. Breaking it looks worse than eliding and is
+// the better answer here, because the clipboard already holds the URL
+// exactly -- what is on the screen is for reading, and all of it is
+// readable folded. An elision would be the only copy of the link the user
+// can see, with the middle missing.
+QString fold_to_columns(const QString &text, int cols) {
+	const int width = qMax(8, cols);
+	QStringList out;
+	// Paragraphs first, so the blank line the message asks for survives.
+	const QStringList paragraphs = text.split(QLatin1Char('\n'));
+	for (const QString &para : paragraphs) {
+		const QStringList words =
+		    para.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+		if (words.isEmpty()) { out.append(QString()); continue; }
+		QString line;
+		for (QString word : words) {
+			while (word.size() > width) {
+				if (!line.isEmpty()) { out.append(line); line.clear(); }
+				out.append(word.left(width));
+				word = word.mid(width);
+			}
+			if (line.isEmpty()) line = word;
+			else if (line.size() + 1 + word.size() <= width)
+				line += QLatin1Char(' ') + word;
+			else { out.append(line); line = word; }
+		}
+		if (!line.isEmpty()) out.append(line);
+	}
+	return out.join(QLatin1Char('\n'));
+}
+
+void UrlOpener::open_url(const QUrl &url) {
+	// toString(), not toDisplayString(): what goes on the clipboard has to
+	// be what the user pastes into a browser, so the percent-encoding stays
+	// and nothing is prettified out of it.
+	const QString text = url.toString();
+	if (QClipboard *board = QGuiApplication::clipboard())
+		board->setText(text);
+	// QUEUED, and this is the load-bearing half of the design rather than a
+	// tidy-up. openUrl() returns immediately on every desktop platform and
+	// an application is entitled to code written against that: it may
+	// activate a link from inside a slot that is part-way through
+	// something, or from a nested loop of its own. Running a modal's nested
+	// event loop inside this function would change what openUrl() promises
+	// its caller and can re-enter whatever called it. So the handler copies,
+	// posts, and returns at once; the box goes up on the next turn of
+	// whichever loop is running.
+	//
+	// Captured by VALUE. The QUrl belongs to the caller and the box is built
+	// on a later turn, by which time a reference would name whatever has
+	// since replaced it on the caller's stack.
+	QTimer::singleShot(0, qApp, [text] {
+		// Parented to the modal that is up, where there is one, so a link
+		// inside an About box does not put its answer behind the box the
+		// user clicked it in. Read when the timer fires rather than when
+		// the link was activated: the dialog may have closed in between,
+		// and the right parent is then nobody -- which the compositor
+		// already handles by centring an unparented dialog in the terminal.
+		const QString body = fold_to_columns(
+		    text + QStringLiteral("\n\nCopied to the clipboard. A terminal"
+		                          " has no browser of its own, so paste it"
+		                          " wherever you want it opened."),
+		    message_columns());
+		auto *box = new QMessageBox(
+		    QMessageBox::Information, QStringLiteral("Link"), body,
+		    QMessageBox::Ok, QApplication::activeModalWidget());
+		box->setAttribute(Qt::WA_DeleteOnClose);
+		// show() with the modality set rather than exec(), for the reason
+		// the queue exists: exec() would run a nested event loop here and
+		// block whatever code the timer interrupted. Enter and Escape both
+		// dismiss it without a line of key handling -- QMessageBox makes a
+		// lone Ok button both the default and the escape button -- and the
+		// suite asserts that rather than this comment asserting it.
+		box->setWindowModality(Qt::ApplicationModal);
+		box->show();
+	});
+}
+
+} // namespace
+
+void install_url_handlers() {
+	// One object for the life of the application, and parented to it.
+	// QDesktopServices keeps the receiver as a plain pointer and drops the
+	// registration when it is destroyed, so a handler whose receiver has
+	// gone is a scheme that silently stopped working -- the reason this is
+	// neither a local nor a leak.
+	static QPointer<UrlOpener> opener;
+	if (!opener) opener = new UrlOpener(qApp);
+	QDesktopServices::setUrlHandler(QStringLiteral("http"), opener, "open_url");
+	QDesktopServices::setUrlHandler(QStringLiteral("https"), opener, "open_url");
+}
+
 bool shell_out(const std::function<void()> &body) {
 	// The backend that currently has the screen, which is the same thing the
 	// fatal path asks for a few lines above. A STACK rather than a pointer
@@ -562,6 +758,13 @@ void setup(QApplication &app) {
 	install_cell_paint_filter(app);
 	set_theme(CellTheme::terminal_default());
 
+	// A link the application offers is answered rather than dropped on the
+	// floor. What that answer is, and why it is installed from HERE rather
+	// than from exec(), is written out above UrlOpener -- in short, an
+	// application registering a handler of its own afterwards wins, and
+	// that ordering is the escape hatch.
+	install_url_handlers();
+
 	// The guard is installed in debug builds and compiled out of release, as
 	// the design specifies. Tests install it explicitly whatever the build,
 	// since section 9 asks for it to run as an assertion in every test.
@@ -708,3 +911,8 @@ int exec(QApplication &app, QWidget &win) {
 }
 
 } // namespace Qtty
+
+// UrlOpener's meta-object. QDesktopServices invokes a handler by method
+// NAME, so the receiver has to be moc'd, and a class declared in a .cpp is
+// moc'd by including the output here -- the arrangement tray.cpp uses.
+#include "application.moc"

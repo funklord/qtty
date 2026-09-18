@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1549 checks, 0 failures. `make check` is green and includes
+1559 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16369,6 +16369,137 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.236 A link nobody could open, cleared by the audit for links (2026-09-18)
+
+Found by the same survey as 8.232 and 8.233, asking what an ordinary Qt
+call does under qtty, and measured with a standalone program under the
+offscreen platform `prepare_environment()` pins before anything was
+changed:
+
+    openUrl("https://...")              false, and a qWarning
+    openUrl("mailto:...")               false, and a qWarning
+    with a setUrlHandler registered     TRUE, and the handler got the QUrl
+    a scheme with no handler            still false
+
+`QDesktopServices::openUrl()` is what a Qt program calls from a Help ->
+Website action, from an About box, from `QLabel::linkActivated` and from
+`QTextBrowser::anchorClicked`. Under qtty it did nothing, and it said so
+where nobody would read it. The warning is Qt's own -- *"This plugin does
+not support QPlatformServices::openUrl() for '<url>'"* -- and
+`application.cpp`'s deferring message handler holds it while stderr is the
+terminal, flushing at exit. So the user pressed Enter on a link, no frame
+changed, nothing happened, and the only explanation arrived at the shell
+prompt after the program had gone.
+
+**The sharpest part is that `holds_a_link()` CLEARS exactly the case that
+fails.** `pointer_only()` in `input_router.cpp` audits a window for
+controls only a mouse can reach, and it skips a label carrying
+`Qt::LinksAccessibleByKeyboard` -- correctly, and its comment says why:
+Qt gives such a label `StrongFocus`, so it is already a tab stop, Enter
+activates it and it emits `linkActivated`. Every word of that is true. The
+handler on the other end then did nothing, so the audit written to find
+links no key can reach reported clean over the one link no key could USE.
+**A report of reachability is not a report that the control does
+something**, and nothing in the audit could have said otherwise -- it ends
+at the signal, and the defect was past it.
+
+**No application change, which is what separates this from the tray and
+the drag.** `drag.h` states that shortfall and its cause: `QDrag::exec()`
+is not virtual, Qt asks the platform, and the platform is a stub -- so
+`Qtty::exec_drag()` and `Qtty::SystemTrayIcon` are things an adopter has
+to call. `openUrl()` asks the platform too, and Qt publishes an
+interception point in front of it. The standard spelling keeps working.
+
+**`Qtty::setup()` registers, not `exec()`, and the ordering IS the escape
+hatch.** The documented call order -- `prepare_environment()` ->
+`QApplication` -> `setup()` -> build the widgets -> `exec()`, stated in
+`application.h` and followed by `example/chat/main.cpp` -- puts the
+library's handler in before any application code runs, and Qt keeps one
+handler per scheme with the last registration winning. An application that
+wants something else therefore writes ordinary Qt and gets it, with no
+qtty API to learn and nothing to switch off. Registering from `exec()`
+would have reversed that in silence, which is why the check that defends
+the hatch opens a link from INSIDE a run rather than outside one: outside,
+it would pass against a library that had never registered anything.
+
+**`http` and `https` only.** Those two have an answer that is right on
+every terminal, because a link is text. `mailto:` and `file:` do not -- a
+mail composer is a different program, and a `file:` URL on a remote host
+names a file the user is not looking at -- so they fall through to Qt's
+`false`, which an application can see and act on. A guess made on its
+behalf would be worse than a refusal it can read.
+
+**What the handler does: the clipboard, then a box naming the link.** The
+clipboard is the only mechanism here that is still correct when the
+program is remote. `AnsiBackend::watch_clipboard()` forwards a
+`QClipboard` change as OSC 52 and the terminal EMULATOR executes it, on
+the user's own machine at the far end of the ssh connection, so the link
+lands where the browser is rather than where the process is.
+
+**Not a browser, and this is recorded as considered and rejected rather
+than left for somebody to re-derive.** `shell_out()` plus `xdg-open` is
+the obvious answer and is wrong in both of the situations a terminal
+program is usually in: over ssh it opens a browser on the wrong machine,
+and on a headless host it opens one nobody can see. qtty cannot tell
+either state from the inside -- `DISPLAY` says whether THIS machine has a
+display, not whether the terminal is on it -- so the choice is not between
+a good mechanism and a safe one, but between one that is right everywhere
+and one that is right where its author was sitting.
+
+**Why a dialog is not too much.** On a desktop this same call opens an
+entire browser window over the user's work; a box naming the link is less
+than the platform contract, not more. And the defect being fixed is an
+activation that changes nothing on the screen, so silence is the one
+answer that cannot be right.
+
+**Queued, never synchronous, and that is the half most likely to be
+quietly broken later.** `openUrl()` returns immediately on every desktop
+platform and an application may activate a link from inside a slot that is
+part-way through something; a modal's nested event loop inside the handler
+would change what the call promises and can re-enter its caller. So the
+handler copies, posts a zero timer and returns. The check is the
+discriminating pair rather than either half -- no box the instant
+`openUrl()` returned, one after the next turn of the loop -- so it goes
+red both against no handler at all and against a handler that shows the
+box itself.
+
+**A box 111 cells wide, found while building this and fixed with it.**
+The first version handed `QMessageBox` one 104-character line and the
+window came out 1115 pixels -- 111 cells against the 80 columns a
+terminal has when nobody has said otherwise, with the difference clipped.
+`QLabel` word-wraps and **a URL is one word**, so its own wrapping cannot
+help. The text is folded here instead, to `terminal_cells()` when a
+backend is driving and to 80 otherwise, breaking through a word where it
+must: the clipboard already holds the link exactly, so what is on the
+screen is for reading and all of it stays readable folded, where an
+elision would be the only copy the user can see with its middle missing.
+Measured after: 50x6 cells for an ordinary link.
+
+**GridGuard is what said so, and nothing else would have.** The box is
+correct on a desktop and correct on a wide terminal, so no check in the
+tree was looking at its width -- the guard printed the geometry, in a run
+whose other checks all passed. There is now a check that opens a
+321-character link and asserts the box is at most 80 cells while the
+clipboard holds the link whole.
+
+**Ten checks, and three cannot go red for want of the handler.** The
+first is a control -- no box is up before the first link is opened, so
+counting boxes afterwards discriminates. The escape hatch is Qt's own
+last-registration-wins, and the `mailto:` control is a scope claim;
+neither would fail against a library that had never registered anything.
+Both are defended by sabotage instead -- re-registering in `exec()`
+reddens the first, claiming `mailto:` in `install_url_handlers()` reddens
+the second -- which is the only thing that shows either is doing work.
+The remaining seven go red together when the registration is removed,
+which was measured before the entry was written rather than after.
+
+**An internal header for one test.** `src/runtime/url_opener.h` declares
+`install_url_handlers()` so the suite can put qtty's handler back after
+proving an application's overrides it. Without that, the check defending
+the escape hatch would leave every suite running after it with no handler
+at all -- a check that breaks the thing it was written to defend, and
+invisibly, since nothing else in the suite opens a URL.
 
 ### 8.234 Two sentences in design.md the code did not hold (2026-09-18)
 
