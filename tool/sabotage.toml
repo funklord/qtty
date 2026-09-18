@@ -3744,3 +3744,43 @@ find = "\tconst QPointer<QWidget> gaining(w);\n\tif (before) {\n\t\tQFocusEvent 
 into = "\tif (before) {\n\t\tQFocusEvent out(QEvent::FocusOut, reason);\n\t\tQCoreApplication::sendEvent(before, &out);\n\t}\n\tif (w) {\n\t\tQFocusEvent in(QEvent::FocusIn, reason);\n\t\tQCoreApplication::sendEvent(w, &in);\n\t}"
 count = 1
 check = "is not told it has the focus"
+
+
+[[sabotage]]
+# The guard taken off the idle tick, which is what the tick had before
+# 8.246: it asked isVisible() of whatever win_ pointed at and believed the
+# answer. `true` rather than a dereference of the null QPointer, because
+# the defect being reproduced is a WRONG ANSWER -- a tick asking for frames
+# for a window that is gone -- and a segfault would say nothing about
+# whether the check can see it.
+name = "the scheduler's idle tick asks for a frame whatever its window says"
+file = "src/runtime/compositor.cpp"
+find = "\t\tif (win_ && win_->isVisible()) request_frame();"
+into = "\t\tif (true) request_frame();"
+count = 1
+check = "asks for no frame"
+
+[[sabotage]]
+# The same line the other way, and this one guards the CONTROL. A tick that
+# never fires leaves "asks for no frame" passing for never having run, so
+# the check that the tick is alive has to be able to fail on its own. 8.246.
+name = "the scheduler's idle tick never asks for anything"
+file = "src/runtime/compositor.cpp"
+find = "\t\tif (win_ && win_->isVisible()) request_frame();"
+into = "\t\tif (false && win_ && win_->isVisible()) request_frame();"
+count = 1
+check = "the idle tick is live"
+
+[[sabotage]]
+# The quiet half of 8.246, written as its CONSEQUENCE because its cause is
+# no longer expressible: the cause was a raw win_ holding a freed address
+# that a new window landed on, and win_ is a QPointer now. What the defect
+# DID is drop a modal in the ownership walk, so it never reached `modals`
+# -- the only list anything draws a modal from -- and a dialog that was up
+# and owned input was not on the screen.
+name = "the composite walk skips a modal rather than collecting it"
+file = "src/runtime/compositor.cpp"
+find = "\t\tif (w == win_ || !is_compositable(w)) continue;"
+into = "\t\tif (w == win_ || w->isModal() || !is_compositable(w)) continue;"
+count = 1
+check = "a modal standing at the dead window's own address is still drawn"

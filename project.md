@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-18
 
-1659 checks, 0 failures. `make check` is green and includes
+1664 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16985,6 +16985,192 @@ first use now is too.
 three redden the check they name, and the QDrag one declares
 `expect = "crash"` -- deleting a QDrag that its own source already took
 away does not produce a red line, it takes the suite out at 670 checks.
+
+### 8.246 The same raw pointer, twice more (2026-09-18)
+
+8.237 made `InputRouter::win_` a `QPointer` and closed **one instance of
+three**. `exec()` builds the runtime on three consecutive lines over one
+borrowed window:
+
+    InputRouter router(&win);
+    Compositor comp(&win, &router);
+    FrameScheduler sched(&backend, &comp, &win);
+
+None of the three owns the window -- `exec(QApplication &, QWidget &)`
+borrows the caller's -- and after 8.237 exactly one of them held it
+weakly. `Compositor::win_` and `FrameScheduler::win_` were still raw.
+
+**Why the pass that fixed the router could not have caught them, which is
+the part worth keeping.** Its regression fixture builds an `InputRouter`
+over the doomed window and **nothing else**: no compositor, no scheduler.
+A fixture is a claim about the objects it builds, and that one was a claim
+about one of the three. Nothing about the investigation was short -- the
+mechanism it recorded is the mechanism here -- and the fixture's shape is
+what decided the scope of the fix.
+
+**The three differ in what has to happen before the freed memory is read,
+and the order is the finding.**
+
+    InputRouter      a queued focus repair, posted from inside the
+                     window's own destructor, delivered next pass
+    Compositor       any UpdateRequest -> render_now() -> compose()
+    FrameScheduler   NOTHING AT ALL
+
+`FrameScheduler` starts `idle_` in its constructor at a 100 ms interval
+and stops it nowhere -- `grep idle_` over the tree finds `setInterval`,
+`connect` and `start`, and no `stop`. So the first tick after the window
+dies dereferences freed memory on its own: no key has to arrive, no frame
+has to be asked for, nobody has to close anything. It is the worst of the
+three and it was the least visible, because a timer firing into a dead
+window looks like nothing at all until a sanitizer is watching.
+
+**The compositor has a loud half and a quiet half.** The loud one is
+`compose()` -> `collect_window_tabs(win_)` -> `is_compositable()` ->
+`w->isVisible()`. `collect_window_tabs()` opens with
+`if (root && is_compositable(root))`, which reads as a guard and is not
+one: **a freed pointer is not a null pointer**, so it passes the test and
+is then dereferenced. A second site is barer still -- the public
+`apply_priority(int, int)` hands `win_` straight to the overload that asks
+it for `minimumSizeHint()`, with no test anywhere in the path.
+
+**The quiet half is the one that matters, and describing it needed one
+correction.** The site is the composite walk:
+
+    if (w == win_ || !is_compositable(w)) continue;
+
+Qt reuses heap addresses, so a top-level built where the dead window stood
+compares EQUAL to a raw `win_` and is skipped. It is tempting to call that
+"a window that exists, holds focus, and is never drawn", and that is right
+for a **modal** and wrong for a plain top-level: the walk's body for a
+plain window is `(void)w;`, because since the window strip took over
+nothing is drawn from that loop for plain windows at all. What the skip
+removes is `modals.append(w)`, and `modals` is the only list anything
+draws or frames a modal from. So the invisible case is a dialog -- up,
+owning input, and absent from the screen.
+
+A plain top-level at the reused address gets a smaller fault by a
+different route: `collect_window_tabs()` takes it for the compositor's own
+root, so it enters the strip as the root tab rather than in seen order,
+and `choose_current_window()` can select it. Wrong, and visible.
+
+The popup pass reaches the same pointer a third way --
+`pop->parentWidget()->window() == win_` decides whether the root's scroll
+offset applies -- so a reused address also puts somebody else's menu at
+the wrong offset.
+
+**The fix is 8.237's, applied twice.** Both members are
+`QPointer<QWidget>`, and every path that reads one does nothing sensible
+rather than guessing: the idle tick returns, `apply_priority()` returns,
+`compose()` returns once `base` is null -- a frame with no root layer is
+no frame -- and the identity comparisons go false instead of matching
+whoever moved in.
+
+**Watched failing, and the three did not fail alike.** With the two
+library files reverted and the checks left in place, at `-Os` with no
+sanitizer:
+
+    PASS: the idle tick is live and is the only path that carries a
+          model change nothing posted an event for into a frame
+    PASS: and a scheduler whose window has been destroyed survives its
+          own idle tick and asks for no frame ...
+    FAIL: and a modal standing at the dead window's own address is still
+          drawn, ring and title ...
+    PASS: the fixture composes something while its window is alive ...
+    Segmentation fault
+
+**The quiet half reproduced**: a modal standing at the dead window's own
+address was skipped by a compositor whose window had been freed, and the
+dialog -- up, and owning input -- was absent from the frame. The loud
+half is the segfault, on the check's own action. And the scheduler's
+check **passed** -- which is the honest half of this entry and is worth
+more than the two that failed.
+
+**A check that passes against the defect it was written for is not
+evidence, and this one had two other instruments.** In an ordinary build
+the freed `QWidget`'s bytes happened to read as *not visible*, so the tick
+asked for nothing and the check could not tell the two states apart. What
+does tell them apart is the sanitizer, which is what found 8.237 in the
+first place and reports the read rather than its result; and
+`tool/sabotage.toml`'s *the scheduler's idle tick asks for a frame
+whatever its window says*, which reproduces the wrong ANSWER rather than
+the invalid read and reddens the check every run.
+
+**And the sanitizer named the lambda**, which is the difference between
+this and 8.237: there the report named a line number and the size of the
+region did the work. Reverted, `make test-sanitize`:
+
+    ERROR: AddressSanitizer: heap-use-after-free
+    READ of size 8 at 0x504000022a50
+    #0 QtPrivate::QCallableObject<
+         Qtty::FrameScheduler::FrameScheduler(
+           Qtty::ITerminalBackend*, Qtty::Compositor*,
+           QWidget*)::{lambda()#2}, ...>::impl(...)
+    #2 QTimer::timeout(QTimer::QPrivateSignal)
+    #6 QTimerInfoList::activateTimers()
+    ...
+    #12 QEventLoop::exec(...)
+    0 bytes inside of 40-byte region      <- sizeof(QWidget) is 40
+    freed by    suite_runtime()
+    allocated by suite_runtime()
+
+Frame 0 is the idle tick's own lambda and frame 6 is the timer list
+activating it. **Nothing in that stack is an action anybody took**: the
+fixture deleted a window and then let a nested event loop run, which is
+the entry's whole claim about this instance stated by the sanitizer
+rather than by prose.
+
+With both members weak the same arm runs clean: 1610 checks, no
+heap-use-after-free, nothing from UndefinedBehaviorSanitizer and nothing
+from the leak detector.
+
+**The fixture is ordered against its own crash.** The quiet-half block is
+placed before the loud-half block deliberately: with the library reverted
+the loud half segfaults, and anything after it in that run is never
+reached. Written in the order that reads better, the quiet half's FAIL
+above would not exist.
+
+**The address is forced rather than hoped for, and getting there cost a
+red arm.** The first version waited on the allocator: record the address,
+allocate `QDialog` candidates until one lands on it, and make failing to
+get it its own failed check so that a run where the allocator does
+something else says so instead of passing for the wrong reason. It
+measured two things worth keeping.
+
+    ordinary -Os build     the freed address came back on the first run,
+                           first candidate, exactly as 8.237's fixture
+                           found -- the check PASSED
+    -fsanitize=address     the check FAILED, every run
+
+**The sanitized arm was right and the check was wrong**, which is the
+order this project asks them to be suspected in. A quarantining allocator
+does not hand a freed chunk back; that is the whole point of it. So the
+check was asserting an allocator policy, it could never hold on the one
+arm that matters most for a use-after-free, and it would have turned a
+configuration difference into a standing red.
+
+Both dialogs are constructed in one block of static storage with
+placement new now, and the second one **is** at the first one's address
+by construction, in every configuration. The destructor is called by
+hand, which is what does everything a `delete` would do to Qt's
+bookkeeping -- leaving the top-level list, sending Hide, clearing every
+`QPointer` that named it. It is the same event made repeatable rather
+than a different one, and the measurement above is the evidence that the
+event is real.
+
+**Three sabotage entries, each watched reddening the check it names**:
+the tick asking whatever its window says (reddens the regression check),
+the tick asking for nothing (reddens the control, which is what stops
+"asks for no frame" passing for never having run), and the composite walk
+dropping a modal (reddens the quiet half, and 20 other modal checks with
+it). The quiet half's entry reproduces the CONSEQUENCE rather than the
+cause, and the reason is worth stating: the cause is a raw `win_` holding
+a freed address that a new window lands on, and `win_` is a `QPointer`
+now, so it cannot be written as a one-line substitution at all.
+
+**What is NOT covered by a sabotage entry is the loud half**, and that is
+a property of the defect rather than an omission: its failure is a
+segfault rather than a wrong answer, so there is no substitution that
+reddens the check instead of ending the run. It was watched crashing, above.
 
 ### 8.245 The numeric keypad produced nothing (2026-09-18)
 

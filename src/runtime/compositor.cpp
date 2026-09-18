@@ -198,6 +198,10 @@ Compositor::Compositor(QWidget *window, InputRouter *router)
 
 
 void Compositor::apply_priority(int cols, int rows) {
+	// NO WINDOW, NO LAYER TO APPLY IT TO. The overload below asks the layer
+	// for minimumSizeHint() before anything else, so this is a dereference
+	// and not a lookup. See win_ in runtime.h.
+	if (!win_) return;
 	apply_priority(win_, root_, cols, rows);
 }
 
@@ -803,7 +807,21 @@ void Compositor::compose(CellBuffer &out) {
 	// defect exactly, for every window except the first, and it is the same
 	// shape as 8.107 -- the picture followed the switch and the machinery
 	// behind it did not.
-	QWidget *const base = shown ? shown : win_;
+	QWidget *const base = shown ? shown : win_.data();
+	// A FRAME WITH NO ROOT LAYER IS NO FRAME, and this is the one place that
+	// can say so. Everything below reads `base` -- focusWidget(), the priority
+	// pass, render() -- so a null one is a dereference three lines later
+	// rather than an empty picture.
+	//
+	// Reachable only once win_ is a QPointer: `shown` is null when the strip
+	// is empty, and the strip is empty when this compositor's window has been
+	// destroyed and no other top-level is up. A raw win_ took the same branch
+	// holding a freed address, passed collect_window_tabs()'s `if (root &&
+	// ...)` -- a freed pointer is not a null one -- and read isVisible() out
+	// of the dead widget. So the honest answer is nothing drawn: out was
+	// cleared at the top, and a scheduler diffing against the previous frame
+	// sees the screen go blank, which is what has actually happened.
+	if (!base) return;
 	// The pick above may have chosen a different window because the current
 	// one has gone. Going through the switch is what carries input, focus,
 	// the open menu and the title to it.
@@ -1247,7 +1265,12 @@ FrameScheduler::FrameScheduler(ITerminalBackend *backend, Compositor *compositor
 	QObject::connect(&coalesce_, &QTimer::timeout, this, [this] { render_now(); });
 	idle_.setInterval(100);                       // catches timer-driven updates
 	QObject::connect(&idle_, &QTimer::timeout, this, [this] {
-		if (win_->isVisible()) request_frame();
+		// `win_ &&` FIRST, and it is the whole of 8.246's third instance.
+		// This timer is started in the constructor and stopped by nothing, so
+		// a destroyed window is read here a tenth of a second later with no
+		// other event required -- see win_ in runtime.h. An absent window is
+		// not a visible one, so there is nothing to ask for.
+		if (win_ && win_->isVisible()) request_frame();
 	});
 	idle_.start();
 	since_last_.start();

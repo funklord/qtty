@@ -3324,6 +3324,261 @@ int suite_runtime() {
 		      " and doing nothing");
 	}
 
+	// ---- a compositor and a scheduler that outlive their window ----------
+	//
+	// 8.237 MADE InputRouter::win_ A QPointer AND LEFT TWO MORE BEHIND.
+	// exec() builds InputRouter, Compositor and FrameScheduler on three
+	// consecutive lines over the same `&win`, all three keep it for as long
+	// as they live, and none of them owns it -- the window is the CALLER's,
+	// so Qt::WA_DeleteOnClose on it, or an application that owns a second
+	// one, destroys it under all three while the loop is still running.
+	//
+	// The reason the earlier pass could not have found these is the shape of
+	// its fixture rather than anything it failed to look at: the regression
+	// in suite_router.cpp builds an InputRouter over the doomed window and
+	// NOTHING ELSE. No compositor, no scheduler. A fixture is a claim about
+	// the objects it builds, and that one was a claim about one of the
+	// three, so the other two survived a pass that was about exactly their
+	// defect.
+	//
+	// The three cases differ in what has to happen before the freed memory
+	// is read, and the ORDER IS THE POINT:
+	//
+	//     InputRouter      a queued focus repair, posted from inside the
+	//                      window's own destructor, delivered next pass
+	//     Compositor       any UpdateRequest -> render_now() -> compose()
+	//     FrameScheduler   nothing at all. idle_ is started in the
+	//                      constructor at 100 ms and stopped by nobody, so
+	//                      the tick after the delete reads the freed widget
+	//                      on its own.
+	//
+	// processEvents(AllEvents, ms) CANNOT BE USED TO WAIT FOR THAT TICK: it
+	// processes what is queued and returns as soon as the queue is empty,
+	// whichever comes first, so it returns in well under a millisecond and
+	// no timer has fired. A nested QEventLoop quit by a single-shot is what
+	// actually lets wall-clock time pass.
+	{
+		const auto wait_ms = [](int ms) {
+			QEventLoop loop;
+			QTimer::singleShot(ms, &loop, &QEventLoop::quit);
+			loop.exec();
+		};
+
+		// A widget whose text is a plain member. Writing it posts no
+		// UpdateRequest and no LayoutRequest, so the scheduler's qApp event
+		// filter has nothing to react to and the IDLE TICK is the only path
+		// that can carry the change into a frame -- which is what the tick
+		// is for, and what makes it observable at all.
+		struct SilentModel : QWidget {
+			using QWidget::QWidget;
+			QString text = QStringLiteral("before");
+			void paintEvent(QPaintEvent *) override {
+				QPainter p(this);
+				p.drawText(rect(), Qt::AlignLeft | Qt::AlignVCenter, text);
+			}
+		};
+
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+
+		// ---- FrameScheduler: the tick that needs no application action ---
+		//
+		// THE COMPOSITOR HERE IS OVER A WINDOW THAT LIVES, and only the
+		// SCHEDULER's window is destroyed. That separation is what makes the
+		// tick observable: a frame the tick asks for still has something to
+		// draw, so "the change reached a frame" reports on whether the tick
+		// asked rather than on whether there was anything left to show.
+		{
+			NullBackend backend(QSize(40, 10));
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *model = new SilentModel(&host);
+			model->setGeometry(0, 0, cw * 20, ch);
+			host.resize(GridMetrics::cells(40, 10));
+			host.show();
+
+			auto *doomed = new QWidget;
+			doomed->setAttribute(Qt::WA_DontShowOnScreen);
+			doomed->resize(GridMetrics::cells(40, 10));
+			doomed->show();
+			QCoreApplication::processEvents();
+
+			InputRouter router(&host);
+			Compositor comp(&host, &router);
+			FrameScheduler sched(&backend, &comp, doomed);
+			sched.render_now();
+			// EVERYTHING ALREADY QUEUED GOES OUT FIRST, and then the picture
+			// is settled again, so that from here on nothing has posted an
+			// event the scheduler's qApp filter could turn into a frame. The
+			// control below says the idle tick is the only path left, and it
+			// is only true if this has happened.
+			QCoreApplication::processEvents();
+			wait_ms(150);
+			sched.render_now();
+
+			// THE CONTROL, and the check under it means nothing without it:
+			// a check that a dead window's tick asks for no frame passes
+			// just as loudly on a tick that never fired at all.
+			const int settled = backend.frame_count();
+			model->text = QStringLiteral("alive");
+			// Four ticks rather than one. This machine is shared and its load
+			// average reaches the forties, and a control that needs a timer to
+			// have fired is the half of the pair that a late tick turns red.
+			wait_ms(400);
+			CHECK(backend.frame_count() > settled
+			      && backend.last_frame().contains(QStringLiteral("alive")),
+			      "the idle tick is live and is the only path that carries a"
+			      " model change nothing posted an event for into a frame");
+
+			delete doomed;
+			QCoreApplication::processEvents();
+			// Whatever the deletion queued goes out first, so the count
+			// below is not carrying somebody else's frame.
+			wait_ms(150);
+
+			model->text = QStringLiteral("orphan");
+			const int quiet = backend.frame_count();
+			wait_ms(250);
+			CHECK(backend.frame_count() == quiet
+			      && !backend.last_frame().contains(QStringLiteral("orphan")),
+			      "and a scheduler whose window has been destroyed survives"
+			      " its own idle tick and asks for no frame, rather than"
+			      " reading isVisible() out of the freed window");
+		}
+
+		// ---- Compositor: the quiet half, which is the worse one ----------
+		//
+		// BEFORE THE LOUD ONE, deliberately. With the library reverted the
+		// loud half segfaults on its own action, and anything after it in the
+		// same run is never reached -- so an order that reads better would
+		// have cost the evidence that this check can fail at all.
+		//
+		// Qt REUSES HEAP ADDRESSES. compose() decides what is a layer of its
+		// own with `w == win_`, so a top-level built where the dead window
+		// stood compares EQUAL to a raw win_ and is skipped -- and a modal
+		// skipped there is never appended to `modals`, which is the only
+		// list anything draws a modal from. It is up, it owns input, and the
+		// terminal does not show it. No crash, no message, nothing to
+		// notice.
+		//
+		// THE ADDRESS IS FORCED RATHER THAN HOPED FOR. Both dialogs are
+		// constructed in one block of static storage with placement new, so
+		// the second one IS at the first one's address by construction, in
+		// every configuration.
+		//
+		// Waiting on the allocator was tried first and is where the two facts
+		// worth keeping came from. In an ordinary build glibc hands the 40
+		// bytes straight back, exactly as 8.237's fixture found -- a pool of
+		// QDialog candidates got the freed address on the first run, and the
+		// check that asserted it passed. Under AddressSanitizer it never can:
+		// a quarantining allocator does not reuse a freed chunk, so that same
+		// check FAILED on the sanitized arm and would have made a real defect
+		// out of an allocator policy. Placement new is the same event made
+		// repeatable, not a different one.
+		//
+		// `host` stays alive throughout and is what the frame is drawn FROM,
+		// so this asks only whether the modal is drawn on top of it. With no
+		// live root the frame would be empty for the other reason, which is
+		// the check below and not this one.
+		//
+		// THE RING, not the title, is the discriminator. A title on its own
+		// is no evidence: with the address reused, collect_window_tabs()
+		// takes the modal for its own root and the strip writes the same word
+		// into row 0. Only the modal stack draws frame_layer()'s ring, so the
+		// corner and the title together are a claim that the modal was drawn
+		// AS A MODAL.
+		{
+			auto *host = new QWidget;
+			host->setAttribute(Qt::WA_DontShowOnScreen);
+			host->setWindowTitle(QStringLiteral("Host"));
+			host->resize(GridMetrics::cells(40, 14));
+			host->show();
+
+			alignas(QDialog) static unsigned char slot[sizeof(QDialog)];
+			auto *gone = new (slot) QDialog;
+			gone->setAttribute(Qt::WA_DontShowOnScreen);
+			gone->setWindowTitle(QStringLiteral("Gone"));
+			gone->resize(GridMetrics::cells(40, 14));
+			gone->show();
+			QCoreApplication::processEvents();
+
+			InputRouter router(gone);
+			Compositor comp(gone, &router);
+			CellBuffer warm(40, 14);
+			comp.compose(warm);
+
+			// The DESTRUCTOR by hand, since the storage is not the heap's to
+			// take back. Everything a delete would do to Qt's bookkeeping --
+			// leaving the top-level list, sending Hide, clearing every
+			// QPointer that named it -- happens here.
+			gone->~QDialog();
+			QCoreApplication::processEvents();
+
+			auto *reused = new (slot) QDialog;
+			reused->setAttribute(Qt::WA_DontShowOnScreen);
+			reused->setModal(true);
+			reused->setWindowTitle(QStringLiteral("Reused"));
+			reused->resize(GridMetrics::cells(12, 3));
+			reused->show();
+			QCoreApplication::processEvents();
+
+			CellBuffer out(40, 14);
+			comp.compose(out);
+			CHECK(out.to_text().contains(
+			          QStringLiteral("\u250c\u2500 Reused ")),
+			      "and a modal standing at the dead window's own address is"
+			      " still drawn, ring and title, rather than skipped by an"
+			      " ownership test matching a window that no longer exists");
+			reused->~QDialog();
+			delete host;
+			QCoreApplication::processEvents();
+		}
+
+		// ---- Compositor: the loud half -----------------------------------
+		//
+		// collect_window_tabs() already tests `if (root && ...)` before
+		// asking is_compositable(), and that is not a guard against this: a
+		// FREED pointer is not a null one. It passes the test and is then
+		// dereferenced.
+		{
+			auto *gone = new QWidget;
+			gone->setAttribute(Qt::WA_DontShowOnScreen);
+			auto *label = new QLabel(QStringLiteral("drawn"), gone);
+			label->setGeometry(0, 0, cw * 10, ch);
+			gone->resize(GridMetrics::cells(30, 8));
+			gone->show();
+			QCoreApplication::processEvents();
+
+			InputRouter router(gone);
+			Compositor comp(gone, &router);
+			CellBuffer warm(30, 8);
+			comp.compose(warm);
+			CHECK(warm.to_text().contains(QStringLiteral("drawn")),
+			      "the fixture composes something while its window is alive,"
+			      " so an empty frame below is the window going rather than"
+			      " the fixture never having drawn");
+
+			delete gone;
+			QCoreApplication::processEvents();
+
+			// BOTH ENTRY POINTS, and apply_priority() first because it is
+			// the one with no null test anywhere in its path: it hands win_
+			// straight to the overload that asks minimumSizeHint() of it.
+			comp.apply_priority(20, 3);
+			CellBuffer out(30, 8);
+			comp.compose(out);
+			CHECK(out.to_text().trimmed().isEmpty(),
+			      "a compositor whose window has been destroyed composes an"
+			      " empty frame and survives apply_priority(), rather than"
+			      " rendering out of the freed window");
+		}
+
+		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

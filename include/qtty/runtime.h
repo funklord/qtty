@@ -508,7 +508,34 @@ private:
 	// entry disappears the moment its dialog's geometry stops matching what
 	// was written here.
 	QHash<QWidget *, QPoint> modal_place_;
-	QWidget *win_;
+	// A QPointer, for the reason InputRouter::win_ is one: EXEC() BUILDS THE
+	// THREE OF THEM OVER THE SAME BORROWED WINDOW, and the router was the only
+	// one of the three that survived losing it (8.237, 8.246).
+	//
+	// The loud half. compose() reaches this pointer on every frame an
+	// UpdateRequest asks for -- collect_window_tabs(win_), which asks
+	// is_compositable() and so w->isVisible(), and the `w == win_` test in the
+	// composite walk. The null test collect_window_tabs() already carried
+	// reads as a guard and is not one: a FREED pointer is not a null pointer,
+	// it passes `if (root && ...)` and is then dereferenced.
+	//
+	// The quiet half, which is worse and is the reason a null test bolted onto
+	// compose() would not have done. Qt reuses heap addresses. A modal built
+	// where the old window stood compares EQUAL to a raw win_, so the composite
+	// walk's `w == win_ || !is_compositable(w)` skips it -- and a modal that is
+	// skipped there is never appended to `modals`, so nothing draws it and
+	// nothing frames it. It is up, it owns input, and the terminal does not
+	// show it. Measured on the first run of the fixture in suite_runtime.cpp:
+	// glibc handed the 40 bytes straight back, and the dialog vanished from a
+	// frame it had every right to be in. The popup pass reaches the same
+	// pointer a second way -- `pop->parentWidget()->window() == win_` decides
+	// whether the root's scroll offset applies -- so a reused address also puts
+	// somebody else's menu at the wrong offset.
+	//
+	// So a compositor whose window is gone draws no root layer: compose()
+	// returns having produced nothing once `base` is null, and the identity
+	// tests go false rather than matching whoever moved in.
+	QPointer<QWidget> win_;
 	InputRouter *router_;
 	std::optional<QPoint> cursor_;
 	CursorShape cursor_shape_ = CursorShape::Hidden;
@@ -569,7 +596,28 @@ public:
 private:
 	ITerminalBackend *backend_;
 	Compositor *comp_;
-	QWidget *win_;
+	// A QPointer, and of the three objects exec() builds over the caller's
+	// window this is the one that needs no application action at all to reach
+	// the fault (8.237, 8.246).
+	//
+	// The constructor starts `idle_` at 100 ms and NOTHING EVER STOPS IT. So
+	// once the window is destroyed the next tick reads freed memory on its
+	// own: no key has to arrive, no frame has to be asked for, nobody has to
+	// close anything. The router needed a queued call delivered after the
+	// destructor and the compositor needed an UpdateRequest; this one needs a
+	// tenth of a second to pass. It is the worst of the three for exactly that
+	// reason, and it is the least visible, because a timer firing into a dead
+	// window looks like nothing at all until a sanitizer is watching.
+	//
+	// The window is the CALLER's -- exec(QApplication &, QWidget &) borrows it
+	// -- so Qt::WA_DeleteOnClose on it, or an application that owns a second
+	// window, destroys it while this scheduler is still running and still
+	// filtering the application's events.
+	//
+	// A scheduler with no window asks for no frame: the tick returns rather
+	// than guessing that an absent window is visible. See the lambda in the
+	// constructor, which is the one place this is read.
+	QPointer<QWidget> win_;
 	// Declared after win_ so the initialiser list runs in declaration order;
 	// -Wreorder is right that the two disagreeing is a trap waiting for
 	// whoever adds a member that reads another.
