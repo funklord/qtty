@@ -9,6 +9,7 @@
 // that defends the escape hatch would leave every suite after this one with
 // no handler at all.
 #include "src/runtime/url_opener.h"
+#include "src/runtime/placement_paint.h"
 #include <QtWidgets>
 #include <cstdio>
 
@@ -669,6 +670,167 @@ int suite_runtime() {
 		sched.render_now();
 		CHECK(backend.frame_count() > moved_from,
 		      "and a picture that moved with the same pixels is too");
+
+		// THE THIRD FIELD, and the one this gate is most easily blind to.
+		// design.md section 5.7 gives CellImage a `z`; the struct had lost
+		// it, and adding it back without adding it HERE is a trap that
+		// leaves every ordering check green and the screen wrong.
+		//
+		// The reason is this gate. Two pictures swapping which is on top is
+		// a change to the z fields and to nothing else: the keys are the
+		// same pixels, the cell rectangles are the same cells, so the cells
+		// under them diff to NOTHING and `damage` is empty. `images_changed`
+		// is then the only thing left that can make the frame worth sending,
+		// and with z outside operator== it compares equal and the reorder is
+		// never presented. The stacking would be right in the buffer and
+		// wrong on the terminal, with both halves innocent -- the compositor
+		// composited what it was given, and present() is correct about not
+		// writing a frame nobody handed it. Exactly the shape this gate was
+		// already fixed once for, when it compared placements by COUNT,
+		// arriving by a second route.
+		//
+		// Asserted on the gate's own two terms rather than through the frame
+		// loop, and the reason is a real limitation rather than convenience:
+		// NOTHING in this tree can set z. Both producers in cell_paint.cpp
+		// leave it at its default, so every placement the compositor can
+		// build agrees about depth, and a check driving FrameScheduler can
+		// only ever present frames whose z fields are all 0 -- the question
+		// cannot be put to it. What is asserted instead is the conjunction
+		// the gate evaluates, both halves, because either alone passes for
+		// the wrong reason: an empty diff with no image comparison is a
+		// frame that is correctly dropped, and an image comparison over a
+		// non-empty diff would have been sent anyway on the cells.
+		{
+			QPixmap red(cw * 3, ch * 2), blue(cw * 3, ch * 2);
+			red.fill(Qt::red);
+			blue.fill(Qt::blue);
+			const auto two = [&](int za, int zb) {
+				CellBuffer b(30, 8);
+				CellImage a_img, b_img;
+				a_img.key = quint64(red.cacheKey());
+				a_img.cell_rect = QRect(0, 0, 3, 2);
+				a_img.pixmap = red;
+				a_img.z = za;
+				b_img.key = quint64(blue.cacheKey());
+				b_img.cell_rect = QRect(1, 0, 3, 2);
+				b_img.pixmap = blue;
+				b_img.z = zb;
+				b.images.append(a_img);
+				b.images.append(b_img);
+				return b;
+			};
+			const CellBuffer was = two(0, 1), now = two(1, 0);
+			CHECK(was.diff(now).isEmpty(),
+			      "swapping two placements' z changes no cell at all");
+			CHECK(was.images != now.images,
+			      "and the frame gate still calls that a different frame");
+		}
+	}
+
+	{
+		// design.md section 5.7's z, at the tier that has to honour it in
+		// PIXELS. The software composite -- sixel, iTerm2 and plain kitty,
+		// which cannot blend over live text -- paints every placement onto
+		// one finished picture, so the LAST one painted is the one on top.
+		// That makes the paint order the stacking order, and the whole point
+		// of z is to override it.
+		//
+		// THE FIXTURE IS CHOSEN SO THE PLAUSIBLE WRONG ANSWER AND THE RIGHT
+		// ONE DIFFER, which for an ordering means the two orders must
+		// disagree: the FIRST placement carries the HIGHER z. Two pictures
+		// appended in the order a painter would produce them and left to
+		// vector order give a defined, stable, fully deterministic picture
+		// -- which is why "draw A then B, B is on top" passes against code
+		// that has never heard of z and proves nothing. Reversing which one
+		// z says is on top is the only arrangement where the two hypotheses
+		// come apart.
+		//
+		// Called through the seam rather than through the frame loop for the
+		// reason placement_paint.h states: a composed frame's placements come
+		// from the widget tree, nothing sets z, and so the question cannot be
+		// asked of FrameScheduler at all. The loop's own wiring is covered by
+		// the software-tier checks in suite_graphics, which fail if a
+		// placement stops reaching the composed picture.
+		QImage canvas(cw * 8, ch * 4, QImage::Format_ARGB32);
+		// Filled, not merely allocated: QImage(w, h, fmt) leaves its pixels
+		// undefined, so an unfilled canvas is a fixture whose answer depends
+		// on the heap -- and a check that reads one pixel out of it would be
+		// the cheapest possible way to look like it was measuring something.
+		canvas.fill(Qt::black);
+		QPixmap first(cw * 4, ch * 2), second(cw * 4, ch * 2);
+		first.fill(Qt::red);
+		second.fill(Qt::blue);
+
+		// They overlap in cells 2..3, and each keeps two cells to itself so
+		// that a check reading the overlap can be paired with checks reading
+		// the parts only one of them covers. Without those, a composite that
+		// painted nothing but the first image would satisfy the overlap
+		// assertion perfectly.
+		const auto placed = [&](int z_first, int z_second) {
+			QVector<CellImage> v;
+			CellImage a, b;
+			a.key = quint64(first.cacheKey());
+			a.cell_rect = QRect(0, 0, 4, 2);
+			a.pixmap = first;
+			a.z = z_first;
+			b.key = quint64(second.cacheKey());
+			b.cell_rect = QRect(2, 0, 4, 2);
+			b.pixmap = second;
+			b.z = z_second;
+			v.append(a);
+			v.append(b);
+			return v;
+		};
+		// The middle of a cell, so that a rounding error at a boundary
+		// cannot decide which picture a check thinks it is reading.
+		const auto at = [&](const QImage &img, int col, int row) {
+			return img.pixel(col * cw + cw / 2, row * ch + ch / 2);
+		};
+
+		{
+			QImage out = canvas;
+			QPainter p(&out);
+			paint_placements(p, placed(5, 1), cw, ch);
+			p.end();
+			CHECK(at(out, 2, 0) == qRgb(255, 0, 0),
+			      "z puts the FIRST placement over a later one it overlaps");
+			// The controls. An implementation that painted only the
+			// higher-z placement, or that dropped the lower one entirely,
+			// would pass the check above and is a different bug.
+			CHECK(at(out, 0, 0) == qRgb(255, 0, 0),
+			      "and the higher one still covers the cells it alone has");
+			CHECK(at(out, 5, 0) == qRgb(0, 0, 255),
+			      "while the lower one is drawn, not dropped");
+		}
+		{
+			// Equal z, which is every placement in the tree today: the
+			// ordering must then say nothing and leave the painter's own
+			// order standing, so the LATER one wins. This pins what the
+			// default of 0 means, and it is what makes a stable sort the
+			// right one -- though it cannot PROVE stability, since a plain
+			// sort is free to leave two equal elements alone and generally
+			// does. The comment in paint_placements() carries that argument;
+			// this carries the behaviour it has to keep.
+			QImage out = canvas;
+			QPainter p(&out);
+			paint_placements(p, placed(0, 0), cw, ch);
+			p.end();
+			CHECK(at(out, 2, 0) == qRgb(0, 0, 255),
+			      "equal z leaves the paint order standing, so the later wins");
+		}
+		{
+			// And the same pair with the z values the other way round, which
+			// is the arrangement vector order already produces. Paired with
+			// the first case deliberately: a sort with its comparison
+			// backwards passes one of these two and fails the other, and
+			// neither one alone can tell a working sort from a reversed one.
+			QImage out = canvas;
+			QPainter p(&out);
+			paint_placements(p, placed(1, 5), cw, ch);
+			p.end();
+			CHECK(at(out, 2, 0) == qRgb(0, 0, 255),
+			      "and the later placement wins when z agrees with the order");
+		}
 	}
 
 	{

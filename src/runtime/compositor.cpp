@@ -9,10 +9,52 @@
 #include "qtty/graphics.h"
 #include "qtty/overlay.h"
 #include "title_keeper.h"
+#include "placement_paint.h"
 #include <QtWidgets>
+#include <algorithm>
 #include <cstdlib>
 
 namespace Qtty {
+
+// design.md section 5.7's stacking, which the struct had lost. Painter's
+// algorithm, so the LAST one drawn is the one on top -- which makes the paint
+// order the stacking order, and z is what overrides it.
+//
+// Sorted by INDEX rather than by copying the placements into a sorted vector.
+// A CellImage carries a QPixmap, so a sorted copy is a pile of implicitly
+// shared handles built and destroyed once per frame to decide a paint order,
+// and the indices answer the same question in an int apiece.
+//
+// std::stable_sort, not std::sort, and the distinction is the whole of what
+// the default z means. Equal z has to keep the order the painter produced,
+// because that order is the only statement anybody has made about two
+// placements that both say nothing about stacking -- and today EVERY
+// placement in this tree is one of those, nothing yet having a reason to set
+// z. A plain sort would therefore leave the overwhelmingly common case, a
+// whole frame at z 0, painting in an order the standard declines to specify:
+// two overlapping pictures could stack one way under one libstdc++ and the
+// other way under the next, from a buffer that said exactly the same thing
+// both times, and no check here could catch it because there is nothing to
+// compare against.
+//
+// Overlay::visible_overlays() uses a plain std::sort over overlays, so
+// equal-z OVERLAYS already have that gap. It is not copied here on purpose.
+// Which one is right is not this function's to decide -- an overlay id is
+// that list's index and the terminal holds it between frames, so changing
+// the sort there is a change to what gets cleared, and it wants its own
+// measurement rather than being swept along with this.
+void paint_placements(QPainter &p, const QVector<CellImage> &images,
+                      int cw, int ch) {
+	QVector<int> order(images.size());
+	for (int i = 0; i < order.size(); ++i) order[i] = i;
+	std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+		return images[a].z < images[b].z;
+	});
+	for (int i : order) {
+		const CellImage &ci = images[i];
+		p.drawPixmap(ci.cell_rect.x() * cw, ci.cell_rect.y() * ch, ci.pixmap);
+	}
+}
 
 // ----------------------------------------------------------------- Compositor
 namespace {
@@ -1317,8 +1359,11 @@ void FrameScheduler::render_now() {
 		QPainter p(&px);
 		p.setClipRect(QRect(painted.x() * cw, painted.y() * ch,
 		                    painted.width() * cw, painted.height() * ch));
-		for (const CellImage &ci : frame.images)
-			p.drawPixmap(ci.cell_rect.x() * cw, ci.cell_rect.y() * ch, ci.pixmap);
+		// Z-ordered, which vector order is not. The ordering lives in
+		// paint_placements() rather than here because a check cannot put a
+		// placement of its own choosing into a composed frame; that header
+		// carries the argument.
+		paint_placements(p, frame.images, cw, ch);
 		for (Overlay *o : overlays) {
 			const QRect r = overlay_cell_rect(o);
 			p.drawImage(QRect(r.x() * cw, r.y() * ch, r.width() * cw, r.height() * ch),

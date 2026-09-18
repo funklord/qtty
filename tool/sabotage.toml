@@ -3114,3 +3114,68 @@ find = "\tconst int width = qMax(8, cols);"
 into = "\tconst int width = qMax(8, cols) * 100;"
 count = 1
 check = "a link longer than the terminal is copied whole and folded"
+
+
+[[sabotage]]
+# The z comparison neutered, so the software composite is back to
+# painting in vector order and the later placement is always the one on
+# top. The picture is then right whenever insertion order happens to
+# agree with depth, which is why the fixture makes them disagree.
+# 8.235.
+name = "the software composite ignores a placement's z"
+file = "src/runtime/compositor.cpp"
+find = "\t\treturn images[a].z < images[b].z;"
+into = "\t\treturn false;"
+count = 1
+check = "z puts the FIRST placement over a later one it overlaps"
+
+[[sabotage]]
+# The comparison REVERSED rather than removed, which is the error a
+# sort invites and which the check above cannot see on its own: with
+# the order backwards, a fixture whose z agrees with its insertion
+# order is the one that breaks. Both directions are named because
+# either check alone passes for a reversed sort half the time. 8.235.
+name = "the software composite stacks placements upside down"
+file = "src/runtime/compositor.cpp"
+find = "\t\treturn images[a].z < images[b].z;"
+into = "\t\treturn images[a].z > images[b].z;"
+count = 1
+check = "and the later placement wins when z agrees with the order"
+
+[[sabotage]]
+# Every kitty z site back to the literal 0 it carried, so the tier
+# reads as z-aware -- present_overlay() has taken a z since it was
+# written -- while no placement ever states one. 8.235.
+name = "kitty placements all go out at depth zero"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\t\t\tout += encode_kitty_image(id, for_terminal(img), ci.z);\n\t\t\t\t\tif (!whole) out += kitty_place(id, ci.z, src);\n\t\t\t\t} else {\n\t\t\t\t\tout += kitty_place(id, ci.z, whole ? QRect() : src);"
+into = "\t\t\t\t\tout += encode_kitty_image(id, for_terminal(img));\n\t\t\t\t\tif (!whole) out += kitty_place(id, 0, src);\n\t\t\t\t} else {\n\t\t\t\t\tout += kitty_place(id, 0, whole ? QRect() : src);"
+count = 1
+check = "each kitty placement states its own z on the wire"
+
+[[sabotage]]
+# Only the transmit-and-display half, which is the partial fix a reader
+# of the two kitty_place() calls would write. a=T DISPLAYS, and for an
+# unclipped picture it is the only command emitted on first sighting --
+# so the depth is missing from exactly the frame that first shows the
+# image and present on every frame after it. `contains` still finds a
+# z, which is why the check that catches this counts them. 8.235.
+name = "a kitty upload displays before it is told its depth"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "out += encode_kitty_image(id, for_terminal(img), ci.z);"
+into = "out += encode_kitty_image(id, for_terminal(img));"
+count = 1
+check = "on the upload that displays it and on the re-place"
+
+[[sabotage]]
+# The trap. z on the struct, honoured by every reader of it, and left
+# out of the comparison the frame loop uses to decide whether a frame
+# is worth sending -- so two pictures swapping depth, which changes no
+# cell, compares equal to the frame before it and is never presented.
+# Every ordering check above stays green under this one. 8.235.
+name = "a frame whose only change is a z compares equal"
+file = "include/qtty/cell.h"
+find = "\t\treturn key == o.key && cell_rect == o.cell_rect && z == o.z;"
+into = "\t\treturn key == o.key && cell_rect == o.cell_rect;"
+count = 1
+check = "and the frame gate still calls that a different frame"

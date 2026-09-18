@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1559 checks, 0 failures. `make check` is green and includes
+1569 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16692,6 +16692,131 @@ mid-line breaks a `PASS:` prefix -- so counting `^PASS` from the merged
 stream under-reports. It read 1527 where the suite runs 1528. `count-check`
 is not affected, discarding stderr before it counts, which is why the gate
 was right while the reading was wrong.
+
+### 8.235 Placements had a depth the document specified and nothing kept
+(2026-09-18)
+
+design.md §5.7 gives `CellImage` three fields -- `imageKey`, `cellRect`
+and `int z = 0` -- and `include/qtty/cell.h` had `key`, `cell_rect` and
+`pixmap`. **The struct had diverged from the document in both
+directions**, and only one of them had been noticed: the pixmap is a
+real addition that earns its place, and the z is a specified field that
+was simply dropped.
+
+**What made it hard to see is that the rest of the system reads as
+z-aware.** `IGraphicsOutput::present_overlay(int id, const QImage &,
+QPoint, int z)` has taken a z since the tier was written, the compositor
+passes `Overlay::z()` into it, and `graphics.cpp` has always known how
+to put `,z=` on a kitty command. Every one of those is about `Overlay`,
+which is a different class with a different lifetime. **A placement
+could not state a depth at all**, and the two calls that would have
+carried one passed the literal `0`.
+
+Three sites, and the one that decides the screen is the smallest:
+
+    include/qtty/cell.h         the field, and operator==
+    src/runtime/compositor.cpp  the software composite's paint order
+    ansi_backend.cpp            the kitty tier's three z arguments
+
+**THE TRAP IS `operator==`, and it is the half that has no symptom of
+its own.** The frame loop decides whether a frame is worth sending with
+`frame.images != prev_->images`, so with z on the struct and outside the
+comparison, a frame in which only a z changed compares EQUAL to its
+predecessor. Two pictures swapping which is on top is exactly that
+frame: the keys are the same pixels, the rectangles are the same cells,
+so the cell diff is empty and `images_changed` is the only thing that
+could have saved it. The stacking is then right in the buffer and wrong
+on the terminal with both halves innocent -- the compositor composited
+what it was handed, and `present()` is correct about not writing a frame
+nobody gave it. **Same shape as this gate's earlier defect, when it
+compared placements by COUNT, reached by a second route.** The control
+that catches it is in `suite_runtime` and was watched failing with the
+ordering fixes in place and that one line removed: every ordering check
+green, that one red.
+
+**A second partial fix was available and was proved wrong rather than
+argued about.** The obvious reading is that the two `kitty_place()`
+calls are where the z belongs. They are not the only place:
+`encode_kitty_image()` sends `a=T`, which is transmit AND *display*, so
+for a picture that is wholly on screen it is the only command emitted on
+first sighting and no place command follows it. Passing z to the two
+place calls alone leaves the commonest case of all -- a fresh unclipped
+picture -- displayed at depth 0 and then re-placed at its real depth on
+the next frame:
+
+    frame 1, first sighting      a=T ... (no z)       depth 0
+    frame 2 onwards              a=p ... ,z=7         depth 7
+
+**A picture that changes depth the second time it is drawn is worse than
+one that never had a z**, and it passes a check written as
+`contains(",z=7")`, because the re-place supplies the string. The check
+counts the occurrences instead, and the sabotage entry *a kitty upload
+displays before it is told its depth* is that partial fix, kept so the
+distinction cannot be lost again.
+
+**`std::stable_sort`, and the reason is what the default of 0 means.**
+Equal z has to keep the order the painter produced, because that order
+is the only statement anybody has made about two placements that both
+say nothing about stacking -- and today *every* placement in the tree is
+one of those. A plain sort would leave the overwhelmingly common case, a
+whole frame at z 0, painting in an order the standard declines to
+specify: the same buffer could stack two overlapping pictures one way
+under one libstdc++ and the other way under the next, with nothing to
+compare against. `Overlay::visible_overlays()` uses a plain `std::sort`
+and has exactly that gap for equal-z overlays. **It was deliberately not
+copied and deliberately not fixed here**: an overlay id IS that list's
+index and the terminal holds it between frames, so changing that sort
+changes what gets cleared, and it wants its own measurement rather than
+being swept along with this.
+
+**What was rejected.**
+
+- **An API for setting z.** Nothing in the tree sets one, so the field
+  is inert, and a setter is a public interface invented for a caller
+  that does not exist. It is recorded as a question below rather than
+  answered here.
+- **Putting z where design.md puts it**, between the rectangle and the
+  pixmap. Both producers in `cell_paint.cpp` build a placement by
+  aggregate initialisation naming three members; a field inserted there
+  either refuses to compile or, had the types lined up, silently takes
+  the pixmap's slot. It goes last, and nothing reads these by position.
+- **Asserting the ordering through the frame loop.** A composed frame's
+  placements come from the widget tree and nothing sets z, so every
+  frame `FrameScheduler` can build agrees about depth and the question
+  cannot be put to it. The paint step moved out into
+  `src/runtime/placement_paint.h` instead -- the remedy `title_keeper.h`
+  already records, and the one `FrameScheduler::pixel_damage()` gives
+  its own reason for: the order is the part that can be wrong and the
+  wiring is one call.
+- **"Draw A then B, assert B is on top."** It passes against code that
+  has never heard of z, because vector order already gives a defined
+  picture. The fixture makes the two orders DISAGREE -- the first
+  placement carries the higher z -- and is paired with the same z values
+  reversed, because either check alone is passed by a sort with its
+  comparison backwards.
+
+**The open question, and it is the interface-with-no-caller shape this
+tree has met repeatedly.** `z` is now read by both tiers and written by
+nobody: both producers in `cell_paint.cpp` leave it at its default, so
+no application can stack two placements. Honouring a depth nothing can
+set is the right half to build first -- the alternative is a setter
+whose value goes nowhere -- but the feature is not reachable until
+something can state one, and what that should be (a property on
+`PixelSurface`, an argument on the drawPixmap funnel, or widget stacking
+order read off the tree) is a design question rather than a wiring gap.
+
+**Found while writing the test, and worth more than the feature.** The
+kitty fixture first used cell-sized images. `AnsiBackend::for_terminal()`
+scales an image by the ratio of the terminal's cell to the font's, and
+the surrounding fixture answers `CSI 16t` with a cell twice the font's
+-- so a cell-sized image is four times the pixels and about four
+kilobytes of base64, and two of them in one `present()` is eight,
+written into a pty nobody reads until `pump()` runs. It passed once and
+timed out on the next run of the same code. **A hung suite rather than a
+failing one**, which is the expensive kind: the run had to be bisected
+against a `FAIL` that was really a deadlock three blocks earlier. The
+images are 2x2 pixels now, because z rides in the control data and the
+payload only has to exist.
 
 ### 8.230 The document-window idiom, broken at both ends (2026-09-18)
 

@@ -2336,6 +2336,90 @@ int suite_backend() {
 							splaced = eout;
 						}
 
+						// design.md section 5.7's z, at the tier that has a
+						// wire field for it. kitty stacks placements itself,
+						// so this tier does not composite -- it states the
+						// depth and the terminal obeys, which makes the
+						// question "do the bytes carry it" rather than "which
+						// pixels won".
+						//
+						// TWO placements at DIFFERENT non-zero depths, and
+						// that is the discriminating part. One placement at
+						// z=7 is satisfied by any code that emits a constant,
+						// by a z leaking from the overlay path -- which has
+						// always had one -- or by the value being read from
+						// the wrong placement; with 7 and 3 both required,
+						// each placement's own field is the only thing that
+						// produces both.
+						//
+						// Distinct pixmaps, because the key is the cacheKey
+						// and two placements sharing one are one upload: the
+						// second would be a re-place, and the two commands
+						// this exercises -- a=T on first sight and a=p after
+						// -- would then not both be covered. Each is small
+						// and the frame is drained immediately after, for the
+						// reason the block above records: the pty buffer is
+						// finite and a blocked write inside present() is a
+						// hung suite rather than a failing one.
+						QByteArray zplaced;
+						{
+							qputenv("QTTY_GRAPHICS", "kitty");
+							answer_cell(icw * 2, ich * 2);
+							AnsiBackend kz;
+							Recorder kz_rec;
+							kz.set_event_sink(&kz_rec);
+							(void)kz.capabilities();
+							while (::read(master, drain, sizeof(drain)) > 0) { }
+							CellBuffer zframe(6, 3);
+							// 2x2 PIXELS, which is nothing like a cell and is
+							// deliberate. z rides in the control data and not
+							// in the payload, so the picture only has to
+							// exist -- and the payload is what nearly hung
+							// this suite. for_terminal() scales an image by
+							// the ratio of the terminal's cell to the font's,
+							// and answer_cell() above makes that ratio two,
+							// so a cell-sized image is four times the pixels
+							// and about four kilobytes of base64. Two of them
+							// in one present() is eight, written into a pty
+							// nobody is reading until pump() runs, and a pty
+							// buffer is smaller than that: the write blocks
+							// inside present() for ever, which is a HUNG
+							// suite rather than a failing one. Measured --
+							// this block was cell-sized first, passed once,
+							// and timed out on the next run of the same code.
+							QImage deep_img(2, 2, QImage::Format_ARGB32);
+							deep_img.fill(QColor(10, 200, 10));
+							QImage shallow_img(2, 2, QImage::Format_ARGB32);
+							shallow_img.fill(QColor(200, 10, 200));
+							CellImage deep, shallow;
+							deep.pixmap = QPixmap::fromImage(deep_img);
+							deep.key = quint64(deep.pixmap.cacheKey());
+							deep.cell_rect = QRect(0, 0, 1, 1);
+							deep.z = 7;
+							shallow.pixmap = QPixmap::fromImage(shallow_img);
+							shallow.key = quint64(shallow.pixmap.cacheKey());
+							shallow.cell_rect = QRect(2, 1, 1, 1);
+							shallow.z = 3;
+							zframe.images.append(deep);
+							zframe.images.append(shallow);
+							eout.clear();
+							kz.present(zframe, QRegion());
+							pump();
+							// A SECOND frame, identical, so the re-place
+							// command is exercised as well as the upload.
+							// The first sighting of an image goes out as
+							// a=T, which is transmit AND display and is the
+							// only command emitted for an unclipped
+							// placement -- so a z passed to kitty_place()
+							// alone would be missing from exactly the frame
+							// that first shows a picture, and present on
+							// every frame after it. A check reading one
+							// frame cannot tell those apart.
+							kz.present(zframe, QRegion());
+							pump();
+							zplaced = eout;
+						}
+
 						// The probe window is overridable now, and the check
 						// is a LOWER bound on purpose. An upper bound is a
 						// wall-clock assertion on a machine other people are
@@ -2456,6 +2540,27 @@ int suite_backend() {
 						      + ";" + QByteArray::number(ich * 2)),
 						      "and a sixel placement says the converted size in"
 						      " its raster attributes");
+						CHECK(zplaced.contains(",z=7") && zplaced.contains(",z=3"),
+						      "each kitty placement states its own z on the wire");
+						// Counted, not merely found. graphics.cpp emits `,z=`
+						// only for a non-zero z, so an unstacked placement is
+						// the same ~30 bytes it always was -- and the
+						// transmit-and-display command and the re-place that
+						// follows it must BOTH carry the depth, which is two
+						// occurrences of each value across the two frames.
+						// `contains` alone is satisfied by one of the two,
+						// which is the half-wired case this exists to catch.
+						CHECK(zplaced.count(",z=7") == 2 && zplaced.count(",z=3") == 2,
+						      "on the upload that displays it and on the re-place");
+						// The companion, and the reason the emission stays
+						// conditional: the placement captured above carries
+						// no z, so it says nothing about depth at all rather
+						// than saying zero. Without this a `,z=0` on every
+						// placement in every frame would pass everything
+						// above it.
+						CHECK(!kplaced.contains(",z="),
+						      "while a placement at the default depth says"
+						      " nothing about z");
 						printf("info: a 600 ms probe window waited %lld ms\n",
 						       static_cast<long long>(waited));
 						CHECK(waited >= 400,

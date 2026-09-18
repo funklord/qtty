@@ -1180,12 +1180,28 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 				// what the source rectangle indexes, so they convert together
 				// or the crop selects the wrong part.
 				const QRect src = for_terminal(cp.source);
+				// The placement's own z reaches the terminal, so kitty
+				// stacks these rather than this tier depending on the order
+				// the bytes happen to go out in. graphics.cpp emits `,z=`
+				// only when z is non-zero, so an ordinary placement is the
+				// same ~30 bytes it was before this.
+				//
+				// encode_kitty_image() takes the z as well, and that is not
+				// belt and braces. It sends `a=T`, which is transmit AND
+				// display -- so on the first sighting of an image that is
+				// wholly on screen it is the only command emitted, and no
+				// kitty_place() follows it to carry the z. Passing z to the
+				// two place calls alone would have left the commonest case
+				// of all, a fresh unclipped picture, stacked at 0 while
+				// every re-place of it afterwards carried the right value:
+				// a placement that changes depth the second time it is
+				// drawn, which is worse than one that never had a z.
 				if (!uploaded_.contains(ci.key)) {
 					uploaded_.insert(ci.key);
-					out += encode_kitty_image(id, for_terminal(img));
-					if (!whole) out += kitty_place(id, 0, src);
+					out += encode_kitty_image(id, for_terminal(img), ci.z);
+					if (!whole) out += kitty_place(id, ci.z, src);
 				} else {
-					out += kitty_place(id, 0, whole ? QRect() : src);
+					out += kitty_place(id, ci.z, whole ? QRect() : src);
 				}
 			}
 		} else if (mode_ == Capabilities::Sixel) {

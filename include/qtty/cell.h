@@ -32,13 +32,41 @@ struct CellImage {
 	quint64 key = 0;
 	QRect   cell_rect;       // anchor + span, in cells
 	QPixmap pixmap;
+	// Stacking among placements (design.md section 5.7, which specifies this
+	// field and does not mention `pixmap` -- the struct had diverged from the
+	// document in both directions, and this is the half that was dropped).
+	// Higher is nearer the viewer; equal z keeps the order the painter
+	// produced them in, which is what makes the default of 0 mean "say
+	// nothing about stacking" rather than "sit at the bottom".
+	//
+	// LAST in the struct deliberately. Both producers in cell_paint.cpp build
+	// a placement by aggregate initialisation naming three members, so a
+	// field inserted before `pixmap` would either refuse to compile or --
+	// had the types happened to line up -- silently take the pixmap's slot.
+	// design.md lists z before a pixmap it does not have; the order here is
+	// the tree's, and the difference costs nothing because nothing reads
+	// these by position.
+	int     z = 0;
 
 	// The pixmap is deliberately NOT compared, and this is not an omission:
 	// `key` is its cacheKey, so two placements have equal keys exactly when
 	// they carry the same pixels. Comparing the key IS comparing the image,
 	// at the cost of a quint64 rather than of a per-frame pixel walk.
+	//
+	// `z` IS compared, and omitting it is the trap this field walks into.
+	// The frame loop decides whether a frame is worth sending with
+	// `frame.images != prev_->images` (compositor.cpp), so a frame in which
+	// only a z changed -- two pictures swapping which is on top, nothing else
+	// moving -- would compare EQUAL to its predecessor, the cells under them
+	// diff to nothing, and the reorder would never be presented. The stacking
+	// would then be right in the buffer and wrong on the screen with both
+	// halves innocent: the compositor composites what it was given, and
+	// present() is correct about not writing a frame nobody handed it. That
+	// is the same shape as comparing placements by COUNT, which this gate was
+	// already fixed once for, arriving by a second route -- and one line here
+	// is the whole of what closes it.
 	bool operator==(const CellImage &o) const {
-		return key == o.key && cell_rect == o.cell_rect;
+		return key == o.key && cell_rect == o.cell_rect && z == o.z;
 	}
 	bool operator!=(const CellImage &o) const { return !(*this == o); }
 };
