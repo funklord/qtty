@@ -393,26 +393,65 @@ int suite_render(bool record) {
 			const QStringList line =
 			    QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
 			const int at_attrs = line.indexOf(QStringLiteral("--- attrs ---"));
+			// The blink plane sits between them (8.238), so the attribute
+			// plane now ends at ITS header rather than at the colours. Read
+			// out of the file like everything else here: measuring the
+			// attribute plane to the colours header would silently count
+			// the blink plane as attribute rows, and the count would still
+			// be a number.
+			const int at_blink = line.indexOf(QStringLiteral("--- blink ---"));
 			const int at_cols = line.indexOf(QStringLiteral("--- colours ---"));
-			QString used, defined;
-			for (const QString &l : line)
+			// A plane with nothing in it is one "(none)" line rather than
+			// one line per row, so its body is not a row of symbols and
+			// must not be read as one -- "(none)" would otherwise report
+			// six undefined characters.
+			const auto collapsed = [&](int at) {
+				return at + 1 < line.size()
+				    && line.at(at + 1) == QStringLiteral("(none)");
+			};
+			const bool blink_none = collapsed(at_blink);
+			QString used, defined, blink_used, blink_defined;
+			for (const QString &l : line) {
 				if (l.startsWith(QStringLiteral("attrs:")))
 					for (const QString &e :
 					     l.mid(6).split(QStringLiteral(",")))
 						if (!e.trimmed().isEmpty())
 							defined += e.trimmed().at(0);
-			for (int i = at_attrs + 1; i > 0 && i < at_cols; ++i)
+				if (l.startsWith(QStringLiteral("blink:")))
+					for (const QString &e :
+					     l.mid(6).split(QStringLiteral(",")))
+						if (!e.trimmed().isEmpty())
+							blink_defined += e.trimmed().at(0);
+			}
+			for (int i = at_attrs + 1; i > 0 && i < at_blink; ++i)
 				for (const QChar c : line.at(i))
 					if (c != QLatin1Char(' ') && !used.contains(c)) used += c;
+			if (!blink_none)
+				for (int i = at_blink + 1; i > 0 && i < at_cols; ++i)
+					for (const QChar c : line.at(i))
+						if (c != QLatin1Char(' ') && !blink_used.contains(c))
+							blink_used += c;
 			QString undefined;
 			for (const QChar c : used)
 				if (!defined.contains(c)) undefined += c;
+			for (const QChar c : blink_used)
+				if (!blink_defined.contains(c)) undefined += c;
 
-			printf("info: %s has %d glyph row(s), %d attr row(s), plane uses"
-			       " [%s], legend defines [%s]\n", fx.name, at_attrs,
-			       at_cols - at_attrs - 1, qPrintable(used),
-			       qPrintable(defined));
-			if (at_attrs == fx.rows && at_cols - at_attrs - 1 == fx.rows)
+			printf("info: %s has %d glyph row(s), %d attr row(s), %d blink"
+			       " row(s), planes use [%s][%s], legends define [%s][%s]\n",
+			       fx.name, at_attrs, at_blink - at_attrs - 1,
+			       at_cols - at_blink - 1, qPrintable(used),
+			       qPrintable(blink_used), qPrintable(defined),
+			       qPrintable(blink_defined));
+			// The blink plane is one row per glyph row like the others, or
+			// the single collapsed line. Asserted rather than skipped: a
+			// plane that came up short under a wide cluster is exactly the
+			// failure the attribute plane's own count exists to catch, and
+			// a new plane inherits the hazard rather than being exempt from
+			// it.
+			const int blink_rows = at_cols - at_blink - 1;
+			if (at_attrs == fx.rows && at_blink - at_attrs - 1 == fx.rows
+			    && blink_rows == (blink_none ? 1 : fx.rows))
 				printf("PASS: %s carries one attribute row per glyph row, "
 				       "both at the height the call asked for\n", fx.name);
 			else {
@@ -428,11 +467,11 @@ int suite_render(bool record) {
 			// and a verdict that does not say which one is a verdict
 			// whose reader has to count lines to find out.
 			if (undefined.isEmpty())
-				printf("PASS: and every symbol %s's attribute plane uses is "
-				       "named in its legend\n", fx.name);
+				printf("PASS: and every symbol %s's attribute and blink planes "
+				       "use is named in its legend\n", fx.name);
 			else {
-				printf("FAIL: and every symbol %s's attribute plane uses is "
-				       "named in its legend\n"
+				printf("FAIL: and every symbol %s's attribute and blink planes "
+				       "use is named in its legend\n"
 				       "      condition: %s defines no [%s]\n",
 				       fx.name, fx.name, qPrintable(undefined));
 				++r;
@@ -2726,6 +2765,127 @@ int suite_render(bool record) {
 		QCoreApplication::processEvents();
 		Qtty::set_keyboard_conventions(had_conv);
 		Qtty::GridGuard::reset();
+	}
+
+	// ---- the seventh attribute, from the widget that asked for it (8.238) -
+	//
+	// `qtty.blink` is a dynamic property rather than anything read off a
+	// QFont, because SGR 5 has no QFont property, no QTextCharFormat field
+	// and no palette role to read. What that buys is what set_priority()
+	// buys: nothing in a GUI build reads it, so the same application source
+	// runs both ways, and it can be set from a .ui file by a program that
+	// does not link qtty.
+	//
+	// THE CONTROL IS THE POINT. A pass that only shows a marked widget
+	// blinking is equally consistent with everything blinking, which is what
+	// a rectangle pass gets wrong first -- so the unmarked widget is
+	// asserted to carry no blink at all, and the two-label case below asks
+	// the question the single-widget case cannot: does the attribute land on
+	// the widget that asked, or on the frame.
+	{
+		const auto measure = [&](bool set, bool value, int &blink,
+		                         int &glyphs) {
+			QLabel lab(QStringLiteral("alert"));
+			lab.setAttribute(Qt::WA_DontShowOnScreen);
+			if (set) lab.setProperty("qtty.blink", value);
+			lab.resize(GridMetrics::cells(20, 3));
+			lab.show();
+			QCoreApplication::processEvents();
+			Qtty::CellBuffer b(20, 3);
+			Qtty::render_once(lab, b);
+			blink = 0;
+			glyphs = 0;
+			for (int y = 0; y < b.rows(); ++y)
+				for (int x = 0; x < b.cols(); ++x) {
+					const Qtty::Cell &c = b.at(x, y);
+					if (c.ch != QStringLiteral(" ")) ++glyphs;
+					if (c.attrs & Qtty::Attr::Blink) ++blink;
+				}
+		};
+
+		int off_blink = 0, off_glyphs = 0;
+		int on_blink = 0, on_glyphs = 0;
+		int no_blink = 0, no_glyphs = 0;
+		measure(false, false, off_blink, off_glyphs);
+		measure(true, true, on_blink, on_glyphs);
+		measure(true, false, no_blink, no_glyphs);
+		printf("info: label without the property: %d glyph cell(s), %d"
+		       " blinking; with it: %d and %d; with it false: %d and %d\n",
+		       off_glyphs, off_blink, on_glyphs, on_blink, no_glyphs,
+		       no_blink);
+
+		if (off_glyphs > 0 && off_blink == 0)
+			printf("PASS: a widget that was never given qtty.blink draws"
+			       " text and none of it carries the attribute\n");
+		else {
+			printf("FAIL: a widget that was never given qtty.blink draws"
+			       " text and none of it carries the attribute\n");
+			++r;
+		}
+		// Every glyph and no blank, which is stronger than "some cell
+		// blinks" and is the rule cell_geometry.h states: a blank cell has
+		// nothing to blink, and marking the whole rectangle would bury the
+		// text in the snapshot plane under a wall of 'b'.
+		if (on_blink > 0 && on_blink == on_glyphs)
+			printf("PASS: and setting qtty.blink puts the attribute on every"
+			       " glyph that widget drew, and on no blank cell\n");
+		else {
+			printf("FAIL: and setting qtty.blink puts the attribute on every"
+			       " glyph that widget drew, and on no blank cell\n");
+			++r;
+		}
+		if (no_blink == 0 && no_glyphs == off_glyphs)
+			printf("PASS: and qtty.blink set to false is the same widget as"
+			       " one that never carried it\n");
+		else {
+			printf("FAIL: and qtty.blink set to false is the same widget as"
+			       " one that never carried it\n");
+			++r;
+		}
+	}
+	{
+		// Two labels in one window, one marked. The single-widget case
+		// above cannot tell "the marked widget blinks" from "the window
+		// blinks", because there the two are the same rectangle.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *column = new QVBoxLayout(&host);
+		auto *quiet = new QLabel(QStringLiteral("quiet"), &host);
+		auto *loud = new QLabel(QStringLiteral("loud"), &host);
+		column->addWidget(quiet);
+		column->addWidget(loud);
+		loud->setProperty("qtty.blink", true);
+		host.resize(GridMetrics::cells(24, 8));
+		host.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer b(24, 8);
+		Qtty::render_once(host, b);
+
+		const QStringList rows = b.to_text().split(QLatin1Char('\n'));
+		int at_quiet = -1, at_loud = -1;
+		for (int i = 0; i < rows.size(); ++i) {
+			if (rows.at(i).contains(QStringLiteral("quiet"))) at_quiet = i;
+			if (rows.at(i).contains(QStringLiteral("loud"))) at_loud = i;
+		}
+		const auto blink_in = [&](int row) {
+			int n = 0;
+			if (row < 0 || row >= b.rows()) return -1;
+			for (int x = 0; x < b.cols(); ++x)
+				if (b.at(x, row).attrs & Qtty::Attr::Blink) ++n;
+			return n;
+		};
+		printf("info: quiet on row %d with %d blinking cell(s), loud on row"
+		       " %d with %d\n", at_quiet, blink_in(at_quiet), at_loud,
+		       blink_in(at_loud));
+		if (at_quiet >= 0 && at_loud >= 0 && at_quiet != at_loud
+		    && blink_in(at_loud) > 0 && blink_in(at_quiet) == 0)
+			printf("PASS: the attribute lands on the label that asked for it"
+			       " and not on its unmarked sibling in the same window\n");
+		else {
+			printf("FAIL: the attribute lands on the label that asked for it"
+			       " and not on its unmarked sibling in the same window\n");
+			++r;
+		}
 	}
 
 	return r;

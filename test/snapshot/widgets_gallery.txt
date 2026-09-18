@@ -33,8 +33,11 @@
 
 
 
+--- blink ---
+(none)
 --- colours ---
 (none)
 --- legend ---
 . fg=default bg=default
 attrs: . none, g reverse
+blink: . none

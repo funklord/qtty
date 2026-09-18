@@ -9,6 +9,7 @@
 #include "qtty/runtime.h"
 #include "qtty/theme.h"
 #include "../backend/ansi/ansi_backend.h"
+#include "../cell_geometry.h"
 #include <QtWidgets>
 #include <cstdlib>
 #include <unistd.h>
@@ -808,6 +809,10 @@ void render_once(QWidget &win, CellBuffer &buf, QVector<CellImage> *placements) 
 	win.render(&p, QPoint(), QRegion(),
 	           QWidget::RenderFlags(QWidget::DrawWindowBackground | QWidget::DrawChildren));
 	p.end();
+	// After the painter is closed, for the reason cell_geometry.h gives: a
+	// widget's own background fill writes whole Cells, so the attribute has
+	// to be laid on top of the frame rather than under it.
+	apply_blink(win, buf, dev.origin);
 	buf.images = dev.placements;
 	if (placements) *placements = dev.placements;
 }

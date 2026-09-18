@@ -27,8 +27,11 @@
 .............................1111
 
 
+--- blink ---
+(none)
 --- colours ---
 (none)
 --- legend ---
 . fg=default bg=default
 attrs: . none, 1 bold
+blink: . none

@@ -218,19 +218,50 @@ int CellBuffer::diff_cells(const CellBuffer &prev) const {
 
 namespace {
 
-// One printable character per attribute mask. Attrs is six flags, so 64
-// combinations, and a plane that showed only the first set flag would go
-// green when a second one stopped being drawn. The whole mask is encoded.
+// One printable character per attribute mask. The low SIX flags live here,
+// so 64 combinations, and a plane that showed only the first set flag would
+// go green when a second one stopped being drawn. The whole of those six is
+// encoded.
 //
 // '.' for none, so the common case reads as background and a set attribute
 // stands out. The rest are digits then letters, which keeps a plane
 // diffable and greppable -- a fixture is read by people.
+//
+// SIX and not seven, with the seventh on a plane of its own below. That
+// split is forced rather than preferred. One character per cell is what
+// makes the three planes line up in columns, which is the one thing this
+// format promises; and an injective map from the 127 non-empty masks of
+// seven flags onto single characters DOES NOT EXIST in printable ASCII,
+// which has 94 non-space characters and 93 once '.' is spent on the empty
+// mask. The two ways to keep one plane were a wider alphabet -- accented
+// letters, in an artefact whose stated virtue is that people read and grep
+// it -- or letting two masks share a character, which is precisely the lie
+// this encoding exists to prevent.
 QChar attr_char(Attrs a) {
 	const int mask = int(a) & 0x3f;
 	if (mask == 0) return QLatin1Char('.');
 	static const char *const table =
 	    "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+=";
 	return QLatin1Char(table[mask]);
+}
+
+// The seventh flag, on its own plane, one character per cell so its columns
+// line up with the other three.
+//
+// '.' and 'b' rather than a second base-64 digit: with a single flag up here
+// a digit would print '1', and '1' one plane above means Bold. A reader
+// comparing two planes column by column would meet one character meaning two
+// things, which is the cost the separate plane was supposed to buy off.
+//
+// An EIGHTH attribute does not extend this by adding a third plane. It needs
+// a decision here, and the honest one is likely to make this a real digit
+// plane carrying bits 6 and up, with the legend saying so. Whoever arrives
+// with one should know what this plane is for: `& 0x3f` used to drop Blink
+// on the floor, and an attribute a snapshot cannot show agrees with every
+// later run of every fixture for ever -- there is no failing test at the end
+// of that, only a plane that quietly stopped describing the frame.
+QChar blink_char(Attrs a) {
+	return (a & Attr::Blink) ? QLatin1Char('b') : QLatin1Char('.');
 }
 
 QString attr_names(Attrs a) {
@@ -241,6 +272,11 @@ QString attr_names(Attrs a) {
 	if (a & Attr::Underline) on << QStringLiteral("underline");
 	if (a & Attr::Reverse)   on << QStringLiteral("reverse");
 	if (a & Attr::Strike)    on << QStringLiteral("strike");
+	// Last, in the enum's bit order like the six above it, rather than in
+	// the reading order design.md section 5.2 uses. The list is generated
+	// per mask and read beside the mask's own character, so bit order is
+	// what lets a reader check one against the other.
+	if (a & Attr::Blink)     on << QStringLiteral("blink");
 	return on.join(QLatin1Char('+'));
 }
 
@@ -290,9 +326,9 @@ QString CellBuffer::to_snapshot() const {
 		return ch;
 	};
 
-	QString glyphs, attrs, colours;
+	QString glyphs, attrs, blinks, colours;
 	for (int y = 0; y < r_; ++y) {
-		QString g, a, k;
+		QString g, a, bl, k;
 		for (int x = 0; x < c_; ++x) {
 			const Cell &c = d_[y * c_ + x];
 			// The glyph plane skips a continuation cell, because the wide
@@ -304,6 +340,7 @@ QString CellBuffer::to_snapshot() const {
 			// number of display columns wide.
 			if (c.width != 0) g += c.ch;
 			a += attr_char(c.attrs);
+			bl += blink_char(c.attrs);
 			k += letter_for(c);
 		}
 		// Trailing default cells carry nothing and only make a diff noisier.
@@ -311,9 +348,11 @@ QString CellBuffer::to_snapshot() const {
 		// readable straight down.
 		while (g.endsWith(QLatin1Char(' '))) g.chop(1);
 		while (a.endsWith(QLatin1Char('.'))) a.chop(1);
+		while (bl.endsWith(QLatin1Char('.'))) bl.chop(1);
 		while (k.endsWith(QLatin1Char('.'))) k.chop(1);
 		glyphs  += g + QLatin1Char('\n');
 		attrs   += a + QLatin1Char('\n');
+		blinks  += bl + QLatin1Char('\n');
 		colours += k + QLatin1Char('\n');
 	}
 
@@ -333,6 +372,16 @@ QString CellBuffer::to_snapshot() const {
 
 	QString out = glyphs;
 	out += plane(QStringLiteral("attrs"), attrs, QLatin1Char('.'));
+	// Beside the attribute plane it completes, and before the colours, so a
+	// reader meeting an unfamiliar character in one of them finds the other
+	// half of the mask in the next block rather than past the colours.
+	//
+	// Emitted always, collapsing to "(none)" in the overwhelming majority of
+	// frames, rather than appearing only when something blinks. An optional
+	// plane would make "no blink here" and "recorded before this plane
+	// existed" the same two bytes of absence, which is the shape of every
+	// defect in section 8 worth having.
+	out += plane(QStringLiteral("blink"), blinks, QLatin1Char('.'));
 	out += plane(QStringLiteral("colours"), colours, QLatin1Char('.'));
 	out += QStringLiteral("--- legend ---\n");
 	// Named in the order the letters were handed out, so the legend reads
@@ -354,6 +403,23 @@ QString CellBuffer::to_snapshot() const {
 		if (attrs.contains(attr_char(a)))
 			out += QStringLiteral(", %1 %2").arg(attr_char(a)).arg(attr_names(a));
 	}
+	out += QLatin1Char('\n');
+	// Its own line, because its plane is its own. Named even though the
+	// plane has one value, so that a fixture carrying a blink says the word
+	// somewhere a reader and a grep can both find it -- the attribute is
+	// invisible in the glyph plane by definition, which is how it went
+	// missing in the first place.
+	out += QStringLiteral("blink: . none");
+	// The NAME comes from attr_names() like every other attribute's, rather
+	// than being written out here. A literal "blink" beside the one function
+	// whose job is to spell attributes is a second copy of the same fact,
+	// and the copy cannot be reached by anything that checks the first --
+	// which is not hypothetical: the first version of this line did carry
+	// the literal, and it made attr_names()'s own blink row dead code. The
+	// sabotage entry that deletes that row applied cleanly and reddened
+	// nothing, because nothing was calling it.
+	if (blinks.contains(QLatin1Char('b')))
+		out += QStringLiteral(", b %1").arg(attr_names(Attrs(Attr::Blink)));
 	out += QLatin1Char('\n');
 	return out;
 }

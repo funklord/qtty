@@ -443,21 +443,99 @@ int suite_cells() {
 			{ Attr::Underline, "underline" },
 			{ Attr::Reverse,   "reverse"   },
 			{ Attr::Strike,    "strike"    },
+			// The seventh (8.238), in the same table for the same reason
+			// the SGR one in suite_theme.cpp gives: the table is the
+			// population the count below asserts over.
+			{ Attr::Blink,     "blink"     },
 		};
+		// A DIFFERENTIAL against the same cell without the attribute,
+		// rather than `contains(name)`. The plain form was vacuous for the
+		// seventh: the legend carries a "blink:" line in every snapshot
+		// whether or not anything blinks, so a snapshot with the name
+		// removed from attr_names() still contained the word and the check
+		// passed against broken code. The sabotage harness found that --
+		// entry "a snapshot legend that cannot spell blink" applied cleanly
+		// and reddened nothing -- which is exactly what that target is for,
+		// and it is the second time in this one change that a check was
+		// satisfied by the plane's own header rather than by its contents.
+		//
+		// Counting rather than testing presence is what makes one predicate
+		// work for all seven: an attribute's name may legitimately appear in
+		// a snapshot that does not carry it, but it appears MORE OFTEN in
+		// one that does.
 		QStringList missing;
 		for (const auto &e : names) {
-			CellBuffer one(2, 1);
+			CellBuffer one(2, 1), bare(2, 1);
 			one.text(0, 0, QStringLiteral("x"), Color(), Color(), Attrs(e.a));
-			if (!one.to_snapshot().contains(QLatin1String(e.name)))
-				missing << QLatin1String(e.name);
+			bare.text(0, 0, QStringLiteral("x"), Color(), Color(), Attrs());
+			const QString name = QLatin1String(e.name);
+			if (one.to_snapshot().count(name) <= bare.to_snapshot().count(name))
+				missing << name;
 		}
 		if (!missing.isEmpty())
 			printf("info: attribute names a snapshot never spells: %s\n",
 			       qPrintable(missing.join(QStringLiteral(", "))));
-		CHECK(missing.isEmpty() && sizeof(names) / sizeof(names[0]) == 6,
-		      "a snapshot spells each of the six attributes by name, so a "
+		CHECK(missing.isEmpty() && sizeof(names) / sizeof(names[0]) == 7,
+		      "a snapshot spells each of the seven attributes by name, so a "
 		      "fixture recording one is comparing against a word somebody "
 		      "has read");
+	}
+
+	// THE MASK THAT WOULD HAVE SWALLOWED THE SEVENTH ATTRIBUTE.
+	//
+	// attr_char() read `int(a) & 0x3f` against a 64-entry table, which is
+	// exactly right for six flags and silently drops a seventh. Nothing
+	// would have overrun and nothing would have failed: a blinking cell
+	// would have printed the character for its other six attributes, and
+	// since fixtures are compared against THEMSELVES the missing attribute
+	// would have agreed with every later run for ever.
+	//
+	// This is deliberately a separate question from whether the attribute
+	// reaches the wire. Against a half-fix -- the enum value added, the SGR
+	// row added, the mask left at 0x3f -- suite_theme's check PASSES and
+	// this one fails, and that split is the whole reason it is worth
+	// writing.
+	//
+	// The difference shows in the blink PLANE rather than in the attribute
+	// character, and that is the encoding rather than a weaker assertion.
+	// Seven flags need 127 distinct characters and printable ASCII has 94,
+	// so a single character cannot separate all seven; cell_buffer.cpp
+	// carries the reasoning. What must hold is that the recorded artefact
+	// tells the two cells apart, and it is asserted here on the plane that
+	// does it as well as on the whole snapshot.
+	{
+		const Attrs six = Attr::Bold | Attr::Dim | Attr::Italic
+		                | Attr::Underline | Attr::Reverse | Attr::Strike;
+		const Attrs seven = six | Attr::Blink;
+		const auto shot = [](Attrs a) {
+			CellBuffer b(2, 1);
+			b.text(0, 0, QStringLiteral("x"), Color(), Color(), a);
+			return b.to_snapshot();
+		};
+		const auto plane = [](const QString &snap, const QString &header) {
+			const QStringList l = snap.split(QLatin1Char('\n'));
+			const int at = l.indexOf(header);
+			return at >= 0 && at + 1 < l.size() ? l.at(at + 1) : QString();
+		};
+		const QString s6 = shot(six), s7 = shot(seven);
+		const QString h = QStringLiteral("--- blink ---");
+
+		// The LEGEND ENTRY, not the word. The legend carries a "blink:"
+		// line in every snapshot whether or not anything blinks, so
+		// asserting the bare word would pass against a blink plane that had
+		// been emptied -- a check whose passing condition includes the
+		// failure it was written for.
+		CHECK(s7.contains(QStringLiteral(", b blink"))
+		      && !s6.contains(QStringLiteral(", b blink")),
+		      "a snapshot of a cell carrying all seven attributes names "
+		      "blink in its legend, and one without it does not");
+		CHECK(plane(s7, h) == QStringLiteral("b")
+		      && plane(s6, h) == QStringLiteral("(none)"),
+		      "and the blink plane separates a seven-attribute cell from a "
+		      "six-attribute one, which the attribute character cannot");
+		CHECK(s6 != s7,
+		      "so two cells differing only in blink do not record the same "
+		      "snapshot, which is what a masked-off bit would have done");
 	}
 
 	// ---- the colour group Qt actually paints from -------------------------

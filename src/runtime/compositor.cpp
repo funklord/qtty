@@ -10,6 +10,7 @@
 #include "qtty/overlay.h"
 #include "title_keeper.h"
 #include "placement_paint.h"
+#include "../cell_geometry.h"
 #include <QtWidgets>
 #include <algorithm>
 #include <cstdlib>
@@ -754,6 +755,12 @@ void Compositor::compose(CellBuffer &out) {
 		w->render(&p, QPoint(), QRegion(),
 		          QWidget::RenderFlags(QWidget::DrawWindowBackground | QWidget::DrawChildren));
 		p.end();
+		// Inside the lambda rather than after the walk, because the origin
+		// is per-window: every top-level is drawn at its own position and
+		// apply_blink() maps a widget rectangle into the buffer through that
+		// same offset. Done once at the end it would map every secondary
+		// window through the last origin used.
+		apply_blink(*w, out, at);
 	};
 	// section 5.4 step 3: walk QApplication::topLevelWidgets(), rather than
 	// rendering the one window we were handed. The primary window is the base

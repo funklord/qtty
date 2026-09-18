@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-07
 
-1590 checks, 0 failures. `make check` is green and includes
+1597 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -2866,11 +2866,20 @@ gates both -- has four holes that block everything downstream.**
 and `src/core/color.cpp`. Grapheme clusters via `QTextBoundaryFinder`,
 wide-cell lead and continuation with partner clearing in **both**
 directions (the corruption case design.md §5.2 names), and a run-based
-`diff()`. Three gaps:
+`diff()`. Three gaps, one of them since closed:
 
 - Quantisation is **RGB nearest, not CIELAB**, which design.md §6
   requires.
-- `Attr` has no `Blink`, though design.md §5.2 lists it.
+- ~~`Attr` has no `Blink`, though design.md §5.2 lists it.~~ **Done**,
+  and the enum value was the small half -- see 8.238. `Blink` is 0x40,
+  appended rather than placed where §5.2 lists it, because inserting a
+  bit would have renumbered `Reverse` and `Strike` and silently changed
+  what every recorded fixture's attribute plane means. It emits SGR 5,
+  it has a snapshot plane of its own, and a widget asks for it with the
+  `qtty.blink` property. The rasteriser deliberately has no row for it:
+  a still frame cannot express a blink, which is a different kind of
+  gap from `Dim`'s in the same function and is recorded as a limit
+  rather than left open.
 - `include/qtty/cell.h` includes `QPixmap`, so **L2 is not GUI-free.**
   That matters beyond tidiness: `doc/beerssh.md` §1 proposes beerssh link
   or vendor L2 so both ends compute Unicode width from one table, and the
@@ -16369,6 +16378,145 @@ path in the tree, arrived at from one widget. The alternative is what is
 recorded: a limit, pinned by a check in both directions -- lines a row apart
 keep their rows, lines closer than a row share one -- so that the behaviour
 cannot change unnoticed whichever way it is settled.
+
+### 8.238 The seventh attribute, and the mask that would have hidden it (2026-09-18)
+
+design.md §5.2 has always specified seven cell attributes --
+`Bold|Dim|Italic|Underline|Blink|Reverse|Strike` -- and `Attr` defined six.
+§7.1 has recorded the absence for a long time, so this closes a known gap
+rather than reporting a discovery.
+
+**The enum value is the small half.** `Blink = 0x40`, appended rather than
+inserted where the document lists it. Inserting at 0x10 would have
+renumbered `Reverse` and `Strike`, and those two numbers are not private to
+`color.h`: `to_snapshot()` prints the attribute mask as one character per
+cell, so every fixture under `test/snapshot/` would have kept its bytes and
+quietly changed meaning, a reverse-video cell reading as strikethrough with
+nothing failing. A bit appended costs a divergence from the document's
+reading order; a bit inserted costs the artefact that would otherwise catch
+it.
+
+**The mask was the real work, and it is the reason this is not a one-line
+change.** `attr_char()` read
+
+    const int mask = int(a) & 0x3f;
+
+against a 64-entry table, under a comment saying "Attrs is six flags, so 64
+combinations". A seventh bit at 0x40 is masked straight off. Nothing would
+have overrun and nothing would have failed -- a blinking cell would have
+printed the character for its other six attributes. Snapshots are this
+tree's most-cited artefact and they are compared against THEMSELVES, so an
+attribute the plane cannot show agrees with every later run for ever. This
+is 8.54's shape exactly, arriving at the same function by a second route.
+
+**Widening the table was not available, and that is worth recording because
+the obvious fix does not exist.** Seven flags have 127 non-empty masks and
+the encoding gives each one a distinct single character, because a plane
+showing only the first set flag would go green when a second stopped being
+drawn. Printable ASCII has 94 non-space characters, 93 once `.` is spent on
+the empty mask. **There is no injective map, so no widened table can be
+written** -- not a judgement, a count. One character per cell is what makes
+the three planes line up in columns, which is the one thing the format
+promises, so a two-character cell was not available either.
+
+What was left was a wider alphabet -- accented letters, in an artefact whose
+stated virtue is that people read and grep it -- or letting two masks share
+a character, which is the lie the encoding exists to prevent. **So the
+seventh flag has a plane of its own**, `--- blink ---`, one character per
+cell like the others, `.` and `b` rather than a second base-64 digit because
+a digit would print `1` and `1` one plane above means bold. Every existing
+attribute character keeps its meaning, which is why the two committed
+fixtures changed by exactly three lines each and no recorded attribute plane
+moved.
+
+An EIGHTH attribute does not extend this by adding a third plane; it needs a
+decision, and the code says so where somebody will meet it.
+
+**The producer is a dynamic property**, `qtty.blink`, read in a pass over
+widget geometry after the frame is painted. No `QFont` carries blink, there
+is no `QTextCharFormat` field and no palette role, so unlike bold and italic
+there is nothing to read off a font; and unlike `Reverse` it cannot be
+synthesised from state, because nothing about a widget's state means
+"alert". Only the application knows. The property is `set_priority()`'s
+argument in `grid.h` reused: inert in a GUI build, no branch on target, and
+settable from a `.ui` file by a program that does not link qtty.
+
+**It is a geometry pass rather than a hook in the paint engine because
+there is no hook to use.** Both frame paths render a whole window in one
+`QWidget::render(DrawChildren)` call through one `QPainter`, and
+`CellPaintEngine` is never told which widget it is drawing for. There are
+also two text paths into the buffer -- `drawTextItem()` and GridStyle
+writing straight in with `buffer().text()` -- and marking cells once,
+afterwards, covers both in one place instead of the same rule written twice.
+It has to run after the paint rather than before: a widget fills its own
+background early and a fill writes whole `Cell`s, so a mark laid down first
+would be erased by the widget that asked for it.
+
+**The rasteriser deliberately has no row for it.** `graphics.cpp` renders
+one still frame for a terminal with a picture protocol, and a blink is a
+property of a sequence of frames -- there is no image of blinking text,
+only one of it lit and one of it dark, and choosing either silently answers
+a question the cell did not ask. So a blinking cell rasterises as ordinary
+text and the attribute is dropped there and nowhere else: the SGR path still
+emits it, so a terminal doing its own text keeps the blink and only the
+pixels lose it. **This is a different kind of gap from `Dim`'s in the same
+function** (8.50, 8.59): Dim has a mechanism nobody has chosen a rule for,
+and Blink has no mechanism a still frame could have.
+
+**The checks split the way the defect splits, which is the point of writing
+them.** Against a half-fix -- the enum value added, the SGR row added, the
+mask left alone -- the wire check passes and the snapshot check fails, so
+they are separate checks over separate artefacts rather than one check that
+would have been satisfied by either.
+
+Three of them had to be repaired before they were worth anything, and the
+third was caught by the harness rather than by reading:
+
+- The first version asserted that a seven-attribute snapshot **contains the
+  word "blink"**. The legend carries a `blink:` line in every snapshot
+  whether or not anything blinks, so it passed against an emptied plane --
+  a check whose passing condition includes the failure it was written for.
+  It asserts the legend ENTRY, `, b blink`, and its absence from the
+  six-attribute snapshot.
+- The producer check would have passed against a pass that marked
+  everything, since a single widget IS the whole frame. A second case puts
+  two labels in one window and marks one, which is the only arrangement
+  where "the marked widget blinks" and "the window blinks" can disagree.
+- **The third was found by `make sabotage` and was a real defect in the
+  code, not only in the check.** The entry that deletes `blink`'s row from
+  `attr_names()` applied cleanly and reddened nothing. Two faults stacked:
+  the existing name check asked `contains("blink")`, which the `blink:`
+  legend header satisfies in every snapshot -- the SAME vacuous shape as
+  the first item, met twice in one change -- and underneath it the row was
+  **dead code**, because the legend wrote the literal `", b blink"` rather
+  than asking `attr_names()`. A second copy of the one fact that function
+  exists to own, and the copy could not be reached by anything checking
+  the first.
+
+  Both halves are fixed: the legend interpolates `attr_names()`, so the
+  row is live, and the check is a differential -- the name must appear
+  MORE OFTEN in a snapshot carrying the attribute than in one that does
+  not, which is a predicate that works for all seven where `contains`
+  works for six. **Neither half was visible by reading the diff**, and the
+  passing suite said nothing; one target applying a two-word edit is what
+  said it.
+
+**The population assertions in the two attribute tables did the job they
+were put there for.** `suite_theme.cpp` and `suite_cells.cpp` each walk a
+table of attributes and assert its size is 6; both went red on sight, which
+is what made adding the seventh to the tables the natural place for the new
+coverage rather than writing separate checks beside them.
+
+**A ride-along the format change forced.** `suite_render.cpp`'s fixture
+audit measured the attribute plane as everything between `--- attrs ---`
+and `--- colours ---`, which the new plane sits between. Rather than move
+the boundary and leave it there, it now measures to the blink header and
+asserts the blink plane too -- one row per glyph row, or the single
+collapsed line, and every symbol named in its legend. A new plane inherits
+the hazard the old one's count exists to catch rather than being exempt
+from it.
+
+Six sabotage entries, one per defect closed.
 
 ### 8.239 The bell nothing could ring (2026-09-18)
 

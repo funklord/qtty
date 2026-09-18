@@ -102,6 +102,16 @@ enum class Attr : quint8 {
 	Underline = 0x08,
 	Reverse   = 0x10,
 	Strike    = 0x20,
+	// design.md section 5.2 lists Blink BETWEEN Underline and Reverse, and it
+	// is appended here instead. The order in that list is a reading order,
+	// not an encoding: giving Blink 0x10 would renumber Reverse and Strike,
+	// and those two numbers are not private to this header. to_snapshot()
+	// prints the attribute mask as one character per cell, so every recorded
+	// fixture in test/snapshot/ would keep its bytes and silently change
+	// meaning -- a reverse-video cell reading as strikethrough, with nothing
+	// failing. A bit appended costs a document divergence; a bit inserted
+	// costs the artefact that would otherwise catch it.
+	Blink     = 0x40,
 };
 Q_DECLARE_FLAGS(Attrs, Attr)
 Q_DECLARE_OPERATORS_FOR_FLAGS(Attrs)

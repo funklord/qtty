@@ -1599,6 +1599,36 @@ for export, for a document property, for printing elsewhere -- do not
 read it out of the returned `QFont`, because on a terminal there is one
 face and it is the cell's.
 
+**Blink is the one emphasis a `QFont` cannot carry**, so it is asked for
+with a property instead:
+
+    alert->setProperty("qtty.blink", true);
+
+Every glyph that widget draws is then sent with SGR 5. Like
+`qtty.priority` it is inert in a desktop build -- nothing reads it there
+-- so the same source runs both ways, and it can be set from a `.ui` file
+by a program that does not link qtty.
+
+**Use it sparingly, and never as the only thing that carries the
+meaning.** Three reasons, and the last is the one that decides it:
+
+- **A terminal may simply not do it.** Plenty ignore SGR 5 deliberately,
+  and others render it as bright rather than blinking. Nothing reports
+  back, so your application cannot know which it got.
+- **It cannot be rasterised.** On a terminal drawing pictures rather than
+  text -- sixel, iTerm2, the half-block tiers -- a frame is one still
+  image, and there is no image of blinking text. Those tiers show the
+  text unblinking.
+- **Blinking text is an accessibility hazard**, and a genuine one: it is
+  a known trigger for photosensitive seizures, and it is hard to read for
+  anyone who needs longer on a line. A user who has turned it off at the
+  terminal has turned off your only signal.
+
+So mark an alert with a word, a colour or a position, and let blink be
+the thing on top of that -- the same rule as practice 7's about hover.
+If removing the blink would leave the screen saying nothing, it was
+carrying the information rather than emphasising it.
+
 **And call `Qtty::setup()` before you build anything**, which matters for
 one reason rather than the general one. A window of ordinary widgets built
 before that call renders byte-for-byte the same as one built after -- the

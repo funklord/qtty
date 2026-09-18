@@ -135,13 +135,20 @@ int suite_theme() {
 	// -- and `Reverse` is how a selection is drawn.
 	//
 	// The codes are ECMA-48's and are not qtty's to choose: 1 bold, 2 faint,
-	// 3 italic, 4 underline, 7 negative image, 9 crossed out.
+	// 3 italic, 4 underline, 5 slow blink, 7 negative image, 9 crossed out.
 	{
 		const struct { Attr a; const char *code; const char *what; } sgr[] = {
 			{ Attr::Bold,      "\033[1m", "bold"      },
 			{ Attr::Dim,       "\033[2m", "dim"       },
 			{ Attr::Italic,    "\033[3m", "italic"    },
 			{ Attr::Underline, "\033[4m", "underline" },
+			// 5 slow blink, added with the attribute in 8.238. It goes in
+			// THIS table rather than in a check of its own on purpose: the
+			// table is the population, and the two assertions below are
+			// written over it, so a seventh attribute that emitted nothing
+			// reddens them both. A separate check would have left this
+			// table saying six and still passing.
+			{ Attr::Blink,     "\033[5m", "blink"     },
 			{ Attr::Reverse,   "\033[7m", "reverse"   },
 			{ Attr::Strike,    "\033[9m", "strike"    },
 		};
@@ -155,8 +162,8 @@ int suite_theme() {
 		if (!missing.isEmpty())
 			printf("info: attributes with no SGR code on the wire: %s\n",
 			       qPrintable(missing.join(QStringLiteral(", "))));
-		CHECK(missing.isEmpty() && sizeof(sgr) / sizeof(sgr[0]) == 6,
-		      "each of the six attributes emits its own ECMA-48 code, so a "
+		CHECK(missing.isEmpty() && sizeof(sgr) / sizeof(sgr[0]) == 7,
+		      "each of the seven attributes emits its own ECMA-48 code, so a "
 		      "terminal is told about all of them and not only bold");
 
 		// And together, in one cell, which is what a struck-through heading
@@ -171,8 +178,8 @@ int suite_theme() {
 		for (const auto &e : sgr)
 			if (!both.contains(e.code)) absent << QLatin1String(e.what);
 		CHECK(absent.isEmpty(),
-		      "and a cell carrying all six emits all six, rather than the "
-		      "first one that matched");
+		      "and a cell carrying all seven emits all seven, rather than "
+		      "the first one that matched");
 	}
 	// The theme's authored index is what an Ansi16 terminal gets, which is the
 	// whole point of carrying it on the colour.

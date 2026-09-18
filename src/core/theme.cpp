@@ -206,6 +206,18 @@ QByteArray sgr_sequence(const Color &fg, const Color &bg, Attrs attrs,
 	if (attrs & Attr::Dim)       out += "\033[2m";
 	if (attrs & Attr::Italic)    out += "\033[3m";
 	if (attrs & Attr::Underline) out += "\033[4m";
+	// SGR 5, in numeric order with its neighbours rather than in the enum's
+	// bit order -- Blink is 0x40 and sits last in the enum for the reason
+	// color.h records, but an emitted sequence is read by people debugging a
+	// capture and 4-5-7-9 is the order they expect.
+	//
+	// Emitted unconditionally, with no capability test. There is none to
+	// make: SGR 5 has been in every terminal since the VT100, and the
+	// terminals that decline it -- a good many do, deliberately -- decline it
+	// by rendering bright or by ignoring it, never by mis-parsing it. A
+	// probe could not tell those apart from one that honours it anyway,
+	// because nothing reports back what it did with an attribute.
+	if (attrs & Attr::Blink)     out += "\033[5m";
 	if (attrs & Attr::Reverse)   out += "\033[7m";
 	if (attrs & Attr::Strike)    out += "\033[9m";
 	return out;

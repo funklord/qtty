@@ -399,6 +399,24 @@ QRect rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
 				// QFont equivalent and would be a colour operation,
 				// blending the foreground toward the ground. That one is a
 				// policy and is left in 0b.
+				//
+				// Blink is not here either, and unlike Dim it is not a
+				// policy anybody can settle. This function rasterises ONE
+				// still frame for a terminal with a picture protocol --
+				// sixel, iTerm2, the half-block tiers built on it -- and a
+				// blink is a property of a sequence of frames. There is no
+				// image of blinking text; there is an image of it lit and
+				// an image of it dark, and choosing either silently answers
+				// a question the cell did not ask.
+				//
+				// So a blinking cell rasterises as ordinary text and the
+				// attribute is dropped HERE and nowhere else: the SGR path
+				// in theme.cpp emits it, so a terminal doing its own text
+				// keeps the blink, and only the pixels lose it. Recorded
+				// rather than approximated, because an invented rendering
+				// -- brightening, say -- would make a picture tier disagree
+				// with the text tier about what the frame says, with
+				// nothing failing to report it. section 8.238.
 				f.setStrikeOut(c.attrs & Attr::Strike);
 				p.setFont(f);
 				p.setPen(QColor::fromRgb(fg));

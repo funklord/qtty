@@ -479,4 +479,74 @@ private:
 };
 
 
+// ----------------------------------------------------------------- blink
+// design.md section 5.2's seventh cell attribute, applied from the widget
+// that asked for it.
+//
+// THE PROPERTY, and why there is one at all. Bold, italic, underline and
+// strike are read off the QFont, because a QFont carries them; SGR 5 has no
+// QFont property, no QTextCharFormat field and no palette role, so there is
+// nothing to read. Reverse is the precedent for an attribute with no font
+// source and it is synthesised from state -- selection, focus -- which blink
+// is not: nothing about a widget's state means "alert". Only the application
+// knows, so the application says so, and it says so with a dynamic property
+// for the reason set_priority() gives in grid.h: it is a no-op in a GUI
+// build, it needs no branch on target, and it can be set from a .ui file by
+// an application that does not link qtty at all.
+//
+// WHY A PASS OVER GEOMETRY rather than a hook in the paint engine. There is
+// no per-widget hook to use. Both frame paths render a whole window in one
+// QWidget::render(DrawChildren) call through one QPainter, and
+// CellPaintEngine sees text items and rectangles -- it is never told which
+// widget it is drawing for. Worse, there are TWO text paths into the buffer:
+// QPainter text arriving at CellPaintEngine::drawTextItem(), and GridStyle
+// writing straight into the buffer with buffer().text(), which never touches
+// the engine. Marking cells once, afterwards, by the geometry the widget
+// occupies covers both in one place; the alternative was the same rule
+// written twice and left to drift.
+//
+// It also has to be AFTER the paint rather than before. A widget fills its
+// own background early, and a fill writes whole Cells -- a mark laid down
+// first would be erased by the very widget that asked for it.
+//
+// CHILDREN ARE INCLUDED, which is a decision and not an oversight. A
+// widget's rectangle contains its children's, and separating them would mean
+// subtracting child geometry so that a marked container blinked only its own
+// frame and title. That reading is defensible and it is not the useful one:
+// an application marks a panel because the panel is the alert. A label that
+// must not blink goes outside the marked widget, which is where a reader
+// would look for it anyway.
+//
+// ONLY CELLS CARRYING A GLYPH. A blank cell has nothing to blink, and
+// marking the widget's whole rectangle would put the attribute on every
+// space in it -- invisible on a terminal, and a wall of 'b' in the snapshot
+// plane that would bury the text the attribute is actually on. Same
+// direction the contrast counter in theme.cpp takes for the same reason.
+// Continuation cells of a wide cluster are marked with their lead, so a
+// double-width glyph cannot end up blinking down one half.
+inline void apply_blink(QWidget &root, CellBuffer &buf, const QPoint &origin) {
+	QList<QWidget *> all = root.findChildren<QWidget *>();
+	all.prepend(&root);
+	for (QWidget *w : all) {
+		if (w != &root && !w->isVisibleTo(&root)) continue;
+		// isValid() is not consulted separately: an absent property and one
+		// explicitly set to false must be the same widget, which is what
+		// toBool() on an invalid QVariant already gives. A property set to
+		// false is an application turning blink OFF, and the two states it
+		// could mean -- never asked, asked and declined -- have the same
+		// answer.
+		if (!w->property("qtty.blink").toBool()) continue;
+		const QRect cells = cells_of_rect(w->rect(), w, origin);
+		for (int y = cells.top(); y <= cells.bottom(); ++y) {
+			if (y < 0 || y >= buf.rows()) continue;
+			for (int x = cells.left(); x <= cells.right(); ++x) {
+				if (x < 0 || x >= buf.cols()) continue;
+				Cell &c = buf.at(x, y);
+				if (c.ch == QStringLiteral(" ")) continue;
+				c.attrs |= Attr::Blink;
+			}
+		}
+	}
+}
+
 } // namespace Qtty

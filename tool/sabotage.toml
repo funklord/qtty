@@ -3307,3 +3307,52 @@ find = "\t\treturn pe->overwriteMode() ? CursorShape::Block : CursorShape::Bar;"
 into = "\t\treturn CursorShape::Bar;"
 count = 1
 check = "the same editor in overwrite mode asks for a block"
+
+
+[[sabotage]]
+name = "the blink plane cannot see the seventh attribute"
+file = "src/core/cell_buffer.cpp"
+find = "\treturn (a & Attr::Blink) ? QLatin1Char('b') : QLatin1Char('.');"
+into = "\treturn QLatin1Char('.');"
+count = 1
+check = "the blink plane separates a seven-attribute cell from a"
+
+[[sabotage]]
+name = "no SGR code for blink on the wire"
+file = "src/core/theme.cpp"
+find = "\tif (attrs & Attr::Blink)     out += \"\\033[5m\";"
+into = "\tif (false)                   out += \"\\033[5m\";"
+count = 1
+check = "each of the seven attributes emits its own ECMA-48 code"
+
+[[sabotage]]
+name = "a snapshot legend that cannot spell blink"
+file = "src/core/cell_buffer.cpp"
+find = "\tif (a & Attr::Blink)     on << QStringLiteral(\"blink\");"
+into = "\tif (false)               on << QStringLiteral(\"blink\");"
+count = 1
+check = "a snapshot spells each of the seven attributes by name"
+
+[[sabotage]]
+name = "the blink property is never read"
+file = "src/cell_geometry.h"
+find = "\t\tif (!w->property(\"qtty.blink\").toBool()) continue;"
+into = "\t\tif (true) continue;"
+count = 1
+check = "setting qtty.blink puts the attribute on every"
+
+[[sabotage]]
+name = "the blink pass never runs for a rendered frame"
+file = "src/runtime/application.cpp"
+find = "\tapply_blink(win, buf, dev.origin);"
+into = "\t(void)0;"
+count = 1
+check = "the attribute lands on the label that asked for it"
+
+[[sabotage]]
+name = "blink marks blank cells as well as glyphs"
+file = "src/cell_geometry.h"
+find = "\t\t\t\tif (c.ch == QStringLiteral(\" \")) continue;"
+into = "\t\t\t\tif (false) continue;"
+count = 1
+check = "and on no blank cell"
