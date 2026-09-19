@@ -100,6 +100,75 @@ int suite_router() {
 	      "an action asking for WidgetShortcut fires only while its own "
 	      "widget has focus, as the desktop has it");
 
+	// AND THE CONTEXT BESIDE IT, which the guide's table states and no
+	// check held. Qt::WidgetWithChildrenShortcut is implemented twice --
+	// context_applies() for actions and shortcut_context_applies() for
+	// QShortcuts -- and the word appeared nowhere in any suite, so both
+	// copies could have been changed to anything without a check
+	// noticing. Found by auditing the guide's tables: the row says "while
+	// that widget or a descendant has it", and a row in the most-read
+	// file with nothing behind it is one that rots.
+	//
+	// A DESCENDANT is the whole of the difference from the row above, so
+	// the fixture needs one: a container holding the field, with the
+	// action on the CONTAINER and focus on the field inside it. A check
+	// that put focus on the owner itself would pass identically for
+	// WidgetShortcut and prove nothing about this context at all.
+	{
+		auto *box = new QWidget(&win);
+		box->setGeometry(0, 0, GridMetrics::cw() * 10, GridMetrics::ch());
+		auto *inner = new QLineEdit(box);
+		inner->setGeometry(0, 0, GridMetrics::cw() * 8, GridMetrics::ch());
+		box->show();
+		QCoreApplication::processEvents();
+
+		int wide = 0;
+		auto *subtree = new QAction(QStringLiteral("Subtree"), box);
+		subtree->setShortcut(QKeySequence(QStringLiteral("Ctrl+J")));
+		subtree->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+		box->addAction(subtree);
+		QObject::connect(subtree, &QAction::triggered, [&] { ++wide; });
+
+		// The control first, and it is the one that makes this a
+		// discrimination: the same chord with the NARROWER context on the
+		// same owner must NOT fire from the descendant. Without it, an
+		// implementation that treated every widget context as "anywhere
+		// in the window" would pass the positive below.
+		int narrower = 0;
+		auto *own_only = new QAction(QStringLiteral("Owner"), box);
+		own_only->setShortcut(QKeySequence(QStringLiteral("Ctrl+H")));
+		own_only->setShortcutContext(Qt::WidgetShortcut);
+		box->addAction(own_only);
+		QObject::connect(own_only, &QAction::triggered, [&] { ++narrower; });
+
+		inner->setFocus(Qt::OtherFocusReason);
+		set_focus_widget(win.focusWidget());
+		router.on_key({Qt::Key_J, QString(), true, false, false});
+		router.on_key({Qt::Key_H, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		const int from_child = wide, narrow_from_child = narrower;
+
+		// And away from the subtree entirely, which is the other edge: the
+		// context is "or a descendant", not "anywhere".
+		btn->setFocus(Qt::OtherFocusReason);
+		set_focus_widget(win.focusWidget());
+		router.on_key({Qt::Key_J, QString(), true, false, false});
+		QCoreApplication::processEvents();
+
+		CHECK(from_child == 1,
+		      "an action asking for WidgetWithChildrenShortcut fires from a "
+		      "DESCENDANT of its widget, which is what separates it from "
+		      "WidgetShortcut");
+		CHECK(narrow_from_child == 0,
+		      "and the narrower context on the same owner does not, so this "
+		      "tells the two apart rather than testing that shortcuts work");
+		CHECK(wide == 1,
+		      "and it is silent from outside the subtree, the context being "
+		      "\"or a descendant\" rather than \"anywhere in the window\"");
+		box->hide();
+		QCoreApplication::processEvents();
+	}
+
 	// typing reaches the focus widget
 	edit->setFocus(Qt::OtherFocusReason);
 	QCoreApplication::processEvents();
@@ -2074,6 +2143,80 @@ int suite_router() {
 		CHECK(saved == 1 && rivals == 1,
 		      "while from a widget the narrow claim does not cover, the "
 		      "window's own action answers");
+
+		// AND THE SUBTREE CONTEXT, through the OTHER copy of the rule.
+		// This tree states the widget-context rule twice -- once in
+		// context_applies() for actions, once in
+		// shortcut_context_applies() for QShortcuts, which is what the
+		// report asks -- and the comment above the second says a report
+		// built on its own copy would be describing a different program.
+		// The subtree case was checked in neither. A QShortcut is used
+		// here deliberately, because an action would go through the first
+		// copy and leave this one exactly as unwatched as it was.
+		auto *deep = new QWidget(&host);
+		auto *buried = new QLineEdit(deep);
+		deep->show();
+		QCoreApplication::processEvents();
+		auto *subtree = new QShortcut(QKeySequence(QStringLiteral("Ctrl+G")),
+		                              deep);
+		subtree->setContext(Qt::WidgetWithChildrenShortcut);
+		subtree->setObjectName(QStringLiteral("the subtree claim"));
+		auto *elsewhere = new QAction(QStringLiteral("Elsewhere"), &host);
+		elsewhere->setShortcut(QKeySequence(QStringLiteral("Ctrl+G")));
+		elsewhere->setShortcutContext(Qt::WindowShortcut);
+		host.addAction(elsewhere);
+		QCoreApplication::processEvents();
+
+		buried->setFocus();
+		set_focus_widget(buried);
+		QCoreApplication::processEvents();
+		const auto deep_clash = shortcut_conflicts(&host);
+		bool names_subtree = false;
+		for (const auto &c : deep_clash)
+			if (c.first == QKeySequence(QStringLiteral("Ctrl+G")))
+				names_subtree =
+				    c.second.contains(QStringLiteral("the subtree claim"));
+		CHECK(names_subtree,
+		      "a QShortcut scoped to a subtree is reported as answering "
+		      "from a widget INSIDE it, which is the second copy of the "
+		      "widget-context rule and was checked by nothing");
+
+		// The discrimination, and the first version of this check had it
+		// wrong in a way worth keeping. It moved the focus outside the
+		// subtree and expected the claim to drop out of the report -- and
+		// it did not, because THIS REPORT IS NOT ABOUT THE CURRENT FOCUS.
+		// It asks whether any focus a user can reach makes two things
+		// answer, which is what the candidates block below is about. A
+		// claim inside a reachable subtree therefore answers somewhere,
+		// and saying so is correct.
+		//
+		// So the edge has to be a claim that answers NOWHERE. The same
+		// container with the narrower context is exactly that: `deep` is
+		// a plain QWidget with no focus policy, so a WidgetShortcut on it
+		// covers only a widget that can never hold focus, while
+		// WidgetWithChildren on the same object covers the field inside.
+		// One object, one chord, two contexts, opposite answers -- which
+		// is the pair that tells the two apart rather than testing that
+		// the reporter reports.
+		auto *narrow_deep =
+		    new QShortcut(QKeySequence(QStringLiteral("Ctrl+Y")), deep);
+		narrow_deep->setContext(Qt::WidgetShortcut);
+		narrow_deep->setObjectName(QStringLiteral("the owner-only claim"));
+		auto *rival_y = new QAction(QStringLiteral("RivalY"), &host);
+		rival_y->setShortcut(QKeySequence(QStringLiteral("Ctrl+Y")));
+		rival_y->setShortcutContext(Qt::WindowShortcut);
+		host.addAction(rival_y);
+		QCoreApplication::processEvents();
+		bool narrow_named = false;
+		for (const auto &c : shortcut_conflicts(&host))
+			if (c.first == QKeySequence(QStringLiteral("Ctrl+Y")))
+				narrow_named = c.second.contains(
+				    QStringLiteral("the owner-only claim"));
+		CHECK(!narrow_named,
+		      "while the same container claiming with the NARROWER context "
+		      "answers at no reachable focus and is not reported, the "
+		      "container itself taking none");
+
 		host.hide();
 		QCoreApplication::processEvents();
 	}

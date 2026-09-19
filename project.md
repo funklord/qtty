@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-18
 
-1664 checks, 0 failures. `make check` is green and includes
+1669 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 That first line starts with the number and nothing else, and has to:
@@ -16999,6 +16999,62 @@ first use now is too.
 three redden the check they name, and the QDrag one declares
 `expect = "crash"` -- deleting a QDrag that its own source already took
 away does not produce a red line, it takes the suite out at 670 checks.
+
+### 8.252 The guide's tables, audited against the suite (2026-09-19)
+
+8.73 audited the guide's tables once and reported **seventeen rows**. The
+guide has **48**, so that coverage claim had been stale by construction
+for some time -- a present-tense countable claim about the tree's own
+shape, which is the kind `evidence.md` says rots.
+
+**The audit's instrument was a proxy and is worth describing before its
+results.** For each row, count how often the Qt spelling of its key
+appears in any suite. That is correlated with coverage and is not
+coverage: a count says the key is mentioned somewhere, not that the row's
+claim is asserted. What it is good for is **zeros**, which are decisive in
+one direction only. Eight of the thirteen zeros were the probe's own
+artifact -- the introspection rows spell their argument `(scope)`, which
+no fixture contains -- and two more were table headers rather than claims.
+
+**Two rows were left, and one of them was not a gap.** The window-type
+table says a `Qt::ToolTip` top-level does NOT take the keys, while
+`is_popup_layer()` returns true for `ToolTip` and every popup layer is
+appended to the router's popup stack. That looked like a contradiction, so
+it was measured with a standalone program rather than argued:
+
+    tooltip shown:    popups 1
+    key while tip up: the focused field saw it
+
+The guide is right and the code holds it -- `key_target()` skips a
+`Qt::ToolTip` explicitly, with the defect it fixes recorded beside it, and
+`suite_router` checks it. **Recorded because a hypothesis that proved
+wrong is worth the same as one that proved right**: the next reader can
+see this row has been looked at.
+
+**The remaining row was real.** `Qt::WidgetWithChildrenShortcut` is
+implemented TWICE -- `context_applies()` for actions,
+`shortcut_context_applies()` for the conflict report, the second with a
+comment saying a report built on its own copy of the rule would describe a
+different program -- and the word appeared in no suite at all. Both copies
+could have been changed to anything.
+
+Five checks now hold it, and the shape of them is the point. A positive
+alone is worthless here: an implementation that treated every widget
+context as "anywhere in the window" passes it. So each is a PAIR on one
+owner -- the subtree context fires from a descendant where the narrower
+context on the same widget does not, and is silent from outside the
+subtree entirely.
+
+**The conflict report needed its own fixture and a rewritten one**, which
+is the other thing worth keeping. The first version moved the focus
+outside the subtree and expected the claim to disappear from the report.
+It did not, and the failure was right: **that report is not about the
+current focus.** It asks whether ANY focus a user can reach makes two
+things answer, so a claim inside a reachable subtree answers somewhere and
+saying so is correct. The edge had to become a claim that answers NOWHERE
+-- the same container with the narrower context, the container itself
+taking no focus -- which is one object, one chord, two contexts and
+opposite answers.
 
 ### 8.249 Swept, measured, and not yet acted on (2026-09-18)
 

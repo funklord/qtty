@@ -3784,3 +3784,45 @@ find = "\t\tif (w == win_ || !is_compositable(w)) continue;"
 into = "\t\tif (w == win_ || w->isModal() || !is_compositable(w)) continue;"
 count = 1
 check = "a modal standing at the dead window's own address is still drawn"
+
+[[sabotage]]
+# The subtree context collapsed onto the owner, for actions, so a
+# shortcut on a container stops answering from the field inside it.
+# 8.252.
+name = "an action's subtree context covers only its own widget"
+file = "src/runtime/input_router.cpp"
+find = "\t\treturn owner && fw && (owner == fw || owner->isAncestorOf(fw));\n\tcase Qt::WindowShortcut:"
+into = "\t\treturn owner && owner == fw;\n\tcase Qt::WindowShortcut:"
+count = 1
+check = "fires from a DESCENDANT of its widget"
+
+[[sabotage]]
+# The subtree context widened to the whole window, which is the other
+# way to be wrong and the one a positive-only check cannot see. 8.252.
+name = "an action's subtree context covers the whole window"
+file = "src/runtime/input_router.cpp"
+find = "\t\treturn owner && owner == fw;\n\tcase Qt::WidgetWithChildrenShortcut:"
+into = "\t\treturn owner && owner != nullptr;\n\tcase Qt::WidgetWithChildrenShortcut:"
+count = 1
+check = "the narrower context on the same owner does not"
+
+[[sabotage]]
+# The second copy of the rule collapsed, so the conflict report stops
+# seeing a QShortcut that answers from inside its subtree -- the silent
+# loser the report exists to name. 8.252.
+name = "the report's copy of the subtree rule covers only the owner"
+file = "src/runtime/input_router.cpp"
+find = "\tif (sc->context() == Qt::WidgetWithChildrenShortcut)\n\t\treturn owner && fw && (owner == fw || owner->isAncestorOf(fw));"
+into = "\tif (sc->context() == Qt::WidgetWithChildrenShortcut)\n\t\treturn owner && owner == fw;"
+count = 1
+check = "a QShortcut scoped to a subtree is reported as answering"
+
+[[sabotage]]
+# The report's widget context ignored entirely, so a claim that can
+# never answer is named as a conflict. 8.252.
+name = "the report ignores a widget-scoped claim's context"
+file = "src/runtime/input_router.cpp"
+find = "\tif (sc->context() == Qt::WidgetShortcut)\n\t\treturn owner && owner == fw;"
+into = "\tif (sc->context() == Qt::WidgetShortcut)\n\t\treturn true;"
+count = 1
+check = "answers at no reachable focus and is not reported"
