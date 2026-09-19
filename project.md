@@ -36,7 +36,35 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-18, at 1664**
+**Last re-verified under all six configurations: 2026-09-19, at 1720**
+(`517ae3c`), covering 8.250 to 8.255 -- the terminal ground carried to
+every tier, the focus reaching what draws, the three image-transport keys,
+the subtree shortcut context, the whole-chord quit key with the convention
+partition, and indexed colours in the rasteriser. Offscreen, xcb under
+Xvfb and the hostile environment all ran 1720, `minimal` refused and said
+why, the sanitized arm reported nothing from AddressSanitizer,
+UndefinedBehaviorSanitizer or the leak detector, and memcheck was clean.
+Fifteen minutes end to end on a machine at load 1.4.
+
+**The counts were read out of each arm, and the one that differs is the
+point.** Memcheck ran **1717** where every other arm ran 1720, and three
+fewer checks is exactly the shape that is green on an exit status alone.
+It is accounted for: the arm prints three `SKIP` lines naming their own
+reasons -- valgrind does not deliver the default stop action, and two
+timing checks would be measuring the instrument rather than the code. A
+difference that could not be accounted for would have been a finding.
+
+**Waiting for the machine was part of the method this time.** The first
+attempt that day was stopped at a load average of 226 -- other projects',
+not this one's -- with the sanitized arm four minutes into work that takes
+twenty seconds. A run whose slow arms are measured against that says
+nothing, and the four arms that had finished before the spike were kept
+and the rest discarded. The re-run was armed to start only when the
+one- and five-minute averages were both under eight, the five-minute one
+being the half that matters: it decays slowly, so a lull between two other
+builds cannot start a run that a third would then contaminate.
+
+**The claim before that: 2026-09-18, at 1664**
 (`f9211b9`), covering 8.243 to 8.248 -- the colour scheme, Dim in the
 rasteriser, the keypad, the theme roles and the three remaining instances
 of the raw-window family. Offscreen, xcb under Xvfb and the hostile
