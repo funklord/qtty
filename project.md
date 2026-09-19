@@ -36,7 +36,37 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-19, at 1720**
+**Last re-verified under all six configurations: 2026-09-19, at 1759**
+(`0e1cec2`), covering 8.256 to 8.264 -- the alternate and tooltip
+grounds, the alternating-row switch wired to a cell, the guide's own
+numbering gate, the README's re-taken fmake warning, and the size grip
+that could shrink the window off the terminal. Offscreen, xcb under Xvfb
+and the hostile environment all ran 1759, `minimal` refused and said why,
+the sanitized arm built with `-fsanitize=address,undefined` reported
+nothing, and memcheck's own log says `ERROR SUMMARY: 0 errors from 0
+contexts` with nothing definitely lost. Fifteen minutes end to end, on a
+machine the run waited five minutes for.
+
+**Read the arm's own summary, not a PASS count out of the combined log.**
+That was this run's instrument error and it is the project's own trap met
+from a new direction: `six7.sh` captures each arm with `2>&1`, so
+GridGuard's off-grid warnings and Qt's `This plugin does not support
+raise()` splice into the middle of `PASS:` lines. Grepping the log
+reported 1758 for the sanitized arm and 1755 for memcheck, and both
+numbers are artifacts of the splice rather than of the arms -- a
+`comm` against a local run named twenty "missing" checks that are all
+present and all cut in half. What each arm states about itself is the
+reading: `ok (1759 checks)` per platform from `test-platforms`, `OK (0
+failures)` from the suite, and memcheck's `--log-file` artifact for the
+memory result. That log is also what makes the target's `clean` mean
+something: it refuses outright when valgrind wrote no log.
+
+**Three checks do not run under memcheck, and they say so.** The arm
+prints three `SKIP` lines naming their own reasons -- valgrind does not
+deliver the default stop action, and two timing checks would be measuring
+the instrument rather than the code.
+
+**The claim before that: 2026-09-19, at 1720**
 (`517ae3c`), covering 8.250 to 8.255 -- the terminal ground carried to
 every tier, the focus reaching what draws, the three image-transport keys,
 the subtree shortcut context, the whole-chord quit key with the convention
@@ -64,7 +94,7 @@ one- and five-minute averages were both under eight, the five-minute one
 being the half that matters: it decays slowly, so a lull between two other
 builds cannot start a run that a third would then contaminate.
 
-**The claim before that: 2026-09-18, at 1664**
+**And the claim before that: 2026-09-18, at 1664**
 (`f9211b9`), covering 8.243 to 8.248 -- the colour scheme, Dim in the
 rasteriser, the keypad, the theme roles and the three remaining instances
 of the raw-window family. Offscreen, xcb under Xvfb and the hostile
