@@ -14,6 +14,25 @@ defines = ['QTTY_SOURCE_DIR="$root"']
 # default moves without anything failing. tools-check compares the two.
 std = "c++17"
 
+# The suite includes the example's header -- test/suite_router.cpp says
+# `#include "chat.h"` -- because the example's delegate is a thing the
+# suite tests rather than a thing it merely links. qmake is told where
+# that is by test/test.pro's `INCLUDEPATH += $$QTTY_ROOT/example/chat`,
+# and fmake cannot read a .pro, so it has to be said again here.
+#
+# Measured before it was written: `python3 ~/src/fmake/fmake -j4` over a
+# `git archive HEAD` extraction exits 1 with
+#
+#     * chat.h: No such file or directory
+#       in test/suite_router.cpp
+#       chat.h is on no include path here
+#
+# which is the fourth instance of this file's standing theme -- a fact
+# qmake states in a .pro and fmake has no way to discover. tools-check
+# now compares this one too, so the two cannot drift apart again in
+# silence, which is how the tray target's name got missed.
+include-dirs = ["example/chat"]
+
 # spike/ is the Phase 0 record -- the four spikes exactly as they were run,
 # which is what makes them evidence for design.md's measurements. Nothing
 # in the library builds them, and .style-gate.toml already exempts them for

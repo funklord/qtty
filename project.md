@@ -17750,6 +17750,49 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.260 The README told people to run a build that failed (2026-09-19)
+
+**Found by another project, running the line this repository publishes.**
+fmake's session took the `python3 ~/src/fmake/fmake` line out of qtty's
+README, ran it over a `git archive HEAD` extraction, and reported that it
+exits 1. Reproduced here the same way before anything was changed:
+
+    * chat.h: No such file or directory
+      in test/suite_router.cpp
+      chat.h is on no include path here
+      it is in this tree, at example/chat/chat.h
+
+`test/suite_router.cpp` includes the example's header, because the
+example's delegate is a thing the suite tests rather than a thing it
+merely links. `test/test.pro` tells qmake where that is;
+**fmake cannot read a `.pro`**, and `fmake.toml` named the defines, the
+standard and the tool names and not this. `include-dirs` closes it, and
+the same extraction then exits 0.
+
+**This is the fourth instance of one theme and the second time it has
+actually bitten**, which is why the fix is a gate rather than a line.
+`fmake.toml` exists precisely for facts qmake states in a `.pro` that
+fmake has no way to discover, and its own comments record the tray
+target's name being missed at the time and building under the bare verb.
+So `tools-check` now compares the suite's include paths as well as the
+tool names and the language standard -- as SETS of directory names, since
+the two files spell a path differently by construction. Seen to fail:
+emptying `include-dirs` gives *"the suite's include paths differ between
+the two build systems"* and exit 1.
+
+**What the harmonization rule asks for is exactly what went wrong.** It
+says a README line claiming fmake builds a tree, written without running
+it, is a false claim in the most-read file and will be believed. The line
+here was true when written and was falsified by the commit that taught the
+suite about the example -- the same shape as 8.257's practice count, and
+caught the same way: by somebody else running it.
+
+**An instrument note, mine.** Proving the new check could fail, I read
+`rc=0` from `./tool/tools-check 2>&1 | head -6` and nearly recorded that
+the check did not fire. It had fired; `$?` was `head`'s. That is
+`evidence.md`'s pipeline-status trap, in the act of verifying a gate
+against it.
+
 ### 8.259 Two hand-copied facts, and a measurement that held (2026-09-19)
 
 Three small things from the comment sweep, closed together because each

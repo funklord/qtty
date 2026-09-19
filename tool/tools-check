@@ -75,6 +75,40 @@ elif [ "$qstd" != "$fstd" ]; then
 	fail=1
 fi
 
+# An include path the suite needs is the third fact of the same shape, and
+# it is the one that actually broke. test/suite_router.cpp includes the
+# example's header; test/test.pro says INCLUDEPATH for qmake; fmake cannot
+# read a .pro and has to be told in fmake.toml. It was told about the
+# defines, the standard and the tool names and not about this, so
+# `fmake` exited 1 on a clean checkout while the README said it builds the
+# tree -- found by another project running the line this repository
+# publishes.
+#
+# Compared as SETS of directory names rather than textually, since the two
+# files spell a path differently by construction: qmake writes
+# $$QTTY_ROOT/example/chat and fmake writes it relative to the root.
+qinc=$(sed -n 's|^[[:space:]]*INCLUDEPATH[[:space:]]*+=[[:space:]]*\$\$QTTY_ROOT/||p' \
+       "$root/test/test.pro" | tr -d ' ' | sort -u)
+finc=$(sed -n 's/^[[:space:]]*include-dirs[[:space:]]*=[[:space:]]*\[\(.*\)\].*/\1/p' \
+       "$root/fmake.toml" | tr -d ' "' | tr ',' '\n' | sed '/^$/d' | sort -u)
+if [ -z "$qinc" ]; then
+	echo "tools-check: test/test.pro names no INCLUDEPATH under the root," >&2
+	echo "             so this compared nothing. If the suite genuinely" >&2
+	echo "             needs none, delete this check rather than letting" >&2
+	echo "             it pass over an empty list." >&2
+	fail=1
+elif [ "$qinc" != "$finc" ]; then
+	echo "tools-check: the suite's include paths differ between the two" >&2
+	echo "             build systems. test/test.pro has:" >&2
+	echo "$qinc" | sed 's/^/                 /' >&2
+	echo "             fmake.toml has:" >&2
+	echo "$finc" | sed 's/^/                 /' >&2
+	echo "             fmake cannot read a .pro, so a path in one and not" >&2
+	echo "             the other is a build that fails on a clean tree." >&2
+	fail=1
+fi
+
 [ "$fail" -eq 0 ] || exit 1
 echo "tools-check: $n tool(s) named consistently in .pro, fmake.toml and"
-echo "             .gitignore, and both build systems state $qstd"
+echo "             .gitignore, both build systems state $qstd, and the"
+echo "             suite's include paths agree"
