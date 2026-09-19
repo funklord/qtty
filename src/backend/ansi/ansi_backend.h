@@ -229,7 +229,49 @@ private:
 	void query_geometry();                        // re-ask after a resize
 	bool sync_frames() const;                     // DEC 2026, confirmed only
 	Capabilities::ColorDepth depth_;             // negotiated (section 6)
-	QSet<quint64> uploaded_;                     // kitty upload-once cache
+	// The kitty upload-once cache, and the id the terminal holds each upload
+	// under. One map rather than two, because minting the id and sending the
+	// bytes are the same event: a key that is present is a picture the
+	// terminal has, and its value is the only name either side has for it.
+	//
+	// Keyed on ImageEncodeKey and not on the pixmap's cacheKey, for the
+	// reason image_bytes_ already is. A placeholder transmission carries
+	// `c=<cols>,r=<rows>`, so the same pixmap at a new cell extent is
+	// different bytes under the same cacheKey -- and the cache keyed on the
+	// cacheKey alone served the old extent for ever, leaving the virtual
+	// placement sized to a rectangle the placeholder cells had stopped
+	// spanning.
+	QHash<ImageEncodeKey, quint32> wire_id_;
+	// The wire id is MINTED here rather than derived from the pixmap's
+	// cacheKey, which is the fault this replaced. Qt's cacheKey is
+	// ((classKey << 56) | (ser_no << 32) | detach_no), so the identity of a
+	// pixmap lives in bits 32-55 and the low 32 bits are a per-object detach
+	// counter. `quint32(key & 0xFFFFFF)` therefore kept none of it: measured
+	// on Qt 6.8.2, three pixmaps built the way an application builds them --
+	// QImage, fill(), QPixmap::fromImage -- came back 0x0000000300000002,
+	// 0x0000000400000002 and 0x0000000500000002, all of them id 3. Two
+	// pictures went out under one id, the second overwrote the first's data,
+	// and both placements then showed the same picture.
+	//
+	// Dense and RECYCLED rather than merely monotonic, because the id is not
+	// free-form: compose_kitty_placeholders() carries the low 24 bits in a
+	// cell's foreground colour and the top byte as a diacritic, and there
+	// are only KITTY_DIACRITIC_COUNT of those -- so an id that climbs for
+	// ever eventually reaches a value the placeholder cells cannot spell,
+	// and the composer skips the cell in silence. Recycling bounds the live
+	// range by what is on the screen instead of by how long the program has
+	// run. An id returns to the pool only once the terminal has been told to
+	// free it, or once wire_id_ has been dropped wholesale -- in which case
+	// the next a=T under that id replaces what the terminal still holds,
+	// which is what a re-upload wants anyway.
+	QList<quint32> free_wire_ids_;
+	quint32 next_wire_id_ = 1;
+	// The id for an upload identity, minting one when this is the first
+	// sighting. `minted` says which happened, because that is exactly the
+	// question the caller answers by sending the bytes or not.
+	quint32 wire_id_for(const ImageEncodeKey &ek, bool *minted);
+	// Everything uploaded forgotten at once, the ids returned to the pool.
+	void forget_uploads();
 	// The bytes each sixel or iTerm2 placement last put on the wire, under
 	// everything they are a function of. Pruned at the end of every frame
 	// that painted pixels, so it is bounded by what is on the screen
@@ -243,8 +285,14 @@ private:
 	                         const QSize &extent) const;
 	// Least-recently-referenced first. The cache above is upload-ONCE and
 	// was also upload-forever: see retire_uploads().
-	QList<quint64> upload_order_;
-	void retire_uploads(const CellBuffer &frame, QByteArray &out);
+	QList<ImageEncodeKey> upload_order_;
+	// The identities THIS frame uploaded or re-used, gathered by present()
+	// as it walks the placements rather than recomputed here from
+	// frame.images. Recomputing them would mean restating each tier's source
+	// and extent at a second site, which is the drift image_key() exists to
+	// prevent -- and getting it wrong here does not serve a stale picture,
+	// it frees one that is on the screen.
+	void retire_uploads(const QVector<ImageEncodeKey> &live, QByteArray &out);
 	// The pixel frame's size when the kitty path last ran. A resize changes
 	// the tile grid, so the placements from the old one would linger at
 	// positions that no longer mean anything -- the only case where the

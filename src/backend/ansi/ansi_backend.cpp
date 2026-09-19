@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <cstdio>
 #include <cstring>
+#include <utility>                               // std::as_const
 
 namespace Qtty {
 
@@ -1033,6 +1034,25 @@ ImageEncodeKey AnsiBackend::image_key(quint64 key, const QRect &source,
 	return k;
 }
 
+quint32 AnsiBackend::wire_id_for(const ImageEncodeKey &ek, bool *minted) {
+	const auto it = wire_id_.constFind(ek);
+	if (it != wire_id_.constEnd()) {
+		if (minted) *minted = false;
+		return *it;
+	}
+	const quint32 id = free_wire_ids_.isEmpty() ? next_wire_id_++
+	                                            : free_wire_ids_.takeLast();
+	wire_id_.insert(ek, id);
+	if (minted) *minted = true;
+	return id;
+}
+
+void AnsiBackend::forget_uploads() {
+	for (const quint32 id : std::as_const(wire_id_)) free_wire_ids_.append(id);
+	wire_id_.clear();
+	upload_order_.clear();
+}
+
 void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 	// Damage-limited where the caller says what changed, whole-frame where it
 	// does not. An EMPTY region means "everything", which is what every
@@ -1056,15 +1076,28 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 	// is the entire point of the mode.
 	const bool placeholders = use_placeholders(caps_, depth_);
 	QByteArray uploads;
+	// What the two kitty tiers referenced this frame, in the order they
+	// referenced it, so retire_uploads() can free what they did not.
+	QVector<ImageEncodeKey> live_uploads;
 	if (placeholders) {
 		for (const CellImage &ci : frame.images) {
-			const quint32 id = quint32(ci.key & 0xFFFFFF) + 1;
-			if (!uploaded_.contains(ci.key)) {
-				uploaded_.insert(ci.key);
-				uploads += encode_kitty_virtual(id, ci.pixmap.toImage(),
+			const QImage img = ci.pixmap.toImage();
+			// The EXTENT is in the key because it is on the wire: the
+			// transmission below states `c=<cols>,r=<rows>`, so the same
+			// pixmap stretched over a different rectangle is a different
+			// picture as far as the terminal is concerned. Guarding on the
+			// pixmap alone left a resized sticker referencing a virtual
+			// placement still sized to the rectangle it no longer spans.
+			const ImageEncodeKey ek =
+			    image_key(ci.key, QRect(QPoint(0, 0), img.size()),
+			              ci.cell_rect.size());
+			bool minted = false;
+			const quint32 id = wire_id_for(ek, &minted);
+			if (minted)
+				uploads += encode_kitty_virtual(id, img,
 				                                ci.cell_rect.width(),
 				                                ci.cell_rect.height());
-			}
+			live_uploads.append(ek);
 			compose_kitty_placeholders(composed, id, ci.cell_rect);
 		}
 		// Wrapped so tmux forwards the transmission to the terminal
@@ -1225,7 +1258,20 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 				    crop_placement(ci.cell_rect, img.size(), grid);
 				if (cp.cells.isEmpty()) continue;     // wholly off screen
 				out += moveTo(cp.cells.topLeft());
-				const quint32 id = quint32(ci.key & 0xFFFFFF) + 1;
+				// No extent: what goes up here is the whole image, placed
+				// afterwards by a separate command, so the cell rectangle is
+				// not on the wire in the transmission and putting it in the
+				// key would re-upload a picture that had only moved. The
+				// terminal's cell IS in it -- for_terminal() scales by it --
+				// which is what makes a stale entry unreachable after a
+				// font-size change rather than deleted by somebody
+				// remembering to.
+				const ImageEncodeKey ek =
+				    image_key(ci.key, QRect(QPoint(0, 0), img.size()),
+				              QSize());
+				bool minted = false;
+				const quint32 id = wire_id_for(ek, &minted);
+				live_uploads.append(ek);
 				// The upload is always the WHOLE image, and the crop is
 				// applied at placement time through kitty's source rectangle.
 				// Uploading the cropped pixels instead would file them under
@@ -1252,8 +1298,7 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 				// every re-place of it afterwards carried the right value:
 				// a placement that changes depth the second time it is
 				// drawn, which is worse than one that never had a z.
-				if (!uploaded_.contains(ci.key)) {
-					uploaded_.insert(ci.key);
+				if (minted) {
 					out += encode_kitty_image(id, for_terminal(img), ci.z);
 					if (!whole) out += kitty_place(id, ci.z, src);
 				} else {
@@ -1325,7 +1370,8 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 			else it = image_bytes_.erase(it);
 		}
 	}
-	if (placeholders || (pixel_placements && handles)) retire_uploads(frame, out);
+	if (placeholders || (pixel_placements && handles))
+		retire_uploads(live_uploads, out);
 	// Closed after the images, not after the text: on a tier that paints
 	// pixels the picture is part of the frame, and ending the bracket before
 	// it would leave exactly the tear this exists to prevent -- the text
@@ -1353,23 +1399,33 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 // re-encode each of them on every frame, paying a full PNG for one it is
 // about to want again -- and animation is exactly the case that reaches
 // here at all.
-void AnsiBackend::retire_uploads(const CellBuffer &frame, QByteArray &out) {
+void AnsiBackend::retire_uploads(const QVector<ImageEncodeKey> &live,
+                                 QByteArray &out) {
 	static const int upload_cap = 16;
-	QSet<quint64> live;
-	for (const CellImage &ci : frame.images) {
-		live.insert(ci.key);
-		upload_order_.removeAll(ci.key);         // most recent last
-		upload_order_.append(ci.key);
+	const QSet<ImageEncodeKey> live_set(live.constBegin(), live.constEnd());
+	for (const ImageEncodeKey &ek : live) {
+		upload_order_.removeAll(ek);             // most recent last
+		upload_order_.append(ek);
 	}
 	for (int i = 0; upload_order_.size() > upload_cap && i < upload_order_.size(); ) {
-		const quint64 key = upload_order_.at(i);
-		if (live.contains(key)) { ++i; continue; }
-		// d=I, not d=i: uppercase frees the image data, which is the whole
-		// point. The lowercase form deletes placements and leaves exactly
-		// what this exists to release.
-		out += "\033_Ga=d,d=I,q=2,i="
-		     + QByteArray::number(quint32(key & 0xFFFFFF) + 1) + ";\033\\";
-		uploaded_.remove(key);
+		const ImageEncodeKey ek = upload_order_.at(i);
+		if (live_set.contains(ek)) { ++i; continue; }
+		// The id the terminal knows this picture by, taken from the same map
+		// the upload minted it in. Deriving it here a second time is how the
+		// delete came to name a picture nobody had uploaded: the two sites
+		// computed `quint32(key & 0xFFFFFF) + 1` independently, and once the
+		// derivation was wrong they were wrong together -- freeing image
+		// data a LIVE placement was still drawing from.
+		const auto found = wire_id_.constFind(ek);
+		if (found != wire_id_.constEnd()) {
+			// d=I, not d=i: uppercase frees the image data, which is the
+			// whole point. The lowercase form deletes placements and leaves
+			// exactly what this exists to release.
+			out += "\033_Ga=d,d=I,q=2,i="
+			     + QByteArray::number(*found) + ";\033\\";
+			free_wire_ids_.append(*found);
+			wire_id_.erase(found);
+		}
 		upload_order_.removeAt(i);
 	}
 }
@@ -1889,16 +1945,15 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 			scan_caps(QStringLiteral("\033[%1;%2;%3t").arg(what)
 			              .arg(param(1, 0)).arg(param(2, 0)).toLatin1(), caps_);
 			// Everything already uploaded was scaled by the OLD cell. The
-			// upload cache is keyed on the source pixmap, which does not
-			// move when the terminal's cell does, so a hit would re-place a
-			// picture at the old scale -- and worse, the crop rectangle is
-			// computed at the new one, so it would index the wrong pixels of
-			// it. read_winch() asks for the geometry on every SIGWINCH
+			// upload cache carries cell_px in its key now, so a stale entry
+			// is already unreachable and this is no longer what keeps the
+			// picture honest -- what it does is hand the ids back and stop
+			// the map holding uploads nothing can ever hit again.
+			// read_winch() asks for the geometry on every SIGWINCH
 			// precisely because a font-size change moves this without moving
 			// the cell COUNT, so this is the arrival it was asking for.
 			if (caps_.cell_px.isValid() && caps_.cell_px != was) {
-				uploaded_.clear();
-				upload_order_.clear();
+				forget_uploads();
 				last_pixel_size_ = QSize();
 			}
 			return true;

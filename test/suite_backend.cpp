@@ -3609,6 +3609,42 @@ int suite_backend() {
 		      "and a second one appearing beside it is not a scroll");
 		CHECK(arrive.update(placed(1, QRect(0, 0, 4, 2)), 20),
 		      "nor is one going away");
+
+		// ONE PIXMAP AT TWO RECTANGLES -- the same emoji twice, one bullet
+		// icon per row, repeated avatars. This kept a single QRect per key,
+		// so the two collapsed to whichever went in last; the next frame
+		// compared the other copy against it, called that a move, and did so
+		// again on every frame afterwards. settling_ was refreshed for ever
+		// and the sixel and iTerm2 tiers stayed on the half-block mosaic for
+		// the life of the program with nothing having moved at any point.
+		//
+		// The clock is a parameter here, so this is the witness that cannot
+		// be flaky: the end-to-end version further down runs against the
+		// real one, where a slow machine could let the debounce expire and
+		// hand the unfixed code a pass.
+		ScrollSettle twice(100);
+		const auto pair = [](QRect a, QRect b) {
+			QVector<CellImage> v;
+			CellImage first, second;
+			first.key = 1;
+			first.cell_rect = a;
+			second.key = 1;
+			second.cell_rect = b;
+			v.append(first);
+			v.append(second);
+			return v;
+		};
+		CHECK(twice.update(pair(QRect(0, 0, 4, 2), QRect(0, 4, 4, 2)), 0),
+		      "one pixmap placed twice draws pixels on the first frame");
+		CHECK(twice.update(pair(QRect(0, 0, 4, 2), QRect(0, 4, 4, 2)), 10)
+		      && twice.update(pair(QRect(0, 0, 4, 2), QRect(0, 4, 4, 2)), 20)
+		      && twice.update(pair(QRect(0, 4, 4, 2), QRect(0, 0, 4, 2)), 30),
+		      "and goes on drawing them while neither copy moves, whichever"
+		      " order the painter emits them in");
+		// And the fix must not cost the policy its job: one of the two
+		// really moving is still a scroll.
+		CHECK(!twice.update(pair(QRect(0, 0, 4, 2), QRect(0, 5, 4, 2)), 40),
+		      "while one of the two moving still degrades to the mosaic");
 	}
 
 	// A DECRPM reply, ESC [ ? 1006 ; 1 $ y. The "$" is an intermediate byte,
@@ -5327,6 +5363,408 @@ int suite_exec() {
 			if (had_term.isEmpty()) qunsetenv("TERM");
 			else qputenv("TERM", had_term);
 			if (!had_tmux.isEmpty()) qputenv("TMUX", had_tmux);
+			if (had_gfx.isEmpty()) qunsetenv("QTTY_GRAPHICS");
+			else qputenv("QTTY_GRAPHICS", had_gfx);
+		}
+	}
+
+	// ---- one wire id per picture, and a key that carries the extent ---------
+	//
+	// Three faults of one shape, all in the image-transport path: a key that
+	// had quietly dropped a field the thing it identifies depends on
+	// (project.md section 8.253).
+	//
+	// The wire id was `quint32(ci.key & 0xFFFFFF) + 1`, and `ci.key` is
+	// QPixmap::cacheKey(). Measured on Qt 6.8.2, which is what this builds
+	// against: cacheKey is ((classKey << 56) | (ser_no << 32) | detach_no),
+	// so the per-pixmap serial is in bits 32-55 and the low 32 bits are a
+	// per-OBJECT detach counter that starts at the same value for every
+	// pixmap built the same way. Three built as an application builds them
+	// -- QImage, fill(), QPixmap::fromImage -- came back 0x0000000300000002,
+	// 0x0000000400000002 and 0x0000000500000002. The mask kept the half with
+	// no identity in it and threw away the half with all of it, so all three
+	// went out as id 3.
+	//
+	// uploaded_ and upload_order_ were keyed on the full 64 bits and saw
+	// three pictures correctly; only the wire collapsed them. So the second
+	// a=T overwrote the first's data, both placements drew the same picture,
+	// and retire_uploads() then emitted a delete for an id a LIVE placement
+	// was still reading from.
+	//
+	// The id is minted per upload identity now, and the delete reads it back
+	// out of the same map the upload put it in -- one derivation rather than
+	// two that were wrong together.
+	//
+	// EVERY BACKEND IS BORN AND DIES WITH DESCRIPTOR 1 ON THE PTY, one at a
+	// time, and the frames go to a FILE. Both are hazards this tree has
+	// already paid for: a backend decides once whether stdout is a terminal
+	// and hands the terminal back in its destructor, two live backends are
+	// two notifiers on descriptor 0 and the first one the event loop reaches
+	// takes the other's reply, and a photographic frame written into a pty
+	// nobody is reading blocks inside present() for ever -- a hung suite
+	// rather than a failing one. Nothing is asserted while fd 1 is diverted.
+	{
+		int master = -1, slave = -1;
+		if (::openpty(&master, &slave, nullptr, nullptr, nullptr) != 0) {
+			printf("FAIL: no pty for the image id fixture\n");
+			++fails;
+		} else {
+			::fcntl(master, F_SETFL, O_NONBLOCK);
+			const QByteArray had_term = qgetenv("TERM");
+			const QByteArray had_tmux = qgetenv("TMUX");
+			const QByteArray had_gfx = qgetenv("QTTY_GRAPHICS");
+			// $TERM pinned, because this machine's is "screen" and
+			// inside_tmux() correctly reads that as a multiplexer -- which
+			// would put the direct-placement half of this block into the
+			// placeholder tier without saying so.
+			qputenv("TERM", "xterm");
+			winsize iws{};
+			iws.ws_col = 80;
+			iws.ws_row = 24;
+			::ioctl(slave, TIOCSWINSZ, &iws);
+			// A kitty terminal that also answers true colour, because
+			// use_placeholders() needs both: the id travels in a cell's
+			// foreground colour and cannot survive 256.
+			const QByteArray hello = "\033_Gi=31;OK\033\\"
+			                         "\033[?2026;1$y"
+			                         "\033P1+r524742=38\033\\"
+			                         "\033]11;rgb:1c1c/1c1c/1c1c\033\\"
+			                         "\033[6;19;10t"
+			                         "\033[?62;4;22c";
+			char id_sink_name[] = "/tmp/qtty-imgid-XXXXXX";
+			const int sink = ::mkstemp(id_sink_name);
+			if (sink >= 0) ::unlink(id_sink_name);
+			const int keep_in = ::dup(0), keep_out = ::dup(1);
+			fflush(stdout);
+			::dup2(slave, 0);
+			::dup2(slave, 1);
+			if (sink < 0) {
+				fflush(stdout);
+				::dup2(keep_in, 0);
+				::dup2(keep_out, 1);
+				printf("FAIL: no sink for the image id fixture\n");
+				++fails;
+			} else {
+				char drain[4096];
+				const auto taken = [&] {
+					fflush(stdout);
+					QByteArray got;
+					const off_t end = ::lseek(sink, 0, SEEK_CUR);
+					if (end > 0) {
+						::lseek(sink, 0, SEEK_SET);
+						got.resize(int(end));
+						const ssize_t n = ::read(sink, got.data(),
+						                         size_t(end));
+						got.resize(int(n > 0 ? n : 0));
+					}
+					const int rc = ::ftruncate(sink, 0);
+					(void)rc;
+					::lseek(sink, 0, SEEK_SET);
+					return got;
+				};
+				// The CONTROL DATA of every APC graphics command in a
+				// capture -- everything between ESC _ G and the semicolon
+				// that ends it. The payload is deliberately left behind:
+				// a transmission carries kilobytes of base64 and the
+				// question here is only ever about the keys in the header.
+				// Finding ESC _ G by search rather than at a fixed offset
+				// is what makes this work inside tmux as well, where the
+				// wrapper doubles every ESC.
+				const auto controls = [](const QByteArray &wire) {
+					QVector<QByteArray> out;
+					int at = 0;
+					for (;;) {
+						const int b = wire.indexOf("\033_G", at);
+						if (b < 0) break;
+						int e = wire.indexOf(';', b);
+						if (e < 0) e = wire.size();
+						out.append(wire.mid(b + 3, e - b - 3));
+						at = e + 1;
+					}
+					return out;
+				};
+				// The id a control string names, or -1 where it names none.
+				// Not 0: an absent id and id 0 are different answers, and
+				// collapsing them is the shape of fault this whole block is
+				// about.
+				const auto id_of = [](const QByteArray &ctrl) {
+					const QList<QByteArray> fields = ctrl.split(',');
+					for (const QByteArray &f : fields)
+						if (f.startsWith("i=")) return f.mid(2).toInt();
+					return -1;
+				};
+				const auto ids_where = [&](const QVector<QByteArray> &ctrls,
+				                           const char *what) {
+					QVector<int> out;
+					for (const QByteArray &c : ctrls)
+						if (c.contains(what)) out.append(id_of(c));
+					return out;
+				};
+				// One backend at a time, constructed with the pty on
+				// descriptor 1 so it decides it is talking to a terminal,
+				// and destroyed there too. The frames in between go to the
+				// file.
+				const auto with_backend = [&](const char *gfx, bool tmux,
+				                              auto &&body) {
+					if (gfx) qputenv("QTTY_GRAPHICS", gfx);
+					else qunsetenv("QTTY_GRAPHICS");
+					if (tmux) qputenv("TMUX", "/tmp/qtty-fake-tmux,0,0");
+					else qunsetenv("TMUX");
+					fflush(stdout);
+					::dup2(slave, 1);
+					while (::read(master, drain, sizeof(drain)) > 0) { }
+					const ssize_t wh = ::write(master, hello.constData(),
+					                           hello.size());
+					(void)wh;
+					AnsiBackend be;
+					Recorder be_rec;
+					be.set_event_sink(&be_rec);
+					(void)be.capabilities();
+					while (::read(master, drain, sizeof(drain)) > 0) { }
+					fflush(stdout);
+					::dup2(sink, 1);
+					(void)taken();           // whatever the constructor wrote
+					body(be);
+					fflush(stdout);
+					::dup2(slave, 1);
+				};
+
+				const int idcw = GridMetrics::cw();
+				const int idch = GridMetrics::ch();
+				const auto fill_of = [](int w, int h, QRgb c) {
+					QImage img(w, h, QImage::Format_ARGB32);
+					img.fill(QColor::fromRgb(c));
+					return img;
+				};
+				// Built the way an application builds one, which is the case
+				// that collided. A QPixmap(w, h) constructed directly lands
+				// on a different detach counter, so a fixture using those
+				// would have been asking an easier question.
+				const QImage img_a = fill_of(idcw * 2, idch * 2,
+				                             qRgb(200, 30, 10));
+				const QImage img_b = fill_of(idcw * 2, idch * 2,
+				                             qRgb(10, 30, 200));
+				const QPixmap pm_a = QPixmap::fromImage(img_a);
+				const QPixmap pm_b = QPixmap::fromImage(img_b);
+				const auto placed = [](const QPixmap &p, const QRect &at) {
+					CellImage ci;
+					ci.key = quint64(p.cacheKey());
+					ci.cell_rect = at;
+					ci.pixmap = p;
+					return ci;
+				};
+
+				// -- two pictures, two ids ----------------------------------
+				QVector<int> direct_ids;
+				CellBuffer f_pair(20, 6);
+				f_pair.images.append(placed(pm_a, QRect(0, 0, 2, 2)));
+				f_pair.images.append(placed(pm_b, QRect(6, 0, 2, 2)));
+				with_backend("kitty", false, [&](AnsiBackend &be) {
+					be.present(f_pair, QRegion());
+					direct_ids = ids_where(controls(taken()), "a=T");
+				});
+
+				// -- the same frame again: the cache must still cache -------
+				QVector<int> again_sent, again_placed;
+				with_backend("kitty", false, [&](AnsiBackend &be) {
+					be.present(f_pair, QRegion());
+					(void)taken();
+					be.present(f_pair, QRegion());
+					const QVector<QByteArray> c2 = controls(taken());
+					again_sent = ids_where(c2, "a=T");
+					again_placed = ids_where(c2, "a=p");
+				});
+
+				// -- the delete names a retired picture, not a live one -----
+				//
+				// retire_uploads() caps the terminal's copies at sixteen, so
+				// the fixture has to push past it: eighteen throwaway
+				// pictures one frame at a time, then a frame carrying two
+				// live ones. Under the masked id every one of these is id 3,
+				// so the deletes named exactly the picture being drawn.
+				QVector<int> last_sent, last_deleted, all_deleted;
+				with_backend("kitty", false, [&](AnsiBackend &be) {
+					for (int i = 0; i < 18; ++i) {
+						const QPixmap junk = QPixmap::fromImage(
+						    fill_of(idcw * 2, idch * 2,
+						            qRgb(5 + i * 7, 40, 90)));
+						CellBuffer f(20, 6);
+						f.images.append(placed(junk, QRect(0, 0, 2, 2)));
+						be.present(f, QRegion());
+						all_deleted += ids_where(controls(taken()), "d=I");
+					}
+					CellBuffer f_live(20, 6);
+					f_live.images.append(placed(pm_a, QRect(0, 0, 2, 2)));
+					f_live.images.append(placed(pm_b, QRect(6, 0, 2, 2)));
+					be.present(f_live, QRegion());
+					const QVector<QByteArray> cl = controls(taken());
+					last_sent = ids_where(cl, "a=T");
+					last_deleted = ids_where(cl, "d=I");
+					all_deleted += last_deleted;
+				});
+				bool freed_a_live_one = false;
+				for (const int d : last_deleted)
+					if (last_sent.contains(d)) freed_a_live_one = true;
+				// The two halves of the id are asserted separately, because
+				// one sabotage can reach each. Deriving the id AGAIN in the
+				// delete rather than reading back what the upload minted is
+				// invisible to the check above -- the two derivations only
+				// have to disagree, and a wrong one that names nobody frees
+				// nothing rather than freeing the wrong thing. What it does
+				// show is that every retirement names the SAME number, which
+				// a per-picture id cannot do.
+				const QSet<int> distinct_deleted(all_deleted.constBegin(),
+				                                 all_deleted.constEnd());
+
+				// -- the placeholder tier's extent --------------------------
+				//
+				// The transmission carries c=<cols>,r=<rows>, so the bytes
+				// depend on the cell rectangle and the cache key did not.
+				// One pixmap over two extents, then the second extent again.
+				QVector<QByteArray> ph_first, ph_grown, ph_same;
+				CellBuffer f_small(20, 8), f_large(20, 8);
+				f_small.images.append(placed(pm_a, QRect(0, 0, 4, 2)));
+				f_large.images.append(placed(pm_a, QRect(0, 0, 8, 3)));
+				with_backend(nullptr, true, [&](AnsiBackend &be) {
+					be.present(f_small, QRegion());
+					ph_first = controls(taken());
+					be.present(f_large, QRegion());
+					ph_grown = controls(taken());
+					be.present(f_large, QRegion());
+					ph_same = controls(taken());
+				});
+				const auto transmits = [](const QVector<QByteArray> &cs) {
+					QVector<QByteArray> out;
+					for (const QByteArray &c : cs)
+						if (c.contains("a=T")) out.append(c);
+					return out;
+				};
+				const QVector<QByteArray> tx_first = transmits(ph_first);
+				const QVector<QByteArray> tx_grown = transmits(ph_grown);
+				const QVector<QByteArray> tx_same = transmits(ph_same);
+
+				// -- the settle latch, end to end on the sixel tier ---------
+				//
+				// One pixmap at two rectangles. ScrollSettle kept one QRect
+				// per key, so the two collapsed to whichever went in last,
+				// every frame afterwards read the other one as a move, and
+				// the debounce was refreshed for ever: sixel and iTerm2 fell
+				// to the half-block mosaic on the second frame and stayed
+				// there for the life of the program. FOUR frames, because
+				// the second alone cannot tell a latch from a debounce that
+				// is about to expire.
+				QVector<int> sixel_counts;
+				const QPixmap pm_twice = QPixmap::fromImage(
+				    fill_of(idcw * 4, idch * 2, qRgb(20, 180, 90)));
+				CellBuffer f_twice(40, 10);
+				f_twice.images.append(placed(pm_twice, QRect(0, 0, 4, 2)));
+				f_twice.images.append(placed(pm_twice, QRect(10, 4, 4, 2)));
+				with_backend("sixel", false, [&](AnsiBackend &be) {
+					for (int i = 0; i < 4; ++i) {
+						be.present(f_twice, QRegion());
+						sixel_counts.append(
+						    taken().count(QByteArray("\033P0;1;0q")));
+					}
+				});
+
+				// -- the other producer, which was never affected -----------
+				//
+				// cell_paint.cpp builds a PixelSurface placement's key from
+				// qHash over the harvested pixels rather than from
+				// cacheKey(), and that hash is well distributed in its low
+				// bits -- so the masked id did not collide there. The
+				// control says the defect belonged to one producer rather
+				// than to placements in general, which is what stops the fix
+				// being credited to the wrong thing.
+				const QByteArray bits_a(
+				    reinterpret_cast<const char *>(img_a.constBits()),
+				    int(img_a.sizeInBytes()));
+				const QByteArray bits_b(
+				    reinterpret_cast<const char *>(img_b.constBits()),
+				    int(img_b.sizeInBytes()));
+				const quint64 hkey_a = quint64(qHash(bits_a));
+				const quint64 hkey_b = quint64(qHash(bits_b));
+				QVector<int> surface_ids;
+				CellBuffer f_surface(20, 6);
+				{
+					CellImage sa, sb;
+					sa.key = hkey_a;
+					sa.cell_rect = QRect(0, 0, 2, 2);
+					sa.pixmap = pm_a;
+					sb.key = hkey_b;
+					sb.cell_rect = QRect(6, 0, 2, 2);
+					sb.pixmap = pm_b;
+					f_surface.images.append(sa);
+					f_surface.images.append(sb);
+				}
+				with_backend("kitty", false, [&](AnsiBackend &be) {
+					be.present(f_surface, QRegion());
+					surface_ids = ids_where(controls(taken()), "a=T");
+				});
+
+				fflush(stdout);
+				::dup2(keep_in, 0);
+				::dup2(keep_out, 1);
+
+				printf("info: the two cacheKeys are %016llx and %016llx --"
+				       " distinct in bits 32-55 and identical in the low 24,"
+				       " which is the collision\n",
+				       (unsigned long long)pm_a.cacheKey(),
+				       (unsigned long long)pm_b.cacheKey());
+				CHECK((quint64(pm_a.cacheKey()) & 0xFFFFFF)
+				          == (quint64(pm_b.cacheKey()) & 0xFFFFFF),
+				      "two pixmaps an application built agree in the low 24"
+				      " bits of their cacheKey, which is the next check's"
+				      " premise");
+				CHECK(direct_ids.size() == 2 && direct_ids[0] > 0
+				      && direct_ids[1] > 0 && direct_ids[0] != direct_ids[1],
+				      "and go out under two different kitty ids rather than"
+				      " one picture overwriting the other");
+				CHECK(again_sent.isEmpty() && again_placed.size() == 2,
+				      "an unchanged frame re-places both pictures and"
+				      " transmits neither");
+				CHECK(last_sent.size() == 2 && !last_deleted.isEmpty()
+				      && !freed_a_live_one,
+				      "and the delete that retires an old picture does not"
+				      " free one the same frame is still drawing from");
+				CHECK(all_deleted.size() >= 2
+				      && distinct_deleted.size() == all_deleted.size(),
+				      "and each retirement names its own picture rather than"
+				      " the one number every derivation arrives at");
+				CHECK(tx_first.size() == 1 && tx_first[0].contains("c=4")
+				      && tx_first[0].contains("r=2"),
+				      "a placeholder transmission states the cell extent it"
+				      " was made for, which is the next check's premise");
+				CHECK(tx_grown.size() == 1 && tx_grown[0].contains("c=8")
+				      && tx_grown[0].contains("r=3"),
+				      "so the same pixmap at a new extent is transmitted"
+				      " again at the new c x r");
+				CHECK(tx_same.isEmpty(),
+				      "and a frame that changed neither is transmitted not"
+				      " at all");
+				CHECK(sixel_counts == QVector<int>({2, 2, 2, 2}),
+				      "one pixmap at two rectangles is two sixels on every"
+				      " frame, not two and then the mosaic for ever");
+				printf("info: the PixelSurface producer's keys are %016llx"
+				       " and %016llx, low 24 bits %06x and %06x\n",
+				       (unsigned long long)hkey_a, (unsigned long long)hkey_b,
+				       unsigned(hkey_a & 0xFFFFFF),
+				       unsigned(hkey_b & 0xFFFFFF));
+				CHECK((hkey_a & 0xFFFFFF) != (hkey_b & 0xFFFFFF)
+				      && surface_ids.size() == 2
+				      && surface_ids[0] != surface_ids[1],
+				      "the content-addressed producer differs in the low 24"
+				      " bits too, so it never collided and still does not");
+				::close(sink);
+			}
+			::close(keep_in);
+			::close(keep_out);
+			::close(master);
+			::close(slave);
+			if (had_term.isEmpty()) qunsetenv("TERM");
+			else qputenv("TERM", had_term);
+			if (had_tmux.isEmpty()) qunsetenv("TMUX");
+			else qputenv("TMUX", had_tmux);
 			if (had_gfx.isEmpty()) qunsetenv("QTTY_GRAPHICS");
 			else qputenv("QTTY_GRAPHICS", had_gfx);
 		}

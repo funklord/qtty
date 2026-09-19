@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1685 checks, 0 failures. `make check` is green and includes
+1698 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -3740,7 +3740,17 @@ icon to a `QPixmap` before the style draws it**. Traced at
   by hand arrives at the placement with its key intact, a dead pixmap's
   key is not reused, successive keys differ by exactly 2^32 (a serial in
   the high word, so recycling would need the serial to wrap), and a
-  shallow copy shares the key while a deep copy does not. A
+  shallow copy shares the key while a deep copy does not.
+
+  **That 2^32 has since been read the other way round, and it is the
+  sharper half of it.** A difference of exactly 2^32 means the two keys
+  are IDENTICAL in the low 32 bits -- the serial is the only thing
+  separating them, and everything below it is a per-object detach
+  counter that starts at the same value for every pixmap built the same
+  way. So any consumer that narrows a cacheKey keeps the half with none
+  of the identity in it. One did, for the kitty wire id, and 8.253 is
+  what it cost. What the measurement supports is a map keyed on the
+  WHOLE key, which is what a cacheKey-to-glyph registry would be. A
   cacheKey-to-glyph map therefore cannot mis-resolve; it can only grow,
   bounded by icons times sizes times modes times states.
 
@@ -17436,6 +17446,181 @@ passed in a tree where silence meant dark for the whole of every
 session. **A control over process-wide state is a claim about ORDER, and
 nothing in the check says so.** It is at the top of the suite now, with
 the reason written there, and the sabotage reddens it.
+
+
+### 8.253 Three keys that had dropped a field, all in image transport (2026-09-19)
+
+An audit sweep reported three faults in the image-transport path and all
+three were real. They are one family, and the family is worth more than
+any of them: **a key must carry every field the thing it identifies
+depends on.** Two dropped a field from a cache key; the third dropped it
+from a wire id. Each was invisible in the ordinary case and wrong
+exactly where two things that differ meet one another.
+
+**1. The kitty wire id kept the half of the cacheKey with no identity in
+it.** Three sites derived it the same way:
+
+    const quint32 id = quint32(ci.key & 0xFFFFFF) + 1;
+
+`ci.key` is `QPixmap::cacheKey()`. Measured here rather than read off a
+header, because the tree builds against the distribution's Qt and not
+the source checkout in `/home/funk/Qt`: a probe under Qt 6.8.2 built
+three pixmaps the way an application builds them -- `QImage`, `fill()`,
+`QPixmap::fromImage` -- and got
+
+    0000000300000002
+    0000000400000002
+    0000000500000002
+
+so the layout is `((classKey << 56) | (ser_no << 32) | detach_no)`, the
+per-pixmap serial lives in bits 32-55, and the low 32 bits are a
+per-OBJECT detach counter that is 2 for every pixmap made that way. The
+mask kept the counter and threw the serial away. **All three went out as
+id 3.** A directly-constructed `QPixmap(w, h)` lands on detach counter 1
+and collides with every other one of those.
+
+`uploaded_` and `upload_order_` were keyed on the full 64 bits and saw
+three pictures correctly -- only the wire collapsed them. So on kitty,
+ghostty or wezterm, on the direct tier and on the Unicode-placeholder
+tier that survives tmux, two pictures were transmitted under one id, the
+second `a=T` overwrote the first's data, and both placements drew the
+same picture. Two avatars, two stickers, one image.
+
+**And `retire_uploads()` derived the id a second time, from the same
+wrong expression.** When it dropped a picture past the sixteen-upload
+cap it emitted `a=d,d=I,i=<the same 3>` -- freeing image data a LIVE
+placement was still reading from. Two derivations of one value, wrong
+together, which is why neither could catch the other.
+
+**2. `ScrollSettle` keyed on the pixmap where a placement's identity is
+(key, rectangle).** It kept `QHash<quint64, QRect>`, so a frame carrying
+one pixmap twice collapsed to whichever copy went in last; the next
+frame compared the other copy against it, called that a move, and did so
+again on every frame afterwards. `settling_` was refreshed for ever.
+Sixel and iTerm2 fell to the half-block mosaic on the second frame and
+**stayed there for the life of the program**, with nothing having moved
+at any point. The same emoji twice, one bullet icon per row, repeated
+avatars -- all of them. Kitty short-circuits earlier and never saw it.
+
+**3. The placeholder upload cache dropped the extent.** The guard was
+`uploaded_.contains(ci.key)` and the bytes it guards are
+`encode_kitty_virtual(id, image, cols, rows)`, which states
+`c=<cols>,r=<rows>` on the wire. A cell-size change cleared the cache; an
+extent change did not. So a sticker resized, or a delegate's image
+growing with its row, was never re-transmitted: the virtual placement
+kept its old `c` x `r` while the composed placeholder cells spanned the
+new rectangle, and the picture was drawn at the wrong size or clipped.
+`ImageEncodeKey::extent` existed for exactly this and that branch did
+not use `ImageEncodeKey` at all.
+
+#### What replaced them
+
+**One map from upload identity to the id the terminal holds it under.**
+`uploaded_` and its parallel id arithmetic are gone; `wire_id_` is
+`QHash<ImageEncodeKey, quint32>`, and minting the id and sending the
+bytes are the same event -- a key that is present is a picture the
+terminal has, and its value is the only name either side has for it.
+`retire_uploads()` reads the id back out of that map instead of deriving
+it, so there is one derivation rather than two that can disagree.
+
+**Keyed on ImageEncodeKey and not on the cacheKey**, which closes (3) as
+a consequence rather than as a separate patch: the placeholder branch
+puts the cell extent in the key because the extent is on its wire, and
+the direct branch deliberately does not, because what it transmits is
+the whole image and the placement is a separate command. Both carry
+`cell_px`, which makes a stale entry after a font-size change
+unreachable rather than deleted by somebody remembering to -- the
+property `ImageEncodeKey`'s own comment already claimed for
+`image_bytes_`. The clear in `dispatch_csi()` stays, but its job is now
+returning the ids rather than keeping the picture honest, and its
+comment says so.
+
+**The id is dense and RECYCLED, not monotonic.** It is not free-form:
+`compose_kitty_placeholders()` carries the low 24 bits in a cell's
+foreground colour and the top byte as a diacritic, and there are only
+`KITTY_DIACRITIC_COUNT` (297) of those -- so an id that climbs for ever
+eventually reaches a value the placeholder cells cannot spell, and the
+composer skips the cell **in silence**. A `PixelSurface` animating at 60
+frames a second mints a fresh key per frame, so that is hours rather
+than never. Recycling bounds the live range by what is on the screen. An
+id returns to the pool only after the terminal has been told to free it,
+or when `wire_id_` is dropped wholesale -- in which case the next `a=T`
+under it replaces what the terminal still holds, which is what a
+re-upload wants anyway. Minting happens before the frame's retirements,
+so an id freed this frame cannot be handed out in it.
+
+**`ScrollSettle` maps a key to all the rectangles that picture
+occupies**, sorted, and calls a move only where a key present in both
+frames has a different set. Sorted rather than compared in painter
+order: two identical pictures swapping places in the list is not
+something a viewer can see, and treating it as a scroll would put the
+latch back by a narrower route.
+
+**`retire_uploads()` is handed the identities the frame referenced
+rather than the frame.** Recomputing them there would mean restating
+each tier's source and extent at a second site -- the drift `image_key()`
+exists to prevent -- and getting it wrong there does not serve a stale
+picture, it frees one that is on the screen.
+
+#### The checks, and what each of them can see
+
+Thirteen, all run against the unfixed code first: **five went red**, one
+per defect, and every premise and control stayed green.
+
+The end-to-end ones capture the real wire through a pty, with the frames
+written to a FILE and one backend alive at a time. Both are hazards this
+tree has paid for twice already and the fixture's comment names them.
+
+- **Two different pixmaps, one kitty frame, two ids.** Built the way an
+  application builds them, because that is the case that collides -- a
+  `QPixmap(w, h)` would have been an easier question. An `info:` line
+  prints both `cacheKey()` values so the collision is visible rather
+  than taken on trust, and the premise that their low 24 bits agree is
+  its own check above it.
+- **The delete, in two checks rather than one, and the split is the
+  finding.** "Does not free one the same frame is still drawing from"
+  catches the two derivations being wrong TOGETHER, which is what
+  shipped. It cannot see the delete's derivation alone: a wrong id that
+  names nobody frees nothing, which is harmless where freeing the wrong
+  thing is not. What sees that is "each retirement names its own picture
+  rather than the one number every derivation arrives at" -- the
+  fixture pushes eighteen throwaway pictures past the sixteen-upload cap
+  and the four retirements must name four different ids. Measured
+  separately: the delete-side sabotage reddens the second and **not** the
+  first.
+- **The settle latch, twice.** The deterministic one drives
+  `ScrollSettle` on a test clock and is the witness that cannot be
+  flaky; the end-to-end one counts sixels over FOUR frames, because the
+  second alone cannot tell a latch from a debounce about to expire. A
+  further check holds the policy's own job -- one of the two copies
+  really moving still degrades.
+- **The placeholder extent**, with the first transmission's `c=4,r=2` as
+  a premise, the grown one asserting `c=8,r=3`, and a third frame
+  asserting that an unchanged one transmits nothing.
+- **Controls.** An unchanged kitty frame re-places both pictures and
+  transmits neither, so the cache still caches. And the OTHER producer:
+  `cell_paint.cpp` builds a `PixelSurface` placement's key from `qHash`
+  over the harvested pixels, which is well distributed in its low bits
+  -- measured at `08f0f7` and `4e56a8` for the two fixtures -- so the
+  masked id never collided there. That control says the defect belonged
+  to one producer rather than to placements in general, which is what
+  stops the fix being credited to the wrong thing.
+
+Five sabotage entries, each proved with `--only`. Two share one anchor
+on purpose: a sabotage proves the check it NAMES, and the deterministic
+settle check and the sixel one would otherwise rest on a single proof
+between them.
+
+**One of the five was wrong on the first attempt and is worth keeping.**
+The settle sabotage first collapsed the stored list to one rectangle and
+left the comparison where the fix had moved it -- outside the per-image
+loop. That is self-consistent last-wins, so it reddened the
+order-independence half and left the LATCH untouched, and the sixel
+check stayed green under a sabotage of the very code it was written for.
+A faithful reintroduction has to put the comparison back inside the loop
+as well. **A sabotage that reddens something is not a sabotage that
+reintroduced the defect**, and only reading which check went red
+separated the two.
 
 ### 8.249 Swept, measured, and not yet acted on (2026-09-18)
 

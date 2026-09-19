@@ -4015,3 +4015,60 @@ find = "\t\t\t\tAttrs extra = foc ? Attrs(Attr::Reverse) : Attrs();"
 into = "\t\t\t\tAttrs extra = Attrs();"
 count = 1
 check = "a focused button is drawn focused while the terminal is"
+
+
+[[sabotage]]
+# The kitty wire id back to the low 24 bits of the pixmap's cacheKey,
+# which is where the serial ISN'T -- so two pictures go out as one and
+# the second overwrites the first. 8.253.
+name = "the kitty id masked out of the cacheKey again"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\t\tconst quint32 id = wire_id_for(ek, &minted);\n\t\t\t\tlive_uploads.append(ek);"
+into = "\t\t\t\tquint32 id = wire_id_for(ek, &minted);\n\t\t\t\tid = quint32(ci.key & 0xFFFFFF) + 1;\n\t\t\t\tlive_uploads.append(ek);"
+count = 1
+check = "go out under two different kitty ids"
+
+[[sabotage]]
+# The delete deriving the id a second time instead of reading back what
+# the upload minted. The two derivations only have to disagree. 8.253.
+name = "the delete derives the id rather than reading it back"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\tout += \"\\033_Ga=d,d=I,q=2,i=\"\n\t\t\t     + QByteArray::number(*found) + \";\\033\\\\\";"
+into = "\t\t\tout += \"\\033_Ga=d,d=I,q=2,i=\"\n\t\t\t     + QByteArray::number(quint32(ek.key & 0xFFFFFF) + 1)\n\t\t\t     + \";\\033\\\\\";"
+count = 1
+check = "each retirement names its own picture"
+
+[[sabotage]]
+# One rectangle per key again, so a pixmap placed twice collapses to
+# whichever copy went in last and every frame afterwards reads the other
+# one as a move. 8.253.
+name = "the settle policy keeps one rectangle per pixmap"
+file = "src/backend/ansi/scroll_settle.h"
+find = "\t\tfor (const CellImage &ci : images) now[ci.key].append(ci.cell_rect);"
+into = "\t\tfor (const CellImage &ci : images) {\n\t\t\tconst auto prev = last_.constFind(ci.key);\n\t\t\tif (prev != last_.constEnd() && !prev->isEmpty()\n\t\t\t    && prev->last() != ci.cell_rect)\n\t\t\t\tmoved = true;\n\t\t\tnow[ci.key] = QVector<QRect>{ci.cell_rect};\n\t\t}"
+count = 1
+check = "goes on drawing them while neither copy moves"
+
+[[sabotage]]
+# The placeholder upload key without the cell extent, which the
+# transmission states as c=<cols>,r=<rows>. 8.253.
+name = "the placeholder upload cache drops the extent"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\t    image_key(ci.key, QRect(QPoint(0, 0), img.size()),\n\t\t\t              ci.cell_rect.size());"
+into = "\t\t\t    image_key(ci.key, QRect(QPoint(0, 0), img.size()),\n\t\t\t              QSize());"
+count = 1
+check = "the same pixmap at a new extent is transmitted again"
+
+[[sabotage]]
+# The same collapse, named for the other witness. The deterministic
+# check above drives ScrollSettle on a test clock; this one is the
+# end-to-end consequence -- sixel dropping to the half-block mosaic on
+# the second frame and never coming back. Two entries over one anchor
+# because a sabotage proves the check it NAMES, and these two checks
+# would otherwise rest on one proof between them. 8.253.
+name = "the settle policy keeps one rectangle, seen from the sixel wire"
+file = "src/backend/ansi/scroll_settle.h"
+find = "\t\tfor (const CellImage &ci : images) now[ci.key].append(ci.cell_rect);"
+into = "\t\tfor (const CellImage &ci : images) {\n\t\t\tconst auto prev = last_.constFind(ci.key);\n\t\t\tif (prev != last_.constEnd() && !prev->isEmpty()\n\t\t\t    && prev->last() != ci.cell_rect)\n\t\t\t\tmoved = true;\n\t\t\tnow[ci.key] = QVector<QRect>{ci.cell_rect};\n\t\t}"
+count = 1
+check = "two sixels on every frame, not two and then the mosaic"

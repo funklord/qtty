@@ -24,6 +24,7 @@
 #include <QHash>
 #include <QRect>
 #include <QVector>
+#include <algorithm>
 
 namespace Qtty {
 
@@ -33,18 +34,41 @@ public:
 
 	// True when the real pixels should be emitted this frame. Call once per
 	// frame, in order: it remembers where each placement was.
+	//
+	// A key maps to ALL the rectangles that picture occupies, not to one.
+	// This held a single QRect per key, and a frame carrying one pixmap
+	// twice -- the same emoji in two places, one bullet icon per row,
+	// repeated avatars -- collapsed to whichever rectangle went in last. The
+	// next frame then compared the other copy against it, called that a
+	// move, and did so again on every frame afterwards: settling_ was
+	// refreshed for ever and sixel and iTerm2 stayed on the half-block
+	// mosaic for the life of the program. Nothing had moved at any point.
+	//
+	// SORTED, so that the comparison is of the set of places the picture
+	// occupies rather than of the order the painter happened to emit them
+	// in. Two identical pictures swapping position in the list is not
+	// something a viewer can see, and calling it a scroll would put the
+	// latch back by a narrower route.
 	bool update(const QVector<CellImage> &images, qint64 now_ms) {
 		bool moved = false;
-		QHash<quint64, QRect> now;
+		QHash<quint64, QVector<QRect>> now;
 		now.reserve(images.size());
-		for (const CellImage &ci : images) {
-			now.insert(ci.key, ci.cell_rect);
-			const auto it = last_.constFind(ci.key);
+		for (const CellImage &ci : images) now[ci.key].append(ci.cell_rect);
+		for (auto it = now.begin(); it != now.end(); ++it) {
+			std::sort(it->begin(), it->end(),
+			          [](const QRect &a, const QRect &b) {
+				          if (a.y() != b.y()) return a.y() < b.y();
+				          if (a.x() != b.x()) return a.x() < b.x();
+				          if (a.width() != b.width())
+					          return a.width() < b.width();
+				          return a.height() < b.height();
+			          });
+			const auto was = last_.constFind(it.key());
 			// Only a placement that MOVED counts. One that appeared or
 			// vanished is a picture arriving or leaving, not a scroll, and
 			// treating it as one would degrade the first frame of every image
 			// to a mosaic -- the case where the pixels are most wanted.
-			if (it != last_.constEnd() && *it != ci.cell_rect) moved = true;
+			if (was != last_.constEnd() && *was != *it) moved = true;
 		}
 		last_ = now;
 		if (moved) {
@@ -63,7 +87,7 @@ public:
 	int debounce_ms() const { return debounce_; }
 
 private:
-	QHash<quint64, QRect> last_;
+	QHash<quint64, QVector<QRect>> last_;
 	qint64 moved_at_ = 0;
 	bool settling_ = false;
 	int debounce_;
