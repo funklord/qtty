@@ -17750,6 +17750,47 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.263 A warning that outlived the thing it warned about (2026-09-19)
+
+The README told a reader **not** to use `/usr/bin/fmake`, because the
+packaged build predated `$root` and left the reference in the value as
+text, so a binary came out carrying the literal string. fmake's session
+pointed out that the sentence had not been re-taken and that the package
+had moved since.
+
+**Re-taken, and it is obsolete.** Packaged `fmake 1.0 (5af02348)` against
+a `git archive HEAD` extraction:
+
+    fmake -n | grep -o 'QTTY_SOURCE_DIR=[^ ]*'
+      QTTY_SOURCE_DIR="/tmp/.../fmp"      -- expanded, not the literal
+    fmake -j4                              -- exit 0, all six built
+    strings qtty-inspect | grep -c '\$root'
+      0
+
+Identical to the tree's `1.0 (abf424da)`. So the build line is plain
+`fmake` now, which is what the harmonization rule asks for, and the tree's
+own copy is the alternative rather than the requirement.
+
+**The prose is replaced by the commands that re-take it**, which is the
+shape sibling projects arrived at for the same sentence. A paragraph
+asserting what somebody's installed package does is a claim about a
+machine it was not measured on; three commands and a dated measurement
+are a claim a reader can check in ten seconds and correct for themselves.
+
+**And the paragraph below it counted, and was already wrong.** It said
+`fmake.toml` "says four things fmake cannot read off the tree" -- true
+until 8.260 added the include path an hour earlier, in a commit whose own
+subject was a configuration file going stale silently. The count is gone;
+the list stands on its own, and it notes that two of its entries were
+added *after* something broke rather than by foresight.
+
+That is three counts about the tree's own shape found rotted in one day --
+the guide's practices, `cell_geometry.h`'s roles, and this one -- and the
+third was created by the session that fixed the first two. **The interval
+between writing a count and its going wrong is shorter than the interval
+between sweeps**, which is the argument for deriving one or for not
+writing it, rather than for sweeping more often.
+
 ### 8.262 A partition assertion that quietly stopped covering (2026-09-19)
 
 The comment sweep's first finding, and it is sharper than a stale number.

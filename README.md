@@ -44,23 +44,44 @@ The `Makefile` at the root is the entry point:
 Or with [fmake](../fmake), which needs no build file and nothing beyond the
 Python standard library:
 
-    python3 ~/src/fmake/fmake    # the four tools, the probe and the example
+    fmake                        # the four tools, the probe and the example
 
-**Not `/usr/bin/fmake`.** The packaged one predates `$root` and leaves the
-reference in the value as text, so the build succeeds and the binary
-carries the literal string. Measured: `--version` printing
-the reference text. Run the one in fmake's own tree until a newer package is
-installed.
+**`python3 ~/src/fmake/fmake` builds it too**, and that used to be the
+only line here. That line used to say it did not
+-- the packaged build predated `$root` and left the reference in the value
+as text -- and the warning outlived the package. Re-take it rather than
+trusting either sentence, since both are claims about whatever is
+installed on your machine:
 
-`fmake.toml` beside it says four things fmake cannot read off the tree:
-that the tests find their snapshot fixtures through `QTTY_SOURCE_DIR`,
-which qmake spells `$$QTTY_ROOT` and fmake spells `$root`; that `spike/`
-is the Phase 0 record rather than something to build, the same exemption
-`.style-gate.toml` already makes; and the tools' names, since fmake calls
-a program after its root TU and these ship with a `qtty-` prefix; and the
-language standard, which qmake takes from `CONFIG += c++17` and fmake would
-otherwise leave to whatever the compiler defaults to. `make tools-check`
-compares the last two against the `.pro` files rather than trusting either.
+    fmake --version                         # what is packaged here
+    python3 ~/src/fmake/fmake --version     # what the tree has
+
+    fmake -n | grep -o 'QTTY_SOURCE_DIR=[^ ]*' | head -1
+
+The third prints an absolute path if `$root` is understood and the literal
+`$root` if it is not. Measured 2026-09-19 against the packaged `1.0
+(5af02348)`: expanded, a full build exits 0, and no built binary carries
+the literal.
+
+`fmake.toml` beside it says what fmake cannot read off the tree, and each
+entry is a fact qmake states in a `.pro`: that the tests find their
+snapshot fixtures through `QTTY_SOURCE_DIR`, which qmake spells
+`$$QTTY_ROOT` and fmake spells `$root`; that `spike/` is the Phase 0
+record rather than something to build, the same exemption
+`.style-gate.toml` already makes; the tools' names, since fmake calls a
+program after its root TU and these ship with a `qtty-` prefix; the
+language standard, which qmake takes from `CONFIG += c++17` and fmake
+would otherwise leave to whatever the compiler defaults to; and the
+include path for the example's header, which the suite includes because
+it tests the example's delegate.
+
+`make tools-check` compares the last three against the `.pro` files rather
+than trusting either. Two of them were added *after* something broke --
+the tray tool built under its bare verb, and `fmake` exited 1 on a clean
+checkout while this file said it built the tree -- which is why the
+comparison is a gate and not a habit. This paragraph counted them until
+2026-09-19, and the count was wrong within an hour of the entry that made
+it five.
 
 It writes its objects into `.fmake/` and leaves the programs at the
 repository root -- `chat`, `qtty-inspect`, `qtty-negotiate`, `qtty-replay`,
