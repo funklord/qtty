@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1720 checks, 0 failures. `make check` is green and includes
+1721 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -17740,6 +17740,54 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.259 Two hand-copied facts, and a measurement that held (2026-09-19)
+
+Three small things from the comment sweep, closed together because each
+is a fact written twice where once would do.
+
+**The convention walk decided a row's behaviour by comparing its display
+text.** `conventions_shadowed()` asked
+`qstrcmp(row.shown, "Menu/Shift+F10") == 0` to find the one row that
+answers whether or not the convention bundle was asked for -- a fourth
+hand-written copy of a string the table and the help list already spell,
+and one no compiler can connect to either. **Display text is exactly the
+kind of thing that gets reworded**, and a rewording would have left the
+comparison matching nothing and silently stopped the only row the report
+produces with the bundle off. Green suite, quiet loss. It is a field on
+the row now.
+
+**Only one direction of that was checked.** The existing fixture binds F6
+and Ctrl+K, so it can catch a row wrongly reported while the conventions
+are off and cannot catch this row ceasing to be reported at all. Both
+directions have an entry now, and the new check binds Shift+F10 with the
+bundle off and requires the row to be named.
+
+**`qtty-negotiate` indexed two name tables by an enum with nothing
+checking the sizes** -- an out-of-bounds read the day somebody adds a
+seventh graphics tier, in the one program a person runs when qtty is
+already misbehaving on their terminal, so the failure would land exactly
+where a diagnostic must not add its own. Two `static_assert`s tie each
+table to its enum's last member. Named rather than counted: a bare
+`sizeof` division would still be right and would still let a new
+enumerator print nothing sensible. Seen to fail -- dropping one name gives
+*"static assertion failed: a graphics tier was added without a name to
+print"*.
+
+**And a claim that held, recorded because a confirmation is a measurement
+too.** `theme.cpp` says Fusion spells `PlaceholderText` `0x80000000` and
+that it is "the only one of the roles below whose alpha is not `0xff`" --
+load-bearing for the `opaque()` normalisation and unsettleable from a
+header, which is why the sweep left it. Measured over all thirteen
+captured roles under the pinned platform: `PlaceholderText` alpha 128,
+`80000000`, and **one of thirteen**. The sentence is exact.
+
+**I broke three sabotage anchors doing this and the gate caught them.**
+Adding a field to the row struct rewrote every row's text, and three
+entries anchored on rows verbatim. Re-anchored and re-proved
+individually. That is the documented hazard -- an anchor's validity is a
+property of the file at the moment of the edit -- arriving on schedule in
+an edit whose whole subject was a fact written twice.
+
 ### 8.257 A gate that its own author deformed the source to satisfy (2026-09-19)
 
 A sweep for comments stating things the code no longer does found four,

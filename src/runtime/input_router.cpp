@@ -92,18 +92,32 @@ struct ConventionRow {
 	const char *shown;
 	Qt::Modifier mod;
 	Qt::Key keys[2];
+	// Whether the row answers even with the convention bundle switched
+	// off. The context-menu row does (8.77), being a platform behaviour
+	// this library restores rather than a convention it offers.
+	//
+	// A FIELD, because the walk used to ask
+	// `qstrcmp(row.shown, "Menu/Shift+F10") == 0` -- a fourth hand-written
+	// copy of a string the table and the help list already spell, and one
+	// the compiler cannot connect to either. Respelling the row, which is
+	// display text and so exactly the kind of thing that gets reworded,
+	// would have left the comparison matching nothing and silently stopped
+	// the one row `conventions_shadowed()` reports with the bundle off --
+	// green suite, quiet loss. This tree has the same shape recorded twice
+	// already in `tools-check` and in the conventions partition.
+	bool always;
 };
 
 static const ConventionRow k_convention_rows[] = {
-	{ "Enter",          Qt::Modifier(0), { Qt::Key_Return,   Qt::Key_Enter } },
-	{ "Up/Down",        Qt::Modifier(0), { Qt::Key_Up,       Qt::Key_Down } },
-	{ "F6",             Qt::Modifier(0), { Qt::Key_F6,       Qt::Key(0) } },
-	{ "F10",            Qt::Modifier(0), { Qt::Key_F10,      Qt::Key(0) } },
-	{ "Ctrl+PgUp/PgDn", Qt::CTRL,        { Qt::Key_PageUp,   Qt::Key_PageDown } },
-	{ "Ctrl+A/E",       Qt::CTRL,        { Qt::Key_A,        Qt::Key_E } },
-	{ "Ctrl+K/U",       Qt::CTRL,        { Qt::Key_K,        Qt::Key_U } },
-	{ "Ctrl+W/D",       Qt::CTRL,        { Qt::Key_W,        Qt::Key_D } },
-	{ "Menu/Shift+F10", Qt::SHIFT,       { Qt::Key_F10,      Qt::Key(0) } },
+	{ "Enter",          Qt::Modifier(0), { Qt::Key_Return,   Qt::Key_Enter },   false },
+	{ "Up/Down",        Qt::Modifier(0), { Qt::Key_Up,       Qt::Key_Down },    false },
+	{ "F6",             Qt::Modifier(0), { Qt::Key_F6,       Qt::Key(0) },      false },
+	{ "F10",            Qt::Modifier(0), { Qt::Key_F10,      Qt::Key(0) },      false },
+	{ "Ctrl+PgUp/PgDn", Qt::CTRL,        { Qt::Key_PageUp,   Qt::Key_PageDown },false },
+	{ "Ctrl+A/E",       Qt::CTRL,        { Qt::Key_A,        Qt::Key_E },       false },
+	{ "Ctrl+K/U",       Qt::CTRL,        { Qt::Key_K,        Qt::Key_U },       false },
+	{ "Ctrl+W/D",       Qt::CTRL,        { Qt::Key_W,        Qt::Key_D },       false },
+	{ "Menu/Shift+F10", Qt::SHIFT,       { Qt::Key_F10,      Qt::Key(0) },      true  },
 };
 
 
@@ -1251,8 +1265,7 @@ QVector<QPair<QString, QStringList>> conventions_shadowed(QWidget *scope) {
 		// for (8.77), so it is the only one to report while the rest are
 		// off: reporting a row the library is not answering to would be
 		// naming a shadow over nothing.
-		const bool always = qstrcmp(row.shown, "Menu/Shift+F10") == 0;
-		if (!keyboard_conventions() && !always) continue;
+		if (!keyboard_conventions() && !row.always) continue;
 		QStringList who;
 		for (const Qt::Key k : row.keys) {
 			if (k == 0) continue;

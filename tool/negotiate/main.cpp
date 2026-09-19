@@ -176,9 +176,25 @@ int main(int argc, char **argv) {
 		scheme = Qtty::color_scheme();
 	}
 
+	// Two tables indexed by an enum, which is an out-of-bounds read the day
+	// somebody adds a seventh graphics tier or a fifth colour depth -- in
+	// the one program a person runs when qtty is already misbehaving on
+	// their terminal, so the failure would land exactly where a diagnostic
+	// must not add its own.
+	//
+	// Named rather than counted: a bare `sizeof(t)/sizeof(*t)` would still
+	// be right and still let a new enumerator print nothing sensible. The
+	// static_assert ties each table to the enum's own last member, so
+	// adding a tier without a name for it does not compile.
 	static const char *graphics[] = {"NoGraphics", "Halfblocks", "Sixel",
 		                                 "ITerm2", "Kitty", "KittyAlpha"};
 	static const char *depth[] = {"Mono", "Ansi16", "Xterm256", "TrueColor"};
+	static_assert(sizeof(graphics) / sizeof(*graphics)
+	                  == size_t(Qtty::Capabilities::KittyAlpha) + 1,
+	              "a graphics tier was added without a name to print");
+	static_assert(sizeof(depth) / sizeof(*depth)
+	                  == size_t(Qtty::Capabilities::TrueColor) + 1,
+	              "a colour depth was added without a name to print");
 
 	const char *path = getenv("QTTY_NEGOTIATE_OUT");
 	FILE *out = path ? fopen(path, "w") : stdout;

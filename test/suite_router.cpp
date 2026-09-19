@@ -6046,6 +6046,41 @@ int suite_router() {
 		      "with the conventions off nothing is shadowed, the rows they "
 		      "would have promised not being promised");
 
+		// EXCEPT THE ONE ROW THAT ANSWERS ANYWAY, which is the other
+		// direction and was checked by nothing. 8.77 made the context
+		// menu answer whether or not the bundle was asked for, because it
+		// is a platform behaviour this library restores rather than a
+		// convention it offers -- so an application that takes Shift+F10
+		// has taken something real, and must be told even with the
+		// conventions off.
+		//
+		// The check above binds F6 and Ctrl+K, so it can only catch a row
+		// wrongly reported while off. Nothing could catch this row
+		// quietly ceasing to be -- which matters because the walk used to
+		// decide it by comparing the row's DISPLAY TEXT against a
+		// hand-written copy of itself, and display text gets reworded.
+		{
+			QWidget off_host;
+			off_host.setAttribute(Qt::WA_DontShowOnScreen);
+			off_host.resize(GridMetrics::cells(30, 6));
+			auto *ctx = new QAction(QStringLiteral("Context"), &off_host);
+			ctx->setShortcut(QKeySequence(QStringLiteral("Shift+F10")));
+			ctx->setShortcutContext(Qt::WindowShortcut);
+			ctx->setObjectName(QStringLiteral("the context claim"));
+			off_host.addAction(ctx);
+			off_host.show();
+			QCoreApplication::processEvents();
+			QStringList off_rows;
+			for (const auto &t : conventions_shadowed(&off_host))
+				off_rows << t.first;
+			CHECK(off_rows == QStringList{QStringLiteral("Menu/Shift+F10")},
+			      "while the context-menu row is reported even with the "
+			      "conventions off, that one answering whether or not the "
+			      "bundle was asked for");
+			off_host.hide();
+			QCoreApplication::processEvents();
+		}
+
 		set_keyboard_conventions(true);
 		const auto taken = conventions_shadowed(&host);
 		QStringList rows;

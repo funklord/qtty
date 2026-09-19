@@ -1068,7 +1068,7 @@ check = "it lists only the keys that work anyway"
 # and strikes out no line.
 name = "the shadow report loses the Enter row"
 file = "src/runtime/input_router.cpp"
-find = "\t{ \"Enter\",          Qt::Modifier(0), { Qt::Key_Return,   Qt::Key_Enter } },\n"
+find = "\t{ \"Enter\",          Qt::Modifier(0), { Qt::Key_Return,   Qt::Key_Enter },   false },\n"
 into = ""
 count = 1
 check = "an application that binds a shortcut to Return is told it has taken"
@@ -1077,7 +1077,7 @@ check = "an application that binds a shortcut to Return is told it has taken"
 # The same for the row that moves between controls.
 name = "the shadow report loses the Up/Down row"
 file = "src/runtime/input_router.cpp"
-find = "\t{ \"Up/Down\",        Qt::Modifier(0), { Qt::Key_Up,       Qt::Key_Down } },\n"
+find = "\t{ \"Up/Down\",        Qt::Modifier(0), { Qt::Key_Up,       Qt::Key_Down },    false },\n"
 into = ""
 count = 1
 check = "and one that binds Up is told the same about the row"
@@ -2443,8 +2443,8 @@ check = "the rows an application's own shortcuts have taken back are named"
 # match the report against the row it is showing.
 name = "a shadowed row is spelled its own way"
 file = "src/runtime/input_router.cpp"
-find = "\t{ \"Ctrl+K/U\",       Qt::CTRL,        { Qt::Key_K,        Qt::Key_U } },"
-into = "\t{ \"Ctrl+K\",         Qt::CTRL,        { Qt::Key_K,        Qt::Key_U } },"
+find = "\t{ \"Ctrl+K/U\",       Qt::CTRL,        { Qt::Key_K,        Qt::Key_U },       false },"
+into = "\t{ \"Ctrl+K\",         Qt::CTRL,        { Qt::Key_K,        Qt::Key_U },       false },"
 count = 1
 check = "every row it names is spelled exactly as the help list spells it"
 
@@ -4213,3 +4213,26 @@ find = "\tcase Color::Rgb:     return c.value();"
 into = "\tcase Color::Rgb:     return fallback;"
 count = 1
 check = "and a Color::Rgb cell is unchanged, reaching both colours"
+
+[[sabotage]]
+# The context-menu row losing the property that makes it answer with
+# the bundle off, which is what the hand-copied string comparison
+# used to decide and what a rewording would silently have done.
+# 8.259.
+name = "the context-menu row stops answering with the conventions off"
+file = "src/runtime/input_router.cpp"
+find = "\t{ \"Menu/Shift+F10\", Qt::SHIFT,       { Qt::Key_F10,      Qt::Key(0) },      true  },"
+into = "\t{ \"Menu/Shift+F10\", Qt::SHIFT,       { Qt::Key_F10,      Qt::Key(0) },      false },"
+count = 1
+check = "the context-menu row is reported even with the conventions off"
+
+[[sabotage]]
+# And the other direction: an ordinary convention row claiming to
+# answer with the bundle off, so a status bar is told a key is taken
+# that the library is not answering to. 8.259.
+name = "an ordinary convention row claims to answer with the bundle off"
+file = "src/runtime/input_router.cpp"
+find = "\t{ \"F6\",             Qt::Modifier(0), { Qt::Key_F6,       Qt::Key(0) },      false },"
+into = "\t{ \"F6\",             Qt::Modifier(0), { Qt::Key_F6,       Qt::Key(0) },      true  },"
+count = 1
+check = "with the conventions off nothing is shadowed"
