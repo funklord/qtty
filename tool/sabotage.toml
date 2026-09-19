@@ -4299,3 +4299,43 @@ find = "\treturn own.kind() == Color::Default ? window : own;"
 into = "\treturn own;"
 count = 1
 check = "a theme that names neither still falls back to the window"
+[[sabotage]]
+# The defect itself: the colour plane keyed on a name that cannot spell the
+# authored ANSI-16 index, so two cells the frame diff calls UNEQUAL take the
+# same letter in a recorded fixture. Inert under terminal_default() and live
+# the first time a fixture is recorded under from_palette(), which is the
+# shape of 8.238's Blink one plane over -- an artefact compared against
+# itself agreeing with every later run for ever. 8.258.
+name = "a colour plane that cannot spell the authored index"
+file = "src/core/cell_buffer.cpp"
+find = "\tif (c.authored_ansi16() >= 0)\n\t\tname += QStringLiteral(\"/ansi16:%1\").arg(c.authored_ansi16());"
+into = "\tif (false && c.authored_ansi16() >= 0)\n\t\tname += QStringLiteral(\"/ansi16:%1\").arg(c.authored_ansi16());"
+count = 1
+check = "and a snapshot gives them different colour letters"
+
+[[sabotage]]
+# The off-by-one the guard invites, and the reason the legend check is
+# written with index 0 rather than a comfortable 4: -1 is "no authored
+# index" and 0 is authored black, a real entry in theme.cpp's role table.
+# This mis-spells exactly one of the sixteen and leaves the other fifteen
+# right, so a check written with any other index passes straight over it.
+# 8.258.
+name = "authored index 0 read as no authored index"
+file = "src/core/cell_buffer.cpp"
+find = "if (c.authored_ansi16() >= 0)"
+into = "if (c.authored_ansi16() > 0)"
+count = 1
+check = "the legend names the authored index, and names it more often"
+
+[[sabotage]]
+# The careless fix, which is the one the shape was chosen against: append
+# the index to every name rather than only where there is one. It prints
+# "/ansi16:-1" on the terminal's own colours and moves both committed
+# fixtures. The control for the conditional half, and the reason a
+# Color::Default is offered an index in the check it reddens. 8.258.
+name = "the authored index appended to every colour name"
+file = "src/core/cell_buffer.cpp"
+find = "\tif (c.authored_ansi16() >= 0)\n\t\tname += QStringLiteral(\"/ansi16:%1\").arg(c.authored_ansi16());"
+into = "\tname += QStringLiteral(\"/ansi16:%1\").arg(c.authored_ansi16());"
+count = 1
+check = "and a snapshot of the terminal's own colours names no"

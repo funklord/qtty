@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1735 checks, 0 failures. `make check` is green and includes
+1740 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -17858,6 +17858,134 @@ constructor sets exactly that objectName. So a Qt bump makes the exemption
 unreachable and its reason false, in a list whose own comment says an
 addition should be as hard to make as the comment is to write. One
 `strings` re-takes it.
+
+### 8.258 A snapshot that could not spell the difference its own diff makes (2026-09-19)
+
+`Color::operator==` counts the authored ANSI-16 index as part of identity,
+and `color.h` says why in the comment above it: two colours with the same
+RGB and different authored indices emit different bytes on a 16-colour
+terminal, so a diff that called them equal would leave the wrong one on
+screen. `colour_name()` printed the kind, the palette index or the 24-bit
+value and nothing else, and the colour plane is keyed on exactly that
+string -- so **the frame diff called two such cells UNEQUAL and a recorded
+fixture gave them the SAME letter.**
+
+That is 8.238's Blink defect in the plane next door, and it is worth
+naming as the same one rather than as a resemblance. A snapshot is
+compared against **itself**. A difference it has no way to spell does not
+read as a disagreement; it reads as agreement, with every later run of
+every fixture, for ever. There is no failing test at the end of that road,
+only a plane that has quietly stopped describing the frame.
+
+It was inert rather than absent. Both committed fixtures are recorded
+under `terminal_default()`, where every role is `Color::Default` and
+`with_ansi16()` refuses to name an index on one -- the survey in 8.248
+established that and said so. What it went on to say is the part that
+dates it: 8.248 made five more authored indices reachable, so the first
+fixture recorded under `from_palette()` is what turns this live, and that
+is nearer than it was.
+
+#### Why a suffix and not a plane, from the counting
+
+8.238 put Blink on a plane of its own and the reasoning was arithmetic,
+not taste: the attribute character is a **total** map over a **fixed**
+domain. Seven flags give 127 non-empty masks; printable ASCII has 94
+non-space characters, 93 once `.` is spent on the empty mask; 127 > 93, so
+no injection exists and one character cannot carry seven flags. The
+instruction here was to check whether the same ceiling applies before
+reaching for the same answer.
+
+**It does not, and the reason is that the colour plane never mapped a
+value space at all.** It hands a letter to each colour PAIR a frame
+actually holds, on first sight, out of a 63-character alphabet with `.`
+reserved for the all-default pair and 61 slots after it, and it prints
+`?` out loud when they run out. The value space was already far past any
+alphabet before this change -- `Color::Rgb` alone is 2^24 per side, so
+(2^24)^2 pairs against 63 slots -- and the encoding has never tried to be
+injective over it. Widening the key cannot overflow a domain the format
+does not enumerate. It costs a slot only when a frame really does hold two
+colours differing in nothing but their authored index, which is precisely
+the case that was being told as one letter.
+
+**And the plane route fails the very arithmetic that forced Blink's.** A
+cell carries two colours, each with 17 possible authored states -- none,
+plus 0..15. One character per cell would have to separate 17 x 17 = 289 of
+them, 288 after `.` takes the both-none case, against the same 93. So it
+is not one extra plane but **two**; and by 8.238's own argument that an
+optional plane makes "absent" and "recorded before this plane existed" the
+same two bytes, both would be emitted always. Two planes move both
+committed fixtures, and each needs a legend line written beside the
+encoding rather than derived from it.
+
+That last cost is the one 8.238 already paid. Its first version wrote
+`blink` as a literal next to the plane, which made `attr_names()`'s own
+blink row dead code -- the sabotage entry that deleted the row applied
+cleanly and reddened nothing. The suffix avoids it by construction rather
+than by care: the plane's key and the legend's text are **the same string
+from the same call to `colour_name()`**, so a legend that named something
+the encoding did not would have to be a different function, and there is
+only one.
+
+#### The spelling, and the two things that constrain it
+
+`/ansi16:N`, appended when `authored_ansi16() >= 0`. Two constraints are
+technical rather than aesthetic and are written beside the code:
+
+- **No space.** The key is `fg + ' ' + bg` and the legend splits it back
+  on that space, so a name containing one tears the legend in half.
+- **`>= 0` and not `> 0`.** -1 is "no authored index" and 0 is authored
+  black, a real entry in `theme.cpp`'s role table. The off-by-one
+  mis-spells exactly one of the sixteen and leaves the other fifteen
+  right, which is the shape of defect a self-compared artefact is least
+  able to report -- so the legend check is written with index 0 and not a
+  comfortable 4.
+
+#### Neither committed fixture moved, verified two ways
+
+`git status` reports both files untouched, and -- the half that matters
+more, since an untouched file could still be a renderer that now disagrees
+with it -- `check_snapshot` re-rendered both and matched byte for byte:
+`PASS: snapshot matches` and `PASS: gallery snapshot`. They hold still
+because the suffix is **conditional** and `with_ansi16()` refuses a
+`Color::Default`, which is the regime both were recorded in. That is
+asserted at the mechanism rather than left to the file comparison: a check
+offers an index to two `Color::Default`s and requires the snapshot to name
+none, so the property that makes the fixtures safe is held by a test
+rather than by luck.
+
+#### The before-run
+
+Written against the unfixed tree and run there first. 1723 passes and two
+failures -- the 1720 the tree had, plus the three of these five that
+assert what the unfixed code already did:
+
+    two colours with the same RGB and different authored indices are unequal  PASS
+    and a snapshot gives them different colour letters                        FAIL
+    the legend names the authored index, and names it more often for index 0  FAIL
+    while two equal colours still take the same letter                        PASS
+    and a snapshot of the terminal's own colours names no authored index      PASS
+
+**The three that passed are not padding.** The first is the premise: it
+asserts that the frame diff really does separate these two cells, without
+which the headline would be demanding that a snapshot invent a distinction
+nothing else in the tree makes, and it would be the snapshot that was
+wrong. The fourth is the control -- everything else here is satisfied by a
+change that simply gave every cell its own letter. The fifth is the
+regression guard on the fixtures.
+
+#### Three sabotages, and their counts
+
+    a colour plane that cannot spell the authored index    2 checks red
+    authored index 0 read as no authored index             1 check  red
+    the authored index appended to every colour name       3 checks red
+
+The middle one is the sharp result: **exactly one check**, which says the
+index-0 boundary is covered by that check and by nothing else in 1725 --
+a check written with index 4 would have passed straight over it. The last
+one is the careless fix the shape was chosen against, appending the index
+to every name; its three are the `terminal_default` check plus both
+fixture comparisons, which is what "it moves both committed fixtures"
+means measured rather than asserted.
 
 ### 8.255 An index is a colour the cell stated (2026-09-19)
 

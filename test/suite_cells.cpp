@@ -538,6 +538,113 @@ int suite_cells() {
 		      "snapshot, which is what a masked-off bit would have done");
 	}
 
+	// THE AUTHORED ANSI-16 INDEX, WHICH THE COLOUR PLANE COULD NOT SPELL.
+	//
+	// Color::operator== counts the authored index as part of identity, and
+	// color.h says why: two colours with the same RGB and different
+	// authored indices emit different bytes on a 16-colour terminal, so a
+	// diff that called them equal would leave the wrong one on screen.
+	// colour_name() printed the kind, the index or the RGB and nothing
+	// else, and the colour plane is keyed on that name -- so the frame diff
+	// called two such cells UNEQUAL and a recorded fixture gave them the
+	// SAME letter.
+	//
+	// That is the Blink defect one plane over, and it is worth naming as
+	// the same one: an artefact compared against ITSELF cannot report a
+	// difference it has no way to spell, so it agrees with every later run
+	// of every fixture for ever and there is no failing test at the end of
+	// it. It was inert rather than absent -- both committed fixtures are
+	// recorded under terminal_default(), where every role is Color::Default
+	// and with_ansi16() refuses to name an index on one -- and the tree
+	// gained five newly-reachable authored indices in 8.257, so the regime
+	// where it bites is nearer than it was.
+	//
+	// The remedy is a suffix on the NAME rather than a plane of its own,
+	// and the counting is in cell_buffer.cpp beside it: the attribute
+	// plane's ceiling is a theorem about a fixed domain of 127 masks, while
+	// the colour plane assigns letters to the pairs a frame actually holds
+	// and so has no such domain to overflow.
+	{
+		const Color plain  = Color::rgb(qRgb(0, 0, 255));
+		const Color blue   = plain.with_ansi16(4);
+		const Color bright = plain.with_ansi16(12);
+		const QString word = QStringLiteral("ansi16");
+		const auto colour_plane = [](const CellBuffer &b) {
+			const QStringList l = b.to_snapshot().split(QLatin1Char('\n'));
+			const int at = l.indexOf(QStringLiteral("--- colours ---"));
+			return at >= 0 && at + 1 < l.size() ? l.at(at + 1) : QString();
+		};
+
+		// The premise, asserted rather than assumed. Without it the check
+		// below would be demanding that a snapshot invent a distinction
+		// nothing else in the tree makes, and it would be the snapshot that
+		// was wrong. This is what the frame diff acts on.
+		CHECK(blue != bright && blue.value() == bright.value(),
+		      "two colours with the same RGB and different authored ANSI-16 "
+		      "indices are unequal, which is the difference a frame diff "
+		      "acts on");
+
+		CellBuffer b(3, 1);
+		b.text(0, 0, QStringLiteral("x"), blue, Color(), Attrs());
+		b.text(1, 0, QStringLiteral("y"), bright, Color(), Attrs());
+		const QString p = colour_plane(b);
+		CHECK(p.size() == 2 && p.at(0) != p.at(1),
+		      "and a snapshot gives them different colour letters, so a "
+		      "fixture records the difference rather than agreeing with "
+		      "itself for ever");
+
+		// THE LEGEND, DIFFERENTIALLY. A contains() would be vacuous the
+		// moment anything printed the word unconditionally, which is
+		// exactly how the blink legend's first version passed against code
+		// that could not spell blink at all -- the sabotage entry applied
+		// cleanly and reddened nothing. Counting separates the two: a name
+		// may legitimately appear in a snapshot that does not carry the
+		// thing, but it appears MORE OFTEN in one that does.
+		//
+		// Index 0 and not 4, deliberately. Zero is the boundary the
+		// obvious `if (index > 0)` loses, and authored black is a real
+		// entry in the role table rather than a contrived one; a check
+		// written with index 4 would pass against that off-by-one and the
+		// fixture would go on mis-spelling exactly one of the sixteen.
+		CellBuffer with_index(2, 1), without_index(2, 1);
+		with_index.text(0, 0, QStringLiteral("x"), plain.with_ansi16(0),
+		                Color(), Attrs());
+		without_index.text(0, 0, QStringLiteral("x"), plain, Color(), Attrs());
+		CHECK(with_index.to_snapshot().count(word)
+		      > without_index.to_snapshot().count(word),
+		      "the legend names the authored index, and names it more often "
+		      "for a cell carrying index 0 than for one carrying none");
+
+		// THE CONTROL. Everything above is satisfied by a change that
+		// simply made every cell distinct, so two colours that really are
+		// equal have to go on sharing a letter.
+		CellBuffer same(3, 1);
+		same.text(0, 0, QStringLiteral("x"), blue, Color(), Attrs());
+		same.text(1, 0, QStringLiteral("y"), plain.with_ansi16(4), Color(),
+		          Attrs());
+		const QString sp = colour_plane(same);
+		CHECK(blue == plain.with_ansi16(4) && sp.size() == 2
+		      && sp.at(0) == sp.at(1),
+		      "while two equal colours still take the same letter, so the "
+		      "plane did not become one letter per cell");
+
+		// WHY THE TWO COMMITTED FIXTURES CANNOT MOVE, proved at the
+		// mechanism rather than by re-measuring the files. suite_render's
+		// check_snapshot compares the bytes themselves and would go red if
+		// they had; what it cannot say is whether they held still by luck.
+		// They hold still because the suffix is CONDITIONAL and a
+		// Color::Default cannot carry one, which is the regime both
+		// fixtures were recorded in. Offering an index to a Default here
+		// is the point: with_ansi16() refuses it, so the name is plain.
+		CellBuffer def(2, 1);
+		def.text(0, 0, QStringLiteral("x"), Color().with_ansi16(4),
+		         Color().with_ansi16(12), Attrs());
+		CHECK(!def.to_snapshot().contains(word),
+		      "and a snapshot of the terminal's own colours names no "
+		      "authored index even when one was offered, which is why a "
+		      "fixture recorded under terminal_default() cannot move");
+	}
+
 	// ---- the colour group Qt actually paints from -------------------------
 	//
 	// role_of() searched Active and Disabled. Qt paints every widget here

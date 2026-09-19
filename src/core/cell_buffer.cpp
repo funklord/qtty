@@ -280,7 +280,12 @@ QString attr_names(Attrs a) {
 	return on.join(QLatin1Char('+'));
 }
 
-QString colour_name(const Color &c) {
+// What a colour's KIND spells, which is what this printed in full before
+// the authored index arrived. Split out rather than given a `break` per
+// case so that the three lines below stay one line each and keep their
+// columns: a switch whose arms are single returns is what this was, and a
+// suffix is no reason to reflow it.
+QString colour_kind_name(const Color &c) {
 	switch (c.kind()) {
 	case Color::Default: return QStringLiteral("default");
 	case Color::Indexed: return QStringLiteral("index:%1").arg(c.index());
@@ -290,6 +295,67 @@ QString colour_name(const Color &c) {
 	                                                      6, 16, QLatin1Char('0'));
 	}
 	return QStringLiteral("?");
+}
+
+// The name a colour takes in the plane's key and in the legend, which are
+// the same string by construction -- see letter_for() below, which keys on
+// what this returns, and the legend loop, which prints it back. That is
+// deliberate rather than incidental: the blink legend's first version wrote
+// its name as a literal beside the encoding, which made attr_names()'s own
+// row dead code and let a sabotage that deleted it apply cleanly and redden
+// nothing. One function, read by both, cannot drift from itself.
+QString colour_name(const Color &c) {
+	QString name = colour_kind_name(c);
+
+	// THE AUTHORED ANSI-16 INDEX, WHICH THE THREE SPELLINGS ABOVE CANNOT
+	// SHOW. Color::operator== counts it as part of identity and color.h
+	// says why: two colours with the same RGB and different authored
+	// indices emit different bytes on a 16-colour terminal, so a diff that
+	// called them equal would leave the wrong one on screen. Without this
+	// suffix the frame diff called two such cells UNEQUAL and a recorded
+	// fixture gave them the SAME letter -- an artefact compared against
+	// itself, unable to spell a difference, agreeing with every later run
+	// of every fixture for ever. That is the Blink defect of 8.238 in the
+	// plane next door, and it was inert only because both committed
+	// fixtures were recorded under terminal_default(), where every role is
+	// Color::Default and with_ansi16() refuses to name an index on one.
+	//
+	// A SUFFIX AND NOT A PLANE OF ITS OWN, and the counting is the reason
+	// rather than the convenience. Blink went to its own plane because the
+	// attribute character is a TOTAL map over a FIXED domain: seven flags
+	// give 127 non-empty masks, printable ASCII has 94 non-space characters
+	// and 93 once '.' is spent, and 127 > 93 means no injection exists. No
+	// such theorem applies here. The colour plane never mapped a value
+	// space at all -- 2^24 RGB values per side is (2^24)^2 pairs against 63
+	// alphabet slots, and always was -- it hands a letter to each PAIR A
+	// FRAME ACTUALLY HOLDS, on first sight, with 61 non-default slots and an
+	// out-loud '?' when they run out. Widening the key cannot overflow a
+	// domain the encoding never enumerated; it adds a slot only when a frame
+	// really does hold two colours differing in nothing else, which is
+	// exactly the case that was being told as the same letter.
+	//
+	// And the plane route fails the same arithmetic that forced Blink's.
+	// A cell carries TWO colours, each with 17 possible authored states
+	// (none, plus 0..15), so one character per cell would have to separate
+	// 17*17 = 289 of them, 288 after '.' takes the both-none case. 288 > 93:
+	// no injection, so it is not one extra plane but two -- both emitted
+	// always, by the argument above blink's plane that an optional one makes
+	// "absent" and "recorded before this existed" the same two bytes. Two
+	// planes move both committed fixtures, and each needs a legend line
+	// written beside the encoding rather than derived from it, which is the
+	// trap this function's header describes. The suffix costs neither.
+	//
+	// `>= 0` and not `> 0`: -1 is "no authored index" and 0 is authored
+	// black, a real entry in theme.cpp's role table. The off-by-one would
+	// mis-spell exactly one of the sixteen and nothing else, which is the
+	// shape of defect a fixture is least able to report.
+	//
+	// No space in the suffix, which is a constraint and not a style: the
+	// plane's key is fg + ' ' + bg and the legend splits it back on that
+	// space, so a name containing one would tear the legend in half.
+	if (c.authored_ansi16() >= 0)
+		name += QStringLiteral("/ansi16:%1").arg(c.authored_ansi16());
+	return name;
 }
 
 } // namespace
