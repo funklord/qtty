@@ -1062,6 +1062,39 @@ count = 1
 check = "it lists only the keys that work anyway"
 
 [[sabotage]]
+# The Enter row taken out of the chord table while the help list goes on
+# showing it -- the state 8.187 shipped in. conventions_shadowed() then
+# cannot name the row, so an application binding Return is told nothing
+# and strikes out no line.
+name = "the shadow report loses the Enter row"
+file = "src/runtime/input_router.cpp"
+find = "\t{ \"Enter\",          Qt::Modifier(0), { Qt::Key_Return,   Qt::Key_Enter } },\n"
+into = ""
+count = 1
+check = "an application that binds a shortcut to Return is told it has taken"
+
+[[sabotage]]
+# The same for the row that moves between controls.
+name = "the shadow report loses the Up/Down row"
+file = "src/runtime/input_router.cpp"
+find = "\t{ \"Up/Down\",        Qt::Modifier(0), { Qt::Key_Up,       Qt::Key_Down } },\n"
+into = ""
+count = 1
+check = "and one that binds Up is told the same about the row"
+
+[[sabotage]]
+# A row added to the help list with no chord behind it and no recorded
+# reason it has none, which is the drift the partition exists to catch.
+# It is the one entry here that breaks the LIST rather than the table, so
+# it is the proof that the partition fails from both sides.
+name = "a help row with nothing behind it"
+file = "src/runtime/input_router.cpp"
+find = "\t\tmenu,\n\t};\n}"
+into = "\t\t{ QStringLiteral(\"Ctrl+Z\"), QStringLiteral(\"undo\") },\n\t\tmenu,\n\t};\n}"
+count = 1
+check = "every row the conventions list shows is placed"
+
+[[sabotage]]
 # Focus tracking itself. Qt's own hasFocus() is permanently false under
 # the offscreen platform, so Qtty::focusWidget() is the only answer to
 # "who has focus" -- and if it stops answering, a custom widget's focus
@@ -1832,10 +1865,22 @@ check = "and it scrolls to keep the selection on screen"
 # which is how it was before the bundle gained them. 8.146.
 name = "readline chords do nothing in a text field"
 file = "src/runtime/input_router.cpp"
-find = "\tif (!s_conventions || !k.ctrl || k.alt) return false;"
+find = "\tif (!s_conventions || !k.ctrl || k.alt || k.shift) return false;"
 into = "\tif (true) return false;"
 count = 1
 check = "Ctrl+A and Ctrl+E move to the start and end of a line"
+
+[[sabotage]]
+# Shift dropped from the readline guard, which is how the chords read
+# until 8.254: Ctrl+Shift+K killed to the end of the line, although the
+# help list promises Ctrl+K and a shifted control chord on a terminal
+# usually belongs to the emulator.
+name = "a readline chord answers its shifted form too"
+file = "src/runtime/input_router.cpp"
+find = "\tif (!s_conventions || !k.ctrl || k.alt || k.shift) return false;"
+into = "\tif (!s_conventions || !k.ctrl || k.alt) return false;"
+count = 1
+check = "Ctrl+Shift+K is not the readline kill"
 
 [[sabotage]]
 # The per-widget test dropped, so Ctrl+A takes start-of-line everywhere and a
@@ -2841,6 +2886,18 @@ find = "\t\tconst bool same_key = q.text.isEmpty()\n\t\t    ? (q.qt_key != 0 && 
 into = "\t\tconst bool same_key = q.qt_key == k.qt_key;"
 count = 1
 check = "and only that letter: every other printable key still reaches the widget"
+
+[[sabotage]]
+# Shift dropped from the quit-key comparison, which is how it read until
+# 8.254: two of KeyEvent's three modifiers were compared, so a quit key
+# named by code fired on its shifted chord as well -- an application
+# quitting on F10 also quit on Shift+F10, the context-menu key.
+name = "a quit key answers its shifted chord too"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (same_key && q.ctrl == k.ctrl && q.alt == k.alt\n\t\t    && q.shift == k.shift) {"
+into = "\t\tif (same_key && q.ctrl == k.ctrl && q.alt == k.alt) {"
+count = 1
+check = "a quit key named by key code is not fired by the shifted chord"
 
 [[sabotage]]
 # The free function unable to reach a router that already exists, so an

@@ -368,6 +368,11 @@ One line turns on the habits a terminal user has and Qt does not:
 | `Ctrl+W` | Rub out the word before the caret |
 | `Ctrl+D` | Delete the character under the caret -- a quit key everywhere else |
 
+**These are the chords as written, `Shift` included.** Adding a shift to
+one does not reach the binding: `Ctrl+Shift+K` is not the kill, and a
+shifted control chord on a terminal usually belongs to the terminal
+emulator rather than to the program inside it.
+
 **`F10` is the way into a menu bar whose titles carry no mnemonic**, and
 without it there is none: a `QMenuBar` is `Qt::NoFocus`, is in no tab
 chain, and Qt reaches it by `Alt` -- which needs a `&` in the title. So a
@@ -794,7 +799,7 @@ Do not hand-write the ones qtty binds. Ask for them:
         hints << key + " " + what;
     status->setText(hints.join("  \u00b7  "));
 
-It lists **what qtty answers right now** -- the five conventions when
+It lists **what qtty answers right now** -- the conventions when
 they are on, and `Menu/Shift+F10` either way, since the context menu's
 keys do not need the opt-in. So the same code is right in both states and
 never promises a key that does nothing. Writing `"F6 window"` into your
@@ -818,6 +823,15 @@ spells them:
 Empty is the usual answer and the one to assert in a test. What it
 cannot see is the reverse -- a key you bound that the conventions do not
 name -- because that one is yours and was never promised.
+
+**Every row it lists is covered but one.** `Enter` and `Up`/`Down` are
+in it too: a shortcut is matched before the focused widget is offered
+anything, so a `QShortcut` on `Return` takes the `Enter` convention away
+just as one on `Ctrl+K` takes the kill. The exception is `Alt` + a
+letter, which is a family rather than a chord -- the letter is whatever
+a tab or a label carries -- and `Qtty::mnemonic_conflicts()` answers it
+per letter instead. A check in this library asserts that split, so a row
+cannot appear in the list with nothing watching it.
 
 **9. In a custom widget, ignore keys that carry `Alt`.** qtty withholds
 the letter from widgets Qt marks as taking text, which covers every
@@ -1282,6 +1296,19 @@ ordinary character arrives with no key code at all and the letter in
 code and no text, which is how `Ctrl+C` is written. Call it before
 `Qtty::exec()` or from a slot during the run -- both take effect, and a
 router built afterwards starts from it.
+
+**The chord you name is the chord that quits, `Shift` included.** All
+three modifiers are compared, so `{Qt::Key_C, {}, true, false, false}` is
+`Ctrl+C` and is not `Ctrl+Shift+C` -- which on most terminals is copy,
+and is nobody's request to end a program. There is no spelling for
+"shift unspecified": `Qtty::KeyEvent` has one flag per modifier and no
+third state.
+
+Until this was measured only `Ctrl` and `Alt` were compared, and the
+price was paid by the keys this library binds itself: an application
+naming `F10` as its quit key also quit on `Shift+F10`, which is the
+context-menu chord. The readline bindings read the whole chord for the
+same reason -- `Ctrl+Shift+K` is not the kill.
 
 **`Ctrl+D` deletes forward too**, on the same terms: with the
 conventions on, in a widget that takes text. Elsewhere, and with them

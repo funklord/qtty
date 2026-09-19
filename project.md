@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1698 checks, 0 failures. `make check` is green and includes
+1711 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -17622,6 +17622,97 @@ as well. **A sabotage that reddens something is not a sabotage that
 reintroduced the defect**, and only reading which check went red
 separated the two.
 
+### 8.254 Two chord comparisons that read two modifiers of three (2026-09-19)
+
+An audit sweep reported two faults in `src/runtime/input_router.cpp` and
+both hold. They are one shape at two scales: **a comparison that reads
+part of a chord answers for chords nobody named.** One dropped a
+modifier; the other dropped three whole rows of a table.
+
+**1. A quit key was matched on two of `KeyEvent`'s three modifiers.**
+`ctrl` and `alt` were compared and `shift` was not, so a quit key given
+as a bare key code fired on the shifted chord as well. The pair that
+costs most is this library's own:
+
+    Qtty::set_quit_keys({{Qt::Key_F10, {}, false, false, false}});
+
+quit on `Shift+F10`, which is the context-menu chord qtty answers to
+everywhere else -- so an application choosing `F10` silently lost its
+keyboard route to a context menu. **Reachable from a real terminal, not
+only through the sink**: the backend decodes `CSI 21;2~` as `Key_F10`
+with the shift bit set (`emit_function_key`, `ansi_backend.cpp`).
+
+The same is true of the defaults, `Ctrl+C` and `Ctrl+D`, wherever
+something hands the router a shifted control chord -- and **the shipped
+ANSI backend cannot**, which is worth recording so the next reader does
+not go hunting. A control byte carries no shift (`c < 0x20` gives
+`Key_A + (c - 1)` with `ctrl` alone), and no CSU / `modifyOtherKeys`
+decoding exists here, so `Ctrl+Shift+C` arrives as plain `Ctrl+C` today.
+The seat that can produce it is the public one: `ITerminalEventSink::
+on_key()`, which an application driving its own frame loop writes to.
+
+**STRICT EQUALITY, rather than reading an unset `shift` as
+"unspecified".** `KeyEvent` has one bool per modifier and no third
+state, the other two were already exact, and `match_shortcut()` builds
+its `QKeySequence` from all three -- so a spec is a whole chord to every
+other reader of the type, and `application.h` says so now. The loose
+reading would also have had to answer for `Ctrl+Shift+C`, which on a
+terminal is copy. It costs a text-spelled spec nothing: a letter arrives
+with the shifted character in `text` and no shift bit, so `"Q"` and
+`"q"` were already different keys.
+
+**`readline_edit()` had the same looseness and is in the same change**,
+which was a decision rather than tidiness. Its guard read
+`!k.ctrl || k.alt`, so `Ctrl+Shift+K` killed to the end of the line.
+Fixing only the quit loop would have **broken a sentence that function
+rests on** -- the quit loop gives `Ctrl+D` up on exactly the condition
+that brings it there, so the two cannot disagree about who holds the
+chord. Strict quit and loose readline makes `Ctrl+Shift+D` nobody's quit
+key and still readline's delete.
+
+**2. `conventions_shadowed()` reported on seven rows of ten, and the
+exclusion was recorded as deliberate in two places.** `runtime.h` and
+8.187 both said the missing rows "answer only where the focused widget
+ignored the key, so a widget that wants them is not shadowing a
+convention". **The sentence is true and is about another mechanism.**
+This report reads SHORTCUT CLAIMS, not widgets accepting keys, and
+`match_shortcut()` runs before `deliver_key()` is called at all.
+Measured, conventions on, a window binding `Return` and `Up`:
+
+    Enter    the application's action fired; the focused button was
+             NOT clicked
+    Up       the application's action fired; the focus did not move
+
+So both conventions were gone and the report could not say so -- 8.187's
+own defect, in the function written to fix it. The same reasoning would
+have excluded `Ctrl+A/E`, which answer only where a caret is and were
+reported all along, so it did not distinguish the rows it kept from the
+rows it dropped. `Enter` and `Up/Down` are in `k_convention_rows` now.
+
+**What was added is a PARTITION, not two rows.** Every row
+`keyboard_conventions_help()` returns is either PLACED -- it has a chord
+in the table, proved by binding that chord to a window and requiring the
+report to name the row -- or it is a FAMILY with the reason recorded.
+There is one family: `Alt+letter`, where the letter is whatever a tab, a
+mnemonic or a buddy label carries, so no fixed `QKeySequence` exists for
+a claim to be compared against and `mnemonic_conflicts()` answers it per
+letter. A row added to the list and to neither reddens a check that
+names it, which is `evidence.md`'s *assert the partition when the cell
+that would decide it is empty*.
+
+**The check it replaces could not have failed for this.** It asserted
+one direction -- every row the report NAMES is spelled as the help
+spells it -- so a report that can never name `Enter` passed it exactly
+as loudly as one that can. The new check is asserted against the keys
+rather than against the report, which is 8.187's own rule.
+
+**1698 checks to 1711**, and five sabotage entries are `--only`-proven.
+Four break the code; the fifth breaks the LIST, adding a help row with
+no chord and no reason, which is the only way to watch the partition
+fail from the side the old check was blind to. One existing entry was
+re-anchored -- the readline guard's line changed under it -- and
+`--validate` passes over all 393.
+
 ### 8.249 Swept, measured, and not yet acted on (2026-09-18)
 
 Four findings from the two audit sweeps of 2026-09-18 that are real and
@@ -21003,13 +21094,17 @@ taken back, and who took each. Keyed by the row as the help list spells
 it, so a status bar can strike out or drop exactly the row it was about to
 show. Empty is the usual answer and the one a test asserts.
 
-**Only the chord-shaped rows, and the exclusions are the interesting
-part.** `Enter` and the arrows answer only where the focused widget ignored
-the key, so a widget wanting them is not shadowing a convention -- it is
-the case the conventions were written to yield to. `Alt+letter` is
-`mnemonic_conflicts()`'s question and is answered there in more detail than
-a row could carry. What is left is `F6`, `Ctrl+PgUp/PgDn`, the readline
-chords and `Menu/Shift+F10`.
+**~~Only the chord-shaped rows, and the exclusions are the interesting
+part.~~ Wrong about two of the three, and corrected in 8.254.** The
+reason given was that `Enter` and the arrows answer only where the
+focused widget ignored the key, so a widget wanting them is not shadowing
+a convention. True, and about a mechanism this report is not reading: it
+walks SHORTCUT CLAIMS, and a claim is matched before the widget is
+offered anything, so a `QShortcut` on `Return` does take `Enter` away.
+Both rows are in the table now. `Alt+letter` remains out and is
+`mnemonic_conflicts()`'s question, answered there in more detail than a
+row could carry -- and it is out as a recorded FAMILY that a partition
+check asserts, rather than as a silence.
 
 **Two lists of one binding drift, so the table sits beside the list it
 describes** -- the same file and the same edit, which is the rule that list

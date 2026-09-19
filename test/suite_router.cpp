@@ -6095,6 +6095,181 @@ int suite_router() {
 		set_keyboard_conventions(false);
 	}
 
+	// ---- the partition: every help row has a chord, or a reason it has none
+	//
+	// 8.187 built conventions_shadowed() over a table of seven chords while
+	// keyboard_conventions_help() returns ten rows, and the check above it
+	// asserts ONE DIRECTION -- every row the report names is spelled as the
+	// help spells it. Nothing asked the other way, so the three rows with no
+	// chord behind them were invisible to it: a report that can never name
+	// `Enter` passes that check exactly as loudly as one that can.
+	//
+	// What is asserted here is the PARTITION rather than two more rows.
+	// Every row the help list returns is either PLACED -- it has a chord,
+	// proved by binding that chord to a window and requiring the report to
+	// name the row -- or it is a FAMILY, with the reason it cannot be a
+	// chord recorded beside it. A row added to the help list and to neither
+	// reddens `unplaced`, which is a message addressed to whoever added it
+	// rather than a silence.
+	{
+		set_keyboard_conventions(true);
+		// The chord a window binds to take each row back, two entries where
+		// one row covers two keys so that losing half a pair fails too.
+		// `why` is what a row carries INSTEAD of a chord.
+		static const struct {
+			const char *shown;
+			int mod;
+			int key;
+			const char *why;
+		} placed[] = {
+			{ "Enter",          0,              Qt::Key_Return,   nullptr },
+			{ "Enter",          0,              Qt::Key_Enter,    nullptr },
+			{ "Up/Down",        0,              Qt::Key_Up,       nullptr },
+			{ "Up/Down",        0,              Qt::Key_Down,     nullptr },
+			{ "Ctrl+PgUp/PgDn", int(Qt::CTRL),  Qt::Key_PageUp,   nullptr },
+			{ "Ctrl+PgUp/PgDn", int(Qt::CTRL),  Qt::Key_PageDown, nullptr },
+			{ "F6",             0,              Qt::Key_F6,       nullptr },
+			{ "F10",            0,              Qt::Key_F10,      nullptr },
+			{ "Ctrl+A/E",       int(Qt::CTRL),  Qt::Key_A,        nullptr },
+			{ "Ctrl+A/E",       int(Qt::CTRL),  Qt::Key_E,        nullptr },
+			{ "Ctrl+K/U",       int(Qt::CTRL),  Qt::Key_K,        nullptr },
+			{ "Ctrl+K/U",       int(Qt::CTRL),  Qt::Key_U,        nullptr },
+			{ "Ctrl+W/D",       int(Qt::CTRL),  Qt::Key_W,        nullptr },
+			{ "Ctrl+W/D",       int(Qt::CTRL),  Qt::Key_D,        nullptr },
+			{ "Menu/Shift+F10", int(Qt::SHIFT), Qt::Key_F10,      nullptr },
+			// THE ONE ROW THAT IS NOT A CHORD, and it is a family rather
+			// than an omission: the letter is whatever a tab, a mnemonic
+			// or a buddy label happens to carry, so there is no fixed
+			// QKeySequence for a claim to be compared against.
+			// Qtty::mnemonic_conflicts() answers it per letter, in more
+			// detail than one row could hold.
+			{ "Alt+letter",     0,              0,
+			  "a family and not a chord -- mnemonic_conflicts() answers it" },
+		};
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(24, 4));
+		auto *sink = new QPushButton(QStringLiteral("Go"), &host);
+		sink->setGeometry(0, 0, 8 * cw, ch);
+		host.show();
+		QCoreApplication::processEvents();
+		// ONE CHORD AT A TIME, so the row that comes back is the row that
+		// chord took and not whichever the walk reached first.
+		const auto shadowed_by = [&host](int mod, int key) {
+			auto *sc = new QShortcut(
+			    QKeySequence(QKeyCombination(Qt::KeyboardModifiers(mod),
+			                                 Qt::Key(key)).toCombined()),
+			    &host);
+			sc->setObjectName(QStringLiteral("the taker"));
+			QCoreApplication::processEvents();
+			QStringList rows;
+			for (const auto &t : conventions_shadowed(&host)) rows << t.first;
+			delete sc;
+			QCoreApplication::processEvents();
+			return rows;
+		};
+		QStringList unplaced, unreported, families;
+		for (const auto &row : keyboard_conventions_help()) {
+			int named = 0;
+			for (const auto &p : placed) {
+				if (row.first != QLatin1String(p.shown)) continue;
+				++named;
+				if (p.why) {
+					if (!families.contains(row.first)) families << row.first;
+					continue;
+				}
+				if (!shadowed_by(p.mod, p.key).contains(row.first))
+					unreported << QStringLiteral("%1 (key %2)")
+					                  .arg(row.first).arg(p.key);
+			}
+			if (named == 0) unplaced << row.first;
+		}
+		if (!unplaced.isEmpty() || !unreported.isEmpty())
+			printf("info: rows this check cannot place [%s]; placed rows the "
+			       "report did not name [%s]\n",
+			       qPrintable(unplaced.join(QStringLiteral(", "))),
+			       qPrintable(unreported.join(QStringLiteral(", "))));
+		CHECK(unplaced.isEmpty(),
+		      "every row the conventions list shows is placed -- a chord a "
+		      "window can take back, or a recorded reason it has none");
+		CHECK(unreported.isEmpty(),
+		      "and a window binding a placed row's chord is told so, which "
+		      "is what stops the table behind the report losing a row the "
+		      "list still shows");
+		QStringList by_family;
+		by_family << QStringLiteral("Alt+letter");
+		CHECK(families == by_family,
+		      "and exactly one row is a family rather than a chord -- "
+		      "Alt+letter, whose letter mnemonic_conflicts() answers for");
+		set_keyboard_conventions(false);
+	}
+
+	// ---- Enter and Up/Down, the two rows the report could not see --------
+	//
+	// The reason recorded for leaving them out was that they "answer only
+	// where the focused widget ignored the key, so a widget that wants them
+	// is not shadowing a convention". True, and about a different mechanism:
+	// conventions_shadowed() reports SHORTCUT CLAIMS, not widgets accepting
+	// keys, and match_shortcut() runs before deliver_key() ever does. So an
+	// application binding Return takes Enter away from the focused button
+	// before the widget is offered anything -- exactly what binding Ctrl+K
+	// does to the readline kill, and the same reason would have excluded
+	// Ctrl+A/E, which answer only where a caret is and are reported.
+	//
+	// Asserted against the KEYS and not against the report, which is 8.187's
+	// own rule: a check on the report alone would pass just as loudly if
+	// nothing had been shadowed.
+	{
+		set_keyboard_conventions(true);
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(24, 6));
+		auto *first = new QPushButton(QStringLiteral("One"), &host);
+		first->setGeometry(0, 0, 8 * cw, ch);
+		auto *second = new QPushButton(QStringLiteral("Two"), &host);
+		second->setGeometry(0, ch, 8 * cw, ch);
+		int sent = 0, pressed = 0, previous = 0;
+		QObject::connect(first, &QPushButton::clicked, [&] { ++pressed; });
+		auto *send = new QAction(QStringLiteral("Send"), &host);
+		send->setShortcut(QKeySequence(Qt::Key_Return));
+		QObject::connect(send, &QAction::triggered, [&] { ++sent; });
+		host.addAction(send);
+		auto *prev = new QAction(QStringLiteral("Previous"), &host);
+		prev->setShortcut(QKeySequence(Qt::Key_Up));
+		QObject::connect(prev, &QAction::triggered, [&] { ++previous; });
+		host.addAction(prev);
+		host.show();
+		QCoreApplication::processEvents();
+
+		QStringList rows;
+		for (const auto &t : conventions_shadowed(&host)) rows << t.first;
+		printf("info: with Return and Up bound, the report names [%s]\n",
+		       qPrintable(rows.join(QStringLiteral(", "))));
+		CHECK(rows.contains(QStringLiteral("Enter")),
+		      "an application that binds a shortcut to Return is told it "
+		      "has taken the Enter convention back");
+		CHECK(rows.contains(QStringLiteral("Up/Down")),
+		      "and one that binds Up is told the same about the row that "
+		      "moves between controls");
+
+		InputRouter er(&host);
+		first->setFocus();
+		set_focus_widget(host.focusWidget());
+		QCoreApplication::processEvents();
+		er.on_key({Qt::Key_Return, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(sent == 1 && pressed == 0,
+		      "and the key really is gone: Enter fires the application's "
+		      "action and the button that had focus is not clicked");
+		QWidget *const before = host.focusWidget();
+		er.on_key({Qt::Key_Up, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(previous == 1 && host.focusWidget() == before,
+		      "as is Up, which answers the application rather than moving "
+		      "the focus to another control");
+		set_keyboard_conventions(false);
+	}
+
 	// ------------------------------------------------ section 5.5: drags
 	// Motion was parsed by the backend and dropped by the router, and there
 	// was no grab, so nothing that needs a drag worked -- section 7.2 recorded
@@ -8550,6 +8725,144 @@ int suite_router() {
 		      "and a router built afterwards is back to Ctrl+C and Ctrl+D, "
 		      "so this check cannot leave the rest of the suite holding "
 		      "its quit keys");
+		GridGuard::reset();
+	}
+
+	// ---- and a quit key is a WHOLE chord, shift included ------------------
+	//
+	// KeyEvent carries three modifiers and the loop compared two. A quit
+	// key given as a bare code therefore fired on the shifted chord as
+	// well, and the pair that costs most is this library's own: an
+	// application naming F10 also quit on Shift+F10, which is the
+	// context-menu key qtty answers to everywhere else. Reachable from a
+	// real terminal rather than only through the sink -- the backend
+	// decodes CSI 21;2~ as F10 with the shift bit set.
+	//
+	// STRICT, rather than reading an unset `shift` as "either". KeyEvent
+	// has one bool per modifier and no way to spell "unspecified", the
+	// other two are already compared exactly, and match_shortcut() builds
+	// its QKeySequence from all three -- so a spec is a whole chord to
+	// every other reader of the type. The loose reading would also have to
+	// answer for Ctrl+Shift+C, which on a terminal is copy.
+	//
+	// Observed as the key REACHING the widget, which is the same trick the
+	// block above uses: a suite cannot watch the application quit, and a
+	// chord the quit loop takes never reaches a widget at all.
+	{
+		struct Watch : QObject {
+			int keys = 0, menus = 0;
+			int key = 0;
+			bool eventFilter(QObject *, QEvent *e) override {
+				if (e->type() == QEvent::ContextMenu) { ++menus; return false; }
+				if (e->type() != QEvent::KeyPress) return false;
+				if (static_cast<QKeyEvent *>(e)->key() == key) ++keys;
+				return false;
+			}
+		};
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(20, 4));
+		auto *button = new QPushButton(QStringLiteral("Go"), &host);
+		button->setGeometry(0, 0, 8 * cw, ch);
+		host.show();
+		QCoreApplication::processEvents();
+		Qtty::set_quit_keys(
+		    {KeyEvent{Qt::Key_F10, QString(), false, false, false}});
+		InputRouter sk(&host);
+		Watch on_f10;
+		on_f10.key = Qt::Key_F10;
+		button->installEventFilter(&on_f10);
+		button->setFocus();
+		set_focus_widget(host.focusWidget());
+		QCoreApplication::processEvents();
+		sk.on_key({Qt::Key_F10, QString(), false, false, true});
+		QCoreApplication::processEvents();
+		CHECK(on_f10.keys == 1 && on_f10.menus == 1,
+		      "a quit key named by key code is not fired by the shifted "
+		      "chord, so an application that quits on F10 still gets its "
+		      "context menu from Shift+F10");
+		// A DELTA, not the running total. Asserting `keys == 1` here would
+		// have failed against the unfixed code for the check above's
+		// reason rather than its own -- a control that goes red with the
+		// thing it controls for says nothing.
+		const int after_shift = on_f10.keys;
+		sk.on_key({Qt::Key_F10, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(on_f10.keys == after_shift,
+		      "while the unshifted key is still the quit key, the chord "
+		      "being matched whole rather than merely loosened");
+
+		// AND THE DEFAULT, which is what most programs will meet. Put back
+		// first, so what is measured afterwards is the shipped pair.
+		const KeyEvent ctrl_c{Qt::Key_C, QString(), true, false, false};
+		const KeyEvent ctrl_d{Qt::Key_D, QString(), true, false, false};
+		Qtty::set_quit_keys({ctrl_c, ctrl_d});
+		Watch on_c;
+		on_c.key = Qt::Key_C;
+		button->installEventFilter(&on_c);
+		sk.on_key({Qt::Key_C, QString(), true, false, true});
+		QCoreApplication::processEvents();
+		CHECK(on_c.keys == 1,
+		      "the default quit key does not answer Ctrl+Shift+C either, "
+		      "which is a terminal's copy chord and not a request to end "
+		      "the program");
+		const int after_ctrl_shift = on_c.keys;
+		sk.on_key({Qt::Key_C, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		CHECK(on_c.keys == after_ctrl_shift,
+		      "and plain Ctrl+C still quits, so the strictness has taken "
+		      "nothing away from the default");
+		GridGuard::reset();
+	}
+
+	// ---- and so is a readline chord --------------------------------------
+	//
+	// readline_edit() read two of the three modifiers for the same reason
+	// and with the same consequence: Ctrl+Shift+K killed to the end of the
+	// line. The conventions bind Ctrl+K and the help list says Ctrl+K, and
+	// a Ctrl+Shift chord on a terminal usually belongs to the terminal.
+	//
+	// It is in this change rather than the next because the quit fix would
+	// otherwise break an invariant readline_edit() states about itself: the
+	// quit loop gives Ctrl+D up on exactly the condition that brings it
+	// here, so the two cannot disagree about who has the chord. With the
+	// quit loop strict and this one loose, Ctrl+Shift+D would be nobody's
+	// quit key and still readline's delete.
+	{
+		set_keyboard_conventions(true);
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(30, 4));
+		auto *field = new QLineEdit(&host);
+		field->setGeometry(0, 0, 24 * cw, ch);
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter rr(&host);
+		field->setText(QStringLiteral("hello brave world"));
+		field->setCursorPosition(11);
+		field->setFocus();
+		set_focus_widget(host.focusWidget());
+		QCoreApplication::processEvents();
+		rr.on_key({Qt::Key_K, QString(), true, false, true});
+		QCoreApplication::processEvents();
+		CHECK(field->text() == QStringLiteral("hello brave world"),
+		      "Ctrl+Shift+K is not the readline kill: the convention is "
+		      "Ctrl+K, and a shifted control chord on a terminal is the "
+		      "terminal's own");
+		// RESET, so that the control below is answered by the chord and
+		// not by there being nothing left to kill. Against the unfixed
+		// code the line above is already "hello brave", and a kill at the
+		// end of a line takes nothing -- the control would have passed
+		// without the binding working at all.
+		field->setText(QStringLiteral("hello brave world"));
+		field->setCursorPosition(11);
+		QCoreApplication::processEvents();
+		rr.on_key({Qt::Key_K, QString(), true, false, false});
+		QCoreApplication::processEvents();
+		CHECK(field->text() == QStringLiteral("hello brave"),
+		      "while Ctrl+K itself still kills to the end of the line, the "
+		      "chord being read whole rather than narrowed to nothing");
+		set_keyboard_conventions(false);
 		GridGuard::reset();
 	}
 

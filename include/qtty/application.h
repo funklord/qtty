@@ -321,6 +321,20 @@ void set_font(const QString &family, int pixel_size);
 // already running, so a call from inside a slot takes effect at once.
 // InputRouter::set_quit_keys() still overrides it for one router.
 //
+// A SPEC IS A WHOLE CHORD, and all three of KeyEvent's modifiers are
+// compared. `{Qt::Key_C, {}, true, false, false}` is Ctrl+C and is not
+// Ctrl+Shift+C; there is no spelling for "shift unspecified", because the
+// type has a bool per modifier and no third state, and every other reader
+// of a KeyEvent -- the shortcut matcher's QKeySequence, the modifiers a
+// delivered QKeyEvent carries -- reads it the same way. Shift was the one
+// modifier this loop did not compare until 8.254, which is how an
+// application naming F10 also quit on Shift+F10, the context-menu key.
+//
+// A letter is matched on its TEXT rather than its key code, which is how a
+// terminal sends one, so `{0, "q"}` is the quit key q and `{0, "Q"}` is the
+// shifted one. Those differ by the text and the shift bit need not be set
+// for them to.
+//
 // THE HAZARD THAT MADE THIS DELICATE IS GONE. While a vanished terminal was
 // reported by synthesising Ctrl-D, an application able to redefine the quit
 // keys could also stop being told its terminal had closed; 8.148 gave that

@@ -72,6 +72,22 @@ QVector<QPair<QString, QString>> keyboard_conventions_help() {
 // The chords behind the rows above, in the same file and the same edit as
 // the list itself, for the reason that list states: two copies of a binding
 // drift, and the drift is silent. A check reads both.
+//
+// EVERY ROW OF THAT LIST IS HERE BUT ONE, and the check is a partition
+// rather than a spelling comparison: a row shown up there either has a
+// chord down here -- proved by binding it and requiring the report to name
+// the row -- or it is `Alt+letter`, which is a FAMILY and not a chord. The
+// letter there is whatever a tab, a mnemonic or a buddy label carries, so
+// there is no fixed QKeySequence for a claim to be compared against, and
+// mnemonic_conflicts() answers it per letter instead.
+//
+// `Enter` and `Up/Down` were left out until 8.254, on the ground that they
+// answer only where the focused widget ignored the key -- true, and about a
+// mechanism this table is not for. conventions_shadowed() reads SHORTCUT
+// CLAIMS, and a claim is matched in match_shortcut() before deliver_key()
+// offers the widget anything, so a QShortcut on Return takes Enter away
+// exactly as one on Ctrl+K takes the readline kill. The same argument would
+// have excluded Ctrl+A/E, which answer only where a caret is and are here.
 struct ConventionRow {
 	const char *shown;
 	Qt::Modifier mod;
@@ -79,6 +95,8 @@ struct ConventionRow {
 };
 
 static const ConventionRow k_convention_rows[] = {
+	{ "Enter",          Qt::Modifier(0), { Qt::Key_Return,   Qt::Key_Enter } },
+	{ "Up/Down",        Qt::Modifier(0), { Qt::Key_Up,       Qt::Key_Down } },
 	{ "F6",             Qt::Modifier(0), { Qt::Key_F6,       Qt::Key(0) } },
 	{ "F10",            Qt::Modifier(0), { Qt::Key_F10,      Qt::Key(0) } },
 	{ "Ctrl+PgUp/PgDn", Qt::CTRL,        { Qt::Key_PageUp,   Qt::Key_PageDown } },
@@ -1748,8 +1766,19 @@ bool InputRouter::match_shortcut(const KeyEvent &k) {
 // delete-previous-word. That works the same in QLineEdit, QTextEdit and
 // QPlainTextEdit without this knowing which it has, and it goes through
 // each widget's own undo stack instead of around it.
+//
+// AND SHIFT IS PART OF THE CHORD, which this read no more than the quit
+// loop did: Ctrl+Shift+K killed to the end of the line. The list promises
+// Ctrl+K, and a shifted control chord on a terminal usually belongs to the
+// emulator rather than to the program inside it.
+//
+// It is the same edit as the quit loop's because leaving it would break
+// the sentence Ctrl+D below rests on -- the quit loop gives that chord up
+// on exactly the condition that brings it here, so the two cannot disagree
+// about who has it. With the quit loop strict and this one loose,
+// Ctrl+Shift+D would be nobody's quit key and still readline's delete.
 bool InputRouter::readline_edit(const KeyEvent &k) {
-	if (!s_conventions || !k.ctrl || k.alt) return false;
+	if (!s_conventions || !k.ctrl || k.alt || k.shift) return false;
 	QWidget *const fw = key_target();
 	if (!fw || !fw->testAttribute(Qt::WA_InputMethodEnabled)) return false;
 	// AND NOT AN ITEM VIEW, the fourth place this attribute was asked a
@@ -2158,11 +2187,31 @@ void InputRouter::on_key(const KeyEvent &k) {
 	// than by driving on_key() directly -- the synthetic event carried a
 	// qt_key that a terminal never sends, so the in-suite check passed
 	// against a shape the backend does not produce.
+	//
+	// AND ALL THREE MODIFIERS, which this compared two of. KeyEvent carries
+	// shift, the backend decodes it -- CSI 21;2~ is F10 with the shift bit
+	// -- and leaving it out of the comparison made a code-spelled quit key
+	// answer its shifted chord as well. The pair that cost most is this
+	// library's own: an application naming F10 also quit on Shift+F10,
+	// which is the context-menu key qtty answers to everywhere else.
+	//
+	// STRICT, rather than reading an unset `shift` as "unspecified". There
+	// is no third state to read it as: KeyEvent has one bool per modifier,
+	// the other two were already compared exactly, and match_shortcut()
+	// builds its QKeySequence from all three -- so a spec is a whole chord
+	// to every other reader of the type, and application.h now says so.
+	// The loose reading would also have to answer for Ctrl+Shift+C, and on
+	// a terminal that is copy.
+	//
+	// It costs a text-spelled spec nothing: a letter arrives with the
+	// SHIFTED character in `text` and no shift bit, so "Q" and "q" were
+	// already different quit keys and still are.
 	for (const KeyEvent &q : std::as_const(quit_keys_)) {
 		const bool same_key = q.text.isEmpty()
 		    ? (q.qt_key != 0 && q.qt_key == k.qt_key)
 		    : (q.text == k.text);
-		if (same_key && q.ctrl == k.ctrl && q.alt == k.alt) {
+		if (same_key && q.ctrl == k.ctrl && q.alt == k.alt
+		    && q.shift == k.shift) {
 			// ...unless a text field has focus, where the same chord is copy
 			// on every desktop there is. Measured: with the whole of a
 			// QLineEdit selected, Ctrl+X cut it and put it on the clipboard,

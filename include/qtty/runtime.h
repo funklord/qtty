@@ -143,11 +143,23 @@ QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope);
 // bar can strike out or drop exactly the row it would otherwise show. Empty
 // when nothing is shadowed, which is what a test asserts.
 //
-// ONLY THE CHORD-SHAPED ROWS. `Enter`, `Up/Down` and the arrows answer only
-// where the focused widget ignored the key, so a widget that wants them is
-// not shadowing a convention -- it is the case the conventions were built to
-// yield to. `Alt+letter` is `mnemonic_conflicts()`'s question and is
-// reported there, in far more detail than a row could carry.
+// EVERY CHORD-SHAPED ROW, which now includes `Enter` and `Up/Down`. This
+// used to exclude them, on the grounds that they answer only where the
+// focused widget ignored the key, so a widget wanting them is not shadowing
+// a convention but the case the conventions were written to yield to. That
+// sentence is true and is about another mechanism: this report reads
+// SHORTCUT CLAIMS rather than widgets accepting keys, and a claim is matched
+// before the widget is offered anything -- so a `QShortcut` on `Return` takes
+// `Enter` away from the focused button exactly as one on `Ctrl+K` takes the
+// readline kill. The same reasoning would have excluded `Ctrl+A/E`, which
+// answer only where a caret is and were always reported.
+//
+// `Alt+letter` is the one row with no chord to compare a claim against: the
+// letter is whatever a tab, a mnemonic or a buddy label carries, so it is a
+// family rather than a chord. `mnemonic_conflicts()` answers it per letter,
+// in far more detail than a row could carry. A check asserts that partition
+// -- every row this list shows has a chord behind it or is that family -- so
+// a row added to one and not the other cannot pass unnoticed.
 QVector<QPair<QString, QStringList>> conventions_shadowed(QWidget *scope);
 
 // The buttons in `scope` that only a pointer can press: visible, enabled,
