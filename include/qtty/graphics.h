@@ -62,10 +62,75 @@ QVector<QRect> dirty_tiles(const QRegion &damage, const QSize &grid, int tile);
 // iTerm2 inline image (OSC 1337), sized in cells.
 QByteArray encode_iterm2(const QImage &img, int w_cells, int h_cells);
 
+// ---- the terminal's own ground ---------------------------------------------
+// What the compositing sites below paint against, resolved ONCE from what the
+// terminal answered.
+//
+// It is a type rather than two or three loose colours because the RESOLUTION
+// is what was wrong, not the painting. Capabilities::background has carried
+// the OSC 11 reply since graphics negotiation needed something to composite
+// alpha against, and three places in this library paint a ground: the
+// CellImage mosaic, the overlay half-block fallback, and the rasteriser that
+// feeds the pixel tiers. The mosaic read the capability through a ternary
+// written at its own call site; the other two had no ternary to copy and
+// painted constants. One rule written once cannot drift between three
+// callers, and a rule spelled at each call site already had. section 8.250.
+//
+// Every function that paints a ground takes one of these and NONE of them
+// defaults it. The default argument this replaces was deliberate, and it is
+// exactly what failed: compose_halfblocks() said "a caller with no terminal
+// to ask keeps the old behaviour by saying nothing", and the caller that said
+// nothing was the compositor -- which had a terminal, and had asked it. A
+// required parameter turns forgetting into a compile error, which is the only
+// guard that reaches a caller nobody has written yet.
+struct TerminalGround {
+	// What a translucent pixel is composited against. The BACKGROUND alone
+	// is a complete answer here, there being one colour in the question, so
+	// a terminal that replied to OSC 11 and ignored OSC 10 still gets its
+	// own ground rather than a guess. That case is not hypothetical: this
+	// tree's own pty fixture answers exactly that way.
+	QRgb composite_under = qRgb(16, 20, 24);
+
+	// And the pair a Color::Default cell is painted with. These two abstain
+	// TOGETHER -- both of the terminal's or neither -- because what makes a
+	// cell legible is the RELATIONSHIP between them, and a real background
+	// under a guessed foreground is the one combination that can come out
+	// unreadable. A white terminal answering OSC 11 alone would otherwise
+	// get this library's pale default ink on its own pale ground.
+	//
+	// Same asymmetry harmonization.md settles and section 8.243 applied to
+	// the colour scheme: a wrong light guess leaves an application looking
+	// plain, a wrong dark guess cannot be read, so there is no coin to toss.
+	QRgb default_bg = qRgb(16, 20, 24);
+	QRgb default_fg = qRgb(215, 218, 220);
+
+	// The rule, in the one place it is written. A default-constructed
+	// TerminalGround holds what this library painted with before it ever
+	// asked a terminal anything, so silence is served by the member
+	// initialisers above rather than by a branch somebody has to remember at
+	// each site.
+	static TerminalGround from(const Capabilities &caps);
+
+	// Two names for states a caller may hold directly, so that a call site
+	// can SAY which one it means. A bare TerminalGround{} at twenty call
+	// sites is correct and says nothing; "unanswered" is the rule's own
+	// word, and it is what a reader of a check needs to know is being
+	// asserted. Neither is a second policy -- unanswered() is the default
+	// construction and under() is from() with the background answered and
+	// the foreground not, which is a real terminal this tree has one of.
+	static TerminalGround unanswered() { return TerminalGround(); }
+	static TerminalGround under(QRgb bg) {
+		TerminalGround g;
+		g.composite_under = bg;
+		return g;
+	}
+};
+
 // ---- software composite (section 5.7 middle tier) ---------------------------------
 // Rasterise a cell frame to pixels with the given monospace font -- the image
 // a sixel/iTerm2 terminal is sent after overlays are blended on top.
-QImage rasterize(const CellBuffer &frame, const QFont &font);
+QImage rasterize(const CellBuffer &frame, const QFont &font,
+                 const TerminalGround &ground);
 
 // The same, painted into an image that already exists and only over the cells
 // named. What it is for: the software-composite path rasterises the whole
@@ -88,7 +153,7 @@ QImage rasterize(const CellBuffer &frame, const QFont &font);
 // overlay repainted over them, which is a hole in the overlay exactly one
 // cell wide. Returning it is what stops the rule being written twice.
 QRect rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
-                     const QRect &cells);
+                     const QRect &cells, const TerminalGround &ground);
 
 // ---- fallback tier ---------------------------------------------------------
 // Composite an alpha image into cells at cell_rect (colour half-blocks, two
@@ -178,13 +243,20 @@ void compose_kitty_placeholders(CellBuffer &frame, quint32 id, const QRect &cell
 // do" from "nothing was done".
 int align_text_document(QTextDocument *doc, QSize cell_px);
 
-// `under` is what a translucent pixel is composited against: the terminal's
-// own background. It defaults to a dark grey because that is what this
-// function assumed for its whole life, and the assumption is wrong on a light
-// terminal -- every partly-transparent edge gets a dark halo. AnsiBackend
-// passes the real one when the terminal answered OSC 11 (section 5.7); a
-// caller with no terminal to ask keeps the old behaviour by saying nothing.
+// `ground.composite_under` is what a translucent pixel is composited against:
+// the terminal's own background where it answered for one, and the dark grey
+// this assumed for its whole life where it did not. The assumption is wrong
+// on a light terminal -- every partly-transparent edge gets a dark halo.
+//
+// It was a defaulted QRgb, and the default was the defect rather than a
+// convenience: the sentence that stood here said a caller with no terminal to
+// ask keeps the old behaviour by saying nothing, and the caller that said
+// nothing was the compositor's overlay fallback, which had a terminal and had
+// asked it. Nothing about an omitted argument is visible at a call site, so
+// the parameter is required now, and the whole ground is passed rather than
+// one colour of it -- a caller holding a TerminalGround cannot then pick the
+// wrong field out of it. section 8.250.
 void compose_halfblocks(CellBuffer &frame, const QImage &img, const QRect &cell_rect,
-                        QRgb under = qRgb(16, 20, 24));
+                        const TerminalGround &ground);
 
 } // namespace Qtty

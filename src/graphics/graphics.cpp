@@ -432,6 +432,20 @@ static QRgb dim_toward_ground(QRgb fg, QRgb bg) {
 	return fg;
 }
 
+// The rule the three compositing sites share, written once. The header says
+// why the two halves abstain differently: compositing wants one colour and a
+// background alone answers it, while a Color::Default cell is a background
+// AND the ink on it, and is only legible as a pair.
+TerminalGround TerminalGround::from(const Capabilities &caps) {
+	TerminalGround g;
+	if (caps.background_known) g.composite_under = caps.background.rgb();
+	if (caps.background_known && caps.foreground_known) {
+		g.default_bg = caps.background.rgb();
+		g.default_fg = caps.foreground.rgb();
+	}
+	return g;
+}
+
 // WHICH TIERS ARRIVE HERE, because two comments in this file had it wrong
 // and project.md had it wrong twice more. There is one production caller,
 // compositor.cpp's software-composite branch, and it is taken only for
@@ -440,7 +454,7 @@ static QRgb dim_toward_ground(QRgb fg, QRgb bg) {
 // the overlay beside an ordinary present() -- so an attribute dropped here
 // is lost on three tiers and kept on the rest. section 8.244.
 QRect rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
-                     const QRect &cells) {
+                     const QRect &cells, const TerminalGround &ground) {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	if (dst.isNull()) return QRect();
 	QRect r = cells.intersected(QRect(0, 0, frame.cols(), frame.rows()));
@@ -454,7 +468,11 @@ QRect rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
 		while (from > 0 && frame.at(from, y).width == 0) --from;
 	r.setLeft(from);
 
-	const QRgb default_bg = qRgb(16, 20, 24), default_fg = qRgb(215, 218, 220);
+	// The terminal's own, where it answered for both; otherwise the two
+	// constants that stood here as locals. Kept under the same names because
+	// everything below reads them as "what a Color::Default cell is", which
+	// is unchanged -- what changed is who decides. section 8.250.
+	const QRgb default_bg = ground.default_bg, default_fg = ground.default_fg;
 	QPainter p(&dst);
 	QFontMetrics fm(font);
 	p.fillRect(r.x() * cw, r.y() * ch, r.width() * cw, r.height() * ch,
@@ -527,12 +545,18 @@ QRect rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
 	return r;
 }
 
-QImage rasterize(const CellBuffer &frame, const QFont &font) {
+QImage rasterize(const CellBuffer &frame, const QFont &font,
+                 const TerminalGround &ground) {
 	QImage img(frame.cols() * GridMetrics::cw(),
 	           frame.rows() * GridMetrics::ch(),
 	           QImage::Format_ARGB32_Premultiplied);
-	img.fill(qRgb(16, 20, 24));
-	rasterize_into(img, frame, font, QRect(0, 0, frame.cols(), frame.rows()));
+	// The same ground the rasteriser is about to paint with. It was a second
+	// copy of the constant, so a caller handing this a light ground would
+	// have got a light frame over a dark fill anywhere the rasteriser did
+	// not reach.
+	img.fill(ground.default_bg);
+	rasterize_into(img, frame, font, QRect(0, 0, frame.cols(), frame.rows()),
+	               ground);
 	return img;
 }
 
@@ -662,7 +686,7 @@ QSize cells(QSize image_px, QSize cell_px) {
 }
 
 void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_rect,
-                       QRgb under) {
+                       const TerminalGround &ground) {
 	// A null image has nothing to composite, and asking it for pixels is not
 	// quiet about it. The sampling below clamps to width() - 1, which is -1
 	// when there is no width, and QImage::pixel() answers an out-of-range
@@ -679,7 +703,7 @@ void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_
 	// may call it, or append a CellImage of its own to CellBuffer::images.
 	if (src.isNull()) return;
 	const QImage img = src.convertToFormat(QImage::Format_ARGB32);
-	const QRgb under_default = under;
+	const QRgb under_default = ground.composite_under;
 	for (int cy = 0; cy < cell_rect.height(); ++cy)
 		for (int cx = 0; cx < cell_rect.width(); ++cx) {
 			const int X = cell_rect.x() + cx, Y = cell_rect.y() + cy;

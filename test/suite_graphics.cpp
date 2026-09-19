@@ -652,7 +652,8 @@ int suite_graphics() {
 	{
 		CellBuffer b(8, 2);
 		b.text(1, 0, QStringLiteral("Hi"), Color::rgb(qRgb(255, 0, 0)));
-		QImage px = rasterize(b, QGuiApplication::font());
+		QImage px = rasterize(b, QGuiApplication::font(),
+		                      TerminalGround::unanswered());
 		CHECK(px.size() == QSize(8 * cw, 2 * ch), "rasterizer emits cols*cw x rows*ch");
 		{
 			// A WIDE cluster through the rasteriser, which nothing had sent
@@ -663,7 +664,8 @@ int suite_graphics() {
 			CellBuffer w(6, 1);
 			w.put_cluster(0, 0, QStringLiteral("\u6f22"));
 			w.at(0, 0).bg = Color::rgb(qRgb(0, 0, 200));
-			const QImage wide = rasterize(w, QGuiApplication::font());
+			const QImage wide = rasterize(w, QGuiApplication::font(),
+			                              TerminalGround::unanswered());
 			// Sampled at the far edge of the SECOND cell, which is the half
 			// that a width of one would leave unpainted.
 			const QRgb far = wide.pixel(2 * cw - 1, ch / 2);
@@ -688,7 +690,8 @@ int suite_graphics() {
 			CellBuffer rv(4, 1);
 			rv.put_cluster(0, 0, QStringLiteral("A"));
 			rv.at(0, 0).attrs = Attr::Reverse;
-			const QImage img = rasterize(rv, QGuiApplication::font());
+			const QImage img = rasterize(rv, QGuiApplication::font(),
+			                             TerminalGround::unanswered());
 			// The corner of the cell, which the glyph does not reach: it is
 			// the GROUND that reverse changes, and sampling the middle would
 			// be sampling the letter.
@@ -722,7 +725,8 @@ int suite_graphics() {
 			auto ink = [&](Attrs a) {
 				CellBuffer one(2, 1);
 				one.text(0, 0, QStringLiteral("x"), Color(), Color(), a);
-				const QImage img = rasterize(one, QGuiApplication::font());
+				const QImage img = rasterize(one, QGuiApplication::font(),
+				                             TerminalGround::unanswered());
 				int n = 0;
 				for (int y = 0; y < img.height(); ++y)
 					for (int x = 0; x < img.width(); ++x)
@@ -769,7 +773,8 @@ int suite_graphics() {
 				CellBuffer one(2, 1);
 				one.text(0, 0, QStringLiteral("M"), Color::rgb(fg),
 				         Color::rgb(bg), a);
-				return rasterize(one, QGuiApplication::font());
+				return rasterize(one, QGuiApplication::font(),
+				                 TerminalGround::unanswered());
 			};
 			// The FURTHEST any pixel in the cell gets from its ground: the
 			// ink at the glyph's core, which is the thing a reader has to
@@ -934,7 +939,8 @@ int suite_graphics() {
 		p.fillRect(6 * cw, 0, 4 * cw, 4 * ch, QColor(255, 0, 0, 255));   // opaque
 		p.fillRect(0, 0, 6 * cw, 4 * ch, QColor(0, 80, 255, 90));        // translucent
 		p.end();
-		compose_halfblocks(frame, ov, QRect(0, 0, 10, 4));
+		compose_halfblocks(frame, ov, QRect(0, 0, 10, 4),
+		                   TerminalGround::unanswered());
 		CHECK(frame.at(1, 1).ch == QStringLiteral("K"),
 		      "text under translucent overlay survives");
 		CHECK(frame.at(1, 1).bg.kind() == Color::Rgb,
@@ -963,9 +969,10 @@ int suite_graphics() {
 		const QRect changed(3, 1, 2, 1);
 
 		const QFont font = QGuiApplication::font();
-		const QImage whole_b = rasterize(b, font);
-		QImage incremental = rasterize(a, font);
-		rasterize_into(incremental, b, font, changed);
+		const QImage whole_b = rasterize(b, font, TerminalGround::unanswered());
+		QImage incremental = rasterize(a, font, TerminalGround::unanswered());
+		rasterize_into(incremental, b, font, changed,
+		               TerminalGround::unanswered());
 		CHECK(!whole_b.isNull() && incremental == whole_b,
 		      "a frame repainted over its changed cells equals one rendered"
 		      " whole");
@@ -974,8 +981,9 @@ int suite_graphics() {
 		// the rectangle and repainted everything would satisfy the line above
 		// perfectly while saving nothing. Given a region that does NOT cover
 		// the change, the result must still differ.
-		QImage missed = rasterize(a, font);
-		rasterize_into(missed, b, font, QRect(8, 3, 2, 1));
+		QImage missed = rasterize(a, font, TerminalGround::unanswered());
+		rasterize_into(missed, b, font, QRect(8, 3, 2, 1),
+		               TerminalGround::unanswered());
 		CHECK(missed != whole_b,
 		      "and a region that misses the change does not, so the rectangle"
 		      " is obeyed");
@@ -1034,14 +1042,16 @@ int suite_graphics() {
 		wide.put_cluster(2, 0, QString(QChar(0x6f22)));   // two columns
 		wide.text(4, 0, QStringLiteral("cd"));
 		const QFont font = QGuiApplication::font();
-		QImage img = rasterize(wide, font);
+		QImage img = rasterize(wide, font, TerminalGround::unanswered());
 
 		// Asked for the continuation cell alone; must report the cluster's
 		// start. Paired with a request that needs no widening, because
 		// "returns something starting at 2" is also true of a function that
 		// always returns the whole frame.
-		const QRect got = rasterize_into(img, wide, font, QRect(3, 0, 1, 1));
-		const QRect plain = rasterize_into(img, wide, font, QRect(5, 0, 1, 1));
+		const QRect got = rasterize_into(img, wide, font, QRect(3, 0, 1, 1),
+		                                 TerminalGround::unanswered());
+		const QRect plain = rasterize_into(img, wide, font, QRect(5, 0, 1, 1),
+		                                   TerminalGround::unanswered());
 		CHECK(got.left() == 2 && plain.left() == 5,
 		      "the rasteriser widens to a wide cluster's start and says so,"
 		      " and does not widen what needs no widening");
@@ -1299,9 +1309,10 @@ int suite_graphics() {
 		QImage translucent(4, 4, QImage::Format_ARGB32);
 		translucent.fill(QColor(200, 0, 0, 120));       // half-covered: tints bg
 		Qtty::CellBuffer dark(4, 2), light(4, 2);
-		Qtty::compose_halfblocks(dark, translucent, QRect(0, 0, 4, 2), qRgb(0, 0, 0));
+		Qtty::compose_halfblocks(dark, translucent, QRect(0, 0, 4, 2),
+		                         Qtty::TerminalGround::under(qRgb(0, 0, 0)));
 		Qtty::compose_halfblocks(light, translucent, QRect(0, 0, 4, 2),
-		                         qRgb(255, 255, 255));
+		                         Qtty::TerminalGround::under(qRgb(255, 255, 255)));
 		CHECK(dark.at(0, 0).bg != light.at(0, 0).bg,
 		      "a translucent pixel composites against the terminal's background");
 	}
@@ -1806,6 +1817,196 @@ int suite_graphics() {
 		}
 	}
 
+	// ---- the terminal's own ground, at the sites it never reached ----
+	//
+	// `Capabilities::background` has carried the OSC 11 reply since the
+	// graphics negotiation needed something to composite an image's alpha
+	// against, and its own header says why -- "guessing black on a light
+	// terminal haloes every icon". It reached ONE of the three places that
+	// paint a ground: the `CellImage` mosaic in ansi_backend.cpp. The overlay
+	// fallback here omitted the argument and took the default, and
+	// rasterize_into() carried the two constants as locals. section 8.250.
+	//
+	// Driven through FrameScheduler rather than by calling the primitives,
+	// and that is the whole point of the fixture: the primitives were never
+	// wrong. compose_halfblocks() painted exactly the ground it was handed
+	// and rasterize_into() exactly the one it was compiled with, so a check
+	// that called either of them directly passed before the fix and after
+	// it, and the four checks below are the only shape that can tell the two
+	// apart -- they ask what the COMPOSITOR asks for.
+	{
+		struct Ground : Qtty::ITerminalBackend, Qtty::IGraphicsOutput {
+			Qtty::Capabilities caps;
+			QSize grid = QSize(12, 4);
+			Qtty::CellBuffer cells{1, 1};
+			QImage pixels;
+			QSize size() const override { return grid; }
+			Qtty::Capabilities capabilities() const override { return caps; }
+			void present(const Qtty::CellBuffer &f, const QRegion &) override {
+				cells = f;
+			}
+			void present_pixels(const QImage &f, const QRegion &) override {
+				pixels = f;
+			}
+			void present_overlay(int, const QImage &, QPoint, int) override {}
+			void clear_overlay(int) override {}
+			void set_cursor(std::optional<QPoint>, Qtty::CursorShape) override {}
+			void set_event_sink(Qtty::ITerminalEventSink *) override {}
+			void resume() override {}
+			void suspend() override {}
+		};
+
+		// Reap anything an earlier case left to deleteLater() before
+		// compositing, for the reason the overlay block above says: compose()
+		// walks every top-level, so a widget merely awaiting deletion is
+		// still drawn and still resized, and GridGuard then reports its
+		// default geometry as off the grid.
+		QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+		QCoreApplication::processEvents();
+
+		// Half transparent rather than opaque: an opaque overlay takes the
+		// block-glyph branch, which replaces the cell outright and never
+		// consults the ground at all. The tint branch is the one the halo
+		// lives in.
+		QImage tint(4 * GridMetrics::cw(), 2 * GridMetrics::ch(),
+		            QImage::Format_ARGB32);
+		tint.fill(QColor(200, 0, 0, 120));
+
+		const auto drive = [&](Ground &rec,
+		                       Qtty::Capabilities::GraphicsMode mode) {
+			rec.caps.graphics = mode;
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(12, 4));
+			win.show();
+			QCoreApplication::processEvents();
+			Qtty::InputRouter router(&win);
+			Qtty::Compositor comp(&win, &router);
+			Qtty::FrameScheduler sched(&rec, &comp, &win);
+			// Scoped to the call, so each run composites exactly one overlay
+			// and the registry is empty again on the way out. The software
+			// tier is gated on an overlay being visible, so without one the
+			// rasteriser branch is never entered and the checks below would
+			// pass for the wrong reason.
+			Overlay ov;
+			ov.set_image(tint);
+			ov.set_rect(QRectF(1, 1, 4, 2));
+			ov.show();
+			sched.render_now();
+		};
+
+		// A light terminal that answered both queries, and one that answered
+		// neither. The pair is what makes the assertions RELATIONAL: pinning
+		// a colour would be pinning the arithmetic of one blend, and would
+		// pass with the ground ignored whenever the expectation happened to
+		// be the old constant.
+		Qtty::Capabilities light;
+		light.background_known = true;  light.background = QColor(255, 255, 255);
+		light.foreground_known = true;  light.foreground = QColor(0, 0, 0);
+
+		// The library's own 601 luminance, which is what section 8.243 chose
+		// and what has_minimum_contrast() already uses. A second one here
+		// would be a fourth copy of a constant this workspace has settled.
+		const auto lum = [](QRgb v) { return Color::rgb(v).luminance(false); };
+		const int ground = lum(light.background.rgb());
+
+		Ground halo_answered, halo_silent;
+		halo_answered.caps = light;
+		drive(halo_answered, Qtty::Capabilities::Halfblocks);
+		drive(halo_silent, Qtty::Capabilities::Halfblocks);
+		const Cell &ha = halo_answered.cells.at(2, 1);
+		const Cell &hs = halo_silent.cells.at(2, 1);
+		const int ha_lum = ha.bg.kind() == Color::Rgb ? lum(ha.bg.value()) : -1;
+		const int hs_lum = hs.bg.kind() == Color::Rgb ? lum(hs.bg.value()) : -1;
+		printf("info: a translucent overlay composites to %06x (luminance"
+		       " %d) with the ground answered and %06x (%d) with it silent,"
+		       " against a ground of luminance %d\n",
+		       unsigned(ha.bg.kind() == Color::Rgb ? ha.bg.value() & 0xffffffu : 0u),
+		       ha_lum,
+		       unsigned(hs.bg.kind() == Color::Rgb ? hs.bg.value() & 0xffffffu : 0u),
+		       hs_lum, ground);
+		CHECK(ha_lum >= 0 && hs_lum >= 0
+		      && qAbs(ha_lum - ground) < qAbs(hs_lum - ground),
+		      "a translucent overlay is composited against the terminal's own"
+		      " ground");
+
+		Ground rast_answered, rast_silent;
+		rast_answered.caps = light;
+		drive(rast_answered, Qtty::Capabilities::Sixel);
+		drive(rast_silent, Qtty::Capabilities::Sixel);
+		// The middle of a cell the overlay does not reach and no widget
+		// paints, which is a Color::Default cell -- the default CellTheme
+		// leaves every surface role at Color::Default and the fill is erased
+		// rather than painted, so what shows there is the GROUND and nothing
+		// else.
+		const QPoint plain(10 * GridMetrics::cw() + GridMetrics::cw() / 2,
+		                   3 * GridMetrics::ch() + GridMetrics::ch() / 2);
+		const QRgb ra = rast_answered.pixels.isNull()
+		    ? 0u : QRgb(rast_answered.pixels.pixel(plain) & 0xffffffu);
+		const QRgb rs = rast_silent.pixels.isNull()
+		    ? 0u : QRgb(rast_silent.pixels.pixel(plain) & 0xffffffu);
+		printf("info: a Color::Default cell rasterises to %06x with the"
+		       " ground answered and %06x with it silent\n",
+		       unsigned(ra), unsigned(rs));
+		CHECK(!rast_answered.pixels.isNull() && !rast_silent.pixels.isNull()
+		      && qAbs(lum(ra) - ground) < qAbs(lum(rs) - ground),
+		      "a Color::Default cell rasterises on the terminal's own ground");
+
+		// Abstention, and it is not a formality: a fix that used the
+		// capability unconditionally would regress every terminal that stays
+		// silent, and nothing above would say so -- both relational checks
+		// are satisfied by a silent run that changed as well, as long as it
+		// changed less. These two pin the silent case to the exact constants
+		// the tree had before it was asked, so the asymmetry section 8.243
+		// settled survives: no answer is not a licence to guess.
+		CHECK(rs == QRgb(qRgb(16, 20, 24) & 0xffffffu),
+		      "a terminal that answered neither query keeps the rasteriser's"
+		      " own ground");
+		// 0x660a0c is (200, 0, 0) at alpha 120 over (16, 20, 24), and it is
+		// pinned rather than recomputed here on purpose: a blend recomputed
+		// in the check is the check agreeing with the code it is checking.
+		// The number was read out of the UNFIXED tree before any of this
+		// landed, so it is what the library did, not what it now says it
+		// does.
+		CHECK(hs.bg.kind() == Color::Rgb && (hs.bg.value() & 0xffffffu) == 0x660a0cu,
+		      "and the overlay fallback keeps its own, unchanged");
+
+		// A terminal that answered OSC 11 and not OSC 10, which is what this
+		// suite's own pty fixture is: it replies to the background query and
+		// to nothing else. The two consumers part company here on purpose.
+		//
+		// Compositing alpha needs ONE colour and the background alone is a
+		// complete answer to it, so half an answer is still better than the
+		// guess. Rasterising a Color::Default cell paints a background AND
+		// the text on it, and what makes that legible is the RELATIONSHIP
+		// between the two -- so a real background under a guessed foreground
+		// is the one combination that can come out unreadable, and the pair
+		// abstains together. Same asymmetry as 8.243: a wrong light is plain,
+		// a wrong dark cannot be read.
+		Ground half_halo, half_rast;
+		half_halo.caps.background_known = true;
+		half_halo.caps.background = QColor(255, 255, 255);
+		half_rast.caps = half_halo.caps;
+		drive(half_halo, Qtty::Capabilities::Halfblocks);
+		drive(half_rast, Qtty::Capabilities::Sixel);
+		const Cell &hh = half_halo.cells.at(2, 1);
+		// Two halves, and the second is what stops this passing for the
+		// wrong reason: equal to the fully-answered run says the half answer
+		// was not discarded, and nearer the ground than the silent run says
+		// the fully-answered run itself was not the guess. Without the
+		// second, a library that ignored the capability everywhere would
+		// satisfy the first, both runs being the same constant.
+		const int hh_lum = hh.bg.kind() == Color::Rgb ? lum(hh.bg.value()) : -1;
+		CHECK(hh.bg.kind() == Color::Rgb && hh.bg.value() == ha.bg.value()
+		      && qAbs(hh_lum - ground) < qAbs(hs_lum - ground),
+		      "the background alone is enough to composite an overlay"
+		      " against");
+		CHECK(!half_rast.pixels.isNull()
+		      && QRgb(half_rast.pixels.pixel(plain) & 0xffffffu)
+		         == QRgb(qRgb(16, 20, 24) & 0xffffffu),
+		      "and is not enough to rasterise a cell, which needs the pair");
+	}
+
 	// The mosaic tier in the three configurations nothing reached, found by
 	// rendering them and reading the cells (project.md section 0d).
 	{
@@ -1832,7 +2033,8 @@ int suite_graphics() {
 		CellBuffer edge(4, 2);
 		edge.text(0, 0, QStringLiteral("abcd"));
 		edge.text(0, 1, QStringLiteral("efgh"));
-		compose_halfblocks(edge, img, QRect(0, 0, 4, 2), qRgb(0, 0, 0));
+		compose_halfblocks(edge, img, QRect(0, 0, 4, 2),
+		                   TerminalGround::under(qRgb(0, 0, 0)));
 		CHECK(edge.at(0, 0).ch == QStringLiteral("▀")
 		      && edge.at(0, 1).ch == QStringLiteral("▄"),
 		      "a half-covered cell takes the block of the covered half");
@@ -1860,8 +2062,10 @@ int suite_graphics() {
 			for (int x = 0; x < 4; ++x)
 				grad.setPixelColor(x, y, QColor(x * 60, y * 60, 0, 255));
 		CellBuffer whole(4, 4), clipped(4, 4);
-		compose_halfblocks(whole, grad, QRect(0, 0, 4, 4), qRgb(0, 0, 0));
-		compose_halfblocks(clipped, grad, QRect(-2, -2, 4, 4), qRgb(0, 0, 0));
+		compose_halfblocks(whole, grad, QRect(0, 0, 4, 4),
+		                   TerminalGround::under(qRgb(0, 0, 0)));
+		compose_halfblocks(clipped, grad, QRect(-2, -2, 4, 4),
+		                   TerminalGround::under(qRgb(0, 0, 0)));
 		CHECK(clipped.at(0, 0).fg == whole.at(2, 2).fg
 		      && clipped.at(1, 1).fg == whole.at(3, 3).fg,
 		      "a placement clipped at the top-left shows its bottom-right");
@@ -1880,7 +2084,8 @@ int suite_graphics() {
 		QtMessageHandler previous = qInstallMessageHandler(count_message);
 		CellBuffer quiet(4, 2);
 		quiet.text(0, 0, QStringLiteral("abcd"));
-		compose_halfblocks(quiet, QImage(), QRect(0, 0, 4, 2), qRgb(0, 0, 0));
+		compose_halfblocks(quiet, QImage(), QRect(0, 0, 4, 2),
+		                   TerminalGround::under(qRgb(0, 0, 0)));
 		qInstallMessageHandler(previous);
 		CHECK(g_messages == 0 && quiet.at(0, 0).ch == QStringLiteral("a"),
 		      "a null image composites nothing and says nothing");

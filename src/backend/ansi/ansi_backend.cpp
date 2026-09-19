@@ -1079,16 +1079,24 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 	                           && !placeholders;
 	// Not when placeholders are carrying the images: a mosaic composed over
 	// the placeholder cells would overwrite the very text that displays them.
-	if (!pixel_placements && !placeholders)           // fallback tier: colour
+	if (!pixel_placements && !placeholders) {         // fallback tier: colour
+		// The terminal's own background where it answered for it, rather
+		// than the dark grey this guessed for its whole life. A light
+		// terminal haloed every translucent edge, and the value was
+		// always askable -- OSC 11 is in the startup query.
+		//
+		// Through TerminalGround rather than the ternary that stood here.
+		// This site had the only correct spelling of the rule in the tree
+		// and the other two had none, which is what a rule written at a
+		// call site does: the next site copies it or, as both of the others
+		// did, never learns there was one. Asked of capabilities() rather
+		// than of caps_ directly, so this reads the same record an
+		// application does. section 8.250.
+		const TerminalGround ground = TerminalGround::from(capabilities());
 		for (const CellImage &ci : frame.images)     // half-blocks (section 17.3)
-			// The terminal's own background where it answered for it, rather
-			// than the dark grey this guessed for its whole life. A light
-			// terminal haloed every translucent edge, and the value was
-			// always askable -- OSC 11 is in the startup query.
 			compose_halfblocks(composed, ci.pixmap.toImage(), ci.cell_rect,
-			                   caps_.bg_known
-			                       ? qRgb(caps_.bg[0], caps_.bg[1], caps_.bg[2])
-			                       : qRgb(16, 20, 24));
+			                   ground);
+	}
 
 	// The transmission goes out ahead of the frame: the virtual placement has
 	// to exist before the cells that reference it are printed.

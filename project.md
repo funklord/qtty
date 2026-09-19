@@ -15,10 +15,18 @@ open, and how to work in the tree. Where design.md holds the detail, this
 document states the substance in a sentence or two and cites the section
 number rather than restating it.
 
-## 0a. State, 2026-09-18
+## 0a. State, 2026-09-19
 
-1669 checks, 0 failures. `make check` is green and includes
+1676 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
+
+**`check` is run from the main checkout and nowhere else.** It writes its
+stamp into `.git`, which every worktree of this repository has in common,
+so running the target from an agent worktree overwrites whatever another
+session's verification had recorded there. Work done in a worktree runs
+check's ten parts individually instead -- the same work, missing only the
+stamp -- and the count above is then taken through the target here, which
+is what a commit waits on.
 
 That first line starts with the number and nothing else, and has to:
 `count-check` reads it with `sed -n 's/^\([0-9][0-9]*\) checks, 0
@@ -809,7 +817,7 @@ Owned by the copyright holder:
 | **Two frames nested with no layout margin draw two rules in adjacent columns.** Faithful to the widget tree -- in pixels they are 1px lines 1px apart -- and on a grid they read as two rules. Merging is not a paint-time trick: the edges are in DIFFERENT cells because the inner rect is one cell inside the outer. Three options with their costs are recorded; the cheapest is to suppress a rule whose neighbour already holds one, which cannot tell nesting from two adjacent framed widgets. Reported by fuzzypickles, and reached again by a QScrollArea | 8.25, 8.26, 8.27 |
 | **A read-only line edit is not marked.** Measured: it renders identically to an editable one, so a user cannot tell they cannot type. Marking it needs vocabulary, and the obvious candidate collides -- disabled already uses Dim, and read-only is a different state, focusable and selectable. Unlike Enter's target it has no consequence a user cannot discover by typing | 8.33 |
 | **~~A tab's mnemonic does nothing.~~ It works with the conventions on (8.67); what is left is the DEFAULT.** `Alt+S` on a tab labelled "&Second" does not switch to it: the router matches Alt against ACTION text and a tab is not an action. It is therefore left unmarked, on the rule that underlining a key that does nothing is worse than leaving it bare. Whether a terminal should switch tabs by mnemonic at all is the question -- the marking follows the answer | 8.37 |
-| **Three of `CursorShape`'s four values do nothing.** `AnsiBackend::set_cursor` tells Hidden from the rest and emits no shape selection, so Block, Underline and Bar are the same two bytes. DECSCUSR would set it in one line -- but its parameters pair each shape with a blink or steady variant that the enum cannot express, so honouring it means choosing on the application's behalf, and the prior question is whether a TUI should touch the cursor shape at all. design.md declares the method and never says what the shapes mean | 8.51 |
+| **~~Three of `CursorShape`'s four values do nothing.~~ One of the four has no qtty producer, and that is the answer rather than the gap.** 8.241 emitted DECSCUSR -- `ESC[2 q`, `ESC[4 q`, `ESC[6 q`, steady at every shape, and `CSI 0 SP q` on the way out -- so the three are three different sequences now, and `Compositor::shape_for()` derives Block or Bar from the focus widget's `overwriteMode()` with Hidden for no caret. What has no producer is `Underline`: `overwriteMode()` has two values and already has two shapes, so an underline would need a fourth condition invented for it, and the only candidate is read-only -- which this same index records as an open scope question two rows up, and which is not settled sideways by picking a caret. It is still a value the PUBLIC interface admits and `AnsiBackend` encodes, for an application driving its own loop. Asserted since 8.250, so a producer added later reddens a check rather than arriving unnoticed. The blink-or-steady objection this row carried is answered: steady at every shape, because nothing in this tree can observe a blink's phase | 8.51, 8.241, 8.250 |
 | **A `QMainWindow` application sees nine off-grid warnings it cannot act on.** The suite works around this with `GridGuard::reset()` and an application has no equivalent. `is_exempt()`'s PRINCIPLE covers them exactly -- *"widgets Qt builds for itself, which the application never constructs and cannot size"* -- and its mechanism does not: it keys on `qt_` object names and `Private` class names, and `QStatusBar`, `QSizeGrip` and a central widget placed by `QMainWindowLayout` carry neither. Measured on a window shaped like netcfgd's: **9 violations, 0 forgiven**. The fix is not obviously a longer list -- the code warns in as many words that a list is what somebody adds a tenth entry to without deciding anything | 8.61 |
 | **~~A disabled widget is indistinguishable from an enabled one on the pixel tiers.~~ Answered on the holder's instruction, and closed -- see 8.244.** `Attr::Dim` is set for EVERY disabled widget (`cell_geometry.h`), the rasteriser had no row for it, and the two rendered byte-identically. The rule is **half the distance to the cell's own background, walked back until the pair clears `has_minimum_contrast`**: the clamping form this row named, with the fixed factor as a ceiling on it rather than as the whole rule, since 8.59 had already shown a factor safe on the default pair cannot be safe on a theme nobody here has seen. What made it decidable rather than a taste question is that the obvious alternative is not neutral -- an amount defined against black instead of against the ground renders the attribute BACKWARDS on a light terminal, and half of terminals are each | 8.50, 8.59, 8.244 |
 | **`Overlay::set_z()` does nothing in a GUI build.** `visible_overlays()` sorts by z and its only production caller is the compositor, which is the TUI path; the GUI twin never reads `z_`, so stacking there falls to the window manager. design.md presents `Overlay` as target-independent and lists `setZ` unqualified, so this is a scope question -- does the twin owe z ordering? -- rather than a defect. Not a one-liner: the twins are frameless always-on-top `Qt::Tool` windows, and it cannot be verified headlessly here | 8.47 |
@@ -11496,13 +11504,21 @@ socketpair they prove the parser and leave the wiring untested.
 is §7.4's own fault, and plumbing the cell size and the background without
 using them would have created two more:
 
-- **The background reaches the half-block compositor**, which had
-  `qRgb(16, 20, 24)` hardcoded for its whole life. On a light terminal that
-  haloes every translucent edge darkly, and the real value was always
-  askable. The test asserts that two different backgrounds give two
+- **The background reaches the `CellImage` mosaic in `ansi_backend.cpp`**,
+  which had `qRgb(16, 20, 24)` hardcoded for its whole life. On a light
+  terminal that haloes every translucent edge darkly, and the real value was
+  always askable. The test asserts that two different backgrounds give two
   different cells rather than pinning a colour, because what matters is that
   the argument is consulted -- pinning one value would pass with the
   parameter ignored if the expectation happened to be the old constant.
+
+  **That named one site of three, and this line said "the half-block
+  compositor" for a month as though it named all of them.** The overlay
+  fallback in `compositor.cpp` and `rasterize_into()` were both still
+  painting the constant; 8.249 measured it and 8.250 closed it. What is
+  true now is that all three take a `TerminalGround` resolved from
+  `Capabilities` in one place, and that none of them has a default argument
+  left to omit.
 - **`Qtty::cells()` is implemented**, one of the two accommodations
   design.md §5.7 offers for image sizing, and it takes the cell size rather
   than assuming one. With no measurement it returns an invalid size rather
@@ -16693,6 +16709,220 @@ a second ring leaves as it found it.
 `application.h`, `backend.h` and `null_backend.h` are all already in the
 list and all already installed.
 
+### 8.250 The terminal's ground reached one compositing site of three
+(2026-09-19)
+
+8.249 item 1, closed, and its item 3 answered the other way.
+`Capabilities::background` has carried the OSC 11 reply since graphics
+negotiation needed something to composite an image's alpha against, and its
+own header says why -- *"guessing black on a light terminal haloes every
+icon"*. Three places in this library paint a ground:
+
+    ansi_backend.cpp   CellImage mosaic     caps_.bg, through a ternary
+    compositor.cpp     overlay fallback     the argument omitted
+    graphics.cpp       rasterize_into()     two constants, as locals
+
+**The second cost is worse than the first and it is not a halo.** On a
+light terminal with no pixel protocol a translucent `Qtty::Overlay` is
+haloed dark at every edge while a `CellImage` in the same frame is not --
+two tiers disagreeing inside one picture. On a light terminal driving sixel
+or iTerm2, showing **any** overlay switches the whole screen to the
+software-composite path, and then every `Color::Default` cell ships as
+`#101418`: the pixel tier draws a dark screen over a light terminal while
+the text tier beside it is correct.
+
+## A type, not a parameter, and the reason is which half was wrong
+
+The painting was never wrong. `compose_halfblocks()` painted exactly the
+ground it was handed and `rasterize_into()` exactly the one it was compiled
+with. What was wrong was the RESOLUTION -- reading `Capabilities` and
+deciding what to use -- and that had been written at one call site, where
+the other two could not see it. **A rule spelled at a call site is a rule
+the next call site copies or never learns about**, and here both of the
+others never learned about it.
+
+So `TerminalGround` is a value with one factory, `from(const Capabilities
+&)`, and every function that paints a ground takes one. The alternatives
+were weighed and both lose to that on the same point:
+
+- **Add defaulted `QRgb` parameters.** No churn at all, and it reproduces
+  the defect exactly: a fourth caller omits them and gets the constants,
+  silently. The default it would restore is the one that failed --
+  `compose_halfblocks()`' header said *"a caller with no terminal to ask
+  keeps the old behaviour by saying nothing"*, and the caller that said
+  nothing was the compositor, which had a terminal and had asked it.
+- **Required `QRgb` parameters, no type.** Closes the omission and leaves
+  the resolution at each site, so the two rules below get rewritten three
+  times -- and a caller holding both colours can still hand the wrong one
+  to a function that wants the other. The pair differ in exactly the case
+  measured below, which is a real terminal rather than a corner.
+
+**None of the three functions has a default argument left.** That is what
+makes a fourth caller a compile error rather than a wrong picture, and it
+is the only guard that reaches a caller nobody has written yet. It cost the
+signatures of `rasterize()`, `rasterize_into()` and `compose_halfblocks()`,
+all three in the installed `graphics.h`; twenty-four call sites in the suite
+took the change, and the two names they take -- `unanswered()` and
+`under()` -- exist so a check can SAY which state it is asserting about.
+That is a source break for anybody outside this tree calling those three,
+and it is recorded rather than smoothed over: a defaulted parameter is
+exactly what would have smoothed it over.
+
+## The abstention is two rules, and a real terminal tells them apart
+
+`TerminalGround` carries three colours rather than two, and the third is
+not redundancy:
+
+- **`composite_under`** takes the background alone. Compositing alpha is a
+  one-colour question, so half an answer is a complete answer to it.
+- **`default_bg` and `default_fg`** abstain together. A `Color::Default`
+  cell is a ground AND the ink on it, and what makes it legible is the
+  relationship between the two -- so a real background under a guessed
+  foreground is the one combination that can come out unreadable. A white
+  terminal answering OSC 11 alone would otherwise get this library's pale
+  `#d7dadc` ink on its own white ground.
+
+That is the asymmetry `harmonization.md` settles and 8.243 applied: a wrong
+light guess leaves an application plain, a wrong dark guess cannot be read,
+and there is no coin to toss.
+
+**The split was forced by a measurement, not chosen for neatness.** This
+tree's own pty fixture -- `test/suite_backend.cpp`'s capability reply --
+answers `ESC]11;rgb:1c1c/1c1c/1c1c` and has no OSC 10 in it at all. So the
+check that guards the one site which was already right, *"blended over the
+terminal's own neutral background"*, runs on a terminal in exactly the
+half-answered state. A single atomic rule would have taken its ground away
+and reddened the control, and the control is the thing that says the fix
+did not move what was working.
+
+## What the before-run said, which is the part worth quoting
+
+Every new check was written against the unfixed tree and run there first,
+which the plumbing made possible: they drive `FrameScheduler` with a
+recorder backend and touch none of the changed signatures, so they compiled
+before the fix existed. The run reported 1667 passes and three failures,
+the 1664 the tree had plus the three of these six that assert what the
+unfixed code did:
+
+    a translucent overlay is composited against the terminal's own ground   FAIL
+    a Color::Default cell rasterises on the terminal's own ground           FAIL
+    the background alone is enough to composite an overlay against          FAIL
+    a terminal that answered neither query keeps the rasteriser's own       PASS
+    and the overlay fallback keeps its own, unchanged                       PASS
+    and is not enough to rasterise a cell, which needs the pair             PASS
+
+with the run printing, for the halo:
+
+    a translucent overlay composites to 660a0c (luminance 37) with the
+    ground answered and 660a0c (37) with it silent, against a ground of
+    luminance 255
+
+-- the same colour both ways, which is the defect stated as a number. **The
+three that passed are regression guards and passed for the right reason**:
+they assert what the unfixed tree did, so a fix that used the capability
+unconditionally would have reddened them. Their discrimination is proved by
+sabotage rather than by that run, which is the only thing that can prove it.
+
+**The two relational checks pin no colour.** Each composites twice, once
+with the ground answered and once with it silent, and asserts that the
+answered result is NEARER the terminal's own ground than the silent one.
+Pinning a value would pass with the argument ignored whenever the
+expectation happened to be the old constant, which is the trap the existing
+`compose_halfblocks` check already records avoiding. The luminance is
+`Color::luminance()`, the library's own 601, for the reason 8.243 gives: a
+fourth copy of a luminance is how they stop agreeing.
+
+## `CursorShape::Underline` has no producer, and should not get one
+
+8.249 item 3, answered by declining it. `Compositor::shape_for()` can read
+one property -- `overwriteMode()` -- which has two values and already has
+two shapes; with Hidden for no caret, every condition qtty can see is spoken
+for. An underline needs a fourth condition invented for it, and there are
+only two candidates:
+
+- **Read-only.** Section 0b records marking read-only as an open scope
+  question that *"needs vocabulary"*. Answering it by choosing a caret shape
+  settles that question sideways, in the one place nobody would look for the
+  decision -- and no terminal convention gives a user any way to read an
+  underline as "you cannot type here".
+- **Letting the application ask.** `shape_for()`'s own comment refuses it:
+  a second way to say what `overwriteMode()` says, and two of them drift.
+
+**It is not dead code, which is why deleting the enumerator is the wrong
+close.** `ITerminalBackend::set_cursor()` is public and takes the whole
+enum, `AnsiBackend` encodes `ESC[4 q`, and `suite_backend` checks those
+bytes on the wire -- an application driving its own frame loop can ask for
+one. What has no producer is qtty's own chooser, deliberately.
+
+**The absence is asserted rather than left in a comment.** The check drives
+nine focused states through `FrameScheduler` -- a `QLineEdit` plain and
+read-only, a `QTextEdit` and a `QPlainTextEdit` each inserting and
+overwriting, a read-only `QTextEdit` in both modes, and a push button --
+and demands no Underline, at least one Bar and at least one Block. It
+measures `3 bar, 2 block, 4 hidden, 0 underline`. Driven through the
+scheduler rather than against `Compositor::shape_for()`, which is private
+and which the neighbouring check already records the reason for -- *"a test
+that called the shape function directly would agree with it by
+construction"*. The population half is not decoration: "no underline" alone
+would pass for a chooser that had stopped answering altogether.
+
+**And the sabotage caught this check the first time, which is worth more
+than the check.** The entry written for it was the change somebody would
+actually make -- a read-only widget returning Underline -- and the harness
+reported *the named check PASSED against broken code*. The reason is the
+four Hidden above. **A read-only editor never reaches `shape_for()` at
+all**: Qt reports no cursor rectangle for one, `compose()` only asks for a
+shape inside `if (cell is on the grid)`, so the caret stays Hidden and the
+chooser is never consulted. Three of the nine states are read-only and all
+three are Hidden.
+
+That is a second, better reason for the decision than the one this entry
+opened with. Read-only is not merely an unwise candidate for Underline; in
+this library it is an **unreachable** one, and wiring it would take a
+change to the cursor-rectangle gate as well as to the chooser. The
+sabotage entry now names a state the fixture reaches -- the fallthrough,
+every focused widget with no overwrite mode to read, answering Underline
+instead of Bar -- which is the other plausible version of the same
+mistake.
+
+## The two fills nobody counted
+
+`rasterize()` filled its fresh image with a second copy of `qRgb(16, 20,
+24)` before calling the rasteriser, and `FrameScheduler` filled the kept
+picture with a third on resize. Both take the ground now; left alone they
+would have put a light frame over a dark fill anywhere the rasteriser did
+not reach.
+
+**No snapshot fixture moved, and the reason is the abstention working.**
+`test/snapshot/` is recorded through `qtty-replay`, which drives
+`NullBackend`, whose `capabilities()` returns `{}` -- neither colour known
+-- so both fixtures rasterise on exactly the constants they always did. A
+fixture that HAD moved would have been the abstention failing, not the
+fixture being stale. `make test-tools`, which replays both, is green and
+neither file is reported modified.
+
+## What was verified, and what was not
+
+Every part of `make check` was run one at a time on 2026-09-19 and all ten
+are green: `style`, `layout`, `version-check`, `count-check` (1671),
+`guide-check`, `tools-check`, `sabotage-check` (372 anchors), `test`,
+`test-tools` and `test-install`. Not the `check` target itself, which
+writes a stamp into the shared `.git` that another worktree's session
+would lose.
+
+**This is NOT covered by a six-configuration run.** Section 0a's
+re-verification still stands at 1664 and `f9211b9`; xcb under Xvfb, the
+hostile environment, `minimal`, the sanitized arm and memcheck have not
+seen 8.250. The offscreen arm is what ran.
+
+**And one thing was learned about the harness rather than the code.** A
+comment was edited in `compositor.cpp` while a `sabotage.py` run held that
+file, and the run's restore -- which writes back the bytes it saved before
+applying -- put the pre-edit version back. Nothing was corrupted and the
+edit was simply gone. The tool is right to restore what it saved; the rule
+is that a sabotage run owns every file its spec names for the length of
+the run, and this one names `compositor.cpp`.
+
 ### 8.248 Five authored colours with no route to a cell (2026-09-18)
 
 `ansi16_for_role()` authors twenty `QPalette` roles and sorts them, in the
@@ -17062,23 +17292,16 @@ Four findings from the two audit sweeps of 2026-09-18 that are real and
 are NOT fixed. They are written down because a measured finding that lives
 only in a session is a finding that gets made again.
 
-**1. The terminal's background reaches one of three compositing sites.**
-`Capabilities::background` is filled from OSC 11 and its own header comment
-says why -- "guessing black on a light terminal haloes every icon". It is
-consumed at the `CellImage` mosaic site in `ansi_backend.cpp` and at
-neither of the other two: the overlay fallback in `compositor.cpp` omits
-the argument and takes `compose_halfblocks()`' default `qRgb(16,20,24)`,
-and `rasterize_into()` hardcodes `default_bg`/`default_fg`.
-
-What that costs: on a light terminal with no pixel protocol, a translucent
-`Qtty::Overlay` is haloed dark at every edge while a `CellImage` in the
-same frame is not. On a light terminal driving sixel or iTerm2, **showing
-any overlay switches the whole screen to the pixel path and every
-`Color::Default` cell ships as `#101418`** -- the pixel tier draws a dark
-screen over a light terminal while the text tier is correct.
-
-`project.md` records this as landed, and that is true of the one call
-site. The claim wants narrowing when the rest is done.
+**1. ~~The terminal's background reaches one of three compositing sites.~~
+Closed in 8.250, and the claim this said wanted narrowing was narrowed
+with it.** All three sites take a `TerminalGround` now, resolved from
+`Capabilities` in one function, and none of them has a default argument
+left to omit. The finding as measured stands: it was consumed at the
+`CellImage` mosaic in `ansi_backend.cpp` and at neither of the other two,
+the overlay fallback omitting the argument and `rasterize_into()` carrying
+`default_bg`/`default_fg` as locals. The section 7.3 line reading "the
+background reaches the half-block compositor" named one of the three and
+says so now.
 
 **2. `InputRouter::on_focus_change(bool)` accepts its argument and
 discards it.** The body is `{ if (frame_requested) frame_requested(); }`;
@@ -17092,13 +17315,13 @@ the user switches terminal window or tab. The existing check drives only
 `true` and asserts only that a frame was requested, so it would pass with
 the parameter deleted.
 
-**3. `CursorShape::Underline` has a consumer and no producer**, residue of
-8.241: the encoder emits `ESC[4 q` and `Compositor::shape_for()` returns
-only `Block` or `Bar`. Nothing observable today, which is why it is third.
-Worth a line because 8.241's own comment records fixing exactly this for
-`Block` without noting `Underline` was left behind -- and because the
-section 7 row reading "Three of `CursorShape`'s four values do nothing" is
-now stale and should be corrected by whoever closes this.
+**3. ~~`CursorShape::Underline` has a consumer and no producer.~~ Answered
+in 8.250, and the answer is that it should not have one.** The observation
+was right -- the encoder emits `ESC[4 q` and `Compositor::shape_for()`
+returns only `Block` or `Bar` -- and what it is evidence of is that qtty
+has no fourth condition to spend it on rather than a missing wire. The
+section 7 row is corrected, and the absence is asserted rather than left
+to a comment.
 
 **4. `QTTY_GRAPHICS=none` parses and does nothing, and this one is not
 ours to settle.** `NoGraphics` is produced only by someone asking for it

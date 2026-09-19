@@ -392,7 +392,8 @@ int suite_budget() {
 				    tmp.filePath(QStringLiteral("px-full.bin")).toUtf8();
 				const QByteArray part_px =
 				    tmp.filePath(QStringLiteral("px-part.bin")).toUtf8();
-				const QImage screen = rasterize(after, QGuiApplication::font());
+				const QImage screen = rasterize(after, QGuiApplication::font(),
+				                                TerminalGround::unanswered());
 				fflush(stdout);
 				const int keep = ::dup(1);
 				const int p1 = ::open(whole_px.constData(),
@@ -577,10 +578,15 @@ int suite_budget() {
 	// the point, since the first alone reads as the per-frame cost and has
 	// not been that since the buffer was kept.
 	const double raster_ms =
-	    best_milliseconds(20, [&] { rasterize(after, QGuiApplication::font()); });
-	QImage kept = rasterize(after, QGuiApplication::font());
+	    best_milliseconds(20, [&] {
+		    rasterize(after, QGuiApplication::font(),
+		              TerminalGround::unanswered());
+	    });
+	QImage kept = rasterize(after, QGuiApplication::font(),
+	                        TerminalGround::unanswered());
 	const double raster_cell_ms = best_milliseconds(20, [&] {
-		rasterize_into(kept, after, QGuiApplication::font(), QRect(7, 3, 1, 1));
+		rasterize_into(kept, after, QGuiApplication::font(), QRect(7, 3, 1, 1),
+		               TerminalGround::unanswered());
 	});
 	printf("info: rasterize 200x60 to pixels: %.3f ms whole, %.3f ms for one"
 	       " damaged cell (best of 20)\n", raster_ms, raster_cell_ms);

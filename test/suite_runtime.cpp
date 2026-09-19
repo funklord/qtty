@@ -2977,6 +2977,108 @@ int suite_runtime() {
 		      "keeps the bar");
 	}
 
+	// CursorShape::Underline has a consumer and no producer, and after
+	// 8.250 that is the ANSWER rather than the gap 8.249 filed it as.
+	//
+	// What shape_for() can see is one property: overwriteMode(), which has
+	// two values and already has two shapes. Hidden is the third state --
+	// no focus widget, or a caret off the grid -- so every condition qtty
+	// can read is spoken for, and an underline would need a fourth
+	// condition invented for it. The one candidate anybody reaches for is
+	// read-only, and project.md's section 0b already records that marking
+	// read-only "needs vocabulary" and is an open scope question; answering it
+	// by choosing a caret shape would be settling that question sideways,
+	// in the one place nobody would look for the decision. The other
+	// candidate -- letting the application ask for a shape -- shape_for()'s
+	// own comment refuses, because it would be a second way to say what
+	// overwriteMode() already says and two of them drift.
+	//
+	// So Underline is not dead: it is a value the PUBLIC interface admits,
+	// ITerminalBackend::set_cursor() takes it, and AnsiBackend encodes it
+	// as ESC[4 q for an application driving its own frame loop -- which
+	// suite_backend checks on the wire. What has no producer is qtty's own
+	// chooser, deliberately.
+	//
+	// The population is asserted rather than the absence. "No underline"
+	// alone passes for a shape_for() that had stopped answering at all, so
+	// the check also demands that both shapes it IS supposed to produce
+	// appear, over a list that includes the read-only case on all three
+	// widget kinds the chooser names.
+	//
+	// THROUGH the scheduler, for the reason the block above states: the
+	// helper is private, and a check that reached it would agree with it by
+	// construction and say nothing about what the caller does with it.
+	//
+	// WHAT THIS CANNOT SEE, measured by sabotaging it: a producer keyed on
+	// READ-ONLY. Qt reports no cursor rectangle for a read-only editor, so
+	// the compositor never asks for a shape and the caret is Hidden -- three
+	// of the nine states below are read-only and all three come back Hidden.
+	// The first sabotage written for this check made a read-only widget ask
+	// for an underline and the check stayed green, which is the harness
+	// doing its job. The entry in the spec is the fallthrough instead, which
+	// is a state this does reach. The read-only states stay in the list
+	// because they are what makes the four Hidden legible, not because this
+	// check discriminates over them.
+	{
+		QWidget win;
+		win.resize(40 * cw, 12 * ch);
+		auto *line = new QLineEdit(&win);
+		line->setGeometry(0, 0, 20 * cw, ch);
+		line->setText(QStringLiteral("ab"));
+		auto *line_ro = new QLineEdit(&win);
+		line_ro->setGeometry(0, ch, 20 * cw, ch);
+		line_ro->setText(QStringLiteral("ab"));
+		line_ro->setReadOnly(true);
+		auto *doc = new QTextEdit(&win);
+		doc->setGeometry(0, 2 * ch, 20 * cw, 3 * ch);
+		doc->setPlainText(QStringLiteral("hello"));
+		auto *doc_ro = new QTextEdit(&win);
+		doc_ro->setGeometry(0, 5 * ch, 20 * cw, 3 * ch);
+		doc_ro->setPlainText(QStringLiteral("hello"));
+		doc_ro->setReadOnly(true);
+		auto *flat = new QPlainTextEdit(&win);
+		flat->setGeometry(0, 8 * ch, 20 * cw, 3 * ch);
+		flat->setPlainText(QStringLiteral("hello"));
+		auto *button = new QPushButton(QStringLiteral("go"), &win);
+		button->setGeometry(0, 11 * ch, 8 * cw, ch);
+		QCoreApplication::processEvents();
+
+		NullBackend b;
+		Compositor comp(&win, nullptr);
+		FrameScheduler sched(&b, &comp, &win);
+
+		int bars = 0, blocks = 0, hidden = 0, underlines = 0;
+		const auto focus_and_render = [&](QWidget *w, bool overwrite) {
+			if (auto *te = qobject_cast<QTextEdit *>(w))
+				te->setOverwriteMode(overwrite);
+			if (auto *pe = qobject_cast<QPlainTextEdit *>(w))
+				pe->setOverwriteMode(overwrite);
+			w->setFocus();
+			QCoreApplication::processEvents();
+			sched.render_now();
+			switch (b.cursor_shape()) {
+			case CursorShape::Bar:       ++bars; break;
+			case CursorShape::Block:     ++blocks; break;
+			case CursorShape::Hidden:    ++hidden; break;
+			case CursorShape::Underline: ++underlines; break;
+			}
+		};
+		focus_and_render(line, false);
+		focus_and_render(line_ro, false);
+		focus_and_render(doc, false);
+		focus_and_render(doc, true);
+		focus_and_render(doc_ro, false);
+		focus_and_render(doc_ro, true);
+		focus_and_render(flat, false);
+		focus_and_render(flat, true);
+		focus_and_render(button, false);
+		printf("info: nine focused states -- %d bar, %d block, %d hidden,"
+		       " %d underline\n", bars, blocks, hidden, underlines);
+		CHECK(underlines == 0 && bars > 0 && blocks > 0,
+		      "no widget state qtty can read asks for an underline caret, "
+		      "and the two it does produce are both reachable");
+	}
+
 	// ------------------------------------- the width capability is absorbed
 	//
 	// The suite_cells checks prove the width table obeys the flag. They would

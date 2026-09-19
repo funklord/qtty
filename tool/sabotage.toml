@@ -3826,3 +3826,104 @@ find = "\tif (sc->context() == Qt::WidgetShortcut)\n\t\treturn owner && owner ==
 into = "\tif (sc->context() == Qt::WidgetShortcut)\n\t\treturn true;"
 count = 1
 check = "answers at no reachable focus and is not reported"
+
+
+[[sabotage]]
+# 8.250. The overlay fallback omitted the ground argument and took
+# compose_halfblocks()' default, which is the state this entry restores --
+# the argument is required now, so the omission has to be spelled as the
+# abstention value to compile at all.
+name = "the overlay fallback composites against the library's own grey"
+file = "src/runtime/compositor.cpp"
+find = "\t\t\tcompose_halfblocks(frame, o->image(), overlay_cell_rect(o), ground);"
+into = "\t\t\tcompose_halfblocks(frame, o->image(), overlay_cell_rect(o),\n\t\t\t                   TerminalGround::unanswered());"
+count = 1
+check = "a translucent overlay is composited against the terminal's own ground"
+
+[[sabotage]]
+# 8.250, the headline. The two constants exactly as they stood as locals,
+# which is what put a dark screen over a light terminal on every tier with
+# a picture protocol.
+name = "the rasteriser carries its own ground again"
+file = "src/graphics/graphics.cpp"
+find = "\tconst QRgb default_bg = ground.default_bg, default_fg = ground.default_fg;"
+into = "\tconst QRgb default_bg = qRgb(16, 20, 24), default_fg = qRgb(215, 218, 220);"
+count = 1
+check = "a Color::Default cell rasterises on the terminal's own ground"
+
+[[sabotage]]
+# The abstention, which is the half a fix is most likely to lose: using the
+# capability whether or not the terminal answered regresses every terminal
+# that stays silent, and both of the relational checks above are satisfied
+# by a silent run that also moved.
+name = "the ground is taken whether the terminal answered or not"
+file = "src/graphics/graphics.cpp"
+find = "\tif (caps.background_known && caps.foreground_known) {"
+into = "\tif (true) {"
+count = 1
+check = "a terminal that answered neither query keeps the rasteriser's own ground"
+
+[[sabotage]]
+# The same abstention at the other site. Two entries rather than one, for
+# the reason 8.243 needed two: an entry breaking both would not say which
+# of the two sites was carrying its own weight.
+name = "the overlay fallback takes a ground nobody answered for"
+file = "src/graphics/graphics.cpp"
+find = "\tif (caps.background_known) g.composite_under = caps.background.rgb();"
+into = "\tg.composite_under = caps.background.rgb();"
+count = 1
+check = "and the overlay fallback keeps its own, unchanged"
+
+[[sabotage]]
+# The half-answered terminal, one way. Compositing needs ONE colour and the
+# background alone answers it, so waiting for the foreground throws away an
+# answer the terminal did give.
+name = "compositing waits for a foreground it does not need"
+file = "src/graphics/graphics.cpp"
+find = "\tif (caps.background_known) g.composite_under = caps.background.rgb();\n\tif (caps.background_known && caps.foreground_known) {"
+into = "\tif (caps.background_known && caps.foreground_known)\n\t\tg.composite_under = caps.background.rgb();\n\tif (caps.background_known && caps.foreground_known) {"
+count = 1
+check = "the background alone is enough to composite an overlay against"
+
+[[sabotage]]
+# And the other way. A real background under a guessed foreground is the
+# one combination that can come out unreadable -- pale ink on a pale
+# ground -- which is why the pair abstains together.
+name = "the rasteriser fills in half a pair"
+file = "src/graphics/graphics.cpp"
+find = "\tif (caps.background_known && caps.foreground_known) {\n\t\tg.default_bg = caps.background.rgb();"
+into = "\tif (caps.background_known || caps.foreground_known) {\n\t\tg.default_bg = caps.background.rgb();"
+count = 1
+check = "and is not enough to rasterise a cell, which needs the pair"
+
+[[sabotage]]
+# The CONTROL for 8.250, and it guards the one site that was already right.
+# The pty fixture that check runs against answers OSC 11 and nothing else,
+# so it is also the half-answered case measured end to end through a real
+# AnsiBackend rather than through a recorder.
+name = "the mosaic loses the ground the compositor kept"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tconst TerminalGround ground = TerminalGround::from(capabilities());"
+into = "\t\tconst TerminalGround ground = TerminalGround::unanswered();"
+count = 1
+check = "blended over the terminal's own neutral background"
+
+[[sabotage]]
+# 8.250's third part. CursorShape::Underline has no producer on purpose,
+# and this is the change that would give it one: the fallthrough -- every
+# focused widget with no overwrite mode to read -- answering underline
+# instead of bar.
+#
+# THE FIRST VERSION OF THIS ENTRY WAS READ-ONLY, and it did not redden the
+# check, which is the whole reason the harness exists. A read-only editor
+# never reaches shape_for() at all: Qt reports no cursor rectangle for
+# one, so the compositor leaves the caret Hidden and never asks. Three of
+# the check's nine states are read-only and all three are Hidden, so a
+# read-only producer is invisible to it -- and unreachable in the library
+# besides. The sabotage now names a state the fixture actually reaches.
+name = "a widget with no overwrite mode asks for an underline caret"
+file = "src/runtime/compositor.cpp"
+find = "\t\treturn pe->overwriteMode() ? CursorShape::Block : CursorShape::Bar;\n\treturn CursorShape::Bar;"
+into = "\t\treturn pe->overwriteMode() ? CursorShape::Block : CursorShape::Bar;\n\treturn CursorShape::Underline;"
+count = 1
+check = "asks for an underline caret"

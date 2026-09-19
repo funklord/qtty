@@ -1238,6 +1238,38 @@ void Compositor::compose(CellBuffer &out) {
 // and in every one of those the inner editor is the line edit above, which
 // has no overwrite mode to read. The mode belongs to the widget the
 // application configured.
+//
+// AND NOTHING HERE PRODUCES CursorShape::Underline, deliberately. 8.249
+// filed that as a gap and 8.250 answered it the other way: what this
+// function can read is one property, overwriteMode(), which has two values
+// and already has two shapes -- with Hidden for no caret at all, that is
+// every condition qtty can see, spoken for. An underline needs a fourth
+// condition invented for it.
+//
+// The one candidate anybody reaches for is read-only, and project.md's
+// section 0b records marking read-only as an open scope question that
+// "needs vocabulary". Answering it by choosing a caret shape would settle it
+// sideways, in the place nobody would look for the decision -- and it would
+// say something no terminal convention gives a reader any way to read. The
+// other candidate, letting the application ask for a shape directly, the
+// paragraph above already refuses: it would be a second way to say what
+// overwriteMode() says, and two of them drift.
+//
+// AND READ-ONLY CANNOT BE WIRED HERE ANYWAY, which was found by sabotaging
+// it and watching the check stay green. Qt reports no cursor rectangle for
+// a read-only editor, and compose() above asks for a shape only inside the
+// test that the rectangle lands on the grid -- so the caret is Hidden and
+// this function is never called. Measured over nine focused states: three
+// read-only ones, all three Hidden. Giving read-only a caret shape would
+// take a change to that gate as well as to this, which is a larger
+// decision than a caret.
+//
+// So Underline is not dead code. ITerminalBackend::set_cursor() is public,
+// it takes the whole enum, and AnsiBackend encodes ESC[4 q for an
+// application driving its own frame loop -- suite_backend checks those bytes
+// on the wire. What has no producer is qtty's own chooser, and the suite
+// asserts that, so a producer added later reddens a check and sends whoever
+// added it here rather than leaving them to discover this paragraph.
 CursorShape Compositor::shape_for(QWidget *fw) {
 	if (auto *te = qobject_cast<QTextEdit *>(fw))
 		return te->overwriteMode() ? CursorShape::Block : CursorShape::Bar;
@@ -1358,7 +1390,16 @@ void FrameScheduler::render_now() {
 
 	// Overlay tier selection (sections 5.7, 17.3).
 	const auto overlays = Overlay::visible_overlays();
-	const auto gmode = backend_->capabilities().graphics;
+	const Capabilities caps = backend_->capabilities();
+	const auto gmode = caps.graphics;
+	// The terminal's own ground, for both of the sites below that paint one.
+	// They took this library's constants instead until 8.250: the fallback by
+	// omitting the argument, the rasteriser by carrying the pair as locals.
+	// Resolved here, once, because this is where the backend is -- and out of
+	// the same Capabilities an application reads, so the compositor cannot
+	// hold a different opinion about the terminal from the one the program is
+	// shown.
+	const TerminalGround ground = TerminalGround::from(caps);
 	auto *gfx = dynamic_cast<IGraphicsOutput *>(backend_);
 
 	auto overlay_cell_rect = [&](Overlay *o) {
@@ -1374,7 +1415,7 @@ void FrameScheduler::render_now() {
 
 	if (!overlays.isEmpty() && !software_composite && gmode != Capabilities::KittyAlpha)
 		for (Overlay *o : overlays)                       // fallback: half-blocks
-			compose_halfblocks(frame, o->image(), overlay_cell_rect(o));
+			compose_halfblocks(frame, o->image(), overlay_cell_rect(o), ground);
 
 	QRegion damage = prev_ ? frame.diff(*prev_)
 	                       : QRegion(0, 0, frame.cols(), frame.rows());
@@ -1412,7 +1453,7 @@ void FrameScheduler::render_now() {
 		// the buffer is made afresh.
 		if (pixels_.size() != want) {
 			pixels_ = QImage(want, QImage::Format_ARGB32_Premultiplied);
-			pixels_.fill(qRgb(16, 20, 24));
+			pixels_.fill(ground.default_bg);
 			pix = QRegion(0, 0, frame.cols(), frame.rows());
 		}
 		const QRect cells_r = pix.isEmpty()
@@ -1426,7 +1467,8 @@ void FrameScheduler::render_now() {
 		// edge of the damage. Asking for the rectangle back is what stops
 		// the expansion rule being written in two places.
 		const QRect painted =
-		    rasterize_into(pixels_, frame, QGuiApplication::font(), cells_r);
+		    rasterize_into(pixels_, frame, QGuiApplication::font(), cells_r,
+		                   ground);
 		QImage &px = pixels_;
 		QPainter p(&px);
 		p.setClipRect(QRect(painted.x() * cw, painted.y() * ch,
