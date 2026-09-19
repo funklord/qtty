@@ -1473,6 +1473,35 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 // disabled item view drew its padding dim from the fill below and then had
 // the label written over it with no attributes at all.
 
+// The ground a BANDED row is drawn on, or Color() when this row is not one.
+//
+// Qt's alternating-row switch arrives as QStyleOptionViewItem::Alternate, a
+// FEATURE the view sets on every other row when setAlternatingRowColors() is
+// on, and QCommonStyle reads it in PE_PanelItemViewRow. Both of the elements
+// GridStyle answers for an item view ignored it, so the switch reached no
+// cell in this library at all: measured on QListView, QTableView and
+// QTreeView, with and without CellItemDelegate, every row came out the
+// ordinary ground. 8.261.
+//
+// SELECTION WINS, and on a terminal the reason is stronger than the one
+// QCommonStyle has for the same precedence. A selection here is Attr::Reverse
+// rather than a colour, so banding a selected row would reverse the BAND --
+// the odd rows of a selection coming out a different colour from the even
+// ones, and at Ansi16 a reverse of the authored 8 rather than of the ground,
+// which is the pairing nobody chose. The current item and a disabled one DO
+// keep their band, because those marks are attributes that compose with a
+// ground instead of replacing it.
+//
+// A ground the theme does not name comes back Color::Default and both callers
+// write nothing, which is the contract every other surface role already has:
+// under terminal_default() a banded row is the terminal's own ground, exactly
+// as a selected row is the terminal's own ground plus a reverse.
+static Color alternate_ground(const QStyleOptionViewItem *vi) {
+	if (!vi || !(vi->features & QStyleOptionViewItem::Alternate)) return Color();
+	if (vi->state & QStyle::State_Selected) return Color();
+	return theme().background(QPalette::AlternateBase);
+}
+
 void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPainter *p,
                               const QWidget *w) const {
 	if (auto *dev = cell_target(p)) {
@@ -1716,6 +1745,30 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 		// is nothing to double-draw.
 		case PE_PanelItemViewItem:
 		case PE_PanelItemViewRow: {
+			// THE BAND IS DRAWN HERE AS WELL AS IN CE_ItemViewItem, and the
+			// two are one rule asked twice rather than two answers. Measured
+			// on all three view classes: the VIEW draws this panel itself,
+			// before any delegate runs, so it is the only site an
+			// application's own delegate passes through -- the same gap the
+			// marks below were added for. CE_ItemViewItem then fills the
+			// item's rectangle with the same ground, because its fill
+			// REPLACES a cell whenever the item carries any attribute at
+			// all: without that half the current item and every disabled one
+			// would punch a hole in the band written here.
+			//
+			// PE_PanelItemViewItem is deliberately NOT banded. It is the
+			// item's own panel, drawn inside the row, and QCommonStyle reads
+			// Alternate at the row for the same reason: a band is a property
+			// of the row rather than of what sits in it.
+			if (pe == PE_PanelItemViewRow) {
+				const Color ground = alternate_ground(
+				    qstyleoption_cast<const QStyleOptionViewItem *>(opt));
+				if (ground.kind() != Color::Default) {
+					Cell band;
+					band.bg = ground;
+					dev->buffer().fill(c, band);
+				}
+			}
 			Attrs mark = (opt->state & State_Selected) ? Attrs(Attr::Reverse)
 			                                           : Attrs();
 			// THE INDEX HAS TO BE ASKED FOR, which took measuring: the
@@ -1988,6 +2041,20 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				Color bg;
 				if (vi->backgroundBrush.style() != Qt::NoBrush)
 					bg = bg_for(vi->backgroundBrush.color().rgba());
+				// Otherwise the alternating-row band, by the rule
+				// alternate_ground() states. A model that named a background
+				// wins over it: the palette's alternate ground is a default
+				// and the model's colour is a choice, which is the
+				// precedence QCommonStyle applies too.
+				//
+				// This is the half that makes the band survive the item. The
+				// fill below REPLACES the cells it covers whenever the item
+				// carries any attribute, so a current or disabled row would
+				// otherwise wipe the band PE_PanelItemViewRow wrote; and the
+				// text is written with this same ground, so the label and
+				// the fill under it cannot disagree about which row this is.
+				else
+					bg = alternate_ground(vi);
 				// The whole item, not its top row. A one-cell fill was
 				// indistinguishable from a correct one while every item in
 				// the suite was one cell tall, and wrong the moment a

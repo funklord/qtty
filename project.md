@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1740 checks, 0 failures. `make check` is green and includes
+1753 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -18503,6 +18503,210 @@ static helper and moves no line an existing anchor names.
 also Default. The resolution change is inert in the regime the fixtures
 were recorded in. `git status` after the green run names only the four
 files this change edits.
+
+### 8.261 The alternating-row switch, wired to a cell (2026-09-19)
+
+8.256 recorded, and declined to fix, a second defect it had found while
+building its own fixture: `setAlternatingRowColors(true)` -- the standard
+Qt way to ask an item view for banded rows -- reached no cell in this
+library at all. This is that half. The theme half went first deliberately,
+and its entry says why: a `CE_ItemViewItem` that learns to honour
+`Alternate` calls `theme().background(AlternateBase)` and would have
+inherited the collision 8.256 closed.
+
+Re-measured before anything was changed, and it holds: on `QListView`,
+`QTableView` and `QTreeView`, with and without `CellItemDelegate`, every
+row came out the ordinary ground. Under `terminal_default()` that is
+`Color::Default` rather than the `Base` 8.256 reported, because that entry
+measured through a palette-derived theme; the defect is the same either
+way, which is that rows 0 and 1 are the same cell.
+
+#### Which element each class reaches, measured rather than read off Qt
+
+The band is `QStyleOptionViewItem::Alternate`, a FEATURE the view sets on
+every other row, and `QCommonStyle` reads it in `PE_PanelItemViewRow`.
+Both elements `GridStyle` answers for an item view ignored it.
+
+Measured with a tracing `QProxyStyle` subclassed over `GridStyle`, logging
+the element, the widget, the feature bit and the rectangle for every call
+a rendered view makes:
+
+    QListView    PE_PanelItemViewRow (viewport) then CE_ItemViewItem
+    QTableView   PE_PanelItemViewRow (per cell)  then CE_ItemViewItem
+    QTreeView    PE_PanelItemViewRow twice       then CE_ItemViewItem
+
+`Alternate` is set correctly on every one of them, on the odd rows, with
+and without `CellItemDelegate` -- which hands the frame back to the style,
+so it reaches `CE_ItemViewItem` like the default delegate does.
+
+**So the split is not per view class, and the brief's framing of it was
+one the measurement did not support.** All three classes reach both
+elements. What the two sites separate is the DELEGATE: an application's
+own painter never calls `CE_ItemViewItem`, and the row panel -- which the
+VIEW draws, before any delegate runs -- is the only site it passes
+through. That is the same gap the selection and focus marks in
+`PE_PanelItemViewItem` were added for, and it is recorded beside them.
+
+#### Both sites, from one rule
+
+`alternate_ground()` is the rule, file-static in `grid_style.cpp`, and the
+two elements ask it rather than each carrying a copy:
+
+    static Color alternate_ground(const QStyleOptionViewItem *vi) {
+            if (!vi || !(vi->features & QStyleOptionViewItem::Alternate)) return Color();
+            if (vi->state & QStyle::State_Selected) return Color();
+            return theme().background(QPalette::AlternateBase);
+    }
+
+`PE_PanelItemViewRow` fills the row with it, which is what covers a
+delegate that never reaches the style and what bands the part of a tree's
+row no item occupies. `CE_ItemViewItem` takes it as the item's `bg`, and
+that half is not redundant: its own fill REPLACES every cell it covers
+whenever the item carries any attribute at all, so without it the current
+item and every disabled one would punch a hole in the stripe the row panel
+wrote. Writing the text with the same ground is the other half of the same
+point -- the label and the fill under it cannot then disagree about which
+row this is.
+
+`PE_PanelItemViewItem` is deliberately not banded, for `QCommonStyle`'s
+reason: a band is a property of the row rather than of what sits in it.
+
+#### The precedence, and why a terminal wants it more than a desktop does
+
+    a background the MODEL named   wins over   the band
+    a SELECTION                    wins over   the band
+    the CURRENT item's underline   composes with the band
+    a DISABLED item's dim          composes with the band
+
+The model's colour wins because the palette's alternate ground is a
+default and the model's colour is a choice; reversing the two would make
+an application's own row colour vanish on every other row. That is
+`QCommonStyle`'s order as well.
+
+Selection wins for `QCommonStyle`'s reason and for a sharper one here. A
+selection in this library is `Attr::Reverse` rather than a colour, so
+banding a selected row would reverse the BAND -- a selection coming out
+one colour on the odd rows and another on the even ones, and at sixteen
+colours a reverse of the authored 8 instead of of the ground. The check
+asserts the relationship that says so: a selected odd row is the SAME CELL
+as a selected even one.
+
+The other two marks are attributes, and an attribute composes with a
+ground instead of replacing it, so they keep their band. That is a
+difference in kind rather than a preference, and it is why the four lines
+above are not one rule with exceptions.
+
+#### The sixteen-colour tier holds, and the comment beside it no longer does
+
+`ansi16_for_role()` authors 8 for `AlternateBase`, "the only index that
+reads as slightly off the ground rather than as a second foreground", and
+this is the first time a real fill has carried it to a cell. Measured: the
+band emits 8 against the ground's 0, and `contrast_violations()` over the
+whole banded frame at `Ansi16` is 0 -- body text is 7, and 7 on 8 is a
+luminance delta of 64 against a minimum of 48.
+
+The comment beside index 7 says it "clears the contrast minimum against 0
+and 4, which are the only two backgrounds this table produces". That was
+true while `AlternateBase` and `ToolTipBase` reached nothing; 8.256 gave
+the tooltip ground a colour and this gives the alternate one a fill, so
+the table now produces four. The pairing still clears the minimum, which
+is why this is recorded rather than changed -- but the sentence is a claim
+about the tree's shape and it has stopped being one.
+
+**Under `terminal_default()` there is no band, and that is the contract
+rather than a gap.** That theme names no colour for any surface role, so
+`background(AlternateBase)` answers `Color::Default` and both sites write
+nothing -- exactly as a selected row under it is the terminal's own ground
+plus a reverse. A banded row wants a colour and the default theme chooses
+none. It is pinned by a check so that the ones above cannot be read as
+saying more than they do.
+
+#### What each check is for
+
+Thirteen, in `suite_widgets`. The partition is asserted first: the theme
+this section renders through must name an alternate ground AND an ordinary
+one and they must differ, or every line below agrees with itself.
+
+- **The headline** is a relationship, not a colour: a row differs from its
+  neighbour and agrees with the row two away. What is wrong when it fails
+  is not which shade row 1 is.
+- **The band is the whole row**, counted across all twelve columns. A band
+  under the label alone is a stripe the width of the word, which is the
+  fault `Qt::BackgroundRole` had before it filled.
+- **`QTreeView` and `QTableView`**, so that one fixed class cannot stand
+  in for three.
+- **`CellItemDelegate` keeps it**, under its own label as well as beside
+  it -- the label is written after the fill and must not carry a ground of
+  its own.
+- **`OwnPaintDelegate` keeps it.** That fixture is a `QStyledItemDelegate`
+  that draws its text through `QPainter` and reaches the style at no point,
+  so `CE_ItemViewItem` never runs and the row panel is the only thing that
+  can have banded it. Without this the second site would be untested.
+- **The control**: with the switch OFF every cell is the ordinary ground.
+  Without it a fix that bands unconditionally passes everything above.
+- **Selection precedence**, asserted as the two selected rows being one
+  cell -- and paired with the rows around it still being banded, or a fix
+  that simply stopped banding would satisfy it.
+- **The current item keeps its band** and is underlined over it, which is
+  the case `CE_ItemViewItem`'s own fill eats if only the row panel bands.
+- **A colour the model named wins**, and the next alternate row still
+  carries the band.
+- **The sixteen-colour tier**: 0 against 8, and zero contrast violations.
+- **The limit**, above.
+
+Nine of the thirteen go red against the unfixed code -- run and recorded
+before the fix was built, `FAILED (9 failures)`. The four that do not are
+the partition, the control, the selection precedence and the limit, and
+each of those is defended by a sabotage entry instead, which is the whole
+reason those four exist.
+
+#### The sabotage entries
+
+Six, each proved on its own with `sabotage.py --only '<name>' --dirty-ok`
+against a baseline the tool re-measured green every time:
+
+    the alternating-row switch reaches no cell again        9 red
+    the row panel stops banding, a custom delegate blind    1 red
+    the item element stops banding, a marked row is a hole  1 red
+    a selected row is banded as well as reversed            1 red
+    the band wins over a background the model named         1 red
+    the band read from the live palette, not the theme      7 red
+
+The first is the unfixed code exactly, so its nine reds are also this
+change's before-and-after evidence. The four single-check entries are what
+says each of those checks is aimed at something no other check covers. The
+last is the cheap wrong fix -- reaching into `QGuiApplication::palette()`
+from inside rendering, which section 11 item 3 forbids -- and it reddens
+three separate things at once: the colour is the palette's own `#f7f7f7`
+rather than the ground the theme resolved, it carries no authored index so
+the sixteen-colour tier nearest-matches it, and it arrives under a theme
+that named no colour at all.
+
+`sabotage.py --validate` reports 416 entries, every anchor matching its
+source. Nothing existing needed re-anchoring: the change is 396 inserted
+lines and no deleted ones, and it adds a static helper and two blocks
+rather than moving a line an existing anchor names.
+
+#### Neither snapshot fixture moved, and the reason is checkable
+
+`widgets_gallery.txt` holds a combo box, a progress bar, a slider and a
+tab widget and `prefs_dialog.txt` a form; nothing in either turns
+alternating row colours on, so `Alternate` is never set on any option
+either records. Both are also taken under `terminal_default()`, where the
+band would be `Color::Default` even if it were. Two independent reasons,
+and the run confirms it: the suite went from 1740 checks to 1753 with no
+existing check moving and no fixture rewritten.
+
+#### One thing measured in passing and not acted on
+
+Under a hand-built dark palette, a `QTableView`'s grid line is drawn in
+`#191919` against a `#1e1e1e` base -- a colour Fusion derives from the
+base rather than from a role, so `line_for()` passes it through as true
+colour and it fails the section 6 contrast minimum at every tier. It is
+pre-existing and independent of this change: measured, that table reports
+four violations with alternating rows OFF and two with them on, the band
+lifting the odd rows over the floor. Recorded rather than fixed, because
+it is a Channel B pen question and this is a style one.
 
 ### 8.249 Swept, measured, and not yet acted on (2026-09-18)
 

@@ -56,6 +56,23 @@ static void show(QWidget &w, int cols, int rows) {
 	QCoreApplication::processEvents();
 }
 
+// A delegate that reaches the style at no point at all: it writes its label
+// through QPainter and never calls CE_ItemViewItem. That is what an
+// application painting its own rows does, and it is the fixture that
+// SEPARATES the two sites an alternating band is written at. The default
+// delegate and CellItemDelegate both end up in CE_ItemViewItem, so neither
+// can say whether the row panel the VIEW draws carries the band; this one
+// can, because the row panel is the only thing that runs.
+class OwnPaintDelegate : public QStyledItemDelegate {
+public:
+	using QStyledItemDelegate::QStyledItemDelegate;
+	void paint(QPainter *p, const QStyleOptionViewItem &opt,
+	           const QModelIndex &index) const override {
+		p->drawText(opt.rect, Qt::AlignLeft | Qt::AlignVCenter,
+		            index.data(Qt::DisplayRole).toString());
+	}
+};
+
 int suite_widgets() {
 	fails = 0;
 	// A STYLE SHEET TAKES A CONTROL'S TERMINAL AFFORDANCE AWAY. Nothing
@@ -2271,6 +2288,245 @@ int suite_widgets() {
 		      && (through_delegate.at(label.x(), label.y()).attrs & Attr::Underline)
 		      && (through_delegate.at(label.x() - 1, label.y()).attrs & Attr::Underline),
 		      "and the delegate's label carries the mark the style's fill does");
+		GridGuard::reset();
+	}
+
+	// ---- Qt's alternating-row switch, which reached no cell (8.261) ------
+	//
+	// setAlternatingRowColors(true) is the standard way to ask an item view
+	// for banded rows, and it produced nothing here. The band is
+	// QStyleOptionViewItem::Alternate, a FEATURE the view sets on every other
+	// row, and QCommonStyle reads it in PE_PanelItemViewRow -- GridStyle
+	// answers both that primitive and CE_ItemViewItem itself and neither
+	// looked at it, so all four rows came out the ordinary ground. Measured
+	// again before this section was written, on all three view classes, with
+	// and without CellItemDelegate.
+	//
+	// WHICH ELEMENT EACH CLASS REACHES, measured with a tracing style over
+	// GridStyle rather than read off Qt's source: QListView, QTableView and
+	// QTreeView each draw PE_PanelItemViewRow themselves, before any delegate
+	// runs, and each then reaches CE_ItemViewItem -- via the default
+	// delegate, and via CellItemDelegate, which hands the frame back to the
+	// style. So the split is not per view class. It is per DELEGATE: an
+	// application's own painter never reaches CE_ItemViewItem, and the row
+	// panel is the only site it passes through. Both are written, from one
+	// rule, and OwnPaintDelegate above is the fixture that tells them apart.
+	{
+		const CellTheme saved_theme = theme();
+		set_theme(CellTheme::from_palette(QGuiApplication::palette()));
+		const Color base_ground = theme().background(QPalette::Base);
+		const Color band_ground = theme().background(QPalette::AlternateBase);
+		printf("info: under from_palette() Base is #%06x/%d and AlternateBase"
+		       " #%06x/%d\n",
+		       base_ground.value() & 0xffffffu, base_ground.authored_ansi16(),
+		       band_ground.value() & 0xffffffu, band_ground.authored_ansi16());
+		// THE PARTITION, before a cell is read. background(AlternateBase)
+		// answers the window ground wherever the palette separates Window
+		// from Base and the palette's own alternate ground where it does not
+		// (8.256) -- so on a palette that named one colour for all three,
+		// every check below would agree with itself and discriminate
+		// nothing.
+		CHECK(base_ground.kind() != Color::Default
+		      && band_ground.kind() != Color::Default
+		      && base_ground != band_ground,
+		      "the theme this section renders through names an alternate "
+		      "ground and an ordinary one, and they differ");
+
+		QStandardItemModel model(4, 1);
+		for (int i = 0; i < 4; ++i)
+			model.setItem(i, 0, new QStandardItem(QStringLiteral("row%1").arg(i)));
+
+		const auto render_view = [&](QAbstractItemView &v, bool alternate,
+		                             CellBuffer &into) {
+			v.setModel(&model);
+			v.setAlternatingRowColors(alternate);
+			v.setFrameShape(QFrame::NoFrame);
+			if (auto *t = qobject_cast<QTableView *>(&v)) {
+				t->horizontalHeader()->hide();
+				t->verticalHeader()->hide();
+			}
+			if (auto *t = qobject_cast<QTreeView *>(&v)) {
+				t->setHeaderHidden(true);
+				t->setRootIsDecorated(false);
+			}
+			show(v, into.cols(), into.rows());
+			render_once(v, into);
+		};
+		// The RELATIONSHIP the switch exists to produce: a row differs from
+		// its neighbour and agrees with the row two away. A literal would say
+		// which shade row 1 is, and what is wrong when this fails is not the
+		// shade -- it is that row 1 is the same cell as row 0.
+		const auto banded = [](const CellBuffer &b) {
+			return b.at(0, 0).bg != b.at(0, 1).bg
+			    && b.at(0, 2).bg != b.at(0, 3).bg
+			    && b.at(0, 0).bg == b.at(0, 2).bg
+			    && b.at(0, 1).bg == b.at(0, 3).bg;
+		};
+
+		CellBuffer list_b(12, 4);
+		{ QListView v; render_view(v, true, list_b); }
+		CHECK(banded(list_b),
+		      "setAlternatingRowColors() bands a QListView: a row differs "
+		      "from its neighbour and agrees with the row two away");
+		// The whole row, not the cells the label occupies. A band drawn only
+		// under the text is a stripe the width of the word, which is exactly
+		// the fault Qt::BackgroundRole had before it filled.
+		int across = 0;
+		for (int x = 0; x < list_b.cols(); ++x)
+			if (list_b.at(x, 1).bg == band_ground) ++across;
+		CHECK(across == list_b.cols(),
+		      "and the band is the whole row rather than a stripe the width "
+		      "of the label");
+
+		// The other two classes, because one fix that leaves the others
+		// blind is the thing this section was written against.
+		CellBuffer tree_b(12, 4), table_b(12, 4);
+		{ QTreeView v;  render_view(v, true, tree_b); }
+		{ QTableView v; render_view(v, true, table_b); }
+		CHECK(banded(tree_b) && banded(table_b),
+		      "and a QTreeView and a QTableView band the same way");
+
+		// CellItemDelegate, which hands the frame back to CE_ItemViewItem and
+		// then writes its label over it. The label must not punch the band
+		// out from under itself, which is what a text write carrying its own
+		// ground would do.
+		CellBuffer delegated(12, 4);
+		{
+			QListView v;
+			v.setItemDelegate(new CellItemDelegate(&v));
+			render_view(v, true, delegated);
+		}
+		const QPoint label = findText(delegated, QStringLiteral("row1"));
+		CHECK(banded(delegated) && label.y() == 1
+		      && delegated.at(label.x(), 1).bg == band_ground,
+		      "CellItemDelegate keeps the band, under its label as well as "
+		      "beside it");
+
+		// THE OTHER PATH. OwnPaintDelegate reaches the style at no point, so
+		// CE_ItemViewItem never runs and the row panel the view draws is the
+		// only thing that can have banded this. Without it the second site
+		// would be untested and an application's own painter would get no
+		// band at all.
+		CellBuffer own_b(12, 4);
+		{
+			QListView v;
+			v.setItemDelegate(new OwnPaintDelegate(&v));
+			render_view(v, true, own_b);
+		}
+		CHECK(banded(own_b),
+		      "and a delegate that never calls the style is banded too, by "
+		      "the row panel the view draws itself");
+
+		// THE CONTROL. Without it a fix that bands unconditionally passes
+		// every check above.
+		CellBuffer off_b(12, 4);
+		{ QListView v; render_view(v, false, off_b); }
+		bool all_base = true;
+		for (int y = 0; y < off_b.rows(); ++y)
+			for (int x = 0; x < off_b.cols(); ++x)
+				if (off_b.at(x, y).bg != base_ground) all_base = false;
+		CHECK(all_base,
+		      "with alternating row colours off every row is the ordinary "
+		      "ground, so the band is the switch and not the view");
+
+		// PRECEDENCE, and it is the half that makes a banded view usable. A
+		// selection here is Attr::Reverse rather than a colour, so banding a
+		// selected row would reverse the BAND -- the odd rows of a selection
+		// coming out a different colour from the even ones. Selection wins,
+		// which is QCommonStyle's precedence too, and the assertion is that
+		// a selected odd row is the SAME CELL as a selected even one.
+		const auto select = [&](int row, CellBuffer &into) {
+			QListView v;
+			render_view(v, true, into);
+			v.setCurrentIndex(model.index(row, 0));
+			QCoreApplication::processEvents();
+			render_once(v, into);
+		};
+		CellBuffer sel0(12, 4), sel1(12, 4);
+		select(0, sel0);
+		select(1, sel1);
+		CHECK(sel0.at(0, 0).bg == sel1.at(0, 1).bg
+		      && (sel0.at(0, 0).attrs & Attr::Reverse)
+		      && (sel1.at(0, 1).attrs & Attr::Reverse),
+		      "a selected row is the same cell on an odd row as on an even "
+		      "one: the selection wins over the band, so a reverse never "
+		      "lands on it");
+		// And the rows around it are still banded, or the line above would
+		// be satisfied by a fix that simply stopped banding.
+		CHECK(sel1.at(0, 3).bg == band_ground && sel1.at(0, 2).bg == base_ground,
+		      "and the rows the selection did not touch are banded still");
+
+		// The CURRENT item keeps its band, because its mark is an attribute
+		// and an underline composes with a ground rather than replacing it.
+		// This is the case CE_ItemViewItem's own fill would have eaten: that
+		// fill REPLACES a cell whenever the item carries any attribute at
+		// all, so without the band reaching it the current row would be a
+		// hole in the stripe.
+		CellBuffer current_b(12, 4);
+		{
+			QListView v;
+			v.setSelectionMode(QAbstractItemView::NoSelection);
+			render_view(v, true, current_b);
+			v.setCurrentIndex(model.index(1, 0));
+			QCoreApplication::processEvents();
+			Qtty::set_focus_widget(&v);
+			render_once(v, current_b);
+			Qtty::set_focus_widget(nullptr);
+		}
+		CHECK(current_b.at(0, 1).bg == band_ground
+		      && (current_b.at(0, 1).attrs & Attr::Underline)
+		      && !(current_b.at(0, 1).attrs & Attr::Reverse),
+		      "the current item keeps its band and is underlined over it");
+
+		// A colour the MODEL named wins over the band. The palette's
+		// alternate ground is a default and the model's colour is a choice,
+		// and reversing the two would make an application's own row colour
+		// disappear on every other row.
+		CellBuffer chosen(12, 4);
+		{
+			model.item(1, 0)->setBackground(QColor(0, 0, 255));
+			QListView v;
+			render_view(v, true, chosen);
+			model.item(1, 0)->setBackground(QBrush());
+		}
+		CHECK(chosen.at(0, 1).bg == Color::rgb(qRgb(0, 0, 255))
+		      && chosen.at(0, 3).bg == band_ground,
+		      "a background the model named wins over the band, and the next "
+		      "alternate row still carries it");
+
+		// THE SIXTEEN-COLOUR TIER, which is what the role table was authored
+		// for: AlternateBase is index 8, "the only index that reads as
+		// slightly off the ground rather than as a second foreground", and
+		// this is the first time a real fill has carried it to a cell. Body
+		// text is 7, and 7 on 8 clears the section 6 contrast minimum -- the
+		// comment beside index 7 says it clears "0 and 4, which are the only
+		// two backgrounds this table produces", and 8 is now a third.
+		printf("info: at Ansi16 the rows read %d and %d, with %d contrast"
+		       " violations\n",
+		       list_b.at(0, 0).bg.to_ansi16(), list_b.at(0, 1).bg.to_ansi16(),
+		       contrast_violations(list_b, Capabilities::Ansi16));
+		CHECK(list_b.at(0, 0).bg.to_ansi16() == 0
+		      && list_b.at(0, 1).bg.to_ansi16() == 8
+		      && contrast_violations(list_b, Capabilities::Ansi16) == 0,
+		      "at sixteen colours the band is the authored 8 against the "
+		      "ground's 0, and every glyph on it still clears the contrast "
+		      "minimum");
+
+		// THE LIMIT, pinned so that nobody reads the checks above as saying
+		// more than they do. terminal_default() names no colour for any
+		// surface role, so it names none for this one either and a banded row
+		// is the terminal's own ground -- exactly as a selected row is the
+		// terminal's own ground plus a reverse. The band is a colour, and the
+		// default theme's whole contract is that it chooses none.
+		set_theme(CellTheme::terminal_default());
+		CellBuffer bare(12, 4);
+		{ QListView v; render_view(v, true, bare); }
+		CHECK(bare.at(0, 0).bg.kind() == Color::Default
+		      && bare.at(0, 1).bg.kind() == Color::Default,
+		      "under the default theme a banded row is still the terminal's "
+		      "own ground, because that theme names no colour to band with");
+
+		set_theme(saved_theme);
 		GridGuard::reset();
 	}
 

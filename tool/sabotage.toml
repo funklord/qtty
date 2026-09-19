@@ -4339,3 +4339,76 @@ find = "\tif (c.authored_ansi16() >= 0)\n\t\tname += QStringLiteral(\"/ansi16:%1
 into = "\tname += QStringLiteral(\"/ansi16:%1\").arg(c.authored_ansi16());"
 count = 1
 check = "and a snapshot of the terminal's own colours names no"
+
+[[sabotage]]
+# The defect itself: Qt's alternating-row switch reaching no cell. The
+# feature is read and then discarded, which is what both elements did
+# before -- so the two red checks below are also this change's
+# before-and-after evidence. 8.261.
+name = "the alternating-row switch reaches no cell again"
+file = "src/grid/grid_style.cpp"
+find = "\tif (!vi || !(vi->features & QStyleOptionViewItem::Alternate)) return Color();"
+into = "\tif (true || !vi || !(vi->features & QStyleOptionViewItem::Alternate))\n\t\treturn Color();"
+count = 1
+check = "setAlternatingRowColors() bands a QListView"
+
+[[sabotage]]
+# Only CE_ItemViewItem bands, which is the fix that covers all three view
+# classes and still leaves an application's own delegate with nothing --
+# that delegate never reaches the element. The one check written for the
+# other site is the one that goes red. 8.261.
+name = "the row panel stops banding, leaving a custom delegate blind"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\tif (pe == PE_PanelItemViewRow) {"
+into = "\t\t\tif (false && pe == PE_PanelItemViewRow) {"
+count = 1
+check = "a delegate that never calls the style is banded too"
+
+[[sabotage]]
+# Only the row panel bands. Every view class still stripes, so this passes
+# the headline -- and CE_ItemViewItem's fill REPLACES a cell whenever the
+# item carries an attribute, so the current row becomes a hole in the
+# stripe. The half a per-class check cannot see. 8.261.
+name = "the item element stops banding, so a marked row is a hole"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\telse\n\t\t\t\t\tbg = alternate_ground(vi);"
+into = "\t\t\t\telse\n\t\t\t\t\tbg = Color();"
+count = 1
+check = "the current item keeps its band"
+
+[[sabotage]]
+# The precedence reversed: a selected row banded as well as reversed, so a
+# selection reverses the BAND on every other row and comes out one colour
+# on the odd rows and another on the even ones. The cheap reading of "a
+# band is a property of the row". 8.261.
+name = "a selected row is banded as well as reversed"
+file = "src/grid/grid_style.cpp"
+find = "\tif (vi->state & QStyle::State_Selected) return Color();"
+into = "\tif (false && (vi->state & QStyle::State_Selected)) return Color();"
+count = 1
+check = "a selected row is the same cell on an odd row as on an even one"
+
+[[sabotage]]
+# The other precedence reversed: the band taken over a colour the MODEL
+# named, so an application's own row colour disappears on every other row.
+# It is invisible to every check that renders a plain model. 8.261.
+name = "the band wins over a background the model named"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tif (vi->backgroundBrush.style() != Qt::NoBrush)\n\t\t\t\t\tbg = bg_for(vi->backgroundBrush.color().rgba());"
+into = "\t\t\t\tif (vi->backgroundBrush.style() != Qt::NoBrush\n\t\t\t\t    && !(vi->features & QStyleOptionViewItem::Alternate))\n\t\t\t\t\tbg = bg_for(vi->backgroundBrush.color().rgba());"
+count = 1
+check = "a background the model named wins over the band"
+
+[[sabotage]]
+# The band read off the live palette instead of the theme -- the rule
+# section 11 item 3 exists to forbid, and the cheap way to get a colour
+# that is not the window ground. It reddens three: the colour is the
+# palette's own #f7f7f7 rather than the ground the theme resolved, it
+# carries no authored index so the sixteen-colour tier nearest-matches it,
+# and it arrives under a theme that named no colour at all. 8.261.
+name = "the band read from the live palette rather than the theme"
+file = "src/grid/grid_style.cpp"
+find = "\treturn theme().background(QPalette::AlternateBase);"
+into = "\treturn Color::rgb(QGuiApplication::palette().color(QPalette::AlternateBase).rgba());"
+count = 1
+check = "under the default theme a banded row is still the terminal's own ground"
