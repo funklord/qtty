@@ -3688,8 +3688,8 @@ check = "answered OSC 10 and not OSC 11, the"
 # off. 8.248.
 name = "the foreground role list is back to its four roles"
 file = "src/cell_geometry.h"
-find = "\t\t                                      QPalette::HighlightedText,\n\t\t                                      QPalette::BrightText,\n\t\t                                      QPalette::PlaceholderText,\n\t\t                                      QPalette::Link,\n\t\t                                      QPalette::LinkVisited,\n\t\t                                      QPalette::Accent},"
-into = "\t\t                                      QPalette::HighlightedText},"
+find = "\t        QPalette::HighlightedText, QPalette::BrightText,\n\t        QPalette::PlaceholderText, QPalette::Link,\n\t        QPalette::LinkVisited, QPalette::Accent};"
+into = "\t        QPalette::HighlightedText};"
 count = 1
 check = "a QLabel's link draws in the 12 the role table authors"
 
@@ -3701,8 +3701,8 @@ check = "a QLabel's link draws in the 12 the role table authors"
 # nothing else. 8.248.
 name = "tooltip ink at the head of the foreground role list"
 file = "src/cell_geometry.h"
-find = "role_of(c, {QPalette::WindowText, QPalette::Text,"
-into = "role_of(c, {QPalette::ToolTipText,\n\t\t                                      QPalette::WindowText, QPalette::Text,"
+find = "\treturn {QPalette::WindowText, QPalette::Text, QPalette::ButtonText,"
+into = "\treturn {QPalette::ToolTipText,\n\t        QPalette::WindowText, QPalette::Text, QPalette::ButtonText,"
 count = 1
 check = "and ordinary body text still draws at 7"
 

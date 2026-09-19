@@ -76,9 +76,15 @@ namespace Qtty {
 // QStyleOption::initFrom() sets no State_Active.
 //
 // Nothing was losing anything on this machine, and nothing would have noticed
-// either: of the eleven roles these lookups ask about, Active and Inactive are
-// IDENTICAL for all eleven in the palette here, so the omission was invisible
-// by construction. Under a theme that greys its inactive colours, every
+// either: Active and Inactive are IDENTICAL for every role these lookups ask
+// about, so the omission was invisible by construction.
+//
+// That sentence used to say "all eleven", counted when the ink list held
+// four. 8.248 took it to nine and the sentence did not move -- a count
+// about the tree's own shape, rotting on a commit that touched the thing
+// counted. It carries no number now: 8.251 measured all 21 paintable
+// roles byte-identical between the two groups, which is wider than these
+// lists and stays true however they grow. Under a theme that greys its inactive colours, every
 // Channel B colour would have matched no role and gone out as a hard 24-bit
 // sequence -- the #bebebe incident above, by a third route, and on a terminal
 // that may have sixteen colours.
@@ -88,8 +94,11 @@ namespace Qtty {
 // colour is the only signal Channel B carries, so no order is right for both
 // cases. Enabled-first keeps this file's own stated preference -- a missing
 // Dim understates, a spurious one greys out a control the user can use.
+// Takes a QVector rather than an initializer_list so the three named lists
+// below can be passed straight in, and so a test can ask with the very same
+// list the lookup uses instead of a copy of it.
 inline QPalette::ColorRole role_of(QRgb c,
-                                   std::initializer_list<QPalette::ColorRole> roles,
+                                   const QVector<QPalette::ColorRole> &roles,
                                    bool *disabled = nullptr) {
 	const QPalette &pal = QGuiApplication::palette();
 	if (disabled) *disabled = false;
@@ -148,18 +157,45 @@ inline QPalette::ColorRole role_of(QRgb c,
 // colour under Fusion, so an Accent entry in a surface list could never win
 // against the Highlight entry already ahead of it -- a line that cannot
 // execute. In this list there is no Highlight to shadow it.
+// THE THREE LISTS, named once each, because a test has to ask the same
+// question the lookup asks and a hand-copied list is how the two drift.
+//
+// This is not hypothetical and it had already happened. The Inactive-group
+// check in `suite_cells` re-typed the ink list to assert its own partition
+// -- that the fixture's colour belongs to no Active or Disabled role, or
+// the lookup would find it without reading Inactive and the check would
+// prove nothing. When 8.248 added five authored roles to the ink list, the
+// check's copy stayed at eleven, so the partition covered eleven of the
+// sixteen roles the lookup actually asks about. A partition assertion over
+// a short population is the one kind of check that fails silently: it goes
+// on passing and stops covering.
+//
+// The comment a few paragraphs above counted the same list in prose and
+// rotted the same way, on the same commit, in the same file.
+inline QVector<QPalette::ColorRole> ink_roles() {
+	return {QPalette::WindowText, QPalette::Text, QPalette::ButtonText,
+	        QPalette::HighlightedText, QPalette::BrightText,
+	        QPalette::PlaceholderText, QPalette::Link,
+	        QPalette::LinkVisited, QPalette::Accent};
+}
+
+inline QVector<QPalette::ColorRole> furniture_roles() {
+	return {QPalette::Dark, QPalette::Light, QPalette::Mid,
+	        QPalette::Midlight, QPalette::Shadow, QPalette::Window,
+	        QPalette::Button, QPalette::WindowText, QPalette::Text,
+	        QPalette::ButtonText};
+}
+
+inline QVector<QPalette::ColorRole> ground_roles() {
+	return {QPalette::Window, QPalette::Base, QPalette::Button,
+	        QPalette::AlternateBase, QPalette::Highlight,
+	        QPalette::ToolTipBase};
+}
+
 struct TextStyle { Color color; Attrs attrs; };
 inline TextStyle text_style_for(QRgb c) {
 	bool disabled = false;
-	const QPalette::ColorRole r = role_of(c, {QPalette::WindowText, QPalette::Text,
-		                                      QPalette::ButtonText,
-		                                      QPalette::HighlightedText,
-		                                      QPalette::BrightText,
-		                                      QPalette::PlaceholderText,
-		                                      QPalette::Link,
-		                                      QPalette::LinkVisited,
-		                                      QPalette::Accent},
-		                                  &disabled);
+	const QPalette::ColorRole r = role_of(c, ink_roles(), &disabled);
 	// Opaque only HERE, after the question has been asked. The alpha is
 	// part of the colour's identity to role_of() -- Fusion spells
 	// PlaceholderText 0x80000000, and with the byte gone the query is
@@ -195,12 +231,7 @@ inline Color fg_for(QRgb c) { return text_style_for(c).color; }
 // text roles are in the list for the same reason: a border drawn in the text
 // colour is furniture too.
 inline Color line_for(QRgb c) {
-	const QPalette::ColorRole r = role_of(c, {QPalette::Dark, QPalette::Light,
-		                                      QPalette::Mid, QPalette::Midlight,
-		                                      QPalette::Shadow,
-		                                      QPalette::Window, QPalette::Button,
-		                                      QPalette::WindowText, QPalette::Text,
-		                                      QPalette::ButtonText});
+	const QPalette::ColorRole r = role_of(c, furniture_roles());
 	return r == QPalette::NoRole ? Color::rgb(c) : Color();
 }
 
@@ -209,11 +240,7 @@ inline Color line_for(QRgb c) {
 // write rather than something to write in black -- so it comes back Default
 // and the caller leaves the cell alone.
 inline Color bg_for(QRgb c) {
-	const QPalette::ColorRole r = role_of(c, {QPalette::Window, QPalette::Base,
-		                                      QPalette::Button,
-		                                      QPalette::AlternateBase,
-		                                      QPalette::Highlight,
-		                                      QPalette::ToolTipBase});
+	const QPalette::ColorRole r = role_of(c, ground_roles());
 	if (r == QPalette::NoRole) return Color::rgb(c);
 	const Color themed = theme().background(r);
 	return themed;

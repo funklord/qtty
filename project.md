@@ -17750,6 +17750,58 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.262 A partition assertion that quietly stopped covering (2026-09-19)
+
+The comment sweep's first finding, and it is sharper than a stale number.
+
+`cell_geometry.h` said *"of the eleven roles these lookups ask about, Active
+and Inactive are IDENTICAL for all eleven"*, and that sentence is the
+EVIDENCE that searching the Inactive group was safe to add -- nothing would
+have noticed, because the two groups agreed everywhere it looked. `git log
+-S` dates it to a commit where the ink list held four roles, making eleven
+right for the pairing it counted. 8.248 took the ink list to nine and left
+the sentence alone.
+
+**The check had the same copy, and that is the part that matters.** The
+Inactive-group fixture asserts a partition -- the fixture's colour must
+belong to no Active or Disabled role, or the lookup would find it without
+reading Inactive and the check would prove nothing -- and it enumerated
+the roles by hand. So after 8.248 the partition covered **eleven of the
+sixteen** roles the lookups actually read.
+
+**A partition assertion over a short population does not fail. It goes on
+passing and stops covering**, which is the one way a check rots with no
+red line anywhere. The five roles it stopped covering are the ones 8.248
+added, two of which -- `PlaceholderText`, spelled `0x80000000`, and
+`Accent` -- are exactly the kind that can differ between colour groups.
+
+So the three lists are named once in `cell_geometry.h` and the check asks
+with the same objects the lookups use. `role_of()` takes a `QVector`
+rather than an `initializer_list` to allow it. A role added to a lookup is
+now in the partition by construction.
+
+**No sabotage entry, and that is a property of the defect rather than an
+omission.** The drift is latent: the fixture's colour collides with none
+of the five, so the short partition passes today and a faithful
+reintroduction reddens nothing. Recording that is more honest than an
+entry that reddens something adjacent.
+
+**The proof is that the lists did not move.** Retyping three lists risks
+silently dropping a role, and order is load-bearing -- `role_of()` returns
+the first match. Extracted from `HEAD` and from the working tree and
+compared: ink 9, furniture 10, ground 6, identical and in order.
+
+**And the prose count is gone rather than corrected.** 8.251 measured all
+21 paintable roles byte-identical between Active and Inactive, which is
+wider than these lists and stays true however they grow -- so the sentence
+now cites that instead of carrying a number of its own to rot.
+
+**An instrument note.** The first build after the refactor failed to
+compile and the suite still printed 1740, because it ran the previous
+binary. A count read from a run whose build errored is the stale-binary
+trap this tree has paid for twice; the errors were in the same output and
+the number was not a pass.
+
 ### 8.260 The README told people to run a build that failed (2026-09-19)
 
 **Found by another project, running the line this repository publishes.**

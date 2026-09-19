@@ -654,8 +654,10 @@ int suite_cells() {
 	// which is what section 6 exists to avoid on a sixteen-colour terminal.
 	//
 	// THE FIXTURE HAS TO MAKE THE GROUPS DIFFER. On this machine's palette
-	// Active and Inactive are identical for all eleven roles these lookups
-	// ask about, measured -- so the omission could not be observed here, and
+	// Active and Inactive are identical for every role these lookups ask
+	// about -- measured over all 21 paintable roles by 8.251, which is
+	// wider than the lists below and so covers them however they grow --
+	// so the omission could not be observed here, and
 	// a check written against the palette as it stands would pass with the
 	// defect in place. This one installs a palette that separates them and
 	// asserts the separation before asking anything else.
@@ -671,14 +673,17 @@ int suite_cells() {
 		// role in either list, or the lookup would find it without reading
 		// the Inactive group at all and the check would prove nothing.
 		const QPalette &live = QGuiApplication::palette();
+		// ASKED OF THE SAME LISTS THE LOOKUPS ASK, not of a copy. This
+		// enumeration used to be typed out here, and when 8.248 added
+		// five authored roles to the ink list the copy stayed at eleven
+		// -- so the partition below covered eleven of the sixteen roles
+		// the lookup really reads. A partition assertion over a short
+		// population does not fail; it quietly stops covering, which is
+		// the one way a check can rot without anybody seeing a red line.
 		bool elsewhere = false;
-		for (QPalette::ColorRole r : { QPalette::WindowText, QPalette::Text,
-		                               QPalette::ButtonText,
-		                               QPalette::HighlightedText,
-		                               QPalette::Dark, QPalette::Light,
-		                               QPalette::Mid, QPalette::Midlight,
-		                               QPalette::Shadow, QPalette::Window,
-		                               QPalette::Button })
+		QVector<QPalette::ColorRole> asked = ink_roles();
+		asked += furniture_roles();
+		for (QPalette::ColorRole r : asked)
 			if (live.color(QPalette::Active, r).rgba() == odd.rgba()
 			    || live.color(QPalette::Disabled, r).rgba() == odd.rgba())
 				elsewhere = true;
