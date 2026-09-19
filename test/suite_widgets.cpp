@@ -5358,6 +5358,67 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// A SIZE GRIP, which Qt puts in the corner of every QMainWindow's status
+	// bar and of any dialog that asks for one. What it cost here, and why the
+	// style takes its cells away rather than merely declining to paint it, is
+	// measured beside CT_SizeGrip in grid_style.cpp; these are the checks that
+	// stop it coming back.
+	{
+		QStyleOption o;
+		const QSize grip = QApplication::style()->sizeFromContents(
+		    QStyle::CT_SizeGrip, &o, QSize(13, 13), nullptr);
+		CHECK(grip.isEmpty(), "a size grip is asked for no cells at all");
+
+		// THE RELATIONSHIP, not either frame. The same window rendered with
+		// Qt's grip switched on and with it switched off must come out the
+		// same cells -- which is the claim, "it costs a status bar nothing".
+		// An assertion on one frame would say what a status bar looks like
+		// today and go stale the next time anything in one moves; this can
+		// only fail if the grip starts costing something again.
+		const auto render_bar = [](bool grip_enabled) {
+			QMainWindow win;
+			win.setCentralWidget(new QLabel(QStringLiteral("body")));
+			win.statusBar()->addWidget(new QLabel(
+			    QStringLiteral("wlan0 up, dhcp lease 12h, gw 192.168.1.1")));
+			win.statusBar()->setSizeGripEnabled(grip_enabled);
+			show(win, 30, 7);
+			CellBuffer b(30, 7);
+			render_once(win, b);
+			return b.to_text();
+		};
+		CHECK(render_bar(true) == render_bar(false),
+		      "and costs a status bar nothing: the same window renders the "
+		      "same cells with Qt's grip switched on as with it switched off");
+
+		// THE DETECTOR THAT FOUND IT, kept as a check. These tests run under
+		// a theme whose every role answers Color::Default, so an Rgb colour
+		// in a frame is raw painting that reached a cell without passing
+		// through the style -- a pen, a gradient, a pixmap. The grip's black
+		// corner was the only one a plain main window had.
+		const auto raw_cells = [](const CellBuffer &b) {
+			int n = 0;
+			for (int y = 0; y < b.rows(); ++y) {
+				for (int x = 0; x < b.cols(); ++x) {
+					if (b.at(x, y).bg.kind() == Color::Rgb
+					    || b.at(x, y).fg.kind() == Color::Rgb) ++n;
+				}
+			}
+			return n;
+		};
+		{
+			QMainWindow win;
+			win.setCentralWidget(new QLabel(QStringLiteral("body")));
+			win.statusBar()->addWidget(new QLabel(QStringLiteral("ready")));
+			show(win, 30, 7);
+			CellBuffer b(30, 7);
+			render_once(win, b);
+			CHECK(raw_cells(b) == 0,
+			      "and a main window with a status bar leaves no cell "
+			      "carrying a colour the theme never named");
+		}
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

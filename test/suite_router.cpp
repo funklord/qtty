@@ -10668,5 +10668,91 @@ int suite_router() {
 		}
 	}
 
+	// DRAGGING THE CORNER OF A STATUS BAR MUST NOT SHRINK THE WINDOW OFF THE
+	// TERMINAL. Qt's size grip resizes its top-level, and it worked here:
+	// measured before the style took its cells away, one drag up and to the
+	// left took a 30x7 window to 22x4 and left the bottom three rows of the
+	// terminal blank, with nothing to restore them short of the terminal
+	// itself changing size. The grip is invisible to a user -- an opaque
+	// black cell under a theme that named no colour -- so this was a way to
+	// break the screen by dragging something unreadable.
+	//
+	// The style's answer is to give a grip no cells, which is why the check
+	// is on the window's SIZE rather than on what the corner draws: what
+	// matters is that the drag reaches nothing.
+	{
+		QMainWindow win;
+		win.setCentralWidget(new QLabel(QStringLiteral("body")));
+		win.statusBar()->addWidget(new QLabel(QStringLiteral("ready")));
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(30, 7));
+		win.show();
+		QCoreApplication::processEvents();
+		// THE ESCAPE THE STYLE DOCUMENTS, asked for deliberately, because it
+		// is what makes this check about the SIZE rule rather than about
+		// polish(). GridStyle::polish() takes the grip out of a status bar
+		// to get one cell back; an application that insists can ask again
+		// after showing, and what it gets then is a grip with no cells that
+		// no press can reach. That is the layering, and this is the half of
+		// it nothing else asserts.
+		win.statusBar()->setSizeGripEnabled(true);
+		QCoreApplication::processEvents();
+		const auto grips = win.statusBar()->findChildren<QSizeGrip *>();
+		CHECK(grips.size() == 1 && grips.first()->size().isEmpty(),
+		      "a status bar that asks for its size grip back gets one with "
+		      "no cells");
+		InputRouter r(&win);
+		const auto drag_corner = [&r](int x, int y, int dx, int dy) {
+			MouseEvent m{QPoint(x, y), 1, true, false, false, 0};
+			r.on_mouse(m);
+			QCoreApplication::processEvents();
+			m.press = false; m.motion = true;
+			m.cell = QPoint(x + dx, y + dy);
+			r.on_mouse(m);
+			QCoreApplication::processEvents();
+			m.motion = false; m.release = true;
+			r.on_mouse(m);
+			QCoreApplication::processEvents();
+		};
+		const QSize before = win.size();
+		drag_corner(29, 6, -8, -3);
+		CHECK(win.size() == before,
+		      "dragging the corner of a status bar does not resize the "
+		      "window");
+		// THE CONTROL, because the check above passes just as loudly if the
+		// drag reached nothing for some reason of its own. A QSizeGrip given
+		// a size by hand is still a working grip -- that is what the style
+		// declines to hand out, not a capability the runtime lacks -- so the
+		// same three events over one of those must resize its window. If
+		// this stops firing, the check above has stopped meaning anything.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(30, 7));
+		auto *grip = new QSizeGrip(&host);
+		grip->setFixedSize(GridMetrics::cw(), GridMetrics::ch());
+		grip->move(29 * GridMetrics::cw(), 6 * GridMetrics::ch());
+		host.show();
+		QCoreApplication::processEvents();
+		InputRouter r2(&host);
+		const auto drag_host = [&r2](int x, int y, int dx, int dy) {
+			MouseEvent m{QPoint(x, y), 1, true, false, false, 0};
+			r2.on_mouse(m);
+			QCoreApplication::processEvents();
+			m.press = false; m.motion = true;
+			m.cell = QPoint(x + dx, y + dy);
+			r2.on_mouse(m);
+			QCoreApplication::processEvents();
+			m.motion = false; m.release = true;
+			r2.on_mouse(m);
+			QCoreApplication::processEvents();
+		};
+		const QSize host_before = host.size();
+		drag_host(29, 6, -8, -3);
+		CHECK(host.size() != host_before,
+		      "and the control fires: a grip an application sized itself "
+		      "still resizes its window under the same three events");
+		GridGuard::reset();
+	}
+
 	return fails;
 }

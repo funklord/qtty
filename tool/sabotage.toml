@@ -4412,3 +4412,28 @@ find = "\treturn theme().background(QPalette::AlternateBase);"
 into = "\treturn Color::rgb(QGuiApplication::palette().color(QPalette::AlternateBase).rgba());"
 count = 1
 check = "under the default theme a banded row is still the terminal's own ground"
+
+[[sabotage]]
+# The unfixed code exactly: a status bar keeps Qt's resizer, and the one
+# pixel reformat() spaces it with costs a whole cell on a grid. Invisible
+# to every check that reads the text a status bar shows rather than
+# comparing the bar against itself with the grip switched off. 8.264.
+name = "a status bar keeps Qt's size grip"
+file = "src/grid/grid_style.cpp"
+find = "\tif (auto *bar = qobject_cast<QStatusBar *>(w)) bar->setSizeGripEnabled(false);"
+into = "\tif (auto *bar = qobject_cast<QStatusBar *>(w)) (void)bar;"
+count = 1
+check = "and costs a status bar nothing"
+
+[[sabotage]]
+# The size rule reverted, which is the one that removes the hazard rather
+# than the cost: a grip with cells is a grip a press can reach, and one
+# drag on it shrinks the window off the terminal. It reddens the drag
+# check through the escape the style documents -- an application that asks
+# for its grip back -- which is why that check asks for it. 8.264.
+name = "a size grip is handed cells again"
+file = "src/grid/grid_style.cpp"
+find = "\tcase CT_SizeGrip:\n\t\treturn QSize(0, 0);"
+into = "\tcase CT_SizeGrip:\n\t\treturn QSize(width, snapped);"
+count = 1
+check = "dragging the corner of a status bar does not resize the window"

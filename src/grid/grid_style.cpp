@@ -35,6 +35,8 @@
 #include <QSplitter>
 #include <QSplitterHandle>
 #include <QFrame>
+// For polish(), which takes Qt's size grip out of a status bar.
+#include <QStatusBar>
 
 namespace Qtty {
 
@@ -1455,11 +1457,46 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 	// These genuinely carry more than a line -- an item view row with a
 	// multi-line delegate, a group box around other widgets, a whole menu --
 	// so the snap-up is the right rule and the only one that cannot clip.
+	// A SIZE GRIP IS A MOUSE AFFORDANCE THAT BREAKS THE SCREEN HERE. Qt puts
+	// one in the corner of every QMainWindow's status bar and of any dialog
+	// that asks, and it costs three things, measured on a 30x7 window whose
+	// status bar reads "wlan0 up, dhcp lease 12h, gw 192.168.1.1":
+	//
+	//   * it takes the last TWO cells of the status bar, so the message is
+	//     cut two characters earlier than the terminal required;
+	//   * cell 29 comes out opaque black -- the only Rgb colour in a frame
+	//     whose every role answers Default, so it is a mark the theme did
+	//     not choose and a user cannot read. WHAT PAINTS IT IS NOT
+	//     ESTABLISHED, and two things are ruled out: answering CE_SizeGrip
+	//     with a return leaves the cell exactly as it was, and a QSizeGrip
+	//     placed by hand at the same rectangle in the same bar does not
+	//     reproduce it. Only the status bar's own resizer does. The cell
+	//     goes when the grip has no area, which is what this case is for,
+	//     and the mechanism is recorded as unknown rather than guessed;
+	//   * and dragging it WORKS. One drag up and to the left took the window
+	//     from 30x7 cells to 22x4, and the bottom three rows of the terminal
+	//     went blank and stayed blank: nothing resizes a window back except
+	//     the terminal itself changing size.
+	//
+	// So it is not inert furniture to be tidied away -- it is a way for a
+	// mouse user to shrink the application off the screen by dragging an
+	// unexplained black square. Zero rather than a drawn nothing, because
+	// the space and the drag are the larger two costs and both go with the
+	// size: a grip with no cells is never hit and never asked to paint,
+	// which is the same measurement run again (the Rgb cell goes too).
+	//
+	// A CE_SizeGrip case that drew nothing was written here first and taken
+	// out again: it changed no cell in any fixture, because the grip's
+	// painter is not a cell target and the switch this style answers from
+	// never runs for it. A case nothing can reach is a case whose check
+	// cannot fail, which the sabotage run said in as many words.
+	case CT_SizeGrip:
+		return QSize(0, 0);
+
 	case CT_GroupBox:
 	case CT_Menu:
 	case CT_MdiControls:
 	case CT_ScrollBar:
-	case CT_SizeGrip:
 	case CT_Splitter:
 	case CT_TabWidget:
 	default:
@@ -1500,6 +1537,27 @@ static Color alternate_ground(const QStyleOptionViewItem *vi) {
 	if (!vi || !(vi->features & QStyleOptionViewItem::Alternate)) return Color();
 	if (vi->state & QStyle::State_Selected) return Color();
 	return theme().background(QPalette::AlternateBase);
+}
+
+// A STATUS BAR RESERVES A CELL FOR A GRIP THAT HAS NONE, so the size rule at
+// CT_SizeGrip cannot finish the job on its own. QStatusBar::reformat() lays
+// the resizer out with `box->addSpacing(1)` beside it, and that one pixel
+// survives the grip being sized to nothing -- one pixel is a whole cell on a
+// grid. Measured: the status bar's label came out 290 px wide with the grip
+// enabled and 300 with it disabled, on a 300 px bar at a ten-pixel cell.
+// Hiding the resizer does not help, because reformat() reserves the spacing
+// for its EXISTENCE rather than for its visibility, and QStatusBar shows it
+// again at the next reformat -- both measured.
+//
+// polish() is Qt's own hook for a style to adjust a widget and it runs before
+// the first layout. An application that insists can call
+// setSizeGripEnabled(true) again after showing; what it gets then is a 0x0
+// grip that no press can reach, because the size rule still holds. That is
+// the layering on purpose: the size removes the hazard, and this removes the
+// cost.
+void GridStyle::polish(QWidget *w) {
+	if (auto *bar = qobject_cast<QStatusBar *>(w)) bar->setSizeGripEnabled(false);
+	QProxyStyle::polish(w);
 }
 
 void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPainter *p,

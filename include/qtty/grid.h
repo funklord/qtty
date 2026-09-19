@@ -314,6 +314,16 @@ public:
 	// must refuse. See the implementation.
 	int styleHint(StyleHint, const QStyleOption *, const QWidget *,
 	              QStyleHintReturn *) const override;
+	// Qt's size grip is REMOVED here rather than only sized away. Giving it
+	// no cells takes away the drag that could shrink a window off the
+	// terminal and the pen that painted its corner black, and leaves one
+	// cell of a status bar behind; the implementation says where that cell
+	// goes and why only the widget's absence gets it back.
+	//
+	// `using` because overriding one polish() would otherwise hide the
+	// QApplication and QPalette overloads from every caller.
+	using QProxyStyle::polish;
+	void polish(QWidget *) override;
 };
 
 } // namespace Qtty

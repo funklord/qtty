@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1753 checks, 0 failures. `make check` is green and includes
+1759 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -17750,6 +17750,123 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.264 A black square in the corner that resized the window (2026-09-19)
+
+Qt puts a `QSizeGrip` in the corner of every `QMainWindow`'s status bar,
+and in any dialog that asks for one. On a desktop it is the handle you
+drag to resize the window. Here it cost three things and bought nothing.
+
+#### The lens, which is worth more than the finding
+
+These tests run under a theme whose every role answers `Color::Default`,
+so **any Rgb colour in a rendered frame is raw painting that reached a
+cell without passing through the style** -- a pen, a gradient, a pixmap.
+That makes a one-line detector out of a property the tree already has,
+and it was pointed at thirteen fixtures:
+
+    QMainWindow + status bar        1   ' ' bg=ff000000 at the last cell
+    QDialog with a size grip        1   the same cell, the same black
+    QToolBar, movable              18   bg=fff4f4f4 under the handle
+    QTableWidget                   75   fg=ffc7c7c7, the grid lines
+    QToolBox                       50   fg=ff7b7b7b, the tab frame
+    QLCDNumber                     23   bg=ff000000, the segments
+    QDateTimeEdit + QCalendarWidget 20   fg=ffff0000, the weekend header
+    QMdiArea with one subwindow   451   the title bar and its gradient
+    QSplitter, QDockWidget, QScrollArea with both bars,
+    QProgressBar/QSlider/QDial, QGroupBox with a check and a radio
+                                    0
+
+Seven of thirteen carry raw pixels. Not all seven are defects -- the
+calendar's red weekend is a colour the application's own model asked for,
+and `role_of()` matching it by colour is the route that is meant to be
+there -- but each is a surface the theme does not reach, and the list is
+the population a later pass can work through. The grid lines are the
+Channel B pen question already open; `QLCDNumber` and `QMdiArea` are
+recorded and not acted on.
+
+#### What the grip cost
+
+Measured on a 30x7 window whose status bar reads
+"wlan0 up, dhcp lease 12h, gw 192.168.1.1":
+
+- **Two cells of the status bar.** `CT_SizeGrip` fell through to the
+  snap-up default and came out 20x19, so the message was cut two
+  characters earlier than the terminal required.
+- **One opaque black cell.** `ff000000` at the last cell of the bar, the
+  only Rgb colour in the frame.
+- **And a drag on it WORKS.** One drag up and to the left took the window
+  from 30x7 cells to 22x4; the bottom three rows of the terminal went
+  blank and stayed blank. `InputRouter::on_resize()` is the only thing
+  that sizes a window back, and it runs when the TERMINAL changes size --
+  so a user who drags the corner has no way back short of resizing their
+  terminal. A mouse user could break the screen by dragging a square they
+  cannot read.
+
+#### The instrument was wrong first, and the control is what said so
+
+The first drag measurement reported UNCHANGED for the grip **and** for a
+`QSlider` control, which is the shape of a probe that reaches nothing.
+`MouseEvent::button` is not an SGR button number: the decoder writes
+`1 + (b & 3)`, so **1 is left and 0 is the protocol's "no button"**, and
+every synthetic event had been sent with `button = 0`. A line edit spy
+showed it -- `MouseButtonPress ... button=0 buttons=0`. With `button = 1`
+the control moved, drag-to-select in a `QLineEdit` worked, and the grip
+resized the window. The negative that mattered was manufactured by the
+instrument, and only the control caught it.
+
+#### The fix is two rules, and the third was taken out again
+
+`CT_SizeGrip` returns `QSize(0, 0)`: a grip with no cells is never hit,
+so the drag and the black cell both go, and it is a style rule rather
+than a widget rule, so it holds for a dialog's grip as well as a status
+bar's.
+
+`GridStyle::polish()` calls `setSizeGripEnabled(false)` on a
+`QStatusBar`, because the size alone leaves one cell behind.
+`QStatusBar::reformat()` lays the resizer out with `box->addSpacing(1)`,
+and **one pixel is a whole cell on a grid**: measured, the bar's label
+came out 290 px wide with the grip enabled against 300 with it disabled.
+Hiding the resizer does not help -- reformat reserves the spacing for its
+existence, and `QStatusBar` shows it again at the next reformat, both
+measured. An application that insists can ask for the grip back after
+showing; what it gets is a 0x0 grip no press can reach, which is the
+layering on purpose, and there is a check on exactly that.
+
+**A `CE_SizeGrip` case that drew nothing was written, tested and
+removed.** It looked like the obvious other half and it changed no cell
+in any fixture: answering `CE_SizeGrip` with a `return` leaves the black
+cell exactly where it was. The grip's painter is not a cell target, so
+the switch this style answers from never runs for it. The sabotage run
+said so in one line -- *the named check PASSED against broken code* --
+and the check written for it was therefore vacuous. It is out, and
+**what paints the cell is recorded as unknown rather than guessed**: a
+`QSizeGrip` placed by hand at the same rectangle in the same bar does not
+reproduce it either, and only the status bar's own resizer does.
+
+#### The checks
+
+Six, and the drag one is the point. `sizeFromContents(CT_SizeGrip)` is
+empty; the same window renders **the same cells** with Qt's grip switched
+on as with it switched off, which is the relationship rather than either
+frame; a main window with a status bar leaves no cell carrying a colour
+the theme never named; a bar that asks for its grip back gets one with no
+cells; dragging the corner does not resize the window; and **the control
+fires** -- a grip an application sized itself still resizes its window
+under the same three events, so the check above it cannot pass for want
+of a working drag.
+
+#### The two sabotage entries
+
+Two, each proved on its own with
+`sabotage.py --only '<name>' --dirty-ok`:
+
+    a status bar keeps Qt's size grip      1 red   (the cell)
+    a size grip is handed cells again      3 red   (the hazard)
+
+The second reddens three because the escape route is what the drag check
+uses: with cells handed back, the bar that asked for its grip gets a
+hittable one, and the drag resizes the window again.
+
 ### 8.263 A warning that outlived the thing it warned about (2026-09-19)
 
 The README told a reader **not** to use `/usr/bin/fmake`, because the
