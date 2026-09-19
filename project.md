@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1759 checks, 0 failures. `make check` is green and includes
+1763 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -17780,6 +17780,87 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.265 A stale binary, and the toolbar it nearly hid (2026-09-20)
+
+Two readings in one session said a change did nothing, and both were the
+same instrument error. The probes in this workspace link
+`build/lib/libqtty.a` statically, and `make all` rebuilds the archive
+without relinking anything that was built from it -- so a probe compiled
+before the change and run after it reports **the previous library**, and
+reports it with a perfectly ordinary-looking zero.
+
+    make -j6 all        # the archive is new
+    ./probe             # the probe is not
+
+`build-and-commit.md` already carries this rule for the suite -- *never
+conclude that a test passes or fails from a binary the build step did not
+rebuild* -- and it was written about `make test` re-running a stale test
+binary. A hand-built probe in a scratch directory is the same hazard with
+nothing to catch it: no target knows the probe exists, so nothing makes it
+out of date. The fix is a four-line script that rebuilds, deletes the
+probe, relinks it, and prints both timestamps before running it.
+
+**What it cost, twice.**
+
+- **`CE_SizeGrip` was declared inert and removed from 8.264**, along with
+  its check, on a reading taken from a probe that had not been relinked.
+  Re-measured properly: fully unfixed the status bar's corner carries
+  `ff000000`; with `CE_SizeGrip` answered and nothing else changed the
+  cell is **gone**. It is the base style's own grip drawing, it was always
+  the answer, and 8.264's paragraph saying otherwise has been rewritten
+  rather than annotated.
+- **`CE_ToolBar` looked like a wrong guess and was the right one.** The
+  first reading after the change reported the same eighteen Rgb cells, so
+  the mechanism was abandoned and half an hour went into hunting other
+  painters -- `PE_PanelToolBar`, a flat-frame rule, `QStatusBar`'s own
+  paint. The stale binary was the whole of it.
+
+#### The toolbar
+
+`QToolBar::paintEvent()` asks for `CE_ToolBar` and reaches
+`PE_PanelToolBar` only when the bar is floating or expanding. This style
+answered the primitive -- with the right reasoning, in 8.61's words, *a
+rule drawn in a neighbour's cells is not a frame, it is damage* -- and
+never answered the control, so **every docked toolbar in the tree was
+drawn by the base style**. Measured on a 30x7 window with an Open and a
+Save button:
+
+    [Open][Save]------------------      18 cells, '-' on #f4f4f4
+    [Open][Save]                         with CE_ToolBar answered
+
+The rule appears only where no button covers it, so what a user sees is a
+line that starts after the last button. The separator is the tell: its
+glyph is this style's own and its ground was `#f4f4f4`, a cell written
+twice -- once by the code that meant to and once by something with no
+business painting.
+
+**It is the same lens as 8.264 and the second surface it has paid out
+on.** An Rgb colour in a frame whose every theme role answers Default is
+raw painting that did not pass through the style. Four of the detector's
+thirteen fixtures are now clean that were not: the two size-grip hosts
+and the toolbar with and without a separator.
+
+#### The checks and the entries
+
+Four checks: a grip an application sized itself draws nothing, which is
+the only fixture that reaches `CE_SizeGrip` once a grip has no cells; a
+docked toolbar leaves no cell carrying a colour the theme never named;
+its empty extent is empty rather than a rule; and a separator in one is
+this style's glyph on no ground of its own. Two sabotage entries, each
+proved on its own:
+
+    a sized size grip is painted by the base style    1 red
+    a docked toolbar is painted by the base style     3 red
+
+The second reddens three because the ground, the empty extent and the
+separator's cell are three readings of one fill.
+
+**What remains of the detector's list**, unacted on and recorded in
+8.264: the `QTableWidget` grid lines (75 cells, the Channel B pen
+question), `QToolBox` (50), `QLCDNumber` (23) and `QMdiArea` (451). The
+calendar's red weekend is a colour the model asked for and is not a
+finding.
+
 ### 8.264 A black square in the corner that resized the window (2026-09-19)
 
 Qt puts a `QSizeGrip` in the corner of every `QMainWindow`'s status bar,
@@ -17862,33 +17943,35 @@ measured. An application that insists can ask for the grip back after
 showing; what it gets is a 0x0 grip no press can reach, which is the
 layering on purpose, and there is a check on exactly that.
 
-**A `CE_SizeGrip` case that drew nothing was written, tested and
-removed.** It looked like the obvious other half and it changed no cell
-in any fixture: answering `CE_SizeGrip` with a `return` leaves the black
-cell exactly where it was. The grip's painter is not a cell target, so
-the switch this style answers from never runs for it. The sabotage run
-said so in one line -- *the named check PASSED against broken code* --
-and the check written for it was therefore vacuous. It is out, and
-**what paints the cell is recorded as unknown rather than guessed**: a
-`QSizeGrip` placed by hand at the same rectangle in the same bar does not
-reproduce it either, and only the status bar's own resizer does.
+**A `CE_SizeGrip` case that draws nothing is the other half, and this
+entry said the opposite for a few hours.** What was committed here read
+*it changed no cell in any fixture* and *what paints the cell is
+recorded as unknown rather than guessed*. Both were wrong, and 8.265
+carries the measurement that says so: **the black cell is the base
+style's `CE_SizeGrip`**, present when the element falls through and gone
+when it returns, checked both ways against a rebuilt and RELINKED probe.
+The case is in, with a check and a sabotage entry of its own. What made
+the wrong reading survive is in 8.265 as well, because it is the part
+worth keeping.
 
 #### The checks
 
-Six, and the drag one is the point. `sizeFromContents(CT_SizeGrip)` is
+Seven, and the drag one is the point. `sizeFromContents(CT_SizeGrip)` is
 empty; the same window renders **the same cells** with Qt's grip switched
 on as with it switched off, which is the relationship rather than either
 frame; a main window with a status bar leaves no cell carrying a colour
 the theme never named; a bar that asks for its grip back gets one with no
-cells; dragging the corner does not resize the window; and **the control
-fires** -- a grip an application sized itself still resizes its window
-under the same three events, so the check above it cannot pass for want
-of a working drag.
+cells; dragging the corner does not resize the window; a grip an
+application sized itself draws nothing, which is the only fixture that
+reaches `CE_SizeGrip` at all; and **the control fires** -- that same
+hand-sized grip still resizes its window under the same three events, so
+the drag check cannot pass for want of a working drag.
 
 #### The two sabotage entries
 
-Two, each proved on its own with
-`sabotage.py --only '<name>' --dirty-ok`:
+Two here, each proved on its own with
+`sabotage.py --only '<name>' --dirty-ok`, and a third added in 8.265 for
+the element this entry first said was inert:
 
     a status bar keeps Qt's size grip      1 red   (the cell)
     a size grip is handed cells again      3 red   (the hazard)

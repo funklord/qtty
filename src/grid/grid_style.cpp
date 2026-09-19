@@ -1466,13 +1466,10 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 	//     cut two characters earlier than the terminal required;
 	//   * cell 29 comes out opaque black -- the only Rgb colour in a frame
 	//     whose every role answers Default, so it is a mark the theme did
-	//     not choose and a user cannot read. WHAT PAINTS IT IS NOT
-	//     ESTABLISHED, and two things are ruled out: answering CE_SizeGrip
-	//     with a return leaves the cell exactly as it was, and a QSizeGrip
-	//     placed by hand at the same rectangle in the same bar does not
-	//     reproduce it. Only the status bar's own resizer does. The cell
-	//     goes when the grip has no area, which is what this case is for,
-	//     and the mechanism is recorded as unknown rather than guessed;
+	//     not choose and a user cannot read. It is the BASE STYLE's
+	//     CE_SizeGrip: answering that element below removes the cell and
+	//     letting it fall through brings it back, measured both ways, and
+	//     a grip with no area never asks for it at all;
 	//   * and dragging it WORKS. One drag up and to the left took the window
 	//     from 30x7 cells to 22x4, and the bottom three rows of the terminal
 	//     went blank and stayed blank: nothing resizes a window back except
@@ -1485,11 +1482,12 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 	// size: a grip with no cells is never hit and never asked to paint,
 	// which is the same measurement run again (the Rgb cell goes too).
 	//
-	// A CE_SizeGrip case that drew nothing was written here first and taken
-	// out again: it changed no cell in any fixture, because the grip's
-	// painter is not a cell target and the switch this style answers from
-	// never runs for it. A case nothing can reach is a case whose check
-	// cannot fail, which the sabotage run said in as many words.
+	// Both halves are needed and 8.264 records why it took three tries to
+	// see that: the reading that said CE_SizeGrip changed nothing was taken
+	// from a probe the rebuild had not relinked, so it reported the previous
+	// library. A grip this style hands no cells never paints, so only an
+	// application that sizes one itself reaches CE_SizeGrip -- and that is
+	// the fixture the check for it uses.
 	case CT_SizeGrip:
 		return QSize(0, 0);
 
@@ -2075,6 +2073,37 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 			break;
 		case CE_MenuBarEmptyArea:
 		case CE_MenuEmptyArea:
+			return;
+		// The base style's grip lands on a cell as an opaque black ground:
+		// measured, one Rgb cell in the corner of a status bar whose every
+		// other cell answers Default, present when this falls through and
+		// gone when it returns. There is nothing for a terminal user to
+		// drag, so there is nothing to draw.
+		//
+		// CT_SizeGrip above gives a grip no cells, and a widget with no area
+		// is never asked to paint -- so this runs only for a grip an
+		// application sized itself, which is exactly the escape that case
+		// documents and exactly the fixture its check uses.
+		case CE_SizeGrip:
+			return;
+		// THE SAME ANSWER AS PE_PanelToolBar, AND THE PATH A DOCKED BAR
+		// ACTUALLY TAKES. QToolBar::paintEvent() asks for CE_ToolBar and
+		// reaches the panel primitive only when the bar is floating or
+		// expanding, so answering the primitive alone left the base style
+		// painting every docked toolbar in the tree.
+		//
+		// Measured on a 30x7 window with an Open and a Save button: cells 12
+		// to 29 of the toolbar's own row came out carrying a horizontal rule
+		// on an #f4f4f4 ground, eighteen Rgb cells under a theme whose every
+		// role answers Default -- and the rule visible only where no button
+		// covered it, so it read as a line starting after the last button
+		// rather than as a frame. With this case the same window renders
+		// none.
+		//
+		// The separator was the tell. Its own glyph is this style's and its
+		// ground was #f4f4f4: a cell written twice, once by the code that
+		// meant to and once by something with no business painting.
+		case CE_ToolBar:
 			return;
 		case CE_ItemViewItem:                          // list/table/tree cells
 			if (auto *vi = qstyleoption_cast<const QStyleOptionViewItem *>(opt)) {

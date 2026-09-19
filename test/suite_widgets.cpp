@@ -5416,6 +5416,78 @@ int suite_widgets() {
 			      "and a main window with a status bar leaves no cell "
 			      "carrying a colour the theme never named");
 		}
+		// AND THE ELEMENT A GRIP WITH NO CELLS NEVER ASKS FOR. The escape
+		// above is the only way to reach CE_SizeGrip at all, so it is the
+		// only fixture that can test it: the application asks for its grip
+		// back and gives it a size, and the base style's own grip lands on
+		// a cell as an opaque black ground when nothing answers the element.
+		{
+			QMainWindow win;
+			win.setCentralWidget(new QLabel(QStringLiteral("body")));
+			win.statusBar()->addWidget(new QLabel(QStringLiteral("ready")));
+			show(win, 30, 7);
+			win.statusBar()->setSizeGripEnabled(true);
+			QCoreApplication::processEvents();
+			for (QSizeGrip *g : win.statusBar()->findChildren<QSizeGrip *>())
+				g->setGeometry(28 * GridMetrics::cw(), 0,
+				               2 * GridMetrics::cw(), GridMetrics::ch());
+			QCoreApplication::processEvents();
+			CellBuffer b(30, 7);
+			render_once(win, b);
+			CHECK(raw_cells(b) == 0,
+			      "and a grip an application sized itself draws nothing "
+			      "rather than the base style's own");
+		}
+		GridGuard::reset();
+	}
+
+	// A TOOLBAR'S OWN GROUND, which the base style was painting under
+	// everything. QToolBar::paintEvent() asks for CE_ToolBar and reaches
+	// PE_PanelToolBar only when the bar floats, so answering the primitive
+	// alone left every docked toolbar in the tree drawn by the base style:
+	// eighteen cells of horizontal rule on an #f4f4f4 ground, and the rule
+	// visible only where no button covered it. Same detector as the size
+	// grip above -- an Rgb colour under a theme whose every role answers
+	// Default is raw painting that did not pass through the style.
+	{
+		const auto toolbar_frame = [](bool separator) {
+			QMainWindow win;
+			win.setCentralWidget(new QLabel(QStringLiteral("body")));
+			QToolBar *bar = win.addToolBar(QStringLiteral("main"));
+			bar->addAction(QStringLiteral("Open"));
+			if (separator) bar->addSeparator();
+			bar->addAction(QStringLiteral("Save"));
+			show(win, 30, 7);
+			CellBuffer b(30, 7);
+			render_once(win, b);
+			int raw = 0;
+			for (int y = 0; y < b.rows(); ++y) {
+				for (int x = 0; x < b.cols(); ++x) {
+					if (b.at(x, y).bg.kind() == Color::Rgb
+					    || b.at(x, y).fg.kind() == Color::Rgb) ++raw;
+				}
+			}
+			return QPair<int, QString>(raw, b.to_text().split(
+			                                    QLatin1Char('\n')).value(0));
+		};
+		const QPair<int, QString> plain = toolbar_frame(false);
+		CHECK(plain.first == 0,
+		      "a docked toolbar leaves no cell carrying a colour the theme "
+		      "never named");
+		// The rule and the buttons are one claim: what was wrong was not
+		// only the ground but that the bar's empty extent carried a line.
+		// Asserted as "nothing after the last button" rather than as the
+		// whole row's text, which would go stale the next time a button
+		// changes width.
+		CHECK(plain.second.trimmed() == QStringLiteral("[Open][Save]"),
+		      "and its empty extent is empty rather than a rule that starts "
+		      "after the last button");
+		const QPair<int, QString> separated = toolbar_frame(true);
+		CHECK(separated.first == 0
+		      && separated.second.trimmed()
+		             == QStringLiteral("[Open]\u2502[Save]"),
+		      "and a separator in one is this style's glyph on no ground of "
+		      "its own");
 		GridGuard::reset();
 	}
 

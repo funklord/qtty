@@ -4437,3 +4437,27 @@ find = "\tcase CT_SizeGrip:\n\t\treturn QSize(0, 0);"
 into = "\tcase CT_SizeGrip:\n\t\treturn QSize(width, snapped);"
 count = 1
 check = "dragging the corner of a status bar does not resize the window"
+
+[[sabotage]]
+# The element a grip with no cells never asks for, and the reading that
+# said it was inert came from a probe the rebuild had not relinked. It is
+# reachable through the escape the size rule documents, and that is the
+# fixture its check uses. 8.265.
+name = "a sized size grip is painted by the base style"
+file = "src/grid/grid_style.cpp"
+find = "\t\tcase CE_SizeGrip:\n\t\t\treturn;"
+into = "\t\tcase CE_SizeGrip:\n\t\t\tbreak;"
+count = 1
+check = "and a grip an application sized itself draws nothing"
+
+[[sabotage]]
+# A docked toolbar drawn by the base style again: eighteen cells of rule
+# on an #f4f4f4 ground, and the rule only where no button covers it. It
+# reddens three, which is the point -- the ground, the empty extent and
+# the separator's own cell are three readings of one fill. 8.265.
+name = "a docked toolbar is painted by the base style"
+file = "src/grid/grid_style.cpp"
+find = "\t\tcase CE_ToolBar:\n\t\t\treturn;"
+into = "\t\tcase CE_ToolBar:\n\t\t\tbreak;"
+count = 1
+check = "a docked toolbar leaves no cell carrying a colour the theme never named"
