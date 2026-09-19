@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1763 checks, 0 failures. `make check` is green and includes
+1767 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -17780,6 +17780,72 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.266 A tool box drawn as rules and diagonals (2026-09-20)
+
+Third surface from the detector in 8.264, and the one where the fix is a
+rendering rather than a refusal. A `QToolBox` -- Qt's stack of
+collapsible sections, the shape a settings panel takes when it will not
+fit in tabs -- had never been rendered by anything in this tree. Measured
+on a three-section box at 30x9:
+
+    One---------------------\        76 Rgb cells, fg #7b7b7b
+      alpha
+    Two---------------------\
+    -------------------------\--
+    Three                   \\--
+
+`QCommonStyle` draws a section's tab as a polygon with a corner. On a
+grid the edges arrive as a rule trailing each title, the corner as a
+box-drawing diagonal, and one of them lands on a row of its own.
+
+#### What it is, rather than what Qt draws
+
+A tool box is a **disclosure list**, so it is drawn as one, with the pair
+of marks this style already uses for a tree node that can be opened:
+
+    ▾ One
+      alpha
+    ▸ Two
+    ▸ Three
+
+`CE_ToolBoxTabShape` draws nothing, the way `CE_HeaderSection` does --
+there is no chrome on a terminal and one row is all a section gets.
+`CE_ToolBoxTabLabel` writes the mark, the title, and `Attr::Reverse` on
+the open one, which is what `CE_TabBarTab` already spells for the current
+tab. Nought Rgb cells after.
+
+#### And it is still not openable from the keyboard
+
+`QToolBoxButton` is `Qt::NoFocus` and in nobody's tab chain: measured,
+`Tab` through a window holding one walks the button before it, the page's
+scroll area, the field inside it and the button after, and never a
+section header. So a section that is shut cannot be opened by any key.
+
+**That is the application's to answer and the library already reports
+it.** `pointer_only()` names both headers, because a `QToolBoxButton` is
+a `QAbstractButton` and the audit's population is Qt's own word for a
+control you click -- it covered this by construction, before anybody
+looked. The rendering fix makes a tool box legible; it does not make it
+operable, and the check says both in one sentence so the next reader is
+not left to assume the first implies the second.
+
+#### The checks, and the two entries
+
+Four checks: no cell carries a colour the theme never named; each section
+says whether it is open, with the tree's own marks; the open one is
+marked where the shut ones are plain -- asserted as the RELATIONSHIP,
+since a check on `Attr::Reverse` alone would have passed with every
+section reversed; and the three headers are named pointer-only. Two
+sabotage entries, each proved on its own:
+
+    a tool box section's shape is painted by the base style    1 red
+    every tool box section claims to be open                   2 red
+
+**Two of the detector's thirteen fixtures remain unacted on**, plus the
+one that is somebody else's question: `QLCDNumber` (23 cells, its
+segments), `QMdiArea` (451, a title bar and a gradient), and the
+`QTableWidget` grid lines (75, the Channel B pen question).
+
 ### 8.265 A stale binary, and the toolbar it nearly hid (2026-09-20)
 
 Two readings in one session said a change did nothing, and both were the

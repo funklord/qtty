@@ -2203,6 +2203,41 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 			break;
 		case CE_HeaderSection:
 			return;                                    // no chrome; label only
+		// A TOOL BOX SECTION IS A DISCLOSURE, not a tab with a corner.
+		// QCommonStyle draws the shape as a polygon with a diagonal, and on
+		// a grid that arrived as a rule in #7b7b7b ending in a box-drawing
+		// diagonal: measured on a three-section box, 76 Rgb cells under a
+		// theme whose every role answers Default, a rule trailing each
+		// title and a stray one on a row of its own.
+		//
+		// The shape draws nothing, the way a header section does. What says
+		// where a section is and whether it is open belongs in the label,
+		// because on a terminal one row is all there is.
+		case CE_ToolBoxTabShape:
+			return;
+		case CE_ToolBoxTabLabel:
+			if (auto *tb = qstyleoption_cast<const QStyleOptionToolBox *>(opt)) {
+				// The same pair a tree uses for a node that can be opened,
+				// deliberately: a tool box IS a disclosure list, and a
+				// terminal user who has met one in a tree has met this.
+				const bool open = opt->state & State_Selected;
+				const QString mark = open ? QStringLiteral("\u25be")
+				                          : QStringLiteral("\u25b8");
+				const QString label =
+				    elide_to_cells(strip_mnemonic(tb->text),
+				                   qMax(0, c.width() - 2));
+				// Reverse for the open section, which is what CE_TabBarTab
+				// spells for the current tab, and the focus mark on top of
+				// it -- a QToolBox's tab is a QAbstractButton and a Tab
+				// stop, so it needs to say when it has the keys.
+				Attrs a = open ? Attrs(Attr::Reverse) : Attrs();
+				dev->buffer().text(c.left(), c.top(),
+				                   mark + QLatin1Char(' ') + label,
+				                   Color(), Color(),
+				                   label_attrs(opt, w, a | focus_attrs(w)));
+				return;
+			}
+			break;
 		case CE_HeaderLabel:
 			if (auto *h = qstyleoption_cast<const QStyleOptionHeader *>(opt)) {
 				// One cell in, which is where CE_ItemViewItem starts an item's

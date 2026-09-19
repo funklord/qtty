@@ -5491,6 +5491,67 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// A QToolBox, which nothing here had ever rendered and which came out as
+	// rules and diagonals: QCommonStyle draws a section's tab as a polygon
+	// with a corner, and on a grid that arrived as a #7b7b7b rule trailing
+	// each title, ending in a box-drawing diagonal, with a stray rule on a
+	// row of its own -- 76 Rgb cells in a three-section box. Drawn here as
+	// what a tool box IS, a disclosure list, with the tree's own pair of
+	// marks.
+	{
+		QWidget host;
+		auto *v = new QVBoxLayout(&host);
+		auto *box = new QToolBox;
+		box->addItem(new QLabel(QStringLiteral("alpha")),
+		             QStringLiteral("One"));
+		box->addItem(new QLabel(QStringLiteral("beta")),
+		             QStringLiteral("Two"));
+		box->addItem(new QLabel(QStringLiteral("gamma")),
+		             QStringLiteral("Three"));
+		v->addWidget(box);
+		show(host, 30, 9);
+		CellBuffer b(30, 9);
+		render_once(host, b);
+		int raw = 0;
+		for (int y = 0; y < b.rows(); ++y) {
+			for (int x = 0; x < b.cols(); ++x) {
+				if (b.at(x, y).bg.kind() == Color::Rgb
+				    || b.at(x, y).fg.kind() == Color::Rgb) ++raw;
+			}
+		}
+		CHECK(raw == 0,
+		      "a tool box leaves no cell carrying a colour the theme never "
+		      "named");
+		const QPoint open = findText(b, QStringLiteral("One"));
+		const QPoint shut = findText(b, QStringLiteral("Two"));
+		const QPoint last = findText(b, QStringLiteral("Three"));
+		CHECK(open.x() >= 2 && shut.x() >= 2 && last.x() >= 2
+		      && b.at(open.x() - 2, open.y()).ch == QStringLiteral("\u25be")
+		      && b.at(shut.x() - 2, shut.y()).ch == QStringLiteral("\u25b8")
+		      && b.at(last.x() - 2, last.y()).ch == QStringLiteral("\u25b8"),
+		      "and each section says whether it is open, with the same pair "
+		      "of marks a tree uses");
+		// THE RELATIONSHIP rather than either attribute: what matters is
+		// that the open section differs from the shut ones, not which
+		// attribute spells it. A check on Attr::Reverse alone would go
+		// stale the day the mark changes and would have passed with every
+		// section reversed.
+		const Attrs a_open = b.at(open.x(), open.y()).attrs;
+		const Attrs a_shut = b.at(shut.x(), shut.y()).attrs;
+		CHECK(a_open != a_shut && a_shut == Attrs(),
+		      "and the open one is marked where the shut ones are plain");
+		// A tool box's section headers are Qt::NoFocus and in nobody's tab
+		// chain, so a keyboard user cannot open a section at all. That is
+		// the application's to answer, and pointer_only() already names
+		// them -- a QToolBoxButton is a QAbstractButton, so the audit
+		// covers it by construction. Asserted here because this block is
+		// where somebody will next read about a tool box.
+		CHECK(pointer_only(&host).size() == 3,
+		      "and its three section headers are named pointer-only, "
+		      "legible now and still not openable from the keyboard");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

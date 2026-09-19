@@ -4461,3 +4461,25 @@ find = "\t\tcase CE_ToolBar:\n\t\t\treturn;"
 into = "\t\tcase CE_ToolBar:\n\t\t\tbreak;"
 count = 1
 check = "a docked toolbar leaves no cell carrying a colour the theme never named"
+
+[[sabotage]]
+# The section shape drawn by the base style again: a polygon with a
+# corner, which on a grid is a rule trailing each title and a
+# box-drawing diagonal at its end. 8.266.
+name = "a tool box section's shape is painted by the base style"
+file = "src/grid/grid_style.cpp"
+find = "\t\tcase CE_ToolBoxTabShape:\n\t\t\treturn;"
+into = "\t\tcase CE_ToolBoxTabShape:\n\t\t\tbreak;"
+count = 1
+check = "a tool box leaves no cell carrying a colour the theme never named"
+
+[[sabotage]]
+# Every section marked open. The mark is what a tool box says about
+# itself on a terminal, and a box whose sections all claim to be open
+# says nothing -- invisible to a check that reads only the titles. 8.266.
+name = "every tool box section claims to be open"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tconst bool open = opt->state & State_Selected;"
+into = "\t\t\t\tconst bool open = true;"
+count = 1
+check = "and each section says whether it is open"
