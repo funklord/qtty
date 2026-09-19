@@ -27,6 +27,147 @@ int suite_router() {
 	fails = 0;
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 
+	// ------------------------------------------------------------- 8.251
+	// THE TERMINAL'S OWN FOCUS, AND IT IS FIRST IN THE SUITE ON PURPOSE.
+	// Two of the assertions below are about the state before anything has
+	// reported focus -- a terminal with no focus reporting sends neither
+	// sequence, ever, and must render exactly as it always did. There is
+	// one moment in the process when that is observable, and this is it:
+	// InputRouter::on_focus_change() is the only writer of the record, the
+	// suites that run before this one build no router, and this suite's own
+	// call is four thousand lines below. Written at the bottom first, where
+	// the sink it extends lives, and moved here when the sabotage that
+	// inverts the default could not redden it -- the control had been
+	// asserting a record something else had already set.
+	//
+	// THE SINK'S OLD CHECK, further down this file, drives `true` alone
+	// and asserts only that a frame was requested -- so it passed with
+	// the parameter deleted, which is what the parameter effectively was.
+	//
+	// What is asserted here is Qt's own deactivation, measured under xcb
+	// on a real display rather than reasoned about: activating a second
+	// window clears State_HasFocus and State_Active on the first and
+	// leaves QLineEdit::hasSelectedText() at 1. So the FOCUS MARK goes
+	// and the SELECTION stays, and the frames are compared for that
+	// relationship rather than against any particular cell.
+	{
+		// The button, which carries the focus mark and nothing else.
+		QWidget bw;
+		bw.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *bv = new QVBoxLayout(&bw);
+		bv->setContentsMargins(0, 0, 0, 0);
+		bv->setSpacing(0);
+		auto *go = new QPushButton(QStringLiteral("Go"), &bw);
+		bv->addWidget(go);
+		bw.resize(GridMetrics::cells(10, 1));
+		bw.show();
+		QCoreApplication::processEvents();
+		set_focus_widget(go);
+		QCoreApplication::processEvents();
+
+		InputRouter fr(&bw);
+		const auto shot = [](QWidget &w, int cols, int cells_high) {
+			CellBuffer b(cols, cells_high);
+			render_once(w, b);
+			return b;
+		};
+		const auto marks = [](const CellBuffer &b, Attr a) {
+			int n = 0;
+			for (int y = 0; y < b.rows(); ++y)
+				for (int x = 0; x < b.cols(); ++x)
+					if (b.at(x, y).attrs.testFlag(a)) ++n;
+			return n;
+		};
+
+		// THE CONTROL, and it comes first because it is about the state
+		// before anything has been reported. A terminal with no focus
+		// reporting never sends either sequence, and silence must not
+		// dim it -- so the abstention is "focused" and nothing about
+		// such a session changes.
+		CHECK(terminal_focused(),
+		      "a terminal that has reported nothing counts as focused");
+		const CellBuffer silent = shot(bw, 10, 1);
+
+		fr.on_focus_change(true);
+		const CellBuffer lit = shot(bw, 10, 1);
+		CHECK(lit.to_snapshot() == silent.to_snapshot(),
+		      "and reporting focus GAINED changes nothing about it, so a"
+		      " terminal without focus reporting renders as it always did");
+		CHECK(marks(lit, Attr::Reverse) > 0,
+		      "a focused button is drawn focused while the terminal is");
+
+		fr.on_focus_change(false);
+		const CellBuffer dark = shot(bw, 10, 1);
+		CHECK(marks(dark, Attr::Reverse) == 0,
+		      "and loses the mark when the terminal loses the focus, as"
+		      " a deactivated window loses State_HasFocus");
+		CHECK(dark.to_snapshot() != lit.to_snapshot(),
+		      "so the two values of on_focus_change's argument produce"
+		      " different frames, which is what makes it load-bearing");
+
+		fr.on_focus_change(true);
+		CHECK(shot(bw, 10, 1).to_snapshot() == lit.to_snapshot(),
+		      "and the mark comes back when the terminal does, byte for"
+		      " byte -- a fix that dimmed and never recovered would pass"
+		      " every check above this one");
+
+		// The list, which carries BOTH marks: reverse for the selected
+		// row, underline for the current one. Qt keeps the first across
+		// a deactivation and drops the second with State_HasFocus, and
+		// that is the direction asserted -- nothing is gained, and less
+		// is spent.
+		QWidget lw;
+		lw.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *lv2 = new QVBoxLayout(&lw);
+		lv2->setContentsMargins(0, 0, 0, 0);
+		lv2->setSpacing(0);
+		auto *view = new QListView(&lw);
+		auto *rows2 = new QStringListModel(
+		    QStringList{QStringLiteral("one"), QStringLiteral("two")}, &lw);
+		view->setModel(rows2);
+		view->setFrameShape(QFrame::NoFrame);
+		lv2->addWidget(view);
+		lw.resize(GridMetrics::cells(10, 2));
+		lw.show();
+		QCoreApplication::processEvents();
+		view->setCurrentIndex(rows2->index(0, 0));
+		view->selectionModel()->select(rows2->index(0, 0),
+		                               QItemSelectionModel::Select);
+		set_focus_widget(view);
+		QCoreApplication::processEvents();
+
+		fr.on_focus_change(true);
+		const CellBuffer row_lit = shot(lw, 10, 2);
+		fr.on_focus_change(false);
+		const CellBuffer row_dark = shot(lw, 10, 2);
+
+		CHECK(marks(row_lit, Attr::Reverse) > 0
+		      && marks(row_dark, Attr::Reverse) == marks(row_lit, Attr::Reverse),
+		      "an unfocused terminal keeps a selected row's reverse video,"
+		      " Qt keeping hasSelectedText across a deactivation");
+		CHECK(marks(row_lit, Attr::Underline) > 0
+		      && marks(row_dark, Attr::Underline) == 0,
+		      "and drops the current item's underline, which is the focus"
+		      " mark and not the selection");
+
+		// The direction, stated as a relationship over every cell: an
+		// unfocused frame may say LESS than a focused one and may not
+		// say anything a focused one does not.
+		int gained = 0, lost = 0;
+		for (int y = 0; y < row_lit.rows(); ++y)
+			for (int x = 0; x < row_lit.cols(); ++x) {
+				const Attrs a = row_lit.at(x, y).attrs;
+				const Attrs b = row_dark.at(x, y).attrs;
+				if (b & ~a) ++gained;
+				if (a & ~b) ++lost;
+			}
+		CHECK(gained == 0 && lost > 0,
+		      "so an unfocused frame emphasises a subset of what a focused"
+		      " one does, and strictly less of it");
+
+		fr.on_focus_change(true);            // left as the suite found it
+	}
+
 	QWidget win;
 	auto *v = new QVBoxLayout(&win);
 	v->setContentsMargins(0, 0, 0, 0);
@@ -6188,6 +6329,10 @@ int suite_router() {
 		r.on_focus_change(true);
 		CHECK(frames > after_resize,
 		      "and a focus change asks for one too, since focus is drawn");
+		// AND WHAT THE ARGUMENT DECIDES is at the top of this suite, not
+		// here beside the sink it belongs to. Two of those assertions are
+		// about the record before anything has written it, and this line
+		// is a write -- so they had to go in front of it. 8.251.
 
 		// The caret blink, which starts when a key is TYPED and not when a
 		// field is merely focused. Qt flashes a caret every cursorFlashTime,

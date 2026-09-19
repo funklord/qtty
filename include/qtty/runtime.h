@@ -268,7 +268,10 @@ public:
 	void on_mouse(const MouseEvent &) override;
 	void on_paste(const QString &) override;
 	void on_resize(QSize cells) override;
-	void on_focus_change(bool) override;
+	// Named, because the name is the fix: it records the state that
+	// Qtty::terminal_focused() answers with and the focus mark is drawn
+	// from, and an unnamed parameter is how it came to be discarded.
+	void on_focus_change(bool focused) override;
 	// The terminal has gone, so there is nothing left to draw on and nothing
 	// to type into. Quits unconditionally: it is NOT a quit key, and none of
 	// the things that can take a quit key away -- set_quit_keys(), a text

@@ -690,7 +690,9 @@ void AnsiBackend::resume() {
 	//   2004  bracketed paste, so a paste arrives as text rather than as a
 	//         burst of keystrokes that autorepeat handling cannot tell from
 	//         typing.
-	//   1004  focus in/out, which is how a TUI knows to dim its selection.
+	//   1004  focus in/out, which is how a TUI knows the user has switched
+	//         terminal window or tab. Qtty::terminal_focused() is where it
+	//         ends up, and the focus mark is what it decides.
 	if (tty_out_) write_out(kEnter);
 
 	// SIGPIPE would kill the process outright when the far end of the output
@@ -1971,8 +1973,17 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 		}
 	}
 
-	// Focus reporting (1004). A TUI dims its selection when the terminal
-	// loses focus, the way a desktop window does.
+	// Focus reporting (1004): the user has switched terminal window or tab,
+	// or come back to this one.
+	//
+	// THIS COMMENT USED TO SAY "a TUI dims its selection when the terminal
+	// loses focus, the way a desktop window does", and half of that was
+	// wrong -- which mattered, because it was the only statement of what
+	// the sequence was for and the sink below discarded it for as long as
+	// nobody checked. Measured under xcb on a real display, deactivating a
+	// window leaves QLineEdit::hasSelectedText() at 1 and clears
+	// State_HasFocus: a desktop window keeps its selection and loses its
+	// FOCUS indication. 8.251 carries the numbers and the fix.
 	if (final == 'I') { sink_->on_focus_change(true);  return true; }
 	if (final == 'O') { sink_->on_focus_change(false); return true; }
 

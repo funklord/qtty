@@ -3,6 +3,7 @@
 #include "qtty/delegate.h"
 #include "qtty/paint.h"
 #include "qtty/runtime.h"          // keyboard_conventions(), for the tip below
+#include "qtty/application.h"      // terminal_focused(), for the focus mark
 #include "../cell_geometry.h"
 // QAction, which this file uses through QToolButton::defaultAction() and had
 // never included. It compiled because something else drags it in -- and that
@@ -319,7 +320,33 @@ void set_focus_widget(QWidget *w, Qt::FocusReason reason) {
 // the two disagree about which widget the drawing belongs to.
 
 
-static bool owns_focus(const QWidget *w) { return w && w == s_focus.data(); }
+// THE TERMINAL'S OWN FOCUS IS THE SECOND HALF OF THIS PREDICATE, and it was
+// missing. Qt's is QWidget::hasFocus(), which is two questions and not one:
+//
+//     QApplication::focusWidget() == this      who the keys go to
+//     ...and it is null unless a window is active
+//
+// Measured under xcb on a real display, activating a second window: the
+// per-window record QWidget::window()->focusWidget() keeps pointing at the
+// edit, while QApplication::focusWidget() goes null and hasFocus() goes
+// false. Qtty::focusWidget() is the first of those and had no counterpart
+// for the second, so a control kept its reverse-video mark after the user
+// switched terminal window or tab -- the frame said "type here" at a
+// terminal that was not receiving anything typed.
+//
+// Which mark goes, and which stays, is that measurement rather than taste.
+// A deactivation clears State_HasFocus and State_Active; it does NOT clear
+// a selection, QLineEdit::hasSelectedText() answering 1 on both sides of
+// it. So everything below this line is the focus MARK -- the reverse video
+// on the control that owns focus, the box on a focused frame, the underline
+// on a view's or a tab bar's current item -- and State_Selected's own
+// reverse video is deliberately untouched.
+//
+// The colour group Qt also moves is not reachable and would not show:
+// application.h has the numbers.
+static bool owns_focus(const QWidget *w) {
+	return w && w == s_focus.data() && terminal_focused();
+}
 static Attrs focus_attrs(const QWidget *w) {
 	return owns_focus(w) ? Attrs(Attr::Reverse) : Attrs();
 }
@@ -1741,8 +1768,14 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// the same shape as the disabled control, in the other
 				// direction. A checkable button that is checked was equally
 				// invisible, and Qt reports both in the same option.
+				//
+				// owns_focus() rather than s_focus directly, so that the
+				// focus half goes when the TERMINAL loses focus and the
+				// other two do not: pressed and checked are facts about
+				// the button, and a terminal the user has switched away
+				// from does not un-press anything.
 				bool foc = (opt->state & (State_HasFocus | State_Sunken | State_On))
-				           || (w && w == s_focus.data());
+				           || owns_focus(w);
 				// The DEFAULT button is the one Enter activates -- and it
 				// does activate it here, measured on a dialog whose focus
 				// was elsewhere: Enter fired the default and not the
@@ -2414,9 +2447,11 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				// Channel B before its children, and the leftover showed
 				// between the label and the closing bracket -- "[Cut-]".
 				dev->buffer().fill(c, Cell{});
+				// owns_focus() for the focus third of this, and the
+				// push button one case up says why the other two stay.
 				const bool on = (tb->state & State_On)
 				                 || (tb->state & State_Sunken)
-				                 || (w && w == s_focus.data());
+				                 || owns_focus(w);
 				// A bracket goes where a bracket fits, which is the rule the
 				// rendering side already states for a rule. Two cells hold
 				// "[]" and nothing else, so a dock widget's title buttons --

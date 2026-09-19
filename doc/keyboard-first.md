@@ -331,6 +331,24 @@ you how many rows your widget got. For that, ask the widget. What this
 answers is how big the screen is, which is the question behind *is this
 terminal narrow enough that the sidebar should go*.
 
+**And whether the user is still looking at it.**
+`Qtty::terminal_focused()` answers false while the terminal window or tab
+qtty is drawing into does not have the keyboard focus, and true the rest
+of the time -- including on a terminal that never reports focus at all,
+where saying nothing has to mean "focused" rather than dim every session
+for ever.
+
+You will usually not need to ask, because the library already acts on
+it: the control that owns the focus stops being drawn as owning it while
+the terminal does not have it, exactly as a widget in a deactivated
+desktop window loses its focus rectangle. Selections stay, which is also
+what a deactivated window does. Ask when your application has something
+of its own to stop -- an animation, a poll, a cursor of your own making
+-- the way you would use `QEvent::WindowDeactivate` on a desktop. That
+event is not available here and cannot be: no qtty window ever
+activates, so `isActiveWindow()` is permanently false and the event
+would have nothing behind it.
+
 ## The terminal's own keys, and how to ask for them
 
 One line turns on the habits a terminal user has and Qt does not:

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1676 checks, 0 failures. `make check` is green and includes
+1685 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -17285,12 +17285,166 @@ saying so is correct. The edge had to become a claim that answers NOWHERE
 -- the same container with the narrower context, the container itself
 taking no focus -- which is one object, one chord, two contexts and
 opposite answers.
+### 8.251 The terminal reported its focus and nothing drew it (2026-09-19)
+
+Closes 8.249 item 2.
+
+`ESC[?1004h` is in the terminal entry string unconditionally, both
+directions decode in `ansi_backend.cpp`, and the sink they reached was
+
+    void InputRouter::on_focus_change(bool) { if (frame_requested) frame_requested(); }
+
+-- an unnamed parameter and a request for the frame already on the
+screen. `ESC[I` and `ESC[O` therefore did the same thing, and a control
+kept its reverse-video focus mark after the user switched terminal
+window or tab: the screen said *type here* at a terminal that was
+receiving nothing typed.
+
+**The check that covered this sink drove `true` alone** and asserted
+only that a frame was requested, so it passed with the parameter
+deleted -- which is what the parameter effectively was.
+
+**WHAT QT DOES, MEASURED RATHER THAN REMEMBERED.** Two probes, because
+the question has two halves and only one of them can be asked under the
+platform qtty pins. Under xcb on Xvfb, with a second top-level activated
+away from the first:
+
+    QApplication::focusWidget()      the edit  ->  null
+    QWidget::hasFocus()              1         ->  0
+    State_HasFocus, State_Active     1         ->  0
+    palette colour group             Active    ->  Inactive
+    QLineEdit::hasSelectedText()     1         ->  1
+
+So a deactivated window loses its FOCUS indication and keeps its
+SELECTION. The backend's own comment said the opposite -- "a TUI dims
+its selection when the terminal loses focus, the way a desktop window
+does" -- and it was the only statement anywhere of what 1004 was for.
+It is corrected in place.
+
+**THE COLOUR GROUP IS NOT AVAILABLE AND WOULD NOT SHOW.** It is the only
+thing Qt changes about a selection, and both halves of it are dead here.
+Every visible widget is ALREADY in the Inactive group -- measured, a
+shown `QLineEdit` answers `currentColorGroup() == Inactive` and a hidden
+one answers Active, because `QWidgetPrivate::colorGroup()` keys on
+`isActiveWindow()` and no qtty window activates (F4). And under the
+theme `prepare_environment()` pins, **all 21 palette roles are
+byte-identical between Active and Inactive**, so moving the group would
+change no colour even if it could move. `cell_geometry.h` had measured
+the second of those for eleven roles already and drawn the same
+conclusion for `role_of()`.
+
+**AND A HAND-SENT `QEvent::WindowDeactivate` MOVES NOTHING.** Measured
+under offscreen: `isActiveWindow()`, `currentColorGroup()`,
+`hasFocus()`, `QApplication::focusWidget()`, `State_Active` and
+`State_HasFocus` all read exactly as they did before it. It is an event
+with nothing behind it here, so it is not sent. An application is given
+`Qtty::terminal_focused()` instead, which is a fact it can act on rather
+than a signal whose companion predicate is a constant.
+
+**THE FIX IS ONE PREDICATE, AND IT IS QT'S OWN.** `QWidget::hasFocus()`
+is two questions -- is this the focus widget, and is its window active
+-- and qtty had only the first:
+
+    static bool owns_focus(const QWidget *w) { return w && w == s_focus.data(); }
+
+It is `&& terminal_focused()` now, which is the second question asked of
+the terminal instead of the window manager. `Qtty::focusWidget()` is
+deliberately unchanged: that is Qt's PER-WINDOW record, which a
+deactivation does not clear either -- measured, `window()->focusWidget()`
+still names the edit while `QApplication::focusWidget()` is null. Keys
+still go where they went.
+
+Every consumer of `owns_focus()` is a drawing site -- the reverse video
+on a focused control, the box on a focused frame, the underline on a
+view's current item and on a tab bar's -- so one edit reaches all of
+them. Two sites read `s_focus` directly and were folded in: the push
+button's and the tool button's focus marks, each OR-ed with
+`State_Sunken` and `State_On`, which stay ungated because a terminal the
+user has switched away from does not un-press anything.
+
+**WHAT IS DELIBERATELY NOT IN IT.** `State_Selected` still draws reverse
+video whatever the terminal is doing, because that is what the
+measurement says and not for want of an opinion. A sabotage entry gates
+it the other way and the suite refuses, so the non-change is held rather
+than merely intended.
+
+**TRUE IS THE ABSTENTION.** A terminal without focus reporting sends
+neither sequence, for ever. Read as "not focused" it would unmark the
+focused control for the whole of every such session; read as "focused"
+it costs nothing anybody can see. That is `color_scheme()`'s asymmetry
+argument in a second place. The record is reset to focused at both ends
+of `exec()`, like `s_tuiActive` and `g_session`, so a second run cannot
+inherit the first one's last state -- the terminal reports a CHANGE, so
+a session that starts focused is never told so.
+
+**THE QUERY IS `Qtty::terminal_focused()`**, beside `capabilities()`,
+`terminal_cells()` and `color_scheme()`, with `set_terminal_focused()`
+for the seat those three were opened for -- an application driving a
+backend through its own frame loop, which has no `exec()` to do the
+wiring. It departs from its three neighbours in one way, stated in the
+source: they ask whoever is driving, because the terminal answered a
+query and the backend holds the answer. Focus is not a query, it
+ARRIVES at the event sink, so there is no backend to ask and the record
+is the library's. It is also the only one of the four that answers
+outside a run, for the same reason: it has nothing that can go stale.
+
+**TWO THINGS A DESKTOP DOES THAT THIS DOES NOT, both the holder's.**
+
+- **The caret.** `QLineEdit` hides its cursor on `focusOutEvent`, and
+  qtty's caret is the TERMINAL's own hardware cursor, placed by
+  `Compositor::compose()`. Not done, and not obviously wanted: most
+  emulators already draw an unfocused window's cursor hollow, so qtty
+  hiding it as well would be the same fact reported twice.
+  `compositor.cpp` was also held by another session this pass.
+- **The events.** A desktop delivers `WindowDeactivate` to the window
+  and each child, and `FocusOut` with `Qt::ActiveWindowFocusReason` to
+  the focused widget -- measured above. Synthesising the second would
+  fire `QLineEdit::editingFinished()` every time the user switches
+  terminal tab, which is an application-visible change rather than a
+  drawing one, and this tree already records what an `editingFinished`
+  slot that rebuilds a form costs. Recorded, not done.
+
+**WATCHED FAILING.** Four of the nine new checks go red against the
+unfixed body, before any sabotage: losing the mark, the two values
+producing different frames, the current item's underline, and the
+subset relationship. The other five are controls and preserved
+relationships, which by construction cannot fail against code that
+never changes anything, so each is held by a sabotage entry instead of
+by the unfixed run. Seven new entries, each naming the check it
+reddens:
+
+    the predicate with the terminal half taken out   the defect itself
+    the sink discarding its argument again           8.249's body verbatim
+    a record written on loss and not on recovery     a one-way dim
+    the gate over-applied to State_Selected          the selection question
+    the current-item mark inverted                   an unfocused frame GAINS
+    the abstention flipped to unfocused              silence read as dark
+    a focused push button not marked at all          the positive control
+
+One existing entry was re-anchored: 8.133's "a push button stops marking
+the focus it owns" anchored on the `s_focus` comparison this fix folded
+into `owns_focus()`. It was re-proved.
+
+**AND THE HARNESS CAUGHT A CONTROL THAT WAS NOT ONE, which is the part
+worth keeping.** The abstention entry -- the default flipped to
+unfocused -- could not redden the check asserting that a terminal which
+has reported nothing counts as focused. The check was written beside the
+sink it extends, four thousand lines into `suite_router()`, and the
+sink's own existing check calls `on_focus_change(true)` before it. So it
+was asserting a record something else had already set, and it would have
+passed in a tree where silence meant dark for the whole of every
+session. **A control over process-wide state is a claim about ORDER, and
+nothing in the check says so.** It is at the top of the suite now, with
+the reason written there, and the sabotage reddens it.
 
 ### 8.249 Swept, measured, and not yet acted on (2026-09-18)
 
 Four findings from the two audit sweeps of 2026-09-18 that are real and
-are NOT fixed. They are written down because a measured finding that lives
-only in a session is a finding that gets made again.
+were not fixed when this was written. They are written down because a
+measured finding that lives only in a session is a finding that gets made
+again -- and each item below says where it stands now, because an entry
+recording an open gap goes stale the moment somebody closes it and
+nobody re-reads the open questions while closing one.
 
 **1. ~~The terminal's background reaches one of three compositing sites.~~
 Closed in 8.250, and the claim this said wanted narrowing was narrowed
@@ -17303,17 +17457,22 @@ the overlay fallback omitting the argument and `rasterize_into()` carrying
 background reaches the half-block compositor" named one of the three and
 says so now.
 
-**2. `InputRouter::on_focus_change(bool)` accepts its argument and
-discards it.** The body is `{ if (frame_requested) frame_requested(); }`;
-both values do the same thing. The producing end is complete -- focus
-reporting is requested unconditionally, both directions decode, and the
-stated purpose is "a TUI dims its selection when the terminal loses focus,
-the way a desktop window does". Nothing learns it: no `WindowDeactivate`,
-`applicationState()` never leaves Active, and qtty's own focus
-reverse-video stays lit, so a selection keeps its active highlight after
-the user switches terminal window or tab. The existing check drives only
-`true` and asserts only that a frame was requested, so it would pass with
-the parameter deleted.
+**~~2. `InputRouter::on_focus_change(bool)` accepts its argument and
+discards it.~~ Fixed, 8.251.** The body was
+`{ if (frame_requested) frame_requested(); }`, so both values did the same
+thing while the producing end was complete -- focus reporting requested
+unconditionally, both directions decoding -- and the check that covered
+the sink drove `true` alone, so it passed with the parameter deleted. The
+argument is recorded now, `Qtty::terminal_focused()` answers with it, and
+the focus mark is drawn from it.
+
+One half of the finding as written was wrong and 8.251 carries the
+measurement: the stated purpose quoted here, "a TUI dims its selection
+when the terminal loses focus, the way a desktop window does", is not
+what a desktop window does. Measured under xcb on a real display, a
+deactivated window keeps `hasSelectedText()` at 1 and loses
+`State_HasFocus`. It is the FOCUS MARK that goes, and the selection that
+stays.
 
 **3. ~~`CursorShape::Underline` has a consumer and no producer.~~ Answered
 in 8.250, and the answer is that it should not have one.** The observation

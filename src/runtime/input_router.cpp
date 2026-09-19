@@ -2950,7 +2950,21 @@ void InputRouter::on_resize(QSize cells) {
 	if (frame_requested) frame_requested();
 }
 
-void InputRouter::on_focus_change(bool) { if (frame_requested) frame_requested(); }
+// The terminal window or tab gained or lost the keyboard focus (DEC 1004).
+//
+// THE ARGUMENT WAS DISCARDED HERE, and the frame this asked for was
+// therefore identical to the one already on the screen: the backend
+// requested focus reporting unconditionally, decoded both directions, and
+// handed the answer to a body that could not tell them apart. Recorded as
+// 8.249 item 2 and closed by 8.251.
+//
+// Recorded BEFORE the frame is asked for, which is the whole point -- the
+// frame is what carries the change to the screen, so a record written
+// afterwards would land one frame late.
+void InputRouter::on_focus_change(bool focused) {
+	set_terminal_focused(focused);
+	if (frame_requested) frame_requested();
+}
 
 // The terminal has gone. Not routed, not matched against the quit keys and
 // not offered to the focused widget: there is no screen left to draw on and

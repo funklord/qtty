@@ -1635,10 +1635,13 @@ check = "and taken it again afterwards"
 # suppressed outright and the mark is drawn per control type, so a control
 # that stops asking has no focus indication at all -- and a keyboard user
 # cannot see where they are, which is the whole premise of the guide. 8.133.
+#
+# Re-anchored by 8.251: the site read s_focus directly and asks owns_focus()
+# now, so that the mark follows the TERMINAL's focus as well as the router's.
 name = "a push button stops marking the focus it owns"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\t\t           || (w && w == s_focus.data());"
-into = "\t\t\t\t           || (w && false);"
+find = "\t\t\t\t           || owns_focus(w);"
+into = "\t\t\t\t           || false;"
 count = 1
 check = "every standard widget draws a focus mark"
 
@@ -3927,3 +3930,88 @@ find = "\t\treturn pe->overwriteMode() ? CursorShape::Block : CursorShape::Bar;\
 into = "\t\treturn pe->overwriteMode() ? CursorShape::Block : CursorShape::Bar;\n\treturn CursorShape::Underline;"
 count = 1
 check = "asks for an underline caret"
+
+[[sabotage]]
+# 8.251, and this is the defect itself: the predicate that decides whether a
+# control is DRAWN as focused, with the terminal's own focus taken back out
+# of it. That is what the tree did until 8.251 -- the router's record alone,
+# so a control kept its mark at a terminal the user had switched away from.
+name = "the focus mark ignores whether the terminal has the focus"
+file = "src/grid/grid_style.cpp"
+find = "\treturn w && w == s_focus.data() && terminal_focused();"
+into = "\treturn w && w == s_focus.data();"
+count = 1
+check = "loses the mark when the terminal loses the focus"
+
+[[sabotage]]
+# The sink discarding its argument again, which is the 8.249 item 2 body
+# verbatim. It reddens the load-bearing check specifically: with nothing
+# recorded, driving `false` and driving `true` produce the same frame, which
+# is exactly what the old check could not see.
+name = "on_focus_change discards its argument"
+file = "src/runtime/input_router.cpp"
+find = "\tset_terminal_focused(focused);\n\tif (frame_requested) frame_requested();"
+into = "\t(void)focused;\n\tif (frame_requested) frame_requested();"
+count = 1
+check = "different frames, which is what makes it load-bearing"
+
+[[sabotage]]
+# A fix that dims and never recovers. Everything about losing the mark still
+# holds, so this passes every other check in the block -- which is the whole
+# reason the recovery check compares the returned frame byte for byte against
+# the first one rather than merely asserting that a mark is back.
+name = "the terminal's focus is recorded when lost and not when regained"
+file = "src/runtime/input_router.cpp"
+find = "\tset_terminal_focused(focused);\n\tif"
+into = "\tif (!focused) set_terminal_focused(false);\n\tif"
+count = 1
+check = "the mark comes back when the terminal does, byte for"
+
+[[sabotage]]
+# The fix OVER-applied, which is the error the measurement rules out: Qt
+# keeps a selection across a deactivation -- hasSelectedText() answers 1 on
+# both sides of it -- and only the focus mark goes. Gating State_Selected on
+# the terminal's focus would take the selection away with it.
+name = "a selected row loses its reverse video when the terminal loses focus"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tAttrs mark = (opt->state & State_Selected) ? Attrs(Attr::Reverse)\n\t\t\t\t                                           : Attrs();\n\t\t\t\t// The current item, underlined, by the rule item_view_current()"
+into = "\t\t\t\tAttrs mark = ((opt->state & State_Selected) && terminal_focused())\n\t\t\t\t                 ? Attrs(Attr::Reverse) : Attrs();\n\t\t\t\t// The current item, underlined, by the rule item_view_current()"
+count = 1
+check = "keeps a selected row's reverse video"
+
+[[sabotage]]
+# The current-item mark inverted, so an unfocused frame GAINS an underline a
+# focused one does not have. It is the direction check's positive control:
+# "less emphasis" is two claims -- nothing gained and something lost -- and
+# only a sabotage that adds something can prove the first half is read.
+name = "an unfocused view underlines the item a focused one does not"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tif (item_view_current(vi, w)) mark |= Attr::Underline;"
+into = "\t\t\t\tif (!item_view_current(vi, w)) mark |= Attr::Underline;"
+count = 1
+check = "emphasises a subset of what a focused"
+
+[[sabotage]]
+# Silence read as "not focused", which is the abstention inverted. A terminal
+# with no focus reporting never sends either sequence, so this is what every
+# such session would look like: the focus mark gone for the whole run, with
+# nothing able to bring it back.
+name = "a terminal that has reported nothing counts as unfocused"
+file = "src/runtime/application.cpp"
+find = "static bool s_terminal_focused = true;"
+into = "static bool s_terminal_focused = false;"
+count = 1
+check = "a terminal that has reported nothing counts as focused"
+
+[[sabotage]]
+# The POSITIVE CONTROL for the entry above it, and it is needed: "loses the
+# mark when the terminal loses the focus" is satisfied by a frame that never
+# had a mark, so the check asserting the focused frame HAS one has to be
+# able to fail on its own. Under this the two of them separate -- the
+# control goes red and the claim goes green, for the wrong reason.
+name = "a focused push button is not marked at all"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tAttrs extra = foc ? Attrs(Attr::Reverse) : Attrs();"
+into = "\t\t\t\tAttrs extra = Attrs();"
+count = 1
+check = "a focused button is drawn focused while the terminal is"

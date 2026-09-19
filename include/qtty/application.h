@@ -139,6 +139,68 @@ Capabilities capabilities();
 // behind "is this terminal narrow enough that the sidebar should go".
 QSize terminal_cells();
 
+// Whether the terminal window or tab qtty is drawing into has the keyboard
+// focus, the way QWidget::isActiveWindow() answers for a desktop window.
+// True until something says otherwise.
+//
+// THE TERMINAL HAS ALWAYS REPORTED IT AND NOTHING LEARNED IT. Focus
+// reporting (DEC 1004) is in the startup string unconditionally, both
+// directions decode in the backend, and the sink they reached discarded the
+// argument -- so `ESC[O` and `ESC[I` did the same thing, which was to ask
+// for a frame identical to the one already on the screen.
+//
+// WHY IT IS A RECORD OF OUR OWN RATHER THAN QT'S ACTIVATION. On a desktop
+// Qt carries this in the window's activation, and two things follow from a
+// deactivation -- measured under xcb on a real display, one window
+// activated away from another:
+//
+//     QApplication::focusWidget()   the edit    ->  null
+//     QWidget::hasFocus()           1           ->  0
+//     State_HasFocus, State_Active  1           ->  0
+//     palette colour group          Active      ->  Inactive
+//     QLineEdit::hasSelectedText()  1           ->  1        (kept)
+//
+// Neither reaches this library. No qtty window ever activates -- every top
+// level carries Qt::WA_DontShowOnScreen -- so the first three are already
+// nailed to the unfocused answer and cannot move, and
+// QWidgetPrivate::colorGroup() has every visible widget permanently in the
+// Inactive group. Nor is the group worth driving: measured under the theme
+// prepare_environment() pins, ALL 21 palette roles are byte-identical
+// between Active and Inactive, so Qt's own mechanism for saying "inactive"
+// changes no colour here at all. And sending QEvent::WindowDeactivate by
+// hand moves none of the five -- also measured -- so it would be an event
+// with nothing behind it.
+//
+// So the state is qtty's to keep, and this is where an application asks for
+// it. GridStyle consults it for the same reason it consults
+// Qtty::focusWidget() rather than QWidget::hasFocus().
+//
+// WHAT CHANGES WHEN IT IS FALSE is the focus MARK and nothing else, which
+// is what the measurement above licenses: the control that owns the focus
+// stops being drawn as owning it, exactly as a desktop widget loses its
+// focus rectangle, and a selection stays exactly as it was, exactly as
+// QLineEdit::hasSelectedText() does. Qtty::focusWidget() is unchanged and
+// still answers who the keys go to -- that is Qt's per-window record, which
+// a deactivation does not clear either.
+//
+// TRUE IS THE ABSTENTION, and the asymmetry is color_scheme()'s. A terminal
+// with no focus reporting says nothing, for ever; taking silence for "not
+// focused" would unmark the focused control in every such session, which is
+// a real loss of information for no report. Taking it for "focused" costs
+// nothing anybody can see.
+bool terminal_focused();
+
+// Report that the terminal gained or lost the focus. exec() wires this to
+// the backend's own decoder and an application needs it only when it drives
+// a backend through its own frame loop, which backend.h supports and which
+// has no exec() to do the wiring -- the same seat capabilities() and
+// set_quit_keys() were opened for.
+//
+// Process-wide, like set_keyboard_conventions() and set_focus_widget(), and
+// reset to focused at both ends of exec() so that a run cannot inherit the
+// last state of the one before it.
+void set_terminal_focused(bool focused);
+
 // Ring the terminal's bell, which is what a terminal has instead of a beep
 // and instead of a taskbar entry that flashes. Nothing happens when no
 // backend is driving -- the same "nothing was measured" the empty

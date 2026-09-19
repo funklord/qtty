@@ -866,6 +866,27 @@ QSize terminal_cells() {
 	return b ? b->size() : QSize();
 }
 
+// Whether the terminal has the keyboard focus. application.h carries the
+// measurement behind it and why it is not Qt's window activation.
+//
+// NOT ASKED OF THE BACKEND, and that is the one place this departs from its
+// three neighbours. capabilities(), terminal_cells() and color_scheme() all
+// ask whoever is driving, because the terminal answered a query and the
+// answer is the backend's to hold. Focus is not a query -- it ARRIVES, as
+// ESC[I and ESC[O, at the event sink -- so the backend never holds it and
+// asking one would be asking the wrong object. The record is the library's
+// instead, and it is a plain bool rather than an Optional for the reason
+// application.h gives: silence means focused, so there is no third state to
+// carry.
+//
+// It is therefore also the one of the four that answers OUTSIDE a run. The
+// other three abstain there because a stale measurement is worse than none;
+// this one has nothing to go stale -- true is what it means to have been
+// told nothing, and that is as true between runs as during one.
+static bool s_terminal_focused = true;
+bool terminal_focused() { return s_terminal_focused; }
+void set_terminal_focused(bool focused) { s_terminal_focused = focused; }
+
 // The same two records again, asked in the same order and for the same
 // reason: which backend is driving this program. exec() knows which backend
 // was handed the session and goes on knowing it while the screen is with a
@@ -930,6 +951,13 @@ Qt::ColorScheme color_scheme() {
 int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	s_tuiActive = true;
 	g_session = &backend;
+	// The focus record belongs to the RUN, like the two above it. A program
+	// that calls exec() twice -- a shell-out wrapper, a test -- would
+	// otherwise start its second run drawing no focus mark because its first
+	// one ended with the terminal's focus elsewhere, and nothing would ever
+	// correct it: the terminal reports a CHANGE, so a session that starts
+	// focused is never told so.
+	set_terminal_focused(true);
 
 	const QSize cells = backend.size();
 	win.setAttribute(Qt::WA_DontShowOnScreen);
@@ -966,6 +994,7 @@ int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {
 	const int rc = app.exec();
 	s_tuiActive = false;
 	g_session = nullptr;
+	set_terminal_focused(true);
 	return rc;
 }
 
