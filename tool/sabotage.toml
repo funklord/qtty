@@ -4236,3 +4236,66 @@ find = "\t{ \"F6\",             Qt::Modifier(0), { Qt::Key_F6,       Qt::Key(0) 
 into = "\t{ \"F6\",             Qt::Modifier(0), { Qt::Key_F6,       Qt::Key(0) },      true  },"
 count = 1
 check = "with the conventions off nothing is shadowed"
+[[sabotage]]
+# The alternate ground back to the fall-through it had before, which is
+# what 8.248 left in place: `window` for AlternateBase, with no test of
+# whether `window` still tells it from Base. On a palette that coincides
+# the two, the alternating row and the row above it become one colour.
+# 8.256.
+name = "the alternate ground falls back to the window again"
+file = "src/core/theme.cpp"
+find = "\t\tc = window == base ? named_ground(alternate_base, window) : window;"
+into = "\t\tc = window;"
+count = 1
+check = "an item view's alternating rows are still told apart at 24 bits"
+
+[[sabotage]]
+# The CHEAP FIX, and the one entry aimed at the control rather than at
+# the defect: take the palette's alternate ground unconditionally, which
+# closes the coinciding case and moves the appearance 8.248 measured and
+# declined to move. Nothing but the byte-for-byte control can see it,
+# which is the whole reason that control is a whole-frame comparison
+# rather than a look at the two cells the change was expected to touch.
+# 8.256.
+name = "the alternate ground is taken whether or not it was needed"
+file = "src/core/theme.cpp"
+find = "\t\tc = window == base ? named_ground(alternate_base, window) : window;"
+into = "\t\tc = named_ground(alternate_base, window);"
+count = 1
+check = "the whole frame is byte-identical to what the unfixed tree drew"
+
+[[sabotage]]
+# The capture half, left out the way `accent` was before 8.248: the
+# field is declared and resolved and from_palette() never fills it, so
+# the theme names no alternate ground and the resolution falls back to
+# the window for want of anything to reach for. 8.256.
+name = "from_palette skips the alternate ground"
+file = "src/core/theme.cpp"
+find = "\tt.alternate_base   = opaque(p.color(QPalette::AlternateBase));"
+into = "\tt.alternate_base   = Color();"
+count = 1
+check = "it is the palette's own alternate ground, not a shade the theme"
+
+[[sabotage]]
+# The tooltip ground back to the window, which is what every palette got
+# before this change: a surface that exists to interrupt, drawn in the
+# colour of the thing it interrupts. 8.256.
+name = "the tooltip ground falls back to the window again"
+file = "src/core/theme.cpp"
+find = "\t\tc = named_ground(tool_tip_base, window);"
+into = "\t\tc = window;"
+count = 1
+check = "a tooltip's ground is not the ground of the window it interrupts"
+
+[[sabotage]]
+# The fallback theme.h documents, dropped: a role a theme does not name
+# would resolve to Color::Default -- the terminal's own ground -- rather
+# than to the window. It is the plausible reading of "Default means
+# unnamed" and it silently changes what a hand-built theme draws for two
+# roles it never mentioned. 8.256.
+name = "an unnamed ground becomes the terminal's rather than the window's"
+file = "src/core/theme.cpp"
+find = "\treturn own.kind() == Color::Default ? window : own;"
+into = "\treturn own;"
+count = 1
+check = "a theme that names neither still falls back to the window"

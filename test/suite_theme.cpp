@@ -695,5 +695,287 @@ int suite_theme() {
 		      "wire, where the field used to be a no-op");
 	}
 
+	// ---- the surface half's own two unreachable roles (8.256) ------------
+	//
+	// 8.248 closed the foreground half of the authored table and recorded
+	// AlternateBase and ToolTipBase as the same family left alone, on the
+	// ground that closing them "would change what an item view's
+	// alternating rows look like on a true-colour terminal". That reasoning
+	// holds in one regime and is silent about the other, and the other is
+	// the one where the role stops working.
+	//
+	// MEASURED UNDER FUSION ON THE OFFSCREEN PLATFORM, which is what this
+	// suite renders through: Window is 0xefefef and Base 0xffffff in the
+	// Active and Inactive groups -- they DIFFER, so background()'s fall
+	// through to `window` is accidentally distinguishable from Base and the
+	// appearance 8.248 declined to move is real. In the DISABLED group
+	// Fusion itself spells both 0xefefef, and a hand-set dark theme
+	// ordinarily gives Window and Base one colour on purpose. Where they
+	// coincide, background(AlternateBase) and background(Base) are the same
+	// colour, so an alternating row is byte-identical to the row above it
+	// at TrueColor and at Xterm256 -- which is precisely the outcome
+	// ansi16_for_role()'s own comment says must not happen.
+	//
+	// So there are two regimes, 8.248 is right in one of them, and the fix
+	// resolves AlternateBase to the palette's own alternate ground ONLY
+	// where the ordinary ground has stopped telling it from Base. The
+	// control below is what holds the other half: the same render under the
+	// palette 8.248 measured, compared byte for byte against the bytes the
+	// unfixed tree produced.
+	//
+	// THE FIXTURE COLOURS ITS ROWS THROUGH Qt::BackgroundRole RATHER THAN
+	// WITH setAlternatingRowColors(), and that is a measurement rather than
+	// a convenience. GridStyle answers CE_ItemViewItem and
+	// PE_PanelItemViewRow itself and neither reads
+	// QStyleOptionViewItem::Alternate, so Qt's own alternating-row switch
+	// reaches no cell in this library at all: measured on QListView,
+	// QTableView and QTreeView, with and without CellItemDelegate
+	// installed, every one of four rows came out Base's 0xffffff. That is
+	// its own defect and is recorded in 8.256 rather than fixed here, since
+	// it is a style gap and this is a theme gap. What an application has
+	// today is the background role, which is the route this exercises.
+	{
+		const QPalette saved_palette = QGuiApplication::palette();
+		const CellTheme saved_theme = theme();
+
+		// The whole buffer, run-length encoded over the tuple a cell
+		// actually emits: the glyph, the foreground, the background and the
+		// attributes -- with each colour's AUTHORED index printed beside it,
+		// because to_snapshot() does not carry one and the authored index is
+		// half of what this change could move.
+		const auto spell = [](const Color &c) {
+			return c.kind() == Color::Default
+			           ? QStringLiteral("default/%1").arg(c.authored_ansi16())
+			       : c.kind() == Color::Indexed
+			           ? QStringLiteral("index:%1/%2").arg(c.index())
+			                 .arg(c.authored_ansi16())
+			           : QStringLiteral("#%1/%2")
+			                 .arg(c.value() & 0xffffffu, 6, 16, QLatin1Char('0'))
+			                 .arg(c.authored_ansi16());
+		};
+		const auto describe = [&spell](const CellBuffer &b) {
+			QString out;
+			for (int y = 0; y < b.rows(); ++y) {
+				QString glyphs, runs, last;
+				int run = 0;
+				for (int x = 0; x < b.cols(); ++x) {
+					const Cell &c = b.at(x, y);
+					glyphs += c.ch.isEmpty() ? QStringLiteral(" ") : c.ch;
+					const QString key =
+					    spell(c.fg) + QLatin1Char(' ') + spell(c.bg)
+					    + QStringLiteral(" a%1").arg(int(c.attrs), 2, 16,
+					                                 QLatin1Char('0'));
+					if (key == last) { ++run; continue; }
+					if (run) runs += QStringLiteral("%1x %2 | ").arg(run).arg(last);
+					last = key;
+					run = 1;
+				}
+				if (run) runs += QStringLiteral("%1x %2").arg(run).arg(last);
+				out += QStringLiteral("%1 [%2] %3\n").arg(y).arg(glyphs).arg(runs);
+			}
+			return out;
+		};
+
+		// Four rows carrying Base, AlternateBase, Base, AlternateBase in
+		// Qt::BackgroundRole -- an item view whose rows alternate, built the
+		// only way that reaches a cell here.
+		const auto render_rows = [&](const QPalette &use, CellBuffer &into) {
+			QStandardItemModel model(4, 1);
+			for (int i = 0; i < 4; ++i) {
+				auto *it = new QStandardItem(QStringLiteral("row"));
+				it->setBackground(use.color(i & 1 ? QPalette::AlternateBase
+				                                  : QPalette::Base));
+				model.setItem(i, 0, it);
+			}
+			QListView list;
+			list.setModel(&model);
+			list.setItemDelegate(new CellItemDelegate(&list));
+			list.setFrameShape(QFrame::NoFrame);
+			list.setAttribute(Qt::WA_DontShowOnScreen);
+			list.resize(GridMetrics::cells(into.cols(), into.rows()));
+			list.show();
+			QCoreApplication::processEvents();
+			render_once(list, into);
+		};
+
+		// -- the partition, before either half is read ----------------------
+		//
+		// Neither check below means anything without this: the stock palette
+		// has to be IN the regime 8.248 protects, or the control is a
+		// control over nothing, and the dark fixture has to be in the other
+		// one, or the headline passes for the wrong reason.
+		QPalette dark = saved_palette;
+		dark.setColor(QPalette::Window, QColor(0x1e, 0x1e, 0x1e));
+		dark.setColor(QPalette::Base, QColor(0x1e, 0x1e, 0x1e));
+		dark.setColor(QPalette::AlternateBase, QColor(0x2a, 0x2a, 0x2a));
+		printf("info: stock Window %s Base %s; fixture Window %s Base %s"
+		       " AlternateBase %s\n",
+		       qPrintable(saved_palette.color(QPalette::Window).name()),
+		       qPrintable(saved_palette.color(QPalette::Base).name()),
+		       qPrintable(dark.color(QPalette::Window).name()),
+		       qPrintable(dark.color(QPalette::Base).name()),
+		       qPrintable(dark.color(QPalette::AlternateBase).name()));
+		CHECK(saved_palette.color(QPalette::Window)
+		          != saved_palette.color(QPalette::Base),
+		      "the stock palette separates Window from Base, which is the "
+		      "regime 8.248 protects and the one the control measures");
+		CHECK(dark.color(QPalette::Window) == dark.color(QPalette::Base)
+		      && dark.color(QPalette::AlternateBase)
+		             != dark.color(QPalette::Base),
+		      "and the fixture palette coincides them while still naming an "
+		      "alternate ground, or the headline could not discriminate");
+
+		// -- THE HEADLINE: rows that stop alternating -----------------------
+		{
+			QGuiApplication::setPalette(dark);
+			set_theme(CellTheme::from_palette(dark));
+			CellBuffer b(10, 4);
+			render_rows(dark, b);
+			printf("info: on the coinciding palette rows read %s, %s, %s, %s\n",
+			       qPrintable(spell(b.at(0, 0).bg)), qPrintable(spell(b.at(0, 1).bg)),
+			       qPrintable(spell(b.at(0, 2).bg)), qPrintable(spell(b.at(0, 3).bg)));
+			// THE RELATIONSHIP, not a colour. What is wrong when this fails
+			// is not that row 1 is some particular wrong shade; it is that
+			// it is the same shade as row 0, which is the one thing the role
+			// exists to prevent.
+			CHECK(b.at(0, 0).bg.value() != b.at(0, 1).bg.value()
+			      && b.at(0, 2).bg.value() != b.at(0, 3).bg.value(),
+			      "under a palette whose Window and Base coincide, an item "
+			      "view's alternating rows are still told apart at 24 bits");
+			// And the alternate row is the ground the PALETTE named for it,
+			// rather than something derived: a theme that invented a shade
+			// would pass the line above and be a colour nobody chose.
+			CHECK(b.at(0, 1).bg.kind() == Color::Rgb
+			      && (b.at(0, 1).bg.value() & 0xffffffu) == 0x2a2a2au,
+			      "and it is the palette's own alternate ground, not a shade "
+			      "the theme invented to satisfy the difference");
+			// THE TIER THAT WAS ALREADY RIGHT. The authored 8 arrived before
+			// this change and has to arrive after it, so a fix aimed at the
+			// two deeper tiers cannot be paid for by the one the table was
+			// written for.
+			CHECK(b.at(0, 0).bg.to_ansi16() == 0
+			      && b.at(0, 1).bg.to_ansi16() == 8,
+			      "and the sixteen-colour tier still gets the authored 0 and "
+			      "8, which it got before this change as well");
+		}
+
+		// -- THE CONTROL: 8.248's regime, byte for byte ---------------------
+		//
+		// Captured from the unfixed tree before a line of theme.cpp moved,
+		// and compared whole rather than at the two cells the change could
+		// plausibly touch -- a control that reads only where you expect a
+		// difference is a control against the difference you expected.
+		{
+			QGuiApplication::setPalette(saved_palette);
+			set_theme(CellTheme::from_palette(saved_palette));
+			CellBuffer b(10, 4);
+			render_rows(saved_palette, b);
+			const QString got = describe(b);
+			const QString want = QStringLiteral(
+			    "0 [ row      ] 1x default/-1 #ffffff/0 a00 | 3x #000000/7 #ffffff/0 a00 | 6x default/-1 #ffffff/0 a00\n"
+			    "1 [ row      ] 1x default/-1 #efefef/8 a00 | 3x #000000/7 #efefef/8 a00 | 6x default/-1 #efefef/8 a00\n"
+			    "2 [ row      ] 1x default/-1 #ffffff/0 a00 | 3x #000000/7 #ffffff/0 a00 | 6x default/-1 #ffffff/0 a00\n"
+			    "3 [ row      ] 1x default/-1 #efefef/8 a00 | 3x #000000/7 #efefef/8 a00 | 6x default/-1 #efefef/8 a00\n");
+			if (got == want)
+				printf("PASS: and on a palette that separates Window from "
+				       "Base the whole frame is byte-identical to what the "
+				       "unfixed tree drew\n");
+			else {
+				printf("FAIL: and on a palette that separates Window from "
+				       "Base the whole frame is byte-identical to what the "
+				       "unfixed tree drew\n      got:\n%s      want:\n%s",
+				       qPrintable(got), qPrintable(want));
+				++fails;
+			}
+		}
+
+		// -- ToolTipBase, which had no regime in which it was right ---------
+		//
+		// The same shape as AlternateBase and worse: background() sends it
+		// to `window` and background(Window) sends Window to `window`, so a
+		// tooltip's ground has been the ordinary window ground in EVERY
+		// palette, not merely in the coinciding ones. A surface whose whole
+		// job is to interrupt, drawn in the colour of the thing it
+		// interrupts. There is therefore no appearance to protect and no
+		// collision to test for, which is why it resolves to its own field
+		// unconditionally while AlternateBase does not.
+		//
+		// Nothing sends a QEvent::ToolTip (section 7), so what reaches this
+		// today is a fill in the tooltip colour, which is the same route the
+		// alternate ground has: role_of() keys on the colour.
+		{
+			QGuiApplication::setPalette(saved_palette);
+			set_theme(CellTheme::from_palette(saved_palette));
+			CHECK(saved_palette.color(QPalette::ToolTipBase)
+			          != saved_palette.color(QPalette::Window),
+			      "the palette separates ToolTipBase from Window, or nothing "
+			      "below could tell a tooltip ground from the window's");
+			const CellTheme &t = theme();
+			CHECK(t.background(QPalette::ToolTipBase).value()
+			      != t.background(QPalette::Window).value(),
+			      "a tooltip's ground is not the ground of the window it "
+			      "interrupts");
+			CHECK(t.background(QPalette::ToolTipBase).to_ansi16() == 11,
+			      "and still carries the authored 11, so the loud surface the "
+			      "table names survives the fix");
+
+			CellBuffer fb(6, 1);
+			{
+				CellPaintDevice dev(fb);
+				QPainter p(&dev);
+				p.fillRect(QRect(0, 0, GridMetrics::cw() * 6, GridMetrics::ch()),
+				           saved_palette.color(QPalette::ToolTipBase));
+				p.end();
+			}
+			printf("info: a fill in the tooltip colour reaches a cell as %s\n",
+			       qPrintable(spell(fb.at(0, 0).bg)));
+			CHECK(fb.at(0, 0).bg.kind() == Color::Rgb
+			      && (fb.at(0, 0).bg.value() & 0xffffffu)
+			             == (saved_palette.color(QPalette::ToolTipBase).rgb()
+			                 & 0xffffffu),
+			      "and a fill in the tooltip colour reaches a cell as that "
+			      "colour rather than as the window's");
+		}
+
+		// -- what an unnamed ground still means -----------------------------
+		//
+		// The header's contract for a role the theme does not name is the
+		// window, and the two new fields must not quietly change it. A
+		// hand-built theme that coincides its window and its base and names
+		// no alternate ground gets the window, exactly as it did before --
+		// the fix reaches for the palette's alternate ground only where the
+		// theme has one to reach for.
+		{
+			const CellTheme d = CellTheme::terminal_default();
+			CHECK(d.alternate_base == Color() && d.tool_tip_base == Color(),
+			      "the default theme names no alternate and no tooltip "
+			      "ground either, so every field of it is still the "
+			      "terminal's own colour");
+			CHECK(d.background(QPalette::AlternateBase).kind() == Color::Default
+			      && d.background(QPalette::ToolTipBase).kind() == Color::Default,
+			      "and resolves both to the terminal's own ground, which is "
+			      "what the default theme has always drawn");
+
+			CellTheme bare;
+			bare.window = Color::rgb(qRgb(0x1e, 0x1e, 0x1e));
+			bare.base = Color::rgb(qRgb(0x1e, 0x1e, 0x1e));
+			CHECK(bare.background(QPalette::AlternateBase).value()
+			          == qRgb(0x1e, 0x1e, 0x1e)
+			      && bare.background(QPalette::ToolTipBase).value()
+			             == qRgb(0x1e, 0x1e, 0x1e),
+			      "and a theme that names neither still falls back to the "
+			      "window, which is the contract theme.h states for a role "
+			      "a theme does not name");
+		}
+
+		set_theme(saved_theme);
+		QGuiApplication::setPalette(saved_palette);
+		CHECK(QGuiApplication::palette().color(QPalette::Base)
+		          == saved_palette.color(QPalette::Base)
+		      && theme().base == saved_theme.base,
+		      "and both the palette and the theme are put back, so no later "
+		      "check inherits this fixture");
+	}
+
 	return fails;
 }

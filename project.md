@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1721 checks, 0 failures. `make check` is green and includes
+1735 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -17122,12 +17122,22 @@ cannot reach them. Neither holds a link or a placeholder either.
 
 #### Two of the same family, left alone deliberately
 
-- **`AlternateBase` and `ToolTipBase` have no field either**, so they
+- **~~`AlternateBase` and `ToolTipBase` have no field either~~, so they
   resolve to `window` at TrueColor and carry only their authored index.
   They are *reachable* -- both are in the surface lists -- so this is the
   second half of the same defect rather than the same one, and closing it
   would change what an item view's alternating rows look like on a
-  true-colour terminal. Recorded rather than done.
+  true-colour terminal. Recorded rather than done.** Both have a field
+  now; see 8.256, which closed them and says why the reasoning above was
+  sound and incomplete rather than wrong. It holds where `Window` and
+  `Base` differ, which they do in the two colour groups a shown widget is
+  painted from, and says nothing about a palette that coincides them --
+  where the alternate ground resolved to exactly `Base`'s cell colour and
+  the rows stopped alternating. `AlternateBase` is therefore resolved only
+  where the fallback has stopped telling it from `Base`, so the appearance
+  protected here is byte-identical and only the broken regime moves;
+  `ToolTipBase` is resolved unconditionally, there being no palette in
+  which a tooltip drawn in the window's own ground was right.
 - **`ink_over()` drops the authored index when it blends.** A translucent
   role colour over a themed ground comes back as a fresh `Color::rgb()`,
   so the role's terminal spelling is lost at exactly the depth it was
@@ -18045,6 +18055,190 @@ edits.
 **This is NOT covered by a six-configuration run.** Section 0a's
 re-verification stands where 8.250 left it, at 1664 and `f9211b9`; the
 offscreen arm is what ran.
+
+### 8.256 The alternate ground that stopped alternating (2026-09-19)
+
+`ansi16_for_role()` authors index 8 for `QPalette::AlternateBase` and says
+why in its own words:
+
+    // The one surface that must differ from Base, or alternating rows stop
+    // alternating.
+
+`CellTheme::background()` had no case for the role, nor for `ToolTipBase`,
+so both fell through to `window`. 8.248 found that, recorded it as the
+second half of the same defect, and left it deliberately -- closing it
+"would change what an item view's alternating rows look like on a
+true-colour terminal". **That reasoning is right, and it is right about one
+of two regimes.**
+
+#### What Window and Base actually are here
+
+Measured on Fusion under the offscreen platform `prepare_environment()`
+pins, by reading `QGuiApplication::palette()` in all three colour groups:
+
+    group      Window     Base       AlternateBase
+    Active     #efefef    #ffffff    #f7f7f7
+    Inactive   #efefef    #ffffff    #f7f7f7
+    Disabled   #efefef    #efefef    #f7f7f7
+
+So in the two groups a shown widget is painted from, the fallback to
+`window` is **accidentally** distinguishable from `Base`, and an
+alternating row came out `#efefef` against the row above it at `#ffffff`.
+That is the appearance 8.248 measured and declined to move, and it is real.
+
+**Fusion's own Disabled group coincides them**, and a hand-set dark theme
+ordinarily gives `Window` and `Base` one colour on purpose. There
+`background(AlternateBase)` and `background(Base)` are the same colour, so
+an alternating row is byte-identical to the row above it at TrueColor and
+at Xterm256 -- the exact outcome the authored comment says must not happen.
+The sixteen-colour tier was never affected either way: the authored 0 and 8
+ride on the colour whatever the colour is.
+
+#### The fix: resolve it only where the answer stopped discriminating
+
+`CellTheme` gains `alternate_base` and `tool_tip_base`, `from_palette()`
+captures both, and `background()` reads the alternate ground **only where
+`window` and `base` are one colour**:
+
+    c = window == base ? named_ground(alternate_base, window) : window;
+
+The condition is not "which palette is this" but "did the answer still do
+the role's only job", and it is checked rather than assumed. On a palette
+that separates the two, every byte is what it was; on one that does not,
+the theme reaches for the ground the palette named for exactly this
+purpose.
+
+Three alternatives, and why not:
+
+- **Give the role its own field outright**, as 8.248's five siblings got.
+  It is the smaller diff and it moves the appearance 8.248 recorded, on
+  every palette, to settle a case that arises on some -- and nothing in
+  the tree had asked for that move. It is kept as a sabotage entry rather
+  than as code, because it is the cheap fix the control exists to catch.
+- **Derive a shade from `Base`** -- lighten or darken by some amount. It
+  satisfies the difference with a colour nobody chose, on a terminal whose
+  whole colour story is that the theme names what it means. It also needs
+  a constant, and this workspace has already paid for one luminance
+  constant too many.
+- **Ask `QGuiApplication::palette()` from inside `background()`.** That is
+  the single rule section 11 item 3 exists to forbid: `theme()` is what
+  rendering resolves through, and a theme that reads the live palette is
+  not a theme.
+
+A palette that coincides all three -- `Window`, `Base` and `AlternateBase`
+-- is left saying what it says. The desktop draws those rows the same too,
+and inventing a difference the palette declined to state would be this
+library disagreeing with the theme it is rendering.
+
+#### ToolTipBase had no regime in which the fallback was right
+
+`background(ToolTipBase)` answered `window`, and `background(Window)`
+answers `window`, so a tooltip's ground has been the ordinary window ground
+in **every** palette -- a surface whose whole job is to interrupt, drawn in
+the colour of the thing it interrupts, with the authored 11 beside it in
+the table saying so. There is no appearance to protect and no collision to
+test for, so it resolves to its own field unconditionally. Writing
+`AlternateBase`'s condition here too would have been a test that cannot be
+false, which is worse than none.
+
+Nothing sends a `QEvent::ToolTip` (section 7), so what reaches it today is
+a fill in the tooltip colour, matched by `role_of()` the same way the
+alternate ground is. Measured after the change: such a fill reaches a cell
+as `#ffffdc` carrying 11, where it reached one as `#efefef` carrying 11
+before.
+
+#### Qt's alternating-row switch reaches no cell in this library
+
+Found while building the fixture, and it is a separate defect.
+`setAlternatingRowColors(true)` produces **no alternation at all** here:
+`GridStyle` answers `CE_ItemViewItem` and `PE_PanelItemViewRow` itself and
+neither reads `QStyleOptionViewItem::Alternate`, which is where
+`QCommonStyle` fills the alternate ground. Measured on `QListView`,
+`QTableView` and `QTreeView`, with and without `CellItemDelegate`
+installed, under both the stock palette and a coinciding one: all four rows
+came out `Base` every time.
+
+So the phrase "an item view's alternating rows" in 8.248 -- and in this
+entry's own title -- names something Qt's switch cannot produce here. What
+an application has today is `Qt::BackgroundRole`, which `role_of()` matches
+by colour and which does reach a cell; that is the route the fixture uses
+and the route the defect above bites. **This is recorded rather than
+fixed**: it is a style gap where this was a theme gap, closing it adds a
+fill to every item view in every palette, and doing both in one pass would
+leave the byte-for-byte control below measuring two changes at once. It is
+also the reason to fix the theme half first -- a `CE_ItemViewItem` that
+learns to honour `Alternate` will call `theme().background(AlternateBase)`
+and would have inherited the collision.
+
+#### The checks, and what each is for
+
+Fourteen, in `suite_theme`. The partition is asserted before anything is
+read: the stock palette must separate `Window` from `Base` or the control
+is a control over nothing, and the fixture palette must coincide them while
+still naming an alternate ground or the headline passes for the wrong
+reason.
+
+- **The headline** renders four rows carrying `Base` and `AlternateBase`
+  in `Qt::BackgroundRole` under the coinciding palette and asserts the
+  RELATIONSHIP -- row n and row n+1 differ -- rather than a colour. What
+  is wrong when it fails is not that row 1 is some particular wrong shade;
+  it is that it is the same shade as row 0.
+- **The alternate row is the palette's own ground**, `#2a2a2a`, not
+  something derived. A theme that invented a shade would satisfy the
+  relationship and be a colour nobody chose.
+- **The Ansi16 tier still gets 0 and 8**, which it got before this change
+  as well. It is a control, not a finding: the entry reverting the
+  resolution reddens two checks and this is not one of them.
+- **The control** renders the same four rows under the stock palette and
+  compares the WHOLE frame -- glyph, foreground, background, attributes,
+  and each colour's authored index -- against a string captured from the
+  unfixed tree before a line of `theme.cpp` moved. It is whole rather than
+  pointed at the two cells the change was expected to touch, because a
+  control that reads only where you expect a difference is a control
+  against the difference you expected.
+- **ToolTipBase** gets the same pair: the themed answer differs from the
+  window's, and a fill in the tooltip colour reaches a cell as that
+  colour. Its authored 11 is asserted alongside.
+- **What an unnamed ground still means.** `terminal_default()` names
+  neither, and a hand-built theme that names neither still gets `window`
+  -- the fallback `theme.h` has always documented. `named_ground()` is
+  that contract written once rather than twice, so the two new fields
+  cannot quietly change what a partially-filled theme draws.
+
+#### The sabotage entries, and the one that matters
+
+Five, each proved on its own with
+`sabotage.py --only '<name>' --dirty-ok`, each reddening the check it
+names, against a baseline the tool re-measured green at 1733 every time:
+
+    the alternate ground falls back to the window again        2 red
+    the alternate ground is taken whether or not it was needed 1 red
+    from_palette skips the alternate ground                    2 red
+    the tooltip ground falls back to the window again          2 red
+    an unnamed ground becomes the terminal's, not the window's 1 red
+
+**The second is the sharp one.** It is the cheap fix -- take the alternate
+ground unconditionally -- and it reddens the byte-for-byte control and
+nothing else in 1733 checks. That is the control demonstrating rather than
+asserting that it is aimed at something no other check covers, and it is
+the same shape as 8.248's own pair of one-check entries. The first entry is
+the unfixed code exactly, so its two red checks are also this change's
+before-and-after evidence; the control was green under it, having been
+captured there.
+
+`sabotage.py --validate` reports 405 entries, every anchor matching its
+source. Nothing existing was re-anchored: the change adds a `case` and a
+static helper and moves no line an existing anchor names.
+
+#### Neither snapshot fixture moved, for 8.248's own reason
+
+`test/snapshot/prefs_dialog.txt` and `widgets_gallery.txt` both record
+`fg=default bg=default` and nothing else -- they are taken under
+`terminal_default()`, where every field including the two new ones is
+`Color::Default` and `named_ground()` therefore answers `window`, which is
+also Default. The resolution change is inert in the regime the fixtures
+were recorded in. `git status` after the green run names only the four
+files this change edits.
 
 ### 8.249 Swept, measured, and not yet acted on (2026-09-18)
 

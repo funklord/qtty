@@ -39,6 +39,24 @@ struct CellTheme {
 	// would have fixed the sixteen-colour tier by making every link, hint
 	// and accent the colour of body text on the other two.
 	Color bright_text, placeholder_text, link, link_visited;
+	// The surface half's own two, and they arrive for a narrower reason
+	// than the five above (8.256). Those five had no route to a cell at
+	// all; these two are in both surface lists and resolve -- to `window`,
+	// because background() had no case for either. That is right for
+	// neither of them and observably wrong for both.
+	//
+	// `alternate_base` is read only where the theme's ordinary ground has
+	// stopped telling AlternateBase from Base, which is what makes adding
+	// the field cost nothing on a palette that separates Window from Base:
+	// see background() in theme.cpp for the two regimes and which one
+	// 8.248 measured. `tool_tip_base` is read whenever it is named, there
+	// being no palette in which a tooltip drawn in the window's own ground
+	// was the right answer.
+	//
+	// Both keep the struct's rule that Color::Default means "this theme
+	// names no colour for that", and a theme that names neither still gets
+	// `window` for both -- the fallback this header has always documented.
+	Color alternate_base, tool_tip_base;
 
 	static CellTheme terminal_default();          // all Default (recommended)
 	static CellTheme from_palette(const QPalette &p);   // true-colour capture

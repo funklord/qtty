@@ -41,6 +41,12 @@ CellTheme CellTheme::from_palette(const QPalette &p) {
 	t.placeholder_text = opaque(p.color(QPalette::PlaceholderText));
 	t.link             = opaque(p.color(QPalette::Link));
 	t.link_visited     = opaque(p.color(QPalette::LinkVisited));
+	// The surface half's own two (8.256). Captured unconditionally, because
+	// a capture is a statement of what the palette says and costs nothing;
+	// background() is where the question of whether to USE either is
+	// decided, and it decides them differently.
+	t.alternate_base   = opaque(p.color(QPalette::AlternateBase));
+	t.tool_tip_base    = opaque(p.color(QPalette::ToolTipBase));
 	return t;
 }
 
@@ -171,12 +177,74 @@ Color CellTheme::foreground(QPalette::ColorRole r) const {
 	return c.with_ansi16(ansi16_for_role(r));
 }
 
+// The ground a surface role gets when the theme names one of its own, and the
+// ordinary window ground when it does not. Color::Default means "this theme
+// names no colour for that" everywhere else in the struct, and theme.h's
+// documented fallback for an unnamed role is the window -- so this is that
+// contract written once rather than twice, and a theme built by hand that
+// fills in only some fields keeps behaving exactly as it did.
+static Color named_ground(const Color &own, const Color &window) {
+	return own.kind() == Color::Default ? window : own;
+}
+
 Color CellTheme::background(QPalette::ColorRole r) const {
 	Color c;
 	switch (r) {
 	case QPalette::Base:      c = base; break;
 	case QPalette::Button:    c = button; break;
 	case QPalette::Highlight: c = highlight; break;
+
+	case QPalette::AlternateBase:
+		// TWO REGIMES, and 8.248 is right in one of them (8.256).
+		//
+		// This role had no case at all and fell to `window`, and on the
+		// palette this tree renders through that is accidentally fine:
+		// Fusion spells Window 0xefefef and Base 0xffffff in the Active and
+		// Inactive groups, so an alternating row came out a shade off the
+		// row above it and 8.248 recorded -- correctly -- that giving the
+		// role its own field would MOVE an appearance nobody had complained
+		// about.
+		//
+		// What that reasoning does not cover is a palette where Window and
+		// Base are one colour. Fusion's own DISABLED group is such a
+		// palette (both 0xefefef), and a hand-set dark theme ordinarily
+		// makes them one on purpose. There the fallback resolves an
+		// alternating row to exactly Base's cell colour at TrueColor and at
+		// Xterm256, so the rows stop alternating -- which is the one
+		// outcome ansi16_for_role() says out loud must not happen, in the
+		// comment beside this role's authored 8.
+		//
+		// So the condition is not "which palette is this" but "did the
+		// answer still do the role's only job", and it is checked rather
+		// than assumed. Where the ordinary ground still separates the two,
+		// it stands and the frame is byte-identical to what it was. Where
+		// it does not, the theme reaches for the ground the PALETTE named
+		// for exactly this purpose -- not a shade derived from Base, which
+		// would satisfy the difference with a colour nobody chose.
+		//
+		// A palette that coincides all three says the rows should not
+		// alternate, and is left saying it: the desktop draws them the same
+		// too, and inventing a difference the palette declined to state
+		// would be this library disagreeing with the theme it is rendering.
+		c = window == base ? named_ground(alternate_base, window) : window;
+		break;
+
+	case QPalette::ToolTipBase:
+		// The same gap with no regime in which the fallback was right, which
+		// is why this one carries no condition. `window` is what
+		// background(Window) answers as well, so a tooltip's ground has been
+		// the ordinary window ground in EVERY palette -- a surface whose
+		// whole job is to interrupt, drawn in the colour of the thing it
+		// interrupts, and the authored 11 beside it in the table saying so.
+		// Writing the collision test here anyway would be a condition that
+		// cannot be false, which is worse than none.
+		//
+		// Nothing sends a QEvent::ToolTip (section 7), so what reaches this
+		// today is a fill in the tooltip colour, matched by role_of() the
+		// same way the alternate ground is.
+		c = named_ground(tool_tip_base, window);
+		break;
+
 	default:                  c = window; break;
 	}
 	return c.with_ansi16(ansi16_for_role(r));
