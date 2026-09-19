@@ -919,6 +919,241 @@ int suite_graphics() {
 			      "exactly, on both grounds, so the dimming is confined to "
 			      "the attribute it is about");
 		}
+		{
+			// COLOR::INDEXED THROUGH THE RASTERISER, which collapsed it
+			// into the default. `Color` has exactly three kinds --
+			// Default, Indexed and Rgb -- and the two lines that resolve a
+			// cell's colours here asked only whether the kind was Rgb, so
+			// an Indexed cell took the same branch as a cell that had
+			// stated no colour at all. The text tier does not:
+			// append_color() writes ESC[38;5;<n>m and the terminal paints
+			// the index itself, so one frame said two different things
+			// depending on which tier carried it -- the same shape as
+			// 8.244's Dim and 8.250's ground. section 8.255.
+			//
+			// An APPLICATION is what meets this, which is why the fixtures
+			// below build the cells by hand rather than driving a widget:
+			// Color::indexed() is a public constexpr constructor and
+			// CellTheme's fields are public, while nothing in src/ writes
+			// an Indexed colour into a cell. quantise() is the only
+			// producer and its output is consumed inside sgr_sequence()
+			// and contrast_violations() without being written back.
+			//
+			// Asserted against xterm256_rgb() rather than against a triple
+			// typed here: that function is the library's own answer for
+			// what an index stands for, it is what the sixel encoder
+			// already emits and what Color::luminance() already measures,
+			// and a second table written into a check is the
+			// parallel-copy hazard code-style.md names.
+			//
+			// The two indices are chosen in the 6x6x6 cube (16 and above)
+			// so that they mean the same thing on every terminal: 0..15
+			// are the user's own scheme and are pinned separately below.
+			// 196 is the cube's pure red and 226 its pure yellow, and
+			// neither is mistakable for this path's defaults -- #d7dadc
+			// ink on a #101418 ground.
+			const int fg_index = 196, bg_index = 226;
+			const QRgb want_fg = xterm256_rgb(fg_index) & 0xffffffu;
+			const QRgb want_bg = xterm256_rgb(bg_index) & 0xffffffu;
+
+			auto raster = [&](Color fg, Color bg, const TerminalGround &g) {
+				CellBuffer one(2, 1);
+				one.text(0, 0, QStringLiteral("M"), fg, bg);
+				// CELL ZERO ONLY, and cropping is not tidiness. The
+				// buffer is two wide so the glyph has a neighbour it
+				// must not bleed into, and cell one states no colour at
+				// all -- so it moves with the GROUND, which is the very
+				// thing two of the comparisons below assert does not
+				// happen to a cell that states its own.
+				return rasterize(one, QGuiApplication::font(), g)
+				           .copy(0, 0, cw, ch);
+			};
+			// The far corner of the cell, which no glyph reaches: the
+			// background fill is exact where the ink is antialiased, and
+			// the bottom right is the corner an M is furthest from. The
+			// Reverse check above samples a corner for the same reason.
+			auto corner = [&](const QImage &img) {
+				return QRgb(img.pixel(cw - 1, ch - 1) & 0xffffffu);
+			};
+			// The pixel FURTHEST from the cell's ground, which is the ink
+			// at the glyph's core. Sampling a coordinate would be
+			// asserting on where the font puts the stem of an M; asking
+			// for the extreme finds the ink wherever the metrics put it,
+			// and at the core the glyph is fully covered, so the value
+			// there is the pen's exactly rather than a blend.
+			auto ink = [&](const QImage &img, QRgb ground) {
+				QRgb best = ground; int worst = -1;
+				for (int y = 0; y < ch; ++y)
+					for (int x = 0; x < cw; ++x) {
+						const QRgb p = QRgb(img.pixel(x, y) & 0xffffffu);
+						const int d = qAbs(qRed(p) - qRed(ground))
+						            + qAbs(qGreen(p) - qGreen(ground))
+						            + qAbs(qBlue(p) - qBlue(ground));
+						if (d > worst) { worst = d; best = p; }
+					}
+				return best;
+			};
+
+			const TerminalGround silent = TerminalGround::unanswered();
+			const QRgb own_bg = qRgb(16, 20, 24) & 0xffffffu;
+
+			const QImage idx_fg = raster(Color::indexed(fg_index), Color(), silent);
+			const QImage rgb_fg = raster(Color::rgb(xterm256_rgb(fg_index)),
+			                             Color(), silent);
+			const QImage def_fg = raster(Color(), Color(), silent);
+			printf("info: an indexed foreground inks %06x, the same colour"
+			       " stated as RGB inks %06x, a default cell inks %06x, and"
+			       " index %d is %06x\n",
+			       unsigned(ink(idx_fg, own_bg)), unsigned(ink(rgb_fg, own_bg)),
+			       unsigned(ink(def_fg, own_bg)), fg_index, unsigned(want_fg));
+			// Both halves, because each alone passes something wrong.
+			// "reaches the index's colour" alone would be satisfied by a
+			// rasteriser that had started painting everything red, and
+			// "differs from the default" alone by one that had picked any
+			// other colour at all -- including the cube entry next door.
+			CHECK(ink(idx_fg, own_bg) == want_fg && ink(def_fg, own_bg) != want_fg,
+			      "an indexed foreground rasterises to the colour that index"
+			      " stands for, not to the terminal's default ink");
+			// And the whole image, not one pixel of it: an indexed colour
+			// and the RGB it stands for are the same colour, so the two
+			// frames must be indistinguishable. This is the assertion that
+			// cannot be satisfied by a coincidence at one coordinate.
+			CHECK(!idx_fg.isNull() && idx_fg == rgb_fg && idx_fg != def_fg,
+			      "and is indistinguishable from the same colour stated as"
+			      " RGB, pixel for pixel");
+
+			const QImage idx_bg = raster(Color(), Color::indexed(bg_index), silent);
+			const QImage rgb_bg = raster(Color(),
+			                             Color::rgb(xterm256_rgb(bg_index)),
+			                             silent);
+			const QImage def_bg = raster(Color(), Color(), silent);
+			printf("info: an indexed background fills %06x, the same colour"
+			       " stated as RGB fills %06x, a default cell fills %06x,"
+			       " and index %d is %06x\n",
+			       unsigned(corner(idx_bg)), unsigned(corner(rgb_bg)),
+			       unsigned(corner(def_bg)), bg_index, unsigned(want_bg));
+			// The background carries a second failure the foreground does
+			// not, and it is why the corner is sampled rather than the
+			// ink: the fill is skipped entirely when bg equals the
+			// default, so an unresolved Indexed background did not merely
+			// paint the wrong colour, it painted nothing and left the
+			// region fill showing through.
+			CHECK(corner(idx_bg) == want_bg && corner(def_bg) != want_bg,
+			      "an indexed background rasterises to the colour that index"
+			      " stands for, not to the terminal's default ground");
+			CHECK(!idx_bg.isNull() && idx_bg == rgb_bg && idx_bg != def_bg,
+			      "and it too is indistinguishable from the same colour"
+			      " stated as RGB");
+
+			// ---- the low sixteen, and the decision about them ----
+			//
+			// xterm256_rgb() covers all 256, and 0..15 are not a formula:
+			// they are the user's own scheme, which this tree asks the
+			// terminal for with OSC 4 and keeps in the global that
+			// set_terminal_palette() writes. That global is why nothing
+			// had to be plumbed in here -- xterm256_rgb() already consults
+			// it through low16(), so calling it IS asking the terminal,
+			// and a second route from caps_.palette16 into this file would
+			// be a second copy of one choice.
+			//
+			// Using it is the answer rather than merely the reachable one.
+			// The whole defect is two tiers disagreeing about one frame:
+			// on the text tier Color::indexed(1) goes out as an SGR index
+			// and the terminal paints the red the USER chose, so painting
+			// the xterm table's red into the pixels would not close the
+			// disagreement, it would move it. Where the terminal has not
+			// said, the xterm table is the only RGB there is -- the hand
+			// table in Color::luminance() is a luminance and not a colour
+			// -- and it is what every other consumer here already assumes.
+			//
+			// Pinned in both directions so the decision cannot be quietly
+			// reversed: with a scheme reported, the scheme's colour; with
+			// none, the xterm table's.
+			{
+				const QVector<QRgb> had = terminal_palette();
+				QVector<QRgb> scheme(16);
+				// Deliberately nothing like the xterm defaults, so that a
+				// rasteriser ignoring the report cannot pass by accident:
+				// index 1 here is a bright cyan-green where xterm's is the
+				// dark red 0x800000.
+				for (int i = 0; i < 16; ++i)
+					scheme[i] = qRgb(7 * i, 248 - 8 * i, 128 + 4 * i);
+				set_terminal_palette(scheme);
+				const QRgb reported = xterm256_rgb(1) & 0xffffffu;
+				const QImage with_scheme =
+				    raster(Color::indexed(1), Color(), silent);
+				set_terminal_palette(QVector<QRgb>());
+				const QRgb unasked = xterm256_rgb(1) & 0xffffffu;
+				const QImage without =
+				    raster(Color::indexed(1), Color(), silent);
+				set_terminal_palette(had);        // global: put it back
+				printf("info: index 1 rasterises to %06x with the terminal's"
+				       " scheme reported (%06x) and %06x with it unasked"
+				       " (%06x)\n",
+				       unsigned(ink(with_scheme, own_bg)), unsigned(reported),
+				       unsigned(ink(without, own_bg)), unsigned(unasked));
+				CHECK(reported == (scheme[1] & 0xffffffu)
+				      && ink(with_scheme, own_bg) == reported,
+				      "an index below sixteen rasterises to the colour the"
+				      " terminal reported for it, so the pixel tiers paint"
+				      " the palette the user configured");
+				CHECK(unasked != reported && ink(without, own_bg) == unasked,
+				      "and to the xterm table's when the terminal was never"
+				      " asked, which is what every other consumer of an"
+				      " index here already assumes");
+			}
+
+			// ---- the two controls, which must NOT move ----
+			//
+			// 8.250 gave these functions a TerminalGround and two rules
+			// about it: composite_under takes the background alone, while
+			// default_bg and default_fg abstain together, because a real
+			// background under a guessed foreground is the one combination
+			// that can come out unreadable. Resolving Indexed is a
+			// different question and must not touch either rule -- an
+			// indexed colour is a colour the CELL states, so no fallback
+			// is consulted for it at all, and which fallback a
+			// Color::Default cell gets is exactly as it was.
+			//
+			// Neither of these goes red against the unfixed tree, which is
+			// what they are for and is why both are proved by sabotage
+			// instead.
+			TerminalGround answered;
+			answered.default_bg = qRgb(255, 255, 255);
+			answered.default_fg = qRgb(0, 0, 0);
+			const QImage def_answered = raster(Color(), Color(), answered);
+			printf("info: a Color::Default cell fills %06x on an answered"
+			       " ground and %06x on a silent one, inking %06x and %06x\n",
+			       unsigned(corner(def_answered)), unsigned(corner(def_bg)),
+			       unsigned(ink(def_answered, qRgb(255, 255, 255) & 0xffffffu)),
+			       unsigned(ink(def_bg, own_bg)));
+			CHECK(corner(def_answered) == (qRgb(255, 255, 255) & 0xffffffu)
+			      && ink(def_answered, qRgb(255, 255, 255) & 0xffffffu)
+			         == (qRgb(0, 0, 0) & 0xffffffu)
+			      && corner(def_bg) == own_bg,
+			      "a Color::Default cell still takes the ground it is given,"
+			      " both colours of it, which is 8.250's rule untouched");
+			// And a Color::Rgb cell is what it says it is whatever the
+			// ground -- the branch that was already right, asserted so
+			// that a resolver which had started consulting the ground for
+			// every kind would be caught rather than merely suspected.
+			const QRgb states_fg = qRgb(12, 200, 34), states_bg = qRgb(90, 5, 180);
+			const QImage rgb_answered = raster(Color::rgb(states_fg),
+			                                   Color::rgb(states_bg), answered);
+			const QImage rgb_silent = raster(Color::rgb(states_fg),
+			                                 Color::rgb(states_bg), silent);
+			printf("info: an RGB cell fills %06x/%06x and inks %06x/%06x on"
+			       " the answered and silent grounds\n",
+			       unsigned(corner(rgb_answered)), unsigned(corner(rgb_silent)),
+			       unsigned(ink(rgb_answered, states_bg & 0xffffffu)),
+			       unsigned(ink(rgb_silent, states_bg & 0xffffffu)));
+			CHECK(rgb_answered == rgb_silent
+			      && corner(rgb_silent) == (states_bg & 0xffffffu)
+			      && ink(rgb_silent, states_bg & 0xffffffu)
+			         == (states_fg & 0xffffffu),
+			      "and a Color::Rgb cell is unchanged, reaching both colours"
+			      " it states and reaching them on either ground");
+		}
 		bool red_seen = false;
 		for (int y = 0; y < ch && !red_seen; ++y)
 			for (int x = cw; x < 3 * cw; ++x) {
@@ -950,6 +1185,57 @@ int suite_graphics() {
 		CHECK(frame.at(7, 1).fg.kind() == Color::Rgb
 		      && qRed(frame.at(7, 1).fg.value()) > 200,
 		      "half-block carries the overlay colour");
+	}
+
+	// ---- an indexed cell background, under a translucent overlay ----
+	//
+	// The third site that collapsed Color::Indexed into a default, and it
+	// is not in the rasteriser: compose_halfblocks()' translucent branch
+	// asks what is BEHIND the cell so it can blend the overlay pixel over
+	// it, and it asked the same `kind() == Color::Rgb` question. A cell
+	// whose theme named an indexed background was therefore tinted as
+	// though the terminal's own ground were behind it, so a translucent
+	// popup over a coloured pane came out the colour of a popup over an
+	// empty screen. section 8.255.
+	//
+	// Note which fallback this site takes when the cell states nothing:
+	// `composite_under`, not `default_bg`. That is 8.250's split and it is
+	// untouched here -- compositing alpha is a one-colour question, so the
+	// background alone answers it, while a Color::Default CELL needs the
+	// pair and abstains. Resolving Indexed is a third thing again: the
+	// cell said what colour it is, so no fallback is consulted at all.
+	{
+		QImage tint(4 * cw, 2 * ch, QImage::Format_ARGB32);
+		tint.fill(QColor(200, 0, 0, 120));           // translucent: the tint branch
+
+		const int index = 226;                       // the cube's pure yellow
+		auto composited = [&](Color under) {
+			CellBuffer frame(4, 2);
+			for (int y = 0; y < 2; ++y)
+				for (int x = 0; x < 4; ++x) frame.at(x, y).bg = under;
+			compose_halfblocks(frame, tint, QRect(0, 0, 4, 2),
+			                   TerminalGround::unanswered());
+			const Cell &c = frame.at(1, 1);
+			return c.bg.kind() == Color::Rgb ? QRgb(c.bg.value() & 0xffffffu)
+			                                 : QRgb(0xffffffffu);
+		};
+		const QRgb over_index = composited(Color::indexed(index));
+		const QRgb over_rgb   = composited(Color::rgb(xterm256_rgb(index)));
+		const QRgb over_none  = composited(Color());
+		printf("info: a translucent overlay over an indexed background"
+		       " composites to %06x, over the same colour stated as RGB to"
+		       " %06x, and over a stated-nothing cell to %06x\n",
+		       unsigned(over_index), unsigned(over_rgb), unsigned(over_none));
+		// The relationship rather than the blend: recomputing the
+		// arithmetic here would be the check agreeing with the code it is
+		// checking. An index and the RGB it stands for are one colour, so
+		// the two composites must be one value -- and the pair with the
+		// third assertion says it is not merely that everything landed on
+		// the ground.
+		CHECK(over_index == over_rgb && over_index != over_none,
+		      "a translucent overlay over an indexed cell background is"
+		      " composited over the colour that index stands for, not over"
+		      " the terminal's own ground");
 	}
 
 	// ---- rasterising only what changed gives the same picture ----

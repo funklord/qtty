@@ -4129,3 +4129,87 @@ find = "\t\tfor (const CellImage &ci : images) now[ci.key].append(ci.cell_rect);
 into = "\t\tfor (const CellImage &ci : images) {\n\t\t\tconst auto prev = last_.constFind(ci.key);\n\t\t\tif (prev != last_.constEnd() && !prev->isEmpty()\n\t\t\t    && prev->last() != ci.cell_rect)\n\t\t\t\tmoved = true;\n\t\t\tnow[ci.key] = QVector<QRect>{ci.cell_rect};\n\t\t}"
 count = 1
 check = "two sixels on every frame, not two and then the mosaic"
+
+[[sabotage]]
+# The foreground resolution back to the ternary that asked only whether
+# the kind was Rgb, so Color::Indexed takes the Color::Default branch and
+# an indexed ink comes out as the terminal's default ink. 8.255.
+name = "an indexed foreground collapses into the default again"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\tQRgb fg = rgb_for(c.fg, default_fg);"
+into = "\t\t\tQRgb fg = c.fg.kind() == Color::Rgb ? c.fg.value() : default_fg;"
+count = 1
+check = "an indexed foreground rasterises to the colour that index"
+
+[[sabotage]]
+# The same on the background, where the loss is larger than a wrong
+# colour: the fill below is skipped when bg equals the default, so an
+# unresolved index painted nothing at all. 8.255.
+name = "an indexed background collapses into the default again"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\tQRgb bg = rgb_for(c.bg, default_bg);"
+into = "\t\t\tQRgb bg = c.bg.kind() == Color::Rgb ? c.bg.value() : default_bg;"
+count = 1
+check = "an indexed background rasterises to the colour that index"
+
+[[sabotage]]
+# The third site, which is not in the rasteriser: compose_halfblocks()
+# asking what is behind the cell so it can blend a translucent overlay
+# over it, and treating an indexed background as no background. 8.255.
+name = "a translucent overlay tints over the ground, not the index"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\t\tconst QRgb under = rgb_for(cell.bg, under_default);"
+into = "\t\t\t\tconst QRgb under = cell.bg.kind() == Color::Rgb ? cell.bg.value()\n\t\t\t\t                                                : under_default;"
+count = 1
+check = "a translucent overlay over an indexed cell background is"
+
+[[sabotage]]
+# The decision about the low sixteen, reversed in the plausible
+# direction: "0..15 are the user's scheme and this function cannot know
+# it, so fall back". It can -- xterm256_rgb() consults the OSC 4 reply --
+# and falling back reintroduces the whole defect for exactly the indices
+# a theme is most likely to name. Named against the unasked half, which
+# the entry below cannot reach. 8.255.
+name = "the low sixteen fall back to the default instead of resolving"
+file = "src/graphics/graphics.cpp"
+find = "\tcase Color::Indexed: return xterm256_rgb(c.index());"
+into = "\tcase Color::Indexed: return c.index() < 16 ? fallback\n\t                                           : xterm256_rgb(c.index());"
+count = 1
+check = "and to the xterm table's when the terminal was never"
+
+[[sabotage]]
+# The same decision reversed the other way, and it has to be sabotaged
+# where the palette is READ rather than where the index is resolved:
+# xterm256_rgb() ignoring the terminal's reported scheme renders the
+# xterm table's red for a user who chose another one, which is a
+# different wrong answer and not one the entry above can produce. 8.255.
+name = "the reported palette is ignored for the low sixteen"
+file = "src/core/color.cpp"
+find = "\treturn s_palette.isEmpty() ? system16[index] : s_palette[index];"
+into = "\treturn system16[index];"
+count = 1
+check = "an index below sixteen rasterises to the colour the"
+
+[[sabotage]]
+# The control for 8.250's abstention, broken in the way this refactor
+# invites: Color carries an index_ field whatever its kind, so a resolver
+# can plausibly be written to read it for Default too -- and a
+# default-constructed Color has index 0, which is black. The ground the
+# caller supplied is then never consulted at all. 8.255.
+name = "a Color::Default cell resolves its index instead of the ground"
+file = "src/graphics/graphics.cpp"
+find = "\tcase Color::Default: return fallback;"
+into = "\tcase Color::Default: return xterm256_rgb(c.index());"
+count = 1
+check = "a Color::Default cell still takes the ground it is given"
+
+[[sabotage]]
+# The other control: a resolver that consults the ground for every kind,
+# so a cell that states an RGB colour outright is painted with whatever
+# the terminal answered. 8.255.
+name = "a Color::Rgb cell takes the ground rather than what it states"
+file = "src/graphics/graphics.cpp"
+find = "\tcase Color::Rgb:     return c.value();"
+into = "\tcase Color::Rgb:     return fallback;"
+count = 1
+check = "and a Color::Rgb cell is unchanged, reaching both colours"

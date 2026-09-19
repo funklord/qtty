@@ -446,6 +446,61 @@ TerminalGround TerminalGround::from(const Capabilities &caps) {
 	return g;
 }
 
+// What a cell's colour is in PIXELS, for the three sites in this file that
+// have to paint one -- two in rasterize_into() and one in
+// compose_halfblocks(). It exists because all three asked
+// `kind() == Color::Rgb` and handed everything else the fallback, which is
+// right for Color::Default and wrong for Color::Indexed: an index is a colour
+// the cell STATED, and the fallback is for a cell that stated none.
+//
+// What that cost is this file's recurring fault, two tiers disagreeing about
+// one frame. append_color() writes ESC[38;5;<n>m for an Indexed colour, so
+// the terminal paints the index itself and text is right; the pixels came out
+// as the default ink, and an indexed BACKGROUND came out unpainted, the fill
+// below being skipped when bg equals the default. An application is what
+// meets it -- Color::indexed() is a public constexpr constructor and
+// CellTheme's fields are public -- since nothing in src/ writes an Indexed
+// colour into a cell: quantise() produces them and its output is consumed
+// inside sgr_sequence() and contrast_violations() without ever being written
+// back. section 8.255.
+//
+// `fallback` is the CALLER'S, and deliberately so: the two callers want
+// different ones and section 8.250 is the reason. compose_halfblocks() wants
+// composite_under, which the background alone answers because compositing
+// alpha is a one-colour question; rasterize_into() wants default_bg or
+// default_fg, which abstain as a pair because a real background under a
+// guessed foreground is the one combination that can come out unreadable.
+// This function does not choose between them and must not learn to. What it
+// decides is whether a fallback is wanted AT ALL -- a third question, and for
+// an Indexed cell the answer is no.
+//
+// A switch over every enumerator with no `default:` label, so that a fourth
+// Color::Kind is a -Wswitch warning against this build's own -Wall rather
+// than a silent collapse into the fallback -- which is exactly how Indexed
+// came to be here. The trailing return is for the compiler's flow analysis
+// and is unreachable; Color::luminance() switches the same way, for the same
+// reason.
+//
+// xterm256_rgb() is called rather than a table copied, and that decides the
+// low sixteen as well. 16..255 are a formula every terminal agrees on; 0..15
+// are the user's own scheme, and that function already consults the OSC 4
+// reply set_terminal_palette() holds. So the terminal's palette needs no
+// plumbing to reach this file and must not be given any: a second route from
+// caps_.palette16 into here would be a second copy of one choice, and two
+// copies of a choice drift. It is also the only answer that CLOSES the
+// disagreement rather than moving it -- the text tier paints the red the user
+// configured, so the pixels must too. Where the terminal was never asked the
+// xterm table stands, which is what every other consumer of an index in this
+// tree already assumes.
+static QRgb rgb_for(const Color &c, QRgb fallback) {
+	switch (c.kind()) {
+	case Color::Rgb:     return c.value();
+	case Color::Indexed: return xterm256_rgb(c.index());
+	case Color::Default: return fallback;
+	}
+	return fallback;
+}
+
 // WHICH TIERS ARRIVE HERE, because two comments in this file had it wrong
 // and project.md had it wrong twice more. There is one production caller,
 // compositor.cpp's software-composite branch, and it is taken only for
@@ -481,8 +536,8 @@ QRect rasterize_into(QImage &dst, const CellBuffer &frame, const QFont &font,
 		for (int x = r.left(); x <= r.right(); ++x) {
 			const Cell &c = frame.at(x, y);
 			if (c.width == 0) continue;
-			QRgb fg = c.fg.kind() == Color::Rgb ? c.fg.value() : default_fg;
-			QRgb bg = c.bg.kind() == Color::Rgb ? c.bg.value() : default_bg;
+			QRgb fg = rgb_for(c.fg, default_fg);
+			QRgb bg = rgb_for(c.bg, default_bg);
 			if (c.attrs & Attr::Reverse) std::swap(fg, bg);
 			if (bg != default_bg || (c.attrs & Attr::Reverse))
 				p.fillRect(x * cw, y * ch, cw * c.width, ch, QColor::fromRgb(bg));
@@ -731,8 +786,7 @@ void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_
 				cell.attrs = {}; cell.width = 1;
 			} else {                                           // translucent: tint bg,
 				const int a = qMax(alpha_top, alpha_bot);                    // glyph stays readable
-				const QRgb under = cell.bg.kind() == Color::Rgb ? cell.bg.value()
-				                                                : under_default;
+				const QRgb under = rgb_for(cell.bg, under_default);
 				cell.bg = Color::rgb(blend(top, a, under));
 			}
 		}

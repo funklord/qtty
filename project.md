@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1711 checks, 0 failures. `make check` is green and includes
+1720 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -17712,6 +17712,202 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.255 An index is a colour the cell stated (2026-09-19)
+
+`Color` has three kinds -- `Default`, `Indexed` and `Rgb` -- and three sites
+in `src/graphics/graphics.cpp` resolved a cell's colour by asking whether the
+kind was `Rgb` and handing everything else the fallback:
+
+    QRgb fg = c.fg.kind() == Color::Rgb ? c.fg.value() : default_fg;
+    QRgb bg = c.bg.kind() == Color::Rgb ? c.bg.value() : default_bg;
+
+That is right for `Color::Default`, which is a cell that stated no colour,
+and wrong for `Color::Indexed`, which is a cell that stated one. **The
+background loss is larger than a wrong colour**: the fill below those lines
+runs only when `bg` differs from the default, so an unresolved index painted
+nothing at all and left the region fill showing through. Measured on the
+unfixed tree, an indexed background filled `101418` where index 226 is
+`ffff00`.
+
+**The text tier does not do this, which is what makes it a disagreement
+rather than a limitation.** `append_color()` writes `ESC[38;5;<n>m` for an
+`Indexed` colour at TrueColor and Xterm256 depth and the aixterm spelling at
+Ansi16, so the terminal paints the index itself. One frame therefore said two
+different things depending on which tier carried it, and that is this file's
+recurring fault: 8.238 was `Strike`, 8.244 was `Dim`, 8.250 was the ground,
+and this is the colour.
+
+**Which tiers, re-read rather than assumed, and the finding as received was
+wrong about the third site.** 8.244 established that `rasterize_into()` has
+one production caller -- `compositor.cpp`'s software-composite branch, taken
+only for Sixel, ITerm2 and Kitty -- and that half-blocks and KittyAlpha
+present the frame as TEXT. That holds. But the third site is **not in the
+rasteriser**: it is `compose_halfblocks()`' translucent branch, which asks
+what is BEHIND a cell so it can blend an overlay pixel over it, and that is
+the half-block tier. So the defect reached four tiers by two routes, not
+three by one.
+
+**And it is not reachable from this library's own code, which is worth
+stating rather than overclaiming.** Nothing in `src/` writes an `Indexed`
+colour into a `CellBuffer`. The only producer is `quantise()`, whose output
+is consumed inside `sgr_sequence()` and `contrast_violations()` and never
+written back to a cell. The route is the public API: `Color::indexed()` is a
+public `constexpr` constructor, `CellTheme`'s fields are public and
+`set_theme()` takes one. `terminal_default()` did carry
+`accent = Color::indexed(4)` until 8.248 removed it yesterday, and **even
+that had no route to a cell** -- which is precisely what 8.248 was about. So
+this is a defect an application meets and qtty's own suite could not, and
+the checks below build their cells by hand for that reason.
+
+## One resolver, and what it is deliberately not allowed to decide
+
+`rgb_for(const Color &, QRgb fallback)` is a file static above
+`rasterize_into()`, and all three sites call it. Two things about its shape
+are load-bearing.
+
+**The fallback is the caller's.** The two callers want different ones and
+8.250 is the reason: `compose_halfblocks()` passes `composite_under`, which
+the background alone answers because compositing alpha is a one-colour
+question, and `rasterize_into()` passes `default_bg` or `default_fg`, which
+abstain as a pair because a real background under a guessed foreground is
+the one combination that can come out unreadable. **Resolving `Indexed` is a
+third question and does not touch either rule.** An indexed colour is a
+colour the CELL states, so no fallback is consulted for it at all -- the
+resolver decides *whether* a fallback is wanted, never *which*. Pulling that
+choice inside would have put 8.250's asymmetry back in one place with two
+callers wanting opposite things, which is the shape 8.250 itself removed.
+
+**A switch with no `default:` label**, so a fourth `Color::Kind` is a
+`-Wswitch` warning against the build's own `-Wall -Wextra` rather than a
+silent collapse into the fallback -- which is exactly how `Indexed` came to
+be here. The trailing `return fallback` is for flow analysis and is
+unreachable; `Color::luminance()` is written the same way.
+
+## The low sixteen, and why nothing was plumbed
+
+`xterm256_rgb()` covers all 256, and 0..15 are not a formula -- they are the
+user's own scheme, which this tree asks for with OSC 4 and keeps in the
+global `set_terminal_palette()` writes. **The answer is already inside the
+function being called**: `xterm256_rgb()` routes an index below sixteen
+through `low16()`, which returns the reported entry when there is one and the
+xterm table otherwise. So calling it IS asking the terminal, and no
+capability had to reach this file.
+
+**It must not be given one either.** A second route from `caps_.palette16`
+into `graphics.cpp` would be a second copy of one choice, and two copies of a
+choice drift -- the hazard `code-style.md` names, and one this file has paid
+for once already, when it carried its own 16-colour table beside `color.h`'s.
+
+**And it is the right answer, not merely the reachable one.** The defect is
+two tiers disagreeing about one frame. On the text tier `Color::indexed(1)`
+goes out as an index and the terminal paints the red the USER configured, so
+painting the xterm table's red into the pixels would not close the
+disagreement, it would move it. Where the terminal was never asked, the xterm
+table is the only RGB there is -- the hand table in `Color::luminance()` is a
+table of LUMINANCES, not of colours, so it cannot serve here -- and it is
+what every other consumer of an index in this tree already assumes.
+
+Both directions are pinned, by separate checks and by separate sabotage
+entries, because they fail in different code. One reverses the resolution
+(`index < 16 ? fallback : ...`, the plausible "this function cannot know the
+user's scheme"); the other reverses the palette lookup in `color.cpp`, where
+`low16()` stops consulting the report -- the other wrong answer, and not one
+the first entry can produce.
+
+**`color.h`'s own claim was falsified by this and is rewritten rather than
+appended to.** It said the reported palette "matters in exactly one place",
+`to_ansi16()`. It matters in two: `xterm256_rgb()` for an index below sixteen
+is what the pixel tiers now paint.
+
+## What the before-run said
+
+Every new check was written against the unfixed tree and run there first;
+they call only `rasterize()`, `compose_halfblocks()` and `xterm256_rgb()`,
+none of whose signatures moved, so they compiled before the fix existed. The
+run reported **1700 passes and 7 failures** -- the 1698 the tree had plus the
+seven of these nine that assert what the unfixed code could not do:
+
+    an indexed foreground rasterises to the colour that index stands for  FAIL
+    and is indistinguishable from the same colour stated as RGB           FAIL
+    an indexed background rasterises to the colour that index stands for  FAIL
+    and it too is indistinguishable from the same colour stated as RGB    FAIL
+    an index below sixteen rasterises to the colour the terminal reported FAIL
+    and to the xterm table's when the terminal was never asked            FAIL
+    a translucent overlay over an indexed cell background is composited   FAIL
+    a Color::Default cell still takes the ground it is given              PASS
+    and a Color::Rgb cell is unchanged                                    PASS
+
+with the run printing, before and after:
+
+    an indexed foreground inks d7dadc -> ff0000   (index 196 is ff0000)
+    an indexed background fills 101418 -> ffff00  (index 226 is ffff00)
+    index 1 with a scheme reported  d7dadc -> 07f084  (reported 07f084)
+    index 1 with none reported      d7dadc -> 800000  (xterm's 800000)
+    an overlay over an indexed bg   660a0c -> e58700
+      and over the same colour stated as RGB, e58700 both times
+
+**The overlay row is the defect stated as a number.** `660a0c` is what the
+unfixed tree composited over an indexed background, and it is byte for byte
+what it composites over a cell that states nothing -- the same `660a0c`
+8.250 pinned for the silent ground. The RGB twin was `e58700` throughout, so
+the two spellings of one colour differed by 0x7f7d94 and now do not.
+
+**The two controls do not go red, and that is what they are for.** They
+printed identically in both runs, which is the strongest form of "8.250's
+rule did not move":
+
+    a Color::Default cell fills ffffff on an answered ground and 101418
+    on a silent one, inking 000000 and d7dadc
+    an RGB cell fills 5a05b4/5a05b4 and inks 0cc822/0cc822 on the
+    answered and silent grounds
+
+Neither is proved by the red run, so both are proved by sabotage: one makes
+the resolver read `Color`'s `index_` field for `Default` too -- plausible,
+since the field is there whatever the kind, and a default-constructed
+`Color` has index 0 -- and one makes it consult the ground for every kind.
+
+**Seven sabotage entries, one per check that can be reddened from this
+change's own code.** The two "indistinguishable from the same colour stated
+as RGB" checks are reddened by the same entries as their neighbours and are
+not separately named, which is stated rather than left to be inferred: they
+are corroboration for the exact-pixel assertions above them, not independent
+witnesses.
+
+## The ten gates, the sabotage proofs and the fixtures
+
+Every part of `make check` was run one at a time on 2026-09-19 and all ten
+are green: `style`, `layout`, `version-check`, `count-check` (1707),
+`guide-check` (43 symbols), `tools-check`, `sabotage-check` (395 anchors),
+`test` (1707 passes, 0 failures), `test-tools` and `test-install`. Not the
+`check` target itself, which writes a stamp into the shared `.git` that
+another worktree's session would lose.
+
+**`style`, `layout`, `guide-check` and `count-check` were then run a second
+time, after THIS entry landed**, because the first pass could not have seen
+it -- and the second pass caught something the first could not: `style-docs`
+refused a heading repeating 8.250's *"What was verified, and what was not"*.
+The gate is right and the heading is renamed. A doc gate run only before the
+document is written is a gate over the previous version of it.
+
+Each of the seven sabotage entries was proved on its own with
+`sabotage.py --only '<name>' --dirty-ok`, and each reddened the check it
+names, against a baseline the tool re-measured as green at 1707 every time.
+The collateral is worth recording, because one number in it says something:
+reverting the FOREGROUND line reddens four checks, and two of them are the
+low-sixteen pair -- those read the ink, so they go through that line. That is
+why the low-sixteen decision needed entries 4 and 5, which break code the
+foreground line does not touch.
+
+**No snapshot fixture moved, and the reason is structural rather than
+lucky.** `test/snapshot/` is compared inside `suite_render`, against frames
+rendered to CELLS; neither rasteriser site nor `compose_halfblocks()` is on
+that path, and nothing in `src/` produces an `Indexed` colour in any case.
+`git status` after the green run reports only the four files this change
+edits.
+
+**This is NOT covered by a six-configuration run.** Section 0a's
+re-verification stands where 8.250 left it, at 1664 and `f9211b9`; the
+offscreen arm is what ran.
 
 ### 8.249 Swept, measured, and not yet acted on (2026-09-18)
 

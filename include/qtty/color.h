@@ -82,12 +82,16 @@ QRgb xterm256_rgb(int index);
 // on 16..255 -- they are a formula -- but 0..15 are the user's scheme, and a
 // terminal with one is the normal case rather than the exotic one.
 //
-// It matters in exactly one place, which is narrower than it first looks:
-// to_xterm256() matches against 16..255 only, so a scheme cannot affect
-// 256-colour quantisation at all. What it does affect is to_ansi16(), which
-// picks the nearest of the sixteen for a colour that has no authored role --
-// and picking "nearest" against the wrong sixteen colours is how a fallback
-// lands somewhere the user can see is wrong.
+// Where it does NOT reach is the part worth stating, because it is narrower
+// than it first looks: to_xterm256() matches against 16..255 only, so a
+// scheme cannot affect 256-colour quantisation at all. Two places it does
+// reach. to_ansi16() picks the nearest of the sixteen for a colour that has
+// no authored role, and picking "nearest" against the wrong sixteen is how a
+// fallback lands somewhere the user can see is wrong. And xterm256_rgb()
+// itself, for an index below sixteen, which is what the PIXEL tiers paint
+// when a cell names one -- the text tier sends the index and lets the
+// terminal paint its own, so anything that rasterises has to reach the same
+// colour or the two tiers disagree about one frame. section 8.255.
 //
 // Absent an answer the built-in xterm table stands, which is what every
 // terminal agrees on and what this assumed before it could ask.
