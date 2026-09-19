@@ -448,8 +448,8 @@ comfortably. **Practices 9 to 12 are traps rather than advice** -- each
 breaks something silently, and breaks it only on the terminal, so the
 desktop build hides every one. Nine to eleven concern a widget of your
 own; twelve concerns styling a standard one. They sit near the end because
-that is where the material belongs, not because they matter least -- only
-thirteen, which is ordinary advice again, comes after them. If you are
+that is where the material belongs, not because they matter least --
+thirteen and fourteen, which are ordinary advice again, come after them. If you are
 writing a custom widget, read 9 to 11 first: they are collected, with a
 fourth from *Copy and paste*, in the table under *If you are writing a
 custom widget*.

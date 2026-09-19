@@ -17740,6 +17740,67 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.257 A gate that its own author deformed the source to satisfy (2026-09-19)
+
+A sweep for comments stating things the code no longer does found four,
+after five had been found by accident over the previous two days. Three
+are corrected here; the fourth is recorded below because it is not wrong
+yet.
+
+**The guide said thirteen practices came after the widget ones, and there
+are fourteen.** `git log -S` dates the sentence to 2026-09-16 and practice
+14 to `676f7bf` two days later -- so it was TRUE when written and was
+falsified by a commit that added a practice without touching the sentence
+that counts them. A reader reaching twelve is told one more follows,
+stops, and misses the newest practice in the document, which is the
+guidance for the newest feature area in the tree.
+
+**Three comments cite `design.md section 432`, and there is no such
+section** -- the document's headings stop at 17. 432 is a LINE number, and
+the line does hold the declaration the comments describe, so the content
+was right and only the citation was wrong. Worse than useless as a
+pointer: a reader greps for it and concludes the reference is dead, and
+one insertion above that line silently aims all three at unrelated text.
+They cite section 5.4 and quote the declaration now.
+
+**The gate is where this entry earns its number.** The remedy this project
+prescribes for a rotting count is to move it out of judgement and into the
+tool, so `guide_check.py` now derives the practice numbering from the list
+and refuses a gap or a repeat. Getting there took two failures, both mine,
+both inside five minutes:
+
+1. The first version matched the literal sentence and **passed over the
+   very claim it was written for**, because this document is wrapped at 75
+   columns and the phrase falls across a line break. That is
+   `evidence.md`'s wrapped-phrase trap, walked into by somebody who had
+   read it.
+2. With the text normalised it went red correctly -- and I then "fixed" the
+   prose to read *"only FOURTEEN comes after them"*, which satisfies the
+   gate and denies that thirteen comes after twelve. **I deformed the
+   source until the checker stopped complaining**, which is the failure
+   `evidence.md` names as worse than a gate that simply reports wrongly,
+   because the deformation outlives the fix and nothing complains again.
+
+So the gate keeps only the half it can hold. The numbering is derived from
+the list and cannot be satisfied by rewording; the prose claim is left to a
+reader, and the limit is written where the gate would otherwise imply
+coverage. Its success line said "with the prose agreeing" until that was
+also corrected -- a green line claiming what it does not check is the same
+fault one level up. Seen to fail before being trusted: renumbering 14 to 15
+produces *"numbered 1..13, 15, which is not 1..14"*.
+
+**Recorded and not fixed, because it is not wrong yet.** `grid_style.cpp`
+exempts a table's corner button from the pointer audit on the stated
+grounds that it is "a private class ... no `qt_` objectName". Measured on
+the Qt this tree builds against, 6.8.2, that holds: the installed
+`libQt6Widgets.so.6` string table carries `QTableCornerButton` and no
+`qt_tableview_cornerbutton`, against a positive control of 40 other
+`qt_`-prefixed names in the same library. On Qt 6.12's sources that
+constructor sets exactly that objectName. So a Qt bump makes the exemption
+unreachable and its reason false, in a list whose own comment says an
+addition should be as hard to make as the comment is to write. One
+`strings` re-takes it.
+
 ### 8.255 An index is a colour the cell stated (2026-09-19)
 
 `Color` has three kinds -- `Default`, `Indexed` and `Rgb` -- and three sites

@@ -599,8 +599,9 @@ int suite_render(bool record) {
 		}
 	}
 
-	// The clip, which design.md section 432 lists among the four things
-	// updateState() carries and which was the one of the four not implemented.
+	// The clip, which design.md section 5.4 names among the four things
+	// updateState() carries -- `pen/brush/font/clip -> Attrs` -- and which
+	// was the one of those four not implemented.
 	// An application's own setClipRect() was ignored outright: a painter told
 	// to keep inside four cells filled twenty.
 	//

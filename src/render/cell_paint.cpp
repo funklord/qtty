@@ -253,10 +253,10 @@ void CellPaintEngine::updateState(const QPaintEngineState &s) {
 
 // The clip in cells, or an invalid rect when there is none.
 //
-// design.md section 432 lists clip among the four things updateState() carries,
-// and three of the four were implemented: an application's own setClipRect()
-// was ignored outright, so a QPainter told to keep inside four cells filled
-// twenty. Asked of the PAINTER rather than reassembled from the state flags,
+// design.md section 5.4 declares updateState() as carrying
+// `pen/brush/font/clip -> Attrs`, and three of those four were implemented:
+// an application's own setClipRect() was ignored outright, so a QPainter
+// told to keep inside four cells filled twenty. Asked of the PAINTER rather than reassembled from the state flags,
 // because Qt composes NoClip, ReplaceClip and IntersectClip itself and a
 // second implementation of that composition is a second thing to get wrong.
 //

@@ -117,6 +117,70 @@ def umbrella_gaps():
 	return sorted(h for h in here if h != "qtty.h" and h not in included)
 
 
+def practice_count():
+	"""How many numbered practices the guide has, counted from the guide."""
+	path = os.path.join(ROOT, "doc", "keyboard-first.md")
+	with open(path, encoding="utf-8") as f:
+		return len(re.findall(r"^\*\*(\d+)\. ", f.read(), re.M))
+
+
+def practice_numbering():
+	"""Where the guide's numbered practices disagree with themselves.
+
+	The practices are the guide's spine and they are numbered by hand, so
+	three things can go wrong silently: a number can repeat, the run can
+	skip one, and -- the case that produced this check -- prose elsewhere
+	can name a count the list has since outgrown.
+
+	Measured 2026-09-19: the section's own map said "only thirteen, which
+	is ordinary advice again, comes after them" while practice 14 had
+	existed for a day. A reader reaching twelve is told one more follows,
+	stops, and misses the newest practice in the document -- which was the
+	guidance for the newest feature area in the tree.
+
+	`git log -S` on that sentence says it was TRUE when written and was
+	falsified by a later commit that added a practice without touching it.
+	That is the shape worth gating rather than re-sweeping for: the numbers
+	are re-derivable from the list itself, so nothing here is a second copy
+	of a fact -- it is the fact, checked against every prose claim about it.
+
+	Returns a list of complaints, empty when the numbering is sound.
+	"""
+	path = os.path.join(ROOT, "doc", "keyboard-first.md")
+	with open(path, encoding="utf-8") as f:
+		text = f.read()
+	seen = [int(n) for n in re.findall(r"^\*\*(\d+)\. ", text, re.M)]
+	out = []
+	if not seen:
+		return ["the guide names no numbered practice at all, so this"
+		        " checked nothing"]
+	want = list(range(1, len(seen) + 1))
+	if sorted(seen) != want:
+		out.append("the practices are numbered %s, which is not 1..%d"
+		           % (", ".join(str(n) for n in seen), len(seen)))
+	# WHAT THIS DELIBERATELY DOES NOT CHECK, and the reason is worth the
+	# paragraph because the first version of this gate did try.
+	#
+	# The prose above the list also counts the practices -- "only thirteen
+	# ... comes after them" -- and that sentence was the rot this gate was
+	# written for. Gating it by matching the phrase failed twice in five
+	# minutes. First it matched nothing, the document being wrapped at 75
+	# columns so the claim falls across a line break, which is the
+	# wrapped-phrase trap `evidence.md` names. Then, with the text
+	# normalised, it went green against a sentence rewritten to say "only
+	# FOURTEEN comes after them" -- which satisfies the gate and denies
+	# that thirteen comes after twelve. A gate a reword can satisfy is
+	# worse than no gate, because the deformation outlives it and nothing
+	# complains again; `evidence.md` says exactly that, and this is the
+	# rule catching its own author.
+	#
+	# So the numbering is gated, being derived from the list and
+	# ungameable, and the prose claim is left to a reader. The honest
+	# statement of the limit is here rather than in a green line implying
+	# it was covered.
+	return out
+
+
 def main():
 	cxx = os.environ.get("CXX", "g++")
 	flags = qt_cflags()
@@ -125,6 +189,14 @@ def main():
 		    " public headers cannot be compiled.")
 		say("             Refusing rather than skipping: every machine that"
 		    " builds this project has them.")
+		return 1
+
+	numbering = practice_numbering()
+	if numbering:
+		say("guide-check: the guide's numbered practices disagree with"
+		    " themselves:")
+		for line in numbering:
+			say("    %s" % line)
 		return 1
 
 	absent = umbrella_gaps()
@@ -160,7 +232,9 @@ def main():
 	ok, err = compiles(cxx, flags, symbols)
 	if ok:
 		say("guide-check: %d symbol(s) named in %s are reachable from the"
-		    " public headers" % (len(symbols), ", ".join(DOCS)))
+		    " public headers, and its practices number 1..%d without a"
+		    " gap or a repeat"
+		    % (len(symbols), ", ".join(DOCS), practice_count()))
 		return 0
 
 	# Name the culprits rather than printing a wall of compiler output.
