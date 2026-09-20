@@ -622,6 +622,12 @@ public:
 	void set_frame_interval(int ms);
 	int frame_interval() const { return frame_ms_; }
 
+	// Deregisters from the process-wide list Qtty::set_frame_interval()
+	// walks. Declared because the list holds raw pointers and a scheduler
+	// that outlived its entry would be written through -- the same
+	// bookkeeping InputRouter does for the quit keys.
+	~FrameScheduler() override;
+
 private:
 	ITerminalBackend *backend_;
 	Compositor *comp_;

@@ -342,6 +342,43 @@ void set_font(const QString &family, int pixel_size);
 // can take away.
 void set_quit_keys(const QVector<KeyEvent> &keys);
 
+// How long a burst of damage is coalesced before a frame goes out, in
+// milliseconds, for an application that uses exec() and never sees a
+// FrameScheduler.
+//
+// It exists for the reason set_quit_keys() above exists, and the shape is
+// taken from it deliberately: FrameScheduler::set_frame_interval() has
+// been there since design.md section 5.4 called the interval
+// "configurable", and exec() builds the scheduler on its own stack and
+// hands it to nobody -- so the only way to reach it was to reimplement
+// exec(). A setting nothing can set is a setting the documentation
+// promises and the library refuses.
+//
+// PROCESS-WIDE AND BEFORE THE RUN, like the quit keys: an application
+// decides how often to paint while building its window, long before a
+// scheduler exists, so this sets the default every scheduler starts from
+// -- and it also reaches the schedulers already running, so a call from a
+// slot takes effect at once. FrameScheduler::set_frame_interval() still
+// overrides it for one scheduler.
+//
+// The default is measured rather than chosen: 16 ms locally and 50 ms
+// where SSH_CONNECTION or SSH_TTY says the terminal is at the other end
+// of a link, which are section 11's two numbers. QTTY_FRAME_MS is the
+// user's lever in front of both, and an application calling this wins
+// over the guess but not over a scheduler told directly.
+//
+// 0 is legal and means "as soon as the event loop comes back". A negative
+// interval is REFUSED rather than clamped: a caller passing one has made
+// a mistake, and a silent 0 would turn it into a program that renders as
+// fast as its loop allows -- on a slow link, the failure the budget
+// exists to prevent.
+void set_frame_interval(int ms);
+
+// What a scheduler built now would use, which is what the two levers above
+// and the environment come to. It answers before any scheduler exists,
+// which is what makes it usable from the place an application would ask.
+int frame_interval();
+
 // True while a terminal session is being driven -- by exec(), or by an
 // application's own frame loop, which is the seat 8.153 found answering
 // false beside a backend holding the alternate screen. Overlay uses this to

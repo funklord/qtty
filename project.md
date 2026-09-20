@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1799 checks, 0 failures. `make check` is green and includes
+1804 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -17800,6 +17800,63 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.275 A setting the documentation promised and nothing could set
+### (2026-09-20)
+
+`FrameScheduler::set_frame_interval()` has been there since design.md
+section 5.4 called the coalescing interval "configurable", and section
+11 goes further -- *16 ms local, 50 ms over ssh*. `exec()` builds the
+scheduler on its own stack and hands it to nobody, so **the only way to
+reach the setting was to reimplement `exec()`**.
+
+That is 0e's shape exactly, and the same shape `set_quit_keys()` was
+opened for: a knob the documentation promises, a class that carries it,
+and no seat an application can sit in. Found by asking which public
+names the guide never mentions and reading the plausible ones.
+
+`Qtty::set_frame_interval(int)` and `Qtty::frame_interval()` are free
+functions beside `set_quit_keys()`, and the design is taken from it
+rather than invented: process-wide and before the run, because an
+application chooses how often to paint while building its window, and
+also reaching the schedulers already running, so a call from a slot is
+about the screen being drawn now. A scheduler told directly still
+overrides, which is what makes this a default rather than a
+replacement.
+
+#### Two faults in writing it, both caught by measuring
+
+- **The constructor called the member.** `frame_ms_(frame_interval())`
+  looks like the free function and is not: inside the class the name
+  finds `FrameScheduler::frame_interval() const`, which reads
+  `frame_ms_` before it exists. A scheduler built after a process-wide
+  set came out **0** -- as fast as the event loop allows, which is the
+  failure the budget exists to prevent. The initialiser spells the
+  fallback out rather than qualifying the call, so the trap is visible.
+- **A check that could not fail.** The refusal of a negative interval
+  was asserted on the SCHEDULER, and the member refuses one on its own
+  account -- so the sabotage that removes the free function's guard left
+  that reading green and reddened a different check. What the guard
+  protects is the stored default: `-1` is the internal spelling of
+  "nobody has said", so letting one through would silently discard the
+  interval an application had chosen and go back to guessing. The check
+  reads `Qtty::frame_interval()` now.
+
+    a new scheduler ignores the process-wide interval  1 red
+    a running scheduler is not re-timed                2 red
+    a negative frame interval is accepted              1 red
+
+#### The sweep that found it
+
+Every name declared in a public header, minus every `Qtty::` name the
+guide or the README mentions: 254 against 40. Most of the remainder is
+internal -- `CellBuffer`'s accessors, the paint engine, the compositor
+-- and reading the application-facing ones turned up this, plus three
+documentation gaps rather than code ones: `has_minimum_contrast()`,
+`align_text_document()` and `set_terminal_palette()` are public,
+reachable and named nowhere a reader would look. Recorded here rather
+than fixed in passing, since what the guide should say about each is a
+paragraph and not a line.
+
 ### 8.274 Nine warnings a QMainWindow could not act on (2026-09-20)
 
 Section 0b has carried this since 8.61: **a `QMainWindow` application

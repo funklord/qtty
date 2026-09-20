@@ -4673,3 +4673,36 @@ find = "\tif (!defined_by_qt(&typeid(*layout))) return false;"
 into = "\tif (false) return false;"
 count = 1
 check = "nor one in a layout the application wrote itself"
+
+[[sabotage]]
+# The process-wide default not reaching a scheduler built afterwards,
+# which is the state the setting was in: reachable only by
+# reimplementing exec(). 8.275.
+name = "a new scheduler ignores the process-wide interval"
+file = "src/runtime/compositor.cpp"
+find = "      frame_ms_(s_frame_ms_default >= 0 ? s_frame_ms_default\n                                        : default_frame_ms()) {"
+into = "      frame_ms_(default_frame_ms()) {"
+count = 1
+check = "a scheduler built after set_frame_interval starts at what the application asked for"
+
+[[sabotage]]
+# The running schedulers not re-timed, so a call from a slot is about
+# nothing -- the half that makes this a live setting rather than a
+# constructor argument. 8.275.
+name = "a running scheduler is not re-timed"
+file = "src/runtime/compositor.cpp"
+find = "\tfor (FrameScheduler *f : std::as_const(s_live_schedulers))\n\t\tf->set_frame_interval(ms);"
+into = "\tif (false) for (FrameScheduler *f : std::as_const(s_live_schedulers))\n\t\tf->set_frame_interval(ms);"
+count = 1
+check = "and one already running is re-timed"
+
+[[sabotage]]
+# A negative interval taken rather than refused, which the member's own
+# rule forbids: a caller passing one has made a mistake and a silent 0
+# renders as fast as the event loop allows. 8.275.
+name = "a negative frame interval is accepted"
+file = "src/runtime/compositor.cpp"
+find = "\tif (ms < 0) return;                  // refused, as the member refuses"
+into = "\tif (ms < -1000) return;"
+count = 1
+check = "while a negative interval is refused rather than discarding the one the application chose"

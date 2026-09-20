@@ -2030,6 +2030,54 @@ int suite_runtime() {
 			      "and QTTY_FRAME_MS beats the guess, which is why the"
 			      " guess is allowed to be a guess");
 		}
+		{
+			// AND THE LEVER AN APPLICATION USING exec() CAN REACH, which
+			// is the one that did not exist. FrameScheduler has carried
+			// set_frame_interval() since design.md section 5.4 called the
+			// interval configurable, and exec() builds the scheduler on
+			// its own stack and hands it to nobody -- so the only way to
+			// the setting was to reimplement exec(). Same shape as the
+			// quit keys, and the same answer: a process-wide default that
+			// also reaches whatever is running.
+			Qtty::set_frame_interval(5);
+			{
+				FrameScheduler after(&backend, &comp, &win);
+				CHECK(after.frame_interval() == 5,
+				      "a scheduler built after set_frame_interval starts "
+				      "at what the application asked for");
+			}
+			FrameScheduler live(&backend, &comp, &win);
+			Qtty::set_frame_interval(33);
+			CHECK(live.frame_interval() == 33,
+			      "and one already running is re-timed, so a call from a "
+			      "slot is about the screen being drawn now");
+			// REFUSED, not clamped, and asserted on the PROCESS DEFAULT
+			// rather than on the scheduler. The member refuses a negative
+			// on its own account, so a check reading the scheduler passes
+			// whatever this function does -- measured: the sabotage that
+			// removes this guard left that reading green and reddened a
+			// different check. What the guard protects is the stored
+			// default: -1 is the internal spelling of "nobody has said",
+			// so letting one through would silently discard the interval
+			// an application had chosen and go back to guessing.
+			Qtty::set_frame_interval(-1);
+			CHECK(Qtty::frame_interval() == 33,
+			      "while a negative interval is refused rather than "
+			      "discarding the one the application chose");
+			// The member still overrides, which is what makes the free
+			// function a DEFAULT rather than a replacement.
+			live.set_frame_interval(7);
+			CHECK(live.frame_interval() == 7
+			      && Qtty::frame_interval() == 33,
+			      "and one scheduler told directly keeps its own answer, "
+			      "the process default being unchanged");
+			// Put the process back, or every later check in this binary
+			// runs on a 33 ms scheduler.
+			Qtty::set_frame_interval(16);
+			CHECK(Qtty::frame_interval() == 16,
+			      "and the process is left as it was found, this being "
+			      "process-wide state a check can change");
+		}
 
 		// THE PART THAT MATTERS, because an accessor agreeing with a setter
 		// proves the setter. What was wrong is that request_frame() used a

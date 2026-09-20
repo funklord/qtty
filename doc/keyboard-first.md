@@ -1369,6 +1369,23 @@ Registering a file and choosing the grid's font are separate acts.
 does both. Ship the file yourself -- qtty bundles none, a font carrying
 its own licence terms not being this library's to choose for you.
 
+**You can choose how often the screen is repainted.** qtty coalesces a
+burst of damage before it sends a frame -- 16 ms locally, 50 ms where
+`SSH_CONNECTION` or `SSH_TTY` says the terminal is at the other end of a
+link, which are the two numbers the design measured.
+`Qtty::set_frame_interval(ms)` names another, and `QTTY_FRAME_MS` lets
+whoever runs your program name one instead:
+
+```cpp
+Qtty::set_frame_interval(100);     // a dashboard nobody types into
+```
+
+It reaches a run already going, so you can raise it while a long
+operation paints and put it back afterwards. `0` means *as soon as the
+event loop comes back*; a negative interval is refused rather than
+treated as 0, because that would paint as fast as your loop allows and
+on a slow link that is the thing the budget exists to prevent.
+
 **A quit key asks your window to close, and takes no for an answer.**
 `Ctrl+C` is the close gesture a terminal has -- there is no title bar to
 click -- so it goes through `QWidget::close()` and your `closeEvent()`

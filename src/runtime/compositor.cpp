@@ -1282,10 +1282,41 @@ std::optional<QPoint> Compositor::cursor_cell() const { return cursor_; }
 CursorShape Compositor::cursor_shape() const { return cursor_shape_; }
 
 // ------------------------------------------------------------- FrameScheduler
+// The interval an application asked for before any scheduler existed, and
+// the schedulers running now. Both halves are needed and neither is enough,
+// which is the argument set_quit_keys() already makes for its own pair: an
+// application chooses how often to paint while building its window, long
+// before exec() constructs a scheduler, and one that changes it from a slot
+// is talking about the scheduler already driving the screen.
+//
+// -1 means "nobody has said", so that the measured default is asked for
+// afresh -- QTTY_FRAME_MS and the ssh guess are read per scheduler, and
+// caching the number here would freeze an answer the environment owns.
+static int s_frame_ms_default = -1;
+static QVector<FrameScheduler *> s_live_schedulers;
+
+void set_frame_interval(int ms) {
+	if (ms < 0) return;                  // refused, as the member refuses
+	s_frame_ms_default = ms;
+	for (FrameScheduler *f : std::as_const(s_live_schedulers))
+		f->set_frame_interval(ms);
+}
+
+int frame_interval() {
+	return s_frame_ms_default >= 0 ? s_frame_ms_default : default_frame_ms();
+}
+
 FrameScheduler::FrameScheduler(ITerminalBackend *backend, Compositor *compositor,
                                QWidget *window)
     : backend_(backend), comp_(compositor), win_(window),
-      frame_ms_(default_frame_ms()) {
+      // NOT frame_interval(), which inside this class names the MEMBER and
+      // reads frame_ms_ before it exists -- measured, a scheduler built
+      // after a process-wide set came out 0. The free function is spelled
+      // out instead of qualified so the trap is visible rather than
+      // avoided.
+      frame_ms_(s_frame_ms_default >= 0 ? s_frame_ms_default
+                                        : default_frame_ms()) {
+	s_live_schedulers.append(this);
 	// The terminal's answer about wide clusters, taken once, here, because
 	// this is where qtty is handed a backend: exec() builds one of these,
 	// and so does an application running its own loop with a scheduler.
@@ -1308,6 +1339,8 @@ FrameScheduler::FrameScheduler(ITerminalBackend *backend, Compositor *compositor
 	since_last_.start();
 	qApp->installEventFilter(this);
 }
+
+FrameScheduler::~FrameScheduler() { s_live_schedulers.removeAll(this); }
 
 bool FrameScheduler::eventFilter(QObject *o, QEvent *e) {
 	if (e->type() == QEvent::UpdateRequest || e->type() == QEvent::LayoutRequest)
