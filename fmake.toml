@@ -50,6 +50,7 @@ name = "qtty-replay"
 
 [target.negotiate]
 name = "qtty-negotiate"
+install = false
 
 # The tray gate, added after the three above and missed here at the time --
 # so fmake built it as the bare verb `tray` while qmake built
@@ -57,3 +58,22 @@ name = "qtty-negotiate"
 # .gitignore did not know either. tool/tray/tray.pro is the authority.
 [target.tray]
 name = "qtty-tray-check"
+install = false
+
+# WHAT `make install` INSTALLS IS TWO PROGRAMS, and fmake's plan had six.
+# `install -m 0755 $(INSPECT) $(REPLAY)` is the authority, and test-install
+# pins it from both ends. The other four are a gate that needs a session
+# bus, a probe for measuring this machine's terminal, an example, and a
+# negotiator that reports rather than does -- none of them a thing to put
+# in somebody's $PREFIX/bin.
+#
+# It cost nothing while nobody ran `fmake --install` here, and it is
+# written down rather than left because an ejected Makefile carries the
+# install rule with it: `--eject make` from this tree would have shipped
+# all six. fmake's own `--explain` says which of the two ways declined a
+# target, so the absence does not read as fmake having forgotten.
+[target.chat]
+install = false
+
+[target.screen-probe]
+install = false

@@ -108,7 +108,57 @@ elif [ "$qinc" != "$finc" ]; then
 	fail=1
 fi
 
+# -- WHICH PROGRAMS SHIP, which the two build systems decide separately and
+#    which fmake had wrong in the direction that matters. `make install`
+#    puts two programs in $PREFIX/bin; `fmake --explain` showed a plan of
+#    SIX -- the example, a machine probe, a gate that needs a session bus,
+#    and a negotiator that reports rather than does. It cost nothing while
+#    nobody ran `fmake --install` here, and an ejected Makefile carries the
+#    install rule with it, so `--eject make` from this tree would have put
+#    all six into somebody's package.
+#
+#    CHECKED STATICALLY, against fmake.toml rather than against fmake. The
+#    authoritative answer is `fmake --explain`, which prints the plan and
+#    says which of the two ways declined a target -- but it needs the
+#    objects, so asking it here would make `make check` compile the whole
+#    tree a second time on a cold cache. What this asserts instead is the
+#    one fact that drifts: a program the Makefile does not install must say
+#    `install = false` in fmake.toml. Re-derive the plan with
+#
+#        python3 ~/src/fmake/fmake --explain | grep -A1 '^  installs'
+#
+#    after any change here; it was run against this file and agreed.
+installed=$(sed -n 's/^INSTALLED_FILES *= *//p' "$root/Makefile" \
+            | tr ' ' '\n' | sed -n 's|^usr/bin/||p' | sort -u)
+if [ -z "$installed" ]; then
+	echo "tools-check: the Makefile names no installed programs, so the" >&2
+	echo "             comparison below had nothing to compare" >&2
+	fail=1
+fi
+# Every program fmake builds: the four tools by their fmake.toml section
+# name, plus the two the tree has no .pro for. Named here because fmake
+# derives them from the tree and a .pro does not exist for either.
+for t in inspect:qtty-inspect replay:qtty-replay negotiate:qtty-negotiate \
+         tray:qtty-tray-check chat:chat screen-probe:screen-probe; do
+	section=${t%%:*}
+	program=${t#*:}
+	if echo "$installed" | grep -qx "$program"; then continue; fi
+	if ! awk -v d="[target.$section]" '
+		$0 == d { found = 1; next }
+		found && /^\[/ { exit }
+		found && /^install[[:space:]]*=/ { print; exit }' \
+		"$root/fmake.toml" | grep -q "false"; then
+		echo "tools-check: make install does not ship $program, and" >&2
+		echo "             fmake.toml does not decline it -- so" >&2
+		echo "             fmake --install and an ejected Makefile would." >&2
+		echo "             Say install = false under [target.$section]." >&2
+		fail=1
+	fi
+done
+
 [ "$fail" -eq 0 ] || exit 1
 echo "tools-check: $n tool(s) named consistently in .pro, fmake.toml and"
-echo "             .gitignore, both build systems state $qstd, and the"
-echo "             suite's include paths agree"
+echo "             .gitignore, both build systems state $qstd, the suite's"
+echo "             include paths agree, and every program make install"
+echo "             does not ship is declined in fmake.toml"
+

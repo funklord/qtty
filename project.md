@@ -17794,6 +17794,45 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.272 What fmake would have shipped (2026-09-20)
+
+fmake's session reported section 287: a target can now decline to be
+installed, `install = false` in `fmake.toml`, and named qtty as the
+second tree that needs it -- `chat`, `screen-probe` and
+`qtty-tray-check`.
+
+**It is four, not three.** `make install` puts exactly two programs in
+`$PREFIX/bin` -- `install -m 0755 $(INSPECT) $(REPLAY)` -- and
+`fmake --explain` showed a plan of six. `qtty-negotiate` is the fourth:
+it reports what a terminal can do and is a thing to run, not a thing to
+ship. All four decline now, and the plan reads
+
+    qtty-inspect        -> $BINDIR
+    qtty-replay         -> $BINDIR
+    nothing             [target.*] install = false     x4
+
+which is what `make install` does.
+
+**Why it was worth acting on rather than noting.** Nobody runs
+`fmake --install` in this tree, so the fault cost nothing today -- but
+an ejected Makefile carries the install rule with it, and
+`--eject make` from this tree would have put an example, a machine
+probe and a gate that needs a session bus into somebody's package.
+That is the same shape as every other entry in `fmake.toml`: a fact
+qmake states in a `.pro` and fmake has no way to discover.
+
+**`tools-check` gained the comparison, and statically.** The
+authoritative answer is `fmake --explain`, which prints the plan and
+says which of the two ways declined a target -- but it needs the
+objects, so asking it from `make check` would compile the whole tree a
+second time on a cold cache. Measured: 0.7 s warm, a full build cold.
+So the gate asserts the one fact that drifts -- a program the Makefile
+does not install must say `install = false` -- and the comment carries
+the command that re-derives the plan. Watched failing both ways: with
+`[target.tray]`'s key removed the live comparison named
+`qtty-tray-check`, and with `[target.screen-probe]`'s removed the
+static one named `screen-probe`.
+
 ### 8.271 The tray could not say anything (2026-09-20)
 
 `qtty/tray.h` opens by saying its API is `QSystemTrayIcon`'s "so an
