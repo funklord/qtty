@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1776 checks, 0 failures. `make check` is green and includes
+1779 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -17794,6 +17794,90 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.269 Two fixes built, both refused by the suite (2026-09-20)
+
+8.268 made a `QKeySequenceEdit` say it has the focus. The next question
+was whether it WORKS, and the answer, measured with the field focused
+and recording:
+
+    Ctrl+Shift+K   recorded
+    Escape         recorded as Esc
+    Tab            left the field
+    Ctrl+C         CLOSED THE WINDOW
+    Alt+F          opened the File menu
+    Ctrl+U         the readline kill
+
+**Tab is correct and was checked before being called a fault**:
+`QKeySequenceEdit`'s own default is
+`finishingKeyCombinations = {Tab, Backtab}`, read in Qt's source, so
+leaving the field is what Qt does too.
+
+The other three are qtty's interception layers taking a chord from the
+one widget whose whole job is to swallow chords. The first is
+destructive: the user is telling the program which key to use, and the
+program quits.
+
+#### The mechanism Qt has for exactly this, and why it is not used here
+
+`QEvent::ShortcutOverride` asks a widget "do you want this key, or shall
+the shortcut have it". **The tree sends one nowhere** -- swept,
+`ShortcutOverride` appears in no source file -- and on paper it
+separates the cases the quit-key rule names, measured on six widgets:
+
+                          IME   wants C-c   wants C-q
+        QPushButton        0       0           0
+        QKeySequenceEdit   0       1           1
+        QLineEdit          1       1           0
+        a read-only list   0       0           0
+        the default list   0       0           0
+        QPlainTextEdit     1       1           0
+
+**Two versions were built and the suite refused both.**
+
+- **Asked before every interception**, which is what a desktop does: six
+  checks red. qtty's readline conventions exist precisely to beat a
+  widget's own bindings -- `Ctrl+A` is start-of-line here and a field
+  wants it for select-all -- so the faithful version undoes a documented
+  choice.
+- **Asked only for the quit chord**: three checks red. A field wants
+  every printable key, so a quit key spelled `q` would be typed rather
+  than obeyed; and a read-only field accepts the copy override although
+  the rule deliberately quits from one, `WA_InputMethodEnabled` being
+  the test that gets that right where a class list would not.
+
+So the override is not a better test than the attribute -- it is a
+different test that is right about a recorder and wrong about the two
+cases the attribute was chosen for. Both branches were reverted whole;
+`git status` after them names nothing.
+
+#### What is recorded instead
+
+**The limit is pinned by checks**, with the reason beside them, so that
+whoever changes it sees what they are changing. And the remedy an
+application has today is measured rather than suggested:
+
+    as shipped                    recorded ''        window CLOSED
+    with the quit keys dropped    recorded 'Ctrl+C'  window up
+    and with them put back        recorded ''        window CLOSED
+
+`Qtty::set_quit_keys({})` while the recorder has focus, restored after.
+The third line is the restore's own evidence, and the check asserts it
+for the same reason: that call is process-wide, so a test that dropped
+the quit keys and did not put them back would silently disarm every
+check after it.
+
+Practice 4's neighbourhood in the guide carries the remedy, and says
+plainly that a mnemonic and a readline convention take chords from a
+recorder too -- the same trade practice 6 already describes, named where
+somebody writing a shortcut dialog will meet it.
+
+**Whether the override should be sent at all is a decision for the
+copyright holder**, and the two experiments are what it costs: sending
+it faithfully means giving up the readline conventions' priority, and
+sending it selectively means a rule with three tests in it where there
+are two today. Neither is obviously right, and neither is mine to
+choose.
+
 ### 8.268 A field you type into that said nothing (2026-09-20)
 
 8.267 asked a population question of `pointer_only()` and it paid, so the

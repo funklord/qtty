@@ -685,6 +685,27 @@ on a desktop. That was not true until the library was measured against
 this very practice -- the mouse route had been supplied and the keyboard
 one had not. A hover reveal and a drag still need a route you provide.
 
+**If your application records shortcuts, drop the quit keys while it
+does.** A `QKeySequenceEdit` is the field that asks the user to press the
+chord they want, and under qtty the quit key is tested before anything is
+dispatched -- so `Ctrl+C`, the default, closes the window while they are
+pressing it. The field is drawn as focused and reads back nothing.
+
+```cpp
+Qtty::set_quit_keys({});                       // while the recorder has focus
+...
+Qtty::set_quit_keys({{Qt::Key_C, {}, true, false, false},
+                     {Qt::Key_D, {}, true, false, false}});   // put them back
+```
+
+Measured both ways: with them dropped the field records `Ctrl+C`, with
+them back the window closes. Two of qtty's other layers take chords from
+such a field as well -- a menu mnemonic (`Alt+F`) opens the menu and a
+readline convention (`Ctrl+U`) is the kill, both before the field sees
+them -- so a recorder here cannot capture those either. That is the same
+trade as practice 6's: a convention a terminal user expects is a chord
+your widget does not get.
+
 **5. Leave a way back from every layer.** Modal dialogs and menus answer
 `Esc` already. A layer of your own -- a page in a `QStackedWidget`, an
 inline editor, a mode -- does not, and a user who cannot get back is

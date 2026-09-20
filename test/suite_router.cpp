@@ -7881,6 +7881,74 @@ int suite_router() {
 		      "and a read-only field has nothing to copy, so it quits too");
 	}
 
+	// ---- and the limit that rule has, pinned so it cannot move unseen ----
+	//
+	// A QKeySequenceEdit -- the field a shortcut dialog asks you to type
+	// into -- cannot record the quit chord. It carries no
+	// WA_InputMethodEnabled, honestly, since it takes raw key presses
+	// rather than input-method text, so the exemption above does not
+	// cover it and Ctrl+C closes the window while the user is telling the
+	// program which key to use.
+	//
+	// TWO FIXES WERE BUILT AND BOTH WERE REFUSED BY THIS SUITE, which is
+	// why this is a pinned limit rather than a fix. Qt's own
+	// QEvent::ShortcutOverride asks a widget "do you want this key", and
+	// it separates the cases perfectly on paper -- a QKeySequenceEdit
+	// wants Ctrl+C and Ctrl+Q, a QLineEdit wants only Ctrl+C, a button and
+	// a list want neither. Asked before every interception it reddened
+	// six checks, because qtty's readline conventions exist precisely to
+	// beat a widget's own bindings: Ctrl+A is start-of-line here and a
+	// field wants it for select-all. Asked only for the quit chord it
+	// still reddened three, because a field wants every printable key --
+	// so a quit key spelled `q` would be typed rather than obeyed -- and
+	// because a read-only field accepts the copy override although the
+	// check three lines above says it must quit.
+	//
+	// The remedy that works today is the application's and is measured
+	// below: drop the quit keys while the recorder has focus. 8.269.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		auto *keys = new QKeySequenceEdit;
+		v->addWidget(keys);
+		v->addWidget(new QPushButton(QStringLiteral("After")));
+		win.resize(GridMetrics::cells(30, 4));
+		win.show();
+		QCoreApplication::processEvents();
+		Qtty::InputRouter router(&win);
+		const auto record_ctrl_c = [&] {
+			keys->clear();
+			keys->setFocus();
+			Qtty::set_focus_widget(keys);
+			QCoreApplication::processEvents();
+			router.on_key({Qt::Key_C, QStringLiteral("c"), true, false, false});
+			QCoreApplication::processEvents();
+		};
+		record_ctrl_c();
+		CHECK(keys->keySequence().isEmpty() && !win.isVisible(),
+		      "a shortcut recorder cannot record the quit chord: the "
+		      "window closes instead, which is the limit rather than the "
+		      "intention");
+		win.show();
+		QCoreApplication::processEvents();
+		Qtty::set_quit_keys({});
+		record_ctrl_c();
+		CHECK(keys->keySequence().toString() == QStringLiteral("Ctrl+C")
+		      && win.isVisible(),
+		      "and dropping the quit keys is the remedy an application "
+		      "has today, measured rather than suggested");
+		// PUT THEM BACK, and prove it: this is process-wide state and
+		// every check after this one would run without a quit key. The
+		// third observation is the restore's own evidence.
+		Qtty::set_quit_keys({{Qt::Key_C, QString(), true, false, false},
+		                     {Qt::Key_D, QString(), true, false, false}});
+		record_ctrl_c();
+		CHECK(keys->keySequence().isEmpty() && !win.isVisible(),
+		      "and the default pair is back, which is asserted rather than "
+		      "assumed because the call before it is process-wide");
+	}
+
 
 	// ---- Tab reaches the widget that wants it ----
 	{
