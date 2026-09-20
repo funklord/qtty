@@ -1348,6 +1348,27 @@ numbers, and until this existed the refusal named a font nobody could
 change. The hinting is qtty's either way -- it decides whether the
 metrics are integral at all rather than how the text looks.
 
+**And a font need not be installed.** `Qtty::add_font_file(path)`
+registers a file with Qt and returns the family it holds, or an empty
+string when the file could not be read:
+
+```cpp
+const QString family = Qtty::add_font_file(":/fonts/grid.ttf");
+if (!family.isEmpty()) Qtty::set_font(family, 16);   // before setup()
+```
+
+`QTTY_FONT_FILE` is the same thing for whoever runs the program, and
+with it set the file supplies the family when nobody named one. Use a
+file rather than a family name when it matters which font you get: **a
+family Qt cannot resolve is substituted silently**, which is how this
+library once ran a whole suite on Noto Mono with nothing anywhere
+saying so, and a file either registers or it does not.
+
+Registering a file and choosing the grid's font are separate acts.
+`add_font_file()` does the first and hands you the family; the variable
+does both. Ship the file yourself -- qtty bundles none, a font carrying
+its own licence terms not being this library's to choose for you.
+
 **A quit key asks your window to close, and takes no for an answer.**
 `Ctrl+C` is the close gesture a terminal has -- there is no title bar to
 click -- so it goes through `QWidget::close()` and your `closeEvent()`
