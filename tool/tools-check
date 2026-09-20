@@ -117,17 +117,24 @@ fi
 #    install rule with it, so `--eject make` from this tree would have put
 #    all six into somebody's package.
 #
-#    CHECKED STATICALLY, against fmake.toml rather than against fmake. The
-#    authoritative answer is `fmake --explain`, which prints the plan and
-#    says which of the two ways declined a target -- but it needs the
-#    objects, so asking it here would make `make check` compile the whole
-#    tree a second time on a cold cache. What this asserts instead is the
-#    one fact that drifts: a program the Makefile does not install must say
-#    `install = false` in fmake.toml. Re-derive the plan with
+#    CHECKED TWICE, and the two are not redundant. The STATIC assertion
+#    below reads fmake.toml: a program the Makefile does not install must
+#    say `install = false`. It needs nothing installed, runs always, and
+#    is the one that fails the moment somebody adds a program and forgets.
+#    The LIVE comparison after it asks fmake for its actual plan, which is
+#    the authority -- a toml key is what the tree says and the plan is what
+#    fmake would do.
 #
-#        python3 ~/src/fmake/fmake --explain | grep -A1 '^  installs'
+#    The live one was impossible when this was written: `--explain` needs
+#    the objects, so asking it from `make check` would have compiled the
+#    whole tree a second time on a cold cache. fmake's session added
+#    `-n --install` for exactly this (their section 297), which prints the
+#    plan and builds nothing -- measured here at 2.3 s with no compile.
 #
-#    after any change here; it was run against this file and agreed.
+#    Its stated caveat does not bite here and is worth knowing anyway: the
+#    link sets have not widened in a dry run, so furniture declared in a
+#    file that joins a target only by symbol is missing from the plan. This
+#    compares PROGRAMS, which are targets rather than furniture.
 installed=$(sed -n 's/^INSTALLED_FILES *= *//p' "$root/Makefile" \
             | tr ' ' '\n' | sed -n 's|^usr/bin/||p' | sort -u)
 if [ -z "$installed" ]; then
@@ -156,9 +163,36 @@ for t in inspect:qtty-inspect replay:qtty-replay negotiate:qtty-negotiate \
 	fi
 done
 
+# And the live plan, where fmake is to hand. Its ABSENCE is not a failure:
+# fmake lives outside this tree and a contributor without it must still be
+# able to run `make check`. It is announced rather than passed over, so a
+# green run cannot be read as the comparison having happened.
+fmake=${FMAKE:-$HOME/src/fmake/fmake}
+if [ ! -f "$fmake" ]; then
+	echo "tools-check: fmake is not at $fmake, so the live install plan was"
+	echo "             not compared -- only fmake.toml. Set FMAKE to say"
+	echo "             where it is."
+else
+	plan=$(cd "$root" && timeout 300 python3 "$fmake" -n --install \
+	           --prefix /qtty-tools-check 2>/dev/null \
+	       | sed -n 's|^install .* /qtty-tools-check/bin/||p' | sort -u)
+	if [ -z "$plan" ]; then
+		echo "tools-check: fmake printed no install plan, so the comparison" >&2
+		echo "             below would have passed against nothing" >&2
+		fail=1
+	elif [ "$plan" != "$installed" ]; then
+		echo "tools-check: the two build systems disagree about what ships." >&2
+		echo "             make install puts these in bin:" >&2
+		echo "$installed" | sed 's/^/                 /' >&2
+		echo "             fmake --install would put these:" >&2
+		echo "$plan" | sed 's/^/                 /' >&2
+		fail=1
+	fi
+fi
+
 [ "$fail" -eq 0 ] || exit 1
 echo "tools-check: $n tool(s) named consistently in .pro, fmake.toml and"
 echo "             .gitignore, both build systems state $qstd, the suite's"
-echo "             include paths agree, and every program make install"
-echo "             does not ship is declined in fmake.toml"
+echo "             include paths agree, and both ship the same programs:"
+echo "$installed" | sed 's/^/                 /'
 

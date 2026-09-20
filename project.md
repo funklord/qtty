@@ -17821,17 +17821,32 @@ probe and a gate that needs a session bus into somebody's package.
 That is the same shape as every other entry in `fmake.toml`: a fact
 qmake states in a `.pro` and fmake has no way to discover.
 
-**`tools-check` gained the comparison, and statically.** The
-authoritative answer is `fmake --explain`, which prints the plan and
-says which of the two ways declined a target -- but it needs the
-objects, so asking it from `make check` would compile the whole tree a
-second time on a cold cache. Measured: 0.7 s warm, a full build cold.
-So the gate asserts the one fact that drifts -- a program the Makefile
-does not install must say `install = false` -- and the comment carries
-the command that re-derives the plan. Watched failing both ways: with
-`[target.tray]`'s key removed the live comparison named
-`qtty-tray-check`, and with `[target.screen-probe]`'s removed the
-static one named `screen-probe`.
+**`tools-check` compares the two, and it took fmake adding a mode.**
+The authoritative answer is fmake's own plan, but `--explain` needs the
+objects: asking it from `make check` would compile the whole tree a
+second time on a cold cache -- 0.7 s warm, a full build cold. So the
+gate first asserted only the static fact, that a program the Makefile
+does not install says `install = false` in fmake.toml.
+
+**fmake's session then added `-n --install`** (their section 297), which
+prints the plan and builds nothing, and said in as many words that the
+refusal I had met was the bug: a dry run is the one case where the
+artifact is expected to be absent, and it was the one case that refused.
+Measured here at 2.3 s with nothing compiled, so the live comparison is
+in the gate now.
+
+**BOTH are kept, and they are not redundant.** The static one reads what
+the tree says and fails the moment somebody adds a program and forgets;
+the live one reads what fmake would do. fmake's caveat -- a dry run has
+not widened its link sets, so furniture declared in a file that joins a
+target only by symbol is missing from the plan -- does not bite here,
+because programs are targets rather than furniture, and it is recorded
+beside the check rather than left in their manual.
+
+Three ways of failing, each watched: with `[target.negotiate]`'s key
+removed BOTH halves named `qtty-negotiate` and the script exited 1; with
+`FMAKE` pointed at nothing the live half announced that it had not run
+rather than passing quietly; and the restored file exits 0.
 
 ### 8.271 The tray could not say anything (2026-09-20)
 
