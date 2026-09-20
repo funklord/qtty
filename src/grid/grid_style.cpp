@@ -631,6 +631,15 @@ void GridGuard::reset() { s_forgiven += s_violations; s_violations = 0; }
 // question leaves the widget checked rather than forgiven.
 static bool defined_by_qt(const void *type_of_theirs) {
 	if (!type_of_theirs) return false;
+	// CACHED BY TYPE, because this is asked from GridGuard's event filter
+	// and that runs on every geometry change of every widget. dladdr()
+	// walks the loaded objects, which is cheap once and not cheap hundreds
+	// of thousands of times -- measured, the answer is a property of the
+	// CLASS and cannot change while the process runs, so asking twice is
+	// asking the same question twice.
+	static QHash<const void *, bool> answered;
+	const auto seen = answered.constFind(type_of_theirs);
+	if (seen != answered.constEnd()) return *seen;
 	Dl_info theirs{}, ours{};
 	if (!dladdr(type_of_theirs, &theirs)) return false;
 	// A FUNCTION rather than QWidget::staticMetaObject, and the difference
@@ -644,7 +653,10 @@ static bool defined_by_qt(const void *type_of_theirs) {
 	if (!dladdr(reinterpret_cast<const void *>(&QLayout::closestAcceptableSize),
 	            &ours))
 		return false;
-	return theirs.dli_fbase != nullptr && theirs.dli_fbase == ours.dli_fbase;
+	const bool qts = theirs.dli_fbase != nullptr
+	              && theirs.dli_fbase == ours.dli_fbase;
+	answered.insert(type_of_theirs, qts);
+	return qts;
 }
 
 // Is this widget placed by a layout of Qt's own, rather than by one the

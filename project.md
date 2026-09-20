@@ -17800,6 +17800,57 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.276 Two defects the six configurations found, one of them mine
+### and expensive (2026-09-21)
+
+Run on `817c3ba`. `test-platforms` passed; the other two arms failed,
+and both failures were introduced by 8.274 the day before.
+
+#### The leak, which only the sanitized arm could see
+
+    ERROR: LeakSanitizer: detected memory leaks
+    Direct leak of 88 byte(s) in 1 object(s) allocated from:
+        #1 QLayoutPrivate::createWidgetItem(QLayout const*, QWidget*)
+
+8.274's control fixture -- the custom `QLayout` that proves an
+application's own layout is still checked -- stored the `QLayoutItem`
+that `addWidget()` creates and never deleted it. Qt's own layouts free
+theirs in their destructors; this one had none.
+
+**The plain suite and `make check` had been green on it since it
+landed.** That is the arm earning its keep: a leak in a fixture is
+still a leak, and nothing else in this tree can see one.
+
+#### The timeout, which is the one that mattered
+
+    test-valgrind   the suite exceeded its own time limit and was stopped
+
+Not a hang. `GridGuard::is_exempt()` calls `dladdr()` to ask which
+loaded module defines a layout's type, and `is_exempt()` runs from the
+guard's event filter -- **on every geometry change of every widget**.
+`dladdr` walks the loaded objects, which is cheap once and not cheap
+hundreds of thousands of times, and valgrind multiplies exactly that
+kind of work.
+
+The answer is a property of the CLASS and cannot change while the
+process runs, so it is cached by type. Measured either side:
+
+    plain suite     7.6 s user  ->  6.1 s user
+    under memcheck  killed at 3000 s  ->  210 s, clean
+
+**Twenty per cent of the plain suite, and a factor of fourteen or more
+under memcheck.** The plain figure is the one an application would have
+paid, on every resize, for a question whose answer never changes.
+
+#### What this says about the run rather than the fix
+
+8.274 was measured, checked three ways and sabotage-proved, and it
+shipped a per-event `dladdr` anyway -- because every check asked
+whether the ANSWER was right and none asked what it cost. The six
+configurations are the only thing here that asks the second question,
+and they asked it about a change that had already passed everything
+else.
+
 ### 8.275 A setting the documentation promised and nothing could set
 ### (2026-09-20)
 

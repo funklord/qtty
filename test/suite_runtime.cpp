@@ -758,6 +758,16 @@ int suite_runtime() {
 					return i >= 0 && i < items.size() ? items.takeAt(i)
 					                                  : nullptr;
 				}
+				// A LAYOUT OWNS THE ITEMS IT IS GIVEN. addWidget() calls
+				// QLayoutPrivate::createWidgetItem(), and Qt's own layouts
+				// delete theirs in their destructors; this one did not, so
+				// it leaked 88 bytes per run. Caught by the sanitized arm
+				// of the six configurations and by nothing else -- the
+				// plain suite and make check had been green on it since
+				// the fixture landed.
+				~OwnLayout() override {
+					while (QLayoutItem *i = takeAt(0)) delete i;
+				}
 				QSize sizeHint() const override { return QSize(40, 40); }
 				void setGeometry(const QRect &r) override {
 					QLayout::setGeometry(r);
