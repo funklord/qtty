@@ -17848,6 +17848,18 @@ removed BOTH halves named `qtty-negotiate` and the script exited 1; with
 `FMAKE` pointed at nothing the live half announced that it had not run
 rather than passing quietly; and the restored file exits 0.
 
+**A fourth, from `evidence.md`'s own lens.** The live half read the
+`install` lines and nothing else, so "fmake planned nothing" and "this
+`sed` stopped matching" were the same outcome -- a count and its lines
+being halves of one result. fmake ends a dry run with
+`* N file(s) would be installed` (added at this gate's asking, their
+section 297), so the two are compared: a plan with files in it and no
+line extracted is a PARSE that broke, and the message says so rather
+than blaming the install list. Watched by changing the `sed` to match
+`^copy` -- *fmake planned 2 file(s) and this gate read none of them*,
+exit 1. An older fmake prints no count and the cross-check is then
+absent rather than failed.
+
 ### 8.271 The tray could not say anything (2026-09-20)
 
 `qtty/tray.h` opens by saying its API is `QSystemTrayIcon`'s "so an

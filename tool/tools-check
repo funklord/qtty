@@ -173,10 +173,27 @@ if [ ! -f "$fmake" ]; then
 	echo "             not compared -- only fmake.toml. Set FMAKE to say"
 	echo "             where it is."
 else
-	plan=$(cd "$root" && timeout 300 python3 "$fmake" -n --install \
-	           --prefix /qtty-tools-check 2>/dev/null \
-	       | sed -n 's|^install .* /qtty-tools-check/bin/||p' | sort -u)
-	if [ -z "$plan" ]; then
+	out=$(cd "$root" && timeout 300 python3 "$fmake" -n --install \
+	          --prefix /qtty-tools-check 2>/dev/null)
+	plan=$(echo "$out" | sed -n 's|^install .* /qtty-tools-check/bin/||p' \
+	       | sort -u)
+	# THE COUNT AND THE LINES ARE HALVES OF ONE RESULT, and reading only
+	# the lines cannot tell "fmake planned nothing" from "this sed stopped
+	# matching". fmake prints the count at the end of a dry run -- it was
+	# added at this gate's asking -- so the two are compared: a plan with
+	# files in it and no line extracted is a PARSE that broke, and saying
+	# so sends the next reader to the right place. An older fmake prints no
+	# count, and then this cross-check is simply absent rather than failed.
+	planned=$(echo "$out" | sed -n \
+	          's/^\* \([0-9][0-9]*\) file(s) would be installed.*/\1/p' \
+	          | head -1)
+	if [ -n "$planned" ] && [ "$planned" -gt 0 ] && [ -z "$plan" ]; then
+		echo "tools-check: fmake planned $planned file(s) and this gate read" >&2
+		echo "             none of them, so its parse of the install lines" >&2
+		echo "             has stopped matching -- not a disagreement about" >&2
+		echo "             what ships" >&2
+		fail=1
+	elif [ -z "$plan" ]; then
 		echo "tools-check: fmake printed no install plan, so the comparison" >&2
 		echo "             below would have passed against nothing" >&2
 		fail=1
