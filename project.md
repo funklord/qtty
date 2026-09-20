@@ -36,7 +36,21 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-19, at 1759**
+**Last re-verified under all six configurations: 2026-09-20, at 1772**
+(`7dd18fc`), covering 8.265 to 8.267 -- the docked toolbar and the size
+grip's own element, the tool box drawn as a disclosure list, and the
+container sweep with its two exclusions. Offscreen, xcb under Xvfb and
+the hostile environment each ran 1772, `minimal` refused and said why,
+the sanitized arm reported nothing, and memcheck's log says `ERROR
+SUMMARY: 0 errors from 0 contexts`. Fourteen minutes end to end on a
+machine that was already quiet, and the run started at once rather than
+waiting.
+
+**Three commits later the suite is at 1774**, which is the ordinary
+state of this line: it records a run, and a run is a claim about the
+commit it names.
+
+**The claim before that: 2026-09-19, at 1759**
 (`0e1cec2`), covering 8.256 to 8.264 -- the alternate and tooltip
 grounds, the alternating-row switch wired to a cell, the guide's own
 numbering gate, the README's re-taken fmake warning, and the size grip
