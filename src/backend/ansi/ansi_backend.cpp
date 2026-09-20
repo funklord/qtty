@@ -306,6 +306,11 @@ Capabilities AnsiBackend::capabilities() const {
 	// one", not "you will see it", and the comment is here because the
 	// field's name invites the other reading.
 	c.title = tty_out_;
+	// Reported only where qtty actually pushed the flags, which is the same
+	// condition enter_terminal() uses. A terminal that answered the query
+	// while qtty was not driving it has said something true about itself and
+	// nothing about what an application will receive.
+	c.keyboard_protocol = tty_out_ && raw_ok_ && caps_.kbd_protocol;
 	return c;
 }
 
@@ -540,11 +545,27 @@ bool g_winch_saved = false;
 int g_owners = 0;
 pid_t g_owner_pid = 0;
 
+// Whether the kitty keyboard protocol's flags are on the terminal's stack.
+// File scope rather than a backend member because leave_terminal() and
+// enter_terminal() are free functions reached from a signal handler, where
+// there is no object to ask -- the same reason g_restore is where it is.
+// A plain bool for the same reason: a handler may read it at any moment.
+bool g_kbd_pushed = false;
+
 // Give the terminal back. Does NOT disarm: SIGTSTP hands it back and SIGCONT
 // takes it again, any number of times, and only the fatal path is once.
 void leave_terminal() {
 	if (!g_restore.armed) return;
 	if (g_restore.tty) {
+		// The keyboard protocol comes off FIRST, before the alternate
+		// screen goes, for the reason every restore sequence is ordered:
+		// undo in the reverse order of doing, so nothing is left set on a
+		// terminal this process no longer owns.
+		if (g_kbd_pushed) {
+			const char pop[] = "\033[<u";
+			const ssize_t p = ::write(STDOUT_FILENO, pop, sizeof(pop) - 1);
+			(void)p;
+		}
 		const ssize_t n = ::write(STDOUT_FILENO, kLeave, sizeof(kLeave) - 1);
 		(void)n;                         // nothing useful to do in a handler
 	}
@@ -560,6 +581,15 @@ void enter_terminal() {
 	if (g_restore.tty) {
 		const ssize_t n = ::write(STDOUT_FILENO, kEnter, sizeof(kEnter) - 1);
 		(void)n;
+		// And the keyboard flags again, because a pop happened on the way
+		// out and a stop-and-continue goes through both. Without this a
+		// Ctrl+Z and an fg would silently take Ctrl+Shift+letter away for
+		// the rest of the run.
+		if (g_kbd_pushed) {
+			const char push[] = "\033[>1u";
+			const ssize_t p = ::write(STDOUT_FILENO, push, sizeof(push) - 1);
+			(void)p;
+		}
 	}
 }
 
@@ -695,6 +725,30 @@ void AnsiBackend::resume() {
 	//         terminal window or tab. Qtty::terminal_focused() is where it
 	//         ends up, and the focus mark is what it decides.
 	if (tty_out_) write_out(kEnter);
+	// AND THE KITTY KEYBOARD PROTOCOL, pushed rather than set: CSI > <flags> u
+	// puts qtty's flags on the terminal's own stack and CSI < u pops them on
+	// the way out, so a program qtty shells out to -- an editor, a pager --
+	// gets the terminal back as it found it. Setting the flags outright
+	// would leave whatever this process chose in place for whoever came
+	// next.
+	//
+	// FLAG 1 ALONE, "disambiguate escape codes", which is the conservative
+	// member of the set. It sends the keys a legacy encoding cannot express
+	// -- Ctrl+Shift+letter, and a lone Escape that no longer has to be told
+	// from the start of a sequence by a timer -- and leaves ordinary typing
+	// as ordinary bytes. The louder flags report every key press and release
+	// and would turn text entry into a stream of events this decoder does
+	// not want.
+	//
+	// Only where the terminal answered the query. A push to a terminal that
+	// does not implement the protocol is an unknown CSI and would be
+	// ignored, so this is caution rather than necessity -- but the pop on
+	// the way out is not: popping a stack that was never pushed is the one
+	// half that could do harm.
+	if (tty_out_ && caps_.kbd_protocol) {
+		write_out("\033[>1u");
+		g_kbd_pushed = true;
+	}
 
 	// SIGPIPE would kill the process outright when the far end of the output
 	// goes away, and for a terminal program that is an ordinary event: the
@@ -1801,20 +1855,39 @@ int AnsiBackend::parse_csi(QByteArray &prefix, QVector<int> &params,
 	while (i < pending_.size() && strchr("<>?!", pending_[i]))
 		prefix.append(pending_[i++]);
 	int value = -1;
+	// SUB-PARAMETERS, which ECMA-48 separates with ':' and which this parser
+	// did not know about. They are not exotic: the kitty keyboard protocol
+	// puts an alternate key in one (CSI 97:65;2u) and an event type in
+	// another (CSI 97;1:3u), and a terminal may send either.
+	//
+	// The cost of not knowing was total rather than cosmetic, and it is the
+	// same failure the intermediate bytes below were added for. A ':' is
+	// 0x3a, which is neither a digit nor an intermediate, so it became the
+	// FINAL -- and 0x3a is under 0x40, so this returned "still arriving"
+	// for ever. Every key behind that sequence was stuck behind it.
+	//
+	// The first value of each parameter is kept and the rest are skipped,
+	// which is what every reader here wants: the primary value is the key
+	// or the mode, and the sub-parameters refine it.
+	bool in_sub = false;
 	while (i < pending_.size()) {
 		const char c = pending_[i];
 		if (c >= '0' && c <= '9') {
-			value = (value < 0 ? 0 : value) * 10 + (c - '0');
+			if (!in_sub) value = (value < 0 ? 0 : value) * 10 + (c - '0');
+			++i;
+		} else if (c == ':') {
+			in_sub = true;
 			++i;
 		} else if (c == ';') {
 			params.append(value < 0 ? 0 : value);
 			value = -1;
+			in_sub = false;
 			++i;
 		} else {
 			break;
 		}
 	}
-	if (value >= 0) params.append(value);
+	if (value >= 0 || in_sub) params.append(value < 0 ? 0 : value);
 
 	// Intermediate bytes, 0x20 to 0x2F, which ECMA-48 puts between the
 	// parameters and the final. Without this the parser waited for a final it
@@ -1970,6 +2043,56 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 	if (final == 'y' && inter == QByteArrayLiteral("$")) {
 		scan_caps(QByteArrayLiteral("\033[?") + params_to_bytes(params)
 		              + QByteArrayLiteral("$y"), caps_);
+		return true;
+	}
+	// The kitty keyboard protocol, both directions, told apart by the '?'
+	// the terminal puts on its REPLY. CSI ? <flags> u is an answer about the
+	// terminal; CSI <code> ; <modifiers> u is a key.
+	if (final == 'u' && prefix == QByteArrayLiteral("?")) {
+		scan_caps(QByteArrayLiteral("\033[?") + params_to_bytes(params)
+		              + QByteArrayLiteral("u"), caps_);
+		return true;
+	}
+	if (final == 'u' && prefix.isEmpty() && !params.isEmpty()) {
+		// The modifier parameter is the same 1 + bitmask every other key
+		// here uses, so the three lines below are the ones emit_function_key
+		// uses. Super, hyper, meta, caps lock and num lock occupy the higher
+		// bits and are dropped: KeyEvent has three modifiers and there is
+		// nowhere honest to put a fourth.
+		const int mods = param(1, 1) - 1;
+		KeyEvent k;
+		k.shift = mods & 1;
+		k.alt   = mods & 2;
+		k.ctrl  = mods & 4;
+		const int code = params[0];
+		// The keys that have a legacy encoding AND an ambiguity worth
+		// removing. Escape is the whole point of the disambiguating flag:
+		// without the protocol a lone ESC and the start of a sequence are
+		// the same byte, which is why every terminal program waits on a
+		// timer to tell them apart.
+		switch (code) {
+		case 27:  k.qt_key = Qt::Key_Escape; break;
+		case 13:  k.qt_key = Qt::Key_Return; break;
+		case 9:   k.qt_key = Qt::Key_Tab; break;
+		case 127: k.qt_key = Qt::Key_Backspace; break;
+		default:
+			// A PRINTABLE ONLY AS PART OF A CHORD, and that is a limit
+			// rather than an oversight. The protocol reports the key's
+			// UNSHIFTED codepoint and puts the shifted text in a
+			// sub-parameter this parser drops, so emitting text from one
+			// would deliver "a" for Shift+A. With the disambiguating flag
+			// alone a plain or shift-only printable still arrives as its
+			// own bytes, so nothing is lost by declining it here -- and
+			// what is gained is the chord a control byte cannot express.
+			if (code < 0x20 || code > 0x7e) return true;   // consumed
+			if (!k.ctrl && !k.alt) return true;            // plain text path
+			// Qt's key codes ARE the ASCII values for the printable range,
+			// uppercased for letters, so no table is needed and none can
+			// go stale.
+			k.qt_key = code >= 'a' && code <= 'z' ? code - 'a' + 'A' : code;
+			break;
+		}
+		sink_->on_key(k);
 		return true;
 	}
 	// Device attributes. The reply to our own fence, and unsolicited from

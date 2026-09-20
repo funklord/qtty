@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1779 checks, 0 failures. `make check` is green and includes
+1789 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -17794,6 +17794,101 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.270 The chord no terminal could send (2026-09-20)
+
+8.254 recorded, in passing, that `Ctrl+Shift+C` arrives as plain
+`Ctrl+C`: "no CSU / `modifyOtherKeys` decoding exists here". That is not
+a decoding gap, it is a **wire** gap -- a control byte is one of
+thirty-two values and carries no shift bit, so on a legacy terminal the
+two chords are the same three bytes. An application binding
+`Ctrl+Shift+anything` was binding a chord nothing could send, and the
+menu entry beside it said the key existed.
+
+The **kitty keyboard protocol** is the way out, and qtty now speaks
+enough of it to close that gap.
+
+#### What was added
+
+- **The query.** `CSI ? u` joins the batched startup probe, before the
+  DA1 fence. A terminal that implements the protocol answers
+  `CSI ? <flags> u`; one that does not ignores an unknown CSI, which is
+  the same argument the kitty graphics query already rests on. Only the
+  PRESENCE of a reply is kept: the flags describe the state the terminal
+  is in, which is the state qtty is about to change.
+- **The push, and the pop.** `CSI > 1 u` on entry and `CSI < u` on the
+  way out -- pushed onto the terminal's own stack rather than set, so a
+  program qtty shells out to gets the terminal as it found it. It is
+  re-pushed by `enter_terminal()`, because a stop and a continue go
+  through the pop and would otherwise take the feature away silently for
+  the rest of the run.
+- **Flag 1 alone**, "disambiguate escape codes", which is the
+  conservative member: it sends the keys a legacy encoding cannot
+  express and leaves ordinary typing as ordinary bytes. The louder flags
+  report every press and release.
+- **The decode.** `CSI <code> ; <modifiers> u`, with the same `1 + bits`
+  mask every other key here uses. Escape, Return, Tab and Backspace by
+  code; a printable ONLY as part of a chord.
+- **`Capabilities::keyboard_protocol`**, true only where qtty pushed the
+  flags, and a row in `qtty-negotiate --probes` -- which is where
+  somebody whose binding does nothing will look.
+
+#### The limit, stated rather than discovered
+
+A plain or shift-only printable in `CSI u` form is **declined**. The
+protocol reports the key's UNSHIFTED codepoint and puts the shifted text
+in a sub-parameter, so emitting text from one would deliver `a` for
+`Shift+A`. With the disambiguating flag alone such a key still arrives
+as its own bytes, so nothing is lost -- and what is gained is the chord
+a control byte cannot express. Two checks pin the decline so that a
+later flag cannot quietly start guessing.
+
+#### A wedge found on the way, and it was not hypothetical
+
+`parse_csi()` did not know about **sub-parameters**. A `:` is 0x3a,
+which is neither a digit nor an intermediate byte, so it became the
+FINAL -- and 0x3a is below 0x40, so the parser answered "still arriving"
+for ever and **every key behind that sequence was stuck behind it**.
+This is the same failure the intermediate bytes were added for, in the
+same function, and the kitty protocol reaches it immediately: an
+alternate key is `CSI 97:65;2u` and an event type is `CSI 97;1:3u`.
+
+The first value of each parameter is kept and the rest skipped. Its
+sabotage entry reddens **64 checks**, which is the shape of the defect
+rather than a badly aimed entry: a wedged decoder loses everything after
+it.
+
+#### The checks
+
+Eleven. Ctrl+Shift+C decodes; **the same chord by both roads is
+byte-identical**, with the legacy control byte as the reference, because
+a quit key, a shortcut and a mnemonic must not behave differently
+depending on the user's terminal; `CSI 27u` is an Escape that needed no
+timer; a plain and a shift-only printable are declined; a sub-parameter
+is skipped AND the key behind it still arrives; the reply is read as an
+answer rather than typed at the application; the query carries `CSI ? u`;
+and a `CSI ? <flags> u` reply is told apart from a DECRPM answer sharing
+its prefix.
+
+    the keyboard protocol is never asked about      1 red
+    a DECRPM answer is read as the keyboard protocol 1 red
+    the protocol's shift bit is discarded            2 red
+    a colon in a CSI sequence wedges the parser     64 red
+
+#### What is NOT covered, and what it would take
+
+The push and pop are not asserted on the wire. They are written only
+where the terminal answered the query, and no terminal in the suite
+does: the pty fixtures answer nothing, so the bytes are correctly never
+sent and a check would be asserting an absence. Reaching them needs a
+fake terminal that replies `CSI ? 1 u` to the probe, which the
+capability collector could be given -- it reads a file descriptor -- and
+that is the next piece of work here rather than a gap to leave silent.
+
+Key RELEASE, the alternate-key sub-parameter and the functional-key
+range above 57344 are all unimplemented, and deliberately: each needs a
+louder flag, and the louder flags change what ordinary typing looks
+like.
+
 ### 8.269 Two fixes built, both refused by the suite (2026-09-20)
 
 8.268 made a `QKeySequenceEdit` say it has the focus. The next question
@@ -18054,7 +18149,7 @@ mnemonic available the question is smaller than it looked, but it is
 still the copyright holder's: **should qtty give a tool box's headers a
 tab stop for applications that have not put a letter in the title?**
 
-#### The checks
+#### The eleven checks
 
 Six, written as a population with its zeroes: a tool box names two, a
 calendar none, a table's corner none, a closable tab bar two, and a

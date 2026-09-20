@@ -71,6 +71,21 @@ struct Capabilities {
 	// pale ground, which is unreadable.
 	bool foreground_known = false;
 	QColor foreground;
+
+	// The terminal speaks the kitty keyboard protocol, and qtty has asked it
+	// to disambiguate its escape codes.
+	//
+	// It is here because a legacy terminal CANNOT SAY Ctrl+Shift+C: a
+	// control byte is one of 32 values and carries no shift bit, so every
+	// Ctrl+Shift+letter arrives as the plain control chord, and an
+	// application binding one is binding a chord nothing can send. With the
+	// protocol on, such a key arrives as CSI <code> ; <modifiers> u and the
+	// shift is in the modifiers.
+	//
+	// True means BOTH that the terminal answered CSI ? u and that qtty
+	// pushed its own flags, which is one fact rather than two: qtty pushes
+	// only where the answer came back, and pops on the way out.
+	bool keyboard_protocol = false;
 };
 
 enum class CursorShape { Block, Underline, Bar, Hidden };

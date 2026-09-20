@@ -331,6 +331,17 @@ QByteArray caps_query() {
 	    // one reply each.
 	    "\033]4;0;?;1;?;2;?;3;?;4;?;5;?;6;?;7;?"
 	    ";8;?;9;?;10;?;11;?;12;?;13;?;14;?;15;?\033\\"
+	    // The kitty keyboard protocol: "what are your current flags". A
+	    // terminal that implements it answers CSI ? <flags> u, and one that
+	    // does not ignores an unknown CSI as it ignores any other -- which
+	    // is what makes this safe to send blind, the same argument the
+	    // kitty graphics query above rests on.
+	    //
+	    // It is asked because a terminal cannot otherwise SAY Ctrl+Shift+C.
+	    // A control byte carries no shift bit, so every Ctrl+Shift+letter
+	    // arrives as the plain control chord and an application binding one
+	    // is binding something no terminal can send.
+	    "\033[?u"
 	    // Device attributes, doubling as the sixel probe and as the fence.
 	    "\033[c");
 }
@@ -350,8 +361,30 @@ QVector<int> queried_modes() {
 	return modes;
 }
 
+// The kitty keyboard protocol's reply, CSI ? <flags> u. Only its PRESENCE is
+// read: the flags say what the terminal is doing now, and qtty is about to
+// push its own.
+//
+// Anchored on the whole shape rather than on "?" and "u" separately, because
+// a reply is not the only thing in the buffer -- a DECRPM answer is
+// CSI ? 1006 ; 1 $ y and shares the prefix, and type-ahead can put anything
+// between them.
+static void scan_kbd(const QByteArray &buf, TermCaps &out) {
+	int i = 0;
+	while ((i = buf.indexOf("\033[?", i)) >= 0) {
+		int j = i + 3;
+		while (j < buf.size() && buf[j] >= '0' && buf[j] <= '9') ++j;
+		if (j > i + 3 && j < buf.size() && buf[j] == 'u') {
+			out.kbd_protocol = true;
+			return;
+		}
+		i += 3;
+	}
+}
+
 void scan_caps(const QByteArray &buf, TermCaps &out) {
 	if (find_kitty(buf)) out.kitty = true;
+	scan_kbd(buf, out);
 	scan_tcap(buf, out);
 	scan_osc_color(buf, QByteArrayLiteral("\033]11;rgb:"), out.bg_known, out.bg);
 	scan_osc_color(buf, QByteArrayLiteral("\033]10;rgb:"), out.fg_known, out.fg);

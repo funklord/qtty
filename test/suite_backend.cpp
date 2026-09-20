@@ -303,6 +303,72 @@ int suite_backend() {
 	feed("\033[16~");
 	CHECK(rec.keys.isEmpty(), "and 16~ is consumed without inventing a key");
 
+	// THE KITTY KEYBOARD PROTOCOL, which is the only way a terminal can say
+	// Ctrl+Shift+C at all. A control byte is one of 32 values and carries no
+	// shift bit, so the legacy encoding folds every Ctrl+Shift+letter onto
+	// the plain control chord -- an application binding one was binding a
+	// chord nothing could send.
+	feed("\033[99;6u");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_C
+	      && rec.keys[0].ctrl && rec.keys[0].shift && !rec.keys[0].alt,
+	      "CSI 99;6u decodes as Ctrl+Shift+C, which no control byte can "
+	      "express");
+	// THE SAME CHORD BY BOTH ROADS MUST BE THE SAME EVENT, or a quit key, a
+	// shortcut and a mnemonic all behave differently depending on which
+	// terminal the user has. The legacy control byte is the reference.
+	feed("\003");
+	const KeyEvent legacy = rec.keys.value(0);
+	feed("\033[99;5u");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == legacy.qt_key
+	      && rec.keys[0].text == legacy.text
+	      && rec.keys[0].ctrl == legacy.ctrl
+	      && rec.keys[0].alt == legacy.alt
+	      && rec.keys[0].shift == legacy.shift,
+	      "and plain Ctrl+C is byte-identical whichever encoding carried "
+	      "it");
+	// Escape is what the disambiguating flag is FOR: without it a lone ESC
+	// and the first byte of a sequence are the same byte, which is why a
+	// terminal program has to tell them apart on a timer.
+	feed("\033[27u");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Escape
+	      && !rec.keys[0].ctrl,
+	      "CSI 27u is an Escape that needed no timer to recognise");
+	// A plain printable is declined rather than guessed at. The protocol
+	// reports the UNSHIFTED codepoint and puts the shifted text in a
+	// sub-parameter, so emitting text here would deliver "a" for Shift+A.
+	// With the disambiguating flag alone such a key still arrives as its
+	// own bytes, so nothing is lost.
+	feed("\033[97u");
+	CHECK(rec.keys.isEmpty(),
+	      "an unmodified printable in CSI u form is consumed rather than "
+	      "guessed at, its shifted text being in a sub-parameter");
+	feed("\033[97;2u");
+	CHECK(rec.keys.isEmpty(), "and so is a shift-only one");
+	// The terminal's own ANSWER shares the final and must not become a key.
+	// It is told apart by the '?' the reply carries, which is the same rule
+	// the DECRPM branch above it uses.
+	feed("\033[?1u");
+	CHECK(rec.keys.isEmpty(),
+	      "the protocol's reply is read as an answer rather than typed at "
+	      "the application");
+
+	// SUB-PARAMETERS, which this parser did not know about and which wedged
+	// it: ':' is neither a digit nor an intermediate byte, so it became the
+	// final -- and 0x3a is under 0x40, so the parser said "still arriving"
+	// for ever and every key behind the sequence was stuck behind it. The
+	// kitty protocol puts an alternate key in one and an event type in
+	// another, so this is reachable from the moment the protocol is on.
+	feed("\033[99:67;6u");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_C
+	      && rec.keys[0].ctrl && rec.keys[0].shift,
+	      "a sub-parameter is skipped rather than swallowing the parser");
+	// AND THE KEY AFTER IT ARRIVES, which is the half that says the wedge
+	// is gone rather than that one sequence was read.
+	feed("\033[99:67;6u\033[A");
+	CHECK(rec.keys.size() == 2 && rec.keys[1].qt_key == Qt::Key_Up,
+	      "and the key behind it is not lost, which is what a wedged "
+	      "parser cost");
+
 	// THE NUMERIC KEYPAD, which arrives as SS3 too and was being dropped.
 	// In application keypad mode every key on it is an SS3, and the
 	// decoder's default consumed them silently -- so the whole keypad,
@@ -942,6 +1008,23 @@ int suite_backend() {
 		      " say whether the terminal is dark");
 		CHECK(q.contains("\033]4;0;?") && q.contains(";15;?"),
 		      "and for the low sixteen of the palette, not all 256");
+		CHECK(q.contains("\033[?u"),
+		      "and whether the terminal speaks the keyboard protocol, "
+		      "without which no Ctrl+Shift+letter can reach an application");
+		{
+			// The reply, and the control beside it. A DECRPM answer shares
+			// the CSI ? prefix -- CSI ? 1006 ; 1 $ y -- so a scan that
+			// looked for "?" and "u" separately would read one as the
+			// other, and every terminal that answers DECRPM would be
+			// reported as speaking a protocol it has never heard of.
+			TermCaps spoken;
+			scan_caps("\033[?1u", spoken);
+			TermCaps silent;
+			scan_caps("\033[?1006;1$y\033[?62;4c", silent);
+			CHECK(spoken.kbd_protocol && !silent.kbd_protocol,
+			      "a CSI ? <flags> u reply says the keyboard protocol is "
+			      "there, and a DECRPM answer sharing its prefix does not");
+		}
 		CHECK(q.contains("\033[?1006$p") && q.contains("\033[?2004$p")
 		      && q.contains("\033[?1004$p") && q.contains("\033[?2026$p"),
 		      "and asks about the modes it had been assuming");

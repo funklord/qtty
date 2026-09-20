@@ -373,6 +373,30 @@ one does not reach the binding: `Ctrl+Shift+K` is not the kill, and a
 shifted control chord on a terminal usually belongs to the terminal
 emulator rather than to the program inside it.
 
+**And whether a shifted control chord reaches you at all depends on the
+terminal.** A control byte is one of thirty-two values and carries no
+shift bit, so on a legacy terminal `Ctrl+Shift+C` and `Ctrl+C` are the
+same three bits on the wire -- an application binding the first is
+binding a chord nothing can send. Terminals that speak the **kitty
+keyboard protocol** can say it, and qtty asks: it sends `CSI ? u` with
+its other startup probes, pushes the disambiguating flag when the
+terminal answers, and pops it on the way out. Such a key then arrives as
+`CSI <code>;<modifiers>u` with the shift in the modifiers.
+
+Ask your terminal before you rely on it:
+
+    qtty-negotiate --probes | grep keyboard
+
+`Qtty::Capabilities::keyboard_protocol` is the same answer in code. Where
+it is false, treat a shifted control chord as unavailable rather than as
+unbound -- there is nothing an application can do about it, and a binding
+nobody can reach is worse than no binding, because the menu entry beside
+it says the key exists.
+
+The same flag is what makes a lone `Escape` immediate rather than a
+chord waiting on a timer, which is what "disambiguate escape codes"
+means.
+
 **`F10` is the way into a menu bar whose titles carry no mnemonic**, and
 without it there is none: a `QMenuBar` is `Qt::NoFocus`, is in no tab
 chain, and Qt reaches it by `Alt` -- which needs a `&` in the title. So a

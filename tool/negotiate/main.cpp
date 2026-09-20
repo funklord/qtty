@@ -244,6 +244,12 @@ int main(int argc, char **argv) {
 	                            .arg(QColor(pal[0]).name(), QColor(pal[1]).name())));
 	fprintf(out, "mouse                %s\n", c.mouse ? "yes" : "no");
 	fprintf(out, "bracketed paste      %s\n", c.bracketed_paste ? "yes" : "no");
+	// What a user comes to this tool to find out when a binding of theirs
+	// does nothing: without the keyboard protocol no Ctrl+Shift+letter can
+	// reach an application at all, whatever the application binds.
+	fprintf(out, "keyboard protocol    %s\n",
+	        c.keyboard_protocol ? "yes -- Ctrl+Shift+letter can arrive"
+	                            : "no -- Ctrl+Shift+letter folds onto Ctrl+letter");
 
 	if (probes) {
 		fprintf(out, "\n-- probes --\n");
@@ -265,6 +271,8 @@ int main(int argc, char **argv) {
 		fprintf(out, "CSI 14t text size    %s\n", probed.text_px.isValid() ? "answered" : "silent");
 		fprintf(out, "OSC 4 palette        %s\n",
 		        probed.palette16.isEmpty() ? "silent" : "answered");
+		fprintf(out, "CSI ? u keyboard     %s\n",
+		        probed.kbd_protocol ? "answered" : "silent");
 		// The tri-state, which is the point of the mode: -1 is silence and 0
 		// is a terminal saying it does not recognise the mode. They are
 		// different facts and qtty keeps them apart everywhere but here.

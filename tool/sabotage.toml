@@ -4548,3 +4548,47 @@ find = "\t\t\t\tif (focus_reaches(w) && !caret_will_mark_focus())"
 into = "\t\t\t\tif (focus_reaches(w))"
 count = 1
 check = "and a plain line edit still draws no mark of its own"
+
+[[sabotage]]
+# The protocol never asked for, so no terminal can say Ctrl+Shift+letter
+# and the whole feature is inert while every other check stays green.
+# 8.270.
+name = "the keyboard protocol is never asked about"
+file = "src/backend/ansi/term_caps.cpp"
+find = "\t    \"\\033[?u\"\n"
+into = ""
+count = 1
+check = "and whether the terminal speaks the keyboard protocol"
+
+[[sabotage]]
+# The reply read by prefix and final separately, so a DECRPM answer --
+# CSI ? 1006 ; 1 $ y, which every terminal that answers DECRQM sends --
+# is read as the keyboard protocol. 8.270.
+name = "a DECRPM answer is read as the keyboard protocol"
+file = "src/backend/ansi/term_caps.cpp"
+find = "\t\tif (j > i + 3 && j < buf.size() && buf[j] == 'u') {"
+into = "\t\tif (j > i + 3) {"
+count = 1
+check = "a CSI ? <flags> u reply says the keyboard protocol is there"
+
+[[sabotage]]
+# The shift bit dropped from the modifier mask, which folds
+# Ctrl+Shift+letter back onto Ctrl+letter -- the exact state the
+# protocol was added to escape. 8.270.
+name = "the protocol's shift bit is discarded"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tk.shift = mods & 1;\n\t\tk.alt   = mods & 2;\n\t\tk.ctrl  = mods & 4;\n\t\tconst int code = params[0];"
+into = "\t\tk.shift = false;\n\t\tk.alt   = mods & 2;\n\t\tk.ctrl  = mods & 4;\n\t\tconst int code = params[0];"
+count = 1
+check = "CSI 99;6u decodes as Ctrl+Shift+C"
+
+[[sabotage]]
+# Sub-parameters unknown again: ':' becomes the final, 0x3a is under
+# 0x40, and the parser waits for ever -- taking every key behind the
+# sequence with it. 8.270.
+name = "a colon in a CSI sequence wedges the parser"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t} else if (c == ':') {\n\t\t\tin_sub = true;\n\t\t\t++i;"
+into = "\t\t} else if (c == ':' && false) {\n\t\t\tin_sub = true;\n\t\t\t++i;"
+count = 1
+check = "and the key behind it is not lost"
