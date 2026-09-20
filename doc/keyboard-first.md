@@ -1544,6 +1544,31 @@ while `Qtty::shell_out()` has handed the screen to an editor or a pager:
 the terminal is that program's for the duration, and a BEL arriving then
 rings for it rather than for you.
 
+**And the desktop's own notification is available to a program with no
+display**, which is `QSystemTrayIcon::showMessage()` and reaches the
+same bubble a windowed build would put up:
+
+```cpp
+if (Qtty::SystemTrayIcon::messages_available())
+    tray.show_message("Backup", "finished", "drive-harddisk");
+```
+
+It is a **second** service rather than part of the tray -- a desktop's
+bubbles come from `org.freedesktop.Notifications` and the
+StatusNotifierItem specification has no notification method -- so ask
+about it separately: a machine can have one and not the other, and a
+server usually has neither. `show_message()` returns whether the desktop
+took it, which is the answer to act on.
+
+Successive messages **replace** each other rather than stacking, as a
+desktop application's single balloon does, so a program reporting
+progress leaves no column behind it.
+
+`message_clicked()` exists and fires only where the notification daemon
+supports actions -- qtty asks it, and sends none where it does not. So
+do not read the absence of that signal as the absence of a click:
+`show_message()` returning true is what says the user was told.
+
 ## Modal dialogs and `exec()`
 
 `if (dialog.exec() == QDialog::Accepted)` works, and the terminal goes on

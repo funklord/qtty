@@ -17794,6 +17794,66 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.271 The tray could not say anything (2026-09-20)
+
+`qtty/tray.h` opens by saying its API is `QSystemTrayIcon`'s "so an
+application writes one class and gets a tray in a windowed build and in
+a terminal build alike". The most-used method of that class was not
+there: **`showMessage()`**. An application saying *backup finished* got
+nothing and had to write the branch the header exists to avoid.
+
+#### It is a second service, and that is the whole design
+
+The StatusNotifierItem specification has no notification method. A
+desktop's bubbles come from `org.freedesktop.Notifications`, a separate
+name on the same bus -- so `messages_available()` is asked separately
+from `is_available()`, because a machine can run one and not the other
+and a server usually runs neither. The argument is the header's own,
+one service along: the medium was never missing, only the question.
+
+    messages_available()                     is the daemon there
+    show_message(title, body, icon, timeout) Notify, returns whether it went
+    message_clicked()                        ActionInvoked, filtered
+
+Three things are worth more than the signatures:
+
+- **`replaces_id` is the last id this object was given**, so a program
+  reporting progress replaces its own bubble instead of leaving a
+  column of them. That is what a desktop application does and what
+  `QSystemTrayIcon`'s single balloon looks like.
+- **Actions are asked for, not assumed.** `Notify` takes a list of
+  actions and a daemon without them either ignores it or refuses the
+  call, so `GetCapabilities` is consulted once per object and the
+  action is sent only where it can be honoured. `message_clicked()` is
+  therefore a signal an application gets only where a click can be
+  reported -- and the header says so, because the absence of the signal
+  must not be read as the absence of a click.
+- **The id filter.** `ActionInvoked` is a BROADCAST: every program on
+  the bus sees every click. Without the filter a program would report a
+  click on somebody else's notification.
+
+#### What the fixture could and could not do
+
+`qtty-tray-check` runs under `dbus-run-session` and grew a stand-in
+daemon. Sixteen checks now, including the negative first -- no daemon,
+no messages, and `show_message()` returning false rather than claiming
+the user was told.
+
+**The bus delivery of the click is not exercised, and three attempts
+say why.** D-Bus does not loop a signal back to the connection that
+emitted it, so a stand-in sharing this program's connection cannot
+deliver `ActionInvoked` to it: measured, the bubble went out, the click
+was emitted and nothing arrived. Moving the daemon to its own
+connection deadlocked instead -- `Notify` is a blocking call whose
+answer would have had to come from the same thread, and it timed out.
+Moving it to a thread of its own crashed the tool before it printed a
+line.
+
+What is exercised is the slot and its two filters, which is where the
+logic is; what is not is the single `QDBusConnection::connect()` that
+routes to it, and proving that needs a second PROCESS. Recorded rather
+than left looking proven.
+
 ### 8.270 The chord no terminal could send (2026-09-20)
 
 8.254 recorded, in passing, that `Ctrl+Shift+C` arrives as plain

@@ -19,6 +19,62 @@ static void check(bool ok, const char *what) {
 
 // Enough of org.kde.StatusNotifierWatcher for a real item to register
 // against it, and nothing more. What it records is what a desktop would.
+// A STAND-IN NOTIFICATION DAEMON, which is a second service rather than
+// part of the tray: org.freedesktop.Notifications is what a desktop's
+// bubbles come from, and the StatusNotifierItem specification has no
+// notification method at all. It records what it was told so the check can
+// read the arguments back rather than merely observing that a call
+// happened.
+class Notifier : public QObject {
+	Q_OBJECT
+	Q_CLASSINFO("D-Bus Interface", "org.freedesktop.Notifications")
+public:
+	// Whether this stand-in claims to support actions. Both states are
+	// exercised, because the whole of message_clicked()'s contract is that
+	// it fires only where a click can be reported.
+	QStringList caps;
+	QString app, summary, body, icon;
+	QStringList actions;
+	uint replaces = 0;
+	int timeout = 0;
+	int notifies = 0;
+	uint next = 1;
+	// Read from the main thread while the daemon thread writes, so every
+	// field goes through this. A test that raced here would fail rarely
+	// and blame the library.
+	mutable QMutex lock;
+	bool ready = false;
+	uint last_id() { QMutexLocker g(&lock); return next - 1; }
+	QString summary_of() { QMutexLocker g(&lock); return summary; }
+	QString body_of() { QMutexLocker g(&lock); return body; }
+	QString icon_of() { QMutexLocker g(&lock); return icon; }
+	QString app_of() { QMutexLocker g(&lock); return app; }
+	QStringList actions_of() { QMutexLocker g(&lock); return actions; }
+	int timeout_of() { QMutexLocker g(&lock); return timeout; }
+	uint replaces_of() { QMutexLocker g(&lock); return replaces; }
+	void set_caps(const QStringList &c) { QMutexLocker g(&lock); caps = c; }
+signals:
+	// What the daemon broadcasts when the user clicks a bubble's button.
+	// It is a BROADCAST: every program on the bus sees every click, which
+	// is why the library filters on the ids it sent.
+	void ActionInvoked(uint id, const QString &action);
+public slots:
+	// Emitted from the daemon's own thread, so the signal leaves on the
+	// daemon's connection -- which is the whole reason the thread exists.
+	void emit_action(uint id, const QString &action) {
+		emit ActionInvoked(id, action);
+	}
+	QStringList GetCapabilities() { QMutexLocker g(&lock); return caps; }
+	uint Notify(const QString &a, uint r, const QString &ic, const QString &s,
+	            const QString &b, const QStringList &acts, const QVariantMap &,
+	            int t) {
+		QMutexLocker g(&lock);
+		app = a; replaces = r; icon = ic; summary = s; body = b;
+		actions = acts; timeout = t; ++notifies;
+		return next++;
+	}
+};
+
 class Watcher : public QObject {
 	Q_OBJECT
 	Q_CLASSINFO("D-Bus Interface", "org.kde.StatusNotifierWatcher")
@@ -217,6 +273,118 @@ int main(int argc, char **argv) {
 			++failures;
 		}
 	}
+
+	// -- NOTIFICATIONS, which are a second service and are asked about
+	//    separately. Before the daemon exists there is none, asserted first
+	//    so the positive below cannot pass on a hardcoded true.
+	check(!Qtty::SystemTrayIcon::messages_available(),
+	      "with no notification daemon, no messages are reported");
+	check(!tray.show_message(QStringLiteral("Backup"), QStringLiteral("done")),
+	      "and sending one says so rather than claiming the user was told");
+
+	Notifier daemon;
+	bus.registerObject(QStringLiteral("/org/freedesktop/Notifications"),
+	                   &daemon, QDBusConnection::ExportAllContents);
+	check(bus.registerService(QStringLiteral("org.freedesktop.Notifications")),
+	      "a stand-in notification daemon takes its name on the bus");
+	check(Qtty::SystemTrayIcon::messages_available(),
+	      "and now messages are reported available");
+
+	int clicks = 0;
+	QObject::connect(&tray, &Qtty::SystemTrayIcon::message_clicked,
+	                 [&] { ++clicks; });
+
+	// A daemon WITHOUT actions, which is the conservative half: the bubble
+	// goes out, no action list is sent, and no click can be reported.
+	daemon.set_caps(QStringList());
+	check(tray.show_message(QStringLiteral("Backup"),
+	                        QStringLiteral("finished"),
+	                        QStringLiteral("drive-harddisk"), 5000),
+	      "a notification from a program with no display");
+	check(daemon.summary_of() == QStringLiteral("Backup")
+	      && daemon.body_of() == QStringLiteral("finished")
+	      && daemon.icon_of() == QStringLiteral("drive-harddisk")
+	      && daemon.timeout_of() == 5000,
+	      "and it carried the title, the body, the icon and the timeout");
+	check(daemon.app_of() == QStringLiteral("qtty-tray-check"),
+	      "under the application's own name, which is what the desktop "
+	      "groups and mutes by");
+	check(daemon.actions_of().isEmpty(),
+	      "with no actions asked of a daemon that has none, which is what "
+	      "keeps message_clicked() from being a signal that cannot fire");
+
+	// The REPLACES id, which is why a program reporting progress does not
+	// leave a column of bubbles behind it.
+	const uint first = daemon.last_id();
+	check(tray.show_message(QStringLiteral("Backup"),
+	                        QStringLiteral("still going")),
+	      "a second notification is sent");
+	check(daemon.replaces_of() == first,
+	      "and replaces the first rather than stacking on it");
+
+	// A daemon WITH actions, and a second icon object because the
+	// capability is asked once per object -- which is a property of the
+	// daemon and not of the program, so asking again would be a round trip
+	// per message.
+	daemon.set_caps(QStringList() << QStringLiteral("actions"));
+	Qtty::SystemTrayIcon acting;
+	int acting_clicks = 0;
+	QObject::connect(&acting, &Qtty::SystemTrayIcon::message_clicked,
+	                 [&] { ++acting_clicks; });
+	check(acting.show_message(QStringLiteral("Update"),
+	                          QStringLiteral("ready to install")),
+	      "a notification to a daemon that has actions");
+	check(daemon.actions_of().contains(QStringLiteral("default")),
+	      "carries a default action, without which no click could be "
+	      "reported at all");
+	const uint mine = daemon.last_id();
+	// THE CLICK IS SENT FROM A SECOND CONNECTION, and that is not
+	// fussiness. D-Bus does not loop a signal back to the connection that
+	// emitted it, so a stand-in daemon sharing the library's connection
+	// can never deliver ActionInvoked to it -- measured: the bubble went
+	// out, the click was emitted, and the program heard nothing. A real
+	// daemon is another process, so the fixture has to be another
+	// connection or it is testing a shape the world does not have.
+	//
+	// A SIGNAL rather than the whole daemon, because a blocking call whose
+	// answer must come from the same thread is a deadlock: moving the
+	// daemon's object to the second connection made Notify itself time
+	// out. A signal is fire-and-forget and has no such problem.
+	// THE CLICK IS DELIVERED BY HAND, and the reason is a limit of the
+	// fixture rather than of the feature. D-Bus does not loop a signal
+	// back to the connection that emitted it, so a stand-in daemon sharing
+	// this program's connection cannot deliver ActionInvoked to it --
+	// measured: the bubble went out, the click was emitted, and nothing
+	// arrived. Moving the daemon to its own connection deadlocks instead,
+	// Notify being a blocking call whose answer would have to come from
+	// the same thread, and moving it to a thread of its own crashed this
+	// tool before it printed a line.
+	//
+	// So what is exercised here is the SLOT and its filters, which is
+	// where the logic is; the bus delivery is the one line
+	// QDBusConnection::connect() returns true for, and proving it needs a
+	// second PROCESS. Recorded rather than left to look proven.
+	const auto click = [&](uint id, const QString &action) {
+		QMetaObject::invokeMethod(&acting, "on_action_invoked",
+		                          Qt::DirectConnection,
+		                          Q_ARG(uint, id), Q_ARG(QString, action));
+		QCoreApplication::processEvents();
+	};
+	click(mine, QStringLiteral("default"));
+	check(acting_clicks == 1, "and clicking it reaches the program");
+	// THE FILTER, which is what makes the signal a statement about THIS
+	// program: the broadcast carries every bubble's id, including other
+	// programs'.
+	click(mine + 4000, QStringLiteral("default"));
+	click(mine, QStringLiteral("something-else"));
+	check(acting_clicks == 1,
+	      "while another program's notification and another button are "
+	      "not this program's click");
+	check(clicks == 0,
+	      "and the icon that sent no action gets no click either, which is "
+	      "the contract its capability check exists to keep");
+
+	printf("test-tray: notifications checked against a stand-in daemon\n");
 
 	// Hiding drops the NAME, which is how the specification says an icon
 	// goes away -- there is no Unregister call to make.

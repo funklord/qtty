@@ -62,10 +62,49 @@ public:
 	void hide();
 	bool is_visible() const;
 
+	// A NOTIFICATION, which is QSystemTrayIcon::showMessage() and was the
+	// most-used part of that class missing from this one. An application
+	// that says "backup finished" got nothing here and had to write a
+	// branch, which is the thing this header exists to avoid.
+	//
+	// It is a SECOND desktop service, not part of the tray: the
+	// StatusNotifierItem specification has no notification method, and a
+	// desktop's bubbles come from org.freedesktop.Notifications. So it is
+	// asked about separately -- a machine can have one and not the other,
+	// and a headless server usually has neither.
+	static bool messages_available();
+
+	// Returns whether the desktop took it. `icon_name` is a freedesktop
+	// icon name, drawn by the desktop like the tray icon and never through
+	// a cell grid; empty asks for none. A negative timeout leaves the
+	// duration to the desktop, which is what QSystemTrayIcon's default
+	// argument means too, and 0 asks for one that stays until dismissed.
+	bool show_message(const QString &title, const QString &body,
+	                  const QString &icon_name = QString(),
+	                  int timeout_ms = -1);
+
 signals:
 	// The desktop reports WHICH gesture, and the reasons above mirror
 	// QSystemTrayIcon's so an existing slot needs no rewriting.
 	void activated(Qtty::SystemTrayIcon::ActivationReason reason);
+
+	// The user clicked the notification, which is QSystemTrayIcon's
+	// messageClicked().
+	//
+	// IT FIRES ONLY WHERE THE DESKTOP SUPPORTS ACTIONS, and that is asked
+	// rather than assumed: the specification's Notify takes a list of
+	// actions, a daemon that does not implement them says so in
+	// GetCapabilities, and one that is not asked reports nothing when the
+	// bubble is clicked. So an application must not treat the absence of
+	// this signal as the absence of a click -- show_message() having
+	// returned true is what says the notification went out.
+	void message_clicked();
+
+private slots:
+	// The daemon's broadcast, filtered to the notifications this object
+	// sent. Private because it is wire plumbing rather than API, and a slot
+	// because QDBusConnection::connect() takes one.
+	void on_action_invoked(uint id, const QString &action);
 
 private:
 	struct Private;

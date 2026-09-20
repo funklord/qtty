@@ -13,6 +13,8 @@
 #include <QDBusMetaType>
 #include <QDBusReply>
 #include <QImage>
+#include <QSet>
+#include <QStringList>
 #include <QVector>
 #include <functional>
 
@@ -78,6 +80,10 @@ const char *kWatcherService = "org.kde.StatusNotifierWatcher";
 const char *kWatcherPath    = "/StatusNotifierWatcher";
 const char *kItemInterface  = "org.kde.StatusNotifierItem";
 const char *kItemPath       = "/StatusNotifierItem";
+// The notification daemon, which is a different service from the tray and
+// is asked about separately: a machine can run one and not the other.
+const char *kNotifyService  = "org.freedesktop.Notifications";
+const char *kNotifyPath     = "/org/freedesktop/Notifications";
 
 } // namespace
 
@@ -167,6 +173,14 @@ struct SystemTrayIcon::Private {
 	QString service;
 	bool visible = false;
 	bool registered = false;
+	// The notification half. `sent` is what makes message_clicked() a
+	// statement about THIS object: ActionInvoked is broadcast with the id
+	// of whatever bubble was clicked, so without it a program would report
+	// a click on another program's notification.
+	bool asked_actions = false;
+	bool has_actions = false;
+	uint last_message = 0;
+	QSet<uint> sent;
 };
 
 static bool watcher_present()
@@ -262,6 +276,83 @@ void SystemTrayIcon::show()
 	const QDBusReply<void> reply =
 	    watcher.call(QStringLiteral("RegisterStatusNotifierItem"), d_->service);
 	d_->visible = reply.isValid();
+}
+
+bool SystemTrayIcon::messages_available()
+{
+	QDBusConnection bus = QDBusConnection::sessionBus();
+	if (!bus.isConnected()) return false;
+	if (!bus.interface()) return false;
+	// The same shape as is_available() above and for the same reason: a bus
+	// with nobody listening is the ordinary state of a server, and an
+	// application that told the user something into nothing has not told
+	// them.
+	const QDBusReply<bool> has =
+	    bus.interface()->isServiceRegistered(QLatin1String(kNotifyService));
+	return has.isValid() && has.value();
+}
+
+bool SystemTrayIcon::show_message(const QString &title, const QString &body,
+                                  const QString &icon_name, int timeout_ms)
+{
+	QDBusConnection bus = QDBusConnection::sessionBus();
+	if (!bus.isConnected()) return false;
+	QDBusInterface notifier(QLatin1String(kNotifyService),
+	                        QLatin1String(kNotifyPath),
+	                        QLatin1String(kNotifyService), bus);
+	if (!notifier.isValid()) return false;
+
+	// ACTIONS ONLY WHERE THE DAEMON HAS THEM. Notify takes a list, and a
+	// daemon that does not implement actions either ignores it or refuses
+	// the call -- so the capability is asked for rather than assumed, and
+	// message_clicked() is a signal an application only gets where a click
+	// can actually be reported. Asked once: the answer is a property of the
+	// daemon and the daemon does not change under a running program.
+	if (!d_->asked_actions) {
+		d_->asked_actions = true;
+		const QDBusReply<QStringList> caps =
+		    notifier.call(QStringLiteral("GetCapabilities"));
+		d_->has_actions = caps.isValid()
+		               && caps.value().contains(QStringLiteral("actions"));
+		if (d_->has_actions) {
+			// One connection, not one per message. ActionInvoked carries
+			// the id of the notification it belongs to, so the slot filters
+			// on the ids this object sent rather than reporting a click on
+			// somebody else's bubble.
+			bus.connect(QLatin1String(kNotifyService),
+			            QLatin1String(kNotifyPath),
+			            QLatin1String(kNotifyService),
+			            QStringLiteral("ActionInvoked"), this,
+			            SLOT(on_action_invoked(uint, QString)));
+		}
+	}
+
+	QStringList actions;
+	if (d_->has_actions)
+		actions << QStringLiteral("default") << QStringLiteral("Open");
+
+	// The replaces_id is the LAST id this object was given, so a program
+	// that reports progress replaces its own bubble rather than stacking a
+	// column of them -- which is what a desktop application does and what
+	// QSystemTrayIcon's single balloon looks like.
+	const QDBusReply<uint> reply = notifier.call(
+	    QStringLiteral("Notify"), d_->adaptor.id_, d_->last_message,
+	    icon_name, title, body, actions, QVariantMap(), timeout_ms);
+	if (!reply.isValid()) return false;
+	d_->last_message = reply.value();
+	d_->sent.insert(d_->last_message);
+	return true;
+}
+
+void SystemTrayIcon::on_action_invoked(uint id, const QString &action)
+{
+	// The id filter is the point: the signal is a broadcast and every
+	// program on the bus sees every click. The action is checked too, so a
+	// desktop that offers more than one button later cannot turn a
+	// different choice into this signal.
+	if (!d_->sent.contains(id)) return;
+	if (action != QStringLiteral("default")) return;
+	emit message_clicked();
 }
 
 void SystemTrayIcon::hide()
