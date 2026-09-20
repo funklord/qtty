@@ -5595,6 +5595,75 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// A CARET OR A MARK, NEVER NEITHER. A one-row editor shows focus with
+	// the terminal's cursor and draws nothing of its own -- right for a
+	// QLineEdit, and wrong for a control the cursor is not placed on.
+	// QKeySequenceEdit is that control and it is the purest "type here"
+	// widget Qt ships: its internal QLineEdit's focus proxy is the outer
+	// widget, so the focus lands on the outer, which does not carry
+	// WA_InputMethodEnabled because it takes raw key presses rather than
+	// input-method text. focus_invisible() named it and nothing else in a
+	// sweep of twenty-five standard controls.
+	//
+	// COMPARED INSIDE THE CANDIDATE'S OWN RECTANGLE, which is not a detail:
+	// the first version of this block compared whole frames, and focusing
+	// one widget takes the mark OFF another, so "the screen changed" was
+	// satisfied by the BUTTON losing its reverse. The control below caught
+	// it -- a plain line edit came out different from itself -- which is
+	// the only reason it is written this way. focus_invisible() restricts
+	// the comparison the same way and says so in its own comment.
+	{
+		const auto own_cells = [](QWidget &host, QWidget *w, int cols,
+		                          int rows) {
+			CellBuffer b(cols, rows);
+			render_once(host, b);
+			const QPoint at = w->mapTo(&host, QPoint());
+			const int x0 = at.x() / GridMetrics::cw();
+			const int y0 = at.y() / GridMetrics::ch();
+			QString sig;
+			for (int y = y0; y < y0 + qMax(1, w->height() / GridMetrics::ch())
+			                 && y < b.rows(); ++y) {
+				for (int x = x0; x < x0 + qMax(1, w->width() / GridMetrics::cw())
+				                 && x < b.cols(); ++x)
+					sig += b.at(x, y).ch
+					     + QString::number(unsigned(b.at(x, y).attrs));
+			}
+			return sig;
+		};
+		QWidget host;
+		auto *v = new QVBoxLayout(&host);
+		auto *elsewhere = new QPushButton(QStringLiteral("Elsewhere"));
+		auto *keys = new QKeySequenceEdit;
+		auto *plain = new QLineEdit(QStringLiteral("plain"));
+		v->addWidget(elsewhere);
+		v->addWidget(keys);
+		v->addWidget(plain);
+		show(host, 26, 7);
+		const auto focus_on = [&host](QWidget *w) {
+			w->setFocus();
+			set_focus_widget(w);
+			QCoreApplication::processEvents();
+		};
+		focus_on(elsewhere);
+		const QString keys_off = own_cells(host, keys, 26, 7);
+		const QString plain_off = own_cells(host, plain, 26, 7);
+		focus_on(keys);
+		const QString keys_on = own_cells(host, keys, 26, 7);
+		focus_on(plain);
+		const QString plain_on = own_cells(host, plain, 26, 7);
+		CHECK(keys_on != keys_off,
+		      "a focused key sequence edit differs inside its own cells "
+		      "from an unfocused one, the cursor not being placed on a "
+		      "widget that takes no input-method text");
+		// THE CONTROL, the same rule from the other side: a plain line edit
+		// must stay unmarked, because the caret marks it. A fix that marked
+		// every focused editor would satisfy the check above and fail here.
+		CHECK(plain_on == plain_off,
+		      "and a plain line edit still draws no mark of its own, the "
+		      "terminal's cursor being what says where the typing goes");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

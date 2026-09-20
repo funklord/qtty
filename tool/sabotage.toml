@@ -4515,3 +4515,36 @@ find = "\t\t\t\tconst int mn = mnemonic_index(tb->text);"
 into = "\t\t\t\tconst int mn = -1;"
 count = 1
 check = "and the letter it uses is underlined"
+
+[[sabotage]]
+# The caretless editor left unmarked, which is the state QKeySequenceEdit
+# shipped in: no mark and no cursor, so the field a user is about to type
+# a shortcut into says nothing. 8.268.
+name = "a focused editor with no caret draws no mark"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tif (focus_reaches(w) && !caret_will_mark_focus())\n\t\t\t\t\ta |= Attr::Reverse;"
+into = "\t\t\t\tif (false)\n\t\t\t\t\ta |= Attr::Reverse;"
+count = 1
+check = "a focused key sequence edit differs inside its own cells"
+
+[[sabotage]]
+# The proxy walk removed, so only the focus widget itself is matched.
+# QKeySequenceEdit's inner QLineEdit proxies to the outer widget, so a
+# pointer test answers no and the mark is never drawn. 8.268.
+name = "focus is matched without following the proxy chain"
+file = "src/grid/grid_style.cpp"
+find = "\tfor (const QWidget *p = w; p; p = p->focusProxy())\n\t\tif (p == f) return true;"
+into = "\tif (w == f) return true;"
+count = 1
+check = "a focused key sequence edit differs inside its own cells"
+
+[[sabotage]]
+# The caret test inverted to "always mark", which is the cheap fix: it
+# satisfies the headline and puts a reverse on every focused line edit in
+# every application. Only the control catches it. 8.268.
+name = "every focused editor is marked, caret or not"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tif (focus_reaches(w) && !caret_will_mark_focus())"
+into = "\t\t\t\tif (focus_reaches(w))"
+count = 1
+check = "and a plain line edit still draws no mark of its own"

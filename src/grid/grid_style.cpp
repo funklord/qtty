@@ -353,6 +353,39 @@ static Attrs focus_attrs(const QWidget *w) {
 	return owns_focus(w) ? Attrs(Attr::Reverse) : Attrs();
 }
 
+// The same question asked the way Qt asks it. QWidget::hasFocus() walks the
+// FOCUS PROXY CHAIN before comparing, and owns_focus() above is a pointer
+// test that does not -- so a widget Qt considers focused is answered no here
+// whenever it delegates its focus to another.
+//
+// It is not a rare arrangement. Swept over nine standard widgets with the
+// focus put on each: a QKeySequenceEdit, an editable QComboBox, a QSpinBox,
+// a QDateTimeEdit and a QFontComboBox each hold an internal QLineEdit whose
+// proxy is the outer widget, a QScrollArea proxies its viewport, and a
+// QTabWidget is the proxy of its own bar. Most of those draw nothing that
+// depends on the answer -- an inner editor is frameless, so PE_PanelLineEdit
+// returns before it asks -- which is why owns_focus() has not been changed
+// wholesale: that would move marks on widgets nobody has measured. This is
+// used where the answer is known to matter.
+static bool focus_reaches(const QWidget *w) {
+	if (!w || !terminal_focused()) return false;
+	const QWidget *const f = s_focus.data();
+	if (!f) return false;
+	for (const QWidget *p = w; p; p = p->focusProxy())
+		if (p == f) return true;
+	return false;
+}
+
+// Will the terminal's own cursor mark this focus? Compositor::compose()
+// places it on the focus widget and only when that widget carries
+// WA_InputMethodEnabled, which is Qt's marker for "accepts typed text" --
+// so a control that is focused WITHOUT that attribute gets no caret, and
+// anything that relies on the caret to show focus shows nothing at all.
+static bool caret_will_mark_focus() {
+	const QWidget *const f = s_focus.data();
+	return f && f->testAttribute(Qt::WA_InputMethodEnabled);
+}
+
 // The CURRENT item of a view that has the keys -- the one an arrow key moves
 // and Space or Return acts on. It was drawn nowhere at all: measured with a
 // full to_snapshot() so that a colour-only difference could not hide, moving
@@ -1703,10 +1736,34 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 				return;
 			}
 			if (le && le->hasFrame()) {
+				// A CARET OR A MARK, NEVER NEITHER. A one-row editor shows
+				// focus with the terminal's cursor and draws nothing of its
+				// own, which is right for a QLineEdit and wrong for a
+				// control that will not be given the cursor.
+				//
+				// QKeySequenceEdit is the case that found it, and it is the
+				// purest "type here" widget Qt ships: it holds a QLineEdit
+				// whose focus proxy is the outer widget, so the focus lands
+				// on the outer -- which does not carry
+				// WA_InputMethodEnabled, because it takes raw key presses
+				// rather than input-method text. Measured, focused and
+				// unfocused rendered the same cells to the attribute:
+				// nothing marked it and no cursor was placed on it, so the
+				// field a user is about to type a shortcut into said
+				// nothing. `focus_invisible()` named it and named nothing
+				// else in a sweep of twenty-five standard controls.
+				//
+				// The condition is the property rather than the class, so a
+				// third-party widget in the same position is covered: this
+				// panel belongs to the focused control, and that control
+				// will get no caret.
+				Attrs a = with_state(opt);
+				if (focus_reaches(w) && !caret_will_mark_focus())
+					a |= Attr::Reverse;
 				dev->buffer().put_cluster(c.left(), c.top(), QStringLiteral("["),
-				                          Color(), Color(), with_state(opt));
+				                          Color(), Color(), a);
 				dev->buffer().put_cluster(c.right(), c.top(), QStringLiteral("]"),
-				                          Color(), Color(), with_state(opt));
+				                          Color(), Color(), a);
 			}
 			return;
 		}

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1774 checks, 0 failures. `make check` is green and includes
+1776 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -17794,6 +17794,100 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.268 A field you type into that said nothing (2026-09-20)
+
+8.267 asked a population question of `pointer_only()` and it paid, so the
+same question went to `focus_invisible()`: **which STANDARD controls look
+the same focused and unfocused here?** That report points the other way
+from `pointer_only()` -- a finding is this library's own drawing rather
+than the application's wiring -- so a hit is a defect to fix rather than
+one to report.
+
+Twenty-five controls, from `QPushButton` to `QCalendarWidget`. **One
+hit.**
+
+#### The fixture reported three, and two were the fixture
+
+The first run named `QTabWidget`, `QTabBar`, `QCalendarWidget` and
+`QCalendarView` as well, and none of those was real.
+`focus_invisible()` moves the focus to "the first other tab stop" and
+compares -- and with the candidate alone in the host, the first other
+stop is **the candidate's own child**. Focusing a tab bar to find out
+what a tab widget looks like unfocused answers nothing. A neutral
+`QPushButton` in every fixture removed all three, and the sweep is only
+worth its result with one in it.
+
+#### The hit: QKeySequenceEdit
+
+The widget an application puts in a shortcut-configuration dialog. It is
+the purest "type here" control Qt ships, and here it was the one that
+said nothing at all:
+
+    focused       [Press shortcut      ]     attrs 0 throughout
+    unfocused     [Press shortcut      ]     attrs 0 throughout
+
+Two facts make it, and neither is a fault:
+
+- **Its internal `QLineEdit` has `WA_InputMethodEnabled` and the outer
+  widget does not.** Qt takes raw key presses here rather than
+  input-method text, so the attribute is honestly absent -- and
+  `Compositor::compose()` places the terminal's cursor only on a focus
+  widget that carries it, for the reason its own comment gives at
+  length: a caret means *type here*, not *this is focused*.
+- **`lineEdit->setFocusProxy(q)`** -- Qt's own line, read in
+  `qkeysequenceedit.cpp` -- so the focus lands on the OUTER widget, and
+  `owns_focus()`, a pointer test, answers no for the inner editor that
+  draws the frame.
+
+So the caret is not placed and the frame is not marked. A one-row editor
+draws no focus mark by design, which is right for a `QLineEdit` and
+wrong for a control the cursor will never reach.
+
+#### The rule, which is a property rather than a class
+
+    a caret or a mark, never neither
+
+`PE_PanelLineEdit`'s one-row branch reverses its brackets when the panel
+belongs to the focused control **and** that control will get no caret.
+Both halves are asked the way Qt asks them: `focus_reaches()` walks the
+focus-proxy chain the way `QWidget::hasFocus()` does, and
+`caret_will_mark_focus()` asks the same `WA_InputMethodEnabled` the
+compositor asks. A third-party widget in the same position is covered by
+having the property, not by being named.
+
+**`owns_focus()` itself is deliberately unchanged**, and the sweep that
+decided that is worth keeping. Nine standard widgets, focus put on each,
+asking which have a child whose proxy resolves to the focus widget:
+
+    QKeySequenceEdit, QComboBox (editable), QSpinBox,
+    QDateTimeEdit, QFontComboBox      an inner QLineEdit
+    QScrollArea                        its viewport
+    QTabWidget                         it is its own bar's proxy
+    QToolBox, QGroupBox                none
+
+Seven of nine. Most draw nothing that depends on the answer -- an inner
+editor is frameless, so `PE_PanelLineEdit` returns before it asks -- so
+making `owns_focus()` proxy-aware wholesale would move marks on widgets
+nobody has measured. The narrow helper is used where the answer is known
+to matter, and the population is written down here for whoever widens
+it.
+
+#### The control is the reason this entry is right
+
+The first pair of checks compared WHOLE FRAMES, and the plain line edit
+came out different from itself. Focusing one widget takes the mark off
+another, so "the screen changed" was satisfied by the **button** losing
+its reverse -- the trap `focus_signature()` already documents, walked
+into anyway. Both checks compare inside the candidate's own rectangle
+now.
+
+    a focused editor with no caret draws no mark        1 red
+    focus is matched without following the proxy chain  1 red
+    every focused editor is marked, caret or not        2 red
+
+The third is the cheap fix -- mark every focused editor -- and it
+satisfies the headline exactly. Only the control refuses it.
+
 ### 8.267 Which containers hide a control no key can reach (2026-09-20)
 
 8.266 found a `QToolBox`'s section headers pointer-only while fixing how
