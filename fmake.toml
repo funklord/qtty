@@ -72,6 +72,14 @@ install = false
 # install rule with it: `--eject make` from this tree would have shipped
 # all six. fmake's own `--explain` says which of the two ways declined a
 # target, so the absence does not read as fmake having forgotten.
+# chat is ALSO declined by fmake's own directory rule now -- an
+# `example/` directory infers it, fmake's section 300 -- so this key is
+# redundant to fmake and is kept anyway, for two reasons. An explicit
+# statement beats an inferred one and survives a tree being reorganised;
+# and tools-check's static half asserts from THIS side, that a program
+# make install does not ship says so here, so removing the key would fail
+# that gate while fmake's own plan stayed right. `@install yes` is the
+# override if qtty ever ships an example.
 [target.chat]
 install = false
 
