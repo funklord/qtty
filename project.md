@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1789 checks, 0 failures. `make check` is green and includes
+1793 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -17869,20 +17869,38 @@ answer rather than typed at the application; the query carries `CSI ? u`;
 and a `CSI ? <flags> u` reply is told apart from a DECRPM answer sharing
 its prefix.
 
-    the keyboard protocol is never asked about      1 red
+    the keyboard protocol is never asked about       1 red
     a DECRPM answer is read as the keyboard protocol 1 red
     the protocol's shift bit is discarded            2 red
     a colon in a CSI sequence wedges the parser     64 red
+    the flags are popped only when a signal arrives  1 red
+    the flags are pushed without asking              1 red
 
-#### What is NOT covered, and what it would take
+#### The wire IS asserted, and writing the check found a defect
 
-The push and pop are not asserted on the wire. They are written only
-where the terminal answered the query, and no terminal in the suite
-does: the pty fixtures answer nothing, so the bytes are correctly never
-sent and a check would be asserting an absence. Reaching them needs a
-fake terminal that replies `CSI ? 1 u` to the probe, which the
-capability collector could be given -- it reads a file descriptor -- and
-that is the next piece of work here rather than a gap to leave silent.
+This entry first said the push and pop were not checked on the wire and
+named what it would take: a fake terminal that answers the probe. The
+fixture already existed -- `fatal_child()` writes a preload to a
+pseudo-terminal's master before forking, which is exactly a terminal's
+answer -- so the gap was one fixture away rather than a piece of work,
+and it is closed.
+
+    preload "\033[?1u\033[?62;4c"   KBD[1], and CSI > 1 u on the wire
+    preload "\033[?62;4c"           KBD[0], and nothing pushed
+
+**And the check failed the first time it ran, on the half that matters.**
+The pop lived in `leave_terminal()`, which is the SIGNAL path;
+`suspend()` writes `kLeave` itself with `fputs` and never calls it. So a
+program that ended normally left the flags pushed for whatever ran in
+that terminal next -- which is the whole reason they are pushed rather
+than set, undone by the one path every ordinary exit takes. There are
+two pop sites now and the ordering check reads them both.
+
+Writing the push took three attempts for a reason worth keeping: the
+constructor calls `resume()` BEFORE it probes -- it needs raw mode to
+ask anything -- so a push placed beside the entry sequence runs while
+the answer is still unknown. It is in the constructor after the probe
+for the first time round, and in `resume()` for every later one.
 
 Key RELEASE, the alternate-key sub-parameter and the functional-key
 range above 57344 are all unimplemented, and deliberately: each needs a
@@ -18149,7 +18167,7 @@ mnemonic available the question is smaller than it looked, but it is
 still the copyright holder's: **should qtty give a tool box's headers a
 tab stop for applications that have not put a letter in the title?**
 
-#### The eleven checks
+#### The fifteen checks
 
 Six, written as a population with its zeroes: a tool box names two, a
 calendar none, a table's corner none, a closable tab bar two, and a

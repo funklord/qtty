@@ -4592,3 +4592,27 @@ find = "\t\t} else if (c == ':') {\n\t\t\tin_sub = true;\n\t\t\t++i;"
 into = "\t\t} else if (c == ':' && false) {\n\t\t\tin_sub = true;\n\t\t\t++i;"
 count = 1
 check = "and the key behind it is not lost"
+
+[[sabotage]]
+# The pop removed from the ORDINARY exit path, leaving it only on the
+# signal one -- so a program that ends normally leaves the keyboard
+# flags pushed for whatever runs in that terminal next. This is the
+# defect the wire check was written and immediately found. 8.270.
+name = "the keyboard flags are popped only when a signal arrives"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tif (g_kbd_wanted) fputs(\"\\033[<u\", stdout);"
+into = "\t\tif (false) fputs(\"\\033[<u\", stdout);"
+count = 1
+check = "and pops it again afterwards, in that order"
+
+[[sabotage]]
+# The flags pushed at a terminal that never answered. Harmless on a
+# terminal that ignores an unknown CSI and not on one that
+# half-implements the protocol, and it is the control the negotiation
+# rests on. 8.270.
+name = "the keyboard flags are pushed without asking"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (tty_out_ && raw_ok_ && caps_.kbd_protocol) {\n\t\tg_kbd_wanted = true;"
+into = "\tif (tty_out_ && raw_ok_) {\n\t\tg_kbd_wanted = true;"
+count = 1
+check = "and a terminal that answered the fence and not the keyboard query is left alone"

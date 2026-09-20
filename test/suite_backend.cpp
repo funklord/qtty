@@ -3939,6 +3939,55 @@ int suite_backend() {
 		CHECK(without.contains("TYPED[]"),
 		      "and nothing is invented when nothing was typed");
 
+		// THE KEYBOARD PROTOCOL, END TO END, which 8.270 said was not
+		// asserted on the wire and named this fixture as what it would
+		// take. The preload is the terminal's answer -- CSI ? 1 u for the
+		// protocol and a DA1 reply as the fence collect_caps() waits for --
+		// so the child's own probe reads it and the backend then decides
+		// whether to push.
+		{
+			const QByteArray spoke = fatal_child(true, [] {
+				{
+					Qtty::AnsiBackend backend;
+					// resume() is where the terminal is taken, and the
+					// flags go out with the rest of the entry sequence.
+					// Constructing alone probes and writes nothing.
+					backend.resume();
+					fprintf(stderr, "\nKBD[%d]\n",
+					        int(backend.capabilities().keyboard_protocol));
+					backend.suspend();
+				}
+				::_exit(0);
+			}, QByteArrayLiteral("\033[?1u\033[?62;4c"));
+			CHECK(spoke.contains("KBD[1]"),
+			      "a terminal that answers CSI ? u is reported as speaking "
+			      "the keyboard protocol");
+			CHECK(spoke.contains("\033[>1u"),
+			      "and qtty pushes the disambiguating flag onto its stack");
+			// AND POPS IT, which is the half that could do harm if it were
+			// missing: flags left pushed are flags the next program in that
+			// terminal inherits.
+			CHECK(spoke.indexOf("\033[<u") > spoke.indexOf("\033[>1u"),
+			      "and pops it again afterwards, in that order");
+			// THE CONTROL, and it is the half that matters: a terminal that
+			// says nothing must be left alone. Pushing flags at one that
+			// never answered would be this library setting a mode it cannot
+			// pop correctly if the terminal half-implements it.
+			const QByteArray silent = fatal_child(true, [] {
+				{
+					Qtty::AnsiBackend backend;
+					backend.resume();
+					fprintf(stderr, "\nKBD[%d]\n",
+					        int(backend.capabilities().keyboard_protocol));
+					backend.suspend();
+				}
+				::_exit(0);
+			}, QByteArrayLiteral("\033[?62;4c"));
+			CHECK(silent.contains("KBD[0]") && !silent.contains("\033[>1u"),
+			      "and a terminal that answered the fence and not the "
+			      "keyboard query is left alone");
+		}
+
 		// The deferral's CAP, which nothing had reached. The buffer holds 256
 		// distinct messages and counts the rest, and a resize storm is
 		// exactly when that fires -- section 6's contrast check warns per

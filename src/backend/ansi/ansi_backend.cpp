@@ -142,6 +142,18 @@ bool use_placeholders(const TermCaps &caps, Capabilities::ColorDepth depth) {
 	return depth == Capabilities::TrueColor;
 }
 
+// Whether this process WANTS the kitty keyboard protocol's flags on the
+// terminal's stack. Wanted rather than pushed, because the wire state comes
+// and goes -- leave_terminal() pops and enter_terminal() pushes again across
+// a stop and a continue -- while the intent does not.
+//
+// File scope rather than a backend member because those two are free
+// functions reached from a signal handler, where there is no object to ask;
+// the same reason g_restore is where it is, and a plain bool for the same
+// reason. Declared here because the constructor is its first writer, and
+// the handlers that read it are further down.
+static bool g_kbd_wanted = false;
+
 AnsiBackend::AnsiBackend() {
 	clock_.start();
 	winsize ws{};
@@ -220,6 +232,17 @@ AnsiBackend::AnsiBackend() {
 			// change did not use.
 			if (again.answered) caps_ = again;
 		}
+	}
+
+	// THE KEYBOARD FLAGS, and here rather than in resume() for the first
+	// time round: the constructor calls resume() above to get raw mode
+	// before it can ask the terminal anything, so the entry sequence has
+	// already gone out and this is the first moment the answer exists.
+	// Every later resume() pushes on its own, and a stop and a continue go
+	// through leave_terminal() and enter_terminal().
+	if (tty_out_ && raw_ok_ && caps_.kbd_protocol) {
+		g_kbd_wanted = true;
+		write_out("\033[>1u");
 	}
 
 	mode_ = negotiate_graphics(caps_);
@@ -545,13 +568,6 @@ bool g_winch_saved = false;
 int g_owners = 0;
 pid_t g_owner_pid = 0;
 
-// Whether the kitty keyboard protocol's flags are on the terminal's stack.
-// File scope rather than a backend member because leave_terminal() and
-// enter_terminal() are free functions reached from a signal handler, where
-// there is no object to ask -- the same reason g_restore is where it is.
-// A plain bool for the same reason: a handler may read it at any moment.
-bool g_kbd_pushed = false;
-
 // Give the terminal back. Does NOT disarm: SIGTSTP hands it back and SIGCONT
 // takes it again, any number of times, and only the fatal path is once.
 void leave_terminal() {
@@ -561,7 +577,7 @@ void leave_terminal() {
 		// screen goes, for the reason every restore sequence is ordered:
 		// undo in the reverse order of doing, so nothing is left set on a
 		// terminal this process no longer owns.
-		if (g_kbd_pushed) {
+		if (g_kbd_wanted) {
 			const char pop[] = "\033[<u";
 			const ssize_t p = ::write(STDOUT_FILENO, pop, sizeof(pop) - 1);
 			(void)p;
@@ -585,7 +601,7 @@ void enter_terminal() {
 		// out and a stop-and-continue goes through both. Without this a
 		// Ctrl+Z and an fg would silently take Ctrl+Shift+letter away for
 		// the rest of the run.
-		if (g_kbd_pushed) {
+		if (g_kbd_wanted) {
 			const char push[] = "\033[>1u";
 			const ssize_t p = ::write(STDOUT_FILENO, push, sizeof(push) - 1);
 			(void)p;
@@ -745,10 +761,7 @@ void AnsiBackend::resume() {
 	// ignored, so this is caution rather than necessity -- but the pop on
 	// the way out is not: popping a stack that was never pushed is the one
 	// half that could do harm.
-	if (tty_out_ && caps_.kbd_protocol) {
-		write_out("\033[>1u");
-		g_kbd_pushed = true;
-	}
+	if (tty_out_ && g_kbd_wanted) write_out("\033[>1u");
 
 	// SIGPIPE would kill the process outright when the far end of the output
 	// goes away, and for a terminal program that is an ordinary event: the
@@ -939,6 +952,14 @@ void AnsiBackend::suspend() {
 	// quit into it would be worse than losing the news that a terminal
 	// nobody is going to draw on again has gone.
 	if (tty_out_) {
+		// The keyboard flags come off first, for the reason the modes below
+		// do: undo in the reverse order of doing. This is a second pop site
+		// rather than a call to leave_terminal(), because that one is the
+		// SIGNAL path and this is the ordinary one -- and a pop that only
+		// happened on the signal path would leave the flags set for every
+		// program after an ordinary exit, which is the whole reason they
+		// are pushed rather than set.
+		if (g_kbd_wanted) fputs("\033[<u", stdout);
 		fputs(kLeave, stdout);
 		fflush(stdout);
 	}
