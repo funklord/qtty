@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1793 checks, 0 failures. `make check` is green and includes
+1796 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -12195,10 +12195,16 @@ which is design.md §16's figure.
   hint would switch nothing. §7.8 records the small-terminal policy
   working in the order design.md names -- drop the optional widgets,
   then scroll the root.
-- **The bundled font.** The startup check is in place (§7.4), but it
-  checks a font the *machine* happens to provide. design.md §5.3 wants
-  the font bundled and installed with `QFontDatabase::addApplicationFont`
-  so the grid does not depend on what is installed. **Not** what would
+- **The bundled font -- the MECHANISM is done (8.273), the FILE is not
+  and is not this library's to choose.** `Qtty::add_font_file()` and
+  `QTTY_FONT_FILE` register a file with
+  `QFontDatabase::addApplicationFont` and report the family it holds, so
+  a grid can be laid on a font the machine has not installed. What
+  remains is shipping one, which is a decision about somebody else's
+  licence terms and belongs to the copyright holder.
+
+  The startup check (§7.4) still checks a font the *machine* happens to
+  provide, which is the right check for the default. **Not** what would
   make the snapshot fixtures reproducible -- that was the reason this
   entry gave and §7.9 disproves it: the fixtures depend on the cell size
   and nothing else about the font.
@@ -17794,6 +17800,70 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.273 A font the machine does not have (2026-09-20)
+
+Section 7.5 has carried "the bundled font" as absent since it was
+written: design.md 5.3 wants the grid's font bundled and registered with
+`QFontDatabase::addApplicationFont` so the grid does not depend on what
+is installed, and what exists is a startup check on a font the MACHINE
+happens to provide.
+
+**Half of that is this library's and half is not.** Which font to ship
+is a decision about somebody else's licence terms. The mechanism is
+qtty's, and it was missing entirely: `grid_font_request()` could ask for
+a family and nothing could supply one.
+
+`Qtty::add_font_file(path)` registers a file and returns the family Qt
+took from it, or empty when the file could not be read. `QTTY_FONT_FILE`
+is the same thing for a user or a distributor.
+
+#### Why a file rather than another family
+
+A family Qt cannot resolve is **substituted silently** -- that is
+already measured beside `grid_font_substitution()`: with DejaVu Sans
+Mono removed the suite ran on Noto Mono at the same cell with nothing
+anywhere saying so. A file cannot be substituted. Either it registers or
+it does not, and the return value says which.
+
+#### Two levers, and separating them was the design
+
+The first version made a registered file the default family, and the
+suite said no: the block's own closing check -- *the process is left as
+it was found* -- went red, because `s_file_family` was a sticky static
+and the default never came back.
+
+That was worth more than the fix. **Registering a file and choosing the
+grid's font are different acts.** An application that calls
+`add_font_file()` has asked Qt to know about a file and wants the family
+back to do as it likes with; `QTTY_FONT_FILE` is somebody saying "lay
+the grid on this". So the variable sets the family and the function does
+not, which also lets the question be asked again after the variable is
+cleared and get the old answer back -- the property that check exists
+for.
+
+#### What the checks establish, and what they cite
+
+Three, and their scope is stated because it is narrower than the
+feature's claim: a bad path answers empty where a real file answers a
+family; `QTTY_FONT_FILE` reaches `grid_font_request()`; and an
+application's `set_font()` still wins. That a registered family need not
+be INSTALLED is `addApplicationFont()`'s own behaviour, **cited rather
+than re-proved** -- proving it would need a font this machine does not
+have, which is not a fixture a check can carry. The file is found by
+searching `/usr/share/fonts` rather than by a hardcoded path, and a
+machine with none gets a loud SKIP rather than a pass.
+
+    a font file is registered and never used      1 red
+    a font file Qt refused is reported as loaded  1 red
+
+**A third entry was written and dropped.** The registration is cached by
+path, because Qt keeps every registration and `grid_font_request()` asks
+on every call -- so without the cache a program that asks a hundred
+times has a hundred copies of the font in the database. There is no way
+to observe that from the public API: Qt de-duplicates family names, the
+font id is not reachable, and a check that cannot fail is not a check.
+The reason lives in the comment and the absence is recorded here.
+
 ### 8.272 What fmake would have shipped (2026-09-20)
 
 fmake's session reported section 287: a target can now decline to be

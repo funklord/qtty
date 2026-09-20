@@ -62,6 +62,45 @@ QString grid_font_problem(const QFont &font);
 // that names a font has usually shipped assets measured against it.
 QFont grid_font_request();
 
+// A FONT FILE, registered with Qt so a family the machine has not installed
+// can still carry the grid. Returns the family name Qt took from the file,
+// or an empty string when the file could not be read -- so a caller can
+// hand the answer straight to set_font(), and a caller that ignores it
+// gets the same family through QTTY_FONT if it names one.
+//
+// It closes the half of design.md 5.3's bundled font that belongs to this
+// library. The other half -- WHICH font to ship -- is a decision about
+// somebody else's licence terms and is not qtty's to take, so the mechanism
+// is here and the file is the application's or the distributor's.
+//
+// Why it is needed at all: grid_font_request() can only ask for a family,
+// and a family Qt cannot resolve is substituted silently. Measured and
+// recorded beside grid_font_substitution(): with DejaVu Sans Mono removed
+// the suite ran on Noto Mono with nothing anywhere saying so. A file cannot
+// be substituted -- either it registers or it does not, and this says
+// which.
+//
+// BEFORE setup(), like set_font(), and for the same reason: setup()
+// measures the cell from the font it resolves, and a font registered after
+// that measurement is a font nothing is using.
+//
+//     QTTY_FONT_FILE=/usr/share/fonts/.../DejaVuSansMono.ttf
+//
+// is the user's and the distributor's spelling of the same thing, read by
+// grid_font_request() when the application named no family. An application
+// that calls set_font() wins over it, which is the order set_font() already
+// has.
+//
+// THE VARIABLE IS WHAT MAKES A FILE THE DEFAULT FAMILY, and this function
+// is not: registering a file asks Qt to know about it and hands the family
+// back, which is a different act from saying "lay the grid on this". An
+// application that wants both calls set_font() with what this returns.
+//
+// Registering the same path twice returns the first answer rather than
+// loading it again -- Qt keeps every registration, so a second one is a
+// second copy of the font in the database.
+QString add_font_file(const QString &path);
+
 // What `font` actually resolved to, when that is not what was asked for.
 // Empty when the family Qt found is the family requested.
 //

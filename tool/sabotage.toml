@@ -4616,3 +4616,27 @@ find = "\tif (tty_out_ && raw_ok_ && caps_.kbd_protocol) {\n\t\tg_kbd_wanted = t
 into = "\tif (tty_out_ && raw_ok_) {\n\t\tg_kbd_wanted = true;"
 count = 1
 check = "and a terminal that answered the fence and not the keyboard query is left alone"
+
+[[sabotage]]
+# The file's family never reaching grid_font_request(), so QTTY_FONT_FILE
+# registers a font nothing then asks for -- the lever present and inert,
+# which is the shape this project calls an implemented sink nothing
+# calls. 8.273.
+name = "a font file is registered and never used"
+file = "src/grid/grid_style.cpp"
+find = "\t\tif (!file.isEmpty())\n\t\t\tfamily = add_font_file(QString::fromLocal8Bit(file));"
+into = "\t\tif (!file.isEmpty())\n\t\t\tadd_font_file(QString::fromLocal8Bit(file));"
+count = 1
+check = "and QTTY_FONT_FILE supplies the family when nobody named one"
+
+[[sabotage]]
+# A path Qt refuses reported as a family anyway. An empty family reads as
+# "unset" everywhere downstream, so the caller gets the default and is
+# told it got the file. 8.273.
+name = "a font file Qt refused is reported as loaded"
+file = "src/grid/grid_style.cpp"
+find = "\tconst int id = QFontDatabase::addApplicationFont(path);\n\tif (id < 0) return QString();"
+into = "\tconst int id = QFontDatabase::addApplicationFont(path);\n\tif (id < 0) return QStringLiteral(\"refused\");"
+count = 1
+check = "a font file names the family it holds"
+

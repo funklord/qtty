@@ -1,6 +1,7 @@
 // suite_render -- Gate-1 regression as a snapshot (section 9).
 #include <qtty/qtty.h>
 #include <QtWidgets>
+#include <QDirIterator>
 #include <QTemporaryDir>
 #include <cstdio>
 #include <fcntl.h>
@@ -2557,6 +2558,85 @@ int suite_render(bool record) {
 			       " larger than any terminal leaves the default standing"
 			       " rather than laying the grid on it\n");
 			++r;
+		}
+
+		// A FONT FILE, which is the third lever and the one that can carry
+		// a family the machine has not installed -- the half of design.md
+		// 5.3's bundled font that belongs to this library, the other half
+		// being which font to ship and whose licence that is.
+		//
+		// WHAT THESE ESTABLISH is the plumbing: a bad path is refused, a
+		// real file yields the family Qt took from it, the environment
+		// reaches grid_font_request() through it, and an application's own
+		// choice still wins. That a registered family need not be
+		// INSTALLED is QFontDatabase::addApplicationFont()'s own
+		// behaviour, cited rather than re-proved -- proving it here would
+		// need a font this machine does not have, which is a fixture no
+		// check can carry.
+		{
+			// Any font file the machine has. Named by search rather than
+			// by path, because a hardcoded one is a check that passes on
+			// the machine it was written on.
+			QString file;
+			const QStringList roots{QStringLiteral("/usr/share/fonts"),
+			                        QStringLiteral("/usr/local/share/fonts")};
+			for (const QString &root : roots) {
+				if (!file.isEmpty()) break;
+				QDirIterator it(root, QStringList{QStringLiteral("*.ttf")},
+				                QDir::Files, QDirIterator::Subdirectories);
+				if (it.hasNext()) file = it.next();
+			}
+			if (file.isEmpty()) {
+				// A SKIP rather than a pass, and loud: this machine has no
+				// font file, so nothing below was measured.
+				printf("SKIP: no font file under /usr/share/fonts, so the"
+				       " font-file lever was not measured here\n");
+			} else {
+				qunsetenv("QTTY_FONT");
+				qunsetenv("QTTY_FONT_SIZE");
+				Qtty::set_font(QString(), 0);
+				const QString bad =
+				    Qtty::add_font_file(QStringLiteral("/nonexistent.ttf"));
+				const QString good = Qtty::add_font_file(file);
+				if (bad.isEmpty() && !good.isEmpty())
+					printf("PASS: a font file names the family it holds, and"
+					       " a path that is not one answers empty rather"
+					       " than a family nothing can resolve\n");
+				else {
+					printf("FAIL: a font file names the family it holds, and"
+					       " a path that is not one answers empty rather"
+					       " than a family nothing can resolve\n");
+					++r;
+				}
+				// The environment reaches the same place, which is the
+				// distributor's lever: a family nobody named comes from
+				// the file.
+				Qtty::set_font(QString(), 0);
+				qputenv("QTTY_FONT_FILE", file.toLocal8Bit());
+				const QFont from_file = Qtty::grid_font_request();
+				if (!good.isEmpty() && from_file.family() == good)
+					printf("PASS: and QTTY_FONT_FILE supplies the family when"
+					       " nobody named one\n");
+				else {
+					printf("FAIL: and QTTY_FONT_FILE supplies the family when"
+					       " nobody named one\n");
+					++r;
+				}
+				// And the documented order: the application still wins.
+				Qtty::set_font(QStringLiteral("Noto Mono"), 20);
+				const QFont app_wins = Qtty::grid_font_request();
+				if (app_wins.family() == QStringLiteral("Noto Mono"))
+					printf("PASS: while an application that named a family"
+					       " keeps it, which is the order set_font already"
+					       " has\n");
+				else {
+					printf("FAIL: while an application that named a family"
+					       " keeps it, which is the order set_font already"
+					       " has\n");
+					++r;
+				}
+				qunsetenv("QTTY_FONT_FILE");
+			}
 		}
 
 		if (had_family.isEmpty()) qunsetenv("QTTY_FONT");

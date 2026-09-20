@@ -488,6 +488,39 @@ void set_font(const QString &family, int pixel_size) {
 	s_font_pixels = pixel_size;
 }
 
+// Path to the family it holds, so a file is registered ONCE however often
+// this is asked. Qt keeps every registration, so asking twice is a second
+// copy of the font in the database rather than a no-op -- and
+// grid_font_request() asks on every call.
+static QHash<QString, QString> s_font_files;
+
+QString add_font_file(const QString &path) {
+	const auto seen = s_font_files.constFind(path);
+	if (seen != s_font_files.constEnd()) return *seen;
+	// A font database needs a GUI application. Without one this would
+	// answer -1 and look like a bad file, which is a different fault with
+	// a different remedy -- so it is separated rather than folded in.
+	if (!qobject_cast<QGuiApplication *>(QCoreApplication::instance())) {
+		qWarning("qtty: add_font_file(%s) needs a QGuiApplication, so no "
+		         "font was registered", qPrintable(path));
+		return QString();
+	}
+	const int id = QFontDatabase::addApplicationFont(path);
+	if (id < 0) return QString();
+	const QStringList families = QFontDatabase::applicationFontFamilies(id);
+	// A file Qt accepts and takes no family from is not a usable answer:
+	// the caller would get an empty family, set_font() would take it, and
+	// grid_font_request() reads an empty family as "unset". Removing it
+	// again keeps the database as it was rather than leaving a
+	// registration nothing can name.
+	if (families.isEmpty()) {
+		QFontDatabase::removeApplicationFont(id);
+		return QString();
+	}
+	s_font_files.insert(path, families.first());
+	return families.first();
+}
+
 QFont grid_font_request() {
 	// The application first, then the user's environment, then the default
 	// this library has always installed. An empty QTTY_FONT is read as
@@ -498,6 +531,21 @@ QFont grid_font_request() {
 	if (family.isEmpty()) {
 		const QByteArray env = qgetenv("QTTY_FONT");
 		if (!env.isEmpty()) family = QString::fromLocal8Bit(env);
+	}
+	// And a FILE, which is the user's and the distributor's way to supply a
+	// family the machine has not installed. Read after QTTY_FONT so that
+	// naming both means "this family, out of this file".
+	//
+	// The ENVIRONMENT is what makes a file the default family, not
+	// add_font_file() -- an application that registers a file has asked Qt
+	// to know about it and gets the family back to do as it likes with,
+	// which is a different act from saying "lay the grid on this". Keeping
+	// them apart is also what lets this be asked again after the variable
+	// is cleared and get the old answer back.
+	if (family.isEmpty()) {
+		const QByteArray file = qgetenv("QTTY_FONT_FILE");
+		if (!file.isEmpty())
+			family = add_font_file(QString::fromLocal8Bit(file));
 	}
 	if (pixels <= 0) {
 		bool ok = false;
