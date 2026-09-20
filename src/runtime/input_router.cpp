@@ -1573,6 +1573,45 @@ QVector<QWidget *> pointer_only(QWidget *scope) {
 			    || a->objectName()
 			       == QLatin1String("_q_qlineeditclearaction");
 		if (qt_clear_button) continue;
+		// A CALENDAR'S OWN NAVIGATION, for the clear button's reason rather
+		// than a new one. QCalendarWidget builds four buttons of its own --
+		// a previous and a next month, a month menu and a year edit -- and
+		// none of them is a tab stop, so every calendar in every
+		// application produced four findings. Measured with the focus on
+		// the calendar:
+		//
+		//   PageDown   2026-09-20 -> 2026-10-20, month shown 9 -> 10
+		//   PageUp     back again
+		//   Down       2026-09-20 -> 2026-09-27
+		//   Right      one day on
+		//
+		// So the ACTION those buttons perform has a keyboard route, which
+		// is the question practice 4 asks. The year is reachable the same
+		// way and more slowly, twelve PageDowns to the year -- which is the
+		// clear button's Ctrl+A-then-Delete again: a route, not a good one.
+		//
+		// Matched by ancestor rather than by class name, because the two
+		// arrows are QtPrivate::QPrevNextCalButton and a report must not
+		// key on a private Qt name -- one rename and the exclusion goes
+		// silently, which is the failure this whole function exists to
+		// avoid.
+		bool in_calendar = false;
+		for (const QWidget *a = b->parentWidget(); a; a = a->parentWidget())
+			if (qobject_cast<const QCalendarWidget *>(a)) {
+				in_calendar = true;
+				break;
+			}
+		if (in_calendar) continue;
+		// AND A TABLE'S CORNER BUTTON, which is the same case measured
+		// exactly: it selects every cell, and so does Ctrl+A. On a 3x3
+		// table with one cell current, the click and the key both left
+		// nine selected. It appears on every table showing both headers,
+		// so naming it is a finding per table that nobody can act on.
+		//
+		// Its parent decides it: the corner button is a child of the
+		// QTableView itself, while a button an application puts inside a
+		// table is a child of the VIEWPORT and is still named.
+		if (qobject_cast<QTableView *>(b->parentWidget())) continue;
 		out.append(b);
 	}
 	// AND THE THING YOU DRAG. `QSplitterHandle` is Qt's own word for it, the

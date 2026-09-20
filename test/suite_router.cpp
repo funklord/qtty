@@ -4377,6 +4377,86 @@ int suite_router() {
 			      "one nobody reads");
 		}
 
+		// THE CONTAINERS QT BUILDS CONTROLS INSIDE, asserted as a
+		// POPULATION rather than one at a time. Each of these makes its own
+		// buttons or handles, an application never sees them, and the
+		// report is the only way anybody learns they are there. Swept:
+		//
+		//     QToolBox, 2 sections    2   the section headers
+		//     QCalendarWidget         0   excluded, the keys reach it
+		//     QSplitter               1   the handle
+		//     QDockWidget             2   float and close
+		//     QTabWidget, closable    2   the two close buttons
+		//     QTableWidget, sortable  1   the header, not the corner
+		//     QMdiArea, QScrollArea   0   nothing of their own
+		//
+		// The two zeroes are the control: a report that named everything
+		// would satisfy every line above them and fail here.
+		{
+			const auto count_in = [](QWidget *w) {
+				w->setAttribute(Qt::WA_DontShowOnScreen);
+				w->resize(GridMetrics::cells(40, 14));
+				w->show();
+				QCoreApplication::processEvents();
+				const int n = pointer_only(w).size();
+				GridGuard::reset();
+				return n;
+			};
+			QWidget boxed;
+			{
+				auto *v = new QVBoxLayout(&boxed);
+				auto *box = new QToolBox;
+				box->addItem(new QLineEdit, QStringLiteral("One"));
+				box->addItem(new QLineEdit, QStringLiteral("Two"));
+				v->addWidget(box);
+			}
+			CHECK(count_in(&boxed) == 2,
+			      "a tool box's two section headers are named, Qt building "
+			      "them Qt::NoFocus and in nobody's tab chain");
+			QWidget dated;
+			{
+				auto *v = new QVBoxLayout(&dated);
+				v->addWidget(new QCalendarWidget);
+			}
+			CHECK(count_in(&dated) == 0,
+			      "and a calendar's four navigation buttons are not, "
+			      "PageUp and PageDown reaching what they do");
+			QWidget corner;
+			{
+				auto *v = new QVBoxLayout(&corner);
+				auto *t = new QTableWidget(3, 3);
+				v->addWidget(t);
+			}
+			CHECK(count_in(&corner) == 0,
+			      "nor a table's corner button, Ctrl+A selecting exactly "
+			      "what clicking it selects");
+			QWidget closable;
+			{
+				auto *v = new QVBoxLayout(&closable);
+				auto *t = new QTabWidget;
+				t->setTabsClosable(true);
+				t->addTab(new QLineEdit, QStringLiteral("One"));
+				t->addTab(new QLineEdit, QStringLiteral("Two"));
+				v->addWidget(t);
+			}
+			CHECK(count_in(&closable) == 2,
+			      "a closable tab bar's two close buttons are, no key "
+			      "closing a tab in this library or in plain Qt");
+			QWidget scrolled;
+			{
+				auto *v = new QVBoxLayout(&scrolled);
+				auto *a = new QScrollArea;
+				auto *in = new QLineEdit;
+				in->setMinimumWidth(600);
+				a->setWidget(in);
+				v->addWidget(a);
+			}
+			CHECK(count_in(&scrolled) == 0,
+			      "and a scroll area names nothing, which is the control: "
+			      "a report that named every internal widget would have "
+			      "passed every line above and fails here");
+		}
+
 		// A LINK NO KEY CAN FOLLOW, the same shape one member along: the
 		// thing clicked is an anchor inside a label rather than a widget.
 		// It is the worse of the two for a user, because nothing on the

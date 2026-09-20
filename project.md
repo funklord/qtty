@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1767 checks, 0 failures. `make check` is green and includes
+1772 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -17780,6 +17780,90 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.267 Which containers hide a control no key can reach (2026-09-20)
+
+8.266 found a `QToolBox`'s section headers pointer-only while fixing how
+one is drawn, and that is the kind of finding that arrives once and then
+sits in an entry nobody re-reads. So the question was asked of the
+population instead: **which standard Qt containers build controls of
+their own that no key reaches?** `pointer_only()` answers it for any
+scope, so the sweep is nine fixtures and one command.
+
+    QToolBox, 2 sections    2   QToolBoxButton
+    QCalendarWidget         4   two QToolButton, two QPrevNextCalButton
+    QSplitter               1   QSplitterHandle
+    QDockWidget             2   float and close
+    QTabWidget, closable    2   the two close buttons
+    QTableWidget, sortable  2   the header and the corner button
+    QMdiArea, QScrollArea   0
+    QDialog with a grip     0
+
+The last row is the size grip of 8.264, now costing nothing and naming
+nothing, which is the previous day's work showing up as a zero.
+
+#### Two of them are findings nobody can act on
+
+The audit's own principle is that practice 4 asks whether the **action**
+has a key, not whether the widget does -- it is why a line edit's clear
+button is excluded. Two more rows meet it, measured rather than assumed:
+
+- **A calendar's four buttons.** With the focus on the calendar,
+  `PageDown` took 2026-09-20 to 2026-10-20 and moved the month shown from
+  9 to 10, `PageUp` came back, `Down` stepped a week and `Right` a day.
+  The year is twelve `PageDown`s away, which is the clear button's
+  `Ctrl+A`-then-`Delete` again: a route, and not a good one.
+- **A table's corner button.** On a 3x3 table with one cell current, the
+  click left nine cells selected and so did `Ctrl+A` -- the same nine.
+
+Left in, they put four findings in every calendar and one in every table
+that shows both headers. Both are excluded now, and **matched by
+something public in each case** -- an ancestor `QCalendarWidget`, a
+parent `QTableView` -- never by a private class name. The two arrows are
+`QtPrivate::QPrevNextCalButton`, and keying an exclusion on that would
+take it away silently at the next Qt rename, which is the failure the
+whole function exists to avoid.
+
+#### The tool box has a better remedy than the others
+
+A close button's remedy is to give the same action a key somewhere else.
+A tool box's is to make the widget work:
+
+    for (QAbstractButton *b : box->findChildren<QAbstractButton *>())
+            b->setFocusPolicy(Qt::TabFocus);
+
+Measured end to end with that in place: `Tab` reached each header,
+`Space` opened its section -- index 0 to 1 to 2 -- and `pointer_only()`
+then named nothing. It has to be redone after `addItem()`, which builds a
+new header each time.
+
+**The library does not do it, and that is deliberate rather than
+unfinished.** It has never set a focus policy on anything -- swept, there
+is no `setFocusPolicy` anywhere in `src/` or `include/` -- and doing so
+is a different kind of intervention from drawing: it adds a tab stop per
+section to the application's focus chain. The option, its cost and whose
+decision it is are all here rather than in a commit. **A decision for the
+copyright holder.**
+
+#### The checks
+
+Six, written as a population with its zeroes: a tool box names two, a
+calendar none, a table's corner none, a closable tab bar two, and a
+scroll area none. **The zeroes are the control** -- a report that named
+every internal widget would satisfy every positive line and fail on
+those two.
+
+    a calendar's navigation is reported pointer-only     1 red
+    a table's corner button is reported pointer-only     1 red
+
+#### And the guide's enumeration had gone stale
+
+Practice 4 enumerated six of Qt's own pointer-only controls and closed
+with "`Qtty::pointer_only()` names all six". That is the countable
+present-tense claim about the tree's own shape that `evidence.md` says
+rots, and it had: the tool box is a seventh. It names seven now, with
+the two exclusions written beside them so the next reader does not
+report a calendar as an eighth.
+
 ### 8.266 A tool box drawn as rules and diagonals (2026-09-20)
 
 Third surface from the detector in 8.264, and the one where the fix is a
@@ -18020,7 +18104,7 @@ The case is in, with a check and a sabotage entry of its own. What made
 the wrong reading survive is in 8.265 as well, because it is the part
 worth keeping.
 
-#### The checks
+#### The checks, and their two zeroes
 
 Seven, and the drag one is the point. `sizeFromContents(CT_SizeGrip)` is
 empty; the same window renders **the same cells** with Qt's grip switched

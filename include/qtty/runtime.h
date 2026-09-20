@@ -181,6 +181,17 @@ QVector<QPair<QString, QStringList>> conventions_shadowed(QWidget *scope);
 // the button itself is `Qt::NoFocus` and in nobody's tab chain, so a sweep
 // over the focus chain alone reports it pointer-only and is wrong.
 //
+// THREE OF QT'S OWN CONTROLS ARE EXCLUDED, all for one reason: the question
+// is whether the ACTION has a key, not whether the widget does, and naming
+// these puts findings in every application that nobody can act on. A line
+// edit's clear button (`Ctrl+U`, or `Ctrl+A` then `Delete`); a
+// `QCalendarWidget`'s four navigation buttons (`PageUp` and `PageDown` step
+// the month, the arrows the day); and a table's corner button (`Ctrl+A`
+// selects exactly what clicking it selects, measured as nine cells of nine
+// either way). Each is matched by something public -- Qt's own action name,
+// an ancestor, a parent -- never by a private class name, since a rename
+// would take the exclusion away silently.
+//
 // TWO LIMITS. A `QShortcut` wired straight to a button's `click()` is
 // invisible -- Qt publishes no way to ask what a connection reaches -- so
 // that button is named although a key does reach it; a mnemonic or a
@@ -192,7 +203,10 @@ QVector<QPair<QString, QStringList>> conventions_shadowed(QWidget *scope);
 // answer to assert -- with the caveat that Qt breaks the practice on the
 // application's behalf in two places (8.159), so a closable tab or a dock
 // widget puts Qt's own buttons in the list until the application gives the
-// same action a key.
+// same action a key. A `QToolBox` is the third such container and the one
+// with a better remedy: its section headers are `Qt::NoFocus` and no key
+// opens a shut section, and giving them `Qt::TabFocus` makes the widget
+// work end to end rather than duplicating its action elsewhere.
 QVector<QWidget *> pointer_only(QWidget *scope);
 
 // Consecutive tab stops that go BACKWARDS against the reading order: each

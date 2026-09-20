@@ -636,7 +636,34 @@ that carries an anchor and lacks that flag, and stays quiet about one
 that has it -- and about a label with no link in it, whose interaction
 flags are identical.
 
-`Qtty::pointer_only()` names all six, and the section on testing says
+**A seventh is a whole container: a `QToolBox`.** Its section headers are
+`Qt::NoFocus` and in nobody's tab chain, so a section that is shut cannot
+be opened by any key -- measured, `Tab` through a window holding one walks
+the button before it, the page's scroll area, the field inside and the
+button after, and never a header. Unlike the close buttons above, this one
+has a remedy that makes the widget fully operable rather than duplicating
+its action elsewhere:
+
+```cpp
+for (QAbstractButton *b : box->findChildren<QAbstractButton *>())
+    b->setFocusPolicy(Qt::TabFocus);
+```
+
+Measured end to end with that in place: `Tab` reaches each header, `Space`
+opens its section, and `Qtty::pointer_only()` then names nothing. Do it
+again after `addItem()`, which builds a new header each time.
+
+**Two things Qt builds are deliberately NOT named, for the clear button's
+reason.** A `QCalendarWidget`'s four navigation buttons are not, because
+the keys reach what they do -- `PageDown` and `PageUp` step the month,
+the arrows step the day, and a year is twelve `PageDown`s away, which is
+a route rather than a good one. A table's corner button is not either:
+it selects every cell, and measured on a 3x3 table both the click and
+`Ctrl+A` left nine selected. Naming them would put four findings in every
+calendar and one in every table, and none of them would be a finding
+anybody could act on.
+
+`Qtty::pointer_only()` names the seven, and the section on testing says
 how to read that list.
 
 A right-click menu is the exception you get for free: `Menu` and

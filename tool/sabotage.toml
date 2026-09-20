@@ -4483,3 +4483,24 @@ find = "\t\t\t\tconst bool open = opt->state & State_Selected;"
 into = "\t\t\t\tconst bool open = true;"
 count = 1
 check = "and each section says whether it is open"
+
+[[sabotage]]
+# The calendar exclusion removed: four findings per calendar that an
+# application cannot act on, which is the report-nobody-reads failure
+# the clear button's exclusion exists for. 8.267.
+name = "a calendar's navigation is reported pointer-only"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (in_calendar) continue;"
+into = "\t\tif (false && in_calendar) continue;"
+count = 1
+check = "and a calendar's four navigation buttons are not"
+
+[[sabotage]]
+# The corner-button exclusion removed: one finding per table showing
+# both headers, for an action Ctrl+A performs exactly. 8.267.
+name = "a table's corner button is reported pointer-only"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (qobject_cast<QTableView *>(b->parentWidget())) continue;"
+into = "\t\tif (false) continue;"
+count = 1
+check = "nor a table's corner button"
