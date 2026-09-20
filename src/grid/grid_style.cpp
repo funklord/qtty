@@ -18,6 +18,9 @@
 #include <QStatusTipEvent>
 #include <QAction>
 #include <QFontDatabase>
+#include <QLayout>
+#include <dlfcn.h>
+#include <typeinfo>
 #include <QStyleFactory>
 #include <QStyleOption>
 #include <QStyleOptionButton>
@@ -619,6 +622,54 @@ int GridGuard::forgiven() { return s_forgiven; }
 // after the last caller stopped looking.
 void GridGuard::reset() { s_forgiven += s_violations; s_violations = 0; }
 
+// Is `mo`'s class defined in the same loaded module as QWidget's? That is
+// "did Qt write this", asked without naming anything: dladdr answers which
+// object a symbol's address lies in, and a QMetaObject is a static object
+// of the library that declared the class.
+//
+// False on any failure, which is the safe direction: an unanswerable
+// question leaves the widget checked rather than forgiven.
+static bool defined_by_qt(const void *type_of_theirs) {
+	if (!type_of_theirs) return false;
+	Dl_info theirs{}, ours{};
+	if (!dladdr(type_of_theirs, &theirs)) return false;
+	// A FUNCTION rather than QWidget::staticMetaObject, and the difference
+	// is not academic. A data symbol imported from a shared library gets a
+	// COPY RELOCATION into the executable, so the address the library sees
+	// for its own staticMetaObject and the address this file sees are the
+	// same object in one binary and two in another -- measured exactly
+	// that way: a probe said Qt owned QMainWindowLayout and the suite,
+	// linking the same library, said it did not. A function address cannot
+	// be copied and always lies in the module that defines it.
+	if (!dladdr(reinterpret_cast<const void *>(&QLayout::closestAcceptableSize),
+	            &ours))
+		return false;
+	return theirs.dli_fbase != nullptr && theirs.dli_fbase == ours.dli_fbase;
+}
+
+// Is this widget placed by a layout of Qt's own, rather than by one the
+// application wrote down? See is_exempt() for what it is for.
+static bool placed_by_qt(const QWidget *w) {
+	const QWidget *const parent = w ? w->parentWidget() : nullptr;
+	const QLayout *const layout = parent ? parent->layout() : nullptr;
+	if (!layout) return false;
+	// The C++ TYPE rather than the QMetaObject, because a QLayout subclass
+	// needs no Q_OBJECT: without one metaObject() answers QLayout's, which
+	// is Qt's, so an application's own layout was forgiven. Measured -- the
+	// control below went green for the wrong reason. typeid names the
+	// dynamic type whether or not moc has heard of it.
+	if (!defined_by_qt(&typeid(*layout))) return false;
+	// The five an application can instantiate. A widget in one of these is
+	// in a layout the application chose and can change.
+	static const char *const public_layouts[] = {
+		"QBoxLayout",                  // and QVBoxLayout, QHBoxLayout
+		"QGridLayout", "QFormLayout", "QStackedLayout",
+	};
+	for (const char *k : public_layouts)
+		if (layout->inherits(k)) return false;
+	return true;
+}
+
 bool GridGuard::is_exempt(const QWidget *w) {
 	// Widgets Qt builds for itself, which the application never constructs
 	// and cannot size. Measured F5 named two of these -- QHeaderView and
@@ -670,6 +721,47 @@ bool GridGuard::is_exempt(const QWidget *w) {
 		for (const char *k : by_class)
 			if (o->inherits(k)) return true;
 	}
+	// AND A WIDGET QT'S OWN LAYOUT PLACES, which is the principle's third
+	// form and the one that covers a QMainWindow.
+	//
+	// Measured on a window shaped like netcfgd's -- menu bar, toolbar, tab
+	// widget, dock, status bar -- the guard reported nine violations and
+	// forgave none. Named, they are four widgets: the dock's editor at
+	// 600x131+0+21, the QDockWidget at 600x156+0+200, the QStatusBar at
+	// 600x24+0+356, and a QLabel the application put in that status bar.
+	// The first three are placed by QMainWindowLayout and QDockWidgetLayout
+	// -- layouts an application cannot instantiate, name or configure -- so
+	// an author told to fix them has nowhere to stand. That is eight of the
+	// nine warnings, in the commonest shape a Qt application takes.
+	//
+	// The test is ownership of the PLACEMENT rather than of the class, and
+	// it is two questions because either alone is wrong:
+	//
+	//   * the layout is defined inside Qt, asked by comparing which loaded
+	//     module holds its C++ type against the one holding QLayout's own
+	//     code. Without this an application's OWN QLayout subclass would be
+	//     forgiven, and a custom layout is exactly where a program puts
+	//     widgets off the grid.
+	//
+	//     TWO INSTRUMENTS WERE WRONG BEFORE THIS ONE, and both were caught
+	//     by the controls rather than by reading. Comparing against
+	//     `&QWidget::staticMetaObject` compares against a COPY: a data
+	//     symbol imported from a shared library is copy-relocated into the
+	//     executable, so a probe said Qt owned QMainWindowLayout and the
+	//     suite, linking the same library, said it did not. And asking the
+	//     QMetaObject answers about the nearest class carrying Q_OBJECT --
+	//     a QLayout subclass needs none, so an application's own layout
+	//     reported QLayout's meta-object and passed for Qt's.
+	//   * and it is not one of the five layouts an application can write
+	//     down. That set is closed and public -- QBoxLayout and its two
+	//     subclasses, QGridLayout, QFormLayout, QStackedLayout -- so this
+	//     is a list that shrinks rather than one somebody appends to, which
+	//     is the objection the comment above makes to lists.
+	//
+	// A static Qt build defeats the first question, every class then living
+	// in the executable; the second still applies, and the exemption is
+	// then wider than it is here. Said rather than hidden.
+	if (placed_by_qt(w)) return true;
 	// A QTabBar's scroll buttons are named rather than qt_-prefixed, and are
 	// created and sized by the tab bar. Reached through the parent so a
 	// QToolButton the application puts in a tab bar is still checked.

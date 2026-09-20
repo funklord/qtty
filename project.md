@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1796 checks, 0 failures. `make check` is green and includes
+1799 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -890,7 +890,7 @@ Owned by the copyright holder:
 | **A read-only line edit is not marked.** Measured: it renders identically to an editable one, so a user cannot tell they cannot type. Marking it needs vocabulary, and the obvious candidate collides -- disabled already uses Dim, and read-only is a different state, focusable and selectable. Unlike Enter's target it has no consequence a user cannot discover by typing | 8.33 |
 | **~~A tab's mnemonic does nothing.~~ It works with the conventions on (8.67); what is left is the DEFAULT.** `Alt+S` on a tab labelled "&Second" does not switch to it: the router matches Alt against ACTION text and a tab is not an action. It is therefore left unmarked, on the rule that underlining a key that does nothing is worse than leaving it bare. Whether a terminal should switch tabs by mnemonic at all is the question -- the marking follows the answer | 8.37 |
 | **~~Three of `CursorShape`'s four values do nothing.~~ One of the four has no qtty producer, and that is the answer rather than the gap.** 8.241 emitted DECSCUSR -- `ESC[2 q`, `ESC[4 q`, `ESC[6 q`, steady at every shape, and `CSI 0 SP q` on the way out -- so the three are three different sequences now, and `Compositor::shape_for()` derives Block or Bar from the focus widget's `overwriteMode()` with Hidden for no caret. What has no producer is `Underline`: `overwriteMode()` has two values and already has two shapes, so an underline would need a fourth condition invented for it, and the only candidate is read-only -- which this same index records as an open scope question two rows up, and which is not settled sideways by picking a caret. It is still a value the PUBLIC interface admits and `AnsiBackend` encodes, for an application driving its own loop. Asserted since 8.250, so a producer added later reddens a check rather than arriving unnoticed. The blink-or-steady objection this row carried is answered: steady at every shape, because nothing in this tree can observe a blink's phase | 8.51, 8.241, 8.250 |
-| **A `QMainWindow` application sees nine off-grid warnings it cannot act on.** The suite works around this with `GridGuard::reset()` and an application has no equivalent. `is_exempt()`'s PRINCIPLE covers them exactly -- *"widgets Qt builds for itself, which the application never constructs and cannot size"* -- and its mechanism does not: it keys on `qt_` object names and `Private` class names, and `QStatusBar`, `QSizeGrip` and a central widget placed by `QMainWindowLayout` carry neither. Measured on a window shaped like netcfgd's: **9 violations, 0 forgiven**. The fix is not obviously a longer list -- the code warns in as many words that a list is what somebody adds a tenth entry to without deciding anything | 8.61 |
+| ~~**A `QMainWindow` application sees nine off-grid warnings it cannot act on.**~~ **Closed in 8.274** -- nine became one, and the one left is a widget the application itself added. The fix is the principle's third form rather than a longer list: a widget placed by a layout Qt defines and an application cannot write down is not the application's to size. Original entry: The suite works around this with `GridGuard::reset()` and an application has no equivalent. `is_exempt()`'s PRINCIPLE covers them exactly -- *"widgets Qt builds for itself, which the application never constructs and cannot size"* -- and its mechanism does not: it keys on `qt_` object names and `Private` class names, and `QStatusBar`, `QSizeGrip` and a central widget placed by `QMainWindowLayout` carry neither. Measured on a window shaped like netcfgd's: **9 violations, 0 forgiven**. The fix is not obviously a longer list -- the code warns in as many words that a list is what somebody adds a tenth entry to without deciding anything | 8.61 |
 | **~~A disabled widget is indistinguishable from an enabled one on the pixel tiers.~~ Answered on the holder's instruction, and closed -- see 8.244.** `Attr::Dim` is set for EVERY disabled widget (`cell_geometry.h`), the rasteriser had no row for it, and the two rendered byte-identically. The rule is **half the distance to the cell's own background, walked back until the pair clears `has_minimum_contrast`**: the clamping form this row named, with the fixed factor as a ceiling on it rather than as the whole rule, since 8.59 had already shown a factor safe on the default pair cannot be safe on a theme nobody here has seen. What made it decidable rather than a taste question is that the obvious alternative is not neutral -- an amount defined against black instead of against the ground renders the attribute BACKWARDS on a light terminal, and half of terminals are each | 8.50, 8.59, 8.244 |
 | **`Overlay::set_z()` does nothing in a GUI build.** `visible_overlays()` sorts by z and its only production caller is the compositor, which is the TUI path; the GUI twin never reads `z_`, so stacking there falls to the window manager. design.md presents `Overlay` as target-independent and lists `setZ` unqualified, so this is a scope question -- does the twin owe z ordering? -- rather than a defect. Not a one-liner: the twins are frameless always-on-top `Qt::Tool` windows, and it cannot be verified headlessly here | 8.47 |
 | **`design.md` recommends a function the library cannot call.** Its focus section says `focusNextPrevChild()` "walks the focus chain correctly", citing spike F4 -- and 8.71 removed the only call to it, because it is **protected**: reaching it from outside means declaring a fake derived class and casting a widget that is not one, which is undefined behaviour and which UBSan named. A spike can call it, being a subclass; the library walks widgets it does not own and cannot. Neither side is wrong -- the spike's finding holds and the code is right to refuse the cast -- but the naked recommendation is a trap for the next reader, and this tree's habit is to record design.md's lag rather than edit it (README carries the same caution about its API chapter, and 8.2 the same about `qtty::Application`). Whether design.md gains a sentence is the holder's | 8.71, F4 |
@@ -17800,6 +17800,78 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.274 Nine warnings a QMainWindow could not act on (2026-09-20)
+
+Section 0b has carried this since 8.61: **a `QMainWindow` application
+sees nine off-grid warnings it cannot act on.** `GridGuard::is_exempt()`
+states the principle exactly -- *widgets Qt builds for itself, which the
+application never constructs and cannot size* -- and its mechanism keys
+on `qt_` object names and `Private` class names, which a `QStatusBar`, a
+`QDockWidget` and a dock's own widget carry neither of.
+
+Re-measured today on a window shaped like netcfgd's, and it is still
+nine. Named rather than counted, they are four widgets:
+
+    3x  QPlainTextEdit  600x131+0+21    the dock's widget
+    3x  QDockWidget     600x156+0+200
+    2x  QStatusBar      600x24+0+356
+    1x  QLabel          80x19+2+3       the application's own
+
+The first three are placed by `QMainWindowLayout` and
+`QDockWidgetLayout`, layouts an application cannot instantiate, name or
+configure. **Eight of the nine, in the commonest shape a Qt application
+takes.**
+
+#### The test is ownership of the PLACEMENT, not of the class
+
+A widget is exempt when its parent's layout is Qt's own and is not one
+of the five an application can write down -- `QBoxLayout` and its two
+subclasses, `QGridLayout`, `QFormLayout`, `QStackedLayout`. That set is
+closed and public, so it is a list that SHRINKS rather than one somebody
+appends to, which is the objection `is_exempt()`'s own comment makes to
+lists.
+
+Nine became **one**, and the one left is the `QLabel` the application
+itself added to the status bar.
+
+#### Two wrong instruments before this one, both found by the controls
+
+Neither was found by reading.
+
+- **Comparing against `&QWidget::staticMetaObject` compares against a
+  COPY.** A data symbol imported from a shared library is
+  copy-relocated into the executable, so the address the library sees
+  and the address this file sees are one object in one binary and two
+  in another. Measured exactly that way: a scratch probe said Qt owned
+  `QMainWindowLayout` and the suite, linking the same library, said it
+  did not. The reference is a FUNCTION address now, which cannot be
+  copied.
+- **Asking the `QMetaObject` answers about the nearest class carrying
+  `Q_OBJECT`.** A `QLayout` subclass needs none, so an application's own
+  layout reported `QLayout`'s meta-object and passed for Qt's -- and the
+  control written for exactly that case went green for the wrong reason.
+  It asks `typeid(*layout)` now, which names the dynamic type whether or
+  not moc has heard of it.
+
+#### The checks
+
+Three, and the two controls are the point: a status bar and a dock
+widget are exempt; a widget in the application's own `QVBoxLayout` is
+NOT, however deep inside a `QMainWindow` it sits; and nor is one in a
+`QLayout` subclass the test binary defines itself.
+
+    a widget Qt's own layout places is reported          1 red
+    a widget in the application's own layout is forgiven 13 red
+    a layout the application wrote counts as Qt's         1 red
+
+The middle figure is the shape of what a wrong exemption costs: forgiving
+the application's own layouts silences thirteen checks across the suite.
+
+**What a static Qt build does to this**, said rather than hidden: every
+class then lives in the executable, the module comparison cannot
+discriminate, and the exemption falls back to the public-layout test
+alone -- wider there than it is here.
+
 ### 8.273 A font the machine does not have (2026-09-20)
 
 Section 7.5 has carried "the bundled font" as absent since it was
@@ -18053,7 +18125,7 @@ sabotage entry reddens **64 checks**, which is the shape of the defect
 rather than a badly aimed entry: a wedged decoder loses everything after
 it.
 
-#### The checks
+#### The three checks, and the two controls
 
 Eleven. Ctrl+Shift+C decodes; **the same chord by both roads is
 byte-identical**, with the legacy control byte as the reference, because

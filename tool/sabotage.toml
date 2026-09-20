@@ -4640,3 +4640,36 @@ into = "\tconst int id = QFontDatabase::addApplicationFont(path);\n\tif (id < 0)
 count = 1
 check = "a font file names the family it holds"
 
+
+[[sabotage]]
+# The layout-ownership exemption removed, which is the state a
+# QMainWindow application was in: nine warnings and nothing to act on.
+# 8.274.
+name = "a widget Qt's own layout places is reported"
+file = "src/grid/grid_style.cpp"
+find = "\tif (placed_by_qt(w)) return true;"
+into = "\tif (false) return true;"
+count = 1
+check = "a status bar and a dock widget are exempt"
+
+[[sabotage]]
+# The public-layout half removed, so every layout Qt defines counts --
+# including the QVBoxLayout an application wrote down, whose widgets are
+# then forgiven. The case the guard exists for, silenced. 8.274.
+name = "a widget in the application's own layout is forgiven"
+file = "src/grid/grid_style.cpp"
+find = "\tfor (const char *k : public_layouts)\n\t\tif (layout->inherits(k)) return false;"
+into = "\tfor (const char *k : public_layouts)\n\t\tif (false && layout->inherits(k)) return false;"
+count = 1
+check = "while a widget in the application's own layout is not"
+
+[[sabotage]]
+# The module half removed, so a layout the APPLICATION defined is read as
+# Qt's and its widgets are forgiven -- a custom layout being exactly where
+# a program puts widgets off the grid. 8.274.
+name = "a layout the application wrote counts as Qt's"
+file = "src/grid/grid_style.cpp"
+find = "\tif (!defined_by_qt(&typeid(*layout))) return false;"
+into = "\tif (false) return false;"
+count = 1
+check = "nor one in a layout the application wrote itself"

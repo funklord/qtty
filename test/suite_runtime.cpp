@@ -704,6 +704,80 @@ int suite_runtime() {
 		CHECK(GridGuard::is_exempt(tree.header()), "QHeaderView is exempt (F5)");
 		CHECK(!GridGuard::is_exempt(&off), "a plain widget is not exempt");
 
+		// AND A WIDGET QT'S OWN LAYOUT PLACES, which is what made a
+		// QMainWindow unusable with the guard on. Measured on a window
+		// shaped like netcfgd's -- menu bar, toolbar, tab widget, dock,
+		// status bar -- the guard reported NINE violations and forgave
+		// none: the dock's editor, the QDockWidget and the QStatusBar,
+		// each placed by QMainWindowLayout or QDockWidgetLayout, layouts
+		// an application cannot instantiate, name or configure.
+		{
+			QMainWindow main;
+			main.menuBar()->addMenu(QStringLiteral("&File"));
+			main.setCentralWidget(new QTabWidget);
+			main.statusBar()->addWidget(new QLabel(QStringLiteral("up")));
+			auto *dock = new QDockWidget(QStringLiteral("Log"));
+			dock->setWidget(new QPlainTextEdit);
+			main.addDockWidget(Qt::BottomDockWidgetArea, dock);
+			main.setAttribute(Qt::WA_DontShowOnScreen);
+			main.resize(60 * cw, 20 * ch);
+			main.show();
+			QCoreApplication::processEvents();
+			CHECK(GridGuard::is_exempt(main.statusBar())
+			      && GridGuard::is_exempt(dock),
+			      "a status bar and a dock widget are exempt, being placed "
+			      "by a layout no application can reach");
+
+			// THE FIRST CONTROL, and it is the case the guard exists for: a
+			// widget the application placed with a layout it wrote down is
+			// still checked, however far inside a QMainWindow it sits.
+			auto *page = new QWidget;
+			auto *mine = new QVBoxLayout(page);
+			auto *ours = new QLabel(QStringLiteral("mine"));
+			mine->addWidget(ours);
+			main.setCentralWidget(page);
+			QCoreApplication::processEvents();
+			CHECK(!GridGuard::is_exempt(ours),
+			      "while a widget in the application's own layout is not, "
+			      "which is the case the guard exists for");
+
+			// THE SECOND CONTROL, for the other half of the test. A layout
+			// class the APPLICATION defines must not be forgiven just for
+			// being unusual -- a custom layout is exactly where a program
+			// puts widgets off the grid -- and the module comparison is
+			// what separates it from QMainWindowLayout. Without that half
+			// this passes for the wrong reason.
+			struct OwnLayout : QLayout {
+				QList<QLayoutItem *> items;
+				void addItem(QLayoutItem *i) override { items.append(i); }
+				int count() const override { return int(items.size()); }
+				QLayoutItem *itemAt(int i) const override {
+					return items.value(i);
+				}
+				QLayoutItem *takeAt(int i) override {
+					return i >= 0 && i < items.size() ? items.takeAt(i)
+					                                  : nullptr;
+				}
+				QSize sizeHint() const override { return QSize(40, 40); }
+				void setGeometry(const QRect &r) override {
+					QLayout::setGeometry(r);
+					for (QLayoutItem *i : items)
+						i->setGeometry(QRect(r.topLeft(), QSize(41, 41)));
+				}
+			};
+			auto *odd = new QWidget;
+			auto *own = new OwnLayout;
+			odd->setLayout(own);
+			auto *inside = new QLabel(QStringLiteral("x"));
+			own->addWidget(inside);
+			main.setCentralWidget(odd);
+			QCoreApplication::processEvents();
+			CHECK(!GridGuard::is_exempt(inside),
+			      "nor one in a layout the application wrote itself, which "
+			      "is what the module comparison is for");
+			GridGuard::reset();
+		}
+
 		GridGuard::reset();
 		CHECK(GridGuard::violations() == 0, "reset clears the count");
 	}
