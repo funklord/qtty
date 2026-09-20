@@ -17850,12 +17850,18 @@ replacement.
 Every name declared in a public header, minus every `Qtty::` name the
 guide or the README mentions: 254 against 40. Most of the remainder is
 internal -- `CellBuffer`'s accessors, the paint engine, the compositor
--- and reading the application-facing ones turned up this, plus three
-documentation gaps rather than code ones: `has_minimum_contrast()`,
-`align_text_document()` and `set_terminal_palette()` are public,
-reachable and named nowhere a reader would look. Recorded here rather
-than fixed in passing, since what the guide should say about each is a
-paragraph and not a line.
+-- and reading the application-facing ones turned this up.
+
+**The same sweep first reported three documentation gaps, and it was
+wrong.** `has_minimum_contrast()`, `align_text_document()` and
+`set_terminal_palette()` are public, reachable and named nowhere in
+`doc/keyboard-first.md` -- which is not a gap, because that document is
+about using a Qt application without a mouse and none of the three is.
+The README already says where the API is documented: *read design.md
+for the reasoning and the headers for the API*, and all three carry
+long header contracts. A sweep that measures a document against a
+surface it was never meant to cover reports the difference as a
+shortfall, which is the wrong population under a true count.
 
 ### 8.274 Nine warnings a QMainWindow could not act on (2026-09-20)
 
