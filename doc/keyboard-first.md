@@ -640,18 +640,31 @@ flags are identical.
 `Qt::NoFocus` and in nobody's tab chain, so a section that is shut cannot
 be opened by any key -- measured, `Tab` through a window holding one walks
 the button before it, the page's scroll area, the field inside and the
-button after, and never a header. Unlike the close buttons above, this one
-has a remedy that makes the widget fully operable rather than duplicating
-its action elsewhere:
+button after, and never a header.
+
+**The remedy is one character: put a mnemonic in the title.**
+
+```cpp
+box->addItem(page, "&Network");
+```
+
+Qt registers a shortcut for the ampersand on the header button, so
+`Alt+N` opens that section. Measured on a box titled *&One*, *&Two* and
+*T&hree*: each letter opened its own section and `Qtty::pointer_only()`
+named nothing at all. qtty underlines the letter for you, which matters
+here more than on a menu item -- it is the only key into a shut section,
+so an unmarked one is a key nobody finds.
+
+If you would rather `Tab` reached the headers as well, give them a focus
+policy; with that in place `Space` opens the focused section:
 
 ```cpp
 for (QAbstractButton *b : box->findChildren<QAbstractButton *>())
     b->setFocusPolicy(Qt::TabFocus);
 ```
 
-Measured end to end with that in place: `Tab` reaches each header, `Space`
-opens its section, and `Qtty::pointer_only()` then names nothing. Do it
-again after `addItem()`, which builds a new header each time.
+Do that again after each `addItem()`, which builds a new header. The
+mnemonic needs no such care, which is why it is the one to reach for.
 
 **Two things Qt builds are deliberately NOT named, for the clear button's
 reason.** A `QCalendarWidget`'s four navigation buttons are not, because

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1772 checks, 0 failures. `make check` is green and includes
+1774 checks, 0 failures. `make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -17823,26 +17823,44 @@ parent `QTableView` -- never by a private class name. The two arrows are
 take it away silently at the next Qt rename, which is the failure the
 whole function exists to avoid.
 
-#### The tool box has a better remedy than the others
+#### A better remedy than the others, and not the one written first
 
 A close button's remedy is to give the same action a key somewhere else.
-A tool box's is to make the widget work:
+A tool box's is to make the widget work, and there are two ways:
+
+    box->addItem(page, "&Network");                     // one character
 
     for (QAbstractButton *b : box->findChildren<QAbstractButton *>())
-            b->setFocusPolicy(Qt::TabFocus);
+            b->setFocusPolicy(Qt::TabFocus);            // a tab stop each
 
-Measured end to end with that in place: `Tab` reached each header,
-`Space` opened its section -- index 0 to 1 to 2 -- and `pointer_only()`
-then named nothing. It has to be redone after `addItem()`, which builds a
-new header each time.
+**The second was committed here first as though it were the only one.**
+It works -- measured, `Tab` reached each header and `Space` opened its
+section, index 0 to 1 to 2 -- and it costs a tab stop per section and has
+to be redone after every `addItem()`. The first costs a character, needs
+no care afterwards, and was found by reading the function that was
+already excluding things: `mnemonic_claims()` walks `QAbstractButton`,
+and a `QToolBoxButton` is one. Measured on a box titled *&One*, *&Two*
+and *T&hree*: `Alt+H`, `Alt+T` and `Alt+O` each opened their own section
+and `pointer_only()` named **none** of the three.
 
-**The library does not do it, and that is deliberate rather than
-unfinished.** It has never set a focus policy on anything -- swept, there
-is no `setFocusPolicy` anywhere in `src/` or `include/` -- and doing so
-is a different kind of intervention from drawing: it adds a tab stop per
-section to the application's focus chain. The option, its cost and whose
-decision it is are all here rather than in a commit. **A decision for the
-copyright holder.**
+So the audit was right about the tool box as shipped and right again the
+moment a title carries a letter, and neither the guide nor this entry
+said so for the length of one commit. The guide leads with the mnemonic
+now.
+
+**qtty underlines that letter**, which matters more here than on a menu
+item: a header is `Qt::NoFocus` and in nobody's tab chain, so its letter
+is the only key into a shut section, and a key the screen does not mark
+is a key nobody finds. `CE_ToolBoxTabLabel` marks it the same way
+`CE_MenuItem` and the tool button do, guarded against the elide having
+cut it off.
+
+**The library still sets no focus policy, and that stays deliberate.**
+There is no `setFocusPolicy` anywhere in `src/` or `include/` -- swept --
+and adding one is a different kind of intervention from drawing. With the
+mnemonic available the question is smaller than it looked, but it is
+still the copyright holder's: **should qtty give a tool box's headers a
+tab stop for applications that have not put a letter in the title?**
 
 #### The checks
 
@@ -17854,6 +17872,15 @@ those two.
 
     a calendar's navigation is reported pointer-only     1 red
     a table's corner button is reported pointer-only     1 red
+    a tool box hides which letter opens a section        1 red
+
+**The corner button's exclusion errs towards naming**, which took a
+second condition: a parent test alone would also silence a button an
+application had parented to the view on purpose, so the button must
+carry no text as well. The corner button has none and an application's
+overlay almost certainly does. Qt hides the corner when either header is
+hidden and an invisible button never reaches the loop, so a table
+without both headers needs no exclusion and gets none.
 
 #### And the guide's enumeration had gone stale
 

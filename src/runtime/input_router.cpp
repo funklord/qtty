@@ -1610,8 +1610,19 @@ QVector<QWidget *> pointer_only(QWidget *scope) {
 		//
 		// Its parent decides it: the corner button is a child of the
 		// QTableView itself, while a button an application puts inside a
-		// table is a child of the VIEWPORT and is still named.
-		if (qobject_cast<QTableView *>(b->parentWidget())) continue;
+		// table is a child of the VIEWPORT and is still named. Qt hides it
+		// when either header is hidden, and an invisible button never
+		// reaches this loop, so a table without both headers does not need
+		// the exclusion and does not get it.
+		//
+		// AND IT MUST BE UNLABELLED, so that the exclusion errs towards
+		// naming. A parent test alone would also silence a button an
+		// application had parented to the view on purpose -- an overlay, a
+		// corner action of its own -- and that is the direction this must
+		// not fail in: the corner button carries no text, and anything the
+		// application put there almost certainly does.
+		if (qobject_cast<QTableView *>(b->parentWidget()) && b->text().isEmpty())
+			continue;
 		out.append(b);
 	}
 	// AND THE THING YOU DRAG. `QSplitterHandle` is Qt's own word for it, the

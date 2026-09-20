@@ -5552,6 +5552,49 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// AND THE REMEDY, which is one character rather than a focus policy: a
+	// mnemonic in the section title. Qt registers a shortcut for it on the
+	// header button, so Alt opens that section, and pointer_only() stops
+	// naming it -- measured, all three at once. The letter is underlined
+	// because it is the ONLY key into a shut section: a header is
+	// Qt::NoFocus and in nobody's tab chain, so an unmarked letter is a key
+	// nobody finds.
+	{
+		QWidget host;
+		auto *v = new QVBoxLayout(&host);
+		auto *box = new QToolBox;
+		box->addItem(new QLabel(QStringLiteral("alpha")),
+		             QStringLiteral("&One"));
+		box->addItem(new QLabel(QStringLiteral("beta")),
+		             QStringLiteral("T&wo"));
+		v->addWidget(box);
+		show(host, 30, 8);
+		CellBuffer b(30, 8);
+		render_once(host, b);
+		CHECK(pointer_only(&host).isEmpty(),
+		      "a tool box whose titles carry a mnemonic names nobody, the "
+		      "letter being a key that opens the section");
+		const QPoint one = findText(b, QStringLiteral("One"));
+		const QPoint two = findText(b, QStringLiteral("Two"));
+		// THE RELATIONSHIP between the marked letter and its neighbours,
+		// rather than the attribute alone: what is wrong when this fails is
+		// that the letter is not picked out, and "T&wo" is in the fixture
+		// so a check that assumed the first letter would pass for the wrong
+		// reason.
+		const bool first_marked =
+		    one.x() >= 0
+		    && (b.at(one.x(), one.y()).attrs & Attr::Underline)
+		    && !(b.at(one.x() + 1, one.y()).attrs & Attr::Underline);
+		const bool inner_marked =
+		    two.x() >= 0
+		    && (b.at(two.x() + 1, two.y()).attrs & Attr::Underline)
+		    && !(b.at(two.x(), two.y()).attrs & Attr::Underline);
+		CHECK(first_marked && inner_marked,
+		      "and the letter it uses is underlined, wherever in the title "
+		      "the ampersand sits");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

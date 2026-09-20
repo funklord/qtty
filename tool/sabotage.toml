@@ -4500,7 +4500,18 @@ check = "and a calendar's four navigation buttons are not"
 # both headers, for an action Ctrl+A performs exactly. 8.267.
 name = "a table's corner button is reported pointer-only"
 file = "src/runtime/input_router.cpp"
-find = "\t\tif (qobject_cast<QTableView *>(b->parentWidget())) continue;"
-into = "\t\tif (false) continue;"
+find = "\t\tif (qobject_cast<QTableView *>(b->parentWidget()) && b->text().isEmpty())\n\t\t\tcontinue;"
+into = "\t\tif (false)\n\t\t\tcontinue;"
 count = 1
 check = "nor a table's corner button"
+
+[[sabotage]]
+# The mnemonic left unmarked. A section header is Qt::NoFocus and in
+# nobody's tab chain, so its letter is the only key that opens it, and a
+# key the screen does not mark is a key nobody finds. 8.267.
+name = "a tool box hides which letter opens a section"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tconst int mn = mnemonic_index(tb->text);"
+into = "\t\t\t\tconst int mn = -1;"
+count = 1
+check = "and the letter it uses is underlined"

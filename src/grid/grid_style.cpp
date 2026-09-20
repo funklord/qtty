@@ -2235,6 +2235,23 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				                   mark + QLatin1Char(' ') + label,
 				                   Color(), Color(),
 				                   label_attrs(opt, w, a | focus_attrs(w)));
+				// AND THE MNEMONIC UNDERLINED, which matters more here than
+				// on a menu item. A section header is Qt::NoFocus and in
+				// nobody's tab chain, so a letter in its title is the only
+				// key that opens the section -- measured, a box titled
+				// "&One", "&Two", "T&hree" opens each from Alt and
+				// pointer_only() then names none of them. A key that is the
+				// only way in and is not marked on the screen is a key
+				// nobody finds.
+				//
+				// Offset by the two cells the mark and its space take, and
+				// guarded against the elide having cut the letter off, which
+				// is the same shape CE_MenuItem and the tool button use.
+				const int mn = mnemonic_index(tb->text);
+				if (mn >= 0 && mn < label.size()
+				    && dev->buffer().writable(c.left() + 2 + mn, c.top()))
+					dev->buffer().at(c.left() + 2 + mn, c.top()).attrs
+					    |= Attr::Underline;
 				return;
 			}
 			break;
