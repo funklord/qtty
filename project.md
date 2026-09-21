@@ -17800,6 +17800,53 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.277 The cheap question first, and a change no check defends
+### (2026-09-21)
+
+8.276 cached the module lookup. Reading the filter it lives in shows
+the more fundamental half: `GridGuard::eventFilter()` asked
+`is_exempt(w)` BEFORE `GridMetrics::is_aligned(asked)` -- the expensive
+question before the one that decides. Nearly every widget is on the
+grid, so the exemption was being spent on the answer that changes
+nothing, and that is what let a `dladdr()` into the hot path in the
+first place.
+
+Swapped, the cost is proportional to what the guard REPORTS rather than
+to every geometry event in the program. Both halves are kept and
+neither replaces the other: the cache bounds what one class costs, this
+bounds how often any of it is asked.
+
+#### Counted, because a timing here measures the machine
+
+    is_exempt() calls in one suite run
+        exemption first   15,361
+        alignment first    6,653
+
+Fifty-seven per cent fewer, deterministic, and unaffected by the load
+average -- which mattered, since the machine was at 93 while this was
+measured and the wall-clock difference was inside the noise. **A suite
+is the friendly case**: it builds off-grid widgets deliberately, and an
+application mostly does not.
+
+#### And no check defends it
+
+A sabotage entry was written, run, and removed. Putting the old order
+back reddens nothing, because nothing in this tree measures cost -- the
+same sentence 8.276 ends with, met again one commit later and this time
+in the fix rather than the defect.
+
+A timing check cannot close it either, and the arithmetic says so
+rather than the instinct: the old order costs 2.3x the calls, and the
+only timing gate here that has survived carries a 10x margin because
+anything tighter fails on a busy machine. **A gate that cannot see a
+2.3x change is not a gate for this.**
+
+What could: a counter on `GridGuard` -- `module_lookups()` beside
+`violations()` -- so a check can assert the work rather than the clock.
+That is public API added for a test, which this project is careful
+about, so it is **a decision for the copyright holder** rather than one
+taken here. The counts above are what it would pin.
+
 ### 8.276 Two defects the six configurations found, one of them mine
 ### and expensive (2026-09-21)
 

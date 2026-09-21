@@ -819,7 +819,29 @@ bool GridGuard::eventFilter(QObject *obj, QEvent *event) {
 			// dialog in the suite for a coordinate nothing reads.
 			const QRect g = w->geometry();
 			const QRect asked = w->isWindow() ? QRect(QPoint(), g.size()) : g;
-			if (!is_exempt(w) && !GridMetrics::is_aligned(asked)) {
+			// ALIGNMENT FIRST, exemption second, and the order is the
+			// difference between a cost proportional to the guard's
+			// FINDINGS and one proportional to every geometry event in
+			// the program. Nearly every widget is on the grid, so asking
+			// "is this one forgiven" before "is it even wrong" spends the
+			// expensive question on the answer that changes nothing.
+			//
+			// It is what let a dladdr() reach the hot path at all: 8.276
+			// caches that lookup, and this makes it unreachable for a
+			// widget with nothing wrong with it. Neither is a substitute
+			// for the other -- the cache bounds what one class costs, and
+			// this bounds how often any of it is asked.
+			//
+			// Counted rather than timed, because a timing on a shared
+			// machine measures the machine: over one suite run,
+			// is_exempt() is called 15,361 times with the old order and
+			// 6,653 with this one. A suite is the friendly case, too --
+			// it builds off-grid widgets deliberately, where an
+			// application mostly does not.
+			//
+			// Safe to swap because both are pure: is_exempt() reads the
+			// widget tree and is_aligned() reads a rectangle.
+			if (!GridMetrics::is_aligned(asked) && !is_exempt(w)) {
 				++s_violations;
 				qWarning("qtty: %s '%s' geometry %dx%d+%d+%d is off the "
 				         "%dx%d grid",
