@@ -617,6 +617,9 @@ static int s_forgiven = 0;
 
 int GridGuard::violations() { return s_violations; }
 int GridGuard::forgiven() { return s_forgiven; }
+// See the header: zero violations means nothing was wrong OR nothing was
+// watching, and only this tells them apart.
+bool GridGuard::installed() { return s_guard != nullptr; }
 // Counts what it discards. See the header for why: without this the tally a
 // run ends with says nothing about the run, only about whatever happened
 // after the last caller stopped looking.

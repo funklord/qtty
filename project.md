@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1851 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1853 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,65 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.294 Two questions the page never mentioned, and a count that could not fail (2026-09-21)
+
+**Two public helpers an adopter's test wants, and
+`doc/keyboard-first.md` named neither**: `GridGuard::violations()` and
+`contrast_violations()`. Both were reachable, documented in their own
+headers, and invisible to the one page an adopter reads to learn what
+to assert.
+
+They are not rows of the nine-question table and should not be -- one
+is a process-wide counter and the other reads a rendered frame, so
+neither takes a scope. They are a short section beside it.
+
+#### And the grid guard's count could not fail
+
+**`violations()` returns zero both when every geometry landed on the
+grid and when nothing was looking.** `setup()` installs the guard
+inside `#ifndef QT_NO_DEBUG`, so a release build has none at all.
+Measured on a release build of a scratch program:
+
+    no install        0 after a gridded window, 0 after an off-grid one
+    install(app)      1 after a gridded window, 2 after an off-grid one
+
+So an application that ships a release build and asserts
+`violations() == 0` is asserting nothing, in the exact words this
+project keeps meeting: a passing check that inspected nothing.
+
+`GridGuard::installed()` is the answer -- purely additive, no contract
+changed, and the page now shows the two lines together with the reason
+the first is not ceremony.
+
+**Its false case is not reachable from the suite** and the check says
+so rather than implying otherwise: the guard is installed for the life
+of the process and there is no uninstall, so what proves the accessor
+DISCRIMINATES is the scratch measurement above, and what the check
+proves is that it answers.
+
+#### And a number in the suite that had rotted while nobody looked
+
+`test/main.cpp` carried "the parent's own figure is 136" about the
+off-grid geometries `reset()` disowns per run. **Measured today it is
+235**, and nothing about the grid had changed -- the suites had grown
+fixtures, and every fixture that shows a widget at a size the grid does
+not divide adds to it. Several of those fixtures are this session's.
+
+A number that moves with the TESTS rather than with the code cannot be
+pinned in a comment, and pinning it made the sentence wrong within a
+fortnight. The comment states the finding and points at the line that
+prints the live count; the figure is gone.
+
+#### The contrast claim is about a rendered window
+
+`contrast_violations()` was already checked both ways -- 2 for a
+low-contrast pair, 0 for a legible one -- over **synthetic** buffers.
+What the page now invites an adopter to copy is a rendered window under
+the default theme, which is a different population: a rendered frame
+carries what the style and the theme chose rather than what a test
+wrote into it. That claim has its own check now, and a sabotage that
+raises the floor past what the theme clears.
+
 ### 8.293 The other table on that page, coupled the same way (2026-09-21)
 
 **`doc/keyboard-first.md` has two tables that are claims about the

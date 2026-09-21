@@ -198,10 +198,19 @@ int main(int argc, char **argv) {
 		// times with four different values would be pinning the fork
 		// pattern, not the grid.
 		//
-		// The parent's own figure is 136. That is the real finding: these
-		// suites disown 136 off-grid geometries per run, every one invisible
-		// to the check above. Left as a number a reader can watch until
-		// somebody separates the parent's count from its children's.
+		// THE FIGURE IS NOT WRITTEN HERE, and that is the correction.
+		// This comment used to say "the parent's own figure is 136";
+		// measured 2026-09-21 it is 235, and nothing about the grid had
+		// changed -- the suites had grown fixtures, and every fixture
+		// that shows a widget at a size the grid does not divide adds to
+		// it. A number that moves with the tests rather than with the
+		// code cannot be pinned in a comment, and pinning it made the
+		// sentence wrong within a fortnight.
+		//
+		// The finding survives the number: these suites disown off-grid
+		// geometries by the hundred, every one invisible to the check
+		// above, and the line below is the live count. Watch that until
+		// somebody separates the parent's from its children's.
 		printf("info: reset() has disowned %d off-grid geometries in this"
 		       " process\n", Qtty::GridGuard::forgiven());
 	}

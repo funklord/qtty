@@ -214,6 +214,29 @@ int suite_theme() {
 		CellBuffer blank(4, 1);
 		CHECK(contrast_violations(blank, Capabilities::TrueColor) == 0,
 		      "a blank frame reports nothing -- no glyph, no unreadable pairing");
+
+		// AND THE CLAIM THE PAGE MAKES, which the three above do not
+		// reach: they are synthetic buffers, and what
+		// `doc/keyboard-first.md` now invites an adopter to assert is a
+		// RENDERED WINDOW under the default theme. Those are different
+		// populations -- a rendered frame carries whatever the style and
+		// the theme chose, not what a test wrote into it -- and the
+		// snippet on the page is the one somebody will copy.
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->addWidget(new QLabel(QStringLiteral("Hello")));
+		v->addWidget(new QPushButton(QStringLiteral("Save")));
+		win.resize(GridMetrics::cells(24, 5));
+		win.show();
+		QCoreApplication::processEvents();
+		CellBuffer frame(24, 5);
+		render_once(win, frame);
+		CHECK(contrast_violations(frame, Capabilities::TrueColor) == 0
+		      && contrast_violations(frame, Capabilities::Ansi16) == 0,
+		      "a window drawn in the default theme clears the contrast "
+		      "floor at every depth, which is what the page tells an "
+		      "adopter to assert");
 	}
 
 	CellTheme t = CellTheme::terminal_default();

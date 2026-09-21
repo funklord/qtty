@@ -2020,6 +2020,44 @@ somebody adds one that collides or that only a mouse can press. Each of
 them walks the router's own tables rather than a second copy, so what
 they report is what the keys will do.
 
+**Two more the same test wants, shaped differently.** They are not in the
+table because neither takes a scope: one is a process-wide counter and the
+other reads a rendered frame.
+
+**Did every widget land on the character grid?** A widget whose geometry
+is not a whole number of cells renders smeared across the boundary, and
+the guard that notices reports where it happens rather than several
+layers away.
+
+    QVERIFY(Qtty::GridGuard::installed());          // the guard is watching
+    QCOMPARE(Qtty::GridGuard::violations(), 0);     // and saw nothing
+
+**Both lines, and the first is not ceremony.** `violations()` returns a
+count, and zero means *either* that every geometry was on the grid *or*
+that nothing was looking -- `Qtty::setup()` installs the guard inside
+`#ifndef QT_NO_DEBUG`, so a release build has none. Measured on one: a
+window with a deliberately off-grid child reported **0**, and the same
+binary with `GridGuard::install(app)` called by hand reported **2**. Call
+`install()` yourself in a test if you build it in release.
+
+**Do your colours stay legible at the terminal's depth?** Contrast is
+decided after the mapping down to whatever the terminal has, so a pair
+that clears the floor in true colour can fail once quantised to sixteen.
+
+    Qtty::CellBuffer frame(40, 12);
+    Qtty::render_once(win, frame);
+    QCOMPARE(Qtty::contrast_violations(frame, Qtty::capabilities().color), 0);
+
+It counts the cells whose foreground and background are closer in
+luminance than the floor. Taking the depth from `Qtty::capabilities()`
+rather than naming one asks about the terminal you are actually on, and
+outside a run it answers the sixteen-colour default -- which is the
+strict case, so a test gets the pessimistic answer for free.
+
+A window drawn in the default theme answers 0 at every depth, because
+the theme leaves the terminal's own colours alone; it is the colours
+*you* pick, which practice 14 is about, that this measures.
+
 **There is a snapshot harness for what the screen shows.**
 `qtty/testing.h` ships with every install:
 

@@ -664,6 +664,29 @@ int suite_runtime() {
 	{
 		GridGuard::install(*qApp);
 
+		// WHETHER A GUARD IS WATCHING AT ALL, which violations() cannot
+		// say: it returns a count, and zero means both "every geometry
+		// landed on the grid" and "nothing was looking". That is not a
+		// hypothetical -- setup() installs the guard inside
+		// `#ifndef QT_NO_DEBUG`, so a RELEASE build has none, and this
+		// suite only ever sees the installed case because the line above
+		// installs it by hand.
+		//
+		// Measured on a release build of a scratch program: a window with
+		// a deliberately off-grid child reported 0 violations, and the
+		// same binary with install(app) called by hand reported 2. An
+		// application asserting the count without asserting this is
+		// asserting nothing on the build it ships.
+		//
+		// The false case is NOT reachable from here -- the guard is
+		// installed for the life of the process and there is no uninstall
+		// -- so this check proves the accessor answers and the scratch
+		// measurement above is what proves it discriminates. Said rather
+		// than implied.
+		CHECK(GridGuard::installed(),
+		      "the grid guard says whether it is watching, which a count "
+		      "of zero cannot");
+
 		// The widgets have to be shown, and that is not a detail. QWidget::resize()
 		// on a hidden widget sets the geometry and defers the QResizeEvent until
 		// the widget is shown, so a guard driven by resize events sees nothing

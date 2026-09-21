@@ -169,6 +169,22 @@ public:
 	// count: an off-grid widget appearing anywhere moves it, wherever the
 	// resets fall.
 	static int forgiven();
+	// Whether a guard is actually watching, because violations() cannot
+	// say. It returns a count, and zero means BOTH "every geometry landed
+	// on the grid" and "nothing was looking" -- which is the vacuous pass
+	// this project keeps meeting, in a number an application is invited to
+	// assert on.
+	//
+	// The two are not hypothetical alternatives. install() is called from
+	// setup() inside `#ifndef QT_NO_DEBUG`, so a RELEASE build has no
+	// guard at all: measured on one, a window with a deliberately off-grid
+	// child reported 0 violations, and the same binary with
+	// install(app) called by hand reported 2.
+	//
+	// So a test that means "no widget is off the grid" asserts this first
+	// and the count second, or installs the guard itself the way this
+	// project's own test/main.cpp does.
+	static bool installed();
 	// Widgets whose class self-sizes and cannot be gridded from the style
 	// (measured F5). Named rather than silently skipped, so the exemption is
 	// reviewable and does not quietly grow.

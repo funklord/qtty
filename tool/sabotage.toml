@@ -5014,3 +5014,26 @@ find = "| `Qtty::sheet_styled(scope)` | the widgets a style sheet is drawing | e
 into = "| `Qtty::sheet_styled(scope)` | the widgets a style sheet is drawing | empty |\n| `Qtty::invented(scope)` | nothing anybody calls | empty |"
 count = 1
 check = "the page lists exactly the audit questions these checks call"
+
+[[sabotage]]
+# installed() answering whatever violations() would imply, which is the
+# state it was added to leave: a count of zero meaning both "nothing was
+# wrong" and "nothing was watching". 8.294.
+name = "the grid guard cannot say whether it is watching"
+file = "src/grid/grid_style.cpp"
+find = "bool GridGuard::installed() { return s_guard != nullptr; }"
+into = "bool GridGuard::installed() { return s_violations == 0 ? false : true; }"
+count = 1
+check = "the grid guard says whether it is watching"
+
+[[sabotage]]
+# The contrast floor raised past what the default theme clears, so the
+# window the page tells an adopter to assert on stops clearing it --
+# the check being about a RENDERED frame rather than a synthetic one.
+# 8.294.
+name = "a rendered window stops clearing the contrast floor"
+file = "test/suite_theme.cpp"
+find = "\t\tCHECK(contrast_violations(frame, Capabilities::TrueColor) == 0\n\t\t      && contrast_violations(frame, Capabilities::Ansi16) == 0,"
+into = "\t\tCHECK(contrast_violations(frame, Capabilities::TrueColor, 255) == 0\n\t\t      && contrast_violations(frame, Capabilities::Ansi16) == 0,"
+count = 1
+check = "a window drawn in the default theme clears the contrast floor"
