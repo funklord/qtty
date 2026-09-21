@@ -162,6 +162,88 @@ inline void mnemonic(InputRouter &router, QChar letter) {
 	router.on_key({0, QString(letter), false, true, false});
 }
 
+// -- AND THE MOUSE, which carries the same kind of trap one field along.
+//
+// A MouseEvent is built by aggregate initialisation at almost every call
+// site in this project -- `{cell, 1, false, false, true, 0}` -- where the
+// second field is the button and the three bools are press, release and
+// motion in that order. Three things about it are silent when wrong, all
+// measured against a button and a scroll bar:
+//
+//     button 1, press then release    the button is clicked
+//     button 0, press then release    NOTHING -- 0 means "no button"
+//     button 1, press with no release NOTHING -- a click needs both
+//     wheel +1 / -1 on a scroll bar   50 -> 47 -> 50, so + is UP
+//
+// `button` is not an SGR number. The decoder writes `1 + (b & 3)`, so the
+// left button is 1 and zero means no button is down. A probe written with
+// 0 cost a session its drag results once: every one invalid, and the
+// control dead beside them, with nothing saying so.
+
+// BY NAMED FIELD AND NOT BY POSITION, which is the other half of the
+// trap and caught the author of these four: the first draft of
+// mouse_move() read `{cell, button, false, false, true, button}` and the
+// sixth field is the WHEEL, so a drag move also scrolled. Aggregate
+// initialisation is what every call site in this project uses and it is
+// exactly what puts a value in the wrong slot -- so the helpers that
+// exist to stop that do not use it either.
+
+// A click at one cell: press and release, which is what a control needs.
+// Button 1 is the left button.
+inline void click(InputRouter &router, const QPoint &cell, int button = 1) {
+	MouseEvent down;
+	down.cell = cell;
+	down.button = button;
+	down.press = true;
+	router.on_mouse(down);
+	MouseEvent up;
+	up.cell = cell;
+	up.button = button;
+	up.release = true;
+	router.on_mouse(up);
+}
+
+// The halves of a click, for a drag: press, then move, then release.
+inline void mouse_press(InputRouter &router, const QPoint &cell,
+                        int button = 1) {
+	MouseEvent e;
+	e.cell = cell;
+	e.button = button;
+	e.press = true;
+	router.on_mouse(e);
+}
+inline void mouse_release(InputRouter &router, const QPoint &cell,
+                          int button = 1) {
+	MouseEvent e;
+	e.cell = cell;
+	e.button = button;
+	e.release = true;
+	router.on_mouse(e);
+}
+
+// Moving the pointer. With no button that is a hover; with one it is a
+// drag, which is why the button is an argument rather than assumed.
+inline void mouse_move(InputRouter &router, const QPoint &cell,
+                       int button = 0) {
+	MouseEvent e;
+	e.cell = cell;
+	e.button = button;
+	e.motion = true;
+	router.on_mouse(e);
+}
+
+// The wheel. Positive is UP -- measured, +1 took a scroll bar from 50 to
+// 47 -- and `right` is the horizontal wheel, which SGR reports separately
+// and which this library carries in its own field.
+inline void wheel(InputRouter &router, const QPoint &cell, int up,
+                  int right = 0) {
+	MouseEvent e;
+	e.cell = cell;
+	e.wheel = up;
+	e.wheel_x = right;
+	router.on_mouse(e);
+}
+
 // Render a widget to a section 9 snapshot in one call -- glyphs, attributes
 // and colours. It used to return glyphs alone, which meant a fixture could
 // not see the reverse video, bold and dim that most of the Channel A work

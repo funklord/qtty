@@ -8,6 +8,9 @@
 //                     see key_map() below and `qtty-replay --help`
 //   ctrl <letter>     e.g. "ctrl s"
 //   click <col> <row> mouse press+release at cell
+//   drag <c1> <r1> <c2> <r2>  press, move, release -- a drag
+//   wheel <col> <row> <count> scroll; positive is up
+//   paste <string>    a bracketed paste, not the typing path
 //   resize <c> <r>    resize the terminal through on_resize()
 //   conventions on|off  the opt-in terminal key habits
 //   frame             print the composed frame between markers
@@ -119,7 +122,12 @@ static const char *const usage =
     "                     A single letter becomes its key and its text,\n"
     "                     which is what a terminal delivers. Names below\n"
     "  ctrl <letter>      e.g. \"ctrl s\"\n"
-    "  click <col> <row>  mouse press and release at a cell\n"    "  window             open a second top-level window, so F6 has\n"
+    "  click <col> <row>  mouse press and release at a cell\n"
+    "  drag <c1> <r1> <c2> <r2>  press, move and release -- a drag,\n"
+    "                     which click cannot express\n"
+    "  wheel <col> <row> <count>  scroll; positive is up\n"
+    "  paste <string>     a bracketed paste, which is not the same path\n"
+    "                     as typing the characters\n"    "  window             open a second top-level window, so F6 has\n"
     "                     somewhere to go. It is not open at the start,\n"
     "                     because two windows put a strip in row 0 of\n"
     "                     every frame and that is every script's output\n"
@@ -137,6 +145,27 @@ static const char *const usage =
     "                     the real backend instead of text frames, which is a\n"
     "                     deterministic corpus for terminal parser testing.\n"
     "                     Set QTTY_GRAPHICS to force a graphics tier into it.\n";
+
+// A mouse event built by NAMED FIELD. The struct is six positional
+// members and the sixth is the wheel, so `{cell, button, false, false,
+// true, button}` -- which is what a reader writes for "move with the
+// button down" -- makes every drag move scroll whatever it passes over.
+// That is not hypothetical; it is the bug the library's own test helper
+// had in its first draft.
+//
+// And the button is not an SGR number: the decoder writes `1 + (b & 3)`,
+// so the left button is 1 and zero means NO button, which reaches
+// nothing at all.
+enum class Mouse { Press, Release, Motion };
+static MouseEvent mouse_at(const QPoint &cell, Mouse what, int button = 1) {
+	MouseEvent e;
+	e.cell = cell;
+	e.button = button;
+	e.press = what == Mouse::Press;
+	e.release = what == Mouse::Release;
+	e.motion = what == Mouse::Motion;
+	return e;
+}
 
 int main(int argc, char **argv) {
 	// Before QApplication, for the reason the same block in qtty-negotiate
@@ -346,8 +375,39 @@ int main(int argc, char **argv) {
 			router.on_resize(QSize(term_cols, term_rows));
 		} else if (cmd == QLatin1String("click") && parts.size() == 3) {
 			QPoint cell(parts[1].toInt(), parts[2].toInt());
-			router.on_mouse({cell, 1, true, false, false, 0});
-			router.on_mouse({cell, 1, false, true, false, 0});
+			router.on_mouse(mouse_at(cell, Mouse::Press));
+			router.on_mouse(mouse_at(cell, Mouse::Release));
+		} else if (cmd == QLatin1String("paste") && parts.size() > 1) {
+			// A WHOLE INPUT PATH THIS TOOL COULD NOT REACH. A bracketed
+			// paste is not the characters typed one at a time: it
+			// arrives as one string, it is not read as keys, and the
+			// library has a section of its own about what it does with
+			// newlines and with a field that takes only one line. A
+			// report about any of that was not reproducible here.
+			router.on_paste(line_raw.mid(line_raw.indexOf(QLatin1Char(' ')) + 1));
+		} else if (cmd == QLatin1String("wheel") && parts.size() == 4) {
+			// Positive is UP, which is the library's own spelling --
+			// measured, +1 takes a scroll bar from 50 to 47.
+			MouseEvent e;
+			e.cell = QPoint(parts[1].toInt(), parts[2].toInt());
+			e.wheel = parts[3].toInt();
+			router.on_mouse(e);
+		} else if (cmd == QLatin1String("drag") && parts.size() == 5) {
+			// Press, move, release -- the three events a drag is, which
+			// `click` cannot express and which is the shape every drag
+			// bug takes. The move carries the BUTTON, because a motion
+			// with none is a hover and reaches something else entirely.
+			//
+			// WHAT IT DEMONSTRATES IS THE SEQUENCE. Whether anything
+			// accepts the drop is the UI's business, and the built-in
+			// sample has no drop target -- so `drag` on it delivers
+			// three events and changes nothing, which is correct and
+			// is worth saying before somebody reads that as a bug.
+			const QPoint from(parts[1].toInt(), parts[2].toInt());
+			const QPoint to(parts[3].toInt(), parts[4].toInt());
+			router.on_mouse(mouse_at(from, Mouse::Press));
+			router.on_mouse(mouse_at(to, Mouse::Motion));
+			router.on_mouse(mouse_at(to, Mouse::Release));
 		} else if (cmd == QLatin1String("frame")) {
 			CellBuffer buf(term_cols, term_rows);
 			comp.compose(buf);

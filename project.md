@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1858 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1862 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,65 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.296 The mouse has the same trap, one field along (2026-09-21)
+
+**8.295 removed three silent spellings from the keyboard; the mouse
+carries three of its own**, measured against a button and a scroll bar:
+
+    button 1, press then release     the button is clicked
+    button 0, press then release     NOTHING -- 0 means "no button"
+    button 1, press with no release  NOTHING -- a click needs both
+    wheel +1 / -1 on a scroll bar    50 -> 47 -> 50, so + is UP
+
+`button` is not an SGR number -- the decoder writes `1 + (b & 3)`, so
+the left button is 1 and zero means none is down. **That one has
+already been paid for**: a probe written with 0 cost a session every
+drag result it took, and the control beside them, with nothing saying
+so.
+
+`click()`, `mouse_press()`, `mouse_release()`, `mouse_move()` and
+`wheel()` fill the fields.
+
+#### The helper's own first draft had the bug it exists to remove
+
+`mouse_move()` was written as
+`{cell, button, false, false, true, button}` -- and the sixth
+positional field is the WHEEL, so a drag move scrolled whatever it
+passed over. Aggregate initialisation is what every call site in this
+project uses and it is exactly what puts a value in the wrong slot, so
+**the helpers that exist to stop that do not use it either**: all five
+assign named fields.
+
+The check for it is its own case -- a move with a button held must not
+move a scroll bar under it -- and there is a sabotage that puts the bug
+back.
+
+Four sabotage entries and four checks, the last of which sends the two
+hand-written spellings that reach nothing and asserts that they did.
+
+#### And qtty-replay could not reproduce three input paths
+
+That tool exists so a bug report is reproducible, and it drove keys,
+clicks and resizes. It had no command for a **paste**, a **wheel** or a
+**drag** -- three whole paths, two of which this project has had
+defects in.
+
+    paste <string>            a bracketed paste, which is not the
+                              characters typed one at a time
+    wheel <col> <row> <count> positive is up
+    drag <c1> <r1> <c2> <r2>  press, move, release
+
+Verified against the sample UI rather than assumed: `text hi` then
+`paste  there` gives `[hi there]`, and `wheel 10 8 -3` takes the list
+from item 0 to item 9. `drag` delivers its three events and changes
+nothing there, because the sample has no drop target -- said in the
+source so nobody reads that as a bug.
+
+It builds its events through a `mouse_at()` with **named fields**,
+carrying the same reason as the helpers above: the first draft of
+`mouse_move()` put the button in the wheel's slot, and a tool written
+the same way would repeat it.
+
 ### 8.295 Every wrong way to send a key is silent (2026-09-21)
 
 **A `KeyEvent` carries a key, a text and three modifier flags, and which

@@ -2019,6 +2019,21 @@ leaves it empty under a modifier, which is what stops a chord also typing
 its letter. You can still build the struct by hand -- the table above is
 what you need if you do.
 
+**And the mouse, which has the same shape of trap one field along.**
+
+    Qtty::test::click(router, QPoint(2, 0));          // press and release
+    Qtty::test::mouse_press(router, cell);            // the halves, for a drag
+    Qtty::test::mouse_move(router, cell, 1);          // with a button: a drag
+    Qtty::test::mouse_release(router, cell);
+    Qtty::test::wheel(router, cell, 1);               // positive is up
+
+Three things about a `MouseEvent` are silent when wrong, all measured
+against a button and a scroll bar: **button 0 means *no* button** and
+reaches nothing, a press with no release is not a click, and the wheel's
+sign is a guess until somebody measures it -- `+1` took a scroll bar from
+50 to 47, so positive is up. `button` is not an SGR number: the decoder
+writes `1 + (b & 3)`, so the left button is `1`.
+
 `QWidget::focusWidget()` on the window does answer, which is worth saying
 straight after practice 10: it is `hasFocus()` on the widget, and
 `QApplication::focusWidget()`, that are dead here. Qt keeps the window's

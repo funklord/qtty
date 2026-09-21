@@ -5148,6 +5148,77 @@ int suite_router() {
 				}
 			}
 
+			// THE MOUSE HELPERS, which carry the same kind of trap one
+			// field along. A MouseEvent is built by aggregate
+			// initialisation at almost every call site here, and three
+			// things about it are silent when wrong: button 0 means NO
+			// button and reaches nothing, a press with no release is not a
+			// click, and the wheel's sign is a guess unless it is measured.
+			{
+				QWidget host;
+				host.setAttribute(Qt::WA_DontShowOnScreen);
+				host.resize(GridMetrics::cells(20, 4));
+				auto *b = new QPushButton(QStringLiteral("Save"), &host);
+				b->setGeometry(0, 0, cw * 10, ch);
+				int clicks = 0;
+				QObject::connect(b, &QPushButton::clicked,
+				                 [&clicks] { ++clicks; });
+				auto *bar = new QScrollBar(Qt::Vertical, &host);
+				bar->setGeometry(cw * 12, 0, cw, ch * 4);
+				bar->setRange(0, 100);
+				bar->setValue(50);
+				host.show();
+				InputRouter r(&host);
+				QCoreApplication::processEvents();
+
+				Qtty::test::click(r, QPoint(2, 0));
+				QCoreApplication::processEvents();
+				CHECK(clicks == 1,
+				      "test::click presses and releases, which is what a "
+				      "control needs to see a click");
+
+				const int was = bar->value();
+				Qtty::test::wheel(r, QPoint(12, 1), 1);
+				QCoreApplication::processEvents();
+				const int after_up = bar->value();
+				Qtty::test::wheel(r, QPoint(12, 1), -1);
+				QCoreApplication::processEvents();
+				CHECK(after_up < was && bar->value() == was,
+				      "and test::wheel scrolls up for a positive count and "
+				      "back down for a negative one");
+
+				// A MOVE IS NOT A SCROLL, which is the bug the first draft
+				// of mouse_move() had: it passed the button into the sixth
+				// positional field, which is the wheel, so a drag move
+				// scrolled whatever was under it.
+				const int before_move = bar->value();
+				Qtty::test::mouse_move(r, QPoint(12, 1), 1);
+				QCoreApplication::processEvents();
+				CHECK(bar->value() == before_move,
+				      "while a move with a button held is a drag and not a "
+				      "scroll, whatever it passes over");
+
+				// THE CONTROLS: the two spellings a reader writes by hand
+				// that reach nothing at all.
+				clicks = 0;
+				r.on_mouse({QPoint(2, 0), 0, true, false, false, 0});
+				r.on_mouse({QPoint(2, 0), 0, false, true, false, 0});
+				r.on_mouse({QPoint(2, 0), 1, true, false, false, 0});
+				QCoreApplication::processEvents();
+				CHECK(clicks == 0,
+				      "while a click with button 0 and a press with no "
+				      "release both reach nothing, which is why the helpers "
+				      "exist");
+				Qtty::test::mouse_release(r, QPoint(2, 0));
+				QCoreApplication::processEvents();
+				// This fixture's host is off the grid for one event -- a
+				// QWidget carries a default 300x214 until it is resized,
+				// and the guard sees it. Disowned deliberately, which is
+				// what reset() is for, and not left to print into the
+				// middle of the next PASS line.
+				GridGuard::reset();
+			}
+
 			// AND THE PAGE THAT PUBLISHES THEM NAMES THE SAME NUMBER.
 			// The two checks above say "all nine", which is a claim
 			// about a population rather than about a call -- and

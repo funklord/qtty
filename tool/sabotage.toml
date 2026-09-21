@@ -5080,3 +5080,45 @@ find = "\t\tinput = new QLineEdit(this);"
 into = "\t\tinput = new QLineEdit(this);\n\t\tinput->setStyleSheet(\"color: red\");"
 count = 1
 check = "passes the other seven reports the guide tells an application to assert empty"
+
+[[sabotage]]
+# test::click sending a press and no release, which is one of the two
+# spellings that reach nothing: a control needs both halves. 8.296.
+name = "a click helper sends no release"
+file = "include/qtty/testing.h"
+find = "\tMouseEvent up;\n\tup.cell = cell;\n\tup.button = button;\n\tup.release = true;\n\trouter.on_mouse(up);"
+into = "\t(void)0;"
+count = 1
+check = "test::click presses and releases"
+
+[[sabotage]]
+# test::click using button 0, which is "no button" and reaches
+# nothing -- the incident that cost a session its drag results. 8.296.
+name = "a click helper uses button zero"
+file = "include/qtty/testing.h"
+find = "inline void click(InputRouter &router, const QPoint &cell, int button = 1) {"
+into = "inline void click(InputRouter &router, const QPoint &cell, int button = 0) {"
+count = 1
+check = "test::click presses and releases"
+
+[[sabotage]]
+# mouse_move passing the button into the WHEEL field, which is the bug
+# the first draft of this helper actually had: a drag move scrolled
+# whatever it passed over. 8.296.
+name = "a mouse move is sent as a scroll"
+file = "include/qtty/testing.h"
+find = "\te.button = button;\n\te.motion = true;\n\trouter.on_mouse(e);"
+into = "\te.button = button;\n\te.motion = true;\n\te.wheel = button;\n\trouter.on_mouse(e);"
+count = 1
+check = "a move with a button held is a drag and not a scroll"
+
+[[sabotage]]
+# The wheel's sign inverted, which nothing but a measurement settles:
+# positive is UP, and a reader guessing the other way gets a test that
+# passes for the wrong reason. 8.296.
+name = "the wheel helper has its sign the wrong way round"
+file = "include/qtty/testing.h"
+find = "\te.wheel = up;\n\te.wheel_x = right;"
+into = "\te.wheel = -up;\n\te.wheel_x = right;"
+count = 1
+check = "test::wheel scrolls up for a positive count"
