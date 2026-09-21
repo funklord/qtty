@@ -15,6 +15,9 @@
 #include <QPainterPath>
 #include <QFontMetricsF>
 #include <QLCDNumber>
+#include <QToolButton>
+#include <QLineEdit>
+#include <QAction>
 #include <QPaintEngine>
 
 namespace Qtty {
@@ -330,6 +333,56 @@ public:
 			}
 		if (auto *lcd = qobject_cast<QLCDNumber *>(o)) {
 			return draw_lcd(lcd, e, dev);
+		}
+		// A QLineEdit's CLEAR BUTTON, which said nothing at all. It is a
+		// private QToolButton subclass whose paintEvent draws the icon
+		// itself with drawPixmap(), so it never reaches QStyle and
+		// grid_style.cpp's list of Qt's own furniture -- the dock's close
+		// and float buttons, the calendar's month arrows -- could not
+		// cover it. What a search field showed instead was the pixmap
+		// substitution's shaded block:
+		//
+		//     [query            <block>]
+		//
+		// which is a cell of noise where an affordance belongs, and the
+		// same library already draws a close mark twice: on a closable
+		// tab and on a dock widget's title bar. Clearing a field is that
+		// act, so it is that mark.
+		//
+		// IDENTIFIED BY THE ACTION, not by the widget or its class. The
+		// button's objectName is empty and its class is shared with every
+		// side widget QLineEdit::addAction() makes, so neither picks out
+		// the clear button alone; Qt names the action
+		// `_q_qlineeditclearaction`, which is identity read from the
+		// object the same way the dock buttons' names are. An
+		// application's own side widget keeps the substitution, and keeps
+		// its tool tip as its label where the style can reach it.
+		if (auto *icon_button = qobject_cast<QToolButton *>(o)) {
+			const auto acts = icon_button->actions();
+			for (const QAction *a : acts)
+				if (a->objectName()
+				    == QLatin1String("_q_qlineeditclearaction")) {
+					// ONLY WHILE THERE IS SOMETHING TO CLEAR, asked of
+					// the field rather than of the button. Qt fades the
+					// button out on an empty field and hides it when the
+					// ANIMATION finishes, so between those two moments it
+					// is a visible widget at zero opacity -- and a
+					// terminal has no opacity, so this drew a full mark
+					// over an empty field. Measured: clear the text,
+					// process events once, and the mark was still there.
+					// The field's own emptiness is the condition Qt
+					// decides from, and it does not depend on a timer.
+					const auto *field =
+					    qobject_cast<const QLineEdit *>(icon_button->parentWidget());
+					if (field && field->text().isEmpty()) return true;
+					const QRect cr = cells_of_rect(icon_button->rect(),
+					                               icon_button, dev->origin);
+					put_cell(dev->buffer(),
+					         cr.left() + cr.width() / 2,
+					         cr.top() + cr.height() / 2,
+					         QStringLiteral("✕"));
+					return true;               // consumed
+				}
 		}
 		if (auto *surface = dynamic_cast<PixelSurface *>(o)) {
 			if (harvesting_) return false;         // our own render(): paint

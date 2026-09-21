@@ -1276,6 +1276,60 @@ int suite_widgets() {
 			      "and one with no value yet writes no percentage at all");
 		}
 
+		// A LINE EDIT'S CLEAR BUTTON, which drew a cell of noise. It is
+		// a private QToolButton subclass whose paintEvent draws the icon
+		// itself, so it never reaches QStyle and grid_style.cpp's list of
+		// Qt's own furniture could not cover it; what a search field
+		// showed was the pixmap substitution's shaded block. The same
+		// library already draws a close mark on a closable tab and on a
+		// dock widget's title bar, and clearing a field is that act.
+		{
+			// ONE cell high, which is a line edit's natural height here
+			// and the shape a form gives it. At two Qt lays the clear
+			// button out at 30x0 -- measured -- so it paints nothing and
+			// there is no mark to find: a fixture that says the feature
+			// is missing when what is missing is the button. Read as the
+			// whole frame rather than the first non-blank row, since a
+			// framed edit puts its border there.
+			const auto field_row = [&](QLineEdit &e) {
+				show(e, 20, 1);
+				CellBuffer buf(20, 2);
+				render_once(e, buf);
+				return buf.to_text();
+			};
+			QLineEdit e(QStringLiteral("query"));
+			e.setClearButtonEnabled(true);
+			const QString with_text = field_row(e);
+			CHECK(with_text.contains(QChar(0x2715)),
+			      "a line edit's clear button draws the same close mark a "
+			      "closable tab does");
+
+			// ONLY WHILE THERE IS SOMETHING TO CLEAR. Qt fades the button
+			// out on an empty field and hides it when the ANIMATION
+			// finishes, so between those two moments it is a visible
+			// widget at zero opacity -- and a terminal has no opacity.
+			// Measured before this was handled: clear the text, process
+			// events once, and the mark was still there.
+			e.clear();
+			QCoreApplication::processEvents();
+			CHECK(!field_row(e).contains(QChar(0x2715)),
+			      "and none on an empty field, where a terminal has no "
+			      "opacity to fade it with");
+
+			// THE CONTROL: an application's own side widget is NOT the
+			// clear button and keeps the substitution. Without it the
+			// check above passes for a rule that marks every icon button
+			// inside a line edit.
+			QLineEdit own(QStringLiteral("query"));
+			QAction act(QStringLiteral("Search"), &own);
+			act.setIcon(own.style()->standardIcon(QStyle::SP_FileDialogContentsView));
+			own.addAction(&act, QLineEdit::TrailingPosition);
+			CHECK(!field_row(own).contains(QChar(0x2715)),
+			      "while an application's own side widget is left alone, "
+			      "the mark naming Qt's clear action rather than any icon "
+			      "button in a field");
+		}
+
 		// A PUSH BUTTON WITH A MENU, which drew exactly like one without.
 		// The tool button arm settles this in as many words -- a menu is
 		// an affordance or it is nothing -- and the same argument had not

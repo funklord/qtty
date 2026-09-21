@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1836 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1839 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,64 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.287 A search field's clear button, which drew noise (2026-09-21)
+
+**`setClearButtonEnabled(true)` put a shaded block in the field.** Not a
+wrong mark -- the pixmap substitution doing its job on an icon nobody
+could turn into a glyph, in a cell where an affordance belongs:
+
+    before   [query            <block>]
+    after    [query            ✕]
+
+The same library already draws a close mark twice, on a closable tab and
+on a dock widget's title bar, and clearing a field is that act.
+
+#### Why grid_style.cpp could not reach it
+
+`grid_style.cpp` keeps a list of Qt's own furniture identified by object
+name -- the dock's close and float buttons, the calendar's month arrows
+-- and that is where this belongs by shape. It cannot go there:
+`QLineEditIconButton` **paints its icon itself** in its own
+`paintEvent`, with `drawPixmap`, so it never reaches QStyle at all. The
+mark is drawn in the paint filter instead, beside the QLCDNumber of
+8.281 and for the same reason.
+
+#### Identified by the action, which is the only thing that is specific
+
+    the button's objectName   empty
+    its class                 QLineEditIconButton -- shared with every
+                              side widget QLineEdit::addAction() makes
+    its icon's name           empty, a standard pixmap rather than a
+                              themed icon
+    its action's objectName   `_q_qlineeditclearaction`
+
+Only the last picks out the clear button, so that is what is asked. An
+application's own side widget keeps the substitution, and keeps its tool
+tip as a label where the style can reach it.
+
+#### And only while there is something to clear
+
+The first version marked an empty field too. Qt **fades** the button out
+when the text goes and hides it only when the animation FINISHES, so
+between those two moments it is a visible widget at zero opacity -- and
+a terminal has no opacity. Measured: clear the text, process events
+once, and the mark was still there.
+
+The field's own emptiness is the condition Qt decides from and it does
+not depend on a timer, so that is what is asked instead.
+
+#### A fixture that said the feature was missing
+
+The check failed first for a reason that was not the code. The suite's
+helper shows a widget at a given cell size, and at TWO cells high Qt
+lays the clear button out at **30x0** -- measured -- so it paints
+nothing and there is no mark to find. One cell is a line edit's natural
+height here and the shape a form gives it.
+
+Three checks, the third of them the control: an application's own side
+widget must NOT be marked, or the first passes for a rule that marks
+every icon button in a field. Two sabotage entries.
+
 ### 8.286 A snapshot of the screen, not of one widget (2026-09-21)
 
 **`snapshot_of()` renders the widget it is given, so nothing a layer

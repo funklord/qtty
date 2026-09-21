@@ -4905,3 +4905,26 @@ find = "\t{\n\t\tCompositor c(&window, &router);\n\t\tc.compose(buf);\n\t}"
 into = "\t(void)router;\n\trender_once(window, buf);"
 count = 1
 check = "a screen snapshot holds the menu standing over the window"
+
+[[sabotage]]
+# The clear button's mark dropped, which is how it was: a search
+# field showed the pixmap substitution's shaded block where an
+# affordance belongs. 8.287.
+name = "a line edit's clear button says nothing"
+file = "src/render/cell_paint.cpp"
+find = "\t\t\t\tif (a->objectName()\n\t\t\t\t    == QLatin1String(\"_q_qlineeditclearaction\")) {"
+into = "\t\t\t\tif (false) {"
+count = 1
+check = "a line edit's clear button draws the same close mark a closable tab does"
+
+[[sabotage]]
+# The mark drawn whether or not there is anything to clear, which is
+# what asking the BUTTON rather than the field gives: Qt fades the
+# button out and hides it only when the animation finishes, so an
+# empty field carried a full mark. 8.287.
+name = "a clear mark is drawn over an empty field"
+file = "src/render/cell_paint.cpp"
+find = "\t\t\t\t\tif (field && field->text().isEmpty()) return true;"
+into = ""
+count = 1
+check = "and none on an empty field"
