@@ -88,6 +88,90 @@ int suite_render(bool record) {
 	                                  QStringLiteral("prefs_dialog"), got, record);
 	if (!r && !record) printf("PASS: snapshot matches\n");
 
+	// A MARK BELONGS TO THE CELL IT SITS IN, not to the boundary nearest
+	// its edges. to_cells() rounds each edge, which is right for the
+	// rectangles it was written for -- a viewport, a panel, a frame, whose
+	// edges are meant to snap -- and wrong for a shape that fits inside one
+	// cell and has no edge wanting snapped.
+	//
+	// Measured on an HTML bullet list: Qt draws each bullet as a 5x5 path at
+	// y 9.5 and y 26.5, inside cell rows 0 and 1 beside their items.
+	// Rounding the top edge sent them to rows 1 and 2 -- every bullet one row
+	// below its own text, and the last onto an empty row under the list.
+	{
+		const auto row_of_mark = [](qreal y, qreal w, qreal h) {
+			Qtty::CellBuffer b(6, 4);
+			{
+				Qtty::CellPaintDevice dev(b);
+				QPainter p(&dev);
+				p.fillRect(QRectF(5.0, y, w, h), Qt::red);
+			}
+			for (int r = 0; r < 4; ++r)
+				for (int x = 0; x < 6; ++x)
+					if (b.at(x, r).bg.kind() != Qtty::Color::Default
+					    || b.at(x, r).fg.kind() != Qtty::Color::Default)
+						return r;
+			return -1;
+		};
+		const int ch = GridMetrics::ch();
+		if (row_of_mark(ch / 2.0, 5.0, 5.0) == 0)
+			printf("PASS: a mark inside a row lands in that row rather than "
+			       "the boundary its top edge is nearest\n");
+		else {
+			printf("FAIL: a mark inside a row lands in that row rather than "
+			       "the boundary its top edge is nearest\n      got row %d\n",
+			       row_of_mark(ch / 2.0, 5.0, 5.0));
+			++r;
+		}
+		// THE CONTROLS, and they are the discriminator: a caret is a full
+		// row tall and a rule is many cells wide, so neither is a mark and
+		// both keep the edge rounding the paragraph above defends. Without
+		// these the rule could widen until it swallowed them.
+		const bool caret_unmoved = row_of_mark(ch * 0.75, 1.0, ch) == 1;
+		const bool rule_unmoved = row_of_mark(ch * 0.75, 50.0, 1.0) == 1;
+		if (caret_unmoved && rule_unmoved)
+			printf("PASS: while a caret a whole row tall and a rule many "
+			       "cells wide still round to the nearest boundary, being "
+			       "marks in neither dimension\n");
+		else {
+			printf("FAIL: while a caret a whole row tall and a rule many "
+			       "cells wide still round to the nearest boundary, being "
+			       "marks in neither dimension\n      caret %d rule %d\n",
+			       int(caret_unmoved), int(rule_unmoved));
+			++r;
+		}
+		// AND THE LIST ITSELF, which is what the row in section 0b is
+		// about: a block beside each item and none below the list.
+		QTextBrowser br;
+		br.setAttribute(Qt::WA_DontShowOnScreen);
+		br.setFrameShape(QFrame::NoFrame);
+		br.setHtml(QStringLiteral("<ul><li>one</li><li>two</li></ul>"));
+		br.resize(GridMetrics::cells(24, 5));
+		br.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer lb(24, 5);
+		Qtty::render_once(br, lb);
+		int marked_rows = 0, stray = 0;
+		for (int y = 0; y < 5; ++y) {
+			bool bg = false, text = false;
+			for (int x = 0; x < 24; ++x) {
+				if (lb.at(x, y).bg.kind() != Qtty::Color::Default) bg = true;
+				if (!lb.at(x, y).ch.trimmed().isEmpty()) text = true;
+			}
+			if (bg && text) ++marked_rows;
+			if (bg && !text) ++stray;
+		}
+		if (marked_rows == 2 && stray == 0)
+			printf("PASS: and a bullet list marks the row of each item with "
+			       "nothing left under the list\n");
+		else {
+			printf("FAIL: and a bullet list marks the row of each item with "
+			       "nothing left under the list\n      %d marked, %d stray\n",
+			       marked_rows, stray);
+			++r;
+		}
+	}
+
 	// A SNAPSHOT COULD NOT SEE A PICTURE AT ALL. A frame's images are
 	// carried beside its cells rather than in them, so a frame holding one
 	// and a frame holding none compared EQUAL -- which is the fault the

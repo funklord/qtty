@@ -5249,3 +5249,25 @@ find = "\t\t\treturn QRect(rtl ? r.left() + cw : r.right() + 1 - 2 * cw,"
 into = "\t\t\treturn QRect(r.right() + 1 - 2 * cw,"
 count = 1
 check = "a right-to-left combo box's arrow is drawn in the cell its hit test names"
+
+[[sabotage]]
+# The mark rule removed, so a shape inside a cell goes back to having
+# its edges rounded -- every bullet one row below its own text and the
+# last one under the list. 8.305.
+name = "a mark is placed by its edges rather than by where it sits"
+file = "src/render/cell_paint.cpp"
+find = "\tif (m.width() < cw && m.height() < ch)\n\t\treturn QRect(int(std::floor(m.center().x() / cw)),\n\t\t             int(std::floor(m.center().y() / ch)), 1, 1);"
+into = ""
+count = 1
+check = "a mark inside a row lands in that row"
+
+[[sabotage]]
+# The mark rule widened to either dimension, which swallows a caret --
+# 1x19 is narrower than a cell and a whole row tall, and placing it by
+# its centre moves it off the boundary it belongs on. 8.305.
+name = "the mark rule swallows a caret"
+file = "src/render/cell_paint.cpp"
+find = "\tif (m.width() < cw && m.height() < ch)"
+into = "\tif (m.width() < cw || m.height() < ch)"
+count = 1
+check = "a caret a whole row tall and a rule many cells wide still round"

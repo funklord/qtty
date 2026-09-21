@@ -604,6 +604,28 @@ QRect CellPaintEngine::to_cells(const QRectF &r) const {
 	// frame drawn around it. Every framed QAbstractScrollArea -- text edit,
 	// list, table, tree -- lost the bottom rule of its own border, with the
 	// corners left standing because the frame drew those.
+	// A SHAPE SMALLER THAN A CELL IN BOTH DIMENSIONS IS A MARK, and a mark
+	// belongs to the cell it SITS IN rather than to the boundary nearest
+	// its edges. Rounding the edges is right for the rectangles the
+	// paragraph above is about -- a viewport, a panel, a frame -- whose
+	// edges are meant to snap. It is wrong for something that fits inside
+	// one cell, which has no edge that wants snapping.
+	//
+	// Measured on an HTML bullet list: Qt draws each bullet as a 5x5 path
+	// at y 9.5 and y 26.5, which are inside cell rows 0 and 1, beside the
+	// items they belong to. Rounding the top edge sent them to rows 1 and
+	// 2 -- every bullet one row below its own text, and the last one onto
+	// an empty row underneath the list, where a reader would take it for
+	// something else.
+	//
+	// The discriminator is section 0b's own, written when that row was
+	// filed: a mark is smaller than a cell in BOTH dimensions, which a
+	// caret (1x19, a full row tall) and a rule (50x1, many cells wide) are
+	// not. This changes WHERE a mark lands and not what it becomes; what
+	// it should become is the choice that row reserves.
+	if (m.width() < cw && m.height() < ch)
+		return QRect(int(std::floor(m.center().x() / cw)),
+		             int(std::floor(m.center().y() / ch)), 1, 1);
 	const qreal l = m.left() / cw, t = m.top() / ch;
 	const qreal r2 = m.right() / cw, b = m.bottom() / ch;
 	return QRect(qRound(l), qRound(t),

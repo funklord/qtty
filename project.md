@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1881 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1884 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -907,7 +907,7 @@ Owned by the copyright holder:
 | **Should the conventions offer a key for Qt's own pointer-only furniture?** Measured with plain Qt and no qtty: a closable `QTabWidget` ignores `Ctrl+W`, `Ctrl+F4` and `Delete` -- `tabCloseRequested` never fires -- and a closable `QDockWidget` ignores `Ctrl+W` and `Esc`. So the `x` on a tab and a dock's close button have no keyboard route ANYWHERE, which on a desktop is a mouse away and here may be nothing away. The option is one convention binding each; the cost is that both plausible keys are ones applications mean something by (`Ctrl+W` closes a document in most, and a shortcut an application binds wins anyway, so the convention would answer only where the application is silent -- which is exactly where the user has no other route). The guide names the gap and tells an application to bind its own; whether the library should offer one is the holder's. **Four controls, not two, and the gap is visible now**: `Qtty::pointer_only()` (8.181) enumerates rather than recognises, and it named a dock widget's FLOAT button beside the two above, then a `QSplitter`'s handle (8.191) -- which is the one that changes the question, since a splitter answers no key even with the focus forced onto it, so a convention binding is the ONLY route there could be. An application can at least see what it is being asked to bind. | 8.159, 8.181, 8.191 |
 | A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. Cheaper to answer after the picture-rule entry below, which is the same question seen from the other end | *Qt's standard iconography* |
 | **A rule drawn as a thin RECTANGLE becomes a coloured background; the same rule drawn as a LINE becomes a box-drawing glyph.** Measured through an HTML table: its borders arrive as `drawRects` of `11x1` and `1x19` and come out as grey blocks, while `drawLines` of the same shape draws `-` and `\|`. The horizontal case could be told from a caret by shape; **the vertical case cannot -- a caret and a one-cell vertical rule are the same `1x19` rectangle**, which is what stops this being a small fix | 8.65 |
-| **An HTML bullet list loses its bullets.** Measured through a `QTextBrowser`: `<ul><li>one</li></ul>` renders the text indented with a one-cell BACKGROUND block where the bullet belongs and no glyph -- `bg=#000000` on the default dark ground. Qt draws the bullet as `drawPath` with a 6x6 bounding rect, and `is_thin` (`width*2 < cw \|\| height*2 < ch`) is true of it, so a bullet takes the hairline road meant for carets and rules. **The discriminator is clean and is the finding**: a shape smaller than one cell in BOTH dimensions is a mark, not a hairline -- a caret is 1x19 and a rule 50x1, and neither is. What a mark should BECOME is the choice, and it is the holder's | 8.64 |
+| **An HTML bullet list loses its bullets.** Measured through a `QTextBrowser`: `<ul><li>one</li></ul>` renders the text indented with a one-cell BACKGROUND block and no glyph -- ~~where the bullet belongs~~ **one row BELOW its own item until 8.305**, which also put the last list's block on an empty row underneath the list; the block is beside its item now, and what it should BECOME is still the choice below -- `bg=#000000` on the default dark ground. Qt draws the bullet as `drawPath` with a 6x6 bounding rect, and `is_thin` (`width*2 < cw \|\| height*2 < ch`) is true of it, so a bullet takes the hairline road meant for carets and rules. **The discriminator is clean and is the finding**: a shape smaller than one cell in BOTH dimensions is a mark, not a hairline -- a caret is 1x19 and a rule 50x1, and neither is. What a mark should BECOME is the choice, and it is the holder's | 8.64 |
 | Whether the "too small to be a picture" rule moves to the backend. Nothing left unmeasured: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()`; no widget icon reaches the branch today; and the cost is **1.4 KB once per distinct icon, 35 bytes a frame after** -- eight of them together less than the one 48x48 icon the library already uploads | §7.2 |
 | **~~Right-to-left: does qtty support it at all?~~ It does, and the row's own list is how the last gap was found.** 8.284 mirrored the progress bar, the scroll bar's thumb, the spin box's arrows and a tool button's menu arrow; 8.304 mirrored the combo box's, which this row still named. Re-measured 2026-09-22 against plain Qt: **a label's alignment and a line edit's text are NOT gaps** -- Qt does not mirror either, ink left in both directions, so drawing them the same is correct. What remains undesigned is bidirectional TEXT, which is a different question and is its own row. `doc/keyboard-first.md` has the section, with the numbers | 8.284, 8.304 |
 | **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise. 8.248 adds a second obstacle on the ink half alone: ToolTipText is the same black as WindowText here, and `role_of()` keys on the colour, so a hover timer would light the tooltip's ground and leave its text at body text's index | §7.2 |
@@ -17829,6 +17829,49 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.305 A mark belongs to the cell it sits in (2026-09-22)
+
+**Re-measuring the bullet row found a second defect inside it.** The
+row says a bullet renders as "a one-cell BACKGROUND block where the
+bullet belongs". It does not belong there: measured,
+
+    row 0   text "one"   no block
+    row 1   text "two"   block
+    row 2   (empty)      block
+
+Every bullet one row below its own item, and the last one on an empty
+row underneath the list, where a reader would take it for something
+else.
+
+#### The cause is a rule that is right for what it was written for
+
+`to_cells()` rounds each EDGE, and its comment defends that: a scroll
+area's viewport is inset by one frame width, and rounding the extent
+instead lost the bottom rule of every framed `QAbstractScrollArea`.
+That reasoning is about rectangles whose edges are meant to snap.
+
+A bullet is a 5x5 path at y 9.5 -- **inside** cell row 0 -- and
+`qRound(9.5 / 19)` is `qRound(0.5)`, which is 1. Nothing was rounding
+badly; edge-rounding is simply the wrong question for a shape that
+fits in one cell and has no edge wanting snapped.
+
+#### The discriminator was already written down
+
+Section 0b's own row states it: *"a shape smaller than one cell in
+BOTH dimensions is a mark, not a hairline -- a caret is 1x19 and a
+rule 50x1, and neither is."* That is implemented now, and both
+exclusions are checks: a caret a whole row tall and a rule many cells
+wide still round to the nearest boundary, and a sabotage widens the
+rule to `||` to prove the caret would move.
+
+**This changes where a mark lands and not what it becomes.** The
+choice the row reserves -- what glyph a mark should be -- is
+untouched and still the holder's. What it buys today is that the
+stray block under a list is gone and the remaining blocks sit beside
+their items, so the decision, when it is taken, lands correctly.
+
+Three checks and two sabotage entries.
+
 ### 8.304 The stale row named the gap it was stale about (2026-09-22)
 
 **8.303 closed one stale index row, so the next thing to do was read
