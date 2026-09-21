@@ -4979,3 +4979,15 @@ find = "\t\t\t             .arg(im.z)\n"
 into = "\t\t\t             .arg(0)\n"
 count = 1
 check = "two pictures differing only in which is on top do not snapshot the same"
+
+[[sabotage]]
+# A mark changed in the style without the page that publishes it
+# changing -- the stale-table fault this check exists to catch, since
+# doc/keyboard-first.md teaches the vocabulary and a copied table goes
+# stale the first time a glyph moves. 8.292.
+name = "a published mark moves without the page moving"
+file = "src/grid/grid_style.cpp"
+find = "\t\t    (opt->state & State_On) ? QStringLiteral(\"(o)\") : QStringLiteral(\"( )\"),"
+into = "\t\t    (opt->state & State_On) ? QStringLiteral(\"(x)\") : QStringLiteral(\"( )\"),"
+count = 1
+check = "every mark the page publishes is the mark the style draws"

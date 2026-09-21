@@ -1276,6 +1276,77 @@ int suite_widgets() {
 			      "and one with no value yet writes no percentage at all");
 		}
 
+		// THE VOCABULARY, PINNED AGAINST THE PAGE THAT PUBLISHES IT.
+		// `doc/keyboard-first.md` has a table under "What the marks
+		// mean" -- the whole set of characters a control says what it is
+		// with -- and a table copied out of source goes stale the first
+		// time a glyph moves, silently, in the one document an adopter
+		// reads to learn the vocabulary.
+		//
+		// It exists because the absence cost something measurable: a
+		// mark was nearly spelled "(X)" for a message box, which is a
+		// CHOSEN RADIO BUTTON here, and the collision was found by
+		// remembering the source rather than by reading anything.
+		{
+			struct Row { const char *what; const char *mark; };
+			static const Row rows[] = {
+				{ "push button",        "<Save>" },
+				{ "check box clear",    "[ ]" },
+				{ "check box ticked",   "[x]" },
+				{ "radio unchosen",     "( )" },
+				{ "radio chosen",       "(o)" },
+			};
+			int wrong = 0;
+			QString first_bad;
+			for (const Row &row : rows) {
+				QWidget *w = nullptr;
+				const QString label = QString::fromLatin1(row.what);
+				if (label.startsWith(QStringLiteral("push"))) {
+					w = new QPushButton(QStringLiteral("Save"));
+				} else if (label.startsWith(QStringLiteral("check"))) {
+					auto *c = new QCheckBox(QStringLiteral("Wrap"));
+					c->setChecked(label.endsWith(QStringLiteral("ticked")));
+					w = c;
+				} else {
+					auto *b = new QRadioButton(QStringLiteral("One"));
+					b->setChecked(label.endsWith(QStringLiteral("chosen"))
+					              && !label.contains(QStringLiteral("unchosen")));
+					w = b;
+				}
+				w->setFixedSize(cw * 16, ch);
+				show(*w, 16, 2);
+				CellBuffer b(18, 3);
+				render_once(*w, b);
+				const QString got = b.to_text();
+				if (!got.contains(QString::fromUtf8(row.mark))) {
+					++wrong;
+					if (first_bad.isEmpty())
+						first_bad = QStringLiteral("%1 wanted '%2'")
+						            .arg(label, QString::fromUtf8(row.mark));
+				}
+				delete w;
+			}
+			CHECK(wrong == 0,
+			      QStringLiteral("every mark the page publishes is the mark "
+			                     "the style draws (%1)")
+			          .arg(wrong == 0 ? QStringLiteral("all")
+			                          : first_bad).toUtf8().constData());
+			// THE COLLISION the page warns about, asserted rather than
+			// asserted-about: a chosen radio really is "(o)" and not
+			// "(x)", so a mark of somebody's own spelled with brackets
+			// or parentheses really would be read as a control.
+			QRadioButton chosen(QStringLiteral("One"));
+			chosen.setChecked(true);
+			chosen.setFixedSize(cw * 16, ch);
+			show(chosen, 16, 2);
+			CellBuffer rb(18, 3);
+			render_once(chosen, rb);
+			CHECK(rb.to_text().contains(QStringLiteral("(o)"))
+			      && !rb.to_text().contains(QStringLiteral("(x)")),
+			      "and a chosen radio is spelled so that a mark of your "
+			      "own in parentheses would be read as one");
+		}
+
 		// A LINE EDIT'S CLEAR BUTTON, which drew a cell of noise. It is
 		// a private QToolButton subclass whose paintEvent draws the icon
 		// itself, so it never reaches QStyle and grid_style.cpp's list of

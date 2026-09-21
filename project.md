@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1847 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1849 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,47 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.292 The vocabulary was nowhere written down (2026-09-21)
+
+**This library has a visual language and no page stated it.** A
+terminal has no bevels and no icons, so a control says what it is with
+a few characters -- and those characters existed only in
+`grid_style.cpp` and scattered through this file's own history.
+
+`doc/keyboard-first.md` has the table now, under *What the marks mean*,
+rendered rather than remembered:
+
+    <Save>        a push button          [ ] [x] [-]   a check box
+    <Save▾>       one with a menu        ( ) (o)       a radio button
+    [●●●●●●    ]  a password field       [query    ✕]  a clear button
+    [One      ▾]  a combo box            [3       ▴▾]  a spin box
+    ✓ Word wrap   a ticked menu item     • By name     a chosen one
+    Recent    ▸   a submenu              ▸ Folder      a tree row
+
+#### The absence cost something in the session that closed it
+
+Deciding what mark a message box's severity should carry, `(X)` was
+almost chosen -- and **`(X)` is a chosen radio button here**, near
+enough to `(o)` that a reader would take it for one. The collision was
+caught by remembering the source rather than by reading anything, which
+is exactly what a vocabulary page is for. `[!]` is the same trap one
+bracket along.
+
+That is now a sentence on the page and a check of its own: a chosen
+radio really is `(o)` and not `(x)`, so a mark of somebody's own in
+parentheses really would be read as a control.
+
+#### Rendered, not copied
+
+**A table copied out of source goes stale the first time a glyph
+moves**, silently, in the one document an adopter reads to learn the
+vocabulary. So the rows are rendered by a check and compared, and the
+sabotage that proves it changes `(o)` to `(x)` in the style -- the
+check goes red and names the row: `radio chosen wanted '(o)'`.
+
+That is `evidence.md`'s remedy for a number quoted often, applied to
+prose: move the claim out of judgement and into the tool.
+
 ### 8.291 The page did not know about right to left (2026-09-21)
 
 **8.284 gave the library a feature and left the document silent about

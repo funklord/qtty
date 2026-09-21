@@ -183,6 +183,47 @@ application calls and the record follows it. `Qtty::set_focus_widget()`
 is the other side of that pair: it writes the record, which the next
 refresh overwrites, and it exists for the runtime rather than for you.
 
+## What the marks mean
+
+**The whole visual vocabulary, in one place.** A terminal has no bevels
+and no icons, so a control says what it is with a few characters; these
+are them. Read it as a user reading a screen, and as an author of a
+custom widget deciding what to draw -- **use these rather than inventing
+a third spelling**, which is the other half of practice 10.
+
+| the cells | what it is |
+|---|---|
+| `<Save>` | a push button |
+| `<Save▾>` | one with a menu on it |
+| `[ ] Wrap` `[x] Wrap` `[-] Wrap` | a check box: clear, ticked, partially ticked |
+| `( ) One` `(o) One` | a radio button, unchosen and chosen |
+| `[text          ]` | a line edit |
+| `[●●●●●●        ]` | a password field |
+| `[query        ✕]` | a field with a clear button, which shows only while there is something to clear |
+| `[One          ▾]` | a combo box |
+| `[3           ▴▾]` | a spin box, the two arrows being two cells so both can be clicked |
+| `[Cut          ▾]` | a tool button with a menu |
+| `───────●────────` | a slider |
+| `◀░░█░░░░░░░░░░░▶` | a scroll bar |
+| `████████40%░░░░` | a progress bar |
+| `[One      ][Two      ]` | tabs |
+| `[One     ✕][Two     ✕]` | tabs you can close |
+| `✓ Word wrap` | a ticked menu item |
+| `• By name` | the chosen one of a menu's exclusive group |
+| `Recent     ▸` | a submenu |
+| `▸ Folder` | a tree row that opens |
+| `▒` | something this library cannot draw as characters |
+| a box with a class name in it | a widget whose content is out of reach -- a `QGraphicsView`, a web view |
+
+**Two of these are near neighbours on purpose and one is a trap worth
+knowing.** `✕` is close-or-clear and appears on a tab, a dock title and
+a clear button; `(o)` is a chosen radio. A mark of your own spelled
+`(X)` therefore reads as a radio button, and `[!]` as a check box --
+which is why the brackets are not free to reuse.
+
+Every row above is rendered by a check rather than copied from the
+source, so a mark that changes in the code makes this page go red.
+
 ## Moving between pages and windows
 
 A terminal interface is layers, so getting BETWEEN them is half of using
