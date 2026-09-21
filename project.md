@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1849 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1850 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17866,6 +17866,25 @@ check goes red and names the row: `radio chosen wanted '(o)'`.
 
 That is `evidence.md`'s remedy for a number quoted often, applied to
 prose: move the claim out of judgement and into the tool.
+
+#### The first version claimed more than it checked
+
+**The page said "every row above is rendered by a check" over a check
+that covered five of twenty-four.** A name claiming exhaustiveness is
+not a check that achieved it, and the sentence was mine, written in the
+same commit as the check that fell short of it.
+
+Fixed both ways round. The list is all twenty-four now -- the last one
+being the substitution's own shaded cell, which is the single row that
+is not a control and which a solid pixmap in a `QLabel` reaches. And
+**the quantifier is verified rather than asserted**: the check opens
+`doc/keyboard-first.md`, counts the rows of that table, and compares
+the number with its own list, so a row added to the page with no check
+behind it -- or a check with no row -- goes red. The sabotage adds a
+row to the page and watches it fail.
+
+The page's table is one mark per row now, which is what makes the two
+counts comparable at all.
 
 ### 8.291 The page did not know about right to left (2026-09-21)
 

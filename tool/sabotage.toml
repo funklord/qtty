@@ -4991,3 +4991,15 @@ find = "\t\t    (opt->state & State_On) ? QStringLiteral(\"(o)\") : QStringLiter
 into = "\t\t    (opt->state & State_On) ? QStringLiteral(\"(x)\") : QStringLiteral(\"( )\"),"
 count = 1
 check = "every mark the page publishes is the mark the style draws"
+
+[[sabotage]]
+# The page's table grown by a row with no check behind it, which is
+# the drift the count exists to catch: the sentence says "every row
+# above is rendered by a check" and an enumeration cannot keep that
+# true by itself. 8.293.
+name = "the vocabulary page grows a row the check does not cover"
+file = "doc/keyboard-first.md"
+find = "| a box with a class name in it | a widget whose content is out of reach"
+into = "| `~` | something nobody has checked |\n| a box with a class name in it | a widget whose content is out of reach"
+count = 1
+check = "the table on the page and the list in this check name the same number of marks"

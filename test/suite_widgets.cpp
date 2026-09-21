@@ -1287,50 +1287,238 @@ int suite_widgets() {
 		// mark was nearly spelled "(X)" for a message box, which is a
 		// CHOSEN RADIO BUTTON here, and the collision was found by
 		// remembering the source rather than by reading anything.
+		//
+		// EVERY ROW, and that is the point of the list rather than a
+		// sample of it. The first version of this check covered five of
+		// twenty-one and the page said "every row above is rendered by a
+		// check" -- a name claiming exhaustiveness over an enumeration
+		// that had not achieved it, which is the one shape `evidence.md`
+		// says to verify the quantifier of rather than the assertion.
 		{
-			struct Row { const char *what; const char *mark; };
+			// A table of DATA and one factory with a switch, rather than a
+			// lambda per row: twenty-four inline lambdas nest two levels
+			// deeper than the list that holds them, which the style gate
+			// reads as under-indentation and which is genuinely harder to
+			// scan than a switch.
+			struct Row { const char *what; const char *mark; int kind; int cols; };
 			static const Row rows[] = {
-				{ "push button",        "<Save>" },
-				{ "check box clear",    "[ ]" },
-				{ "check box ticked",   "[x]" },
-				{ "radio unchosen",     "( )" },
-				{ "radio chosen",       "(o)" },
+				{ "push button",              "<Save>",        0, 16 },
+				{ "push button with a menu",  "<Save\u25BE>",   1, 16 },
+				{ "check box, clear",         "[ ] Wrap",      2, 16 },
+				{ "check box, ticked",        "[x] Wrap",      3, 16 },
+				{ "check box, partial",       "[-] Wrap",      4, 16 },
+				{ "radio, unchosen",          "( ) One",       5, 16 },
+				{ "radio, chosen",            "(o) One",       6, 16 },
+				{ "line edit",                "[text",         7, 16 },
+				{ "password field",           "\u25CF\u25CF\u25CF",  8, 16 },
+				{ "field with a clear button", "\u2715]",        9, 16 },
+				{ "combo box",                "\u25BE]",        10, 16 },
+				{ "spin box",                 "\u25B4\u25BE]",  11, 16 },
+				{ "tool button with a menu",  "\u25BE",         12, 16 },
+				{ "slider",                   "\u25CF",         13, 16 },
+				{ "scroll bar",               "\u25C0",         14, 16 },
+				{ "progress bar",             "\u2588",         15, 20 },
+				{ "tabs",                     "[One      ][Two      ]", 16, 22 },
+				{ "tabs you can close",       "\u2715]",        17, 22 },
+				{ "a ticked menu item",       "\u2713 Word wrap", 18, 22 },
+				{ "a chosen exclusive item",  "\u2022 By name", 19, 22 },
+				{ "a submenu",                "\u25B8",         20, 22 },
+				{ "a tree row that opens",    "\u25B8 Folder",  21, 22 },
+				{ "a widget out of reach",    "QGraphicsView", 22, 22 },
+				// The substitution's own cell, the one row of the table that
+				// is not a control. A solid pixmap is the simplest thing that
+				// reaches it: both halves agree in colour and neither leans.
+				{ "a picture reduced to a cell", "\u2592",      23, 6 },
+			};
+			const auto marked_menu = []() {
+				auto *m = new QMenu;
+				auto *wrap = m->addAction(QStringLiteral("Word wrap"));
+				wrap->setCheckable(true);
+				wrap->setChecked(true);
+				auto *g = new QActionGroup(m);
+				g->setExclusive(true);
+				auto *by = m->addAction(QStringLiteral("By name"));
+				by->setCheckable(true);
+				g->addAction(by);
+				by->setChecked(true);
+				m->addMenu(QStringLiteral("Recent"))
+				    ->addAction(QStringLiteral("a.txt"));
+				return static_cast<QWidget *>(m);
+			};
+			const auto make = [&](int kind) -> QWidget * {
+				switch (kind) {
+				case 0:
+					return new QPushButton(QStringLiteral("Save"));
+				case 1: {
+					auto *b = new QPushButton(QStringLiteral("Save"));
+					auto *m = new QMenu(b);
+					m->addAction(QStringLiteral("x"));
+					b->setMenu(m);
+					return b;
+				}
+				case 2:
+					return new QCheckBox(QStringLiteral("Wrap"));
+				case 3: {
+					auto *c = new QCheckBox(QStringLiteral("Wrap"));
+					c->setChecked(true);
+					return c;
+				}
+				case 4: {
+					auto *c = new QCheckBox(QStringLiteral("Wrap"));
+					c->setTristate(true);
+					c->setCheckState(Qt::PartiallyChecked);
+					return c;
+				}
+				case 5:
+					return new QRadioButton(QStringLiteral("One"));
+				case 6: {
+					auto *b = new QRadioButton(QStringLiteral("One"));
+					b->setChecked(true);
+					return b;
+				}
+				case 7:
+					return new QLineEdit(QStringLiteral("text"));
+				case 8: {
+					auto *e = new QLineEdit(QStringLiteral("secret"));
+					e->setEchoMode(QLineEdit::Password);
+					return e;
+				}
+				case 9: {
+					auto *e = new QLineEdit(QStringLiteral("query"));
+					e->setClearButtonEnabled(true);
+					return e;
+				}
+				case 10: {
+					auto *c = new QComboBox;
+					c->addItem(QStringLiteral("One"));
+					return c;
+				}
+				case 11: {
+					auto *sp = new QSpinBox;
+					sp->setValue(3);
+					return sp;
+				}
+				case 12: {
+					auto *t = new QToolButton;
+					t->setText(QStringLiteral("Cut"));
+					auto *m = new QMenu(t);
+					m->addAction(QStringLiteral("x"));
+					t->setMenu(m);
+					return t;
+				}
+				case 13: {
+					auto *sl = new QSlider(Qt::Horizontal);
+					sl->setValue(50);
+					return sl;
+				}
+				case 14: {
+					auto *sb = new QScrollBar(Qt::Horizontal);
+					sb->setRange(0, 100);
+					sb->setValue(20);
+					return sb;
+				}
+				case 15: {
+					auto *pb = new QProgressBar;
+					pb->setValue(40);
+					return pb;
+				}
+				case 16: case 17: {
+					auto *t = new QTabBar;
+					t->addTab(QStringLiteral("One"));
+					t->addTab(QStringLiteral("Two"));
+					t->setTabsClosable(kind == 17);
+					return t;
+				}
+				case 18: case 19: case 20:
+					return marked_menu();
+				case 21: {
+					auto *t = new QTreeWidget;
+					t->setHeaderHidden(true);
+					auto *top = new QTreeWidgetItem(
+					    t, QStringList(QStringLiteral("Folder")));
+					new QTreeWidgetItem(top, QStringList(QStringLiteral("k")));
+					return t;
+				}
+				case 22:
+					return new QGraphicsView;
+				case 23: {
+					QPixmap pm(GridMetrics::cw(), GridMetrics::ch());
+					pm.fill(QColor(128, 128, 128));
+					auto *l = new QLabel;
+					l->setPixmap(pm);
+					return l;
+				}
+				default:
+					return nullptr;
+				}
 			};
 			int wrong = 0;
 			QString first_bad;
 			for (const Row &row : rows) {
-				QWidget *w = nullptr;
-				const QString label = QString::fromLatin1(row.what);
-				if (label.startsWith(QStringLiteral("push"))) {
-					w = new QPushButton(QStringLiteral("Save"));
-				} else if (label.startsWith(QStringLiteral("check"))) {
-					auto *c = new QCheckBox(QStringLiteral("Wrap"));
-					c->setChecked(label.endsWith(QStringLiteral("ticked")));
-					w = c;
-				} else {
-					auto *b = new QRadioButton(QStringLiteral("One"));
-					b->setChecked(label.endsWith(QStringLiteral("chosen"))
-					              && !label.contains(QStringLiteral("unchosen")));
-					w = b;
-				}
-				w->setFixedSize(cw * 16, ch);
-				show(*w, 16, 2);
-				CellBuffer b(18, 3);
+				QWidget *w = make(row.kind);
+				w->setAttribute(Qt::WA_DontShowOnScreen);
+				const int high = qobject_cast<QMenu *>(w)
+				              || qobject_cast<QTreeWidget *>(w)
+				              || qobject_cast<QGraphicsView *>(w) ? 6 : 1;
+				w->setFixedSize(cw * row.cols, ch * high);
+				show(*w, row.cols, high);
+				CellBuffer b(row.cols + 2, high + 1);
 				render_once(*w, b);
-				const QString got = b.to_text();
-				if (!got.contains(QString::fromUtf8(row.mark))) {
+				if (!b.to_text().contains(QString::fromUtf8(row.mark))) {
 					++wrong;
 					if (first_bad.isEmpty())
-						first_bad = QStringLiteral("%1 wanted '%2'")
-						            .arg(label, QString::fromUtf8(row.mark));
+						first_bad = QStringLiteral("%1 wanted '%2', got [%3]")
+						            .arg(QString::fromLatin1(row.what),
+						                 QString::fromUtf8(row.mark),
+						                 b.to_text().trimmed()
+						                     .split(QLatin1Char('\n')).value(0));
 				}
 				delete w;
 			}
+			// AND THE COUNT, READ OFF THE PAGE. The list above is an
+			// enumeration and the sentence on the page says "every row",
+			// so the quantifier is the thing to verify rather than the
+			// assertion under it -- count the population independently
+			// of the list the test walks. A row added to the table with
+			// no check, or a check with no row, fails here.
+			int published = -1;
+			QFile page(QStringLiteral(QTTY_SOURCE_DIR)
+			           + QStringLiteral("/doc/keyboard-first.md"));
+			if (page.open(QIODevice::ReadOnly | QIODevice::Text)) {
+				const QStringList lines =
+				    QString::fromUtf8(page.readAll()).split(QLatin1Char('\n'));
+				bool in_section = false, in_table = false;
+				published = 0;
+				for (const QString &line : lines) {
+					if (line.startsWith(QStringLiteral("## What the marks mean"))) {
+						in_section = true;
+						continue;
+					}
+					if (!in_section) continue;
+					if (line.startsWith(QStringLiteral("| the cells"))) {
+						in_table = true;                  // the header itself
+						continue;
+					}
+					if (!in_table) continue;
+					if (line.startsWith(QStringLiteral("|---"))) continue;
+					if (!line.startsWith(QStringLiteral("| "))) break;
+					++published;
+				}
+			}
+			printf("info: the page publishes %d mark(s), the check renders "
+			       "%d; %d did not render\n", published,
+			       int(sizeof(rows) / sizeof(rows[0])),
+			       wrong);
+			CHECK(published == int(sizeof(rows) / sizeof(rows[0])),
+			      "the table on the page and the list in this check name "
+			      "the same number of marks, so neither can grow alone");
 			CHECK(wrong == 0,
-			      QStringLiteral("every mark the page publishes is the mark "
-			                     "the style draws (%1)")
-			          .arg(wrong == 0 ? QStringLiteral("all")
-			                          : first_bad).toUtf8().constData());
+			      wrong == 0
+			        ? "every mark the page publishes is the mark the style "
+			          "draws, all of them rather than a sample"
+			        : QStringLiteral("every mark the page publishes is the "
+			                         "mark the style draws -- %1")
+			              .arg(first_bad).toUtf8().constData());
 			// THE COLLISION the page warns about, asserted rather than
 			// asserted-about: a chosen radio really is "(o)" and not
 			// "(x)", so a mark of somebody's own spelled with brackets
