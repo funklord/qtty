@@ -12,7 +12,7 @@ where it is qtty's it says which.
 **If you came here with a job**, rather than to read it through:
 
 - *writing a widget of your own* -- **If you are writing a custom widget**
-  has the five things a standard one gets and yours does not; practices 9
+  has the six things a standard one gets and yours does not; practices 9
   to 11 explain the first three, the fourth is in *Copy and paste*, and
   the fifth is the grid's own limit rather than a price;
 - *your control does not look like a control* -- practice 12, on style
@@ -1900,11 +1900,11 @@ same reason every trap on this page is a trap.
 
 ## If you are writing a custom widget
 
-Five things a standard Qt widget gets and yours does not. **Each fails
+Six things a standard Qt widget gets and yours does not. **Each fails
 silently, and each fails only on the terminal** -- the desktop build hides
-all five, which is what makes them worth collecting in one place rather
-than leaving scattered above. The first four are one line each; the fifth
-is a fact about the grid.
+all six, which is what makes them worth collecting in one place rather
+than leaving scattered above. The first four are one line each; the last
+two are facts about the grid.
 
 | Do this | Or else |
 |---|---|
@@ -1913,6 +1913,25 @@ is a fact about the grid.
 | `setAttribute(Qt::WA_InputMethodEnabled)` if you edit text (practice 11) | `Ctrl+C` quits instead of copying, and no cursor is placed on you |
 | Fold pasted newlines if you are single-line (*Copy and paste*) | you get the raw ones: the fold is by type and your type is not on the list |
 | Put your text lines at least `Qtty::GridMetrics::ch()` apart | two lines closer than a cell row share one, and the later one wins -- measured in Qt's own `QCommandLinkButton`, whose title and description sit 14 pixels apart and whose title therefore vanishes |
+| Measure your text in COLUMNS, with `Qtty::to_clusters()` and `Qtty::cluster_width()` | `QString::size()` counts the wrong thing for every emoji, every CJK character and every combining mark, so your own truncation lands in the middle of a glyph |
+
+**The sixth is where a custom widget most often goes wrong quietly**,
+because on a desktop you measure text in pixels and here you measure it in
+cells, and `QString` counts neither. The rules, each measured:
+
+- A CJK character and most emoji are **two** columns.
+- A combining mark is **none** -- `e` and a combining acute are one
+  cluster and one column, and a mark on its own is zero, not one.
+- A flag is two regional indicators, **one** cluster and two columns,
+  which no per-character table can tell you.
+- A cell holds a base and at most **thirty** marks, after which the rest
+  are dropped: UAX-15's stream-safe limit, so that one cell cannot cost
+  the wire ten thousand bytes.
+
+`to_clusters()` splits a string the way the grid does and
+`cluster_width()` prices each piece. Between them they are what
+`elide_to_cells()` uses, and a widget that truncates its own text wants
+the same pair rather than `left(n)`.
 
 The fifth is the one that is a limitation rather than a price: a cell row
 is the unit, so a widget laying its own lines out in pixels can ask for the

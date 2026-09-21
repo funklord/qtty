@@ -17826,6 +17826,40 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.302 The width rules, where a custom widget will look (2026-09-21)
+
+**Four commits changed how text is measured and the page an
+implementer reads said nothing about measuring text.** 8.298 to 8.301
+fixed the wide table, the zero-width table, the control table and the
+cell's bound; all of it is invisible to somebody writing a widget,
+who on a desktop measures pixels and here must measure cells.
+
+*If you are writing a custom widget* gained a sixth row and the rules
+under it:
+
+- a CJK character and most emoji are **two** columns
+- a combining mark is **none**, and one on its own is zero rather than one
+- a flag is two regional indicators, **one** cluster and two columns,
+  which no per-character table can tell you
+- a cell holds a base and at most **thirty** marks
+
+**Every one of those four is pinned by a check** landed in the
+commits above, so the page cannot drift from the library without the
+suite saying so -- which is the same arrangement as the marks table
+and the audit table, arrived at without needing a new check because
+the claims were already the measurements.
+
+`QString::size()` counts the wrong thing for all four, so a widget
+truncating its own text with `left(n)` lands in the middle of a
+glyph. `to_clusters()` and `cluster_width()` are the pair
+`elide_to_cells()` itself uses.
+
+**A documentation-only commit, deliberately.** The code it describes
+is in the four commits before it and already pushed, so there is
+nothing left to ride along with, and the addition is substantive
+rather than a tidy-up -- which is the judgement `build-and-commit.md`
+asks for rather than a blanket rule.
+
 ### 8.301 A cell is one column and held as much as it was given (2026-09-21)
 
 **Grapheme clustering puts a base and every mark after it in one
