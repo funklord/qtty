@@ -1728,8 +1728,8 @@ check = "a dial's handle moves rightwards as its value rises"
 # wrong end of the track at every value. 8.137.
 name = "a scroll bar ignores which way round it reads"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\t\t\t// the two backwards.\n\t\t\t\t\tif (sb->upsideDown) thumb_pos = track - thumb_len - thumb_pos;"
-into = "\t\t\t\t\t// the two backwards.\n\t\t\t\t\tif (false) thumb_pos = track - thumb_len - thumb_pos;"
+find = "\t\t\t\t\t// arm through no flag of Qt's.\n\t\t\t\t\tif (sb->upsideDown\n\t\t\t\t\t    != (!vert && sb->direction == Qt::RightToLeft))\n\t\t\t\t\t\tthumb_pos = track - thumb_len - thumb_pos;"
+into = "\t\t\t\t\t// arm through no flag of Qt's.\n\t\t\t\t\tif (false)\n\t\t\t\t\t\tthumb_pos = track - thumb_len - thumb_pos;"
 count = 1
 check = "and up when its appearance is inverted"
 
@@ -1739,8 +1739,8 @@ check = "and up when its appearance is inverted"
 # Three controls share QStyleOptionSlider and none of them agrees. 8.137.
 name = "a scroll bar reads its direction flag with the dial's polarity"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\t\t\t// the two backwards.\n\t\t\t\t\tif (sb->upsideDown) thumb_pos = track - thumb_len - thumb_pos;"
-into = "\t\t\t\t\t// the two backwards.\n\t\t\t\t\tif (!sb->upsideDown) thumb_pos = track - thumb_len - thumb_pos;"
+find = "\t\t\t\t\t// arm through no flag of Qt's.\n\t\t\t\t\tif (sb->upsideDown\n\t\t\t\t\t    != (!vert && sb->direction == Qt::RightToLeft))\n\t\t\t\t\t\tthumb_pos = track - thumb_len - thumb_pos;"
+into = "\t\t\t\t\t// arm through no flag of Qt's.\n\t\t\t\t\tif (!(sb->upsideDown\n\t\t\t\t\t      != (!vert && sb->direction == Qt::RightToLeft)))\n\t\t\t\t\t\tthumb_pos = track - thumb_len - thumb_pos;"
 count = 1
 check = "a scroll bar's thumb moves down as its value rises"
 
@@ -1751,8 +1751,8 @@ check = "a scroll bar's thumb moves down as its value rises"
 # consistently, because the bar then lies about itself. 8.137.
 name = "the scroll bar thumb is drawn where a click cannot reach it"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\t\t\t// than a bar that reads backwards consistently.\n\t\t\t\t\tif (sb->upsideDown) thumb_pos = track - thumb_len - thumb_pos;"
-into = "\t\t\t\t\t// than a bar that reads backwards consistently.\n\t\t\t\t\tif (false) thumb_pos = track - thumb_len - thumb_pos;"
+find = "\t\t\t\t\t// reversal has to be made here.\n\t\t\t\t\tif (sb->upsideDown\n\t\t\t\t\t    != (!vert && sb->direction == Qt::RightToLeft))\n\t\t\t\t\t\tthumb_pos = track - thumb_len - thumb_pos;"
+into = "\t\t\t\t\t// reversal has to be made here.\n\t\t\t\t\tif (false)\n\t\t\t\t\t\tthumb_pos = track - thumb_len - thumb_pos;"
 count = 1
 check = "and a click lands on the row the inverted thumb is drawn in"
 
@@ -1762,8 +1762,8 @@ check = "and a click lands on the row the inverted thumb is drawn in"
 # application had deliberately reversed read backwards at every value. 8.138.
 name = "a progress bar ignores which end it fills from"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\t\t\tconst bool from_start = horizontal != pb->invertedAppearance;"
-into = "\t\t\t\t\tconst bool from_start = horizontal;"
+find = "\t\t\t\t\tconst bool from_start = (horizontal && !rtl)\n\t\t\t\t\t                        != pb->invertedAppearance;"
+into = "\t\t\t\t\tconst bool from_start = (horizontal && !rtl);"
 count = 1
 check = "a horizontal progress bar fills from the left"
 
@@ -1773,7 +1773,7 @@ check = "a horizontal progress bar fills from the left"
 # one filling from the wrong end. The two reversals compose. 8.138.
 name = "a progress bar inverts without composing with its orientation"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\t\t\tconst bool from_start = horizontal != pb->invertedAppearance;"
+find = "\t\t\t\t\tconst bool from_start = (horizontal && !rtl)\n\t\t\t\t\t                        != pb->invertedAppearance;"
 into = "\t\t\t\t\tconst bool from_start = !pb->invertedAppearance;"
 count = 1
 check = "and a vertical one fills upward, and downward when inverted"
@@ -4837,3 +4837,37 @@ find = "\t\tconst QStyle *s = w->style();\n\t\treturn s && qstrcmp(s->metaObject
 into = "\t\treturn !w->styleSheet().isEmpty();"
 count = 1
 check = "a sheet on a container names the controls inside it"
+
+[[sabotage]]
+# The progress bar's third reversal dropped, so a right-to-left meter
+# fills from the same end as a left-to-right one and reads as its own
+# complement. 8.284.
+name = "a right-to-left progress bar is not mirrored"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\tconst bool from_start = (horizontal && !rtl)\n\t\t\t\t\t                        != pb->invertedAppearance;"
+into = "\t\t\t\t\tconst bool from_start = horizontal != pb->invertedAppearance;"
+count = 1
+check = "from the right in a right-to-left one"
+
+[[sabotage]]
+# The scroll bar mirrored where it is DRAWN and not where it is
+# CLICKED, which is the failure the two derivations exist to prevent:
+# the thumb moves to the far end and the hit test still answers about
+# the near one. 8.284.
+name = "a right-to-left scroll bar's hit test does not follow its picture"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\tif (sb->upsideDown\n\t\t\t\t\t    != (!vert && sb->direction == Qt::RightToLeft))\n\t\t\t\t\t\tthumb_pos = track - thumb_len - thumb_pos;\n\t\t\t\t}\n\t\t\t\t// A run of whole cells along the axis, full width across it."
+into = "\t\t\t\t\tif (sb->upsideDown) thumb_pos = track - thumb_len - thumb_pos;\n\t\t\t\t}\n\t\t\t\t// A run of whole cells along the axis, full width across it."
+count = 1
+check = "a right-to-left scroll bar's thumb is where a click reaches it"
+
+[[sabotage]]
+# The spin box's arrows drawn on the mirrored side and its hit test
+# left where it was -- the arrow in a cell no click reaches, which is
+# this control's original fault arriving by a new route. 8.284.
+name = "a right-to-left spin box's arrows are drawn where no click reaches"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\treturn cell_at(rtl ? r.left() + 2 * cw : r.right() + 1 - 3 * cw);"
+into = "\t\t\treturn cell_at(r.right() + 1 - 3 * cw);"
+count = 1
+check = "a right-to-left spin box's step-up arrow is drawn in the cell its hit test names"

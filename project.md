@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1823 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1830 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,83 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.284 Right to left, in the four controls this file places (2026-09-21)
+
+**Nothing in `src/` or `include/` mentioned the layout direction**, and
+most of the time that was fine: Qt's layouts mirror on their own, and
+GridStyle followed them for everything laid out -- a form's rows, a
+check box's indicator, a group box's title, a tab bar's order, a
+slider's handle. What it did not follow is the handful of controls it
+positions **itself**, and there the failure is a wrong reading rather
+than an unfamiliar look.
+
+    control        left to right               right to left, before
+    QProgressBar   ##########.40%.........     ##########.40%.........
+    QScrollBar     <....##.................>   <....##.................>
+    QSpinBox       [0       ^v]                [0       ^v]
+
+A progress bar filling from the wrong end shows its own complement.
+
+#### The intent is Qt's, and one suspicion was wrong
+
+Measured with plain Qt and Fusion, nothing of this library in it --
+pixels for the bar, `subControlRect` for the other two:
+
+    QProgressBar at 25%  every lit pixel left, then every one right
+    QScrollBar 10/100    thumb 35..60, then 199..224, of 260
+    QSpinBox             up-button 108..121, then -2..11, of 120
+    QLabel               ink left BOTH times
+
+**The label was the first suspicion and the biggest, and the
+measurement refused it.** A `QLabel` reads left-aligned in both
+directions under Qt, so drawing it the same here is correct -- and there
+is a check saying so, because a later pass that mirrored everything
+would otherwise look like an improvement.
+
+#### `upsideDown` does not carry it
+
+The scroll bar arm already handled `invertedAppearance` through
+`QStyleOptionSlider::upsideDown`, and the obvious guess is that the
+layout direction arrives the same way. **It does not: `upsideDown` is 0
+in both directions.** Qt mirrors a scroll bar by mirroring the RECT --
+`QCommonStyle::subControlRect` ends in `visualRect()` -- and this file
+draws the bar whole, so there is no rect of Qt's involved and the
+reversal has to be made here. The same is true of the spin box's
+buttons and the tool button's menu arrow.
+
+For the progress bar it composes as a third exclusive-or, which is what
+Qt's own Fusion does: vertical fills from the far end, `invertedAppearance`
+flips that, and a right-to-left horizontal bar flips it again.
+
+#### Both derivations, or the arrow lands where no click reaches
+
+The scroll bar and the spin box each have their geometry written twice
+on purpose -- once for the drawing and once for `subControlRect` -- and
+the comment on the older pair says why: two derivations of one layout is
+what put this file's spin box arrows in the same cell. Mirroring one and
+not the other is that fault arriving by a new route.
+
+**The first version of the spin box mirror did exactly that**, one cell
+out, because the offsets were derived from a helper rather than written
+per side. The hit-test check caught it before the commit. The rects are
+spelled out per direction now.
+
+#### The checks for the layout direction
+
+Seven in `suite_widgets`: the bar fills from the left and then from the
+right; a label is unchanged, which is the control the measurement above
+earned; and, for each direction, that the scroll bar's drawn thumb and
+the spin box's drawn arrow sit in the cells their `subControlRect`
+names. Three sabotage entries, one per control, each reddening the
+right-to-left half and leaving the left-to-right half green.
+
+**What is not done:** a right-to-left terminal is not the same question
+as a right-to-left layout, and nothing here addresses bidirectional
+TEXT -- an Arabic or Hebrew string still reaches the cells in logical
+order. That is a separate piece of work and it needs the copyright
+holder, since it reaches the wire format and the cluster rules rather
+than this file.
+
 ### 8.283 The ninth question: what a style sheet is drawing (2026-09-21)
 
 **Practice 12 of `doc/keyboard-first.md` was the only trap with a

@@ -1366,6 +1366,134 @@ int suite_widgets() {
 			      "and clearing the sheet puts every one of them back");
 		}
 
+		// RIGHT TO LEFT, which nothing in this library mentioned. Qt's
+		// layouts mirror on their own and GridStyle followed them for
+		// anything laid out -- a form's rows, a check box's indicator, a
+		// tab bar's order. What it did NOT follow is the four controls it
+		// positions itself, and for those a mirrored layout read wrong
+		// rather than merely looking unfamiliar: a progress bar filled
+		// from the wrong end, so a meter showed its own complement.
+		//
+		// The intent is Qt's, measured rather than assumed, with plain Qt
+		// and Fusion and nothing of this library in it:
+		//
+		//   QProgressBar at 25%  every lit pixel left, then every one right
+		//   QScrollBar 10/100    thumb 35..60, then 199..224, of 260
+		//   QSpinBox             up-button 108..121, then -2..11, of 120
+		//   QLabel               ink left BOTH times -- Qt does not mirror it
+		//
+		// The label is in that list because it was the first suspicion and
+		// the measurement refused it. It is drawn the same in both
+		// directions here, and that is correct.
+		{
+			const auto in_both = [&](std::function<QWidget *()> make,
+			                         int cols, int rows) {
+				QApplication::setLayoutDirection(Qt::LeftToRight);
+				QWidget *a = make();
+				a->setFixedSize(cw * cols, ch * rows);
+				show(*a, cols, rows + 1);
+				CellBuffer ab(cols, rows + 1);
+				render_once(*a, ab);
+				const QString ltr = ab.to_text();
+				delete a;
+				QApplication::setLayoutDirection(Qt::RightToLeft);
+				QWidget *b = make();
+				b->setFixedSize(cw * cols, ch * rows);
+				show(*b, cols, rows + 1);
+				CellBuffer bb(cols, rows + 1);
+				render_once(*b, bb);
+				const QString rtl = bb.to_text();
+				delete b;
+				QApplication::setLayoutDirection(Qt::LeftToRight);
+				return QPair<QString, QString>(ltr.trimmed(), rtl.trimmed());
+			};
+			const auto bar = in_both([] {
+				auto *p = new QProgressBar;
+				p->setRange(0, 100);
+				p->setValue(40);
+				return static_cast<QWidget *>(p);
+			}, 20, 1);
+			// The lit run is at the start in one direction and at the end
+			// in the other. Asserted on WHERE the fill is rather than on
+			// the whole row, because the percentage sits in the middle and
+			// is the same either way.
+			const QChar full(0x2588);
+			CHECK(bar.first.startsWith(full) && !bar.first.endsWith(full),
+			      "a progress bar fills from the left in a left-to-right "
+			      "layout");
+			CHECK(bar.second.endsWith(full) && !bar.second.startsWith(full),
+			      "and from the right in a right-to-left one, which is "
+			      "Qt's own behaviour and was the complement of it");
+
+			// THE CONTROL, and it is the one the measurement above earned:
+			// a label is NOT mirrored, so a change that mirrored
+			// everything would be caught here rather than praised.
+			const auto lbl = in_both([] {
+				return static_cast<QWidget *>(new QLabel(QStringLiteral("Hi")));
+			}, 20, 1);
+			CHECK(lbl.first == lbl.second && lbl.first.startsWith(QStringLiteral("Hi")),
+			      "while a label is drawn the same in both, because Qt "
+			      "does not mirror one either");
+		}
+
+		// AND THE HIT TEST AGREES WITH THE PICTURE IN BOTH DIRECTIONS,
+		// which is the half that breaks silently: a mirrored drawing whose
+		// subControlRect stayed put puts the arrow in a cell no click
+		// reaches. Both derivations were changed together for exactly this
+		// reason, and this is what says they still match. The first
+		// version of the spin box mirror failed here, one cell out.
+		{
+			for (int pass = 0; pass < 2; ++pass) {
+				const bool rtl = pass == 1;
+				QApplication::setLayoutDirection(rtl ? Qt::RightToLeft
+				                                     : Qt::LeftToRight);
+				QScrollBar sb(Qt::Horizontal);
+				sb.setRange(0, 100);
+				sb.setValue(20);
+				sb.setPageStep(10);
+				sb.setFixedSize(cw * 20, ch);
+				show(sb, 20, 2);
+				CellBuffer b(20, 2);
+				render_once(sb, b);
+				const QString row = b.to_text().split(QLatin1Char('\n')).value(0);
+				const int drawn = row.indexOf(QChar(0x2588));
+				QStyleOptionSlider o;
+				o.initFrom(&sb);
+				o.minimum = 0; o.maximum = 100; o.sliderPosition = 20;
+				o.sliderValue = 20; o.pageStep = 10;
+				o.orientation = Qt::Horizontal; o.rect = sb.rect();
+				o.subControls = QStyle::SC_All;
+				const QRect th = sb.style()->subControlRect(
+				    QStyle::CC_ScrollBar, &o, QStyle::SC_ScrollBarSlider, &sb);
+				CHECK(drawn >= 0 && drawn * cw >= th.left()
+				      && drawn * cw <= th.right(),
+				      rtl ? "a right-to-left scroll bar's thumb is where a "
+				            "click reaches it"
+				          : "a left-to-right scroll bar's thumb is where a "
+				            "click reaches it");
+
+				QSpinBox sp;
+				sp.setFixedSize(cw * 12, ch);
+				show(sp, 12, 2);
+				CellBuffer sb2(12, 2);
+				render_once(sp, sb2);
+				const QString srow = sb2.to_text().split(QLatin1Char('\n')).value(0);
+				const int up_drawn = srow.indexOf(QChar(0x25B4));
+				QStyleOptionSpinBox so;
+				so.initFrom(&sp);
+				so.rect = sp.rect();
+				so.subControls = QStyle::SC_All;
+				const QRect up = sp.style()->subControlRect(
+				    QStyle::CC_SpinBox, &so, QStyle::SC_SpinBoxUp, &sp);
+				CHECK(up_drawn >= 0 && up_drawn == up.left() / cw,
+				      rtl ? "and a right-to-left spin box's step-up arrow is"
+				            " drawn in the cell its hit test names"
+				          : "and a left-to-right spin box's step-up arrow is"
+				            " drawn in the cell its hit test names");
+			}
+			QApplication::setLayoutDirection(Qt::LeftToRight);
+		}
+
 		// A scroll bar squeezed to ONE cell. The control returned without
 		// drawing anything at all below two cells, so the cell was blank and
 		// nothing said the view scrolls.

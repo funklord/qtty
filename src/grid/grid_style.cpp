@@ -1299,18 +1299,32 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		// buffer at all. A spin box whose value can be changed and cannot be
 		// read.
 		const QRect r = opt->rect;
+		// The arrows change SIDE with the layout direction, and Qt does it
+		// by mirroring the rect: measured with Qt's own subControlRect on a
+		// 120px box, SC_SpinBoxUp is at 108..121 under LeftToRight and at
+		// -2..11 under RightToLeft. This file answers in cells and cannot
+		// inherit that, so the mirror is here -- and in the drawing below,
+		// which is the same pair as the scroll bar's.
+		const bool rtl = opt->direction == Qt::RightToLeft;
+		// Written out per side rather than derived from an offset, after
+		// the derived version put SC_SpinBoxUp one cell inside where the
+		// arrow is drawn -- which is the same off-by-one this arm was
+		// written to fix, reintroduced by being clever about the mirror.
+		const auto cell_at = [&](int x) {
+			return QRect(x, r.top(), cw, qMax(ch, r.height()));
+		};
 		switch (sc) {
 		case SC_SpinBoxEditField:
-			return QRect(r.left() + cw, r.top(),
+			return QRect(rtl ? r.left() + 3 * cw : r.left() + cw, r.top(),
 			             qMax(cw, r.width() - 4 * cw), qMax(ch, r.height()));
 		// A cell each, side by side, rather than a cell split in half. The
 		// halves were r.height()/2 apart -- nine pixels on a nineteen-pixel
 		// cell -- so both rectangles covered the same cell and only the first
 		// could be clicked.
 		case SC_SpinBoxUp:
-			return QRect(r.right() + 1 - 3 * cw, r.top(), cw, qMax(ch, r.height()));
+			return cell_at(rtl ? r.left() + 2 * cw : r.right() + 1 - 3 * cw);
 		case SC_SpinBoxDown:
-			return QRect(r.right() + 1 - 2 * cw, r.top(), cw, qMax(ch, r.height()));
+			return cell_at(rtl ? r.left() + cw : r.right() + 1 - 2 * cw);
 		case SC_SpinBoxFrame:
 			return r;
 		default:
@@ -1333,7 +1347,11 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		if (auto *tb = qstyleoption_cast<const QStyleOptionToolButton *>(opt)) {
 			if (tb->features & QStyleOptionToolButton::MenuButtonPopup) {
 				const QRect r = opt->rect;
-				return QRect(r.right() + 1 - 2 * cw, r.top(), cw, r.height());
+				// Inside the bracket at whichever end the layout
+				// direction puts it, paired with the drawing below.
+				return opt->direction == Qt::RightToLeft
+				       ? QRect(r.left() + cw, r.top(), cw, r.height())
+				       : QRect(r.right() + 1 - 2 * cw, r.top(), cw, r.height());
 			}
 		}
 	}
@@ -1395,7 +1413,21 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 					// other is the drawing. Fixing one alone would put the
 					// thumb where a click does not reach it, which is worse
 					// than a bar that reads backwards consistently.
-					if (sb->upsideDown) thumb_pos = track - thumb_len - thumb_pos;
+					//
+					// The layout direction is a SECOND reversal and it does
+					// not arrive in upsideDown. Qt mirrors a scroll bar by
+					// mirroring the RECT -- QCommonStyle::subControlRect
+					// ends in visualRect() -- so the flag is 0 in both
+					// directions and there is nothing here to read it from.
+					// Measured with Qt's own subControlRect on a 260px
+					// horizontal bar at 10 of 100: the thumb is at 35..60
+					// under LeftToRight and 199..224 under RightToLeft,
+					// with upsideDown 0 both times. This file draws the bar
+					// whole, so no rect of Qt's is involved and the
+					// reversal has to be made here.
+					if (sb->upsideDown
+					    != (!vert && sb->direction == Qt::RightToLeft))
+						thumb_pos = track - thumb_len - thumb_pos;
 				}
 				// A run of whole cells along the axis, full width across it.
 				const auto band = [&](int first, int count) {
@@ -2634,7 +2666,18 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					// An exclusive or, because the two reversals compose: a
 					// vertical bar already fills from the far end, so
 					// inverting it fills from the near one.
-					const bool from_start = horizontal != pb->invertedAppearance;
+					//
+					// AND A THIRD REVERSAL, the layout direction. A
+					// horizontal bar fills from the right in a
+					// right-to-left layout and a vertical one is
+					// unaffected; measured against plain Qt with Fusion,
+					// which puts every lit pixel of a 25% bar in the left
+					// half under LeftToRight and in the right half under
+					// RightToLeft. This file drew both the same, so a
+					// right-to-left meter read as its own complement.
+					const bool rtl = pb->direction == Qt::RightToLeft;
+					const bool from_start = (horizontal && !rtl)
+					                        != pb->invertedAppearance;
 					const bool on = from_start ? i < filled : i >= extent - filled;
 					const QString g = on ? QStringLiteral("█") : QStringLiteral("░");
 					if (horizontal)
@@ -2826,7 +2869,12 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 					// is the dial's, which was written an hour earlier in this
 					// same file. Copying either without measuring gets one of
 					// the two backwards.
-					if (sb->upsideDown) thumb_pos = track - thumb_len - thumb_pos;
+					// The drawing's half of the pair above: the layout
+					// direction reverses a horizontal bar and reaches this
+					// arm through no flag of Qt's.
+					if (sb->upsideDown
+					    != (!vert && sb->direction == Qt::RightToLeft))
+						thumb_pos = track - thumb_len - thumb_pos;
 				}
 				const Attrs a = with_state(opt);
 				for (int i = 0; i < len; ++i) {
@@ -2922,9 +2970,11 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				// drawn whole here.
 				const bool menu = tb->features & QStyleOptionToolButton::HasMenu;
 				if (menu)
-					dev->buffer().put_cluster(c.right() - 1, row,
-					                          QStringLiteral("▾"),
-					                          Color(), Color(), with_state(opt));
+					dev->buffer().put_cluster(
+					    opt->direction == Qt::RightToLeft ? c.left() + 1
+					                                      : c.right() - 1,
+					    row, QStringLiteral("▾"),
+					    Color(), Color(), with_state(opt));
 				const int inner = c.width() - (bracket ? 2 : 0) - (menu ? 2 : 0);
 				if (inner > 0) {
 					const QString shown = elide_to_cells(label, inner);
@@ -3086,8 +3136,16 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			// Half a row cannot be hit on a grid, so the fix is not a better
 			// rectangle but a second cell. The glyphs are the tree's own
 			// arrows, the ones tool_button_label() uses for an arrowType.
-			b.put_cluster(c.right() - 2, row, QStringLiteral("▴"), Color(), Color(), a);
-			b.put_cluster(c.right() - 1, row, QStringLiteral("▾"), Color(), Color(), a);
+			// On the LEFT in a right-to-left layout, which is where Qt
+			// puts them and where subControlRect above now says they are.
+			// The two have to agree or the arrow is drawn in a cell a
+			// click does not reach, which is this file's spin box fault
+			// from the other side.
+			const bool rtl = opt->direction == Qt::RightToLeft;
+			b.put_cluster(rtl ? c.left() + 2 : c.right() - 2, row,
+			              QStringLiteral("▴"), Color(), Color(), a);
+			b.put_cluster(rtl ? c.left() + 1 : c.right() - 1, row,
+			              QStringLiteral("▾"), Color(), Color(), a);
 			return;                                    // value text via child edit
 		}
 		default:
