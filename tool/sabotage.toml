@@ -5209,3 +5209,32 @@ find = "\tif (cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph)
 into = "\tif (cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph\n\t    || cat == QChar::Separator_Space)"
 count = 1
 check = "a no-break space is left alone"
+
+[[sabotage]]
+# The bound removed, which is how it was: one cell held as many code
+# points as it was given and charged the wire two bytes for each, so
+# 5000 combining marks on one base cost 10001 bytes for one column.
+# 8.301.
+name = "a cell's contents are unbounded"
+file = "src/core/cell_buffer.cpp"
+find = "\tif (glyph.size() > 31) {"
+into = "\tif (false) {"
+count = 1
+check = "a cell holds at most a base and thirty marks"
+
+[[sabotage]]
+# The bound set tight enough to cut a legitimate sequence, which is
+# the risk a cap carries: a ZWJ family is eight code points and a
+# flag four, and a cap below them would silently rewrite emoji.
+#
+# BOTH NUMBERS, because either alone leaves the family untouched and
+# the check green. The pre-filter skips the walk for anything at or
+# under 31 code UNITS, and a family is eleven -- so lowering only the
+# walk's limit sabotages code the family never reaches. That was the
+# first version of this entry and it reddened nothing. 8.301.
+name = "the cell bound cuts a legitimate cluster"
+file = "src/core/cell_buffer.cpp"
+find = "\tif (glyph.size() > 31) {\n\t\tint cps = 0, i = 0;\n\t\twhile (i < glyph.size() && cps < 31) {"
+into = "\tif (glyph.size() > 2) {\n\t\tint cps = 0, i = 0;\n\t\twhile (i < glyph.size() && cps < 2) {"
+count = 1
+check = "a ZWJ family of eight code points reaches its cell whole"

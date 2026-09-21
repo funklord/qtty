@@ -53,6 +53,48 @@ int suite_cells() {
 		      "over what looks like an emoji");
 	}
 
+	// A CELL IS ONE COLUMN AND ITS CONTENTS WERE NOT BOUNDED BY THAT.
+	// Grapheme clustering puts a base and every mark after it in one
+	// cell, and nothing counted them: measured, 5000 combining marks on
+	// one base is one cluster, one column, and 10001 bytes on the wire.
+	// A row of those is megabytes per frame, for text no terminal can
+	// render legibly at any length -- and it is pasted by accident out
+	// of the web and on purpose into a chat, which is the example this
+	// project ships.
+	//
+	// The bound is Unicode's rather than one invented here: UAX-15's
+	// Stream-Safe Text Format allows at most 30 non-starters after a
+	// starter. Base plus thirty.
+	{
+		const auto marked = [](int n) {
+			QString s = QStringLiteral("a");
+			for (int i = 0; i < n; ++i) s += QChar(0x0301);
+			CellBuffer b(4, 1);
+			b.text(0, 0, s);
+			return b.at(0, 0).ch;
+		};
+		CHECK(marked(5000).size() == 31 && marked(400).size() == 31,
+		      "a cell holds at most a base and thirty marks, where it "
+		      "held as many as it was given and charged the wire two "
+		      "bytes for each");
+		// THE CONTROL, and it is the whole risk of a cap: a legitimate
+		// cluster must be untouched. Four marks is ordinary text, and
+		// every emoji sequence this suite knows is well inside the
+		// bound -- a ZWJ family is eight code points, a flag four, a
+		// keycap three.
+		CHECK(marked(4).size() == 5,
+		      "while four marks on a base are left exactly as they came, "
+		      "the bound being past every sequence anybody writes");
+		const QString family = QString::fromUtf8(
+		    "\xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9\xe2\x80\x8d\xf0\x9f\x91\xa7");
+		CellBuffer fb(4, 1);
+		fb.text(0, 0, family);
+		CHECK(fb.at(0, 0).ch == family,
+		      "and a ZWJ family of eight code points reaches its cell "
+		      "whole, which is what says the bound is on abuse rather "
+		      "than on emoji");
+	}
+
 	// A CLUSTER THAT IS NOTHING BUT AN INVISIBLE CHARACTER. The comment on
 	// is_zero_width() describes this defect exactly -- a lone one is its
 	// own grapheme cluster and took a whole cell, shifting everything

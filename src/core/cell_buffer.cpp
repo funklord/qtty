@@ -218,6 +218,39 @@ void CellBuffer::put_cluster(int x, int y, const QString &cluster,
 	QString glyph = cluster;
 	if (!glyph.isEmpty() && is_control(glyph.at(0).unicode()))
 		glyph = QStringLiteral(" ");
+	// A CELL IS ONE COLUMN AND ITS CONTENTS ARE NOT BOUNDED BY THAT.
+	// Grapheme clustering puts a base and every mark after it in one
+	// cell, and nothing counted them: measured, 5000 combining marks on
+	// one base is one cluster, one column, and **10001 bytes on the
+	// wire**. A row of those is megabytes per frame, for text no
+	// terminal can render legibly at any length.
+	//
+	// It is not a contrived input. Text like that is pasted by accident
+	// out of the web and on purpose into a chat, and paste is a path
+	// this library carries -- the example it ships IS a chat.
+	//
+	// THE NUMBER IS UNICODE'S, not one invented here: UAX-15's
+	// Stream-Safe Text Format allows at most 30 non-starters after a
+	// starter, and text beyond that is already outside what the
+	// normalisation forms are defined to handle. Base plus thirty.
+	//
+	// Bounded HERE for the reason the control substitution above gives:
+	// to_text() and the snapshot fixtures read the buffer directly, so a
+	// buffer holding the unbounded version is already wrong whoever
+	// writes it out.
+	//
+	// The length test is on code UNITS and is only a pre-filter -- 31
+	// code points can be 62 units -- so the walk that follows is what
+	// decides, and the common case pays one integer compare.
+	if (glyph.size() > 31) {
+		int cps = 0, i = 0;
+		while (i < glyph.size() && cps < 31) {
+			i += (glyph.at(i).isHighSurrogate() && i + 1 < glyph.size())
+			     ? 2 : 1;
+			++cps;
+		}
+		if (i < glyph.size()) glyph.truncate(i);
+	}
 	// A width-2 cluster is a lead plus a continuation cell (section 5.2), and
 	// in the last column there is no continuation to have. Writing it anyway
 	// produced a cell claiming two columns in a one-column space: to_text()

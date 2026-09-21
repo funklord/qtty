@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1874 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1877 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,60 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.301 A cell is one column and held as much as it was given (2026-09-21)
+
+**Grapheme clustering puts a base and every mark after it in one
+cell, and nothing counted them.** Measured:
+
+    marks on one base   clusters  columns  code units  wire bytes
+    0                   1         1        1           1
+    40                  1         1        41          81
+    400                 1         1        401         801
+    5000                1         1        5001        10001
+
+One column, ten thousand bytes. A row of those is megabytes per frame,
+for text no terminal renders legibly at any length.
+
+**Not a contrived input.** Text like that is pasted by accident out of
+the web and on purpose into a chat -- and paste is a path this library
+carries, in a project whose shipped example IS a chat.
+
+#### The number is Unicode's
+
+UAX-15's **Stream-Safe Text Format** allows at most 30 non-starters
+after a starter; beyond that the text is already outside what the
+normalisation forms are defined to handle. Base plus thirty, cited
+rather than chosen, which is the difference between a bound and a
+guess.
+
+Bounded in `put_cluster()` for the reason the control substitution
+beside it gives: `to_text()` and the snapshot fixtures read the buffer
+directly, so a buffer holding the unbounded version is already wrong
+whoever writes it out. The length test is on code UNITS and is only a
+pre-filter -- 31 code points can be 62 units -- so the walk decides and
+the common case pays one integer compare.
+
+#### The risk of a cap is the cap, so it is checked from both sides
+
+A bound that cuts a legitimate sequence silently rewrites emoji. Four
+marks on a base arrive exactly as they came, and a ZWJ family of eight
+code points reaches its cell whole -- every sequence this suite knows
+is well inside thirty: a family is eight, a flag four, a keycap three.
+The second sabotage tightens the bound to two and watches the family
+break -- and it had to be re-aimed to do it. **The pre-filter skips
+the walk for anything at or under 31 code UNITS, and a family is
+eleven**, so lowering only the walk's limit sabotages code the family
+never reaches: the first version reddened nothing. The effective
+bound is both numbers together, and a control has to fail through the
+thing it controls for.
+
+**A judgement rather than a defect fix, and it is the holder's to
+reverse.** It changes what reaches the terminal for input nobody sane
+sends, on the same reasoning as the escape-introducer substitution one
+function along.
+
+Three checks and two sabotage entries.
+
 ### 8.300 A third table, and the one that could break the frame (2026-09-21)
 
 **The same lens a third time.** `is_control()` says what it is for --
