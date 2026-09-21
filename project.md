@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1807 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1811 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,63 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.280 One line of rich text, drawn as two rows (2026-09-21)
+
+**A run's row was computed from its own top, so two runs Qt put on one
+line landed on different rows the moment their ascents differed.**
+`drawTextItem()` had `row = (baseline - ascent) / ch`, which is right
+for a paragraph of one font and wrong for every line carrying a
+subscript, a superscript, a larger heading word or an inline icon.
+
+Measured through a `QTextBrowser`, before and after:
+
+    x<sub>2</sub> world                  "x  world" + a lone "2"   -> "x2 world"
+    <span 24pt>hi</span> world           two rows                  -> "hi   world"
+
+The first reads as a missing character and a stray line rather than as
+one sentence, which is worse than either half suggests: a screen reader
+and a copy out of the buffer both take the "2" as its own line.
+
+The rule joins a run to the row of the run before it when three things
+hold -- the same clip, so it is the same widget's paint; the run's top
+above the previous baseline, so they overlap; and the run's baseline
+below the previous baseline by less than a row, so it is the same line
+rather than the next one.
+
+**The lower bound is the half that had to be earned.** Its first
+sabotage entry named the two-paragraph control and reddened nothing,
+because a text document lays out downwards: the second paragraph's top
+is below the first's baseline, the middle condition refuses it, and the
+bound is never consulted. Widening it by a hundred rows changed no
+output anywhere in the suite, which is the state where a guard is
+undefended rather than safe.
+
+What reaches it is one painter drawing bottom-up -- the footer before
+the title, which is an ordinary thing for a widget to do:
+
+    p.drawText(QPoint(0, 4 * ch), "lower");
+    p.drawText(QPoint(0, 1 * ch), "upper");
+
+"upper"'s top is above "lower"'s baseline, so the first two conditions
+both hold and only the bound keeps it on row 0. Without it the two
+collide on row 3. A `QTextBrowser` cannot ask that question and a
+`QPainter` can, so the fixture is a painter and not a document.
+
+The order the probes were written in is the lesson rather than the
+rule: three checks through the document engine, all green, all
+exercising the same half of one condition. **A control has to be
+reached, not only able to fire** -- and the thing that showed it was
+not the sabotage failing but asking, afterwards, which construction
+could possibly consult the bound.
+
+#### The checks, and the line rule's bound
+
+Four, in `suite_render`: the subscript, the 24pt word, two paragraphs
+staying two rows -- which is what says the rule joins a line rather
+than a document -- and the bottom-up painter. Two sabotage entries,
+each reddening the check it names: the whole condition disabled
+(2 checks red) and the lower bound widened by a hundred rows (1).
+
 ### 8.279 The squiggle that marked nothing (2026-09-21)
 
 **`QTextCharFormat` spells an underline two ways and this library

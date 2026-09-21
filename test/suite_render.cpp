@@ -88,6 +88,101 @@ int suite_render(bool record) {
 	                                  QStringLiteral("prefs_dialog"), got, record);
 	if (!r && !record) printf("PASS: snapshot matches\n");
 
+	// ONE LINE OF RICH TEXT IS ONE ROW, whatever font sizes are on it.
+	// The row a run lands in is computed from its own TOP -- baseline
+	// minus its own ascent -- so two runs Qt placed on the same line
+	// landed on different rows the moment their ascents differed.
+	//
+	// Measured through a QTextBrowser, before: `x<sub>2</sub> world` put
+	// "x  world" on one row and a lone "2" on the next, and a 24pt word
+	// followed by ordinary text split the same way. Both read as a
+	// missing character and a stray line rather than as one sentence.
+	{
+		const auto rows_of = [](const QString &html) {
+			QTextBrowser br;
+			br.setAttribute(Qt::WA_DontShowOnScreen);
+			br.setFrameShape(QFrame::NoFrame);
+			br.setHtml(html);
+			br.resize(GridMetrics::cells(30, 6));
+			br.show();
+			QCoreApplication::processEvents();
+			Qtty::CellBuffer b(30, 6);
+			Qtty::render_once(br, b);
+			QStringList out;
+			for (const QString &line : b.to_text().split(QLatin1Char('\n')))
+				if (!line.trimmed().isEmpty()) out << line.trimmed();
+			return out;
+		};
+		const QStringList sub = rows_of(QStringLiteral("x<sub>2</sub> world"));
+		if (sub.size() == 1 && sub.value(0).startsWith(QStringLiteral("x2")))
+			printf("PASS: a subscript stays on the line it belongs to rather "
+			       "than dropping to the row below\n");
+		else {
+			printf("FAIL: a subscript stays on the line it belongs to rather "
+			       "than dropping to the row below\n      got %d row(s), "
+			       "first '%s'\n", int(sub.size()),
+			       qPrintable(sub.value(0)));
+			++r;
+		}
+		const QStringList big = rows_of(QStringLiteral(
+		    "<span style='font-size:24pt'>hi</span> world"));
+		if (big.size() == 1 && big.value(0).contains(QStringLiteral("world")))
+			printf("PASS: and a bigger word and the text after it are one "
+			       "line, not two\n");
+		else {
+			printf("FAIL: and a bigger word and the text after it are one "
+			       "line, not two\n      got %d row(s), first '%s'\n",
+			       int(big.size()), qPrintable(big.value(0)));
+			++r;
+		}
+		// THE CONTROL, and it is what stops the rule swallowing a
+		// document: two paragraphs are two lines and must stay two rows.
+		// Without this the check above passes for an engine that puts
+		// everything on the first row it drew.
+		const QStringList two = rows_of(QStringLiteral("<p>one</p><p>two</p>"));
+		if (two.size() == 2)
+			printf("PASS: while two paragraphs are still two rows, which is "
+			       "what says the rule joins a line rather than a "
+			       "document\n");
+		else {
+			printf("FAIL: while two paragraphs are still two rows, which is "
+			       "what says the rule joins a line rather than a "
+			       "document\n      got %d row(s)\n", int(two.size()));
+			++r;
+		}
+		// AND THE CONTROL FOR THE OTHER HALF OF THE RULE, the lower
+		// bound, which the three above cannot reach: a text document
+		// lays out downwards, so a later run's top is never above the
+		// previous baseline by more than a row and the bound is never
+		// the thing that refuses. One painter drawing bottom-up is,
+		// and it is an ordinary thing for a widget to do -- paint the
+		// footer before the title. Without the bound the second call
+		// adopts the first's row and the two collide on one line.
+		Qtty::CellBuffer b(20, 6);
+		{
+			Qtty::CellPaintDevice dev(b);
+			QPainter p(&dev);
+			p.setFont(QGuiApplication::font());
+			p.drawText(QPoint(0, 4 * GridMetrics::ch()),
+			           QStringLiteral("lower"));
+			p.drawText(QPoint(0, 1 * GridMetrics::ch()),
+			           QStringLiteral("upper"));
+		}
+		const QStringList painted = b.to_text().split(QLatin1Char('\n'));
+		if (painted.value(0).startsWith(QStringLiteral("upper"))
+		    && painted.value(3).startsWith(QStringLiteral("lower")))
+			printf("PASS: and a run drawn above one already drawn keeps its "
+			       "own row, which is the rule's lower bound\n");
+		else {
+			printf("FAIL: and a run drawn above one already drawn keeps its "
+			       "own row, which is the rule's lower bound\n      row 0 "
+			       "'%s', row 3 '%s'\n",
+			       qPrintable(painted.value(0).trimmed()),
+			       qPrintable(painted.value(3).trimmed()));
+			++r;
+		}
+	}
+
 	// AN UNDERLINE QT DOES NOT PUT ON THE FONT, which is the form every
 	// editor uses for a misspelling and every rich-text style sheet uses
 	// for a dotted or dashed rule. QTextCharFormat spells an underline two

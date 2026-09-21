@@ -175,6 +175,10 @@ private:
 	// tail. See drawTextItem() for the measurement.
 	int last_row_ = -1, last_end_col_ = 0;
 	qreal last_x_ = 0;
+	// The baseline the last run was drawn on, so a run that shares it
+	// shares its row however different the two fonts are. See
+	// drawTextItem() for the two cases that measured it.
+	qreal last_baseline_ = 0;
 	// And WHOSE run it was. One QPainter pass draws a whole window --
 	// QWidget::render() with DrawChildren -- so without this the rule above
 	// joined two runs belonging to two different widgets, and the second was

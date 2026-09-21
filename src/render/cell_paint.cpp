@@ -355,6 +355,36 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	QFontMetricsF fm(ti.font());
 	int col = qRound(q.x() / GridMetrics::cw());
 	int row = qRound((q.y() - fm.ascent()) / GridMetrics::ch());
+	// RUNS ON ONE BASELINE ARE ONE LINE, whatever their font sizes. The
+	// row above is computed from the run's own TOP -- baseline minus its
+	// own ascent -- so two runs Qt placed on the same baseline land on
+	// different rows the moment their ascents differ, which is any rich
+	// text mixing sizes on a line.
+	//
+	// Measured through a QTextBrowser, before this:
+	//
+	//     x<sub>2</sub> world    "x  world" on row 0, a lone "2" on row 1
+	//     24pt "hi" + " world"   "hi" on row 0, " world" on row 1
+	//
+	// Both are one line of text broken across two rows, and the gap left
+	// behind reads as a missing character rather than as a subscript.
+	//
+	// The first run of a line decides the row and the rest adopt it, which
+	// is narrower than recomputing the row from the baseline: that was
+	// tried, fixed the same cases, and also moved the lines the pinned
+	// limit is about and broke the caret's own row arithmetic -- two
+	// checks, which is how the narrower rule was chosen.
+	//
+	// OVERLAP rather than an equal baseline, because Qt LOWERS a
+	// subscript: its baseline is 20.7 where the line's is 19, so equality
+	// left the subscript exactly where it was. A run whose top is above
+	// the previous run's baseline overlaps it and is part of that line.
+	// Bounded below by a cell row so a run on the NEXT line, whose top is
+	// naturally above the previous baseline plus a row, is not swallowed.
+	if (last_row_ >= 0 && clip_cells() == last_clip_
+	    && q.y() - fm.ascent() < last_baseline_
+	    && q.y() > last_baseline_ - GridMetrics::ch())
+		row = last_row_;
 	Attrs a;
 	if (ti.font().bold()) a |= Attr::Bold;
 	if (ti.font().italic()) a |= Attr::Italic;
@@ -476,6 +506,7 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 		x += dev_->buffer().text(x, row, cl, use, Color(), a | ts.attrs | had);
 	}
 	last_row_ = row;
+	last_baseline_ = q.y();
 	last_end_col_ = x;
 	last_x_ = q.x();
 	last_clip_ = clip;

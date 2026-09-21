@@ -4731,3 +4731,29 @@ find = "\tif (thin) {\n\t\tconst QRectF m = xf_.mapRect(r).translated(dev_->orig
 into = "\tif (false) {\n\t\tconst QRectF m = xf_.mapRect(r).translated(dev_->origin);\n\t\tconst qreal mid = m.center().y();"
 count = 1
 check = "a spell-check squiggle marks the word it is under"
+
+[[sabotage]]
+# A run no longer adopting the row of the line it is on, which is the
+# state a subscript and any mixed-size line were in: one sentence
+# broken across two rows, reading as a missing character and a stray
+# line. 8.280.
+name = "a run does not join the line it is drawn on"
+file = "src/render/cell_paint.cpp"
+find = "\tif (last_row_ >= 0 && clip_cells() == last_clip_\n\t    && q.y() - fm.ascent() < last_baseline_\n\t    && q.y() > last_baseline_ - GridMetrics::ch())\n\t\trow = last_row_;"
+into = "\tif (false)\n\t\trow = last_row_;"
+count = 1
+check = "a subscript stays on the line it belongs to"
+
+[[sabotage]]
+# The lower bound widened past any real line spacing, so a run drawn
+# ABOVE one already drawn is swallowed into it. Aimed at the bottom-up
+# painter rather than at the two-paragraph control: a text document lays
+# out downwards, so its second paragraph is refused by the upper half of
+# the condition and the bound is never consulted. The first version of
+# this entry named that control and reddened nothing. 8.280.
+name = "the line rule has no lower bound"
+file = "src/render/cell_paint.cpp"
+find = "\t    && q.y() > last_baseline_ - GridMetrics::ch())"
+into = "\t    && q.y() > last_baseline_ - GridMetrics::ch() * 100)"
+count = 1
+check = "a run drawn above one already drawn keeps its own row"
