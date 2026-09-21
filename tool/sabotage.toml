@@ -4824,3 +4824,16 @@ into = ""
 count = 1
 expect = "crash"
 check = "an application style sheet does not take the process down with it"
+
+[[sabotage]]
+# sheet_styled() asking the widget's own styleSheet() instead of its
+# style(), which is the obvious spelling and misses every cascade: a
+# control inside a styled container, or under an application-wide
+# sheet, carries no sheet of its own and would be reported clean.
+# 8.283.
+name = "a cascaded style sheet is not seen"
+file = "src/runtime/input_router.cpp"
+find = "\t\tconst QStyle *s = w->style();\n\t\treturn s && qstrcmp(s->metaObject()->className(), \"QStyleSheetStyle\") == 0;"
+into = "\t\treturn !w->styleSheet().isEmpty();"
+count = 1
+check = "a sheet on a container names the controls inside it"

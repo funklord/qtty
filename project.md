@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1818 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1823 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,74 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.283 The ninth question: what a style sheet is drawing (2026-09-21)
+
+**Practice 12 of `doc/keyboard-first.md` was the only trap with a
+mechanical answer and no way to ask it.** Eight helpers answered the
+other questions -- reachability, mnemonics, chords, conventions, tab
+order, hover, focus marks -- and a style sheet, which silently costs a
+control every sign that it is one, could only be noticed by a person
+looking at the screen. `Qtty::sheet_styled(scope)` is the ninth.
+
+#### It asks style(), not styleSheet()
+
+The obvious spelling misses every cascade. A sheet set on a container or
+on the application reaches the controls under it, and each of those
+reports an **empty `styleSheet()` of its own** -- measured, a `QLineEdit`
+inside a `QGroupBox` with a sheet on the box. What changes in every case
+is `style()`, which becomes Qt's `QStyleSheetStyle`, and that is the
+object actually deciding the drawing.
+
+By class name, because `QStyleSheetStyle` is private to Qt and is not a
+`QProxyStyle` in Qt 6 -- 8.282 measured that the chain ends at it.
+
+    sheet on the button                QPushButton
+    and one on the group box           QPushButton QGroupBox QLineEdit
+    one on the application             QWidget QPushButton QGroupBox QLineEdit
+    all cleared                        (none)
+
+#### No class is excluded, and that is a measurement
+
+The first design was a list of "the controls a sheet harms", with
+`QLabel` carved out because practice 12 measured it unharmed. **The data
+refused the list.** Under one `padding: 1px` rule:
+
+    changed   QPushButton  QSpinBox  QProgressBar  QGroupBox
+    same      QCheckBox  QRadioButton  QLineEdit  QComboBox
+              QSlider  QLabel  QFrame  QWidget
+
+and the group box changed **for the better**, gaining a frame it did not
+have. Which widgets a sheet costs their drawing depends on the sheet and
+the widget together, so no static list answers it -- and a list that
+under-reports is worse than one that over-reports, because this is
+asserted empty.
+
+**Over-reporting costs nothing here**, which is the part that makes the
+decision easy rather than a trade. Every row has the same remedy,
+
+    if (!Qtty::is_tui_active()) setStyleSheet(...);
+
+so the list empties in one edit rather than widget by widget. That is
+not the general licence `evidence.md` warns about -- a standing gate
+that over-reports usually acquires an ignore list -- because there is
+nothing here anyone would want to suppress.
+
+#### The checks
+
+Five in `suite_router`: a clean window reports none; a sheet on one
+control names that control and nothing else; a sheet on a container
+names the controls inside it, **asserting that they carry no sheet of
+their own**, which is what says the cascade is being seen rather than
+the container; an application-wide sheet names them too; and clearing
+every sheet empties the list. The last is the control -- without it the
+four before pass for a function that reports whatever it is shown.
+
+The two existing whole-family checks grew a ninth term each, and their
+wording with it.
+
+One sabotage: `styleSheet()` in place of `style()`, which reddens the
+cascade check and the application-wide one together.
+
 ### 8.282 An application style sheet took the process down (2026-09-21)
 
 **`qApp->setStyleSheet(...)` segfaulted.** Not a wrong drawing, not a
@@ -18104,7 +18172,7 @@ been "Qt does not draw format underlines", the fix would have been
 aimed at the wrong layer, and the check would have passed against it.
 The order is now load-bearing in the check and says so.
 
-#### The checks
+#### The checks for the ninth question
 
 Three: a wave marks its word and rules no row below it, a dotted
 underline likewise, and -- the control -- text with no underline style

@@ -279,6 +279,41 @@ QVector<QWidget *> hover_only(QWidget *scope);
 // in a frame loop.
 QVector<QWidget *> focus_invisible(QWidget *scope);
 
+// The widgets a style sheet is drawing, whether the sheet is on the widget,
+// on something above it, or on the application.
+//
+// Practice 12 of `doc/keyboard-first.md` is "do not put a style sheet on a
+// control", and it is a trap: Qt's style-sheet machinery takes drawing over
+// from the application style, and qtty's cell drawing IS the application
+// style, so a sheet replaces it. A styled push button still takes `Enter`
+// and still shows focus, and nothing on screen says it is a control.
+//
+// ASKS THE WIDGET'S STYLE, not its styleSheet(). A sheet set on a parent or
+// on the application cascades, and a widget it reaches reports an empty
+// `styleSheet()` of its own -- measured, a QLineEdit inside a group box
+// with a sheet on the box. What changes in every case is `style()`, which
+// becomes Qt's QStyleSheetStyle; that is the thing actually deciding the
+// drawing, so it is the thing asked. By class name, because
+// QStyleSheetStyle is private to Qt and is not a QProxyStyle in Qt 6 --
+// there is no base to walk to.
+//
+// NO CLASS IS EXCLUDED, and that is a measurement rather than a shortcut.
+// A list of "the controls a sheet harms" was attempted and the data refused
+// it: under one `padding: 1px` rule a push button, a spin box, a progress
+// bar and a group box all drew differently while a check box, a radio
+// button, a line edit, a combo box, a slider, a label, a frame and a plain
+// widget did not -- and the group box changed for the BETTER, gaining a
+// frame. Which widgets a sheet costs depends on the sheet and the widget
+// together, so no static list answers it.
+//
+// It over-reports by design and costs nothing to satisfy, because the
+// remedy is the same for every row: set the sheet only where it belongs,
+//
+//     if (!Qtty::is_tui_active()) setStyleSheet(...);
+//
+// which empties the list in one edit rather than widget by widget.
+QVector<QWidget *> sheet_styled(QWidget *scope);
+
 // ---------------------------------------------------------------- InputRouter
 // Owns everything Qt's platform layer would normally own (measured F3/F4):
 // the shortcut table (synthetic keys never reach QShortcutMap), focus

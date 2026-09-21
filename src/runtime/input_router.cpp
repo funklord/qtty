@@ -1512,6 +1512,23 @@ static bool holds_a_link(const QLabel *l) {
 	return false;
 }
 
+// Every widget under `scope`, and `scope` itself, whose effective style is
+// Qt's QStyleSheetStyle. See the header for why this asks style() rather
+// than styleSheet(), and why nothing is excluded.
+QVector<QWidget *> sheet_styled(QWidget *scope) {
+	QVector<QWidget *> out;
+	if (!scope) return out;
+	const auto drawn_by_sheet = [](const QWidget *w) {
+		const QStyle *s = w->style();
+		return s && qstrcmp(s->metaObject()->className(), "QStyleSheetStyle") == 0;
+	};
+	if (drawn_by_sheet(scope)) out.append(scope);
+	const auto kids = scope->findChildren<QWidget *>();
+	for (QWidget *w : kids)
+		if (drawn_by_sheet(w)) out.append(w);
+	return out;
+}
+
 QVector<QWidget *> pointer_only(QWidget *scope) {
 	QVector<QWidget *> out;
 	if (!scope) return out;

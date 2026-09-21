@@ -1131,6 +1131,22 @@ by `exec()`, or by an application's own frame loop -- so a widget deep in a
 tree can branch without being told which frontend built it. That is the general escape for anything a desktop
 wants and a terminal cannot use.
 
+**And you can assert that none is in force**, which is the ninth question
+under *Checking it without a terminal*:
+
+    QCOMPARE(Qtty::sheet_styled(&window).size(), 0);
+
+It asks each widget's `style()` rather than its `styleSheet()`, so it sees
+a sheet set on a container or on the application as well as one set on the
+control -- a widget those reach reports an empty sheet of its own. It
+excludes no class, because which widgets a sheet costs their drawing is
+not predictable from the class: measured under one `padding: 1px` rule, a
+push button, a spin box, a progress bar and a group box all drew
+differently while a check box, a radio button, a line edit, a combo box, a
+slider, a label and a frame did not -- and the group box changed for the
+better. The remedy is the same for every row, so over-reporting costs
+nothing: the `is_tui_active()` line above empties the list in one edit.
+
 **13. Prefer stepping to dragging.** The three controls people drag are
 not one case, and this practice used to say they were. Measured, with the
 focus put on each by hand:
@@ -1895,7 +1911,7 @@ straight after practice 10: it is `hasFocus()` on the widget, and
 own idea of its focus widget; what it never sets is the ACTIVE window,
 which is what the other two read.
 
-**Eight questions the library will answer about your window**, so that a
+**Nine questions the library will answer about your window**, so that a
 test can assert on them rather than a person noticing:
 
 | call | what it returns | what to assert |
@@ -1908,8 +1924,9 @@ test can assert on them rather than a person noticing:
 | `Qtty::tab_order_anomalies(scope)` | the tab steps that read backwards | empty |
 | `Qtty::hover_only(scope)` | the words only a hover would reveal | empty |
 | `Qtty::focus_invisible(scope)` | the controls that look the same focused | empty |
+| `Qtty::sheet_styled(scope)` | the widgets a style sheet is drawing | empty |
 
-**Seven of the eight are asserted EMPTY, and that is the property worth
+**Eight of the nine are asserted EMPTY, and that is the property worth
 having.** A list you check by name needs updating every time the window
 grows a control; an empty assertion needs nothing, and goes red the day
 somebody adds one that collides or that only a mouse can press. Each of

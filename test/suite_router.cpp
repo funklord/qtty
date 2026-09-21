@@ -5027,9 +5027,10 @@ int suite_router() {
 			    && conventions_shadowed(nullptr).isEmpty()
 			    && tab_order_anomalies(nullptr).isEmpty()
 			    && hover_only(nullptr).isEmpty()
-			    && focus_invisible(nullptr).isEmpty();
+			    && focus_invisible(nullptr).isEmpty()
+			    && sheet_styled(nullptr).isEmpty();
 			CHECK(null_quiet,
-			      "all eight questions answer empty when asked about "
+			      "all nine questions answer empty when asked about "
 			      "nothing, rather than refusing or reaching through a "
 			      "null scope");
 
@@ -5041,10 +5042,70 @@ int suite_router() {
 			    && conventions_shadowed(&bare).isEmpty()
 			    && tab_order_anomalies(&bare).isEmpty()
 			    && hover_only(&bare).isEmpty()
-			    && focus_invisible(&bare).isEmpty();
+			    && focus_invisible(&bare).isEmpty()
+			    && sheet_styled(&bare).isEmpty();
 			CHECK(bare_quiet,
 			      "and empty about a window with nothing in it, which is "
 			      "the answer a report invents a finding to avoid giving");
+		}
+
+		// THE WIDGETS A STYLE SHEET IS DRAWING, which is the ninth
+		// question and the one practice 12 asks. A sheet takes drawing
+		// over from the application style, and qtty's cell drawing IS
+		// the application style, so a styled push button keeps its
+		// behaviour and loses every sign that it is a control.
+		{
+			QWidget win;
+			auto *v = new QVBoxLayout(&win);
+			auto *save = new QPushButton(QStringLiteral("Save"));
+			auto *box = new QGroupBox(QStringLiteral("Box"));
+			auto *inner = new QLineEdit;
+			auto *bv = new QVBoxLayout(box);
+			bv->addWidget(inner);
+			v->addWidget(save);
+			v->addWidget(box);
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(24, 8));
+			win.show();
+			QCoreApplication::processEvents();
+			CHECK(sheet_styled(&win).isEmpty(),
+			      "a window with no style sheet anywhere in it reports "
+			      "none, which is the answer to assert");
+
+			save->setStyleSheet(QStringLiteral("color: red"));
+			QCoreApplication::processEvents();
+			CHECK(sheet_styled(&win) == QVector<QWidget *>{save},
+			      "a sheet on one control names that control and nothing "
+			      "else");
+
+			// THE CASCADE, which is why this asks style() rather than
+			// styleSheet(): the line edit carries no sheet of its own
+			// and is drawn by the box's.
+			save->setStyleSheet(QString());
+			box->setStyleSheet(QStringLiteral("background: blue"));
+			QCoreApplication::processEvents();
+			const QVector<QWidget *> cascaded = sheet_styled(&win);
+			CHECK(cascaded.contains(inner) && inner->styleSheet().isEmpty(),
+			      "and a sheet on a container names the controls inside "
+			      "it, which carry no sheet of their own");
+
+			// AND THE APPLICATION-WIDE ONE, which reaches the window
+			// itself and is the case that used to crash.
+			box->setStyleSheet(QString());
+			QCoreApplication::processEvents();
+			qApp->setStyleSheet(QStringLiteral("QPushButton { padding: 2px }"));
+			QCoreApplication::processEvents();
+			CHECK(sheet_styled(&win).contains(save),
+			      "and an application-wide sheet names them too, however "
+			      "far from the widget it was set");
+			// Cleared, or every later check in this suite renders through
+			// it -- and the empty answer afterwards is the control that
+			// says the reports above were the sheet rather than something
+			// permanent about these widgets.
+			qApp->setStyleSheet(QString());
+			QCoreApplication::processEvents();
+			CHECK(sheet_styled(&win).isEmpty(),
+			      "while clearing every sheet empties the list again");
 		}
 
 		// Ctrl+PageUp and Ctrl+PageDown between tabs. Qt gives a
