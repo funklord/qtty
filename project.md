@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1814 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1818 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,76 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.282 An application style sheet took the process down (2026-09-21)
+
+**`qApp->setStyleSheet(...)` segfaulted.** Not a wrong drawing, not a
+dropped sheet -- the process died inside the call, in
+`QMetaObject::cast()` under `QApplication::setStyle()`. Setting an
+application-wide style sheet is an ordinary thing for a Qt program to
+do.
+
+#### The mechanism, and which half of it is ours
+
+`QApplication::setStyleSheet()` does not install a style the application
+chose. It wraps the CURRENT app style in a `QStyleSheetStyle` and
+installs that, so GridStyle is still underneath, still answers
+everything the sheet does not match, and comes back when the sheet is
+cleared.
+
+The style keeper added for 8.x -- the filter that re-wraps when an
+application replaces the style -- saw a `StyleChange` to something that
+is not a GridStyle and re-wrapped. That re-entrant `setStyle()` runs
+from inside Qt's own `setStyle()`, and **the new `QStyleSheetStyle` owns
+the style it replaced**, so the inner call deleted the style the outer
+call was still using.
+
+**The other path is safe, and that asymmetry is the whole fix.**
+Measured in forty lines of plain Qt with nothing of this library in
+them:
+
+    a keeper + qApp->setStyleSheet(...)        SIGSEGV
+    a keeper + app.setStyle(new QWindowsStyle) survives
+    no keeper + qApp->setStyleSheet(...)       survives
+
+A plain `setStyle()` re-entered the same way survives because nothing
+holds the style Qt is about to delete. So the fix is a test for one
+class rather than deferring the whole rewrap, which would have been the
+bigger change and would have been changing a path that works.
+
+**By class name**, because `QStyleSheetStyle` is private to Qt and -- as
+measured -- is **not a `QProxyStyle` in Qt 6: the chain ends at it and
+`baseStyle()` is not reachable**, so there is nothing to walk.
+
+#### What it does now, which is what practice 12 says it does
+
+    no sheet                         <Save>   [ ] Wrap   [text  ]
+    sheet matching QPushButton        Save    [ ] Wrap   [text  ]
+    sheet cleared                    <Save>   [ ] Wrap   [text  ]
+
+The matched button loses its brackets, everything else keeps its cell
+drawing, and clearing the sheet puts all of it back. That is
+`doc/keyboard-first.md` practice 12 exactly, now with the app-wide case
+covered rather than only the per-widget one.
+
+#### The checks, and a sabotage that had to be declared a crash
+
+Four in `suite_widgets`, beside the existing style-keeper block: that
+the call returns at all, that a control the sheet does not match still
+draws as cells, that the one it DOES match loses its brackets -- the
+control, without which the first two pass for a sheet that was silently
+dropped -- and that clearing restores every one of them. The sheet is
+cleared at the end, which matters beyond tidiness: everything the suite
+renders afterwards would otherwise go through it.
+
+**The sabotage cannot redden a check, and the tool was already right
+about that.** Removing the guard does not fail the suite, it kills it:
+858 checks ran and no summary line. Named as an ordinary entry it was
+reported `INCONCLUSIVE -- the suite was cut off before the named check`,
+which is correct, because for every other entry that is what a hang
+looks like. `expect = "crash"` is the declaration for this, it already
+existed, and under it the entry passes -- and would fail if the suite
+ever ran to the end without the guard.
+
 ### 8.281 A QLCDNumber, read back off its own segments (2026-09-21)
 
 **QLCDNumber draws seven-segment digits as filled polygons and routes

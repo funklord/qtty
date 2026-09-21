@@ -367,6 +367,33 @@ public:
 		// path of a class an application subclasses.
 		if (!now || dynamic_cast<GridStyle *>(now))
 			return QObject::eventFilter(o, e);
+		// A STYLE SHEET IS NOT A STYLE THE APPLICATION CHOSE, and
+		// re-wrapping one is fatal rather than merely wrong.
+		// QApplication::setStyleSheet() wraps the CURRENT app style in a
+		// QStyleSheetStyle and installs that -- so GridStyle is still
+		// underneath, still answers everything the sheet does not match,
+		// and comes back when the sheet is cleared. There is nothing to
+		// repair.
+		//
+		// Re-wrapping it crashed. The new QStyleSheetStyle owns the style
+		// it replaced, and this filter runs from inside Qt's own
+		// setStyle(): the re-entrant setStyle() below deleted the sheet
+		// style while the outer call was still using it, and Qt walked a
+		// dangling metaObject. Measured, reproduced in forty lines of
+		// plain Qt with no qtty in them, and with the segfault in
+		// QMetaObject::cast() under QApplication::setStyle().
+		//
+		// The other path is safe and stays as it was: a plain
+		// setStyle(new QWindowsStyle) re-entered the same way survives,
+		// because nothing holds the style Qt is about to delete. That
+		// asymmetry is why this is a test for one class rather than a
+		// deferral of the whole rewrap.
+		//
+		// By CLASS NAME, since QStyleSheetStyle is private to Qt and is
+		// not a QProxyStyle in Qt 6 -- measured, the chain ends at it and
+		// baseStyle() is not reachable, so there is nothing to walk.
+		if (qstrcmp(now->metaObject()->className(), "QStyleSheetStyle") == 0)
+			return QObject::eventFilter(o, e);
 		// Wrap what the application chose. setStyle() adopts the argument
 		// and deletes the previous style, so the base has to be one Qt is
 		// not about to delete: take a fresh instance of the same key rather

@@ -4809,3 +4809,18 @@ find = "\t\tsegment_sink_->append(b);\n\t\treturn;"
 into = "\t\tsegment_sink_->append(b);"
 count = 1
 check = "the segments themselves colour no cell"
+
+[[sabotage]]
+# The QStyleSheetStyle guard removed, so the style keeper re-wraps a
+# style sheet from inside Qt's own setStyle() and deletes the sheet
+# style underneath the call still using it. The suite does not fail
+# here, it CRASHES, which is why this declares it: the first attempt
+# named the check and was reported INCONCLUSIVE, correctly, because a
+# dead suite is what a hang looks like too. 8.282.
+name = "an application style sheet is re-wrapped"
+file = "src/runtime/application.cpp"
+find = "\t\tif (qstrcmp(now->metaObject()->className(), \"QStyleSheetStyle\") == 0)\n\t\t\treturn QObject::eventFilter(o, e);"
+into = ""
+count = 1
+expect = "crash"
+check = "an application style sheet does not take the process down with it"

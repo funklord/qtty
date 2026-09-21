@@ -1314,6 +1314,58 @@ int suite_widgets() {
 			      " style");
 		}
 
+		// AN APPLICATION STYLE SHEET, which is the other way Qt replaces
+		// the app style and which CRASHED. setStyleSheet() wraps the
+		// current style in a QStyleSheetStyle and installs that; the
+		// filter above saw a StyleChange to something that is not a
+		// GridStyle and re-wrapped from inside Qt's own setStyle(), which
+		// deleted the sheet style while the outer call was still using it.
+		// Segfault in QMetaObject::cast(), reproduced in forty lines of
+		// plain Qt with no qtty in them.
+		//
+		// The sheet is CLEARED at the end, and that matters beyond
+		// tidiness: everything this suite renders afterwards would
+		// otherwise be drawn through it.
+		{
+			const auto render_three = [&] {
+				QWidget host;
+				auto *v = new QVBoxLayout(&host);
+				v->addWidget(new QPushButton(QStringLiteral("Save")));
+				v->addWidget(new QCheckBox(QStringLiteral("Wrap")));
+				show(host, 24, 6);
+				CellBuffer buf(24, 6);
+				render_once(host, buf);
+				return buf.to_text();
+			};
+			const QString before = render_three();
+			qApp->setStyleSheet(QStringLiteral("QPushButton { padding: 2px }"));
+			QCoreApplication::processEvents();
+			const QString during = render_three();
+			qApp->setStyleSheet(QString());
+			QCoreApplication::processEvents();
+			const QString after = render_three();
+			// Reaching this line at all is most of the check: the crash
+			// was inside setStyleSheet() and took the process with it.
+			CHECK(during.contains(QStringLiteral("Save")),
+			      "an application style sheet does not take the process "
+			      "down with it");
+			// The sheet matches QPushButton and nothing else, so the
+			// check box is the control that says GridStyle is still
+			// underneath rather than gone.
+			CHECK(during.contains(QStringLiteral("[ ] Wrap")),
+			      "and a control the sheet does not match still draws as "
+			      "cells, so GridStyle is still the sheet's base");
+			// THE CONTROL, and it is what says the sheet did anything at
+			// all: without it both checks above pass for a sheet that was
+			// silently dropped.
+			CHECK(before.contains(QStringLiteral("<Save>"))
+			      && !during.contains(QStringLiteral("<Save>")),
+			      "while the button the sheet DOES match loses its "
+			      "brackets, which is practice 12 measured");
+			CHECK(after == before,
+			      "and clearing the sheet puts every one of them back");
+		}
+
 		// A scroll bar squeezed to ONE cell. The control returned without
 		// drawing anything at all below two cells, so the cell was blank and
 		// nothing said the view scrolls.
