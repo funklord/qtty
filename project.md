@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1845 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1846 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,42 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.290 The stacking, and what the key is not (2026-09-21)
+
+**Two corrections to 8.288, one of them a hole and one a wrong
+sentence.**
+
+`CellImage` carries a `z`, and the images section did not record it.
+The struct's own comment says why that matters: the frame loop decides
+whether to present on `frame.images != prev_->images`, and
+`CellImage::operator==` compares z -- so two pictures swapping which is
+on top IS a frame worth sending, and a fixture blind to z would have
+stopped covering that the day somebody started using it, silently.
+
+Nothing in this tree sets z today, so every line reads `z0`. That is
+the blink plane's argument again: a field recorded only when it is
+interesting makes "nothing here" and "recorded before this existed" the
+same absence.
+
+    --- images ---
+    2,1 2x1 z0 (20x20 px)
+
+**And the reason given for leaving `key` out was wrong.** 8.288 said it
+is "a hash of its PIXELS". It is an upload identity, and the two
+producers spell it differently: `harvest()` content-addresses with
+`qHash` over the bits, and the pixmap substitution uses
+`QPixmap::cacheKey()`. The conclusion stands and the sentence did not,
+so the comment now says what the field is.
+
+**Measured while checking that**: the substitution's key is stable
+across four identical frames of the same message box -- QIcon caches
+the pixmap, so `cacheKey()` does not change under it. The suspicion
+that an unchanged picture might be re-uploaded every frame, which is
+the fault `harvest()`'s own comment records avoiding, does not occur
+here.
+
+One check and one sabotage.
+
 ### 8.289 Nor the caret, and the fixture that hid it (2026-09-21)
 
 **The same argument as 8.288, one channel further out.** The cells say

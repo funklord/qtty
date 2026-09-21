@@ -461,14 +461,28 @@ QString CellBuffer::to_snapshot() const {
 	// plane gives above: an optional section makes "no picture here" and
 	// "recorded before this section existed" the same absence.
 	//
-	// GEOMETRY RATHER THAN CONTENT, and the limit is worth stating because
-	// it is not obvious. The cell rectangle and the pixmap's size are
-	// pinned by the grid and are the same on any machine; the image's own
-	// id is a hash of its PIXELS, which a different Qt or a different
-	// icon theme changes without anything being wrong, so a fixture
-	// carrying it would go red for the toolchain. What this catches is a
-	// picture that vanished, moved or changed size. What it does not catch
-	// is a DIFFERENT picture of the same size in the same place.
+	// GEOMETRY AND STACKING RATHER THAN CONTENT, and the limit is worth
+	// stating because it is not obvious. The cell rectangle, the pixmap's
+	// size and z are pinned by the grid and by the caller, and are the
+	// same on any machine.
+	//
+	// The image's own `key` is NOT recorded. It is an upload identity
+	// rather than a description -- a content hash of the pixels from one
+	// producer and QPixmap::cacheKey() from the other -- so a different
+	// Qt, a different icon theme or a differently-constructed pixmap
+	// changes it with nothing wrong, and a fixture carrying it would go
+	// red for the toolchain.
+	//
+	// Z IS RECORDED although nothing in this tree sets it yet, and the
+	// struct's own comment is the reason: the frame loop decides whether
+	// to present on `frame.images != prev_->images`, which compares z, so
+	// two pictures swapping which is on top is a change. A fixture blind
+	// to z would stop covering that the day somebody starts using it, and
+	// would stop covering it silently.
+	//
+	// What this catches is a picture that vanished, moved, changed size or
+	// changed stacking. What it does not catch is a DIFFERENT picture of
+	// the same size in the same place.
 	//
 	// Sorted, because the order images are appended in is the order
 	// widgets happened to paint and is not a property of the frame.
@@ -479,9 +493,10 @@ QString CellBuffer::to_snapshot() const {
 		QVector<QString> lines;
 		lines.reserve(images.size());
 		for (const CellImage &im : images)
-			lines.append(QStringLiteral("%1,%2 %3x%4 (%5x%6 px)")
+			lines.append(QStringLiteral("%1,%2 %3x%4 z%5 (%6x%7 px)")
 			             .arg(im.cell_rect.left()).arg(im.cell_rect.top())
 			             .arg(im.cell_rect.width()).arg(im.cell_rect.height())
+			             .arg(im.z)
 			             .arg(im.pixmap.width()).arg(im.pixmap.height()));
 		std::sort(lines.begin(), lines.end());
 		for (const QString &l : lines) out += l + QLatin1Char('\n');

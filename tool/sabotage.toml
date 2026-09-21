@@ -4967,3 +4967,15 @@ find = "\t\tif (const std::optional<QPoint> at = c.cursor_cell()) {"
 into = "\t\tif (const std::optional<QPoint> at = std::optional<QPoint>()) {"
 count = 1
 check = "and says which cell and which shape when a field has it"
+
+[[sabotage]]
+# The stacking dropped from the images section, so two pictures
+# differing only in which is on top snapshot the same -- a frame the
+# loop WILL present, since CellImage::operator== compares z, going
+# past every fixture. 8.290.
+name = "a snapshot cannot see which picture is on top"
+file = "src/core/cell_buffer.cpp"
+find = "\t\t\t             .arg(im.z)\n"
+into = "\t\t\t             .arg(0)\n"
+count = 1
+check = "two pictures differing only in which is on top do not snapshot the same"

@@ -143,6 +143,25 @@ int suite_render(bool record) {
 			       "an oversight\n");
 			++r;
 		}
+		// AND STACKING, which nothing in this tree sets yet and which the
+		// struct's own comment says is a change: the frame loop presents
+		// on `frame.images != prev_->images`, and that compares z. Two
+		// pictures swapping which is on top is a frame worth sending, so
+		// a fixture blind to z would stop covering it the day somebody
+		// starts using it -- and stop covering it silently.
+		Qtty::CellBuffer d(10, 3);
+		d.text(0, 0, QStringLiteral("hello"));
+		Qtty::CellImage lifted{1, QRect(2, 1, 2, 1), pm};
+		lifted.z = 2;
+		d.images.append(lifted);
+		if (d.to_snapshot() != imaged)
+			printf("PASS: and two pictures differing only in which is on "
+			       "top do not snapshot the same\n");
+		else {
+			printf("FAIL: and two pictures differing only in which is on "
+			       "top do not snapshot the same\n");
+			++r;
+		}
 	}
 
 	// ONE LINE OF RICH TEXT IS ONE ROW, whatever font sizes are on it.
