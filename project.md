@@ -36,7 +36,23 @@ this document does to almost every other opening -- made the gate report
 is the gate behaving well: it refused to compare against a number it could
 not find instead of quietly passing.
 
-**Last re-verified under all six configurations: 2026-09-20, at 1772**
+**Last re-verified under all six configurations: 2026-09-21, at 1804**
+(`4927126`), covering 8.265 to 8.277. Offscreen, xcb under Xvfb and the
+hostile environment each ran 1804, `minimal` refused and said why, the
+sanitized arm reported nothing, and memcheck's log says `ERROR SUMMARY:
+0 errors from 0 contexts`. Four and a half minutes end to end, after
+waiting fifty-one for the machine.
+
+**The run before it, on `817c3ba`, FAILED TWO ARMS**, and that is the
+part worth keeping rather than the green one. LeakSanitizer found 88
+bytes leaked by a test fixture, and memcheck was stopped by the suite's
+own watchdog at 3000 seconds because `GridGuard` was calling `dladdr()`
+on every geometry event. Both came from 8.274, which had passed the
+plain suite, `make check`, three checks and a sabotage proof. 8.276 and
+8.277 carry the measurements; what the pair says about the run is that
+it is the only thing here that asks what a change COSTS.
+
+**The claim before that: 2026-09-20, at 1772**
 (`7dd18fc`), covering 8.265 to 8.267 -- the docked toolbar and the size
 grip's own element, the tool box drawn as a disclosure list, and the
 container sweep with its two exclusions. Offscreen, xcb under Xvfb and
