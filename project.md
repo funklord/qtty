@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1877 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1879 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -913,7 +913,7 @@ Owned by the copyright holder:
 | **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise. 8.248 adds a second obstacle on the ink half alone: ToolTipText is the same black as WindowText here, and `role_of()` keys on the colour, so a hover timer would light the tooltip's ground and leave its text at body text's index | §7.2 |
 | **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect. **Both halves are asserted since 8.75** -- the hover arrives, and the render is byte-identical with the pointer on the control and off it | §7.2 |
 | **Two frames nested with no layout margin draw two rules in adjacent columns.** Faithful to the widget tree -- in pixels they are 1px lines 1px apart -- and on a grid they read as two rules. Merging is not a paint-time trick: the edges are in DIFFERENT cells because the inner rect is one cell inside the outer. Three options with their costs are recorded; the cheapest is to suppress a rule whose neighbour already holds one, which cannot tell nesting from two adjacent framed widgets. Reported by fuzzypickles, and reached again by a QScrollArea | 8.25, 8.26, 8.27 |
-| **A read-only line edit is not marked.** Measured: it renders identically to an editable one, so a user cannot tell they cannot type. Marking it needs vocabulary, and the obvious candidate collides -- disabled already uses Dim, and read-only is a different state, focusable and selectable. Unlike Enter's target it has no consequence a user cannot discover by typing | 8.33 |
+| **~~A read-only line edit is not marked.~~ It is, and has been since the caret-or-mark rule; the row outlived its measurement.** 8.33 measured it rendering identically to an editable one and that was true then. Re-measured 2026-09-21 through a compositor, which is what has the caret: a focused read-only field has its WHOLE field including the brackets reversed and shows no caret, while a focused editable one reverses only its selected text and shows one. The brackets are the difference, and a caretless editor gets the mark precisely because it gets no caret -- so the vocabulary this row said was needed was never needed, the rule already had it. Checked both ways now, so it cannot reopen quietly | 8.33, 8.303 |
 | **~~A tab's mnemonic does nothing.~~ It works with the conventions on (8.67); what is left is the DEFAULT.** `Alt+S` on a tab labelled "&Second" does not switch to it: the router matches Alt against ACTION text and a tab is not an action. It is therefore left unmarked, on the rule that underlining a key that does nothing is worse than leaving it bare. Whether a terminal should switch tabs by mnemonic at all is the question -- the marking follows the answer | 8.37 |
 | **~~Three of `CursorShape`'s four values do nothing.~~ One of the four has no qtty producer, and that is the answer rather than the gap.** 8.241 emitted DECSCUSR -- `ESC[2 q`, `ESC[4 q`, `ESC[6 q`, steady at every shape, and `CSI 0 SP q` on the way out -- so the three are three different sequences now, and `Compositor::shape_for()` derives Block or Bar from the focus widget's `overwriteMode()` with Hidden for no caret. What has no producer is `Underline`: `overwriteMode()` has two values and already has two shapes, so an underline would need a fourth condition invented for it, and the only candidate is read-only -- which this same index records as an open scope question two rows up, and which is not settled sideways by picking a caret. It is still a value the PUBLIC interface admits and `AnsiBackend` encodes, for an application driving its own loop. Asserted since 8.250, so a producer added later reddens a check rather than arriving unnoticed. The blink-or-steady objection this row carried is answered: steady at every shape, because nothing in this tree can observe a blink's phase | 8.51, 8.241, 8.250 |
 | ~~**A `QMainWindow` application sees nine off-grid warnings it cannot act on.**~~ **Closed in 8.274** -- nine became one, and the one left is a widget the application itself added. The fix is the principle's third form rather than a longer list: a widget placed by a layout Qt defines and an application cannot write down is not the application's to size. Original entry: The suite works around this with `GridGuard::reset()` and an application has no equivalent. `is_exempt()`'s PRINCIPLE covers them exactly -- *"widgets Qt builds for itself, which the application never constructs and cannot size"* -- and its mechanism does not: it keys on `qt_` object names and `Private` class names, and `QStatusBar`, `QSizeGrip` and a central widget placed by `QMainWindowLayout` carry neither. Measured on a window shaped like netcfgd's: **9 violations, 0 forgiven**. The fix is not obviously a longer list -- the code warns in as many words that a list is what somebody adds a tenth entry to without deciding anything | 8.61 |
@@ -16954,11 +16954,14 @@ two shapes; with Hidden for no caret, every condition qtty can see is spoken
 for. An underline needs a fourth condition invented for it, and there are
 only two candidates:
 
-- **Read-only.** Section 0b records marking read-only as an open scope
-  question that *"needs vocabulary"*. Answering it by choosing a caret shape
-  settles that question sideways, in the one place nobody would look for the
-  decision -- and no terminal convention gives a user any way to read an
-  underline as "you cannot type here".
+- **Read-only.** Section 0b used to record marking read-only as an open
+  scope question that *"needs vocabulary"*; 8.303 closes it -- the
+  caret-or-mark rule marks a focused read-only field's brackets and
+  withholds its caret, and had done since before that row was read. **The
+  refusal here stands on its own and did not depend on the question being
+  open**: no terminal convention gives a user any way to read an underline
+  as "you cannot type here", and answering a scope question sideways by
+  choosing a caret shape would still be the wrong place for the decision.
 - **Letting the application ask.** `shape_for()`'s own comment refuses it:
   a second way to say what `overwriteMode()` says, and two of them drift.
 
@@ -17826,6 +17829,55 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.303 An open question that had already been answered (2026-09-21)
+
+**Section 0b carried "a read-only line edit is not marked" as an open
+scope question needing new vocabulary. It is marked, and has been
+since the caret-or-mark rule.**
+
+8.33 measured it rendering identically to an editable one and that was
+true when it was written. Re-measured today, through a **compositor**
+-- which is what has the caret, and is why a probe using
+`render_once()` could not have seen this:
+
+    read-only focused   [readonly] reversed WHOLE, brackets and all,
+                        and no caret
+    editable focused    only the selected text reversed, and a caret
+
+**The brackets are the difference.** A caretless editor gets the mark
+precisely because it gets no caret, so the two states a user must tell
+apart are told apart by a rule this library already had. The
+vocabulary the row said was needed was never needed.
+
+#### This is the shape the guidelines warn about
+
+A wrong technical claim gets tripped over; a wrongly-open question is
+caught by nothing. It sits in the index looking exactly like
+diligence, and every later reader inherits the deferral together with
+the reasoning that justified it -- including a second entry, which
+cited this row's openness while refusing an underline caret. That
+refusal stands on its own and is now recorded as standing on its own
+rather than on a question that had closed.
+
+`working-practice.md` names the search that finds these: **something
+else in this tree that chooses between the same two answers, whatever
+it is called.** The caret-or-mark rule is that thing, and nothing
+connected it to the row because the row is in an index and the rule is
+in a style.
+
+#### Checked both ways, so it cannot reopen quietly
+
+A focused read-only field marks its brackets and shows no caret; a
+focused editable one shows a caret and leaves its brackets alone.
+Either half alone would pass for a library that marks everything or
+nothing.
+
+**And the fixture needed the other windows taken down first.** A
+compositor composes the SCREEN, so a top level another fixture left up
+put its own reversed bracket into this frame and both states read as
+marked -- the trap 8.289 recorded, met again three entries later by
+the author who recorded it.
+
 ### 8.302 The width rules, where a custom widget will look (2026-09-21)
 
 **Four commits changed how text is measured and the page an

@@ -1535,6 +1535,79 @@ int suite_widgets() {
 			      "own in parentheses would be read as one");
 		}
 
+		// A READ-ONLY LINE EDIT, which section 0b recorded as unmarked
+		// and which is marked. The row there was measured at 8.33 --
+		// "it renders identically to an editable one, so a user cannot
+		// tell they cannot type" -- and the caret-or-mark work answered
+		// it afterwards without anybody connecting the two.
+		//
+		// Measured through a compositor, which is what has the caret:
+		//
+		//   read-only focused   [readonly] reversed WHOLE, no caret
+		//   editable focused    only the selected text reversed, caret
+		//
+		// The brackets are the difference. A caretless editor gets the
+		// mark precisely because it gets no caret, so the two states a
+		// user must tell apart are told apart by the rule this library
+		// already has -- which is why this is a check rather than a
+		// vocabulary decision.
+		{
+			// THE OTHER WINDOWS GO DOWN FIRST. A compositor composes the
+			// SCREEN, so a top level another fixture left up puts its own
+			// cells -- and a window tab strip -- into this frame. Measured
+			// here: a reversed bracket was found in both states and
+			// belonged to neither field. The chat-example block below does
+			// the same thing for the same reason.
+			QVector<QWidget *> hidden;
+			for (QWidget *t : QApplication::topLevelWidgets())
+				if (t->isVisible()) { t->hide(); hidden.append(t); }
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			host.resize(GridMetrics::cells(30, 6));
+			auto *v = new QVBoxLayout(&host);
+			auto *editable = new QLineEdit(QStringLiteral("editable"));
+			auto *ro = new QLineEdit(QStringLiteral("readonly"));
+			ro->setReadOnly(true);
+			v->addWidget(editable);
+			v->addWidget(ro);
+			host.show();
+			InputRouter r(&host);
+			QCoreApplication::processEvents();
+			const auto look = [&]() {
+				CellBuffer b(30, 6);
+				Compositor c(&host, &r);
+				c.compose(b);
+				struct Seen { bool bracket_marked = false; bool caret = false; };
+				Seen out;
+				out.caret = c.cursor_cell().has_value();
+				for (int y = 0; y < 6; ++y)
+					for (int x = 0; x < 30; ++x)
+						if ((b.at(x, y).attrs & Attr::Reverse)
+						    && b.at(x, y).ch == QStringLiteral("["))
+							out.bracket_marked = true;
+				return out;
+			};
+			Qtty::test::press(r, Qt::Key_Tab);
+			QCoreApplication::processEvents();
+			const bool ro_first = host.focusWidget() == ro;
+			const auto first = look();
+			Qtty::test::press(r, Qt::Key_Tab);
+			QCoreApplication::processEvents();
+			const auto second = look();
+			const auto on_ro = ro_first ? first : second;
+			const auto on_edit = ro_first ? second : first;
+			CHECK(on_ro.bracket_marked && !on_ro.caret,
+			      "a focused read-only line edit marks its brackets and "
+			      "shows no caret, which is the caret-or-mark rule "
+			      "answering what section 0b left open");
+			CHECK(!on_edit.bracket_marked && on_edit.caret,
+			      "while a focused editable one shows a caret and leaves "
+			      "its brackets alone, so the two are told apart");
+			for (QWidget *t : hidden) t->show();
+			QCoreApplication::processEvents();
+			GridGuard::reset();
+		}
+
 		// A LINE EDIT'S CLEAR BUTTON, which drew a cell of noise. It is
 		// a private QToolButton subclass whose paintEvent draws the icon
 		// itself, so it never reaches QStyle and grid_style.cpp's list of
