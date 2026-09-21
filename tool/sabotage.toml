@@ -5122,3 +5122,14 @@ find = "\te.wheel = up;\n\te.wheel_x = right;"
 into = "\te.wheel = -up;\n\te.wheel_x = right;"
 count = 1
 check = "test::wheel scrolls up for a positive count"
+
+[[sabotage]]
+# The terminal's focus ignored, so the mark stays drawn while the
+# emulator has gone elsewhere -- telling a user where their keystrokes
+# would go when they are going to another window. 8.297.
+name = "a terminal that has lost focus still shows the mark"
+file = "src/runtime/input_router.cpp"
+find = "void InputRouter::on_focus_change(bool focused) {\n\tset_terminal_focused(focused);"
+into = "void InputRouter::on_focus_change(bool focused) {\n\tset_terminal_focused(true);\n\t(void)focused;"
+count = 1
+check = "a terminal that loses focus withholds the mark"

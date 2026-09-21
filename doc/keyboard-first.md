@@ -2040,6 +2040,22 @@ straight after practice 10: it is `hasFocus()` on the widget, and
 own idea of its focus widget; what it never sets is the ACTIVE window,
 which is what the other two read.
 
+**Move the focus with a key, not with `setFocus()`.** Focus here is the
+router's, and `setFocus()` does not move it: the widget really does take
+Qt's focus -- `focusWidget()` names it -- and **no focus mark is drawn
+anywhere**, because the mark comes from the router's record. Measured on
+a two-control form: `setFocus()` on the button gives zero reversed cells,
+one `Tab` gives three. `clearFocus()` is the same trap pointed the other
+way. A test that sets focus directly and then asserts on the screen is
+asserting about a window nobody is in.
+
+**And the terminal's own focus withholds the mark.** When the emulator
+reports that it has lost focus, qtty stops drawing where the keystrokes
+would go -- because they would be going somewhere else. Measured: the
+same three reversed cells become none, and come back when it returns.
+`qtty-replay` spells it `focus off` and `focus on`, so a report about a
+missing mark is reproducible.
+
 **Nine questions the library will answer about your window**, so that a
 test can assert on them rather than a person noticing:
 

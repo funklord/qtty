@@ -5148,6 +5148,69 @@ int suite_router() {
 				}
 			}
 
+			// FOCUS HERE IS THE ROUTER'S, and QWidget::setFocus() does not
+			// move it. That is not a subtlety of the implementation, it is
+			// the first thing a test author does and it silently produces
+			// a window with no focus mark anywhere -- measured twice in
+			// one session, once with clearFocus() and once with setFocus(),
+			// both times reading as an inert feature when the fixture was
+			// the thing at fault.
+			//
+			// focusWidget() answers either way, which is what makes it
+			// convincing: the widget really does hold Qt's focus. What it
+			// does not hold is the record this library draws the mark
+			// from.
+			{
+				const auto marks = [](QWidget &w, int cols, int rows) {
+					CellBuffer b(cols, rows);
+					render_once(w, b);
+					int n = 0;
+					for (int y = 0; y < rows; ++y)
+						for (int x = 0; x < cols; ++x)
+							if (b.at(x, y).attrs & Attr::Reverse) ++n;
+					return n;
+				};
+				QWidget host;
+				host.setAttribute(Qt::WA_DontShowOnScreen);
+				host.resize(GridMetrics::cells(24, 4));
+				auto *v = new QVBoxLayout(&host);
+				auto *b = new QPushButton(QStringLiteral("Save"));
+				v->addWidget(b);
+				v->addWidget(new QCheckBox(QStringLiteral("Wrap")));
+				host.show();
+				InputRouter r(&host);
+				QCoreApplication::processEvents();
+
+				b->setFocus();
+				QCoreApplication::processEvents();
+				const int by_setfocus = marks(host, 24, 4);
+				QWidget *const after_setfocus = host.focusWidget();
+				// Tab ADVANCES from wherever Qt's focus sits, so the mark it
+				// draws is on the NEXT stop rather than on the button --
+				// asserting it landed on the button is what the first
+				// version of this check got wrong.
+				Qtty::test::press(r, Qt::Key_Tab);
+				QCoreApplication::processEvents();
+				const int by_tab = marks(host, 24, 4);
+				CHECK(by_setfocus == 0 && after_setfocus == b && by_tab > 0,
+				      "setFocus() leaves no focus mark and Tab draws one, "
+				      "focus here being the router's -- and focusWidget() "
+				      "answers after setFocus() either way, which is what "
+				      "makes it convincing");
+
+				// AND THE TERMINAL'S OWN FOCUS takes the mark away, which is
+				// what qtty-replay's `focus off` now reproduces.
+				r.on_focus_change(false);
+				QCoreApplication::processEvents();
+				const int unfocused = marks(host, 24, 4);
+				r.on_focus_change(true);
+				QCoreApplication::processEvents();
+				CHECK(unfocused == 0 && marks(host, 24, 4) == by_tab,
+				      "and a terminal that loses focus withholds the mark, "
+				      "giving it back when it returns");
+				GridGuard::reset();
+			}
+
 			// THE MOUSE HELPERS, which carry the same kind of trap one
 			// field along. A MouseEvent is built by aggregate
 			// initialisation at almost every call site here, and three

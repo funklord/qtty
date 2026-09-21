@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1862 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1864 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,53 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.297 setFocus() does not move the focus, and the fixture said the feature was dead (2026-09-21)
+
+**Asking whether the terminal losing focus changes the screen, the
+answer came back "identical" -- and it was the fixture.** The probe set
+focus with `QWidget::setFocus()`, which does not move the record this
+library draws a focus mark from, so there was no mark to lose and the
+comparison said nothing.
+
+The control is what caught it: with the button focused and the terminal
+focused, **zero reversed cells**. There was never a mark in that frame
+at all.
+
+Through the router instead, the behaviour is exactly what
+`grid_style.cpp` says it is:
+
+    first tab stop, terminal focused    6 reversed cells
+    second tab stop                     3
+    first tab stop, terminal NOT        none
+
+#### The trap is the finding, and it has now cost three probes
+
+`setFocus()` and `clearFocus()` both leave the router's record where it
+was, and **`focusWidget()` answers either way** -- the widget really
+does hold Qt's focus. So a test that sets focus directly and then
+asserts on the screen is asserting about a window nobody is in, and
+every symptom points at the feature rather than at the fixture. It read
+as an inert caret section earlier today, and as a dead terminal-focus
+path now.
+
+It is on the page under *Checking it without a terminal* with the
+numbers, and pinned by a check: `setFocus()` gives zero marks, one
+`Tab` gives some, and `focusWidget()` names the widget after
+`setFocus()` regardless -- which is the half that makes it convincing.
+
+**The check's first version asserted the wrong widget.** `Tab` advances
+from wherever Qt's focus sits, so the mark it draws is on the NEXT stop
+rather than on the button it was set to. The measurement was right and
+my assertion about it was not.
+
+#### And qtty-replay gained `focus on|off`
+
+The terminal's own focus is an input path like a key or a paste, and
+the tool that exists to make reports reproducible could not express it
+-- so a report about a mark that is missing could not be reproduced at
+all. One sabotage: ignore the reported state, and the mark stays drawn
+while the emulator has gone elsewhere.
+
 ### 8.296 The mouse has the same trap, one field along (2026-09-21)
 
 **8.295 removed three silent spellings from the keyboard; the mouse

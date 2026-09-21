@@ -11,6 +11,7 @@
 //   drag <c1> <r1> <c2> <r2>  press, move, release -- a drag
 //   wheel <col> <row> <count> scroll; positive is up
 //   paste <string>    a bracketed paste, not the typing path
+//   focus on|off      the terminal gaining or losing focus
 //   resize <c> <r>    resize the terminal through on_resize()
 //   conventions on|off  the opt-in terminal key habits
 //   frame             print the composed frame between markers
@@ -127,7 +128,8 @@ static const char *const usage =
     "                     which click cannot express\n"
     "  wheel <col> <row> <count>  scroll; positive is up\n"
     "  paste <string>     a bracketed paste, which is not the same path\n"
-    "                     as typing the characters\n"    "  window             open a second top-level window, so F6 has\n"
+    "                     as typing the characters\n"    "  focus on|off       the terminal gaining or losing focus, which\n"
+    "                     withholds the focus mark while it is off\n"    "  window             open a second top-level window, so F6 has\n"
     "                     somewhere to go. It is not open at the start,\n"
     "                     because two windows put a strip in row 0 of\n"
     "                     every frame and that is every script's output\n"
@@ -408,6 +410,16 @@ int main(int argc, char **argv) {
 			router.on_mouse(mouse_at(from, Mouse::Press));
 			router.on_mouse(mouse_at(to, Mouse::Motion));
 			router.on_mouse(mouse_at(to, Mouse::Release));
+		} else if (cmd == QLatin1String("focus") && parts.size() == 2) {
+			// THE TERMINAL'S OWN FOCUS, which the emulator reports and
+			// which changes what is drawn: a focus mark is withheld
+			// while the terminal is not focused, so the user is not
+			// told where their keystrokes would go when they are going
+			// somewhere else. Measured on a two-control form -- the
+			// focused button's six reversed cells become none, and come
+			// back -- so a report about a mark that is missing needs
+			// this line to be reproducible at all.
+			router.on_focus_change(parts[1].toLower() == QLatin1String("on"));
 		} else if (cmd == QLatin1String("frame")) {
 			CellBuffer buf(term_cols, term_rows);
 			comp.compose(buf);
