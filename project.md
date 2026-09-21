@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1830 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1833 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,46 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.285 A push button with a menu, which said nothing (2026-09-21)
+
+**`grid_style.cpp` already argues this case in as many words** -- "a
+menu is an affordance or it is nothing: a tool button with a dropdown
+looked exactly like one without, so the only way to discover it was to
+press it" -- and the argument had not reached the control most
+applications actually use. A `QPushButton` with `setMenu()` drew
+`<Open>`, identical to one without.
+
+    before   <Open>
+    after    <Open▾>
+
+Qt reports it in the same option as the default-button flag, one
+feature bit along, so nothing had to be derived.
+
+#### The behaviour was measured before the arrow was drawn
+
+An affordance for something no key can reach is worse than none, so the
+keys were checked first, with a router and a focused button:
+
+    Space   activates the button, and opens the menu, in a window
+            and in a dialog alike
+    Enter   activates only in a dialog -- plain button and menu button
+            the same, which is Qt's autoDefault rather than a gap
+
+Both behave as they do on a desktop, so the arrow is honest.
+
+#### The arrow comes out of the label's room
+
+A button is already as wide as the layout gave it, so an arrow added
+beside the closing bracket pushes the bracket into the clip -- which is
+the fault the elide beside it already carries a comment about, arriving
+through a new glyph. The label is elided one cell shorter instead, and
+a check squeezes a seven-cell button to prove both brackets and the
+arrow survive.
+
+Three checks, the second of them the control: a button with no menu
+must be unchanged, or the first passes for a style that draws an arrow
+on everything. Two sabotage entries.
+
 ### 8.284 Right to left, in the four controls this file places (2026-09-21)
 
 **Nothing in `src/` or `include/` mentioned the layout direction**, and

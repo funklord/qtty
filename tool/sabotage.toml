@@ -58,8 +58,8 @@ check = "draws top- and bottom-aligned text there too"
 [[sabotage]]
 name = "a button's label is written with no budget"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\t\t                       + elide_to_cells(strip_mnemonic(b->text),\n\t\t\t\t                                        qMax(0, bc.width() - 2))"
-into = "\t\t\t\t                       + strip_mnemonic(b->text)"
+find = "\t\t\t\t    elide_to_cells(strip_mnemonic(b->text),\n\t\t\t\t                   qMax(0, bc.width() - 2 - (menu ? 1 : 0)));"
+into = "\t\t\t\t    strip_mnemonic(b->text);"
 count = 1
 check = "a button too narrow for its label keeps its closing bracket"
 
@@ -4871,3 +4871,26 @@ find = "\t\t\treturn cell_at(rtl ? r.left() + 2 * cw : r.right() + 1 - 3 * cw);"
 into = "\t\t\treturn cell_at(r.right() + 1 - 3 * cw);"
 count = 1
 check = "a right-to-left spin box's step-up arrow is drawn in the cell its hit test names"
+
+[[sabotage]]
+# The push button's menu arrow dropped, which is how it was: a button
+# with setMenu() drew exactly like one without and the menu could only
+# be found by pressing. 8.285.
+name = "a push button with a menu does not say so"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tconst bool menu = b->features & QStyleOptionButton::HasMenu;"
+into = "\t\t\t\tconst bool menu = false;"
+count = 1
+check = "a push button with a menu says so, inside its closing bracket"
+
+[[sabotage]]
+# The arrow added BESIDE the label rather than out of its room, so a
+# button as wide as the layout gave it loses its closing bracket to
+# the clip -- the elide fault that arm already carries a comment
+# about, arriving through the new glyph. 8.285.
+name = "a push button's menu arrow is not paid for out of the label"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t                   qMax(0, bc.width() - 2 - (menu ? 1 : 0)));"
+into = "\t\t\t\t                   qMax(0, bc.width() - 2));"
+count = 1
+check = "a button too narrow for its label keeps both brackets and the arrow"

@@ -2162,16 +2162,32 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				Attrs extra = foc ? Attrs(Attr::Reverse) : Attrs();
 				if (b->features & QStyleOptionButton::DefaultButton)
 					extra |= Attrs(Attr::Bold);
+				// A MENU IS AN AFFORDANCE OR IT IS NOTHING, which the tool
+				// button arm settles in those words and which did not
+				// reach here: a QPushButton with setMenu() drew exactly
+				// like one without, so the only way to find the menu was
+				// to press the button and see what happened. Qt reports it
+				// in this same option, one feature bit along from
+				// DefaultButton.
+				//
+				// The arrow's cell comes out of the LABEL's room rather
+				// than being added beside the bracket. A button is already
+				// as wide as the layout gave it, and the closing bracket
+				// is what says where it ends -- the same trade the elide
+				// below makes for the same reason.
+				const bool menu = b->features & QStyleOptionButton::HasMenu;
 				// Elided to the room BETWEEN the brackets, so the closing
 				// one survives. This wrote the whole label and let the clip
 				// cut it: a button squeezed below its label rendered
 				// "<Save Ch" -- no bracket, no ellipsis, nothing to say it
 				// had been cut. Same fault the tab had, in another control,
 				// and the bracket is what says where the button ends.
+				const QString body =
+				    elide_to_cells(strip_mnemonic(b->text),
+				                   qMax(0, bc.width() - 2 - (menu ? 1 : 0)));
 				dev->buffer().text(bc.left(), bc.top(),
-				                   QLatin1Char('<')
-				                       + elide_to_cells(strip_mnemonic(b->text),
-				                                        qMax(0, bc.width() - 2))
+				                   QLatin1Char('<') + body
+				                       + (menu ? QStringLiteral("▾") : QString())
 				                       + QLatin1Char('>'),
 				                   Color(), Color(),
 				                   label_attrs(opt, w, extra));

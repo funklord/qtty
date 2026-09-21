@@ -1276,6 +1276,62 @@ int suite_widgets() {
 			      "and one with no value yet writes no percentage at all");
 		}
 
+		// A PUSH BUTTON WITH A MENU, which drew exactly like one without.
+		// The tool button arm settles this in as many words -- a menu is
+		// an affordance or it is nothing -- and the same argument had not
+		// reached the control most applications actually use, so the only
+		// way to discover the menu was to press the button.
+		//
+		// The behaviour was measured before the arrow was drawn, because
+		// an affordance for something a key cannot reach is a lie:
+		//
+		//   Space   activates the button, and opens the menu, in both
+		//           a window and a dialog
+		//   Enter   activates only in a dialog, plain and menu button
+		//           alike, which is Qt's autoDefault and not a gap
+		{
+			const auto button_cells = [&](bool with_menu) {
+				QPushButton b(QStringLiteral("Open"));
+				QMenu m(&b);
+				m.addAction(QStringLiteral("Recent"));
+				if (with_menu) b.setMenu(&m);
+				b.setFixedSize(cw * 12, ch);
+				show(b, 12, 2);
+				CellBuffer buf(12, 2);
+				render_once(b, buf);
+				return buf.to_text().trimmed();
+			};
+			const QString plain = button_cells(false);
+			const QString menu = button_cells(true);
+			CHECK(menu.contains(QChar(0x25BE)) && menu.endsWith(QLatin1Char('>')),
+			      "a push button with a menu says so, inside its closing "
+			      "bracket");
+			// THE CONTROL: one without a menu must NOT carry the arrow,
+			// or the check above passes for a style that draws it on
+			// every button.
+			CHECK(plain == QStringLiteral("<Open>"),
+			      "while one without a menu is unchanged, so the arrow "
+			      "marks the menu rather than the button");
+			// AND THE ARROW COMES OUT OF THE LABEL'S ROOM. A button is as
+			// wide as the layout gave it, so an arrow added beside the
+			// bracket would push the bracket off the end -- which is the
+			// elide fault this arm already carries a comment about.
+			QPushButton tight(QStringLiteral("Openable"));
+			QMenu tm(&tight);
+			tm.addAction(QStringLiteral("Recent"));
+			tight.setMenu(&tm);
+			tight.setFixedSize(cw * 7, ch);
+			show(tight, 7, 2);
+			CellBuffer tb(7, 2);
+			render_once(tight, tb);
+			const QString cut = tb.to_text().trimmed();
+			CHECK(cut.startsWith(QLatin1Char('<'))
+			      && cut.endsWith(QLatin1Char('>'))
+			      && cut.size() == 7 && cut.contains(QChar(0x25BE)),
+			      "and a button too narrow for its label keeps both "
+			      "brackets and the arrow, losing only label");
+		}
+
 		// An application that installs a style of its OWN after setup().
 		// QApplication::setStyle() REPLACES, so GridStyle went away and with
 		// it every Channel A drawing in the program -- silently, everywhere
