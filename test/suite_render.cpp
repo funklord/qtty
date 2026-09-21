@@ -88,6 +88,63 @@ int suite_render(bool record) {
 	                                  QStringLiteral("prefs_dialog"), got, record);
 	if (!r && !record) printf("PASS: snapshot matches\n");
 
+	// A SNAPSHOT COULD NOT SEE A PICTURE AT ALL. A frame's images are
+	// carried beside its cells rather than in them, so a frame holding one
+	// and a frame holding none compared EQUAL -- which is the fault the
+	// attribute planes were added for, one channel along. A message box
+	// whose severity icon stopped being drawn, or moved, or changed size,
+	// went past every fixture in this tree.
+	{
+		Qtty::CellBuffer b(10, 3);
+		b.text(0, 0, QStringLiteral("hello"));
+		const QString bare = b.to_snapshot();
+		QPixmap pm(20, 20);
+		pm.fill(Qt::red);
+		b.images.append(Qtty::CellImage{1, QRect(2, 1, 2, 1), pm});
+		const QString imaged = b.to_snapshot();
+		if (bare != imaged)
+			printf("PASS: a frame carrying a picture does not snapshot the "
+			       "same as one carrying none\n");
+		else {
+			printf("FAIL: a frame carrying a picture does not snapshot the "
+			       "same as one carrying none\n");
+			++r;
+		}
+		if (imaged.contains(QStringLiteral("2,1 2x1"))
+		    && bare.contains(QStringLiteral("--- images ---\n(none)")))
+			printf("PASS: and the section is there either way, so a frame "
+			       "with no picture and a fixture older than the section "
+			       "are not the same absence\n");
+		else {
+			printf("FAIL: and the section is there either way, so a frame "
+			       "with no picture and a fixture older than the section "
+			       "are not the same absence\n      got:\n%s\n",
+			       qPrintable(imaged));
+			++r;
+		}
+		// WHAT IT DOES NOT CATCH, pinned rather than left to be assumed:
+		// the id is a hash of the PIXELS and is deliberately not recorded,
+		// because a different Qt or icon theme changes it with nothing
+		// wrong. So a different picture of the same size in the same
+		// place compares equal, and a reader quoting this section for
+		// more than that is quoting a guarantee it never made.
+		Qtty::CellBuffer c(10, 3);
+		c.text(0, 0, QStringLiteral("hello"));
+		QPixmap other(20, 20);
+		other.fill(Qt::blue);
+		c.images.append(Qtty::CellImage{99, QRect(2, 1, 2, 1), other});
+		if (c.to_snapshot() == imaged)
+			printf("PASS: while a different picture of the same size in the "
+			       "same place compares equal, which is the limit and not "
+			       "an oversight\n");
+		else {
+			printf("FAIL: while a different picture of the same size in the "
+			       "same place compares equal, which is the limit and not "
+			       "an oversight\n");
+			++r;
+		}
+	}
+
 	// ONE LINE OF RICH TEXT IS ONE ROW, whatever font sizes are on it.
 	// The row a run lands in is computed from its own TOP -- baseline
 	// minus its own ascent -- so two runs Qt placed on the same line

@@ -1947,9 +1947,14 @@ The fixture then lives at `<root>/test/snapshot/login.txt`, which is
 where `check_snapshot()` looks and what it rewrites when you record.
 
 `snapshot_of()` renders a widget to text in one call -- **glyphs,
-attributes and colours**, not glyphs alone, which matters because a frame
-that stopped drawing a selection compares equal to one that drew it if
-only the characters are kept.
+attributes, colours and the pictures a frame carries**, not glyphs
+alone, which matters because a frame that stopped drawing a selection
+compares equal to one that drew it if only the characters are kept. The
+pictures are recorded as geometry -- where each one sits and how big it
+is -- so an icon that vanished, moved or changed size shows up; a
+*different* picture of the same size in the same place does not, because
+the image's identity is a hash of its pixels and that changes with the Qt
+version and the icon theme rather than with your code.
 
 **For a screen with a layer on it, use `snapshot_of_screen()` instead.**
 

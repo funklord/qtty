@@ -37,6 +37,8 @@
 (none)
 --- colours ---
 (none)
+--- images ---
+(none)
 --- legend ---
 . fg=default bg=default
 attrs: . none, g reverse

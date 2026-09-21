@@ -4928,3 +4928,30 @@ find = "\t\t\t\t\tif (field && field->text().isEmpty()) return true;"
 into = ""
 count = 1
 check = "and none on an empty field"
+
+[[sabotage]]
+# The section reporting "(none)" whatever the frame holds, which is
+# how a snapshot behaved before it existed: a frame holding a picture
+# and one holding none read identically, so an icon that vanished,
+# moved or changed size went past every fixture.
+#
+# Aimed at the CONTENT and not at the header, which the first version
+# of this entry removed -- leaving the lines behind, so the two
+# snapshots still differed and the check stayed green. 8.288.
+name = "a snapshot cannot see a picture"
+file = "src/core/cell_buffer.cpp"
+find = "\tif (images.isEmpty()) {\n\t\tout += QStringLiteral(\"(none)\\n\");\n\t} else {"
+into = "\tif (true) {\n\t\tout += QStringLiteral(\"(none)\\n\");\n\t} else {"
+count = 1
+check = "a frame carrying a picture does not snapshot the same as one carrying none"
+
+[[sabotage]]
+# The section emitted only when there IS a picture, which makes "no
+# picture here" and "recorded before this section existed" the same
+# absence -- the shape the blink plane's own comment refuses. 8.288.
+name = "the images section appears only when something is in it"
+file = "src/core/cell_buffer.cpp"
+find = "\tif (images.isEmpty()) {\n\t\tout += QStringLiteral(\"(none)\\n\");\n\t} else {"
+into = "\tif (images.isEmpty()) {\n\t\tout.chop(int(qstrlen(\"--- images ---\\n\")));\n\t} else {"
+count = 1
+check = "the section is there either way"

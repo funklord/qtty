@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1839 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1842 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,58 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.288 A snapshot could not see a picture (2026-09-21)
+
+**A frame's images are carried beside its cells rather than in them, and
+`to_snapshot()` never mentioned them.** Measured on one buffer, by
+snapshotting it, appending an image, and snapshotting again: the two
+strings are identical.
+
+So a message box whose severity icon stopped being drawn, or moved, or
+changed size, went past every fixture in this tree -- including the two
+that exist. That is the fault the attribute planes were added for, one
+channel along, and the header for `snapshot_of()` already states the
+argument in those words: a frame that stopped drawing a selection
+compares equal to one that drew it if only the characters are kept.
+
+#### Emitted always, which the blink plane had already settled
+
+The section collapses to `(none)` rather than appearing only when a
+frame holds a picture. The reason is written beside the blink plane and
+is the same here: **an optional section makes "no picture here" and
+"recorded before this section existed" the same absence.** Both
+fixtures were re-recorded; they gained two lines each.
+
+#### Geometry, and what that does not catch
+
+    --- images ---
+    2,1 2x1 (20x20 px)
+
+The cell rectangle and the pixmap's size are pinned by the grid and are
+the same on any machine. **The image's id is deliberately not
+recorded**: it is a hash of the pixels, so a different Qt or a different
+icon theme changes it with nothing wrong, and a fixture carrying it
+would go red for the toolchain.
+
+So this catches a picture that vanished, moved or changed size, and
+**does not catch a different picture of the same size in the same
+place** -- pinned by a check rather than left to be assumed, since a
+section nobody has bounded gets quoted for guarantees it never made.
+
+#### How it was found, which is the part worth keeping
+
+Not by a sweep. A probe of mine read a message box's icon area as blank
+and I wrote a glyph into it -- and the suite went red on a check that
+has pinned that icon as a PICTURE since it was written. The probe had
+simply not collected the placements.
+
+The reverted work is not the finding. The finding is that **the
+instrument I used to decide there was nothing there was the same one
+every fixture in this tree uses**, and it could not see a picture
+either. Three checks and two sabotage entries; the first sabotage
+removed the section's header and left its body, so the two snapshots
+still differed and the check stayed green -- re-aimed at the content.
+
 ### 8.287 A search field's clear button, which drew noise (2026-09-21)
 
 **`setClearButtonEnabled(true)` put a shaded block in the field.** Not a

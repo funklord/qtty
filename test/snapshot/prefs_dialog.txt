@@ -31,6 +31,8 @@
 (none)
 --- colours ---
 (none)
+--- images ---
+(none)
 --- legend ---
 . fg=default bg=default
 attrs: . none, 1 bold

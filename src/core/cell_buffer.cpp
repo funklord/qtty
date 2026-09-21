@@ -449,6 +449,43 @@ QString CellBuffer::to_snapshot() const {
 	// defect in section 8 worth having.
 	out += plane(QStringLiteral("blink"), blinks, QLatin1Char('.'));
 	out += plane(QStringLiteral("colours"), colours, QLatin1Char('.'));
+	// THE PICTURES, which a snapshot could not see at all. A frame's
+	// images are carried beside its cells, not in them, so a frame holding
+	// one and a frame holding none compared EQUAL -- measured on one
+	// buffer, by appending an image to it and snapshotting twice. That is
+	// the fault the attribute planes were added for, one channel along: a
+	// message box whose severity icon stopped being drawn, or moved, or
+	// changed size, went past every fixture in this tree.
+	//
+	// Emitted always and collapsing to "(none)", for the reason the blink
+	// plane gives above: an optional section makes "no picture here" and
+	// "recorded before this section existed" the same absence.
+	//
+	// GEOMETRY RATHER THAN CONTENT, and the limit is worth stating because
+	// it is not obvious. The cell rectangle and the pixmap's size are
+	// pinned by the grid and are the same on any machine; the image's own
+	// id is a hash of its PIXELS, which a different Qt or a different
+	// icon theme changes without anything being wrong, so a fixture
+	// carrying it would go red for the toolchain. What this catches is a
+	// picture that vanished, moved or changed size. What it does not catch
+	// is a DIFFERENT picture of the same size in the same place.
+	//
+	// Sorted, because the order images are appended in is the order
+	// widgets happened to paint and is not a property of the frame.
+	out += QStringLiteral("--- images ---\n");
+	if (images.isEmpty()) {
+		out += QStringLiteral("(none)\n");
+	} else {
+		QVector<QString> lines;
+		lines.reserve(images.size());
+		for (const CellImage &im : images)
+			lines.append(QStringLiteral("%1,%2 %3x%4 (%5x%6 px)")
+			             .arg(im.cell_rect.left()).arg(im.cell_rect.top())
+			             .arg(im.cell_rect.width()).arg(im.cell_rect.height())
+			             .arg(im.pixmap.width()).arg(im.pixmap.height()));
+		std::sort(lines.begin(), lines.end());
+		for (const QString &l : lines) out += l + QLatin1Char('\n');
+	}
 	out += QStringLiteral("--- legend ---\n");
 	// Named in the order the letters were handed out, so the legend reads
 	// top-left to bottom-right of the frame.
