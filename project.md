@@ -17,7 +17,17 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1804 checks, 0 failures. `make check` is green and includes
+1804 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+`/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
+machine, 2026-09-21. The number is here because 8.276 and 8.277 both
+turned on cost and nothing in this tree measures any: a per-event
+`dladdr()` cost twenty per cent of that figure and no check could see
+it. It is a BASELINE and not a gate -- a wall clock on a shared machine
+measures the machine, which is why the same entries decline to build
+one -- so read it as what to compare against when something feels slow,
+and re-take it the same way.
+
+`make check` is green and includes
 `version-check`, which had never been part of it.
 
 **`check` is run from the main checkout and nowhere else.** It writes its
@@ -17816,6 +17826,39 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.278 The cost lens, swept (2026-09-21)
+
+8.276 and 8.277 both turned on work nobody was measuring, so the same
+question went to the other hot paths. One hit, three clean, and the
+clean ones are recorded because an unmeasured micro-optimisation is
+exactly what this tree refuses.
+
+- **`GridGuard::eventFilter()`** -- the hit, fixed in 8.276 and 8.277.
+- **The role lists.** `ink_roles()`, `furniture_roles()` and
+  `ground_roles()` each build a `QVector` and return it by value, and
+  they are called from `fg_for()`, `line_for()` and `bg_for()` --
+  which the paint engine calls. It looked like an allocation per
+  drawing operation in the frame path. Counted with a temporary
+  tally: **7,573 constructions across the whole suite**, about four
+  per check, because the engine already resolves them once per run or
+  per segment rather than per cell and says so in its own comments.
+  Nothing to fix.
+- **`InputRouter::eventFilter()`**, which is installed on `qApp` and
+  therefore sees every event in the program. Its common path is a
+  chain of integer comparisons on `e->type()`; every `qobject_cast`
+  and every walk is already inside a matching branch. Structurally
+  right, nothing measured.
+- **The frame path itself**, which section 11 already benchmarks: 1.4
+  ms for a 200x60 frame against a 16 ms local budget. Measured, and by
+  a check rather than by this sweep.
+
+**What came out of it instead is a number in section 0a**: the suite's
+own user time, best of three on a quiet machine, with the command
+beside it. It is a baseline and deliberately not a gate -- a wall clock
+on a shared machine measures the machine, which is 8.277's own reason
+for declining to build one -- but a recorded figure is what lets
+somebody notice a twenty per cent regression that no check can see.
+
 ### 8.277 The cheap question first, and a change no check defends
 ### (2026-09-21)
 
