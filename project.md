@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1833 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1836 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,40 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.286 A snapshot of the screen, not of one widget (2026-09-21)
+
+**`snapshot_of()` renders the widget it is given, so nothing a layer
+covers could be held in a fixture.** Measured with a `QMenu` popped over
+a window:
+
+    render_once(win)              a button, and no menu at all
+    Compositor with a router      the menu, standing over the button
+    Compositor with nullptr       a button, and no menu at all
+
+A fixture taken the first way is a picture nobody sees, and a menu is
+the commonest thing to get wrong.
+
+`Qtty::test::snapshot_of_screen(window, router, cols, rows)` composes
+the window, then the popups and modals on top of it, and applies the
+small-terminal policy the way a frame loop does.
+
+**The router is an argument rather than a default because it is not
+optional**, which the third row above is the measurement of: the popup
+stack belongs to the router, collected from the layers' own show
+events, so a compositor built without one draws the window alone --
+and neither answer reports anything wrong. A test that drives keys
+already holds the right one.
+
+**It takes the window tab strip down as it goes**, because
+`~Compositor` does and the strip is a property of a composed frame. A
+press in row 0 sent between the call and the next compose is therefore
+not read as a tab selection. Said in the header and in the document
+rather than left to be discovered.
+
+Three checks, the first of them the control: with nothing popped the
+two calls must agree, or "the screen one shows a menu" passes for a
+call that invents a layer. One sabotage.
+
 ### 8.285 A push button with a menu, which said nothing (2026-09-21)
 
 **`grid_style.cpp` already argues this case in as many words** -- "a

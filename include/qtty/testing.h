@@ -8,6 +8,7 @@
 #include "cell.h"
 #include "application.h"
 #include "grid.h"
+#include "runtime.h"
 
 namespace Qtty {
 namespace test {
@@ -113,6 +114,39 @@ inline int check_snapshot(const QString &root, const QString &name,
 inline QString snapshot_of(QWidget &w, int cols, int rows) {
 	CellBuffer buf(cols, rows);
 	render_once(w, buf);
+	return buf.to_snapshot();
+}
+
+// The whole SCREEN rather than one widget: the window, then the menus,
+// drop-downs, tooltips and modal dialogs stacked on top of it, and the
+// small-terminal policy applied the way a frame loop applies it.
+//
+// snapshot_of() above renders one widget, which is right for a control
+// and wrong for everything a layer covers. Measured, with a QMenu popped
+// over a window: render_once() shows the button the menu is sitting on
+// and no menu at all, so a fixture taken that way is a picture nobody
+// sees. The menu is the commonest thing to get wrong and was the one
+// thing a snapshot could not hold.
+//
+// THE ROUTER IS NOT OPTIONAL and that is why it is an argument rather
+// than a default. The popup stack is the router's -- it collects layers
+// from their Show events -- so a compositor built without one draws the
+// window alone. Measured, same fixture: with a router the menu is there,
+// with nullptr it is not, and neither reports anything wrong. A test that
+// drives keys already has a router, which is the same one to pass.
+//
+// It takes the window tab strip down as it goes, because ~Compositor
+// does: the strip is a property of a composed frame and its record is
+// read on every press. So a press in row 0 sent between this call and
+// the next compose is not read as a tab selection. Compose again, or
+// snapshot after the press rather than before it.
+inline QString snapshot_of_screen(QWidget &window, InputRouter &router,
+                                  int cols, int rows) {
+	CellBuffer buf(cols, rows);
+	{
+		Compositor c(&window, &router);
+		c.compose(buf);
+	}
 	return buf.to_snapshot();
 }
 

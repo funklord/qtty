@@ -1949,7 +1949,27 @@ where `check_snapshot()` looks and what it rewrites when you record.
 `snapshot_of()` renders a widget to text in one call -- **glyphs,
 attributes and colours**, not glyphs alone, which matters because a frame
 that stopped drawing a selection compares equal to one that drew it if
-only the characters are kept. `check_snapshot()` compares that against a
+only the characters are kept.
+
+**For a screen with a layer on it, use `snapshot_of_screen()` instead.**
+
+    const QString got = Qtty::test::snapshot_of_screen(win, router, 40, 12);
+
+`snapshot_of()` renders the widget it is given, which is right for a
+control and wrong for everything a layer covers. Measured with a `QMenu`
+popped over a window: it shows the button the menu is sitting *on* and no
+menu at all, so a fixture taken that way is a picture nobody sees -- and a
+menu is the commonest thing to get wrong. `snapshot_of_screen()` composes
+the window, then the menus, drop-downs, tooltips and modal dialogs on top
+of it, and applies the small-terminal policy the way a frame loop does.
+
+**The router is an argument because it is not optional.** The popup stack
+is the router's, collected from the layers' own show events, so a
+compositor built without one draws the window alone -- and neither answer
+reports anything wrong. It is the same router your key-driving test
+already has. One thing to know: the call takes the window tab strip down
+as it goes, so a press in row 0 sent straight afterwards is not read as a
+tab selection; snapshot after the press rather than before it. `check_snapshot()` compares that against a
 fixture under `<root>/test/snapshot/`, prints both sides on a mismatch,
 and rewrites the fixture when you pass `record = true` -- so capturing a
 screen before you change it is one call and a flag.

@@ -3183,6 +3183,47 @@ int suite_widgets() {
 		if (!g_record) printf("%s: gallery snapshot\n", fails > before ? "FAIL" : "PASS");
 	}
 
+	// THE WHOLE SCREEN, not one widget. snapshot_of() renders the widget
+	// it is given, which is right for a control and wrong for everything
+	// a layer covers -- and a menu is the commonest thing to get wrong.
+	// Measured with a QMenu popped over a window: render_once() shows the
+	// button the menu is sitting ON and no menu at all, so a fixture taken
+	// that way is a picture nobody sees.
+	{
+		QWidget win;
+		win.resize(GridMetrics::cells(30, 8));
+		auto *v = new QVBoxLayout(&win);
+		v->addWidget(new QPushButton(QStringLiteral("Open")));
+		win.show();
+		InputRouter router(&win);
+		QCoreApplication::processEvents();
+
+		// THE CONTROL FIRST, and it is the one that says the new call is
+		// not inventing a layer: with nothing popped, the two agree.
+		const QString quiet_widget = Qtty::test::snapshot_of(win, 30, 8);
+		const QString quiet_screen =
+		    Qtty::test::snapshot_of_screen(win, router, 30, 8);
+		CHECK(quiet_widget == quiet_screen,
+		      "with no layer up, a screen snapshot and a widget snapshot "
+		      "are the same picture");
+
+		QMenu m(&win);
+		m.addAction(QStringLiteral("New"));
+		m.addAction(QStringLiteral("Quit"));
+		m.popup(QPoint(2 * GridMetrics::cw(), 3 * GridMetrics::ch()));
+		QCoreApplication::processEvents();
+		const QString with_widget = Qtty::test::snapshot_of(win, 30, 8);
+		const QString with_screen =
+		    Qtty::test::snapshot_of_screen(win, router, 30, 8);
+		CHECK(with_screen.contains(QStringLiteral("Quit")),
+		      "a screen snapshot holds the menu standing over the window");
+		CHECK(!with_widget.contains(QStringLiteral("Quit")),
+		      "while a widget snapshot does not, which is what the new "
+		      "call is for rather than a preference between them");
+		m.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// A selected item taller than one cell is reversed throughout, not just on
 	// its first line. Invisible while every item was one cell tall, which is
 	// every item this suite had before CellItemDelegate could return a taller
