@@ -5187,3 +5187,25 @@ find = "\tif (cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing)"
 into = "\tif (cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing\n\t    || cat == QChar::Mark_SpacingCombining)"
 count = 1
 check = "a spacing combining mark still takes one"
+
+[[sabotage]]
+# The line and paragraph separators dropped from the control rule,
+# which is how it was: they are neither C0, C1 nor DEL, so the ranges
+# missed them and they reached a cell verbatim. 8.300.
+name = "a line separator reaches a cell as itself"
+file = "src/core/cell_buffer.cpp"
+find = "\tif (cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph)\n\t\treturn true;"
+into = "\t(void)cat;"
+count = 1
+check = "nor does a line or paragraph separator"
+
+[[sabotage]]
+# The whole separator category swept in, which is the other direction:
+# a no-break space is Separator_Space and is a space, so replacing it
+# would change text nobody asked to change. 8.300.
+name = "a no-break space is treated as a control"
+file = "src/core/cell_buffer.cpp"
+find = "\tif (cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph)"
+into = "\tif (cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph\n\t    || cat == QChar::Separator_Space)"
+count = 1
+check = "a no-break space is left alone"

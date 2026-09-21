@@ -59,6 +59,25 @@ static bool is_wide_codepoint(char32_t u) {
 // A space is what the carriage return already became: one column, nothing
 // shown, and no meaning on the wire.
 static bool is_control(char32_t u) {
+	// THE LINE AND PARAGRAPH SEPARATORS, which are exactly what the
+	// paragraph above describes -- a character nothing can display and
+	// nothing should -- and which are not C0, C1 or DEL, so the ranges
+	// missed them. Measured straight into a buffer, past Qt's layout:
+	// ESC and U+0085 became a space and U+2028 and U+2029 reached the
+	// cell verbatim.
+	//
+	// It is not only that they draw as a box. A terminal is entitled to
+	// read U+2028 as a line break, and one arriving in the middle of a
+	// row would take the rest of the frame's geometry with it -- the
+	// same argument as the escape introducer in the paragraph above, one
+	// character class along. They turn up in text pasted out of a word
+	// processor or a PDF, and paste is a path this library carries.
+	//
+	// Separator_Space is NOT here: a no-break space is a space and
+	// belongs in a cell as itself.
+	const QChar::Category cat = QChar::category(u);
+	if (cat == QChar::Separator_Line || cat == QChar::Separator_Paragraph)
+		return true;
 	return u < 0x20 || u == 0x7f || (u >= 0x80 && u <= 0x9f);
 }
 

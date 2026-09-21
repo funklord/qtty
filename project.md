@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1872 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1874 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,50 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.300 A third table, and the one that could break the frame (2026-09-21)
+
+**The same lens a third time.** `is_control()` says what it is for --
+"a character nothing can display and nothing should" -- and answers it
+with the C0 range, DEL and C1. Measured straight into a buffer, past
+Qt's layout:
+
+    ESC                         a space     the ranges work
+    U+0085 next line (C1)       a space
+    U+2028 line separator       verbatim    wrong
+    U+2029 paragraph separator  verbatim    wrong
+    U+00A0 no-break space       verbatim    right, and must stay so
+
+Neither separator is C0, C1 or DEL, so no range could see them.
+
+**This one is not cosmetic.** A box in a cell would be the least of
+it: a terminal is entitled to read U+2028 as a line break, and one
+arriving in the middle of a row takes the rest of the frame's geometry
+with it. That is the escape-introducer argument this file already
+records, for a different character class -- and these turn up in text
+pasted out of a word processor or a PDF, which is a path the library
+carries.
+
+`Separator_Space` is deliberately excluded and checked: a no-break
+space is a space and belongs in a cell as itself.
+
+#### Three tables, and what the lens was
+
+8.298 was the wide table, 8.299 the zero-width one, this the control
+one. Each said in its own comment what it was for, each answered with
+ranges, and each missed the characters that belong to the class but
+not to the range. **Two of the three were fixable by asking Qt for a
+category and one was not** -- East Asian Width does not follow a
+category, so the wide table had to stay a list taken from
+`EastAsianWidth.txt`.
+
+That is the distinction worth keeping from the three together: where a
+class has a Unicode category, name the category and the table cannot
+go stale; where it does not, the list is the answer and the check has
+to carry the neighbours that are NOT in it.
+
+Two checks and two sabotage entries -- the separator sweep, which
+covers both of them in one loop, and the no-break space beside it.
+
 ### 8.299 The zero-width rule covered the format characters only (2026-09-21)
 
 **The comment on `is_zero_width()` describes this defect exactly** --

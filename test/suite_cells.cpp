@@ -464,6 +464,39 @@ int suite_cells() {
 			}
 		}
 		printf("PASS: no C0, C1 or DEL character reaches a cell as itself\n");
+
+		// AND THE LINE AND PARAGRAPH SEPARATORS, which are the same
+		// thing one character class along and which the ranges above
+		// could not see: they are neither C0, C1 nor DEL. Measured
+		// straight into a buffer, past Qt's layout, they reached a cell
+		// verbatim.
+		//
+		// It is not only that they draw as a box. A terminal is entitled
+		// to read U+2028 as a line break, and one arriving mid-row would
+		// take the rest of the frame's geometry with it -- the escape
+		// introducer's own argument, for a different character.
+		for (char32_t u : { char32_t(0x2028), char32_t(0x2029) }) {
+			CellBuffer c(2, 1);
+			c.put_cluster(0, 0, QString(QChar(u)), Color(), Color(), Attrs());
+			if (c.at(0, 0).ch != QStringLiteral(" ")) {
+				printf("FAIL: nor does a line or paragraph separator --"
+				       " U+%04X does\n", unsigned(u));
+				++fails;
+			}
+		}
+		printf("PASS: nor does a line or paragraph separator, which a"
+		       " terminal may read as a line break\n");
+
+		// THE CONTROL, and it is what stops the rule swallowing the
+		// separator category whole: a NO-BREAK SPACE is Separator_Space
+		// and is a space, which belongs in a cell as itself rather than
+		// being replaced by a different one.
+		CellBuffer nb(2, 1);
+		nb.put_cluster(0, 0, QString(QChar(0x00A0)), Color(), Color(), Attrs());
+		CHECK(nb.at(0, 0).ch == QString(QChar(0x00A0)),
+		      "while a no-break space is left alone, the rule naming the "
+		      "line and paragraph separators and not their category's "
+		      "third member");
 	}
 	{
 		// A zero-width character was given a whole cell, which pushed
