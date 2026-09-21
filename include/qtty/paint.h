@@ -192,6 +192,26 @@ private:
 	// has already replaced the remembered band. Cleared when the pass
 	// resets, beside last_row_.
 	QVector<QRectF> underline_bands_;
+
+	// Every text run's band, with the cells it was drawn in. The list above
+	// is the SUPPRESSION half -- a decoration under a run that already
+	// carries Attr::Underline is dropped -- and this is the other half: a
+	// decoration under a run that does NOT carry it becomes the attribute
+	// instead of a rule on the next row.
+	//
+	// It exists because Qt spells a rich-text underline two ways.
+	// QTextCharFormat::setFontUnderline() sets QFont::underline() and the
+	// text item carries it; setUnderlineStyle() does not touch the font at
+	// all, so the run arrives plain and only the decoration says anything.
+	// Measured through a QTextEdit: a DotLine drew a rule of box-drawing
+	// glyphs on the row BELOW the word, and a WaveUnderline -- the squiggle
+	// every editor uses for a misspelling -- drew nothing whatever.
+	struct TextBand {
+		QRectF band;                 // where the decoration will land
+		int row = 0, col0 = 0, col1 = -1;   // the cells the run occupies
+	};
+	QVector<TextBand> text_bands_;
+	bool fold_into_underline(const QPointF &a, const QPointF &b);
 };
 
 } // namespace Qtty

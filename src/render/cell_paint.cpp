@@ -234,6 +234,7 @@ bool CellPaintEngine::begin(QPaintDevice *pdev) {
 	last_x_ = 0;
 	last_clip_.reset();
 	underline_bands_.clear();
+	text_bands_.clear();
 	return true;
 }
 bool CellPaintEngine::end() { dev_ = nullptr; return true; }
@@ -489,14 +490,29 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	// So remember the band that decoration will land in, and let line()
 	// drop a line that falls inside it. Recorded rather than guessed: the
 	// primitive is drawLines with one QLineF, found by probing the engine.
+	const QRectF decoration(q.x(), q.y() - 1,
+	                        fm.horizontalAdvance(ti.text()),
+	                        fm.descent() + 2);
 	if (a & Attr::Underline) {
 		// From just above the baseline down through the descent, across
 		// the run's own advance. Qt puts the decoration a pixel or two
 		// below the baseline.
-		underline_bands_.append(QRectF(q.x(), q.y() - 1,
-		                               fm.horizontalAdvance(ti.text()),
-		                               fm.descent() + 2));
+		underline_bands_.append(decoration);
 	}
+	// AND THE SAME BAND FOR A RUN THAT IS NOT UNDERLINED, because Qt
+	// spells a rich-text underline two ways and only one of them reaches
+	// the text item. QTextCharFormat::setFontUnderline() sets
+	// QFont::underline(); setUnderlineStyle() does not touch the font, so
+	// the run arrives plain and the decoration is the only evidence.
+	//
+	// Measured through a QTextEdit, before this: a DotLine drew a rule of
+	// box-drawing glyphs on the row BELOW the word, which reads as a
+	// horizontal rule under the paragraph rather than a mark on the word,
+	// and a WaveUnderline -- the squiggle every editor uses for a
+	// misspelling -- drew NOTHING, its two-pixel fill being thinner than
+	// half a cell and the row below already occupied by nothing at all.
+	if (x > col)
+		text_bands_.append(TextBand{decoration, row, col, x - 1});
 }
 
 void CellPaintEngine::drawRects(const QRectF *r, int n) { for (int i = 0; i < n; ++i) fill_rectf(r[i]); }
@@ -821,6 +837,18 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 	// ITerminalBackend::set_cursor() emits. A thin fill may still colour a
 	// cell that is empty, which is what keeps a rule drawn on a blank row.
 	const bool thin = is_thin(r);
+	// A WAVE ARRIVES AS A FILL, not a line: Qt draws a squiggle as a short
+	// wide rectangle, two pixels tall here. Same rule as line()'s -- inside
+	// a text run's decoration band it IS that run's underline -- and
+	// without it the mark was dropped as a hairline and a misspelling
+	// looked exactly like a correctly spelled word.
+	if (thin) {
+		const QRectF m = xf_.mapRect(r).translated(dev_->origin);
+		const qreal mid = m.center().y();
+		if (fold_into_underline(QPointF(m.left(), mid),
+		                        QPointF(m.right(), mid)))
+			return;
+	}
 	// A box keeps its shape and loses the cells outside the clip, rather than
 	// being shrunk to fit: a smaller complete rectangle is a different frame,
 	// and dropping the whole thing loses a border that is mostly visible.
@@ -1093,6 +1121,34 @@ void CellPaintEngine::box(const QRect &c, const std::optional<QRect> &clip) {
 	put(c.right(), c.bottom(), QStringLiteral("┘"));
 }
 
+// A horizontal mark inside a text run's decoration band IS that run's
+// underline, whatever Qt chose to draw it with. Sets the attribute on the
+// run's own cells and answers true, so the caller drops the mark.
+//
+// The alternative is what the tree did before: a line became a rule of
+// box-drawing glyphs on the row BELOW the word, and a two-pixel fill --
+// which is how Qt draws a wave -- was dropped as a hairline and became
+// nothing at all. Neither says "this word is marked", which is the whole
+// content of an underline.
+//
+// TIGHT, because the risk is an application's own rule under a heading.
+// The band runs from one pixel above the baseline to two below the
+// descent and no wider than the run's advance, and the mark must lie
+// inside it at both ends -- a rule drawn a line below, which is where a
+// rule normally goes, is outside it.
+bool CellPaintEngine::fold_into_underline(const QPointF &a, const QPointF &b) {
+	for (const TextBand &t : text_bands_) {
+		if (!t.band.contains(a) || !t.band.contains(b)) continue;
+		if (t.col1 < t.col0) continue;
+		CellBuffer &buf = dev_->buffer();
+		for (int x = t.col0; x <= t.col1; ++x)
+			if (buf.writable(x, t.row))
+				buf.at(x, t.row).attrs |= Attr::Underline;
+		return true;
+	}
+	return false;
+}
+
 void CellPaintEngine::line(const QLineF &l) {
 	// Qt::transparent drew an opaque BLACK rule, because this read
 	// pen_.color() and Color::rgb() kept bytes that are zero for it. An
@@ -1109,11 +1165,13 @@ void CellPaintEngine::line(const QLineF &l) {
 	{
 		const QPointF a = xf_.map(l.p1()) + QPointF(dev_->origin);
 		const QPointF b2 = xf_.map(l.p2()) + QPointF(dev_->origin);
-		if (qFuzzyCompare(a.y(), b2.y()))
+		if (qFuzzyCompare(a.y(), b2.y())) {
 			for (const QRectF &band : underline_bands_)
 				if (band.contains(QPointF(a.x(), a.y()))
 				    && band.contains(QPointF(b2.x(), b2.y())))
 					return;
+			if (fold_into_underline(a, b2)) return;
+		}
 	}
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	QLineF m(xf_.map(l.p1()) + QPointF(dev_->origin), xf_.map(l.p2()) + QPointF(dev_->origin));

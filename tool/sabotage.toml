@@ -4706,3 +4706,28 @@ find = "\tif (ms < 0) return;                  // refused, as the member refuses
 into = "\tif (ms < -1000) return;"
 count = 1
 check = "while a negative interval is refused rather than discarding the one the application chose"
+
+[[sabotage]]
+# The band recorded only for runs that already carry the attribute,
+# which is the state this fixed: a rich-text underline Qt spells with
+# setUnderlineStyle() reaches the cells as nothing at all, or as a rule
+# on the row below the word. 8.279.
+name = "only an underlined run remembers its band"
+file = "src/render/cell_paint.cpp"
+find = "\tif (x > col)\n\t\ttext_bands_.append(TextBand{decoration, row, col, x - 1});"
+into = "\tif (false)\n\t\ttext_bands_.append(TextBand{decoration, row, col, x - 1});"
+count = 1
+check = "a spell-check squiggle marks the word it is under"
+
+[[sabotage]]
+# The fill half removed, so a wave -- which Qt draws as a short wide
+# rectangle rather than a line -- is dropped as a hairline again and a
+# misspelling looks exactly like a correctly spelled word. The line
+# half alone leaves the dotted case working, which is what makes this
+# a separate entry. 8.279.
+name = "a wave's fill is not folded into the underline"
+file = "src/render/cell_paint.cpp"
+find = "\tif (thin) {\n\t\tconst QRectF m = xf_.mapRect(r).translated(dev_->origin);\n\t\tconst qreal mid = m.center().y();"
+into = "\tif (false) {\n\t\tconst QRectF m = xf_.mapRect(r).translated(dev_->origin);\n\t\tconst qreal mid = m.center().y();"
+count = 1
+check = "a spell-check squiggle marks the word it is under"

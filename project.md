@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1804 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1807 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,70 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.279 The squiggle that marked nothing (2026-09-21)
+
+**`QTextCharFormat` spells an underline two ways and this library
+honoured one of them.** `setFontUnderline()` sets `QFont::underline()`,
+which the text item carries and `drawTextItem()` turns into
+`Attr::Underline`. `setUnderlineStyle()` touches no font property at
+all -- the run arrives plain, and Qt's own decoration is the only
+evidence there is.
+
+Measured through a `QTextEdit`, before:
+
+    QFont::setUnderline(true)   Attr::Underline on the word      ok
+    SingleUnderline             Attr::Underline on the word      ok
+    DotLine                     a box rule on the row BELOW it
+    WaveUnderline               nothing whatever
+
+`SingleUnderline` passes because Qt sets the font flag for it as well.
+The other two are the forms that matter: a dotted or dashed underline is
+what a style sheet uses, and a **wave is what every editor draws under a
+misspelling**. One read as a horizontal rule under the paragraph, the
+other as a correctly spelled word.
+
+#### The fix is the other half of a mechanism that was already here
+
+`drawTextItem()` already recorded an `underline_band_` for a run that
+carried the attribute, so that `line()` could DROP Qt's duplicate
+decoration. That is the suppression half. The missing half is the
+reverse: a decoration under a run that does NOT carry the attribute
+should BECOME it.
+
+So every run records its band with the cells it occupies, and a
+horizontal mark inside one is folded into `Attr::Underline` on those
+cells. Two doors, because Qt uses two primitives: a line for a dotted
+underline and **a two-pixel-tall FILL for a wave**, which the hairline
+rule was dropping. They are separate sabotage entries for that reason --
+removing the fill half leaves the dotted case working.
+
+The band is tight on purpose: one pixel above the baseline to two below
+the descent, no wider than the run's advance, both ends inside. The
+existing control -- a rule the application draws under an underlined
+heading, two cell rows down -- still passes, which is what says the
+widening did not swallow it.
+
+#### The fixture bug that nearly produced a phantom
+
+The first probe reported that Qt draws **nothing at all** for any of the
+three styles: no line, no fill, `renderFlags` zero. That was the
+fixture. `QTextCharFormat::setFont()` writes the font properties,
+`fontUnderline` among them, so setting the style BEFORE the font clears
+it again. Had the instrument not been checked, the finding would have
+been "Qt does not draw format underlines", the fix would have been
+aimed at the wrong layer, and the check would have passed against it.
+The order is now load-bearing in the check and says so.
+
+#### The checks
+
+Three: a wave marks its word and rules no row below it, a dotted
+underline likewise, and -- the control -- text with no underline style
+carries no underline, without which both pass for an engine that
+underlines everything it draws.
+
+    only an underlined run remembers its band       2 red
+    a wave's fill is not folded into the underline  1 red
+
 ### 8.278 The cost lens, swept (2026-09-21)
 
 8.276 and 8.277 both turned on work nobody was measuring, so the same
@@ -18073,7 +18137,7 @@ Neither was found by reading.
   It asks `typeid(*layout)` now, which names the dynamic type whether or
   not moc has heard of it.
 
-#### The checks
+#### The three checks
 
 Three, and the two controls are the point: a status bar and a dock
 widget are exempt; a widget in the application's own `QVBoxLayout` is

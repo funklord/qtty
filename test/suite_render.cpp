@@ -88,6 +88,92 @@ int suite_render(bool record) {
 	                                  QStringLiteral("prefs_dialog"), got, record);
 	if (!r && !record) printf("PASS: snapshot matches\n");
 
+	// AN UNDERLINE QT DOES NOT PUT ON THE FONT, which is the form every
+	// editor uses for a misspelling and every rich-text style sheet uses
+	// for a dotted or dashed rule. QTextCharFormat spells an underline two
+	// ways and only one reaches the text item: setFontUnderline() sets
+	// QFont::underline(), while setUnderlineStyle() touches no font
+	// property at all, so the run arrives plain and Qt's own decoration is
+	// the only evidence there is.
+	//
+	// Measured before this: a DotLine drew a rule of box-drawing glyphs on
+	// the row BELOW the word -- which reads as a rule under the paragraph
+	// rather than a mark on the word -- and a WaveUnderline drew NOTHING,
+	// its two-pixel fill being thinner than half a cell.
+	//
+	// THE FIXTURE'S ORDER IS LOAD-BEARING. QTextCharFormat::setFont()
+	// writes the font properties, fontUnderline among them, so setting the
+	// style before the font clears it again -- the first version of this
+	// probe reported that Qt draws nothing at all, which is what a cleared
+	// style looks like from outside.
+	{
+		const auto marked = [](QTextCharFormat::UnderlineStyle style) {
+			QTextEdit e;
+			e.setAttribute(Qt::WA_DontShowOnScreen);
+			e.resize(GridMetrics::cells(28, 5));
+			e.show();
+			QCoreApplication::processEvents();
+			QTextCharFormat f;
+			f.setFont(e.font());
+			if (style != QTextCharFormat::NoUnderline)
+				f.setUnderlineStyle(style);
+			QTextCursor c = e.textCursor();
+			c.insertText(QStringLiteral("hello"), f);
+			QCoreApplication::processEvents();
+			Qtty::CellBuffer b(28, 5);
+			Qtty::render_once(e, b);
+			int row = -1, col = -1;
+			for (int y = 0; y < b.rows() && row < 0; ++y)
+				for (int x = 0; x + 4 < b.cols(); ++x)
+					if (b.at(x, y).ch == QStringLiteral("h")
+					    && b.at(x + 1, y).ch == QStringLiteral("e")) {
+						row = y; col = x; break;
+					}
+			struct Seen { bool underlined = false; bool rule_below = false; };
+			Seen out;
+			if (row >= 0) {
+				out.underlined = bool(b.at(col, row).attrs & Qtty::Attr::Underline)
+				              && bool(b.at(col + 4, row).attrs
+				                      & Qtty::Attr::Underline);
+				if (row + 1 < b.rows())
+					out.rule_below =
+					    b.at(col, row + 1).ch == QStringLiteral("\u2500");
+			}
+			return out;
+		};
+		const auto wave = marked(QTextCharFormat::WaveUnderline);
+		const auto dots = marked(QTextCharFormat::DotLine);
+		const auto none = marked(QTextCharFormat::NoUnderline);
+		if (wave.underlined && !wave.rule_below)
+			printf("PASS: a spell-check squiggle marks the word it is under "
+			       "rather than drawing nothing\n");
+		else {
+			printf("FAIL: a spell-check squiggle marks the word it is under "
+			       "rather than drawing nothing\n");
+			++r;
+		}
+		if (dots.underlined && !dots.rule_below)
+			printf("PASS: and a dotted underline marks the word rather than "
+			       "ruling the row beneath it\n");
+		else {
+			printf("FAIL: and a dotted underline marks the word rather than "
+			       "ruling the row beneath it\n");
+			++r;
+		}
+		// THE CONTROL, without which both lines above pass for a decoder
+		// that underlines everything it draws.
+		if (!none.underlined)
+			printf("PASS: while text with no underline style carries no "
+			       "underline, which is what says the two above measured "
+			       "the style\n");
+		else {
+			printf("FAIL: while text with no underline style carries no "
+			       "underline, which is what says the two above measured "
+			       "the style\n");
+			++r;
+		}
+	}
+
 	// RICH TEXT'S OWN ATTRIBUTES, found by rendering a QTextBrowser --
 	// eleven uses across the consumers and nothing here had drawn one.
 	// `<b>`, `<i>` and `<u>` reached the cells; `<s>` reached nothing, and
