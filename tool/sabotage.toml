@@ -5238,3 +5238,14 @@ find = "\tif (glyph.size() > 31) {\n\t\tint cps = 0, i = 0;\n\t\twhile (i < glyp
 into = "\tif (glyph.size() > 2) {\n\t\tint cps = 0, i = 0;\n\t\twhile (i < glyph.size() && cps < 2) {"
 count = 1
 check = "a ZWJ family of eight code points reaches its cell whole"
+
+[[sabotage]]
+# The combo's arrow drawn on the mirrored side with its hit test left
+# where it was -- the arrow in a cell no click reaches, which is this
+# family's recurring failure. 8.304.
+name = "a right-to-left combo box's arrow is drawn where no click reaches"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\treturn QRect(rtl ? r.left() + cw : r.right() + 1 - 2 * cw,"
+into = "\t\t\treturn QRect(r.right() + 1 - 2 * cw,"
+count = 1
+check = "a right-to-left combo box's arrow is drawn in the cell its hit test names"

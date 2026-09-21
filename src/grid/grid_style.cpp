@@ -1550,12 +1550,21 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		// QLineEdit at the proxy style's pixel offsets -- two pixels in from a
 		// border this style never draws.
 		const QRect r = opt->rect;
+		// The arrow changes SIDE with the layout direction, like the spin
+		// box's and the tool button's. Measured with Qt's own
+		// subControlRect on a 180px combo: SC_ComboBoxArrow is at 159..177
+		// under LeftToRight and at 2..20 under RightToLeft, and the edit
+		// field moves with it. The fifth control of this family and the one
+		// 8.284 missed -- section 0b's right-to-left row still named it,
+		// which is how it was found.
+		const bool rtl = opt->direction == Qt::RightToLeft;
 		switch (sc) {
 		case SC_ComboBoxEditField:
-			return QRect(r.left() + cw, r.top(),
+			return QRect(rtl ? r.left() + 2 * cw : r.left() + cw, r.top(),
 			             qMax(cw, r.width() - 3 * cw), qMax(ch, r.height()));
 		case SC_ComboBoxArrow:
-			return QRect(r.right() + 1 - 2 * cw, r.top(), cw, qMax(ch, r.height()));
+			return QRect(rtl ? r.left() + cw : r.right() + 1 - 2 * cw,
+			             r.top(), cw, qMax(ch, r.height()));
 		case SC_ComboBoxFrame:
 		case SC_ComboBoxListBoxPopup:
 			return r;
@@ -2937,7 +2946,11 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				b.put_cluster(c.left(), row, QStringLiteral("["), Color(), Color(), a);
 				b.put_cluster(c.right(), row, QStringLiteral("]"), Color(), Color(), a);
 			}
-			b.put_cluster(c.right() - 1, row, QStringLiteral("▾"), Color(), Color(), a);
+			// Paired with subControlRect above: the arrow is drawn where
+			// the hit test says it is, or a click lands on the frame.
+			b.put_cluster(opt->direction == Qt::RightToLeft ? c.left() + 1
+			                                                : c.right() - 1,
+			              row, QStringLiteral("▾"), Color(), Color(), a);
 			return;                                    // label via CE_ComboBoxLabel
 		}
 		case CC_ToolButton:

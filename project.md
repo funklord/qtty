@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1879 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1881 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -909,7 +909,7 @@ Owned by the copyright holder:
 | **A rule drawn as a thin RECTANGLE becomes a coloured background; the same rule drawn as a LINE becomes a box-drawing glyph.** Measured through an HTML table: its borders arrive as `drawRects` of `11x1` and `1x19` and come out as grey blocks, while `drawLines` of the same shape draws `-` and `\|`. The horizontal case could be told from a caret by shape; **the vertical case cannot -- a caret and a one-cell vertical rule are the same `1x19` rectangle**, which is what stops this being a small fix | 8.65 |
 | **An HTML bullet list loses its bullets.** Measured through a `QTextBrowser`: `<ul><li>one</li></ul>` renders the text indented with a one-cell BACKGROUND block where the bullet belongs and no glyph -- `bg=#000000` on the default dark ground. Qt draws the bullet as `drawPath` with a 6x6 bounding rect, and `is_thin` (`width*2 < cw \|\| height*2 < ch`) is true of it, so a bullet takes the hairline road meant for carets and rules. **The discriminator is clean and is the finding**: a shape smaller than one cell in BOTH dimensions is a mark, not a hairline -- a caret is 1x19 and a rule 50x1, and neither is. What a mark should BECOME is the choice, and it is the holder's | 8.64 |
 | Whether the "too small to be a picture" rule moves to the backend. Nothing left unmeasured: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()`; no widget icon reaches the branch today; and the cost is **1.4 KB once per distinct icon, 35 bytes a frame after** -- eight of them together less than the one 48x48 icon the library already uploads | §7.2 |
-| **Right-to-left: does qtty support it at all?** design.md never says, and nothing in the tree mentions it -- so this is a scope question rather than a defect. Measured: under `Qt::RightToLeft` a check box mirrors and a combo box's text does, while its arrow, a progress bar's fill, a label's alignment and a line edit's text do not. §7.2 has the rendered pair | *undesigned* |
+| **~~Right-to-left: does qtty support it at all?~~ It does, and the row's own list is how the last gap was found.** 8.284 mirrored the progress bar, the scroll bar's thumb, the spin box's arrows and a tool button's menu arrow; 8.304 mirrored the combo box's, which this row still named. Re-measured 2026-09-22 against plain Qt: **a label's alignment and a line edit's text are NOT gaps** -- Qt does not mirror either, ink left in both directions, so drawing them the same is correct. What remains undesigned is bidirectional TEXT, which is a different question and is its own row. `doc/keyboard-first.md` has the section, with the numbers | 8.284, 8.304 |
 | **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise. 8.248 adds a second obstacle on the ink half alone: ToolTipText is the same black as WindowText here, and `role_of()` keys on the colour, so a hover timer would light the tooltip's ground and leave its text at body text's index | §7.2 |
 | **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect. **Both halves are asserted since 8.75** -- the hover arrives, and the render is byte-identical with the pointer on the control and off it | §7.2 |
 | **Two frames nested with no layout margin draw two rules in adjacent columns.** Faithful to the widget tree -- in pixels they are 1px lines 1px apart -- and on a grid they read as two rules. Merging is not a paint-time trick: the edges are in DIFFERENT cells because the inner rect is one cell inside the outer. Three options with their costs are recorded; the cheapest is to suppress a rule whose neighbour already holds one, which cannot tell nesting from two adjacent framed widgets. Reported by fuzzypickles, and reached again by a QScrollArea | 8.25, 8.26, 8.27 |
@@ -17829,6 +17829,55 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.304 The stale row named the gap it was stale about (2026-09-22)
+
+**8.303 closed one stale index row, so the next thing to do was read
+its neighbours.** Section 0b's right-to-left row said, of
+`Qt::RightToLeft`:
+
+> a check box mirrors and a combo box's text does, while its arrow, a
+> progress bar's fill, a label's alignment and a line edit's text do
+> not
+
+Four claims, re-measured:
+
+    check box        mirrors            still true
+    combo box arrow  does not mirror    STILL TRUE -- and a real gap
+    progress bar     does not mirror    stale, fixed by 8.284
+    label alignment  does not mirror    never a gap: Qt does not either
+    line edit text   does not mirror    never a gap: Qt does not either
+
+**The row was stale about three of its four and right about the
+fourth**, which is the one nobody had fixed -- so reading it was worth
+more than the correction. Qt's own `subControlRect` on a 180px combo
+puts `SC_ComboBoxArrow` at 159..177 under LeftToRight and at **2..20**
+under RightToLeft, and the edit field moves with it.
+
+The combo is the fifth control of 8.284's family, and it is mirrored
+now, in both the drawing and the hit test -- paired, because the
+recurring failure in that family is an arrow drawn where no click
+reaches.
+
+#### Two of its claims were never gaps
+
+A `QLabel`'s alignment and a `QLineEdit`'s text do not mirror **in Qt
+either**: measured by rendering plain Qt with Fusion to pixels, the ink
+is on the left in both directions for both. Drawing them the same is
+correct, and a later pass that "fixed" them would have been breaking
+them -- which is why the corrected row says so rather than dropping
+them silently.
+
+#### The lens
+
+A stale row is not only a wrong sentence to fix. **It is a list
+somebody once measured, and the entries that are still true are the
+ones nobody has acted on.** 8.303 found a row whose every claim had
+expired; this one found a row that was three-quarters expired and
+whose remaining quarter was a live defect. Both were worth reading for
+the same reason and neither would have been found by a phrase sweep.
+
+One check per direction and one sabotage.
+
 ### 8.303 An open question that had already been answered (2026-09-21)
 
 **Section 0b carried "a read-only line edit is not marked" as an open

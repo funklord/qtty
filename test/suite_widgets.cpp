@@ -1945,6 +1945,31 @@ int suite_widgets() {
 				          : "a left-to-right scroll bar's thumb is where a "
 				            "click reaches it");
 
+				// THE COMBO'S ARROW, the fifth control of this family
+				// and the one 8.284 missed. Found by re-measuring
+				// section 0b's right-to-left row, which still named it
+				// among the things that do not mirror -- and was right
+				// about that one while being stale about three others.
+				QComboBox cb;
+				cb.addItem(QStringLiteral("One"));
+				cb.setFixedSize(cw * 18, ch);
+				show(cb, 18, 2);
+				CellBuffer cbb(19, 2);
+				render_once(cb, cbb);
+				const QString crow = cbb.to_text().split(QLatin1Char('\n')).value(0);
+				const int arrow_drawn = crow.indexOf(QChar(0x25BE));
+				QStyleOptionComboBox co;
+				co.initFrom(&cb);
+				co.rect = cb.rect();
+				co.subControls = QStyle::SC_All;
+				const QRect ar = cb.style()->subControlRect(
+				    QStyle::CC_ComboBox, &co, QStyle::SC_ComboBoxArrow, &cb);
+				CHECK(arrow_drawn >= 0 && arrow_drawn == ar.left() / cw,
+				      rtl ? "and a right-to-left combo box's arrow is drawn"
+				            " in the cell its hit test names"
+				          : "and a left-to-right combo box's arrow is drawn"
+				            " in the cell its hit test names");
+
 				QSpinBox sp;
 				sp.setFixedSize(cw * 12, ch);
 				show(sp, 12, 2);
