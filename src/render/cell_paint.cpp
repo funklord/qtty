@@ -14,6 +14,8 @@
 #include <QPalette>
 #include <QPainterPath>
 #include <QFontMetricsF>
+#include <QLCDNumber>
+#include <QPaintEngine>
 
 namespace Qtty {
 
@@ -69,6 +71,29 @@ static const char *unsupported_class(const QObject *o) {
 // The box, and the name of what is missing from it. A frame says "something
 // belongs here" and the label says what, which together are the difference
 // between an unsupported widget and a broken one.
+// Written cell by cell rather than through CellBuffer, which honours the
+// device clip -- see the label below, which learned that the hard way.
+static void put_cell(CellBuffer &buf, int x, int y, const QString &g) {
+	if (buf.writable(x, y)) { Cell v; v.ch = g; buf.at(x, y) = v; }
+}
+
+// Just the border. Shared with the LCD below, which draws a frame of its own
+// because it consumes the paint event that would have drawn Qt's.
+static void draw_box(CellBuffer &buf, const QRect &c) {
+	for (int x = c.left() + 1; x < c.right(); ++x) {
+		put_cell(buf, x, c.top(), QStringLiteral("─"));
+		put_cell(buf, x, c.bottom(), QStringLiteral("─"));
+	}
+	for (int y = c.top() + 1; y < c.bottom(); ++y) {
+		put_cell(buf, c.left(), y, QStringLiteral("│"));
+		put_cell(buf, c.right(), y, QStringLiteral("│"));
+	}
+	put_cell(buf, c.left(), c.top(), QStringLiteral("┌"));
+	put_cell(buf, c.right(), c.top(), QStringLiteral("┐"));
+	put_cell(buf, c.left(), c.bottom(), QStringLiteral("└"));
+	put_cell(buf, c.right(), c.bottom(), QStringLiteral("┘"));
+}
+
 static void draw_placeholder(CellBuffer &buf, const QRect &c, const QString &what) {
 	if (c.width() < 2 || c.height() < 2) {
 		// Too small for a box. One shaded cell still says something is here,
@@ -81,20 +106,9 @@ static void draw_placeholder(CellBuffer &buf, const QRect &c, const QString &wha
 		return;
 	}
 	const auto put = [&](int x, int y, const QString &g) {
-		if (buf.writable(x, y)) { Cell v; v.ch = g; buf.at(x, y) = v; }
+		put_cell(buf, x, y, g);
 	};
-	for (int x = c.left() + 1; x < c.right(); ++x) {
-		put(x, c.top(), QStringLiteral("─"));
-		put(x, c.bottom(), QStringLiteral("─"));
-	}
-	for (int y = c.top() + 1; y < c.bottom(); ++y) {
-		put(c.left(), y, QStringLiteral("│"));
-		put(c.right(), y, QStringLiteral("│"));
-	}
-	put(c.left(), c.top(), QStringLiteral("┌"));
-	put(c.right(), c.top(), QStringLiteral("┐"));
-	put(c.left(), c.bottom(), QStringLiteral("└"));
-	put(c.right(), c.bottom(), QStringLiteral("┘"));
+	draw_box(buf, c);
 
 	// The label, centred, elided to the room between the borders. A name cut
 	// without an ellipsis reads as a different class.
@@ -111,6 +125,161 @@ static void draw_placeholder(CellBuffer &buf, const QRect &c, const QString &wha
 	// is this library saying what it cannot draw.
 	for (int i = 0; i < label.size(); ++i)
 		put(x0 + i, y, QString(label.at(i)));
+}
+
+// -- A QLCDNumber, READ BACK OFF ITS OWN SEGMENTS.
+//
+// QLCDNumber draws seven-segment digits as filled polygons and routes none
+// of it through QStyle, so GridStyle cannot reach it and Channel B turned
+// each segment into a box-drawing glyph. Measured, `display(1234.5)` in a
+// 24x6 area came out as four rows of verticals, horizontals and diagonals
+// inside the frame -- not a wrong number, but noise that reads as a corrupt
+// frame. The drawing is in project.md 8.281, which may carry the glyphs.
+//
+// THE STRING IS NOT AVAILABLE. QLCDNumber keeps it in `digitStr`, which is
+// private and has no accessor; `value()` is a double and is 0 for every
+// display() of a string that does not parse -- which is every clock, the
+// widget's most common use. Qt's own accessibility interface answers
+// QString::number(value()) and is therefore wrong in exactly that case: a
+// QLCDNumber showing "12:34:56" tells a screen reader "0". Copying Qt's
+// expression would have copied the defect, and measuring is what showed it.
+//
+// So read what it DRAWS. The paint event is delivered to the widget by hand
+// with the engine put into recording mode, so the segments arrive as
+// bounding boxes and nothing reaches the cells; they are then grouped back
+// into digits. That is exact by construction -- it is the same artifact a
+// sighted user is looking at -- and it needs no agreement with Qt about
+// formatting, overflow, base or rounding, all of which it gets for free
+// because it never asks.
+//
+// Delivered by hand rather than rendered a second time. `lcd->render()` from
+// inside the widget's own paint event takes the region VERBATIM instead of
+// defaulting it to the widget's rectangle, so an omitted one returns from
+// QWidgetPrivate::render without a word -- measured: no warning, no
+// segments, a correctly drawn empty frame. Supplying the region worked and
+// printed "QWidget::repaint: Recursive repaint detected" on every frame,
+// because Qt has already set WA_WState_InPaintEvent by the time an event
+// filter sees a paint. Recording in the engine has neither problem and
+// paints the widget once instead of twice.
+//
+// Validated against nine string displays, where display(s) IS the oracle:
+// "0123456789", "ABCDEF", "12:34", "11", "111", "1.5", "-42", "1:11" and
+// "18" all decode to themselves. The two numeric cases the decoder cannot
+// predict -- display(1234.5) in five digits and an overflowing
+// display(99999) in three -- were checked against a pixel rendering read by
+// eye, which is a witness the primitive stream is not part of.
+// A=1 B=2 C=4 D=8 E=16 F=32 G=64, in the usual seven-segment lettering:
+// A across the top, B and C down the right, D across the bottom, E and F
+// down the left, G across the middle. Only the characters QLCDNumber can
+// draw are here; anything else is a '?' rather than a guess, since a wrong
+// digit is worse than a visible one missing.
+static QChar lcd_char(int mask) {
+	switch (mask) {
+	case 63:  return QLatin1Char('0');
+	case 6:   return QLatin1Char('1');
+	case 91:  return QLatin1Char('2');
+	case 79:  return QLatin1Char('3');
+	case 102: return QLatin1Char('4');
+	case 109: return QLatin1Char('5');
+	case 125: return QLatin1Char('6');
+	case 7:   return QLatin1Char('7');
+	case 127: return QLatin1Char('8');
+	case 111: return QLatin1Char('9');
+	case 119: return QLatin1Char('A');
+	case 124: return QLatin1Char('b');
+	case 57:  return QLatin1Char('C');
+	case 94:  return QLatin1Char('d');
+	case 121: return QLatin1Char('E');
+	case 113: return QLatin1Char('F');
+	case 64:  return QLatin1Char('-');
+	case 99:  return QChar(0x00B0);
+	case 0:   return QLatin1Char(' ');
+	}
+	return QLatin1Char('?');
+}
+
+static QString lcd_decode(const QVector<QRectF> &segs) {
+	if (segs.isEmpty()) return QString();
+	// The segment length, taken over both directions. A bar spans the
+	// digit's width and an upright spans half its height, and QLCDNumber
+	// makes those the same length -- so the maximum is the segment length
+	// whichever segments happen to be lit. Measuring it from the bars alone
+	// read zero for "1:11", which has none.
+	qreal seg = 0;
+	for (const QRectF &r : segs)
+		seg = qMax(seg, r.width() > r.height() ? r.width() : r.height());
+	if (seg <= 0) return QString();
+	// A dot is small and square, a segment long and thin. Separated first,
+	// because a decimal point inside a digit's window would otherwise be
+	// classified as one of that digit's segments -- measured, "1.5" decoded
+	// as "15" until they were.
+	QVector<QRectF> bars, dots;
+	for (const QRectF &r : segs) {
+		if (r.width() <= seg / 2 && r.height() <= seg / 2) dots.append(r);
+		else bars.append(r);
+	}
+	const auto by_left = [](const QRectF &a, const QRectF &b) {
+		return a.left() < b.left();
+	};
+	std::sort(bars.begin(), bars.end(), by_left);
+	std::sort(dots.begin(), dots.end(), by_left);
+	struct Item { qreal x; QChar ch; };
+	QVector<Item> items;
+	for (int i = 0; i < bars.size(); ) {
+		// One digit's segments all fall inside a window one segment wide,
+		// tested on the RIGHT edge: a '1' sits at its cell's right-hand
+		// edge, so a left-edge test reaches into the next cell and swallows
+		// it. Measured on "11" and "111", which are the adjacency this
+		// has to survive.
+		const qreal limit = bars[i].left() + seg + 3;
+		const qreal gx = bars[i].left();
+		QVector<QRectF> g;
+		while (i < bars.size() && bars[i].right() <= limit) g.append(bars[i++]);
+		if (g.isEmpty()) g.append(bars[i++]);      // never stall
+		qreal cx0 = 0, cx1 = 0, y0 = g[0].top(), y1 = g[0].bottom();
+		bool have_bar = false;
+		for (const QRectF &r : g) {
+			y0 = qMin(y0, r.top());
+			y1 = qMax(y1, r.bottom());
+			if (!have_bar && r.width() > r.height()) {
+				cx0 = r.left();
+				cx1 = r.right();
+				have_bar = true;
+			}
+		}
+		// The cell's horizontal extent comes from a bar, which spans it. A
+		// digit with no bar lit is a '1' and nothing else -- and it is also
+		// the one case where left and right cannot be told apart, both its
+		// uprights sitting at the cell's right edge with no bar to say
+		// where that edge is.
+		if (!have_bar) { items.append({gx, QLatin1Char('1')}); continue; }
+		const qreal ym = (y0 + y1) / 2, xm = (cx0 + cx1) / 2;
+		int mask = 0;
+		for (const QRectF &r : g) {
+			const qreal ry = r.center().y(), rx = r.center().x();
+			if (r.width() > r.height()) {
+				if (ry < y0 + (y1 - y0) / 3)      mask |= 1;    // A
+				else if (ry > y1 - (y1 - y0) / 3) mask |= 8;    // D
+				else                              mask |= 64;   // G
+			} else {
+				const bool up = ry < ym;
+				if (rx < xm) mask |= up ? 32 : 16;              // F / E
+				else         mask |= up ? 2 : 4;                // B / C
+			}
+		}
+		items.append({gx, lcd_char(mask)});
+	}
+	for (int i = 0; i < dots.size(); ) {
+		const qreal x = dots[i].left();
+		int n = 0;
+		while (i < dots.size() && dots[i].left() <= x + seg / 2) { ++i; ++n; }
+		items.append({x, n >= 2 ? QLatin1Char(':') : QLatin1Char('.')});
+	}
+	std::sort(items.begin(), items.end(),
+	          [](const Item &a, const Item &b) { return a.x < b.x; });
+	QString out;
+	for (const Item &it : items) out += it.ch;
+	return out;
 }
 
 class CellPaintFilter : public QObject {
@@ -159,6 +328,9 @@ public:
 				                 QString::fromLatin1(pw));
 				return true;
 			}
+		if (auto *lcd = qobject_cast<QLCDNumber *>(o)) {
+			return draw_lcd(lcd, e, dev);
+		}
 		if (auto *surface = dynamic_cast<PixelSurface *>(o)) {
 			if (harvesting_) return false;         // our own render(): paint
 			return harvest(surface, dev);
@@ -175,12 +347,65 @@ public:
 private:
 	bool harvesting_ = false;
 
+	// The digits, right-aligned the way the widget lays them out, and the
+	// frame drawn here because consuming the paint event takes Qt's with it.
+	bool draw_lcd(QLCDNumber *lcd, QEvent *paint, CellPaintDevice *dev) {
+		if (lcd->width() <= 0 || lcd->height() <= 0) return true;
+		auto *eng = static_cast<CellPaintEngine *>(dev->paintEngine());
+		QVector<QRectF> segs;
+		eng->set_segment_sink(&segs);
+		// Delivered rather than posted, because this is the call
+		// QCoreApplication was about to make: the widget's redirection to
+		// the shared painter is already in place and ends when this
+		// returns. Through QObject, whose event() is public where
+		// QWidget's is protected -- and it is the same virtual, so the
+		// widget's own paintEvent() still runs. Not through sendEvent(),
+		// which would come straight back through this filter.
+		static_cast<QObject *>(lcd)->event(paint);
+		eng->set_segment_sink(nullptr);
+
+		const QRect c = cells_of_rect(lcd->rect(), lcd, dev->origin);
+		if (c.width() < 1 || c.height() < 1) return true;
+		QRect inner = c;
+		if (lcd->frameShape() != QFrame::NoFrame && c.width() >= 2
+		    && c.height() >= 2) {
+			draw_box(dev->buffer(), c);
+			inner = c.adjusted(1, 1, -1, -1);
+		}
+		const QString text = lcd_decode(segs);
+		if (text.isEmpty() || inner.width() < 1) return true;
+		// Right-aligned, because that is where QLCDNumber puts a number
+		// shorter than its digit count, and cut from the LEFT when the
+		// cells are too few -- losing the most significant digits is
+		// visibly wrong, where losing the least significant reads as a
+		// different and plausible number.
+		const QString shown = text.size() > inner.width()
+		                      ? text.right(inner.width()) : text;
+		const int x0 = inner.right() - shown.size() + 1;
+		const int y = inner.top() + inner.height() / 2;
+		for (int i = 0; i < shown.size(); ++i)
+			put_cell(dev->buffer(), x0 + i, y, QString(shown.at(i)));
+		return true;                               // consumed
+	}
+
 	bool harvest(QWidget *w, CellPaintDevice *dev) {
 		if (w->width() <= 0 || w->height() <= 0) return true;
 		QImage img(w->size(), QImage::Format_ARGB32_Premultiplied);
 		img.fill(Qt::transparent);
 		harvesting_ = true;
+		// WA_WState_InPaintEvent is already set: Qt sets it before sending
+		// the paint event, so an event filter always sees it set. Left
+		// alone, QWidgetPrivate::drawWidget prints "QWidget::repaint:
+		// Recursive repaint detected" and carries on -- once per surface
+		// per frame, into a deferred message queue nobody asked to fill.
+		// Measured on a plotting widget: the pixels were always right and
+		// the warning was always there.
+		const bool painting = w->testAttribute(Qt::WA_WState_InPaintEvent);
+		if (painting) w->setAttribute(Qt::WA_WState_InPaintEvent, false);
 		w->render(&img);
+		// Restored, because the nested render clears the attribute on its
+		// own way out and the OUTER paint is still in progress.
+		w->setAttribute(Qt::WA_WState_InPaintEvent, painting);
 		harvesting_ = false;
 
 		const QRect cells = cells_of_rect(w->rect(), w, dev->origin);
@@ -351,6 +576,7 @@ QRect CellPaintEngine::to_cells(const QRectF &r) const {
 // needs; the function was one indirection to the same place.
 
 void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
+	if (segment_sink_) return;
 	QPointF q = xf_.map(p) + QPointF(dev_->origin);
 	QFontMetricsF fm(ti.font());
 	int col = qRound(q.x() / GridMetrics::cw());
@@ -546,10 +772,14 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 		text_bands_.append(TextBand{decoration, row, col, x - 1});
 }
 
-void CellPaintEngine::drawRects(const QRectF *r, int n) { for (int i = 0; i < n; ++i) fill_rectf(r[i]); }
-void CellPaintEngine::drawRects(const QRect *r, int n)  { for (int i = 0; i < n; ++i) fill_rectf(QRectF(r[i])); }
-void CellPaintEngine::drawLines(const QLineF *l, int n) { for (int i = 0; i < n; ++i) line(l[i]); }
-void CellPaintEngine::drawLines(const QLine *l, int n)  { for (int i = 0; i < n; ++i) line(QLineF(l[i])); }
+// While a segment sink is set these four draw nothing. A segment's OUTLINE
+// arrives as four lines beside the filled polygon, and QLCDNumber's frame as
+// rects and lines, so a sink that recorded only polygons and let the rest
+// through would leave the noise this exists to remove.
+void CellPaintEngine::drawRects(const QRectF *r, int n) { if (segment_sink_) return; for (int i = 0; i < n; ++i) fill_rectf(r[i]); }
+void CellPaintEngine::drawRects(const QRect *r, int n)  { if (segment_sink_) return; for (int i = 0; i < n; ++i) fill_rectf(QRectF(r[i])); }
+void CellPaintEngine::drawLines(const QLineF *l, int n) { if (segment_sink_) return; for (int i = 0; i < n; ++i) line(l[i]); }
+void CellPaintEngine::drawLines(const QLine *l, int n)  { if (segment_sink_) return; for (int i = 0; i < n; ++i) line(QLineF(l[i])); }
 
 // Solid-brush paths are fills -- this is how QTextLayout paints selection
 // regions (section 17.2) -- and brushless ones are strokes. Both were the
@@ -562,6 +792,7 @@ void CellPaintEngine::drawLines(const QLine *l, int n)  { for (int i = 0; i < n;
 // subdividing, so flattening in logical coordinates and mapping afterwards
 // makes a path that is scaled up come out as visible straight runs.
 void CellPaintEngine::drawPath(const QPainterPath &path) {
+	if (segment_sink_) return;
 	const std::optional<QRect> clip = clip_cells();
 	if (clip && clip->isEmpty()) return;
 	const QPointF origin(dev_->origin);
@@ -787,6 +1018,21 @@ void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &whole,
 // decides that Qt::NoPen means no outline.
 void CellPaintEngine::drawPolygon(const QPointF *pts, int n, PolygonDrawMode mode) {
 	if (n < 2) return;
+	if (segment_sink_) {
+		// Recording, not drawing. The bounding box is all a seven-segment
+		// decode needs, and it is taken in mapped coordinates so that the
+		// geometry is the one Qt actually laid out.
+		QRectF b(xf_.map(pts[0]), xf_.map(pts[0]));
+		for (int i = 1; i < n; ++i) {
+			const QPointF m = xf_.map(pts[i]);
+			b.setLeft(qMin(b.left(), m.x()));
+			b.setRight(qMax(b.right(), m.x()));
+			b.setTop(qMin(b.top(), m.y()));
+			b.setBottom(qMax(b.bottom(), m.y()));
+		}
+		segment_sink_->append(b);
+		return;
+	}
 	const std::optional<QRect> clip = clip_cells();
 	if (clip && clip->isEmpty()) return;
 	QPolygonF p;

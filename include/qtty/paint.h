@@ -121,7 +121,20 @@ public:
 
 	CellPaintDevice *device() const { return dev_; }
 
+	// WHILE THIS IS SET, THE ENGINE RECORDS INSTEAD OF DRAWING: every filled
+	// polygon's bounding rectangle is appended and nothing reaches the
+	// cells. It exists for QLCDNumber, whose digits are seven-segment
+	// polygons and whose displayed string has no accessor -- reading the
+	// segments back is the only exact answer, and cell_paint.cpp's
+	// draw_lcd() says why at length.
+	//
+	// Set around ONE widget's paint event and cleared immediately after, by
+	// the filter that delivered it.
+	void set_segment_sink(QVector<QRectF> *sink) { segment_sink_ = sink; }
+
 private:
+	QVector<QRectF> *segment_sink_ = nullptr;
+
 	QRect to_cells(const QRectF &) const;
 	// The painter's clip in cells, invalid when there is none. design.md
 	// section 5.4 declares updateState() as `pen/brush/font/clip -> Attrs`;

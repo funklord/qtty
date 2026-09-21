@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1811 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1814 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,103 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.281 A QLCDNumber, read back off its own segments (2026-09-21)
+
+**QLCDNumber draws seven-segment digits as filled polygons and routes
+none of it through QStyle**, so GridStyle cannot reach it and Channel B
+turned each segment into a box-drawing glyph. Measured,
+`display(1234.5)` in a 24x6 area:
+
+    ┌──────────────────────┐        ┌──────────────────────┐
+    │       ││───│ ────────│        │                      │
+    │       ││───│ ─ ──────│   ->   │                  1235│
+    │       ││──── ───│───││        │                      │
+    │       ││───╲ ╱ ╲│╱──││        └──────────────────────┘
+    └──────────────────────┘
+
+The left column is not a wrong number; it is noise that reads as a
+corrupt frame.
+
+#### The string has no accessor, and Qt's own answer is wrong
+
+`QLCDNumber` keeps the displayed string in `digitStr`, which is private.
+`value()` is a double and is **0 for every display() of a string that
+does not parse** -- which is every clock, the widget's commonest use.
+Qt's accessibility interface answers `QString::number(value())`, so a
+`QLCDNumber` showing `12:34:56` tells a screen reader **"0"**.
+
+Copying that expression would have copied the defect. Measuring it is
+what showed it, and it is the reason this reads the segments instead:
+
+    display("12:34:56")   value() 0   accessible "0"   segments "12:34:56"
+    Hex display(255)      value() 255 accessible "255" segments "FF"
+
+#### Reading what it draws
+
+The paint event is delivered to the widget by hand with the engine put
+into recording mode -- `CellPaintEngine::set_segment_sink()` -- so every
+filled polygon arrives as a bounding box and nothing reaches the cells.
+The boxes are grouped back into digits, each digit's lit set turned into
+a seven-bit mask, and the mask looked up.
+
+That is exact by construction: it is the same artifact a sighted user is
+looking at, and it needs no agreement with Qt about formatting,
+overflow, base or rounding, all of which it gets for free because it
+never asks. `48879` in Hex reads `bEEF`, lower-case b and d included,
+because that is what the segments spell.
+
+**Three things had to be measured rather than reasoned about**, and each
+one produced a wrong first version:
+
+- **The segment length cannot come from the bars.** A string with no bar
+  lit -- `1:11`, `111` -- has none, the length read zero, and `1:11`
+  decoded as `1111`. It is the maximum over both directions.
+- **Dots have to be separated before grouping.** A decimal point inside
+  a digit's window is otherwise classified as one of its segments:
+  `1.5` decoded as `15`.
+- **The grouping window is measured on the RIGHT edge.** A `1` sits at
+  its cell's right-hand edge with no bar to say where that edge is, so a
+  left-edge test reaches into the next cell.
+
+#### Delivering the paint event, and a warning that was already there
+
+`lcd->render()` from inside the widget's own paint event **takes the
+region verbatim** instead of defaulting it to the widget's rectangle, so
+an omitted one returns from `QWidgetPrivate::render` without a word:
+no warning, no segments, a correctly drawn empty frame. Supplying the
+region worked and printed `QWidget::repaint: Recursive repaint detected`
+on every frame, because Qt has already set `WA_WState_InPaintEvent` by
+the time an event filter sees a paint.
+
+Recording in the engine has neither problem and paints the widget once
+rather than twice. The event goes through `QObject::event`, which is
+public where `QWidget`'s is protected and is the same virtual.
+
+**The warning was not new.** `harvest()` has always called `render()`
+the same way and has always printed it -- once per pixel surface per
+frame, into a deferred message queue nobody asked to fill, with the
+pixels correct throughout. It saves and clears the attribute now.
+
+#### The checks, and what the control had to be
+
+Three in `suite_render`. The oracle for a string display is the string
+itself, so `display(s)` must decode to `s`: `0123456789`, `ABCDEF`,
+`12:34:56`, `1.5` and `-42` between them light every segment and both
+kinds of dot. Then `111`, where no bar is lit anywhere. Then the
+control.
+
+**The control took three attempts and the first two were green over the
+defect they named.** Looking for the `╲` and `╱` the old noise used
+missed a sabotage that drew the segments as well as recording them,
+because a filled polygon is not a diagonal. Counting non-blank
+characters missed it too: **a fill writes a cell's background and leaves
+its glyph a space**, so no text-shaped check can see it. It reads the
+cells' background colour now, which under the default theme is
+`Color::Default` for every role -- so a coloured cell there is raw
+painting by definition.
+
+Four sabotage entries, each reddening the check it names.
+
 ### 8.280 One line of rich text, drawn as two rows (2026-09-21)
 
 **A run's row was computed from its own top, so two runs Qt put on one

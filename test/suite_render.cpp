@@ -1918,6 +1918,125 @@ int suite_render(bool record) {
 		}
 	}
 
+	// A QLCDNumber, READ BACK OFF ITS OWN SEGMENTS. It draws seven-segment
+	// digits as filled polygons and routes none of it through QStyle, so
+	// Channel B turned each segment into a box-drawing glyph and
+	// display(1234.5) came out as four rows of rules and diagonals.
+	//
+	// The string it shows has no accessor, and Qt's own accessibility
+	// interface answers QString::number(value()) -- which is 0 for every
+	// display() of a string that does not parse, so a clock tells a screen
+	// reader "0". Reading the segments is the only exact answer.
+	{
+		const auto lcd_rows = [](QLCDNumber &l, int cols, int rows) {
+			l.setAttribute(Qt::WA_DontShowOnScreen);
+			l.resize(GridMetrics::cells(cols, rows));
+			l.show();
+			QCoreApplication::processEvents();
+			Qtty::CellBuffer b(cols, rows);
+			Qtty::render_once(l, b);
+			QStringList out;
+			for (const QString &line : b.to_text().split(QLatin1Char('\n')))
+				out << line;
+			return out;
+		};
+		// THE ORACLE for a string display is the string: whatever the
+		// decoder does to the segments, display(s) must come back as s.
+		// Chosen so that between them they light every segment and both
+		// kinds of dot.
+		struct Case { const char *shown; const char *expect; };
+		static const Case cases[] = {
+			{ "0123456789", "0123456789" },
+			{ "ABCDEF",     "AbCdEF" },      // Qt's 'b' and 'd' are lower
+			{ "12:34:56",   "12:34:56" },
+			{ "1.5",        "1.5" },
+			{ "-42",        "-42" },
+		};
+		int wrong = 0;
+		QString first_bad;
+		for (const Case &c : cases) {
+			QLCDNumber l(int(qstrlen(c.shown)));
+			l.display(QString::fromLatin1(c.shown));
+			const QStringList r = lcd_rows(l, 24, 3);
+			bool found = false;
+			for (const QString &line : r)
+				if (line.contains(QString::fromLatin1(c.expect))) found = true;
+			if (!found) {
+				++wrong;
+				if (first_bad.isEmpty())
+					first_bad = QStringLiteral("%1 -> %2")
+					            .arg(QString::fromLatin1(c.shown),
+					                 r.join(QLatin1Char('/')));
+			}
+		}
+		if (wrong == 0)
+			printf("PASS: every character a QLCDNumber can draw reads back off "
+			       "its segments, digits, hex letters, colons and points\n");
+		else {
+			printf("FAIL: every character a QLCDNumber can draw reads back off "
+			       "its segments, digits, hex letters, colons and points\n"
+			       "      %d of %d wrong, first '%s'\n", wrong,
+			       int(sizeof(cases) / sizeof(cases[0])),
+			       qPrintable(first_bad));
+			++r;
+		}
+		// A STRING WITH NO BAR LIT ANYWHERE, which is where the segment
+		// length has to come from the uprights: taking it from the bars
+		// reads zero here and the decode gives up. It is also the only
+		// shape in which every digit takes the no-bar path, since a '1'
+		// has no bar to say where its cell's edges are.
+		QLCDNumber ones(3);
+		ones.display(QStringLiteral("111"));
+		bool got_ones = false;
+		for (const QString &line : lcd_rows(ones, 24, 3))
+			if (line.contains(QStringLiteral("111"))) got_ones = true;
+		if (got_ones)
+			printf("PASS: and three adjacent ones are three digits, with no "
+			       "bar lit anywhere to measure them by\n");
+		else {
+			printf("FAIL: and three adjacent ones are three digits, with no "
+			       "bar lit anywhere to measure them by\n");
+			++r;
+		}
+		// AND THE CONTROL: nothing but the frame and the digits reaches a
+		// cell. Read off the CELLS and not off to_text(), which took two
+		// attempts to get right. The first control looked for the two
+		// diagonal glyphs the old noise used and stayed green over a
+		// sabotage that drew the segments as well as recording them,
+		// because a filled polygon is not a diagonal; the second counted
+		// non-blank characters and stayed green too. A filled polygon
+		// writes a cell's BACKGROUND and leaves its glyph a space, so a
+		// text-shaped check cannot see it at all -- and under the default
+		// theme every role answers Color::Default, which makes any
+		// coloured cell here raw painting by definition.
+		QLCDNumber noisy(5);
+		noisy.display(1234.5);
+		noisy.setAttribute(Qt::WA_DontShowOnScreen);
+		noisy.resize(GridMetrics::cells(24, 5));
+		noisy.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer nb(24, 5);
+		Qtty::render_once(noisy, nb);
+		int painted = 0;
+		for (int y = 0; y < 5; ++y)
+			for (int x = 0; x < 24; ++x) {
+				const Qtty::Cell &cell = nb.at(x, y);
+				if (cell.bg.kind() != Qtty::Color::Default) ++painted;
+			}
+		if (painted == 0
+		    && nb.to_text().split(QLatin1Char('\n')).value(2)
+		       .contains(QStringLiteral("1235")))
+			printf("PASS: while the segments themselves colour no cell, so the "
+			       "digits replace the noise rather than covering it\n");
+		else {
+			printf("FAIL: while the segments themselves colour no cell, so the "
+			       "digits replace the noise rather than covering it\n"
+			       "      %d cell(s) carry a background:\n%s\n", painted,
+			       qPrintable(nb.to_text()));
+			++r;
+		}
+	}
+
 	// section 5.7's PixelSurface: the mirror of ICellPainted. That interface
 	// is for a widget that draws itself in CELLS; this is for one whose
 	// content is genuinely pixels, which Channel B would mangle by snapping

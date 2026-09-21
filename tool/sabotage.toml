@@ -4757,3 +4757,55 @@ find = "\t    && q.y() > last_baseline_ - GridMetrics::ch())"
 into = "\t    && q.y() > last_baseline_ - GridMetrics::ch() * 100)"
 count = 1
 check = "a run drawn above one already drawn keeps its own row"
+
+[[sabotage]]
+# The digit grouping measured from the LEFT edge instead of the right,
+# which is the mistake a reader of that loop would make: a '1' has no bar
+# to say where its cell ends, sits at the cell's right edge, and a
+# left-edge window reaches past it into the next digit.
+#
+# Aimed at the character sweep and NOT at "111", which it leaves green:
+# three narrow digits are far enough apart that a left-edge window still
+# separates them, and what it merges is a '1' with a WIDE digit after it.
+# The first version of this entry named the adjacency check and reddened
+# two other checks instead. 8.281.
+name = "a seven-segment digit's window is measured from the wrong edge"
+file = "src/render/cell_paint.cpp"
+find = "\t\twhile (i < bars.size() && bars[i].right() <= limit) g.append(bars[i++]);"
+into = "\t\twhile (i < bars.size() && bars[i].left() <= limit) g.append(bars[i++]);"
+count = 1
+check = "every character a QLCDNumber can draw reads back off its segments"
+
+[[sabotage]]
+# Dots left in with the segments, so a decimal point inside a digit's
+# window is classified as one of its segments and a colon as a '1'.
+# Measured before the split: "1.5" decoded as "15" and "1:11" as "1111".
+# 8.281.
+name = "a decimal point is treated as a segment"
+file = "src/render/cell_paint.cpp"
+find = "\t\tif (r.width() <= seg / 2 && r.height() <= seg / 2) dots.append(r);"
+into = "\t\tif (false) dots.append(r);"
+count = 1
+check = "every character a QLCDNumber can draw reads back off its segments"
+
+[[sabotage]]
+# The segment length taken from the horizontal bars alone, which reads
+# zero for a string with no bar lit -- every digit a '1', or a '1' and a
+# colon. Measured before the fix: "1:11" decoded as "1111". 8.281.
+name = "a seven-segment digit is measured by its bars alone"
+file = "src/render/cell_paint.cpp"
+find = "\t\tseg = qMax(seg, r.width() > r.height() ? r.width() : r.height());"
+into = "\t\tif (r.width() > r.height()) seg = qMax(seg, r.width());"
+count = 1
+check = "three adjacent ones are three digits"
+
+[[sabotage]]
+# The engine drawing the segments as well as recording them, which is the
+# state this replaced: the digits would be written over box-drawing noise
+# rather than instead of it. 8.281.
+name = "a recorded segment is drawn as well"
+file = "src/render/cell_paint.cpp"
+find = "\t\tsegment_sink_->append(b);\n\t\treturn;"
+into = "\t\tsegment_sink_->append(b);"
+count = 1
+check = "the segments themselves colour no cell"
