@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1850 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1851 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,30 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.293 The other table on that page, coupled the same way (2026-09-21)
+
+**`doc/keyboard-first.md` has two tables that are claims about the
+tree's own shape**, and 8.292 tied one of them to a check. The other is
+*Nine questions the library will answer about your window* -- and the
+suite's own two whole-family checks say "all nine" in their names.
+
+Three sentences counting the same population, none of them coupled to
+it: a tenth helper added with no row, or a row with no call, leaves all
+three quietly wrong. `evidence.md` names this shape exactly -- a
+present-tense countable claim about the tree's own shape is the kind
+that rots -- and gives the remedy this uses: move the count out of
+judgement and into the tool.
+
+The check counts the table's rows in the page and asserts the number is
+the nine it calls. The sabotage adds a tenth row and watches it fail.
+
+**It is the cheapest kind of work available and it is worth naming as
+such.** The coupling took one `QFile` open and a `startsWith`, it needed
+no design decision, and it converts three sentences that could only be
+kept true by somebody remembering into three that cannot drift. Where a
+document publishes a list the code also holds, that is the whole
+technique.
+
 ### 8.292 The vocabulary was nowhere written down (2026-09-21)
 
 **This library has a visual language and no page stated it.** A

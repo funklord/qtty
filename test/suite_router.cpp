@@ -5047,6 +5047,32 @@ int suite_router() {
 			CHECK(bare_quiet,
 			      "and empty about a window with nothing in it, which is "
 			      "the answer a report invents a finding to avoid giving");
+
+			// AND THE PAGE THAT PUBLISHES THEM NAMES THE SAME NUMBER.
+			// The two checks above say "all nine", which is a claim
+			// about a population rather than about a call -- and
+			// `doc/keyboard-first.md` says "Nine questions the library
+			// will answer" over a table of them. A tenth helper added
+			// with no row, or a row with no call, leaves both sentences
+			// quietly wrong; the quantifier is the thing to verify.
+			//
+			// Same coupling as the vocabulary table in suite_widgets,
+			// and for the same reason: a count in prose about the tree's
+			// own shape is the kind that rots.
+			int listed = 0;
+			QFile page(QStringLiteral(QTTY_SOURCE_DIR)
+			           + QStringLiteral("/doc/keyboard-first.md"));
+			if (page.open(QIODevice::ReadOnly | QIODevice::Text)) {
+				const QStringList lines =
+				    QString::fromUtf8(page.readAll()).split(QLatin1Char('\n'));
+				for (const QString &line : lines)
+					if (line.startsWith(QStringLiteral("| `Qtty::"))) ++listed;
+			}
+			printf("info: the page lists %d audit question(s); these checks "
+			       "call 9\n", listed);
+			CHECK(listed == 9,
+			      "the page lists exactly the audit questions these checks "
+			      "call, so a tenth cannot be added to either alone");
 		}
 
 		// THE WIDGETS A STYLE SHEET IS DRAWING, which is the ninth

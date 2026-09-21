@@ -5003,3 +5003,14 @@ find = "| a box with a class name in it | a widget whose content is out of reach
 into = "| `~` | something nobody has checked |\n| a box with a class name in it | a widget whose content is out of reach"
 count = 1
 check = "the table on the page and the list in this check name the same number of marks"
+
+[[sabotage]]
+# A tenth audit question added to the page with no call behind it,
+# which is the drift the count exists to catch: two sentences say
+# "nine" and an enumeration cannot keep either true by itself. 8.293.
+name = "the audit table grows a row no check calls"
+file = "doc/keyboard-first.md"
+find = "| `Qtty::sheet_styled(scope)` | the widgets a style sheet is drawing | empty |"
+into = "| `Qtty::sheet_styled(scope)` | the widgets a style sheet is drawing | empty |\n| `Qtty::invented(scope)` | nothing anybody calls | empty |"
+count = 1
+check = "the page lists exactly the audit questions these checks call"
