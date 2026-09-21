@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1864 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1872 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,95 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.299 The zero-width rule covered the format characters only (2026-09-21)
+
+**The comment on `is_zero_width()` describes this defect exactly** --
+"a lone one arrives as its own grapheme cluster and was given a whole
+cell, which shifted every character after it one column to the right"
+-- and the list under it fixed the FORMAT characters, leaving every
+combining mark in Unicode out. The next lens after 8.298 was the
+sibling table, and it was the same shape again.
+
+    zero width space alone      0    the list works
+    combining acute alone       1    wrong
+    combining cedilla alone     1    wrong
+    variation selector 15       1    wrong
+    variation selector 16       2    wrong, and the worst of them
+
+**Two columns for a character with no glyph at all**, because the
+emoji-presentation rule fired on a cluster that is nothing but the
+selector.
+
+#### Asked of Qt rather than listed
+
+`QChar::category()` answers it exactly: `Mark_NonSpacing` and
+`Mark_Enclosing` are zero-width by definition, and between them they
+carry every combining mark and every variation selector **with no
+table to keep current** -- which is the difference between this and
+8.298, where the answer had to be a list because East Asian Width does
+not follow a category.
+
+`Mark_SpacingCombining` is deliberately not there: those do take a
+column. There is a check on U+0903 and a sabotage that sweeps Mc in,
+because a rule naming two of three categories should say what the
+third does.
+
+#### The control is what says the rule is about a cluster
+
+The same marks behind a base are one column and always were -- `e` and
+a combining acute, `a` and three of them. A rule that had started
+subtracting columns from composed text would pass the two checks above
+and break every accented word in the program.
+
+Four checks and two sabotage entries.
+
+### 8.298 A flag was one cell wide, and so were nine other glyphs (2026-09-21)
+
+**A width disagreement is not a narrow glyph. It is every column after
+it on the row being wrong**, because the terminal advances by its own
+table and this library reserves by hers, and the two then differ for
+the rest of the line.
+
+Ten cases were measured wrong. `is_wide_codepoint()` covered the emoji
+blocks as one range from `0x1F300`, and East Asian Width marks these W
+below it:
+
+    U+1F004  mahjong red dragon        was 1
+    U+1F0CF  playing card joker        was 1
+    U+1F18E  negative squared AB       was 1
+    U+1F191..1F19A  squared CL..VS     was 1
+    U+1F200..1F202, 1F210..1F23B,
+    1F240..1F248, 1F250..1F251,
+    1F260..1F265  squared CJK          was 1
+
+**Taken from `EastAsianWidth.txt` and not from what looks like an
+emoji**, which matters in the other direction: `1F000..1F003` and
+`1F005..1F02B` are NARROW in the same block as the mahjong tile, so a
+range over the block would over-reserve. There is a check on those
+neighbours and a sabotage that widens the block to prove it.
+
+#### And a flag, which no range can catch
+
+A flag is two regional indicators and **one cluster**. Apart they are
+East Asian Width Neutral, so the range test cannot see them and should
+not -- a lone indicator is a letter in a box and takes one column. A
+pair is a flag, and a terminal draws it in two: by the modern cluster
+rule, and by the older one of adding `wcwidth` per code point, which
+gives 1 + 1. Both answers agree and this library said 1.
+
+Measured on a Swedish flag before the fix: one cluster, one cell.
+
+#### What was already right
+
+Worth recording, because it is what says the sweep was aimed at a real
+gap rather than at the first thing tried: a combining acute, a
+precomposed e-acute, CJK, a plain emoji, a ZWJ family of eight code
+points, a keycap, a skin-tone modifier and a text-presentation heart
+all measured correctly before any of this. Nine of nineteen cases in
+the probe were wrong and they were all one shape.
+
+Four checks and three sabotage entries.
+
 ### 8.297 setFocus() does not move the focus, and the fixture said the feature was dead (2026-09-21)
 
 **Asking whether the terminal losing focus changes the screen, the

@@ -22,6 +22,28 @@ static bool is_wide_codepoint(char32_t u) {
 	    || (u >= 0xFE30  && u <= 0xFE4F)
 	    || (u >= 0xFF00  && u <= 0xFF60)   // Fullwidth forms
 	    || (u >= 0xFFE0  && u <= 0xFFE6)
+	    // THE WIDE EMOJI BELOW 0x1F300, which the single range under this
+	    // one missed. Every code point here is East Asian Width W, so a
+	    // terminal advances two columns for it and this library advanced
+	    // one -- and a width disagreement is not a narrow glyph, it is
+	    // every column after it on the row being wrong.
+	    //
+	    // Measured before they were added: U+1F004 the mahjong tile,
+	    // U+1F0CF the joker, U+1F18E, U+1F191..1F19A the squared
+	    // letters, and the squared-CJK blocks from U+1F200 all answered
+	    // 1. Taken from EastAsianWidth.txt rather than from a guess at
+	    // what looks like an emoji: 1F000..1F003 and 1F005..1F02B are
+	    // narrow in the same block, so a range over the whole block
+	    // would be wrong in the other direction.
+	    || u == 0x1F004                    // mahjong red dragon
+	    || u == 0x1F0CF                    // playing card black joker
+	    || u == 0x1F18E                    // negative squared AB
+	    || (u >= 0x1F191 && u <= 0x1F19A)  // squared CL..VS
+	    || (u >= 0x1F200 && u <= 0x1F202)
+	    || (u >= 0x1F210 && u <= 0x1F23B)
+	    || (u >= 0x1F240 && u <= 0x1F248)
+	    || (u >= 0x1F250 && u <= 0x1F251)
+	    || (u >= 0x1F260 && u <= 0x1F265)
 	    || (u >= 0x1F300 && u <= 0x1FAFF)  // emoji blocks
 	    || (u >= 0x20000 && u <= 0x3FFFD); // CJK Ext B+
 }
@@ -50,6 +72,25 @@ static bool is_control(char32_t u) {
 // same reason as the rest -- they are zero width -- and dropping them also
 // takes away the display-spoofing trick that reorders text a reader trusts.
 static bool is_zero_width(char32_t u) {
+	// COMBINING MARKS, asked of Qt rather than listed. The paragraph above
+	// describes this defect exactly -- a lone one is its own cluster and
+	// took a whole cell -- and the list below fixed it for the FORMAT
+	// characters only, leaving every combining mark in Unicode out.
+	//
+	// Measured before this: a lone combining acute and a lone cedilla each
+	// took one column, and a lone VARIATION SELECTOR took **two**, because
+	// the emoji-presentation rule fired on a cluster that is nothing but
+	// the selector. Two columns for a character with no glyph at all is
+	// the worst of the three.
+	//
+	// By category and not by range: Mn is Nonspacing_Mark and Me is
+	// Enclosing_Mark, both zero-width by definition, and between them they
+	// carry every combining mark and every variation selector without a
+	// table to keep current. Mc, Spacing_Combining_Mark, is deliberately
+	// NOT here -- those do take a column.
+	const QChar::Category cat = QChar::category(u);
+	if (cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing)
+		return true;
 	return u == 0x00ad                     // soft hyphen
 	    || (u >= 0x200b && u <= 0x200f)    // ZWSP, ZWNJ, ZWJ, LRM, RLM
 	    || (u >= 0x202a && u <= 0x202e)    // bidi embedding and override
@@ -85,6 +126,25 @@ int cluster_width(QStringView cluster) {
 	// second capability out of this one.
 	if (!s_wide_clusters) return 1;
 	if (is_wide_codepoint(first)) return 2;
+	// A FLAG, which is two regional indicators and one cluster. They are
+	// East Asian Width NEUTRAL individually, so the range test above
+	// cannot catch them and should not: a lone indicator is a letter in a
+	// box and takes one column. A PAIR is a flag, and a terminal draws it
+	// in two -- both by the modern cluster rule and by the old one of
+	// adding wcwidth per code point, which gives 1 + 1.
+	//
+	// Measured before this: a Swedish flag came back as one cell, so
+	// everything after it on the row sat one column left of where the
+	// terminal put it.
+	int indicators = 0;
+	for (int i = 0; i + 1 < cluster.size(); ++i) {
+		if (!cluster.at(i).isHighSurrogate()
+		    || !cluster.at(i + 1).isLowSurrogate()) continue;
+		const char32_t u = QChar::surrogateToUcs4(cluster.at(i),
+		                                          cluster.at(i + 1));
+		if (u >= 0x1F1E6 && u <= 0x1F1FF) ++indicators;
+	}
+	if (indicators >= 2) return 2;
 	// VS16 forces emoji presentation -> wide
 	for (QChar c : cluster) if (c.unicode() == 0xFE0F) return 2;
 	return 1;

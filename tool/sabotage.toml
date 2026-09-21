@@ -5133,3 +5133,57 @@ find = "void InputRouter::on_focus_change(bool focused) {\n\tset_terminal_focuse
 into = "void InputRouter::on_focus_change(bool focused) {\n\tset_terminal_focused(true);\n\t(void)focused;"
 count = 1
 check = "a terminal that loses focus withholds the mark"
+
+[[sabotage]]
+# The wide emoji below 0x1F300 dropped again, which is how it was: a
+# terminal advances two columns for them and this library advanced
+# one, putting every column after them on the row a place out. 8.298.
+name = "the wide emoji below the emoji range are measured narrow"
+file = "src/core/cell_buffer.cpp"
+find = "\t    || u == 0x1F004                    // mahjong red dragon"
+into = "\t    || (false && u == 0x1F004)         // mahjong red dragon"
+count = 1
+check = "the wide emoji below the emoji range are two cells"
+
+[[sabotage]]
+# A flag measured as one cell, which is how it was: two regional
+# indicators are one cluster and a terminal draws them in two. 8.298.
+name = "a flag is measured as one cell"
+file = "src/core/cell_buffer.cpp"
+find = "\tif (indicators >= 2) return 2;"
+into = ""
+count = 1
+check = "a flag is one cluster and two cells"
+
+[[sabotage]]
+# The whole emoji block treated as wide rather than the ranges the
+# width table names, which is the other direction of the same error:
+# 1F003 and 1F005 are narrow and would be reserved two columns. 8.298.
+name = "the mahjong block is treated as wide throughout"
+file = "src/core/cell_buffer.cpp"
+find = "\t    || u == 0x1F004                    // mahjong red dragon"
+into = "\t    || (u >= 0x1F000 && u <= 0x1F02B)  // mahjong red dragon"
+count = 1
+check = "their narrow neighbours in the same block are one"
+
+[[sabotage]]
+# The combining marks dropped from the zero-width rule, which is how
+# it was: a lone mark is its own cluster and took a whole cell, and a
+# lone variation selector took two. 8.299.
+name = "a lone combining mark takes a column"
+file = "src/core/cell_buffer.cpp"
+find = "\tif (cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing)\n\t\treturn true;"
+into = "\t(void)cat;"
+count = 1
+check = "a lone combining mark takes no column"
+
+[[sabotage]]
+# Spacing combining marks swept in with the non-spacing ones, which is
+# the other direction of the same error: Mc takes a column and would
+# be given none. 8.299.
+name = "a spacing combining mark is treated as zero width"
+file = "src/core/cell_buffer.cpp"
+find = "\tif (cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing)"
+into = "\tif (cat == QChar::Mark_NonSpacing || cat == QChar::Mark_Enclosing\n\t    || cat == QChar::Mark_SpacingCombining)"
+count = 1
+check = "a spacing combining mark still takes one"

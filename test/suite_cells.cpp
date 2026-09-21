@@ -24,6 +24,89 @@ int suite_cells() {
 	CHECK(cluster_width(u"漢") == 2, "CJK is wide");
 	CHECK(cluster_width(QStringLiteral("🎉")) == 2, "emoji is wide");
 
+	// THE WIDE EMOJI BELOW 0x1F300, which one range starting there missed.
+	// Every code point here is East Asian Width W, so a terminal advances
+	// two columns and this library advanced one -- and a width
+	// disagreement is not a narrow glyph, it is every column after it on
+	// the row being wrong.
+	//
+	// Taken from EastAsianWidth.txt rather than from what looks like an
+	// emoji: 1F000..1F003 and 1F005..1F02B are NARROW in the same block as
+	// the mahjong tile, so a range over the whole block would be wrong the
+	// other way. The narrow neighbours are checked too, for that reason.
+	{
+		const auto cp = [](char32_t u) {
+			return cluster_width(QString::fromUcs4(&u, 1));
+		};
+		const bool wide = cp(0x1F004) == 2 && cp(0x1F0CF) == 2
+		               && cp(0x1F18E) == 2 && cp(0x1F191) == 2
+		               && cp(0x1F19A) == 2 && cp(0x1F201) == 2
+		               && cp(0x1F210) == 2 && cp(0x1F240) == 2
+		               && cp(0x1F250) == 2;
+		CHECK(wide,
+		      "the wide emoji below the emoji range are two cells -- the "
+		      "mahjong tile, the joker, the squared letters and the "
+		      "squared CJK blocks");
+		CHECK(cp(0x1F003) == 1 && cp(0x1F005) == 1,
+		      "while their narrow neighbours in the same block are one, "
+		      "which is why this is a list from the table and not a range "
+		      "over what looks like an emoji");
+	}
+
+	// A CLUSTER THAT IS NOTHING BUT AN INVISIBLE CHARACTER. The comment on
+	// is_zero_width() describes this defect exactly -- a lone one is its
+	// own grapheme cluster and took a whole cell, shifting everything
+	// after it -- and the list it carries fixed the FORMAT characters
+	// only, leaving every combining mark in Unicode out.
+	//
+	// Measured before the fix: a lone combining acute and a lone cedilla
+	// each took one column, and a lone VARIATION SELECTOR took two,
+	// because the emoji-presentation rule fired on a cluster that is
+	// nothing but the selector. Two columns for a character with no glyph
+	// is the worst of the three.
+	{
+		const auto lone = [](char32_t u) {
+			return cluster_width(QString(QChar(u)));
+		};
+		CHECK(lone(0x0301) == 0 && lone(0x0327) == 0,
+		      "a lone combining mark takes no column, which the format "
+		      "characters already did and it did not");
+		CHECK(lone(0xFE0F) == 0 && lone(0xFE0E) == 0,
+		      "and nor does a lone variation selector, which took two "
+		      "because the emoji rule fired on a cluster with no glyph "
+		      "in it");
+		// THE CONTROL, and it is the half that says the rule is aimed at
+		// a cluster rather than at a character: with a base in front of
+		// them the very same marks are part of a cluster that is one
+		// column wide, and always were.
+		CHECK(cluster_width(QString::fromUtf8("e\xcc\x81")) == 1
+		      && cluster_width(QString::fromUtf8("a\xcc\x81\xcc\x82\xcc\x83")) == 1,
+		      "while the same marks behind a base are one column, the "
+		      "base carrying it");
+		// And a spacing mark is NOT swept up: Mc takes a column, which
+		// is why the rule names Mn and Me and stops there.
+		CHECK(QChar::category(0x0903) == QChar::Mark_SpacingCombining
+		      && lone(0x0903) == 1,
+		      "and a spacing combining mark still takes one, the rule "
+		      "naming the two non-spacing categories and stopping");
+	}
+
+	// A FLAG is two regional indicators and one cluster. They are East
+	// Asian Width NEUTRAL apart, so the range test cannot catch them and
+	// should not -- a lone indicator is a letter in a box and takes one
+	// column. A PAIR is a flag and a terminal draws it in two, both by the
+	// cluster rule and by the older one of adding wcwidth per code point.
+	{
+		const QString flag = QString::fromUtf8("\xf0\x9f\x87\xb8\xf0\x9f\x87\xaa");
+		const char32_t lone = 0x1F1F8;
+		CHECK(to_clusters(flag).size() == 1 && cluster_width(flag) == 2,
+		      "a flag is one cluster and two cells, where it was one and "
+		      "left every column after it a place out");
+		CHECK(cluster_width(QString::fromUcs4(&lone, 1)) == 1,
+		      "while a lone regional indicator is one, which is what the "
+		      "width table says about it on its own");
+	}
+
 	// `Capabilities::unicode_wide`, which the header promised and nothing
 	// kept until this. A backend for a terminal that will not advance two
 	// columns says so, and the width table has to stop saying 2 -- otherwise
