@@ -4901,8 +4901,8 @@ check = "a button too narrow for its label keeps both brackets and the arrow"
 # missing from the picture a fixture holds. 8.286.
 name = "a screen snapshot does not compose its layers"
 file = "include/qtty/testing.h"
-find = "\t{\n\t\tCompositor c(&window, &router);\n\t\tc.compose(buf);\n\t}"
-into = "\t(void)router;\n\trender_once(window, buf);"
+find = "\t\tCompositor c(&window, &router);\n\t\tc.compose(buf);"
+into = "\t\tCompositor c(&window, nullptr);\n\t\trender_once(window, buf);"
 count = 1
 check = "a screen snapshot holds the menu standing over the window"
 
@@ -4955,3 +4955,15 @@ find = "\tif (images.isEmpty()) {\n\t\tout += QStringLiteral(\"(none)\\n\");\n\t
 into = "\tif (images.isEmpty()) {\n\t\tout.chop(int(qstrlen(\"--- images ---\\n\")));\n\t} else {"
 count = 1
 check = "the section is there either way"
+
+[[sabotage]]
+# The caret section reporting "hidden" whatever the frame holds, which
+# is how a screen snapshot behaved before it existed: a frame with the
+# caret in a field and one with the focus on a button read the same.
+# 8.289.
+name = "a screen snapshot cannot see the caret"
+file = "include/qtty/testing.h"
+find = "\t\tif (const std::optional<QPoint> at = c.cursor_cell()) {"
+into = "\t\tif (const std::optional<QPoint> at = std::optional<QPoint>()) {"
+count = 1
+check = "and says which cell and which shape when a field has it"

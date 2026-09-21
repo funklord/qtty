@@ -3237,6 +3237,66 @@ int suite_widgets() {
 		if (!g_record) printf("%s: gallery snapshot\n", fails > before ? "FAIL" : "PASS");
 	}
 
+	// THE CARET, which no fixture could see before: the cells say what is
+	// written and the compositor says where the terminal's cursor goes, so
+	// a frame that lost its caret, or put it in the wrong cell, or showed
+	// a block where it had shown a bar, compared equal to one that did not.
+	//
+	// ONE WINDOW ALIVE AT A TIME, which is the fixture and took finding.
+	// snapshot_of_screen() composes the SCREEN: a second visible top level
+	// puts a window tab strip in the frame and leaves the FIRST one
+	// current, so the caret reported is that window's. Measured -- with a
+	// button window still up, a focused field's frame carried both "hi"
+	// and "Open" and reported the caret hidden, which reads as the section
+	// being inert when it is the fixture holding two windows.
+	{
+		QString with_field, with_button;
+		{
+			QWidget w;
+			w.resize(GridMetrics::cells(30, 4));
+			auto *v = new QVBoxLayout(&w);
+			auto *edit = new QLineEdit(QStringLiteral("hi"));
+			v->addWidget(edit);
+			w.show();
+			InputRouter r2(&w);
+			QCoreApplication::processEvents();
+			edit->setFocus();
+			QCoreApplication::processEvents();
+			with_field = Qtty::test::snapshot_of_screen(w, r2, 30, 4);
+		}
+		QCoreApplication::processEvents();
+		{
+			QWidget w;
+			w.resize(GridMetrics::cells(30, 4));
+			auto *v = new QVBoxLayout(&w);
+			auto *b = new QPushButton(QStringLiteral("Open"));
+			v->addWidget(b);
+			w.show();
+			InputRouter r2(&w);
+			QCoreApplication::processEvents();
+			b->setFocus();
+			QCoreApplication::processEvents();
+			with_button = Qtty::test::snapshot_of_screen(w, r2, 30, 4);
+		}
+		QCoreApplication::processEvents();
+		CHECK(with_field.contains(QStringLiteral("--- cursor ---")),
+		      "a screen snapshot records where the caret is, which the "
+		      "cells cannot say");
+		// Asserted as the CLAIM rather than as a cell: a literal "4,1 bar"
+		// was written here first and is a property of this fixture's
+		// margins, not of the feature.
+		const QString caret =
+		    with_field.section(QStringLiteral("--- cursor ---\n"), 1).trimmed();
+		CHECK(!caret.isEmpty() && caret != QStringLiteral("hidden"),
+		      "and says which cell and which shape when a field has it");
+		// THE PAIR is what makes either mean anything: a section that
+		// always said the same thing would satisfy both checks above and
+		// report nothing.
+		CHECK(with_button.endsWith(QStringLiteral("--- cursor ---\nhidden\n")),
+		      "while a window whose focus is on a button reports none, so "
+		      "the section is not a constant");
+	}
+
 	// THE WHOLE SCREEN, not one widget. snapshot_of() renders the widget
 	// it is given, which is right for a control and wrong for everything
 	// a layer covers -- and a menu is the commonest thing to get wrong.
@@ -3253,13 +3313,16 @@ int suite_widgets() {
 		QCoreApplication::processEvents();
 
 		// THE CONTROL FIRST, and it is the one that says the new call is
-		// not inventing a layer: with nothing popped, the two agree.
+		// not inventing a layer: with nothing popped, the screen snapshot
+		// is the widget's picture and then what only a composed frame
+		// knows -- the caret, which a widget rendered on its own has no
+		// answer for.
 		const QString quiet_widget = Qtty::test::snapshot_of(win, 30, 8);
 		const QString quiet_screen =
 		    Qtty::test::snapshot_of_screen(win, router, 30, 8);
-		CHECK(quiet_widget == quiet_screen,
-		      "with no layer up, a screen snapshot and a widget snapshot "
-		      "are the same picture");
+		CHECK(quiet_screen.startsWith(quiet_widget),
+		      "with no layer up, a screen snapshot is the widget's own "
+		      "picture with the frame's caret after it");
 
 		QMenu m(&win);
 		m.addAction(QStringLiteral("New"));

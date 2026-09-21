@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1842 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1845 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,56 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.289 Nor the caret, and the fixture that hid it (2026-09-21)
+
+**The same argument as 8.288, one channel further out.** The cells say
+what is written; the compositor says where the terminal's own cursor
+goes. So a frame that lost its caret, put it in the wrong cell, or
+showed a block where it had shown a bar compared equal to one that did
+not.
+
+`snapshot_of_screen()` records it now -- the cell and the shape, or
+`hidden`:
+
+    --- cursor ---
+    4,1 bar
+
+**In that call and not in `CellBuffer::to_snapshot()`**, because only a
+composed frame has an answer. A widget rendered on its own has no caret
+to report, and a section saying `hidden` there would be a claim rather
+than an absence: a focused line edit really does show one once a frame
+is composed around it.
+
+The control for "with no layer up the two calls agree" became "the
+screen snapshot is the widget's picture and then the caret", which is
+the honest version of the same statement.
+
+#### The fixture held two windows, and that is the finding
+
+The check failed with the caret reported `hidden` while the focus
+widget was the line edit and `WA_InputMethodEnabled` was set -- every
+precondition met. The frame carried **both** the field's text and a
+button from the window the fixture before it had left up.
+
+`snapshot_of_screen()` composes the SCREEN. A second visible top level
+puts a window tab strip in the frame and leaves the FIRST one current,
+so the caret reported is that other window's. That is the compositor
+working as designed, and it is a real trap for the call I had just
+added -- so it is written in the header and in
+`doc/keyboard-first.md`, not only fixed in the fixture.
+
+**Two wrong turns before that, both fixture rather than code.**
+`clearFocus()` was used first to make the contrast, and it does not
+move focus here -- focus is the router's, so both snapshots matched and
+read as an inert section. Then the caret's cell was asserted literally
+as `4,1 bar`, which is a property of that fixture's margins; it asserts
+the claim now.
+
+Three checks: the section is there, it names a cell and a shape for a
+field, and a window whose focus is on a button reports none -- the
+third being what stops the first two passing for a constant. One
+sabotage.
+
 ### 8.288 A snapshot could not see a picture (2026-09-21)
 
 **A frame's images are carried beside its cells rather than in them, and

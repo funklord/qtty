@@ -140,14 +140,50 @@ inline QString snapshot_of(QWidget &w, int cols, int rows) {
 // read on every press. So a press in row 0 sent between this call and
 // the next compose is not read as a tab selection. Compose again, or
 // snapshot after the press rather than before it.
+//
+// AND IT COMPOSES THE SCREEN, not the window you pass. A second visible
+// top level puts a window tab strip in the frame and leaves the FIRST
+// one current, so the cells carry both and the caret reported is that
+// other window's. Measured while writing this tree's own checks: a
+// focused field's frame carried its own text AND a button from a window
+// left up by the fixture before it, and reported the caret hidden. Close
+// or scope the windows you are not snapshotting.
 inline QString snapshot_of_screen(QWidget &window, InputRouter &router,
                                   int cols, int rows) {
 	CellBuffer buf(cols, rows);
+	QString where = QStringLiteral("hidden");
 	{
 		Compositor c(&window, &router);
 		c.compose(buf);
+		// THE CARET, which no fixture could see. It is the thing a
+		// terminal user's eye follows and it is not in the buffer: the
+		// cells say what is written and the compositor says where the
+		// terminal's own cursor goes, so a frame that lost its caret, or
+		// put it in the wrong cell, or showed a block where it had shown
+		// a bar, compared equal to one that did not. Same argument as
+		// the images plane, one channel further out.
+		//
+		// Recorded HERE rather than in CellBuffer::to_snapshot(), because
+		// only a composed frame has an answer. A widget rendered on its
+		// own has no caret to report, and a section saying "hidden" in
+		// that case would be a claim rather than an absence -- a focused
+		// line edit really does show one when a frame is composed around
+		// it.
+		if (const std::optional<QPoint> at = c.cursor_cell()) {
+			const char *shape = "block";
+			switch (c.cursor_shape()) {
+			case CursorShape::Underline: shape = "underline"; break;
+			case CursorShape::Bar:       shape = "bar"; break;
+			case CursorShape::Hidden:    shape = "hidden"; break;
+			case CursorShape::Block:     break;
+			}
+			where = QStringLiteral("%1,%2 %3")
+			        .arg(at->x()).arg(at->y())
+			        .arg(QLatin1String(shape));
+		}
 	}
-	return buf.to_snapshot();
+	return buf.to_snapshot() + QStringLiteral("--- cursor ---\n")
+	     + where + QLatin1Char('\n');
 }
 
 } // namespace test

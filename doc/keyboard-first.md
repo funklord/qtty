@@ -1972,9 +1972,19 @@ of it, and applies the small-terminal policy the way a frame loop does.
 is the router's, collected from the layers' own show events, so a
 compositor built without one draws the window alone -- and neither answer
 reports anything wrong. It is the same router your key-driving test
-already has. One thing to know: the call takes the window tab strip down
-as it goes, so a press in row 0 sent straight afterwards is not read as a
-tab selection; snapshot after the press rather than before it. `check_snapshot()` compares that against a
+already has.
+
+It also records **where the caret is**, which the cells cannot say -- the
+cell and the shape, or `hidden`. A frame that lost its caret, or put it in
+the wrong cell, or showed a block where it had shown a bar, compares equal
+to one that did not if only the cells are kept.
+
+Two things to know. The call takes the window tab strip down as it goes,
+so a press in row 0 sent straight afterwards is not read as a tab
+selection; snapshot after the press rather than before it. And it composes
+the **screen**, not the window you pass: a second visible top level puts a
+tab strip in the frame and leaves the first one current, so close or scope
+the windows you are not snapshotting. `check_snapshot()` compares that against a
 fixture under `<root>/test/snapshot/`, prints both sides on a mismatch,
 and rewrites the fixture when you pass `record = true` -- so capturing a
 screen before you change it is one call and a flag.
