@@ -349,6 +349,46 @@ event is not available here and cannot be: no qtty window ever
 activates, so `isActiveWindow()` is permanently false and the event
 would have nothing behind it.
 
+## Right to left
+
+**Set the direction and the form mirrors. There is nothing else to do.**
+
+    QApplication::setLayoutDirection(Qt::RightToLeft);
+
+Qt's layouts mirror themselves, and qtty follows for the handful of
+controls it positions rather than lays out: a progress bar fills from the
+right, a scroll bar's thumb and a spin box's step arrows change side, and
+a tool button's menu arrow moves to the left of its label. A `QLabel` is
+**not** mirrored -- that is Qt's own behaviour, measured against plain Qt
+with Fusion, and not a gap here.
+
+**Everything the keyboard does is unchanged**, which is the part worth
+saying because it is the part an implementer would otherwise go and
+check. Measured on a mirrored two-field form: `Alt` and a letter reaches
+the field it names, `Tab` visits the fields in reading order, and all
+nine questions under *Checking it without a terminal* answer empty.
+
+### Bidirectional text is not handled
+
+**A string mixing scripts does not survive.** Measured, a `QLabel`
+holding four Hebrew letters, a space and `abc` -- eight code points:
+
+    asked for   U+05E9 U+05DC U+05D5 U+05DD U+0020 U+0061 U+0062 U+0063
+    reached     U+0061 U+0062 U+0063 U+0020 U+05E9 U+05DC U+05D5
+    the cells   abc שלו
+
+Seven, not eight: the runs are reordered and the last letter is gone.
+
+This is not the layout direction and setting it changes nothing here. A
+terminal decides for itself whether it reorders what it is sent, and
+qtty does not yet take a position on which order to send -- so an
+application whose *text* is bidirectional is not one this library can
+carry today. An application whose text is left-to-right in a mirrored
+layout is fine, and that is the case the section above is about.
+
+The measurement is pinned by a check, so that whoever changes it finds
+this page rather than leaving it saying something untrue.
+
 ## The terminal's own keys, and how to ask for them
 
 One line turns on the habits a terminal user has and Qt does not:

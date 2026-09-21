@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1846 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1847 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,43 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.291 The page did not know about right to left (2026-09-21)
+
+**8.284 gave the library a feature and left the document silent about
+it**, which is the gap a change makes rather than one it finds:
+`doc/keyboard-first.md` is the product, and an implementer had no way
+to learn that a mirrored layout works.
+
+The new section says what to do -- set the direction, there is nothing
+else -- and what is measured rather than assumed:
+
+    Alt and a letter        reaches the field it names
+    Tab                     visits the fields in reading order
+    all nine questions      answer empty
+    a QLabel                not mirrored, which is Qt's own behaviour
+
+#### And it says what does not work, with the number
+
+**Bidirectional text is not handled**, and "not handled" turned out to
+be worse than logical order. Measured on a label holding four Hebrew
+letters, a space and `abc`:
+
+    asked for   U+05E9 U+05DC U+05D5 U+05DD U+0020 U+0061 U+0062 U+0063
+    reached     U+0061 U+0062 U+0063 U+0020 U+05E9 U+05DC U+05D5
+
+Eight code points in, **seven** out: the runs reordered and the last
+letter gone. So the honest statement is not "the order may surprise
+you" but "an application whose text is bidirectional is not one this
+library can carry today", and an application whose text is
+left-to-right inside a mirrored layout is fine.
+
+**Pinned by a check that is meant to be updated rather than
+satisfied.** It records the seven, so the day somebody handles bidi it
+goes red and the page that says otherwise is what has to change with
+it. That is the same shape as the style-sheet check already in this
+suite -- pinned as measured rather than as wanted -- and it is the only
+thing that keeps a page from outliving its subject.
+
 ### 8.290 The stacking, and what the key is not (2026-09-21)
 
 **Two corrections to 8.288, one of them a hole and one a wrong

@@ -1546,6 +1546,37 @@ int suite_widgets() {
 			      "does not mirror one either");
 		}
 
+		// BIDIRECTIONAL TEXT, PINNED AS MEASURED RATHER THAN AS WANTED.
+		// A string mixing scripts does not survive the trip to the cells:
+		// the runs are reordered and the last letter is lost. That is not
+		// the layout direction and setting it changes nothing -- a
+		// terminal decides for itself whether it reorders what it is
+		// sent, and this library does not yet take a position on which
+		// order to send.
+		//
+		// Recorded so that whoever changes it finds the page that says
+		// so. This check is meant to be UPDATED, not satisfied: it goes
+		// red the day bidi is handled, and `doc/keyboard-first.md` under
+		// "Right to left" is what has to change with it.
+		{
+			const QString want = QString::fromUtf8("\xd7\xa9\xd7\x9c\xd7\x95\xd7\x9d abc");
+			QLabel lab(want);
+			lab.setFixedSize(cw * 20, ch);
+			show(lab, 20, 2);
+			CellBuffer b(20, 2);
+			render_once(lab, b);
+			const QString got =
+			    b.to_text().split(QLatin1Char('\n')).value(0).trimmed();
+			printf("info: a bidirectional label asked for %d code point(s) "
+			       "and %d reached the cells\n", int(want.size()),
+			       int(got.size()));
+			CHECK(want.size() == 8 && got.size() == 7
+			      && got.startsWith(QStringLiteral("abc")),
+			      "bidirectional text reaches the cells reordered and one "
+			      "letter short -- pinned as measured, and the page that "
+			      "says so changes when this does");
+		}
+
 		// AND THE HIT TEST AGREES WITH THE PICTURE IN BOTH DIRECTIONS,
 		// which is the half that breaks silently: a mirrored drawing whose
 		// subControlRect stayed put puts the arrow in a cell no click
