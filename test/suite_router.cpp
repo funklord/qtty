@@ -2141,7 +2141,7 @@ int suite_router() {
 		win.setAttribute(Qt::WA_DontShowOnScreen);
 		auto *bar = win.addToolBar(QStringLiteral("Main"));
 		const char *const names[] = {"&New", "&Open", "&Save", "Save &As",
-		                             "&Print", "Pr&eview", "&Quit"};
+			                         "&Print", "Pr&eview", "&Quit"};
 		for (const char *n : names) bar->addAction(QString::fromLatin1(n));
 		win.setCentralWidget(new QTextEdit(QStringLiteral("central")));
 		win.resize(GridMetrics::cells(24, 8));          // too narrow for them
@@ -2514,7 +2514,7 @@ int suite_router() {
 				mr.on_key({Qt::Key_Down, QString(), false, false, false});
 				mr.on_key({Qt::Key_Down, QString(), false, false, false});
 				mr.on_key({Qt::Key_Return, QStringLiteral("\r"), false,
-				           false, false});
+					       false, false});
 				if (++tries > 200) { gave_up = 1; menu.close(); }
 			});
 			driver.start();
@@ -2574,7 +2574,7 @@ int suite_router() {
 		cr.on_key({Qt::Key_Down, QString(), false, false, false});
 		QCoreApplication::processEvents();
 		cr.on_key({Qt::Key_Return, QStringLiteral("\r"), false, false,
-		           false});
+			       false});
 		QCoreApplication::processEvents();
 		CHECK(edit->text() == QStringLiteral("alpine"),
 		      "while Down and Return DO reach it, so a completion can be "
@@ -4145,8 +4145,8 @@ int suite_router() {
 			auto *dis = new QLineEdit;
 			auto *hid = new QLineEdit;
 			for (QWidget *w : { (QWidget *)one, (QWidget *)two,
-			                    (QWidget *)lab, (QWidget *)dis,
-			                    (QWidget *)hid })
+				                (QWidget *)lab, (QWidget *)dis,
+				                (QWidget *)hid })
 				sv->addWidget(w);
 			dis->setEnabled(false);
 			scope.setAttribute(Qt::WA_DontShowOnScreen);
@@ -4172,7 +4172,7 @@ int suite_router() {
 			QVector<QWidget *> visited;
 			for (int i = 0; i < reach.size(); ++i) {
 				r2.on_key({Qt::Key_Tab, QStringLiteral("\t"),
-				           false, false, false});
+					       false, false, false});
 				QCoreApplication::processEvents();
 				visited.append(scope.focusWidget());
 			}
@@ -4583,7 +4583,7 @@ int suite_router() {
 			win.setCentralWidget(new QLineEdit);
 			auto *bar = win.addToolBar(QStringLiteral("Main"));
 			for (const char *t : { "&Open", "&Save", "&Print", "&Quit",
-			                       "&Find", "&Replace", "&Zoom", "&Help" })
+				                   "&Find", "&Replace", "&Zoom", "&Help" })
 				bar->addAction(QString::fromLatin1(t));
 			win.resize(GridMetrics::cells(60, 10));
 			win.show();
@@ -4653,7 +4653,7 @@ int suite_router() {
 			set_focus_widget(dlg.focusWidget());
 			QCoreApplication::processEvents();
 			dr.on_key({Qt::Key_Return, QStringLiteral("\r"), false, false,
-			           false});
+				       false});
 			QCoreApplication::processEvents();
 			CHECK(accepted == 1,
 			      "and Enter in the field really does fire it, which is "
@@ -4721,7 +4721,7 @@ int suite_router() {
 			set_focus_widget(form.focusWidget());
 			QCoreApplication::processEvents();
 			tr.on_key({Qt::Key_Tab, QStringLiteral("\t"), false, false,
-			           false});
+				       false});
 			QCoreApplication::processEvents();
 			CHECK(form.focusWidget() == port,
 			      "and Tab from the first of the pair really does land on "
@@ -5048,6 +5048,106 @@ int suite_router() {
 			      "and empty about a window with nothing in it, which is "
 			      "the answer a report invents a finding to avoid giving");
 
+			// THE KEY HELPERS, and the controls are the point of them. A
+			// KeyEvent carries a key, a text and three flags, and which of
+			// them decides is different per keystroke -- so every wrong
+			// combination is a keystroke that arrives and does nothing, with
+			// nothing said. Each helper is checked against the hand-built
+			// form that FAILS, because "press moves the focus" alone would
+			// pass for a library where the spelling did not matter.
+			{
+				const auto form = [](QWidget &host, QLineEdit *&a, QLineEdit *&b) {
+					host.setAttribute(Qt::WA_DontShowOnScreen);
+					host.resize(GridMetrics::cells(30, 6));
+					auto *f = new QFormLayout(&host);
+					a = new QLineEdit;
+					b = new QLineEdit;
+					f->addRow(QStringLiteral("&Name"), a);
+					f->addRow(QStringLiteral("&Host"), b);
+					host.show();
+				};
+				{
+					QWidget host;
+					QLineEdit *a = nullptr, *b = nullptr;
+					form(host, a, b);
+					InputRouter r(&host);
+					QCoreApplication::processEvents();
+					a->setFocus();
+					QCoreApplication::processEvents();
+					Qtty::test::press(r, Qt::Key_Tab);
+					QCoreApplication::processEvents();
+					CHECK(host.focusWidget() == b,
+					      "test::press sends a named key, which is the one the "
+					      "router reads from the key code");
+				}
+				{
+					QWidget host;
+					QLineEdit *a = nullptr, *b = nullptr;
+					form(host, a, b);
+					InputRouter r(&host);
+					QCoreApplication::processEvents();
+					a->setFocus();
+					QCoreApplication::processEvents();
+					Qtty::test::type(r, QStringLiteral("hi"));
+					QCoreApplication::processEvents();
+					CHECK(a->text() == QStringLiteral("hi"),
+					      "and test::type puts characters in, which the router "
+					      "reads from the text");
+				}
+				{
+					QWidget host;
+					QLineEdit *a = nullptr, *b = nullptr;
+					form(host, a, b);
+					InputRouter r(&host);
+					QCoreApplication::processEvents();
+					a->setFocus();
+					QCoreApplication::processEvents();
+					Qtty::test::mnemonic(r, QLatin1Char('h'));
+					QCoreApplication::processEvents();
+					CHECK(host.focusWidget() == b,
+					      "and test::mnemonic reaches the field its label "
+					      "names");
+				}
+				// THE CONTROLS: the spellings a reader would reasonably write
+				// by hand, each of which does NOTHING. Without these the three
+				// above pass for a library in which the fields did not matter,
+				// and the helpers would be sugar rather than a guard.
+				{
+					QWidget host;
+					QLineEdit *a = nullptr, *b = nullptr;
+					form(host, a, b);
+					InputRouter r(&host);
+					QCoreApplication::processEvents();
+					a->setFocus();
+					QCoreApplication::processEvents();
+					r.on_key({Qt::Key_H, QString(), false, true, false});
+					r.on_key({Qt::Key_Z, QString(), false, false, false});
+					r.on_key({0, QStringLiteral("\t"), false, false, false});
+					QCoreApplication::processEvents();
+					CHECK(host.focusWidget() == a && a->text().isEmpty(),
+					      "while a mnemonic with no letter, a character with no "
+					      "text and a tab with no key code all arrive and do "
+					      "nothing, which is why the helpers exist");
+				}
+				// And a printable key through press(), which fills the text
+				// so that the obvious call does the obvious thing.
+				{
+					QWidget host;
+					QLineEdit *a = nullptr, *b = nullptr;
+					form(host, a, b);
+					InputRouter r(&host);
+					QCoreApplication::processEvents();
+					a->setFocus();
+					QCoreApplication::processEvents();
+					Qtty::test::press(r, Qt::Key_Z);
+					Qtty::test::press(r, Qt::Key_Z, false, false, true);
+					QCoreApplication::processEvents();
+					CHECK(a->text() == QStringLiteral("zZ"),
+					      "and press fills a printable key's text, shift and "
+					      "all, so it types rather than doing nothing");
+				}
+			}
+
 			// AND THE PAGE THAT PUBLISHES THEM NAMES THE SAME NUMBER.
 			// The two checks above say "all nine", which is a claim
 			// about a population rather than about a call -- and
@@ -5243,7 +5343,7 @@ int suite_router() {
 				oth->setFocus();
 				set_focus_widget(dlg.focusWidget());
 				dr.on_key({Qt::Key_Return, QStringLiteral("\r"),
-				           false, false, false});
+					       false, false, false});
 				QCoreApplication::processEvents();
 				CHECK(okf == 0 && othf == 1,
 				      conv ? "with the conventions on, Enter on a focused "
@@ -5262,7 +5362,7 @@ int suite_router() {
 				fld->setFocus();
 				set_focus_widget(dlg.focusWidget());
 				dr.on_key({Qt::Key_Return, QStringLiteral("\r"),
-				           false, false, false});
+					       false, false, false});
 				QCoreApplication::processEvents();
 				// THE MECHANISM, which reconciles two checks this
 				// suite has held apart since 8.33. A focused button
@@ -5329,7 +5429,7 @@ int suite_router() {
 				set_keyboard_conventions(conv != 0);
 				const int was = ear.esc;
 				r.on_key({Qt::Key_Escape, QString(),
-				          false, false, false});
+					      false, false, false});
 				QCoreApplication::processEvents();
 				CHECK(ear.esc - was == 1,
 				      conv ? "and still reaches it with the conventions "
@@ -5778,7 +5878,7 @@ int suite_router() {
 				      "the control: the modifier probe is on screen to be "
 				      "clicked");
 				hr.on_mouse({QPoint(1, prow), 1, true, false, false, 0, 0,
-				             true, false, false});
+					         true, false, false});
 				QCoreApplication::processEvents();
 				CHECK(probe->seen >= 1
 				      && (probe->on_event & Qt::ControlModifier)
@@ -6033,7 +6133,7 @@ int suite_router() {
 				const bool up = !r.popups().isEmpty();
 				const int before_menu = app_fired;
 				r.on_key({Qt::Key_Y, QStringLiteral("y"), true, false,
-				          false});
+					      false});
 				QCoreApplication::processEvents();
 				CHECK(up && app_fired == before_menu,
 				      "and an application-context shortcut is swallowed "
@@ -7642,7 +7742,7 @@ int suite_router() {
 		Qtty::InputRouter router(&win);
 		auto move_to = [&](int x, int y) {
 			router.on_mouse({ QPoint(x, y), 0, false, false, true,
-			                  0, 0, false, false, false });
+				              0, 0, false, false, false });
 		};
 
 		move_to(2, 0);
@@ -7849,9 +7949,9 @@ int suite_router() {
 		Qtty::InputRouter router(&win);
 		auto click = [&](int x, int y) {
 			router.on_mouse({ QPoint(x, y), 1, true, false, false,
-			                  0, 0, false, false, false });
+				              0, 0, false, false, false });
 			router.on_mouse({ QPoint(x, y), 1, false, true, false,
-			                  0, 0, false, false, false });
+				              0, 0, false, false, false });
 		};
 
 		click(2, 0);
@@ -8029,7 +8129,7 @@ int suite_router() {
 		// every check after this one would run without a quit key. The
 		// third observation is the restore's own evidence.
 		Qtty::set_quit_keys({{Qt::Key_C, QString(), true, false, false},
-		                     {Qt::Key_D, QString(), true, false, false}});
+			                 {Qt::Key_D, QString(), true, false, false}});
 		record_ctrl_c();
 		CHECK(keys->keySequence().isEmpty() && !win.isVisible(),
 		      "and the default pair is back, which is asserted rather than "
@@ -8250,9 +8350,9 @@ int suite_router() {
 		CHECK(seen.x() >= 0, "the bottom button is on screen after the scroll");
 		if (seen.x() >= 0) {
 			router.on_mouse({ QPoint(seen.x(), seen.y()), 1, true, false, false,
-			                  0, 0, false, false, false });
+				              0, 0, false, false, false });
 			router.on_mouse({ QPoint(seen.x(), seen.y()), 1, false, true, false,
-			                  0, 0, false, false, false });
+				              0, 0, false, false, false });
 		}
 		CHECK(bottom_hits == 1 && top_hits == 0,
 		      "and clicking where it is drawn presses it, not the widget above");
@@ -8336,9 +8436,9 @@ int suite_router() {
 		      "the menu's first item is on screen over a root that scrolled");
 		if (seen.x() >= 0) {
 			router.on_mouse({ QPoint(seen.x(), seen.y()), 1, true, false, false,
-			                  0, 0, false, false, false });
+				              0, 0, false, false, false });
 			router.on_mouse({ QPoint(seen.x(), seen.y()), 1, false, true, false,
-			                  0, 0, false, false, false });
+				              0, 0, false, false, false });
 			QCoreApplication::processEvents();
 		}
 		CHECK(cut_hits == 1 && copy_hits == 0,
@@ -8527,9 +8627,9 @@ int suite_router() {
 		auto *list = new QListWidget(&win);
 		list->setGeometry(0, 0, 24 * GridMetrics::cw(), 10 * GridMetrics::ch());
 		const char *const names[] = {"alpha", "bravo", "charlie", "delta",
-		                             "echo", "foxtrot", "golf", "hotel",
-		                             "india", "juliet", "kilo", "lima",
-		                             "mike", "november", "oscar"};
+			                         "echo", "foxtrot", "golf", "hotel",
+			                         "india", "juliet", "kilo", "lima",
+			                         "mike", "november", "oscar"};
 		for (const char *n : names) list->addItem(QString::fromLatin1(n));
 		win.show();
 		QCoreApplication::processEvents();
@@ -8618,8 +8718,8 @@ int suite_router() {
 			r.on_key({key, QString(), true, false, false});
 			QCoreApplication::processEvents();
 			return QStringList{edit->text(),
-			                   QString::number(edit->cursorPosition()),
-			                   edit->selectedText()};
+				               QString::number(edit->cursorPosition()),
+				               edit->selectedText()};
 		};
 		const QStringList home = field(true, Qt::Key_A);
 		const QStringList end = field(true, Qt::Key_E);
@@ -9162,8 +9262,8 @@ int suite_router() {
 		auto *view = new QListView(&host);
 		auto *model = new QStringListModel(&host);
 		model->setStringList({QStringLiteral("v0"), QStringLiteral("v1"),
-		                      QStringLiteral("v2"), QStringLiteral("v3"),
-		                      QStringLiteral("v4")});
+			                  QStringLiteral("v2"), QStringLiteral("v3"),
+			                  QStringLiteral("v4")});
 		view->setModel(model);
 		view->setSelectionMode(QAbstractItemView::ExtendedSelection);
 		view->setGeometry(0, 0, 18 * cw, 5 * ch);
@@ -9495,13 +9595,20 @@ int suite_router() {
 		CHECK(Qtty::focus_invisible(&chat).isEmpty(),
 		      "the project's own example shows where the focus is, which "
 		      "it did not until the report was asked of it");
+		// SEVEN, not six, and the seventh is the point of counting them
+		// here at all. sheet_styled() was added to the page as its ninth
+		// question and this block was not grown with it, so the example
+		// asserted eight of nine while the page said nine -- the same
+		// drift the vocabulary table grew a count to stop, in the one
+		// program this project ships as the worked answer.
 		CHECK(Qtty::pointer_only(&chat).isEmpty()
 		      && Qtty::mnemonic_conflicts(&chat).isEmpty()
 		      && Qtty::shortcut_conflicts(&chat).isEmpty()
 		      && Qtty::conventions_shadowed(&chat).isEmpty()
 		      && Qtty::tab_order_anomalies(&chat).isEmpty()
-		      && Qtty::hover_only(&chat).isEmpty(),
-		      "and passes the other six reports the guide tells an "
+		      && Qtty::hover_only(&chat).isEmpty()
+		      && Qtty::sheet_styled(&chat).isEmpty(),
+		      "and passes the other seven reports the guide tells an "
 		      "application to assert empty, which is the guide run against "
 		      "the program this project ships rather than read");
 		CHECK(!Qtty::keyboard_reachable(&chat).isEmpty(),
@@ -10385,7 +10492,7 @@ int suite_router() {
 				if (drawn >= 0 && at) measured = true;
 				if (drawn < 0 || !at || at->y() != drawn) agreed = false;
 				cr_router.on_key({Qt::Key_Escape, QString(), false, false,
-				                  false});
+					              false});
 				QCoreApplication::processEvents();
 			}
 			CHECK(measured && agreed,

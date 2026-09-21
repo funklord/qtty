@@ -1988,9 +1988,36 @@ The whole keyboard path is testable headlessly, with no tty and no
 terminal emulator, which is how this library tests its own:
 
     Qtty::InputRouter router(&window);
-    router.on_key({Qt::Key_Tab, "\t", false, false, false});
+    Qtty::test::press(router, Qt::Key_Tab);
     QCoreApplication::processEvents();
     // ... assert on window.focusWidget()
+
+**Three helpers, and they are a guard rather than sugar.** A `KeyEvent`
+carries a key, a text and three modifier flags, and *which of them
+decides* is different per keystroke:
+
+| what you send | decides | ignored |
+|---|---|---|
+| a named key -- `Tab`, `Escape`, an arrow | the key code | the text |
+| a chord -- `Ctrl+S` | the key code and the modifier | the text |
+| a character you typed | the text | the key code |
+| a mnemonic -- `Alt`+letter | the text and `alt` | the key code |
+
+**Every wrong combination is silent.** Measured on a two-field form:
+`{Qt::Key_H, QString(), alt}` reaches no mnemonic, `{Qt::Key_Z,
+QString()}` types nothing, and `{0, "\t"}` moves no focus -- each
+returns as though delivered, and nothing says otherwise.
+
+    Qtty::test::press(router, Qt::Key_Tab);           // a named key
+    Qtty::test::press(router, Qt::Key_S, true);       // Ctrl+S
+    Qtty::test::type(router, "hello");                // what a user types
+    Qtty::test::mnemonic(router, 'h');                // Alt+H
+
+`press()` fills the text for a printable key with no `Ctrl` or `Alt`, so
+`press(router, Qt::Key_Z)` types a `z` rather than doing nothing, and
+leaves it empty under a modifier, which is what stops a chord also typing
+its letter. You can still build the struct by hand -- the table above is
+what you need if you do.
 
 `QWidget::focusWidget()` on the window does answer, which is worth saying
 straight after practice 10: it is `hasFocus()` on the widget, and

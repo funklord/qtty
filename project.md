@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1853 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1858 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17826,6 +17826,66 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.295 Every wrong way to send a key is silent (2026-09-21)
+
+**A `KeyEvent` carries a key, a text and three modifier flags, and which
+of them decides is different per keystroke.** Measured on a two-field
+form with mnemonics:
+
+    what you send          decides            ignored
+    a named key (Tab)      qt_key             text
+    a chord (Ctrl+S)       qt_key + modifier  text
+    a typed character      text               qt_key
+    a mnemonic (Alt+H)     text + alt         qt_key
+
+**And every wrong combination arrives and does nothing.**
+`{Qt::Key_H, QString(), alt}` reaches no mnemonic,
+`{Qt::Key_Z, QString()}` types nothing, `{0, "\t"}` moves no focus --
+each returns as though delivered, with nothing said. A test written
+against the wrong spelling does not fail loudly; it asserts on a state
+no keystroke ever changed.
+
+That is not a hypothetical reading of the struct. This suite builds
+these by hand at several hundred call sites and spells the same
+keystroke two ways in different files, and the page's own example used
+a third.
+
+#### Three helpers, and the controls are the point
+
+    Qtty::test::press(router, Qt::Key_Tab);           // a named key
+    Qtty::test::press(router, Qt::Key_S, true);       // Ctrl+S
+    Qtty::test::type(router, "hello");                // what a user types
+    Qtty::test::mnemonic(router, 'h');                // Alt+H
+
+`press()` fills the text for a printable key with no ctrl or alt, so
+`press(r, Qt::Key_Z)` types a `z` rather than doing nothing, and leaves
+it empty under a modifier -- measured, which is what stops a chord also
+typing its letter.
+
+**Five checks, and the fourth is what makes the other three mean
+anything**: the three spellings a reader would reasonably write by hand
+are sent together and asserted to change nothing. Without it, "press
+moves the focus" passes equally for a library in which the fields did
+not matter, and the helpers would be sugar rather than a guard.
+
+Three sabotage entries, one per helper, each spelling it the wrong way
+round -- the letter as a key code, the key code with no text.
+
+#### And the example was asserting eight of nine
+
+The suite already runs the guide against the program this project
+ships: `focus_invisible()` on the chat window, and six more reports
+asserted empty beside it. **When `sheet_styled()` became the ninth
+question that block was not grown with it**, so the worked answer an
+adopter copies asserted eight while the page said nine -- the drift the
+vocabulary table grew a count to stop, arriving in the one place it
+matters most.
+
+It is seven now, and the new term is proved live rather than assumed:
+a sabotage puts a style sheet on the example's input field -- practice
+12's own trap, in the example -- and the conjunction goes red. An
+ANDed term nobody has seen fail is a term that adds nothing.
+
 ### 8.294 Two questions the page never mentioned, and a count that could not fail (2026-09-21)
 
 **Two public helpers an adopter's test wants, and

@@ -5037,3 +5037,46 @@ find = "\t\tCHECK(contrast_violations(frame, Capabilities::TrueColor) == 0\n\t\t
 into = "\t\tCHECK(contrast_violations(frame, Capabilities::TrueColor, 255) == 0\n\t\t      && contrast_violations(frame, Capabilities::Ansi16) == 0,"
 count = 1
 check = "a window drawn in the default theme clears the contrast floor"
+
+[[sabotage]]
+# test::mnemonic sending the LETTER as a key code instead of as text,
+# which is the spelling a reader writes by hand and which reaches no
+# mnemonic at all. 8.295.
+name = "the mnemonic helper sends a key code instead of a letter"
+file = "include/qtty/testing.h"
+find = "\trouter.on_key({0, QString(letter), false, true, false});"
+into = "\trouter.on_key({letter.toUpper().unicode(), QString(), false, true, false});"
+count = 1
+check = "test::mnemonic reaches the field its label names"
+
+[[sabotage]]
+# test::press leaving a printable key's text empty, which is the trap
+# it exists to remove: the call arrives and types nothing. 8.295.
+name = "the press helper leaves a printable key's text empty"
+file = "include/qtty/testing.h"
+find = "\tif (!ctrl && !alt) {\n\t\tif (qt_key >= Qt::Key_A && qt_key <= Qt::Key_Z) {"
+into = "\tif (false) {\n\t\tif (qt_key >= Qt::Key_A && qt_key <= Qt::Key_Z) {"
+count = 1
+check = "press fills a printable key's text, shift and all"
+
+[[sabotage]]
+# test::type sending the character as a key code, which types nothing.
+# 8.295.
+name = "the type helper sends a key code instead of characters"
+file = "include/qtty/testing.h"
+find = "\t\trouter.on_key({0, QString(c), false, false, false});"
+into = "\t\trouter.on_key({c.toUpper().unicode(), QString(), false, false, false});"
+count = 1
+check = "test::type puts characters in"
+
+[[sabotage]]
+# A style sheet on the example's input field, which is practice 12's
+# own trap put into the program this project ships as the worked
+# answer. It proves the ninth report is a live term of that block's
+# conjunction rather than one that can never be non-empty. 8.295.
+name = "the example carries a style sheet nobody reports"
+file = "example/chat/chat.h"
+find = "\t\tinput = new QLineEdit(this);"
+into = "\t\tinput = new QLineEdit(this);\n\t\tinput->setStyleSheet(\"color: red\");"
+count = 1
+check = "passes the other seven reports the guide tells an application to assert empty"

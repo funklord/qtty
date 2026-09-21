@@ -106,6 +106,62 @@ inline int check_snapshot(const QString &root, const QString &name,
 	return 0;
 }
 
+// -- DRIVING THE KEYBOARD, with the fields filled in correctly.
+//
+// A KeyEvent carries a key, a text and three modifier flags, and WHICH of
+// them decides is different per keystroke -- measured, on a two-field form
+// with mnemonics:
+//
+//     what you send          decides            ignored
+//     a named key (Tab)      qt_key             text
+//     a chord (Ctrl+S)       qt_key + modifier  text
+//     a typed character      text               qt_key
+//     a mnemonic (Alt+H)     text + alt         qt_key
+//
+// Every wrong combination is SILENT. `{Qt::Key_H, QString(), alt}` reaches
+// no mnemonic, `{Qt::Key_Z, QString()}` types nothing, and `{0, "\t"}` moves
+// no focus -- each returns as if delivered and nothing says otherwise. The
+// three below fill the right field, so a test says what it means.
+//
+// They are here rather than on InputRouter because they are a test's
+// vocabulary: a program has a terminal sending it real bytes.
+
+// A named key or a chord: Tab, Escape, Return, an arrow, Ctrl+S.
+//
+// A printable key with no ctrl and no alt is a CHARACTER, so its text is
+// filled in and press(r, Qt::Key_Z) types a z rather than doing nothing.
+// Under ctrl or alt it is left empty, which is what the router reads and
+// what stops a chord also typing its letter.
+inline void press(InputRouter &router, int qt_key, bool ctrl = false,
+                  bool alt = false, bool shift = false) {
+	QString text;
+	if (!ctrl && !alt) {
+		if (qt_key >= Qt::Key_A && qt_key <= Qt::Key_Z) {
+			const QChar c(char16_t(u'a' + (qt_key - Qt::Key_A)));
+			text = shift ? QString(c.toUpper()) : QString(c);
+		} else if (qt_key >= Qt::Key_0 && qt_key <= Qt::Key_9) {
+			text = QString(QChar(char16_t(u'0' + (qt_key - Qt::Key_0))));
+		} else if (qt_key == Qt::Key_Space) {
+			text = QStringLiteral(" ");
+		}
+	}
+	router.on_key({qt_key, text, ctrl, alt, shift});
+}
+
+// What a user types, one key event per character. The key code is left at
+// zero because the text is what the router reads.
+inline void type(InputRouter &router, const QString &text) {
+	for (const QChar &c : text)
+		router.on_key({0, QString(c), false, false, false});
+}
+
+// Alt and a letter, which is how a mnemonic is reached. The LETTER is what
+// matches, not the key code -- so this is not press(r, Qt::Key_H, ...) with
+// alt, which reaches nothing.
+inline void mnemonic(InputRouter &router, QChar letter) {
+	router.on_key({0, QString(letter), false, true, false});
+}
+
 // Render a widget to a section 9 snapshot in one call -- glyphs, attributes
 // and colours. It used to return glyphs alone, which meant a fixture could
 // not see the reverse video, bold and dim that most of the Channel A work
