@@ -1425,6 +1425,56 @@ QVector<QWidget *> focus_invisible(QWidget *scope) {
 	return out;
 }
 
+// Every report that should be empty, asked at once: see runtime.h.
+//
+// The list is written out here, which is the thing it exists to stop an
+// APPLICATION having to do -- one place that goes stale instead of one per
+// test, and this one is the place a new question is added anyway.
+QVector<QPair<QString, QString>> audit(QWidget *scope) {
+	QVector<QPair<QString, QString>> out;
+	if (!scope) return out;
+	const auto name_of = [](const QWidget *w) {
+		if (!w) return QStringLiteral("a widget");
+		const QString n = w->objectName();
+		return n.isEmpty()
+		           ? QString::fromLatin1(w->metaObject()->className())
+		           : n + QLatin1String(" (")
+		                 + QString::fromLatin1(w->metaObject()->className())
+		                 + QLatin1Char(')');
+	};
+	const auto widgets = [&out, &name_of](const QString &q,
+	                                      const QVector<QWidget *> &found) {
+		for (QWidget *w : found) out.append({q, name_of(w)});
+	};
+
+	widgets(QStringLiteral("pointer_only"), pointer_only(scope));
+	widgets(QStringLiteral("hover_only"), hover_only(scope));
+	widgets(QStringLiteral("focus_invisible"), focus_invisible(scope));
+	widgets(QStringLiteral("sheet_styled"), sheet_styled(scope));
+
+	for (const auto &c : mnemonic_conflicts(scope))
+		out.append({QStringLiteral("mnemonic_conflicts"),
+		            QStringLiteral("Alt+") + c.first + QStringLiteral(": ")
+		                + c.second.join(QStringLiteral(", "))});
+	for (const auto &c : shortcut_conflicts(scope))
+		out.append({QStringLiteral("shortcut_conflicts"),
+		            c.first.toString(QKeySequence::NativeText)
+		                + QStringLiteral(": ")
+		                + c.second.join(QStringLiteral(", "))});
+	for (const auto &c : conventions_shadowed(scope))
+		out.append({QStringLiteral("conventions_shadowed"),
+		            c.first + QStringLiteral(": ")
+		                + c.second.join(QStringLiteral(", "))});
+	for (const auto &p : tab_order_anomalies(scope))
+		out.append({QStringLiteral("tab_order_anomalies"),
+		            name_of(p.first) + QStringLiteral(" -> ")
+		                + name_of(p.second)});
+	for (const auto &c : ambiguous_chords(scope))
+		out.append({QStringLiteral("ambiguous_chords"),
+		            c.first + QStringLiteral(": ") + c.second});
+	return out;
+}
+
 // The chords in `scope` a terminal cannot deliver unambiguously: see
 // runtime.h. Same enumeration as shortcut_help() and shortcut_conflicts(),
 // for the reason those two share it -- three walks of one tree is three

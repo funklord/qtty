@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1932 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1936 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17830,6 +17830,50 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.317 The list an application should not have to write (2026-09-22)
+
+**The guide tells an application to assert nine reports empty, and this
+tree has twice watched that hand-written list go stale.** The project's
+own example asserted **eight** while the page said nine -- the ninth was
+added to the page and not to the block, and the suite's comment beside
+it says so. Adding a tenth today meant editing every place that had
+written the list out: two enumerations in the suite and a literal count
+in a third.
+
+`Qtty::audit(scope)` asks the nine at once and returns each row named
+with the question that produced it:
+
+    QVERIFY(Qtty::audit(&window).isEmpty());
+
+**An application's test is the same shape with nobody to notice.** Its
+list has no guide beside it to disagree with, no count-check, and no
+sabotage entry -- so it goes stale silently and keeps passing, which is
+the vacuous pass one level out from the one the reports themselves
+guard against.
+
+**`keyboard_reachable()` is left out deliberately** and the header says
+why: it is the one asserted NON-empty, so folding it in would let a
+window with no controls pass by having nothing to report.
+
+**The check that matters is the third.** The aggregate must be able to
+say no -- a button no key reaches puts a row in it -- and the row count
+must equal the single report's, so it can neither invent a finding nor
+drop one. Without that pair the first check would pass on a function
+that returned empty whatever it was given, which is exactly what an
+aggregate is easiest to get wrong as.
+
+**The table stays.** A reader learns what is being asked from ten named
+rows; the one line is what goes in the test. Offering only the
+aggregate would have made the set less legible to buy the same drift
+resistance.
+
+**It takes a scope and is not a question**, so it is the second entry
+in the name-based guard's not-an-audit list -- `shortcut_help()` being
+the first. That list is meant to need a reason per entry, and two
+entries with two different reasons is the mechanism working rather than
+an exception being widened.
+
+
 ### 8.316 The tenth question, and the one the guide had just asked for (2026-09-22)
 
 **8.315 told an implementer to avoid five chords and nothing checked

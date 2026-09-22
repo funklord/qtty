@@ -2257,6 +2257,27 @@ somebody adds one that collides or that only a mouse can press. Each of
 them walks the router's own tables rather than a second copy, so what
 they report is what the keys will do.
 
+**Ask all nine of those in one line, and do not write the list
+yourself:**
+
+```cpp
+QVERIFY(Qtty::audit(&window).isEmpty());
+```
+
+`Qtty::audit()` returns every row the nine empty reports would, each
+named with the question that produced it, so a failure says which one
+without your test enumerating any. `keyboard_reachable()` is left out
+because it is the one asserted *non*-empty -- a window with no controls
+would otherwise pass by having nothing to report.
+
+**The reason to prefer it is drift, and it is measured rather than
+supposed.** This project's own example asserted eight of these while
+this page said nine, the ninth having been added to the page and not to
+the block; and adding the tenth meant editing every place that had
+written the list out. Your test is the same shape with nobody to
+notice. The table above is how you learn what is being asked; the one
+line is what goes in the test.
+
 **Two more the same test wants, shaped differently.** They are not in the
 table because neither takes a scope: one is a process-wide counter and the
 other reads a rendered frame.

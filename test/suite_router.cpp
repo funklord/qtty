@@ -4693,6 +4693,55 @@ int suite_router() {
 			      "as the other questions here answer about nothing");
 		}
 
+		// THE NINE AT ONCE, which exists because the hand-written list
+		// drifts and this tree has watched it happen twice: the example
+		// asserted eight reports while the page said nine, and adding a
+		// tenth meant editing every place that enumerated them.
+		{
+			QWidget clean;
+			clean.setAttribute(Qt::WA_DontShowOnScreen);
+			clean.resize(GridMetrics::cells(30, 8));
+			auto *lay = new QVBoxLayout(&clean);
+			auto *field = new QLineEdit;
+			auto *label = new QLabel(QStringLiteral("&Host"));
+			label->setBuddy(field);
+			lay->addWidget(label);
+			lay->addWidget(field);
+			lay->addWidget(new QPushButton(QStringLiteral("&Connect")));
+			clean.show();
+			InputRouter cr(&clean);
+			QCoreApplication::processEvents();
+			CHECK(Qtty::audit(&clean).isEmpty(),
+			      "a window that passes every report passes this one, "
+			      "which is the answer an application asserts");
+
+			// AND IT CAN SAY NO, without which the line above would pass
+			// on a function that returned empty whatever it was given.
+			// One fault of a kind only ONE of the reports can see, so
+			// the row has to have come from that report.
+			auto *stray = new QPushButton(QStringLiteral("Go"), &clean);
+			stray->setFocusPolicy(Qt::NoFocus);
+			stray->setGeometry(0, 6 * GridMetrics::ch(),
+			                   8 * GridMetrics::cw(), GridMetrics::ch());
+			stray->show();
+			QCoreApplication::processEvents();
+			const QVector<QPair<QString, QString>> found =
+			    Qtty::audit(&clean);
+			QStringList questions;
+			for (const auto &row : found) questions.append(row.first);
+			CHECK(questions.contains(QStringLiteral("pointer_only")),
+			      "a button no key reaches puts a row in it, named with "
+			      "the question that found it rather than a bare widget");
+			CHECK(found.size() == Qtty::pointer_only(&clean).size(),
+			      "and nothing else does, so the aggregate agrees with "
+			      "the single report it came from rather than inventing "
+			      "or dropping a finding");
+
+			CHECK(Qtty::audit(nullptr).isEmpty(),
+			      "and a null scope answers empty, as every question it "
+			      "asks does");
+		}
+
 		// THE CHORDS A TERMINAL CANNOT DELIVER, which is the gap the
 		// keyboard-protocol section left open: the guide tells an
 		// application to prefer another letter and nothing checked it.
@@ -4954,7 +5003,8 @@ int suite_router() {
 			// Takes a scope and is NOT an audit question. Each needs a
 			// reason, because the default is that it is one.
 			QStringList not_audits;
-			not_audits << QStringLiteral("shortcut_help");   // a help line
+			not_audits << QStringLiteral("shortcut_help")    // a help line
+			           << QStringLiteral("audit");           // the others
 
 			QStringList declared;
 			for (const QString &line : doc.split(QLatin1Char('\n'))) {

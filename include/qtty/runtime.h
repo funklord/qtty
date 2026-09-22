@@ -188,6 +188,30 @@ QVector<QPair<QString, QString>> shortcut_help(QWidget *scope);
 // uses and for the same reason: both answer, and a reader needs both.
 QVector<QPair<QString, QString>> ambiguous_chords(QWidget *scope);
 
+// Every report above that should be EMPTY, asked at once, as (question, what
+// it found). Empty is a clean window, and each row names the question that
+// produced it so a failure says which one without the caller enumerating any.
+//
+//     QVERIFY(Qtty::audit(&window).isEmpty());
+//
+// NOT a tenth question and not in the guide's table: it is the other nine
+// run together. `keyboard_reachable()` is left out because it is the one
+// asserted NON-empty -- a window with no controls would otherwise pass this
+// by having nothing to report, which is the vacuous pass the whole set exists
+// to avoid.
+//
+// IT EXISTS BECAUSE THE HAND-WRITTEN LIST DRIFTS, measured in this tree
+// twice. The project's own example asserted eight reports while the guide
+// said nine, the ninth having been added to the page and not to the block;
+// and adding a tenth meant editing every place that enumerated them. An
+// application's test is the same shape with nobody to notice, so the
+// enumeration lives here -- in the file a new question is added to anyway.
+//
+// The guide's table still lists them one by one, and that is deliberate: a
+// reader learns what is being asked from the table, and writes this in the
+// test.
+QVector<QPair<QString, QString>> audit(QWidget *scope);
+
 // Which of those rows this window has taken back, and who took them.
 //
 // `keyboard_conventions_help()` has no scope to ask, so it promises what the
