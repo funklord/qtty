@@ -15,11 +15,24 @@ open, and how to work in the tree. Where design.md holds the detail, this
 document states the substance in a sentence or two and cites the section
 number rather than restating it.
 
-## 0a. State, 2026-09-19
+## 0a. State, 2026-09-22
 
-1961 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1961 checks, 0 failures, and **4.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
-machine, 2026-09-21. The number is here because 8.276 and 8.277 both
+machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
+wall each time.
+
+**It read 6.0 to 6.5 until this re-take, and the suite has grown by
+about ninety checks since.** So the figure fell by roughly a third
+while the work rose, and **I have not established why** -- this is the
+observation and not an explanation. The candidates are a faster machine
+than the one measured on 2026-09-21, a different build reaching that
+earlier figure, and something in the day's work costing less than what
+it replaced; nothing here distinguishes them, and the entry that first
+recorded the number says in as many words that a clock on a shared
+machine measures the machine.
+
+The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
 `dladdr()` cost twenty per cent of that figure and no check could see
 it. It is a BASELINE and not a gate -- a wall clock on a shared machine
