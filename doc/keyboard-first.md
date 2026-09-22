@@ -2329,7 +2329,21 @@ QVERIFY(Qtty::audit(&window).isEmpty());
 
 `Qtty::audit()` returns every row the nine empty reports would, each
 named with the question that produced it, so a failure says which one
-without your test enumerating any. `keyboard_reachable()` is left out
+without your test enumerating any.
+
+**Before you have written a test, print it.** The rows carry the
+question and the finding, so the first run of a window you are still
+building tells you what it is missing:
+
+```cpp
+for (const auto &[question, found] : Qtty::audit(&window))
+    qWarning("%s: %s", qPrintable(question), qPrintable(found));
+```
+
+That is the same call the assertion makes, so what you fix at the
+keyboard is what the test will stop reporting -- and `qWarning` is the
+right spelling here rather than `printf`, which would land in your
+frame. `keyboard_reachable()` is left out
 because it is the one asserted *non*-empty -- a window with no controls
 would otherwise pass by having nothing to report.
 
