@@ -5419,3 +5419,11 @@ find = "(opt->state & State_Open) ? QStringLiteral("
 into = "(false) ? QStringLiteral("
 count = 1
 check = "Right opens it and the mark turns over with it"
+
+[[sabotage]]
+name = "an unknown-length progress bar animates after all"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tconst bool unknown = span <= 0;"
+into = "\t\t\t\tconst bool unknown = span <= 0 && QTime::currentTime().msec() % 2;"
+count = 1
+check = "a busy progress bar costs an idle session nothing on the wire"

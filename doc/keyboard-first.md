@@ -2087,6 +2087,38 @@ what the opt-in conventions mean rather than a capability, and that is
 the copyright holder's; until it is settled, bind it yourself -- and
 practice 8 says to list what you bound.
 
+### An animation you cannot see, and can still pay for
+
+**An indeterminate progress bar -- `setRange(0, 0)` -- animates.** Not on
+the screen: qtty draws an unknown-length bar as a shaded run with no phase
+in it, deliberately, because a moving picture is a frame-diffing renderer
+repainting for nothing. What animates is Qt, underneath, and it does not
+stop because nobody is looking.
+
+Measured in one window holding both kinds of bar, over 1.2 seconds of an
+application doing nothing at all:
+
+    indeterminate bar        72 paint events      60 ms of CPU
+    determinate bar           0 paint events       2 ms of CPU
+    either, on the wire       0 frames             0 damaged cells
+
+**Nothing reaches the terminal**, which is the half worth knowing before
+you go looking: the cells do not change, so the frame loop composes,
+diffs, finds nothing and sends nothing. A session over ssh stays silent.
+A check asserts exactly that, with a bar whose value really moves as the
+control, so it cannot pass by the frame loop having stopped.
+
+What you pay is the other half. About **5% of a core, for as long as the
+bar is up**, spent drawing a picture that is identical every time -- and
+three quarters of it is Qt repainting the widget, which happens with no
+frame loop running at all. On a desktop that buys a moving barber's pole;
+here it buys nothing.
+
+So: prefer a bar whose length you know, even approximately, and take an
+indeterminate one off the screen when the job ends rather than leaving it
+at zero. If you do not know the length and the job is long, a line of
+text that changes when something happens costs nothing between changes.
+
 ### Running an editor, a pager, or anything else that wants the screen
 
 A TUI usually has one thing it cannot do itself, and reaches for a

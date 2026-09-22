@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-22
 
-1974 checks, 0 failures, and **4.5 seconds of user time** --
+1976 checks, 0 failures, and **4.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
 wall each time.
@@ -17844,6 +17844,84 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.330 The cost nothing downstream can see (2026-09-23)
+
+**The lens came from 8.329 rather than from a list**: that fault was a
+style hook whose CONSUMER is Qt's own widget code rather than this
+library's drawing, answered in pixels. So the question is what else Qt
+asks this style and acts on -- and the sweep is mechanical, because the
+enums are enumerable.
+
+**96 pixel metrics: 49 answered here, 47 left to Fusion, and 26 of those
+are not a whole number of cells.** Most are icon sizes and frame widths
+that only ever feed drawing this style has already taken over. Two were
+worth chasing to the artifact and both came back empty, which is
+recorded because an absence is a measurement only with its method:
+
+- **A dock widget's title buttons** are real children at `218,3` and
+  `237,3`, 18x14 -- off the grid in both axes. They are Qt's own
+  furniture, `is_exempt()` forgives them by the principle 8.274 settled,
+  and the two glyphs still draw a cell apart. Nothing to do.
+- **A line edit's side widgets**, which is `addAction()` -- how a search
+  field gets its magnifier -- land ON the grid, at `x=0` and `x=190`
+  with cw 10. And `pointer_only()` names exactly the right one of the
+  two: the action's button, not the clear button, which its own header
+  says is excluded because `Ctrl+U` reaches what clicking it reaches.
+  The audit was already right about a case nobody had pointed it at.
+
+**A control saved that second one from being a finding.** With
+`QIcon::fromTheme("edit-find")` the leading action drew nothing at all,
+three blank cells where a mark belongs -- and the theme icon is null on
+this machine, so the blank was the absent icon rather than this library.
+With a real pixmap it draws the picture-reduced-to-a-cell mark the
+vocabulary already publishes.
+
+**121 style hints, narrowed by hand to the 37 that decide a key, a timer
+or a selection rule.** Every one agrees with Fusion, and two of them are
+`SH_Widget_Animate = 1` and `SH_Widget_Animation_Duration = 200`.
+
+**So: an indeterminate progress bar animates, and nobody can see it.**
+Measured in one window holding both kinds, over 1.2 s of an application
+doing nothing:
+
+    indeterminate     72 paint events    60 ms CPU
+    determinate        0 paint events     2 ms CPU
+
+**The comfortable fix was named and run and it failed.** Answering both
+animation hints as 0 changed the count by nothing -- still 72 -- so the
+hints are not what starts it, and the change came out again rather than
+staying in as a plausible-looking line. A fix that cannot be shown to do
+anything is a fix for a defect that was somewhere else, which is what
+the tab-bar entry already says and what this nearly stopped being true.
+
+**Then the artifact, which is where the story stops being alarming.**
+Driven through a real `Compositor` and `FrameScheduler` over a counting
+backend: **0 frames and 0 damaged cells** in 200 ms, against a
+determinate bar whose value moves and produces both. The cells of an
+unknown-length bar do not change -- `CE_ProgressBar` draws it as a
+shaded run with no phase in it, and its comment says that is deliberate
+-- so every frame the animation asks for diffs to nothing. **A session
+over ssh sees silence.**
+
+**What is left is the worst shape a cost can have.** About 5% of a core
+for as long as the bar is up, and **61 of the 82 ms is Qt repainting the
+widget with no frame loop running at all** -- so it is not the
+compositor's to coalesce. It produces no frame, no damage and no bytes,
+which means every instrument this project owns reports zero.
+
+**Two checks and a control.** Zero frames passes exactly as loudly from
+a frame loop that has stopped, so the same window, backend and
+instrument are then asked for a change that must produce one.
+Sabotage-proven by making the unknown branch alternate on the clock: 9
+frames over 200 ms, the check red, and the control still green -- which
+is the part that says the sabotage was caught by the check under test
+rather than by something upstream.
+
+**The guide carries the advice**, with the numbers and with the half a
+reader needs first: nothing reaches the terminal, and you are paying for
+a picture that never moves.
 
 
 ### 8.329 A rename that moved the name one cell (2026-09-23)

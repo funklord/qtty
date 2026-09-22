@@ -616,5 +616,80 @@ int suite_budget() {
 		      "a full 200x60 frame renders inside ten times the local budget");
 	}
 
+	// AN IDLE TERMINAL STAYS SILENT, and the case that tests it is the one
+	// an ordinary application is likeliest to leave on the screen: an
+	// INDETERMINATE progress bar. Fusion animates one, so the widget
+	// repaints at 60 Hz for as long as the job runs -- measured, 72 paint
+	// events in 1.2 seconds against 0 from a determinate bar beside it.
+	//
+	// None of that may reach the wire, and this is what says so. The cells
+	// of an unknown-length bar do not change: CE_ProgressBar draws it as a
+	// shaded run with no phase in it, so every frame the animation asks for
+	// diffs to nothing and the backend is handed nothing. A terminal over
+	// ssh therefore sees silence rather than 60 frames a second.
+	//
+	// THE CONTROL IS THE HALF THAT MAKES IT EVIDENCE. "Zero frames" passes
+	// exactly as loudly from a frame loop that is not running at all, so the
+	// same window, the same backend and the same instrument are then asked
+	// for a change that MUST produce a frame.
+	{
+		struct Counter : ITerminalBackend {
+			int frames = 0;
+			long damaged = 0;
+			QSize size() const override { return QSize(20, 4); }
+			Capabilities capabilities() const override { return {}; }
+			void present(const CellBuffer &, const QRegion &d) override {
+				++frames;
+				for (const QRect &r : d) damaged += long(r.width()) * r.height();
+			}
+			void set_cursor(std::optional<QPoint>, CursorShape) override {}
+			void set_event_sink(ITerminalEventSink *) override {}
+			void resume() override {}
+			void suspend() override {}
+		};
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(20, 4));
+		auto *v = new QVBoxLayout(&win);
+		auto *busy = new QProgressBar;
+		busy->setRange(0, 0);
+		auto *known = new QProgressBar;
+		known->setRange(0, 10);
+		known->setValue(5);
+		v->addWidget(busy);
+		v->addWidget(known);
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter router(&win);
+		Compositor comp(&win, &router);
+		Counter back;
+		FrameScheduler sched(&back, &comp, &win);
+		sched.render_now();
+		back.frames = 0;
+		back.damaged = 0;
+
+		// 200 ms is twelve frame intervals at the 16 ms section 11 coalesces
+		// to, so an animation reaching the wire has a dozen chances to be
+		// seen. Bounded by a single-shot timer rather than by a loop that
+		// decides for itself when to stop.
+		QEventLoop idle;
+		QTimer::singleShot(200, &idle, &QEventLoop::quit);
+		idle.exec();
+		printf("info: an indeterminate progress bar asked the frame loop for"
+		       " %d frame(s) over 200 ms of doing nothing\n", back.frames);
+		CHECK(back.frames == 0 && back.damaged == 0,
+		      "an animation that changes no cell reaches no terminal, so a "
+		      "busy progress bar costs an idle session nothing on the wire");
+
+		known->setValue(7);
+		QEventLoop moved;
+		QTimer::singleShot(200, &moved, &QEventLoop::quit);
+		moved.exec();
+		CHECK(back.frames > 0 && back.damaged > 0,
+		      "while a bar whose value really moved does reach it, which is "
+		      "what says the silence above was the animation and not a frame "
+		      "loop that had stopped");
+	}
+
 	return fails;
 }
