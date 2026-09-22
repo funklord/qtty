@@ -349,6 +349,20 @@ Two keys move the view without moving focus. An arrow the focused widget
 list that scrolls per item moves by visible rows rather than by a
 pixel count that would mean nothing to it.
 
+**With two scroll areas it is the one you are in**, measured on a split
+window with the focus inside the right-hand pane: the right one moves
+and the left does not. That is Qt propagating an unhandled key up the
+parent chain rather than anything this library arranges; qtty's own
+fallback runs only when the focused widget is inside no scroll area at
+all, and then takes the first one in the window. Worth knowing if you
+ever wonder which pane a key will move.
+
+**A scroll area needs nothing focusable inside it to be reachable.** A
+page of text -- a licence, a log, a help screen -- is a tab stop in its
+own right, so `Tab` lands on it and `PageDown` reads it. That is Qt's
+focus policy for `QAbstractScrollArea` rather than a convention here,
+which is why it holds with the conventions off.
+
 **One transient worth knowing**: a resize does not re-scroll a list to
 its current item, because Qt does not, so after a sharp shrink the item
 the keys would act on can be off-view until the next keystroke brings it

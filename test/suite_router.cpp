@@ -4693,6 +4693,121 @@ int suite_router() {
 			      "as the other questions here answer about nothing");
 		}
 
+		// SCROLLING, which the guide promises twice and nothing here
+		// checked. Both of these came out of asking whether a keyboard
+		// user can reach a scrollable region at all, and the answer was
+		// yes both times -- so what these pin is a promise rather than a
+		// repair, and the comment on the second is the part worth having.
+		{
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(30, 8));
+			auto *lay = new QVBoxLayout(&win);
+			lay->addWidget(new QPushButton(QStringLiteral("&Before")));
+			auto *area = new QScrollArea;
+			auto *text = new QLabel;
+			QString body;
+			for (int i = 0; i < 40; ++i)
+				body += QStringLiteral("line %1\n").arg(i);
+			text->setText(body);
+			area->setWidget(text);
+			lay->addWidget(area);
+			lay->addWidget(new QPushButton(QStringLiteral("&After")));
+			win.show();
+			InputRouter r(&win);
+			// ADOPTED, or the Tab below counts from nothing rather than
+			// from the button: a fixture with no composed frame has no
+			// seeded focus, so the first Tab lands ON the first tab stop
+			// instead of past it. Measured here the long way round -- the
+			// check read QPushButton where it expected the area -- which
+			// is 8.309 met again in a fixture of my own.
+			Qtty::set_current_window(&win);
+			QCoreApplication::processEvents();
+
+			// NOTHING FOCUSABLE IS IN IT -- a label of text, which is the
+			// ordinary shape of a licence, a log or a help page. Practice
+			// 4 says every control is on the tab chain; a region a user
+			// must be able to READ is the same promise, and it holds
+			// because Qt gives QAbstractScrollArea a focus policy of its
+			// own rather than because anything here arranged it.
+			CHECK(keyboard_reachable(&win).contains(area),
+			      "a scroll area holding nothing focusable is itself a tab "
+			      "stop, so a page of text with no controls in it can "
+			      "still be reached");
+
+			const int flat = area->verticalScrollBar()->value();
+			Qtty::test::press(r, Qt::Key_Tab);
+			QCoreApplication::processEvents();
+			CHECK(Qtty::has_focus(area),
+			      "and one Tab past the button before it lands there");
+			Qtty::test::press(r, Qt::Key_PageDown);
+			QCoreApplication::processEvents();
+			CHECK(area->verticalScrollBar()->value() > flat,
+			      "and PageDown then moves it, which is what a reader "
+			      "wants the key for");
+		}
+
+		// WHICH AREA, with two of them. The guide says an arrow the
+		// focused widget ignores reaches "the scroll area that widget is
+		// inside", and the fallback in on_key() does not do that -- it
+		// takes the FIRST QAbstractScrollArea in the scope, whichever it
+		// is. Both statements are true because the fallback is not what
+		// runs here: Qt propagates an unhandled key up the parent chain,
+		// the containing area consumes it, and the event comes back
+		// accepted before the fallback is reached.
+		//
+		// Worth pinning precisely because reading the fallback suggests
+		// the wrong answer. Every other fixture in this suite has ONE
+		// scroll area, where the two rules agree and nothing can tell
+		// them apart; this is the arrangement that can.
+		{
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(60, 12));
+			auto *lay = new QHBoxLayout(&win);
+			auto *first = new QScrollArea;
+			auto *tall_first = new QLabel;
+			QString a_body;
+			for (int i = 0; i < 60; ++i)
+				a_body += QStringLiteral("first %1\n").arg(i);
+			tall_first->setText(a_body);
+			first->setWidget(tall_first);
+
+			auto *second = new QScrollArea;
+			auto *holder = new QWidget;
+			auto *hv = new QVBoxLayout(holder);
+			auto *inner = new QLineEdit;
+			hv->addWidget(inner);
+			auto *tall_second = new QLabel;
+			QString b_body;
+			for (int i = 0; i < 60; ++i)
+				b_body += QStringLiteral("second %1\n").arg(i);
+			tall_second->setText(b_body);
+			hv->addWidget(tall_second);
+			second->setWidget(holder);
+
+			lay->addWidget(first);
+			lay->addWidget(second);
+			win.show();
+			InputRouter r(&win);
+			inner->setFocus();
+			set_focus_widget(win.focusWidget());
+			QCoreApplication::processEvents();
+
+			const int f0 = first->verticalScrollBar()->value();
+			const int s0 = second->verticalScrollBar()->value();
+			for (int i = 0; i < 3; ++i) {
+				Qtty::test::press(r, Qt::Key_PageDown);
+				QCoreApplication::processEvents();
+			}
+			CHECK(second->verticalScrollBar()->value() > s0,
+			      "with the focus inside the second of two scroll areas, "
+			      "PageDown moves that one");
+			CHECK(first->verticalScrollBar()->value() == f0,
+			      "and leaves the first alone, which the fallback on its "
+			      "own would not -- it takes whichever comes first");
+		}
+
 		// THE NINE AT ONCE, which exists because the hand-written list
 		// drifts and this tree has watched it happen twice: the example
 		// asserted eight reports while the page said nine, and adding a

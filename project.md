@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1938 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1943 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17831,6 +17831,50 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.319 A lens that came back empty, and the fixture that did not (2026-09-22)
+
+**The lens that produced 8.310 through 8.318 -- does the guide describe
+what the code does -- was pointed at scrolling, and came back empty.**
+Recorded with its method, because an absent finding and an absent search
+read the same.
+
+The suspicion was real enough to chase. The guide says an arrow the
+focused widget ignores reaches *"the scroll area that widget is
+inside"*, and `on_key()` does no such thing:
+
+    if (auto *area = input_scope()->findChild<QAbstractScrollArea *>())
+
+which takes the FIRST one in the scope, whichever it is. With two panes
+those differ, and every fixture in this suite has one -- so nothing
+could tell them apart.
+
+**Measured, and the behaviour is right: the second pane scrolled and the
+first did not.** Both statements are true because the fallback is not
+what runs. Qt propagates an unhandled key up the parent chain, the
+containing area consumes it, and the event comes back accepted before
+the fallback is reached. The fallback covers the case the guide's
+sentence does not describe -- a focused widget inside no scroll area at
+all -- and there "the first one" is a choice rather than a mistake.
+
+**The second question came back empty too.** A `QScrollArea` holding
+nothing focusable -- a licence, a log, a help page -- is reachable,
+because Qt gives `QAbstractScrollArea` a focus policy of its own. Value
+11, measured, and the area is a tab stop in its own right.
+
+**So five checks, and not one of them is a repair.** They pin two
+promises the guide makes that nothing checked, in the one arrangement
+that can tell the rules apart. Reading the fallback suggests the wrong
+answer, which is exactly why the pair is worth having.
+
+**And the fixture caught me, which is the part worth the entry.** The
+Tab check failed, reading `QPushButton` where it expected the area. The
+fixture had no `Compositor`, so `adopt_window()` never ran and nothing
+was focused -- the first Tab landed ON the first tab stop rather than
+past it. **That is 8.309, this morning, in a fixture of my own**, and I
+found it by printing the focus rather than by reasoning about it, which
+is the only reason it took one build instead of an argument.
+
+
 ### 8.318 The cost I deferred on, measured (2026-09-22)
 
 **I recorded the redraw question in 0b citing a cost I had not
