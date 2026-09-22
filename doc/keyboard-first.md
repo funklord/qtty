@@ -500,9 +500,15 @@ Ask your terminal before you rely on it:
 
 `Qtty::Capabilities::keyboard_protocol` is the same answer in code. Where
 it is false, treat a shifted control chord as unavailable rather than as
-unbound -- there is nothing an application can do about it, and a binding
+unbound: nothing an application does will make it arrive, and a binding
 nobody can reach is worse than no binding, because the menu entry beside
 it says the key exists.
+
+**What you can do is find out which of yours are affected**, before a
+user does. `Qtty::ambiguous_chords()` names them -- the shifted chords
+here and the five below -- from the window rather than from the
+terminal, so it answers in a headless test where there is no terminal
+to ask.
 
 The same flag is what makes a lone `Escape` immediate rather than a
 chord waiting on a timer, which is what "disambiguate escape codes"
