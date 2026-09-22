@@ -4857,6 +4857,55 @@ int suite_router() {
 			      "asks does");
 		}
 
+		// THE TWO ANSWER DIFFERENT QUESTIONS, and a user meets the
+		// difference. shortcut_help() lists what the application BOUND;
+		// ambiguous_chords() says which of those a terminal cannot send.
+		// So a program that prints the help line and never runs the audit
+		// shows a user "Ctrl+I  Italic" on a screen where pressing it
+		// moves the focus.
+		//
+		// Asserted as a PAIR rather than fixed, because neither answer is
+		// wrong on its own: the binding exists and works wherever the
+		// keyboard protocol does, and hiding it from the help would
+		// silently drop a key that some terminals deliver. What the guide
+		// tells an author is to ask both, and this is that partition --
+		// the day one of them starts omitting the other's rows, this
+		// fails rather than the two quietly disagreeing in a user's
+		// status bar.
+		{
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(40, 8));
+			auto *bar = new QMenuBar(&win);
+			auto *m = bar->addMenu(QStringLiteral("&Format"));
+			auto *ital = m->addAction(QStringLiteral("&Italic"));
+			ital->setShortcut(QKeySequence(QStringLiteral("Ctrl+I")));
+			auto *bold = m->addAction(QStringLiteral("&Bold"));
+			bold->setShortcut(QKeySequence(QStringLiteral("Ctrl+B")));
+			win.show();
+			QCoreApplication::processEvents();
+
+			QStringList helped, flagged;
+			for (const auto &row : shortcut_help(&win))
+				helped.append(row.first);
+			for (const auto &row : ambiguous_chords(&win))
+				flagged.append(row.first);
+
+			CHECK(helped.contains(QStringLiteral("Ctrl+I")),
+			      "the help line lists a chord a terminal cannot send, "
+			      "because the application did bind it and a terminal that "
+			      "speaks the protocol delivers it");
+			CHECK(flagged.contains(QStringLiteral("Ctrl+I")),
+			      "and the audit names the same chord, which is why an "
+			      "application has to ask both rather than trusting the "
+			      "line it prints");
+			CHECK(helped.contains(QStringLiteral("Ctrl+B"))
+			          && !flagged.contains(QStringLiteral("Ctrl+B")),
+			      "while an ordinary chord is in one and not the other, "
+			      "without which the pair above would hold for a report "
+			      "that named everything");
+		}
+
 		// THE CHORDS A TERMINAL CANNOT DELIVER, which is the gap the
 		// keyboard-protocol section left open: the guide tells an
 		// application to prefer another letter and nothing checked it.

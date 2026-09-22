@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1943 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1946 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17831,6 +17831,42 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.320 Two answers of mine that a user would meet as one (2026-09-22)
+
+**The same lens turned on today's own work.** `shortcut_help()` (8.313)
+and `ambiguous_chords()` (8.316) were written four entries apart and
+disagree in a place a user stands: the first lists what an application
+BOUND, the second says which of those a terminal cannot deliver.
+
+So a program that prints the help line and never runs the audit shows a
+user
+
+    Ctrl+I   Italic
+
+on a screen where pressing it moves the focus. Both calls are right.
+The line is what you bound and the chord does work wherever the
+keyboard protocol does; the audit is what a terminal can send.
+
+**Asserted as a pair rather than repaired, and the choice is the
+entry.** Dropping ambiguous chords from the help line was the obvious
+fix and is wrong: it would silently hide a key that kitty-protocol
+terminals deliver, which is a working binding removed from the one
+place a user looks for it. Leaving the audit silent about a bound chord
+is worse still. What is left is that an author must ask BOTH -- so the
+suite pins the partition: the help lists `Ctrl+I`, the audit names
+`Ctrl+I`, and an ordinary `Ctrl+B` is in one and not the other.
+
+The third is the control. Without it the pair would hold for a report
+that named every chord, which is the failure `ambiguous_chords()` was
+built with its own control to avoid and which a second report could
+reintroduce from outside.
+
+**The guide says it where an author is reading about the help line**,
+rather than in the audit's own section: somebody printing a status bar
+is not at that moment reading about reports, and the sentence has to
+reach them where the mistake is made.
+
+
 ### 8.319 A lens that came back empty, and the fixture that did not (2026-09-22)
 
 **The lens that produced 8.310 through 8.318 -- does the guide describe

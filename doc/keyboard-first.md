@@ -1139,6 +1139,16 @@ remember, and each is a row you would otherwise print wrongly:
 | one action carrying **two sequences** is two rows | both answer, so a user needs both |
 | another window's `Qt::ApplicationShortcut` is **in** | it answers here, whatever window it was declared in |
 
+**Ask `Qtty::ambiguous_chords()` as well, because this line will print
+a key your terminal cannot send.** The two answer different questions:
+this one lists what you BOUND, and that one says which of those a
+terminal cannot deliver. Neither is wrong on its own -- your `Ctrl+I`
+works wherever the keyboard protocol does, and dropping it from the
+line would hide a key some terminals deliver -- but a program that
+prints the line and never runs the audit shows a user *Ctrl+I Italic*
+on a screen where pressing it moves the focus. Run the audit, fix the
+binding, and then the line is right.
+
 Mnemonics are deliberately not in it: they are drawn underlined on the
 control itself, so a list of them is a second copy of what the screen
 already says. And a `QShortcut` is labelled by its `objectName()` -- an
