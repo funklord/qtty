@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1885 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1886 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17829,6 +17829,42 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.308 The one line that stops the program had no guard (2026-09-22)
+
+**`InputRouter::on_terminal_lost()` is one line -- `qApp->quit()` --
+and its own comment says why it is a seam at all**: the same thing
+used to arrive as a synthesised Ctrl+D and went through the quit-key
+loop, so `set_quit_keys()` or a text field claiming the chord took
+the stop away with it.
+
+The seam exists because the old path was breakable. Nothing guarded
+the new one. A change making it conditional again would have gone
+unnoticed, and the symptom is the one `running-code.md` records
+measuring: a program still accumulating CPU with nothing reading its
+output.
+
+**The backend half was covered and the router half was not.**
+`suite_backend` counts the call on a fake sink, which proves the
+backend reports the loss; nothing proved the router acts on it. Found
+by extending 8.307's sweep from free functions to methods.
+
+#### The fixture is bounded, so a failure is red and not a hang
+
+A repeating trigger, for the reason the `exec()` check above it gives
+in as many words -- a zero-timer fires before the loop is running,
+`quit()` is a no-op then, and the test hangs. And a five-second
+safety net that quits regardless, so the ELAPSED TIME is what says
+which of the two ended the loop:
+
+    the router stops it     10 ms, one trigger
+    it does not             5000 ms, the net
+
+The check demands under 2500. The sabotage empties the function and
+watches it fail that way rather than hanging the suite, which is what
+makes it a check rather than a timeout.
+
+One check and one sabotage.
+
 ### 8.307 The public function nothing called (2026-09-22)
 
 **A mechanical sweep, after three lenses in a row had run dry: which

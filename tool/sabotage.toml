@@ -5282,3 +5282,16 @@ find = "inline void mouse_press(InputRouter &router, const QPoint &cell,\n      
 into = "inline void mouse_press(InputRouter &router, const QPoint &cell,\n                        int button = 1) {\n\tMouseEvent e;\n\te.cell = cell;\n\te.button = button;\n\te.release = true;"
 count = 1
 check = "a press, a move and a release drag a scroll bar's thumb"
+
+# The terminal-lost path made conditional again, which is the state
+# the seam exists to prevent: it used to arrive as a synthesised
+# Ctrl+D through the quit-key loop, so anything taking that chord away
+# took the stop with it. The check fails red rather than hanging,
+# because its fixture carries a five-second safety net. 8.308.
+[[sabotage]]
+name = "a terminal that goes away no longer stops the program"
+file = "src/runtime/input_router.cpp"
+find = "void InputRouter::on_terminal_lost() {\n\tif (qApp) qApp->quit();\n}"
+into = "void InputRouter::on_terminal_lost() {\n}"
+count = 1
+check = "a terminal that goes away stops the program"

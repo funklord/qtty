@@ -660,6 +660,58 @@ int suite_runtime() {
 		      " offscreen platform defaults to");
 	}
 
+	// THE TERMINAL GOING AWAY STOPS THE PROGRAM, which nothing checked.
+	// InputRouter::on_terminal_lost() is one line -- qApp->quit() -- and
+	// its comment says why it is a seam at all: the same thing used to
+	// arrive as a synthesised Ctrl+D and went through the quit-key loop,
+	// so set_quit_keys() or a text field claiming the chord took it away
+	// with them. The seam exists because the old path was breakable, and
+	// nothing guarded the new one: a change making it conditional again
+	// would have gone unnoticed.
+	//
+	// The backend half IS covered -- suite_backend counts the call on a
+	// fake sink -- and the router half, the part that actually stops,
+	// was not.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(10, 3));
+		win.show();
+		InputRouter router(&win);
+		QCoreApplication::processEvents();
+
+		// A REPEATING trigger, for the reason the exec() check above
+		// gives in as many words: a zero-timer fires before the loop is
+		// running, quit() is a no-op then, and the test hangs. This one
+		// fires whenever the loop actually starts.
+		QTimer trigger;
+		int fired = 0;
+		QObject::connect(&trigger, &QTimer::timeout, [&] {
+			++fired;
+			router.on_terminal_lost();
+		});
+		trigger.start(10);
+		// AND A SAFETY NET, so a failure is a red check rather than a
+		// hung suite. If the router stops asking, this quits at five
+		// seconds and the elapsed time is what says which of the two
+		// did it.
+		QTimer safety;
+		safety.setSingleShot(true);
+		QObject::connect(&safety, &QTimer::timeout, qApp,
+		                 &QCoreApplication::quit);
+		safety.start(5000);
+		QElapsedTimer elapsed;
+		elapsed.start();
+		qApp->exec();
+		trigger.stop();
+		safety.stop();
+		printf("info: the loop ended after %lld ms, %d trigger(s)\n",
+		       static_cast<long long>(elapsed.elapsed()), fired);
+		CHECK(fired > 0 && elapsed.elapsed() < 2500,
+		      "a terminal that goes away stops the program, unconditionally "
+		      "and not through the quit keys that used to carry it");
+	}
+
 	// ------------------------------------------------------ GridGuard (5.3/9)
 	{
 		GridGuard::install(*qApp);
