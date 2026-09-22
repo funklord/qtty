@@ -5271,3 +5271,14 @@ find = "\tif (m.width() < cw && m.height() < ch)"
 into = "\tif (m.width() < cw || m.height() < ch)"
 count = 1
 check = "a caret a whole row tall and a rule many cells wide still round"
+
+[[sabotage]]
+# mouse_press setting `release` instead, which is the mistake a helper
+# built by hand makes and which nothing could have caught while no
+# caller existed: a drag with no press behind it moves nothing. 8.307.
+name = "the press helper releases instead of pressing"
+file = "include/qtty/testing.h"
+find = "inline void mouse_press(InputRouter &router, const QPoint &cell,\n                        int button = 1) {\n\tMouseEvent e;\n\te.cell = cell;\n\te.button = button;\n\te.press = true;"
+into = "inline void mouse_press(InputRouter &router, const QPoint &cell,\n                        int button = 1) {\n\tMouseEvent e;\n\te.cell = cell;\n\te.button = button;\n\te.release = true;"
+count = 1
+check = "a press, a move and a release drag a scroll bar's thumb"

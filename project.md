@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1884 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1885 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17829,6 +17829,51 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.307 The public function nothing called (2026-09-22)
+
+**A mechanical sweep, after three lenses in a row had run dry: which
+public functions does the suite never call?** Five names came back.
+
+    encode_kitty_tile        a production caller, covered through it
+    install_cell_paint_filter  called by setup()
+    set_terminal_focused     called by on_focus_change()
+    window_tab_at            a production caller
+    Qtty::test::mouse_press  NOTHING, anywhere
+
+Four are library functions reached through their one caller. The
+fifth is a helper **shipped yesterday** whose only appearance in the
+tree is its own definition -- `click()` builds its own events rather
+than calling it, and no check used it.
+
+*An interface is only as wired as its least-used method*, and this is
+that, in my own work one day old. A `mouse_press()` that set
+`release` instead would have compiled, shipped and told nobody.
+
+#### Wired by the thing it exists for
+
+A drag: press on a scroll bar's thumb, move with the button held,
+release.
+
+    a move with no press before it   value 50, unchanged
+    press on the thumb               value 50, unchanged
+    move down two rows               value 80
+    release                          value 80
+
+**The first line is the control and is the point.** Without it "the
+value changed" passes for a library in which the press does nothing
+and the move does all the work -- which is exactly the state the
+sabotage puts back.
+
+#### The sweep is worth keeping as a habit
+
+It cost one shell loop and it found the one gap three deliberate
+lenses had missed. Every other candidate it named was answered in the
+same minute by asking whether `src/` calls it, which is the cheap half
+-- a public function with a production caller is covered by whatever
+covers the caller, and only a function with neither is a hole.
+
+One check and one sabotage.
+
 ### 8.306 A note of mine named one consequence and there were two (2026-09-22)
 
 **`snapshot_of_screen()`'s own note says it takes the window tab

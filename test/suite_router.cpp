@@ -5274,6 +5274,53 @@ int suite_router() {
 				      "exist");
 				Qtty::test::mouse_release(r, QPoint(2, 0));
 				QCoreApplication::processEvents();
+
+				// A DRAG THROUGH ALL THREE, which is what mouse_press()
+				// exists for and what nothing called. A sweep for public
+				// functions the suite never calls found it: five names,
+				// four of them library functions with a production caller
+				// and this one a helper shipped yesterday with no caller
+				// anywhere. An interface is only as wired as its least-used
+				// method, and a press that set `release` instead would have
+				// gone unnoticed.
+				QWidget dhost;
+				dhost.setAttribute(Qt::WA_DontShowOnScreen);
+				dhost.resize(GridMetrics::cells(8, 8));
+				auto *dbar = new QScrollBar(Qt::Vertical, &dhost);
+				dbar->setGeometry(0, 0, cw, ch * 8);
+				dbar->setRange(0, 100);
+				dbar->setValue(50);
+				dhost.show();
+				InputRouter dr(&dhost);
+				QCoreApplication::processEvents();
+				CellBuffer db(8, 8);
+				render_once(dhost, db);
+				int thumb = -1;
+				for (int y = 0; y < 8 && thumb < 0; ++y)
+					if (db.at(0, y).ch == QString(QChar(0x2588))) thumb = y;
+
+				// THE CONTROL FIRST: a move with no press before it is a
+				// hover, and moves nothing. Without it "the value changed"
+				// would pass for a library in which the press did nothing
+				// and the move did all the work.
+				Qtty::test::mouse_move(dr, QPoint(0, thumb + 2), 1);
+				QCoreApplication::processEvents();
+				const int after_bare_move = dbar->value();
+
+				Qtty::test::mouse_press(dr, QPoint(0, thumb));
+				QCoreApplication::processEvents();
+				const int after_press = dbar->value();
+				Qtty::test::mouse_move(dr, QPoint(0, thumb + 2), 1);
+				QCoreApplication::processEvents();
+				const int after_move = dbar->value();
+				Qtty::test::mouse_release(dr, QPoint(0, thumb + 2));
+				QCoreApplication::processEvents();
+				CHECK(thumb >= 0 && after_bare_move == 50 && after_press == 50
+				      && after_move > 50 && dbar->value() == after_move,
+				      "and a press, a move and a release drag a scroll bar's "
+				      "thumb, where a move on its own is a hover and shifts "
+				      "nothing");
+				GridGuard::reset();
 				// This fixture's host is off the grid for one event -- a
 				// QWidget carries a default 300x214 until it is resized,
 				// and the guard sees it. Disowned deliberately, which is
