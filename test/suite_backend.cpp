@@ -326,6 +326,42 @@ int suite_backend() {
 	      && rec.keys[0].shift == legacy.shift,
 	      "and plain Ctrl+C is byte-identical whichever encoding carried "
 	      "it");
+	// THE CHORDS THAT COLLIDE, which are a worse case than the shifted ones
+	// beside them and are not the same case. Ctrl+Shift+C is UNSENDABLE on a
+	// legacy terminal: nothing arrives and the binding is silently unbound.
+	// Ctrl+I is SENDABLE and means something else -- byte 0x09 is Tab -- so
+	// the binding is not merely dead, the key does a different thing, and
+	// the user watching the focus move has no way to guess why.
+	//
+	// Five of them, and they are all chords an application would plausibly
+	// choose: Ctrl+I for italic, Ctrl+M for a mark, Ctrl+H for help.
+	feed("\t");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Tab
+	      && !rec.keys[0].ctrl,
+	      "Ctrl+I on a legacy terminal is byte 0x09, which is Tab, and "
+	      "arrives with no ctrl on it at all");
+	feed("\033[105;5u");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_I
+	      && rec.keys[0].ctrl,
+	      "while the protocol says Ctrl+I, so the same keypress is two "
+	      "different events depending on the terminal");
+
+	feed("\r");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Return
+	      && !rec.keys[0].ctrl,
+	      "and Ctrl+M is Return by the same arithmetic");
+	feed("\033[109;5u");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_M
+	      && rec.keys[0].ctrl,
+	      "which the protocol also tells apart");
+
+	feed("\010");
+	const KeyEvent bs = rec.keys.value(0);
+	feed("\033[104;5u");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_H
+	      && rec.keys[0].ctrl && bs.qt_key != Qt::Key_H,
+	      "and Ctrl+H, whose legacy byte is a Backspace rather than an H");
+
 	// Escape is what the disambiguating flag is FOR: without it a lone ESC
 	// and the first byte of a sequence are the same byte, which is why a
 	// terminal program has to tell them apart on a timer.

@@ -494,6 +494,35 @@ The same flag is what makes a lone `Escape` immediate rather than a
 chord waiting on a timer, which is what "disambiguate escape codes"
 means.
 
+**And five chords are not unsendable but AMBIGUOUS, which is the worse
+half.** A shifted control chord is silently *unbound* -- you press it
+and nothing happens, which at least looks like a bug. These five are
+sendable and mean something else, because the control byte an ASCII
+keyboard produces for them is a key in its own right:
+
+| Your binding | The byte | What arrives without the protocol |
+|---|---|---|
+| `Ctrl+I` | `0x09` | `Tab` -- the focus moves |
+| `Ctrl+M` | `0x0d` | `Return` -- a dialog's default fires |
+| `Ctrl+[` | `0x1b` | `Escape` -- a dialog rejects |
+| `Ctrl+H` | `0x08` | `Backspace` -- a character is deleted |
+| `Ctrl+J` | `0x0a` | a line feed |
+
+Measured through the decoder: `Ctrl+I` arrives as `Key_Tab` **with no
+ctrl on it at all**, so nothing downstream can tell it from a real
+`Tab`, and `Qtty::shortcut_conflicts()` cannot see the collision either
+-- to Qt those are two different key sequences and they are, right up
+until the wire. With the protocol the same keypress arrives as `Key_I`
+with ctrl.
+
+Every one of the five is a chord an application might reasonably pick:
+`Ctrl+I` for italic, `Ctrl+M` for a mark, `Ctrl+H` for help. **Prefer
+another letter.** Where you cannot -- because your users know that
+chord from the desktop build -- bind the other key as well and say in
+your help which terminals answer it, since `Ctrl+I` doing nothing is a
+fault a user reports and `Ctrl+I` moving the focus is one they blame
+themselves for.
+
 **`F10` is the way into a menu bar whose titles carry no mnemonic**, and
 without it there is none: a `QMenuBar` is `Qt::NoFocus`, is in no tab
 chain, and Qt reaches it by `Alt` -- which needs a `&` in the title. So a

@@ -245,11 +245,20 @@ int main(int argc, char **argv) {
 	fprintf(out, "mouse                %s\n", c.mouse ? "yes" : "no");
 	fprintf(out, "bracketed paste      %s\n", c.bracketed_paste ? "yes" : "no");
 	// What a user comes to this tool to find out when a binding of theirs
-	// does nothing: without the keyboard protocol no Ctrl+Shift+letter can
-	// reach an application at all, whatever the application binds.
+	// does nothing -- or does something else, which this line used to leave
+	// out and which is the worse half.
+	//
+	// Without the protocol, no Ctrl+Shift+letter reaches an application at
+	// all: a control byte is one of 32 values and carries no shift bit, so
+	// the binding is silently unbound. And five chords are not unsendable
+	// but AMBIGUOUS -- Ctrl+I is byte 0x09, which is Tab, so the binding is
+	// not dead, the key does a different thing and the user watching the
+	// focus move has no way to guess why.
 	fprintf(out, "keyboard protocol    %s\n",
-	        c.keyboard_protocol ? "yes -- Ctrl+Shift+letter can arrive"
-	                            : "no -- Ctrl+Shift+letter folds onto Ctrl+letter");
+	        c.keyboard_protocol
+	            ? "yes -- Ctrl+Shift+letter arrives, Ctrl+I is not Tab"
+	            : "no -- Ctrl+Shift+letter folds onto Ctrl+letter,"
+	              " and Ctrl+I/M/[/H/J are Tab/Return/Esc/Backspace/LF");
 
 	if (probes) {
 		fprintf(out, "\n-- probes --\n");

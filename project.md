@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1921 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1926 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17830,6 +17830,55 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.315 Three surfaces described half of what a missing keyboard protocol costs (2026-09-22)
+
+**Without the kitty keyboard protocol a terminal cannot send
+`Ctrl+Shift+C`, and this tree says so in three places.** None of them
+said the other half: **five chords are not unsendable but ambiguous**,
+and that is the worse failure.
+
+    include/qtty/backend.h      "a legacy terminal CANNOT SAY Ctrl+Shift+C"
+    doc/keyboard-first.md       the shifted-control-chord section
+    qtty-negotiate --probes     "Ctrl+Shift+letter folds onto Ctrl+letter"
+
+A shifted control chord is silently **unbound** -- press it, nothing
+happens, which at least looks like a fault. These five are **sendable
+and mean something else**, because the control byte an ASCII keyboard
+produces for them is a key in its own right:
+
+    Ctrl+I  0x09  Tab          Ctrl+[  0x1b  Escape
+    Ctrl+M  0x0d  Return       Ctrl+H  0x08  Backspace
+    Ctrl+J  0x0a  Line feed
+
+**Measured through the decoder rather than reasoned**, with the byte
+harness the backend suite already has: `\t` arrives as `Key_Tab` **with
+no ctrl on it at all**, and `CSI 105;5u` as `Key_I` with ctrl. So
+nothing downstream can tell a `Ctrl+I` from a real `Tab` -- and
+`shortcut_conflicts()` cannot see the collision either, because to Qt
+those are two different key sequences, which they are right up until
+the wire.
+
+**The tool's own comment invited the missing half.** It reads *"what a
+user comes to this tool to find out when a binding of theirs does
+nothing"* -- and a binding that does something ELSE is exactly the case
+that framing describes and the line below it omitted.
+
+Five checks pin the pairs. All three surfaces name both halves now, and
+the guide says what to do: prefer another letter, and where you cannot,
+bind a second key and say which terminals answer the first --
+**`Ctrl+I` doing nothing is a fault a user reports, and `Ctrl+I` moving
+the focus is one they blame themselves for.**
+
+**Why it went unnoticed is worth keeping.** The library's behaviour is
+right in both cases and always was; the decoder handles CSI u
+completely and the legacy path is what a terminal leaves it. Nothing
+was broken, so nothing failed, and the only artifact was three
+descriptions that were each true and each partial. That is a claim
+about the world rather than about this tree, which is the kind no gate
+here can re-derive -- the checks pin the decoder's two answers, and a
+reader still has to be told what they mean.
+
+
 ### 8.314 The advice practice 10 gives is not the question the style asks (2026-09-22)
 
 **Practice 10 is the one this guide calls the hardest-biting, because
