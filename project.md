@@ -17844,6 +17844,44 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.326 The two facilities a custom widget is written FOR (2026-09-22)
+
+**`doc/keyboard-first.md` has a section called *If you are writing a
+custom widget*, and it never mentioned either interface that exists for
+one.** `ICellPainted` appeared zero times in the guide and once in the
+README; `PixelSurface` zero times in both.
+
+Everything that section carried is about a widget that draws roughly
+what a standard one draws -- ignore `Alt`, draw a focus mark, set
+`WA_InputMethodEnabled`, fold newlines, respect the cell row, measure in
+columns. **The reason to write a custom widget at all is content
+nothing standard has**, and the two facilities for exactly that were
+invisible to its audience:
+
+    ICellPainted    my content is CELLS   paint_cells(buffer, cells)
+    PixelSurface    my content is PIXELS  paint with QPainter, harvested
+
+**The library and the suite were complete; only the guide was not.**
+Both interfaces are implemented, both are checked, and the trap of
+claiming both is checked in both directions -- it compiles, the pixel
+path wins, `paint_cells()` is never called and the widget is harvested
+as an image with no warning. That is the shape the whole section is
+about, and the one instance of it that was written down lived in a
+header an application author has no reason to open.
+
+**Found by walking an application rather than sweeping a document.**
+The question was what a TUI would need that this library might not
+give: a terminal widget, drawing its own cells inside a terminal. The
+answer was that the facility exists -- and that nobody reading the
+guide would learn so.
+
+`cells` is where you are and not a fence, which is in the section now
+too: the buffer is the whole frame, the rectangle carries the
+compositor's origin, and writing outside it overwrites neighbours with
+nothing noticing. Measured in the header, and now said where somebody
+is about to write the loop.
+
+
 ### 8.325 A probe that left nothing behind (2026-09-22)
 
 **`QWizard` had zero checks.** It was probed earlier in this same

@@ -2155,6 +2155,36 @@ cells, and `QString` counts neither. The rules, each measured:
 `elide_to_cells()` uses, and a widget that truncates its own text wants
 the same pair rather than `left(n)`.
 
+**And two ways to draw content the grid cannot infer, which this page
+has never mentioned and which are the reason to write a custom widget
+at all.** Everything above is about a widget that draws roughly what a
+standard one draws. These are for one whose content is its own:
+
+| If your content is | Do this | What happens |
+|---|---|---|
+| **cells** -- a terminal, a hex view, a board | inherit `Qtty::ICellPainted` and implement `paint_cells(CellBuffer &, const QRect &cells)` | you are handed the frame and your own rectangle in it, and you write glyphs and attributes straight in |
+| **pixels** -- a plot, a meter, a still | inherit `Qtty::PixelSurface` and paint with `QPainter` as you always would | qtty harvests the result and hands it to the graphics plane with your cell geometry |
+
+Both are inert in a GUI build: `PixelSurface` is an ordinary `QWidget`
+there and `paint_cells()` is never called, so the same class serves
+both frontends.
+
+**Never claim both.** It compiles, and the pixel path wins silently --
+qtty tests for a surface first, so `paint_cells()` is never called and
+your widget is harvested as an image with no warning anywhere.
+Measured, and pinned by a check so the consequence cannot quietly
+change in either direction. The two interfaces answer opposite
+questions, and a class claiming both has answered neither.
+
+**`cells` is where you are, not a fence.** The buffer handed to
+`paint_cells()` is the whole frame; your rectangle already carries the
+compositor's origin, so draw at `cells.left()` and `cells.top()` and
+map nothing yourself. Write outside it and you write over your
+neighbours, and nothing notices -- measured, not inferred. A cell
+outside the buffer is dropped rather than wrapped, so a widget
+positioned partly off-screen may draw its whole rect and let the edges
+fall away.
+
 The fifth is the one that is a limitation rather than a price: a cell row
 is the unit, so a widget laying its own lines out in pixels can ask for the
 same row twice. Qt's own command link button does exactly that, which is
