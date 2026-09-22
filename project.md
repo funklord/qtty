@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1904 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1907 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17830,6 +17830,56 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.312 A sentence that borrowed a check's words (2026-09-22)
+
+**The lens that found 8.310 and 8.311, pointed at the guide itself:
+present-tense countable claims about the tree's own shape. Two hits, and
+the second is a shape not recorded here before.**
+
+**The easy one.** The navigation list at the top of
+`doc/keyboard-first.md` still offered *"the eight questions this library
+will answer about a window, seven of them asserted empty"*. The section
+it points at says nine and eight. `6f51112` added the ninth on
+2026-09-21 and updated the section; the bullet was written four days
+earlier in `d9796c2` and nobody looked up. **The count is gone rather
+than corrected** -- it now says what the section lists, with no number
+to rot, which is `evidence.md`'s own remedy for a figure quoted in more
+than one place.
+
+**The one worth the entry.** The right-to-left section read:
+
+    Measured on a mirrored two-field form: Alt and a letter reaches the
+    field it names, Tab visits the fields in reading order, and all nine
+    questions under Checking it without a terminal answer empty.
+
+**That cannot be true, and the sentence beside it is the proof.**
+`keyboard_reachable()` returns the widgets `Tab` visits; an empty answer
+would deny the clause immediately before it. A form with two fields in
+it has two reachable widgets.
+
+**What makes it worth recording is why it survived.** The suite carries
+a check worded almost identically -- *"all nine questions answer empty
+when asked about nothing"* -- and it is about a **null scope and an
+empty window**, where every one of the nine is correctly empty. So the
+guide's claim reads as though a check stands behind it, and one does,
+answering a different question. **The only thing connecting them is the
+wording.**
+
+It is *Corroboration has to be independent* with the two witnesses being
+a document and a test, and the tell is not that they agree: it is that
+the document borrowed the test's sentence for a fixture the test never
+built. A reader checking the claim finds a matching check and stops.
+
+**Three checks now measure what the paragraph says**, on a mirrored form
+rather than on nothing: both fields reachable and in reading order, the
+other eight empty, and `Alt` on a buddy label's letter reaching the
+field it names with the layout mirrored. The first discriminates -- it
+names the two fields in order, so the plausible wrong answer, a tab
+order reversed with the layout, fails it. The paragraph says what they
+found and says plainly what it used to say, so the old wording cannot
+come back looking careful.
+
+
 ### 8.311 The tenth audit question, measured and not shipped (2026-09-22)
 
 **Eight of the guide's fourteen practices have a function that asserts

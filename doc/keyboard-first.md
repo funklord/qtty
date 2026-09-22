@@ -29,8 +29,8 @@ where it is qtty's it says which.
 - *a user cannot select text with the mouse any more* -- **Copy and
   paste**, which names the modifier that still works;
 - *you want a test rather than an opinion* -- **Checking it without a
-  terminal**, which lists the eight questions this library will answer
-  about a window, seven of them asserted empty.
+  terminal**, which lists the questions this library will answer about
+  a window, and what to assert about each.
 
 That is organised by task rather than mirroring every heading below --
 though it does name some of them, so it is a smaller copy rather than
@@ -412,8 +412,18 @@ with Fusion, and not a gap here.
 **Everything the keyboard does is unchanged**, which is the part worth
 saying because it is the part an implementer would otherwise go and
 check. Measured on a mirrored two-field form: `Alt` and a letter reaches
-the field it names, `Tab` visits the fields in reading order, and all
-nine questions under *Checking it without a terminal* answer empty.
+the field it names, `Tab` visits the fields in reading order, and of the
+questions under *Checking it without a terminal*, the eight that should
+be empty are -- while `Qtty::keyboard_reachable()` names both fields, in
+reading order, which is the one answer mirroring could plausibly have
+disturbed and did not.
+
+This sentence used to say that **all nine** answered empty, which cannot
+be true of a form with fields in it: `keyboard_reachable()` returns what
+`Tab` visits, so an empty answer there would deny the clause beside it.
+The suite carries a check worded almost the same way and it is about a
+null scope and an empty window, where all nine are correctly empty. One
+sentence, two fixtures. There is a check on the mirrored form now.
 
 ### Bidirectional text is not handled
 

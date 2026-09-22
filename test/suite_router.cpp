@@ -4638,6 +4638,64 @@ int suite_router() {
 			      "code");
 		}
 
+		// THE AUDIT SET ON A MIRRORED FORM, which the right-to-left
+		// section claims was measured and which nothing here measured.
+		// Its sentence read "all nine questions ... answer empty", and
+		// that cannot be true of a form with two fields in it:
+		// keyboard_reachable() returns what Tab visits, so an empty
+		// answer there would contradict the clause beside it saying Tab
+		// visits the fields in reading order.
+		//
+		// The suite DOES carry a check worded almost identically, a few
+		// hundred lines up -- and it is about a null scope and an empty
+		// window, where every one of the nine is correctly empty. One
+		// sentence, two fixtures, and the guide took the wrong one.
+		{
+			QWidget form;
+			form.setAttribute(Qt::WA_DontShowOnScreen);
+			form.setLayoutDirection(Qt::RightToLeft);
+			form.resize(GridMetrics::cells(40, 8));
+			auto *lay = new QFormLayout(&form);
+			auto *name = new QLineEdit;
+			auto *city = new QLineEdit;
+			auto *name_label = new QLabel(QStringLiteral("&Name"));
+			auto *city_label = new QLabel(QStringLiteral("&City"));
+			name_label->setBuddy(name);
+			city_label->setBuddy(city);
+			lay->addRow(name_label, name);
+			lay->addRow(city_label, city);
+			form.show();
+			InputRouter fr(&form);
+			QCoreApplication::processEvents();
+
+			const QVector<QWidget *> reach = keyboard_reachable(&form);
+			CHECK(reach.size() == 2 && reach.at(0) == name
+			          && reach.at(1) == city,
+			      "a mirrored form's fields are both reachable and in "
+			      "reading order, which is the claim the guide makes and "
+			      "the one an empty answer would deny");
+
+			CHECK(pointer_only(&form).isEmpty()
+			          && mnemonic_conflicts(&form).isEmpty()
+			          && shortcut_conflicts(&form).isEmpty()
+			          && conventions_shadowed(&form).isEmpty()
+			          && tab_order_anomalies(&form).isEmpty()
+			          && hover_only(&form).isEmpty()
+			          && focus_invisible(&form).isEmpty()
+			          && sheet_styled(&form).isEmpty(),
+			      "and the other eight answer empty about it, mirroring "
+			      "changing what is drawn and not what a key reaches");
+
+			// And the mnemonic, which is the other half of that
+			// paragraph: a buddy label's letter reaches its field with
+			// the layout mirrored exactly as without.
+			Qtty::test::mnemonic(fr, QLatin1Char('c'));
+			QCoreApplication::processEvents();
+			CHECK(Qtty::focusWidget() == city,
+			      "and Alt on a buddy label's letter reaches the field it "
+			      "names, with the form mirrored");
+		}
+
 		// THE WHOLE AUDIT SET, not one function's population. 8.310 fixed
 		// a paragraph that had lost a kind; this is the same drift one
 		// level up -- the guide's table of questions is prose a reader
