@@ -10471,22 +10471,27 @@ int suite_router() {
 		CHECK(Qtty::focus_invisible(&chat).isEmpty(),
 		      "the project's own example shows where the focus is, which "
 		      "it did not until the report was asked of it");
-		// SEVEN, not six, and the seventh is the point of counting them
-		// here at all. sheet_styled() was added to the page as its ninth
-		// question and this block was not grown with it, so the example
-		// asserted eight of nine while the page said nine -- the same
-		// drift the vocabulary table grew a count to stop, in the one
-		// program this project ships as the worked answer.
-		CHECK(Qtty::pointer_only(&chat).isEmpty()
-		      && Qtty::mnemonic_conflicts(&chat).isEmpty()
-		      && Qtty::shortcut_conflicts(&chat).isEmpty()
-		      && Qtty::conventions_shadowed(&chat).isEmpty()
-		      && Qtty::tab_order_anomalies(&chat).isEmpty()
-		      && Qtty::hover_only(&chat).isEmpty()
-		      && Qtty::sheet_styled(&chat).isEmpty(),
-		      "and passes the other seven reports the guide tells an "
-		      "application to assert empty, which is the guide run against "
-		      "the program this project ships rather than read");
+		// THE AGGREGATE, and this block is why it exists. It used to
+		// write the list out, and the list went stale: sheet_styled()
+		// was added to the page as its ninth question and this block was
+		// not grown with it, so the example asserted eight of nine while
+		// the page said nine. The tenth would have done it again.
+		//
+		// audit() cannot drift that way -- it enumerates in the file a
+		// new question is added to anyway -- so the one program this
+		// project ships as the worked answer now asserts what the guide
+		// tells an application to assert, in the spelling the guide
+		// gives it.
+		const QVector<QPair<QString, QString>> report = Qtty::audit(&chat);
+		if (!report.isEmpty())
+			for (const auto &row : report)
+				fprintf(stderr, "chat audit: %s -- %s\n",
+				        row.first.toUtf8().constData(),
+				        row.second.toUtf8().constData());
+		CHECK(report.isEmpty(),
+		      "and passes every report the guide tells an application to "
+		      "assert empty, which is the guide run against the program "
+		      "this project ships rather than read");
 		CHECK(!Qtty::keyboard_reachable(&chat).isEmpty(),
 		      "with something reachable to begin with, an empty window "
 		      "passing every report by having no controls at all");
