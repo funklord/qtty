@@ -267,6 +267,33 @@ public:
 // one thing and is not: the argument is Qt's PER-WINDOW focus and the call is
 // qtty's PROCESS-WIDE one. Four sites in the library read that way.
 QWidget *focusWidget();
+
+// The question `QWidget::hasFocus()` asks, answered from this library's focus
+// rather than from Qt's -- which is permanently false here, no window ever
+// activating.
+//
+// A custom widget drawing its own focus mark (practice 10 of
+// `doc/keyboard-first.md`) wants this and not `focusWidget() == this`, for
+// two reasons that both fail silently:
+//
+// THE FOCUS PROXY. `hasFocus()` walks the proxy chain before comparing and a
+// pointer test does not, so a composite widget that delegates its focus to an
+// inner editor -- `setFocusProxy()`, the ordinary way to build one -- is
+// answered NO by the pointer test while Qt would say yes. It is not a rare
+// arrangement: a QKeySequenceEdit, an editable QComboBox, a QSpinBox, a
+// QDateTimeEdit and a QFontComboBox each hold an inner QLineEdit whose proxy
+// is the outer widget, a QScrollArea proxies its viewport, and a QTabWidget
+// is the proxy of its own bar.
+//
+// THE TERMINAL'S OWN FOCUS. Every control this library draws withholds its
+// mark while the terminal is not focused -- a frame saying "type here" at a
+// window receiving nothing typed is worse than one saying nothing -- and a
+// pointer test does not know about that at all, so a custom widget would keep
+// its mark alone on a screen where every standard one had dropped it.
+//
+// The style asks this same function, so a custom widget and a standard one
+// cannot disagree about who is focused.
+bool has_focus(const QWidget *w);
 // The REASON is Qt's and is not decoration: QLineEdit selects its contents
 // when focus arrives by Tab, Backtab or a shortcut, and leaves them alone
 // otherwise. Qt delivers no focus event here at all, so the reason this

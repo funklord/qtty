@@ -1159,7 +1159,30 @@ never set. That code works on the desktop and silently draws nothing on
 the terminal -- the same binary, the same widget, no error anywhere. Ask
 qtty instead:
 
-    if (Qtty::focusWidget() == this) drawFocusMark();
+    if (Qtty::has_focus(this)) drawFocusMark();
+
+**That used to read `Qtty::focusWidget() == this`, and a pointer test
+gets two things wrong.** Both are silent and both only on the terminal,
+which is the pair this practice exists to prevent:
+
+- **A focus proxy.** `hasFocus()` walks the proxy chain before comparing
+  and a pointer test does not, so a composite widget that delegates its
+  focus to an inner editor -- `setFocusProxy()`, the ordinary way to
+  build one -- is answered **no**, where a desktop `hasFocus()` says
+  yes. Measured on exactly that arrangement. It is not a rare shape: a
+  `QKeySequenceEdit`, an editable `QComboBox`, a `QSpinBox`, a
+  `QDateTimeEdit` and a `QFontComboBox` each hold an inner `QLineEdit`
+  whose proxy is the outer widget.
+- **The terminal's own focus.** Every control this library draws
+  withholds its mark while the terminal is not focused -- a frame saying
+  *type here* at a window receiving nothing typed is worse than one
+  saying nothing -- and a pointer test knows nothing about that.
+  Measured: with the terminal unfocused it still says draw, so your
+  widget would keep its mark alone on a screen where every standard one
+  had dropped it.
+
+`Qtty::has_focus()` is the function the style itself asks, so your widget
+and a standard one cannot disagree about who is focused.
 
 **If you write an item delegate, draw its panel through the style.** This
 is ordinary Qt -- the documentation asks for it and a desktop needs it

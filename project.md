@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1915 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1921 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17830,6 +17830,62 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.314 The advice practice 10 gives is not the question the style asks (2026-09-22)
+
+**Practice 10 is the one this guide calls the hardest-biting, because
+the desktop build hides it: a custom widget asking `hasFocus()` draws no
+mark on a terminal.** Its remedy was
+`if (Qtty::focusWidget() == this)`. The style has never asked the
+question that way, and the two differences are both silent and both only
+on the terminal -- which is the exact pair the practice exists to
+prevent, reintroduced by its own remedy.
+
+Measured on a composite widget delegating focus to an inner `QLineEdit`:
+
+    pointer test  has_focus  Qt hasFocus
+    proxy       0          1            0   composite with setFocusProxy
+    inner       1          1            -
+    unfocused   1          0            -   terminal focus lost
+
+**The proxy row is the one that matters most**, because on a DESKTOP
+`hasFocus()` walks the proxy chain and answers yes for that composite.
+So the remedy produced a widget that works on the desktop and silently
+draws nothing on the terminal -- word for word the failure the practice
+opens by describing. And `setFocusProxy()` is the ordinary way to build
+a composite: a `QKeySequenceEdit`, an editable `QComboBox`, a
+`QSpinBox`, a `QDateTimeEdit` and a `QFontComboBox` are each one.
+
+**The unfocused row is the one nobody would look for.** Every control
+this library draws withholds its mark when the terminal loses focus,
+which is a deliberate rule with its own checks -- a frame saying *type
+here* at a window receiving nothing typed is worse than one saying
+nothing. A pointer test knows nothing about it, so a widget following
+the guide would keep its mark alone on a screen where every standard
+control had gone quiet.
+
+**The fix was already in the tree and was private.** `grid_style.cpp`
+carried `focus_reaches()` with a comment naming the proxy problem and
+the five standard widgets that have it, used "where the answer is known
+to matter". It is `Qtty::has_focus()` now, the style calls it, and
+practice 10 gives it -- so a custom widget and a standard one cannot
+disagree about who is focused, which is a stronger claim than either
+spelling being correct on its own.
+
+**Six checks, and the third is the control.** A widget that is NOT
+focused must answer no, without which the two proxy rows would pass on
+a function that always said yes. The terminal-focus pair is asserted in
+both directions for the same reason -- withheld while it is off, back
+when it returns -- so a function that simply stopped answering could not
+pass them.
+
+**And the suite's own demonstration of practice 10 used the old
+spelling.** The `Correct` fixture beside `focus_invisible()`'s checks --
+the one whose whole job is to show what a custom widget should do --
+drew its mark on `Qtty::focusWidget() == this`. It asks
+`Qtty::has_focus(this)` now. A fixture that demonstrates advice is a
+copy of that advice, and it goes stale the same way.
+
+
 ### 8.313 The half of practice 8 an application still hand-wrote (2026-09-22)
 
 **Practice 8 tells a terminal program to say what its keys are, and tells

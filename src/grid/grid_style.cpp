@@ -370,7 +370,12 @@ static Attrs focus_attrs(const QWidget *w) {
 // returns before it asks -- which is why owns_focus() has not been changed
 // wholesale: that would move marks on widgets nobody has measured. This is
 // used where the answer is known to matter.
-static bool focus_reaches(const QWidget *w) {
+// PUBLIC, because a custom widget needs exactly this and the guide used to
+// tell it to write the pointer test instead -- see grid.h. Internal callers
+// go through the same function rather than a copy of it: two spellings of
+// "is this focused" is how a custom widget's mark comes to disagree with a
+// standard one's, which is the disagreement this answers.
+bool has_focus(const QWidget *w) {
 	if (!w || !terminal_focused()) return false;
 	const QWidget *const f = s_focus.data();
 	if (!f) return false;
@@ -378,6 +383,7 @@ static bool focus_reaches(const QWidget *w) {
 		if (p == f) return true;
 	return false;
 }
+static bool focus_reaches(const QWidget *w) { return has_focus(w); }
 
 // Will the terminal's own cursor mark this focus? Compositor::compose()
 // places it on the focus widget and only when that widget carries

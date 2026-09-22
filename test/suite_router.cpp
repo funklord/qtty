@@ -4638,6 +4638,61 @@ int suite_router() {
 			      "code");
 		}
 
+		// WHAT A CUSTOM WIDGET ASKS TO DRAW ITS OWN MARK. Practice 10
+		// told it to write `Qtty::focusWidget() == this`, and the style
+		// has never asked the question that way. Two things the pointer
+		// test gets wrong, both silent and both only on the terminal,
+		// which is the pair practice 10 exists to prevent.
+		{
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			host.resize(GridMetrics::cells(30, 6));
+			auto *lay = new QVBoxLayout(&host);
+			auto *composite = new QWidget;
+			auto *inner = new QVBoxLayout(composite);
+			auto *edit = new QLineEdit;
+			inner->addWidget(edit);
+			composite->setFocusProxy(edit);      // the ordinary way
+			lay->addWidget(composite);
+			auto *plain = new QPushButton(QStringLiteral("Go"));
+			lay->addWidget(plain);
+			host.show();
+			InputRouter hr(&host);
+			composite->setFocus();
+			set_focus_widget(host.focusWidget());
+			QCoreApplication::processEvents();
+
+			CHECK(Qtty::has_focus(composite)
+			          && Qtty::focusWidget() != composite,
+			      "a composite widget that delegates focus to an inner "
+			      "editor is focused, and the pointer test the guide used "
+			      "to give says it is not");
+			CHECK(Qtty::has_focus(edit),
+			      "and so is the editor it delegated to, both ends of the "
+			      "proxy chain answering yes as QWidget::hasFocus() does");
+			CHECK(!Qtty::has_focus(plain),
+			      "while the button beside it is not, so this can say no "
+			      "-- without which the two above would pass on a "
+			      "function that always said yes");
+
+			set_terminal_focused(false);
+			CHECK(!Qtty::has_focus(edit)
+			          && Qtty::focusWidget() == edit,
+			      "a terminal that has lost focus withholds the mark, "
+			      "where the pointer test still says to draw it -- which "
+			      "is a custom widget marked alone on a screen every "
+			      "standard control has gone quiet on");
+			set_terminal_focused(true);
+			CHECK(Qtty::has_focus(edit),
+			      "and it comes back when the terminal does, so the row "
+			      "above is the terminal's focus and not a widget that "
+			      "lost its own");
+
+			CHECK(!Qtty::has_focus(nullptr),
+			      "and a null widget is not focused rather than a crash, "
+			      "as the other questions here answer about nothing");
+		}
+
 		// THE APPLICATION'S OWN KEYS, which practice 8 asks every
 		// terminal program to draw and which it could only hand-write.
 		// The guide already says not to hand-write the ones this library
@@ -5406,7 +5461,7 @@ int suite_router() {
 				void paintEvent(QPaintEvent *) override {
 					QPainter p(this);
 					p.drawText(rect(), Qt::AlignLeft,
-					           Qtty::focusWidget() == this
+					           Qtty::has_focus(this)
 					               ? QStringLiteral("[ok]")
 					               : QStringLiteral(" ok "));
 				}
@@ -5458,7 +5513,7 @@ int suite_router() {
 			      "that answer is permanently false here and its focus "
 			      "mark therefore never draws");
 			CHECK(!blind.contains(correct),
-			      "and one that asks Qtty::focusWidget() is not, which is "
+			      "and one that asks Qtty::has_focus() is not, which is "
 			      "the whole of practice 10");
 			CHECK(!blind.contains(button) && !blind.contains(field),
 			      "nor Qt's own controls: the button draws a mark and the "

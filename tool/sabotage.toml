@@ -4957,6 +4957,29 @@ count = 1
 check = "the section is there either way"
 
 [[sabotage]]
+# has_focus() reduced to the pointer test practice 10 used to give,
+# which is the whole of 8.314: a composite delegating its focus to
+# an inner editor stops being focused, where a desktop hasFocus()
+# would say it is.
+name = "has_focus stops walking the focus proxy chain"
+file = "src/grid/grid_style.cpp"
+find = "\tfor (const QWidget *p = w; p; p = p->focusProxy())\n\t\tif (p == f) return true;\n\treturn false;"
+into = "\treturn w == f;"
+count = 1
+check = "a composite widget that delegates focus to an inner editor is focused, and the pointer test the guide used to give says it is not"
+
+[[sabotage]]
+# The terminal's own focus dropped from the answer, so a custom
+# widget keeps its mark alone on a screen where every standard
+# control has gone quiet. 8.314.
+name = "has_focus ignores whether the terminal is focused"
+file = "src/grid/grid_style.cpp"
+find = "bool has_focus(const QWidget *w) {\n\tif (!w || !terminal_focused()) return false;"
+into = "bool has_focus(const QWidget *w) {\n\tif (!w) return false;"
+count = 1
+check = "a terminal that has lost focus withholds the mark, where the pointer test still says to draw it -- which is a custom widget marked alone on a screen every standard control has gone quiet on"
+
+[[sabotage]]
 # The help line promising a key that does nothing, which is the one
 # row of the four subtractions a hand-written line gets wrong most
 # often: a disabled action is still in the tree and still carries
