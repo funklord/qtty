@@ -3787,7 +3787,12 @@ int suite_widgets() {
 		InputRouter r(&win);
 		Qtty::set_current_window(&win);
 		QCoreApplication::processEvents();
-
+		{   // a composed frame, which is what delivers the focus event
+			CellBuffer settle(30, 4);
+			Compositor c(&win, &r);
+			c.compose(settle);
+			QCoreApplication::processEvents();
+		}
 		CHECK(Qtty::test::snapshot_of(win, 30, 4)
 		          .contains(QStringLiteral("[2026-09-22")),
 		      "a date editor draws its date in a field, rather than the "
@@ -3804,18 +3809,36 @@ int suite_widgets() {
 		      "Up steps the section the caret is in, which starts on the "
 		      "year");
 
-		// FIVE, not one, and the first draft of this asked after one --
-		// reading "the section did not change" as a fault when the year
-		// is four characters wide and the caret had simply moved inside
-		// it. Right moves a CHARACTER; crossing into the month is what
-		// changes the section.
-		for (int i = 0; i < 5; ++i) {
+		// PRESSED UNTIL IT MOVES, not a fixed number of times, and the
+		// count is where the first draft of this went wrong twice. It
+		// asked after ONE Right and read the unchanged section as a
+		// fault -- the year is four characters wide and the caret had
+		// moved inside it. Corrected to five, it then failed under xcb,
+		// where one Right crosses the whole year because the section is
+		// SELECTED and a selection is what Right jumps over.
+		//
+		// Measured on both platforms, from the same state -- section
+		// Year, caret 0, four characters selected after a composed
+		// frame:
+		//
+		//     offscreen   caret 0 1 2 3 4 5, month at the fifth press
+		//     xcb         caret 0 4 5 6 7 8, month at the second
+		//
+		// So the KEYSTROKE COUNT is a property of the platform and the
+		// promise is not. What a user is owed is that Right reaches the
+		// month and Up then steps it, which is what this asks.
+		int presses = 0;
+		while (dt->currentSection() != QDateTimeEdit::MonthSection
+		       && presses < 8) {
 			Qtty::test::press(r, Qt::Key_Right);
 			QCoreApplication::processEvents();
+			++presses;
 		}
-		CHECK(dt->currentSection() == QDateTimeEdit::MonthSection,
+		CHECK(dt->currentSection() == QDateTimeEdit::MonthSection
+		          && presses > 0 && presses < 8,
 		      "and Right walks the caret out of the year and into the "
-		      "month, a character at a time as it does on a desktop");
+		      "month, in some number of presses the platform decides and "
+		      "a user does not care about");
 
 		Qtty::test::press(r, Qt::Key_Up);
 		QCoreApplication::processEvents();

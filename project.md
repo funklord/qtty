@@ -17889,13 +17889,38 @@ The last row is the answer to the collision question: the focused
 widget is offered the key before the convention takes it, so a date
 editor keeps `Up` and `Down` for its sections.
 
-**My probe was wrong before the library was.** The first draft pressed
-`Right` ONCE and read the unchanged section as a defect. The year is
-four characters wide and the caret had simply moved inside it; crossing
-into the month is what changes the section, and it takes five. That is
-the third time today a measurement stopped me publishing a wrong claim
-about this tree, and the reason the check spells out why it presses
-five times.
+**My probe was wrong before the library was, twice.** The first draft
+pressed `Right` ONCE and read the unchanged section as a defect -- the
+year is four characters wide and the caret had moved inside it.
+Corrected to five presses it passed offscreen, and **failed under xcb**,
+which is where the interesting part is.
+
+Measured on both platforms from the same state -- section Year, caret
+0, four characters selected after a composed frame:
+
+    offscreen   caret 0 1 2 3 4 5   the month at the fifth press
+    xcb         caret 0 4 5 6 7 8   the month at the second
+
+Under xcb the first `Right` crosses the whole year, because the section
+is SELECTED and a selection is what `Right` jumps over. **Both
+platforms agree on the state before the keys start** -- the selection
+is four characters wide on each, so this library's synthetic focus
+event does fire and QDateTimeEdit does select its section. They diverge
+only after the `Up` that steps the year, and the mechanism beyond that
+is Qt's, unmeasured here, and recorded as an observation rather than
+explained.
+
+**The check asks the relationship now**: press `Right` until the
+section changes, bounded, and assert that it reached the month and that
+`Up` then steps it. The keystroke COUNT is a property of the platform;
+what a user is owed is that the key gets there. Pinning the count was
+pinning a value, which is the mistake `evidence.md` names.
+
+**And the failure only existed because the suite runs under two
+platforms.** A count that is right on one and wrong on the other is
+invisible to a single-configuration suite -- the same instrument that
+caught 8.309 this morning, catching my own work again twelve hours
+later.
 
 **Six checks, and not one is a repair.** The value is that a common
 control with no coverage now has some, including the one question that
