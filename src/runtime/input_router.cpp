@@ -1425,6 +1425,47 @@ QVector<QWidget *> focus_invisible(QWidget *scope) {
 	return out;
 }
 
+// The chords in `scope` a terminal cannot deliver unambiguously: see
+// runtime.h. Same enumeration as shortcut_help() and shortcut_conflicts(),
+// for the reason those two share it -- three walks of one tree is three
+// chances to describe different programs.
+QVector<QPair<QString, QString>> ambiguous_chords(QWidget *scope) {
+	QVector<QPair<QString, QString>> out;
+	if (!scope) return out;
+	QSet<QString> seen;
+	const QVector<ShortcutClaim> claims = shortcut_claims(scope);
+	for (const ShortcutClaim &c : claims) {
+		for (int i = 0; i < c.key.count(); ++i) {
+			const QKeyCombination combo = c.key[i];
+			const Qt::KeyboardModifiers mods = combo.keyboardModifiers();
+			if (!(mods & Qt::ControlModifier)) continue;
+			const int key = combo.key();
+			// A SHIFTED control chord cannot be sent at all: the byte
+			// carries no shift bit. Reported whatever the key is.
+			bool bad = mods & Qt::ShiftModifier;
+			// And these five ARE sent, as another key entirely, because
+			// the control byte they produce is a key in its own right.
+			// The arithmetic is ASCII's: Ctrl+letter is letter & 0x1f.
+			if (!bad)
+				bad = key == Qt::Key_I || key == Qt::Key_M
+				      || key == Qt::Key_BracketLeft || key == Qt::Key_H
+				      || key == Qt::Key_J;
+			if (!bad) continue;
+			const QString text =
+			    QKeySequence(combo).toString(QKeySequence::NativeText);
+			const QString row = text + QLatin1Char('\t') + c.text;
+			if (seen.contains(row)) continue;
+			seen.insert(row);
+			QString label = c.text;
+			label.replace(QLatin1String("&&"), QLatin1String("\1"));
+			label.remove(QLatin1Char('&'));
+			label.replace(QLatin1String("\1"), QLatin1String("&"));
+			out.append({text, label});
+		}
+	}
+	return out;
+}
+
 // The chords this library will answer inside `scope`, with a label each: see
 // runtime.h for the rule. It is the same enumeration `shortcut_conflicts()`
 // reports on, read for a different purpose -- so a help line and a conflict

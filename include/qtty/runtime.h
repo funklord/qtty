@@ -156,6 +156,38 @@ QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope);
 // is one a user cannot learn.
 QVector<QPair<QString, QString>> shortcut_help(QWidget *scope);
 
+// The chords in `scope` a terminal cannot deliver unambiguously, with a label
+// each -- the bindings a user will press and not reach, on any terminal that
+// does not speak the kitty keyboard protocol.
+//
+// TWO KINDS, and the second is the one worth the function. A shifted control
+// chord is UNSENDABLE: a control byte is one of 32 values and carries no
+// shift bit, so `Ctrl+Shift+C` arrives as `Ctrl+C` or not at all and the
+// binding is silently unbound. The other five are SENDABLE and mean
+// something else, the byte an ASCII keyboard produces for them being a key in
+// its own right:
+//
+//     Ctrl+I  0x09  Tab          Ctrl+[  0x1b  Escape
+//     Ctrl+M  0x0d  Return       Ctrl+H  0x08  Backspace
+//     Ctrl+J  0x0a  Line feed
+//
+// Measured: a tab byte reaches this library as `Key_Tab` with no ctrl on it
+// at all, so nothing downstream can tell it from a real `Tab`.
+// `shortcut_conflicts()` cannot see it either -- to Qt those are two
+// different key sequences, which they are right up until the wire, and that
+// is the gap this fills.
+//
+// IT DOES NOT ASK THE TERMINAL, deliberately. The report is meant for a
+// headless test, where there is no terminal to ask and the answer would be
+// about the machine the test ran on rather than about the program. Assert it
+// empty; where an application requires the protocol and says so, its own
+// exception is a better record than a report that quietly agreed.
+//
+// A chord is named once however many owners claim it, and an action carrying
+// two ambiguous sequences is named twice, which is the rule `shortcut_help()`
+// uses and for the same reason: both answer, and a reader needs both.
+QVector<QPair<QString, QString>> ambiguous_chords(QWidget *scope);
+
 // Which of those rows this window has taken back, and who took them.
 //
 // `keyboard_conventions_help()` has no scope to ask, so it promises what the

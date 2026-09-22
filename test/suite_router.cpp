@@ -4693,6 +4693,72 @@ int suite_router() {
 			      "as the other questions here answer about nothing");
 		}
 
+		// THE CHORDS A TERMINAL CANNOT DELIVER, which is the gap the
+		// keyboard-protocol section left open: the guide tells an
+		// application to prefer another letter and nothing checked it.
+		// shortcut_conflicts() structurally cannot -- to Qt a Ctrl+I and
+		// a Tab are two different key sequences, which they are right up
+		// until the wire.
+		{
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(40, 10));
+			auto *bar = new QMenuBar(&win);
+			auto *m = bar->addMenu(QStringLiteral("&Edit"));
+			const auto act = [m](const char *text, const char *key) {
+				auto *a = m->addAction(QString::fromLatin1(text));
+				a->setShortcut(QKeySequence(QString::fromLatin1(key)));
+				return a;
+			};
+			act("&Italic", "Ctrl+I");
+			act("&Mark", "Ctrl+M");
+			act("&Help", "Ctrl+H");
+			act("&Open", "Ctrl+O");
+			act("&Paste special", "Ctrl+Shift+V");
+			act("&Bracket", "Ctrl+[");
+			act("&Plain", "F5");
+			win.show();
+			QCoreApplication::processEvents();
+
+			QStringList named, labels;
+			for (const auto &row : ambiguous_chords(&win)) {
+				named.append(row.first);
+				labels.append(row.second);
+			}
+
+			CHECK(named.contains(QStringLiteral("Ctrl+I"))
+			          && named.contains(QStringLiteral("Ctrl+M"))
+			          && named.contains(QStringLiteral("Ctrl+H"))
+			          && named.contains(QStringLiteral("Ctrl+[")),
+			      "the chords whose control byte is another key are named, "
+			      "which is the half that does not merely fail but does "
+			      "something else");
+			CHECK(named.contains(QStringLiteral("Ctrl+Shift+V")),
+			      "and a shifted control chord, which cannot be sent at "
+			      "all because a control byte carries no shift bit");
+
+			// THE CONTROL, and it is what keeps this from being a report
+			// that names every binding: an ordinary Ctrl+letter is sent
+			// and means itself, and a function key is not a control byte
+			// at all.
+			CHECK(!named.contains(QStringLiteral("Ctrl+O"))
+			          && !named.contains(QStringLiteral("F5")),
+			      "while an ordinary Ctrl+letter and a function key are "
+			      "not, so this is a report an application can act on "
+			      "rather than one it learns to ignore");
+			CHECK(named.size() == 5,
+			      "and nothing else in a window holding seven bindings, "
+			      "five of which are the ones planted");
+
+			CHECK(labels.contains(QStringLiteral("Italic")),
+			      "each is named with the action's own text, its mnemonic "
+			      "ampersand taken out as the help line does");
+
+			CHECK(ambiguous_chords(nullptr).isEmpty(),
+			      "and a null scope answers empty, as the other questions "
+			      "do");
+		}
+
 		// THE APPLICATION'S OWN KEYS, which practice 8 asks every
 		// terminal program to draw and which it could only hand-write.
 		// The guide already says not to hand-write the ones this library
@@ -5605,9 +5671,10 @@ int suite_router() {
 			    && tab_order_anomalies(nullptr).isEmpty()
 			    && hover_only(nullptr).isEmpty()
 			    && focus_invisible(nullptr).isEmpty()
-			    && sheet_styled(nullptr).isEmpty();
+			    && sheet_styled(nullptr).isEmpty()
+			    && ambiguous_chords(nullptr).isEmpty();
 			CHECK(null_quiet,
-			      "all nine questions answer empty when asked about "
+			      "all ten questions answer empty when asked about "
 			      "nothing, rather than refusing or reaching through a "
 			      "null scope");
 
@@ -5620,7 +5687,8 @@ int suite_router() {
 			    && tab_order_anomalies(&bare).isEmpty()
 			    && hover_only(&bare).isEmpty()
 			    && focus_invisible(&bare).isEmpty()
-			    && sheet_styled(&bare).isEmpty();
+			    && sheet_styled(&bare).isEmpty()
+			    && ambiguous_chords(&bare).isEmpty();
 			CHECK(bare_quiet,
 			      "and empty about a window with nothing in it, which is "
 			      "the answer a report invents a finding to avoid giving");
@@ -5927,8 +5995,8 @@ int suite_router() {
 					if (line.startsWith(QStringLiteral("| `Qtty::"))) ++listed;
 			}
 			printf("info: the page lists %d audit question(s); these checks "
-			       "call 9\n", listed);
-			CHECK(listed == 9,
+			       "call 10\n", listed);
+			CHECK(listed == 10,
 			      "the page lists exactly the audit questions these checks "
 			      "call, so a tenth cannot be added to either alone");
 		}

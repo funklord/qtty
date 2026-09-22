@@ -515,6 +515,18 @@ ctrl on it at all**, so nothing downstream can tell it from a real
 until the wire. With the protocol the same keypress arrives as `Key_I`
 with ctrl.
 
+**You can assert that you have none**, which is the tenth question under
+*Checking it without a terminal*:
+
+    QVERIFY(Qtty::ambiguous_chords(&window).isEmpty());
+
+It names both halves -- the five above, and any shifted control chord --
+with the action's own text beside each, and it leaves an ordinary
+`Ctrl+O` and a function key alone. It does **not** ask your terminal:
+the report is for a headless test, where there is none to ask and the
+answer would be about the machine the test ran on rather than about
+your program.
+
 Every one of the five is a chord an application might reasonably pick:
 `Ctrl+I` for italic, `Ctrl+M` for a mark, `Ctrl+H` for help. **Prefer
 another letter.** Where you cannot -- because your users know that
@@ -2222,7 +2234,7 @@ same three reversed cells become none, and come back when it returns.
 `qtty-replay` spells it `focus off` and `focus on`, so a report about a
 missing mark is reproducible.
 
-**Nine questions the library will answer about your window**, so that a
+**Ten questions the library will answer about your window**, so that a
 test can assert on them rather than a person noticing:
 
 | call | what it returns | what to assert |
@@ -2236,8 +2248,9 @@ test can assert on them rather than a person noticing:
 | `Qtty::hover_only(scope)` | the words only a hover would reveal | empty |
 | `Qtty::focus_invisible(scope)` | the controls that look the same focused | empty |
 | `Qtty::sheet_styled(scope)` | the widgets a style sheet is drawing | empty |
+| `Qtty::ambiguous_chords(scope)` | the chords a terminal cannot deliver | empty |
 
-**Eight of the nine are asserted EMPTY, and that is the property worth
+**Nine of the ten are asserted EMPTY, and that is the property worth
 having.** A list you check by name needs updating every time the window
 grows a control; an empty assertion needs nothing, and goes red the day
 somebody adds one that collides or that only a mouse can press. Each of

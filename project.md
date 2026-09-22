@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1926 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1932 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17830,6 +17830,57 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.316 The tenth question, and the one the guide had just asked for (2026-09-22)
+
+**8.315 told an implementer to avoid five chords and nothing checked
+it**, which is the gap eight of the nine reports exist to close.
+`Qtty::ambiguous_chords(scope)` is the tenth question.
+
+**`shortcut_conflicts()` structurally cannot do this.** It reports two
+things answering one chord, and this is a chord colliding with the
+WIRE: to Qt a `Ctrl+I` and a `Tab` are two different key sequences,
+which they are right up until a terminal turns the first into byte 0x09
+and the second into byte 0x09. There is nothing in a widget tree to
+compare.
+
+Measured on a window holding seven bindings before it was written up:
+
+    Ctrl+I         Italic          named
+    Ctrl+M         Mark            named
+    Ctrl+H         Help            named
+    Ctrl+[         Bracket         named
+    Ctrl+Shift+V   Paste special   named -- the unsendable half
+    Ctrl+O         Open            NOT named
+    F5             Plain           NOT named
+
+**The two rows that are not named are the ones that make it a report
+worth reading.** A check that named every `Ctrl+letter` would be true
+of the wire and useless to an author, and the population it must pick
+out is exactly the chords whose control byte is a key in its own right
+-- not the ones that merely have a control byte, which is all of them.
+
+**It does not ask the terminal, and the header says why.** The report
+is for a headless test, where there is none to ask and the answer would
+be about the machine the test ran on rather than about the program. An
+application that requires the protocol and says so is better served by
+its own exception than by a report that quietly agreed with it.
+
+**It shares the enumeration `shortcut_help()` and
+`shortcut_conflicts()` use.** Three walks of one tree is three chances
+to describe different programs, and a help line, a conflict report and
+this one disagreeing about which bindings exist would be worse than any
+of them being absent.
+
+**Adding it exercised this morning's own count guards, which is the
+first time either has been asked a question it was built for.** The
+name-based one demanded a row in the guide's table and got it; the
+older one, comparing the table against a literal in the suite, forced
+the deliberate bump from nine to ten. Neither needed changing, and the
+`not_audits` list stayed at its one entry -- `shortcut_help()`, which
+takes a scope and reports no fault -- because this one does report a
+fault and belongs in the table.
+
+
 ### 8.315 Three surfaces described half of what a missing keyboard protocol costs (2026-09-22)
 
 **Without the kitty keyboard protocol a terminal cannot send

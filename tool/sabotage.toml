@@ -4957,6 +4957,18 @@ count = 1
 check = "the section is there either way"
 
 [[sabotage]]
+# The ambiguous half dropped, leaving only the unsendable one -- which
+# is the shape every description in this tree had before 8.315, and
+# the one a reader is likeliest to restore by "simplifying" the
+# condition. 8.316.
+name = "ambiguous_chords forgets the chords that collide"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\t\tbad = key == Qt::Key_I || key == Qt::Key_M"
+into = "\t\t\t\tbad = false || (false && key == Qt::Key_M)"
+count = 1
+check = "the chords whose control byte is another key are named, which is the half that does not merely fail but does something else"
+
+[[sabotage]]
 # has_focus() reduced to the pointer test practice 10 used to give,
 # which is the whole of 8.314: a composite delegating its focus to
 # an inner editor stops being focused, where a desktop hasFocus()
