@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1946 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1948 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17831,6 +17831,39 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.321 The third copy, which my own guard was not reading (2026-09-22)
+
+**8.310 built a guard holding the installed header and the guide's
+table to one population. The README has a third copy of that table and
+the guard does not read it.** It said **eight** where the guide said
+nine -- stale from the day `sheet_styled()` landed, 2026-09-21 -- and
+adding a tenth this afternoon made it staler.
+
+    README.md                   eight, and "Seven of the eight"
+    doc/keyboard-first.md       ten
+    include/qtty/runtime.h      ten
+
+**The remedy was mine and I did not apply it widely enough**, which is
+`working-practice.md`'s point about corrections: fixing the copy in
+front of you is the easy half, and the correction has to go where it
+will next be looked for. I had held two copies to each other and left
+the third where nothing could see it -- the same shape as 8.310 itself,
+committed by the person who had just written the fix for it.
+
+**All three are compared now**, by name rather than by count, and the
+check prints both lists when they differ so a failure says which name
+is missing rather than only that a number is wrong. The README's rows
+are spelled `Qtty::name()` and the guide's `Qtty::name(scope)`, so the
+two are parsed separately and compared as sets -- a shared parser would
+have meant a shared blind spot.
+
+**The README gained two things beside the rows.** `Qtty::audit()`, so a
+reader meets the one-line form where they meet the table; and
+`Qtty::has_focus()` beside `Qtty::focusWidget()`, since the README's
+sentence about who has focus was the advice 8.314 corrected in the
+guide and left standing here.
+
+
 ### 8.320 Two answers of mine that a user would meet as one (2026-09-22)
 
 **The same lens turned on today's own work.** `shortcut_help()` (8.313)

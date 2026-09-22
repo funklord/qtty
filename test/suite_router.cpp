@@ -5203,6 +5203,38 @@ int suite_router() {
 			      "and the header's audit questions are exactly the ones "
 			      "the guide's table names, by name rather than by count");
 
+			// AND THE README, which is the THIRD place the population is
+			// written down and the one nobody was checking. It said eight
+			// when the guide said nine -- stale from the day
+			// sheet_styled() landed -- and adding a tenth made it staler,
+			// because this check read the guide's table and not that one.
+			// Fixing the copy in front of me would have left the next
+			// reader exactly where I was.
+			QFile readme(QStringLiteral(QTTY_SOURCE_DIR "/README.md"));
+			QString intro;
+			if (readme.open(QIODevice::ReadOnly | QIODevice::Text))
+				intro = QString::fromUtf8(readme.readAll());
+			QStringList advertised;
+			for (const QString &line : intro.split(QLatin1Char('\n'))) {
+				if (!line.startsWith(QStringLiteral("| `Qtty::"))) continue;
+				const int shut = line.indexOf(QStringLiteral("()`"));
+				if (shut < 0) continue;
+				advertised.append(line.mid(9, shut - 9));
+			}
+			advertised.sort();
+			CHECK(!advertised.isEmpty(),
+			      "the README's table of questions is where this check "
+			      "expects it");
+			if (advertised != listed)
+				fprintf(stderr, "README [%s] guide [%s]\n",
+				        advertised.join(QLatin1Char(' '))
+				            .toUtf8().constData(),
+				        listed.join(QLatin1Char(' ')).toUtf8().constData());
+			CHECK(advertised == listed,
+			      "and names the same questions the guide's does, all "
+			      "three copies of the population being held to one "
+			      "another rather than two of them to each other");
+
 			// AND THE SENTENCE ABOVE THE TABLE, which is the third copy
 			// of the number and the one a reader meets first. The top of
 			// that page used to carry a fourth and it was stale; that

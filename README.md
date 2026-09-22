@@ -187,9 +187,12 @@ For the keyboard: `Qtty::set_keyboard_conventions()` turns on the habits a
 terminal user expects and `Qtty::keyboard_conventions_help()` names the keys
 that answer, so a status bar keeps no second copy of them.
 `Qtty::focusWidget()` says who has focus, which `QWidget::hasFocus()` cannot
-here, no window ever being active.
+here, no window ever being active, and `Qtty::has_focus()` asks it the way
+`hasFocus()` would -- walking the focus proxy chain, and answering no while
+the terminal itself is unfocused -- which is what a custom widget drawing its
+own mark wants.
 
-**And eight questions a test can put to a window**, none of which an
+**And ten questions a test can put to a window**, none of which an
 application has another way to answer:
 
 | call | what it names |
@@ -202,9 +205,13 @@ application has another way to answer:
 | `Qtty::tab_order_anomalies()` | the tab steps that read backwards |
 | `Qtty::hover_only()` | the words only a hover would reveal |
 | `Qtty::focus_invisible()` | the controls that look the same focused |
+| `Qtty::sheet_styled()` | the widgets a style sheet is drawing |
+| `Qtty::ambiguous_chords()` | the chords a terminal cannot deliver |
 
-Seven of the eight are asserted **empty**, which is the assertion that keeps
-working as a window grows. The collisions are what nothing else can show:
+Nine of the ten are asserted **empty**, which is the assertion that keeps
+working as a window grows. `Qtty::audit()` asks those nine at once and names
+the question each row came from, so a test writes one line and cannot fall
+behind this table. The collisions are what nothing else can show:
 the loser simply never fires, and Qt's own ambiguity report needs an active
 window.
 
