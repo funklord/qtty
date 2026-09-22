@@ -4957,6 +4957,18 @@ count = 1
 check = "the section is there either way"
 
 [[sabotage]]
+# The help line promising a key that does nothing, which is the one
+# row of the four subtractions a hand-written line gets wrong most
+# often: a disabled action is still in the tree and still carries
+# its shortcut. 8.313.
+name = "the help line lists a disabled action"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (!a->isEnabled()) return;"
+into = "\t\tif (false) return;"
+count = 1
+check = "a disabled action is left out of the help line, a key that does nothing being worse there than an absent one"
+
+[[sabotage]]
 # A row struck from the guide's table of audit questions, which is
 # how a function acquires no documentation: the header still
 # declares it, the suite still calls it, and the page a reader

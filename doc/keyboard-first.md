@@ -1054,6 +1054,43 @@ Empty is the usual answer and the one to assert in a test. What it
 cannot see is the reverse -- a key you bound that the conventions do not
 name -- because that one is yours and was never promised.
 
+**And your own keys are the other half of that line.** The argument
+against hand-writing this library's rows is that a second copy of a fact
+is wrong the day the fact moves -- and it applies just as well to your
+own `Ctrl+O`, which moves when somebody edits the menu.
+`Qtty::shortcut_help()` returns them the same shape, so the two
+concatenate:
+
+```cpp
+QStringList hints;
+for (const auto &[key, what] : Qtty::keyboard_conventions_help())
+    hints << key + " " + what;
+for (const auto &[key, what] : Qtty::shortcut_help(&window))
+    hints << key + " " + what;
+```
+
+It is a view over the same enumeration `Qtty::shortcut_conflicts()`
+reports on, which matters more than it sounds: a help line and a
+conflict report that walked your tree separately could describe
+different programs, and the line is the one your user believes.
+
+Four things it does that a walk of your own actions would have to
+remember, and each is a row you would otherwise print wrongly:
+
+| | |
+|---|---|
+| a **disabled** action or shortcut is left out | a key that does nothing is worse in a hints line than an absent one |
+| one action owned by a **menu and a toolbar** is one row | the naive walk reaches it twice |
+| one action carrying **two sequences** is two rows | both answer, so a user needs both |
+| another window's `Qt::ApplicationShortcut` is **in** | it answers here, whatever window it was declared in |
+
+Mnemonics are deliberately not in it: they are drawn underlined on the
+control itself, so a list of them is a second copy of what the screen
+already says. And a `QShortcut` is labelled by its `objectName()` -- an
+unnamed one still gets a row, because a working key missing from the
+list is the worse failure, but the row says what it is rather than what
+it does. Name it, or hang it on a `QAction`.
+
 **Every row it lists is covered but one.** `Enter` and `Up`/`Down` are
 in it too: a shortcut is matched before the focused widget is offered
 anything, so a `QShortcut` on `Return` takes the `Enter` convention away

@@ -1425,6 +1425,37 @@ QVector<QWidget *> focus_invisible(QWidget *scope) {
 	return out;
 }
 
+// The chords this library will answer inside `scope`, with a label each: see
+// runtime.h for the rule. It is the same enumeration `shortcut_conflicts()`
+// reports on, read for a different purpose -- so a help line and a conflict
+// report can never describe different programs, which is the whole reason
+// this is a view over that function rather than a second walk.
+//
+// Deduplicated by chord AND label, which the claim list is not: one action
+// carrying two sequences is two rows here and should be, while the same
+// action reached through a menu and a toolbar is already one claim.
+QVector<QPair<QString, QString>> shortcut_help(QWidget *scope) {
+	QVector<QPair<QString, QString>> out;
+	if (!scope) return out;
+	QSet<QString> seen;
+	const QVector<ShortcutClaim> claims = shortcut_claims(scope);
+	for (const ShortcutClaim &c : claims) {
+		const QString key = c.key.toString(QKeySequence::NativeText);
+		if (key.isEmpty()) continue;
+		// The ampersand is a mnemonic marker in the text an action carries
+		// and would be drawn literally in a status line. `&&` is a real one.
+		QString label = c.text;
+		label.replace(QLatin1String("&&"), QLatin1String("\1"));
+		label.remove(QLatin1Char('&'));
+		label.replace(QLatin1String("\1"), QLatin1String("&"));
+		const QString row = key + QLatin1Char('\t') + label;
+		if (seen.contains(row)) continue;
+		seen.insert(row);
+		out.append({key, label});
+	}
+	return out;
+}
+
 // The words a terminal user cannot reach: see runtime.h for the rule and the
 // one exclusion. Actions are deliberately not walked -- Qt derives an
 // action's tool tip from its own text when none is set, so asking the

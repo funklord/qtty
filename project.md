@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1907 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1915 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17830,6 +17830,77 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.313 The half of practice 8 an application still hand-wrote (2026-09-22)
+
+**Practice 8 tells a terminal program to say what its keys are, and tells
+it not to hand-write the ones this library binds** -- ask for them with
+`keyboard_conventions_help()`, because a second copy of a fact is wrong
+the day the fact moves, which that row's own history proves. **The
+application's own keys were still a second copy**, and they move more
+often than ours: a `Ctrl+O` moves whenever somebody edits a menu.
+
+`Qtty::shortcut_help(scope)` returns them in the same shape, so the two
+concatenate into one line.
+
+**It is a VIEW over the enumeration `shortcut_conflicts()` already
+reports on, and that is the design rather than an implementation note.**
+A help line and a conflict report that walked the tree separately could
+describe different programs, and the line is the one a user believes.
+
+**Measured before it was written up, which is 8.311's lesson applied.**
+A probe on a window with a menu, a toolbar sharing one of its actions, a
+disabled action, an action carrying two sequences, and a named
+`QShortcut`:
+
+    Ctrl+O         Open...          one row, though two owners hold it
+    Ctrl+S         Save             and both of one action's sequences
+    Ctrl+Shift+S   Save
+    Ctrl+F         Fish & Chips     a doubled ampersand survives
+    Ctrl+K         Insert link      a QShortcut, named by objectName
+    Ctrl+R         -- absent --     the disabled one
+
+Eight checks, every one about the SUBTRACTION rather than the walk:
+walking your own actions is the easy part, and those four rows are what
+a hand-written line gets wrong.
+
+**One of the two sabotage entries went green and was withdrawn, which
+is the more useful of the two results.** *An action owned by a menu and
+a toolbar is one row* is guarded **twice** -- `shortcut_claims()`
+deduplicates per object, and `shortcut_help()` again per (chord, label)
+-- and one action reached twice carries the same label both times, so
+removing either leaves the other covering the case exactly. Neither
+break can be demonstrated, and reading the code would not have told me:
+the harness did. It is `evidence.md`'s *two conditions each
+independently saving the reported case*, and the check now says so and
+asserts the property a user meets rather than a mechanism. Both guards
+are kept: the first stops a second visit bringing the same sequences
+again, the second folds two DIFFERENT objects agreeing on chord and
+label, which the first cannot see.
+
+**And it turned one of this morning's own checks red, which is the other
+half of the entry.** 8.310's audit-set guard counted every
+`(QWidget *scope);` declaration in the header as an audit question. That
+is a true sentence about the header and **not a characterisation of the
+set**: `shortcut_help()` takes a scope and answers a question about the
+application rather than reporting a fault in it. A correct addition made
+a correct-looking check fail.
+
+*Suspect the check before the code* was the right call and the fix is
+the one `evidence.md` names: **test coextensiveness, not plausibility.**
+It compares NAMES now, not a count -- which also catches a rename a
+count cannot -- with the non-audit functions listed in one line that
+needs a reason per entry. That is a deliberate act rather than an ignore
+list, and there is exactly one entry.
+
+**A third copy of the number was nearly lost in the rewrite.** The
+sentence above the table says "Nine questions the library will answer";
+the first version of the guard checked it and the rewrite dropped it
+without noticing. It is back, derived from the row count rather than
+written out. The FOURTH copy, in the navigation list at the top of the
+page, is gone instead of guarded -- 8.312 -- because a count is safest
+where it is written once.
+
+
 ### 8.312 A sentence that borrowed a check's words (2026-09-22)
 
 **The lens that found 8.310 and 8.311, pointed at the guide itself:

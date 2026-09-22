@@ -128,6 +128,34 @@ QVector<QPair<QChar, QStringList>> mnemonic_conflicts(QWidget *scope);
 // whatever its focus policy.
 QVector<QPair<QKeySequence, QStringList>> shortcut_conflicts(QWidget *scope);
 
+// The chords `scope` answers, with a label each, ready for the line practice
+// 8 of `doc/keyboard-first.md` asks every terminal application to draw: a
+// status bar, a `?` page, a footer of hints. It is the APPLICATION's half of
+// that list, `keyboard_conventions_help()` being this library's half, and the
+// two concatenate.
+//
+// It is a view over the same enumeration `shortcut_conflicts()` reports on,
+// which is the point rather than an implementation note: a help line and a
+// conflict report that walked the tree separately could describe different
+// programs, and the line is the one a user believes.
+//
+// What the enumeration already does, and an application walking its own
+// actions would have to remember: a disabled action or shortcut is left out,
+// because a key that does nothing is worse in a help line than an absent one;
+// an action reached through both a menu and a toolbar is one row; and another
+// window's `Qt::ApplicationShortcut` claims are IN, because they answer here.
+//
+// Two things are deliberately absent. Mnemonics are not chords and are
+// already drawn underlined on the control itself, so a list of them is a
+// second copy of what the screen says. And the conventions are not repeated:
+// ask for those separately, so an application that has taken some of them can
+// drop those rows with `conventions_shadowed()` before it prints.
+//
+// The order is the order the application declared its actions in, which is
+// usually its menu order -- not sorted, because a hints line that reshuffles
+// is one a user cannot learn.
+QVector<QPair<QString, QString>> shortcut_help(QWidget *scope);
+
 // Which of those rows this window has taken back, and who took them.
 //
 // `keyboard_conventions_help()` has no scope to ask, so it promises what the

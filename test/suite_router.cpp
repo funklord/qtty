@@ -4638,6 +4638,101 @@ int suite_router() {
 			      "code");
 		}
 
+		// THE APPLICATION'S OWN KEYS, which practice 8 asks every
+		// terminal program to draw and which it could only hand-write.
+		// The guide already says not to hand-write the ones this library
+		// binds -- `keyboard_conventions_help()` -- on the ground that a
+		// second copy of a fact is wrong the day the fact moves. The
+		// application's own half was still a second copy.
+		//
+		// Every check here is about the SUBTRACTION rather than the
+		// walk, because walking your own actions is the easy part and
+		// getting these four wrong is what a hand-written line does.
+		{
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(40, 10));
+			auto *bar = new QMenuBar(&win);
+			auto *file = bar->addMenu(QStringLiteral("&File"));
+			auto *open = file->addAction(QStringLiteral("&Open..."));
+			open->setShortcut(QKeySequence(QStringLiteral("Ctrl+O")));
+			auto *save = file->addAction(QStringLiteral("&Save"));
+			save->setShortcuts({QKeySequence(QStringLiteral("Ctrl+S")),
+			                    QKeySequence(QStringLiteral("Ctrl+Shift+S"))});
+			auto *greyed = file->addAction(QStringLiteral("&Revert"));
+			greyed->setShortcut(QKeySequence(QStringLiteral("Ctrl+R")));
+			greyed->setEnabled(false);
+			auto *amp = file->addAction(QStringLiteral("Fish && Chips"));
+			amp->setShortcut(QKeySequence(QStringLiteral("Ctrl+F")));
+			auto *tb = new QToolBar(&win);
+			tb->addAction(open);            // the same action, second owner
+			auto *sc = new QShortcut(QKeySequence(QStringLiteral("Ctrl+K")),
+			                         &win, [] {});
+			sc->setObjectName(QStringLiteral("Insert link"));
+			win.show();
+			QCoreApplication::processEvents();
+
+			const QVector<QPair<QString, QString>> help = shortcut_help(&win);
+			QStringList keys, labels;
+			for (const auto &row : help) {
+				keys.append(row.first);
+				labels.append(row.second);
+			}
+
+			CHECK(!keys.contains(QStringLiteral("Ctrl+R")),
+			      "a disabled action is left out of the help line, a key "
+			      "that does nothing being worse there than an absent one");
+
+			// GUARDED TWICE, and a sabotage run is what established
+			// that rather than reading. `shortcut_claims()`
+			// deduplicates per object, and `shortcut_help()` again per
+			// (chord, label) -- and since one action reached twice
+			// carries the same label both times, removing either leaves
+			// the other covering this exactly. The entry written for
+			// this check went green and was withdrawn.
+			//
+			// Both are still wanted: the first stops a second visit
+			// bringing the same sequences again, the second folds two
+			// DIFFERENT objects that agree on chord and label, which the
+			// first cannot see. So this asserts the property a user
+			// meets and not a mechanism, which is the honest thing for
+			// it to say -- `evidence.md`'s two conditions each
+			// independently saving the reported case.
+			CHECK(keys.count(QStringLiteral("Ctrl+O")) == 1,
+			      "an action owned by both a menu and a toolbar is one "
+			      "row, not two, which is the walk an application writes "
+			      "for itself getting it wrong");
+
+			CHECK(keys.contains(QStringLiteral("Ctrl+S"))
+			          && keys.contains(QStringLiteral("Ctrl+Shift+S")),
+			      "while ONE action carrying two sequences is two rows, "
+			      "since both answer and a user needs to know both");
+
+			CHECK(labels.contains(QStringLiteral("Open...")),
+			      "a mnemonic's ampersand is taken out of the label, "
+			      "which would otherwise be drawn literally in a status "
+			      "line");
+			CHECK(labels.contains(QStringLiteral("Fish & Chips")),
+			      "and a doubled one is a real ampersand and survives, "
+			      "which is the case a plain remove() gets wrong");
+
+			CHECK(labels.contains(QStringLiteral("Insert link")),
+			      "a QShortcut is named by its objectName, so an "
+			      "application that names one gets a line worth reading");
+
+			// THE ORDER, because a hints line that reshuffles between
+			// frames is one nobody can learn -- and because nothing else
+			// here would notice if it did.
+			CHECK(keys.indexOf(QStringLiteral("Ctrl+O"))
+			          < keys.indexOf(QStringLiteral("Ctrl+S")),
+			      "and the rows come in the order the application "
+			      "declared its actions, which is usually its menu order");
+
+			CHECK(shortcut_help(nullptr).isEmpty(),
+			      "and a null scope answers empty rather than reaching "
+			      "through it, as the other questions do");
+		}
+
 		// THE AUDIT SET ON A MIRRORED FORM, which the right-to-left
 		// section claims was measured and which nothing here measured.
 		// Its sentence read "all nine questions ... answer empty", and
@@ -4710,12 +4805,17 @@ int suite_router() {
 		// function DECLARED and never called from here -- the count it
 		// compares against is the suite's own, not the header's.
 		//
-		// So this asks the other pair: the installed header's
-		// declarations against the guide's rows. The two are derived
-		// from different files by different means and neither is
-		// generated from the other, and between them a new question has
-		// to reach the header, the guide and the suite or one of the
-		// three goes red.
+		// BY NAME RATHER THAN BY COUNT, and the first version of this
+		// counted. It read every `(QWidget *scope);` declaration as an
+		// audit question, which is a true sentence about the header and
+		// not a characterisation of the set: `shortcut_help()` takes a
+		// scope and answers a question about the application rather than
+		// reporting a fault in it, so adding it turned this check red
+		// for a correct change. The population is named here instead --
+		// one line to add when a scope function is not an audit
+		// question, which is a deliberate act rather than an ignore
+		// list, and comparing names catches a rename that a count
+		// cannot.
 		{
 			QFile head(QStringLiteral(QTTY_SOURCE_DIR
 			                          "/include/qtty/runtime.h"));
@@ -4730,26 +4830,67 @@ int suite_router() {
 			      "the header and the guide are both readable, an "
 			      "unreadable one being a check that cannot fail");
 
-			// Every audit question takes exactly this, and nothing else
-			// in the header does -- the conventions calls take a bool or
-			// nothing at all.
-			const int declared =
-			    doc.count(QStringLiteral("(QWidget *scope);"));
-			int rows = 0;
-			for (const QString &line : guide.split(QLatin1Char('\n')))
-				if (line.startsWith(QStringLiteral("| `Qtty::"))
-				    && line.contains(QStringLiteral("(scope)`")))
-					++rows;
-			CHECK(declared > 0 && rows > 0,
-			      "and both counts are non-zero, so neither pattern has "
+			// Takes a scope and is NOT an audit question. Each needs a
+			// reason, because the default is that it is one.
+			QStringList not_audits;
+			not_audits << QStringLiteral("shortcut_help");   // a help line
+
+			QStringList declared;
+			for (const QString &line : doc.split(QLatin1Char('\n'))) {
+				const int at = line.indexOf(
+				    QStringLiteral("(QWidget *scope);"));
+				if (at < 0) continue;
+				int from = at;
+				while (from > 0 && (line.at(from - 1).isLetterOrNumber()
+				                    || line.at(from - 1) == QLatin1Char('_')))
+					--from;
+				const QString name = line.mid(from, at - from);
+				if (!name.isEmpty() && !not_audits.contains(name))
+					declared.append(name);
+			}
+			QStringList listed;
+			for (const QString &line : guide.split(QLatin1Char('\n'))) {
+				if (!line.startsWith(QStringLiteral("| `Qtty::"))) continue;
+				const int open = line.indexOf(QStringLiteral("(scope)`"));
+				if (open < 0) continue;
+				listed.append(line.mid(9, open - 9));
+			}
+			declared.sort();
+			listed.sort();
+			CHECK(!declared.isEmpty() && !listed.isEmpty(),
+			      "and both lists are non-empty, so neither pattern has "
 			      "quietly stopped matching");
-			CHECK(declared == rows,
-			      "every audit question the header declares has a row in "
-			      "the guide's table, and no row names one that is gone");
-			CHECK(guide.contains(QStringLiteral(
-			          "Nine questions the library will answer")),
-			      "and the sentence above that table says how many there "
-			      "are, in the same number the table holds");
+			if (declared != listed)
+				fprintf(stderr, "audit set: header [%s] guide [%s]\n",
+				        declared.join(QLatin1Char(' ')).toUtf8().constData(),
+				        listed.join(QLatin1Char(' ')).toUtf8().constData());
+			CHECK(declared == listed,
+			      "and the header's audit questions are exactly the ones "
+			      "the guide's table names, by name rather than by count");
+
+			// AND THE SENTENCE ABOVE THE TABLE, which is the third copy
+			// of the number and the one a reader meets first. The top of
+			// that page used to carry a fourth and it was stale; that
+			// one is gone rather than guarded, a count being safest
+			// where it is written once. This is the once.
+			QStringList words;
+			words << QStringLiteral("Zero") << QStringLiteral("One")
+			      << QStringLiteral("Two") << QStringLiteral("Three")
+			      << QStringLiteral("Four") << QStringLiteral("Five")
+			      << QStringLiteral("Six") << QStringLiteral("Seven")
+			      << QStringLiteral("Eight") << QStringLiteral("Nine")
+			      << QStringLiteral("Ten") << QStringLiteral("Eleven")
+			      << QStringLiteral("Twelve");
+			const int n = listed.size();
+			const QString said =
+			    n < words.size()
+			        ? words.at(n)
+			              + QStringLiteral(" questions the library will "
+			                               "answer")
+			        : QString();
+			CHECK(!said.isEmpty() && guide.contains(said),
+			      "and the sentence above that table counts them in the "
+			      "same number the table holds");
 		}
 
 		// WHICH BUTTON ENTER FIRES, pinned because practice 2 now states
