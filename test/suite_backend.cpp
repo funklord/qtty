@@ -3222,6 +3222,24 @@ int suite_backend() {
 					// opposite directions, and only the pair says the rule is
 					// "skip a cursor nothing has disturbed".
 					//
+					// AND THE SAME THING ASKED FOR DELIBERATELY. A screen
+					// can be corrupted by something this library did not do
+					// and cannot see -- another process writing to the tty,
+					// a sequence dropped over a slow link -- and prev_ then
+					// describes a screen that no longer exists. That is this
+					// block's own fault arriving with no handover to notice
+					// it, so Qtty::redraw() asks for the reset that a
+					// handover gets by accident.
+					//
+					// Taken here because the fixture above has already
+					// established the control this needs: the frame before
+					// it wrote nothing, so anything this writes is the
+					// redraw and not the diff.
+					sched.render_now();                 // quiet again
+					const QByteArray settled = take();
+					Qtty::redraw();
+					const QByteArray forced = take();
+
 					// Last, so that the assertions before it are not reading
 					// a fixture this one has moved on.
 					label.setText(QStringLiteral("moved along"));
@@ -3237,6 +3255,14 @@ int suite_backend() {
 					CHECK(!quiet.contains("still here"),
 					      "and an unchanged frame after it writes nothing,"
 					      " which is what the diff is for");
+					CHECK(!settled.contains("still here"),
+					      "and is still quiet when nothing has changed after"
+					      " the handover, which is the control the next"
+					      " assertion needs");
+					CHECK(forced.contains("still here"),
+					      "while Qtty::redraw() writes the whole window"
+					      " again with no handover to prompt it, which is"
+					      " the only recourse a corrupted screen has");
 					// Nothing AT ALL, which the cell diff alone does not
 					// give: set_cursor() is called unconditionally after
 					// every frame, so an idle program went on placing the

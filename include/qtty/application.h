@@ -374,6 +374,29 @@ void set_quit_keys(const QVector<KeyEvent> &keys);
 // exists to prevent.
 void set_frame_interval(int ms);
 
+// Forget what the terminal is showing and draw the next frame whole.
+//
+// A screen can be corrupted by something this library did not do -- another
+// process writing to the same tty, a sequence dropped over a slow link -- and
+// nothing here can detect it. What is remembered about the screen then
+// describes one that no longer exists, so every cell diffs to nothing and a
+// frame goes out saying nothing at all. That is the handover fault of 8.237
+// arriving without a handover to notice it.
+//
+// Free rather than a handle, for the reason capabilities() and shell_out()
+// are: an application under exec() never sees the scheduler, which exec()
+// builds over its window and never hands back.
+//
+// A no-op when nothing is driving a screen, which is the honest answer rather
+// than an error -- a program may call this from a slot that also runs in its
+// desktop build, where there is no terminal to repaint.
+//
+// It is NOT bound to a key. `Ctrl+L` is what a terminal user would press and
+// giving it one is a convention change rather than a capability, so it is the
+// copyright holder's; see 0b. Bind it yourself meanwhile, and the guide's
+// practice 8 says to list what you bound.
+void redraw();
+
 // What a scheduler built now would use, which is what the two levers above
 // and the environment come to. It answers before any scheduler exists,
 // which is what makes it usable from the place an application would ask.

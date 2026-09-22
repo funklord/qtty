@@ -1993,6 +1993,24 @@ deliberate choice to leave with you rather than take: a full-screen
 editor usually does NOT want `Ctrl+Z` suspending it, having its own use
 for the chord.
 
+**`Ctrl+L` is the other key a terminal user reaches for, and it is
+yours for the same reason.** A screen can be corrupted by something
+this library did not do and cannot see -- another process writing to
+the same tty, a sequence dropped over a slow link. What qtty remembers
+about the screen then describes one that no longer exists, so every
+cell diffs to nothing and frames go out saying nothing at all:
+
+    if (chord == Ctrl+L) Qtty::redraw();
+
+`Qtty::redraw()` forgets what the terminal is showing and draws the
+next frame whole, placements included. It is a no-op when nothing is
+driving a screen, so the same slot is safe in a desktop build.
+
+It is deliberately **not** bound for you. Binding it is a change to
+what the opt-in conventions mean rather than a capability, and that is
+the copyright holder's; until it is settled, bind it yourself -- and
+practice 8 says to list what you bound.
+
 ### Running an editor, a pager, or anything else that wants the screen
 
 A TUI usually has one thing it cannot do itself, and reaches for a

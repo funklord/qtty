@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1936 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1938 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -905,7 +905,7 @@ Owned by the copyright holder:
 | **Should a menu item's mnemonic answer while its menu is CLOSED?** It does here, deliberately -- a terminal user reaching an item directly is worth something -- and a desktop Qt answers an item's letter only while its menu is open. The cost is now measured rather than supposed: in Qt's own `menus` example, thirty actions produce **five letters with more than one claimant**, and only the first answers (`&Print...` takes `p` from `&Paste` and *Set &Paragraph Spacing...*). Keeping it means an application with menus needs `Qtty::mnemonic_conflicts()` to find what it has lost; narrowing it to open menus costs the direct reach the conventions were added for | 8.165 |
 | **Should the terminal's background be re-measured, and how?** It is asked once at startup and the half-block tier composites against it for the life of the session, so a user who toggles their desktop theme -- or a `shell_out()` that returns from a program which changed it -- leaves every translucent edge composited against a ground that has gone. Re-asking at each handover costs one query and needs the decoder to stop discarding an OSC 11 reply; subscribing with `DECSET 2031` costs nothing per frame and needs capability detection; leaving it costs the fallback tier only, kitty-tier sessions sending alpha and never compositing | 8.160 |
 | **Should the conventions offer a key for Qt's own pointer-only furniture?** Measured with plain Qt and no qtty: a closable `QTabWidget` ignores `Ctrl+W`, `Ctrl+F4` and `Delete` -- `tabCloseRequested` never fires -- and a closable `QDockWidget` ignores `Ctrl+W` and `Esc`. So the `x` on a tab and a dock's close button have no keyboard route ANYWHERE, which on a desktop is a mouse away and here may be nothing away. The option is one convention binding each; the cost is that both plausible keys are ones applications mean something by (`Ctrl+W` closes a document in most, and a shortcut an application binds wins anyway, so the convention would answer only where the application is silent -- which is exactly where the user has no other route). The guide names the gap and tells an application to bind its own; whether the library should offer one is the holder's. **Four controls, not two, and the gap is visible now**: `Qtty::pointer_only()` (8.181) enumerates rather than recognises, and it named a dock widget's FLOAT button beside the two above, then a `QSplitter`'s handle (8.191) -- which is the one that changes the question, since a splitter answers no key even with the focus forced onto it, so a convention binding is the ONLY route there could be. An application can at least see what it is being asked to bind. | 8.159, 8.181, 8.191 |
-| **Should there be a way to force a full repaint, and should `Ctrl+L` be it?** Measured 2026-09-22: **no binding for `Ctrl+L` exists anywhere in the library**, and there is no public entry point that forces one. `FrameScheduler::render_now()` is public and still diffs -- it drops `prev_` only when `backend_->handovers()` has changed, which is the handover path `shell_out()` uses. So a user whose screen has been corrupted (another process wrote to the tty, a sequence was dropped) has one recourse: resize the terminal to a different size and back, since `on_resize` returns early when the size is unchanged. **Two halves with different owners.** The mechanism -- a free `Qtty::redraw()`, walking the same `s_live_schedulers` list `set_frame_interval()` already walks, on the precedent `capabilities()` and `shell_out()` set of a free function rather than a handle nobody is given -- is an ordinary capability. The *binding* is a convention change: `Ctrl+L` is the most universal terminal convention after `Ctrl+C`, and adding a row changes what `set_keyboard_conventions(true)` means, what `keyboard_conventions_help()` returns, and what `conventions_shadowed()` can report. **One cost is measured and unresolved**: after a handover the compositor zeroes `live_overlay_ids_` because the terminal is holding nothing, and a redraw with no handover must NOT, the terminal still holding those placements -- so whether the overlays re-present correctly from `prev_.reset()` alone is the one thing a mechanism would have to measure first | 8.x |
+| **~~Should there be a way to force a full repaint~~, and should `Ctrl+L` be it?** The mechanism half is built and is `Qtty::redraw()` -- see 8.318, and the cost this row deferred on turned out to dissolve rather than inform. What is left is the BINDING, which is a convention change and not a capability: `Ctrl+L` is the most universal terminal convention after `Ctrl+C`, and a row for it changes what `set_keyboard_conventions(true)` means, what `keyboard_conventions_help()` returns, and what `conventions_shadowed()` can report about an application that took it. An application can bind it today, and `application.h` says so where somebody looking for the key will read it | 8.318 |
 | **Should `pointer_only()` widen from a control no key reaches to an ACTION no key reaches?** Measured 2026-09-22 on a `QListWidget` set to `InternalMove`: **0 of 10 plausible chords** moved an item (`Ctrl`/`Alt`/`Shift` with `Up`, `Down`, `PageDown`, and `Ctrl+]`, `Alt+-`), and the function names nothing, because the view IS a tab stop and the present predicate is *reached by no key at all*. The four kinds it returns are all controls; a reorder is an action belonging to no widget, the way a sort belongs to a section -- and the sorting header was admitted on exactly that argument, so the boundary is already blurred. The cost of widening is that under qtty a plain Qt drag does not reorder either: it falls back to rubber-band selection (practice 13), so the action is unreachable by pointer too unless the application calls `Qtty::exec_drag()` -- which makes it a *nothing-reaches-this* finding rather than a pointer-only one, and the function would be answering a question its name does not ask. The guide already tells an implementer to give the reorder a keyboard route; whether the audit should say so too is a scope change to a public function | 8.310, practice 13 |
 | A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. Cheaper to answer after the picture-rule entry below, which is the same question seen from the other end | *Qt's standard iconography* |
 | **A rule drawn as a thin RECTANGLE becomes a coloured background; the same rule drawn as a LINE becomes a box-drawing glyph.** Measured through an HTML table: its borders arrive as `drawRects` of `11x1` and `1x19` and come out as grey blocks, while `drawLines` of the same shape draws `-` and `\|`. The horizontal case could be told from a caret by shape; **the vertical case cannot -- a caret and a one-cell vertical rule are the same `1x19` rectangle**, which is what stops this being a small fix | 8.65 |
@@ -17831,6 +17831,59 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.318 The cost I deferred on, measured (2026-09-22)
+
+**I recorded the redraw question in 0b citing a cost I had not
+measured, which is the thing `working-practice.md` says not to do**:
+measure the feared cost before deliberating, because it often dissolves
+the question rather than informing it. It dissolved.
+
+**The worry was the overlays.** After a handover `render_now()` zeroes
+`live_overlay_ids_` and is right to -- `ESC[?1049h` clears the screen
+and the terminal is holding no placements. A redraw with no handover
+must NOT, the terminal still holding them; zeroing without clearing
+would leave a tail of placements no later frame can retire, which is
+the exact fault the retire loop in `render_now()` was written for,
+arriving from the other end.
+
+Stated that way the answer is not a compromise, it is a step: **clear
+the placements the terminal holds, then do what a handover does.** One
+extra loop over `live_overlay_ids_` calling `clear_overlay()`, which is
+the call that retire loop already makes.
+
+**Why anyone needs it.** A screen can be corrupted by something this
+library did not do and cannot see -- another process writing to the
+tty, a sequence dropped over a slow link. `prev_` then describes a
+screen that no longer exists, every cell diffs to nothing, and frames
+go out saying nothing at all. That is 8.237's handover fault arriving
+with no handover to notice it. The only recourse before this was to
+resize the terminal to a different size and back, `on_resize` returning
+early when the size is unchanged.
+
+**Free rather than a handle**, for the reason `capabilities()` and
+`shell_out()` are and on the same list: an application under `exec()`
+never sees the scheduler, which `exec()` builds over its window and
+never hands back. It walks `s_live_schedulers`, the list
+`set_frame_interval()` already walks, so a program driving its own loop
+and one that does not reach the same object.
+
+**Measured in the pty fixture 8.237 left behind, which already carries
+the control this needs.** The frame before it wrote nothing, so
+anything `redraw()` writes is the redraw and not the diff:
+
+    render_now()   the first frame        "still here" on the terminal
+    render_now()   nothing changed        nothing written
+    redraw()       nothing changed        "still here" again
+
+**The binding is still not mine.** `Ctrl+L` is what a terminal user
+would press, and a row for it changes what
+`set_keyboard_conventions(true)` means, what
+`keyboard_conventions_help()` returns and what
+`conventions_shadowed()` can report. The 0b row now names only that
+half, and `application.h` says where a reader looking for the key will
+find the answer.
+
+
 ### 8.317 The list an application should not have to write (2026-09-22)
 
 **The guide tells an application to assert nine reports empty, and this

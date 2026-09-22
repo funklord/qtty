@@ -743,6 +743,11 @@ public:
 
 	void request_frame();                                   // coalesced
 	void render_now();                                      // immediate (initial frame)
+	// Forget what the terminal is showing and draw the next frame whole.
+	// `Qtty::redraw()` is the spelling an application reaches; this is the
+	// member it calls, and it is public for a frame loop that holds its own
+	// scheduler.
+	void redraw();
 	bool eventFilter(QObject *, QEvent *) override;        // UpdateRequest watcher
 
 	// How long a burst of damage is coalesced before a frame goes out, in

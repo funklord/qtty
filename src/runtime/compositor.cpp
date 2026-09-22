@@ -1302,6 +1302,19 @@ void set_frame_interval(int ms) {
 		f->set_frame_interval(ms);
 }
 
+// A free function for the reason capabilities() and shell_out() are: an
+// application under exec() never sees the scheduler, which exec() builds over
+// its window and never hands back. The same process-wide list set_frame_
+// interval() walks, so a program driving its own loop and one that does not
+// reach the same object.
+//
+// No-op when nothing is driving a screen, which is the honest answer rather
+// than an error: a program may call this from a slot that also runs in its
+// desktop build, where there is no terminal to repaint.
+void redraw() {
+	for (FrameScheduler *f : std::as_const(s_live_schedulers)) f->redraw();
+}
+
 int frame_interval() {
 	return s_frame_ms_default >= 0 ? s_frame_ms_default : default_frame_ms();
 }
@@ -1380,6 +1393,33 @@ void FrameScheduler::set_frame_interval(int ms) {
 		coalesce_.stop();
 		request_frame();
 	}
+}
+
+// Forget what the terminal is showing and draw the next frame whole.
+//
+// THE SAME RESET A HANDOVER DOES, plus the one thing a handover gets for
+// free. After ESC[?1049h the terminal is holding no placements, so
+// render_now() below zeroes live_overlay_ids_ and is right to. Here the
+// terminal IS still holding them, so they are cleared explicitly first --
+// zeroing the count without clearing would leave a tail of placements no
+// later frame can retire, which is the fault the retire loop in render_now()
+// was written for, reintroduced from the other end.
+//
+// Why anyone needs it: a screen can be corrupted by something this library
+// did not do -- another process writing to the tty, a sequence dropped over a
+// slow link -- and nothing here can detect that. prev_ then describes a
+// screen that no longer exists and every cell diffs to nothing, which is the
+// handover fault (8.237) arriving without a handover to notice. The only
+// recourse before this was to resize the terminal to a different size and
+// back, on_resize returning early when the size is unchanged.
+void FrameScheduler::redraw() {
+	if (auto *gfx = dynamic_cast<IGraphicsOutput *>(backend_))
+		for (int id = 0; id < live_overlay_ids_; ++id)
+			gfx->clear_overlay(id);
+	live_overlay_ids_ = 0;
+	prev_.reset();
+	prev_overlays_.clear();
+	render_now();
 }
 
 void FrameScheduler::render_now() {
