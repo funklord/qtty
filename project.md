@@ -17831,6 +17831,45 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.323 The worked answer demonstrated half a practice (2026-09-22)
+
+**The example asked the library for its keys and said nothing about its
+own, because it bound none.** Practice 8 has two halves and
+`example/chat` showed one, which is the weaker kind of worked answer:
+the half it omitted is the half an application has to write.
+
+It binds `Ctrl+L` to `Qtty::redraw()` now, and the status line is built
+from both calls:
+
+    Menu/Shift+F10 context menu   Ctrl+L redraw
+
+**Three things fall out of one binding**, which is why this is the
+binding to add rather than an invented one:
+
+- the key a terminal user reaches for when something else has written
+  to the screen, which 8.318 gave the library and 8.322 connected to
+  the trap it repairs;
+- practice 8's second half, asked for rather than typed -- an
+  application's own keys move when somebody edits them, which is the
+  argument the first half already makes;
+- and the `objectName`, because `shortcut_help()` labels a `QShortcut`
+  by its name and an unnamed one describes itself. Without it the
+  status line would have read *a QShortcut(Ctrl+L) on ChatWindow*,
+  which is the advice 8.313's header gives, demonstrated by taking it.
+
+**It does not pre-empt the convention question.** qtty binds `Ctrl+L`
+to nothing, deliberately: a row for it changes what
+`set_keyboard_conventions(true)` means and is the holder's. The guide's
+answer meanwhile is that an application binds it, so an application
+doing so is the advice being followed rather than the decision being
+made -- and the comment says which it is.
+
+**The audit stays empty**, which is the check that mattered: `Ctrl+L`
+is neither ambiguous nor a conflict, so the example still passes
+`Qtty::audit()` -- including `ambiguous_chords()`, which it now reaches
+with something to say rather than with nothing bound at all.
+
+
 ### 8.322 A claim my own commit falsified, two hours later (2026-09-22)
 
 **The guide called a raw `printf` "the easiest trap on this page to

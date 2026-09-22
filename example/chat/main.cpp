@@ -87,8 +87,34 @@ int main(int argc, char **argv) {
 		// then holds one entry and fits a 52-column window; asking for
 		// them adds five more, and an application that does should give
 		// the bar the rows to show them.
+		//
+		// AND THE KEY A TERMINAL USER REACHES FOR when something else
+		// has written to the screen. qtty binds Ctrl+L to nothing: a row
+		// for it would be a convention change rather than a capability,
+		// and the guide's answer is that an application binds it. This
+		// is that answer written out.
+		//
+		// Qtty::redraw() is a no-op when nothing is driving a screen, so
+		// the same connection would be safe in the GUI branch too; it
+		// lives here because the status line does, and both are things
+		// only the frontend knows about.
+		//
+		// NAMED, because shortcut_help() labels a QShortcut by its
+		// objectName and an unnamed one describes itself rather than
+		// what it does -- which would then be what the status line said.
+		auto *again = new QShortcut(QKeySequence(QStringLiteral("Ctrl+L")),
+		                            &win);
+		again->setObjectName(QStringLiteral("redraw"));
+		QObject::connect(again, &QShortcut::activated,
+		                 [] { Qtty::redraw(); });
+
 		QStringList hints;
 		for (const auto &row : Qtty::keyboard_conventions_help())
+			hints << row.first + QStringLiteral(" ") + row.second;
+		// THE OTHER HALF of the same practice, and the same argument: an
+		// application's own keys move when somebody edits them, so they
+		// are asked for rather than typed in beside the library's.
+		for (const auto &row : Qtty::shortcut_help(&win))
 			hints << row.first + QStringLiteral(" ") + row.second;
 		win.setStatus(hints.join(QStringLiteral("  ")));
 		return Qtty::exec(app, win);
