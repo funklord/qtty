@@ -3685,6 +3685,78 @@ int suite_widgets() {
 		      "the section is not a constant");
 	}
 
+	// A QDateTimeEdit, which nothing here had ever rendered or driven --
+	// one of two common form controls the suite had never seen, found by
+	// asking which widget classes it names and which the style does.
+	//
+	// Nothing was wrong, and the checks are worth having anyway: it is a
+	// QAbstractSpinBox whose Up and Down step a SECTION, which is the one
+	// shape where the opt-in Up/Down convention could plausibly have taken
+	// a key the widget needed. That question had no answer here before.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(30, 4));
+		auto *lay = new QVBoxLayout(&win);
+		auto *dt = new QDateTimeEdit(QDate(2026, 9, 22));
+		dt->setDisplayFormat(QStringLiteral("yyyy-MM-dd"));
+		lay->addWidget(dt);
+		win.show();
+		InputRouter r(&win);
+		Qtty::set_current_window(&win);
+		QCoreApplication::processEvents();
+
+		CHECK(Qtty::test::snapshot_of(win, 30, 4)
+		          .contains(QStringLiteral("[2026-09-22")),
+		      "a date editor draws its date in a field, rather than the "
+		      "shaded block a widget the style cannot draw would leave");
+
+		CHECK(Qtty::has_focus(dt),
+		      "and takes the focus, its inner editor being its own focus "
+		      "proxy -- which is why this asks has_focus() and not a "
+		      "pointer test");
+
+		Qtty::test::press(r, Qt::Key_Up);
+		QCoreApplication::processEvents();
+		CHECK(dt->date().year() == 2027,
+		      "Up steps the section the caret is in, which starts on the "
+		      "year");
+
+		// FIVE, not one, and the first draft of this asked after one --
+		// reading "the section did not change" as a fault when the year
+		// is four characters wide and the caret had simply moved inside
+		// it. Right moves a CHARACTER; crossing into the month is what
+		// changes the section.
+		for (int i = 0; i < 5; ++i) {
+			Qtty::test::press(r, Qt::Key_Right);
+			QCoreApplication::processEvents();
+		}
+		CHECK(dt->currentSection() == QDateTimeEdit::MonthSection,
+		      "and Right walks the caret out of the year and into the "
+		      "month, a character at a time as it does on a desktop");
+
+		Qtty::test::press(r, Qt::Key_Up);
+		QCoreApplication::processEvents();
+		CHECK(dt->date().month() == 10,
+		      "so Up now steps the month instead, the two keys reading "
+		      "the same caret");
+
+		// THE COLLISION QUESTION, and the reason the block is here. With
+		// the conventions on, Up and Down move between controls -- unless
+		// the focused widget wanted them, which this one does for every
+		// section it has.
+		set_keyboard_conventions(true);
+		Qtty::test::press(r, Qt::Key_Down);
+		QCoreApplication::processEvents();
+		const bool stepped = dt->date().month() == 9;
+		const bool kept = Qtty::has_focus(dt);
+		set_keyboard_conventions(false);
+		CHECK(stepped && kept,
+		      "and with the conventions on Down still steps the month and "
+		      "leaves the focus where it is, the widget being offered the "
+		      "key before the convention takes it");
+	}
+
 	// THE WHOLE SCREEN, not one widget. snapshot_of() renders the widget
 	// it is given, which is right for a control and wrong for everything
 	// a layer covers -- and a menu is the commonest thing to get wrong.

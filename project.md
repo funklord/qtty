@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1950 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1956 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17831,6 +17831,45 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.324 Two common controls the suite had never seen (2026-09-22)
+
+**Asked mechanically rather than by intuition: which widget classes
+does the style name, and which does the suite?** Two with a style
+mention and zero checks -- `QDateTimeEdit` and `QFontComboBox`. Both
+are ordinary form controls.
+
+`QDateTimeEdit` is the one worth driving, because it is a
+`QAbstractSpinBox` whose `Up` and `Down` step a SECTION -- the one
+shape where the opt-in Up/Down convention could plausibly have taken a
+key the widget needed. Nothing here had asked.
+
+**Measured, and nothing is wrong:**
+
+    render            [2026-09-22              ▴▾]
+    Up                2026 -> 2027, the caret starting on the year
+    Right x5          section Year -> Month at caret 5
+    Up                2027-09 -> 2027-10, the new section
+    conventions on,
+    Down              2027-10 -> 2027-09, focus unmoved
+
+The last row is the answer to the collision question: the focused
+widget is offered the key before the convention takes it, so a date
+editor keeps `Up` and `Down` for its sections.
+
+**My probe was wrong before the library was.** The first draft pressed
+`Right` ONCE and read the unchanged section as a defect. The year is
+four characters wide and the caret had simply moved inside it; crossing
+into the month is what changes the section, and it takes five. That is
+the third time today a measurement stopped me publishing a wrong claim
+about this tree, and the reason the check spells out why it presses
+five times.
+
+**Six checks, and not one is a repair.** The value is that a common
+control with no coverage now has some, including the one question that
+could have gone either way. `QFontComboBox` is left alone deliberately:
+it chooses a font, and a terminal has one.
+
+
 ### 8.323 The worked answer demonstrated half a practice (2026-09-22)
 
 **The example asked the library for its keys and said nothing about its
