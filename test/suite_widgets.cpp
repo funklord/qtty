@@ -3685,6 +3685,80 @@ int suite_widgets() {
 		      "the section is not a constant");
 	}
 
+	// AN APPLICATION'S OWN TEXT COLOUR, which the guide had nothing to
+	// say about and which is what a log reader, a diff or any
+	// highlighter is made of. Three spellings, because an application
+	// will reach for whichever it already knows, and all three have to
+	// arrive or the advice has to name the one that works.
+	//
+	// The colour is asserted EXACTLY. What matters is not that some
+	// colour came through but that it was not matched against this
+	// library's theme and replaced by the nearest role -- which is what
+	// role_of() does elsewhere, and what would make a red line a
+	// slightly different red on every terminal.
+	{
+		const auto red_cells = [](QWidget &w, int c, int r) {
+			const QString snap = Qtty::test::snapshot_of(w, c, r);
+			return snap.contains(QStringLiteral("fg=#ff0000"));
+		};
+
+		QWidget rich;
+		rich.setAttribute(Qt::WA_DontShowOnScreen);
+		rich.resize(GridMetrics::cells(24, 3));
+		auto *rl = new QLabel(
+		    QStringLiteral("<span style=\"color:#ff0000\">ERROR</span> ok"),
+		    &rich);
+		rl->setGeometry(0, 0, 24 * GridMetrics::cw(), GridMetrics::ch());
+		rich.show();
+		QCoreApplication::processEvents();
+		CHECK(red_cells(rich, 24, 3),
+		      "rich text carries an application's own colour to the cell, "
+		      "exactly as asked rather than mapped to a theme role");
+
+		QWidget fmt;
+		fmt.setAttribute(Qt::WA_DontShowOnScreen);
+		fmt.resize(GridMetrics::cells(24, 4));
+		auto *ed = new QTextEdit(&fmt);
+		ed->setGeometry(0, 0, 24 * GridMetrics::cw(), 3 * GridMetrics::ch());
+		QTextCharFormat red;
+		red.setForeground(QColor(255, 0, 0));
+		QTextCursor cur = ed->textCursor();
+		cur.insertText(QStringLiteral("ERROR"), red);
+		cur.insertText(QStringLiteral(" ok"), QTextCharFormat());
+		fmt.show();
+		QCoreApplication::processEvents();
+		CHECK(red_cells(fmt, 24, 4),
+		      "and so does a QTextCharFormat, which is how a document "
+		      "colours one run and not the next");
+
+		QWidget pal_w;
+		pal_w.setAttribute(Qt::WA_DontShowOnScreen);
+		pal_w.resize(GridMetrics::cells(24, 3));
+		auto *pl = new QLabel(QStringLiteral("ERROR"), &pal_w);
+		QPalette pal = pl->palette();
+		pal.setColor(QPalette::WindowText, QColor(255, 0, 0));
+		pl->setPalette(pal);
+		pl->setGeometry(0, 0, 24 * GridMetrics::cw(), GridMetrics::ch());
+		pal_w.show();
+		QCoreApplication::processEvents();
+		CHECK(red_cells(pal_w, 24, 3),
+		      "and a palette override, which is the one a widget that "
+		      "draws its own text would reach for");
+
+		// THE CONTROL, without which the three above would hold for a
+		// snapshot that printed that string whatever the cell contained.
+		QWidget plain;
+		plain.setAttribute(Qt::WA_DontShowOnScreen);
+		plain.resize(GridMetrics::cells(24, 3));
+		auto *plabel = new QLabel(QStringLiteral("ERROR"), &plain);
+		plabel->setGeometry(0, 0, 24 * GridMetrics::cw(), GridMetrics::ch());
+		plain.show();
+		QCoreApplication::processEvents();
+		CHECK(!red_cells(plain, 24, 3),
+		      "while the same text uncoloured carries none, so the three "
+		      "above are reading the colour and not the words");
+	}
+
 	// A QWizard, which is a keyboard flow and nothing else: Next, Back
 	// and Finish are the whole interface, and an application reaching for
 	// one is building a setup sequence a terminal user walks through.

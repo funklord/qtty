@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-22
 
-1961 checks, 0 failures, and **4.5 seconds of user time** --
+1965 checks, 0 failures, and **4.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
 wall each time.
@@ -17844,6 +17844,45 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.327 Colouring your own text, which the guide never mentioned (2026-09-22)
+
+**Walking a second application, after the one that found 8.326.** A log
+viewer: huge scrollback, a search, and a red line among green ones. The
+red line is the question -- can an application colour its own text, and
+does the colour survive to the terminal? The guide said nothing either
+way, and nothing in the suite asked.
+
+**Three spellings, all of them work, and the colour arrives exactly as
+given:**
+
+    rich text            <span style="color:#ff0000">     fg=#ff0000
+    QTextCharFormat      setForeground(QColor(255,0,0))    fg=#ff0000
+    QPalette             setColor(WindowText, red)         fg=#ff0000
+
+**What matters is the word EXACTLY.** The colour is not matched against
+this library's theme and replaced by the nearest role, which is what
+`role_of()` does elsewhere and what would have made a red line a
+slightly different red on every terminal. What was asked for is what
+the cell holds.
+
+**And the caveat that has to travel with it.** `quantise()` decides
+what the terminal actually gets: true colour unchanged, a 256- or
+16-colour terminal the nearest index, a monochrome one no colour at
+all. So a colour is a hint that degrades rather than a guarantee, and
+the guide now says not to let it carry the meaning alone -- prefix the
+line or mark it, so the log still reads where the red was dropped.
+
+**Four checks, and the fourth is the control**: the same text
+uncoloured carries no red, without which the other three would pass on
+a snapshot that printed that string whatever the cell contained.
+
+**The method is worth more than the finding.** Two applications walked,
+two gaps found, both of them facilities that existed and were invisible
+to the document written for the people who would use them. Sweeping the
+guide against itself had stopped producing; asking what a named
+program would need has now produced twice.
+
+
 ### 8.326 The two facilities a custom widget is written FOR (2026-09-22)
 
 **`doc/keyboard-first.md` has a section called *If you are writing a

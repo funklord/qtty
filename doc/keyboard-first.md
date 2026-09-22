@@ -1493,6 +1493,42 @@ apart, while a single colour weighed against a midpoint is decided by
 the midpoint. A mid-grey ground is where the two answers part company,
 and mid-grey grounds ship on real desktops.
 
+**And you can colour your own TEXT, which is a different question and
+the one a log reader actually asks.** Practice 14 above is about
+choosing a palette; this is about a red line in a list of green ones.
+All three of the spellings you already know reach the terminal, and the
+colour arrives exactly as given:
+
+```cpp
+label->setText("<span style=\"color:#ff0000\">ERROR</span> ok");  // rich text
+
+QTextCharFormat red;                                              // a char format
+red.setForeground(QColor(255, 0, 0));
+cursor.insertText("ERROR", red);
+
+QPalette pal = label->palette();                                  // a palette
+pal.setColor(QPalette::WindowText, QColor(255, 0, 0));
+label->setPalette(pal);
+```
+
+Measured on all three: five cells carrying `fg=#ff0000` and the rest
+the terminal's own default. Note what is NOT happening -- the colour is
+not matched against this library's theme and replaced by the nearest
+role. What you asked for is what the cell holds.
+
+**What the terminal does with it depends on the terminal**, and
+`Qtty::quantise()` is where that is decided: true colour is emitted
+unchanged, a 256- or 16-colour terminal gets the nearest index, and a
+monochrome one gets no colour at all. So a colour is a hint that
+degrades rather than a guarantee -- **do not let it be the only thing
+carrying the meaning.** Prefix the line, or mark it, so the log still
+reads on a terminal that dropped the red.
+
+And the caution from practice 14 applies here too: a colour you chose
+against your own idea of the ground may not clear a contrast floor on
+somebody else's terminal, which is why the default `CellTheme` renders
+in the terminal's own colours and asks nothing of you.
+
 **Handle `Unknown` by doing nothing.** It is what you get before a run,
 from a terminal that answered neither query, and from one that answered
 only one of them -- and it is the common case rather than the exotic
