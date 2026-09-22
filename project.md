@@ -17829,6 +17829,43 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.306 A note of mine named one consequence and there were two (2026-09-22)
+
+**`snapshot_of_screen()`'s own note says it takes the window tab
+record down, and gives one consequence. There are two, and I walked
+into the other today.**
+
+The record is cleared by `~Compositor` deliberately: one that outlived
+its compositor would have a later press read as a tab selection for
+windows nobody is showing. The note said, correctly, that a press in
+row 0 afterwards is no longer read as a tab selection.
+
+It did not say that **`F6` moves within that same list**. With a
+transient compositor the list is empty by the time the key arrives, so
+F6 does nothing -- and reads as a broken feature rather than as a
+fixture.
+
+    two windows, conventions on, F6 between snapshots   never moved
+    the same, one compositor kept alive across them     moved, and
+                                                        Shift+F6 back
+
+#### It is the third fixture of this shape today
+
+`setFocus()` not moving the router's focus, a second visible window
+putting its cells in the frame, and now a per-call compositor emptying
+the window list. Each time the symptom pointed at the feature, each
+time the feature was fine, and each time the missing thing was
+**something a real frame loop has and a test does not**.
+
+The suite's own F6 checks avoid it by calling
+`Qtty::set_current_window()` first, which is the other remedy and is
+now written down beside keeping a compositor alive.
+
+**No check is added and that is deliberate.** F6 is covered in seven
+places already and the tab record's lifetime in four; what was wrong
+was a sentence, and pinning a fixture's trap as behaviour would be
+pinning the wrong thing.
+
 ### 8.305 A mark belongs to the cell it sits in (2026-09-22)
 
 **Re-measuring the bullet row found a second defect inside it.** The

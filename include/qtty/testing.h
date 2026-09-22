@@ -273,11 +273,28 @@ inline QString snapshot_of(QWidget &w, int cols, int rows) {
 // with nullptr it is not, and neither reports anything wrong. A test that
 // drives keys already has a router, which is the same one to pass.
 //
-// It takes the window tab strip down as it goes, because ~Compositor
-// does: the strip is a property of a composed frame and its record is
-// read on every press. So a press in row 0 sent between this call and
-// the next compose is not read as a tab selection. Compose again, or
-// snapshot after the press rather than before it.
+// It takes the WINDOW TAB RECORD down as it goes, because ~Compositor
+// does: the strip is a property of a composed frame, and a record that
+// outlived its compositor would have a later press read as a tab
+// selection for windows nobody is showing.
+//
+// TWO THINGS DEPEND ON THAT RECORD, and this note first named only one.
+// A press in row 0 is the obvious one -- it is not read as a tab
+// selection afterwards. The other is **F6**, which moves within the
+// window list the compositor recorded: with a transient compositor the
+// list is empty by the time the key arrives, so F6 does nothing at all
+// and reads as a broken feature.
+//
+// Measured while writing this tree's own probes: two windows, the
+// conventions on, F6 sent between snapshots -- the current window never
+// changed. With one compositor kept alive across the presses, as a
+// frame loop keeps one, F6 moved to the second window and Shift+F6 came
+// back.
+//
+// So a test that drives keys depending on the window set does one of
+// two things: keeps a Compositor alive across them, or calls
+// Qtty::set_current_window() to say which window it means, which is
+// what this project's own F6 checks do.
 //
 // AND IT COMPOSES THE SCREEN, not the window you pass. A second visible
 // top level puts a window tab strip in the frame and leaves the FIRST

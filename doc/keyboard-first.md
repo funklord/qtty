@@ -2181,12 +2181,20 @@ cell and the shape, or `hidden`. A frame that lost its caret, or put it in
 the wrong cell, or showed a block where it had shown a bar, compares equal
 to one that did not if only the cells are kept.
 
-Two things to know. The call takes the window tab strip down as it goes,
-so a press in row 0 sent straight afterwards is not read as a tab
-selection; snapshot after the press rather than before it. And it composes
-the **screen**, not the window you pass: a second visible top level puts a
-tab strip in the frame and leaves the first one current, so close or scope
-the windows you are not snapshotting. `check_snapshot()` compares that against a
+Two things to know. It composes the **screen**, not the window you pass:
+a second visible top level puts a tab strip in the frame and leaves the
+first one current, so close or scope the windows you are not
+snapshotting.
+
+And it takes the **window tab record** down as it goes, which two things
+depend on: a press in row 0 is no longer read as a tab selection, and
+`F6` has no window list to move within, so it does nothing and reads as
+a broken feature. Measured: two windows with the conventions on, `F6`
+between snapshots, and the current window never changed; with one
+compositor kept alive across the presses -- as a frame loop keeps one --
+`F6` moved and `Shift+F6` came back. Keep a `Compositor` alive across
+keys that depend on the window set, or call
+`Qtty::set_current_window()` to say which window you mean. `check_snapshot()` compares that against a
 fixture under `<root>/test/snapshot/`, prints both sides on a mismatch,
 and rewrites the fixture when you pass `record = true` -- so capturing a
 screen before you change it is one call and a flag.
