@@ -5403,3 +5403,19 @@ find = "void InputRouter::on_terminal_lost() {\n\tif (qApp) qApp->quit();\n}"
 into = "void InputRouter::on_terminal_lost() {\n}"
 count = 1
 check = "a terminal that goes away stops the program"
+
+[[sabotage]]
+name = "an item's inline editor takes the whole item rectangle"
+file = "src/grid/grid_style.cpp"
+find = "\tif (se == SE_ItemViewItemText && opt) {"
+into = "\tif (false && se == SE_ItemViewItemText && opt) {"
+count = 1
+check = "an inline editor opens where the item's own text was"
+
+[[sabotage]]
+name = "a branch mark does not turn over when the folder opens"
+file = "src/grid/grid_style.cpp"
+find = "(opt->state & State_Open) ? QStringLiteral("
+into = "(false) ? QStringLiteral("
+count = 1
+check = "Right opens it and the mark turns over with it"

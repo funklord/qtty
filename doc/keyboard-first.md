@@ -98,6 +98,7 @@ reimplements it:
 | `Ctrl+C`, `Ctrl+D` | Quit -- except where a **caret** is, in a widget that takes text, where `Ctrl+C` is left for copy. A list, tree or table quits like anything else, and its open editor does not. Change them with `Qtty::set_quit_keys()`, before your run or during it | qtty's |
 | `Ctrl+Z` | An ordinary key, **not** a suspend -- see *Never block the event loop* for why, and how to get the conventional behaviour back | qtty's |
 | `F2` | Opens the editor on the current cell or item of an editable view, and `Enter` commits, `Escape` cancels, `Tab` moves to the next cell's editor | Qt's |
+| `Left`, `Right` in a focused tree | Close and open the current branch, and the `▸` or `▾` mark turns over with it -- which is the whole of how a user with no pointer sees that the key did anything | Qt's |
 
 **Editing in a table or a tree works, and one thing about it is Qt's
 behaviour rather than this library's.** Typing a printable character
@@ -110,6 +111,14 @@ type-to-edit in a tree has to ask for it there too.
 The editor is a real widget while it is open: it takes the keys,
 `Qtty::keyboard_reachable()` grows by one and names it, and the cell
 underneath it is erased, so what the user types is what the user reads.
+
+**And it opens in the cells the item's own text was drawn in.** Qt places an
+inline editor at `SE_ItemViewItemText` and this library answers it in whole
+cells, so the editor lands *after* a tree's branch mark and after a check
+box rather than on top of them, and the name does not jump a column sideways
+as the rename begins and back as it ends. Nothing to call: it is the style
+answering, and it is there whether or not you install
+`Qtty::CellItemDelegate`.
 **Focus comes back to the view when the edit ends**, which is qtty's
 doing rather than Qt's -- Qt returns it only for an active window, and
 none activates here, so without that a keystroke after every commit and
@@ -215,6 +224,7 @@ a third spelling**, which is the other half of practice 10.
 | `• By name` | the chosen one of a menu's exclusive group |
 | `Recent     ▸` | a submenu |
 | `▸ Folder` | a tree row that opens |
+| `▾ Folder` | a tree row that is open |
 | a box with a class name in it | a widget whose content is out of reach -- a `QGraphicsView`, a web view |
 | `▒` | a picture reduced to one cell, which is all this library can say about it |
 

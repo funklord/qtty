@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-22
 
-1968 checks, 0 failures, and **4.5 seconds of user time** --
+1974 checks, 0 failures, and **4.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
 wall each time.
@@ -17844,6 +17844,62 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.329 A rename that moved the name one cell (2026-09-23)
+
+**A fourth application walked: a file manager.** Its core is a tree
+walked with the arrows and an item renamed in place, and neither had a
+check here.
+
+**The arrows are Qt's and they work.** `Right` opens the current
+branch, `Left` shuts it, and `PE_IndicatorBranch` turns the mark over
+with it -- which is the whole of how a user with no pointer sees that
+the key did anything, so the mark and the state are asserted against
+each other rather than either being pinned.
+
+**The rename found a fault, and it was this library's.** Qt's own
+delegate places an inline editor at `SE_ItemViewItemText`; `GridStyle`
+answered nothing for it, so the editor was handed the item's whole
+rectangle while `CE_ItemViewItem` indents the text it draws by a cell.
+Measured on a `QListWidget`: the delegate draws the name in **column 2**
+and the editor drew it in **column 1**. Pressing `F2` jumped the name
+one cell left and committing jumped it back.
+
+In a tree it is worse by what it lands on rather than by how far it
+moves. The editor covered the branch column, so the `▸` a user needs to
+see was inside a field they were typing into; and with a check box it
+would have covered that too.
+
+**The fix is four lines and its precedent was in the same function.**
+`SE_ItemViewItemCheckIndicator` was already answered in whole cells, and
+for the reason stated there: two places deriving one picture is how they
+come to disagree. `SE_ItemViewItemText` now carries the same arithmetic
+`CE_ItemViewItem` uses -- one cell of indent, four more for a check box
+-- and the editor lands exactly where the text was in all three indents.
+
+**That Qt's delegate consults it at all was measured, not recalled.** No
+Qt source is installed on this machine, so the experiment was to
+implement the rule and see whether the editor moved. It did, in the
+default delegate, which is the one an application gets without asking.
+
+**The inertness question answers itself here and is worth writing down
+once.** `drawControl()` guards on `cell_target(p)`; `subElementRect()`
+has no painter to ask, so it cannot make that test. It does not need to:
+a GUI build never calls `setup()` and therefore never installs this
+style at all, which is where the section 10.1 rule does the work a
+painter check would do.
+
+**Both halves are sabotage-proven** -- `if (false && se == ...)` reddens
+the editor's three checks, and a branch mark that never turns over
+reddens the arrows' two.
+
+**And the vocabulary was missing half a row.** *What the marks mean*
+published `▸ Folder`, the mark that says a folder opens, and never
+`▾ Folder`, the one that says it is open -- which is the whole of what
+a tree tells a user who cannot point at it. The page's table and the
+check that renders every row of it are counted against each other, so
+the row could not be added to one alone.
 
 
 ### 8.328 A control that stopped me blaming this library for Qt (2026-09-23)

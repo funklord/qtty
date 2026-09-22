@@ -1273,6 +1273,35 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 			return QRect(opt->rect.left() + cw, opt->rect.top(),
 			             3 * cw, opt->rect.height());
 	}
+	// AND THE CELLS THE TEXT IS DRAWN IN, which nothing here answered and
+	// which is not only about drawing: Qt's own delegate places an inline
+	// EDITOR at this rectangle, so F2 on an editable item opened a field
+	// whose text sat one CELL left of the text it was replacing. Measured on
+	// a QListWidget: the delegate draws 's' in column 2 and the editor drew
+	// it in column 1, so a rename jumped the name sideways as it began and
+	// back as it ended.
+	//
+	// The arithmetic is CE_ItemViewItem's own -- one cell of indent, four
+	// more when the item carries a check indicator, which is the box and the
+	// space after it -- for the same reason the check rectangle above
+	// carries it: two places deriving one picture is how they come to
+	// disagree, and the picture is the one the user sees.
+	//
+	// GridStyle draws CE_ItemViewItem itself and never asks this, so the
+	// only consumer under a cell device is the editor. A GUI build never
+	// installs this style at all, which is where the inertness rule does the
+	// work a painter check would do in drawControl().
+	if (se == SE_ItemViewItemText && opt) {
+		const int cw = GridMetrics::cw();
+		int in = cw;
+		if (auto *vi = qstyleoption_cast<const QStyleOptionViewItem *>(opt)) {
+			if (vi->features & QStyleOptionViewItem::HasCheckIndicator)
+				in += 4 * cw;
+		}
+		if (opt->rect.width() > in)
+			return QRect(opt->rect.left() + in, opt->rect.top(),
+			             opt->rect.width() - in, opt->rect.height());
+	}
 	if (se == SE_TabBarTabRightButton || se == SE_TabBarTabLeftButton) {
 		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 		r.moveLeft(qRound(double(r.left()) / cw) * cw);

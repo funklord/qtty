@@ -588,6 +588,155 @@ int suite_widgets() {
 		CHECK(pr.x() >= 0 && !(b.at(pr.x(), pr.y()).attrs & Attr::Reverse),
 		      "unselected row plain");
 	}
+	// A FILE MANAGER WALKED, which is the fourth application archetype, and
+	// it is made of two things nothing here asserted: moving through a tree
+	// with the arrows, and renaming an item in place.
+	//
+	// The rename found a real fault. Qt's own delegate places an inline
+	// editor at SE_ItemViewItemText, GridStyle answered nothing for it, and
+	// so the editor was handed the item's whole rectangle while
+	// CE_ItemViewItem indents the text it draws by a cell. Measured on a
+	// list before the fix: the delegate drew the name in column 2 and the
+	// editor drew it in column 1, so pressing F2 jumped the name one cell
+	// left and committing jumped it back.
+	//
+	// Each case asserts the RELATIONSHIP -- the same column with the editor
+	// open as without it -- rather than the column, which differs per indent
+	// and would pin a number that says nothing about the fault. The three
+	// cases are the three indents that exist: a plain item, one behind a
+	// tree's branch indicator, and one behind a check box.
+	{
+		// The column the name starts in, first as the delegate draws it
+		// and then with the editor open on the same item.
+		auto columns = [](QWidget &host, QAbstractItemView &view,
+		                  const QString &name, int row) {
+			InputRouter r(&host);
+			Qtty::set_current_window(&host);
+			view.setFocus();
+			QCoreApplication::processEvents();
+			auto text_of = [&] {
+				CellBuffer b(34, 8);
+				render_once(host, b);
+				QString s;
+				for (int x = 0; x < b.cols(); ++x) s += b.at(x, row).ch;
+				return s;
+			};
+			const int before = text_of().indexOf(name);
+			r.on_key({Qt::Key_F2, QString(), false, false, false});
+			QCoreApplication::processEvents();
+			return QPair<int, int>(before, text_of().indexOf(name));
+		};
+
+		{
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			host.resize(GridMetrics::cells(34, 8));
+			auto *v = new QVBoxLayout(&host);
+			auto *list = new QListWidget;
+			list->setFrameShape(QFrame::NoFrame);
+			list->setEditTriggers(QAbstractItemView::EditKeyPressed);
+			auto *it = new QListWidgetItem(QStringLiteral("src"), list);
+			it->setFlags(it->flags() | Qt::ItemIsEditable);
+			v->addWidget(list);
+			host.show();
+			list->setCurrentItem(it);
+			const QPair<int, int> c =
+			    columns(host, *list, QStringLiteral("src"), 0);
+			CHECK(c.first > 0 && c.first == c.second,
+			      "an inline editor opens where the item's own text was, so "
+			      "renaming does not jump the name sideways");
+		}
+
+		{
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			host.resize(GridMetrics::cells(34, 8));
+			auto *v = new QVBoxLayout(&host);
+			auto *tree = new QTreeWidget;
+			tree->setHeaderHidden(true);
+			tree->setFrameShape(QFrame::NoFrame);
+			tree->setEditTriggers(QAbstractItemView::EditKeyPressed);
+			auto *dir = new QTreeWidgetItem(tree,
+			                                QStringList{QStringLiteral("src")});
+			dir->setFlags(dir->flags() | Qt::ItemIsEditable);
+			new QTreeWidgetItem(dir, QStringList{QStringLiteral("main.cpp")});
+			v->addWidget(tree);
+			host.show();
+			tree->setCurrentItem(dir);
+			const QPair<int, int> c =
+			    columns(host, *tree, QStringLiteral("src"), 0);
+			CHECK(c.first > 0 && c.first == c.second,
+			      "and it clears a tree's branch indicator, which is the "
+			      "indent the editor was landing on top of");
+		}
+
+		{
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			host.resize(GridMetrics::cells(34, 8));
+			auto *v = new QVBoxLayout(&host);
+			auto *list = new QListWidget;
+			list->setFrameShape(QFrame::NoFrame);
+			list->setItemDelegate(new CellItemDelegate(list));
+			list->setEditTriggers(QAbstractItemView::EditKeyPressed);
+			auto *it = new QListWidgetItem(QStringLiteral("src"), list);
+			it->setFlags(it->flags() | Qt::ItemIsEditable
+			             | Qt::ItemIsUserCheckable);
+			it->setCheckState(Qt::Checked);
+			v->addWidget(list);
+			host.show();
+			list->setCurrentItem(it);
+			const QPair<int, int> c =
+			    columns(host, *list, QStringLiteral("src"), 0);
+			CHECK(c.first > 0 && c.first == c.second,
+			      "and a check box keeps its cells while its item is being "
+			      "renamed, which is four more cells of indent again");
+		}
+	}
+	// AND THE ARROWS A TREE IS WALKED WITH, which the guide's table covers
+	// only as "arrows work inside a control that wants them". A file manager
+	// is the control that wants them, and the glyph is how its user knows
+	// which state a folder is in -- so what is asserted is that the two
+	// follow each other, not that either is what it is today.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(34, 8));
+		auto *v = new QVBoxLayout(&host);
+		auto *tree = new QTreeWidget;
+		tree->setHeaderHidden(true);
+		tree->setFrameShape(QFrame::NoFrame);
+		auto *dir = new QTreeWidgetItem(tree, QStringList{QStringLiteral("src")});
+		new QTreeWidgetItem(dir, QStringList{QStringLiteral("main.cpp")});
+		v->addWidget(tree);
+		host.show();
+		InputRouter r(&host);
+		Qtty::set_current_window(&host);
+		tree->setCurrentItem(dir);
+		tree->setFocus();
+		QCoreApplication::processEvents();
+		auto shown = [&] {
+			CellBuffer b(34, 8);
+			render_once(host, b);
+			return QPair<bool, bool>(buffer_contains(b, QStringLiteral("\u25B8")),
+			                         buffer_contains(b, QStringLiteral("\u25BE")));
+		};
+		const QPair<bool, bool> closed = shown();
+		CHECK(!dir->isExpanded() && closed.first && !closed.second,
+		      "a collapsed folder draws the mark that says it opens, and not "
+		      "the one that says it is open");
+		r.on_key({Qt::Key_Right, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		const QPair<bool, bool> open = shown();
+		CHECK(dir->isExpanded() && open.second && !open.first,
+		      "Right opens it and the mark turns over with it, which is how "
+		      "a user with no pointer knows the arrow did anything");
+		r.on_key({Qt::Key_Left, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		const QPair<bool, bool> again = shown();
+		CHECK(!dir->isExpanded() && again == closed,
+		      "and Left shuts it again, leaving the row it started as");
+	}
 	// scrollbar column: arrows, thumb, groove (F5 fix)
 	{
 		QListView list;
@@ -1324,6 +1473,7 @@ int suite_widgets() {
 				{ "a chosen exclusive item",  "\u2022 By name", 19, 22 },
 				{ "a submenu",                "\u25B8",         20, 22 },
 				{ "a tree row that opens",    "\u25B8 Folder",  21, 22 },
+				{ "a tree row that is open",  "\u25BE Folder",  24, 22 },
 				{ "a widget out of reach",    "QGraphicsView", 22, 22 },
 				// The substitution's own cell, the one row of the table that
 				// is not a control. A solid pixmap is the simplest thing that
@@ -1437,6 +1587,20 @@ int suite_widgets() {
 					auto *top = new QTreeWidgetItem(
 					    t, QStringList(QStringLiteral("Folder")));
 					new QTreeWidgetItem(top, QStringList(QStringLiteral("k")));
+					return t;
+				}
+				case 24: {
+					// The same tree, expanded. The open mark had no row in the
+					// vocabulary at all until a file manager was walked against
+					// this library: the page published the mark that says a
+					// folder OPENS and never the one that says it is open,
+					// which is half of the only thing a tree tells its user.
+					auto *t = new QTreeWidget;
+					t->setHeaderHidden(true);
+					auto *top = new QTreeWidgetItem(
+					    t, QStringList(QStringLiteral("Folder")));
+					new QTreeWidgetItem(top, QStringList(QStringLiteral("k")));
+					t->expandAll();
 					return t;
 				}
 				case 22:
