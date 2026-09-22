@@ -197,7 +197,7 @@ here, no window ever being active, and `Qtty::has_focus()` asks it the way
 the terminal itself is unfocused -- which is what a custom widget drawing its
 own mark wants.
 
-**And ten questions a test can put to a window**, none of which an
+**And eleven questions a test can put to a window**, none of which an
 application has another way to answer:
 
 | call | what it names |
@@ -205,6 +205,7 @@ application has another way to answer:
 | `Qtty::keyboard_reachable()` | what `Tab` reaches, in the order it reaches it |
 | `Qtty::pointer_only()` | the controls no key reaches at all |
 | `Qtty::mnemonic_conflicts()` | the `Alt`+letters two controls both claim |
+| `Qtty::mnemonic_missing()` | the controls no letter reaches directly |
 | `Qtty::shortcut_conflicts()` | the chords two things answer at once |
 | `Qtty::conventions_shadowed()` | the convention rows the window took back |
 | `Qtty::tab_order_anomalies()` | the tab steps that read backwards |
@@ -213,8 +214,8 @@ application has another way to answer:
 | `Qtty::sheet_styled()` | the widgets a style sheet is drawing |
 | `Qtty::ambiguous_chords()` | the chords a terminal cannot deliver |
 
-Nine of the ten are asserted **empty**, which is the assertion that keeps
-working as a window grows. `Qtty::audit()` asks those nine at once and names
+Ten of the eleven are asserted **empty**, which is the assertion that keeps
+working as a window grows. `Qtty::audit()` asks those ten at once and names
 the question each row came from, so a test writes one line and cannot fall
 behind this table. The collisions are what nothing else can show:
 the loser simply never fires, and Qt's own ambiguity report needs an active

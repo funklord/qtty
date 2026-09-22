@@ -1459,6 +1459,151 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- the letters nothing carries --------------------------------------
+	//
+	// mnemonic_conflicts() finds two controls claiming one letter. Until
+	// mnemonic_missing() there was no way to ask the other half -- whether a
+	// control has a letter at all -- and practice 1 calls giving one the
+	// highest-value thing on that page. An application could assert that its
+	// mnemonics did not collide and could not assert that it had any.
+	{
+		// A WINDOW THAT FOLLOWED THE PRACTICE reports nothing, which is the
+		// answer an application asserts and the one a report invents a
+		// finding to avoid giving.
+		QWidget done;
+		done.setAttribute(Qt::WA_DontShowOnScreen);
+		done.resize(GridMetrics::cells(30, 8));
+		auto *lay = new QVBoxLayout(&done);
+		auto *field = new QLineEdit;
+		auto *label = new QLabel(QStringLiteral("&Host"));
+		label->setBuddy(field);
+		lay->addWidget(label);
+		lay->addWidget(field);
+		lay->addWidget(new QPushButton(QStringLiteral("&Connect")));
+		done.show();
+		QCoreApplication::processEvents();
+		CHECK(mnemonic_missing(&done).isEmpty(),
+		      "a window whose every control carries a letter reports none "
+		      "missing, which is what an application asserts");
+
+		// AND IT CAN SAY NO. Without this the line above would pass on a
+		// function that returned empty whatever it was given.
+		auto *bare = new QPushButton(QStringLiteral("Go"));
+		lay->addWidget(bare);
+		QCoreApplication::processEvents();
+		const auto found = mnemonic_missing(&done);
+		CHECK(found.size() == 1 && found[0].second == QStringLiteral("Go"),
+		      "and a button with no letter is named, by the text it shows "
+		      "rather than by a pointer a reader cannot see");
+
+		// A BUDDY LABEL WITH NO LETTER is the sharper finding of the two,
+		// and it is the guide's own argument rather than a new one: a label
+		// is here to carry a letter and costs a whole row on twenty-four of
+		// them, so one without a letter is buying nothing.
+		label->setText(QStringLiteral("Host"));
+		QCoreApplication::processEvents();
+		QStringList texts;
+		for (const auto &r : mnemonic_missing(&done)) texts << r.second;
+		CHECK(texts.contains(QStringLiteral("Host")),
+		      "and so is a buddy label with no letter, which is a row spent "
+		      "on nothing");
+	}
+	{
+		// THE TWO EXCLUSIONS AND A FINDING IN ONE FIXTURE, because each is
+		// only meaningful against the others: Enter reaches the default
+		// button and Escape reaches Cancel, so naming those two would put a
+		// finding in every dialog that nobody can act on -- while Help has
+		// no key at all and is exactly what this report is for.
+		QDialog dlg;
+		dlg.setAttribute(Qt::WA_DontShowOnScreen);
+		dlg.resize(GridMetrics::cells(30, 6));
+		auto *v = new QVBoxLayout(&dlg);
+		auto *box = new QDialogButtonBox(QDialogButtonBox::Ok
+		                                 | QDialogButtonBox::Cancel
+		                                 | QDialogButtonBox::Help);
+		v->addWidget(box);
+		dlg.show();
+		QCoreApplication::processEvents();
+		QStringList texts;
+		for (const auto &r : mnemonic_missing(&dlg)) texts << r.second;
+		CHECK(texts == QStringList{QStringLiteral("Help")},
+		      "a dialog's OK and Cancel are not named, Enter and Escape "
+		      "reaching them, while Help is -- which is the whole of what "
+		      "this report is for");
+	}
+	{
+		// QT'S OWN WIZARD lays its buttons out itself rather than through a
+		// QDialogButtonBox, so the box's rule cannot reach its Cancel and
+		// the wizard's own handle is what excludes it. Measured before that
+		// exclusion existed: one finding, on a button whose text no
+		// application wrote.
+		QWizard wiz;
+		auto *page = new QWizardPage;
+		page->setTitle(QStringLiteral("Account"));
+		auto *pv = new QVBoxLayout(page);
+		pv->addWidget(new QLineEdit);
+		wiz.addPage(page);
+		wiz.addPage(new QWizardPage);
+		wiz.setAttribute(Qt::WA_DontShowOnScreen);
+		wiz.resize(GridMetrics::cells(40, 12));
+		wiz.show();
+		QCoreApplication::processEvents();
+		CHECK(mnemonic_missing(&wiz).isEmpty(),
+		      "and Qt's own wizard reports none, its Back and Next carrying "
+		      "letters and Escape reaching its Cancel");
+
+		// ASKED FROM OUTSIDE AS WELL, which is not the same code path and
+		// had no check until a sabotage found it: the first draft reached
+		// the scope's own wizard by one line and a nested one by another,
+		// and every fixture here asked a wizard about itself -- so removing
+		// the second line broke nothing any check could see. A wizard
+		// parented to a window is that window's QObject child, which is
+		// exactly how an application opens one.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(40, 12));
+		auto *nested = new QWizard(&host);
+		auto *np = new QWizardPage;
+		np->setTitle(QStringLiteral("Account"));
+		nested->addPage(np);
+		nested->addPage(new QWizardPage);
+		nested->setAttribute(Qt::WA_DontShowOnScreen);
+		host.show();
+		nested->show();
+		QCoreApplication::processEvents();
+		CHECK(mnemonic_missing(&host).isEmpty(),
+		      "and so does a window holding one, the exclusion reaching a "
+		      "wizard inside the scope and not only a scope that is one");
+		GridGuard::reset();
+	}
+	{
+		// THE TWO REPORTS ARE A PARTITION, not two opinions. A button with
+		// no focus policy, no letter and no chord satisfies both sentences
+		// -- no key reaches it, and no letter reaches it directly -- and
+		// audit() must put ONE row on it rather than two on one fault.
+		// pointer_only() is the older question and the worse finding, so it
+		// keeps the widget.
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(30, 6));
+		auto *v = new QVBoxLayout(&win);
+		v->addWidget(new QLineEdit);
+		win.show();
+		auto *stray = new QPushButton(QStringLiteral("Go"), &win);
+		stray->setFocusPolicy(Qt::NoFocus);
+		stray->setGeometry(0, 4 * GridMetrics::ch(),
+		                   8 * GridMetrics::cw(), GridMetrics::ch());
+		stray->show();
+		QCoreApplication::processEvents();
+		QStringList questions;
+		for (const auto &row : Qtty::audit(&win)) questions << row.first;
+		CHECK(questions.count(QStringLiteral("pointer_only")) == 1
+		          && !questions.contains(QStringLiteral("mnemonic_missing")),
+		      "a control nothing reaches at all is one report's finding and "
+		      "not both, so the audit names the fault once");
+		GridGuard::reset();
+	}
+
 	// ---- a popup that takes another one with it ---------------------------
 	//
 	// A press outside an open popup closes the stack from the top down, and
@@ -4808,10 +4953,12 @@ int suite_router() {
 			      "own would not -- it takes whichever comes first");
 		}
 
-		// THE NINE AT ONCE, which exists because the hand-written list
+		// THE TEN AT ONCE, which exists because the hand-written list
 		// drifts and this tree has watched it happen twice: the example
 		// asserted eight reports while the page said nine, and adding a
-		// tenth meant editing every place that enumerated them.
+		// tenth meant editing every place that enumerated them. An
+		// eleventh has since been added and this check is what named
+		// every place it had to go.
 		{
 			QWidget clean;
 			clean.setAttribute(Qt::WA_DontShowOnScreen);
@@ -5918,9 +6065,10 @@ int suite_router() {
 			    && hover_only(nullptr).isEmpty()
 			    && focus_invisible(nullptr).isEmpty()
 			    && sheet_styled(nullptr).isEmpty()
-			    && ambiguous_chords(nullptr).isEmpty();
+			    && ambiguous_chords(nullptr).isEmpty()
+			    && mnemonic_missing(nullptr).isEmpty();
 			CHECK(null_quiet,
-			      "all ten questions answer empty when asked about "
+			      "all eleven questions answer empty when asked about "
 			      "nothing, rather than refusing or reaching through a "
 			      "null scope");
 
@@ -5934,7 +6082,8 @@ int suite_router() {
 			    && hover_only(&bare).isEmpty()
 			    && focus_invisible(&bare).isEmpty()
 			    && sheet_styled(&bare).isEmpty()
-			    && ambiguous_chords(&bare).isEmpty();
+			    && ambiguous_chords(&bare).isEmpty()
+			    && mnemonic_missing(&bare).isEmpty();
 			CHECK(bare_quiet,
 			      "and empty about a window with nothing in it, which is "
 			      "the answer a report invents a finding to avoid giving");
@@ -6221,10 +6370,10 @@ int suite_router() {
 			}
 
 			// AND THE PAGE THAT PUBLISHES THEM NAMES THE SAME NUMBER.
-			// The two checks above say "all nine", which is a claim
+			// The two checks above say "all ten", which is a claim
 			// about a population rather than about a call -- and
-			// `doc/keyboard-first.md` says "Nine questions the library
-			// will answer" over a table of them. A tenth helper added
+			// `doc/keyboard-first.md` says "Eleven questions the library
+			// will answer" over a table of them. A twelfth helper added
 			// with no row, or a row with no call, leaves both sentences
 			// quietly wrong; the quantifier is the thing to verify.
 			//
@@ -6241,10 +6390,10 @@ int suite_router() {
 					if (line.startsWith(QStringLiteral("| `Qtty::"))) ++listed;
 			}
 			printf("info: the page lists %d audit question(s); these checks "
-			       "call 10\n", listed);
-			CHECK(listed == 10,
+			       "call 11\n", listed);
+			CHECK(listed == 11,
 			      "the page lists exactly the audit questions these checks "
-			      "call, so a tenth cannot be added to either alone");
+			      "call, so an eleventh cannot be added to either alone");
 		}
 
 		// THE WIDGETS A STYLE SHEET IS DRAWING, which is the ninth

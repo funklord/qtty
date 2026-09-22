@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-22
 
-1976 checks, 0 failures, and **4.5 seconds of user time** --
+1983 checks, 0 failures, and **4.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
 wall each time.
@@ -17844,6 +17844,98 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.331 The question practice 1 could not ask (2026-09-23)
+
+**The lens this time was the guide's own spine.** Fourteen practices,
+ten audit questions -- so which practices have a report behind them, and
+which leave an implementer on their own? Mapping them found one answer
+that should not have been left standing: **practice 1, the one the page
+itself calls the single highest-value thing in it, had only a CONFLICT
+report.** An application could ask whether two controls claimed one
+letter and could not ask whether a control had a letter at all.
+
+`Qtty::mnemonic_missing()` is that question, and it is the eleventh.
+
+**The population came out of measuring rather than deciding.** A naive
+"visible button with text and no ampersand" over a window that followed
+practice 1 to the letter produced three findings -- and all three were
+`QDialogButtonBox`'s own buttons, whose text no application wrote. The
+tempting rule is *skip Qt's furniture*. The true rule turned out to be
+one step further along and is public:
+
+**ANOTHER KEY ALREADY REACHES IT.** `Enter` fires a dialog's default
+button from anywhere in it; `Escape` fires a `QDialogButtonBox`'s
+`RejectRole` button and a `QWizard`'s Cancel. With that subtraction the
+same three fixtures answer:
+
+    a QDialog with Ok/Cancel/Help     Help
+    Qt's own QMessageBox              Discard
+    Qt's own QWizard                  nothing
+
+Each of those is a real finding an application can act on -- `Help` and
+`Discard` have no key at all -- and the wizard, whose buttons Qt lays
+out itself rather than through a button box, needed its own handle
+because the box's rule cannot reach it.
+
+**One walk, not two.** `mnemonic_claims()` was split into
+`mnemonic_candidates()` -- everything that COULD carry a letter -- and a
+filter. The conflict report keeps the half that has one, this report
+keeps the half that does not. Two walks of one tree is two chances to
+describe different programs, and here the two reports would have been
+answering opposite halves of one question while disagreeing about what
+the question was over.
+
+**And the two reports are a PARTITION rather than two opinions.** A
+button with no focus policy, no letter and no chord satisfies both
+sentences -- nothing reaches it, and no letter reaches it directly --
+and the first version named it twice, putting two rows on one fault.
+`pointer_only()` is the older question and the worse finding, so it
+keeps that widget. The check asserts the audit names the fault once.
+
+**What it deliberately does NOT name is a field with no label**, and
+that is the guide's position rather than an omission: practice 1 says a
+buddy is worth a row when the mnemonic is and not otherwise, and a
+single input `Tab` reaches at once is better served by a placeholder --
+which is what `example/chat` does. Naming every unlabelled field would
+have been this library contradicting the page it is written for. Nor a
+tab, whose letter answers only with the conventions on and whose bar is
+a tab stop the arrows walk.
+
+**The refactor broke two existing sabotage anchors, which is the guard
+working rather than a cost.** One had moved into the new candidates
+function; the other matched TWICE, because the first draft copied the
+dialog-default rule into the new report instead of sharing it. That
+second one is the better find: two copies of "which button does `Enter`
+fire" is two chances for the reports to disagree, and it is one
+`dialog_defaults()` helper now. Neither was noticed by reading -- the
+spec's `count` is what refused.
+
+**AND THE THIRD SABOTAGE FAILED, on code written an hour earlier.**
+Removing the wizard exclusion left every check green. The reason is the
+one this tree keeps paying for: the first draft reached a wizard by two
+lines -- `findChildren()` for a nested one, a cast for a scope that IS
+one -- and every fixture asked a wizard about itself, so the
+`findChildren` half had no check able to reach it and the sabotage that
+deleted it broke nothing anybody could see. One list and one insert now,
+so the anchor covers the rule rather than one of its two spellings, and
+a wizard parented to a window -- which is how an application actually
+opens one -- has its own check.
+
+**That is what a sabotage spec is for, and it is worth saying which way
+it worked.** Nothing was wrong with the code: both spellings were
+correct and the report was right in both cases. What was wrong was that
+one of them could have been deleted silently. Reading the function would
+not have found it; only breaking it and watching nothing happen did.
+
+**Seven checks and three sabotages.** A window that followed the practice
+reports nothing; a button without a letter is named by its text; so is a
+buddy label without one; the dialog fixture holds both exclusions and
+the finding together, since each is only meaningful against the others;
+Qt's wizard reports nothing, and so does a window holding one; and the
+audit names a pointer-only control once. The sabotages redden the report naming anything, the partition
+collapsing, and the wizard exclusion going.
 
 
 ### 8.330 The cost nothing downstream can see (2026-09-23)

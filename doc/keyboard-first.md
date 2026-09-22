@@ -672,6 +672,27 @@ more of this page you follow, the likelier it is.
     for (const auto &clash : Qtty::mnemonic_conflicts(&window))
         qWarning() << clash.first << "is claimed by" << clash.second;
 
+**And the failure this practice does NOT create -- not following it --
+has its own report.** `mnemonic_conflicts()` answers whether your letters
+collide; it cannot answer whether you have any, and for five versions of
+this page nothing could:
+
+    for (const auto &bare : Qtty::mnemonic_missing(&window))
+        qWarning() << bare.first << "carries no letter:" << bare.second;
+
+It names a button with text and no `&`, an action, and a **buddy label
+with no letter** -- which is the sharpest of the three, because that
+label is costing you a row and buying nothing. Empty is the answer to
+assert, and it is reachable: a control another key already reaches
+directly is not named, so a dialog's default button (`Enter`) and the
+button `Escape` fires are left out, and Qt's own `QWizard` reports
+nothing at all.
+
+What it does not name is a field with no label, which is this page's own
+position two paragraphs up rather than an omission, and a control nothing
+reaches at all -- that one is `pointer_only()`'s, and the two are a
+partition so one fault gets one row.
+
 Empty is the answer to assert in the test this page asks you to write. The
 list names every claimant, and **which one answers depends on where the
 focus is**: menu actions come before buttons and buddy labels, so `&File` on
@@ -2405,7 +2426,7 @@ same three reversed cells become none, and come back when it returns.
 `qtty-replay` spells it `focus off` and `focus on`, so a report about a
 missing mark is reproducible.
 
-**Ten questions the library will answer about your window**, so that a
+**Eleven questions the library will answer about your window**, so that a
 test can assert on them rather than a person noticing:
 
 | call | what it returns | what to assert |
@@ -2413,6 +2434,7 @@ test can assert on them rather than a person noticing:
 | `Qtty::keyboard_reachable(scope)` | the widgets `Tab` visits, in order | your controls are in it |
 | `Qtty::pointer_only(scope)` | the controls no key reaches | empty (Qt's own furniture aside) |
 | `Qtty::mnemonic_conflicts(scope)` | the `Alt`+letters two controls claim | empty |
+| `Qtty::mnemonic_missing(scope)` | the controls no letter reaches directly | empty |
 | `Qtty::shortcut_conflicts(scope)` | the chords two things answer at once | empty |
 | `Qtty::conventions_shadowed(scope)` | the convention rows your own keys took | empty, or drop those rows |
 | `Qtty::tab_order_anomalies(scope)` | the tab steps that read backwards | empty |
@@ -2421,21 +2443,21 @@ test can assert on them rather than a person noticing:
 | `Qtty::sheet_styled(scope)` | the widgets a style sheet is drawing | empty |
 | `Qtty::ambiguous_chords(scope)` | the chords a terminal cannot deliver | empty |
 
-**Nine of the ten are asserted EMPTY, and that is the property worth
+**Ten of the eleven are asserted EMPTY, and that is the property worth
 having.** A list you check by name needs updating every time the window
 grows a control; an empty assertion needs nothing, and goes red the day
 somebody adds one that collides or that only a mouse can press. Each of
 them walks the router's own tables rather than a second copy, so what
 they report is what the keys will do.
 
-**Ask all nine of those in one line, and do not write the list
+**Ask all ten of those in one line, and do not write the list
 yourself:**
 
 ```cpp
 QVERIFY(Qtty::audit(&window).isEmpty());
 ```
 
-`Qtty::audit()` returns every row the nine empty reports would, each
+`Qtty::audit()` returns every row the ten empty reports would, each
 named with the question that produced it, so a failure says which one
 without your test enumerating any.
 

@@ -692,7 +692,17 @@ struct MnemonicClaim {
 	int rank = 0;                 // 0 actions, 1 buttons and labels, 2 tabs
 };
 
-static QVector<MnemonicClaim> mnemonic_claims(QWidget *scope) {
+// EVERY OBJECT THAT COULD CARRY A LETTER, whether or not it does. The
+// claims below are this filtered to the ones that do, and
+// `mnemonic_missing()` is the same list filtered to the ones that do not --
+// which is why it is one walk rather than two. Two walks of one tree is two
+// chances to describe different programs, and here the two reports would be
+// answering opposite halves of one question while disagreeing about what
+// the question was over.
+//
+// Tabs are deliberately NOT here; they are appended to the claims below,
+// under the conventions gate that is the reason they are a claim at all.
+static QVector<MnemonicClaim> mnemonic_candidates(QWidget *scope) {
 	QVector<MnemonicClaim> out;
 	if (!scope) return out;
 	// ONE CLAIM PER OBJECT. An action reached by two routes is one action,
@@ -706,21 +716,26 @@ static QVector<MnemonicClaim> mnemonic_claims(QWidget *scope) {
 		if (!a->isEnabled() || a->isSeparator()) continue;
 		if (counted.contains(a)) continue;
 		counted.insert(a);
-		const QChar m = mnemonic_of(a->text());
-		if (!m.isNull()) out.append({m, a, a->text(), -1, 0});
+		out.append({mnemonic_of(a->text()), a, a->text(), -1, 0});
 	}
 	for (QWidget *w : scope->findChildren<QWidget *>()) {
 		if (!w->isVisible() || !w->isEnabled()) continue;
 		if (auto *b = qobject_cast<QAbstractButton *>(w)) {
-			const QChar m = mnemonic_of(b->text());
-			if (!m.isNull()) out.append({m, b, b->text(), -1, 1});
+			out.append({mnemonic_of(b->text()), b, b->text(), -1, 1});
 		} else if (auto *l = qobject_cast<QLabel *>(w)) {
 			QWidget *buddy = l->buddy();
 			if (!buddy || !buddy->isVisible() || !buddy->isEnabled()) continue;
-			const QChar m = mnemonic_of(l->text());
-			if (!m.isNull()) out.append({m, l, l->text(), -1, 1});
+			out.append({mnemonic_of(l->text()), l, l->text(), -1, 1});
 		}
 	}
+	return out;
+}
+
+static QVector<MnemonicClaim> mnemonic_claims(QWidget *scope) {
+	QVector<MnemonicClaim> out;
+	if (!scope) return out;
+	for (const MnemonicClaim &c : mnemonic_candidates(scope))
+		if (!c.letter.isNull()) out.append(c);
 	// TABS LAST, and only with the conventions on, because both facts are
 	// about where this claim is resolved. A tab's letter is not matched by
 	// match_mnemonic() at all -- it is answered further down, after the key
@@ -1472,6 +1487,9 @@ QVector<QPair<QString, QString>> audit(QWidget *scope) {
 	for (const auto &c : ambiguous_chords(scope))
 		out.append({QStringLiteral("ambiguous_chords"),
 		            c.first + QStringLiteral(": ") + c.second});
+	for (const auto &c : mnemonic_missing(scope))
+		out.append({QStringLiteral("mnemonic_missing"),
+		            c.first + QStringLiteral(": ") + c.second});
 	return out;
 }
 
@@ -1651,6 +1669,100 @@ QVector<QWidget *> sheet_styled(QWidget *scope) {
 	return out;
 }
 
+// The buttons a dialog reaches with no focus on them: QDialog::keyPressEvent
+// goes looking for the default button, so Enter fires it from anywhere in
+// the dialog however its focus policy reads. Measured: a Qt::NoFocus default
+// button fires on Enter pressed in a field beside it.
+//
+// Shared by the two reports that subtract it -- pointer_only() asking
+// whether any key reaches the control, mnemonic_missing() whether one
+// reaches it directly -- because two copies of this rule is two chances for
+// them to disagree about which button Enter fires.
+static QVector<const QWidget *> dialog_defaults(QWidget *scope) {
+	QVector<const QWidget *> out;
+	if (!scope) return out;
+	for (QPushButton *b : scope->findChildren<QPushButton *>())
+		if (b->isDefault() && qobject_cast<QDialog *>(b->window()))
+			out.append(b);
+	return out;
+}
+
+// The controls in `scope` that carry no letter and that nothing else reaches
+// directly: see runtime.h for the population and the two exclusions.
+//
+// Built from the same walk as mnemonic_claims(), kept apart only by which
+// half of mnemonic_candidates() it keeps -- so the two reports cannot end up
+// describing different programs.
+QVector<QPair<QString, QString>> mnemonic_missing(QWidget *scope) {
+	QVector<QPair<QString, QString>> out;
+	if (!scope) return out;
+	// WHAT ELSE REACHES IT DIRECTLY, subtracted the way pointer_only()
+	// subtracts: a chord claim, and a dialog's default button answering
+	// Enter without holding the focus.
+	QSet<const QObject *> keyed;
+	for (const ShortcutClaim &c : shortcut_claims(scope)) {
+		if (auto *a = qobject_cast<QAction *>(c.who)) {
+			keyed.insert(a);
+			for (const QWidget *o : owners_of(a)) keyed.insert(o);
+		} else if (auto *w = qobject_cast<QWidget *>(c.who)) {
+			keyed.insert(w);
+		}
+	}
+	for (const QWidget *b : dialog_defaults(scope)) keyed.insert(b);
+	// AND ESCAPE, which reaches exactly two buttons and both by a public
+	// name. A QDialogButtonBox's RejectRole button and a QWizard's Cancel
+	// are what Escape fires, so naming them would put a finding in every
+	// dialog and every wizard that nobody can act on -- the clear button's
+	// argument again, one report along. Measured: with them left in, Qt's
+	// own QWizard produced one finding and Qt's own QMessageBox two, none
+	// of which an application wrote the text of.
+	//
+	// The connection itself cannot be asked -- Qt publishes no way to read
+	// what a signal reaches, which runtime.h records as this family's other
+	// limit -- so the exclusion is keyed on the two public handles that name
+	// the button rather than on the wiring.
+	for (QDialogButtonBox *box : scope->findChildren<QDialogButtonBox *>())
+		for (QAbstractButton *b : box->buttons())
+			if (box->buttonRole(b) == QDialogButtonBox::RejectRole)
+				keyed.insert(b);
+	//
+	// The scope ITSELF may be the wizard, which findChildren() does not
+	// answer for -- and the first draft handled that with a second insert,
+	// which left the findChildren half with no check able to reach it: the
+	// sabotage that removed it passed, because every fixture asked the
+	// wizard about itself. One list and one insert, so the spec's anchor
+	// covers the rule rather than one of its two spellings.
+	QVector<QWizard *> wizards = scope->findChildren<QWizard *>();
+	if (auto *w = qobject_cast<QWizard *>(scope)) wizards.append(w);
+	for (QWizard *w : wizards)
+		keyed.insert(w->button(QWizard::CancelButton));
+
+	const auto name_of = [](const QObject *o, const QString &text) {
+		const QString n = o->objectName();
+		const QString cls = QString::fromLatin1(o->metaObject()->className());
+		QString who = n.isEmpty() ? cls : n + QLatin1String(" (") + cls
+		                                    + QLatin1Char(')');
+		return qMakePair(who, text);
+	};
+	// AND WHAT NOTHING REACHES AT ALL IS THE OTHER REPORT'S, which makes
+	// the two a partition rather than an overlap. A button with no focus
+	// policy, no letter and no chord is true of both sentences -- no key
+	// reaches it, and no letter reaches it directly -- and naming it twice
+	// in audit() puts two rows on one widget for one fault. pointer_only()
+	// is the older question and the worse finding, so it keeps that widget
+	// and this one reports what a user CAN get to but only by walking.
+	const QVector<QWidget *> unreachable = pointer_only(scope);
+	for (const MnemonicClaim &c : mnemonic_candidates(scope)) {
+		if (!c.letter.isNull()) continue;
+		if (c.text.isEmpty()) continue;         // nowhere to put a letter
+		if (keyed.contains(c.who)) continue;
+		if (auto *w = qobject_cast<QWidget *>(c.who))
+			if (unreachable.contains(w)) continue;
+		out.append(name_of(c.who, c.text));
+	}
+	return out;
+}
+
 QVector<QWidget *> pointer_only(QWidget *scope) {
 	QVector<QWidget *> out;
 	if (!scope) return out;
@@ -1677,10 +1789,7 @@ QVector<QWidget *> pointer_only(QWidget *scope) {
 	// named it. That is the toolbar's false report again, one route along:
 	// a key reaches the control and the walk this subtracts from cannot see
 	// the route.
-	const auto defaults = scope->findChildren<QPushButton *>();
-	for (QPushButton *b : defaults)
-		if (b->isDefault() && qobject_cast<QDialog *>(b->window()))
-			keyed.insert(b);
+	for (const QWidget *b : dialog_defaults(scope)) keyed.insert(b);
 	// A LINE EDIT'S CLEAR BUTTON IS NOT A FINDING, and leaving it in was
 	// the kind of false positive that gets a whole report ignored: Qt adds
 	// the button whenever an application calls setClearButtonEnabled(true),

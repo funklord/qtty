@@ -2038,7 +2038,7 @@ check = "while a claim whose buddy is hidden is no claim"
 # the shared list exists to prevent, arrived at from the other side.
 name = "the mnemonic list forgets the actions"
 file = "src/runtime/input_router.cpp"
-find = "\t\tif (!m.isNull()) out.append({m, a, a->text(), -1, 0});"
+find = "\t\tout.append({mnemonic_of(a->text()), a, a->text(), -1, 0});"
 into = ""
 count = 1
 check = "and the key does what the report said it would"
@@ -2401,8 +2401,8 @@ check = "not a hidden or a disabled one"
 # button Enter fires -- the toolbar's false report by another route. 8.183.
 name = "a dialog's default button is called pointer-only"
 file = "src/runtime/input_router.cpp"
-find = "\t\tif (b->isDefault() && qobject_cast<QDialog *>(b->window()))\n\t\t\tkeyed.insert(b);"
-into = "\t\tif (false) keyed.insert(b);"
+find = "\t\tif (b->isDefault() && qobject_cast<QDialog *>(b->window()))\n\t\t\tout.append(b);"
+into = "\t\tif (false) out.append(b);"
 count = 1
 check = "a dialog's default button is not named, Enter reaching it"
 
@@ -5427,3 +5427,27 @@ find = "\t\t\t\tconst bool unknown = span <= 0;"
 into = "\t\t\t\tconst bool unknown = span <= 0 && QTime::currentTime().msec() % 2;"
 count = 1
 check = "a busy progress bar costs an idle session nothing on the wire"
+
+[[sabotage]]
+name = "no control is ever reported as missing a letter"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (!c.letter.isNull()) continue;"
+into = "\t\tif (true) continue;"
+count = 1
+check = "a button with no letter is named"
+
+[[sabotage]]
+name = "the two letter reports overlap instead of partitioning"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\tif (unreachable.contains(w)) continue;"
+into = "\t\t\tif (false && unreachable.contains(w)) continue;"
+count = 1
+check = "a control nothing reaches at all is one report's finding and not both"
+
+[[sabotage]]
+name = "a wizard's Cancel is not taken to be reached by Escape"
+file = "src/runtime/input_router.cpp"
+find = "\tfor (QWizard *w : wizards)\n\t\tkeyed.insert(w->button(QWizard::CancelButton));"
+into = "\tfor (QWizard *w : wizards)\n\t\t(void)w;"
+count = 1
+check = "Qt's own wizard reports none"

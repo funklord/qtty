@@ -104,6 +104,53 @@ QVector<QWidget *> keyboard_reachable(QWidget *scope);
 // enumeration rather than a second copy of it.
 QVector<QPair<QChar, QStringList>> mnemonic_conflicts(QWidget *scope);
 
+// The controls in `scope` that carry no mnemonic, and that nothing else
+// reaches directly -- so a user gets to them only by walking there with
+// `Tab` or with a menu's arrows.
+//
+// Practice 1 of `doc/keyboard-first.md` calls a mnemonic the single
+// highest-value thing on that page, and until this existed the only report
+// behind it found CONFLICTS: an application could ask whether two controls
+// claimed one letter and could not ask whether a control had one at all.
+//
+// Each row is (what it is, what it says) -- the object name or class, and
+// the text. Strings rather than pointers because a `QAction` is not a
+// `QWidget` and belongs here for the reason `mnemonic_conflicts()` counts
+// one, so a `QWidget *` vector could not carry half the population.
+//
+// THE POPULATION IS WHAT COULD CARRY A LETTER, visible and enabled: a
+// `QAbstractButton` with text, a `QAction` that is not a separator, and a
+// `QLabel` with a buddy -- that last one because a label is here to hold a
+// letter and costs a whole row on twenty-four of them, so one without a
+// letter is buying nothing. It is the same walk `mnemonic_conflicts()`
+// reads, kept apart only by which half it keeps.
+//
+// A TAB IS NOT IN IT, and the reason is the one that makes a tab's letter a
+// claim at all: it answers only with the conventions on, and a tab bar is a
+// tab stop whose arrows reach every tab. So a tab without a letter has a
+// route rather than no route, which is the line this report draws.
+//
+// NOR IS A FIELD WITHOUT A LABEL, which is the guide's own position rather
+// than an omission: practice 1 says a buddy is worth a row when the
+// mnemonic is and not otherwise, and a single input `Tab` reaches at once
+// is better served by a placeholder. Naming every unlabelled field would be
+// this library contradicting the page it is written for.
+//
+// TWO EXCLUSIONS, both because another key already reaches the control and
+// both keyed on a public name. A dialog's default button answers `Enter`
+// from anywhere in it; and `Escape` fires a `QDialogButtonBox`'s
+// `RejectRole` button and a `QWizard`'s Cancel. Measured with them left in:
+// Qt's own `QWizard` produced one finding and its `QMessageBox` two, none
+// of them text an application wrote. What Qt cannot be asked is what a
+// connection reaches -- the limit `pointer_only()` records -- so the
+// exclusion names the button rather than reading the wiring.
+//
+// It is not a second opinion about `pointer_only()`. That one asks whether
+// a key reaches the control at all and is right not to name these, `Tab`
+// being a key. This asks whether one reaches it DIRECTLY, which on a form
+// of six fields is the difference between one keystroke and five.
+QVector<QPair<QString, QString>> mnemonic_missing(QWidget *scope);
+
 // And the same question for chords: the key sequences more than one thing in
 // `scope` answers, with the winner named first -- which is the NEAREST
 // claimant to the focus rather than the first the walk finds, since that is
