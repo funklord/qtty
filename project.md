@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1956 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1961 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17831,6 +17831,39 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.325 A probe that left nothing behind (2026-09-22)
+
+**`QWizard` had zero checks.** It was probed earlier in this same
+session and found sound, and nothing was left behind -- which is a
+measurement nobody can re-take, and by `evidence.md`'s rule is
+indistinguishable from never having looked.
+
+It is worth more than most of the uncovered classes because a wizard is
+a keyboard flow and nothing else: `Next`, `Back` and `Finish` are the
+whole interface, and an application reaching for one is building a
+sequence a terminal user walks through end to end.
+
+Measured and correct at every step -- the page title and buttons drawn,
+`Next` advancing with the frame following, `Back` returning, and the
+page's field and the `Next` button both on the tab chain.
+
+**The last check is the one to keep.** `Qtty::audit()` over Qt's own
+wizard comes back empty, so every report this project tells an
+application to assert passes on a control it did not write. That is
+worth knowing before telling anybody to use one, and it is the kind of
+claim that rots quietly: nothing would have said so the day it stopped
+being true.
+
+**How the class was found is the reusable part.** Not intuition, but a
+mechanical question -- which widget classes does the style name, and
+which does the suite instantiate? Eight came back with one check or
+none. `QWizard` and `QDateTimeEdit` (8.324) earned blocks;
+`QFontComboBox` chooses a font and a terminal has one; `QColumnView`
+and `QRubberBand` are rare enough to leave. **The list is recorded
+because the next person will want the question rather than my answers
+to it.**
+
+
 ### 8.324 Two common controls the suite had never seen (2026-09-22)
 
 **Asked mechanically rather than by intuition: which widget classes

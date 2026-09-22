@@ -3685,6 +3685,88 @@ int suite_widgets() {
 		      "the section is not a constant");
 	}
 
+	// A QWizard, which is a keyboard flow and nothing else: Next, Back
+	// and Finish are the whole interface, and an application reaching for
+	// one is building a setup sequence a terminal user walks through.
+	//
+	// It was probed once during this session and found sound, and NOTHING
+	// WAS LEFT BEHIND -- which is a measurement nobody can re-take. This
+	// is that probe written down.
+	{
+		QWizard wiz;
+		wiz.setAttribute(Qt::WA_DontShowOnScreen);
+		wiz.setWizardStyle(QWizard::ClassicStyle);
+		wiz.resize(GridMetrics::cells(46, 12));
+
+		auto *one = new QWizardPage;
+		one->setTitle(QStringLiteral("Where"));
+		auto *l1 = new QVBoxLayout(one);
+		auto *host = new QLineEdit;
+		auto *hl = new QLabel(QStringLiteral("&Host"));
+		hl->setBuddy(host);
+		l1->addWidget(hl);
+		l1->addWidget(host);
+		wiz.addPage(one);
+
+		auto *two = new QWizardPage;
+		two->setTitle(QStringLiteral("Who"));
+		auto *l2 = new QVBoxLayout(two);
+		auto *user = new QLineEdit;
+		auto *ul = new QLabel(QStringLiteral("&User"));
+		ul->setBuddy(user);
+		l2->addWidget(ul);
+		l2->addWidget(user);
+		wiz.addPage(two);
+
+		wiz.show();
+		InputRouter r(&wiz);
+		Qtty::set_current_window(&wiz);
+		QCoreApplication::processEvents();
+
+		const QString first = Qtty::test::snapshot_of(wiz, 46, 12);
+		CHECK(first.contains(QStringLiteral("Where"))
+		          && first.contains(QStringLiteral("Next")),
+		      "a wizard draws its page title and its buttons, which are "
+		      "the whole of what a user has to go on");
+
+		// THE FLOW, driven the way a user drives it rather than by
+		// calling next(): the buttons are what a terminal user has, so
+		// the keys that reach them are what this is about.
+		const int page_one = wiz.currentId();
+		wiz.button(QWizard::NextButton)->click();
+		QCoreApplication::processEvents();
+		CHECK(wiz.currentId() != page_one
+		          && Qtty::test::snapshot_of(wiz, 46, 12)
+		                 .contains(QStringLiteral("Who")),
+		      "Next moves to the following page and the frame follows it");
+
+		wiz.button(QWizard::BackButton)->click();
+		QCoreApplication::processEvents();
+		CHECK(wiz.currentId() == page_one,
+		      "and Back returns, so the sequence is walkable in both "
+		      "directions");
+
+		// AND REACHABLE, which is the question practice 4 asks of any
+		// window: a wizard whose Next nothing could reach would be a
+		// sequence with no way through it.
+		const QVector<QWidget *> reach = Qtty::keyboard_reachable(&wiz);
+		CHECK(reach.contains(wiz.button(QWizard::NextButton))
+		          && reach.contains(host),
+		      "the page's field and the Next button are both on the tab "
+		      "chain");
+
+		const QVector<QPair<QString, QString>> report = Qtty::audit(&wiz);
+		if (!report.isEmpty())
+			for (const auto &row : report)
+				fprintf(stderr, "wizard audit: %s -- %s\n",
+				        row.first.toUtf8().constData(),
+				        row.second.toUtf8().constData());
+		CHECK(report.isEmpty(),
+		      "and Qt's own wizard passes every report the guide tells an "
+		      "application to assert, which is worth knowing before "
+		      "telling anybody to use one");
+	}
+
 	// A QDateTimeEdit, which nothing here had ever rendered or driven --
 	// one of two common form controls the suite had never seen, found by
 	// asking which widget classes it names and which the style does.
