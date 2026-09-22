@@ -4957,6 +4957,18 @@ count = 1
 check = "the section is there either way"
 
 [[sabotage]]
+# A row struck from the guide's table of audit questions, which is
+# how a function acquires no documentation: the header still
+# declares it, the suite still calls it, and the page a reader
+# trusts to be complete has one fewer. 8.311.
+name = "an audit question loses its row in the guide"
+file = "doc/keyboard-first.md"
+find = "| `Qtty::hover_only(scope)` | the words only a hover would reveal | empty |\n"
+into = ""
+count = 1
+check = "every audit question the header declares has a row in the guide's table, and no row names one that is gone"
+
+[[sabotage]]
 # A fifth place the function appends, with nothing said about it
 # anywhere -- which is the fault 8.310 records, in the direction no
 # member test can see. The member test still passes here, the kinds

@@ -4638,6 +4638,191 @@ int suite_router() {
 			      "code");
 		}
 
+		// THE WHOLE AUDIT SET, not one function's population. 8.310 fixed
+		// a paragraph that had lost a kind; this is the same drift one
+		// level up -- the guide's table of questions is prose a reader
+		// trusts to be complete, and a function added without a row in it
+		// is a feature nobody finds.
+		//
+		// A CHECK ALREADY GUARDS PART OF THIS and this does not replace
+		// it: further down, `the page lists exactly the audit questions
+		// these checks call` compares the table against a literal 9 in
+		// the suite, so adding a tenth of anything forces somebody to
+		// bump that number deliberately. What it cannot see is a
+		// function DECLARED and never called from here -- the count it
+		// compares against is the suite's own, not the header's.
+		//
+		// So this asks the other pair: the installed header's
+		// declarations against the guide's rows. The two are derived
+		// from different files by different means and neither is
+		// generated from the other, and between them a new question has
+		// to reach the header, the guide and the suite or one of the
+		// three goes red.
+		{
+			QFile head(QStringLiteral(QTTY_SOURCE_DIR
+			                          "/include/qtty/runtime.h"));
+			QFile page_md(QStringLiteral(QTTY_SOURCE_DIR
+			                             "/doc/keyboard-first.md"));
+			QString doc, guide;
+			if (head.open(QIODevice::ReadOnly | QIODevice::Text))
+				doc = QString::fromUtf8(head.readAll());
+			if (page_md.open(QIODevice::ReadOnly | QIODevice::Text))
+				guide = QString::fromUtf8(page_md.readAll());
+			CHECK(!doc.isEmpty() && !guide.isEmpty(),
+			      "the header and the guide are both readable, an "
+			      "unreadable one being a check that cannot fail");
+
+			// Every audit question takes exactly this, and nothing else
+			// in the header does -- the conventions calls take a bool or
+			// nothing at all.
+			const int declared =
+			    doc.count(QStringLiteral("(QWidget *scope);"));
+			int rows = 0;
+			for (const QString &line : guide.split(QLatin1Char('\n')))
+				if (line.startsWith(QStringLiteral("| `Qtty::"))
+				    && line.contains(QStringLiteral("(scope)`")))
+					++rows;
+			CHECK(declared > 0 && rows > 0,
+			      "and both counts are non-zero, so neither pattern has "
+			      "quietly stopped matching");
+			CHECK(declared == rows,
+			      "every audit question the header declares has a row in "
+			      "the guide's table, and no row names one that is gone");
+			CHECK(guide.contains(QStringLiteral(
+			          "Nine questions the library will answer")),
+			      "and the sentence above that table says how many there "
+			      "are, in the same number the table holds");
+		}
+
+		// WHICH BUTTON ENTER FIRES, pinned because practice 2 now states
+		// it and because every claim in that section is about Qt rather
+		// than about this library -- so the day Qt changes, the guide is
+		// wrong and nothing else here would notice.
+		//
+		// THESE ARE TRIPWIRES AND NOT GUARDED INVARIANTS, which is worth
+		// saying because the rest of this suite carries a sabotage entry
+		// per check and these mostly cannot: there is no line in this
+		// tree to break that would make Qt stop marking the first button
+		// as default. The one exception is the second check below, which
+		// does depend on this library -- a dead window delivers no focus
+		// events, so `autoDefault` moves here only because the router
+		// synthesises them.
+		//
+		// The lens that produced this came back EMPTY, and the empty
+		// result is the reason these exist. A `dialogs_without_default()`
+		// was written to make practice 2 assertable and measured useless
+		// before it shipped: Qt marks a default on show in every dialog
+		// shape built for it, so the function could not report anything
+		// and would have been a check that cannot fail. What was left
+		// worth having is the behaviour itself, written down.
+		{
+			const auto marked = [](QDialog *d) {
+				QStringList out;
+				for (QPushButton *b : d->findChildren<QPushButton *>())
+					if (b->isDefault()) out.append(b->text());
+				return out.join(QLatin1Char('+'));
+			};
+			const auto focus_on = [](QDialog *d, QWidget *w) {
+				w->setFocus();
+				set_focus_widget(d->focusWidget());
+				QCoreApplication::processEvents();
+			};
+
+			// NO setDefault() ANYWHERE, which is the case the guide's
+			// first table is about: an application that never thought
+			// about this still has a default, and it is the first button
+			// it happened to construct.
+			QDialog d;
+			d.setAttribute(Qt::WA_DontShowOnScreen);
+			d.resize(GridMetrics::cells(30, 8));
+			auto *l = new QVBoxLayout(&d);
+			auto *field = new QLineEdit;
+			auto *one = new QPushButton(QStringLiteral("One"));
+			auto *two = new QPushButton(QStringLiteral("Two"));
+			l->addWidget(field);
+			l->addWidget(one);
+			l->addWidget(two);
+			d.show();
+			InputRouter dr(&d);
+			QCoreApplication::processEvents();
+			CHECK(marked(&d) == QStringLiteral("One"),
+			      "a dialog nobody marked still has a default button, and "
+			      "it is the first one constructed");
+
+			focus_on(&d, two);
+			CHECK(marked(&d) == QStringLiteral("Two"),
+			      "and it moves to whichever button has the focus, which "
+			      "is Qt's autoDefault working here because this library "
+			      "delivers the focus events a dead window does not");
+
+			focus_on(&d, field);
+			CHECK(marked(&d) == QStringLiteral("One"),
+			      "and moves back to the first when the focus leaves the "
+			      "buttons -- the state a form starts in, so this is the "
+			      "row that decides what Enter does in practice");
+
+			// THE SAME DIALOG WITH A CHOICE MADE. Practice 2's remedy is
+			// worth only what it survives, so all three positions are
+			// asked again rather than just the first.
+			QDialog e;
+			e.setAttribute(Qt::WA_DontShowOnScreen);
+			e.resize(GridMetrics::cells(30, 8));
+			auto *el = new QVBoxLayout(&e);
+			auto *efield = new QLineEdit;
+			auto *first = new QPushButton(QStringLiteral("First"));
+			auto *chosen = new QPushButton(QStringLiteral("Marked"));
+			el->addWidget(efield);
+			el->addWidget(first);
+			el->addWidget(chosen);
+			chosen->setDefault(true);
+			e.show();
+			InputRouter er(&e);
+			QCoreApplication::processEvents();
+			CHECK(marked(&e) == QStringLiteral("Marked"),
+			      "setDefault() beats construction order");
+			focus_on(&e, first);
+			CHECK(marked(&e) == QStringLiteral("First"),
+			      "and is suspended, not overruled, while another button "
+			      "holds the focus");
+			focus_on(&e, efield);
+			CHECK(marked(&e) == QStringLiteral("Marked"),
+			      "coming back the moment the focus leaves that button, "
+			      "which is why the guide says to write it");
+
+			// THE OTHER SPELLING, and the one the destructive case wants.
+			QDialog f;
+			f.setAttribute(Qt::WA_DontShowOnScreen);
+			f.resize(GridMetrics::cells(30, 8));
+			auto *fl = new QVBoxLayout(&f);
+			auto *danger = new QPushButton(QStringLiteral("Delete"));
+			danger->setAutoDefault(false);
+			fl->addWidget(danger);
+			fl->addWidget(new QPushButton(QStringLiteral("Cancel")));
+			f.show();
+			QCoreApplication::processEvents();
+			CHECK(marked(&f) == QStringLiteral("Cancel"),
+			      "and setAutoDefault(false) takes a destructive first "
+			      "button out of the running, which is the whole of the "
+			      "remedy practice 2 gives");
+
+			// AND QT'S OWN MESSAGE BOX, where the guide makes a claim
+			// about a DIFFERENT property -- QMessageBox::defaultButton()
+			// -- and the two must not be read as one. Both are asserted
+			// in the same breath precisely because they disagree.
+			QMessageBox mb(QMessageBox::Warning, QStringLiteral("t"),
+			               QStringLiteral("m"),
+			               QMessageBox::Ok | QMessageBox::Cancel);
+			mb.setAttribute(Qt::WA_DontShowOnScreen);
+			mb.show();
+			QCoreApplication::processEvents();
+			auto *ok = qobject_cast<QPushButton *>(mb.button(QMessageBox::Ok));
+			CHECK(mb.defaultButton() == nullptr && ok && ok->isDefault(),
+			      "a QMessageBox reports no defaultButton() of its own "
+			      "while Qt has still marked its Ok as the default push "
+			      "button, so the guide's two sentences are about two "
+			      "properties and not one");
+		}
+
 		// A LINE EDIT'S CLEAR BUTTON, which is the report's own noise
 		// rather than an application's fault. Qt adds it whenever
 		// setClearButtonEnabled(true) is called, so naming it put a

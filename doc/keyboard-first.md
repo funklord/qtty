@@ -627,6 +627,54 @@ focus a user can reach makes two of them answer at once.
 `Enter` then commits from anywhere in the dialog **except another
 button**, and it works with no opt-in.
 
+**But Qt marks one whether or not you ask, and that is the part to
+know.** Reading `QPushButton::isDefault()` right after `show()`, with
+nothing of this library involved in the choice:
+
+    hand-rolled buttons, no setDefault()   the FIRST one is default
+    QDialogButtonBox                       Ok
+    QMessageBox                            Ok
+    QInputDialog                           Ok
+    QProgressDialog                        Cancel, its only button
+
+So a dialog never lacks a default. What it lacks is a default anybody
+CHOSE, and the one it has came from the order you happened to construct
+the buttons in.
+
+**It then moves with the focus and moves back.** Measured on a dialog
+holding a field and two buttons, `One` constructed before `Two`:
+
+    focus in the field          One is default
+    focus on Two                Two is default
+    focus back in the field     One is default again
+
+and with `Marked->setDefault(true)` on the second of them:
+
+    focus in the field          Marked is default
+    focus on First              First takes it, autoDefault winning
+    focus back in the field     Marked is default again
+
+So `setDefault(true)` is not overruled, only suspended: it holds
+whenever the focus is not sitting on some other button, which is most
+of the time in a form.
+
+**The hazard is the first line of that first table.** A dialog whose
+first constructed button is destructive, with the focus in a field --
+which is where a form starts -- commits destruction on `Enter`, and
+nothing asked anybody. qtty draws the default bold, so a user can see
+WHICH button it is; what neither they nor you can see is that nobody
+picked it.
+
+Two ways to say it, and write one of them:
+
+```cpp
+deleteButton->setAutoDefault(false);   // keep Enter off this one
+okButton->setDefault(true);            // and say which one it is for
+```
+
+The second is worth writing even when the order happens to be right
+today, because it survives somebody adding a button above it.
+
 That exception is Qt's `autoDefault`, which is on for a `QPushButton` in a
 dialog: a button that has focus becomes the effective default and takes
 `Enter` for itself. Measured, both with the opt-in conventions and

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1892 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1904 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17830,6 +17830,88 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.311 The tenth audit question, measured and not shipped (2026-09-22)
+
+**Eight of the guide's fourteen practices have a function that asserts
+them and practice 2 -- *give every dialog a default button* -- had none,
+so a `dialogs_without_default()` was written.** It is reverted. The
+measurement that was supposed to calibrate its exclusions killed it
+instead, which is the outcome this note is for.
+
+Reading `QPushButton::isDefault()` straight after `show()`:
+
+    QDialogButtonBox     Ok           hand-rolled, no setDefault()  the first
+    QMessageBox          Ok           QInputDialog                  Ok
+    QProgressDialog      Cancel       a dialog with no buttons      none
+
+**Qt marks a default in every shape, including the hand-rolled dialog
+where nothing called `setDefault`.** The function returned empty on all
+six and could not have done otherwise: a check that cannot fail, caught
+by measuring before shipping rather than by a sabotage entry that would
+have had nothing to break.
+
+**What is left is better than the function.** Practice 2 read as though
+the default were something you must supply; it is something you must
+CHOOSE, because you already have one and it came from the order you
+happened to construct the buttons in. Measured on a dialog holding a
+field and two buttons, `One` before `Two`:
+
+    focus in the field          One          focus on Two          Two
+    focus back in the field     One
+
+and with `setDefault(true)` on the second:
+
+    focus in the field          Marked       focus on First        First
+    focus back in the field     Marked
+
+So an explicit default is **suspended, not overruled**, while another
+button holds the focus, and a form's resting state -- focus in a field
+-- is the one that decides what `Enter` does. **A dialog whose first
+constructed button is destructive deletes on `Enter`**, and
+`setAutoDefault(false)` is the one line that stops it: measured, with
+`Delete` opted out, `Cancel` becomes the default.
+
+Eight checks pin all of it, because every sentence practice 2 now makes
+is a claim about **Qt** rather than about this library -- the day Qt
+changes, the guide is wrong and nothing else here would notice.
+
+**Two of the four probes were confounded, and the conclusion drawn from
+them was published to this file's draft before it was caught.** Probe 4
+moved focus with `setFocus()` alone and no router, so no focus event was
+delivered -- a dead window sends none, which is the whole reason this
+library synthesises them -- and `autoDefault` never fired. From that
+silence came *"it is CONSTRUCTION order, not layout order"*, a mechanism
+nothing had measured: construction order and focus order agree in every
+fixture that does not deliberately separate them. Adding the router made
+the default move, and the claim was withdrawn. **A probe that cannot see
+the mechanism reports the one thing that stays still**, and what stayed
+still was the answer that agreed with the guess.
+
+**Three more checks come from 8.310 one level up, and the tree had got
+there first in part.** A check already compares the guide's table of
+audit questions against a literal **9** in the suite, so adding a tenth
+of anything forces somebody to bump that number on purpose. What it
+cannot see is a function DECLARED and never called from here: the count
+it compares against is the suite's own, not the header's -- which is
+exactly the pair that drifted in 8.310, one level down.
+
+So the other pair is now asked too: the header's `(QWidget *scope);`
+declarations against the table's rows, counted from the two files,
+with both counts asserted non-zero so a pattern that has quietly
+stopped matching cannot pass as agreement. Between the two checks a new
+question has to reach the header, the guide and the suite, or one of
+the three goes red.
+
+**And the attempt found that the tree already knew more than expected.**
+`Enter` reaching the focused button rather than the dialog's default,
+and `autoDefault` being set in a dialog and clear in a plain widget,
+were both already asserted. What was not, and is now: that a dialog
+nobody marked has a default at all, that `setDefault()` is restored
+rather than lost when focus leaves another button, that
+`setAutoDefault(false)` is the remedy, and that `QMessageBox` disagrees
+with itself across two properties.
+
+
 ### 8.310 Three documents, three populations, one function (2026-09-22)
 
 **`pointer_only()` returns four kinds of widget. `include/qtty/runtime.h`
