@@ -2285,13 +2285,26 @@ carries.
     for (QWidget *w : Qtty::pointer_only(&window))
         qWarning("no key reaches %s", w->metaObject()->className());
 
-The population is `QAbstractButton`, which is Qt's own word for a control
-that answers a click rather than a judgement about which of your widgets
-matter -- that is why this one is offered and a general
-`unreachable_controls()` is not. The subtraction is the part you cannot
-write yourself: a toolbar's button is `Qt::NoFocus` and in no tab chain,
-and `&Save` on the action behind it reaches it perfectly well, so a sweep
-of the focus chain alone reports a fault that is not there.
+The population is four kinds, and each is Qt's own word for something
+rather than a judgement about which of your widgets matter -- that is why
+this one is offered and a general `unreachable_controls()` is not:
+
+| Kind | What a pointer acts on |
+|---|---|
+| `QAbstractButton` | the control you click |
+| `QSplitterHandle` | the one you drag, and it answers no key anywhere |
+| `QHeaderView` showing a sort indicator | a **section**, not a widget |
+| `QLabel` holding an anchor, without `LinksAccessibleByKeyboard` | an **anchor**, not a widget |
+
+The last two are why the list is worth stating: what a click acts on there
+is not a widget at all, so a report whose population is widgets answers
+empty on a window whose only link or only sort a keyboard user cannot
+reach. Practice 4 above walks the seven instances Qt ships and is the
+place to read for what each one looks like; this table is only the
+population, and the two are held to the same four by a check. The subtraction is the part you cannot write yourself: a toolbar's
+button is `Qt::NoFocus` and in no tab chain, and `&Save` on the action
+behind it reaches it perfectly well, so a sweep of the focus chain alone
+reports a fault that is not there.
 
 Empty is the assertion -- **unless you use a closable tab or a dock
 widget**, in which case Qt's own buttons are in the list until you give

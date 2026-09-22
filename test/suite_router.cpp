@@ -4500,6 +4500,144 @@ int suite_router() {
 			      "the very same interaction flag every label carries");
 		}
 
+		// THE POPULATION ITSELF, which nothing asserted -- and the
+		// installed header understated it for five days as a result.
+		// `runtime.h` is the only contract that leaves this tree, and it
+		// named three kinds while the function returned four: the link
+		// label above landed in the code, the guide and the suite, and
+		// the header was not in that commit. An application reading it
+		// would not know a QLabel can come back.
+		//
+		// TWO ASSERTIONS, because one of them cannot see the fault that
+		// happened. The first builds one pointer-only instance of each
+		// kind and requires the result to be exactly those four, which
+		// catches a kind that stops working or one the header names and
+		// the code does not. It is blind to the real case -- a FIFTH
+		// kind added to the code -- because no fixture here would hold
+		// one.
+		//
+		// So the second counts the places the function appends against
+		// the kinds the header names, which is the partition rather than
+		// a member of it: a new `out.append` with no sentence beside it
+		// reddens. It reads the two files rather than a copy of either,
+		// so it cannot agree with itself the way a generated artifact
+		// does.
+		{
+			QWidget page;
+			page.setAttribute(Qt::WA_DontShowOnScreen);
+			page.resize(GridMetrics::cells(40, 16));
+			auto *lay = new QVBoxLayout(&page);
+
+			auto *button = new QPushButton(QStringLiteral("Go"));
+			button->setFocusPolicy(Qt::NoFocus);
+			lay->addWidget(button);
+
+			auto *split = new QSplitter(Qt::Horizontal);
+			split->addWidget(new QLineEdit);
+			split->addWidget(new QLineEdit);
+			lay->addWidget(split);
+
+			auto *table = new QTableWidget(2, 2);
+			table->setSortingEnabled(true);
+			lay->addWidget(table);
+
+			auto *link = new QLabel(
+			    QStringLiteral("<a href=\"http://e.invalid\">go</a>"));
+			lay->addWidget(link);
+
+			page.show();
+			QCoreApplication::processEvents();
+
+			QStringList kinds;
+			for (QWidget *w : pointer_only(&page)) {
+				const QString k =
+				    QString::fromLatin1(w->metaObject()->className());
+				if (!kinds.contains(k)) kinds.append(k);
+			}
+			kinds.sort();
+			QStringList want;
+			want << QStringLiteral("QHeaderView")
+			     << QStringLiteral("QLabel")
+			     << QStringLiteral("QPushButton")
+			     << QStringLiteral("QSplitterHandle");
+			want.sort();
+			if (kinds != want)
+				fprintf(stderr, "pointer_only kinds: %s\n",
+				        kinds.join(QLatin1Char(' ')).toUtf8().constData());
+			CHECK(kinds == want,
+			      "one pointer-only instance of each documented kind comes "
+			      "back and nothing else does");
+
+			// The header's own paragraph, read rather than remembered.
+			QFile head(QStringLiteral(QTTY_SOURCE_DIR
+			                          "/include/qtty/runtime.h"));
+			QFile code(QStringLiteral(QTTY_SOURCE_DIR
+			                          "/src/runtime/input_router.cpp"));
+			QString doc, body;
+			if (head.open(QIODevice::ReadOnly | QIODevice::Text))
+				doc = QString::fromUtf8(head.readAll());
+			if (code.open(QIODevice::ReadOnly | QIODevice::Text))
+				body = QString::fromUtf8(code.readAll());
+			const int from = doc.indexOf(QStringLiteral(
+			    "// The buttons in `scope` that only a pointer can press"));
+			const int to = doc.indexOf(
+			    QStringLiteral("QVector<QWidget *> pointer_only("), from);
+			const QString para =
+			    from >= 0 && to > from ? doc.mid(from, to - from) : QString();
+			CHECK(!para.isEmpty(), "the header's pointer_only paragraph is "
+			                       "where this check expects it");
+			int named = 0;
+			for (const QString &k : {QStringLiteral("QAbstractButton"),
+			                         QStringLiteral("QSplitterHandle"),
+			                         QStringLiteral("QHeaderView"),
+			                         QStringLiteral("QLabel")})
+				if (para.contains(k)) ++named;
+			CHECK(named == 4, "and it names all four kinds, which it did "
+			                  "not for the five days after the fourth "
+			                  "landed");
+
+			const int def = body.indexOf(
+			    QStringLiteral("QVector<QWidget *> pointer_only(QWidget *scope) {"));
+			const int end = body.indexOf(QStringLiteral("\n}\n"), def);
+			const QString fn =
+			    def >= 0 && end > def ? body.mid(def, end - def) : QString();
+			CHECK(!fn.isEmpty(), "and the function body is where this check "
+			                     "expects it");
+			CHECK(fn.count(QStringLiteral("out.append(")) == named,
+			      "and the function appends in exactly as many places as "
+			      "the header names kinds, so a fifth cannot arrive "
+			      "undocumented");
+
+			// AND THE GUIDE, which was the worse of the two: it said the
+			// population was QAbstractButton alone, so three documents
+			// gave three different answers -- one kind, three kinds and
+			// four. The guide is the deliverable and is the one an
+			// implementer reads first.
+			QFile page_md(QStringLiteral(QTTY_SOURCE_DIR
+			                             "/doc/keyboard-first.md"));
+			QString guide;
+			if (page_md.open(QIODevice::ReadOnly | QIODevice::Text))
+				guide = QString::fromUtf8(page_md.readAll());
+			const int gfrom = guide.indexOf(
+			    QStringLiteral("The population is four kinds"));
+			const int gto = guide.indexOf(
+			    QStringLiteral("The subtraction is the part you cannot"),
+			    gfrom);
+			const QString gpara =
+			    gfrom >= 0 && gto > gfrom ? guide.mid(gfrom, gto - gfrom)
+			                              : QString();
+			int in_guide = 0;
+			for (const QString &k : {QStringLiteral("QAbstractButton"),
+			                         QStringLiteral("QSplitterHandle"),
+			                         QStringLiteral("QHeaderView"),
+			                         QStringLiteral("QLabel")})
+				if (gpara.contains(k)) ++in_guide;
+			CHECK(in_guide == named,
+			      "and the guide names the same kinds the header does, "
+			      "the two having disagreed with each other and with the "
+			      "code");
+		}
+
 		// A LINE EDIT'S CLEAR BUTTON, which is the report's own noise
 		// rather than an application's fault. Qt adds it whenever
 		// setClearButtonEnabled(true) is called, so naming it put a

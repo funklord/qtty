@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1886 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1892 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -905,6 +905,7 @@ Owned by the copyright holder:
 | **Should a menu item's mnemonic answer while its menu is CLOSED?** It does here, deliberately -- a terminal user reaching an item directly is worth something -- and a desktop Qt answers an item's letter only while its menu is open. The cost is now measured rather than supposed: in Qt's own `menus` example, thirty actions produce **five letters with more than one claimant**, and only the first answers (`&Print...` takes `p` from `&Paste` and *Set &Paragraph Spacing...*). Keeping it means an application with menus needs `Qtty::mnemonic_conflicts()` to find what it has lost; narrowing it to open menus costs the direct reach the conventions were added for | 8.165 |
 | **Should the terminal's background be re-measured, and how?** It is asked once at startup and the half-block tier composites against it for the life of the session, so a user who toggles their desktop theme -- or a `shell_out()` that returns from a program which changed it -- leaves every translucent edge composited against a ground that has gone. Re-asking at each handover costs one query and needs the decoder to stop discarding an OSC 11 reply; subscribing with `DECSET 2031` costs nothing per frame and needs capability detection; leaving it costs the fallback tier only, kitty-tier sessions sending alpha and never compositing | 8.160 |
 | **Should the conventions offer a key for Qt's own pointer-only furniture?** Measured with plain Qt and no qtty: a closable `QTabWidget` ignores `Ctrl+W`, `Ctrl+F4` and `Delete` -- `tabCloseRequested` never fires -- and a closable `QDockWidget` ignores `Ctrl+W` and `Esc`. So the `x` on a tab and a dock's close button have no keyboard route ANYWHERE, which on a desktop is a mouse away and here may be nothing away. The option is one convention binding each; the cost is that both plausible keys are ones applications mean something by (`Ctrl+W` closes a document in most, and a shortcut an application binds wins anyway, so the convention would answer only where the application is silent -- which is exactly where the user has no other route). The guide names the gap and tells an application to bind its own; whether the library should offer one is the holder's. **Four controls, not two, and the gap is visible now**: `Qtty::pointer_only()` (8.181) enumerates rather than recognises, and it named a dock widget's FLOAT button beside the two above, then a `QSplitter`'s handle (8.191) -- which is the one that changes the question, since a splitter answers no key even with the focus forced onto it, so a convention binding is the ONLY route there could be. An application can at least see what it is being asked to bind. | 8.159, 8.181, 8.191 |
+| **Should `pointer_only()` widen from a control no key reaches to an ACTION no key reaches?** Measured 2026-09-22 on a `QListWidget` set to `InternalMove`: **0 of 10 plausible chords** moved an item (`Ctrl`/`Alt`/`Shift` with `Up`, `Down`, `PageDown`, and `Ctrl+]`, `Alt+-`), and the function names nothing, because the view IS a tab stop and the present predicate is *reached by no key at all*. The four kinds it returns are all controls; a reorder is an action belonging to no widget, the way a sort belongs to a section -- and the sorting header was admitted on exactly that argument, so the boundary is already blurred. The cost of widening is that under qtty a plain Qt drag does not reorder either: it falls back to rubber-band selection (practice 13), so the action is unreachable by pointer too unless the application calls `Qtty::exec_drag()` -- which makes it a *nothing-reaches-this* finding rather than a pointer-only one, and the function would be answering a question its name does not ask. The guide already tells an implementer to give the reorder a keyboard route; whether the audit should say so too is a scope change to a public function | 8.310, practice 13 |
 | A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. Cheaper to answer after the picture-rule entry below, which is the same question seen from the other end | *Qt's standard iconography* |
 | **A rule drawn as a thin RECTANGLE becomes a coloured background; the same rule drawn as a LINE becomes a box-drawing glyph.** Measured through an HTML table: its borders arrive as `drawRects` of `11x1` and `1x19` and come out as grey blocks, while `drawLines` of the same shape draws `-` and `\|`. The horizontal case could be told from a caret by shape; **the vertical case cannot -- a caret and a one-cell vertical rule are the same `1x19` rectangle**, which is what stops this being a small fix | 8.65 |
 | **An HTML bullet list loses its bullets.** Measured through a `QTextBrowser`: `<ul><li>one</li></ul>` renders the text indented with a one-cell BACKGROUND block and no glyph -- ~~where the bullet belongs~~ **one row BELOW its own item until 8.305**, which also put the last list's block on an empty row underneath the list; the block is beside its item now, and what it should BECOME is still the choice below -- `bg=#000000` on the default dark ground. Qt draws the bullet as `drawPath` with a 6x6 bounding rect, and `is_thin` (`width*2 < cw \|\| height*2 < ch`) is true of it, so a bullet takes the hairline road meant for carets and rules. **The discriminator is clean and is the finding**: a shape smaller than one cell in BOTH dimensions is a mark, not a hairline -- a caret is 1x19 and a rule 50x1, and neither is. What a mark should BECOME is the choice, and it is the holder's | 8.64 |
@@ -17829,6 +17830,83 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.310 Three documents, three populations, one function (2026-09-22)
+
+**`pointer_only()` returns four kinds of widget. `include/qtty/runtime.h`
+said three and the guide's API reference said one.**
+
+    the code                    QAbstractButton, QSplitterHandle,
+                                QHeaderView, QLabel
+    runtime.h                   the first three
+    guide, the nine questions   the first only
+    guide, practice 4           all four, correctly
+
+**The guide's own fault is narrower than it first looked and is worse for
+it.** Practice 4 enumerates every one of the seven things Qt ships that
+break it, the link label included, and is right end to end. It is the API
+reference forty pages later -- the paragraph an implementer reads when
+they are writing the assertion rather than learning the rule -- that
+still described the population as it stood on the day the function
+landed. **The document was not neglected; the wrong half of it was
+updated**, which is why nobody noticed: every commit that added a kind
+touched this file.
+
+**Both went stale the same way: a kind was added and the paragraph that
+counts them was not the paragraph the commit touched.**
+
+    d491a2b  09-16 13:27  the function lands, one kind
+    37f1f93  09-16 18:13  the splitter, 2nd kind -- guide not updated
+    9c4e19d  09-17         the sorting header, 3rd -- header updated
+    8f78d03  09-17 18:39  the link label, 4th -- header not updated
+
+`8f78d03` touched `doc/keyboard-first.md`, `project.md`, the source, the
+suite and `tool/sabotage.toml`, and not `include/qtty/runtime.h`; the
+guide paragraph it *did* touch is a different one from the paragraph
+that states the population. So the header understated the contract for
+five days and the guide for six, and the second went unnoticed for
+longer precisely because the guide keeps being edited -- a document
+somebody touches often looks maintained.
+
+**`runtime.h` is the only one of the three that leaves the tree.**
+`make install` ships `include/qtty/*.h`, so an application asserting
+`pointer_only(&win).isEmpty()` reads that paragraph and nothing else. A
+`QLabel` coming back from a function documented to return buttons,
+handles and headers is a report the author cannot place.
+
+**Nothing could have caught it, which is the part worth fixing.**
+`guide_check.py` compiles the symbols the docs name, and all three
+documents name `pointer_only` correctly; no gate compares what a
+paragraph claims against what the function does. The class is
+`evidence.md`'s *A claim that outlived its subject*, with the claim in
+an installed header rather than in a note.
+
+**Six checks, and the split between them is the point.** One builds a
+pointer-only instance of each kind and requires the result to be exactly
+those four. That is a member test, and it is **blind to the fault that
+actually happened** -- a fifth kind added to the code, which no fixture
+here would hold. So three more assert the PARTITION: the header's
+paragraph names all four kinds, the guide names the same four, and the
+function appends in exactly as many places as the header names kinds. A
+new `out.append` with no sentence beside it reddens.
+
+The remaining two say which of those went wrong. Each partition check
+locates a region by a phrase, and a phrase that stops matching gives an
+empty region -- no kinds named, no appends counted. That does not pass
+silently, the counts being compared against each other rather than
+against zero, so the two locator checks are **diagnosis rather than
+detection**: without them a reworded comment and a genuinely
+undocumented fifth kind fail in exactly the same words.
+
+All of it is read from the files rather than from a copy, so this is two
+independent documents and a body of code checked against each other
+rather than a generator agreeing with itself.
+
+**What it does not prove**, pinned here so it is not quoted for more: it
+counts appends and names, so a fifth kind appended at an existing site,
+or a paragraph that names a kind while describing it wrongly, both pass.
+It catches drift in the population, which is the drift that happened.
+
+
 ### 8.309 A check of mine passed because the platform supplied the mark (2026-09-22)
 
 **The day's 30 commits had been verified only under `make check`, which

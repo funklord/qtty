@@ -176,6 +176,25 @@ QVector<QPair<QString, QStringList>> conventions_shadowed(QWidget *scope);
 // too and are deliberately not named -- they change how the data looks
 // rather than which data is shown, and naming every header in every
 // application makes a report nobody reads.
+//
+// AND A `QLabel` CARRYING AN ANCHOR, which is the fourth kind and the one
+// that makes this list worth stating: there the thing a pointer acts on is
+// not a widget at all. Qt gives every label `LinksAccessibleByMouse`, so
+// the anchor rather than the flag is the predicate -- a label holding a
+// link and lacking `LinksAccessibleByKeyboard` is named, and one that has
+// it is a tab stop already and is not. Nothing on screen tells the two
+// apart: both draw the link underlined and coloured (8.207).
+//
+// FOUR KINDS, and that is asserted rather than described. A check builds
+// one pointer-only instance of each, requires the result to hold exactly
+// those four, and counts the places the function appends against the kinds
+// this paragraph names -- so a fifth kind added to the code without a
+// sentence here reddens the suite instead of leaving an installed header
+// that understates what an application will be handed. This paragraph said
+// three for the five days after the fourth landed, and the guide's API
+// reference said one for six -- while its practice 4, which is prose
+// rather than reference, had them all along.
+//
 // The subtraction is the part an application cannot write for itself: a
 // toolbar button holds an action whose mnemonic and shortcut reach it while
 // the button itself is `Qt::NoFocus` and in nobody's tab chain, so a sweep

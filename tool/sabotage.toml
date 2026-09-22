@@ -4957,6 +4957,29 @@ count = 1
 check = "the section is there either way"
 
 [[sabotage]]
+# A fifth place the function appends, with nothing said about it
+# anywhere -- which is the fault 8.310 records, in the direction no
+# member test can see. The member test still passes here, the kinds
+# being deduplicated; only the partition notices.
+name = "pointer_only grows a kind nobody documented"
+file = "src/runtime/input_router.cpp"
+find = "\t\tout.append(l);\n\t}\n\treturn out;"
+into = "\t\tout.append(l);\n\t\tout.append(l);\n\t}\n\treturn out;"
+count = 1
+check = "and the function appends in exactly as many places as the header names kinds, so a fifth cannot arrive undocumented"
+
+[[sabotage]]
+# The installed header losing a kind from its paragraph, which is
+# what it looked like for the five days after the link label landed:
+# the code returned four and runtime.h named three. 8.310.
+name = "the header understates what pointer_only returns"
+file = "include/qtty/runtime.h"
+find = "// AND A `QLabel` CARRYING AN ANCHOR, which is the fourth kind"
+into = "// AND A label CARRYING AN ANCHOR, which is the fourth kind"
+count = 1
+check = "and it names all four kinds, which it did not for the five days after the fourth landed"
+
+[[sabotage]]
 # The window strip drawn for a lone window, which is the shape of
 # defect the quiet control exists to catch: with nothing popped a
 # composed screen must be the widget's own picture and nothing
