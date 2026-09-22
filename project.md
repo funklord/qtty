@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-19
 
-1948 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
+1950 checks, 0 failures, and **6.0 to 6.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine, 2026-09-21. The number is here because 8.276 and 8.277 both
 turned on cost and nothing in this tree measures any: a per-event
@@ -17831,6 +17831,46 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.322 A claim my own commit falsified, two hours later (2026-09-22)
+
+**The guide called a raw `printf` "the easiest trap on this page to
+fall into" and ended the paragraph "write to stdout yourself and
+nothing can help you".** That was true when written and stopped being
+true at 8.318, which is the same afternoon.
+
+`Qtty::redraw()` is exactly the recovery. A stray write corrupts cells
+qtty believes it already drew, and every later frame agrees with the
+memory rather than the screen -- which is the fault redraw() was built
+for, arriving by the one route the guide had already named as most
+likely.
+
+**Measured on a live terminal rather than reasoned from the mechanism**,
+in the pty fixture 8.237 left behind:
+
+    write(1, "XXXXXXXXXXXX")   twelve bytes straight to the tty
+    render_now()               writes NOTHING -- it was never asked
+    redraw()                   the window again, over the top
+
+**The middle row is the control and it is the interesting one.** It
+says qtty cannot see the intrusion, which is what makes the trap a trap
+-- and without it the last row would be evidence that the write had
+been noticed, which would be a different library.
+
+**What is recoverable is the FRAME, not the output.** The bytes the
+program meant to print are gone either way; what comes back is the
+screen. The paragraph says both now, because "recoverable" on its own
+would read as a reprieve for `printf` rather than as a repair for the
+damage.
+
+**Worth an entry rather than a quiet edit** because of how it was
+found: sweeping the guide for sentences that tell an implementer they
+are on their own, on the theory that those are where the library is
+missing something. This one was not missing anything any more. **A
+capability added in the morning can falsify a sentence written months
+earlier, and nothing connects them** -- the commit that adds the
+function has no reason to touch the paragraph that gave up on it.
+
+
 ### 8.321 The third copy, which my own guard was not reading (2026-09-22)
 
 **8.310 built a guard holding the installed header and the guide's

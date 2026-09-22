@@ -2093,11 +2093,26 @@ frame up, 2746 bytes of screen reached the terminal and not one sentence
 of the diagnostic.
 
 **A raw `printf`, `std::cout` or `write(1, ...)` is not interceptable.**
-It will land in your frame and stay there. Use Qt's logging and it is
-taken care of; write to stdout yourself and nothing can help you. In a
-dual-frontend application this is the easiest trap here to fall into,
-because the identical line is harmless in the GUI build -- which is the
-same reason every trap on this page is a trap.
+It goes straight to the terminal, so nothing here is asked and nothing
+here knows: the bytes land in your frame, and the next frame is as
+quiet as any other, because what qtty remembers about the screen is
+still what it last drew. Use Qt's logging and this is taken care of. In
+a dual-frontend application it is the easiest trap on this page to fall
+into, because the identical line is harmless in the GUI build -- which
+is the same reason every trap here is a trap.
+
+**The frame is recoverable, though your output is not.**
+`Qtty::redraw()` forgets what the terminal is showing and draws the
+whole thing again, over the top of whatever landed there:
+
+    Qtty::redraw();      // after something wrote to the terminal
+
+Measured on a live terminal -- twelve stray bytes written to the tty,
+an ordinary frame after them writing nothing at all, and the redraw
+putting the window back. It is worth binding to a key for the same
+reason `Ctrl+L` exists everywhere else, since the person who can see
+the mess is the user rather than the program; *Running an editor, a
+pager, or anything else that wants the screen* has the one-liner.
 
 ## If you are writing a custom widget
 

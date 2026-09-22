@@ -3240,6 +3240,29 @@ int suite_backend() {
 					Qtty::redraw();
 					const QByteArray forced = take();
 
+					// AND THE TRAP THE GUIDE CALLS THE EASIEST TO FALL
+					// INTO: a raw write(1, ...) that lands in the frame.
+					// Nothing here can see it happen -- the bytes go
+					// straight to the terminal, qtty is not asked -- so
+					// what is remembered about the screen is now wrong
+					// about the cells that stranger overwrote, and an
+					// ordinary frame has nothing to say about them.
+					//
+					// Measured rather than argued, because the guide said
+					// "nothing can help you" and that stopped being true
+					// when redraw() landed. The control is the middle
+					// step: the frame AFTER the intrusion must still be
+					// quiet, or the last assertion would be showing that
+					// qtty noticed the write, which it cannot.
+					const char junk[] = "XXXXXXXXXXXX";
+					::write(1, junk, sizeof(junk) - 1);
+					::fsync(1);
+					take();
+					sched.render_now();
+					const QByteArray oblivious = take();
+					Qtty::redraw();
+					const QByteArray recovered = take();
+
 					// Last, so that the assertions before it are not reading
 					// a fixture this one has moved on.
 					label.setText(QStringLiteral("moved along"));
@@ -3263,6 +3286,14 @@ int suite_backend() {
 					      "while Qtty::redraw() writes the whole window"
 					      " again with no handover to prompt it, which is"
 					      " the only recourse a corrupted screen has");
+					CHECK(!oblivious.contains("still here"),
+					      "a raw write into the terminal is not noticed --"
+					      " the frame after it is as quiet as any other,"
+					      " which is why the guide calls it a trap");
+					CHECK(recovered.contains("still here"),
+					      "and redraw() puts the window back over it,"
+					      " so the easiest trap on that page is one a"
+					      " program can recover from after all");
 					// Nothing AT ALL, which the cell diff alone does not
 					// give: set_cursor() is called unconditionally after
 					// every frame, so an idle program went on placing the
