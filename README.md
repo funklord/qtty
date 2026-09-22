@@ -186,6 +186,11 @@ instead of going through a `QPainter`.
 For the keyboard: `Qtty::set_keyboard_conventions()` turns on the habits a
 terminal user expects and `Qtty::keyboard_conventions_help()` names the keys
 that answer, so a status bar keeps no second copy of them.
+`Qtty::shortcut_help()` does the same for the keys **you** bound, which move
+whenever somebody edits a menu, and the two concatenate into one line.
+`Qtty::redraw()` draws the whole screen again, which is the recovery when
+something outside the program has written to the terminal -- bind it to
+`Ctrl+L`, which qtty deliberately leaves to you.
 `Qtty::focusWidget()` says who has focus, which `QWidget::hasFocus()` cannot
 here, no window ever being active, and `Qtty::has_focus()` asks it the way
 `hasFocus()` would -- walking the focus proxy chain, and answering no while
