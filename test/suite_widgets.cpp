@@ -3700,6 +3700,27 @@ int suite_widgets() {
 		InputRouter router(&win);
 		QCoreApplication::processEvents();
 
+		// ADOPTED FIRST, and without this the check below passes for the
+		// wrong reason. A composed frame adopts the window it draws --
+		// adopt_window() seeds the first tab stop, because nothing
+		// activates here -- so the screen snapshot always has a focus
+		// mark on the button. The widget snapshot has no activation of
+		// any kind and shows a mark only if Qt's own State_HasFocus is
+		// set, which is the PLATFORM's answer and not this library's.
+		//
+		// Measured: the offscreen plugin activates a window on show, so
+		// hasFocus() is 1 and the two pictures agreed -- by coincidence,
+		// the mark coming from Qt on one side and from the router on the
+		// other. Under xcb in Xvfb there is no window manager, nothing
+		// ever takes input focus, hasFocus() is 0, and the widget
+		// snapshot lost the mark the screen still drew. The check went
+		// red on the one configuration that could tell the two reasons
+		// apart.
+		//
+		// So say it: adopt the window the way a frame loop does, and both
+		// pictures carry the mark for the SAME reason on either platform.
+		Qtty::set_current_window(&win);
+
 		// THE CONTROL FIRST, and it is the one that says the new call is
 		// not inventing a layer: with nothing popped, the screen snapshot
 		// is the widget's picture and then what only a composed frame

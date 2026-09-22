@@ -4957,6 +4957,20 @@ count = 1
 check = "the section is there either way"
 
 [[sabotage]]
+# The window strip drawn for a lone window, which is the shape of
+# defect the quiet control exists to catch: with nothing popped a
+# composed screen must be the widget's own picture and nothing
+# else, and a strip pushes every row down one. The two layered
+# checks beside it cannot see this -- a menu is still over the
+# window either way. 8.309.
+name = "a lone window is given a window strip"
+file = "src/runtime/compositor.cpp"
+find = "\tconst int strip = tabs.size() > 1 ? 1 : 0;"
+into = "\tconst int strip = tabs.size() > 0 ? 1 : 0;"
+count = 1
+check = "with no layer up, a screen snapshot is the widget's own picture with the frame's caret after it"
+
+[[sabotage]]
 # The caret section reporting "hidden" whatever the frame holds, which
 # is how a screen snapshot behaved before it existed: a frame with the
 # caret in a field and one with the focus on a button read the same.

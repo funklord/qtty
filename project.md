@@ -17829,6 +17829,71 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+### 8.309 A check of mine passed because the platform supplied the mark (2026-09-22)
+
+**The day's 30 commits had been verified only under `make check`, which
+is offscreen. Run under the six configurations, one check failed -- and
+it was one I wrote yesterday**: *with no layer up, a screen snapshot is
+the widget's own picture with the frame's caret after it*. Sanitizers
+and valgrind were clean; this was the only red.
+
+It is the control half of the `snapshot_of_screen()` block -- the check
+that says the new call is not INVENTING a layer, which is what makes
+the two layered checks beside it mean anything.
+
+**What the two pictures actually disagreed about was one attribute.**
+The composed screen drew the push button in reverse video and the
+widget render did not:
+
+    widget   --- attrs ---      (none)
+    screen   --- attrs ---      .gggggg        g reverse
+
+**And the reason is the one that matters: under offscreen the two
+agreed for DIFFERENT REASONS and nothing said so.** Measured at the
+moment the fixture takes the first snapshot:
+
+    offscreen   win.isActiveWindow()=1   button->hasFocus()=1   Qtty::focusWidget()=null
+    xcb/Xvfb    win.isActiveWindow()=0   button->hasFocus()=0   Qtty::focusWidget()=null
+
+`Qtty::focusWidget()` is **null on both**, so the fixture had never
+given this library's focus to anything. The screen snapshot's mark
+comes from the compositor: `adopt_window()` is this runtime's
+activation and seeds the first tab stop, so composing a frame focuses
+the button as a side effect. The widget snapshot has no activation of
+any kind, and `CE_PushButtonLabel` draws the mark on
+`(State_HasFocus | Sunken | On) || owns_focus(w)` -- so on offscreen it
+got one from **Qt**, because the offscreen plugin activates a window on
+show. Under Xvfb there is no window manager, nothing ever takes input
+focus, and that term went false.
+
+So the check was *A consumer that is right by coincidence looks exactly
+like a wired one*, from `evidence.md`, arriving in a fixture rather
+than in code: one side's mark was the router's and the other's was the
+platform's, and every additional passing run under offscreen was
+confidence in the wrong thing.
+
+**The fixture says it now.** `Qtty::set_current_window(&win)` before
+either snapshot -- the call `testing.h` already names as the supported
+way for a test to say which window it means -- adopts the window the
+way a frame loop does. Both pictures then carry the mark for the same
+reason, and the check passes under offscreen and under xcb.
+
+**The exposure is one check, and the xcb configuration is what bounds
+it.** Any fixture leaning on the coincidence must go red under Xvfb,
+where `State_HasFocus` is false wherever offscreen has it true; the
+whole suite ran and exactly one did. What would have hidden it is
+running the suite on one platform, which is what 29 of yesterday's 30
+commits had.
+
+**And the check now has a sabotage entry, which it did not.** The two
+beside it cover the layered halves -- a compose that does not compose,
+a caret that cannot be seen -- and neither can see a screen snapshot
+that invents content, because a menu is still over the window either
+way. The entry gives a lone window a window strip
+(`tabs.size() > 1` to `> 0`): every row moves down one, `startsWith`
+fails, and `--only` reddens the named check and 20 others with it.
+
+
 ### 8.308 The one line that stops the program had no guard (2026-09-22)
 
 **`InputRouter::on_terminal_lost()` is one line -- `qApp->quit()` --
