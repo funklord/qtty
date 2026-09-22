@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-22
 
-1965 checks, 0 failures, and **4.5 seconds of user time** --
+1968 checks, 0 failures, and **4.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
 wall each time.
@@ -17844,6 +17844,43 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.328 A control that stopped me blaming this library for Qt (2026-09-23)
+
+**A third application walked: a configuration editor.** Its core is a
+form, and a form is an input mask and a validator -- a sibling project
+in this workspace edits network configuration, which is an IP mask and
+a port validator and little else. Neither was tested here, and neither
+was mentioned in the guide.
+
+**Both work.** An empty masked field draws
+`[___.___.___.___]`, and twelve digits typed through the router come
+out `192.168.001.001` with `hasAcceptableInput()` true.
+
+**The validator is where this earns an entry.** Typing `808099` into a
+`QIntValidator(1, 65535)` field leaves **`80809`** standing -- five
+digits, out of range, accepted. That reads exactly like the router
+mishandling a refusal, and I was a step from reporting it.
+
+The control settled it: the identical keystrokes sent straight to an
+identical field, with no router anywhere, give the **identical**
+string. The permissiveness is `QIntValidator`'s, and a finding would
+have blamed this library for Qt's behaviour.
+
+**So the check asserts the relationship rather than the value** -- that
+the router's answer equals Qt's own -- which is what `evidence.md` asks
+for and is not merely tidier here: a pinned `"80809"` would go red the
+day Qt tightens its validator, reporting a regression in a library that
+had not changed. The relationship stays true either way.
+
+**Three applications walked, three answers, and they are not the same
+kind.** A terminal widget found a facility nobody was told about
+(8.326); a log viewer found another (8.327); a configuration editor
+found everything already working and one trap in my own reasoning. The
+method keeps paying, and what it pays is not always a gap.
+
+
 ### 8.327 Colouring your own text, which the guide never mentioned (2026-09-22)
 
 **Walking a second application, after the one that found 8.326.** A log

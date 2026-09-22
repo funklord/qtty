@@ -3685,6 +3685,77 @@ int suite_widgets() {
 		      "the section is not a constant");
 	}
 
+	// AN INPUT MASK AND A VALIDATOR, neither tested nor documented here
+	// until now, and both of them what a form is made of -- a sibling
+	// project in this workspace edits network configuration, which is an
+	// IP mask and a port validator and little else.
+	{
+		QWidget w;
+		w.setAttribute(Qt::WA_DontShowOnScreen);
+		w.resize(GridMetrics::cells(30, 5));
+		auto *lay = new QVBoxLayout(&w);
+		auto *ip = new QLineEdit;
+		ip->setInputMask(QStringLiteral("000.000.000.000;_"));
+		lay->addWidget(ip);
+		auto *num = new QLineEdit;
+		num->setValidator(new QIntValidator(1, 65535, num));
+		lay->addWidget(num);
+		w.show();
+		InputRouter r(&w);
+		Qtty::set_current_window(&w);
+		QCoreApplication::processEvents();
+
+		CHECK(Qtty::test::snapshot_of(w, 30, 5)
+		          .contains(QStringLiteral("[___.___.___.___")),
+		      "an empty masked field draws its placeholders and its "
+		      "separators, so a user can see the shape before typing");
+
+		ip->setFocus();
+		set_focus_widget(w.focusWidget());
+		QCoreApplication::processEvents();
+		Qtty::test::type(r, QStringLiteral("192168001001"));
+		QCoreApplication::processEvents();
+		CHECK(ip->text() == QStringLiteral("192.168.001.001")
+		          && ip->hasAcceptableInput(),
+		      "and twelve digits typed through the router fill it, the "
+		      "mask putting the dots in and the field calling the result "
+		      "acceptable");
+
+		// THE VALIDATOR IS ASSERTED AS A RELATIONSHIP, not a value, and
+		// the reason is that the first draft of this nearly reported a
+		// defect. QIntValidator(1, 65535) lets "80809" stand -- five
+		// digits and out of range -- and that looked like the router
+		// mishandling a refusal.
+		//
+		// It is Qt's answer, measured: the identical keystrokes sent
+		// straight to an identical field, with no router anywhere, give
+		// the identical string. So what this pins is that the router
+		// changes nothing, which stays true if Qt ever tightens the
+		// validator and a pinned "80809" would not.
+		num->setFocus();
+		set_focus_widget(w.focusWidget());
+		QCoreApplication::processEvents();
+		Qtty::test::type(r, QStringLiteral("808099"));
+		QCoreApplication::processEvents();
+
+		QWidget ctl;
+		ctl.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *direct = new QLineEdit(&ctl);
+		direct->setValidator(new QIntValidator(1, 65535, direct));
+		ctl.show();
+		QCoreApplication::processEvents();
+		for (QChar ch : QStringLiteral("808099")) {
+			QKeyEvent k(QEvent::KeyPress, 0, Qt::NoModifier, QString(ch));
+			QApplication::sendEvent(direct, &k);
+		}
+		QCoreApplication::processEvents();
+
+		CHECK(!num->text().isEmpty() && num->text() == direct->text(),
+		      "and a validator gives the router's keystrokes exactly the "
+		      "answer it gives Qt's own, so a form behaves on a terminal "
+		      "as it does on a desktop");
+	}
+
 	// AN APPLICATION'S OWN TEXT COLOUR, which the guide had nothing to
 	// say about and which is what a log reader, a diff or any
 	// highlighter is made of. Three spellings, because an application
