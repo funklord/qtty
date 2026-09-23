@@ -5491,3 +5491,14 @@ find = "\t\t\t\t\tv.attrs ^= Attrs(Attr::Reverse);"
 into = "\t\t\t\t\tv.attrs |= Attrs(Attr::Reverse);"
 count = 1
 check = "a band over a row that is already selected still shows"
+
+[[sabotage]]
+name = "the style draws a glyph the vocabulary does not publish"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tint text_at = c.left() + 1;"
+into = "\t\t\t\tint text_at = c.left() + 1;\n\t\t\t\tdev->buffer().put_cluster(c.left(), c.top(), QStringLiteral(\"\\u2593\"));"
+count = 1
+# The wording common to both arms: this check's message is conditional, so
+# the FAIL line carries the "these are not" form rather than the PASS one,
+# and a spec naming the success wording never matches.
+check = "and every glyph the style can draw is published"

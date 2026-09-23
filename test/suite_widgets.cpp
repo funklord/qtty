@@ -1809,6 +1809,19 @@ int suite_widgets() {
 				{ "a submenu",                "\u25B8",         20, 22 },
 				{ "a tree row that opens",    "\u25B8 Folder",  21, 22 },
 				{ "a tree row that is open",  "\u25BE Folder",  24, 22 },
+				// FIVE THE PAGE DID NOT PUBLISH, found by comparing the
+				// glyphs this style draws against the glyphs that table
+				// names -- which is the quantifier checked from the other
+				// side. "The whole visual vocabulary, in one place" was
+				// missing the box a framed widget draws, the doubled box
+				// it draws when it has the focus, a vertical scroll bar's
+				// arrows, a dock's float button and the left-pointing
+				// arrow. A user meeting one of those had nowhere to look.
+				{ "a framed widget",          "\u250C",         25, 16 },
+				{ "a framed widget, focused", "\u2554",         26, 16 },
+				{ "a vertical scroll bar",    "\u25B2",         27, 4 },
+				{ "a dock's float button",    "\u2197",         28, 24 },
+				{ "a left-pointing arrow",    "\u25C2",         29, 8 },
 				{ "a widget out of reach",    "QGraphicsView", 22, 22 },
 				// The substitution's own cell, the one row of the table that
 				// is not a control. A solid pixmap is the simplest thing that
@@ -1938,6 +1951,53 @@ int suite_widgets() {
 					t->expandAll();
 					return t;
 				}
+				case 25: {
+					auto *l = new QListWidget;
+					new QListWidgetItem(QStringLiteral("one"), l);
+					return l;
+				}
+				case 26: {
+					// The doubled box is drawn for a framed widget that
+					// OWNS FOCUS, so the fixture has to own it -- set in
+					// showEvent because the harness shows the widget
+					// after the factory has returned it.
+					struct FocusedList : QListWidget {
+						using QListWidget::QListWidget;
+						void showEvent(QShowEvent *e) override {
+							QListWidget::showEvent(e);
+							setFocus();
+							Qtty::set_focus_widget(this);
+						}
+					};
+					auto *l = new FocusedList;
+					new QListWidgetItem(QStringLiteral("one"), l);
+					return l;
+				}
+				case 27: {
+					auto *sb = new QScrollBar(Qt::Vertical);
+					sb->setRange(0, 100);
+					sb->setValue(50);
+					return sb;
+				}
+				case 28: {
+					// IN A MAIN WINDOW, because a dock shown on its own is
+					// floating and draws no title-bar buttons at all --
+					// measured, a plain box. The buttons are what this row
+					// is about, and they exist where a dock is docked.
+					auto *win = new QMainWindow;
+					win->setCentralWidget(new QTextEdit);
+					auto *d = new QDockWidget(QStringLiteral("Files"), win);
+					d->setFeatures(QDockWidget::DockWidgetClosable
+					               | QDockWidget::DockWidgetFloatable);
+					d->setWidget(new QListWidget);
+					win->addDockWidget(Qt::LeftDockWidgetArea, d);
+					return win;
+				}
+				case 29: {
+					auto *t = new QToolButton;
+					t->setArrowType(Qt::LeftArrow);
+					return t;
+				}
 				case 22:
 					return new QGraphicsView;
 				case 23: {
@@ -1956,8 +2016,17 @@ int suite_widgets() {
 			for (const Row &row : rows) {
 				QWidget *w = make(row.kind);
 				w->setAttribute(Qt::WA_DontShowOnScreen);
+				// A BOX NEEDS ROOM FOR ONE. draw_box() refuses below two
+				// cells each way and the frame inset refuses below three
+				// rows, so a framed fixture given one row draws no box
+				// and the row would fail for want of space rather than
+				// for want of the mark.
 				const int high = qobject_cast<QMenu *>(w)
 				              || qobject_cast<QTreeWidget *>(w)
+				              || qobject_cast<QListWidget *>(w)
+				              || qobject_cast<QScrollBar *>(w)
+				              || qobject_cast<QDockWidget *>(w)
+				              || qobject_cast<QMainWindow *>(w)
 				              || qobject_cast<QGraphicsView *>(w) ? 6 : 1;
 				w->setFixedSize(cw * row.cols, ch * high);
 				show(*w, row.cols, high);
@@ -1981,6 +2050,7 @@ int suite_widgets() {
 			// of the list the test walks. A row added to the table with
 			// no check, or a check with no row, fails here.
 			int published = -1;
+			QString table;                 // the rows, for the sweep below
 			QFile page(QStringLiteral(QTTY_SOURCE_DIR)
 			           + QStringLiteral("/doc/keyboard-first.md"));
 			if (page.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -2002,6 +2072,7 @@ int suite_widgets() {
 					if (line.startsWith(QStringLiteral("|---"))) continue;
 					if (!line.startsWith(QStringLiteral("| "))) break;
 					++published;
+					table += line;
 				}
 			}
 			printf("info: the page publishes %d mark(s), the check renders "
@@ -2011,6 +2082,71 @@ int suite_widgets() {
 			CHECK(published == int(sizeof(rows) / sizeof(rows[0])),
 			      "the table on the page and the list in this check name "
 			      "the same number of marks, so neither can grow alone");
+
+			// AND THE QUANTIFIER FROM THE OTHER SIDE, which is what was
+			// missing and is why five marks went unpublished for as long
+			// as the page has existed. The two checks above ask whether
+			// every row the PAGE names is drawn; neither can notice a
+			// glyph the style draws that the page never named, because a
+			// row that does not exist cannot fail.
+			//
+			// So read the style's own source and take every non-ASCII
+			// character it writes through QStringLiteral -- which is the
+			// set a user can meet -- and require the page to carry each
+			// one. Literals rather than the whole file, so that the
+			// glyphs quoted in comments (this table is echoed in several)
+			// do not count as things the style draws.
+			QSet<QChar> drawn;
+			QFile style(QStringLiteral(QTTY_SOURCE_DIR)
+			            + QStringLiteral("/src/grid/grid_style.cpp"));
+			if (style.open(QIODevice::ReadOnly | QIODevice::Text)) {
+				const QString src = QString::fromUtf8(style.readAll());
+				const QString open = QStringLiteral("QStringLiteral(\"");
+				int at = 0;
+				while ((at = src.indexOf(open, at)) >= 0) {
+					const int from = at + open.size();
+					const int end = src.indexOf(QLatin1Char('"'), from);
+					if (end < 0) break;
+					const QString lit = src.mid(from, end - from);
+					for (int i = 0; i < lit.size(); ++i) {
+						// A GLYPH WRITTEN AS AN ESCAPE COUNTS TOO, and
+						// this check could not see one until a sabotage
+						// said so: it inserted QStringLiteral("\\u2593"),
+						// whose characters in the SOURCE are all ASCII,
+						// and the sweep reported nothing unpublished
+						// while the style drew a mark the page does not
+						// name. The check was reading the file rather
+						// than the string the compiler makes of it.
+						if (lit.at(i) == QLatin1Char('\\')
+						    && i + 5 < lit.size()
+						    && lit.at(i + 1) == QLatin1Char('u')) {
+							bool ok = false;
+							const uint code =
+							    lit.mid(i + 2, 4).toUInt(&ok, 16);
+							if (ok && code > 0x7f)
+								drawn.insert(QChar(code));
+							if (ok) { i += 5; continue; }
+						}
+						if (lit.at(i).unicode() > 0x7f)
+							drawn.insert(lit.at(i));
+					}
+					at = end + 1;
+				}
+			}
+			QString unpublished;
+			for (const QChar &ch : drawn)
+				if (!table.contains(ch)) unpublished += ch;
+			printf("info: the style draws %d non-ASCII glyph(s); %d are not "
+			       "on the page\n", int(drawn.size()),
+			       int(unpublished.size()));
+			CHECK(!drawn.isEmpty() && unpublished.isEmpty(),
+			      unpublished.isEmpty()
+			        ? "and every glyph the style can draw is published in "
+			          "that table, which is the quantifier asked from the "
+			          "side a missing row cannot answer from"
+			        : QStringLiteral("and every glyph the style can draw is "
+			                         "published -- these are not: %1")
+			              .arg(unpublished).toUtf8().constData());
 			CHECK(wrong == 0,
 			      wrong == 0
 			        ? "every mark the page publishes is the mark the style "

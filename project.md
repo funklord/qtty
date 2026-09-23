@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-22
 
-2015 checks, 0 failures, and **4.5 seconds of user time** --
+2016 checks, 0 failures, and **4.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
 wall each time.
@@ -17845,6 +17845,61 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.342 The whole vocabulary, minus five (2026-09-23)
+
+**"The whole visual vocabulary, in one place" was missing five marks**,
+and one of them is how a terminal user sees which list has the keyboard.
+Found sideways: a probe of `QItemEditorFactory` showed a table's frame
+changing from `╔══╗` to `┌──┐` as an editor opened -- correct, that is
+the focus mark -- and the page names neither.
+
+Compared properly, by taking every non-ASCII character `grid_style.cpp`
+writes through `QStringLiteral` and asking the page for each:
+
+    ┌ │ ┐ └ ┘   a framed widget's box
+    ╔ ║ ╗ ╚ ╝   the same box when it owns focus
+    ▲ ▼       a vertical scroll bar's arrows, the page having only ◀ ▶
+    ↗           a dock widget's float button
+    ◂           a previous -- a calendar's month back, a left tool button
+
+**The reason they survived is the quantifier was only ever asked from
+one side.** The existing checks ask whether every row the PAGE names is
+drawn; a glyph the style draws that the page never named cannot fail,
+because a row that does not exist cannot fail. The new check asks the
+other way, and the two together make the table honest in both
+directions: 28 glyphs drawn, 30 rows, nothing unpublished.
+
+**THE SABOTAGE FOUND A BLIND SPOT IN THE CHECK, twice.** First it
+inserted `QStringLiteral("\u2593")`, whose characters IN THE SOURCE are
+all ASCII, and the sweep reported nothing unpublished while the style
+drew a mark the page does not name -- the check was reading the file
+rather than the string the compiler makes of it. It decodes `\uXXXX`
+now.
+
+Then it came back INCONCLUSIVE: the named check had not run. It had --
+but this check's message is CONDITIONAL, so the FAIL line carries the
+"these are not" wording while the spec named the PASS wording. A spec
+must name text both arms share.
+
+**And the convention was already right, which makes it a mistake rather
+than a gap.** The spec entry for the marks check beside it names
+"every mark the page publishes is the mark the style draws" -- the
+PREFIX both of that check's arms begin with. Swept over every check
+whose message branches on its own condition: three exist, one is named
+by a spec entry, and that one was written correctly. So there is
+nothing fleet-wide to fix; the new entry names the shared prefix now,
+as the old one always did.
+
+Neither fault was visible by reading, and neither was in the library.
+
+**Two fixture lessons, both of the same kind.** A dock shown on its own
+is FLOATING and draws no title-bar buttons at all, so that row needs a
+`QMainWindow`; and a framed fixture given one row draws no box, because
+`draw_box()` refuses below two cells each way. Both would have failed
+for want of ROOM rather than for want of the mark, which is the shape
+that reads as a defect and is not.
 
 
 ### 8.341 A tool tip the page said would never appear (2026-09-23)

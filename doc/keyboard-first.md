@@ -236,6 +236,11 @@ a third spelling**, which is the other half of practice 10.
 | `Recent     ▸` | a submenu |
 | `▸ Folder` | a tree row that opens |
 | `▾ Folder` | a tree row that is open |
+| `┌──┐` `│` `└──┘` | a framed widget -- a list, a table, a group box, a dialog |
+| `╔══╗` `║` `╚══╝` | the same frame while that widget has the **focus** |
+| `▲░█░▼` | a scroll bar down the side, the same marks turned |
+| `↗` | a dock widget's float button, beside its `✕` |
+| `◂` | a previous -- a calendar's month back, a left-arrow tool button |
 | a box with a class name in it | a widget whose content is out of reach -- a `QGraphicsView`, a web view |
 | `▒` | a picture reduced to one cell, which is all this library can say about it |
 
