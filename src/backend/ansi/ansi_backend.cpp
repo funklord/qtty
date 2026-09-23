@@ -2391,6 +2391,30 @@ bool AnsiBackend::decode_one() {
 	else if (c == 0x7f || c == 0x08)  k.qt_key = Qt::Key_Backspace;
 	else if (c == '\t')               k.qt_key = Qt::Key_Tab;
 	else if (c < 0x20) { k.qt_key = Qt::Key_A + (c - 1); k.ctrl = true; }   // ^A..^Z
+	// SPACE CARRIES ITS KEY AS WELL AS ITS TEXT, and every other printable
+	// carries only text. The asymmetry is deliberate and it is Qt's, not a
+	// convenience: QAbstractButton activates on Qt::Key_Space and QCheckBox
+	// toggles on it, and both read the KEY rather than the text -- so a
+	// space that arrived as text alone did nothing at all.
+	//
+	// Measured end to end before this, with a control: byte 0x20 through
+	// the decoder and the router left a focused check box unticked and a
+	// focused push button unclicked, while a real Qt space event sent
+	// straight to the same button clicked it. `doc/keyboard-first.md` opens
+	// by promising that Space activates a focused button, and on a terminal
+	// it did not.
+	//
+	// Not extended to the other printables here, though the same gap is
+	// real for them -- a QTreeView expands on Qt::Key_Asterisk and
+	// Qt::Key_Plus, measured, and neither answers text. Giving every
+	// printable its key makes a bare letter able to MATCH a shortcut, which
+	// match_shortcut() says in as many words that it cannot, and the
+	// arbitration Qt uses for that case (QEvent::ShortcutOverride, which a
+	// focused QLineEdit accepts for a plain letter) is not asked here at
+	// all. That is a design question and it is recorded rather than
+	// answered; Space is not a letter, cannot be a mnemonic, and is the one
+	// the page promises.
+	else if (c == ' ') { k.qt_key = Qt::Key_Space; k.text = QStringLiteral(" "); }
 	else { k.qt_key = 0; k.text = QString(QChar(c)); }
 	sink_->on_key(k);
 	return true;

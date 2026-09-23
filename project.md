@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-22
 
-1988 checks, 0 failures, and **4.5 seconds of user time** --
+1993 checks, 0 failures, and **4.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
 wall each time.
@@ -919,6 +919,7 @@ Owned by the copyright holder:
 | **Should the terminal's background be re-measured, and how?** It is asked once at startup and the half-block tier composites against it for the life of the session, so a user who toggles their desktop theme -- or a `shell_out()` that returns from a program which changed it -- leaves every translucent edge composited against a ground that has gone. Re-asking at each handover costs one query and needs the decoder to stop discarding an OSC 11 reply; subscribing with `DECSET 2031` costs nothing per frame and needs capability detection; leaving it costs the fallback tier only, kitty-tier sessions sending alpha and never compositing | 8.160 |
 | **Should the conventions offer a key for Qt's own pointer-only furniture?** Measured with plain Qt and no qtty: a closable `QTabWidget` ignores `Ctrl+W`, `Ctrl+F4` and `Delete` -- `tabCloseRequested` never fires -- and a closable `QDockWidget` ignores `Ctrl+W` and `Esc`. So the `x` on a tab and a dock's close button have no keyboard route ANYWHERE, which on a desktop is a mouse away and here may be nothing away. The option is one convention binding each; the cost is that both plausible keys are ones applications mean something by (`Ctrl+W` closes a document in most, and a shortcut an application binds wins anyway, so the convention would answer only where the application is silent -- which is exactly where the user has no other route). The guide names the gap and tells an application to bind its own; whether the library should offer one is the holder's. **Four controls, not two, and the gap is visible now**: `Qtty::pointer_only()` (8.181) enumerates rather than recognises, and it named a dock widget's FLOAT button beside the two above, then a `QSplitter`'s handle (8.191) -- which is the one that changes the question, since a splitter answers no key even with the focus forced onto it, so a convention binding is the ONLY route there could be. An application can at least see what it is being asked to bind. | 8.159, 8.181, 8.191 |
 | **~~Should there be a way to force a full repaint~~, and should `Ctrl+L` be it?** The mechanism half is built and is `Qtty::redraw()` -- see 8.318, and the cost this row deferred on turned out to dissolve rather than inform. What is left is the BINDING, which is a convention change and not a capability: `Ctrl+L` is the most universal terminal convention after `Ctrl+C`, and a row for it changes what `set_keyboard_conventions(true)` means, what `keyboard_conventions_help()` returns, and what `conventions_shadowed()` can report about an application that took it. An application can bind it today, and `application.h` says so where somebody looking for the key will read it | 8.318 |
+| **Should every printable carry its `Qt::Key`, and should the router ask the focus widget for a `ShortcutOverride`?** The two are one question. A terminal sends a printable as text with no key code, so `Qt::Key_Space` was dead until 8.334 fixed it for Space alone -- and `*` and `+` in a tree are dead by the same mechanism, measured. Giving every printable its key passes the whole suite and breaks an assumption `match_shortcut()` states outright: a bare letter cannot match a shortcut, which is why it falls through to `QMenu::keyPressEvent`. Qt arbitrates with `QEvent::ShortcutOverride` -- measured, a focused `QLineEdit` CLAIMS a plain letter and a plain Space, lets `Ctrl+N` through and CLAIMS `Ctrl+A` -- and this router never asks, so a plain-letter shortcut would fire where a desktop types the letter. Asking it would also subsume the hand-written `Ctrl+A` and `Ctrl+C` exemptions, which are that arbitration written out for two chords. The cost is a change to the most load-bearing rule in the input path | 8.334 |
 | **Should `pointer_only()` widen from a control no key reaches to an ACTION no key reaches?** Measured 2026-09-22 on a `QListWidget` set to `InternalMove`: **0 of 10 plausible chords** moved an item (`Ctrl`/`Alt`/`Shift` with `Up`, `Down`, `PageDown`, and `Ctrl+]`, `Alt+-`), and the function names nothing, because the view IS a tab stop and the present predicate is *reached by no key at all*. The four kinds it returns are all controls; a reorder is an action belonging to no widget, the way a sort belongs to a section -- and the sorting header was admitted on exactly that argument, so the boundary is already blurred. The cost of widening is that under qtty a plain Qt drag does not reorder either: it falls back to rubber-band selection (practice 13), so the action is unreachable by pointer too unless the application calls `Qtty::exec_drag()` -- which makes it a *nothing-reaches-this* finding rather than a pointer-only one, and the function would be answering a question its name does not ask. The guide already tells an implementer to give the reorder a keyboard route; whether the audit should say so too is a scope change to a public function | 8.310, practice 13 |
 | A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. Cheaper to answer after the picture-rule entry below, which is the same question seen from the other end | *Qt's standard iconography* |
 | **A rule drawn as a thin RECTANGLE becomes a coloured background; the same rule drawn as a LINE becomes a box-drawing glyph.** Measured through an HTML table: its borders arrive as `drawRects` of `11x1` and `1x19` and come out as grey blocks, while `drawLines` of the same shape draws `-` and `\|`. The horizontal case could be told from a caret by shape; **the vertical case cannot -- a caret and a one-cell vertical rule are the same `1x19` rectangle**, which is what stops this being a small fix | 8.65 |
@@ -17844,6 +17845,70 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.334 Space did nothing (2026-09-23)
+
+**The guide's second row, and it was false on a terminal.** *What
+already works, unmodified* promises "`Space` activates the focused
+button, toggles the focused check box". Measured end to end: byte `0x20`
+through the real decoder gives `qt_key = 0, text = " "`, and fed to the
+router it left a focused check box unticked and a focused push button
+unclicked. **The control is what makes it a finding**: a real Qt space
+event sent straight to the same button clicked it. `QAbstractButton`
+activates on `Qt::Key_Space` and `QCheckBox` toggles on it, and both
+read the KEY rather than the text.
+
+**The fix is one branch in the decoder** -- a space carries
+`Qt::Key_Space` as well as its text -- and a check pins the narrowness
+beside it: every other printable still carries text and no key, so this
+is a rule about Space rather than a decoder that has started guessing
+codes.
+
+**Found by asking how the page's own table is held, and it is not.**
+The marks vocabulary is counted against a check that renders every row;
+the KEYS table, which is the first thing an adopter reads and the one
+that says what they do not have to implement, has nothing. Sixteen
+rows, and the second one had been wrong since it was written.
+
+**THE FAMILY IS WIDER AND WAS DELIBERATELY NOT WIDENED.** A `QTreeView`
+expands on `Qt::Key_Asterisk` and `Qt::Key_Plus`; measured, neither
+answers text, so `*` and `+` are dead in a tree by the same mechanism.
+Giving every printable its key was tried and **the whole suite passed**
+-- which is not evidence, since the suite was written against the old
+behaviour and none of it binds a plain-character shortcut.
+
+What it would break is written down in the code it would break:
+`match_shortcut()` says a bare letter matches no shortcut and falls
+through to `QMenu::keyPressEvent`, "which is where the desktop answers
+it from". With keys on printables a bare letter CAN match, and Qt's own
+arbitration for that case is `QEvent::ShortcutOverride`, which this
+router never asks. Measured:
+
+    QLineEdit   plain 'n'     CLAIMS it        Ctrl+N   lets it through
+    QLineEdit   plain Space   CLAIMS it        Ctrl+A   CLAIMS it
+    QPushButton plain 'n'     lets it through
+    QListWidget plain Space   lets it through
+
+So a desktop types the letter and the shortcut does not fire, and this
+library would fire the shortcut and swallow the letter. That is a
+design question about the most load-bearing rule in the input path --
+and it reaches the hand-written `Ctrl+A` and `Ctrl+C` exemptions, which
+are this arbitration written out for two chords. Recorded in 0b rather
+than answered here. Space is not a letter, cannot be a mnemonic, and is
+the one the page promises.
+
+**And `test::type()` was lying, which is its own small finding.** Its
+comment said the key code is left at zero "because the text is what the
+router reads" -- true when written and false the moment Space carried
+one, so every test using it typed a space no terminal sends. That is
+`evidence.md`'s stand-in rule exactly: a helper reproducing the half of
+the real thing its author had met. It mirrors the decoder now, and the
+suite is green with the change, which says nothing depended on the old
+shape.
+
+**Its sabotage anchor broke in the edit** -- the third time today the
+spec's `count` guard refused rather than a person noticing.
 
 
 ### 8.333 A list the decoder can derive (2026-09-23)

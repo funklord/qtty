@@ -149,10 +149,19 @@ inline void press(InputRouter &router, int qt_key, bool ctrl = false,
 }
 
 // What a user types, one key event per character. The key code is left at
-// zero because the text is what the router reads.
+// zero because the text is what the router reads -- with ONE exception, and
+// it is the decoder's rather than this helper's.
+//
+// A space arrives from a terminal carrying Qt::Key_Space as well as its
+// text, because QAbstractButton activates on the KEY and a space that was
+// text alone did nothing. A helper that sent text alone would be a stand-in
+// reproducing the half of the real thing its author happened to have met,
+// and every test written with it would be typing a space no terminal sends.
 inline void type(InputRouter &router, const QString &text) {
-	for (const QChar &c : text)
-		router.on_key({0, QString(c), false, false, false});
+	for (const QChar &c : text) {
+		const int key = c == QLatin1Char(' ') ? int(Qt::Key_Space) : 0;
+		router.on_key({Qt::Key(key), QString(c), false, false, false});
+	}
 }
 
 // Alt and a letter, which is how a mnemonic is reached. The LETTER is what

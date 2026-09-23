@@ -456,6 +456,26 @@ int suite_backend() {
 		QCoreApplication::processEvents();
 	}
 
+	// A SPACE CARRIES ITS KEY AS WELL AS ITS TEXT, and it is the only
+	// printable that does. QAbstractButton activates on Qt::Key_Space and
+	// QCheckBox toggles on it, both reading the KEY -- so a space arriving
+	// as text alone did nothing, and the first row but one of the guide's
+	// "what already works" table was false on a terminal.
+	//
+	// The control is the line under it: every other printable still carries
+	// text and no key, so this is a rule about Space rather than a decoder
+	// that has started guessing key codes for characters.
+	feed(" ");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Space
+	      && rec.keys[0].text == QStringLiteral(" "),
+	      "a space byte carries Qt::Key_Space as well as its text, which is "
+	      "what a button and a check box read");
+	feed("a");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == 0
+	      && rec.keys[0].text == QStringLiteral("a"),
+	      "while an ordinary printable still carries text and no key at "
+	      "all, so the rule is about Space and not about guessing codes");
+
 	// Escape is what the disambiguating flag is FOR: without it a lone ESC
 	// and the first byte of a sequence are the same byte, which is why a
 	// terminal program has to tell them apart on a timer.

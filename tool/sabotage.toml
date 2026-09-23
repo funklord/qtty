@@ -5172,8 +5172,8 @@ check = "press fills a printable key's text, shift and all"
 # 8.295.
 name = "the type helper sends a key code instead of characters"
 file = "include/qtty/testing.h"
-find = "\t\trouter.on_key({0, QString(c), false, false, false});"
-into = "\t\trouter.on_key({c.toUpper().unicode(), QString(), false, false, false});"
+find = "\t\trouter.on_key({Qt::Key(key), QString(c), false, false, false});"
+into = "\t\trouter.on_key({Qt::Key(c.toUpper().unicode()), QString(), false, false, false});"
 count = 1
 check = "test::type puts characters in"
 
@@ -5459,3 +5459,11 @@ find = "\t\t\t\t      || key == Qt::Key_J || key == Qt::Key_Space;"
 into = "\t\t\t\t      || key == Qt::Key_J;"
 count = 1
 check = "and Ctrl+Space, whose byte is the 0x00 Ctrl+@ makes"
+
+[[sabotage]]
+name = "a space arrives as text with no key code"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\telse if (c == ' ') { k.qt_key = Qt::Key_Space; k.text = QStringLiteral(\" \"); }"
+into = "\telse if (c == ' ') { k.qt_key = 0; k.text = QStringLiteral(\" \"); }"
+count = 1
+check = "a space byte carries Qt::Key_Space as well as its text"

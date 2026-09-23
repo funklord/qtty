@@ -1459,6 +1459,84 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- Space, which the page promises and which did nothing -------------
+	//
+	// `doc/keyboard-first.md` opens with "what already works, unmodified"
+	// and its second row is "Space activates the focused button, toggles
+	// the focused check box". On a terminal it did neither: the decoder
+	// handed a space back as text with no key code, and both of those
+	// widgets read the KEY.
+	//
+	// Asserted as a RELATIONSHIP rather than as a count of clicks: what the
+	// terminal's own space does must equal what a real Qt space event does
+	// to the same button. A pinned 1 would pass just as loudly against a
+	// button that fires on anything.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(24, 6));
+		auto *v = new QVBoxLayout(&win);
+		auto *cb = new QCheckBox(QStringLiteral("Wrap"));
+		auto *btn = new QPushButton(QStringLiteral("Save"));
+		auto *edit = new QLineEdit;
+		int from_terminal = 0, from_qt = 0;
+		int *counting = &from_terminal;
+		QObject::connect(btn, &QPushButton::clicked, [&] { ++*counting; });
+		v->addWidget(cb);
+		v->addWidget(btn);
+		v->addWidget(edit);
+		win.show();
+		InputRouter r(&win);
+		Qtty::set_current_window(&win);
+		QCoreApplication::processEvents();
+
+		// The event shape the decoder produces for byte 0x20, which is
+		// pinned in suite_backend: the key AND the text.
+		const KeyEvent space{Qt::Key_Space, QStringLiteral(" "),
+		                     false, false, false};
+		cb->setFocus();
+		Qtty::set_focus_widget(win.focusWidget());
+		QCoreApplication::processEvents();
+		r.on_key(space);
+		QCoreApplication::processEvents();
+		CHECK(cb->isChecked(),
+		      "the space a terminal sends toggles the focused check box, "
+		      "which the page has promised since it was written");
+
+		btn->setFocus();
+		Qtty::set_focus_widget(win.focusWidget());
+		QCoreApplication::processEvents();
+		r.on_key(space);
+		QCoreApplication::processEvents();
+		counting = &from_qt;
+		{
+			QKeyEvent press(QEvent::KeyPress, Qt::Key_Space, Qt::NoModifier,
+			                QStringLiteral(" "));
+			QApplication::sendEvent(btn, &press);
+			QKeyEvent release(QEvent::KeyRelease, Qt::Key_Space,
+			                  Qt::NoModifier, QStringLiteral(" "));
+			QApplication::sendEvent(btn, &release);
+		}
+		QCoreApplication::processEvents();
+		CHECK(from_terminal > 0 && from_terminal == from_qt,
+		      "and fires the focused button exactly as a real Qt space "
+		      "event does, which is the relationship rather than a count "
+		      "a button firing on anything would also satisfy");
+
+		// AND IT STILL TYPES. Giving Space a key code is only safe if the
+		// character still reaches a field, which is the half a fix aimed
+		// at buttons would break without anybody noticing until a user
+		// could not put a space in a filename.
+		edit->setFocus();
+		Qtty::set_focus_widget(win.focusWidget());
+		QCoreApplication::processEvents();
+		Qtty::test::type(r, QStringLiteral("a b"));
+		QCoreApplication::processEvents();
+		CHECK(edit->text() == QStringLiteral("a b"),
+		      "while a space typed into a field is still a space, the key "
+		      "code riding along with the text rather than replacing it");
+	}
+
 	// ---- the letters nothing carries --------------------------------------
 	//
 	// mnemonic_conflicts() finds two controls claiming one letter. Until
