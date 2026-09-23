@@ -2183,6 +2183,61 @@ int suite_router() {
 		      "code riding along with the text rather than replacing it");
 	}
 
+	// ---- a tool tip asked for outright ------------------------------------
+	//
+	// Practice 7 said a tool tip never appears, full stop, and that is true
+	// of the HOVER path: no QEvent::ToolTip is delivered, which is asserted
+	// elsewhere and is an open question in 0b. It was NOT true of
+	// QToolTip::showText(), which an application calls outright -- that
+	// draws, composed like any other layer, and the page now says so.
+	//
+	// Composed rather than rendered, because a tool tip is its own
+	// top-level: render_once() on the window could never show it, and the
+	// first reading of this said tool tips were dead for exactly that
+	// reason. The same instrument error the F6 strip taught.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(30, 8));
+		auto *v = new QVBoxLayout(&win);
+		v->addWidget(new QLabel(QStringLiteral("under")));
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Compositor comp(&win, &r);
+		Qtty::set_current_window(&win);
+		CellBuffer before(30, 8);
+		comp.compose(before);
+		QToolTip::showText(QPoint(2 * GridMetrics::cw(),
+		                          2 * GridMetrics::ch()),
+		                   QStringLiteral("a hint"), &win);
+		QCoreApplication::processEvents();
+		CellBuffer after(30, 8);
+		comp.compose(after);
+		const QString shown = after.to_text();
+		QToolTip::hideText();
+		QCoreApplication::processEvents();
+		CHECK(shown.contains(QStringLiteral("a hint"))
+		          && shown.contains(QStringLiteral("under")),
+		      "a tool tip asked for outright is drawn over the window "
+		      "without taking it away, which is the one tool tip route a "
+		      "terminal user will ever see");
+		// THE CONTROL IS THE FRAME BEFORE IT, not the frame after. A
+		// version of this asserted that the words go when hideText() is
+		// called and it went red -- measured, QToolTip::isVisible() is
+		// still true after hideText() and one turn of the loop, because
+		// Qt hides the label on a timer of its own. The compositor was
+		// faithful; a suite that waited for that would be measuring Qt's
+		// timer. Asking the frame BEFORE the tip says the same thing with
+		// nothing to wait for: the words were not in the window.
+		CHECK(!before.to_text().contains(QStringLiteral("a hint"))
+		          && before.to_text().contains(QStringLiteral("under")),
+		      "and they were not in the window before it, so the line "
+		      "above is about the tip rather than about a window that had "
+		      "the words in it all along");
+		GridGuard::reset();
+	}
+
 	// ---- the two exceptions to the helper table ---------------------------
 	//
 	// "Checking it without a terminal" carries a table of which FIELDS of a

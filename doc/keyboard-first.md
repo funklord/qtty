@@ -1083,8 +1083,17 @@ tool tip: a `QToolButton` with an icon and no text is labelled from its
 tool tip, or from its default action's, because a terminal cannot draw
 the icon and a word is what the action already has. Measured before that
 existed, two icon-only actions **occupied four cells between them and
-drew nothing**. So do not depend on a tool tip *appearing* -- it never
-will -- and do write one, or your toolbar is a row of blank cells.
+drew nothing**. So do not depend on a tool tip appearing **by itself**,
+and do write one, or your toolbar is a row of blank cells.
+
+**A tool tip never pops on its own**, because no hover event is
+delivered -- that is what the practice above is about, and a check
+asserts the silence. **`QToolTip::showText()` called outright is a
+different thing and it does draw**, composed like any other layer: the
+words appear at the cell you name, over the window. So where you want a
+transient hint on the screen -- a validation message, a "copied"
+confirmation -- that call is a way to put one there, and it is the one
+tool tip route a terminal user will ever see. Measured, and pinned.
 
 **The same goes for a status tip, and it is read more literally.** With
 the conventions on, `setStatusTip()` follows FOCUS rather than the pointer

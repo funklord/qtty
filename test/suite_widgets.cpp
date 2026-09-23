@@ -949,6 +949,129 @@ int suite_widgets() {
 		      "IN THAT ROW, the mark being toggled rather than set");
 		GridGuard::reset();
 	}
+	// FIVE MORE OF THE NINETY, and the reason each is here is its own.
+	{
+		// A CUSTOM WIDGET DRAWN WITH QStylePainter, which is what Qt's own
+		// documentation tells somebody writing one to use -- so it is the
+		// guide's custom-widget audience reaching for the tool they were
+		// pointed at. It goes through the same drawControl() as everything
+		// else and comes out as a button.
+		struct StyleDrawn : QWidget {
+			using QWidget::QWidget;
+			void paintEvent(QPaintEvent *) override {
+				QStylePainter p(this);
+				QStyleOptionButton o;
+				o.initFrom(this);
+				o.text = QStringLiteral("Custom");
+				o.rect = rect();
+				p.drawControl(QStyle::CE_PushButton, o);
+			}
+		};
+		QWidget w;
+		w.setAttribute(Qt::WA_DontShowOnScreen);
+		w.resize(GridMetrics::cells(20, 4));
+		auto *v = new QVBoxLayout(&w);
+		v->addWidget(new StyleDrawn);
+		w.show();
+		QCoreApplication::processEvents();
+		CHECK(Qtty::test::snapshot_of(w, 20, 4)
+		          .contains(QStringLiteral("<Custom>")),
+		      "a custom widget that draws itself through QStylePainter gets "
+		      "the same brackets as a push button, the tool Qt points a "
+		      "widget author at going through this style like any other");
+		GridGuard::reset();
+	}
+	{
+		// A QFocusFrame, which draws a frame AROUND a widget and is the
+		// same hazard the rubber band turned out to be. It draws nothing
+		// here, and nothing is the right answer: focus is the router's
+		// mark, and a frame would cover the field it decorates.
+		const auto render = [](bool framed) {
+			QWidget w;
+			w.setAttribute(Qt::WA_DontShowOnScreen);
+			w.resize(GridMetrics::cells(20, 5));
+			auto *v = new QVBoxLayout(&w);
+			auto *edit = new QLineEdit(QStringLiteral("text"));
+			v->addWidget(edit);
+			w.show();
+			QCoreApplication::processEvents();
+			if (framed) {
+				auto *ff = new QFocusFrame(&w);
+				ff->setWidget(edit);
+				QCoreApplication::processEvents();
+			}
+			return Qtty::test::snapshot_of(w, 20, 5);
+		};
+		CHECK(render(false).contains(QStringLiteral("[text"))
+		          && render(true) == render(false),
+		      "a QFocusFrame changes no cell, which is the right answer "
+		      "rather than an absent one: focus is drawn by the router and "
+		      "a frame would cover the field it decorates");
+		GridGuard::reset();
+	}
+	{
+		// A QColumnView, a stock item view nothing here had drawn.
+		QWidget w;
+		w.setAttribute(Qt::WA_DontShowOnScreen);
+		w.resize(GridMetrics::cells(40, 8));
+		auto *v = new QVBoxLayout(&w);
+		auto *cv = new QColumnView;
+		auto *model = new QStandardItemModel(cv);
+		auto *root = new QStandardItem(QStringLiteral("src"));
+		root->appendRow(new QStandardItem(QStringLiteral("main.cpp")));
+		model->appendRow(root);
+		model->appendRow(new QStandardItem(QStringLiteral("README")));
+		cv->setModel(model);
+		v->addWidget(cv);
+		w.show();
+		QCoreApplication::processEvents();
+		const QString drawn = Qtty::test::snapshot_of(w, 40, 8);
+		CHECK(drawn.contains(QStringLiteral("src"))
+		          && drawn.contains(QStringLiteral("README")),
+		      "a column view draws its first column's names, which is the "
+		      "one thing a reader needs from it");
+		GridGuard::reset();
+	}
+	{
+		// A QTimeEdit beside the QDateTimeEdit already covered, and a
+		// QButtonGroup, which is how exclusivity is usually expressed.
+		QWidget w;
+		w.setAttribute(Qt::WA_DontShowOnScreen);
+		w.resize(GridMetrics::cells(20, 6));
+		auto *v = new QVBoxLayout(&w);
+		auto *te = new QTimeEdit(QTime(9, 30));
+		v->addWidget(te);
+		auto *g = new QButtonGroup(&w);
+		auto *one = new QRadioButton(QStringLiteral("One"));
+		auto *two = new QRadioButton(QStringLiteral("Two"));
+		g->addButton(one);
+		g->addButton(two);
+		one->setChecked(true);
+		v->addWidget(one);
+		v->addWidget(two);
+		w.show();
+		QCoreApplication::processEvents();
+		const QString drawn = Qtty::test::snapshot_of(w, 20, 6);
+		InputRouter r(&w);
+		Qtty::set_current_window(&w);
+		te->setFocus();
+		Qtty::set_focus_widget(w.focusWidget());
+		QCoreApplication::processEvents();
+		const QTime was = te->time();
+		r.on_key({Qt::Key_Up, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(drawn.contains(QStringLiteral("9:30"))
+		          && drawn.contains(QStringLiteral("▴▾]"))
+		          && te->time() != was,
+		      "a time edit draws its time in the spin box's own brackets "
+		      "and steps on Up");
+		CHECK(drawn.contains(QStringLiteral("(o) One"))
+		          && drawn.contains(QStringLiteral("( ) Two"))
+		          && g->exclusive(),
+		      "and a QButtonGroup's radios draw the chosen one and the "
+		      "rest, which is the mark the vocabulary publishes");
+		GridGuard::reset();
+	}
 	// scrollbar column: arrows, thumb, groove (F5 fix)
 	{
 		QListView list;

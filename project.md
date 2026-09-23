@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-22
 
-2008 checks, 0 failures, and **4.5 seconds of user time** --
+2015 checks, 0 failures, and **4.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
 wall each time.
@@ -17845,6 +17845,50 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.341 A tool tip the page said would never appear (2026-09-23)
+
+**The sweep's third pass, and it corrected the page again.** Practice 7
+said "do not depend on a tool tip *appearing* -- it never will". That is
+true of the HOVER path, where no `QEvent::ToolTip` is delivered and an
+open question in 0b. It was **not** true of `QToolTip::showText()`,
+which an application calls outright: composed, the words appear at the
+cell named, over the window, which stays drawn underneath.
+
+So a terminal application that wants a transient hint on screen -- a
+validation message, a "copied" confirmation -- has a route, and the page
+was telling it there was none.
+
+**Two instrument errors on the way, both the same one.** The first
+reading used `render_once()` on the window and saw nothing, because a
+tool tip is its own top-level and that call renders one widget; the F6
+strip taught exactly this and it was made again within the hour.
+**Compose, do not render, whenever the question is about a layer.**
+
+The second was in the control. A version asserted that the words go when
+`hideText()` is called, and it went red -- measured,
+`QToolTip::isVisible()` is still true after `hideText()` and a turn of
+the loop, because Qt hides the label on a timer of its own. The
+compositor was faithful and a suite waiting for that would be measuring
+Qt's timer. **The control is the frame BEFORE the tip**, which says the
+same thing with nothing to wait for.
+
+**Five more of the ninety, all of them working.** A custom widget drawn
+through `QStylePainter` -- which is the tool Qt's documentation points a
+widget author at, so it is the guide's own audience -- comes out with
+the push button's brackets. A `QFocusFrame` changes no cell, and nothing
+is the right answer rather than an absent one: focus is the router's
+mark and a frame would cover the field it decorates. A `QColumnView`
+draws its names, a `QTimeEdit` draws `9:30` in the spin box's brackets
+and steps on `Up`, and a `QButtonGroup`'s radios draw the vocabulary's
+own `(o)` and `( )`.
+
+**Thirteen of the ninety now have checks**, and the sweep has produced
+one defect (the rubber band), one measured difference (the legacy
+delegate's cell) and one page correction. An archetype walk asks what an
+application does; this asks what it could reach, and the two have not
+overlapped once.
 
 
 ### 8.340 A rubber band that hid what it was selecting (2026-09-23)
