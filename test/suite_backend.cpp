@@ -383,6 +383,79 @@ int suite_backend() {
 	      "while the protocol says Ctrl+Space, which is the difference "
 	      "the report exists to name");
 
+	// THE FAMILY DERIVED RATHER THAN LISTED, which is the check that would
+	// have caught the missing Ctrl+Space the day ambiguous_chords() was
+	// written. That report carries its members by hand, and a hand list is
+	// a population somebody has to remember to grow: this one was short by
+	// one for its whole life and nothing noticed, because every check
+	// asserted the members it already had.
+	//
+	// So walk the range where ASCII DETERMINES the byte -- Space, and
+	// @ A..Z [ backslash ] ^ _ , which is 0x40..0x5f -- feed each chord's
+	// byte to the real decoder, and call a chord ambiguous when what comes
+	// back is not that chord. Then bind every one of them in a window and
+	// require the report to name exactly the set the decoder produced.
+	// Neither side is allowed to be the other's author.
+	//
+	// Outside that range a terminal chooses by convention rather than by
+	// arithmetic -- Ctrl+/ is 0x2f, and 0x2f & 0x1f is 0x0f which is
+	// Ctrl+O, not the 0x1f those terminals actually send -- so the walk
+	// stops where the rule does, and the report is right not to claim them.
+	{
+		QStringList derived;
+		const auto chord_of = [](int ch) {
+			return QKeySequence(QKeyCombination(Qt::ControlModifier,
+			                                   Qt::Key(ch)))
+			    .toString(QKeySequence::NativeText);
+		};
+		for (int ch = 0x20; ch <= 0x5f; ++ch) {
+			if (ch != 0x20 && ch < 0x40) continue;
+			if ((ch & 0x1f) == 0x1b) continue;        // ESC, below
+			feed(QByteArray(1, char(ch & 0x1f)));
+			const bool same = rec.keys.size() == 1
+			                  && rec.keys[0].qt_key == ch
+			                  && rec.keys[0].ctrl;
+			if (!same) derived << chord_of(ch);
+		}
+		// ESC LAST AND ON ITS OWN, because a lone ESC stays buffered
+		// waiting for the rest of a sequence -- so the next byte fed
+		// completes it and the case after this one would be measuring an
+		// Alt chord. The first draft of this walk did exactly that and
+		// reported Ctrl+backslash as an empty event; the finding was the
+		// instrument's. CSI 27u afterwards is a complete Escape, which
+		// both drains the pending byte and leaves the decoder clean.
+		feed("\033");
+		const bool esc_quiet = rec.keys.isEmpty();
+		if (esc_quiet) derived << chord_of(Qt::Key_BracketLeft);
+		feed("[27u");
+
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(40, 10));
+		for (int ch = 0x20; ch <= 0x5f; ++ch) {
+			if (ch != 0x20 && ch < 0x40) continue;
+			auto *a = new QAction(chord_of(ch), &win);
+			a->setShortcut(QKeySequence(
+			    QKeyCombination(Qt::ControlModifier, Qt::Key(ch))));
+			win.addAction(a);
+		}
+		win.show();
+		QCoreApplication::processEvents();
+		QStringList named;
+		for (const auto &row : Qtty::ambiguous_chords(&win))
+			named << row.first;
+		named.sort();
+		derived.sort();
+		printf("info: the decoder makes %d chord(s) ambiguous, the report "
+		       "names %d\n", int(derived.size()), int(named.size()));
+		CHECK(esc_quiet && derived.size() == 6 && named == derived,
+		      "the chords the decoder actually confuses are exactly the "
+		      "chords the report names, derived from the bytes rather "
+		      "than from the list the report carries");
+		win.hide();
+		QCoreApplication::processEvents();
+	}
+
 	// Escape is what the disambiguating flag is FOR: without it a lone ESC
 	// and the first byte of a sequence are the same byte, which is why a
 	// terminal program has to tell them apart on a timer.

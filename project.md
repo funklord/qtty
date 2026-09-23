@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-22
 
-1987 checks, 0 failures, and **4.5 seconds of user time** --
+1988 checks, 0 failures, and **4.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
 wall each time.
@@ -17844,6 +17844,46 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.333 A list the decoder can derive (2026-09-23)
+
+**The lens 8.332 handed over: where else is a hand-written list doing a
+rule's job?** That entry found `ambiguous_chords()` short by one member
+of a family for its whole life, and the reason it survived is the shape
+worth naming -- **every check asserted the members the list already
+had**, so the list was its own witness.
+
+**The decoder can derive the whole family, and does.** Over the range
+where ASCII determines the byte -- Space, and `@ A..Z [ \ ] ^ _`, which
+is `0x40..0x5f` -- feed each chord's `X & 0x1f` to the real decoder and
+ask what comes back. A chord is ambiguous when the answer is not that
+chord. Run against the shipped decoder this produces **exactly six**:
+`Ctrl+Space`, `Ctrl+H`, `Ctrl+I`, `Ctrl+J`, `Ctrl+M`, `Ctrl+[` -- the
+list, with no hand in it.
+
+**So the check derives its own population and compares.** Every chord in
+the range is bound in a window, `ambiguous_chords()` is asked, and the
+two sets must be equal. Neither side is allowed to be the other's
+author, which is the whole point: this check would have gone red the day
+the report was written, a year before anybody thought to press
+`Ctrl+Space`.
+
+**The library keeps the hand list, deliberately.** Deriving at run time
+needs a byte stream and the report is headless by design; deriving at
+compile time would mean a second copy of the decoder's mapping inside
+the router, which is the two-writers fault this tree keeps paying for.
+A test is the right place for a derivation whose inputs only a test has.
+
+**And the first draft of the walk produced a seventh chord that does not
+exist.** `Ctrl+\` came back as an empty event -- and the cause was that
+a lone ESC, which is `Ctrl+[`, stays buffered waiting for the rest of a
+sequence, so the NEXT byte completed it and what was measured was an Alt
+chord. The finding was the instrument's, which is where a surprising
+result usually lives. ESC is fed last and on its own now, with a
+`CSI 27u` after it to drain the pending byte and leave the decoder clean
+for the cases that follow -- and the comment says so, because the next
+person to extend this walk will reach for a loop.
 
 
 ### 8.332 The sixth ambiguous chord (2026-09-23)
