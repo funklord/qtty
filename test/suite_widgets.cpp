@@ -875,6 +875,80 @@ int suite_widgets() {
 		      "and keeps the hex field a keyboard user actually types into");
 		GridGuard::reset();
 	}
+	// A RUBBER BAND MARKS ITS CELLS RATHER THAN COVERING THEM, which is a
+	// documented route with nothing readable at the end of it until now:
+	// practice 13 names rubber-band selection as what a drag in a view
+	// falls back to, and QCommonStyle draws a band as a filled rectangle
+	// with a frame. Measured before the fix, a band over four rows of a
+	// list replaced every one of them with box-drawing glyphs -- a drag to
+	// select hid exactly the rows it was selecting.
+	{
+		const auto render = [](bool selected, bool band) {
+			QWidget w;
+			w.setAttribute(Qt::WA_DontShowOnScreen);
+			w.resize(GridMetrics::cells(20, 6));
+			auto *v = new QVBoxLayout(&w);
+			auto *list = new QListWidget;
+			list->setFrameShape(QFrame::NoFrame);
+			list->setSelectionMode(QAbstractItemView::ExtendedSelection);
+			for (int i = 0; i < 4; ++i)
+				new QListWidgetItem(QStringLiteral("row %1").arg(i), list);
+			v->addWidget(list);
+			w.show();
+			if (selected) list->item(0)->setSelected(true);
+			QCoreApplication::processEvents();
+			if (band) {
+				auto *rb = new QRubberBand(QRubberBand::Rectangle,
+				                           list->viewport());
+				rb->setGeometry(0, 0, GridMetrics::cw() * 8,
+				                GridMetrics::ch() * 4);
+				rb->show();
+				QCoreApplication::processEvents();
+			}
+			CellBuffer b(20, 6);
+			render_once(w, b);
+			QString text, marks;
+			for (int y = 0; y < 4; ++y) {
+				for (int x = 0; x < b.cols(); ++x) {
+					text += b.at(x, y).ch;
+					marks += (b.at(x, y).attrs & Attr::Reverse)
+					             ? QLatin1Char('R') : QLatin1Char('.');
+				}
+			}
+			return QPair<QString, QString>(text, marks);
+		};
+		const QPair<QString, QString> plain = render(false, false);
+		const QPair<QString, QString> banded = render(false, true);
+		CHECK(plain.first.contains(QStringLiteral("row 3"))
+		          && banded.first == plain.first,
+		      "a rubber band over four rows leaves every glyph under it "
+		      "exactly as it was, so a drag to select does not hide what "
+		      "it is selecting");
+		CHECK(banded.second != plain.second
+		          && banded.second.count(QLatin1Char('R')) == 32,
+		      "and marks its own cells instead -- eight columns of four "
+		      "rows, which is the band and nothing else");
+
+		// AND IT IS VISIBLE OVER AN ALREADY-SELECTED ROW, which is why the
+		// mark is toggled rather than set: a band is a provisional
+		// selection dragged across rows that may already be selected, and
+		// setting reverse would make it invisible over exactly those.
+		const QPair<QString, QString> chosen = render(true, false);
+		const QPair<QString, QString> both = render(true, true);
+		// LOOKED AT IN THE SELECTED ROW ALONE, which the first version of
+		// this did not: it compared the whole four-row map, and rows one
+		// to three change whichever way the mark is applied -- so the
+		// sabotage that set instead of toggling left it green. A control
+		// that can fire is not a control aimed at the population the
+		// thing it guards actually fails in.
+		const int cols = 20;
+		const QString chosen_row0 = chosen.second.left(cols).left(9);
+		const QString both_row0 = both.second.left(cols).left(9);
+		CHECK(both.first == chosen.first && both_row0 != chosen_row0,
+		      "a band over a row that is already selected still shows "
+		      "IN THAT ROW, the mark being toggled rather than set");
+		GridGuard::reset();
+	}
 	// scrollbar column: arrows, thumb, groove (F5 fix)
 	{
 		QListView list;

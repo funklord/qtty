@@ -2431,6 +2431,34 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 		// meant to and once by something with no business painting.
 		case CE_ToolBar:
 			return;
+		case CE_RubberBand:
+			// A RUBBER BAND MARKS ITS CELLS RATHER THAN COVERING THEM.
+			// QCommonStyle draws one as a filled rectangle with a frame,
+			// which on a grid puts box-drawing glyphs and a ground where
+			// the content is -- measured, a band over four rows of a list
+			// replaced every one of them, so a drag to select hid exactly
+			// the rows it was selecting. Practice 13 of the guide names
+			// rubber-band selection as what a drag falls back to, so this
+			// is a documented route with nothing readable at the end of it.
+			//
+			// XOR rather than set, which is the terminal's own idiom and
+			// not a flourish: a band is a PROVISIONAL selection and it is
+			// dragged across rows that may already be selected. Setting
+			// reverse would make it invisible over those; toggling shows
+			// it against both grounds, and a row inside the band always
+			// differs from the same row outside it.
+			//
+			// The glyphs are left exactly as they were, which is the whole
+			// point: read the cell, change the attribute, write it back.
+			for (int y = c.top(); y <= c.bottom(); ++y) {
+				for (int x = c.left(); x <= c.right(); ++x) {
+					if (!dev->buffer().writable(x, y)) continue;
+					Cell v = dev->buffer().at(x, y);
+					v.attrs ^= Attrs(Attr::Reverse);
+					dev->buffer().fill(QRect(x, y, 1, 1), v);
+				}
+			}
+			return;
 		case CE_ItemViewItem:                          // list/table/tree cells
 			if (auto *vi = qstyleoption_cast<const QStyleOptionViewItem *>(opt)) {
 				Attrs mark = (opt->state & State_Selected) ? Attrs(Attr::Reverse)

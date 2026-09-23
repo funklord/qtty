@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-22
 
-2005 checks, 0 failures, and **4.5 seconds of user time** --
+2008 checks, 0 failures, and **4.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
 wall each time.
@@ -17845,6 +17845,76 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.340 A rubber band that hid what it was selecting (2026-09-23)
+
+**The population sweep's second pass, and this one is a defect rather
+than a difference.** `QRubberBand` is one of the ninety classes the tree
+does not mention -- and practice 13 of the guide names rubber-band
+selection as what a drag in a view falls back to, so it is a DOCUMENTED
+route with nothing readable at the end of it.
+
+`QCommonStyle` draws a band as a filled rectangle with a frame. On a
+character grid that puts box-drawing glyphs and a ground where the
+content is. Measured before the fix, a band over four rows of a list:
+
+    ╱───────      the four rows it covers, and not one of their names
+    │      │
+    │      │
+    ───────│
+
+**So a drag to select hid exactly the rows it was selecting.**
+
+`GridStyle` answers `CE_RubberBand` now: read each covered cell, toggle
+`Attr::Reverse`, write it back. **The glyphs are left exactly as they
+were**, which is the whole point -- the band is an attribute over the
+content rather than a thing drawn on top of it.
+
+**XOR rather than set, and that is not a flourish.** A band is a
+PROVISIONAL selection and it is dragged across rows that may already be
+selected; setting reverse would make it invisible over exactly those.
+Measured both ways: over a plain row the band reads as a reversed run,
+and over an already-selected row it reads as the UN-reversed run inside
+a reversed one. Visible against both grounds, and a row inside the band
+always differs from the same row outside it.
+
+**Three checks and two sabotages.** The glyphs under the band are
+byte-identical to the unbanded render; the band marks 32 cells and
+nothing else; and a band over a selected row still shows. One sabotage
+blanks the glyph inside the loop to bring the covering back, the other
+turns the `^=` into `|=` to show the toggle is what makes it visible
+over a selection.
+
+**THE SECOND SABOTAGE FAILED FIRST TIME, and the fault was the check.**
+Setting instead of toggling left every check green. The reason is the
+one `evidence.md` names: the check compared the whole FOUR-ROW
+attribute map, and rows one to three change whichever way the mark is
+applied -- so the single row that discriminates, the already-selected
+one, was drowned out by three that do not. Capable of firing, and not
+aimed at the population the thing it guards fails in. It looks at the
+selected row alone now, where `^=` turns reverse into plain and `|=`
+changes nothing.
+
+**And `--validate` accepted a sabotage that could not have compiled.**
+The first draft of the other entry renamed the `case` label to one the
+enum does not have. Validation asks whether the ANCHOR matches, not
+whether the result builds, so that class is caught on the run rather
+than on validation -- late, but not silent. Worth knowing before
+trusting `--validate` as more than an anchor check.
+
+**Both of the day's sabotage failures were of this kind**: one found an
+untestable branch in code written an hour earlier (8.331), this one a
+check that could not see what it claimed to guard. Neither was the
+library being wrong, and neither would have been found by reading.
+
+**And the first draft of that first sabotage would not have compiled.**
+It renamed the `case` label to one the enum does not have, and
+`--validate` accepted it -- because validation asks whether the ANCHOR
+matches, not whether the result builds. A sabotage that fails to compile
+is caught on the run rather than on validation, which is late but not
+silent; the entry edits a statement now. Worth knowing before trusting
+`--validate` as more than an anchor check.
 
 
 ### 8.339 Ninety classes nobody had tried (2026-09-23)

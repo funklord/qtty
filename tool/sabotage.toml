@@ -5475,3 +5475,19 @@ find = "\t\t\t{ \"`Ctrl+Z`\",                                      13 },"
 into = "\t\t\t{ \"`Ctrl+Z` (undo)\",                               13 },"
 count = 1
 check = "the rows the page promises are the rows this check drives"
+
+[[sabotage]]
+name = "a rubber band covers what it is selecting"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\tCell v = dev->buffer().at(x, y);"
+into = "\t\t\t\t\tCell v = dev->buffer().at(x, y); v.ch = QStringLiteral(\" \");"
+count = 1
+check = "a rubber band over four rows leaves every glyph under it"
+
+[[sabotage]]
+name = "a rubber band sets its mark instead of toggling it"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\tv.attrs ^= Attrs(Attr::Reverse);"
+into = "\t\t\t\t\tv.attrs |= Attrs(Attr::Reverse);"
+count = 1
+check = "a band over a row that is already selected still shows"
