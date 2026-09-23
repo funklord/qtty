@@ -12169,6 +12169,54 @@ int suite_router() {
 			      "anywhere in it");
 			GridGuard::reset();
 		}
+
+		// AND WITHOUT THE OPTION, which is the half the check above does
+		// not reach. The guide tells an application it does not need
+		// DontUseNativeDialog and says so from a past measurement; the
+		// check that stands behind the promise sets the option, so the
+		// sentence a reader acts on had nothing holding it.
+		//
+		// Asserted as the RELATIONSHIP -- the same dialog with and
+		// without it has the same widgets -- rather than by naming a
+		// class, because what matters is that the option changes
+		// nothing here.
+		//
+		// The reason it changes nothing is stronger than the page said,
+		// and worth knowing: a native file dialog would come from a
+		// PLATFORM THEME, and prepare_environment() pins
+		// QT_QPA_PLATFORMTHEME empty. So this holds under a desktop that
+		// sets one globally, which is the condition the suite's own
+		// hostile-environment arm runs in.
+		{
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			host.resize(GridMetrics::cells(80, 24));
+			host.show();
+			QCoreApplication::processEvents();
+			const auto shape = [&host](bool option) {
+				QFileDialog dlg(&host, QStringLiteral("Open"));
+				if (option)
+					dlg.setOption(QFileDialog::DontUseNativeDialog, true);
+				dlg.setAttribute(Qt::WA_DontShowOnScreen);
+				dlg.resize(GridMetrics::cells(60, 18));
+				dlg.show();
+				QCoreApplication::processEvents();
+				const int edits = dlg.findChildren<QLineEdit *>().size();
+				const int lists = dlg.findChildren<QListView *>().size();
+				const int buttons = dlg.findChildren<QAbstractButton *>().size();
+				dlg.hide();
+				QCoreApplication::processEvents();
+				return QVector<int>{edits, lists, buttons};
+			};
+			const QVector<int> without = shape(false);
+			const QVector<int> with = shape(true);
+			CHECK(without.value(0) > 0 && without.value(1) > 0
+			          && without.value(2) > 0 && without == with,
+			      "a file dialog built without DontUseNativeDialog has the "
+			      "same widgets as one built with it, so the option the "
+			      "guide says you do not need really is not needed");
+			GridGuard::reset();
+		}
 	}
 
 	// ---- F10 into the menu bar -------------------------------------------

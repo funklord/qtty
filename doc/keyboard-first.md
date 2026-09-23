@@ -2016,9 +2016,15 @@ widget arrives -- the places sidebar, the file list with its columns, the
 name field, the filter combo, Open and Cancel -- and a person can drive
 it with no pointer at all: type a name, press `Return`, and your
 `selectedFiles()` holds the path. You do **not** need
-`DontUseNativeDialog`: this platform offers no native dialog, so Qt uses
-its own without being asked. Measured end to end, with and without the
-option.
+`DontUseNativeDialog`: Qt uses its own without being asked. Measured end
+to end with the option, and a second check asserts that the dialog
+without it has the same widgets.
+
+**The reason is worth knowing, because it is not "this platform has no
+native dialog".** A native one would come from a **platform theme**, and
+`Qtty::prepare_environment()` pins `QT_QPA_PLATFORMTHEME` empty -- so
+the promise holds on a desktop that sets one globally, which is what
+distributions do.
 
 **A modal gets a box, and its title goes in the top rule.** A desktop's
 window manager draws a dialog's frame and name; a terminal has no window

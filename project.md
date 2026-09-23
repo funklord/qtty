@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-22
 
-2000 checks, 0 failures, and **4.5 seconds of user time** --
+2001 checks, 0 failures, and **4.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
 wall each time.
@@ -17845,6 +17845,47 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.338 A promise held by half a check (2026-09-23)
+
+**A sixth archetype walked, and it came back clean: nested modals.**
+Settings opens a sub-dialog opens a message box is where a router's idea
+of "the current layer" is likeliest to be one layer behind, because
+`exec()` is a nested event loop under a nested event loop. Driven both
+ways -- `open()` and `exec()` -- Escape unwinds exactly one layer at a
+time, `exec()` returns `Rejected` at each depth, `keyboard_reachable()`
+asked at the deepest layer reports that layer's widgets, and focus comes
+back to the field the window started on. **Method recorded because the
+absence is the result**: two nestings, four Escapes, and the audit asked
+from inside the innermost loop.
+
+**Then the file dialog, which is the biggest promise on the page.** The
+guide tells an application it does **not** need `DontUseNativeDialog`
+and says so as a past measurement, "with and without the option". The
+check standing behind it **sets the option**. So the sentence a reader
+acts on -- the one that says do nothing -- had nothing holding it.
+
+Measured: without the option the dialog has the same name edit, the same
+list view and the same eight buttons. That is pinned now, as a
+relationship rather than by naming a class, because what matters is that
+the option changes nothing.
+
+**And the page's REASON was wrong, which is the part worth keeping.** It
+said "this platform offers no native dialog". A native file dialog does
+not come from the platform -- it comes from a **platform theme**, and
+`prepare_environment()` pins `QT_QPA_PLATFORMTHEME` empty for reasons
+`application.cpp` sets out at length (a gtk3 theme supplied per-class
+fonts, 14 of 22 palette roles and 20 of 71 key bindings under the
+offscreen platform). So the promise holds on a desktop that sets a theme
+globally, which is what distributions do -- and it holds *because of the
+pin*, not because the platform is bare.
+
+**A true conclusion resting on a wrong reason is the shape this keeps
+finding.** It reads as settled, so nobody re-derives it, and it stops
+being true the day the reason stops applying rather than the day the
+conclusion does. Here the conclusion is safer than the page claimed;
+that is luck, not diligence.
 
 
 ### 8.337 Two exceptions to the table fixtures are written from (2026-09-23)
