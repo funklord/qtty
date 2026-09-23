@@ -5077,6 +5077,21 @@ int suite_router() {
 			act("&Paste special", "Ctrl+Shift+V");
 			act("&Bracket", "Ctrl+[");
 			act("&Plain", "F5");
+			// THE SIXTH, which this report did not know about until it
+			// was measured end to end: Space is 0x20, so Ctrl+Space is
+			// the 0x00 that Ctrl+@ produces, and the decoder hands it
+			// back as Ctrl+@. Completion in an editor, toggling a row in
+			// a file manager -- an application reaches for it constantly
+			// and it was silently dead while this report said the window
+			// was clean.
+			act("&Complete", "Ctrl+Space");
+			// And the three that are NOT named, pinned so the report
+			// cannot quietly acquire a claim about terminals nobody
+			// here has measured: these fail by each terminal's own
+			// convention rather than by the ASCII arithmetic.
+			act("Comment", "Ctrl+/");
+			act("Query", "Ctrl+?");
+			act("At", "Ctrl+@");
 			win.show();
 			QCoreApplication::processEvents();
 
@@ -5097,6 +5112,24 @@ int suite_router() {
 			      "and a shifted control chord, which cannot be sent at "
 			      "all because a control byte carries no shift bit");
 
+			CHECK(named.contains(QStringLiteral("Ctrl+Space")),
+			      "and Ctrl+Space, whose byte is the 0x00 Ctrl+@ makes "
+			      "-- the quiet one, since nothing binds Ctrl+@ so the "
+			      "key does nothing rather than something wrong");
+
+			// WHAT IT DOES NOT CLAIM, pinned in the same breath. These
+			// three do fail on many terminals and they fail by each
+			// terminal's convention rather than by the arithmetic, so
+			// naming them would be this report describing terminals it
+			// has not measured. Ctrl+@ itself is the one chord in this
+			// family that IS delivered.
+			CHECK(!named.contains(QStringLiteral("Ctrl+/"))
+			          && !named.contains(QStringLiteral("Ctrl+?"))
+			          && !named.contains(QStringLiteral("Ctrl+@")),
+			      "while Ctrl+/ and Ctrl+? are not, failing by a "
+			      "terminal's convention rather than by ASCII, and "
+			      "Ctrl+@ is not because it is what actually arrives");
+
 			// THE CONTROL, and it is what keeps this from being a report
 			// that names every binding: an ordinary Ctrl+letter is sent
 			// and means itself, and a function key is not a control byte
@@ -5106,9 +5139,9 @@ int suite_router() {
 			      "while an ordinary Ctrl+letter and a function key are "
 			      "not, so this is a report an application can act on "
 			      "rather than one it learns to ignore");
-			CHECK(named.size() == 5,
-			      "and nothing else in a window holding seven bindings, "
-			      "five of which are the ones planted");
+			CHECK(named.size() == 6,
+			      "and nothing else in a window holding eleven bindings, "
+			      "six of which are the ones planted");
 
 			CHECK(labels.contains(QStringLiteral("Italic")),
 			      "each is named with the action's own text, its mnemonic "

@@ -333,8 +333,9 @@ int suite_backend() {
 	// the binding is not merely dead, the key does a different thing, and
 	// the user watching the focus move has no way to guess why.
 	//
-	// Five of them, and they are all chords an application would plausibly
-	// choose: Ctrl+I for italic, Ctrl+M for a mark, Ctrl+H for help.
+	// Six of them, and they are all chords an application would plausibly
+	// choose: Ctrl+I for italic, Ctrl+M for a mark, Ctrl+H for help,
+	// Ctrl+Space for completion.
 	feed("\t");
 	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Tab
 	      && !rec.keys[0].ctrl,
@@ -361,6 +362,26 @@ int suite_backend() {
 	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_H
 	      && rec.keys[0].ctrl && bs.qt_key != Qt::Key_H,
 	      "and Ctrl+H, whose legacy byte is a Backspace rather than an H");
+
+	// AND CTRL+SPACE, the sixth and the one that was missing from every
+	// table here until it was measured. Space is 0x20 and 0x20 & 0x1f is
+	// 0x00, which is the byte Ctrl+@ produces -- so the decoder is right
+	// to hand back Ctrl+@, and an application that bound Ctrl+Space is
+	// left with a key that does nothing.
+	//
+	// Nothing rather than something wrong, which is what makes it the
+	// quiet member of the family: Tab moves the focus, so Ctrl+I is
+	// visibly broken, while almost nothing binds Ctrl+@.
+	feed(QByteArray(1, '\0'));
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_At
+	      && rec.keys[0].ctrl,
+	      "and Ctrl+Space is byte 0x00, which is Ctrl+@ -- so a binding "
+	      "on it is answered by a chord almost nothing carries");
+	feed("\033[32;5u");
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Space
+	      && rec.keys[0].ctrl,
+	      "while the protocol says Ctrl+Space, which is the difference "
+	      "the report exists to name");
 
 	// Escape is what the disambiguating flag is FOR: without it a lone ESC
 	// and the first byte of a sequence are the same byte, which is why a

@@ -526,7 +526,7 @@ means.
 
 **And five chords are not unsendable but AMBIGUOUS, which is the worse
 half.** A shifted control chord is silently *unbound* -- you press it
-and nothing happens, which at least looks like a bug. These five are
+and nothing happens, which at least looks like a bug. These six are
 sendable and mean something else, because the control byte an ASCII
 keyboard produces for them is a key in its own right:
 
@@ -537,6 +537,7 @@ keyboard produces for them is a key in its own right:
 | `Ctrl+[` | `0x1b` | `Escape` -- a dialog rejects |
 | `Ctrl+H` | `0x08` | `Backspace` -- a character is deleted |
 | `Ctrl+J` | `0x0a` | a line feed |
+| `Ctrl+Space` | `0x00` | `Ctrl+@` -- which nothing is usually bound to, so the key does nothing at all |
 
 Measured through the decoder: `Ctrl+I` arrives as `Key_Tab` **with no
 ctrl on it at all**, so nothing downstream can tell it from a real
@@ -544,6 +545,21 @@ ctrl on it at all**, so nothing downstream can tell it from a real
 -- to Qt those are two different key sequences and they are, right up
 until the wire. With the protocol the same keypress arrives as `Key_I`
 with ctrl.
+
+**`Ctrl+Space` is the one to watch, and it was missing from this table
+until somebody measured it.** It is a chord applications reach for
+constantly -- completion in an editor, toggling a row in a file manager
+-- and Space is `0x20`, so `Ctrl+Space` is `0x00`, which is the byte
+`Ctrl+@` produces. Fed a NUL through the decoder end to end: it arrives
+as `Ctrl+@`, a `Ctrl+Space` action does **not** fire, and a `Ctrl+@` one
+does. Almost nothing binds `Ctrl+@`, so unlike the five above it does not
+do the wrong thing; it does nothing, which is harder to notice.
+
+`Ctrl+/`, `Ctrl+?` and `Ctrl+2` fail on many terminals too and are
+deliberately **not** in the table: they fail by each terminal's own
+convention rather than by the arithmetic above, and a report that named
+them would be describing terminals nobody here has measured. If you bind
+one, test it on the terminals you care about.
 
 **You can assert that you have none**, which is the tenth question under
 *Checking it without a terminal*:

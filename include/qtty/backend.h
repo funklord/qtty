@@ -82,19 +82,23 @@ struct Capabilities {
 	// protocol on, such a key arrives as CSI <code> ; <modifiers> u and the
 	// shift is in the modifiers.
 	//
-	// AND FIVE CHORDS ARE NOT UNSENDABLE BUT AMBIGUOUS, which is the worse
+	// AND SIX CHORDS ARE NOT UNSENDABLE BUT AMBIGUOUS, which is the worse
 	// half and is easy to miss beside the first. The control byte for
 	// Ctrl+I is 0x09, and 0x09 is Tab; measured, it arrives as Key_Tab with
 	// no ctrl on it at all, while the protocol delivers Key_I with ctrl.
 	// So the binding is not silently dead, the key silently does something
 	// ELSE -- and a user watching the focus jump has nothing to go on.
 	//
-	//     Ctrl+I  0x09  Tab          Ctrl+[  0x1b  Escape
-	//     Ctrl+M  0x0d  Return       Ctrl+H  0x08  Backspace
-	//     Ctrl+J  0x0a  Line feed
+	//     Ctrl+I      0x09  Tab          Ctrl+[  0x1b  Escape
+	//     Ctrl+M      0x0d  Return       Ctrl+H  0x08  Backspace
+	//     Ctrl+J      0x0a  Line feed    Ctrl+Space  0x00  Ctrl+@
 	//
 	// Every one is a chord an application might reasonably pick: Ctrl+I for
-	// italic, Ctrl+M for a mark, Ctrl+H for help.
+	// italic, Ctrl+M for a mark, Ctrl+H for help, Ctrl+Space for
+	// completion.
+	//
+	// Ctrl+Space is the quiet one: almost nothing binds Ctrl+@, so instead
+	// of doing something wrong the key does nothing at all.
 	//
 	// True means BOTH that the terminal answered CSI ? u and that qtty
 	// pushed its own flags, which is one fact rather than two: qtty pushes

@@ -1511,13 +1511,40 @@ QVector<QPair<QString, QString>> ambiguous_chords(QWidget *scope) {
 			// A SHIFTED control chord cannot be sent at all: the byte
 			// carries no shift bit. Reported whatever the key is.
 			bool bad = mods & Qt::ShiftModifier;
-			// And these five ARE sent, as another key entirely, because
+			// And these six ARE sent, as another key entirely, because
 			// the control byte they produce is a key in its own right.
-			// The arithmetic is ASCII's: Ctrl+letter is letter & 0x1f.
+			// The arithmetic is ASCII's: Ctrl+<c> is c & 0x1f.
+			//
+			// CTRL+SPACE IS THE SIXTH and was missing for as long as
+			// this function existed. Space is 0x20, so Ctrl+Space is
+			// 0x00 -- the byte Ctrl+@ produces -- and this library's own
+			// decoder hands 0x00 back as Key_At with ctrl. Measured end
+			// to end through a pipe: a NUL fed to AnsiBackend arrives as
+			// Key_At, a Ctrl+Space action does NOT fire, and a Ctrl+@
+			// one does.
+			//
+			// It is a chord applications reach for constantly --
+			// completion in an editor, toggling a row in a file manager
+			// -- and it failed the way this report exists to prevent:
+			// the guide says to assert this empty, the assertion passed,
+			// and the key silently never worked.
+			//
+			// It differs from the other five in what the user sees. Tab
+			// moves the focus, so Ctrl+I does something WRONG; almost
+			// nothing binds Ctrl+@, so Ctrl+Space does nothing at all.
+			// Same cause, and the quieter symptom.
+			//
+			// NOT ADDED, deliberately: Ctrl+/, Ctrl+? and Ctrl+2 also
+			// fail on many terminals, and they fail by each terminal's
+			// CONVENTION rather than by the arithmetic above -- '/' is
+			// 0x2f and 0x2f & 0x1f is 0x0f, which is Ctrl+O, not the
+			// 0x1f those terminals actually send. Naming them would be
+			// this report describing terminals it has not measured,
+			// which is the one thing it promises not to do.
 			if (!bad)
 				bad = key == Qt::Key_I || key == Qt::Key_M
 				      || key == Qt::Key_BracketLeft || key == Qt::Key_H
-				      || key == Qt::Key_J;
+				      || key == Qt::Key_J || key == Qt::Key_Space;
 			if (!bad) continue;
 			const QString text =
 			    QKeySequence(combo).toString(QKeySequence::NativeText);

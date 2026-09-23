@@ -5451,3 +5451,11 @@ find = "\tfor (QWizard *w : wizards)\n\t\tkeyed.insert(w->button(QWizard::Cancel
 into = "\tfor (QWizard *w : wizards)\n\t\t(void)w;"
 count = 1
 check = "Qt's own wizard reports none"
+
+[[sabotage]]
+name = "Ctrl+Space is left out of the ambiguous family"
+file = "src/runtime/input_router.cpp"
+find = "\t\t\t\t      || key == Qt::Key_J || key == Qt::Key_Space;"
+into = "\t\t\t\t      || key == Qt::Key_J;"
+count = 1
+check = "and Ctrl+Space, whose byte is the 0x00 Ctrl+@ makes"

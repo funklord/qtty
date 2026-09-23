@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-22
 
-1983 checks, 0 failures, and **4.5 seconds of user time** --
+1987 checks, 0 failures, and **4.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
 wall each time.
@@ -17844,6 +17844,59 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.332 The sixth ambiguous chord (2026-09-23)
+
+**Walking a fifth archetype -- a mail reader, which is made of selecting
+several rows without a drag.** `Shift+Down` extends a selection,
+`Ctrl+Down` moves the current row without touching it, `Ctrl+A` selects
+all: every one works, and a `CSI 1;5C` check for a modified arrow has
+been in `suite_backend` all along.
+
+**Then `Ctrl+Space` behaved oddly and a control stopped it being a
+finding -- twice.** Through the router it moved the current row AND
+selected it; sent straight to the view with no router anywhere, Qt does
+exactly the same. And the same chord CARRYING TEXT gives a third answer
+-- current row unmoved, selection emptied -- in Qt too, with no router.
+`QAbstractItemView` branches on `event->text()`, so the guide's table
+saying a chord ignores its text is true of the ROUTER's matching and not
+of what Qt does once the event lands. Nothing here to fix.
+
+**The real finding was one layer down, and it is a gap in a report.**
+Space is `0x20`, `0x20 & 0x1f` is `0x00`, and `0x00` is the byte
+`Ctrl+@` produces -- so this library's decoder hands a NUL back as
+`Ctrl+@` with ctrl, which is correct. Measured end to end through a
+pipe: **a `Ctrl+Space` action does not fire and a `Ctrl+@` one does.**
+
+`ambiguous_chords()` knew five of that family -- `Ctrl+I`, `Ctrl+M`,
+`Ctrl+H`, `Ctrl+J`, `Ctrl+[` -- and **not this one**. So an application
+binding `Ctrl+Space`, which is completion in an editor and toggle-a-row
+in a file manager, asserted the report empty exactly as the guide says
+to, watched it pass, and had a key that silently never worked.
+
+**It is the QUIET member of the family and that is why it was missed.**
+The other five arrive as a key that DOES something -- `Ctrl+I` is a Tab
+and the focus jumps -- so somebody notices. Almost nothing binds
+`Ctrl+@`, so `Ctrl+Space` does nothing at all, which looks like a key
+that was never bound rather than one that was.
+
+**Three chords were deliberately NOT added**, and pinned as absent in
+the same check so the report cannot quietly acquire them. `Ctrl+/`,
+`Ctrl+?` and `Ctrl+2` do fail on many terminals -- and they fail by each
+terminal's CONVENTION rather than by the arithmetic above: `/` is `0x2f`
+and `0x2f & 0x1f` is `0x0f`, which is `Ctrl+O`, not the `0x1f` those
+terminals actually send. Naming them would be a report describing
+terminals nobody here has measured, which is the one thing its own
+header promises it does not do.
+
+**Four places said five and all four are updated** -- the code,
+`backend.h`'s protocol note, `runtime.h`'s population paragraph and the
+guide's collision table -- plus the count check that says nothing else
+in the window is named. The backend suite now pins both halves: a NUL
+arrives as `Ctrl+@`, and `CSI 32;5u` arrives as `Ctrl+Space`, which is
+the difference the keyboard protocol buys and the reason the report says
+to ask for it.
 
 
 ### 8.331 The question practice 1 could not ask (2026-09-23)

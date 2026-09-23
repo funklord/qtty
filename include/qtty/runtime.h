@@ -210,13 +210,19 @@ QVector<QPair<QString, QString>> shortcut_help(QWidget *scope);
 // TWO KINDS, and the second is the one worth the function. A shifted control
 // chord is UNSENDABLE: a control byte is one of 32 values and carries no
 // shift bit, so `Ctrl+Shift+C` arrives as `Ctrl+C` or not at all and the
-// binding is silently unbound. The other five are SENDABLE and mean
+// binding is silently unbound. The other six are SENDABLE and mean
 // something else, the byte an ASCII keyboard produces for them being a key in
 // its own right:
 //
-//     Ctrl+I  0x09  Tab          Ctrl+[  0x1b  Escape
-//     Ctrl+M  0x0d  Return       Ctrl+H  0x08  Backspace
-//     Ctrl+J  0x0a  Line feed
+//     Ctrl+I      0x09  Tab          Ctrl+[  0x1b  Escape
+//     Ctrl+M      0x0d  Return       Ctrl+H  0x08  Backspace
+//     Ctrl+J      0x0a  Line feed    Ctrl+Space  0x00  Ctrl+@
+//
+// `Ctrl+Space` is the quiet one and was missing here until it was measured:
+// Space is 0x20 and 0x20 & 0x1f is 0x00, the byte `Ctrl+@` produces, which
+// is what this library's decoder hands back. Almost nothing binds `Ctrl+@`,
+// so a `Ctrl+Space` binding does not do the wrong thing -- it does nothing,
+// which is harder to notice and just as dead.
 //
 // Measured: a tab byte reaches this library as `Key_Tab` with no ctrl on it
 // at all, so nothing downstream can tell it from a real `Tab`.
