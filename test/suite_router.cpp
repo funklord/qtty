@@ -23,6 +23,36 @@ static int fails = 0;
                          else { printf("FAIL: %s\n      condition: %s\n", \
                                        m, #c); ++fails; } } while (0)
 
+// The rows of one markdown table on the guide's page, by their first cell.
+// Two checks read a `| Key |` table now -- the one under "What already
+// works" and the one under "Moving between pages and windows" -- and a
+// second copy of this parser is a second chance for them to disagree about
+// what a row is.
+static QStringList page_table_rows(const QString &section, const QString &header) {
+	QStringList out;
+	QFile page(QStringLiteral(QTTY_SOURCE_DIR)
+	           + QStringLiteral("/doc/keyboard-first.md"));
+	if (!page.open(QIODevice::ReadOnly | QIODevice::Text)) return out;
+	const QStringList lines =
+	    QString::fromUtf8(page.readAll()).split(QLatin1Char('\n'));
+	bool in_section = false, in_table = false;
+	for (const QString &line : lines) {
+		if (line.startsWith(section)) {
+			in_section = true;
+			continue;
+		}
+		if (!in_section) continue;
+		if (!in_table) {
+			if (line.startsWith(header)) in_table = true;
+			continue;
+		}
+		if (line.startsWith(QStringLiteral("|---"))) continue;
+		if (!line.startsWith(QStringLiteral("| "))) break;
+		out << line.mid(2).section(QStringLiteral(" |"), 0, 0);
+	}
+	return out;
+}
+
 int suite_router() {
 	fails = 0;
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
@@ -1896,29 +1926,9 @@ int suite_router() {
 		// knowing the two are the same size and knowing they are the same
 		// table -- a row reworded on the page with no case here, or a case
 		// with no row, fails and says which.
-		QStringList published;
-		QFile page(QStringLiteral(QTTY_SOURCE_DIR)
-		           + QStringLiteral("/doc/keyboard-first.md"));
-		if (page.open(QIODevice::ReadOnly | QIODevice::Text)) {
-			const QStringList lines =
-			    QString::fromUtf8(page.readAll()).split(QLatin1Char('\n'));
-			bool in_section = false, in_table = false;
-			for (const QString &line : lines) {
-				if (line.startsWith(QStringLiteral("## What already works"))) {
-					in_section = true;
-					continue;
-				}
-				if (!in_section) continue;
-				if (line.startsWith(QStringLiteral("| Key |"))) {
-					in_table = true;
-					continue;
-				}
-				if (!in_table) continue;
-				if (line.startsWith(QStringLiteral("|---"))) continue;
-				if (!line.startsWith(QStringLiteral("| "))) break;
-				published << line.mid(2).section(QStringLiteral(" |"), 0, 0);
-			}
-		}
+		const QStringList published =
+		    page_table_rows(QStringLiteral("## What already works"),
+		                    QStringLiteral("| Key |"));
 		printf("info: the page promises %d key row(s); this check drives "
 		       "%d, and %d did not hold\n", int(published.size()),
 		       int(listed.size()), wrong);
@@ -1931,6 +1941,168 @@ int suite_router() {
 		          "rather than read"
 		        : QStringLiteral("and every one of them holds -- %1 does "
 		                         "not").arg(first_bad).toUtf8().constData());
+	}
+
+	// ---- and the page's SECOND key table -----------------------------------
+	//
+	// "Moving between pages and windows" carries five more rows in the same
+	// shape, and three of them are this library's own opt-in conventions
+	// rather than Qt's -- so they are exactly the promises that can rot
+	// without anybody outside noticing. Held the same way: driven, and
+	// matched to the page by name.
+	{
+		struct Row { const char *published; int kind; };
+		static const Row rows[] = {
+			{ "`Ctrl+Tab`, `Ctrl+Shift+Tab`",      0 },
+			{ "Arrows on a focused tab bar",       1 },
+			{ "`Ctrl+PageDown`, `Ctrl+PageUp`",    2 },
+			{ "`F6`, `Shift+F6`",                  3 },
+			{ "`F10`",                             4 },
+		};
+		const auto exercise = [](int kind) -> bool {
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(40, 12));
+			const auto focus = [&win](QWidget *w) {
+				w->setFocus();
+				Qtty::set_focus_widget(win.focusWidget());
+				QCoreApplication::processEvents();
+			};
+			// Four of the five live in a tab widget, so it is built here
+			// rather than four times. F6 is the one that does not, and it
+			// simply ignores it.
+			auto *v = new QVBoxLayout(&win);
+			auto *tabs = new QTabWidget;
+			auto *first = new QLineEdit;
+			auto *second = new QLineEdit;
+			tabs->addTab(first, QStringLiteral("One"));
+			tabs->addTab(second, QStringLiteral("Two"));
+			v->addWidget(tabs);
+			win.show();
+			InputRouter r(&win);
+			Qtty::set_current_window(&win);
+			QCoreApplication::processEvents();
+			switch (kind) {
+			case 0: {
+				tabs->setCurrentIndex(0);
+				focus(first);
+				r.on_key({Qt::Key_Tab, QString(), true, false, false});
+				QCoreApplication::processEvents();
+				const bool forward = tabs->currentIndex() == 1;
+				r.on_key({Qt::Key_Tab, QString(), true, false, true});
+				QCoreApplication::processEvents();
+				return forward && tabs->currentIndex() == 0;
+			}
+			case 1: {
+				auto *bar = tabs->findChild<QTabBar *>();
+				if (!bar) return false;
+				tabs->setCurrentIndex(0);
+				focus(bar);
+				r.on_key({Qt::Key_Right, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				const bool moved = tabs->currentIndex() == 1;
+				r.on_key({Qt::Key_Left, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				return moved && tabs->currentIndex() == 0;
+			}
+			case 2: {
+				// AND THE WRAP, which the row promises in as many words
+				// and which is the half Qt does not do for a tab widget
+				// at all -- the reason this row is qtty's.
+				Qtty::set_keyboard_conventions(true);
+				tabs->setCurrentIndex(0);
+				focus(first);
+				r.on_key({Qt::Key_PageDown, QString(), true, false, false});
+				QCoreApplication::processEvents();
+				const bool stepped = tabs->currentIndex() == 1;
+				r.on_key({Qt::Key_PageDown, QString(), true, false, false});
+				QCoreApplication::processEvents();
+				const bool wrapped = tabs->currentIndex() == 0;
+				r.on_key({Qt::Key_PageUp, QString(), true, false, false});
+				QCoreApplication::processEvents();
+				const bool back = tabs->currentIndex() == 1;
+				Qtty::set_keyboard_conventions(false);
+				return stepped && wrapped && back;
+			}
+			case 3: {
+				QWidget other;
+				other.setAttribute(Qt::WA_DontShowOnScreen);
+				other.resize(GridMetrics::cells(20, 5));
+				other.show();
+				QCoreApplication::processEvents();
+				// THE STRIP IS FILLED BY A COMPOSE, not by a window
+				// existing -- window_tabs() reads what the last frame
+				// collected. The first draft of this case had no
+				// compositor, so the strip was empty, F6 had nowhere to
+				// go and the row read as broken. The gate refusing to
+				// pass an unexercised promise is the gate working; the
+				// fixture was what was missing.
+				Compositor comp(&win, &r);
+				CellBuffer frame(40, 12);
+				comp.compose(frame);
+				Qtty::set_keyboard_conventions(true);
+				Qtty::set_current_window(&win);
+				r.on_key({Qt::Key_F6, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				const bool moved = Qtty::current_window() != &win;
+				r.on_key({Qt::Key_F6, QString(), false, false, true});
+				QCoreApplication::processEvents();
+				const bool back = Qtty::current_window() == &win;
+				Qtty::set_keyboard_conventions(false);
+				other.hide();
+				QCoreApplication::processEvents();
+				return moved && back;
+			}
+			case 4: {
+				// A MENU BAR WHOSE TITLES CARRY NO MNEMONIC, which is the
+				// case the row exists for: Alt cannot reach it, so F10 is
+				// the only key that can.
+				auto *bar = new QMenuBar(&win);
+				auto *m = bar->addMenu(QStringLiteral("File"));
+				m->addAction(QStringLiteral("Open"));
+				v->setMenuBar(bar);
+				QCoreApplication::processEvents();
+				Qtty::set_keyboard_conventions(true);
+				focus(first);
+				const bool quiet = bar->activeAction() == nullptr;
+				r.on_key({Qt::Key_F10, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				const bool opened = bar->activeAction() != nullptr;
+				Qtty::set_keyboard_conventions(false);
+				return quiet && opened;
+			}
+			default:
+				return false;
+			}
+		};
+
+		int wrong = 0;
+		QString first_bad;
+		QStringList listed;
+		for (const Row &row : rows) {
+			listed << QString::fromUtf8(row.published);
+			if (exercise(row.kind)) continue;
+			++wrong;
+			if (first_bad.isEmpty())
+				first_bad = QString::fromUtf8(row.published);
+		}
+		GridGuard::reset();
+		const QStringList published =
+		    page_table_rows(QStringLiteral("## Moving between pages and windows"),
+		                    QStringLiteral("| Key |"));
+		printf("info: the second table promises %d row(s); this check drives "
+		       "%d, and %d did not hold\n", int(published.size()),
+		       int(listed.size()), wrong);
+		CHECK(published == listed,
+		      "and the rows of the page's second key table are the rows "
+		      "this check drives, by name as the first one is");
+		CHECK(wrong == 0,
+		      wrong == 0
+		        ? "and every one of those holds too, three of them being "
+		          "conventions this library owns and nobody outside would "
+		          "notice going quiet"
+		        : QStringLiteral("and every one of those holds too -- %1 "
+		                         "does not").arg(first_bad).toUtf8().constData());
 	}
 
 	// ---- Space, which the page promises and which did nothing -------------

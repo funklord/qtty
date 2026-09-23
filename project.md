@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-22
 
-1995 checks, 0 failures, and **4.5 seconds of user time** --
+1997 checks, 0 failures, and **4.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
 wall each time.
@@ -17845,6 +17845,43 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.336 The second table, and a fixture the gate refused (2026-09-23)
+
+**The page carries fourteen tables and four were held.** After 8.335 the
+keys table is one of them; the marks vocabulary, the audit questions and
+the collision chords were the others. *Moving between pages and windows*
+carries five more rows in the same shape, and **three of them are this
+library's own opt-in conventions rather than Qt's** -- which makes them
+exactly the promises that can go quiet without anybody outside noticing,
+since no Qt release will ever break them and no Qt release will ever fix
+them either.
+
+They are driven now, and matched to the page by name as the first table
+is. The parser both checks read the page with is one function: two
+copies of "what counts as a row" is two chances for the two gates to
+disagree about the same document.
+
+**Its first run failed on `F6`, and the fixture was what was wrong.**
+`window_tabs()` reads what the last COMPOSE collected, not what windows
+exist -- so a case with two shown top-levels and no compositor had an
+empty strip, F6 had nowhere to go, and the row read as broken. Adding a
+`Compositor` and one `compose()` fixed it.
+
+**That is worth an entry rather than a silent correction.** The gate
+refused to pass a promise it had not exercised, which is what a gate is
+for, and the failure named the row rather than a line number -- so the
+question it put was "does F6 work" rather than "why is this test red".
+Both of the day's two real findings arrived the same way, and so did
+this non-finding: the difference between them was a control, every
+time.
+
+**Four of the page's fourteen tables are held.** The rest are prose
+promises with no binding -- the shortcut contexts (driven elsewhere but
+not bound), the window-type strip table, the terminal's own keys, the
+focus-policy table. Each is the same shape and the same argument, and
+none of them has yet been wrong.
 
 
 ### 8.335 The table that nothing held, and what it said (2026-09-23)

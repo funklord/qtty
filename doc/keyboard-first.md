@@ -100,6 +100,17 @@ reimplements it:
 | `F2` | Opens the editor on the current cell or item of an editable view, and `Enter` commits, `Escape` cancels, `Tab` moves to the next cell's editor | Qt's |
 | `Left`, `Right` in a focused tree | Close and open the current branch, and the `▸` or `▾` mark turns over with it -- which is the whole of how a user with no pointer sees that the key did anything | Qt's |
 
+**Every row above is driven by a check** rather than read: each builds a
+fixture, sends the keys through a real `InputRouter`, and asserts what the
+row says. The check matches the rows against its own list by name, so a row
+added here with no case -- or a case with no row -- fails too.
+
+It earned that on its first run. **Two of the sixteen were wrong**: `Space`
+did nothing on a terminal, which was the library's fault and is fixed, and
+`Enter` promised more than Qt does, which was this page's and is corrected
+above. A table nothing drives is a table that can be wrong in a direction
+its own prose cannot detect.
+
 **Editing in a table or a tree works, and one thing about it is Qt's
 behaviour rather than this library's.** Typing a printable character
 straight into a `QTableView` starts an edit and the character lands in
@@ -252,6 +263,10 @@ it. Measured:
 | `Ctrl+PageDown`, `Ctrl+PageUp` | Move between tabs, and wrap at the ends | qtty's, opt-in |
 | `F6`, `Shift+F6` | Move between top-level windows | qtty's, opt-in |
 | `F10` | Opens the window's menu bar, the only key that reaches one whose titles have no mnemonic | qtty's, opt-in |
+
+**These five are driven by a check as well**, and matched to this table by
+name. Three of them are conventions this library owns rather than Qt's, so
+nothing outside would notice them going quiet.
 
 The last two are part of the opt-in below. `Ctrl+PageUp`/`PageDown` is
 what somebody coming from a browser, an editor or a multiplexer reaches
