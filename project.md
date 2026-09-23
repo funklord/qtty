@@ -15,17 +15,23 @@ open, and how to work in the tree. Where design.md holds the detail, this
 document states the substance in a sentence or two and cites the section
 number rather than restating it.
 
-## 0a. State, 2026-09-22
+## 0a. State, 2026-09-23
 
-2016 checks, 0 failures, and **4.5 seconds of user time** --
+2016 checks, 0 failures, and **4.7 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
-machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
-wall each time.
+machine (load 0.5), 2026-09-23: 4.68, 4.71, 4.73 user against 14.6
+wall each time. The suite grew by 51 checks on 2026-09-23 and the
+figure moved from 4.5, which is why it is re-taken rather than
+carried: a duration quoted against a suite that has changed is a
+measurement of something else.
 
-**It read 6.0 to 6.5 until this re-take, and the suite has grown by
-about ninety checks since.** So the figure fell by roughly a third
-while the work rose, and **I have not established why** -- this is the
-observation and not an explanation. The candidates are a faster machine
+**It read 6.0 to 6.5 until the re-take of 2026-09-22**, which found
+4.5 over a suite that had grown by about ninety checks since. So the
+figure fell by roughly a third while the work rose, and **that was
+never explained** -- it is the observation and not an explanation. The
+2026-09-23 re-take above adds 51 checks and moves it by 0.2, which is
+consistent with the drop having been the machine or the build rather
+than the work, and still does not establish it. The candidates are a faster machine
 than the one measured on 2026-09-21, a different build reaching that
 earlier figure, and something in the day's work costing less than what
 it replaced; nothing here distinguishes them, and the entry that first
@@ -118,6 +124,22 @@ something: it refuses outright when valgrind wrote no log.
 prints three `SKIP` lines naming their own reasons -- valgrind does not
 deliver the default stop action, and two timing checks would be measuring
 the instrument rather than the code.
+
+**AND THE SWEEP HAS NO CONTENT STAMP, so editing the tree while it runs
+invalidates it silently.** `make check` refuses a commit whose content
+did not pass, because its stamp is keyed on the content; `six7.sh` has
+nothing of the kind -- each arm builds the WORKING TREE at the moment it
+starts. Measured 2026-09-23: a run reported `sanitize rc=2` with one
+failure, "the page publishes 30 mark(s), the check renders 25", because
+the guide had gained five rows while `build-san` still held a suite
+compiled with twenty-five. The valgrind arm, which started three minutes
+later once the edits had settled, was clean, and a re-run on an
+untouched tree was green in all six.
+
+Nothing was wrong with the code and the failure named a real
+inconsistency, which is what makes it expensive: it reads exactly like
+the gate catching something. **Start the sweep and leave the tree
+alone**, the way the stamp already forces for `make check`.
 
 **The claim before that: 2026-09-19, at 1720**
 (`517ae3c`), covering 8.250 to 8.255 -- the terminal ground carried to
