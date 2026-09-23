@@ -1459,6 +1459,480 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- the page's first table, row by row --------------------------------
+	//
+	// `doc/keyboard-first.md` opens with "What already works, unmodified" --
+	// sixteen rows an adopter reads to learn what they do NOT have to
+	// implement -- and until now nothing held any of it. The marks
+	// vocabulary further down that page IS held, by a check that renders
+	// every row of it; the KEYS table, which is read first and trusted
+	// hardest, was held by nobody.
+	//
+	// It cost something measurable. Row two says "Space activates the
+	// focused button, toggles the focused check box", and on a terminal it
+	// did neither from the day the page was written until 8.334 -- a space
+	// arrived as text with no key code and both of those widgets read the
+	// key. A gate over the table would have said so immediately.
+	//
+	// EVERY ROW, and the rows are matched BY NAME rather than counted, so
+	// neither the page nor this list can grow alone. Each case drives the
+	// key through a real InputRouter and asserts the behaviour the row
+	// promises, so a row that stops being true goes red rather than going
+	// quiet.
+	{
+		struct Keys : QWidget {
+			int keys = 0;
+			using QWidget::QWidget;
+			void keyPressEvent(QKeyEvent *) override { ++keys; }
+		};
+		struct Row { const char *published; int kind; };
+		static const Row rows[] = {
+			{ "`Tab`, `Shift+Tab`",                             0 },
+			{ "`Space`",                                        1 },
+			{ "Arrows",                                         2 },
+			{ "`Esc`",                                          3 },
+			{ "`Enter`",                                        4 },
+			{ "`Alt` + letter",                                 5 },
+			{ "`Alt` + a letter that matches nothing",          6 },
+			{ "A `QAction` shortcut, or a `QShortcut`",         7 },
+			{ "`Menu`, `Shift+F10`",                            8 },
+			{ "`Home`, `End`",                                  9 },
+			{ "`PageUp`, `PageDown`",                          10 },
+			{ "A letter, typed into a focused list or tree",    11 },
+			{ "`Ctrl+C`, `Ctrl+D`",                            12 },
+			{ "`Ctrl+Z`",                                      13 },
+			{ "`F2`",                                          14 },
+			{ "`Left`, `Right` in a focused tree",             15 },
+		};
+		// One window per case, built and driven by the case itself: the
+		// rows have nothing in common but the router, and a shared fixture
+		// would be sixteen widgets of which each case used two.
+		const auto exercise = [](int kind) -> bool {
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(30, 12));
+			auto *v = new QVBoxLayout(&win);
+			const auto focus = [&win](QWidget *w) {
+				w->setFocus();
+				Qtty::set_focus_widget(win.focusWidget());
+				QCoreApplication::processEvents();
+			};
+			switch (kind) {
+			case 0: {
+				auto *a = new QLineEdit;
+				auto *b = new QLineEdit;
+				v->addWidget(a);
+				v->addWidget(b);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				focus(a);
+				r.on_key({Qt::Key_Tab, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				const bool forward = win.focusWidget() == b;
+				r.on_key({Qt::Key_Tab, QString(), false, false, true});
+				QCoreApplication::processEvents();
+				return forward && win.focusWidget() == a;
+			}
+			case 1: {
+				auto *cb = new QCheckBox(QStringLiteral("Wrap"));
+				auto *btn = new QPushButton(QStringLiteral("Save"));
+				int clicked = 0;
+				QObject::connect(btn, &QPushButton::clicked, [&] { ++clicked; });
+				v->addWidget(cb);
+				v->addWidget(btn);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				const KeyEvent space{Qt::Key_Space, QStringLiteral(" "),
+				                     false, false, false};
+				focus(cb);
+				r.on_key(space);
+				QCoreApplication::processEvents();
+				focus(btn);
+				r.on_key(space);
+				QCoreApplication::processEvents();
+				return cb->isChecked() && clicked == 1;
+			}
+			case 2: {
+				auto *slider = new QSlider(Qt::Horizontal);
+				slider->setRange(0, 10);
+				slider->setValue(5);
+				auto *list = new QListWidget;
+				for (int i = 0; i < 4; ++i)
+					new QListWidgetItem(QStringLiteral("row %1").arg(i), list);
+				v->addWidget(slider);
+				v->addWidget(list);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				focus(slider);
+				r.on_key({Qt::Key_Right, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				const bool moved = slider->value() > 5;
+				list->setCurrentRow(0);
+				focus(list);
+				r.on_key({Qt::Key_Down, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				return moved && list->currentRow() == 1;
+			}
+			case 3: {
+				auto *field = new QLineEdit;
+				v->addWidget(field);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				focus(field);
+				auto *m = new QMenu(&win);
+				m->addAction(QStringLiteral("One"));
+				m->popup(QPoint(0, 0));
+				QCoreApplication::processEvents();
+				const bool opened = m->isVisible();
+				r.on_key({Qt::Key_Escape, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				const bool closed = !m->isVisible();
+				// And the other half of the row: a dialog rejects.
+				QDialog dlg(&win);
+				dlg.setAttribute(Qt::WA_DontShowOnScreen);
+				dlg.resize(GridMetrics::cells(20, 4));
+				dlg.show();
+				QCoreApplication::processEvents();
+				InputRouter dr(&dlg);
+				Qtty::set_current_window(&dlg);
+				dr.on_key({Qt::Key_Escape, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				const bool rejected = dlg.result() == QDialog::Rejected;
+				Qtty::set_current_window(&win);
+				return opened && closed && rejected;
+			}
+			case 4: {
+				// THE ROW SAYS "IN A DIALOG" BECAUSE OF THIS CHECK. Its
+				// first version asserted that Enter fires a focused button
+				// anywhere, which is what the page promised -- and it went
+				// red. The control settled it: Return sent straight to a
+				// focused QPushButton in a plain window, with no router
+				// anywhere, does not click it either, because Qt gives
+				// autoDefault only to a dialog's buttons. The page was
+				// over-promising and the page was corrected.
+				//
+				// So what is asserted is the DISTINCTION, which is what a
+				// reader needs: in an ordinary window the button answers
+				// Space and not Enter.
+				auto *field = new QLineEdit;
+				auto *btn = new QPushButton(QStringLiteral("Save"));
+				int clicked = 0;
+				QObject::connect(btn, &QPushButton::clicked, [&] { ++clicked; });
+				v->addWidget(field);
+				v->addWidget(btn);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				focus(btn);
+				r.on_key({Qt::Key_Return, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				const bool quiet = clicked == 0 && !btn->autoDefault();
+				r.on_key({Qt::Key_Space, QStringLiteral(" "), false, false, false});
+				QCoreApplication::processEvents();
+				const bool fired = quiet && clicked == 1;
+				// From elsewhere, a dialog's DEFAULT button answers.
+				QDialog dlg(&win);
+				dlg.setAttribute(Qt::WA_DontShowOnScreen);
+				dlg.resize(GridMetrics::cells(24, 5));
+				auto *dv = new QVBoxLayout(&dlg);
+				auto *dfield = new QLineEdit;
+				auto *ok = new QPushButton(QStringLiteral("OK"));
+				ok->setDefault(true);
+				int accepted = 0;
+				QObject::connect(ok, &QPushButton::clicked, [&] { ++accepted; });
+				dv->addWidget(dfield);
+				dv->addWidget(ok);
+				dlg.show();
+				QCoreApplication::processEvents();
+				InputRouter dr(&dlg);
+				Qtty::set_current_window(&dlg);
+				dfield->setFocus();
+				Qtty::set_focus_widget(dlg.focusWidget());
+				QCoreApplication::processEvents();
+				dr.on_key({Qt::Key_Return, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				const bool from_elsewhere = accepted == 1;
+				// AND THE FOCUSED BUTTON INSIDE A DIALOG, which is the
+				// half that IS true and the reason the row keeps a
+				// sentence about focus at all: a dialog's buttons carry
+				// autoDefault, so Enter fires the one with the focus
+				// rather than the one marked default.
+				auto *other = new QPushButton(QStringLiteral("Apply"));
+				int applied = 0;
+				QObject::connect(other, &QPushButton::clicked,
+				                 [&] { ++applied; });
+				dv->addWidget(other);
+				other->show();
+				QCoreApplication::processEvents();
+				other->setFocus();
+				Qtty::set_focus_widget(dlg.focusWidget());
+				QCoreApplication::processEvents();
+				dr.on_key({Qt::Key_Return, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				Qtty::set_current_window(&win);
+				return fired && from_elsewhere && applied == 1
+				       && accepted == 1;
+			}
+			case 5: {
+				auto *btn = new QPushButton(QStringLiteral("&Save"));
+				int clicked = 0;
+				QObject::connect(btn, &QPushButton::clicked, [&] { ++clicked; });
+				v->addWidget(btn);
+				auto *field = new QLineEdit;
+				v->addWidget(field);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				focus(field);
+				Qtty::test::mnemonic(r, QLatin1Char('s'));
+				QCoreApplication::processEvents();
+				return clicked == 1;
+			}
+			case 6: {
+				auto *field = new QLineEdit;
+				v->addWidget(field);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				focus(field);
+				Qtty::test::mnemonic(r, QLatin1Char('z'));
+				QCoreApplication::processEvents();
+				return field->text().isEmpty();
+			}
+			case 7: {
+				auto *field = new QLineEdit;
+				v->addWidget(field);
+				int fired = 0;
+				auto *a = new QAction(QStringLiteral("Save"), &win);
+				a->setShortcut(QKeySequence(QStringLiteral("Ctrl+S")));
+				QObject::connect(a, &QAction::triggered, [&] { ++fired; });
+				win.addAction(a);
+				int widget_fired = 0;
+				auto *sc = new QShortcut(QKeySequence(QStringLiteral("Ctrl+G")),
+				                         field);
+				sc->setContext(Qt::WidgetShortcut);
+				QObject::connect(sc, &QShortcut::activated,
+				                 [&] { ++widget_fired; });
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				focus(field);
+				r.on_key({Qt::Key_S, QString(), true, false, false});
+				r.on_key({Qt::Key_G, QString(), true, false, false});
+				QCoreApplication::processEvents();
+				return fired == 1 && widget_fired == 1;
+			}
+			case 8: {
+				auto *field = new QLineEdit;
+				field->setContextMenuPolicy(Qt::CustomContextMenu);
+				int asked = 0;
+				QObject::connect(field, &QWidget::customContextMenuRequested,
+				                 [&] { ++asked; });
+				v->addWidget(field);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				focus(field);
+				r.on_key({Qt::Key_Menu, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				const bool by_menu_key = asked == 1;
+				r.on_key({Qt::Key_F10, QString(), false, false, true});
+				QCoreApplication::processEvents();
+				return by_menu_key && asked == 2;
+			}
+			case 9: {
+				auto *list = new QListWidget;
+				for (int i = 0; i < 5; ++i)
+					new QListWidgetItem(QStringLiteral("row %1").arg(i), list);
+				v->addWidget(list);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				list->setCurrentRow(2);
+				focus(list);
+				r.on_key({Qt::Key_Home, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				const bool home = list->currentRow() == 0;
+				r.on_key({Qt::Key_End, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				return home && list->currentRow() == 4;
+			}
+			case 10: {
+				auto *list = new QListWidget;
+				for (int i = 0; i < 60; ++i)
+					new QListWidgetItem(QStringLiteral("row %1").arg(i), list);
+				v->addWidget(list);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				list->setCurrentRow(0);
+				focus(list);
+				r.on_key({Qt::Key_PageDown, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				const int down = list->currentRow();
+				r.on_key({Qt::Key_PageUp, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				return down > 0 && list->currentRow() == 0;
+			}
+			case 11: {
+				auto *list = new QListWidget;
+				new QListWidgetItem(QStringLiteral("apple"), list);
+				new QListWidgetItem(QStringLiteral("banana"), list);
+				v->addWidget(list);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				list->setCurrentRow(0);
+				focus(list);
+				Qtty::test::type(r, QStringLiteral("b"));
+				QCoreApplication::processEvents();
+				return list->currentRow() == 1;
+			}
+			case 12: {
+				auto *field = new QLineEdit(QStringLiteral("hello"));
+				auto *plain = new Keys;
+				plain->setFocusPolicy(Qt::StrongFocus);
+				v->addWidget(field);
+				v->addWidget(plain);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				QGuiApplication::clipboard()->setText(QString());
+				focus(field);
+				field->selectAll();
+				r.on_key({Qt::Key_C, QStringLiteral("c"), true, false, false});
+				QCoreApplication::processEvents();
+				const bool copied =
+				    QGuiApplication::clipboard()->text() == QStringLiteral("hello");
+				// From a widget with no caret the key is the quit key, which
+				// a suite observes by the key never reaching the widget.
+				focus(plain);
+				plain->keys = 0;
+				r.on_key({Qt::Key_C, QStringLiteral("c"), true, false, false});
+				QCoreApplication::processEvents();
+				const bool swallowed = plain->keys == 0;
+				r.on_key({Qt::Key_F1, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				return copied && swallowed && plain->keys == 1;
+			}
+			case 13: {
+				auto *field = new QLineEdit;
+				v->addWidget(field);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				focus(field);
+				Qtty::test::type(r, QStringLiteral("abc"));
+				QCoreApplication::processEvents();
+				const bool typed = field->text() == QStringLiteral("abc");
+				r.on_key({Qt::Key_Z, QStringLiteral("z"), true, false, false});
+				QCoreApplication::processEvents();
+				return typed && field->text() != QStringLiteral("abc");
+			}
+			case 14: {
+				auto *tree = new QTreeWidget;
+				tree->setHeaderHidden(true);
+				tree->setEditTriggers(QAbstractItemView::EditKeyPressed);
+				auto *item = new QTreeWidgetItem(
+				    tree, QStringList(QStringLiteral("name")));
+				item->setFlags(item->flags() | Qt::ItemIsEditable);
+				v->addWidget(tree);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				tree->setCurrentItem(item);
+				focus(tree);
+				r.on_key({Qt::Key_F2, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				const bool opened =
+				    tree->isPersistentEditorOpen(tree->currentIndex());
+				Qtty::test::type(r, QStringLiteral("X"));
+				r.on_key({Qt::Key_Return, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				return opened && item->text(0) == QStringLiteral("X");
+			}
+			case 15: {
+				auto *tree = new QTreeWidget;
+				tree->setHeaderHidden(true);
+				auto *dir = new QTreeWidgetItem(
+				    tree, QStringList(QStringLiteral("src")));
+				new QTreeWidgetItem(dir, QStringList(QStringLiteral("a.cpp")));
+				v->addWidget(tree);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				tree->setCurrentItem(dir);
+				focus(tree);
+				r.on_key({Qt::Key_Right, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				const bool opened = dir->isExpanded();
+				r.on_key({Qt::Key_Left, QString(), false, false, false});
+				QCoreApplication::processEvents();
+				return opened && !dir->isExpanded();
+			}
+			default:
+				return false;
+			}
+		};
+
+		int wrong = 0;
+		QString first_bad;
+		QStringList listed;
+		for (const Row &row : rows) {
+			listed << QString::fromUtf8(row.published);
+			if (exercise(row.kind)) continue;
+			++wrong;
+			if (first_bad.isEmpty())
+				first_bad = QString::fromUtf8(row.published);
+		}
+		GridGuard::reset();
+
+		// AND THE PAGE'S OWN ROWS, read off it. The table is matched by
+		// NAME rather than by count, which is the difference between
+		// knowing the two are the same size and knowing they are the same
+		// table -- a row reworded on the page with no case here, or a case
+		// with no row, fails and says which.
+		QStringList published;
+		QFile page(QStringLiteral(QTTY_SOURCE_DIR)
+		           + QStringLiteral("/doc/keyboard-first.md"));
+		if (page.open(QIODevice::ReadOnly | QIODevice::Text)) {
+			const QStringList lines =
+			    QString::fromUtf8(page.readAll()).split(QLatin1Char('\n'));
+			bool in_section = false, in_table = false;
+			for (const QString &line : lines) {
+				if (line.startsWith(QStringLiteral("## What already works"))) {
+					in_section = true;
+					continue;
+				}
+				if (!in_section) continue;
+				if (line.startsWith(QStringLiteral("| Key |"))) {
+					in_table = true;
+					continue;
+				}
+				if (!in_table) continue;
+				if (line.startsWith(QStringLiteral("|---"))) continue;
+				if (!line.startsWith(QStringLiteral("| "))) break;
+				published << line.mid(2).section(QStringLiteral(" |"), 0, 0);
+			}
+		}
+		printf("info: the page promises %d key row(s); this check drives "
+		       "%d, and %d did not hold\n", int(published.size()),
+		       int(listed.size()), wrong);
+		CHECK(published == listed,
+		      "the rows the page promises are the rows this check drives, "
+		      "by name rather than by count, so neither can grow alone");
+		CHECK(wrong == 0,
+		      wrong == 0
+		        ? "and every one of them holds, driven through a router "
+		          "rather than read"
+		        : QStringLiteral("and every one of them holds -- %1 does "
+		                         "not").arg(first_bad).toUtf8().constData());
+	}
+
 	// ---- Space, which the page promises and which did nothing -------------
 	//
 	// `doc/keyboard-first.md` opens with "what already works, unmodified"

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-22
 
-1993 checks, 0 failures, and **4.5 seconds of user time** --
+1995 checks, 0 failures, and **4.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
 wall each time.
@@ -17845,6 +17845,54 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.335 The table that nothing held, and what it said (2026-09-23)
+
+**8.334 found that the page's second row had been false since it was
+written. This is the gate whose absence allowed it.**
+`doc/keyboard-first.md` opens with *What already works, unmodified* --
+sixteen rows an adopter reads to learn what they do NOT have to
+implement -- and nothing held any of it. The marks vocabulary further
+down the same page IS held, by a check that renders every row; the keys
+table, which is read first and trusted hardest, was held by nobody.
+
+**Sixteen cases, matched to the page BY NAME rather than by count.**
+Each drives the key through a real `InputRouter` against a real fixture
+and asserts what the row promises. A row reworded on the page with no
+case here, or a case with no row, fails and says which -- the
+quantifier verified rather than the assertion under it.
+
+**It found a second wrong row on its first run, and this one was the
+page's fault rather than the library's.** Row five said "`Enter` fires
+the focused button if focus is on one; otherwise the dialog's default
+button". Measured: in an ordinary window a focused `QPushButton` is not
+fired by Return.
+
+**The control is what turned that from a bug report into a
+documentation fix.** Return sent straight to the same focused button
+with no router anywhere does not click it either:
+
+    plain QWidget   autoDefault=0   Return -> nothing   Space -> clicked
+    QDialog         autoDefault=1   Return -> fires the FOCUSED button
+
+Qt gives `autoDefault` only to a dialog's buttons. So the row was true
+inside a dialog and false everywhere else, and an application building
+a main-window form would have followed the page, wired nothing, and
+left its users pressing Enter at a button that does nothing. The row
+now says "in a dialog", names `Space` as the answer in an ordinary
+window, and the check asserts the DISTINCTION rather than either half.
+
+**Two rows wrong out of sixteen, both found the day the table was first
+held to anything.** One was the library (Space, 8.334) and one was the
+page (Enter, here), which is the argument for a gate that drives rather
+than reads: a document cannot be wrong in a direction its own prose can
+detect.
+
+**The `wrong == 0` half was seen to fail for real**, on its first run,
+naming `` `Enter` `` -- so it needs no sabotage to prove it
+discriminates. The name-matching half has one: a row reworded here and
+not on the page turns it red.
 
 
 ### 8.334 Space did nothing (2026-09-23)

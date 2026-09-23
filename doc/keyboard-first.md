@@ -87,7 +87,7 @@ reimplements it:
 | `Space` | Activates the focused button, toggles the focused check box | Qt's |
 | Arrows | Work inside a control that wants them -- a slider moves, a list selects, a spin box steps | Qt's |
 | `Esc` | Closes an open menu; rejects a modal dialog | Qt's |
-| `Enter` | Fires the focused button if focus is on one; otherwise the dialog's **default** button | Qt's |
+| `Enter` | **In a dialog**: fires the focused button, or the dialog's **default** button from anywhere else in it. In an ordinary window a focused button answers `Space` and **not** `Enter` -- Qt gives `autoDefault` only to a dialog's buttons | Qt's |
 | `Alt` + letter | Reaches a menu, a toolbar action, a **button**, or the field a **label** is the buddy of | qtty's |
 | `Alt` + a letter that matches nothing | Nothing. It does not type the letter into whatever has focus | qtty's |
 | A `QAction` shortcut, or a `QShortcut` | Fires, and its **context** is honoured either way: a `WidgetShortcut` needs its own widget focused, an `ApplicationShortcut` fires from any window. Neither fires from behind an open menu | qtty's |

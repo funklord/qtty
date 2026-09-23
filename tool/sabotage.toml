@@ -5467,3 +5467,11 @@ find = "\telse if (c == ' ') { k.qt_key = Qt::Key_Space; k.text = QStringLiteral
 into = "\telse if (c == ' ') { k.qt_key = 0; k.text = QStringLiteral(\" \"); }"
 count = 1
 check = "a space byte carries Qt::Key_Space as well as its text"
+
+[[sabotage]]
+name = "a key row is reworded here and not on the page"
+file = "test/suite_router.cpp"
+find = "\t\t\t{ \"`Ctrl+Z`\",                                      13 },"
+into = "\t\t\t{ \"`Ctrl+Z` (undo)\",                               13 },"
+count = 1
+check = "the rows the page promises are the rows this check drives"
