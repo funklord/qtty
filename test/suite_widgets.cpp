@@ -737,6 +737,144 @@ int suite_widgets() {
 		CHECK(!dir->isExpanded() && again == closed,
 		      "and Left shuts it again, leaving the row it started as");
 	}
+	// FOUR WIDGETS AN ORDINARY APPLICATION USES AND NOTHING HERE HAD TRIED.
+	// Found by population rather than by archetype: of QtWidgets' 194 public
+	// classes, 90 appear nowhere in this tree, and almost all of those are
+	// graphics-scene items, gestures and style-option structs a terminal
+	// will never meet. These four are not.
+	{
+		// A DOUBLE SPIN BOX beside the plain one the marks table publishes.
+		// The same brackets and the same two arrows, and the value it steps
+		// by is its own.
+		QWidget w;
+		w.setAttribute(Qt::WA_DontShowOnScreen);
+		w.resize(GridMetrics::cells(20, 4));
+		auto *v = new QVBoxLayout(&w);
+		auto *sd = new QDoubleSpinBox;
+		sd->setRange(0, 100);
+		sd->setValue(3.5);
+		v->addWidget(sd);
+		w.show();
+		QCoreApplication::processEvents();
+		const QString drawn = Qtty::test::snapshot_of(w, 20, 4);
+		InputRouter r(&w);
+		Qtty::set_current_window(&w);
+		sd->setFocus();
+		Qtty::set_focus_widget(w.focusWidget());
+		QCoreApplication::processEvents();
+		r.on_key({Qt::Key_Up, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(drawn.contains(QStringLiteral("[3.50"))
+		          && drawn.contains(QStringLiteral("▴▾]"))
+		          && sd->value() > 3.5,
+		      "a double spin box draws its decimals inside the same brackets "
+		      "and the same two arrows, and steps on Up");
+		GridGuard::reset();
+	}
+	{
+		// THE LEGACY QItemDelegate, which predates QStyledItemDelegate and
+		// is still what a great deal of code installs. Asserted against a
+		// view with the default delegate rather than against a picture, so
+		// what it says is that the old one is not a second rendering.
+		const auto text_of = [](bool legacy) {
+			QWidget w;
+			w.setAttribute(Qt::WA_DontShowOnScreen);
+			w.resize(GridMetrics::cells(20, 4));
+			auto *v = new QVBoxLayout(&w);
+			auto *list = new QListWidget;
+			list->setFrameShape(QFrame::NoFrame);
+			if (legacy) list->setItemDelegate(new QItemDelegate(list));
+			new QListWidgetItem(QStringLiteral("alpha"), list);
+			new QListWidgetItem(QStringLiteral("beta"), list);
+			v->addWidget(list);
+			w.show();
+			QCoreApplication::processEvents();
+			return Qtty::test::snapshot_of(w, 20, 4);
+		};
+		const QString legacy = text_of(true);
+		const QString modern = text_of(false);
+		// AND THEY DIFFER BY EXACTLY ONE CELL, which is measured rather
+		// than hoped for. QItemDelegate predates the style-driven path and
+		// draws its own text, so it never reaches CE_ItemViewItem and never
+		// gets the one cell of indent that puts an item's text where this
+		// library draws it. Same family as the inline editor that was a
+		// cell out, and not fixed for the reason that one was: the margin
+		// QItemDelegate reads is PM_FocusFrameHMargin, which is 0 here on
+		// purpose and which SE_ItemViewItemCheckIndicator already
+		// compensates for -- so moving it would double-count in the
+		// rectangle that check exists to correct.
+		//
+		// Pinned as the RELATIONSHIP, so a change that made the two agree
+		// is as visible as one that made them differ more.
+		const int legacy_at = legacy.indexOf(QStringLiteral("alpha"));
+		const int modern_at = modern.indexOf(QStringLiteral("alpha"));
+		CHECK(legacy_at > 0 && modern_at == legacy_at + 1
+		          && legacy.contains(QStringLiteral("beta")),
+		      "a view drawn by the legacy QItemDelegate draws every item, "
+		      "one cell left of where the default delegate draws it, that "
+		      "cell being the indent only CE_ItemViewItem applies");
+		GridGuard::reset();
+	}
+	{
+		// A QWidgetAction: a real widget living inside a menu, which is how
+		// an application puts a slider or a search field in one.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(30, 8));
+		host.show();
+		QCoreApplication::processEvents();
+		QMenu m(&host);
+		m.addAction(QStringLiteral("Plain"));
+		auto *wa = new QWidgetAction(&m);
+		auto *slider = new QSlider(Qt::Horizontal);
+		slider->setRange(0, 10);
+		slider->setValue(5);
+		wa->setDefaultWidget(slider);
+		m.addAction(wa);
+		m.addAction(QStringLiteral("After"));
+		m.popup(QPoint(0, 0));
+		QCoreApplication::processEvents();
+		const QString drawn = Qtty::test::snapshot_of(m, 30, 8);
+		m.close();
+		QCoreApplication::processEvents();
+		CHECK(drawn.contains(QStringLiteral("Plain"))
+		          && drawn.contains(QStringLiteral("After"))
+		          && drawn.contains(QStringLiteral("●")),
+		      "a menu holding a QWidgetAction draws the widget between its "
+		      "ordinary items rather than a gap where one should be");
+		GridGuard::reset();
+	}
+	{
+		// AND QColorDialog, the other stock dialog an application opens.
+		// Its swatches carry no GLYPH, so a text snapshot shows an empty
+		// grid and the first reading of this said the dialog was blank.
+		// They are cells with BACKGROUNDS, which is the one thing a
+		// character grid can say about a colour, and the control is that
+		// they are distinct: a grid of one colour would read as present
+		// and be useless.
+		QColorDialog dlg;
+		dlg.setOption(QColorDialog::DontUseNativeDialog, true);
+		dlg.setAttribute(Qt::WA_DontShowOnScreen);
+		dlg.resize(GridMetrics::cells(60, 20));
+		dlg.show();
+		QCoreApplication::processEvents();
+		CellBuffer b(60, 20);
+		render_once(dlg, b);
+		QSet<QRgb> swatches;
+		for (int y = 0; y < b.rows(); ++y) {
+			for (int x = 0; x < b.cols(); ++x) {
+				const Cell &c = b.at(x, y);
+				if (c.bg.kind() == Color::Rgb) swatches.insert(c.bg.value());
+			}
+		}
+		const QString text = b.to_text();
+		CHECK(swatches.size() > 20
+		          && text.contains(QStringLiteral("HTML"))
+		          && text.contains(QStringLiteral("<OK>")),
+		      "a colour dialog draws its swatches as distinct cell grounds "
+		      "and keeps the hex field a keyboard user actually types into");
+		GridGuard::reset();
+	}
 	// scrollbar column: arrows, thumb, groove (F5 fix)
 	{
 		QListView list;

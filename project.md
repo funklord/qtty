@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-22
 
-2001 checks, 0 failures, and **4.5 seconds of user time** --
+2005 checks, 0 failures, and **4.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
 wall each time.
@@ -17845,6 +17845,57 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.339 Ninety classes nobody had tried (2026-09-23)
+
+**A population sweep instead of an archetype.** Qt Widgets publishes 194
+classes; **90 of them appear nowhere in this tree** -- not in the
+library, the suite, the tools, the example or the guide. Almost all are
+graphics-scene items, gestures, effects and style-option structs a
+terminal will never meet. Four are things an ordinary application really
+does use, and all four now have checks.
+
+**`QDoubleSpinBox`** draws `[3.50    ▴▾]` -- the same brackets and the
+same two arrows as the `QSpinBox` the marks table publishes -- and steps
+on `Up`.
+
+**A `QWidgetAction`**, which is how an application puts a slider or a
+search field inside a menu, draws the widget between the ordinary items
+rather than leaving a gap.
+
+**`QColorDialog` works, and my first reading of it was wrong.** The text
+snapshot showed an empty grid under "Basic colors" and I nearly wrote it
+up as a dialog that cannot be used for its purpose. **A swatch carries
+no GLYPH**: it is a cell with a BACKGROUND, which is the one thing a
+character grid can say about a colour, and `to_text()` cannot tell that
+from a blank. Measured properly: **47 cells with distinct RGB grounds**,
+in a grid, plus the hex field and the spin boxes a keyboard user
+actually types into. The check asserts the grounds are DISTINCT, since a
+grid of one colour would read as present and be useless.
+
+**The legacy `QItemDelegate` draws every item one cell to the left**,
+and that is the day's other finding in the same family as the inline
+editor. `QItemDelegate` predates the style-driven path and draws its own
+text, so it never reaches `CE_ItemViewItem` and never gets the cell of
+indent that puts an item's text where this library draws it. Everything
+else is identical -- the current row's mark, the rows, the selection.
+
+**Not fixed, and the reason is specific rather than caution.** The
+margin `QItemDelegate` reads is `PM_FocusFrameHMargin`, which is 0 here
+on purpose, and `SE_ItemViewItemCheckIndicator` already exists to
+compensate for exactly that -- QCommonStyle builds the check rectangle
+from `PM_FocusFrameHMargin + 1`, one pixel, and the override puts it
+back on the grid. Moving the margin would double-count in the rectangle
+that override corrects. So the difference is pinned as a relationship --
+one cell, measured -- and a change that made the two agree is as visible
+as one that made them differ more.
+
+**The sweep's shape is worth keeping.** An archetype walk asks what an
+application DOES; this asks what it could REACH. They find different
+things: five archetypes found one defect and four empty lenses, and one
+population sweep found a rendering difference nobody would have thought
+to look for, in a class the tree does not mention once.
 
 
 ### 8.338 A promise held by half a check (2026-09-23)
