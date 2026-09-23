@@ -2409,6 +2409,25 @@ decides* is different per keystroke:
 QString()}` types nothing, and `{0, "\t"}` moves no focus -- each
 returns as though delivered, and nothing says otherwise.
 
+**Two exceptions to that table, both measured and both worth knowing
+before you write a fixture.**
+
+**`Space` is a character that also needs its key code.** It is the one
+printable a widget acts on by `Qt::Key` rather than by text --
+`QAbstractButton` activates on it and `QCheckBox` toggles on it -- so a
+terminal sends `Qt::Key_Space` *and* `" "`, and a fixture sending text
+alone tests a keystroke no terminal produces. `Qtty::test::type()` does
+this for you; hand-built events have to.
+
+**And a chord's text is ignored by the ROUTER'S MATCHING, not by Qt.**
+The row above is about which fields decide whether a chord matches, and
+it is true of that. Once the event is delivered the widget may read the
+text as well: measured on a `QListWidget`, `{Key_Space, " ", ctrl}` and
+`{Key_Space, QString(), ctrl}` do different things, because
+`QAbstractItemView` branches on `event->text()` -- and it does the same
+without this library anywhere. So send what the decoder sends: the key,
+and the text only where a terminal would carry one.
+
     Qtty::test::press(router, Qt::Key_Tab);           // a named key
     Qtty::test::press(router, Qt::Key_S, true);       // Ctrl+S
     Qtty::test::type(router, "hello");                // what a user types

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-22
 
-1997 checks, 0 failures, and **4.5 seconds of user time** --
+2000 checks, 0 failures, and **4.5 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.7), 2026-09-22: 4.49, 4.57, 4.49 user against 14.0
 wall each time.
@@ -17845,6 +17845,43 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.337 Two exceptions to the table fixtures are written from (2026-09-23)
+
+**A third table needed correcting, and this one is the one an
+implementer writes tests from.** *Checking it without a terminal*
+carries four rows saying which FIELDS of a `KeyEvent` decide: a typed
+character by its text, a chord by its key and modifier with the text
+ignored. Both of those are true of the ROUTER'S MATCHING and both
+mislead, and it took the day's other work to see it.
+
+**A typed `Space` also needs its key code.** It is the one printable a
+widget acts on by `Qt::Key` rather than by text (8.334), so a fixture
+sending `{0, " "}` exercises a keystroke no terminal produces.
+`test::type()` carries the key now; a hand-built event has to.
+
+**And a chord's text is not ignored by Qt.** Measured on a
+`QListWidget`: `{Key_Space, " ", ctrl}` and `{Key_Space, QString(),
+ctrl}` do different things, because `QAbstractItemView` branches on
+`event->text()` -- and they do the same with no router anywhere, which
+is what makes it Qt's rather than a fault here.
+
+**The checks pin a contract rather than guard a code path, and the
+entry says so rather than implying a sabotage that does not exist.**
+What the chord pair asserts is the RELATIONSHIP -- the router's answer
+for each shape equals Qt's answer for that shape -- since both outcomes
+are Qt's to change and neither is this library's promise. A second
+check asserts the two outcomes DIFFER, which is what stops the first
+being satisfied by a Qt that had stopped distinguishing them; it is the
+control, and without it the pair would pass on a library that delivered
+nothing at all.
+
+**Three tables corrected in one day, each by a different route.** The
+keys table by driving it (8.335), the collision table by deriving it
+from the decoder (8.333), and this one by an accident of working on
+something else -- which is the least reliable of the three, and the
+reason the first two are worth what they cost.
 
 
 ### 8.336 The second table, and a fixture the gate refused (2026-09-23)

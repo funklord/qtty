@@ -2183,6 +2183,105 @@ int suite_router() {
 		      "code riding along with the text rather than replacing it");
 	}
 
+	// ---- the two exceptions to the helper table ---------------------------
+	//
+	// "Checking it without a terminal" carries a table of which FIELDS of a
+	// KeyEvent decide, and it says a typed character is decided by its text
+	// and a chord ignores its text. Both are true of the router's matching
+	// and both mislead somebody writing a fixture, so the page now carries
+	// the exceptions and this carries the measurement.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(24, 8));
+		auto *v = new QVBoxLayout(&win);
+		auto *btn = new QPushButton(QStringLiteral("Save"));
+		int clicked = 0;
+		QObject::connect(btn, &QPushButton::clicked, [&] { ++clicked; });
+		auto *list = new QListWidget;
+		list->setSelectionMode(QAbstractItemView::ExtendedSelection);
+		for (int i = 0; i < 6; ++i)
+			new QListWidgetItem(QStringLiteral("row %1").arg(i), list);
+		v->addWidget(btn);
+		v->addWidget(list);
+		win.show();
+		InputRouter r(&win);
+		Qtty::set_current_window(&win);
+		QCoreApplication::processEvents();
+
+		// A TYPED SPACE NEEDS ITS KEY CODE, which is the one place the
+		// "text decides" row is wrong. Asserted as the pair, so it says
+		// what a fixture must send rather than pinning one outcome.
+		btn->setFocus();
+		Qtty::set_focus_widget(win.focusWidget());
+		QCoreApplication::processEvents();
+		r.on_key({Qt::Key(0), QStringLiteral(" "), false, false, false});
+		QCoreApplication::processEvents();
+		const int after_text_only = clicked;
+		r.on_key({Qt::Key_Space, QStringLiteral(" "), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(after_text_only == 0 && clicked == 1,
+		      "a space sent as text alone activates nothing while the one a "
+		      "terminal sends does, which is why the helper table has an "
+		      "exception and test::type() carries the key");
+
+		// AND A CHORD'S TEXT IS NOT IGNORED BY QT, though the router's
+		// matching ignores it. Asserted as the RELATIONSHIP -- what the
+		// router does with each shape equals what Qt does with the same
+		// shape -- rather than as either outcome, since both outcomes are
+		// Qt's to change and neither is this library's promise.
+		QWidget ctl;
+		ctl.setAttribute(Qt::WA_DontShowOnScreen);
+		ctl.resize(GridMetrics::cells(24, 8));
+		auto *cv = new QVBoxLayout(&ctl);
+		auto *clist = new QListWidget;
+		clist->setSelectionMode(QAbstractItemView::ExtendedSelection);
+		for (int i = 0; i < 6; ++i)
+			new QListWidgetItem(QStringLiteral("row %1").arg(i), clist);
+		cv->addWidget(clist);
+		ctl.show();
+		QCoreApplication::processEvents();
+
+		const auto through_router = [&](const QString &text) {
+			list->setCurrentRow(4);
+			list->clearSelection();
+			list->setCurrentRow(4);
+			list->setFocus();
+			Qtty::set_focus_widget(win.focusWidget());
+			QCoreApplication::processEvents();
+			r.on_key({Qt::Key_Space, text, true, false, false});
+			QCoreApplication::processEvents();
+			return QPair<int, int>(list->currentRow(),
+			                       int(list->selectedItems().size()));
+		};
+		const auto straight_to_qt = [&](const QString &text) {
+			clist->setCurrentRow(4);
+			clist->clearSelection();
+			clist->setCurrentRow(4);
+			QCoreApplication::processEvents();
+			QKeyEvent k(QEvent::KeyPress, Qt::Key_Space, Qt::ControlModifier,
+			            text);
+			QApplication::sendEvent(clist, &k);
+			QCoreApplication::processEvents();
+			return QPair<int, int>(clist->currentRow(),
+			                       int(clist->selectedItems().size()));
+		};
+		const QPair<int, int> bare_router = through_router(QString());
+		const QPair<int, int> bare_qt = straight_to_qt(QString());
+		const QPair<int, int> texted_router =
+		    through_router(QStringLiteral(" "));
+		const QPair<int, int> texted_qt = straight_to_qt(QStringLiteral(" "));
+		CHECK(bare_router == bare_qt && texted_router == texted_qt,
+		      "and a chord carrying text reaches a widget exactly as Qt "
+		      "delivers it, whichever of the two answers Qt gives");
+		CHECK(bare_qt != texted_qt,
+		      "which matters because Qt gives two different ones -- the "
+		      "text a chord carries is ignored by the matching and not by "
+		      "the widget, and a fixture that sends the wrong shape tests "
+		      "a keystroke no terminal produces");
+		GridGuard::reset();
+	}
+
 	// ---- the letters nothing carries --------------------------------------
 	//
 	// mnemonic_conflicts() finds two controls claiming one letter. Until
