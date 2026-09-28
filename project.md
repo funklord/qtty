@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-23
 
-2016 checks, 0 failures, and **4.7 seconds of user time** --
+2019 checks, 0 failures, and **4.7 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5), 2026-09-23: 4.68, 4.71, 4.73 user against 14.6
 wall each time. The suite grew by 51 checks on 2026-09-23 and the
@@ -941,6 +941,7 @@ Owned by the copyright holder:
 | **Should the terminal's background be re-measured, and how?** It is asked once at startup and the half-block tier composites against it for the life of the session, so a user who toggles their desktop theme -- or a `shell_out()` that returns from a program which changed it -- leaves every translucent edge composited against a ground that has gone. Re-asking at each handover costs one query and needs the decoder to stop discarding an OSC 11 reply; subscribing with `DECSET 2031` costs nothing per frame and needs capability detection; leaving it costs the fallback tier only, kitty-tier sessions sending alpha and never compositing | 8.160 |
 | **Should the conventions offer a key for Qt's own pointer-only furniture?** Measured with plain Qt and no qtty: a closable `QTabWidget` ignores `Ctrl+W`, `Ctrl+F4` and `Delete` -- `tabCloseRequested` never fires -- and a closable `QDockWidget` ignores `Ctrl+W` and `Esc`. So the `x` on a tab and a dock's close button have no keyboard route ANYWHERE, which on a desktop is a mouse away and here may be nothing away. The option is one convention binding each; the cost is that both plausible keys are ones applications mean something by (`Ctrl+W` closes a document in most, and a shortcut an application binds wins anyway, so the convention would answer only where the application is silent -- which is exactly where the user has no other route). The guide names the gap and tells an application to bind its own; whether the library should offer one is the holder's. **Four controls, not two, and the gap is visible now**: `Qtty::pointer_only()` (8.181) enumerates rather than recognises, and it named a dock widget's FLOAT button beside the two above, then a `QSplitter`'s handle (8.191) -- which is the one that changes the question, since a splitter answers no key even with the focus forced onto it, so a convention binding is the ONLY route there could be. An application can at least see what it is being asked to bind. | 8.159, 8.181, 8.191 |
 | **~~Should there be a way to force a full repaint~~, and should `Ctrl+L` be it?** The mechanism half is built and is `Qtty::redraw()` -- see 8.318, and the cost this row deferred on turned out to dissolve rather than inform. What is left is the BINDING, which is a convention change and not a capability: `Ctrl+L` is the most universal terminal convention after `Ctrl+C`, and a row for it changes what `set_keyboard_conventions(true)` means, what `keyboard_conventions_help()` returns, and what `conventions_shadowed()` can report about an application that took it. An application can bind it today, and `application.h` says so where somebody looking for the key will read it | 8.318 |
+| **Which mark should a drop indicator carry?** A view draws `PE_IndicatorItemViewItemDrop` while something is dragged into it, and `Qtty::exec_drag()` makes that reachable -- its contract is to deliver the enter, move, leave and drop events. Measured: the between-rows form draws a ten-cell rule on BLANK cells and **nothing at all** over the items, and the on-item form touches nothing even on a clean buffer. The mechanism is not a bug -- `clear_run` in `cell_paint.cpp` refuses a horizontal rule into any run holding a non-blank cell, which exists because a rule landing on a label put a box-drawing glyph in place of every space. That rule is right for frames and rules, and a drop indicator is neither: it is feedback, and the cells it wants are the ones an item's name is in. **The remedy needs a MARK and the vocabulary has none free** -- reverse is selected, underline is current -- so which one a provisional drop carries is a visual convention. Related to the four-row mark cluster above and not the same question: that one asks what a drawn mark BECOMES, this asks which mark a state should be GIVEN. Asserted as it stands, so a producer added later reddens a check | 8.343 |
 | **Should every printable carry its `Qt::Key`, and should the router ask the focus widget for a `ShortcutOverride`?** The two are one question. A terminal sends a printable as text with no key code, so `Qt::Key_Space` was dead until 8.334 fixed it for Space alone -- and `*` and `+` in a tree are dead by the same mechanism, measured. Giving every printable its key passes the whole suite and breaks an assumption `match_shortcut()` states outright: a bare letter cannot match a shortcut, which is why it falls through to `QMenu::keyPressEvent`. Qt arbitrates with `QEvent::ShortcutOverride` -- measured, a focused `QLineEdit` CLAIMS a plain letter and a plain Space, lets `Ctrl+N` through and CLAIMS `Ctrl+A` -- and this router never asks, so a plain-letter shortcut would fire where a desktop types the letter. Asking it would also subsume the hand-written `Ctrl+A` and `Ctrl+C` exemptions, which are that arbitration written out for two chords. The cost is a change to the most load-bearing rule in the input path | 8.334 |
 | **Should `pointer_only()` widen from a control no key reaches to an ACTION no key reaches?** Measured 2026-09-22 on a `QListWidget` set to `InternalMove`: **0 of 10 plausible chords** moved an item (`Ctrl`/`Alt`/`Shift` with `Up`, `Down`, `PageDown`, and `Ctrl+]`, `Alt+-`), and the function names nothing, because the view IS a tab stop and the present predicate is *reached by no key at all*. The four kinds it returns are all controls; a reorder is an action belonging to no widget, the way a sort belongs to a section -- and the sorting header was admitted on exactly that argument, so the boundary is already blurred. The cost of widening is that under qtty a plain Qt drag does not reorder either: it falls back to rubber-band selection (practice 13), so the action is unreachable by pointer too unless the application calls `Qtty::exec_drag()` -- which makes it a *nothing-reaches-this* finding rather than a pointer-only one, and the function would be answering a question its name does not ask. The guide already tells an implementer to give the reorder a keyboard route; whether the audit should say so too is a scope change to a public function | 8.310, practice 13 |
 | A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. Cheaper to answer after the picture-rule entry below, which is the same question seen from the other end | *Qt's standard iconography* |
@@ -17867,6 +17868,81 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.343 Every element this style does not answer (2026-09-28)
+
+**The lens the rubber band handed over, run to the end.** `CE_RubberBand`
+was UNANSWERED, so `QCommonStyle` drew it as a filled rectangle with a
+frame and it covered the rows it was selecting (8.340). So: what else
+does this style not answer? Derived from the source rather than listed,
+the way the glyph sweep is -- read `grid_style.cpp` for `case XX_Name`
+and subtract it from Qt's own enum:
+
+    ControlElement     48 in the enum, 22 answered, 26 not
+    PrimitiveElement   52 in the enum, 22 answered, 30 not
+    ComplexControl     10 in the enum,  6 answered,  4 not
+
+**Almost all of the sixty are reached through a parent that IS
+answered**, and reading them is what says so rather than assuming it:
+`CE_PushButton` calls the bevel and the label, both answered;
+`CE_CheckBox` and `CE_RadioButton` go through indicator primitives that
+are; `CE_Header` calls the section and the label; `CE_ProgressBar*` and
+`CE_TabBarTab*` are subsumed by the parents this style draws whole.
+`CE_FocusFrame` is unanswered and draws nothing, which 8.341 measured
+and which is the right answer. `CC_TitleBar` and `CC_MdiControls` are
+unanswered and MDI is fine -- a subwindow wears its name on its top
+border by 8.x's fix, and the guide documents the rest.
+
+**Two of the sixty draw OVER content, which is the rubber band's
+signature.** One is `CE_ColumnViewGrip`: it draws a vertical bar between
+columns, measured on a column view with nine-character names, and leaves
+the names either side intact. Nothing to do.
+
+**The other is `PE_IndicatorItemViewItemDrop`, and it is invisible where
+it matters.**
+
+    the between-rows form, blank cells     a rule of ten cells
+    the between-rows form, over the items  NOTHING
+    the on-item form, a full row           nothing, even on a clean buffer
+
+**It is reachable rather than theoretical.** `Qtty::exec_drag()` exists
+because Qt's own drag cannot start here, and its contract is to deliver
+"the enter, move, leave and drop events to whatever the pointer is
+over" -- so a view does draw this, and a user dragging through the
+library's own route has nothing telling them where the item will land.
+
+**The mechanism is named and it is not a bug.** `clear_run` in
+`cell_paint.cpp` refuses a horizontal rule into any run holding a
+non-blank cell, and its own comment says why: a rule landing on a label
+put a box-drawing glyph in place of every space, and 102 vertical rules
+ran down columns already carrying text. That rule is right for frames
+and rules. **A drop indicator is neither** -- it is feedback, and the
+cells it wants are always the ones an item's name is in.
+
+**So the remedy is a MARK, and the vocabulary has none free.** Reverse
+is "selected" and underline is "current", both published. Which mark a
+provisional drop should carry is a visual convention and therefore the
+holder's, so it is a 0b row rather than a change -- and 0b says how it
+differs from the four-row mark cluster beside it: that one asks what a
+drawn mark BECOMES on a grid, this asks which mark a STATE should be
+given.
+
+**Asserted as it stands**, with the control first: the same call over
+blank cells draws its rule, so "nothing changed" is not a call that
+never reached the engine. A producer added later reddens three checks
+rather than arriving unnoticed.
+
+**Three readings of this were wrong before the fourth was right**, and
+all three were the instrument. The first compared `to_text()` and missed
+that an attribute might have changed. The second changed two variables
+at once -- the buffer having content and the widget being passed -- and
+blamed the widget; isolated, the widget is irrelevant and the content is
+everything. The third guessed `fold_into_underline()` as the mechanism
+because the engine has exactly such a rule for exactly such a shape, and
+measuring the attribute plane showed no underline either. **A plausible
+mechanism that exists in the code is the most expensive kind of guess**,
+because it survives a read of the source.
 
 
 ### 8.342 The whole vocabulary, minus five (2026-09-23)

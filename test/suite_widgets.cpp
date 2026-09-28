@@ -1072,6 +1072,85 @@ int suite_widgets() {
 		      "rest, which is the mark the vocabulary publishes");
 		GridGuard::reset();
 	}
+	// A DROP INDICATOR IS DROPPED, and the rule that drops it is correct.
+	//
+	// The lens is the rubber band's: CE_RubberBand was unanswered and covered
+	// what it selected. Swept over all three element enums -- 48 control
+	// elements, 52 primitives, 10 complex controls, derived from the source
+	// rather than listed -- 26, 30 and 4 are unanswered, and almost all are
+	// reached through a parent this style does answer. Two draw OVER content.
+	// One is CE_ColumnViewGrip, which draws a vertical bar between columns
+	// and leaves the names either side intact, measured on a column view with
+	// nine-character names. The other is this.
+	//
+	// PE_IndicatorItemViewItemDrop is what a view draws while something is
+	// being dragged into it, and it is REACHABLE: Qtty::exec_drag() exists
+	// precisely because Qt's own drag cannot start here, and its contract is
+	// to deliver "the enter, move, leave and drop events to whatever the
+	// pointer is over". So a view does draw this, and:
+	//
+	//   the between-rows form, clean buffer    draws a rule of 10 cells
+	//   the between-rows form, over the items  draws NOTHING
+	//   the on-item form (a full row)          touches nothing at all
+	//
+	// The mechanism is named rather than guessed: a horizontal rule refuses
+	// to draw into a run holding any non-blank cell (`clear_run` in
+	// cell_paint.cpp), which exists because a rule landing on a label put a
+	// box-drawing glyph in place of every space. That rule is right for
+	// frames and rules and the drop indicator is neither -- it is FEEDBACK,
+	// and the cells it wants are always the ones an item's name is in.
+	//
+	// WHAT IT NEEDS IS A MARK, and the vocabulary has none free: reverse is
+	// "selected" and underline is "current". Which mark a provisional drop
+	// should carry is a visual convention, so it is 0b's and the holder's,
+	// and this asserts the present state so that a producer added later
+	// reddens a check rather than arriving unnoticed.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		QListWidget list;
+		list.setAttribute(Qt::WA_DontShowOnScreen);
+		list.setFrameShape(QFrame::NoFrame);
+		for (int i = 0; i < 4; ++i)
+			new QListWidgetItem(QStringLiteral("row %1").arg(i), &list);
+		list.resize(GridMetrics::cells(20, 5));
+		list.show();
+		QCoreApplication::processEvents();
+		const auto ask = [&list](CellBuffer &b, const QRect &r) {
+			Qtty::CellPaintDevice d(b);
+			QPainter p(&d);
+			QStyleOption o;
+			o.state = QStyle::State_Enabled;
+			o.rect = r;
+			QApplication::style()->drawPrimitive(
+			    QStyle::PE_IndicatorItemViewItemDrop, &o, &p, &list);
+			p.end();
+		};
+		// THE CONTROL FIRST, because "nothing changed" passes just as loudly
+		// from a call that never reached the engine.
+		CellBuffer clean(20, 5);
+		ask(clean, QRect(0, 2 * ch, 10 * cw, 0));
+		CHECK(clean.to_text().contains(QStringLiteral("───")),
+		      "a drop indicator asked for over blank cells draws a rule, so "
+		      "the call does reach the engine");
+
+		CellBuffer plain(20, 5);
+		Qtty::render_once(list, plain);
+		CellBuffer over(20, 5);
+		Qtty::render_once(list, over);
+		ask(over, QRect(0, 2 * ch, 10 * cw, 0));
+		CHECK(plain.to_snapshot() == over.to_snapshot(),
+		      "and over the items it draws nothing at all -- not a glyph and "
+		      "not an attribute, which is the gap 0b carries rather than the "
+		      "behaviour anybody wants");
+
+		CellBuffer on_item(20, 5);
+		Qtty::render_once(list, on_item);
+		ask(on_item, QRect(0, 3 * ch, 10 * cw, ch));
+		CHECK(plain.to_snapshot() == on_item.to_snapshot(),
+		      "and the on-item form touches nothing even on its own, so "
+		      "dropping INTO a row has no mark either");
+		GridGuard::reset();
+	}
 	// scrollbar column: arrows, thumb, groove (F5 fix)
 	{
 		QListView list;
