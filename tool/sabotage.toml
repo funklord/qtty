@@ -5599,3 +5599,21 @@ find = "| `Ctrl+J` | `0x0a` | a line feed |"
 into = "| `Ctrl+N` | `0x0e` | a shift out |"
 count = 1
 check = "and the chords the guide's table promises are exactly those"
+
+
+[[sabotage]]
+name = "the pointer-kind table names a class the header does not"
+file = "doc/keyboard-first.md"
+find = "| `QLabel` holding an anchor, without `LinksAccessibleByKeyboard` | an **anchor**, not a widget |"
+into = "| `QTextBrowser` holding an anchor, without `LinksAccessibleByKeyboard` | an **anchor**, not a widget |"
+count = 1
+check = "and it names all four kinds"
+
+
+[[sabotage]]
+name = "the content table stops saying which of its two rows is cells"
+file = "doc/keyboard-first.md"
+find = "| **cells** -- a terminal, a hex view, a board |"
+into = "| **glyphs** -- a terminal, a hex view, a board |"
+count = 1
+check = "the content table's two rows are cells and pixels"

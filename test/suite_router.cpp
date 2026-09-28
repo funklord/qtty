@@ -6935,15 +6935,40 @@ int suite_router() {
 			    from >= 0 && to > from ? doc.mid(from, to - from) : QString();
 			CHECK(!para.isEmpty(), "the header's pointer_only paragraph is "
 			                       "where this check expects it");
+			// THE CANDIDATES COME OUT OF THE GUIDE'S TABLE, not out of a
+			// list here. Three documents gave three different answers to
+			// this once -- one kind, three kinds and four -- and the fix
+			// bound the header to the code and the guide's PARAGRAPH to
+			// both, with the list of names written out in this file twice.
+			// A list in the test is a fourth statement of the population
+			// and the one nobody would think to re-read.
+			//
+			// So the table is the population now: each row's first
+			// backticked token is a kind, and the header, the append sites
+			// and the row count are all measured against it. A fifth row
+			// reddens this unless the header names it and the function
+			// appends for it; a fifth append reddens it unless the table
+			// gains a row.
+			QStringList candidates;
+			for (const QString &row :
+			     page_table_rows(QStringLiteral("## Checking it without a "
+			                                    "terminal"),
+			                     QStringLiteral("| Kind |")))
+				candidates << row.section(QLatin1Char('`'), 1, 1);
+			printf("info: the guide's pointer-kind table names %d kind(s): "
+			       "%s\n", int(candidates.size()),
+			       candidates.join(QLatin1Char(' ')).toUtf8().constData());
+			CHECK(candidates.size() == 4
+			          && !candidates.contains(QString()),
+			      "the guide's pointer-kind table names four kinds, each "
+			      "row opening with the class it is about");
 			int named = 0;
-			for (const QString &k : {QStringLiteral("QAbstractButton"),
-			                         QStringLiteral("QSplitterHandle"),
-			                         QStringLiteral("QHeaderView"),
-			                         QStringLiteral("QLabel")})
+			for (const QString &k : candidates)
 				if (para.contains(k)) ++named;
-			CHECK(named == 4, "and it names all four kinds, which it did "
-			                  "not for the five days after the fourth "
-			                  "landed");
+			CHECK(named == candidates.size(),
+			      "and it names all four kinds, which it did "
+			      "not for the five days after the fourth "
+			      "landed");
 
 			const int def = body.indexOf(
 			    QStringLiteral("QVector<QWidget *> pointer_only(QWidget *scope) {"));
@@ -6957,11 +6982,17 @@ int suite_router() {
 			      "the header names kinds, so a fifth cannot arrive "
 			      "undocumented");
 
-			// AND THE GUIDE, which was the worse of the two: it said the
-			// population was QAbstractButton alone, so three documents
-			// gave three different answers -- one kind, three kinds and
-			// four. The guide is the deliverable and is the one an
-			// implementer reads first.
+			// AND THE GUIDE'S PROSE, which was the worse of the two: it
+			// said the population was QAbstractButton alone, so three
+			// documents gave three different answers -- one kind, three
+			// kinds and four. The guide is the deliverable and is the one
+			// an implementer reads first.
+			//
+			// Its paragraph rather than its table, deliberately: the table
+			// is the population above, and this asks whether the sentences
+			// beside it still agree with their own table. Those are two
+			// different ways for the page to be wrong, and the one that
+			// bit was the prose.
 			QFile page_md(QStringLiteral(QTTY_SOURCE_DIR
 			                             "/doc/keyboard-first.md"));
 			QString guide;
@@ -6976,10 +7007,7 @@ int suite_router() {
 			    gfrom >= 0 && gto > gfrom ? guide.mid(gfrom, gto - gfrom)
 			                              : QString();
 			int in_guide = 0;
-			for (const QString &k : {QStringLiteral("QAbstractButton"),
-			                         QStringLiteral("QSplitterHandle"),
-			                         QStringLiteral("QHeaderView"),
-			                         QStringLiteral("QLabel")})
+			for (const QString &k : candidates)
 				if (gpara.contains(k)) ++in_guide;
 			CHECK(in_guide == named,
 			      "and the guide names the same kinds the header does, "

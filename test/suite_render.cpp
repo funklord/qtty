@@ -4,6 +4,7 @@
 #include <QDirIterator>
 #include <QTemporaryDir>
 #include <cstdio>
+#include "page_table.h"
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -2193,6 +2194,90 @@ int suite_render(bool record) {
 			       "digits replace the noise rather than covering it\n"
 			       "      %d cell(s) carry a background:\n%s\n", painted,
 			       qPrintable(nb.to_text()));
+			++r;
+		}
+	}
+
+	// ---- the two ways to draw content the grid cannot infer, bound --------
+	//
+	// The guide's table under "If you are writing a custom widget" has two
+	// rows, and they are the only rows on the page that tell an implementer
+	// to inherit something. Each promises a mechanism and a hand-over:
+	//
+	//     cells    inherit ICellPainted, implement paint_cells()
+	//              -> you are handed the frame and your own rectangle in it
+	//     pixels   inherit PixelSurface, paint with QPainter
+	//              -> qtty harvests the result and hands it to the graphics
+	//                 plane with your cell geometry
+	//
+	// Both halves are exercised above and below this block. What was missing
+	// is the binding: nothing tied the ROWS to them, so a third row could
+	// arrive, or a row lose its interface, with the suite green. The rows are
+	// read out of the page and matched by the interface each names.
+	//
+	// This is the suite that has both mechanisms in reach, which is why the
+	// binding is here rather than beside the other table gates -- and why
+	// page_table_rows() is a header now instead of a static in suite_router.
+	{
+		const QStringList rows = page_table_rows(
+		    QStringLiteral("## If you are writing a custom widget"),
+		    QStringLiteral("| If your content is |"));
+		printf("info: the content table promises %d row(s)\n",
+		       int(rows.size()));
+		if (rows.size() == 2
+		    && rows[0].contains(QStringLiteral("cells"))
+		    && rows[1].contains(QStringLiteral("pixels")))
+			printf("PASS: the content table's two rows are cells and pixels, "
+			       "in that order, read out of the page\n");
+		else {
+			printf("FAIL: the content table's two rows are cells and pixels, "
+			       "in that order, read out of the page\n");
+			++r;
+		}
+
+		// The cells row, and the half of its promise that is about the
+		// RECTANGLE rather than about being called at all: a widget offset
+		// inside the window is handed its own cells, not the window's.
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(20, 6));
+		auto *drawn = new CellDrawn(&host);
+		drawn->setGeometry(GridMetrics::cw() * 3, GridMetrics::ch() * 2,
+		                   GridMetrics::cw() * 8, GridMetrics::ch() * 2);
+		auto *plot = new Qtty::PixelSurface(&host);
+		plot->setGeometry(0, 0, GridMetrics::cw() * 4, GridMetrics::ch() * 1);
+		host.show();
+		QCoreApplication::processEvents();
+		Qtty::CellBuffer buf(20, 6);
+		Qtty::render_once(host, buf);
+
+		if (drawn->calls > 0 && drawn->got == QRect(3, 2, 8, 2))
+			printf("PASS: the cells row's promise holds -- paint_cells() is "
+			       "handed the frame and the widget's own rectangle in "
+			       "it\n");
+		else {
+			printf("FAIL: the cells row's promise holds -- paint_cells() is "
+			       "handed the frame and the widget's own rectangle in it "
+			       "(calls %d rect %d,%d %dx%d)\n", drawn->calls,
+			       drawn->got.x(), drawn->got.y(), drawn->got.width(),
+			       drawn->got.height());
+			++r;
+		}
+
+		// The pixels row, and the half of ITS promise that is about the cell
+		// geometry: a placement, carrying the widget's cells rather than the
+		// window's or the pixmap's.
+		bool placed = false;
+		for (const auto &image : buf.images)
+			if (image.cell_rect == QRect(0, 0, 4, 1)) placed = true;
+		if (placed)
+			printf("PASS: and the pixels row's -- the surface is harvested "
+			       "to the graphics plane with the widget's own cell "
+			       "geometry\n");
+		else {
+			printf("FAIL: and the pixels row's -- the surface is harvested "
+			       "to the graphics plane with the widget's own cell "
+			       "geometry (%d placement(s))\n", int(buf.images.size()));
 			++r;
 		}
 	}

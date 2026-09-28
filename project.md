@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-23
 
-2040 checks, 0 failures, and **4.7 seconds of user time** --
+2044 checks, 0 failures, and **4.7 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5), 2026-09-23: 4.68, 4.71, 4.73 user against 14.6
 wall each time. The suite grew by 51 checks on 2026-09-23 and the
@@ -17868,6 +17868,53 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.355 Every table on the page is held now, and the last two were held by other things first (2026-09-28)
+
+**Thirteen tables, thirteen bound.** The count is re-derivable:
+`grep -c '^|---'` finds fourteen header rules and one of them is a code
+snippet's own pipes. Seven gates read them through `page_table_rows()`,
+and the marks vocabulary and the audit questions keep their own parsers,
+which predate the shared one.
+
+**The pointer-kind table was already covered three ways and bound by
+none of them, and the fix removed a list rather than adding one.** That
+population had disagreed with itself once -- the header said three kinds,
+the guide's API reference said one, the code appended four -- and the
+repair bound the header to the code and the guide's PARAGRAPH to both.
+What it left behind was **the list of four class names written out twice
+in the test**, which is a fourth statement of the population and the one
+nobody would think to re-read.
+
+The table is the population now. Each row's first backticked token is a
+kind; the header's paragraph, the guide's paragraph, and the number of
+`out.append(` sites in `pointer_only()` are all measured against that
+list rather than against a list in the suite. A fifth row reddens unless
+the header names it and the function appends for it; a fifth append
+reddens unless the table gains a row.
+
+**The content table's two rows are the only rows on the page that tell an
+implementer to INHERIT something**, and both mechanisms were thoroughly
+exercised -- `paint_cells()` called with the right rect, a `PixelSurface`
+arriving as one placement at pixel resolution with its own cell geometry.
+What was missing was the tie: a third row could have arrived, or a row
+lost its interface, with the suite green. Bound in `suite_render.cpp`,
+which is the suite that has both mechanisms in reach -- and that is the
+reason `page_table_rows()` is a header now rather than a static.
+
+Each row is bound to the half of its promise that is about the HAND-OVER
+rather than about being called: the cells row to the rectangle a widget
+offset inside the window is given (3,2 8x2, its own cells and not the
+window's), and the pixels row to the cell geometry its placement carries.
+Those are the two claims an implementer acts on, and the two that a
+refactor could quietly change while the interface still fired.
+
+Two sabotages, both on the PAGE rather than in the suite, which is what
+makes them evidence that the page is the population: a pointer-kind row
+naming `QTextBrowser` reddens the header comparison, and the content
+table's first row saying `glyphs` instead of `cells` reddens the order
+check.
 
 
 ### 8.354 The ambiguous-chord table held, and a count that went stale in a day (2026-09-28)
