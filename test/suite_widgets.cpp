@@ -3968,6 +3968,47 @@ int suite_widgets() {
 			same = on.at(x, at.y()).ch == off.at(x, at.y()).ch;
 		CHECK(same, "a table's grid leaves its labels' own spaces alone");
 	}
+	// AND ONE OCCUPIED CELL DROPS THE WHOLE RULE, not the cell it met. The
+	// table check above covers a horizontal rule meeting a label; this is the
+	// other axis and the sharper half of the rule, because a custom widget's
+	// divider is usually vertical and usually crosses one label out of
+	// several.
+	//
+	// Measured: a vertical rule over three rows, one of which holds text, is
+	// abandoned entirely -- the two blank rows get no glyph either.
+	// `clear_run` tests the whole run and answers false for any non-blank
+	// cell in it, so the rule is dropped wholesale rather than clipped. That
+	// is deliberate: a rule broken into fragments around a word is a worse
+	// picture than no rule, and the reason the rule exists at all is that a
+	// label far wider than its column came out with a box-drawing glyph in
+	// place of every space.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		const auto draw = [cw, ch](bool with_text) {
+			CellBuffer b(14, 4);
+			if (with_text) b.text(0, 1, QStringLiteral("a label here"));
+			Qtty::CellPaintDevice d(b);
+			QPainter p(&d);
+			p.setPen(QPen(Qt::black, 1));
+			p.drawLine(QPointF(3 * cw + cw / 2.0, 0),
+			           QPointF(3 * cw + cw / 2.0, 3 * ch));
+			p.end();
+			QString column;
+			for (int y = 0; y < 3; ++y) column += b.at(3, y).ch;
+			return QPair<QString, QString>(column, b.to_text());
+		};
+		const QPair<QString, QString> bare = draw(false);
+		const QPair<QString, QString> crossed = draw(true);
+		CHECK(bare.first == QStringLiteral("│││"),
+		      "a vertical rule over blank cells draws down every one of "
+		      "them, which is what says the drop below is the rule and not "
+		      "a rule that never drew");
+		CHECK(!crossed.first.contains(QStringLiteral("│"))
+		          && crossed.second.contains(QStringLiteral("a label here")),
+		      "while a single occupied cell anywhere along it drops the "
+		      "WHOLE rule, blank rows included, and leaves the label it met "
+		      "untouched");
+	}
 
 
 	// The property that matters is the AGREEMENT, and it needs both selections

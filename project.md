@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-23
 
-2019 checks, 0 failures, and **4.7 seconds of user time** --
+2021 checks, 0 failures, and **4.7 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5), 2026-09-23: 4.68, 4.71, 4.73 user against 14.6
 wall each time. The suite grew by 51 checks on 2026-09-23 and the
@@ -17868,6 +17868,49 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.344 One occupied cell drops the whole rule (2026-09-28)
+
+**The lens 8.343 handed over: what ELSE does the blank-cell rule
+silently remove?** That entry found a drop indicator dropped by
+`clear_run`, which refuses a rule into any run holding a non-blank cell
+-- a rule written for frames, right for frames, and wrong for feedback.
+So the question is which other callers it reaches.
+
+**The table grid is the one the tree already knew about**, and it is
+tested: `setShowGrid(true)` changes no cell of a label, asserted as a
+difference rather than as a picture. The code comment says why the rule
+exists -- a label far wider than its column came out with a
+box-drawing glyph in place of every space -- and says what it costs: a
+TUI table separates its columns with whitespace instead.
+
+**What was NOT known is how much of a rule one cell takes.** Measured
+both ways round:
+
+    horizontal, blank cells    a rule of ten cells
+    horizontal, over a label   nothing, the label untouched
+    vertical, blank cells      a bar down every row
+    vertical, crossing a label NOTHING, in the blank rows too
+
+**A single occupied cell anywhere along a rule drops the WHOLE rule**,
+not the cell it met. `clear_run` walks the run and answers false for any
+non-blank cell in it, so a vertical divider crossing three rows -- one
+of which holds a label -- draws in none of them. That is deliberate and
+better than the alternative: a rule broken into fragments around a word
+is a worse picture than no rule.
+
+**It is a custom widget's problem more than a standard one's.** A
+standard widget's chrome is at its edges; a custom widget's divider runs
+through its content, and this page's own list of what a custom widget
+must know had six rows and did not have this one. It has seven now, with
+the remedy in it -- leave a blank column or row for the rule -- and
+`showGrid` named as the consequence a reader will otherwise meet without
+explanation.
+
+**Asserted as a pair**, because "the rule is dropped" passes just as
+loudly from a rule that never drew: the blank-cell case must draw down
+every row before the crossed case is allowed to draw down none.
 
 
 ### 8.343 Every element this style does not answer (2026-09-28)

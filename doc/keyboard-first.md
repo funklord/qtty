@@ -2272,11 +2272,11 @@ pager, or anything else that wants the screen* has the one-liner.
 
 ## If you are writing a custom widget
 
-Six things a standard Qt widget gets and yours does not. **Each fails
+Seven things a standard Qt widget gets and yours does not. **Each fails
 silently, and each fails only on the terminal** -- the desktop build hides
-all six, which is what makes them worth collecting in one place rather
+all seven, which is what makes them worth collecting in one place rather
 than leaving scattered above. The first four are one line each; the last
-two are facts about the grid.
+three are facts about the grid.
 
 | Do this | Or else |
 |---|---|
@@ -2286,6 +2286,7 @@ two are facts about the grid.
 | Fold pasted newlines if you are single-line (*Copy and paste*) | you get the raw ones: the fold is by type and your type is not on the list |
 | Put your text lines at least `Qtty::GridMetrics::ch()` apart | two lines closer than a cell row share one, and the later one wins -- measured in Qt's own `QCommandLinkButton`, whose title and description sit 14 pixels apart and whose title therefore vanishes |
 | Measure your text in COLUMNS, with `Qtty::to_clusters()` and `Qtty::cluster_width()` | `QString::size()` counts the wrong thing for every emoji, every CJK character and every combining mark, so your own truncation lands in the middle of a glyph |
+| Do not draw a rule through your own content -- leave a blank column or row for it | it is not drawn **at all**: one occupied cell anywhere along a rule drops the whole rule, blank stretches included |
 
 **The sixth is where a custom widget most often goes wrong quietly**,
 because on a desktop you measure text in pixels and here you measure it in
@@ -2304,6 +2305,19 @@ cells, and `QString` counts neither. The rules, each measured:
 `cluster_width()` prices each piece. Between them they are what
 `elide_to_cells()` uses, and a widget that truncates its own text wants
 the same pair rather than `left(n)`.
+
+**The seventh is the one with no workaround, so it is worth the
+sentence.** A rule -- a divider, a table's grid line, an underline you
+draw yourself -- becomes a box-drawing glyph in the cells it covers, and
+a cell holds one thing. So a rule that meets content is dropped, and it
+is dropped **whole**: a vertical divider crossing three rows, one of
+which holds a label, draws in none of them. Measured both ways round.
+
+The alternative was worse and is what the tree did before: a label far
+wider than its column came out with a box-drawing glyph in place of
+every space. **So separate your columns with whitespace, the way a TUI
+table does** -- which is also why `QTableView::setShowGrid(true)` shows
+no grid here, and why nothing is asked of you if you leave it on.
 
 **And two ways to draw content the grid cannot infer, which this page
 has never mentioned and which are the reason to write a custom widget
