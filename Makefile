@@ -72,6 +72,10 @@ SOURCES = $(wildcard src/*.cpp src/*/*.cpp src/*/*/*.cpp)
 # src/*.h too: an internal header at the top of src/ was invisible to this
 # list, which is how the gap below was found.
 HEADERS = $(wildcard include/qtty/*.h src/*.h src/*/*.h src/*/*/*.h)
+# The suites' own headers, separate because they are not the library's and
+# must not reach its qmake rule. They do reach the test build's, which is
+# the gap measured on 2026-09-28 -- see that rule.
+TEST_HEADERS = $(wildcard test/*.h)
 PROFILES = qtty.pro qtty.pri src/src.pro \
            tool/inspect/inspect.pro tool/replay/replay.pro \
            tool/negotiate/negotiate.pro example/chat/chat.pro
@@ -243,7 +247,22 @@ TEST_TIMEOUT ?= 300
 # the library is because $$shadowed() cannot work it out from over here.
 # Same reason as the library's rule above: qmake's dependency snapshot is
 # taken once, and a header added afterwards is in no object's list.
-$(TEST_BUILD_DIR)/Makefile: $(TEST_PROFILES) VERSION $(HEADERS)
+#
+# AND test/ HAS HEADERS OF ITS OWN, which $(HEADERS) does not reach: that
+# wildcard covers include/ and src/ because those are the library's. So the
+# hazard the paragraph above describes was still open through one directory,
+# and it was measured rather than reasoned about on 2026-09-28.
+#
+# page_table.h -- the one reader for the guide's markdown tables -- gained
+# two more includers in suite_render.cpp and suite_backend.cpp. Nothing in
+# this rule's prerequisites changed, so qmake did not re-run, so neither
+# object listed the header, so neither was rebuilt when it changed. A
+# deliberately blinded reader went on returning the right answer from both,
+# and the audit that blinded it reported two good checks as vacuous. One
+# finding in that run was real and two were the stale objects talking, which
+# is build-and-commit.md's own rule met from the measuring end: never
+# conclude anything from a binary the build step did not rebuild.
+$(TEST_BUILD_DIR)/Makefile: $(TEST_PROFILES) VERSION $(HEADERS) $(TEST_HEADERS)
 	mkdir -p $(TEST_BUILD_DIR)
 	cd $(TEST_BUILD_DIR) && $(QMAKE) $(CURDIR)/test/test.pro $(QMAKE_CONFIG) \
 	        QMAKE_CXX=$(CXX) QTTY_LIB_DIR=$(CURDIR)/$(BUILD_DIR)/lib

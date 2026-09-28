@@ -6962,10 +6962,30 @@ int suite_router() {
 			          && !candidates.contains(QString()),
 			      "the guide's pointer-kind table names four kinds, each "
 			      "row opening with the class it is about");
+			// `!candidates.isEmpty()` IS LOAD-BEARING, and it is here
+			// because the first version of this was measured without it. A
+			// comparison between two counts derived from the same read goes
+			// to 0 == 0 when the read fails: changing the table's header so
+			// page_table_rows() could not find it left this check and the
+			// guide-versus-header one below PASSING, with their messages
+			// still describing faults they could no longer see. The run was
+			// red -- the population check above fails, and so does the
+			// append count -- so the tree was never exposed; what was wrong
+			// is that two named checks had stopped discriminating.
+			//
+			// Which is 0e's standing item arriving within the hour of the
+			// change that caused it: re-run the sabotage for the checks NEAR
+			// what you changed, not only for the one you added. The empty
+			// population is a sabotage entry now, so this cannot reopen.
+			//
+			// Not `== 4`, deliberately: the page is the population and a
+			// pinned number here would be the hand list coming back. Non-
+			// empty is the weakest thing that closes the hole, and the check
+			// above is what says four.
 			int named = 0;
 			for (const QString &k : candidates)
 				if (para.contains(k)) ++named;
-			CHECK(named == candidates.size(),
+			CHECK(!candidates.isEmpty() && named == candidates.size(),
 			      "and it names all four kinds, which it did "
 			      "not for the five days after the fourth "
 			      "landed");
@@ -7009,7 +7029,7 @@ int suite_router() {
 			int in_guide = 0;
 			for (const QString &k : candidates)
 				if (gpara.contains(k)) ++in_guide;
-			CHECK(in_guide == named,
+			CHECK(!candidates.isEmpty() && in_guide == named,
 			      "and the guide names the same kinds the header does, "
 			      "the two having disagreed with each other and with the "
 			      "code");

@@ -5617,3 +5617,12 @@ find = "| **cells** -- a terminal, a hex view, a board |"
 into = "| **glyphs** -- a terminal, a hex view, a board |"
 count = 1
 check = "the content table's two rows are cells and pixels"
+
+
+[[sabotage]]
+name = "the pointer-kind table cannot be found at all"
+file = "doc/keyboard-first.md"
+find = "| Kind | What a pointer acts on |"
+into = "| Which kind | What a pointer acts on |"
+count = 1
+check = "and it names all four kinds"

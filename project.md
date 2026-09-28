@@ -15,15 +15,29 @@ open, and how to work in the tree. Where design.md holds the detail, this
 document states the substance in a sentence or two and cites the section
 number rather than restating it.
 
-## 0a. State, 2026-09-23
+## 0a. State
 
-2044 checks, 0 failures, and **4.7 seconds of user time** --
+2044 checks, 0 failures. **The duration is 4.7 seconds of user time and
+it belongs to 2026-09-23, over a suite of 2016** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
-machine (load 0.5), 2026-09-23: 4.68, 4.71, 4.73 user against 14.6
-wall each time. The suite grew by 51 checks on 2026-09-23 and the
-figure moved from 4.5, which is why it is re-taken rather than
-carried: a duration quoted against a suite that has changed is a
-measurement of something else.
+machine (load 0.5): 4.68, 4.71, 4.73 user against 14.6 wall each time.
+The suite grew by 51 checks that day and the figure moved from 4.5,
+which is why it was re-taken rather than carried: a duration quoted
+against a suite that has changed is a measurement of something else.
+
+**The two halves are separated because they had stopped being one
+measurement.** `make count-check` keeps the count current on every
+commit, and nothing keeps the duration current, so this entry spent the
+week saying "2044 checks and 4.7 seconds, 2026-09-23" -- a figure taken
+over 2016 checks wearing today's count and today's date, which is the
+error the paragraph above forbids, committed by the paragraph itself. The
+heading carries no date now because the two things under it are dated
+separately, and the count's date is its commit.
+
+Re-take it the same way and put the suite size beside it. Not on a busy
+machine: 2026-09-28 found load at 19.6 with another session building,
+and the honest answer there was to leave the figure dated rather than
+replace it with a worse one.
 
 **It read 6.0 to 6.5 until the re-take of 2026-09-22**, which found
 4.5 over a suite that had grown by about ninety checks since. So the
@@ -17868,6 +17882,90 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.356 One vacuous pass, two stale objects, and the build rule that let both happen (2026-09-28)
+
+**0e's standing item paid out within the hour of the change that caused
+it.** It says to re-run the sabotage for the checks NEAR what you
+changed, not only for the one you added, because a fix can make a
+neighbour stop discriminating while its message goes on describing a
+fault it can no longer see. 8.355 rewired two existing checks in the
+pointer-kind block to take their population from the page, and it did
+exactly that to both.
+
+**The window, precisely.** `named` counts how many of the page's kinds
+the header's paragraph mentions, and the check compared it against
+`candidates.size()`. Both are derived from the same read, so a read that
+fails gives `0 == 0`:
+
+    table header renamed so the reader cannot find it:
+      FAIL: the guide's pointer-kind table names four kinds
+      PASS: and it names all four kinds            <- vacuous
+      FAIL: and the function appends in exactly as many places
+      PASS: and the guide names the same kinds     <- vacuous
+
+The run was red, so the tree was never exposed -- the population check
+and the append count both fail. What was wrong is that two named checks
+had quietly stopped being able to fail, and those are the two a reader
+would quote as coverage. `!candidates.isEmpty()` closes it, and not
+`== 4`: a pinned number there would be the hand list coming back, and
+the check above it is what says four.
+
+**Then the audit instrument lied, and that is the larger half.** Blinding
+`page_table_rows()` itself -- one `return` at the top, to see which of the
+twelve callers would notice -- reported the content-table check and the
+ambiguous-chord check as green too. Neither was vacuous. **Neither had
+been rebuilt.**
+
+`suite_render.o` and `suite_backend.o` had no dependency on
+`page_table.h`, so a deliberately blinded reader went on returning the
+right answer from both, and the audit reported two good checks as broken.
+One finding in that run was real and two were the stale objects talking,
+which is `build-and-commit.md`'s own rule met from the measuring end:
+never conclude anything from a binary the build step did not rebuild. It
+is written there about concluding a test PASSES; this was the same error
+concluding one is USELESS.
+
+**The cause was a wildcard that did not reach one directory.** The rule
+generating the test build's Makefile already exists to defeat this class
+and says so in its own comment -- "qmake's dependency snapshot is taken
+once, and a header added afterwards is in no object's list" -- and its
+prerequisites are `$(TEST_PROFILES) VERSION $(HEADERS)`, where `HEADERS`
+wildcards `include/` and `src/` because those are the library's.
+`test/page_table.h` is in neither. So the hazard the rule was written for
+stayed open through the one directory the pattern did not cover, and the
+first test header this tree has ever had walked into it.
+
+`TEST_HEADERS = $(wildcard test/*.h)` joins that prerequisite list, kept
+separate from `$(HEADERS)` because a suite's header must not reach the
+library's qmake rule.
+
+**What it covers, stated narrowly, because the obvious claim is wider
+than the fix.** A source gaining an `#include` still does not re-run
+qmake -- nothing in the prerequisites changed -- and that is harmless at
+the time, since the source itself rebuilds. It matters only at the NEXT
+edit of the header, and that is the case now closed: the Makefile is
+regenerated before the sub-make runs, qmake rescans the current sources,
+and every object that includes the header rebuilds.
+
+Proved end to end rather than by composing two arguments. The generated
+dependency list was corrupted back to the exact stale state -- the
+`page_table.h` entry cut out of `suite_render.o`'s line -- and the reader
+blinded in the same step. The check reddened, because the header edit
+regenerated the Makefile first and replaced the corrupted list. With a
+control for the regeneration itself: touching the header moves the test
+Makefile's mtime and touching nothing does not.
+
+**And the first instrument for that was wrong too**, which is worth one
+line because it is the same lesson twice in one sitting. Grepping the
+build output for `qmake` to see whether it re-ran matched the library's
+own `test -e Makefile || qmake6` guards, which print on every run -- six
+matches on a tree where nothing had changed. The mtime is the artifact;
+the log line was a property of the recipe.
+
+All twelve `page_table_rows()` callers redden when the reader goes blind
+now, which is the population check this started out trying to take.
 
 
 ### 8.355 Every table on the page is held now, and the last two were held by other things first (2026-09-28)
