@@ -1151,6 +1151,122 @@ int suite_widgets() {
 		      "dropping INTO a row has no mark either");
 		GridGuard::reset();
 	}
+	// TWO MORE OF THE NINETY, and the first is a loose end rather than a new
+	// find: a table column that edits with a COMBO BOX was measured working
+	// when QItemEditorFactory was probed and never got a check. It is the
+	// shape a settings table has, and it is the case the inline-editor fix
+	// has to hold for -- a combo editor is wider than the text it replaces
+	// and carries its own mark.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		class ComboCreator : public QItemEditorCreatorBase {
+		public:
+			QWidget *createWidget(QWidget *parent) const override {
+				auto *c = new QComboBox(parent);
+				c->addItems({QStringLiteral("fast"), QStringLiteral("slow")});
+				return c;
+			}
+			QByteArray valuePropertyName() const override {
+				return QByteArrayLiteral("currentText");
+			}
+		};
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(30, 8));
+		auto *v = new QVBoxLayout(&win);
+		auto *table = new QTableWidget(2, 1);
+		table->setHorizontalHeaderLabels({QStringLiteral("Mode")});
+		table->setEditTriggers(QAbstractItemView::EditKeyPressed);
+		table->setItem(0, 0, new QTableWidgetItem(QStringLiteral("fast")));
+		table->setItem(1, 0, new QTableWidgetItem(QStringLiteral("slow")));
+		auto *factory = new QItemEditorFactory;
+		factory->registerEditor(QMetaType::QString, new ComboCreator);
+		auto *delegate = new QStyledItemDelegate(table);
+		delegate->setItemEditorFactory(factory);
+		table->setItemDelegate(delegate);
+		v->addWidget(table);
+		win.show();
+		InputRouter r(&win);
+		Qtty::set_current_window(&win);
+		table->setCurrentCell(0, 0);
+		table->setFocus();
+		QCoreApplication::processEvents();
+		r.on_key({Qt::Key_F2, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		const QString editing = Qtty::test::snapshot_of(win, 30, 8);
+		const int combos = table->findChildren<QComboBox *>().size();
+		r.on_key({Qt::Key_Down, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		r.on_key({Qt::Key_Return, QString(), false, false, false});
+		QCoreApplication::processEvents();
+		CHECK(combos == 1
+		          && editing.contains(QStringLiteral("[fast  ▾]"))
+		          && table->item(0, 0)->text() == QStringLiteral("slow"),
+		      "a column whose editor a factory supplies opens a combo box in "
+		      "the cell, walks with Down and commits with Return, which is "
+		      "what a settings table is made of");
+		// AND THE FOCUS MARK FOLLOWS THE EDITOR, which is the half a
+		// snapshot of the cell alone would not say: the table's own frame
+		// is doubled while it owns focus and single while its editor does.
+		CHECK(!editing.contains(QStringLiteral("╔")),
+		      "and the table's frame stops being the focused one while the "
+		      "editor holds the keyboard, so the mark is where the keys are");
+		delete factory;
+		GridGuard::reset();
+	}
+	{
+		// A QSpacerItem, which no .ui file is without and which this tree
+		// does not mention once. Its size is in PIXELS, so the question is
+		// what a caller gets on a grid -- and the answer is the NEAREST
+		// whole row, not a floor and not a ceiling.
+		const int ch = GridMetrics::ch();
+		const auto gap_for = [ch](int px) {
+			QWidget w;
+			w.setAttribute(Qt::WA_DontShowOnScreen);
+			w.resize(GridMetrics::cells(20, 8));
+			auto *v = new QVBoxLayout(&w);
+			v->setContentsMargins(0, 0, 0, 0);
+			v->setSpacing(0);
+			v->addWidget(new QLabel(QStringLiteral("top")));
+			v->addItem(new QSpacerItem(0, px, QSizePolicy::Minimum,
+			                           QSizePolicy::Fixed));
+			v->addWidget(new QLabel(QStringLiteral("bottom")));
+			v->addStretch();
+			w.show();
+			QCoreApplication::processEvents();
+			CellBuffer b(20, 8);
+			render_once(w, b);
+			int top = -1, bottom = -1;
+			for (int y = 0; y < b.rows(); ++y) {
+				QString row;
+				for (int x = 0; x < b.cols(); ++x) row += b.at(x, y).ch;
+				if (row.contains(QStringLiteral("top"))) top = y;
+				if (row.contains(QStringLiteral("bottom"))) bottom = y;
+			}
+			return (top >= 0 && bottom > top) ? bottom - top - 1 : -1;
+		};
+		// Asserted against the ARITHMETIC rather than against three numbers,
+		// so a different cell height does not make this a fixture about 19
+		// pixels: one pixel under two rows still gives two, and one pixel
+		// over one row still gives one.
+		bool nearest = true;
+		QString wrong;
+		for (int px : { 2 * ch, 2 * ch - 1, ch + 1, 3 * ch }) {
+			const int want = qRound(double(px) / ch);
+			const int got = gap_for(px);
+			if (got == want) continue;
+			nearest = false;
+			if (wrong.isEmpty())
+				wrong = QStringLiteral("%1 px wanted %2 row(s), got %3")
+				            .arg(px).arg(want).arg(got);
+		}
+		CHECK(nearest,
+		      nearest ? "a fixed spacer becomes the NEAREST whole number of "
+		                "rows, so a height that is nearly two rows is two and "
+		                "one that is barely over one is one"
+		              : wrong.toUtf8().constData());
+		GridGuard::reset();
+	}
 	// scrollbar column: arrows, thumb, groove (F5 fix)
 	{
 		QListView list;

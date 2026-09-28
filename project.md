@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-23
 
-2022 checks, 0 failures, and **4.7 seconds of user time** --
+2025 checks, 0 failures, and **4.7 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5), 2026-09-23: 4.68, 4.71, 4.73 user against 14.6
 wall each time. The suite grew by 51 checks on 2026-09-23 and the
@@ -17868,6 +17868,45 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.348 A loose end and a layout primitive (2026-09-28)
+
+**The loose end first, because it was mine to close.** 8.339 probed
+`QItemEditorFactory` -- a table column whose editor a factory supplies,
+which is how a settings table gets a combo box in a cell -- found it
+working, and never wrote a check. Measuring something and not pinning it
+is the half of a sweep that leaves nothing behind, so it is pinned now:
+`F2` opens the combo, `Down` walks it, `Return` commits, and the cell
+reads `slow`.
+
+**With a second half a snapshot of the cell would not have said.** The
+table's frame is doubled while it owns focus and single while its editor
+does -- so the check also asserts the doubled box is GONE while the
+editor holds the keyboard. That is the focus mark being where the keys
+are, which is the whole of what 8.342 published the two boxes for.
+
+**And `QSpacerItem`, which no `.ui` file is without.** Its size is in
+PIXELS, so what a caller gets on a grid is a real question and the answer
+is neither a floor nor a ceiling:
+
+    38 px, exactly two rows      2 rows
+    37 px, one under two rows    2 rows
+    20 px, one over one row      1 row
+
+**The nearest whole row.** Asserted against the arithmetic --
+`qRound(px / ch)` over four heights -- rather than against three numbers,
+so the check is about the rule and not about this machine's nineteen
+pixels. A fixture that pinned 37 to 2 would be a fixture about a cell
+height, and `code-style.md` has nothing to say about cell heights because
+no tab width is prescribed anywhere either.
+
+**Both are from the population sweep rather than an archetype walk**, and
+that is now four findings from it against one defect and four empty
+lenses from the walks: the rubber band, the legacy delegate's cell, the
+tool tip the page denied, and the vocabulary's five missing marks. Asking
+what an application could REACH keeps paying where asking what one DOES
+has stopped.
 
 
 ### 8.347 The arm that failed while every check passed (2026-09-28)
