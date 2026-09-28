@@ -5572,3 +5572,21 @@ find = "\tif (!k.alt || k.text.size() != 1) return false;"
 into = "\tif (!k.alt || k.text.size() != 1 || k.qt_key != 0) return false;"
 count = 1
 check = "and each shape's deciding field decides while its ignored field is ignored"
+
+
+[[sabotage]]
+name = "a conventions row is reworded here and not on the page"
+file = "test/suite_router.cpp"
+find = "\t\t\t\"`Ctrl+W`\","
+into = "\t\t\t\"`Ctrl+W` (word rubout)\","
+count = 1
+check = "the rows of the conventions table are the rows this check drives"
+
+
+[[sabotage]]
+name = "the arrow conventions stop being a convention and are always on"
+file = "src/runtime/input_router.cpp"
+find = "\tif (s_conventions && !press.isAccepted()) {"
+into = "\tif (!press.isAccepted()) {"
+count = 1
+check = "and every row does what it says with the conventions on and something else with them off"

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-23
 
-2037 checks, 0 failures, and **4.7 seconds of user time** --
+2039 checks, 0 failures, and **4.7 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5), 2026-09-23: 4.68, 4.71, 4.73 user against 14.6
 wall each time. The suite grew by 51 checks on 2026-09-23 and the
@@ -17868,6 +17868,84 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.353 The conventions table held, and its off arm is the whole of it (2026-09-28)
+
+**Ten rows, and the section's claim is not about any of them individually
+-- it is that ONE LINE turns them on.** "The habits a terminal user has
+and Qt does not." So a gate that drove each row with
+`set_keyboard_conventions(true)` and stopped would pass just as loudly for
+a key this library never touches, which is why every row here is measured
+twice and the OFF arm is written out beside the ON one:
+
+    Enter              focused 1 default 0     focused 0 default 0
+    Up, Down           down 1 up 1             down 0 up 1
+    Ctrl+PageUp/Down   0 to 1 to 0             0 to 0 to 0
+    F6, Shift+F6       moved                   did not move
+    F10                menu bar taken          not taken
+    Alt + tab letter   tab 1                   tab 0
+    Ctrl+A, Ctrl+E     A to 0, E to 17         A to 17, E to 17
+    Ctrl+K, Ctrl+U     [hello ] [brave world]  both unchanged
+    Ctrl+W             [hello world]           unchanged
+    Ctrl+D             deletes, no close       unchanged, close asked
+
+All ten as the page says. The `Ctrl+A` off arm is the one worth reading:
+with the conventions off it is Qt's select-all, so the caret lands at the
+END of the line rather than the start -- the two arms differ in where the
+caret goes rather than in whether anything happened, which is a sharper
+separation than a no-op would have been. And `Ctrl+D` carries its row's
+second clause in the same measurement: in text it deletes and does not
+quit, and on a button it asks the window to close either way.
+
+**The fixtures are the whole of the work, and the first draft got one
+wrong in the direction that manufactures a page error.** `Up`/`Down` was
+measured over two `QPushButton`s and moved the focus with the conventions
+OFF as well -- which reads exactly like the page over-claiming. It is not:
+
+    two QPushButton      ON moved    OFF moved
+    two QLineEdit        ON moved    OFF stayed
+    two QCheckBox        ON moved    OFF moved
+    button then field    ON moved    OFF moved
+
+Qt's own `QAbstractButton` walks the focus chain on an arrow, so a button
+is the one arrangement where the answer cannot separate. The arrow path is
+gated on `s_conventions` and reached only when the focused widget did not
+accept the key -- so a widget that handles arrows itself hides the
+difference completely. **The row is real and the fixture was the proxy
+tested where it could not fail**: three of four arrangements agree in both
+arms, and the only one that discriminates is two line edits.
+
+What caught it was reading the code when the result surprised me rather
+than believing the measurement -- `evidence.md`'s *suspect the check
+before the code*, on the one row of ten where it mattered.
+
+**And the F6 row failed in the suite while passing standalone, for a
+reason the suite had already written down.** The strip F6 walks is filled
+by a COMPOSE, not by a window existing, and my fixture composed a 30x4
+frame -- the size of the window, with no row to spare -- so
+`window_tabs()` came back empty and F6 had nowhere to go. The second key
+table's own F6 case carries a comment recording the identical mistake from
+its first draft. **Twice now, in fixtures written eight thousand lines
+apart, the frame has been too small**; the comment was there to be read
+and the second draft was written without reading it.
+
+That case also says why the row asserts `current_window() != &first`
+rather than naming the destination: the strip holds whatever the frame
+collected, so asserting where F6 lands would make the row a claim about
+how many top-levels happen to be registered when the block runs.
+
+Two sabotages. A reword, and -- the one that matters -- removing
+`s_conventions &&` from the arrow-and-conventions guard, so the habits are
+always on. It reddens with `` `Enter`: off [focused 1 default 0] wanted
+[focused 0 default 0] ``: the ON arms all still pass and only the claim
+that these are a convention breaks, which is exactly the half this gate
+exists to hold.
+
+**Ten of the page's thirteen tables are now held.** The three that are
+not: the bindings-and-bytes table, the pointer-kind table, and the
+two-row `If your content is` table, which waits on where
+`page_table_rows()` should live rather than on a measurement.
 
 
 ### 8.352 Two more tables held, both right as written (2026-09-28)

@@ -2429,6 +2429,375 @@ int suite_router() {
 		              .toUtf8().constData());
 	}
 
+	// ---- the conventions table, driven ------------------------------------
+	//
+	// Ten rows, and the section's whole claim is that ONE LINE turns them on:
+	// "the habits a terminal user has and Qt does not". So every row is driven
+	// twice, with set_keyboard_conventions() on and off, and the OFF arm is
+	// what says the row is a convention at all rather than something Qt was
+	// doing anyway. A row asserted only with the conventions on would pass
+	// just as loudly for a key this library never touches.
+	//
+	// THE FIXTURES ARE CHOSEN SO THE TWO ARMS DIFFER, which is the whole of
+	// the work here and was got wrong first. The Up/Down row was measured
+	// over two QPushButtons and moved focus with the conventions OFF as well
+	// -- which reads exactly like the page over-claiming, and is not: Qt's
+	// own QAbstractButton walks the focus chain on an arrow, so buttons are
+	// the one arrangement where the answer cannot separate. Measured across
+	// four:
+	//
+	//     two QPushButton      ON moved    OFF moved
+	//     two QLineEdit        ON moved    OFF stayed
+	//     two QCheckBox        ON moved    OFF moved
+	//     button then field    ON moved    OFF moved
+	//
+	// so the row is real and the fixture is two line edits. The arrow path is
+	// gated on s_conventions and reached only when the focused widget did not
+	// accept the key, which is why a widget that handles arrows itself hides
+	// the difference.
+	{
+		const bool was_on = keyboard_conventions();
+		static const char *const published_rows[] = {
+			"`Enter`",
+			"`Up`, `Down`",
+			"`Ctrl+PageUp`, `Ctrl+PageDown`",
+			"`F6`, `Shift+F6`",
+			"`F10`",
+			"`Alt` + a tab's letter",
+			"`Ctrl+A`, `Ctrl+E`",
+			"`Ctrl+K`, `Ctrl+U`",
+			"`Ctrl+W`",
+			"`Ctrl+D`",
+		};
+		int wrong = 0;
+		QString first_bad;
+		QStringList listed;
+		for (int i = 0; i < 10; ++i) {
+			listed << QString::fromUtf8(published_rows[i]);
+			QString on_arm, off_arm;
+			for (int on = 1; on >= 0; --on) {
+				set_keyboard_conventions(on);
+				QString &arm = on ? on_arm : off_arm;
+				switch (i) {
+				case 0: {
+					// Enter on the control that HAS the focus, with a
+					// different control holding Qt's default -- so a router
+					// that fired the default button instead would read as a
+					// pass against a fixture with only one button in it.
+					QWidget win;
+					win.setAttribute(Qt::WA_DontShowOnScreen);
+					win.resize(GridMetrics::cells(30, 8));
+					auto *v = new QVBoxLayout(&win);
+					auto *deflt = new QPushButton(QStringLiteral("Default"));
+					deflt->setDefault(true);
+					auto *other = new QPushButton(QStringLiteral("Other"));
+					int def_hits = 0, other_hits = 0;
+					QObject::connect(deflt, &QPushButton::clicked,
+					                 [&def_hits] { ++def_hits; });
+					QObject::connect(other, &QPushButton::clicked,
+					                 [&other_hits] { ++other_hits; });
+					v->addWidget(deflt);
+					v->addWidget(other);
+					win.show();
+					InputRouter r(&win);
+					Qtty::set_current_window(&win);
+					other->setFocus();
+					Qtty::set_focus_widget(win.focusWidget());
+					QCoreApplication::processEvents();
+					r.on_key({Qt::Key_Return, QString(),
+					          false, false, false});
+					QCoreApplication::processEvents();
+					arm = QStringLiteral("focused %1 default %2")
+					          .arg(other_hits).arg(def_hits);
+					win.hide();
+					QCoreApplication::processEvents();
+					break;
+				}
+				case 1: {
+					// Two line edits, per the table above.
+					QWidget win;
+					win.setAttribute(Qt::WA_DontShowOnScreen);
+					win.resize(GridMetrics::cells(30, 8));
+					auto *v = new QVBoxLayout(&win);
+					auto *top = new QLineEdit;
+					auto *bottom = new QLineEdit;
+					v->addWidget(top);
+					v->addWidget(bottom);
+					win.show();
+					InputRouter r(&win);
+					Qtty::set_current_window(&win);
+					top->setFocus();
+					Qtty::set_focus_widget(win.focusWidget());
+					QCoreApplication::processEvents();
+					r.on_key({Qt::Key_Down, QString(), false, false, false});
+					QCoreApplication::processEvents();
+					const bool down = win.focusWidget() == bottom;
+					r.on_key({Qt::Key_Up, QString(), false, false, false});
+					QCoreApplication::processEvents();
+					arm = QStringLiteral("down %1 up %2").arg(down)
+					          .arg(win.focusWidget() == top);
+					win.hide();
+					QCoreApplication::processEvents();
+					break;
+				}
+				case 2:
+				case 5: {
+					QWidget win;
+					win.setAttribute(Qt::WA_DontShowOnScreen);
+					win.resize(GridMetrics::cells(40, 10));
+					auto *v = new QVBoxLayout(&win);
+					auto *tabs = new QTabWidget;
+					tabs->addTab(new QLabel(QStringLiteral("one")),
+					             QStringLiteral("&One"));
+					tabs->addTab(new QLabel(QStringLiteral("two")),
+					             QStringLiteral("&Two"));
+					v->addWidget(tabs);
+					win.show();
+					InputRouter r(&win);
+					Qtty::set_current_window(&win);
+					tabs->setCurrentIndex(0);
+					Qtty::set_focus_widget(win.focusWidget());
+					QCoreApplication::processEvents();
+					if (i == 2) {
+						r.on_key({Qt::Key_PageDown, QString(),
+						          true, false, false});
+						QCoreApplication::processEvents();
+						const int forward = tabs->currentIndex();
+						// Again, which is where the wrap the row promises
+						// either happens or runs off the end.
+						r.on_key({Qt::Key_PageDown, QString(),
+						          true, false, false});
+						QCoreApplication::processEvents();
+						arm = QStringLiteral("0 to %1 to %2").arg(forward)
+						          .arg(tabs->currentIndex());
+					} else {
+						test::mnemonic(r, QLatin1Char('t'));
+						QCoreApplication::processEvents();
+						arm = QStringLiteral("tab %1")
+						          .arg(tabs->currentIndex());
+					}
+					win.hide();
+					QCoreApplication::processEvents();
+					break;
+				}
+				case 3: {
+					QWidget first;
+					first.setAttribute(Qt::WA_DontShowOnScreen);
+					first.resize(GridMetrics::cells(30, 10));
+					(new QVBoxLayout(&first))->addWidget(new QLineEdit);
+					first.show();
+					InputRouter r(&first);
+					QWidget second;
+					second.setAttribute(Qt::WA_DontShowOnScreen);
+					second.resize(GridMetrics::cells(20, 5));
+					(new QVBoxLayout(&second))->addWidget(new QLineEdit);
+					second.show();
+					QCoreApplication::processEvents();
+					// THE STRIP IS FILLED BY A COMPOSE, and by one with room
+					// for a strip in it. Paired with THIS router, or the
+					// current window moves and the router never hears; built
+					// after the second window is up, so the frame collects
+					// it; and scoped, so its destructor takes the strip down
+					// and the second window leaves the registry.
+					//
+					// The first draft composed 20x4 -- the size of a window,
+					// with no row to spare -- so window_tabs() came back
+					// empty, F6 had nowhere to go, and the row read as broken
+					// with the library working. The F6 case of the second key
+					// table records the same mistake from its own first
+					// draft; this is the second time that frame has been too
+					// small.
+					Compositor local(&first, &r);
+					{ CellBuffer frame(30, 10); local.compose(frame); }
+					Qtty::set_current_window(&first);
+					QCoreApplication::processEvents();
+					r.on_key({Qt::Key_F6, QString(), false, false, false});
+					QCoreApplication::processEvents();
+					// MOVED, not moved to `second`: the strip holds whatever
+					// the frame collected, and asserting the destination
+					// would make the row a claim about how many top-levels
+					// happen to be registered when this block runs.
+					const bool forward = Qtty::current_window() != &first;
+					r.on_key({Qt::Key_F6, QString(), false, false, true});
+					QCoreApplication::processEvents();
+					const bool back = Qtty::current_window() == &first;
+					arm = QStringLiteral("F6 moved %1, Shift+F6 on the first "
+					                     "%2").arg(forward).arg(back);
+					second.hide();
+					Qtty::set_current_window(&first);
+					QCoreApplication::processEvents();
+					break;
+				}
+				case 4: {
+					QMainWindow win;
+					win.setAttribute(Qt::WA_DontShowOnScreen);
+					win.resize(GridMetrics::cells(30, 8));
+					QMenu *file =
+					    win.menuBar()->addMenu(QStringLiteral("&File"));
+					file->addAction(QStringLiteral("&Quit"));
+					win.setCentralWidget(new QLineEdit);
+					win.show();
+					InputRouter r(&win);
+					Qtty::set_current_window(&win);
+					QCoreApplication::processEvents();
+					r.on_key({Qt::Key_F10, QString(), false, false, false});
+					QCoreApplication::processEvents();
+					arm = QStringLiteral("menu bar taken %1")
+					          .arg(win.menuBar()->activeAction() != nullptr
+					               || file->isVisible());
+					file->hide();
+					win.hide();
+					QCoreApplication::processEvents();
+					break;
+				}
+				default: {
+					// The readline family and Ctrl+D, all in a widget that
+					// takes text, which is the condition two of the rows
+					// state outright.
+					QWidget win;
+					win.setAttribute(Qt::WA_DontShowOnScreen);
+					win.resize(GridMetrics::cells(30, 6));
+					auto *v = new QVBoxLayout(&win);
+					auto *field = new QLineEdit;
+					v->addWidget(field);
+					win.show();
+					InputRouter r(&win);
+					Qtty::set_current_window(&win);
+					field->setFocus();
+					Qtty::set_focus_widget(win.focusWidget());
+					QCoreApplication::processEvents();
+					const auto reset = [&](int caret) {
+						field->setText(QStringLiteral("hello brave world"));
+						field->setCursorPosition(caret);
+						QCoreApplication::processEvents();
+					};
+					if (i == 6) {
+						reset(6);
+						r.on_key({Qt::Key_A, QString(), true, false, false});
+						QCoreApplication::processEvents();
+						const int home = field->cursorPosition();
+						r.on_key({Qt::Key_E, QString(), true, false, false});
+						QCoreApplication::processEvents();
+						arm = QStringLiteral("A to %1, E to %2").arg(home)
+						          .arg(field->cursorPosition());
+					} else if (i == 7) {
+						reset(6);
+						r.on_key({Qt::Key_K, QString(), true, false, false});
+						QCoreApplication::processEvents();
+						const QString killed = field->text();
+						reset(6);
+						r.on_key({Qt::Key_U, QString(), true, false, false});
+						QCoreApplication::processEvents();
+						arm = QStringLiteral("K [%1] U [%2]")
+						          .arg(killed, field->text());
+					} else if (i == 8) {
+						reset(12);
+						r.on_key({Qt::Key_W, QString(), true, false, false});
+						QCoreApplication::processEvents();
+						arm = QStringLiteral("[%1]").arg(field->text());
+					} else {
+						// Ctrl+D carries the row's second clause -- a quit
+						// key everywhere else -- so the window has to be
+						// able to report having been asked to close. It
+						// refuses, which stops the router before
+						// qApp->quit() and keeps the fixture alive.
+						struct Refusing : QWidget {
+							int asked = 0;
+							void closeEvent(QCloseEvent *e) override {
+								++asked;
+								e->ignore();
+							}
+						};
+						Refusing shut;
+						shut.setAttribute(Qt::WA_DontShowOnScreen);
+						shut.resize(GridMetrics::cells(30, 6));
+						auto *sv = new QVBoxLayout(&shut);
+						auto *editable = new QLineEdit;
+						auto *button = new QPushButton(QStringLiteral("Push"));
+						sv->addWidget(editable);
+						sv->addWidget(button);
+						shut.show();
+						InputRouter sr(&shut);
+						Qtty::set_current_window(&shut);
+						editable->setText(QStringLiteral("abcdef"));
+						editable->setCursorPosition(2);
+						editable->setFocus();
+						Qtty::set_focus_widget(shut.focusWidget());
+						QCoreApplication::processEvents();
+						sr.on_key({Qt::Key_D, QString(), true, false, false});
+						QCoreApplication::processEvents();
+						const QString text = editable->text();
+						const int after_text = shut.asked;
+						button->setFocus();
+						Qtty::set_focus_widget(shut.focusWidget());
+						QCoreApplication::processEvents();
+						sr.on_key({Qt::Key_D, QString(), true, false, false});
+						QCoreApplication::processEvents();
+						arm = QStringLiteral("in text [%1] close %2, on a "
+						                     "button close %3").arg(text)
+						          .arg(after_text)
+						          .arg(shut.asked - after_text);
+						shut.hide();
+						QCoreApplication::processEvents();
+					}
+					win.hide();
+					QCoreApplication::processEvents();
+					break;
+				}
+				}
+			}
+			// What each row must say, on and off. Written out rather than
+			// computed, because the OFF arm is a measurement of Qt and not
+			// of this library and a rule would have to guess it.
+			static const struct Want { const char *on; const char *off; }
+			wants[] = {
+				{ "focused 1 default 0",          "focused 0 default 0" },
+				{ "down 1 up 1",                  "down 0 up 1" },
+				{ "0 to 1 to 0",                  "0 to 0 to 0" },
+				{ "F6 moved 1, Shift+F6 on the first 1",
+				  "F6 moved 0, Shift+F6 on the first 1" },
+				{ "menu bar taken 1",             "menu bar taken 0" },
+				{ "tab 1",                        "tab 0" },
+				{ "A to 0, E to 17",              "A to 17, E to 17" },
+				{ "K [hello ] U [brave world]",
+				  "K [hello brave world] U [hello brave world]" },
+				{ "[hello world]",                "[hello brave world]" },
+				{ "in text [abdef] close 0, on a button close 1",
+				  "in text [abcdef] close 1, on a button close 1" },
+			};
+			if (on_arm == QLatin1String(wants[i].on)
+			    && off_arm == QLatin1String(wants[i].off))
+				continue;
+			++wrong;
+			if (first_bad.isEmpty())
+				first_bad = QStringLiteral("%1: on [%2] wanted [%3]; off [%4] "
+				                           "wanted [%5]")
+				                .arg(QString::fromUtf8(published_rows[i]),
+				                     on_arm, QLatin1String(wants[i].on),
+				                     off_arm, QLatin1String(wants[i].off));
+		}
+		set_keyboard_conventions(was_on);
+		GridGuard::reset();
+		const QStringList published = page_table_rows(
+		    QStringLiteral("## The terminal's own keys"),
+		    QStringLiteral("| Key |"));
+		printf("info: the conventions table promises %d row(s), each driven "
+		       "with the conventions on and off; %d did not hold\n",
+		       int(published.size()), wrong);
+		CHECK(published == listed,
+		      "the rows of the conventions table are the rows this check "
+		      "drives, by name");
+		CHECK(wrong == 0,
+		      wrong == 0
+		        ? "and every row does what it says with the conventions on "
+		          "and something else with them off, which is what makes it "
+		          "a convention rather than a key Qt was answering anyway"
+		        : QStringLiteral("and every row does what it says with the "
+		                         "conventions on and something else with "
+		                         "them off -- %1").arg(first_bad)
+		              .toUtf8().constData());
+	}
+
 	// ---- the custom-widget contract, driven -------------------------------
 	//
 	// Seven rows under "If you are writing a custom widget", and every one is
