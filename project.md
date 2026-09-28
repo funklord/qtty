@@ -17870,6 +17870,66 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.346 A gate nineteen checks wide that nobody runs (2026-09-28)
+
+**`make check` skips the tray surface and says so**, and that sentence is
+the whole finding: `test-tools` prints "qtty-tray-check needs a session
+bus: make test-tray", so nineteen checks covering the tray icon and the
+desktop notification run only when somebody remembers. `evidence.md`
+names the class -- a check that runs only in CI is a check you have
+stopped running -- and on a repository whose CI is deliberately off, "on
+demand" is the same thing.
+
+**Run on 2026-09-28: 0 failures, 19 checks, 0.28 s wall**, and the
+dbus-daemon count on this machine was 551 before and 551 after, so
+`dbus-run-session` reaped its own bus and the run leaked nothing. That
+number is the machine's, not this project's; what matters is the delta,
+which is zero.
+
+**The target is better controlled than most of the gate.** It runs the
+checker once with a bogus bus address first and REFUSES if that passes
+-- "the no-bus control PASSED, so this gate cannot refuse a run that
+measured nothing" -- and only then runs it under a private bus. That is
+a positive control inside the tool, which is what
+`evidence.md` asks for and what most of this gate's parts do not have.
+
+**So it could join `CHECK_PARTS`, and the decision is the holder's.**
+The option, its cost and its risk, which is what
+`working-practice.md` asks be named rather than described:
+
+- **The option.** Add `test-tray` to `CHECK_PARTS`. It already skips
+  cleanly when `dbus-run-session` is absent, printing "tray: SKIPPED",
+  so a machine without it cannot be broken by this.
+- **The cost.** 0.28 s on a gate that takes minutes. Nil.
+- **The risk, and it is why this is not taken here.** A machine with
+  `dbus-run-session` present but unable to start a bus -- a container
+  with no `/run/user`, a stripped image -- would turn every commit red
+  for a reason that is not the code's. This document already argues that
+  a gate going red for reasons that are not the code's is worse than no
+  gate, about the frame-budget ceiling, and the same argument applies
+  here.
+- **Whose.** The holder's: it changes what `make check` means for every
+  session in this tree.
+
+**Two empty lenses from the same session, recorded with their method
+because an absence is a measurement only with one.**
+
+- **The guide's code examples, read for context-dependence.** 8.345
+  found one example that is right where it stands and wrong if copied --
+  `QProcess::execute()` inside `shell_out()`. Nineteen fenced blocks and
+  the indented snippets were read for the same shape: the rest are
+  single calls whose conditions the surrounding prose states, and
+  `flush_deferred_messages()`, `set_keyboard_conventions()` and
+  `redraw()` each carry theirs. One find, no second.
+- **Every `Attr` value, read for a producer.** `Attr::Strike` looked
+  like a candidate for a dangling attribute -- the interface-only-as-
+  wired-as-its-least-used-method shape this tree has form for. It is
+  fully wired: produced from `QFont::strikeOut()` in `cell_geometry.h`
+  and `cell_paint.cpp`, consumed by the rasteriser, the snapshot and the
+  ANSI emitter, with checks in two suites. All seven values have
+  producers.
+
+
 ### 8.345 The other source of stray bytes (2026-09-28)
 
 **"Where your output goes" collects the ways an application's own bytes
