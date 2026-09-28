@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-23
 
-2025 checks, 0 failures, and **4.7 seconds of user time** --
+2027 checks, 0 failures, and **4.7 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5), 2026-09-23: 4.68, 4.71, 4.73 user against 14.6
 wall each time. The suite grew by 51 checks on 2026-09-23 and the
@@ -17868,6 +17868,50 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.349 The population closed, and what is left in it (2026-09-28)
+
+**`QUndoView` and `QDataWidgetMapper` were the last two an ordinary
+application reaches for**, and both work. The undo view draws one row per
+command on the stack -- `<empty>`, `type a`, `type b` -- which is the
+whole of what a reader takes from a history. The mapper draws nothing of
+its own, so what is asserted is that what it DRIVES reaches the frame:
+`toFirst()` shows `alpha` and not `beta`, `toNext()` shows `beta`, and
+the drawn text is checked rather than only the property, which is the
+difference between the mapper working and the frame showing it.
+
+**So the population is closed, and the claim is checkable rather than a
+feeling.** Of Qt Widgets' 194 public classes, 73 still appear nowhere in
+this tree, and every one of them is in a category a terminal will never
+meet:
+
+    38  QGraphics*        scene items, layouts, effects, transforms, events
+    10  QStyleOption*     the structs a style is handed, not things to draw
+     8  QGesture*         touch, which this platform has no source for
+     2  QStyleHintReturn* out-parameters of styleHint()
+     2  QItemEditorCreator* the templates behind the factory 8.348 pinned
+    13  the rest          QAbstractItemDelegate (the base, exercised through
+                          both concrete ones), QAccessibleWidget, QColormap,
+                          QFileIconProvider (qtty draws no icons),
+                          QPlainTextDocumentLayout, QRhiWidget, QScroller
+                          and QScrollerProperties (kinetic), QStylePlugin,
+                          QTableWidgetSelectionRange, QTileRules,
+                          QTreeWidgetItemIterator, QWidgetData, QWidgetItem
+
+**The filter is named so the next reader can re-derive it** rather than
+take "nothing meaningful is left" on trust -- which is what this document
+asks of a scope number, and a population is a scope number with the units
+spelled out.
+
+**What the sweep produced, against what the archetype walks produced.**
+Six findings from asking what an application could REACH: the rubber band
+that hid what it selected, the legacy delegate's cell of indent, the tool
+tip the page said would never appear, the vocabulary's five missing
+marks, the factory-supplied editor, and what a spacer measures. Seven
+archetype walks produced one defect and five empty lenses. **Both
+methods were worth running and they did not overlap once**, which is the
+argument for having two rather than a better one.
 
 
 ### 8.348 A loose end and a layout primitive (2026-09-28)

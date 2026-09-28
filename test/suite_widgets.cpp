@@ -3,6 +3,10 @@
 #include <qtty/qtty.h>
 #include <qtty/delegate.h>
 #include <QtWidgets>
+#include <QUndoStack>
+#include <QUndoView>
+#include <QUndoCommand>
+#include <QDataWidgetMapper>
 #include <cstdio>
 #include <functional>
 
@@ -1265,6 +1269,73 @@ int suite_widgets() {
 		                "rows, so a height that is nearly two rows is two and "
 		                "one that is barely over one is one"
 		              : wrong.toUtf8().constData());
+		GridGuard::reset();
+	}
+	// THE LAST TWO OF THE NINETY an ordinary application reaches for, which
+	// closes that population: everything still unmentioned is a
+	// graphics-scene item, a gesture, a style-option struct or a layout
+	// primitive used implicitly.
+	{
+		// A QUndoView is what an editor shows for its history, and what a
+		// reader needs from it is the command TEXTS -- so that is what is
+		// asserted, against the stack rather than against a picture.
+		struct Named : QUndoCommand {
+			explicit Named(const QString &t) { setText(t); }
+			void undo() override {}
+			void redo() override {}
+		};
+		QWidget w;
+		w.setAttribute(Qt::WA_DontShowOnScreen);
+		w.resize(GridMetrics::cells(24, 8));
+		auto *v = new QVBoxLayout(&w);
+		auto *stack = new QUndoStack(&w);
+		auto *view = new QUndoView(stack);
+		view->setFrameShape(QFrame::NoFrame);
+		v->addWidget(view);
+		stack->push(new Named(QStringLiteral("type a")));
+		stack->push(new Named(QStringLiteral("type b")));
+		w.show();
+		QCoreApplication::processEvents();
+		const QString drawn = Qtty::test::snapshot_of(w, 24, 8);
+		CHECK(stack->count() == 2
+		          && drawn.contains(QStringLiteral("type a"))
+		          && drawn.contains(QStringLiteral("type b")),
+		      "an undo view draws one row per command on the stack, which is "
+		      "the whole of what a reader takes from a history");
+		GridGuard::reset();
+	}
+	{
+		// A QDataWidgetMapper draws nothing of its own -- it drives other
+		// widgets from a model row -- so the question is whether what it
+		// drives still reaches the screen. Asserted on the DRAWN text and
+		// not only on the property, which is the difference between the
+		// mapper working and the frame showing it.
+		QWidget w;
+		w.setAttribute(Qt::WA_DontShowOnScreen);
+		w.resize(GridMetrics::cells(24, 6));
+		auto *v = new QVBoxLayout(&w);
+		auto *model = new QStandardItemModel(2, 1, &w);
+		model->setItem(0, 0, new QStandardItem(QStringLiteral("alpha")));
+		model->setItem(1, 0, new QStandardItem(QStringLiteral("beta")));
+		auto *edit = new QLineEdit;
+		v->addWidget(edit);
+		auto *mapper = new QDataWidgetMapper(&w);
+		mapper->setModel(model);
+		mapper->addMapping(edit, 0);
+		mapper->toFirst();
+		w.show();
+		QCoreApplication::processEvents();
+		const QString first = Qtty::test::snapshot_of(w, 24, 6);
+		mapper->toNext();
+		QCoreApplication::processEvents();
+		const QString next = Qtty::test::snapshot_of(w, 24, 6);
+		CHECK(first.contains(QStringLiteral("alpha"))
+		          && !first.contains(QStringLiteral("beta"))
+		          && next.contains(QStringLiteral("beta"))
+		          && edit->text() == QStringLiteral("beta"),
+		      "a mapped form shows the row the mapper is on and changes with "
+		      "it, so binding a form to a model reaches the frame rather "
+		      "than only the widget");
 		GridGuard::reset();
 	}
 	// scrollbar column: arrows, thumb, groove (F5 fix)
