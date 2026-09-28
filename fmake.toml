@@ -85,3 +85,9 @@ install = false
 
 [target.screen-probe]
 install = false
+
+# The install probe is the same case one gate along: tool/install-probe.cpp is
+# compiled by test-install against an INSTALLED prefix, so shipping it would
+# put a gate's fixture in somebody's package.
+[target.install-probe]
+install = false

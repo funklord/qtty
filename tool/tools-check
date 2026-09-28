@@ -143,10 +143,11 @@ if [ -z "$installed" ]; then
 	fail=1
 fi
 # Every program fmake builds: the four tools by their fmake.toml section
-# name, plus the two the tree has no .pro for. Named here because fmake
-# derives them from the tree and a .pro does not exist for either.
+# name, plus the three the tree has no .pro for. Named here because fmake
+# derives them from the tree and a .pro does not exist for any of them.
 for t in inspect:qtty-inspect replay:qtty-replay negotiate:qtty-negotiate \
-         tray:qtty-tray-check chat:chat screen-probe:screen-probe; do
+         tray:qtty-tray-check chat:chat screen-probe:screen-probe \
+         install-probe:install-probe; do
 	section=${t%%:*}
 	program=${t#*:}
 	if echo "$installed" | grep -qx "$program"; then continue; fi

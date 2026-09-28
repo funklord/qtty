@@ -682,6 +682,7 @@ test-install: $(LIB) $(INSPECT) $(REPLAY)
 		*) echo "    installed but not named in the list: $$f"; missing=1;; \
 		esac; \
 	done; \
+	$(MAKE) --no-print-directory probe-install || missing=1; \
 	$(MAKE) --no-print-directory uninstall DESTDIR="$$PWD/$$stage" PREFIX=/usr \
 		> /dev/null || exit 1; \
 	left=$$(cd "$$stage" && find . -type f | wc -l); \
@@ -695,6 +696,82 @@ test-install: $(LIB) $(INSPECT) $(REPLAY)
 		exit 1; \
 	}; \
 	echo "test-install: $(words $(INSTALLED_FILES)) file(s) installed and removed"
+
+# AN ADOPTER COMPILED AGAINST AN INSTALL, which test-install did not do for
+# its whole life. It pinned the installed file SET from both sides and never
+# compiled a line against it, and those are different claims: a correct set of
+# files is not a working library. A wrong `Libs:`, a missing `Requires:`, a
+# header needing one of its siblings included first -- each blocks every
+# adopter and none of them moves a file, so every one was invisible here.
+#
+# project.md 0e records a consumer built against the library by hand on
+# 2026-09-05. This is that act with a status nobody has to remember to read.
+#
+# ITS OWN PREFIX INSTALL rather than the staged one above, and the reason is
+# measured rather than stylistic. test-install stages with PREFIX=/usr because
+# that is the path it is checking, so the .pc inside it says prefix=/usr and
+# cannot be compiled against where it lies. Both of pkg-config's ways to
+# relocate one are wrong for a chain that has `Requires:`:
+#
+#   --define-variable=prefix=DIR   sets prefix for EVERY package in the
+#                                  chain, so Qt6Widgets loses its own and
+#                                  <QColor> stops being findable
+#   --define-prefix                guesses per package from the .pc's path by
+#                                  stripping /lib/pkgconfig -- right for
+#                                  qtty, and for Qt's .pc in
+#                                  /usr/lib/<triplet>/pkgconfig it guesses
+#                                  prefix=/usr/lib and hands out
+#                                  -I/usr/lib/include/...
+#
+# So this installs with PREFIX set to a directory of its own, which is what a
+# `--prefix=$$HOME/opt` build does and needs no override at all.
+#
+# SKIPPED rather than failed where the compiler or pkg-config is absent, the
+# way the tray and screen gates are -- and the skip is PRINTED, because an
+# optional step that vanishes silently is indistinguishable from one that ran.
+probe-install:
+	@test -n "$(strip $(BUILD_DIR))" || { \
+		echo "probe-install: BUILD_DIR is empty, refusing to install" >&2; \
+		exit 1; \
+	}; \
+	if ! command -v pkg-config >/dev/null 2>&1 \
+	   || ! command -v $(CXX) >/dev/null 2>&1; then \
+		echo "    probe: SKIPPED -- pkg-config or $(CXX) is absent, so"; \
+		echo "           nothing was compiled against an install"; \
+		exit 0; \
+	fi; \
+	pre="$(BUILD_DIR)/probe-prefix"; \
+	rm -rf "$$pre"; \
+	$(MAKE) --no-print-directory install PREFIX="$$PWD/$$pre" > /dev/null \
+		|| { echo "    probe: the install into a prefix of its own failed" >&2; \
+		     exit 1; }; \
+	flags=$$(PKG_CONFIG_PATH="$$pre/lib/pkgconfig" pkg-config \
+		--cflags --libs qtty) || { \
+		echo "    probe: pkg-config could not answer for the install" >&2; \
+		rm -rf "$$pre"; exit 1; \
+	}; \
+	rc=0; \
+	$(CXX) -Os -std=c++17 -o "$$pre/install-probe" tool/install-probe.cpp \
+		$$flags 2> "$(BUILD_DIR)/install-probe.cc" || { \
+		echo "    probe: an adopter cannot COMPILE against the install:" >&2; \
+		head -20 "$(BUILD_DIR)/install-probe.cc" >&2; rc=1; \
+	}; \
+	if [ "$$rc" -eq 0 ]; then \
+		said=$$(QT_QPA_PLATFORM=offscreen timeout 60 "$$pre/install-probe" \
+			2> "$(BUILD_DIR)/install-probe.err") || { \
+			echo "    probe: an adopter cannot RUN against the install:" >&2; \
+			echo "$$said" >&2; \
+			cat "$(BUILD_DIR)/install-probe.err" >&2; rc=1; \
+		}; \
+		case "$$said" in \
+		*"rendered ["*"INSTALLED"*) [ "$$rc" -ne 0 ] || echo "    probe: $$said";; \
+		*) echo "    probe: it ran and drew nothing recognisable:" >&2; \
+		   echo "$$said" >&2; rc=1;; \
+		esac; \
+	fi; \
+	rm -rf "$$pre" "$(BUILD_DIR)/install-probe.cc" \
+		"$(BUILD_DIR)/install-probe.err"; \
+	exit $$rc
 
 # The three tools and the example, run rather than merely built. Until this
 # target the only thing holding them to anything was the compiler: a tool that

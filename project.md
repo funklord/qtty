@@ -17920,6 +17920,112 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.357 An adopter compiled against an install, which nothing had done since 2026-09-05 (2026-09-28)
+
+**`test-install` pinned the installed file SET from both sides and never
+compiled a line against it.** Every named file must arrive, nothing
+unnamed may, and `uninstall` must leave nothing -- all three held, and
+none of them is the claim an adopter depends on. A wrong `Libs:`, a
+missing `Requires:`, a public header that needs one of its siblings
+included first: each blocks every adopter and **none of them moves a
+file**, so every one was invisible to a gate that counts files.
+
+§0e records a consumer built against the library by hand on 2026-09-05.
+That is a fact with a shelf life and nothing was keeping it true.
+`probe-install` is the same act with a status nobody has to remember to
+read: `tool/install-probe.cpp` includes the installed headers, links the
+installed archive through `pkg-config`, renders a label and a button, and
+exits non-zero if either is missing from the buffer. The gate reads its
+status AND its marker, because a probe that exits 0 having drawn nothing
+is the vacuous pass it exists to prevent.
+
+    probe: install-probe: qtty 0.1.0, rendered [INSTALLED/ <Go>]
+
+**It installs into a prefix of its own, and both of the obvious shortcuts
+are wrong -- measured, not guessed.** `test-install` stages with
+`PREFIX=/usr` because that is the path it is checking, so the `.pc` inside
+says `prefix=/usr` and cannot be compiled against where it lies. Neither
+of pkg-config's relocations survives a chain with `Requires:`:
+
+    --define-variable=prefix=DIR   sets prefix for EVERY package, so
+                                   Qt6Widgets loses its own and <QColor>
+                                   stops being findable -- which is how
+                                   the first version of this gate failed
+    --define-prefix                guesses per package by stripping
+                                   /lib/pkgconfig. Right for qtty; Qt's
+                                   .pc lives in /usr/lib/<triplet>/
+                                   pkgconfig, so it guesses prefix=/usr/lib
+                                   and hands out -I/usr/lib/include/...
+
+So the probe does what a `--prefix=$HOME/opt` build does and needs no
+override at all.
+
+**The first draft also left its own droppings inside the stage, and
+`test-install`'s existing check caught it** -- the compiler's stderr file
+landed under the staging tree and `uninstall left 1 file(s) behind`
+reddened. A gate written five weeks ago catching a gate written five
+minutes ago is the argument for the both-directions form it already had.
+
+**And `tools-check` refused the new file before any of this was
+committed**, which is the better half of the story. Adding
+`tool/install-probe.cpp` made fmake's install plan three programs where
+`make install` ships two:
+
+    make install puts these in bin:  qtty-inspect qtty-replay
+    fmake --install would put these: install-probe qtty-inspect qtty-replay
+
+fmake derives its targets from the tree, so a `.cpp` under `tool/` is a
+program it would ship, and an ejected Makefile would carry that install
+rule into somebody's package. The remedy is the one the gate names:
+`install = false` under `[target.install-probe]`, plus the program in
+`tool/tools-check`'s own list of what fmake builds and the Makefile does
+not ship -- `screen-probe` was already there for exactly this reason, so
+the second probe followed a path the first had cut.
+
+Worth recording because the sequence was the corrected one: the file was
+staged, `make check` run against the staged content, and the gate failed
+**before** a commit existed. That is the order the pre-commit note had
+been asking for twice today, and the first time this session it was
+actually followed.
+
+**Seen to fail, by hand, and here is why by hand.** Removing `-lqtty` from
+the generated `.pc` gives an adopter six undefined references --
+`prepare_environment`, `setup`, `GridMetrics::cw`, `ch`, `render_once`,
+`CellBuffer::to_text` -- and `test-install: the packaging rules do not
+agree with the list`.
+
+**That sabotage cannot live in `tool/sabotage.toml`, and the boundary is
+worth stating once.** The harness edits a source, rebuilds, runs the
+SUITE, and matches a `FAIL:` line; all 527 entries name a check the test
+binary prints. The Makefile's own gates -- `style`, `layout`,
+`version-check`, `count-check`, `guide-check`, `tools-check`,
+`test-install` -- print their verdicts from make recipes and are outside
+its reach entirely. Of the entries, the closest are the seven that edit
+`doc/keyboard-first.md`, and those still redden a check in the suite. So
+every Makefile gate in this tree is held by having been watched to fail
+once, by a person, and recorded -- which is weaker than the suite's
+arrangement and is the honest description of it.
+
+**What the sweep that led here found, and what it did not.** The lens was
+a hand-maintained list that must cover a directory, derived from 8.356's
+two prerequisite wildcards. Four places:
+
+    src.pro SOURCES         15 listed, 15 on disk -- complete
+    src.pro HEADERS         null_backend.h absent, and five src/ headers.
+                            Costs nothing: install globs include/qtty/*.h,
+                            and the two headers carrying Q_OBJECT --
+                            tray.h and delegate.h -- are both listed, so
+                            nothing needs moc that does not get it
+    install                 a glob, so no list to fall behind
+    public headers          all 18 compile standalone, each with only
+                            itself included
+
+The `src.pro` omission is the kind of thing `working-practice.md` says not
+to report: nothing breaks. It is here because the sweep that found it also
+found the gap above, and a reader who repeats the sweep should know which
+of the two answers is which.
+
+
 ### 8.356 One vacuous pass, two stale objects, and the build rule that let both happen (2026-09-28)
 
 **0e's standing item paid out within the hour of the change that caused
