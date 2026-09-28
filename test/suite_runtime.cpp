@@ -11,6 +11,7 @@
 #include "src/runtime/url_opener.h"
 #include "src/runtime/placement_paint.h"
 #include <QtWidgets>
+#include <QProcess>
 #include <cstdio>
 
 using namespace Qtty;
@@ -3886,6 +3887,42 @@ int suite_runtime() {
 		for (QWidget *t : hidden) t->show();
 		QCoreApplication::processEvents();
 		GridGuard::reset();
+	}
+
+	// A CHILD PROCESS IS THE OTHER SOURCE OF STRAY BYTES IN A FRAME, and the
+	// page's own section on output did not mention it. A TUI that runs a
+	// build, a git command or a compiler starts one, and the section's rule
+	// applies with full force: what lands in the frame stays there, because
+	// the cell plane never changed and the next frame is as quiet as any
+	// other.
+	//
+	// The distinction is Qt's channel mode and it is worth knowing exactly:
+	//
+	//   QProcess::start()    SeparateChannels -- the output is CAPTURED
+	//   QProcess::execute()  ForwardedChannels -- it goes to the terminal
+	//
+	// Measured both ways in a probe: start() returned "CAPTURED" from
+	// readAllStandardOutput() with nothing on the parent's stdout, and
+	// execute() put "FORWARDED" on the parent's stdout between two markers.
+	//
+	// ONLY THE CAPTURING HALF IS ASSERTED HERE, and the reason is this
+	// suite's own output: asserting the forwarded half means redirecting fd 1
+	// around the call, and fd 1 is what the gate parses for PASS lines. A
+	// leaked redirect would lose the suite's output and fail count-check
+	// with no sign of why. The forwarded half is recorded with its method
+	// instead -- which is what `evidence.md` asks of a fact whose instrument
+	// is worse than the fact.
+	{
+		QProcess child;
+		child.start(QStringLiteral("/bin/echo"), {QStringLiteral("CAPTURED")});
+		const bool finished = child.waitForFinished(5000);
+		const QByteArray out = child.readAllStandardOutput().trimmed();
+		CHECK(finished
+		          && child.processChannelMode() == QProcess::SeparateChannels
+		          && out == QByteArrayLiteral("CAPTURED"),
+		      "a child started with QProcess::start() has its output "
+		      "captured rather than written into the frame, which is what an "
+		      "application wanting to SHOW that output already does");
 	}
 
 	return fails;

@@ -2248,6 +2248,24 @@ the process -- taking them with it. Measured before that was so: with a
 frame up, 2746 bytes of screen reached the terminal and not one sentence
 of the diagnostic.
 
+**A CHILD PROCESS is the other source, and it is the one a TUI meets by
+accident.** Anything you run to do work -- a build, a `git`, a compiler
+-- writes to whatever fd it inherits, and Qt's two spellings differ:
+
+    QProcess::start()      the output is CAPTURED, and is yours to show
+    QProcess::execute()    the output is FORWARDED, into your frame
+
+Measured both ways: `start()` left nothing on the parent's stdout and
+`readAllStandardOutput()` had it all, while `execute()` put the child's
+line on the parent's stdout between two markers of its own.
+`startDetached()` forwards as well.
+
+So **run work with `start()` and show what comes back**, and keep
+`execute()` for inside `Qtty::shell_out()`, which is where a child is
+*meant* to own the screen -- the one-liner in *Running an editor, a
+pager, or anything else that wants the screen* is exactly that pairing,
+and it is correct there for the same reason it is wrong outside.
+
 **A raw `printf`, `std::cout` or `write(1, ...)` is not interceptable.**
 It goes straight to the terminal, so nothing here is asked and nothing
 here knows: the bytes land in your frame, and the next frame is as

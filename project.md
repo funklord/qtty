@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-23
 
-2021 checks, 0 failures, and **4.7 seconds of user time** --
+2022 checks, 0 failures, and **4.7 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5), 2026-09-23: 4.68, 4.71, 4.73 user against 14.6
 wall each time. The suite grew by 51 checks on 2026-09-23 and the
@@ -17868,6 +17868,45 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.345 The other source of stray bytes (2026-09-28)
+
+**"Where your output goes" collects the ways an application's own bytes
+land in a frame -- and it did not mention a CHILD PROCESS.** A TUI runs
+one to do work: a build, a `git`, a compiler. The section's rule applies
+with full force to what the child prints, because nothing repaints over
+it: the cell plane never changed and the next frame is as quiet as any
+other.
+
+**The distinction is Qt's channel mode, and it is exactly the two
+spellings an application picks between:**
+
+    QProcess::start()      SeparateChannels -- the output is CAPTURED
+    QProcess::execute()    ForwardedChannels -- it goes to the terminal
+
+Measured both ways: `start()` returned `CAPTURED` from
+`readAllStandardOutput()` with nothing on the parent's stdout, and
+`execute()` put `FORWARDED` on the parent's stdout between two markers
+of its own. `startDetached()` forwards as well.
+
+**The trap is that the guide's own `shell_out()` example uses
+`execute()`**, and is right to: inside `shell_out()` the child is meant
+to own the screen. Outside it, the identical line writes into a frame.
+So the page now says run work with `start()` and show what comes back,
+and keep `execute()` for the one place the pairing is deliberate.
+
+**ONLY THE CAPTURING HALF IS ASSERTED, and the reason is the suite's own
+output.** Asserting the forwarded half means redirecting fd 1 around the
+call, and fd 1 is what the gate parses for `PASS:` lines -- a leaked
+redirect would lose the suite's output and fail `count-check` with no
+sign of why. The forwarded half is recorded with its method instead,
+which is what `evidence.md` asks when the instrument is worse than the
+fact. Said out loud rather than left as a gap somebody re-derives.
+
+**Found by asking what a seventh application archetype does that the
+six did not.** A build monitor is a log pane, a status line and a child
+process, and the child is the part none of the earlier walks had.
 
 
 ### 8.344 One occupied cell drops the whole rule (2026-09-28)
