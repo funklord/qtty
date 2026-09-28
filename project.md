@@ -2487,15 +2487,51 @@ In the order I would take them:
    on qtty until its terms exist. Nothing else in this list stops
    somebody using it inside the workspace today.
 
-**One thing the pixel work leaves open, and it is a CHECK rather than a
-decision.** All three tiers are verified by their emitted bytes -- sizes,
-addresses, placement ids -- and none by what a terminal draws, although
-`make test-screen` proves that can now be done. Closing it needs a small
-driver that presents a frame through `AnsiBackend` inside kitty so the
-capture has something of qtty's to look at; the suite's fake backend
-cannot, and the shipped tools do not emit pixels. Named here because the
-oracle exists and the gap is now a missing fixture rather than a missing
-instrument.
+**~~One thing the pixel work leaves open~~ -- closed, and this entry was
+sending readers at work already done.** It asked for "a small driver that
+presents a frame through `AnsiBackend` inside kitty so the capture has
+something of qtty's to look at", on the grounds that every tier was
+verified by its emitted bytes and none by what a terminal draws.
+
+`tool/screen-probe.cpp` is that driver and its own opening comment says
+so. `tool/screen-check` compiles it when the library is built -- not
+shipped and in no `.pro`, because a binary only a screen test uses does
+not belong in an install -- and drives six captures: the kitty protocol,
+sixel under xterm, the halfblocks tier, the overlay, the placeholder and
+tmux. Two terminals and two wire formats, which is the point: they share
+nothing but this tree, so a geometry both draw is not a property of one
+renderer.
+
+**Run to confirm that rather than inferred from the file existing**, since
+a driver that exists and a gate that works are different claims. `make
+test-screen`, 2026-09-28, rc=0:
+
+    kitty      drew left=199 width=35, predicted 198 and 36
+    overlay    drew left=198 width=36, predicted 198 and 36
+    after clear_overlay the marker is gone, control still 2592 px
+    tmux       left=198 width=36, implying a cell of 9.00
+    xterm      drew left=135 width=24, predicted 132 and 24
+    halfblocks drew left=135 width=24, predicted 132 and 24
+
+within each path's own slack -- exact for kitty, and the three-unit xterm
+residual is sixel stating colour and position through DEC's percentages.
+
+**Rewritten rather than struck through in passing, because the sweep that
+found it is the reusable part.** Swept 2026-09-28 over §0e and §11 for
+gap language -- *needs*, *cannot*, *absent*, *not built*, *missing* --
+which returned eight candidates. One was stale: this. Two were the
+holder's decisions, one was the licence, one was a Qt point release this
+machine genuinely still lacks (6.8.2 is the only 6.x here, with 5.15.15
+beside it, measured rather than recalled), and **three were false
+positives of exactly the kind `evidence.md` names** -- recorded reasoning
+from a past sabotage analysis, where "the focus `QPointer` needs a check
+that depends on a stale pointer surviving, and none constructs that" is a
+closed finding wearing an open gap's words.
+
+So one stale claim in eight candidates, and the detector cannot tell a
+recorded limit from an open gap. The part worth keeping is which claims
+it CAN settle: the ones naming an artifact. This one named a missing file,
+and one `ls` answered it.
 
 **And two standing ones that are method rather than work.**
 
@@ -17966,6 +18002,30 @@ the log line was a property of the recipe.
 
 All twelve `page_table_rows()` callers redden when the reader goes blind
 now, which is the population check this started out trying to take.
+
+**And the lens was finished rather than dropped after the instance, which
+is 0d's method, and it came back EMPTY -- recorded with how it was run so
+the next fault needs a new one.** The shape is a check comparing two
+quantities that come from the same fallible read, so a read that fails
+compares 0 with 0. Eighteen file-reading sites across five suites; four
+comparisons where both sides are derived rather than one side literal:
+
+    pointer-kind: named == candidates.size(), in_guide == named
+                  -- this entry's fault, and the only one
+    audit set:    declared == listed, advertised == listed
+                  -- already guarded, and the guard says why in its own
+                     message: "an unreadable one being a check that
+                     cannot fail", plus "both lists are non-empty, so
+                     neither pattern has quietly stopped matching"
+    marks table:  published == sizeof(rows)/sizeof(rows[0])
+                  -- the other side is a compile-time constant and cannot
+                     be zero, so a failed read fails the check
+
+So the tree already knew this hazard in the one place with three copies of
+a population to reconcile, and wrote the reason into the message rather
+than into a comment. **The outlier was the block edited an hour earlier**,
+which is the useful shape of the result: the fault was not a gap in the
+suite's habits, it was a new edit not yet carrying them.
 
 
 ### 8.355 Every table on the page is held now, and the last two were held by other things first (2026-09-28)

@@ -76,6 +76,18 @@ HEADERS = $(wildcard include/qtty/*.h src/*.h src/*/*.h src/*/*/*.h)
 # must not reach its qmake rule. They do reach the test build's, which is
 # the gap measured on 2026-09-28 -- see that rule.
 TEST_HEADERS = $(wildcard test/*.h)
+# And the SUBDIRS' own, which $(HEADERS) does not reach either. Found by
+# pointing that day's lens at the rest of the tree rather than stopping at the
+# instance: of the thirty tracked headers, twenty-seven are inside the
+# wildcard, and the three outside it were test/page_table.h, the example's,
+# and spike/qtty_core.h -- which is correctly outside, spike/ having its own
+# CMakeLists and no part in either qmake build.
+#
+# The example is a SUBDIR of qtty.pro AND is compiled into the suite, so its
+# header reaches both rules. No tool has a header today; the wildcard is
+# there so that the first one does not have to rediscover this.
+TOOL_HEADERS = $(wildcard tool/*/*.h)
+EXAMPLE_HEADERS = $(wildcard example/*/*.h)
 PROFILES = qtty.pro qtty.pri src/src.pro \
            tool/inspect/inspect.pro tool/replay/replay.pro \
            tool/negotiate/negotiate.pro example/chat/chat.pro
@@ -158,7 +170,8 @@ SUBDIR_MAKEFILES = $(addsuffix Makefile, \
                      $(addprefix $(BUILD_DIR)/, \
                        $(dir $(filter-out qtty.pro qtty.pri,$(PROFILES)))))
 
-$(BUILD_DIR)/Makefile: $(PROFILES) VERSION $(HEADERS)
+$(BUILD_DIR)/Makefile: $(PROFILES) VERSION $(HEADERS) $(TOOL_HEADERS) \
+                       $(EXAMPLE_HEADERS)
 	mkdir -p $(BUILD_DIR)
 	rm -f $(SUBDIR_MAKEFILES)
 	cd $(BUILD_DIR) && $(QMAKE) $(CURDIR)/qtty.pro $(QMAKE_CONFIG) QMAKE_CXX=$(CXX)
@@ -262,7 +275,8 @@ TEST_TIMEOUT ?= 300
 # finding in that run was real and two were the stale objects talking, which
 # is build-and-commit.md's own rule met from the measuring end: never
 # conclude anything from a binary the build step did not rebuild.
-$(TEST_BUILD_DIR)/Makefile: $(TEST_PROFILES) VERSION $(HEADERS) $(TEST_HEADERS)
+$(TEST_BUILD_DIR)/Makefile: $(TEST_PROFILES) VERSION $(HEADERS) \
+                            $(TEST_HEADERS) $(EXAMPLE_HEADERS)
 	mkdir -p $(TEST_BUILD_DIR)
 	cd $(TEST_BUILD_DIR) && $(QMAKE) $(CURDIR)/test/test.pro $(QMAKE_CONFIG) \
 	        QMAKE_CXX=$(CXX) QTTY_LIB_DIR=$(CURDIR)/$(BUILD_DIR)/lib
