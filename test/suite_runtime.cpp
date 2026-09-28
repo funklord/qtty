@@ -3912,7 +3912,34 @@ int suite_runtime() {
 	// with no sign of why. The forwarded half is recorded with its method
 	// instead -- which is what `evidence.md` asks of a fact whose instrument
 	// is worse than the fact.
-	{
+	//
+	// AND IT DOES NOT RUN UNDER VALGRIND, which is the fourth SKIP in this
+	// suite and has the same shape as the other three: the instrument cannot
+	// answer the question. Qt's own wait path calls `waitid()` with a NULL
+	// `infop` -- legal on Linux, not POSIX -- and memcheck reports it as
+	// "Syscall param waitid(infop) points to unaddressable byte(s)" from
+	// inside libQt6Core, which trips --error-exitcode=99 and fails the arm
+	// with the suite itself reporting OK (0 failures). Measured: that is
+	// exactly what happened on 2026-09-28 when this check was added.
+	//
+	// The repeated leak summaries in that log are NOT this check's, which is
+	// worth saying because they sit right beside the error and read as
+	// though they were: four PIDs report one at exit with the check skipped
+	// too. Something else in this suite forks under memcheck and each child
+	// reports the parent's heap. Those are 0 errors from 0 contexts; only
+	// the waitid line was an error, and only that one was ours.
+	//
+	// SKIPPED rather than SUPPRESSED, deliberately. A suppression for
+	// "Syscall param points to unaddressable" is wide enough to hide a real
+	// fault elsewhere, and a gate carrying a long ignore list has been
+	// switched off by instalments. And skipped rather than rewritten to
+	// avoid the syscall: deforming a fixture to satisfy a checker that is
+	// wrong about somebody else's library is the thing `evidence.md` names
+	// as worse than the checker being wrong.
+	if (!qEnvironmentVariableIsEmpty("QTTY_UNDER_VALGRIND")) {
+		printf("SKIP: memcheck reports Qt's own waitid(NULL) rather than "
+		       "anything this check is about\n");
+	} else {
 		QProcess child;
 		child.start(QStringLiteral("/bin/echo"), {QStringLiteral("CAPTURED")});
 		const bool finished = child.waitForFinished(5000);

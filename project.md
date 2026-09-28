@@ -17870,6 +17870,70 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.347 The arm that failed while every check passed (2026-09-28)
+
+**The six-configuration run found a failure no check could see**, which
+is the one thing that arm exists for. Platforms green at 2022, the
+sanitizers green, and then:
+
+    OK (0 failures)
+    test-valgrind: exit 99; see build-dbg-test/valgrind.log
+
+The suite reported no failure because nothing it asserts was wrong.
+Memcheck exited 99, which is the target's own `--error-exitcode`.
+
+**It was mine, and the log named the line:**
+
+    Syscall param waitid(infop) points to unaddressable byte(s)
+       at syscall
+       by ??? (in libQt6Core.so.6.8.2)
+       by suite_runtime() (suite_runtime.cpp:3917)
+
+Line 3917 was the `waitForFinished()` in 8.345's child-process check,
+added an hour earlier. Qt's wait path calls `waitid()` with a **NULL
+`infop`** -- legal on Linux, not POSIX -- and memcheck reports it from
+inside `libQt6Core` as an unaddressable parameter.
+
+**Skipped under valgrind, and the two alternatives were both refused.**
+
+- **Not suppressed.** A suppression for "Syscall param points to
+  unaddressable" is wide enough to hide a real fault elsewhere, and this
+  document's own position is that a gate carrying a long ignore list has
+  been switched off by instalments. The arm already carries 17
+  suppressions; an eighteenth of that shape would cost more than it buys.
+- **Not rewritten to dodge the syscall.** Reaching for a `QEventLoop` and
+  the `finished` signal instead of `waitForFinished()` would make the
+  check pass -- by deforming a fixture to satisfy a checker that is wrong
+  about somebody else's library, which `evidence.md` names as worse than
+  the checker being wrong.
+
+So it is the fourth `SKIP` in that suite and has the same shape as the
+other three: the instrument cannot answer the question, and the reason is
+printed rather than the check quietly vanishing. Re-run afterwards:
+`test-valgrind: clean`, **0 errors from 0 contexts**, 17 suppressed as
+before.
+
+**AND THE FIRST READING OF THAT LOG BLAMED THE WRONG THING FOR HALF OF
+IT.** Four PIDs each reported a leak summary, sitting immediately beside
+the error, and the obvious story is that a `QProcess` fork made valgrind
+report the parent's heap once per child. With the check skipped **there
+are still four**. Something else in this suite forks under memcheck, it
+predates this entry, and every one of those summaries is 0 errors from 0
+contexts. Only the `waitid` line was an error and only that one was
+ours. A plausible story that explains two symptoms at once will attach
+itself to both, and here it was right about one.
+
+**Also corrected: the orphan count in that run's own report was the
+instrument.** `ps ... | grep -cE 'qtty-tests|valgrind'` answered 4, and
+the four were its own pipeline -- the self-matching trap
+`running-code.md` names, walked into by the command written to check for
+it. Confirmed clean two ways instead: `ps -eo pid,cmd | grep` finds
+nothing and `pgrep -x` finds nothing. `dbus-run-session` had already
+been confirmed to leak nothing by the same kind of before-and-after in
+8.346, and that one was measured as a delta rather than an absolute for
+exactly this reason.
+
+
 ### 8.346 A gate nineteen checks wide that nobody runs (2026-09-28)
 
 **`make check` skips the tray surface and says so**, and that sentence is
