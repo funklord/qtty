@@ -2783,6 +2783,324 @@ int suite_router() {
 		              .arg(first_bad).toUtf8().constData());
 	}
 
+	// ---- the shortcut-context table, driven --------------------------------
+	//
+	// Four rows, and they differ from each other in exactly one cell -- which
+	// is what "narrow" and "wide" mean here, and why no row can be held on
+	// its own. Driven as the whole 4x4 grid: four contexts against four
+	// places the focus can be, which is the only arrangement where a row that
+	// had acquired its neighbour's meaning would show.
+	//
+	//                      owner  descendant  sibling  other window
+	//    Widget              Y         N          N         N
+	//    WidgetWithChildren  Y         Y          N         N
+	//    Window              Y         Y          Y         N
+	//    Application         Y         Y          Y         Y
+	//
+	// Measured, and for a QAction and a QShortcut alike as the page claims --
+	// eight rows of that staircase, all sixteen cells each. The page was
+	// right; this is a binding rather than a correction.
+	//
+	// One chord, reused, rather than eight live at once: the block below that
+	// tests context across windows records that a cross-window search widened
+	// by sabotage found ANOTHER fixture's shortcut, which made its verdict a
+	// fact about fixture order. A fixture holding exactly one chord cannot do
+	// that. Ctrl+Shift+J, which nothing else in this suite binds.
+	{
+		static const struct Row {
+			const char *published;
+			Qt::ShortcutContext ctx;
+			const char *wants;          // owner, descendant, sibling, other
+		} rows[] = {
+			{ "`Qt::WidgetShortcut`",             Qt::WidgetShortcut,
+			  "YNNN" },
+			{ "`Qt::WidgetWithChildrenShortcut`", Qt::WidgetWithChildrenShortcut,
+			  "YYNN" },
+			{ "`Qt::WindowShortcut` (the default)", Qt::WindowShortcut,
+			  "YYYN" },
+			{ "`Qt::ApplicationShortcut`",        Qt::ApplicationShortcut,
+			  "YYYY" },
+		};
+		int wrong = 0;
+		QString first_bad;
+		QStringList listed;
+		for (const Row &row : rows) {
+			listed << QString::fromUtf8(row.published);
+			for (int kind = 0; kind < 2; ++kind) {
+				QWidget win;
+				win.setAttribute(Qt::WA_DontShowOnScreen);
+				win.resize(GridMetrics::cells(30, 10));
+				auto *v = new QVBoxLayout(&win);
+				// The owner can hold focus itself, which is what makes the
+				// first column askable: a container with no focus policy
+				// would make WidgetShortcut a claim about a widget that can
+				// never be focused, and the two narrow rows would then be
+				// indistinguishable from below.
+				auto *owner = new QWidget;
+				owner->setFocusPolicy(Qt::StrongFocus);
+				auto *ov = new QVBoxLayout(owner);
+				auto *descendant = new QLineEdit;
+				ov->addWidget(descendant);
+				v->addWidget(owner);
+				auto *sibling = new QLineEdit;
+				v->addWidget(sibling);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				QCoreApplication::processEvents();
+
+				int fired = 0;
+				const QKeySequence seq(QStringLiteral("Ctrl+Shift+J"));
+				if (kind == 0) {
+					auto *a = new QAction(QStringLiteral("Act"), owner);
+					a->setShortcut(seq);
+					a->setShortcutContext(row.ctx);
+					owner->addAction(a);
+					QObject::connect(a, &QAction::triggered,
+					                 [&fired] { ++fired; });
+				} else {
+					auto *s = new QShortcut(seq, owner);
+					s->setContext(row.ctx);
+					QObject::connect(s, &QShortcut::activated,
+					                 [&fired] { ++fired; });
+				}
+
+				// A compositor paired with THIS router, or the router never
+				// hears the current window move and the fourth column is a
+				// test bug wearing the defect's clothes -- which the block
+				// on cross-window context paid for once already. Scoped, so
+				// its destructor takes the strip down and keeps the second
+				// window out of the registry for the sections after this.
+				Compositor local(&win, &r);
+				{ CellBuffer reg(30, 10); local.compose(reg); }
+				QWidget other;
+				other.setAttribute(Qt::WA_DontShowOnScreen);
+				auto *ovl = new QVBoxLayout(&other);
+				auto *far_field = new QLineEdit;
+				ovl->addWidget(far_field);
+				other.resize(GridMetrics::cells(20, 3));
+				other.show();
+				QCoreApplication::processEvents();
+				{ CellBuffer reg(30, 10); local.compose(reg); }
+
+				QString grid;
+				QWidget *const spots[] = { owner, descendant, sibling,
+				                           far_field };
+				for (int p = 0; p < 4; ++p) {
+					QWidget *const scope = p == 3 ? &other : &win;
+					Qtty::set_current_window(scope);
+					spots[p]->setFocus();
+					Qtty::set_focus_widget(scope->focusWidget());
+					QCoreApplication::processEvents();
+					const int before = fired;
+					r.on_key({Qt::Key_J, QString(), true, false, true});
+					QCoreApplication::processEvents();
+					grid += fired > before ? QLatin1Char('Y')
+					                       : QLatin1Char('N');
+				}
+				other.hide();
+				Qtty::set_current_window(&win);
+				QCoreApplication::processEvents();
+				if (grid == QLatin1String(row.wants)) continue;
+				++wrong;
+				if (first_bad.isEmpty())
+					first_bad = QStringLiteral("%1 as a %2: %3, wanted %4")
+					                .arg(QString::fromUtf8(row.published),
+					                     kind == 0 ? QStringLiteral("QAction")
+					                               : QStringLiteral("QShortcut"),
+					                     grid, QLatin1String(row.wants));
+				win.hide();
+				QCoreApplication::processEvents();
+			}
+		}
+		GridGuard::reset();
+		const QStringList published = page_table_rows(
+		    QStringLiteral("## What already works"),
+		    QStringLiteral("| `context()` / `shortcutContext()` |"));
+		printf("info: the shortcut-context table promises %d row(s) over four "
+		       "focus positions and two kinds; %d cell row(s) did not hold\n",
+		       int(published.size()), wrong);
+		CHECK(published == listed,
+		      "the rows of the shortcut-context table are the rows this check "
+		      "drives, by name");
+		CHECK(wrong == 0,
+		      wrong == 0
+		        ? "and each context fires exactly where its row says and "
+		          "nowhere wider, for a QAction and a QShortcut alike, the "
+		          "four rows forming a staircase no two of them share"
+		        : QStringLiteral("and each context fires exactly where its "
+		                         "row says -- %1").arg(first_bad)
+		              .toUtf8().constData());
+	}
+
+	// ---- the KeyEvent-shapes table, driven ---------------------------------
+	//
+	// Four rows, each naming the field that DECIDES and the field that is
+	// IGNORED -- and the second column is the half nothing had ever tested.
+	// "Ignored" is a claim, not a definition: it says a wrong value there
+	// changes nothing, and a router that had quietly started consulting the
+	// key code of a typed character would pass every existing check while
+	// making this column false.
+	//
+	// So three arrangements per row rather than one. Canonical; the ignored
+	// field deliberately WRONG, which must not change the outcome; and the
+	// deciding field withheld, which must produce nothing. The page states
+	// the third for three of the rows already -- "{Qt::Key_H, QString(), alt}
+	// reaches no mnemonic, {Qt::Key_Z, QString()} types nothing, and
+	// {0, "\t"} moves no focus" -- and this is where those sentences become
+	// a check rather than a paragraph.
+	//
+	// This table matters more than its size suggests: it is the one an
+	// adopter reads while writing their own fixtures, so a wrong row here
+	// costs somebody a day of a test that reports delivery and delivers
+	// nothing.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(30, 10));
+		auto *v = new QVBoxLayout(&win);
+		auto *first = new QLineEdit;
+		auto *second = new QLineEdit;
+		auto *zap = new QPushButton(QStringLiteral("&Zap"));
+		v->addWidget(first);
+		v->addWidget(second);
+		v->addWidget(zap);
+		int zapped = 0, saved = 0;
+		QObject::connect(zap, &QPushButton::clicked, [&zapped] { ++zapped; });
+		auto *save =
+		    new QShortcut(QKeySequence(QStringLiteral("Ctrl+S")), &win);
+		QObject::connect(save, &QShortcut::activated, [&saved] { ++saved; });
+		win.show();
+		InputRouter r(&win);
+		Qtty::set_current_window(&win);
+		QCoreApplication::processEvents();
+
+		const auto reset = [&] {
+			first->clear();
+			second->clear();
+			first->setFocus();
+			Qtty::set_focus_widget(win.focusWidget());
+			QCoreApplication::processEvents();
+		};
+		// Each row's outcome, as a word, so a wrong cell names itself.
+		const auto moved = [&](KeyEvent k) {
+			reset();
+			r.on_key(k);
+			QCoreApplication::processEvents();
+			return win.focusWidget() == second;
+		};
+		const auto fired_save = [&](KeyEvent k) {
+			reset();
+			const int before = saved;
+			r.on_key(k);
+			QCoreApplication::processEvents();
+			return saved > before;
+		};
+		const auto fired_zap = [&](KeyEvent k) {
+			reset();
+			const int before = zapped;
+			r.on_key(k);
+			QCoreApplication::processEvents();
+			return zapped > before;
+		};
+		const auto typed_into = [&](KeyEvent k) {
+			reset();
+			r.on_key(k);
+			QCoreApplication::processEvents();
+			return first->text();
+		};
+
+		static const char *const published_rows[] = {
+			"a named key -- `Tab`, `Escape`, an arrow",
+			"a chord -- `Ctrl+S`",
+			"a character you typed",
+			"a mnemonic -- `Alt`+letter",
+		};
+		int wrong = 0;
+		QString first_bad;
+		QStringList listed;
+		for (int i = 0; i < 4; ++i) {
+			listed << QString::fromUtf8(published_rows[i]);
+			bool canonical = false, ignored_is_ignored = false,
+			     withheld_does_nothing = false;
+			switch (i) {
+			case 0:
+				canonical = moved({Qt::Key_Tab, QString(),
+				                   false, false, false});
+				ignored_is_ignored = moved({Qt::Key_Tab, QStringLiteral("X"),
+				                            false, false, false});
+				withheld_does_nothing = !moved({Qt::Key(0), QString(),
+				                                false, false, false});
+				break;
+			case 1:
+				canonical = fired_save({Qt::Key_S, QString(),
+				                        true, false, false});
+				ignored_is_ignored =
+				    fired_save({Qt::Key_S, QStringLiteral("zzz"),
+				                true, false, false});
+				withheld_does_nothing =
+				    !fired_save({Qt::Key(0), QString(), true, false, false});
+				break;
+			case 2: {
+				const QString plain = typed_into({Qt::Key(0),
+				                                  QStringLiteral("a"),
+				                                  false, false, false});
+				// The key code says Z and the text says a. If the code were
+				// consulted the field would hold z, which is the wrong answer
+				// this row exists to rule out.
+				const QString mislabelled =
+				    typed_into({Qt::Key_Z, QStringLiteral("a"),
+				                false, false, false});
+				const QString textless = typed_into({Qt::Key_A, QString(),
+				                                     false, false, false});
+				canonical = plain == QStringLiteral("a");
+				ignored_is_ignored = mislabelled == QStringLiteral("a");
+				withheld_does_nothing = textless.isEmpty();
+				break;
+			}
+			default:
+				canonical = fired_zap({Qt::Key(0), QStringLiteral("z"),
+				                       false, true, false});
+				ignored_is_ignored =
+				    fired_zap({Qt::Key_Q, QStringLiteral("z"),
+				               false, true, false});
+				withheld_does_nothing =
+				    !fired_zap({Qt::Key_Z, QString(), false, true, false});
+				break;
+			}
+			if (canonical && ignored_is_ignored && withheld_does_nothing)
+				continue;
+			++wrong;
+			if (first_bad.isEmpty())
+				first_bad = QStringLiteral("%1: canonical %2, the ignored "
+				                           "field ignored %3, the deciding "
+				                           "field withheld %4")
+				                .arg(QString::fromUtf8(published_rows[i]))
+				                .arg(canonical).arg(ignored_is_ignored)
+				                .arg(withheld_does_nothing);
+		}
+		win.hide();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+		const QStringList published = page_table_rows(
+		    QStringLiteral("## Checking it without a terminal"),
+		    QStringLiteral("| what you send |"));
+		printf("info: the KeyEvent-shapes table promises %d row(s), three "
+		       "arrangements each; %d did not hold\n",
+		       int(published.size()), wrong);
+		CHECK(published == listed,
+		      "the rows of the KeyEvent-shapes table are the rows this check "
+		      "drives, by name");
+		CHECK(wrong == 0,
+		      wrong == 0
+		        ? "and each shape's deciding field decides while its ignored "
+		          "field is ignored: a wrong value there changes nothing, and "
+		          "withholding the deciding one delivers nothing at all"
+		        : QStringLiteral("and each shape's deciding field decides "
+		                         "while its ignored field is ignored -- %1")
+		              .arg(first_bad).toUtf8().constData());
+	}
+
 	// ---- a tool tip asked for outright ------------------------------------
 	//
 	// Practice 7 said a tool tip never appears, full stop, and that is true

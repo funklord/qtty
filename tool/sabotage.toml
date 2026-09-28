@@ -5536,3 +5536,39 @@ find = "\t\tpayload.replace(QLatin1Char('\\n'), QLatin1Char(' '));"
 into = "\t\tpayload.replace(QLatin1Char('\\r'), QLatin1Char(' '));"
 count = 1
 check = "and each row's OR ELSE happens"
+
+
+[[sabotage]]
+name = "a context row is reworded here and not on the page"
+file = "test/suite_router.cpp"
+find = "\t\t\t{ \"`Qt::WidgetShortcut`\",             Qt::WidgetShortcut,"
+into = "\t\t\t{ \"`Qt::WidgetShortcut` (narrowest)\", Qt::WidgetShortcut,"
+count = 1
+check = "the rows of the shortcut-context table are the rows this check drives"
+
+
+[[sabotage]]
+name = "a widget-context shortcut fires for a descendant too"
+file = "src/runtime/input_router.cpp"
+find = "\tcase Qt::WidgetShortcut:\n\t\treturn owner && owner == fw;"
+into = "\tcase Qt::WidgetShortcut:\n\t\treturn owner && fw && (owner == fw || owner->isAncestorOf(fw));"
+count = 1
+check = "and each context fires exactly where its row says"
+
+
+[[sabotage]]
+name = "a shapes row is reworded here and not on the page"
+file = "test/suite_router.cpp"
+find = "\t\t\t\"a chord -- `Ctrl+S`\","
+into = "\t\t\t\"a chord -- `Ctrl+S` or another\","
+count = 1
+check = "the rows of the KeyEvent-shapes table are the rows this check drives"
+
+
+[[sabotage]]
+name = "a mnemonic starts consulting the key code it is meant to ignore"
+file = "src/runtime/input_router.cpp"
+find = "\tif (!k.alt || k.text.size() != 1) return false;"
+into = "\tif (!k.alt || k.text.size() != 1 || k.qt_key != 0) return false;"
+count = 1
+check = "and each shape's deciding field decides while its ignored field is ignored"

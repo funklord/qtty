@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-23
 
-2033 checks, 0 failures, and **4.7 seconds of user time** --
+2037 checks, 0 failures, and **4.7 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5), 2026-09-23: 4.68, 4.71, 4.73 user against 14.6
 wall each time. The suite grew by 51 checks on 2026-09-23 and the
@@ -17868,6 +17868,96 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.352 Two more tables held, both right as written (2026-09-28)
+
+**The shortcut-context table is a staircase, and that is what makes it
+bindable at all.** Four rows -- `WidgetShortcut`,
+`WidgetWithChildrenShortcut`, `WindowShortcut`, `ApplicationShortcut` --
+each differing from its neighbour in exactly one place, which is what
+"narrow" and "wide" mean here. No row can be held on its own: a row that
+had quietly acquired its neighbour's meaning satisfies every check
+written about itself. So the gate drives the whole grid, four contexts
+against four positions the focus can be in:
+
+                          owner  descendant  sibling  other window
+    Widget                  Y         N         N          N
+    WidgetWithChildren      Y         Y         N          N
+    Window                  Y         Y         Y          N
+    Application             Y         Y         Y          Y
+
+Measured for a `QAction` and a `QShortcut` alike, as the page claims --
+eight staircases, thirty-two cells, all as written. `context_applies()`
+is the four-case switch the table describes and it was already right.
+
+**The owner has `StrongFocus` deliberately, and that is the one fixture
+decision the grid depends on.** A container with no focus policy makes
+the first column unaskable -- `WidgetShortcut` would then be a claim
+about a widget that can never be focused -- and the two narrow rows
+become indistinguishable from below. The block on cross-window context
+had recorded that trap; this is the first fixture built to avoid it.
+
+**The KeyEvent-shapes table's second column had never been tested.** Four
+rows, each naming the field that DECIDES and the field that is IGNORED,
+and "ignored" is a claim rather than a definition: it says a wrong value
+there changes nothing. A router that had started consulting the key code
+of a typed character would pass every check in the tree while making that
+column false. So three arrangements per row rather than one -- canonical,
+the ignored field deliberately WRONG, and the deciding field withheld:
+
+    named key   Tab              Tab + text "X"      key 0
+    chord       Ctrl+S           Ctrl+S + text "zzz" ctrl, no key
+    character   text "a"         Key_Z + text "a"    Key_A, no text
+    mnemonic    alt + text "z"   Key_Q + alt + "z"   Key_Z + alt, no text
+
+Twelve measurements, all as the page says: the third column delivers
+nothing in every row, and the middle column changes nothing. The page
+already stated three of the four negatives in prose -- "{Qt::Key_H,
+QString(), alt} reaches no mnemonic, {Qt::Key_Z, QString()} types
+nothing, and {0, "\t"} moves no focus" -- and they are checks now rather
+than sentences.
+
+**This table earns its gate out of proportion to its size**, because it
+is the one an adopter reads while writing their own fixtures. A wrong row
+costs somebody a day of a test that reports delivery and delivers
+nothing, which is the failure the three helpers exist to prevent.
+
+Four sabotages, each seen to redden the check it names. Two rewords, one
+per gate. Widening `Qt::WidgetShortcut` to accept a descendant turns the
+first staircase row into `YYNN` and says so in the FAIL line. And the
+sharpest one is aimed at the untested column rather than at the
+behaviour: `match_mnemonic()` refusing any event that carries a key code
+leaves the canonical mnemonic working and breaks only the arrangement
+where the key code is wrong -- which is the one cell nothing else in the
+tree looks at.
+
+**And 8.342's fault was committed a third time, and this time the
+harness caught it rather than a reading.** The shapes gate shipped with
+its two arms sharing no prefix -- `DECIDING field decides, its IGNORED
+field is ignored when given a wrong value` passing against `deciding
+field decides while its ignored field is ignored -- %1` failing -- so a
+spec naming the failing wording matched nothing that passes. The verdict
+was `REFUSED: the named check matches 0 passing checks, not 1`, before
+anything was built broken.
+
+That is worth more than the fix. 8.342 was found by reading the code, and
+8.350 records catching it by reading again; a fault caught three times by
+attention is a fault that will be committed a fourth. The harness's
+precondition -- the named check must PASS in the baseline -- is the
+mechanical version, and it fired on the first attempt. The remaining gap
+is that it only fires for a check somebody wrote a spec for.
+
+**Nine of the page's thirteen tables are now held.** The four that are
+not: the conventions table, the bindings-and-bytes table, the pointer-kind
+table, and the two-row `If your content is` table. That last one is
+behavioural and ready to bind, and it waits on a structural question
+rather than on a measurement: `page_table_rows()` is static in
+`suite_router.cpp` while `ICellPainted` and `PixelSurface` are exercised
+in `suite_render.cpp` and `suite_graphics.cpp`, so binding it either
+duplicates the reader -- which is the thing the shared reader exists to
+prevent -- or moves it into a header the test build has to list. The
+second is right and is its own piece of work.
 
 
 ### 8.351 The custom-widget contract held, and the reason it gave was wrong (2026-09-28)
