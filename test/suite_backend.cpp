@@ -15,6 +15,7 @@
 #include <QtWidgets>
 #include <QClipboard>
 #include <cstdio>
+#include "page_table.h"
 #include <functional>
 #include <unistd.h>
 #include <sys/socket.h>
@@ -452,6 +453,31 @@ int suite_backend() {
 		      "the chords the decoder actually confuses are exactly the "
 		      "chords the report names, derived from the bytes rather "
 		      "than from the list the report carries");
+
+		// AND THE PAGE'S OWN TABLE, against the same derived set. The guide
+		// carries these six as a table -- the chord, its byte and what
+		// arrives without the protocol -- and nothing held it, so the size
+		// above was a hand-pinned 6 in a check whose whole argument is that
+		// a hand list is a population somebody has to remember to grow.
+		//
+		// The page is that population now. Neither side authors the other:
+		// the rows come out of the markdown and the set comes out of the
+		// decoder's arithmetic, and a chord added to either alone reddens
+		// this. Which is what the count was standing in for and could not
+		// do -- a 6 is satisfied by any six chords.
+		QStringList promised;
+		for (const QString &cell :
+		     page_table_rows(QStringLiteral("## The terminal's own keys"),
+		                     QStringLiteral("| Your binding |")))
+			promised << QString(cell).remove(QLatin1Char('`'));
+		promised.sort();
+		printf("info: the guide's table promises %d ambiguous chord(s); the "
+		       "decoder makes %d\n", int(promised.size()),
+		       int(derived.size()));
+		CHECK(promised == derived,
+		      "and the chords the guide's table promises are exactly those, "
+		      "read out of the page rather than repeated here, so neither "
+		      "the table nor the decoder can grow alone");
 		win.hide();
 		QCoreApplication::processEvents();
 	}

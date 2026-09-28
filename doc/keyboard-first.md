@@ -544,7 +544,7 @@ The same flag is what makes a lone `Escape` immediate rather than a
 chord waiting on a timer, which is what "disambiguate escape codes"
 means.
 
-**And five chords are not unsendable but AMBIGUOUS, which is the worse
+**And six chords are not unsendable but AMBIGUOUS, which is the worse
 half.** A shifted control chord is silently *unbound* -- you press it
 and nothing happens, which at least looks like a bug. These six are
 sendable and mean something else, because the control byte an ASCII

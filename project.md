@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-23
 
-2039 checks, 0 failures, and **4.7 seconds of user time** --
+2040 checks, 0 failures, and **4.7 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5), 2026-09-23: 4.68, 4.71, 4.73 user against 14.6
 wall each time. The suite grew by 51 checks on 2026-09-23 and the
@@ -17868,6 +17868,60 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.354 The ambiguous-chord table held, and a count that went stale in a day (2026-09-28)
+
+**`page_table_rows()` moved out of `suite_router.cpp` into
+`test/page_table.h`, because the third suite wanted it.** It had been a
+static beside the five gates that used it; binding the guide's
+ambiguous-chord table meant reaching it from `suite_backend.cpp`, where
+the decoder is, and duplicating the reader to get there would have
+defeated the one reason the reader is shared. Listed in `test.pro` rather
+than left implicit, since it is no longer beside a source that includes it
+by accident.
+
+**The binding retires a hand-pinned count in a check whose own argument is
+that hand lists rot.** The derived-family check walks the ASCII range
+where the byte is arithmetic, feeds each chord to the real decoder, calls
+a chord ambiguous when what comes back is not that chord, and requires
+`ambiguous_chords()` to name exactly that set -- deliberately so that
+neither side authors the other. It also asserted `derived.size() == 6`,
+which **a 6 satisfies for any six chords**. The page is that population
+now: the rows come out of the markdown, the set comes out of the decoder's
+arithmetic, and a chord added to either alone reddens it.
+
+**And the page carried a count that was stale within a day of being
+written, with the commit that staled it saying so in its own subject.**
+One sentence above the table:
+
+    And five chords are not unsendable but AMBIGUOUS
+    ...
+    These six are sendable and mean something else
+
+Six rows in the table, "six" in the second sentence, "five" in the first.
+`git log -S` dates the sentence to `b3c8b55` on 2026-09-22 and the sixth
+row to `3c99939` the next day -- titled *fix: name Ctrl+Space as the sixth
+ambiguous chord*. So the author of the sixth row knew it was the sixth,
+updated the sentence that was two lines away and not the one that was
+five, and nothing since has read the two together. Corrected to six.
+
+This is `evidence.md`'s countable present-tense claim about the tree's own
+shape, and it is the cheapest possible instance: no measurement was needed
+to find it, only reading two adjacent sentences, and it survived five days
+of passes over this page because the *table* was right and the prose about
+it was not. **A gate over the table would not have caught it either** --
+the rows were always six. What catches this class is a reader, which is why
+the fix is a sentence rather than a check.
+
+The sabotage is on the PAGE rather than in the test, which is what makes
+it evidence that the page is the population: replacing `Ctrl+J` with a
+chord the decoder does not confuse reddens the new check and leaves the
+derived-versus-report one alone.
+
+**Eleven of the page's thirteen tables are now held.** The two left are
+the pointer-kind table and the two-row `If your content is` table, and
+neither is blocked any more -- the reader they need is a header away.
 
 
 ### 8.353 The conventions table held, and its off arm is the whole of it (2026-09-28)

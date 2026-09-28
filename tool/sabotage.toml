@@ -5590,3 +5590,12 @@ find = "\tif (s_conventions && !press.isAccepted()) {"
 into = "\tif (!press.isAccepted()) {"
 count = 1
 check = "and every row does what it says with the conventions on and something else with them off"
+
+
+[[sabotage]]
+name = "the guide names a chord the decoder does not confuse"
+file = "doc/keyboard-first.md"
+find = "| `Ctrl+J` | `0x0a` | a line feed |"
+into = "| `Ctrl+N` | `0x0e` | a shift out |"
+count = 1
+check = "and the chords the guide's table promises are exactly those"

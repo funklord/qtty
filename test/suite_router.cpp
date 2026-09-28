@@ -7,6 +7,7 @@
 #include <QtWidgets>
 #include <QTemporaryDir>
 #include "chat.h"
+#include "page_table.h"
 #include <QShortcut>
 #include <cstdio>
 
@@ -22,36 +23,6 @@ static int fails = 0;
 #define CHECK(c, m) do { if (c) printf("PASS: %s\n", m); \
                          else { printf("FAIL: %s\n      condition: %s\n", \
                                        m, #c); ++fails; } } while (0)
-
-// The rows of one markdown table on the guide's page, by their first cell.
-// Two checks read a `| Key |` table now -- the one under "What already
-// works" and the one under "Moving between pages and windows" -- and a
-// second copy of this parser is a second chance for them to disagree about
-// what a row is.
-static QStringList page_table_rows(const QString &section, const QString &header) {
-	QStringList out;
-	QFile page(QStringLiteral(QTTY_SOURCE_DIR)
-	           + QStringLiteral("/doc/keyboard-first.md"));
-	if (!page.open(QIODevice::ReadOnly | QIODevice::Text)) return out;
-	const QStringList lines =
-	    QString::fromUtf8(page.readAll()).split(QLatin1Char('\n'));
-	bool in_section = false, in_table = false;
-	for (const QString &line : lines) {
-		if (line.startsWith(section)) {
-			in_section = true;
-			continue;
-		}
-		if (!in_section) continue;
-		if (!in_table) {
-			if (line.startsWith(header)) in_table = true;
-			continue;
-		}
-		if (line.startsWith(QStringLiteral("|---"))) continue;
-		if (!line.startsWith(QStringLiteral("| "))) break;
-		out << line.mid(2).section(QStringLiteral(" |"), 0, 0);
-	}
-	return out;
-}
 
 int suite_router() {
 	fails = 0;

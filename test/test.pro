@@ -31,6 +31,13 @@ INCLUDEPATH += $$QTTY_ROOT
 INCLUDEPATH += $$QTTY_ROOT/example/chat
 HEADERS += $$QTTY_ROOT/example/chat/chat.h
 
+# One reader for the guide's markdown tables, shared by the suites that
+# bind them. Listed here rather than left implicit because it is not
+# beside a source that includes it by accident: three suites do, and a
+# second copy would be a second chance for two gates to disagree about
+# what a row is.
+HEADERS += page_table.h
+
 SOURCES += main.cpp \
            suite_cells.cpp \
            suite_theme.cpp \
