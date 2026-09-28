@@ -1251,17 +1251,35 @@ cannot appear in the list with nothing watching it.
 the letter from widgets Qt marks as taking text, which covers every
 standard input widget. A widget of your own that reads
 `QKeyEvent::text()` directly is outside that, and will see the `z` of an
-`Alt+Z` that was meant for a menu. One line:
+`Alt+Z` that matched nothing. One line:
 
     if (event->modifiers() & Qt::AltModifier) { event->ignore(); return; }
+
+**What you are protecting is your own content, not the menu.** This
+paragraph said the opposite until it was measured: that a widget
+swallowing `Alt+Z` takes it from a menu that wanted it. It cannot. The
+router tries the mnemonic table *before* it delivers anything -- the
+call is `!match_shortcut(k) && !readline_edit(k) && (popup_owns_input ||
+!match_mnemonic(k))` guarding `deliver_key()`, in that order -- so by
+the time your `keyPressEvent` runs, every reachable mnemonic has already
+had its turn and declined. Measured both ways with a `QMenuBar` carrying
+`&Zap`: the menu opens on `Alt+Z` whether the widget ignores the key or
+consumes it, and the widget sees nothing either way. Inside a popup the
+matcher is skipped altogether, deliberately, so the menu opens in
+neither case. There is no arrangement in which your `ignore()` hands a
+letter back to a menu.
+
+What it does is keep a `z` out of your buffer. An `Alt`+letter that
+matches nothing falls through to you carrying `text() == "z"`, and a
+widget that appends `event->text()` inserts it -- silently, on a
+keystroke the user aimed somewhere else entirely.
 
 That line is right for a widget with no `Alt` bindings of its own, which
 is most of them. **If yours has some, handle those first and ignore the
 rest** -- the hazard is narrower than the line suggests. What must not
-happen is inserting `event->text()` while `Alt` is held, and what must
-happen is that an `Alt`+letter you do not want reaches the mnemonic
-matcher instead of being swallowed. Your own `Alt+Left` is neither, and
-taking the line literally would cost you it.
+happen is inserting `event->text()` while `Alt` is held. Your own
+`Alt+Left` carries no text and is not that, and taking the line
+literally would cost you it.
 
 **10. In a custom widget, draw your own focus mark -- and do not ask
 `hasFocus()`.** This is the one that bites hardest, because the desktop
@@ -2298,7 +2316,7 @@ three are facts about the grid.
 
 | Do this | Or else |
 |---|---|
-| `event->ignore()` for a key carrying `Alt` (practice 9) | you eat the `z` of an `Alt+Z` that was meant for a menu |
+| `event->ignore()` for a key carrying `Alt` (practice 9) | you insert the `z` of an `Alt+Z` that matched nothing -- the matcher runs before delivery, so a menu never loses its letter to you; what you gain is junk in your own buffer |
 | Draw a focus mark, asking `Qtty::focusWidget()` (practice 10) | nothing marks you, and `hasFocus()` is permanently false here |
 | `setAttribute(Qt::WA_InputMethodEnabled)` if you edit text (practice 11) | `Ctrl+C` quits instead of copying, and no cursor is placed on you |
 | Fold pasted newlines if you are single-line (*Copy and paste*) | you get the raw ones: the fold is by type and your type is not on the list |

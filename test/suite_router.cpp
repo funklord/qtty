@@ -2429,6 +2429,360 @@ int suite_router() {
 		              .toUtf8().constData());
 	}
 
+	// ---- the custom-widget contract, driven -------------------------------
+	//
+	// Seven rows under "If you are writing a custom widget", and every one is
+	// an OR ELSE: a claim that something goes wrong when the rule is not
+	// followed. So each fixture here is a widget that does NOT follow the
+	// rule, and the check is that the stated consequence happens -- with a
+	// widget that does follow it measured beside it wherever the two can
+	// differ, because "the broken one broke" is not evidence without the
+	// arrangement that does not.
+	//
+	// Written after probing all seven rather than from the prose, and the
+	// probe corrected the first. The page had said a widget consuming Alt+Z
+	// "eats the z of an Alt+Z that was meant for a menu". It cannot:
+	// match_mnemonic() is evaluated before deliver_key(), so a QMenuBar
+	// carrying &Zap opens either way and the widget sees nothing either way
+	// -- measured in both arrangements, and inside a popup as well, where the
+	// matcher is skipped and the menu opens in neither. What the rule
+	// protects is the widget's own buffer, and the page says that now.
+	{
+		struct Custom : QWidget {
+			QString typed;
+			int keys = 0, closes = 0;
+			bool ignore_alt = false;
+			void keyPressEvent(QKeyEvent *e) override {
+				if (ignore_alt && (e->modifiers() & Qt::AltModifier)) {
+					e->ignore();
+					return;
+				}
+				++keys;
+				typed += e->text();
+			}
+		};
+		// The quit key closes the router's window and then calls
+		// qApp->quit(). A window that refuses the close stops it there --
+		// close() returning false -- which keeps the fixture alive AND makes
+		// the attempt observable, so row 3 can assert the consequence rather
+		// than only the absence of the key.
+		struct Refusing : QWidget {
+			int asked = 0;
+			void closeEvent(QCloseEvent *e) override {
+				++asked;
+				e->ignore();
+			}
+		};
+
+		// Row 1: Alt+Z against a real menu-bar mnemonic, both ways, and then
+		// with no mnemonic to match, both ways. The first pair says the menu
+		// never loses; the second says the buffer does.
+		const auto row_alt = [](QString *why) {
+			bool menu_both = true, quiet_both = true;
+			for (int ignores = 0; ignores < 2; ++ignores) {
+				QMainWindow win;
+				win.setAttribute(Qt::WA_DontShowOnScreen);
+				win.resize(GridMetrics::cells(30, 8));
+				QMenu *menu = win.menuBar()->addMenu(QStringLiteral("&Zap"));
+				menu->addAction(QStringLiteral("&Item"));
+				auto *c = new Custom;
+				c->ignore_alt = ignores;
+				c->setFocusPolicy(Qt::StrongFocus);
+				win.setCentralWidget(c);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				c->setFocus();
+				Qtty::set_focus_widget(win.focusWidget());
+				QCoreApplication::processEvents();
+				test::mnemonic(r, QLatin1Char('z'));
+				QCoreApplication::processEvents();
+				if (!menu->isVisible()) menu_both = false;
+				if (c->keys != 0) quiet_both = false;
+				menu->hide();
+				win.hide();
+				QCoreApplication::processEvents();
+			}
+			QString got[2];
+			for (int ignores = 0; ignores < 2; ++ignores) {
+				QWidget win;
+				win.setAttribute(Qt::WA_DontShowOnScreen);
+				win.resize(GridMetrics::cells(24, 6));
+				auto *v = new QVBoxLayout(&win);
+				auto *c = new Custom;
+				c->ignore_alt = ignores;
+				c->setFocusPolicy(Qt::StrongFocus);
+				v->addWidget(c);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				c->setFocus();
+				Qtty::set_focus_widget(win.focusWidget());
+				QCoreApplication::processEvents();
+				test::mnemonic(r, QLatin1Char('z'));
+				QCoreApplication::processEvents();
+				got[ignores] = c->typed;
+				win.hide();
+				QCoreApplication::processEvents();
+			}
+			const bool ok = menu_both && quiet_both
+			                && got[0] == QStringLiteral("z")
+			                && got[1].isEmpty();
+			if (!ok)
+				*why = QStringLiteral("menu opened both ways %1, widget "
+				                      "quiet both ways %2, unmatched gave "
+				                      "[%3] accepting and [%4] ignoring")
+				           .arg(menu_both).arg(quiet_both)
+				           .arg(got[0], got[1]);
+			return ok;
+		};
+
+		// Row 2: the focus a custom widget must ask about, and the one it
+		// must not.
+		const auto row_focus = [](QString *why) {
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(24, 6));
+			auto *v = new QVBoxLayout(&win);
+			auto *c = new Custom;
+			c->setFocusPolicy(Qt::StrongFocus);
+			v->addWidget(c);
+			win.show();
+			InputRouter r(&win);
+			Qtty::set_current_window(&win);
+			c->setFocus();
+			Qtty::set_focus_widget(win.focusWidget());
+			QCoreApplication::processEvents();
+			const bool qt_says = c->hasFocus();
+			const bool we_say = Qtty::focusWidget() == c
+			                    && Qtty::has_focus(c);
+			win.hide();
+			QCoreApplication::processEvents();
+			if (qt_says || !we_say)
+				*why = QStringLiteral("hasFocus() %1, qtty's answer %2")
+				           .arg(qt_says).arg(we_say);
+			return !qt_says && we_say;
+		};
+
+		// Row 3: Ctrl+C to a text-editing widget that did not declare itself.
+		const auto row_ime = [](QString *why) {
+			int reached[2] = {0, 0}, asked[2] = {0, 0};
+			for (int marked = 0; marked < 2; ++marked) {
+				Refusing win;
+				win.setAttribute(Qt::WA_DontShowOnScreen);
+				win.resize(GridMetrics::cells(24, 6));
+				auto *v = new QVBoxLayout(&win);
+				auto *c = new Custom;
+				c->setFocusPolicy(Qt::StrongFocus);
+				if (marked) c->setAttribute(Qt::WA_InputMethodEnabled);
+				v->addWidget(c);
+				win.show();
+				InputRouter r(&win);
+				Qtty::set_current_window(&win);
+				c->setFocus();
+				Qtty::set_focus_widget(win.focusWidget());
+				QCoreApplication::processEvents();
+				r.on_key({Qt::Key_C, QStringLiteral("c"), true, false, false});
+				QCoreApplication::processEvents();
+				reached[marked] = c->keys;
+				asked[marked] = win.asked;
+				win.hide();
+				QCoreApplication::processEvents();
+			}
+			const bool ok = reached[0] == 0 && asked[0] == 1
+			                && reached[1] == 1 && asked[1] == 0;
+			if (!ok)
+				*why = QStringLiteral("unmarked: key %1 close asked %2; "
+				                      "marked: key %3 close asked %4")
+				           .arg(reached[0]).arg(asked[0])
+				           .arg(reached[1]).arg(asked[1]);
+			return ok;
+		};
+
+		// Row 4: the fold is by type, so a widget of your own gets the raw
+		// newlines while the QLineEdit beside it does not.
+		const auto row_paste = [](QString *why) {
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(30, 6));
+			auto *v = new QVBoxLayout(&win);
+			auto *c = new Custom;
+			c->setFocusPolicy(Qt::StrongFocus);
+			auto *field = new QLineEdit;
+			v->addWidget(c);
+			v->addWidget(field);
+			win.show();
+			InputRouter r(&win);
+			Qtty::set_current_window(&win);
+			const QString clip = QStringLiteral("one\ntwo");
+			c->setFocus();
+			Qtty::set_focus_widget(win.focusWidget());
+			QCoreApplication::processEvents();
+			r.on_paste(clip);
+			field->setFocus();
+			Qtty::set_focus_widget(win.focusWidget());
+			QCoreApplication::processEvents();
+			r.on_paste(clip);
+			QCoreApplication::processEvents();
+			const QString mine = c->typed, theirs = field->text();
+			win.hide();
+			QCoreApplication::processEvents();
+			const bool ok = mine == clip
+			                && theirs == QStringLiteral("one two");
+			if (!ok)
+				*why = QStringLiteral("custom got [%1], QLineEdit got [%2]")
+				           .arg(QString(mine).replace(QLatin1Char('\n'),
+				                                      QStringLiteral("\\n")),
+				                QString(theirs).replace(QLatin1Char('\n'),
+				                                        QStringLiteral("\\n")));
+			return ok;
+		};
+
+		// Row 5: two text lines closer than a cell row. Asserted against ch
+		// rather than against a pixel count, so the fixture is about the
+		// rule and not about this font.
+		const auto row_apart = [](QString *why) {
+			const int ch = GridMetrics::ch();
+			const auto draw = [ch](double gap) {
+				CellBuffer b(20, 4);
+				Qtty::CellPaintDevice d(b);
+				QPainter p(&d);
+				p.drawText(QPointF(0, ch * 0.8), QStringLiteral("first"));
+				p.drawText(QPointF(0, ch * 0.8 + gap),
+				           QStringLiteral("second"));
+				p.end();
+				return b.to_text();
+			};
+			const QString crowded = draw(ch * 0.7), roomy = draw(ch);
+			const bool ok = !crowded.contains(QStringLiteral("first"))
+			                && crowded.contains(QStringLiteral("second"))
+			                && roomy.contains(QStringLiteral("first"))
+			                && roomy.contains(QStringLiteral("second"));
+			if (!ok)
+				*why = QStringLiteral("closer than a row kept first %1 "
+				                      "second %2; a full row apart kept "
+				                      "%3 and %4")
+				           .arg(crowded.contains(QStringLiteral("first")))
+				           .arg(crowded.contains(QStringLiteral("second")))
+				           .arg(roomy.contains(QStringLiteral("first")))
+				           .arg(roomy.contains(QStringLiteral("second")));
+			return ok;
+		};
+
+		// Row 6: QString::size() against the column count, for each of the
+		// three classes the row names -- and for ASCII, where they agree and
+		// therefore where measuring the wrong thing costs nothing. That last
+		// one is why the mistake survives: it is invisible until it is not.
+		const auto row_columns = [](QString *why) {
+			const auto columns = [](const QString &s) {
+				int n = 0;
+				for (const QString &g : to_clusters(s)) n += cluster_width(g);
+				return n;
+			};
+			struct Case { const char *what; QString text; bool differs; };
+			const Case cases[] = {
+				{ "ascii",     QStringLiteral("abc"),                 false },
+				{ "CJK",       QStringLiteral("你好"),        true  },
+				{ "emoji",     QStringLiteral("\U0001F1F8\U0001F1EA"), true  },
+				{ "combining", QString::fromUtf8("e\xcc\x81"),        true  },
+			};
+			bool ok = true;
+			for (const Case &k : cases) {
+				const bool differs = k.text.size() != columns(k.text);
+				if (differs == k.differs) continue;
+				ok = false;
+				if (why->isEmpty())
+					*why = QStringLiteral("%1: size=%2 columns=%3, wanted "
+					                      "them to differ %4")
+					           .arg(QString::fromLatin1(k.what))
+					           .arg(k.text.size()).arg(columns(k.text))
+					           .arg(k.differs);
+			}
+			return ok;
+		};
+
+		// Row 7: one occupied cell drops the whole rule. The same measurement
+		// the widget suite makes on a vertical divider; here it is bound to
+		// the row that promises it, so the row cannot outlive the behaviour.
+		const auto row_rule = [](QString *why) {
+			const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+			const auto draw = [cw, ch](bool with_text) {
+				CellBuffer b(14, 4);
+				if (with_text) b.text(0, 1, QStringLiteral("a label here"));
+				Qtty::CellPaintDevice d(b);
+				QPainter p(&d);
+				p.setPen(QPen(Qt::black, 1));
+				p.drawLine(QPointF(3 * cw + cw / 2.0, 0),
+				           QPointF(3 * cw + cw / 2.0, 3 * ch));
+				p.end();
+				QString column;
+				for (int y = 0; y < 3; ++y) column += b.at(3, y).ch;
+				return column;
+			};
+			const QString bare = draw(false), crossed = draw(true);
+			const bool ok = bare == QStringLiteral("│││")
+			                && !crossed.contains(QChar(0x2502));
+			if (!ok)
+				*why = QStringLiteral("blank column drew [%1], crossed drew "
+				                      "[%2]").arg(bare, crossed);
+			return ok;
+		};
+
+		static const char *const published_rows[] = {
+			"`event->ignore()` for a key carrying `Alt` (practice 9)",
+			"Draw a focus mark, asking `Qtty::focusWidget()` (practice 10)",
+			"`setAttribute(Qt::WA_InputMethodEnabled)` if you edit text "
+			"(practice 11)",
+			"Fold pasted newlines if you are single-line (*Copy and paste*)",
+			"Put your text lines at least `Qtty::GridMetrics::ch()` apart",
+			"Measure your text in COLUMNS, with `Qtty::to_clusters()` and "
+			"`Qtty::cluster_width()`",
+			"Do not draw a rule through your own content -- leave a blank "
+			"column or row for it",
+		};
+		int wrong = 0;
+		QString first_bad;
+		QStringList listed;
+		for (int i = 0; i < 7; ++i) {
+			listed << QString::fromUtf8(published_rows[i]);
+			QString why;
+			bool held = false;
+			switch (i) {
+			case 0: held = row_alt(&why); break;
+			case 1: held = row_focus(&why); break;
+			case 2: held = row_ime(&why); break;
+			case 3: held = row_paste(&why); break;
+			case 4: held = row_apart(&why); break;
+			case 5: held = row_columns(&why); break;
+			default: held = row_rule(&why); break;
+			}
+			if (held) continue;
+			++wrong;
+			if (first_bad.isEmpty())
+				first_bad = QStringLiteral("%1: %2")
+				                .arg(QString::fromUtf8(published_rows[i]), why);
+		}
+		GridGuard::reset();
+		const QStringList published = page_table_rows(
+		    QStringLiteral("## If you are writing a custom widget"),
+		    QStringLiteral("| Do this |"));
+		printf("info: the custom-widget contract promises %d row(s); %d did "
+		       "not hold\n", int(published.size()), wrong);
+		CHECK(published == listed,
+		      "the rows of the custom-widget contract are the rows this check "
+		      "drives, by name, so an eighth cannot arrive unwatched");
+		CHECK(wrong == 0,
+		      wrong == 0
+		        ? "and each row's OR ELSE happens: the consequence is "
+		          "measured on a widget that breaks the rule, beside one "
+		          "that keeps it"
+		        // The same wording as far as the dash, so a sabotage spec
+		        // naming this check matches the FAIL line rather than
+		        // coming back INCONCLUSIVE -- 8.342.
+		        : QStringLiteral("and each row's OR ELSE happens -- %1")
+		              .arg(first_bad).toUtf8().constData());
+	}
+
 	// ---- a tool tip asked for outright ------------------------------------
 	//
 	// Practice 7 said a tool tip never appears, full stop, and that is true

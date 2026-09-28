@@ -5518,3 +5518,21 @@ find = "\t\t\t{ \"`ToolTip`\",                                          3 },"
 into = "\t\t\t{ \"`ToolTip` (a hint)\",                                 3 },"
 count = 1
 check = "the rows of the window-type table are the rows this check drives"
+
+
+[[sabotage]]
+name = "a contract row is reworded here and not on the page"
+file = "test/suite_router.cpp"
+find = "\t\t\t\"Put your text lines at least `Qtty::GridMetrics::ch()` apart\","
+into = "\t\t\t\"Put your text lines at least one cell row apart\","
+count = 1
+check = "the rows of the custom-widget contract are the rows this check drives"
+
+
+[[sabotage]]
+name = "a paste keeps its newlines in a single-line field"
+file = "src/runtime/input_router.cpp"
+find = "\t\tpayload.replace(QLatin1Char('\\n'), QLatin1Char(' '));"
+into = "\t\tpayload.replace(QLatin1Char('\\r'), QLatin1Char(' '));"
+count = 1
+check = "and each row's OR ELSE happens"

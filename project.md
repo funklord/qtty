@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-23
 
-2031 checks, 0 failures, and **4.7 seconds of user time** --
+2033 checks, 0 failures, and **4.7 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5), 2026-09-23: 4.68, 4.71, 4.73 user against 14.6
 wall each time. The suite grew by 51 checks on 2026-09-23 and the
@@ -17868,6 +17868,96 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.351 The custom-widget contract held, and the reason it gave was wrong (2026-09-28)
+
+**Seven rows under "If you are writing a custom widget", each one an
+`Or else` -- and an `Or else` is a claim that something FAILS.** That
+makes the table a different kind of thing from the four already bound:
+those promise behaviour and are held by asserting it, while this one
+promises a consequence and is held by producing it. So every fixture in
+the new gate is a widget that breaks the rule, with one that keeps it
+measured beside it wherever the two can differ. A broken widget
+misbehaving is not evidence on its own; the pair is.
+
+**Probed before any check was written, and the probe found the page
+wrong on row 1.** It said a custom widget that consumes `Alt+Z` "eats
+the `z` of an `Alt+Z` that was meant for a menu", and practice 9's prose
+said the same in more words: "what must happen is that an `Alt`+letter
+you do not want reaches the mnemonic matcher instead of being
+swallowed."
+
+It cannot be swallowed. `on_key()` evaluates
+
+    !match_shortcut(k) && !readline_edit(k)
+        && (popup_owns_input || !match_mnemonic(k))
+
+as the guard on `deliver_key()`, so the mnemonic table has already had
+its turn and declined by the time any `keyPressEvent` runs. Measured
+both ways, with a `QMenuBar` carrying `&Zap` and the central widget a
+custom one:
+
+    accepts Alt   menu opens, widget sees nothing
+    ignores Alt   menu opens, widget sees nothing
+
+and inside a popup, where `popup_owns_input` skips the matcher
+deliberately, the menu opens in NEITHER case. There is no arrangement in
+which the `ignore()` hands a letter back to a menu, which is what the
+page was promising.
+
+**What the rule actually protects is the widget's own buffer**, and
+practice 9's own next paragraph had it right all along -- "what must not
+happen is inserting `event->text()` while `Alt` is held". With no
+mnemonic to match, the key falls through carrying `text() == "z"`: a
+widget that appends it inserts junk on a keystroke the user aimed
+somewhere else. The row and the prose say that now, with the ordering
+and the two measurements beside them.
+
+**The error is the expensive kind and not the cheap kind**, which is
+worth naming because the advice was never wrong. A rule with a false
+reason attached still gets followed -- and the reader who tests the
+reason finds it does not reproduce, and then has no way to tell which
+half is broken. `evidence.md`'s *a fact recorded without its method*,
+one step further on: the method was not merely absent, it was stated and
+wrong.
+
+**The other six held as written.** `hasFocus()` false while
+`Qtty::focusWidget()` names the widget; `Ctrl+C` reaching a text-editing
+widget 0 times without `WA_InputMethodEnabled` and 1 with, the window
+asked to close in the first case and not the second; a paste arriving as
+`one\ntwo` in a custom widget and `one two` in the `QLineEdit` beside it,
+because the fold is `qobject_cast<QLineEdit *>`; two text lines 0.7 of a
+cell row apart leaving only the later one; `QString::size()` differing
+from the column count for CJK, emoji and a combining mark and agreeing
+for ASCII; and one occupied cell dropping a whole vertical rule.
+
+**Row 3's fixture refuses its own close, and that is what makes the
+consequence observable.** The quit key calls `win_->close()` and then
+`qApp->quit()`; a window whose `closeEvent` ignores stops it at the
+first, so the check can assert that the close was ASKED FOR rather than
+only that the key went missing -- "`Ctrl+C` quits instead of copying" is
+a claim about what happens, not about what does not.
+
+**Row 6's ASCII case is the control and is why the mistake survives in
+the wild.** `size()` and the column count agree for `abc`, so measuring
+the wrong thing costs nothing until the first emoji. A table that only
+listed the cases where they differ would be a table about Unicode; the
+row is about a habit.
+
+Two sabotages, both seen to redden the check they name: a row reworded
+in the test and not on the page (the name binding), and `on_paste()`
+folding `\r` twice instead of `\r` and `\n` (the behaviour), whose FAIL
+line reads `custom got [one\ntwo], QLineEdit got [one\ntwo]`.
+
+**Seven of the page's thirteen tables are now held, and the count is
+re-derivable rather than remembered.** `grep -c '^|---'` finds fourteen
+header rules, one of which is a code snippet's own pipes rather than a
+table. Five of the seven are bound through `page_table_rows()`, which now
+has five callers and is the reason none of them can disagree about what a
+row is; the marks vocabulary and the audit questions are read by their own
+parsers in `suite_widgets.cpp` and `suite_router.cpp`, both predating the
+shared one.
 
 
 ### 8.350 Two more tables held, and one of them was wrong (2026-09-28)
