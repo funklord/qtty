@@ -2672,10 +2672,18 @@ int suite_router() {
 						QCoreApplication::processEvents();
 					};
 					if (i == 6) {
+						// SEPARATELY, each from a caret in the middle. Run
+						// one after the other they agree on both platforms
+						// for different reasons -- Ctrl+A selects all and
+						// leaves the caret at the end, so a following Ctrl+E
+						// has nowhere to go and answers 17 whether it is
+						// bound or not. A row that cannot fail is the thing
+						// this gate is for.
 						reset(6);
 						r.on_key({Qt::Key_A, QString(), true, false, false});
 						QCoreApplication::processEvents();
 						const int home = field->cursorPosition();
+						reset(6);
 						r.on_key({Qt::Key_E, QString(), true, false, false});
 						QCoreApplication::processEvents();
 						arm = QStringLiteral("A to %1, E to %2").arg(home)
@@ -2746,35 +2754,95 @@ int suite_router() {
 				}
 				}
 			}
-			// What each row must say, on and off. Written out rather than
-			// computed, because the OFF arm is a measurement of Qt and not
-			// of this library and a rule would have to guess it.
-			static const struct Want { const char *on; const char *off; }
-			wants[] = {
-				{ "focused 1 default 0",          "focused 0 default 0" },
-				{ "down 1 up 1",                  "down 0 up 1" },
-				{ "0 to 1 to 0",                  "0 to 0 to 0" },
-				{ "F6 moved 1, Shift+F6 on the first 1",
-				  "F6 moved 0, Shift+F6 on the first 1" },
-				{ "menu bar taken 1",             "menu bar taken 0" },
-				{ "tab 1",                        "tab 0" },
-				{ "A to 0, E to 17",              "A to 17, E to 17" },
-				{ "K [hello ] U [brave world]",
-				  "K [hello brave world] U [hello brave world]" },
-				{ "[hello world]",                "[hello brave world]" },
-				{ "in text [abdef] close 0, on a button close 1",
-				  "in text [abcdef] close 1, on a button close 1" },
+			// What each row must say with the conventions on: this
+			// library's own behaviour, the same everywhere.
+			static const char *const on_wants[] = {
+				"focused 1 default 0",
+				"down 1 up 1",
+				"0 to 1 to 0",
+				"F6 moved 1, Shift+F6 on the first 1",
+				"menu bar taken 1",
+				"tab 1",
+				"A to 0, E to 17",
+				"K [hello ] U [brave world]",
+				"[hello world]",
+				"in text [abdef] close 0, on a button close 1",
 			};
-			if (on_arm == QLatin1String(wants[i].on)
-			    && off_arm == QLatin1String(wants[i].off))
+			// And with them off: whatever QT does, which is NOT a constant
+			// and is what made this gate wrong on the platform it was not
+			// written on. Qt's standard key bindings come from the platform
+			// theme, so a QLineEdit answers three of these chords under xcb
+			// and none of them offscreen:
+			//
+			//     DeleteEndOfLine      offscreen []        xcb [Ctrl+K]
+			//     DeleteCompleteLine   offscreen []        xcb [Ctrl+U]
+			//     MoveToEndOfLine      offscreen [End]     xcb [End, Ctrl+E]
+			//
+			// Pinning the offscreen answers passed here and failed under
+			// xcb, which is the sweep earning its keep -- and the right fix
+			// is not a second table of constants but to ASK, so the arm is a
+			// relationship between this library and the platform rather than
+			// a number measured on one of them.
+			const auto qt_binds = [](QKeySequence::StandardKey key,
+			                         const char *chord) {
+				const QKeySequence want =
+				    QKeySequence(QString::fromLatin1(chord));
+				for (const QKeySequence &s : QKeySequence::keyBindings(key))
+					if (s == want) return true;
+				return false;
+			};
+			const bool qt_kills_to_end =
+			    qt_binds(QKeySequence::DeleteEndOfLine, "Ctrl+K");
+			const bool qt_kills_line =
+			    qt_binds(QKeySequence::DeleteCompleteLine, "Ctrl+U");
+			const bool qt_goes_to_end =
+			    qt_binds(QKeySequence::MoveToEndOfLine, "Ctrl+E");
+			const bool qt_rubs_out_word =
+			    qt_binds(QKeySequence::DeleteStartOfWord, "Ctrl+W");
+			QString off_want;
+			switch (i) {
+			case 0: off_want = QStringLiteral("focused 0 default 0"); break;
+			case 1: off_want = QStringLiteral("down 0 up 1"); break;
+			case 2: off_want = QStringLiteral("0 to 0 to 0"); break;
+			case 3: off_want = QStringLiteral("F6 moved 0, Shift+F6 on the "
+			                                  "first 1"); break;
+			case 4: off_want = QStringLiteral("menu bar taken 0"); break;
+			case 5: off_want = QStringLiteral("tab 0"); break;
+			case 6:
+				// Ctrl+A is SelectAll on every platform here, which leaves
+				// the caret at the end -- so that half reads 17 rather than
+				// 0 and separates from the convention either way.
+				off_want = QStringLiteral("A to 17, E to %1")
+				               .arg(qt_goes_to_end ? 17 : 6);
+				break;
+			case 7:
+				off_want = QStringLiteral("K [%1] U [%2]")
+				               .arg(qt_kills_to_end
+				                        ? QStringLiteral("hello ")
+				                        : QStringLiteral("hello brave world"),
+				                    qt_kills_line
+				                        ? QString()
+				                        : QStringLiteral("hello brave world"));
+				break;
+			case 8:
+				off_want = qt_rubs_out_word ? QStringLiteral("[hello world]")
+				                            : QStringLiteral("[hello brave "
+				                                             "world]");
+				break;
+			default:
+				off_want = QStringLiteral("in text [abcdef] close 1, on a "
+				                          "button close 1");
+				break;
+			}
+			if (on_arm == QLatin1String(on_wants[i]) && off_arm == off_want)
 				continue;
 			++wrong;
 			if (first_bad.isEmpty())
 				first_bad = QStringLiteral("%1: on [%2] wanted [%3]; off [%4] "
 				                           "wanted [%5]")
 				                .arg(QString::fromUtf8(published_rows[i]),
-				                     on_arm, QLatin1String(wants[i].on),
-				                     off_arm, QLatin1String(wants[i].off));
+				                     on_arm, QLatin1String(on_wants[i]),
+				                     off_arm, off_want);
 		}
 		set_keyboard_conventions(was_on);
 		GridGuard::reset();

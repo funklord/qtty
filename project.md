@@ -17890,13 +17890,45 @@ twice and the OFF arm is written out beside the ON one:
     Ctrl+W             [hello world]           unchanged
     Ctrl+D             deletes, no close       unchanged, close asked
 
-All ten as the page says. The `Ctrl+A` off arm is the one worth reading:
-with the conventions off it is Qt's select-all, so the caret lands at the
-END of the line rather than the start -- the two arms differ in where the
-caret goes rather than in whether anything happened, which is a sharper
-separation than a no-op would have been. And `Ctrl+D` carries its row's
-second clause in the same measurement: in text it deletes and does not
-quit, and on a button it asks the window to close either way.
+All ten as the page says -- **and that OFF column is what the OFFSCREEN
+platform does, which is the thing this entry got wrong first and is the
+reason the check no longer contains it.** `Ctrl+D` carries its row's second
+clause in the same measurement: in text it deletes and does not quit, and
+on a button it asks the window to close either way.
+
+**The gate passed here and failed under xcb, which is the sweep earning
+its keep.** `test-platforms` went red at `2549d22` on one row:
+
+    `Ctrl+K`, `Ctrl+U`: off [K [hello ] U []]
+                        wanted [K [hello brave world] U [hello brave world]]
+
+Qt's standard key bindings come from the PLATFORM THEME, so a `QLineEdit`
+answers these chords under X11 and not on the offscreen platform:
+
+    DeleteEndOfLine      offscreen []       xcb [Ctrl+K]
+    DeleteCompleteLine   offscreen []       xcb [Ctrl+U]
+    MoveToEndOfLine      offscreen [End]    xcb [End, Ctrl+E]
+
+So with the conventions off under xcb, Qt performs the kills itself. The
+OFF arm was never a property of this library, and pinning the numbers one
+platform produces made it one.
+
+**The fix is not a second table of constants per platform -- it is to
+ASK.** `QKeySequence::keyBindings()` answers what the platform binds, so
+the arm is now a relationship between this library and whatever theme is
+loaded: `Ctrl+K` with the conventions off must do what Qt's
+`DeleteEndOfLine` does, which is nothing where nothing is bound. That is
+`evidence.md`'s *assert the relationship, not either value*, and the
+version it replaced is exactly the failure that rule describes -- a
+fixture pinning a value that was true where it was measured.
+
+**And one row could not have failed, on either platform.** `Ctrl+A` and
+`Ctrl+E` were driven one after the other: `Ctrl+A` is Qt's select-all
+everywhere here, which leaves the caret at the END of the line, so a
+following `Ctrl+E` has nowhere to go and answers 17 whether it is bound or
+not. Both platforms agreed, for different reasons. They are measured
+independently from a caret in the middle now, which separates 6 from 17 on
+the platform where `Ctrl+E` is unbound.
 
 **The fixtures are the whole of the work, and the first draft got one
 wrong in the direction that manufactures a page error.** `Up`/`Down` was
@@ -17941,6 +17973,14 @@ always on. It reddens with `` `Enter`: off [focused 1 default 0] wanted
 [focused 0 default 0] ``: the ON arms all still pass and only the claim
 that these are a convention breaks, which is exactly the half this gate
 exists to hold.
+
+**Three fixtures wrong in one gate, all in the same direction: each
+agreed in both arms and so could not fail.** Buttons for the arrows, a
+caret already at the end for `Ctrl+E`, and the offscreen platform's silence
+for `Ctrl+K` and `Ctrl+U`. Two were caught by reading and one only by
+running somewhere else -- which is the argument for the sweep over the
+reading, since no amount of care about a fixture reveals a platform you
+are not on.
 
 **Ten of the page's thirteen tables are now held.** The three that are
 not: the bindings-and-bytes table, the pointer-kind table, and the
