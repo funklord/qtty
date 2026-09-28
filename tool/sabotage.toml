@@ -5502,3 +5502,19 @@ count = 1
 # the FAIL line carries the "these are not" form rather than the PASS one,
 # and a spec naming the success wording never matches.
 check = "and every glyph the style can draw is published"
+
+[[sabotage]]
+name = "a popup joins the F6 strip"
+file = "src/runtime/compositor.cpp"
+find = "\tif (InputRouter::is_popup_layer(w)) return false;"
+into = "\tif (false && InputRouter::is_popup_layer(w)) return false;"
+count = 1
+check = "and every type behaves as its row says"
+
+[[sabotage]]
+name = "a window-type row is reworded here and not on the page"
+file = "test/suite_router.cpp"
+find = "\t\t\t{ \"`ToolTip`\",                                          3 },"
+into = "\t\t\t{ \"`ToolTip` (a hint)\",                                 3 },"
+count = 1
+check = "the rows of the window-type table are the rows this check drives"

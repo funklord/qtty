@@ -2183,6 +2183,252 @@ int suite_router() {
 		      "code riding along with the text rather than replacing it");
 	}
 
+	// ---- the window-type strip table, driven ------------------------------
+	//
+	// "Not every top-level is a window in that sense", says the page, "and
+	// which ones are was measured over every kind Qt has" -- four rows over
+	// nine types, each claiming three things: in the F6 strip, takes the
+	// keys, Escape gives them back. Nothing held any of it, and it is the
+	// table that decides whether a user can reach a second window at all.
+	//
+	// Measured and the page is right in all three columns for all nine,
+	// which is why this is a binding rather than a correction. What it needs
+	// is a shape the check can ask:
+	//
+	//   "in the strip"      window_tabs() contains it, after a COMPOSE --
+	//                       the strip is filled by a frame and not by a
+	//                       window existing, which the F6 case had to learn
+	//   "takes the keys"    a key typed with the focus in the MAIN window
+	//                       stops arriving there
+	//   "Escape gives back" and arrives again after Escape
+	//
+	// The second is asked of the main window rather than of the new one on
+	// purpose: seating focus in the new window would make the router deliver
+	// there whatever the rule is, and the question is whether the window
+	// LOSES its keys.
+	{
+		struct Row { const char *published; int kind; };
+		static const Row rows[] = {
+			{ "`Window`, `Dialog`, `Sheet`, `Drawer`, `SubWindow`", 0 },
+			{ "`Tool` (a palette), `SplashScreen`",                 1 },
+			{ "`Popup` (a menu)",                                   2 },
+			{ "`ToolTip`",                                          3 },
+		};
+		struct Claim { Qt::WindowType type; bool strip; bool takes; };
+		const auto claims = [](int kind) {
+			QVector<Claim> out;
+			switch (kind) {
+			case 0:
+				out.append({Qt::Window, true, false});
+				out.append({Qt::Dialog, true, false});
+				out.append({Qt::Sheet, true, false});
+				out.append({Qt::Drawer, true, false});
+				out.append({Qt::SubWindow, true, false});
+				break;
+			case 1:
+				out.append({Qt::Tool, true, false});
+				out.append({Qt::SplashScreen, true, false});
+				break;
+			case 2:
+				out.append({Qt::Popup, false, true});
+				break;
+			default:
+				out.append({Qt::ToolTip, false, false});
+				break;
+			}
+			return out;
+		};
+
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		host.resize(GridMetrics::cells(40, 12));
+		auto *hv = new QVBoxLayout(&host);
+		auto *base = new QLineEdit;
+		hv->addWidget(base);
+		host.show();
+		InputRouter r(&host);
+		Compositor comp(&host, &r);
+		Qtty::set_current_window(&host);
+		base->setFocus();
+		Qtty::set_focus_widget(host.focusWidget());
+		QCoreApplication::processEvents();
+
+		int wrong = 0;
+		QString first_bad;
+		QStringList listed;
+		for (const Row &row : rows) {
+			listed << QString::fromUtf8(row.published);
+			for (const Claim &c : claims(row.kind)) {
+				auto *w = new QWidget(nullptr, c.type);
+				w->setAttribute(Qt::WA_DontShowOnScreen);
+				w->resize(GridMetrics::cells(14, 4));
+				auto *wv = new QVBoxLayout(w);
+				wv->addWidget(new QLineEdit);
+				w->show();
+				QCoreApplication::processEvents();
+				CellBuffer frame(40, 12);
+				comp.compose(frame);
+				const bool in_strip = Qtty::window_tabs().contains(w);
+				base->clear();
+				QCoreApplication::processEvents();
+				Qtty::test::type(r, QStringLiteral("z"));
+				QCoreApplication::processEvents();
+				const bool kept = base->text() == QStringLiteral("z");
+				bool gave_back = true;
+				if (!kept) {
+					r.on_key({Qt::Key_Escape, QString(), false, false, false});
+					QCoreApplication::processEvents();
+					base->clear();
+					Qtty::test::type(r, QStringLiteral("y"));
+					QCoreApplication::processEvents();
+					gave_back = base->text() == QStringLiteral("y");
+				}
+				const bool ok = in_strip == c.strip && kept == !c.takes
+				                && gave_back;
+				if (!ok) {
+					++wrong;
+					if (first_bad.isEmpty())
+						first_bad = QStringLiteral("%1: strip %2 wanted %3, "
+						                           "keys kept %4 wanted %5")
+						                .arg(QString::fromLatin1(row.published))
+						                .arg(in_strip).arg(c.strip)
+						                .arg(kept).arg(!c.takes);
+				}
+				w->hide();
+				QCoreApplication::processEvents();
+				delete w;
+				QCoreApplication::processEvents();
+			}
+		}
+		GridGuard::reset();
+		const QStringList published =
+		    page_table_rows(QStringLiteral("## Moving between pages and windows"),
+		                    QStringLiteral("| your window's type |"));
+		printf("info: the window-type table promises %d row(s) over nine "
+		       "types; %d did not hold\n", int(published.size()), wrong);
+		CHECK(published == listed,
+		      "the rows of the window-type table are the rows this check "
+		      "drives, by name as the key tables are");
+		CHECK(wrong == 0,
+		      wrong == 0
+		        ? "and every type behaves as its row says: in the strip or "
+		          "not, taking the keys or leaving them, and giving them "
+		          "back on Escape where it took them"
+		        // THE SAME WORDING BOTH WAYS as far as the dash, because a
+		        // sabotage spec matches the FAIL line: one naming only the
+		        // passing arm comes back INCONCLUSIVE, which is how 8.342
+		        // was found out.
+		        : QStringLiteral("and every type behaves as its row says -- "
+		                         "%1").arg(first_bad).toUtf8().constData());
+	}
+
+	// ---- the focus-policy table, driven -----------------------------------
+	//
+	// Practice 13's table claims three things of each of three controls: the
+	// focus policy, whether Tab reaches it, and what an arrow does when it
+	// has the focus. Nothing held it, and two of its three arrow cells were
+	// wrong: it said 50 -> 53 for a slider and 50 -> 47 for a scroll bar.
+	//
+	// Measured with Qt's defaults, both move by ONE and both move UP for
+	// Right and Down: singleStep is 1, so 53 and 47 came from a fixture with
+	// a step of 3 and, for the scroll bar, the opposite key -- neither of
+	// which the page stated. A fact recorded without its method again, and
+	// the reader who reproduces it concludes something is broken.
+	//
+	// So the page states the RULE now and this asserts the rule: the value
+	// moves by singleStep in the direction the key points. Asserted against
+	// the arithmetic rather than against 51, for the spacer's reason -- a
+	// fixture that pinned 51 would be a fixture about a default.
+	{
+		struct Row { const char *published; int kind; };
+		static const Row rows[] = {
+			{ "`QSlider`",              0 },
+			{ "`QScrollBar`",           1 },
+			{ "`QSplitter`'s handle",   2 },
+		};
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(30, 12));
+		auto *v = new QVBoxLayout(&win);
+		auto *slider = new QSlider(Qt::Horizontal);
+		slider->setRange(0, 100);
+		auto *bar = new QScrollBar(Qt::Vertical);
+		bar->setRange(0, 100);
+		auto *split = new QSplitter(Qt::Horizontal);
+		split->addWidget(new QLineEdit(QStringLiteral("left")));
+		split->addWidget(new QLineEdit(QStringLiteral("right")));
+		v->addWidget(slider);
+		v->addWidget(bar);
+		v->addWidget(split);
+		win.show();
+		InputRouter r(&win);
+		Qtty::set_current_window(&win);
+		QCoreApplication::processEvents();
+		const QVector<QWidget *> reach = Qtty::keyboard_reachable(&win);
+		QSplitterHandle *handle = split->handle(1);
+
+		int wrong = 0;
+		QString first_bad;
+		QStringList listed;
+		for (const Row &row : rows) {
+			listed << QString::fromUtf8(row.published);
+			QWidget *w = row.kind == 0 ? static_cast<QWidget *>(slider)
+			           : row.kind == 1 ? static_cast<QWidget *>(bar)
+			                           : static_cast<QWidget *>(handle);
+			if (!w) {
+				++wrong;
+				continue;
+			}
+			const bool strong = row.kind == 0;
+			const bool policy_ok =
+			    w->focusPolicy() == (strong ? Qt::StrongFocus : Qt::NoFocus);
+			const bool stop_ok = reach.contains(w) == strong;
+			// The arrow, with the focus forced on -- which is what "when
+			// focused" means for the two that Tab cannot reach.
+			slider->setValue(50);
+			bar->setValue(50);
+			const QList<int> before = split->sizes();
+			w->setFocus();
+			Qtty::set_focus_widget(win.focusWidget());
+			QCoreApplication::processEvents();
+			r.on_key({row.kind == 0 ? Qt::Key_Right : Qt::Key_Down,
+			          QString(), false, false, false});
+			QCoreApplication::processEvents();
+			bool arrow_ok = false;
+			if (row.kind == 0)
+				arrow_ok = slider->value() == 50 + slider->singleStep();
+			else if (row.kind == 1)
+				arrow_ok = bar->value() == 50 + bar->singleStep();
+			else
+				arrow_ok = split->sizes() == before && slider->value() == 50
+				           && bar->value() == 50;
+			if (policy_ok && stop_ok && arrow_ok) continue;
+			++wrong;
+			if (first_bad.isEmpty())
+				first_bad = QStringLiteral("%1: policy %2 stop %3 arrow %4")
+				                .arg(QString::fromLatin1(row.published))
+				                .arg(policy_ok).arg(stop_ok).arg(arrow_ok);
+		}
+		GridGuard::reset();
+		const QStringList published =
+		    page_table_rows(QStringLiteral("## Practices"),
+		                    QStringLiteral("| control | focus policy |"));
+		printf("info: the focus-policy table promises %d row(s); %d did not "
+		       "hold\n", int(published.size()), wrong);
+		CHECK(published == listed,
+		      "the rows of practice 13's focus-policy table are the rows this "
+		      "check drives, by name");
+		CHECK(wrong == 0,
+		      wrong == 0
+		        ? "and each one's policy, tab-stop membership and answer to "
+		          "an arrow are what the row says, the arrow asserted as "
+		          "singleStep rather than as a number"
+		        : QStringLiteral("and each one's policy, tab-stop membership "
+		                         "and answer to an arrow are what the row "
+		                         "says -- %1").arg(first_bad)
+		              .toUtf8().constData());
+	}
+
 	// ---- a tool tip asked for outright ------------------------------------
 	//
 	// Practice 7 said a tool tip never appears, full stop, and that is true

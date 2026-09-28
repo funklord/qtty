@@ -1505,8 +1505,8 @@ focus put on each by hand:
 
 | control | focus policy | a `Tab` stop | arrows when focused |
 |---|---|---|---|
-| `QSlider` | `StrongFocus` | yes | 50 → 53 |
-| `QScrollBar` | `NoFocus` | no | 50 → 47 |
+| `QSlider` | `StrongFocus` | yes | moves it by its `singleStep`, in the direction the key points -- 50 → 51 at Qt's default of 1 |
+| `QScrollBar` | `NoFocus` | no | the same, 50 → 51, which is why being unreachable costs nothing |
 | `QSplitter`'s handle | `NoFocus` | no | **nothing at all** |
 
 So a slider is fine as it stands. A scroll bar answers arrows and cannot

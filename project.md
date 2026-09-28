@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State, 2026-09-23
 
-2027 checks, 0 failures, and **4.7 seconds of user time** --
+2031 checks, 0 failures, and **4.7 seconds of user time** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5), 2026-09-23: 4.68, 4.71, 4.73 user against 14.6
 wall each time. The suite grew by 51 checks on 2026-09-23 and the
@@ -17868,6 +17868,60 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.350 Two more tables held, and one of them was wrong (2026-09-28)
+
+**The window-type strip table was right, so binding it is all it
+needed.** The page says which top-levels are windows "in that sense" and
+claims it was "measured over every kind Qt has" -- four rows over nine
+types, three properties each, held by nobody. Measured, all nine agree:
+
+    Window Dialog Sheet Drawer SubWindow   strip yes, keys kept
+    Tool SplashScreen                      strip yes, keys kept
+    Popup                                  strip NO, keys TAKEN, Escape back
+    ToolTip                                strip no, keys kept
+
+**"Takes the keys" is asked of the MAIN window, not of the new one**, and
+that is the part of the fixture worth stating: seating focus in the new
+window would make the router deliver there whatever the rule is. The
+question is whether the window LOSES its keys, so the check types with
+the focus in the main window and reads its own field.
+
+**The focus-policy table was NOT right, in two of three arrow cells.** It
+said `50 -> 53` for a slider and `50 -> 47` for a scroll bar. Measured
+with Qt's defaults, **both move by one and both move UP** for `Right` and
+`Down`: `singleStep` is 1.
+
+So 53 and 47 came from a fixture with a step of **3** and, for the scroll
+bar, the OPPOSITE key -- neither of which the page stated. Both numbers
+were real once and neither is reproducible from what the page says, which
+is the shelf-life rule again: the reader who tries gets plus-or-minus one
+and concludes something is broken. The page states the RULE now -- moves
+by its `singleStep`, in the direction the key points, 50 to 51 at the
+default -- and the check asserts the arithmetic rather than the number,
+for the reason 8.348's spacer does.
+
+**And both new checks had a fault 8.342 had already taught.** Their FAIL
+arms carried `first_bad` alone, sharing no wording with their PASS arms
+-- so a sabotage naming either would have come back INCONCLUSIVE, which
+is exactly how that entry was found out. They carry the shared text as
+far as the dash now, as the marks check always did. **A lesson recorded
+five days ago was re-learnt in the writing rather than applied**, which
+is the argument for the failure message carrying the rule and not only
+the entry.
+
+**Two sabotages, and the first one's diagnostic is the reason to bother:**
+a popup admitted to the strip reddens with "`Popup` (a menu): strip 1
+wanted 0, keys kept 0 wanted 0" -- the type named and both values -- so
+the failure says which row and which column rather than that something
+went wrong.
+
+**Six of the page's fourteen tables are held now**: the two key tables,
+the marks vocabulary, the audit questions, the collision chords, the
+conventions, and these two. The remaining ones are prose-shaped -- "Do
+this / Or else", "If your content is" -- where a row is advice rather
+than a behaviour to drive.
 
 
 ### 8.349 The population closed, and what is left in it (2026-09-28)
