@@ -17986,6 +17986,34 @@ layout should do when the rows do not fit is a design question, and the
 alternatives -- refuse to snap, shrink somebody, let one win -- are not
 interchangeable.
 
+**A second batch of twelve came back empty, recorded so the next sweep
+starts elsewhere.** A tree with an expanded branch, a table with a sort
+indicator, a list with alternating row colours, a text edit with everything
+selected, a tool button with a menu, a slider with ticks both sides, an
+editable combo box, a date edit with a calendar popup, a text edit with
+NoWrap and an over-long line, a stacked widget on its second page, a
+`QLCDNumber`, and a flat push button. Every one read correctly.
+
+**The sort indicator was the one that looked wrong and was not.** Setting
+`Qt::DescendingOrder` draws a DOWN arrow, which contradicts the code's own
+comment that "SortDown is ASCENDING ... QHeaderView sets sortIndicator to
+SortDown when the order is Qt::AscendingOrder". Measured both ways:
+ascending draws an up arrow and descending a down one, which is what a
+reader expects and what the comment's compensation is for. The comment
+describes Qt's enum, not this style's output, and reading it as the latter
+is what made a correct picture look wrong.
+
+**Three readings from that batch are questions rather than defects, and
+none earns a change.** A slider with `TicksBothSides` is three rows tall
+and draws its groove in the middle one, leaving the two tick rows blank --
+which is the progress bar's argument again, except that what a tick looks
+like on a grid is a vocabulary nobody has chosen, where the groove's glyph
+already existed and only its extent was wrong. An editable combo box and a
+non-editable one render identically, and alternating row colours are not
+expressed at all; both are answered by rules already recorded -- the
+caret-or-mark rule distinguishes the first when focused, and a terminal
+declines the second the way it declines a table's grid.
+
 **And one correction to 0b's read-only row while here.** It says a focused
 read-only field "has its WHOLE field including the brackets reversed", and
 its own next sentence says "the brackets are the difference". The second is
