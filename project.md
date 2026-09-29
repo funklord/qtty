@@ -17941,6 +17941,71 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.366 Three lenses, all empty, and the one residue worth knowing (2026-09-29)
+
+**Recorded because an unrecorded empty sweep gets run again.** All three came
+from the same shape as 8.364 and 8.365 -- a hazard reasoned in one place and
+absent from its twin -- and none of them found a twin that had missed it.
+
+**Divisions by a value that can be zero.** Every one is guarded. The progress
+bar has `span > 0`; both scroll bar sites have `span > 0 && track > 0`, and
+their comment says the pair was written in one change deliberately -- "this is
+the hit-test geometry and the other is the drawing. Fixing one alone would put
+the thumb where a click does not reach it"; the gradient average has
+`total <= 0` before dividing and skips a stop whose span is not positive. A
+scroll bar with `minimum == maximum` is the ordinary "nothing to scroll" state,
+so this was the likeliest place for an unguarded one and it is not there.
+
+**The graphics encoders on degenerate input.** A null `QImage` and a 0x0 one
+through `encode_sixel`, `encode_kitty_image`, `encode_kitty_tile`,
+`encode_iterm2` and `encode_kitty_virtual`: nothing crashes, and each emits a
+well-formed sequence. Three report the true zero size; `encode_iterm2` reports
+`width=1;height=1` for an image with no payload, which is the only
+inconsistency among the five and is not reachable from this library -- the
+callers guard an empty image first, at `crop_placement`, `dirty_tiles` and the
+halfblocks composer. Recorded, not changed: it costs an adopter nothing and
+changing a public encoder's answer to satisfy a hypothetical is not a fix.
+
+**Wide clusters through every control that pads or elides**, which is the
+sharpest of the three because the tab bar's own comment records the bug: "a tab
+titled with a single CJK character was padded as though it were one cell wide,
+the label overran the tab, and the outer elide dropped the CLOSING BRACKET for
+an ellipsis." Six controls against five labels -- ASCII, one CJK, two CJK, an
+emoji, a base with a combining mark -- and every one is right: the continuation
+cell is accounted for, nothing spills, no bracket is lost.
+
+And the style's own tab arithmetic asked directly, through a `QStyleOptionTab`
+with a chosen rect so Qt's tab layout is out of the picture: seven widths
+against three labels, and the tab opens AND closes in all twenty-one, the
+elide never splits a cluster, and one CJK in nine columns pads to
+`[你_     ]` exactly. **The earlier reading that showed a tab losing its
+bracket was Qt's layout, not this style**: the tab's rect was wider than the
+`QTabBar` the probe had squeezed, so the bracket was drawn outside the bar and
+clipped. Two mechanisms, one picture, and only asking the style directly told
+them apart.
+
+**The residue: a widget at a right edge can place a wide glyph one cell past
+its own rect.** Measured three ways with the same label in a five-column
+label:
+
+    buffer exactly the widget    |你_好_ |      refused, blank at the edge
+    buffer wider, nothing beyond |你_好_世_  |  placed, partner outside
+    buffer wider, a neighbour    |你_好_ XYZ|  refused, neighbour intact
+
+`CellBuffer::put_cluster()` guards its OWN bound -- "a width-2 cell always has
+its partner", and a blank is what fits -- and the widget's clip does not
+narrow that guard. So the overrun happens only where the cells beyond are
+empty, and it self-heals: the third row is the case that matters, where the
+neighbour's write clears the orphaned glyph and nothing is corrupted. One cell,
+into empty space, undone by anything that draws there.
+
+Not changed, for the reason the measurement gives: there is no arrangement in
+which it damages a neighbour, and the alternative -- narrowing every write to
+the painting widget's rect -- is a change to the clip's meaning rather than a
+fix to a fault. Recorded so that somebody measuring a widget's cells and
+finding a glyph outside its rect knows it has been looked at.
+
+
 ### 8.365 The other half of the same shape: an endless CSI had no cap (2026-09-29)
 
 **`parse_string_sequence()` already had the answer and said why.** Its comment:
