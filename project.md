@@ -17991,6 +17991,39 @@ style's arithmetic, one was Qt's editor behaving correctly, and one was a
 pixel elide meeting a cell grid. The output cannot tell them apart; only
 asking who draws the glyph can.
 
+**And `make test-valgrind` self-timed-out on the way to landing this, which
+is an operational fact worth the measurement rather than a defect.** The
+same content, the same target, twice:
+
+    load 16.1, another session building   51 min, stopped at 1466 of 2052
+    load  3.1, machine quiet               3 min 12 s, clean
+
+`QTTY_TEST_TIMEOUT=3000` is the arm's own limit and the suite stops itself
+when it passes -- correctly, and saying so. What it does NOT say is that the
+scheduler was the reason, so the verdict reads like a failure of the code.
+`tool/screen-check` already declines to measure above a load average of 40
+for exactly this reason and prints why; this arm has no such guard, and the
+16x spread above is the number one would be set from. **Recorded and not
+taken**, because a threshold is a judgement about somebody else's machine and
+the screen gate's own history -- a first version at eight, which would have
+skipped almost always here -- is the argument for measuring before choosing
+one.
+
+**The re-run also cost two instrument errors, which is the part worth
+keeping.** Counting `^PASS:` in the arm's log gave 2045 against 2052 and sent
+me hunting three missing checks. There are none: qtty's notices go to stderr
+without a trailing newline, the log merges both streams, and a notice splices
+into the next `PASS` line so `grep` cannot see it. `count-check` runs the
+binary with `2>/dev/null` and that is why. Measured with the streams apart:
+
+    plain                    PASS 2052  SKIP 0
+    QTTY_UNDER_VALGRIND=1    PASS 2048  SKIP 4     2048 + 4 = 2052
+
+and the four are exactly the four that print SKIP. The same splicing had
+already made a diff of the two runs' check names unreadable, which is the
+pty arm's recorded hazard -- "`^(FAIL|SKIP)` cannot see those" -- met from
+the counting side.
+
 
 ### 8.362 The third hole of one family, and the half deliberately left open (2026-09-29)
 
