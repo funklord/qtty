@@ -10219,14 +10219,14 @@ measured it, reported means I have not.
     verified and fixed
       clear_overlay had no caller               (two lenses, independently)
       arrow keys scrolled in the wrong unit
-
-    verified by reading, not yet fixed
-      wheel events carry the UNSCROLLED position, so a scrolled root
-        gives QWheelEvent a position off by the scroll  input_router.cpp
       `msb >= KITTY_DIACRITIC_COUNT` cannot ever be true: msb is masked
-        to 0..255 and the count is 297             graphics.cpp:424
-      a second `pending_.size() < 2` inside the block the first one
-        opened                                  ansi_backend.cpp:1474
+        to 0..255 and the count is 297        graphics.cpp, and 8.372
+
+    verified by reading, and all settled on 2026-09-29 -- see 8.372
+      wheel events carry the UNSCROLLED position   already fixed: bc884ec,
+        2026-09-05, three weeks before this line was read again
+      a second `pending_.size() < 2`               declined, not removed,
+        for the reason 8.372 gives            ansi_backend.cpp
 
     reported by the sweep, NOT verified by me
       mode_usable() treats DECRPM 4 -- permanently reset -- as usable,
@@ -17952,6 +17952,54 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.372 Three open findings, none wanting the fix the list implied (2026-09-29)
+
+**A list of three defects "verified by reading, not yet fixed" had sat
+since the sweep that produced it. Re-read, not one of them needed the fix
+the line implied.**
+
+**The wheel one had been fixed three weeks earlier.** "Wheel events carry
+the UNSCROLLED position" was closed by `bc884ec` on 2026-09-05 -- the
+event is built from `screen`, like every other pointer event in that
+function, and the comment beside it says so in the past tense. The list
+went on naming it for 24 days. That is the gap claim `evidence.md`
+describes: **the one kind of sentence whose falsifier is a commit nobody
+connects to it**, so nothing in the ordinary course of work brings the two
+together. Closing an entry updates the entry and not the lists that point
+at it.
+
+**The `msb` guard was real, and the fix is not the deletion.**
+`msb >= KITTY_DIACRITIC_COUNT` cannot fire: `msb` is `(id >> 24) & 0xFF`,
+so 0..255, and the table holds 297. Deleting the branch would be correct
+and would throw away what it was FOR -- `KITTY_DIACRITICS[msb]` is indexed
+directly, and the guard was somebody keeping that in bounds. So the
+invariant moved to where it is decided:
+
+    static_assert(255 < KITTY_DIACRITIC_COUNT,
+                  "a kitty id's top byte indexes KITTY_DIACRITICS");
+
+**Seen to fail, through the assertion and not through something else.**
+With the count shrunk to 200 the build stops at
+`graphics.cpp:668: error: static assertion failed: a kitty id's top byte
+indexes KITTY_DIACRITICS`. A runtime `continue` in that situation would
+have silently dropped the third diacritic a wide id needs, which is a
+placeholder the terminal cannot resolve -- so the branch that could never
+run was also the wrong response to the thing it guarded against.
+
+**The `r` and `c` guards on the next line are NOT the same case** and stay:
+a terminal can be wider or taller than the table is long, so those can
+fire. Removing a dead guard is only safe once you have said which of its
+neighbours are alive.
+
+**And the third was declined rather than fixed.** The duplicate
+`pending_.size() < 2` is redundant today, and only because every path
+between the two guards returns before consuming a byte. That is a property
+of the paths, not of the decoder: deleting the second guard is correct now
+and arms whoever later adds a consuming path between them, in a decoder
+whose whole job is partial input. It costs one comparison. **A redundant
+guard and an unnecessary one are not the same thing**, and the list had
+recorded only that it was redundant.
 
 ### 8.371 The fourteenth table, and a promise nothing had asked (2026-09-29)
 

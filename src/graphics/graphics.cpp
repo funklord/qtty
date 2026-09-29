@@ -657,12 +657,21 @@ QByteArray encode_kitty_virtual(quint32 id, const QImage &img, int cols, int row
 void compose_kitty_placeholders(CellBuffer &frame, quint32 id, const QRect &cell_rect) {
 	const bool wide_id = id >= (1u << 24);
 	const int msb = int((id >> 24) & 0xFF);
+	// The top byte indexes the diacritic table directly, and it cannot
+	// reach the end of it: a byte is 0..255 and the table holds 297. That
+	// was a runtime `continue` here which could never fire -- a guard
+	// reading like a bound on a value that already has one. Said where it
+	// is actually decided instead, so that shrinking the table below 256
+	// fails the build rather than silently dropping the third diacritic a
+	// wide id needs. The r and c guards below are NOT this case: a
+	// terminal can be wider or taller than the table is long.
+	static_assert(255 < KITTY_DIACRITIC_COUNT,
+	              "a kitty id's top byte indexes KITTY_DIACRITICS");
 	for (int r = 0; r < cell_rect.height(); ++r) {
 		for (int c = 0; c < cell_rect.width(); ++c) {
 			const int X = cell_rect.x() + c, Y = cell_rect.y() + r;
 			if (X < 0 || Y < 0 || X >= frame.cols() || Y >= frame.rows()) continue;
 			if (r >= KITTY_DIACRITIC_COUNT || c >= KITTY_DIACRITIC_COUNT) continue;
-			if (wide_id && msb >= KITTY_DIACRITIC_COUNT) continue;
 			QString cluster;
 			cluster += QString::fromUcs4(reinterpret_cast<const char32_t *>(
 			    &KITTY_PLACEHOLDER), 1);
