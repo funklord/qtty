@@ -18005,6 +18005,31 @@ the painting widget's rect -- is a change to the clip's meaning rather than a
 fix to a fault. Recorded so that somebody measuring a widget's cells and
 finding a glyph outside its rect knows it has been looked at.
 
+**A fourth lens, the compositor's placement, and the instrument was wrong in
+the most embarrassing available way.** A popup was composed at five positions
+-- well inside, off the right, off the bottom, off both, and negative in each
+axis -- and the output compared against the rule restated from `placed_at()`.
+Four of the five came back DISAGREES.
+
+They agree. The restatement had dropped the `flip` branch, which is the half
+of that function whose comment is the longest and says why it exists: "a menu
+opening at x=78 must flip left, which the desktop code never had to do...
+Flipping puts the far edge on the anchor, so the menu stays attached to the
+item it was opened from; sliding it along the edge, which qBound alone does,
+detaches it and can cover that item." A popup is an anchored layer, so flip
+applies to every case here -- and with it every position lands where the rule
+prescribes. The remaining one-row difference is the popup's own vertical
+inset, which `PM_MenuVMargin` exists to provide and which the probe was
+reading as placement because it looked for the LABEL and compared it against
+the popup's top-left.
+
+So: nothing wrong with the placement, and two faults in one twenty-line
+probe -- a rule restated without its core, and a proxy (the label) measured
+as though it were the thing (the layer's origin). **Restating a rule to check
+code against it puts the restatement under test too**, and the half most
+worth dropping is the half with the longest comment, because that is the half
+that looks like commentary rather than arithmetic.
+
 
 ### 8.365 The other half of the same shape: an endless CSI had no cap (2026-09-29)
 
