@@ -10228,25 +10228,25 @@ measured it, reported means I have not.
       a second `pending_.size() < 2`               declined, not removed,
         for the reason 8.372 gives            ansi_backend.cpp
 
-    reported by the sweep, NOT verified by me
-      mode_usable() treats DECRPM 4 -- permanently reset -- as usable,
-        so a mode the terminal has refused would still be used
-      the contrast check judges Default colours against a hardcoded dark
-        luminance, and under Ansi16 against a hardcoded system table,
-        so on a light terminal it measures the wrong ground
-      CellItemDelegate writes cells with no CellClip, budgeted by the
-        item rect rather than the viewport
-      CC_ScrollBar and CC_Slider draw in cells but do not override
-        subControlRect, so hit-testing and drawing disagree
-      cell_paint.cpp carries its own copy of the palette-role list
-        without role_of()'s Disabled fallback
-      Qtty::capabilities() snapshots caps once before exec(), while
-        cell_px is re-read on every SIGWINCH
-      the upload cache and last_pixel_size_ are keyed on qtty-side
-        quantities, so neither is invalidated if the terminal's cell
-        changes
-      the section 6 contrast warning is compiled out under QT_NO_DEBUG,
-        which is every build `check` produces
+    reported by the sweep, every one verified 2026-09-29 -- see 8.373.
+    Not one is open work:
+      mode_usable() and DECRPM 4            fixed: `v != 0 && v != 4`
+      the contrast check's Ansi16 table      fixed: it consults the
+        palette the terminal reported, and falls back only when unasked
+      the same check's Default luminance     OPEN, and already recorded
+        above as a holder question with what would settle it, so not a
+        new finding: 210 and 20 assume a dark ground
+      CellItemDelegate's missing CellClip    fixed: clipped to the
+        VIEWPORT through painted_widget()
+      CC_ScrollBar and CC_Slider rects       fixed: subControlRect
+        handles both
+      cell_paint.cpp's palette-role copy     fixed: it calls role_of()
+      capabilities() snapshotting caps       fixed: it asks the backend
+      the upload cache's keying              fixed: cell_px is in the
+        key, and a change calls forget_uploads()
+      the contrast warning under QT_NO_DEBUG  by design: section 6 says
+        "log violations in debug builds", and the COUNT the checks assert
+        on is outside the guard
 
 **The list is the finding, not any one line of it.** A query answers
 about the shape you described; an enumeration answers about the thing --
@@ -17952,6 +17952,49 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.373 A list of eight unverified reports, and none of them open (2026-09-29)
+
+**The sweep that produced 8.372's three findings also left eight it had
+reported and nobody had checked. All eight verified: seven are closed and
+one is a question already recorded here.** Nothing on the list was work.
+
+    mode_usable() and DECRPM 4            fixed: `v != 0 && v != 4`, with
+      a comment naming DECRPM 4 in the past tense
+    the Ansi16 system table                fixed: it consults the palette
+      the terminal reported, table only when unasked
+    the Default luminance                  OPEN, and already a holder
+      question above, with what would settle it
+    CellItemDelegate's CellClip            fixed: clipped to the viewport
+    CC_ScrollBar / CC_Slider rects         fixed: both handled
+    cell_paint.cpp's role list             fixed: it calls role_of()
+    capabilities() snapshotting            fixed: it asks the backend
+    the upload cache's keying              fixed: cell_px is in the key
+    the QT_NO_DEBUG contrast warning       by design
+
+**Every closed one says so in its own comment, in the past tense.** The
+code records what it learned; the list does not read the code. So this is
+8.372's lesson at a larger scale, and the scale is the argument: one stale
+pointer is an oversight, eight is a shape. **A list of unverified reports
+decays faster than the tree it describes**, because the work that closes
+an item is done under the item's own heading and never touches the roster.
+
+**The one still open was never a finding of this sweep's.** That
+`luminance()` returns 210 and 20 for a Default colour, assuming a dark
+ground, is recorded twice already with the reason it is not a
+one-condition repair: it needs a second piece of global state beside the
+palette, and a decision about what the FOREGROUND of an unstated Default
+is. Listing it again as an unverified report made a settled
+open-question look like an unexamined one.
+
+**And one was not a defect at all, which is the entry worth reading
+twice.** "The section 6 contrast warning is compiled out under
+QT_NO_DEBUG" is true and is what section 6 asks for -- "log violations in
+debug builds". What the report implies is that the CHECK is lost, and it
+is not: `++violations` sits outside the guard, the function returns the
+count in every build, and five checks in `suite_theme.cpp` assert on it.
+**A true sentence about a guard is not a finding about what the guard
+protects**, and the difference is one line of reading.
 
 ### 8.372 Three open findings, none wanting the fix the list implied (2026-09-29)
 
