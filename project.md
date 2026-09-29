@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2047 checks, 0 failures. **The duration is 4.7 seconds of user time and
+2049 checks, 0 failures. **The duration is 4.7 seconds of user time and
 it belongs to 2026-09-23, over a suite of 2016** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5): 4.68, 4.71, 4.73 user against 14.6 wall each time.
@@ -17918,6 +17918,62 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.361 A focused tool button marked its label and not its glyph (2026-09-29)
+
+**The lens came from 8.359 rather than from a list**: a glyph drawn for one
+part of a control, missing the marks of the region it belongs to. The tab's
+close mark was one. Pointed at every sub-glyph that sits inside a marked
+control -- a line edit's clear button, a spin box's arrows, a combo box's
+drop arrow, a tool button's menu arrow, a push button's menu arrow, a
+checkable group box's indicator, a scroll bar's arrows against its thumb --
+and it found a sibling.
+
+    focused QPushButton   |<Push>|   RRRRRR      the whole glyph
+    focused QToolButton   |[Tool]|   .RRRR.      the label alone
+    focused QCheckBox     |[ ] Box|  RRR         its indicator, per the guide
+
+**Two buttons, two marks, and the guide states one rule for both**: "reverse
+video on the control's own glyph: a push button's brackets, a check box's
+brackets, a slider's handle, a scroll bar's thumb." The brackets ARE the
+glyph for a tool button, by this case's own argument: "two cells of `[]` say
+a button is here and nothing else, and that is more than two blank cells
+say." The mark went on `label_attrs(...)` and the brackets and menu arrow
+took `with_state(opt)`, which carries Dim and nothing else.
+
+**The other six read correctly, and one of them is the case that keeps this
+from being over-applied.** A focused read-only line edit reverses its
+brackets and not its clear mark -- and that is right, because there the
+brackets are the whole mark and the text between them is not marked either,
+so the clear mark matching the text is consistent rather than a hole. A
+check box marks its indicator alone. The spin box and combo box mark their
+brackets AND their arrows. A scroll bar marks its thumb. So the rule is not
+"mark everything": it is that whatever a control marks of its glyph, it
+marks all of.
+
+**The fixture is the finding's other half, and the fourth of its shape in
+two days.** Rendering ONE button and comparing focused against unfocused
+cannot fail: qtty seeds the focus to the first tab stop of a window that has
+none, so both arms come back focused and identical. Measured -- `RRRRRR`
+either way for a push button, `.RRRR.` either way for a tool button -- which
+reads as "focus changes nothing" and is really "this fixture has no
+unfocused case". Two of a kind in one window is what makes the question
+askable.
+
+The check is a relationship between the two buttons rather than a row for
+each: whatever share of its glyph a focused push button marks, a focused
+tool button marks of its own. Its control is the unfocused twin, which must
+carry nothing. A check box is deliberately not in it -- its glyph is the
+indicator and the guide says so, which is what stops the check being read as
+"mark everything".
+
+Sabotaged back to `with_state(opt)` and it reddens with the contrast itself:
+`push [RRRRRR] tool [.RRRR.]`.
+
+**Three fixes now from one sweep, and the third came from the first's
+shape rather than from rendering anything new** -- which is 0d's claim about
+deriving the next lens from the last defect, working twice in a row.
 
 
 ### 8.360 A progress bar one cell thick, and the overlap that hid behind it (2026-09-29)

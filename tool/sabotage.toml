@@ -5706,3 +5706,12 @@ find = "\t\t\t\tconst int cross = horizontal"
 into = "\t\t\t\tconst int cross = 1 ? 1 : horizontal"
 count = 1
 check = "a progress bar is as thick as the widget on its cross axis"
+
+
+[[sabotage]]
+name = "a tool button marks its label and not its own glyph"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tconst Attrs mark = with_state(opt)\n\t\t\t\t                   | (on ? Attrs(Attr::Reverse) : Attrs());"
+into = "\t\t\t\tconst Attrs mark = with_state(opt);"
+count = 1
+check = "and a focused tool button marks the same share of its own glyph"

@@ -6179,6 +6179,96 @@ int suite_widgets() {
 		              .arg(first_bad).toUtf8().constData());
 	}
 
+	// THE SAME QUESTION FOR A BUTTON'S OWN GLYPH, which is where that lens
+	// pointed next: a mark that covers part of a control rather than the
+	// region it marks. A focused tool button reversed its LABEL alone --
+	// `[Tool]` with four of six cells marked -- while a focused push button
+	// reverses all of `<Push>`. Two buttons, two marks, and the guide states
+	// one rule for both: "reverse video on the control's own glyph: a push
+	// button's brackets, a check box's brackets".
+	//
+	// TWO OF A KIND IN ONE WINDOW, which is what makes the question askable
+	// at all. With a single widget qtty seeds the focus to the first tab stop,
+	// so a "focused" and an "unfocused" arm both come back focused and the
+	// fixture cannot fail -- measured, and the fourth fixture of that shape
+	// found in two days.
+	//
+	// The check is a relationship between the two buttons rather than a row
+	// for each: whatever a focused push button marks of its glyph, a focused
+	// tool button marks of its own. A check box is NOT in it -- its glyph is
+	// the indicator and the guide says so, which is the case that keeps this
+	// from being read as "mark everything".
+	{
+		const auto marks = [&](int kind, bool *ok) -> QString {
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			win.resize(GridMetrics::cells(14, 2));
+			auto *v = new QVBoxLayout(&win);
+			v->setContentsMargins(0, 0, 0, 0);
+			v->setSpacing(0);
+			const auto make = [kind]() -> QWidget * {
+				if (kind == 0) {
+					auto *b = new QPushButton(QStringLiteral("Push"));
+					b->setFocusPolicy(Qt::StrongFocus);
+					return b;
+				}
+				auto *b = new QToolButton;
+				b->setText(QStringLiteral("Tool"));
+				b->setFocusPolicy(Qt::StrongFocus);
+				return b;
+			};
+			QWidget *first = make(), *second = make();
+			v->addWidget(first);
+			v->addWidget(second);
+			win.show();
+			QCoreApplication::processEvents();
+			InputRouter r(&win);
+			Compositor comp(&win, &r);
+			Qtty::set_current_window(&win);
+			first->setFocus();
+			Qtty::set_focus_widget(win.focusWidget());
+			QCoreApplication::processEvents();
+			CellBuffer b(14, 2);
+			comp.compose(b);
+			QString focused, bare;
+			for (int x = 0; x < 14; ++x) {
+				const Cell &f = b.at(x, 0), &u = b.at(x, 1);
+				const bool glyph = !f.ch.isEmpty()
+				                   && f.ch != QStringLiteral(" ");
+				if (!glyph) continue;
+				focused += (f.attrs & Attr::Reverse) ? QLatin1Char('R')
+				                                     : QLatin1Char('.');
+				bare += (u.attrs & Attr::Reverse) ? QLatin1Char('R')
+				                                  : QLatin1Char('.');
+			}
+			// The control: the unfocused twin carries nothing, or a fixture
+			// where both are focused would satisfy any claim below.
+			*ok = !bare.contains(QLatin1Char('R')) && !focused.isEmpty();
+			win.hide();
+			QCoreApplication::processEvents();
+			return focused;
+		};
+		bool push_ok = false, tool_ok = false;
+		const QString push = marks(0, &push_ok);
+		const QString tool = marks(1, &tool_ok);
+		GridGuard::reset();
+		printf("info: a focused push button marks [%s], a tool button [%s]\n",
+		       push.toUtf8().constData(), tool.toUtf8().constData());
+		CHECK(push_ok && tool_ok,
+		      "the unfocused twin of each button carries no mark, which is "
+		      "what says the marks below belong to the focus and not to the "
+		      "widget");
+		CHECK(push == tool && !push.isEmpty(),
+		      push == tool && !push.isEmpty()
+		        ? "and a focused tool button marks the same share of its own "
+		          "glyph a push button does -- brackets and menu arrow "
+		          "included, not its label alone"
+		        : QStringLiteral("and a focused tool button marks the same "
+		                         "share of its own glyph a push button does "
+		                         "-- push [%1] tool [%2]").arg(push, tool)
+		              .toUtf8().constData());
+	}
+
 
 
 	// Where the one-number-metric fault does NOT reach, which is worth a check

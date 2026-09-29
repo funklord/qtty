@@ -3126,11 +3126,32 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				// two blank cells say.
 				const QString label = tool_button_label(tb, w);
 				const bool bracket = c.width() >= 3 || label.isEmpty();
+				// THE MARK GOES ON THE WHOLE GLYPH, brackets and menu arrow
+				// included. It went on the label alone, so a focused tool
+				// button read `[Tool]` with only the four middle cells
+				// reversed while a focused push button reverses all of
+				// `<Push>` -- two buttons, two different marks, and the guide
+				// states one rule for both: "reverse video on the control's
+				// own glyph: a push button's brackets, a check box's
+				// brackets". The brackets ARE the glyph here, by this case's
+				// own argument three comments up -- "two cells of `[]` say a
+				// button is here".
+				//
+				// Measured focused against unfocused with two buttons in one
+				// window, which is what makes the question askable: with a
+				// single widget qtty seeds focus to the first tab stop and
+				// both arms of the comparison come back focused.
+				//
+				// Found by pointing the closable tab's lens at its siblings --
+				// a glyph drawn for one part of a control, missing the marks
+				// of the region it belongs to. Same defect, one widget along.
+				const Attrs mark = with_state(opt)
+				                   | (on ? Attrs(Attr::Reverse) : Attrs());
 				if (bracket) {
 					dev->buffer().put_cluster(c.left(), row, QStringLiteral("["),
-					                          Color(), Color(), with_state(opt));
+					                          Color(), Color(), mark);
 					dev->buffer().put_cluster(c.right(), row, QStringLiteral("]"),
-					                          Color(), Color(), with_state(opt));
+					                          Color(), Color(), mark);
 				}
 				// A menu is an affordance or it is nothing: a tool button
 				// with a dropdown looked exactly like one without, so the
@@ -3145,7 +3166,7 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 					    opt->direction == Qt::RightToLeft ? c.left() + 1
 					                                      : c.right() - 1,
 					    row, QStringLiteral("▾"),
-					    Color(), Color(), with_state(opt));
+					    Color(), Color(), mark);
 				const int inner = c.width() - (bracket ? 2 : 0) - (menu ? 2 : 0);
 				if (inner > 0) {
 					const QString shown = elide_to_cells(label, inner);
