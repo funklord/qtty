@@ -2898,12 +2898,56 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// style is driven from a QStyleOption directly. What is
 				// separated out is Qt's own refusal to name a percentage.
 				const bool no_progress = pb->progress < pb->minimum;
+				// AND ONLY IF IT FITS WHOLE. The label was centred by
+				// subtracting half its length from the middle, which goes
+				// NEGATIVE when it is wider than the bar -- so the leading
+				// digits fell outside the widget and the tail was left
+				// reading as a different number:
+				//
+				//     value  25%   at 2 cells |5%|   reads as five
+				//     value  50%   at 2 cells |0%|   reads as zero
+				//     value 100%   at 3 cells |00%|  reads as zero, on a
+				//                                    job that has finished
+				//
+				// That is the one kind of wrong worth more than a missing
+				// mark: not absent information but confident misinformation,
+				// and a finished bar reporting 0% is the worst of it.
+				//
+				// NEITHER TRUNCATION IS SAFE FOR A NUMBER, which is why this
+				// omits rather than elides. Keeping the tail gives 0% for
+				// fifty; keeping the head gives 5 for fifty; an ellipsis
+				// gives no number at all while still claiming the cells. A
+				// bar with no room for its figure still shows its fill,
+				// which is the same fact at lower precision and cannot be
+				// read as another value.
+				//
+				// Measured in COLUMNS rather than in QChars, which is the
+				// rule this library asks of custom widgets: a percentage is
+				// ASCII today and pb->text is whatever an application set.
 				if (pb->textVisible && !no_progress) {
 					const QString label = pb->text.isEmpty()
 					    ? QStringLiteral("%1%").arg(qRound(frac * 100)) : pb->text;
-					dev->buffer().text(c.center().x() - label.size() / 2, c.top(),
-					                   label, Color(), Color(),
-					                   label_attrs(opt, w, Attr::Reverse));
+					int wide = 0;
+					for (const QString &cl : to_clusters(label))
+						wide += cluster_width(cl);
+					// AND THE CENTRING ITSELF WAS WRONG, which the guard
+					// above only half hid. `c.center().x() - wide / 2` is not
+					// the centred START: QRect::center() rounds down, so for a
+					// two-cell bar it is the LEFT cell, and subtracting half
+					// the label puts the first character outside the widget
+					// even when the label fits exactly. Measured after the
+					// guard landed and before this line changed -- `5%` in two
+					// cells still drew `%`, and `100%` in four still drew
+					// `00%`, which is the same wrong number with a narrower
+					// cause.
+					//
+					// left + (width - wide) / 2 is the centred start, is never
+					// negative while the guard holds, and gives 0 in both of
+					// those cases.
+					if (wide <= c.width())
+						dev->buffer().text(c.left() + (c.width() - wide) / 2,
+						                   c.top(), label, Color(), Color(),
+						                   label_attrs(opt, w, Attr::Reverse));
 				}
 				return;
 			}

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2051 checks, 0 failures. **The duration is 4.7 seconds of user time and
+2052 checks, 0 failures. **The duration is 4.7 seconds of user time and
 it belongs to 2026-09-23, over a suite of 2016** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5): 4.68, 4.71, 4.73 user against 14.6 wall each time.
@@ -17918,6 +17918,78 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.363 A finished progress bar reporting 0%, and two look-alikes that were not defects (2026-09-29)
+
+**The lens: every control at a width nothing gives it.** Chosen because the
+style already carries per-control rules for this, each added after a bug --
+"two cells of `[]` say a button is here", "below three cells the content
+wins", "a toolbar rendered as `]]`", "a dock widget's title buttons spent
+their whole budget on chrome and drew a pair of empty boxes". A class patched
+one control at a time is a class where the unpatched control is the one to
+squeeze. Fourteen controls at one, two, three and four cells, with two cells
+of margin so a control drawing OUTSIDE its rect would show rather than be
+clipped away by the buffer's edge.
+
+**The progress bar's figure was wrong rather than missing.**
+
+    value  25%   at 2 cells |5%|    reads as five
+    value  50%   at 2 cells |0%|    reads as zero
+    value 100%   at 3 cells |00%|   reads as zero, on a job that has finished
+
+That is the one kind of wrong worth more than a missing mark, and a completed
+bar reporting 0% is the worst of it.
+
+**Two faults in one line.** The label was drawn whether or not it fitted, and
+its start was computed as `c.center().x() - label.size() / 2` -- which is not
+a centred start: `QRect::center()` rounds down, so for a two-cell bar it is
+the LEFT cell and subtracting half the label begins one cell outside the
+widget even when the label fits exactly. Fixing only the first left `5%` in
+two cells drawing `%`, and `100%` in four drawing `00%` -- the same wrong
+number with a narrower cause. `left + (width - wide) / 2` is the centred
+start and is never negative while the fit guard holds.
+
+**It omits rather than elides, and that is the decision worth recording.**
+No truncation of a number is safe: keeping the tail gives 0% for fifty,
+keeping the head gives 5 for fifty, and an ellipsis gives no figure at all
+while still claiming the cells. A bar with no room for its figure shows its
+fill, which is the same fact at lower precision and cannot be read as another
+value. Measured in COLUMNS, which is the rule this library asks of custom
+widgets.
+
+The check asserts a PROPERTY over a sweep of four values and six widths --
+whatever digits are on screen are the whole figure or none of it -- rather
+than rows, so it rules out both tails and truncations without knowing where a
+label sits. Two sabotages, and they redden on different symptoms: drawing a
+label that does not fit gives `5% at 1 cell(s) shows [5]`, and restoring the
+old centring gives `5% at 2 cell(s) shows [%]`.
+
+**And two look-alikes that are NOT defects, which is the other half of the
+sweep.** Both would have been wrong to fix.
+
+A spin box holding 375 shows `[3▾]` at four cells and `[37▴▾]` at six -- a
+wrong number by the same reading. It is not this style's: `CC_SpinBox` ends
+`return; // value text via child edit`, so the box and the arrows are drawn
+here and the VALUE comes from the child `QLineEdit` scrolling to its caret,
+which is what a desktop spin box does at the same width. A line edit holding
+`4821` shows `[21]` at four cells for the same reason, and there the tail is
+right: the caret is at the end, and that is what somebody typing sees.
+
+A combo box holding `alpha` shows `[alph▾]` at seven cells with no ellipsis,
+so a reader cannot tell it was cut. `CE_ComboBoxLabel` is the one part of
+that control this style does not answer -- the frame and the arrow are drawn
+here and the label falls through to Fusion, which elides in PIXELS, after
+which the cell engine clips the last cell. Taking the label over would mean
+this style owning a control's text and choosing where its ellipsis goes,
+which the tab bar answers for itself with `elide_to_cells`. Recorded rather
+than done, because it is an ownership step and not a one-line fault.
+
+**Which is the sweep's own lesson.** Three readings looked identical from the
+output -- a number on screen that is not the value -- and one was this
+style's arithmetic, one was Qt's editor behaving correctly, and one was a
+pixel elide meeting a cell grid. The output cannot tell them apart; only
+asking who draws the glyph can.
 
 
 ### 8.362 The third hole of one family, and the half deliberately left open (2026-09-29)

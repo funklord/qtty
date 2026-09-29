@@ -5724,3 +5724,21 @@ find = "\t\t\tif (opt->state & State_Selected) a |= Attr::Reverse;"
 into = "\t\t\tif (false) a |= Attr::Reverse;"
 count = 1
 check = "and a tree's expander carries the selection its own row carries"
+
+
+[[sabotage]]
+name = "a progress bar draws a figure that does not fit"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\tif (wide <= c.width())"
+into = "\t\t\t\t\tif (true)"
+count = 1
+check = "and a progress bar's figure is whole or absent"
+
+
+[[sabotage]]
+name = "a progress bar centres its figure on a rounded-down middle"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\t\tdev->buffer().text(c.left() + (c.width() - wide) / 2,"
+into = "\t\t\t\t\t\tdev->buffer().text(c.center().x() - wide / 2,"
+count = 1
+check = "and a progress bar's figure is whole or absent"

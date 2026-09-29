@@ -5733,6 +5733,76 @@ int suite_widgets() {
 		              .toUtf8().constData());
 	}
 
+	// AND ITS FIGURE IS WHOLE OR ABSENT, never a tail. The label was centred
+	// as `c.center().x() - label.size() / 2`, which goes negative when the
+	// figure is wider than the bar -- so the leading digits fell outside the
+	// widget and what was left read as another number:
+	//
+	//     value  25%   at 2 cells |5%|    reads as five
+	//     value  50%   at 2 cells |0%|    reads as zero
+	//     value 100%   at 3 cells |00%|   reads as zero, on a finished job
+	//
+	// The worst kind of wrong: not a missing mark but a confident wrong one.
+	// Two faults in one line -- a label drawn when it does not fit, and a
+	// centred START computed as a centre minus half a width, which QRect
+	// rounds down so that even a label that fits exactly begins one cell
+	// left of the widget.
+	//
+	// Asserted as a PROPERTY over a sweep rather than as rows: whatever is
+	// drawn, the digits on screen must be a prefix of the real figure and
+	// either all of it or none. That is what rules out both tails and
+	// truncations without this check having to know where a label sits.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		bool honest = true;
+		QString first_bad;
+		for (int value : { 5, 25, 50, 100 }) {
+			const QString figure = QStringLiteral("%1%").arg(value);
+			for (int cols = 1; cols <= 6; ++cols) {
+				QWidget host;
+				host.setAttribute(Qt::WA_DontShowOnScreen);
+				host.resize(GridMetrics::cells(cols + 1, 2));
+				auto *p = new QProgressBar(&host);
+				p->setRange(0, 100);
+				p->setValue(value);
+				p->setGeometry(0, 0, cw * cols, ch);
+				host.show();
+				QCoreApplication::processEvents();
+				CellBuffer b(cols + 1, 2);
+				render_once(host, b);
+				// Whatever of the figure's own characters is on screen, in
+				// order. The bar's own glyphs are not digits, so reading the
+				// row for digits and percent signs isolates the label.
+				QString shown;
+				for (int x = 0; x < cols; ++x) {
+					const QString g = b.at(x, 0).ch;
+					if (g.isEmpty()) continue;
+					const QChar ch0 = g.at(0);
+					if (ch0.isDigit() || ch0 == QLatin1Char('%')) shown += g;
+				}
+				// Whole, or nothing. A prefix that is not the whole figure is
+				// exactly the "5 for fifty" case, and a suffix is the "0% for
+				// fifty" one.
+				if (shown.isEmpty() || shown == figure) continue;
+				honest = false;
+				if (first_bad.isEmpty())
+					first_bad = QStringLiteral("%1 at %2 cell(s) shows [%3]")
+					                .arg(figure).arg(cols).arg(shown);
+				host.hide();
+				QCoreApplication::processEvents();
+			}
+		}
+		GridGuard::reset();
+		CHECK(honest,
+		      honest
+		        ? "and a progress bar's figure is whole or absent -- never a "
+		          "tail, so a bar too narrow for its number shows its fill "
+		          "rather than a different number"
+		        : QStringLiteral("and a progress bar's figure is whole or "
+		                         "absent -- %1").arg(first_bad)
+		              .toUtf8().constData());
+	}
+
 	{
 		// An indeterminate progress bar. minimum == maximum is Qt's way of
 		// saying the length of the job is unknown, and it was drawn as a bar
