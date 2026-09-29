@@ -1859,9 +1859,21 @@ void AnsiBackend::read_input() {
 	arm_escape_timer();
 }
 
+// ONE CAP FOR BOTH PARSERS, because both can be handed a sequence that never
+// ends and the remedy is the same. It was a local in parse_string_sequence()
+// and absent from parse_csi() -- so a stream of CSI parameters with no final
+// byte grew pending_ without limit: measured, 512 KiB of `1;` cost 5 MiB of
+// RSS and every key behind it was lost. The string parser's own comment is the
+// argument for it, and the argument was already written.
+//
+// A real sequence is never remotely this long. The number is the string
+// parser's, kept rather than re-chosen so the two cannot drift.
+static constexpr int kSequenceCap = 4096;
+
 // A CSI is ESC [ , an optional private prefix, semicolon-separated decimal
 // parameters, then a final byte in 0x40..0x7e. Returns the number of bytes the
-// sequence occupies, or -1 when the buffer does not hold all of it yet.
+// sequence occupies, -1 when the buffer does not hold all of it yet, or 0 to
+// ask the caller to drop the opener because the cap has been passed.
 //
 // The decoder this replaced read a fixed three bytes and switched on the
 // third, which works for the arrow keys and for nothing else: an SGR mouse
@@ -1921,7 +1933,28 @@ int AnsiBackend::parse_csi(QByteArray &prefix, QVector<int> &params,
 	while (i < pending_.size() && pending_[i] >= 0x20 && pending_[i] <= 0x2f)
 		inter.append(pending_[i++]);
 
-	if (i >= pending_.size()) return -1;          // still arriving
+	// Still arriving -- unless it has gone on too long to be a sequence at
+	// all, in which case the whole buffered run is DISCARDED rather than
+	// re-read.
+	//
+	// Dropping only the opener was tried first, which is what the string
+	// parser does, and it is wrong here for the reason the malformed branch
+	// below already gives: the remainder is then read as ordinary input, so
+	// four kilobytes of `1;` becomes four kilobytes of keystrokes nobody
+	// typed. Measured while it was being written -- 512 KiB of endless
+	// parameters took RSS from 17 MiB to 54 MiB, worse than the unbounded
+	// version it replaced, because removing one byte at a time from a large
+	// buffer re-parses the rest on every pass.
+	//
+	// Consuming the lot is cheap, delivers nothing, and is honest about what
+	// the bytes are: a stream that has sent 4096 bytes of unterminated CSI is
+	// already broken, and anything legitimate behind them is indistinguishable
+	// from more of the same.
+	if (i >= pending_.size()) {
+		if (pending_.size() <= kSequenceCap) return -1;
+		final = 0;
+		return pending_.size();
+	}
 
 	// A SEQUENCE THAT CANNOT BE TERMINATED IS ABANDONED, NOT WAITED ON, and
 	// this is the third time that distinction has been paid for in this one
@@ -1970,7 +2003,8 @@ int AnsiBackend::parse_csi(QByteArray &prefix, QVector<int> &params,
 			if (pending_[j] >= 0x40 && uchar(pending_[j]) <= 0x7e)
 				return j + 1;                          // a plausible final
 		}
-		return -1;                                     // still arriving
+		if (pending_.size() <= kSequenceCap) return -1;  // still arriving
+		return pending_.size();                          // and discarded
 	}
 	final = pending_[i];
 	return i + 1;
@@ -1990,7 +2024,6 @@ int AnsiBackend::parse_csi(QByteArray &prefix, QVector<int> &params,
 // grow pending_ without limit, so past the cap the opener is dropped and the
 // bytes after it are read as ordinary input.
 int AnsiBackend::parse_string_sequence() const {
-	const int cap = 4096;
 	for (int i = 2; i < pending_.size(); ++i) {
 		const unsigned char c = pending_[i];
 		if (c == 0x07 && pending_[1] == ']') return i + 1;         // OSC, BEL
@@ -1998,7 +2031,7 @@ int AnsiBackend::parse_string_sequence() const {
 			return i + 2;                                          // ST
 		if (c == 0x1b) return i;      // a new escape: the old one was abandoned
 	}
-	return pending_.size() > cap ? 0 : -1;        // 0 asks the caller to drop
+	return pending_.size() > kSequenceCap ? 0 : -1;  // 0 asks the caller to drop
 }
 
 // A parameter list back to its wire form, so a reply parsed here can be
@@ -2267,6 +2300,10 @@ bool AnsiBackend::decode_one() {
 			QByteArray prefix, inter; QVector<int> params; char final = 0;
 			const int n = parse_csi(prefix, params, inter, final);
 			if (n < 0) return false;              // wait for the rest
+			// Over the cap: drop the opener, as the string parser does. A
+			// zero here would append nothing and remove nothing, which is
+			// the one way this loop could spin.
+			if (n == 0) { pending_.remove(0, 1); return true; }
 			if (final == '~' && !params.isEmpty() && params[0] == 201) {
 				pending_.remove(0, n);
 				return dispatch_csi(prefix, params, inter, final);
@@ -2286,6 +2323,7 @@ bool AnsiBackend::decode_one() {
 			QByteArray prefix, inter; QVector<int> params; char final = 0;
 			const int n = parse_csi(prefix, params, inter, final);
 			if (n < 0) return false;              // still arriving
+			if (n == 0) { pending_.remove(0, 1); return true; }  // over the cap
 			pending_.remove(0, n);
 			// Malformed, per parse_csi: consumed and dropped rather than
 			// dispatched. Reported as progress, because progress is what it

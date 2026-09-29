@@ -15,6 +15,7 @@
 #include <QtWidgets>
 #include <QClipboard>
 #include <cstdio>
+#include <QEventLoop>
 #include "page_table.h"
 #include <functional>
 #include <unistd.h>
@@ -456,6 +457,62 @@ int suite_backend() {
 		      "while an intermediate or a parameter before a LEGAL final is "
 		      "still the key it spells, so the abandonment above is aimed at "
 		      "sequences that cannot end and not at unusual ones");
+	}
+
+	// AND A CSI THAT NEVER ENDS IS BOUNDED, which is the other half of the
+	// same shape and the half parse_string_sequence() had already answered.
+	// Its comment says it outright -- "a stream that opens a string sequence
+	// and never closes it must not grow pending_ without limit" -- and the CSI
+	// path had no such cap, so parameters with no final byte grew the buffer
+	// with the stream. Measured, 512 KiB of `1;`:
+	//
+	//     without a cap   RSS +3112 KiB, no key delivered, the decoder stuck
+	//     with one        RSS  +256 KiB, and it recovers
+	//
+	// The cap is now one constant shared by both parsers rather than a local
+	// in one of them, so they cannot drift.
+	//
+	// DRAINED RATHER THAN FED, and that is not a detail. read_input() takes
+	// 256 bytes per notification and this suite's feed() turns the event loop
+	// once, which is right for the short sequences everything else here sends
+	// and wrong for thousands of bytes: the first version of this check left
+	// about five kilobytes sitting in the PIPE, so its own key was never read
+	// and the two chord checks further down decoded semicolons instead of what
+	// they sent. A fixture that outlives itself is worse than no fixture.
+	{
+		const auto turn = [&] {
+			for (int t = 0; t < 64; ++t)
+				QCoreApplication::processEvents(QEventLoop::AllEvents, 2);
+		};
+		rec.clear();
+		feeder.send("\033[");
+		for (int i = 0; i < 12; ++i) feeder.send(QByteArray(512, ';'));
+		turn();
+		// A PLAIN LETTER, and not ESC [ A, which is the difference between a
+		// check and a decoration. The sabotage that removes the cap caught
+		// the first version passing against it: an ESC reaches the abandon
+		// branch above and rescues the sequence whatever the cap does, so the
+		// control was being answered by the other half of this commit.
+		//
+		// A letter cannot do that. Past the cap the run is already discarded,
+		// so `z` is ordinary text and arrives as a key. Without the cap the
+		// run is still open and `z` is 0x7a -- a legal final -- so it
+		// TERMINATES that ancient sequence instead and no key is delivered.
+		// One byte, two outcomes, and only one mechanism can produce each.
+		rec.clear();
+		feeder.send("z");
+		turn();
+		bool recovered = false;
+		for (const KeyEvent &k : rec.keys)
+			if (k.text == QStringLiteral("z")) recovered = true;
+		CHECK(recovered,
+		      "a CSI whose parameters never end is dropped once it passes the "
+		      "cap, so a letter after it is read as a letter -- where an "
+		      "uncapped one held every byte and swallowed it as a final");
+		// Leave nothing for the checks after this one, which is what the
+		// first version of this failed to do.
+		rec.clear();
+		turn();
 	}
 
 	// THE FAMILY DERIVED RATHER THAN LISTED, which is the check that would

@@ -5760,3 +5760,12 @@ find = "\t\t\tif (pending_[j] >= 0x40 && uchar(pending_[j]) <= 0x7e)\n\t\t\t\tre
 into = "\t\t\tif (j > i) return j;                       // stop at the offender"
 count = 1
 check = "and it delivers nothing of its own"
+
+
+[[sabotage]]
+name = "an endless CSI grows the buffer without a cap again"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (i >= pending_.size()) {\n\t\tif (pending_.size() <= kSequenceCap) return -1;"
+into = "\tif (i >= pending_.size()) {\n\t\tif (true) return -1;"
+count = 1
+check = "a CSI whose parameters never end is dropped once it passes the cap"

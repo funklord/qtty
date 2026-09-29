@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2055 checks, 0 failures. **The duration is 4.7 seconds of user time and
+2056 checks, 0 failures. **The duration is 4.7 seconds of user time and
 it belongs to 2026-09-23, over a suite of 2016** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5): 4.68, 4.71, 4.73 user against 14.6 wall each time.
@@ -17918,6 +17918,70 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.365 The other half of the same shape: an endless CSI had no cap (2026-09-29)
+
+**`parse_string_sequence()` already had the answer and said why.** Its comment:
+"a stream that opens a string sequence and never closes it must not grow
+pending_ without limit, so past the cap the opener is dropped and the bytes
+after it are read as ordinary input." `parse_csi()` had no such cap, so a CSI
+whose parameters never end grew the buffer with the stream. One author, two
+parsers, the hazard reasoned in one and absent from the other.
+
+Measured with 512 KiB of `1;` and nothing else:
+
+    without a cap   RSS +3112 KiB, no key delivered, the decoder stuck
+    with one        RSS  +256 KiB, and it recovers
+
+The cap is one `kSequenceCap` shared by both parsers now, rather than a local
+in one of them, so they cannot drift.
+
+**The remedy is to DISCARD the run, not to drop its opener**, and the first
+attempt did the latter -- which is what the string parser does. It is wrong
+here for the reason the malformed branch already gives: the remainder is then
+re-read as ordinary input, so four kilobytes of `1;` becomes four kilobytes of
+keystrokes nobody typed. It was also pathological, because removing one byte
+at a time from a large buffer re-parses the rest on every pass: RSS went from
+17 MiB to 54 MiB, worse than the unbounded version it replaced.
+
+**Three instrument errors in one investigation, which is the record's real
+content.**
+
+*The probe hoarded what it measured.* The sink appended every delivered key to
+a vector and nothing cleared it, so "RSS grew 36 MiB" was the probe's own
+record of half a million keystrokes and not the decoder's buffer. Counted
+instead of kept, the growth is 256 KiB.
+
+*The fixture outlived itself.* The suite's `feed()` turns the event loop once,
+which is right for the short sequences everything else sends and wrong for
+thousands of bytes: `read_input()` takes 256 per notification, so the first
+version of the check left about five kilobytes in the PIPE, its own key was
+never read, and the two ambiguous-chord checks further down decoded semicolons
+instead of what they sent. Two unrelated failures from one fixture that did
+not clean up after itself.
+
+*And the control was answered by the wrong mechanism.* The check probed
+recovery with `ESC [ A`, and the sabotage that removes the cap reported
+`the named check PASSED against broken code`. An ESC reaches the abandon
+branch of 8.364 and rescues the sequence whatever the cap does -- so the
+control was being satisfied by the other half of the same commit. A plain
+letter cannot: past the cap the run is discarded and `z` is text, while
+without the cap `z` is 0x7a, a legal final, and TERMINATES the ancient
+sequence instead. One byte, two outcomes, one mechanism each.
+
+**That third one is the harness doing the job the rule claims for it.** "A
+check is untested until it has been seen to fail" -- and this check looked
+perfectly good, passed, and could not fail for the reason it existed. Nothing
+but running the sabotage would have said so.
+
+**What the sweep found about the string parsers, which are NOT defective.**
+An unterminated OSC, DCS, APC, PM or SOS swallows the bytes after it, and
+that is correct -- a string sequence's content runs to its terminator, so a
+letter after `ESC ] 11 ; rgb:` is content. The first reading of this looked
+like a wedge and was not: the liveness probe contained an ESC, which is
+itself a terminator, so the case could not be observed until the probe was
+changed to a plain letter. All five recover past the cap.
 
 
 ### 8.364 One malformed escape sequence disabled every keystroke (2026-09-29)
