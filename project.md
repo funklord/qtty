@@ -17941,6 +17941,51 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.369 The flag that prevents a vacuous pass could be switched off by a typo (2026-09-29)
+
+**`qtty-tray-check` had no option check at all**, where its three siblings
+refuse an unknown one with exit 2. It scanned for `--require-bus` and ignored
+everything else:
+
+    <no arguments>   SKIP, 0   correct: no bus, nothing measurable
+    --require-bus    FAIL, 1   correct: the guard doing its job
+    --requre-bus     SKIP, 0   the guard silently OFF
+    --nonsense       SKIP, 0
+    somefile         SKIP, 0
+    --help           SKIP, 0   there was no help to print
+
+**The third line is the finding, and the comment immediately above that loop
+is what makes it one.** It says: "`--require-bus` is the caller saying it has
+SUPPLIED one... Skipping in that case reports success having measured nothing,
+which is the vacuous pass this project keeps paying for -- so the guard's
+failure becomes the caller's failure instead."
+
+So the flag exists precisely to stop a gate reporting success over nothing --
+and misspelling it restored exactly that, silently. A paragraph of reasoning
+about vacuous passes, one scanf-shaped loop below it, and a typo undoes the
+lot.
+
+It answers `--help` and `--version` now, refuses anything else with exit 2,
+and does all three BEFORE touching D-Bus so they work on a machine without a
+bus -- which is why its siblings put theirs before `QApplication`.
+
+**Two checks, each with a control.** The `--help/--version/unknown option`
+loop in `test-tools` covered three tools and covers four now. And the typo has
+one of its own, because the general case does not distinguish the flag that
+matters: `--requre-bus` must be refused AND `--require-bus` spelled right must
+still fail-rather-than-skip with no bus. Without that second half, a tool that
+refused the real flag too would satisfy the first.
+
+Seen to fail: removing the refusal reddens both the loop's case and the typo's,
+and the control keeps passing.
+
+**Four tools, one idiom, and the fourth had none of it.** 8.368 found the
+idiom carried where it did not belong; this found it missing where it did. The
+same sweep answered both, which is the argument for sweeping a SET rather than
+a file: the three tools that were right made the fourth's absence visible, and
+nothing in the fourth's own code would have.
+
+
 ### 8.368 The same idiom in three tools, right in one of them (2026-09-29)
 
 **Found by asking the obvious question after 8.367: the other shipped tool

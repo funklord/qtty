@@ -7,6 +7,7 @@
 // supplies one with dbus-run-session; nothing else in the tree needs it.
 #include <qtty/qtty.h>
 #include <qtty/tray.h>
+#include <qtty/version.h>
 #include <QtWidgets>
 #include <QtDBus>
 #include <cstdio>
@@ -87,6 +88,21 @@ public slots:
 	void RegisterStatusNotifierHost(const QString &) {}
 };
 
+static const char *const usage =
+    "qtty-tray-check -- does a Qtty::SystemTrayIcon reach a real tray?\n"
+    "\n"
+    "usage: qtty-tray-check [--require-bus] [--help] [--version]\n"
+    "\n"
+    "Registers a tray icon over D-Bus and reports what a watcher sees.\n"
+    "Without a session bus there is nothing to measure and it SKIPs.\n"
+    "\n"
+    "  --require-bus      the caller says it has SUPPLIED a bus, so a\n"
+    "                     missing one is the harness failing rather than a\n"
+    "                     machine without D-Bus: FAIL instead of SKIP.\n"
+    "                     `make test-tray` runs this under dbus-run-session\n"
+    "                     and passes it, which is what stops the gate\n"
+    "                     reporting success having measured nothing.\n";
+
 int main(int argc, char **argv) {
 	Qtty::prepare_environment();
 	QApplication app(argc, argv);
@@ -99,6 +115,38 @@ int main(int argc, char **argv) {
 	// it promised. Skipping in that case reports success having measured
 	// nothing, which is the vacuous pass this project keeps paying for --
 	// so the guard's failure becomes the caller's failure instead.
+	// AND A MISSPELLING OF IT RESTORES THE VERY VACUOUS PASS THE PARAGRAPH
+	// ABOVE IS ABOUT, which is why this tool needed the same option check its
+	// three siblings have and did not have it. `--requre-bus` scanned past,
+	// left require_bus false, and the run reported SKIP and exited 0 -- the
+	// guard silently off, in the one flag that exists to stop a gate
+	// measuring nothing. `--nonsense`, a positional and `--help` went the
+	// same way, and there was no help to print.
+	//
+	// Checked before the bus is touched, so --help and --version answer on a
+	// machine with no D-Bus at all, which is the reason the siblings put
+	// theirs before QApplication.
+	for (int i = 1; i < argc; ++i)
+		if (!qstrcmp(argv[i], "--help") || !qstrcmp(argv[i], "-h")) {
+			printf("%s", usage);
+			return 0;
+		}
+	for (int i = 1; i < argc; ++i)
+		if (!qstrcmp(argv[i], "--version") || !qstrcmp(argv[i], "-V")) {
+			printf("qtty-tray-check %s\n%s\n", Qtty::version_string,
+			       Qtty::copyright);
+			return 0;
+		}
+	for (int i = 1; i < argc; ++i) {
+		static const char *const known[] = { "--require-bus" };
+		bool ok = false;
+		for (const char *k : known) ok = ok || !qstrcmp(argv[i], k);
+		if (ok) continue;
+		fprintf(stderr, "qtty-tray-check: unrecognised argument '%s'\n"
+		                "try 'qtty-tray-check --help'\n", argv[i]);
+		return 2;
+	}
+
 	bool require_bus = false;
 	for (int i = 1; i < argc; ++i)
 		if (QLatin1String(argv[i]) == QLatin1String("--require-bus"))

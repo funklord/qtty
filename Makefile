@@ -890,7 +890,15 @@ test-tools: all
 	   fail=1;; \
 	esac; \
 	hv=0; \
-	for prog in $(INSPECT) $(REPLAY) $(NEGOTIATE); do \
+	: 'FOUR, not three. qtty-tray-check had no option check at all -- it' ; \
+	: 'scanned for --require-bus and ignored everything else, so the typo' ; \
+	: '`--requre-bus` left the guard off and the run reported SKIP and' ; \
+	: 'exited 0. That is the vacuous pass the flag exists to prevent,' ; \
+	: 'reachable by misspelling the flag. It answers --help and --version' ; \
+	: 'now and refuses the rest, so it belongs in this loop with its' ; \
+	: 'siblings -- and all three checks below work without a session bus,' ; \
+	: 'which is why they are here and not in test-tray.' ; \
+	for prog in $(INSPECT) $(REPLAY) $(NEGOTIATE) $(TRAY_CHECK); do \
 		out=$$(timeout $(TEST_TIMEOUT) $$prog --help 2>/dev/null); \
 		case "$$out" in \
 		*usage:*) ;; \
@@ -918,7 +926,7 @@ test-tools: all
 		esac; \
 	done; \
 	[ "$$hv" -eq 0 ] && \
-		echo "    --help, --version and unknown options: ok on all three"; \
+		echo "    --help, --version and unknown options: ok on all four"; \
 	out=$$(timeout $(TEST_TIMEOUT) $(REPLAY) --help 2>/dev/null); \
 	miss=""; \
 	for k in escape menu f6 f10; do \
@@ -997,6 +1005,30 @@ test-tools: all
 	done; \
 	[ "$$pos" -eq 0 ] && \
 		echo "    inspect and negotiate refuse a positional: ok (with controls)"; \
+	\
+	: '-- AND THE TYPO THAT MATTERS MOST. --require-bus is what stops the' ; \
+	: 'tray gate reporting success having measured nothing, so a' ; \
+	: 'misspelling of it must not read as the flag being absent.' ; \
+	timeout $(TEST_TIMEOUT) $(TRAY_CHECK) --requre-bus >/dev/null 2>&1; \
+	if [ $$? -eq 0 ]; then \
+		echo "    qtty-tray-check: FAILED -- a misspelled --require-bus was"; \
+		echo "             ignored, so the flag that prevents a vacuous pass"; \
+		echo "             can be switched off by a typo"; fail=1; \
+	else \
+		: 'The control: the flag SPELLED RIGHT must still do its job, which' ; \
+		: 'without a bus is to fail rather than skip. Without this, the' ; \
+		: 'refusal above is satisfied by a tool that refuses the real flag' ; \
+		: 'too.' ; \
+		timeout $(TEST_TIMEOUT) $(TRAY_CHECK) --require-bus >/dev/null 2>&1; \
+		case $$? in \
+		0) echo "    qtty-tray-check: FAILED -- --require-bus spelled right"; \
+		   echo "             reported success with no bus supplied"; \
+		   fail=1;; \
+		2) echo "    qtty-tray-check: FAILED -- --require-bus spelled right"; \
+		   echo "             was refused as an unknown argument"; fail=1;; \
+		*) echo "    tray-check tells a typo from the flag: ok (and a control)";; \
+		esac; \
+	fi; \
 	on=$$(printf 'conventions on\nkey down\nsnapshot\n' \
 		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null); \
 	off=$$(printf 'key down\nsnapshot\n' \
