@@ -932,6 +932,47 @@ test-tools: all
 	else \
 		echo "    replay key vocabulary: ok (modifiers and the named keys)"; \
 	fi; \
+	\
+	: '-- A SCRIPT IT COULD NOT CARRY OUT MUST NOT EXIT 0. This tool exists' ; \
+	: 'so that a bug report is reproducible, and every one of the cases' ; \
+	: 'below used to print a note at most and report success: an unreadable' ; \
+	: 'file printed NOTHING at all, an unknown command printed a line and' ; \
+	: 'exited 0, and `key zzzznotakey` drove an empty event -- no key, no' ; \
+	: 'text, nothing at all -- so the frames were not the script that was' ; \
+	: 'meant. The tool already refused an unknown OPTION with exit 2; this' ; \
+	: 'carries that argument to the script it is given.' ; \
+	bad=0; \
+	for case in 'missing-file' 'a-directory' 'unknown-command' \
+	            'unknown-key' 'ctrl-a-digit' 'empty'; do \
+		case "$$case" in \
+		missing-file)    timeout $(TEST_TIMEOUT) $(REPLAY) \
+		                   $(BUILD_DIR)/no-such-replay-script >/dev/null 2>&1;; \
+		a-directory)     timeout $(TEST_TIMEOUT) $(REPLAY) $(BUILD_DIR) \
+		                   >/dev/null 2>&1;; \
+		unknown-command) printf 'frobnicate 3\n' | timeout $(TEST_TIMEOUT) \
+		                   $(REPLAY) >/dev/null 2>&1;; \
+		unknown-key)     printf 'key zzzznotakey\n' | timeout $(TEST_TIMEOUT) \
+		                   $(REPLAY) >/dev/null 2>&1;; \
+		ctrl-a-digit)    printf 'ctrl 9\n' | timeout $(TEST_TIMEOUT) \
+		                   $(REPLAY) >/dev/null 2>&1;; \
+		empty)           printf '# only a comment\n' | timeout \
+		                   $(TEST_TIMEOUT) $(REPLAY) >/dev/null 2>&1;; \
+		esac; \
+		if [ $$? -eq 0 ]; then \
+			echo "    replay: FAILED -- $$case exited 0, so a script it"; \
+			echo "             could not carry out reads as one it did"; \
+			bad=1; fail=1; \
+		fi; \
+	done; \
+	: 'And the control: a script it CAN carry out still exits 0, or the' ; \
+	: 'six above are satisfied by a tool that refuses everything.' ; \
+	printf 'key tab\nframe\n' | timeout $(TEST_TIMEOUT) $(REPLAY) \
+		>/dev/null 2>&1 || { \
+		echo "    replay: FAILED -- a script it CAN carry out did not exit 0"; \
+		bad=1; fail=1; \
+	}; \
+	[ "$$bad" -eq 0 ] && \
+		echo "    replay refuses what it cannot do: ok (6 cases and a control)"; \
 	on=$$(printf 'conventions on\nkey down\nsnapshot\n' \
 		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null); \
 	off=$$(printf 'key down\nsnapshot\n' \

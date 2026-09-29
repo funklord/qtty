@@ -17941,6 +17941,65 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.367 A shipped tool reported success for work it had not done (2026-09-29)
+
+**`qtty-replay` exists so that "a bug report is reproducible", and it exited 0
+for six kinds of script it had not carried out.** It is one of the two programs
+`make install` ships.
+
+    qtty-replay /path/that/is/not/there   printed NOTHING, exited 0
+    qtty-replay <a directory>             printed nothing, exited 0
+    frobnicate 3                          named the bad command, exited 0
+    key                                   named it, exited 0
+    key zzzznotakey                       said nothing at all, exited 0
+    ctrl 9                                said nothing at all, exited 0
+    a script of only comments             said nothing, exited 0
+
+**The unreadable file is the worst of them** and the cause is one discarded
+return value: `file.open(QIODevice::ReadOnly)` without reading its answer, so
+the file read as empty, the loop ran over no lines, and the tool reported
+success for a report it never saw. That is `evidence.md`'s "a helper that is
+not there reports success", and the remedy it prescribes -- a guard's failure
+must become the caller's failure.
+
+**The tool already knew the argument and had not carried it to the script.**
+Its option parser refuses an unknown flag with exit 2, and the comment beside
+that says why: `--probs` for `--probes` once "did ordinary work and exited 0".
+`test/main.cpp` was fixed for the same shape, "the same way the `test` target
+refuses a run over zero binaries and for the same reason". So this is the day's
+recurring pattern once more -- a hazard reasoned in one place and absent from
+its twin -- and the twin here is the tool's own other input.
+
+**`key zzzznotakey` is the case that matters most, and it was the quietest.**
+`key_from_spec()` leaves the event empty when the name is neither a known key
+nor a single letter, and an event with no key and no text does nothing at all
+-- the guide's own "{Qt::Key_Z, QString()} types nothing". So a misspelled key
+name drove a no-op, the frames that came out were not the frames the script
+asked for, and nothing said so. A misspelled COMMAND is visible in the script;
+a misspelled key name looks exactly like a key.
+
+`ctrl 9` is its sibling: `Qt::Key_A + ('9' - 'a')` is a NEGATIVE offset, so it
+delivered whatever key that landed on.
+
+**Reported at the end rather than at the first fault**, because somebody fixing
+a script wants every line that is wrong and not the earliest one -- so the run
+completes, every bad line is named, and the status is 2.
+
+**Six cases and a control, in `test-tools` rather than in the suite**, because
+the tools are the Makefile gate's business. The control is a script the tool
+CAN carry out, which must still exit 0: without it, six refusals are satisfied
+by a program that refuses everything.
+
+**Seen to fail by hand, which is what a Makefile gate costs.** The sabotage
+harness edits a source, rebuilds and matches a `FAIL:` line from the suite --
+all 542 entries name a check the test binary prints -- so it cannot reach here.
+Reverting the discarded `open()` and the empty-script refusal reddens exactly
+three of the six cases and leaves the other three passing, which is the
+discrimination worth having: `missing-file`, `a-directory` and `empty` fail
+while `unknown-command`, `unknown-key` and `ctrl-a-digit` still pass, because
+their fixes were left in.
+
+
 ### 8.366 Three lenses, all empty, and the one residue worth knowing (2026-09-29)
 
 **Recorded because an unrecorded empty sweep gets run again.** All three came

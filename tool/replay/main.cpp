@@ -306,11 +306,35 @@ int main(int argc, char **argv) {
 	std::unique_ptr<AnsiBackend> backend;
 	if (ansi) backend = std::make_unique<AnsiBackend>();
 
+	// A SCRIPT THAT COULD NOT BE READ IS A FAILURE, and this discarded
+	// open()'s answer. `qtty-replay /path/that/is/not/there` printed nothing
+	// and exited 0: the file read as empty, the loop below ran over no lines,
+	// and a tool whose whole purpose is that "a bug report is reproducible"
+	// reported success for a report it never saw. A directory did the same.
+	//
+	// This tool already refuses an unknown OPTION with exit 2 -- the comment
+	// beside that says why, `--probs` for `--probes` having once done ordinary
+	// work and exited 0. The same argument was never carried to the script.
+	// It is the shape test/main.cpp was fixed for, "the same way the `test`
+	// target refuses a run over zero binaries and for the same reason".
 	QFile file;
-	if (!script_path.isEmpty()) { file.setFileName(script_path); file.open(QIODevice::ReadOnly); }
-	else file.open(stdin, QIODevice::ReadOnly);
+	if (!script_path.isEmpty()) {
+		file.setFileName(script_path);
+		if (!file.open(QIODevice::ReadOnly)) {
+			fprintf(stderr, "qtty-replay: cannot read '%s': %s\n",
+			        qPrintable(script_path), qPrintable(file.errorString()));
+			return 2;
+		}
+	} else if (!file.open(stdin, QIODevice::ReadOnly)) {
+		fprintf(stderr, "qtty-replay: cannot read stdin\n");
+		return 2;
+	}
 	QTextStream in(&file);
 
+	// What the script asked for, and what it got wrong. Both are reported at
+	// the end rather than at the first fault, because somebody fixing a
+	// script wants every line that is wrong and not the earliest one.
+	int understood = 0, unknown = 0;
 	int frame_no = 0;
 	while (!in.atEnd()) {
 		const QString line_raw = in.readLine();
@@ -323,10 +347,37 @@ int main(int argc, char **argv) {
 			for (const QString &cl : to_clusters(t))
 				router.on_key({0, cl, false, false, false});
 		} else if (cmd == QLatin1String("key") && parts.size() == 2) {
-			router.on_key(key_from_spec(parts[1]));
-		} else if (cmd == QLatin1String("ctrl") && parts.size() == 2) {
+			// A SPEC NOBODY RECOGNISED IS NOT A KEY. key_from_spec() leaves
+			// the event empty when the name is neither a known key nor a
+			// single letter, and an event with no key and no text does
+			// nothing at all -- which is the guide's own "{Qt::Key_Z,
+			// QString()} types nothing". So `key zzzznotakey` drove a no-op
+			// and exited 0, and the frames that came out were not the frames
+			// the script asked for.
+			//
+			// This is the case the exit status matters most for: a misspelled
+			// COMMAND is visible in the script, and a misspelled key name
+			// looks exactly like a key.
+			const Qtty::KeyEvent k = key_from_spec(parts[1]);
+			if (k.qt_key == 0 && k.text.isEmpty()) {
+				fprintf(stderr, "qtty-replay: '%s' is not a key\n",
+				        qPrintable(parts[1]));
+				++unknown;
+				continue;
+			}
+			router.on_key(k);
+		} else if (cmd == QLatin1String("ctrl") && parts.size() == 2
+		           && parts[1].at(0).isLetter()) {
 			router.on_key({Qt::Key_A + (parts[1].at(0).toLower().unicode() - 'a'),
 				          QString(), true, false, false});
+		} else if (cmd == QLatin1String("ctrl") && parts.size() == 2) {
+			// `ctrl 9` computed Qt::Key_A + ('9' - 'a'), a NEGATIVE offset,
+			// and delivered whatever key that landed on. Same family, same
+			// remedy: say so and fail.
+			fprintf(stderr, "qtty-replay: ctrl takes a letter, not '%s'\n",
+			        qPrintable(parts[1]));
+			++unknown;
+			continue;
 		} else if (cmd == QLatin1String("conventions")
 		           && parts.size() == 2) {
 			// The terminal habits are OPT-IN, so an application that
@@ -451,7 +502,31 @@ int main(int argc, char **argv) {
 			       frame_no++, qPrintable(buf.to_snapshot()));
 		} else {
 			fprintf(stderr, "qtty-replay: unknown command '%s'\n", qPrintable(cmd));
+			++unknown;
+			continue;
 		}
+		++understood;
+	}
+
+	// A COMMAND NOBODY RECOGNISED USED TO BE A NOTE ON STDERR AND AN EXIT OF
+	// ZERO, so a script with a typo passed -- in a shell, in a Makefile, in
+	// anything reading the status. `key` with no argument and `key
+	// zzzznotakey` land here too, which is the case that matters: a report
+	// driven by a misspelled key name produces frames that are not the frames
+	// the reporter meant, and nothing said so.
+	if (unknown > 0) {
+		fprintf(stderr, "qtty-replay: %d line(s) were not understood, so the "
+		                "frames above are not the script that was meant\n",
+		        unknown);
+		return 2;
+	}
+	// And a script with nothing in it at all: the same argument one step on.
+	// Reading the wrong file, or piping from something that produced nothing,
+	// leaves a run that did no work and said so nowhere.
+	if (understood == 0) {
+		fprintf(stderr, "qtty-replay: the script had no commands in it, so "
+		                "nothing was driven\n");
+		return 2;
 	}
 	return 0;
 }
