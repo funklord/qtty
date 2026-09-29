@@ -17,13 +17,23 @@ number rather than restating it.
 
 ## 0a. State
 
-2056 checks, 0 failures. **The duration is 4.7 seconds of user time and
-it belongs to 2026-09-23, over a suite of 2016** --
-`/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
-machine (load 0.5): 4.68, 4.71, 4.73 user against 14.6 wall each time.
-The suite grew by 51 checks that day and the figure moved from 4.5,
-which is why it was re-taken rather than carried: a duration quoted
-against a suite that has changed is a measurement of something else.
+2056 checks, 0 failures. **The duration is 4.76 seconds of user time, taken
+2026-09-29 over this suite** -- `/usr/bin/time ./build-test/qtty-tests`,
+best of three: 5.04, 4.76, 4.77 user, 0.53 to 0.57 sys, 14.6 wall each
+time.
+
+**The load is part of the figure and it was not 0.5.** 5.12 one-minute and
+3.11 five-minute, with two other sessions building. So the wall figure is
+not comparable to the previous one and the USER figure is: user time is CPU
+this process spent, which contention lengthens the clock around rather than
+inflating. Recorded this way rather than waited for, because a figure with
+its conditions beside it is worth more than a five-day-old one with no
+counterpart -- and this machine has not been quiet since 2026-09-23.
+
+**What it says is that the work has not cost anything measurable.** The
+previous figure was 4.7 user over a suite of 2016, on a quiet machine; this
+is 4.76 over 2056, on a busy one. Forty more checks, a fifth of a second,
+and most of that is probably the load.
 
 **The two halves are separated because they had stopped being one
 measurement.** `make count-check` keeps the count current on every
@@ -34,10 +44,21 @@ error the paragraph above forbids, committed by the paragraph itself. The
 heading carries no date now because the two things under it are dated
 separately, and the count's date is its commit.
 
-Re-take it the same way and put the suite size beside it. Not on a busy
-machine: 2026-09-28 found load at 19.6 with another session building,
-and the honest answer there was to leave the figure dated rather than
-replace it with a worse one.
+Re-take it the same way and put the suite size AND the load beside it. The
+threshold that matters is not a number but whether the figure can be read:
+2026-09-28 found load at 19.6 with another session building, where the
+honest answer was to leave the old figure dated rather than replace it with
+a worse one, and 2026-09-29 found 5.1, where taking it and stating the load
+is better than another week of no figure at all.
+
+**And a count taken under load can be short by one.** Measured the same
+afternoon: `grep -c '^PASS:'` gave 2055 once, while two runs before and
+after it gave 2056 and a diff of the check names found nothing missing. The
+suite carries wall-clock budget checks, which section 11 and 0c both say
+measure the machine rather than the code -- so one of them failed, the PASS
+count fell by one, and a count that ignores the exit status cannot tell that
+from a check that vanished. `count-check` reads the status; a bare grep does
+not.
 
 **It read 6.0 to 6.5 until the re-take of 2026-09-22**, which found
 4.5 over a suite that had grown by about ninety checks since. So the
