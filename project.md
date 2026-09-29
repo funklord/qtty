@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2052 checks, 0 failures. **The duration is 4.7 seconds of user time and
+2055 checks, 0 failures. **The duration is 4.7 seconds of user time and
 it belongs to 2026-09-23, over a suite of 2016** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5): 4.68, 4.71, 4.73 user against 14.6 wall each time.
@@ -17918,6 +17918,96 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.364 One malformed escape sequence disabled every keystroke (2026-09-29)
+
+**`ESC [ - 5 A` wedged the decoder permanently.** Every key after it was
+swallowed for the life of the program, and anything with the tty open can
+send those five bytes.
+
+**The mechanism, and the reason it is the THIRD instance.** `parse_csi()`
+accepts a prefix of `<>?!`, then digits with `:` and `;`, then intermediates
+0x20..0x2f, then a final in 0x40..0x7e -- and returned "still arriving" for
+anything else, for ever. The `-` is an intermediate at 0x2d, so it is
+consumed; the `5` after it is 0x35, which is not an intermediate and is under
+0x40, so it was read as a final that is not one and the sequence could never
+end. `ESC[ 5A`, `ESC[=5A`, `ESC[/5A`, `ESC[.5A` and `ESC[1;-5A` go the same
+way.
+
+Two comments in that same function record the first two instances: a `:`
+became the final and 0x3a is under 0x40 -- "every key behind that sequence
+was stuck behind it" -- and a `$` intermediate in a DECRPM reply did the
+same, "one such reply wedged the decoder". **Each was closed by teaching the
+parser one more byte class to ACCEPT**, which fixes the instance and leaves
+the shape: any byte that is neither parameter, intermediate, nor valid final
+still stopped the sequence dead. The fix is the general one -- a sequence
+that cannot be terminated is ABANDONED rather than waited on.
+
+**The recovery took two tries, and the first was worse than the bug.** It
+stopped at the offending byte and left the rest to be read as input, so
+`ESC[-5A` delivered a keystroke `A` and `ESC[=5A` delivered `5` and `A`.
+**Fabricating keys nobody typed is worse than the wedge**, because a wedge is
+visible and a phantom keypress acts. It scans on for a byte that could have
+been the final and drops through it, which is what a terminal's own parser
+does; an ESC cuts that short, being far likelier to open the next sequence
+than to belong to this one; and `-1` still means "incomplete" while neither
+has arrived, so the old behaviour survives for input that really is partial.
+
+**The probe could not tell silence from death, and that is the lesson worth
+more than the fix.** Seventeen malformed inputs were fed and sixteen reported
+`keys=0`, which read as sixteen harmless cases. They were one wedge and
+fifteen readings of a decoder that had stopped. What separated them was a
+LIVENESS PROBE after each case -- feed `ESC[A` and require `Key_Up` -- which
+turned sixteen zeros into `ALIVE=1` twice and `ALIVE=0` fifteen times, and
+bisected the cause to one input. The suite's version carries that probe for
+the same reason.
+
+    control: CSI A                      keys=1   ALIVE=1
+    CSI with a 20-digit parameter        keys=1   ALIVE=1
+    CSI with a negative parameter        keys=0   ALIVE=0   <- here
+    ...everything after                  keys=0   ALIVE=0
+
+**And then the same probe manufactured a SECOND wedge that does not exist,
+which is worth more than the first finding.** With `ESC[-5A` fixed, the
+sweep reported the wedge moving to "a CSI with 300 parameters" and staying
+for every case after it. Bisected by length rather than by count -- 204
+bytes alive, 404 bytes dead; 103 digits alive, 1003 dead -- which pointed at
+`read_input()`, and it is one `::read(0, buf, 256)` per notification. A
+sequence longer than 256 bytes needs several turns of the event loop, the
+probe turned it ONCE, and the tail sat in the pipe until it arrived beside
+the liveness key. The probe then saw two keys where it demanded exactly one
+and called it dead.
+
+Two faults in one instrument: a single `processEvents()` where the input
+needs several, and a liveness test asserting the key arrives ALONE rather
+than that it arrives at all -- which is wrong whenever the case under test
+legitimately emits a key of its own. Drained properly, every length is
+clean at `keys=1, alive=1` up to 20000 bytes.
+
+**So the first version of this entry claimed those cases were harmless on
+readings taken through a dead decoder**, and would have published it. What
+caught it was asking what the fix implied: if one input wedged the decoder,
+every reading after it in that run was a measurement of the wedge and not
+of its case. The corrected sweep establishes them properly.
+
+**What the decoder does with the rest, measured with the instrument
+working.** Absurd parameters are harmless -- a 20-digit value, INT_MAX+1,
+300 parameters and 20000 digits all decode or are dropped, and the long ones
+still deliver their key. Invalid UTF-8 comes through as replacement
+characters, one per bad byte, which is `QString::fromUtf8`'s own answer and
+is a keystroke of U+FFFD rather than a wrong key. `ESC[1Z` is Shift+Tab,
+correctly -- CSI Z is CBT. An ESC inside a CSI abandons the first and
+decodes the second, which is the fix above working. An OSC that never
+terminates leaves the decoder alive.
+
+The suite already covered truncation and splitting thoroughly, which is why
+this was the gap: the cases nobody had fed were the ones that are neither
+truncated nor split but simply wrong.
+
+Two sabotages, reddening on different halves: restoring the `-1` gives
+`[-5A wedged it`, and stopping the scan at the offending byte gives
+`[-5A spoke`.
 
 
 ### 8.363 A finished progress bar reporting 0%, and two look-alikes that were not defects (2026-09-29)

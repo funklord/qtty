@@ -384,6 +384,80 @@ int suite_backend() {
 	      "while the protocol says Ctrl+Space, which is the difference "
 	      "the report exists to name");
 
+	// A CSI THAT CANNOT BE TERMINATED IS ABANDONED, and this is the third time
+	// that has been paid for. The parser accepts a prefix, then digits, ':'
+	// and ';', then intermediates 0x20..0x2f, then a final 0x40..0x7e -- and
+	// said "still arriving" for anything else, for ever. Two comments in
+	// parse_csi() record the first two instances: a ':' became the final and
+	// 0x3a is under 0x40; a '$' intermediate did the same. Each was closed by
+	// teaching the parser one more byte class to ACCEPT, which fixes the
+	// instance and leaves the shape.
+	//
+	// Measured: `ESC [ - 5 A` wedged the decoder permanently. The '-' is an
+	// intermediate, so it is consumed; the '5' after it is not, and is under
+	// 0x40, so it was read as a final that is not one. Every keystroke after
+	// it was stuck behind a sequence that could never end -- and anything with
+	// the tty open can send those bytes.
+	//
+	// EACH CASE IS FOLLOWED BY A KEY THAT WORKS, because a malformed sequence
+	// producing nothing and a decoder that has stopped reading are the same
+	// output. That liveness probe is the whole check; without it the first
+	// version of this sweep could not tell the two apart and read sixteen
+	// silent cases as sixteen passes.
+	//
+	// And it must produce NO KEY of its own. The first fix stopped at the
+	// offending byte and left the rest to be read as input, so `ESC [ - 5 A`
+	// delivered a keystroke `A` and `ESC [ = 5 A` delivered `5` and `A`.
+	// Fabricating keys nobody typed is worse than the wedge, because a wedge
+	// is visible and a phantom keypress acts.
+	{
+		static const char *const malformed[] = {
+			"\033[-5A", "\033[ 5A", "\033[=5A", "\033[/5A", "\033[.5A",
+			"\033[1;-5A",
+		};
+		int wedged = 0, phantom = 0;
+		QByteArray first_bad;
+		for (const char *seq : malformed) {
+			feed(QByteArray(seq));
+			const int spoke = rec.keys.size() + rec.mice.size();
+			feed("\033[A");
+			const bool alive = rec.keys.size() == 1
+			                   && rec.keys[0].qt_key == Qt::Key_Up;
+			if (!alive) {
+				++wedged;
+				if (first_bad.isEmpty()) first_bad = QByteArray(seq);
+			}
+			if (spoke != 0) {
+				++phantom;
+				if (first_bad.isEmpty()) first_bad = QByteArray(seq);
+			}
+		}
+		CHECK(wedged == 0,
+		      wedged == 0
+		        ? "a CSI that cannot be terminated is abandoned, so a key "
+		          "after it still arrives -- where one such sequence used to "
+		          "stop every keystroke for the life of the program"
+		        : QByteArray("a CSI that cannot be terminated is abandoned -- "
+		                     + first_bad + " wedged it").constData());
+		CHECK(phantom == 0,
+		      phantom == 0
+		        ? "and it delivers nothing of its own, rather than leaving its "
+		          "tail to be read as keys nobody typed"
+		        : QByteArray("and it delivers nothing of its own -- "
+		                     + first_bad + " spoke").constData());
+		// The control, and it is the half that says the sweep above is not
+		// passing by accident: the same shapes with a LEGAL final are keys.
+		feed("\033[-A");
+		const bool inter_ok = rec.keys.size() == 1
+		                      && rec.keys[0].qt_key == Qt::Key_Up;
+		feed("\033[5A");
+		CHECK(inter_ok && rec.keys.size() == 1
+		          && rec.keys[0].qt_key == Qt::Key_Up,
+		      "while an intermediate or a parameter before a LEGAL final is "
+		      "still the key it spells, so the abandonment above is aimed at "
+		      "sequences that cannot end and not at unusual ones");
+	}
+
 	// THE FAMILY DERIVED RATHER THAN LISTED, which is the check that would
 	// have caught the missing Ctrl+Space the day ambiguous_chords() was
 	// written. That report carries its members by hand, and a hand list is

@@ -1922,8 +1922,57 @@ int AnsiBackend::parse_csi(QByteArray &prefix, QVector<int> &params,
 		inter.append(pending_[i++]);
 
 	if (i >= pending_.size()) return -1;          // still arriving
+
+	// A SEQUENCE THAT CANNOT BE TERMINATED IS ABANDONED, NOT WAITED ON, and
+	// this is the third time that distinction has been paid for in this one
+	// function. The two comments above are the first two: a ':' became the
+	// final and 0x3a is under 0x40, so the parser said "still arriving" for
+	// ever; a '$' intermediate did the same. Each was fixed by teaching the
+	// parser one more byte class to ACCEPT, which closes the instance and
+	// leaves the shape -- any byte that is neither a parameter, nor an
+	// intermediate, nor a valid final still stops the sequence dead, and
+	// every key behind it with it.
+	//
+	// Measured: `ESC [ - 5 A` wedges the decoder permanently. The '-' is an
+	// intermediate at 0x2d, so it is consumed; the '5' after it is 0x35,
+	// which is not an intermediate and is under 0x40, so it is read as a
+	// final that is not one and this returned -1 for ever. ESC[ 5A, ESC[=5A,
+	// ESC[/5A and ESC[.5A go the same way. A terminal, or anything with the
+	// tty open, can send those -- so one malformed sequence off the wire
+	// disabled every keystroke for the life of the program.
+	//
+	// `final = 0` says malformed to the caller, which consumes the bytes and
+	// dispatches nothing: 0 cannot be a real final, every one being
+	// 0x40..0x7e.
+	//
+	// AND IT SWALLOWS THE REST OF THE SEQUENCE, which the first version of
+	// this did not -- it stopped at the offending byte and left the remainder
+	// to be read as input. Measured: `ESC [ - 5 A` then delivered a
+	// keystroke `A`, and `ESC [ = 5 A` delivered `5` and `A`. Fabricating
+	// keys the user did not type is worse than the wedge it replaced, because
+	// a wedge is visible and a phantom keypress acts.
+	//
+	// So scan on for a byte that could have been the final and drop through
+	// it, which is what a terminal's own parser does: an unexpected byte
+	// aborts the sequence and the parser stays in it until a final arrives.
+	// An ESC cuts that short, since it is far more likely to open the next
+	// sequence than to belong to this one, and is left for the next pass.
+	//
+	// Returning -1 while neither has arrived keeps the old behaviour for as
+	// long as the input really is incomplete -- which is correct, and is
+	// bounded by the next ESC or 0x40..0x7e byte rather than by nothing at
+	// all. i is at least 2 in every branch that returns, so the caller
+	// always makes progress and cannot spin.
+	if (pending_[i] < 0x40 || uchar(pending_[i]) > 0x7e) {
+		final = 0;
+		for (int j = i; j < pending_.size(); ++j) {
+			if (uchar(pending_[j]) == 0x1b) return j;   // the next sequence
+			if (pending_[j] >= 0x40 && uchar(pending_[j]) <= 0x7e)
+				return j + 1;                          // a plausible final
+		}
+		return -1;                                     // still arriving
+	}
 	final = pending_[i];
-	if (final < 0x40 || final > 0x7e) return -1;  // not a terminator: wait
 	return i + 1;
 }
 
@@ -2238,6 +2287,10 @@ bool AnsiBackend::decode_one() {
 			const int n = parse_csi(prefix, params, inter, final);
 			if (n < 0) return false;              // still arriving
 			pending_.remove(0, n);
+			// Malformed, per parse_csi: consumed and dropped rather than
+			// dispatched. Reported as progress, because progress is what it
+			// is -- the alternative is the wedge this replaced.
+			if (final == 0) return true;
 			return dispatch_csi(prefix, params, inter, final);
 		}
 		// A string sequence -- OSC, DCS, APC, PM, SOS. Consumed and offered

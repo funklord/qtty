@@ -5742,3 +5742,21 @@ find = "\t\t\t\t\t\tdev->buffer().text(c.left() + (c.width() - wide) / 2,"
 into = "\t\t\t\t\t\tdev->buffer().text(c.center().x() - wide / 2,"
 count = 1
 check = "and a progress bar's figure is whole or absent"
+
+
+[[sabotage]]
+name = "a CSI that cannot be terminated is waited on for ever again"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (pending_[i] < 0x40 || uchar(pending_[i]) > 0x7e) {\n\t\tfinal = 0;"
+into = "\tif (pending_[i] < 0x40 || uchar(pending_[i]) > 0x7e) {\n\t\treturn -1;\n\t\tfinal = 0;"
+count = 1
+check = "a CSI that cannot be terminated is abandoned"
+
+
+[[sabotage]]
+name = "an abandoned CSI leaves its tail to be read as keys"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\tif (pending_[j] >= 0x40 && uchar(pending_[j]) <= 0x7e)\n\t\t\t\treturn j + 1;                          // a plausible final"
+into = "\t\t\tif (j > i) return j;                       // stop at the offender"
+count = 1
+check = "and it delivers nothing of its own"
