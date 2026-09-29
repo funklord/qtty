@@ -17920,6 +17920,69 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.358 Every public function is exercised, measured rather than assumed (2026-09-29)
+
+**The lens: a public API an adopter can call that nothing exercises.**
+Pointed at the library rather than at its tooling, because the last four
+entries were build and test infrastructure and `working-practice.md` is
+plain that the work is the software.
+
+    public declarations in include/qtty/*.h                      167
+    never named by any test, comments stripped                    41
+      private members reached through public entry points          16
+      signals, a Qt override called by Qt, extractor artifacts      9
+      the tray API -- needs a session bus, held by make test-tray   7
+      exercised through a caller, quantise() being the clean case   9
+    genuinely public, wired, and adopter-callable                  12
+      already proven by an entry in tool/sabotage.toml              6
+      proven by hand here, and every one reddened                  6
+
+So nothing public is unexercised -- not in the weak sense of being named
+by a test, and not in the strong sense that breaking it goes unnoticed.
+The six hand proofs are entries now, because a proof that lives in a
+session log is what the rule about keeping the sabotage exists to prevent:
+
+    encode_kitty_tile          2 checks
+    install_cell_paint_filter 26 checks
+    brush_cell                36 checks
+    fold_into_underline        2 checks
+    deferring_layer            1 check
+    set_input_window           9 checks
+
+**Three readings of that list, and only the first was the question
+asked.**
+
+*The lens is empty.* No `erase()` here -- every one of the twelve has real
+call sites inside the library, so there is no complete-looking interface
+with nothing wired. The next fault needs a different lens.
+
+*The instrument was crude and that was correct for a sweep read by its own
+author.* 41 candidates, 29 of them explained rather than fixed: a cast
+(`qint8`), a local in an inline body (`old`), sixteen private members, two
+signals. The access classifier is unreliable for free functions declared
+after a class body -- it keeps the stale `private` -- so the classification
+was a reading aid and not the verdict. `evidence.md` licenses exactly this:
+a probe that over-reports is right where the reader is the person who ran
+it.
+
+*And the margins are wildly uneven, which nobody was looking for.*
+`brush_cell` is held by 36 checks and **`deferring_layer` by exactly
+one**, with `fold_into_underline` and `encode_kitty_tile` at two. A single
+check between a public behaviour and silence is the fragile case 0e's
+standing item describes -- one edit to that fixture retires the only
+coverage there is, and nothing announces it. Not a defect and not treated
+as one; it is the thing to know before touching those three, and the six
+entries above are what now makes the retirement loud instead of silent.
+
+**What `quantise()` is doing in the explained column is worth one line**,
+because it is the shape that makes this whole sweep's raw number
+meaningless on its own. No test names it. Every test of emitted SGR
+exercises it, because the emitter calls it on each colour at each depth.
+A public function is covered by its callers or by itself, and a sweep that
+counts names cannot tell which -- which is why the twelve were then put to
+the sabotage rather than reported as a gap.
+
+
 ### 8.357 An adopter compiled against an install, which nothing had done since 2026-09-05 (2026-09-28)
 
 **`test-install` pinned the installed file SET from both sides and never

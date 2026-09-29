@@ -5626,3 +5626,65 @@ find = "| Kind | What a pointer acts on |"
 into = "| Which kind | What a pointer acts on |"
 count = 1
 check = "and it names all four kinds"
+
+
+# The six below came out of a coverage sweep rather than from a defect: 167
+# public declarations, 41 named by no test, and of those the twelve that are
+# genuinely public and wired had six already covered here and six covered by
+# nobody. Each was broken by hand to see whether the suite noticed, and each
+# did -- so these entries are those six hand-run proofs made permanent, which
+# is the only way the next person to touch one of these functions learns that
+# the check was ever alive.
+
+[[sabotage]]
+name = "a kitty tile is encoded as nothing at all"
+file = "src/graphics/graphics.cpp"
+find = "QByteArray encode_kitty_tile(quint32 id, quint32 placement, const QImage &src) {"
+into = "QByteArray encode_kitty_tile(quint32 id, quint32 placement, const QImage &src) {\n\treturn QByteArray();"
+count = 1
+check = "present_pixels on kitty replaces the picture"
+
+
+[[sabotage]]
+name = "the cell paint filter is never installed"
+file = "src/render/cell_paint.cpp"
+find = "\tstatic CellPaintFilter *filter = nullptr;"
+into = "\tstatic CellPaintFilter *filter = nullptr;\n\tif (true) return;"
+count = 1
+check = "an unsupported widget says what it is"
+
+
+[[sabotage]]
+name = "a brush fill forgets the palette and takes a fixed colour"
+file = "src/render/cell_paint.cpp"
+find = "\tconst QRgb col = brush_colour(brush_).rgba();"
+into = "\tconst QRgb col = qRgb(1, 2, 3);"
+count = 1
+check = "terminal-default theme leaves the window ground to the terminal"
+
+
+[[sabotage]]
+name = "an underline inside a text band is drawn as a rule instead"
+file = "src/render/cell_paint.cpp"
+find = "bool CellPaintEngine::fold_into_underline(const QPointF &a, const QPointF &b) {"
+into = "bool CellPaintEngine::fold_into_underline(const QPointF &a, const QPointF &b) {\n\treturn false;"
+count = 1
+check = "a spell-check squiggle marks the word it is under"
+
+
+[[sabotage]]
+name = "no drawn layer ever defers its keys to the widget being edited"
+file = "src/runtime/input_router.cpp"
+find = "QWidget *InputRouter::deferring_layer() const {"
+into = "QWidget *InputRouter::deferring_layer() const {\n\treturn nullptr;"
+count = 1
+check = "while Down and Return DO reach it"
+
+
+[[sabotage]]
+name = "the router's input window never moves"
+file = "src/runtime/input_router.cpp"
+find = "\tcur_ = w;"
+into = "\t(void)w;"
+count = 1
+check = "the fixture is live: a key reaches the current window's field"
