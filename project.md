@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2044 checks, 0 failures. **The duration is 4.7 seconds of user time and
+2046 checks, 0 failures. **The duration is 4.7 seconds of user time and
 it belongs to 2026-09-23, over a suite of 2016** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5): 4.68, 4.71, 4.73 user against 14.6 wall each time.
@@ -17918,6 +17918,75 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.359 A hole in a selected tab's highlight, where the close button is (2026-09-29)
+
+**Found by running 0d's method rather than by reading a list**: render a
+configuration nothing exercises, print what a terminal would show, and
+read it. Fourteen configurations -- a tristate box in its middle state, a
+vertical progress bar, a west tab bar, a checkable group box, a spin box
+showing its special value text, a dial, a password field, a read-only
+line edit, a label wider than its window -- and one of them read wrong.
+
+    glyphs |[Doc            ✕]|
+    revers |RRRRRRRRRRRRRRRR.R|
+
+**Every cell of the selected tab carries reverse except the close mark**,
+with the closing bracket after it reversed and the mark itself not. All
+colours are Default, so reverse is the only thing marking that tab and
+the mark punches a one-cell hole in it. With the bar focused the tab takes
+Underline as well and the hole is in both.
+
+**The mechanism.** The close button is a widget of its own, parented to
+the `QTabBar`, so the `QStyleOption` handed to `PE_IndicatorTabClose`
+carries no `State_Selected` -- and `with_state()` maps only `Dim`. The tab
+itself is drawn by `CE_TabBarTab` from `opt->state & State_Selected`. Two
+code paths, one region, and only one of them knew.
+
+**It is a defect rather than a choice, and the guide is what says so.**
+"Reverse means current unless something else already needs it", and "the
+tab bar set that precedent" -- so a tab is marked as a REGION. That is the
+same argument `CE_TabBarTab` already makes at length for drawing its
+brackets across the whole tab rather than around its label: "a tab is a
+region you can click, and the bracket is what says where it ends." The
+close mark was the one cell that argument had not reached.
+
+**Nothing could have caught it.** The check that covers a closable tab
+asserts where the mark SITS -- inside the tab, with no rule between -- and
+says nothing about how it looks. A position check and an appearance check
+are different claims about the same glyph, and the first reads like
+coverage of the second.
+
+The fix asks the bar rather than recomputing: walk its tabs for the button
+being drawn, and if that tab is current take `Reverse`, and `Underline` too
+where the bar owns the keys. Both sides are checked because which one holds
+the button is `SH_TabBar_CloseButtonPosition`'s answer rather than ours.
+
+**The new check asserts a relationship, not a row**: every cell of one
+tab's run shares one set of attributes, whatever that set is. A pinned row
+would be a fixture about this font's tab width, and asserting "the mark is
+reverse" would go stale the day the tab's own marks change -- which is the
+thing it exists to keep it in step with. Its control is the other tab: the
+selected run must be marked and the unselected one bare, or "uniform" is
+satisfied by a bar that marks nothing at all. Measured in all four
+combinations:
+
+    selected, bar without the keys   RRRRRRRRRRRRRRRRR   mark included
+    selected, bar with the keys      BBBBBBBBBBBBBBBBB   reverse + underline
+    unselected, either               .................   nothing, mark included
+
+Sabotaged back to `with_state(opt)` and the check reddens naming the cell:
+`focused 0: tab 0 cell 15 [✕] differs from its own run`.
+
+**Two more readings from the same sweep are open and are NOT defects
+yet.** A read-only `QLineEdit` renders identically to an editable one --
+same glyphs, same attributes -- so a terminal user cannot tell a field
+they may type in from one they may not; whether any colour distinguishes
+them was not measured, and the probe reads glyphs and attributes only. And
+a vertical progress bar draws its groove one column wide at the left of a
+twelve-cell widget while a horizontal one fills its width. Both want
+measuring before either is called anything.
 
 
 ### 8.358 Every public function is exercised, measured rather than assumed (2026-09-29)

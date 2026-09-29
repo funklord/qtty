@@ -5688,3 +5688,12 @@ find = "\tcur_ = w;"
 into = "\t(void)w;"
 count = 1
 check = "the fixture is live: a key reaches the current window's field"
+
+
+[[sabotage]]
+name = "a closable tab's close mark drops its tab's marks"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\tif (i == bar->currentIndex()) {"
+into = "\t\t\t\t\tif (false) {"
+count = 1
+check = "and every cell of a tab carries that tab's marks"

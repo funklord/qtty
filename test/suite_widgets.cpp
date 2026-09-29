@@ -5983,6 +5983,109 @@ int suite_widgets() {
 		      "a closable tab's mark is inside the tab, with no rule between");
 	}
 
+	// AND THE MARK CARRIES ITS TAB'S MARKS, which the check above cannot see:
+	// it asserts where the close mark SITS and says nothing about how it
+	// looks. Measured before the fix, on a selected tab:
+	//
+	//     glyphs |[Doc            X]|     (X stands for the close mark,
+	//     revers |RRRRRRRRRRRRRRRR.R|      which this file may not spell)
+	//
+	// -- a one-cell hole in the highlight, with the closing bracket after it
+	// reversed and the mark itself not. The close button is a widget of its
+	// own parented to the QTabBar, so the option handed to
+	// PE_IndicatorTabClose carries no State_Selected and with_state() maps
+	// only Dim.
+	//
+	// ASSERTED AS A RELATIONSHIP rather than as a row: every cell of one
+	// tab's run shares one set of attributes, whatever that set is. A pinned
+	// row would be a fixture about this font's tab width, and a check that
+	// the mark is reverse would go stale the day the tab's own marks change
+	// -- which is the thing it is here to keep it in step with.
+	//
+	// Both focus states, because the tab takes Underline as well when the bar
+	// owns the keys and a hole in the underline is the same defect one
+	// attribute along.
+	{
+		bool uniform = true, selected_marked = true, other_bare = true;
+		QString first_bad;
+		for (int focused = 0; focused < 2; ++focused) {
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *bar = new QTabBar(&host);
+			bar->setTabsClosable(true);
+			bar->addTab(QStringLiteral("One"));
+			bar->addTab(QStringLiteral("Two"));
+			bar->setGeometry(0, 0, GridMetrics::cw() * 34, GridMetrics::ch());
+			host.resize(GridMetrics::cells(36, 2));
+			host.show();
+			QCoreApplication::processEvents();
+			bar->setCurrentIndex(0);
+			if (focused) {
+				bar->setFocus();
+				Qtty::set_focus_widget(host.focusWidget());
+			}
+			QCoreApplication::processEvents();
+			CellBuffer b(36, 2);
+			render_once(host, b);
+
+			// The two runs, found by their brackets rather than by arithmetic
+			// on a tab width this check does not own.
+			QVector<QPair<int, int>> runs;
+			int at = -1;
+			for (int x = 0; x < 36; ++x) {
+				const QString g = b.at(x, 0).ch;
+				if (g == QStringLiteral("[")) at = x;
+				else if (g == QStringLiteral("]") && at >= 0) {
+					runs.append(qMakePair(at, x));
+					at = -1;
+				}
+			}
+			if (runs.size() != 2) {
+				uniform = false;
+				if (first_bad.isEmpty())
+					first_bad = QStringLiteral("focused %1: found %2 tab "
+					                           "run(s), wanted 2")
+					                .arg(focused).arg(runs.size());
+				host.hide();
+				QCoreApplication::processEvents();
+				continue;
+			}
+			for (int i = 0; i < 2; ++i) {
+				const Attrs want = b.at(runs[i].first, 0).attrs;
+				for (int x = runs[i].first; x <= runs[i].second; ++x) {
+					if (b.at(x, 0).attrs == want) continue;
+					uniform = false;
+					if (first_bad.isEmpty())
+						first_bad = QStringLiteral("focused %1: tab %2 cell "
+						                           "%3 [%4] differs from its "
+						                           "own run")
+						                .arg(focused).arg(i).arg(x)
+						                .arg(b.at(x, 0).ch);
+				}
+			}
+			// And the two runs differ from each other, or "uniform" is
+			// satisfied by a bar that marks nothing at all.
+			if (!(b.at(runs[0].first, 0).attrs & Attr::Reverse))
+				selected_marked = false;
+			if (b.at(runs[1].first, 0).attrs & Attr::Reverse)
+				other_bare = false;
+			host.hide();
+			QCoreApplication::processEvents();
+		}
+		CHECK(selected_marked && other_bare,
+		      "the selected tab of a closable bar is marked and the other is "
+		      "not, which is what says the sweep below is reading a mark and "
+		      "not an empty row");
+		CHECK(uniform,
+		      uniform
+		        ? "and every cell of a tab carries that tab's marks, the "
+		          "close mark included, so a selected tab has no hole in its "
+		          "highlight -- nor in its underline when the bar has the keys"
+		        : QStringLiteral("and every cell of a tab carries that tab's "
+		                         "marks, the close mark included -- %1")
+		              .arg(first_bad).toUtf8().constData());
+	}
+
 
 
 	// Where the one-number-metric fault does NOT reach, which is worth a check

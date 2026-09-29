@@ -2047,13 +2047,50 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 			dev->buffer().text(c.right(), c.top(), g, Color(), Color(), a);
 			return;
 		}
-		case PE_IndicatorTabClose:
+		case PE_IndicatorTabClose: {
 			// Drawn by the base style as a pixmap, so it arrived as the
 			// tiny-icon substitute: a closable tab offered a shaded block to
 			// click on, which says nothing about what clicking it does.
+			//
+			// AND IT CARRIES ITS TAB'S MARKS, which it did not: the close
+			// button is a widget of its own, parented to the QTabBar, so the
+			// option handed here has no State_Selected on it and with_state()
+			// maps only Dim. On a SELECTED tab every cell is reverse except
+			// this one, which measured as a one-cell hole in the highlight --
+			// `RRRRRRRRRRRRRRRR.R`, the closing bracket after it reversed and
+			// the mark itself not. Nothing said so: the check that covers a
+			// closable tab asserts where the mark sits and not how it looks.
+			//
+			// The guide states the rule this broke -- reverse means current
+			// unless something else needs it, and "the tab bar set that
+			// precedent" -- so a tab is marked as a REGION, which is the same
+			// argument CE_TabBarTab already makes for drawing its brackets
+			// across the whole tab rather than around its label.
+			//
+			// Taken from the bar rather than recomputed: the tab's own
+			// attributes are Reverse when selected and Underline as well when
+			// the bar owns the keys, and asking the bar for the same two facts
+			// is what stops this growing a second opinion about them.
+			Attrs a = with_state(opt);
+			if (auto *bar = qobject_cast<const QTabBar *>(
+			        w ? w->parentWidget() : nullptr)) {
+				// Both sides, because which one holds the button is
+				// SH_TabBar_CloseButtonPosition's answer rather than ours.
+				for (int i = 0; i < bar->count(); ++i) {
+					if (bar->tabButton(i, QTabBar::RightSide) != w
+					    && bar->tabButton(i, QTabBar::LeftSide) != w)
+						continue;
+					if (i == bar->currentIndex()) {
+						a |= Attr::Reverse;
+						if (owns_focus(bar)) a |= Attr::Underline;
+					}
+					break;
+				}
+			}
 			dev->buffer().text(c.left(), c.top(), QStringLiteral("✕"),
-			                   Color(), Color(), with_state(opt));
+			                   Color(), Color(), a);
 			return;
+		}
 		case PE_IndicatorHeaderArrow:
 			// A sort indicator, which fell through to the base style and was
 			// drawn as a PIXMAP -- so it arrived at the cell painter as an
