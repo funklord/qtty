@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2056 checks, 0 failures. **The duration is 4.76 seconds of user time, taken
+2059 checks, 0 failures. **The duration is 4.76 seconds of user time, taken
 2026-09-29 over this suite** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 5.04, 4.76, 4.77 user, 0.53 to 0.57 sys, 14.6 wall each
 time.
@@ -51,14 +51,26 @@ honest answer was to leave the old figure dated rather than replace it with
 a worse one, and 2026-09-29 found 5.1, where taking it and stating the load
 is better than another week of no figure at all.
 
-**And a count taken under load can be short by one.** Measured the same
-afternoon: `grep -c '^PASS:'` gave 2055 once, while two runs before and
-after it gave 2056 and a diff of the check names found nothing missing. The
-suite carries wall-clock budget checks, which section 11 and 0c both say
-measure the machine rather than the code -- so one of them failed, the PASS
-count fell by one, and a count that ignores the exit status cannot tell that
-from a check that vanished. `count-check` reads the status; a bare grep does
-not.
+**And a count taken by hand can be short by one -- but not from load, and
+this paragraph said otherwise for a day.** `grep -c '^PASS:'` gave 2055
+where `count-check` said 2056, and the ready explanation was one of the
+wall-clock budget checks failing under load. Measured 2026-09-29, that is
+disproved rather than merely unconfirmed: the one duration this suite
+asserts is a best of twenty at 4.98 ms against a 160 ms ceiling, and a
+budget check that did blow prints `FAIL`, which lowers the pass count and
+raises the failure count together.
+
+**The cause is a skip.** One check is guarded by
+`::getsid(0) == ::getpgrp()`, true when the suite is its own session's
+process group, and the kernel then discards the stop signal that check
+sends. Reproduced by making the condition true rather than by waiting for
+it -- `setsid --wait ./build-test/qtty-tests` gives 2055 passed, 0 failed,
+1 skipped, exit 0.
+
+**And `count-check` does not read the suite's exit status**, which this
+paragraph claimed it did. It counted the `PASS:` lines and nothing else,
+which is why a skipped check read as a missing one; it counts the skips
+back in now, and 8.370 has the fix and the controls.
 
 **It read 6.0 to 6.5 until the re-take of 2026-09-22**, which found
 4.5 over a suite that had grown by about ninety checks since. So the
@@ -17941,6 +17953,67 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.371 The fourteenth table, and a promise nothing had asked (2026-09-29)
+
+**8.355 said thirteen tables, thirteen bound. The page has fourteen.** Its
+stated re-derivation was `grep -c '^|---'` finding fourteen rules "and one
+of them is a code snippet's own pipes". Measured with fence tracking over
+the last twelve commits that touched the page: **fourteen rules every
+time, none of them ever inside a code fence, every one at column 0 with a
+header line above it.** The count was not stale -- the explanation never
+held.
+
+**So the question was asked per table rather than by counting**, counting
+being the method that had already been wrong four times that day: doctor
+one table's first data row on the page, run the suite, and see whether
+anything new reddens. The page is read at run time, so fourteen
+experiments cost fourteen suite runs and no rebuild.
+
+**The first version of that probe was too weak, and it produced two false
+findings.** It PREFIXED the cell with a marker, and a check asking whether
+a row CONTAINS a word survives a prefix -- `"zzzcells"` still contains
+`"cells"`. It reported the content table and the pointer-kind table as
+unheld; both are held. Replacing the cell outright instead:
+
+    held by a check reading its first column     12
+    held by a row count and a glyph sweep         1   the marks vocabulary
+    held by nothing                               1
+
+**The marks table is the reason a probe needs reading as well as running.**
+Its own parser, older than the shared one, asserts the row COUNT against
+the list in the check and sweeps the row text for every glyph the style
+writes. Neither cares what the first cell says, so a first-cell probe
+cannot see it -- the table is held, and held differently.
+
+**The one that was genuinely unbound is the conflict report's**, the
+headerless table under `## Practices` whose header cells are empty. Its
+rows are prose rather than key names, which is likely why it was passed
+over, and its own block in the suite opens by counting them: "getting
+these four wrong is what a hand-written line does." It named four and
+drove three.
+
+**The fourth row was a promise nothing had ever asked.** "Another window's
+`Qt::ApplicationShortcut` is **in** -- it answers here, whatever window it
+was declared in." No caller of `shortcut_help()` anywhere had a second
+window. The library keeps the promise -- `shortcut_claims()` walks
+`other_windows(scope)` and admits exactly the application-context claims
+from them -- so this is not a defect found but a correct behaviour that
+had no witness.
+
+**The control is the half that makes it evidence**, and it is a
+window-context shortcut in the SAME other window: "the application one
+appears" passes just as loudly from a walk that takes everything from
+everywhere, which is the walk this row exists to deny. `Ctrl+L` and
+`Ctrl+Shift+L` are the only chords no other block in this suite binds --
+measured, every other single-letter `Ctrl` chord is taken, and the
+cross-window block below records a sabotage that once found another
+block's chord instead of its own.
+
+**And the table is the population now**, read off the page by name like
+the other twelve, so a fifth row or a reworded one reddens rather than
+passing.
+
+
 ### 8.370 A skipped check reported as a missing one, found by a reading that measured one half (2026-09-29)
 
 **The gate said two things and neither was true.** Measured before the
@@ -19141,11 +19214,19 @@ suite's habits, it was a new edit not yet carrying them.
 
 ### 8.355 Every table on the page is held now, and the last two were held by other things first (2026-09-28)
 
-**Thirteen tables, thirteen bound.** The count is re-derivable:
-`grep -c '^|---'` finds fourteen header rules and one of them is a code
-snippet's own pipes. Seven gates read them through `page_table_rows()`,
-and the marks vocabulary and the audit questions keep their own parsers,
-which predate the shared one.
+**~~Thirteen tables, thirteen bound.~~ Fourteen tables, and the
+fourteenth was bound in 8.371.** `grep -c '^|---'` does find fourteen
+header rules, and the claim made here that one of them is a code
+snippet's own pipes never held: measured with fence tracking across the
+twelve commits that have touched the page, all fourteen sit outside any
+fence, at column 0, each with a header line above it. The fourteenth is
+the conflict report's headerless table, passed over most likely because
+its rows are prose rather than key names.
+
+Most are read through `page_table_rows()` -- blinding that reader reddens
+fourteen checks, which is the figure that re-derives and is measured in
+8.370 -- while the marks vocabulary and the audit questions keep their own
+parsers, which predate the shared one.
 
 **The pointer-kind table was already covered three ways and bound by
 none of them, and the fix removed a list rather than adding one.** That

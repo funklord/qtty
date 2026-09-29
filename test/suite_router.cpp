@@ -7436,6 +7436,37 @@ int suite_router() {
 			                         &win, [] {});
 			sc->setObjectName(QStringLiteral("Insert link"));
 			win.show();
+
+			// THE FOURTH ROW, which the comment above counts and nothing
+			// here drove. Another window's application-context claim
+			// belongs in this line -- it answers here whatever window
+			// declared it -- and shortcut_claims() admits exactly those
+			// from other windows. The code was right; the promise was
+			// simply never asked, and binding the table is what asked.
+			//
+			// THE CONTROL IS A WINDOW-CONTEXT SHORTCUT IN THE SAME OTHER
+			// WINDOW, because "the application one appears" passes just as
+			// loudly from a walk that takes everything from everywhere --
+			// which is the defect this row exists to deny.
+			//
+			// Ctrl+Shift+L and Ctrl+Shift+B are the chords: free here, and
+			// deliberately not Ctrl+L, which 0b holds open as a candidate
+			// for forcing a full repaint. A fixture that squats on a chord
+			// the library may bind is a collision waiting for a decision
+			// somebody else gets to take, and this walk reaches into other
+			// windows by design.
+			QWidget elsewhere;
+			elsewhere.setAttribute(Qt::WA_DontShowOnScreen);
+			elsewhere.resize(GridMetrics::cells(20, 4));
+			auto *far_app = new QShortcut(
+			    QKeySequence(QStringLiteral("Ctrl+Shift+L")), &elsewhere);
+			far_app->setContext(Qt::ApplicationShortcut);
+			far_app->setObjectName(QStringLiteral("Open log"));
+			auto *far_win = new QShortcut(
+			    QKeySequence(QStringLiteral("Ctrl+Shift+B")), &elsewhere);
+			far_win->setContext(Qt::WindowShortcut);
+			far_win->setObjectName(QStringLiteral("Local only"));
+			elsewhere.show();
 			QCoreApplication::processEvents();
 
 			const QVector<QPair<QString, QString>> help = shortcut_help(&win);
@@ -7497,6 +7528,39 @@ int suite_router() {
 			CHECK(shortcut_help(nullptr).isEmpty(),
 			      "and a null scope answers empty rather than reaching "
 			      "through it, as the other questions do");
+
+			CHECK(keys.contains(QStringLiteral("Ctrl+Shift+L")),
+			      "another window's application-context shortcut is in the "
+			      "line, since it answers here whatever window declared it");
+			CHECK(!keys.contains(QStringLiteral("Ctrl+Shift+B")),
+			      "while its window-context neighbour in that same window is "
+			      "not, which is what says the line was subtracted rather "
+			      "than swept");
+
+			// AND THE PAGE'S OWN ROWS, which this was the last table on the
+			// page not read off it. Its header cells are empty, so the
+			// header line is "| | |" -- matched by name like every other
+			// table here, which is what makes the PAGE the population
+			// rather than the list below it.
+			const QStringList published =
+			    page_table_rows(QStringLiteral("## Practices"),
+			                    QStringLiteral("| | |"));
+			const QStringList driven{
+				QStringLiteral("a **disabled** action or shortcut is "
+				               "left out"),
+				QStringLiteral("one action owned by a **menu and a "
+				               "toolbar** is one row"),
+				QStringLiteral("one action carrying **two sequences** "
+				               "is two rows"),
+				QStringLiteral("another window's "
+				               "`Qt::ApplicationShortcut` is **in**"),
+			};
+			printf("info: the conflict-report table publishes %d row(s); "
+			       "this check drives %d\n", int(published.size()),
+			       int(driven.size()));
+			CHECK(published == driven,
+			      "the rows of the conflict-report table are the rows this "
+			      "check drives, by name, so neither can grow alone");
 		}
 
 		// THE AUDIT SET ON A MIRRORED FORM, which the right-to-left
