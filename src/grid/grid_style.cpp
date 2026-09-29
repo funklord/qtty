@@ -2043,7 +2043,39 @@ void GridStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, QPai
 			QString g = QStringLiteral(" ");
 			if (opt->state & State_Children)
 				g = (opt->state & State_Open) ? QStringLiteral("▾") : QStringLiteral("▸");
-			const Attrs a = with_state(opt);
+			// AND IT CARRIES ITS ROW'S SELECTION. It took with_state() alone,
+			// which is Dim and nothing else, so on a selected row every cell
+			// was reversed except this one -- measured on a tree whose top
+			// item was current and selected:
+			//
+			//     |# [x] parent   |   .B.BBBBBBBBBBBBBB.
+			//
+			// where `#` is the expander and B is reverse-and-underline. A hole
+			// in the row's mark, and the third instance of one family: the
+			// closable tab's close mark and the tool button's brackets were
+			// the others, each a glyph drawn for part of a control without the
+			// marks of the region it belongs to.
+			//
+			// State_Selected is the option's own and exact -- measured,
+			// sel=1 on the selected row's branch and 0 on the others.
+			//
+			// THE UNDERLINE HALF IS NOT REACHABLE HERE, and the obvious route
+			// was tried and does not work. Qt hands this primitive a real
+			// QStyleOptionViewItem -- the cast succeeds -- with `index`
+			// LEFT INVALID, measured on every branch it draws. So
+			// item_view_current(), which is the one predicate the fill and the
+			// delegate share, returns false for want of an index and cannot
+			// be asked. Reaching the row another way -- matching this rect's
+			// band against visualRect(currentIndex()) -- would be a THIRD
+			// opinion about which item is current, in a file whose own
+			// comment on that function explains why there are two and not
+			// three. Left undone deliberately: on a row that is current and
+			// selected the expander is reversed where its neighbours are
+			// reversed and underlined, which is a smaller difference than the
+			// bare cell it replaces and does not need a second mechanism to
+			// fix.
+			Attrs a = with_state(opt);
+			if (opt->state & State_Selected) a |= Attr::Reverse;
 			dev->buffer().text(c.right(), c.top(), g, Color(), Color(), a);
 			return;
 		}

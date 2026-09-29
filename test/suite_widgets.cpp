@@ -6269,6 +6269,102 @@ int suite_widgets() {
 		              .toUtf8().constData());
 	}
 
+	// AND THE THIRD OF THE FAMILY: a tree's expander on a selected row. It
+	// took with_state() alone, so a selected row was reversed in every cell
+	// but that one -- measured on a tree whose top item was current and
+	// selected, `.B.BBBBBBBB...` with the hole at the expander.
+	//
+	// Asserted against the row it sits in rather than against a value: the
+	// expander carries the selection its own row carries. Its control is the
+	// UNSELECTED row below, whose expander must not -- without which a style
+	// that reversed every expander would satisfy the first half.
+	//
+	// The underline half is deliberately not asserted, because it is
+	// deliberately not implemented: Qt hands PE_IndicatorBranch a
+	// QStyleOptionViewItem with an INVALID index, so item_view_current()
+	// cannot be asked, and the alternative is a third opinion about which
+	// item is current. grid_style.cpp records the measurement at that case.
+	{
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(26, 6));
+		auto *v = new QVBoxLayout(&win);
+		v->setContentsMargins(0, 0, 0, 0);
+		auto *tree = new QTreeWidget;
+		tree->setHeaderHidden(true);
+		auto *first = new QTreeWidgetItem(tree, { QStringLiteral("parent") });
+		new QTreeWidgetItem(first, { QStringLiteral("child") });
+		first->setExpanded(true);
+		auto *second = new QTreeWidgetItem(tree, { QStringLiteral("other") });
+		new QTreeWidgetItem(second, { QStringLiteral("kid") });
+		second->setExpanded(true);
+		v->addWidget(tree);
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter r(&win);
+		Compositor comp(&win, &r);
+		Qtty::set_current_window(&win);
+		tree->setFocus();
+		Qtty::set_focus_widget(win.focusWidget());
+		tree->setCurrentItem(first);
+		first->setSelected(true);
+		QCoreApplication::processEvents();
+		CellBuffer b(26, 6);
+		comp.compose(b);
+		// Find each expander by its glyph, and read the row it is in from a
+		// cell of that row's label rather than from a column this check would
+		// have to know.
+		int found = 0;
+		bool marked_with_row = true, control_bare = true;
+		QString first_bad;
+		for (int y = 0; y < 6; ++y) {
+			int at = -1;
+			for (int x = 0; x < 26; ++x)
+				if (b.at(x, y).ch == QStringLiteral("▾")) at = x;
+			if (at < 0) continue;
+			++found;
+			// A label cell of the same row: the first letter after the
+			// expander, whatever column that lands in.
+			int label = -1;
+			for (int x = at + 1; x < 26 && label < 0; ++x) {
+				const QString g = b.at(x, y).ch;
+				if (!g.isEmpty() && g != QStringLiteral(" ")
+				    && g != QStringLiteral("║"))
+					label = x;
+			}
+			if (label < 0) continue;
+			const bool row_reversed = b.at(label, y).attrs & Attr::Reverse;
+			const bool exp_reversed = b.at(at, y).attrs & Attr::Reverse;
+			if (row_reversed && !exp_reversed) {
+				marked_with_row = false;
+				if (first_bad.isEmpty())
+					first_bad = QStringLiteral("row %1 is reversed and its "
+					                           "expander is not").arg(y);
+			}
+			if (!row_reversed && exp_reversed) {
+				control_bare = false;
+				if (first_bad.isEmpty())
+					first_bad = QStringLiteral("row %1 is not reversed and "
+					                           "its expander is").arg(y);
+			}
+		}
+		win.hide();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+		printf("info: two expanders wanted, %d found\n", found);
+		CHECK(found == 2 && control_bare,
+		      "a tree with a selected row and an unselected one draws an "
+		      "expander on each, and only the selected row's is marked -- "
+		      "which is what says the check below reads a selection");
+		CHECK(marked_with_row,
+		      marked_with_row
+		        ? "and a tree's expander carries the selection its own row "
+		          "carries, so a selected row has no hole where it sits"
+		        : QStringLiteral("and a tree's expander carries the selection "
+		                         "its own row carries -- %1").arg(first_bad)
+		              .toUtf8().constData());
+	}
+
 
 
 	// Where the one-number-metric fault does NOT reach, which is worth a check

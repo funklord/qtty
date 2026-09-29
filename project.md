@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2049 checks, 0 failures. **The duration is 4.7 seconds of user time and
+2051 checks, 0 failures. **The duration is 4.7 seconds of user time and
 it belongs to 2026-09-23, over a suite of 2016** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5): 4.68, 4.71, 4.73 user against 14.6 wall each time.
@@ -17918,6 +17918,66 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.362 The third hole of one family, and the half deliberately left open (2026-09-29)
+
+**The lens again, one step on**: a mark over a COMPOSITE row rather than
+over the region it marks. The guide specifies the menu case outright -- "the
+item the keys would act on is highlighted, its mnemonic letter is underlined
+within that highlight, and its shortcut label is dimmed" -- so a menu row
+with a check indicator, a shortcut and a submenu arrow is a written contract,
+and an item view's row has an expander and an indicator of its own.
+
+**The menu passed on every part.** Measured with an active checkable row
+carrying `Ctrl+W` and a submenu row beside it:
+
+    | # Wrap        Ctrl+W |   dRRRBRRRRRRRRRRRRRRRRRRd
+    |   More              >|   d..._..................d
+
+The highlight covers the indicator, the label, the gap and the shortcut; the
+mnemonic is reverse-AND-underline inside it, which is the guide's sentence
+exactly; and the submenu arrow takes the highlight when that row is active.
+An inactive row's shortcut is dimmed. Nothing to do.
+
+**The tree's expander was the hole.** On a row both current and selected:
+
+    |# [x] parent   |   .B.BBBBBBBBBBBBBB.
+
+`B` is reverse-and-underline and the expander has neither.
+`PE_IndicatorBranch` took `with_state(opt)`, which is Dim and nothing else --
+the same shape as the closable tab's close mark and the tool button's
+brackets, now three for three.
+
+**`State_Selected` is the option's own, and exact.** Measured on every branch
+the tree draws: `sel=1` on the selected row and 0 on the others, with
+`children` and `open` beside it. So the reverse half needed no new mechanism.
+
+**The underline half is left undone on purpose, and the obvious route was
+tried.** Qt hands this primitive a real `QStyleOptionViewItem` -- the cast
+succeeds -- with `index` LEFT INVALID, measured on every branch. So
+`item_view_current()`, the one predicate the fill and the delegate share,
+returns false for want of an index and cannot be asked. The alternative is to
+match this rect's band against `visualRect(currentIndex())`, which would be a
+THIRD opinion about which item is current, in a file whose comment on that
+function explains why there are two and not three. What is left is an
+expander reversed where its neighbours are reversed and underlined -- a
+smaller difference than the bare cell it replaces, and not worth a second
+mechanism.
+
+**Both halves of the check are about the row, not about a value.** The
+expander carries the selection its own row carries, read from a label cell of
+that same row rather than from a column the check would have to know. Its
+control is a second, unselected row with its own expander: without it, a
+style that reversed every expander would satisfy the first half. Sabotaged,
+it reddens naming the row -- `row 1 is reversed and its expander is not`.
+
+**Four fixes from one sweep now, and only the first came from rendering
+something new.** The tab's close mark was the find; the progress bar came
+from the same batch; the tool button and this expander came from the tab's
+SHAPE. That is 0d's claim about deriving the next lens from the last defect,
+paying out three times in a row -- and the remaining value is in the shape
+rather than in the list, because the list is what runs out.
 
 
 ### 8.361 A focused tool button marked its label and not its glyph (2026-09-29)
