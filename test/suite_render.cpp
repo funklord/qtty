@@ -2947,8 +2947,14 @@ int suite_render(bool record) {
 		};
 
 		if (!tmp.isValid()) {
-			printf("SKIP: no temporary directory, so the harness's own"
-			       " failure paths are untested\n");
+			printf("SKIP: no temporary directory, so recording a "
+			       "fixture is untested\n");
+			printf("SKIP: no temporary directory, so recording "
+			       "where nothing can be written is untested\n");
+			printf("SKIP: no temporary directory, so a fixture "
+			       "that is not there is untested\n");
+			printf("SKIP: no temporary directory, so a fixture "
+			       "that cannot be read is untested\n");
 		} else {
 			QDir(tmp.path()).mkpath(QStringLiteral("test/snapshot"));
 			const QString fixture =
@@ -3134,8 +3140,15 @@ int suite_render(bool record) {
 			if (file.isEmpty()) {
 				// A SKIP rather than a pass, and loud: this machine has no
 				// font file, so nothing below was measured.
-				printf("SKIP: no font file under /usr/share/fonts, so the"
-				       " font-file lever was not measured here\n");
+				printf("SKIP: no font file under "
+				       "/usr/share/fonts, so reading a family "
+				       "out of one is untested\n");
+				printf("SKIP: no font file under "
+				       "/usr/share/fonts, so QTTY_FONT_FILE "
+				       "supplying the family is untested\n");
+				printf("SKIP: no font file under "
+				       "/usr/share/fonts, so an application's "
+				       "own family is untested\n");
 			} else {
 				qunsetenv("QTTY_FONT");
 				qunsetenv("QTTY_FONT_SIZE");

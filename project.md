@@ -18030,14 +18030,39 @@ explains this". A check deleted *and* four skipped reddens with the four
 printed, which is the arm that would otherwise only ever run on somebody
 else's machine.
 
-**The residue, named rather than rounded off.** Four sites still stand for
-more than one check and print one line: the no-temporary-directory skip in
-`suite_render.cpp`, the no-font-file skip beside it, and the two font
-skips in `suite_runtime.cpp`. Splitting them wants an exact count of the
-checks in each `else`, and three parsers written to take that count were
-wrong in three different ways -- so the number would be a guess wearing
-arithmetic. Where one of those fires the gate fails, and prints the skips
-that explain it, which is a reader's question rather than a wrong answer.
+**The residue is closed, and closing it caught an answer already pushed.**
+Five sites stood for more than one check while printing one line. Four
+counts came from forcing the condition to `true`, rebuilding, and reading
+the drop in the pass count. The fifth came from reading the `else`, and it
+was wrong.
+
+    suite_budget.cpp    no temporary directory    9 checks   read as 2
+    suite_render.cpp    no temporary directory    4
+    suite_render.cpp    no font file              3
+    suite_runtime.cpp   no font with leading      2
+    suite_runtime.cpp   no proportional font      2
+
+**The one derived by reading is the one that failed**, which is the whole
+argument for the method. That `else` opens a `QTemporaryDir` scope running
+far past the range I read: two checks sit at its top and seven more in
+nested blocks below, over damaged kitty frames, damaged pixel frames and a
+full frame on the wire. Forcing the condition names all nine by diffing the
+pass lists, and needs no opinion about where the block ends.
+
+**But both `suite_runtime.cpp` figures were also read by hand and agree**,
+so this is not simply one method beating another. Reading is right where a
+block is short and wholly visible, and silently wrong where it is not --
+and nothing in the reading itself tells you which case you are in. That is
+the same shape as the four instruments above: each was right about
+something, and none announced what it was not right about.
+
+**The population is closed by measurement, not by argument.** Every one of
+the eleven skip sites has been made to fire. The six with a forceable
+condition were each forced in turn and every one leaves `PASS + SKIP` at
+2056 exactly; the four keyed on `QTTY_UNDER_VALGRIND` reconcile together
+under that variable, and the process-group one under `setsid`. That is the
+property `count-check` rests on, and the reason the wrong split was caught
+before anybody met it on a machine with no temporary directory.
 
 
 ### 8.369 The flag that prevents a vacuous pass could be switched off by a typo (2026-09-29)

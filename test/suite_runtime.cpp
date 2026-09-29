@@ -576,8 +576,10 @@ int suite_runtime() {
 		leaded.setPixelSize(16);
 		const QFontMetricsF lfm(leaded);
 		if (qAbs(lfm.lineSpacing() - lfm.height()) < 0.01) {
-			printf("SKIP: no font with leading is installed, so the"
-			       " detector cannot be shown to fire\n");
+			printf("SKIP: no font with leading is installed, so "
+			       "the detector cannot be shown to fire\n");
+			printf("SKIP: no font with leading is installed, so "
+			       "what it says the leading costs is untested\n");
 		} else {
 			const QString lead = grid_font_leading(leaded);
 			CHECK(!lead.isEmpty(),
@@ -594,7 +596,10 @@ int suite_runtime() {
 		QFont prop(QStringLiteral("DejaVu Sans"));
 		prop.setPixelSize(16);
 		if (QFontInfo(prop).fixedPitch()) {
-			printf("SKIP: no proportional font resolved, cannot test rejection\n");
+			printf("SKIP: no proportional font resolved, so "
+			       "rejecting one is untested\n");
+			printf("SKIP: no proportional font resolved, so the "
+			       "rejection's wording is untested\n");
 		} else {
 			CHECK(!grid_font_problem(prop).isEmpty(),
 			      "a proportional font is rejected");
