@@ -973,6 +973,30 @@ test-tools: all
 	}; \
 	[ "$$bad" -eq 0 ] && \
 		echo "    replay refuses what it cannot do: ok (6 cases and a control)"; \
+	\
+	: '-- AND THE TWO TOOLS THAT TAKE NO FILE MUST SAY SO. All three share' ; \
+	: 'the idiom `if (argv[i][0] != -) continue;`, which is right in' ; \
+	: 'qtty-replay where a positional IS the script and a silent ignore in' ; \
+	: 'the other two, whose usage lines show no positional at all: they did' ; \
+	: 'their ordinary work on their built-in subject and exited 0.' ; \
+	pos=0; \
+	for prog in $(INSPECT) $(NEGOTIATE); do \
+		timeout $(TEST_TIMEOUT) $$prog a-file-it-cannot-take >/dev/null 2>&1; \
+		if [ $$? -eq 0 ]; then \
+			echo "    $$(basename $$prog): FAILED -- a positional argument was"; \
+			echo "             ignored and it worked anyway, so asking it for a"; \
+			echo "             file reads as having been given one"; \
+			pos=1; fail=1; \
+		fi; \
+		: 'The control: with no positional it must still work, or the' ; \
+		: 'refusal above is satisfied by a program that refuses always.' ; \
+		timeout $(TEST_TIMEOUT) $$prog >/dev/null 2>&1 || { \
+			echo "    $$(basename $$prog): FAILED -- it no longer runs with no"; \
+			echo "             arguments at all"; pos=1; fail=1; \
+		}; \
+	done; \
+	[ "$$pos" -eq 0 ] && \
+		echo "    inspect and negotiate refuse a positional: ok (with controls)"; \
 	on=$$(printf 'conventions on\nkey down\nsnapshot\n' \
 		| timeout $(TEST_TIMEOUT) $(REPLAY) 2>/dev/null); \
 	off=$$(printf 'key down\nsnapshot\n' \

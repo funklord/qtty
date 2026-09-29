@@ -17941,6 +17941,45 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.368 The same idiom in three tools, right in one of them (2026-09-29)
+
+**Found by asking the obvious question after 8.367: the other shipped tool
+also reads an argument.** All three tools carry the same line in their
+option check --
+
+    if (argv[i][0] != '-') continue;
+
+-- which is RIGHT in `qtty-replay`, where a positional argument is the script
+path and skipping it in the flag loop is the only correct thing to do. Carried
+into the other two it silently ignores what somebody asked for: neither
+`qtty-inspect` nor `qtty-negotiate` takes a file, their usage lines show no
+positional at all, and `qtty-inspect somefile.ui` did its ordinary work on its
+built-in sample dialog and exited 0.
+
+**`qtty-inspect` is the sharper of the two because its own help invites the
+mistake**: "It inspects a built-in sample dialog; loading a .ui file is Phase
+2." So the tool knows a file is not supported, says so to anybody who reads
+`--help`, and accepted one without a word from anybody who did not.
+
+Both refuse one now, naming what the tool does take, with exit 2 -- which is
+what the unknown-OPTION branch three lines below has always done. The fault
+was one argument along from a check that already existed.
+
+**Two cases and two controls.** The control is each tool run with no
+positional, which must still work: without it, a refusal is satisfied by a
+program that refuses always. Reverting `qtty-inspect` alone reddens its case
+and leaves `qtty-negotiate`'s passing, which is the discrimination worth
+having.
+
+**The pattern this closes, for the third time today.** A hazard understood in
+one place and absent from its twin: the string parser's cap and the CSI's
+(8.365), `parse_csi`'s abandonment and its own two earlier byte classes
+(8.364), the option check and the script check inside one tool (8.367), and now
+one idiom across three tools. In every case the argument for the fix was
+already written down somewhere in the tree -- which is what makes the sweep
+cheap and what makes the absence worth looking for rather than reasoning about.
+
+
 ### 8.367 A shipped tool reported success for work it had not done (2026-09-29)
 
 **`qtty-replay` exists so that "a bug report is reproducible", and it exited 0

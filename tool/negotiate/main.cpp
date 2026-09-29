@@ -78,7 +78,19 @@ int main(int argc, char **argv) {
 	// perfectly good Qt options.
 	for (int i = 1; i < argc; ++i) {
 		static const char *const known[] = { "--help", "-h", "--version", "-V", "--probes" };
-		if (argv[i][0] != '-') continue;
+		// A POSITIONAL ARGUMENT IS NOT SOMETHING THIS TAKES, and it was
+		// skipped here rather than refused -- so `qtty-negotiate <a file>`
+		// did its ordinary work on its built-in subject and exited 0,
+		// which is the same fault the branch below exists to prevent one
+		// argument along. The idiom is shared with qtty-replay, where a
+		// positional IS the script and skipping it is right; carried here
+		// it silently ignores what somebody asked for.
+		if (argv[i][0] != '-') {
+			fprintf(stderr, "qtty-negotiate: this takes no file: it reports what the terminal it\n"
+			                "                is run in answered."
+			                " See --help.\n");
+			return 2;
+		}
 		bool ok = false;
 		for (const char *k : known) ok = ok || !qstrcmp(argv[i], k);
 		if (ok) continue;
