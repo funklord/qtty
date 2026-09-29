@@ -17953,6 +17953,70 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.374 The valgrind self-timeout is not the scheduler (2026-09-29)
+
+**`make test-valgrind` has now self-timed out three times, and the entry
+that recorded the first one attributes it to the scheduler. That is
+wrong.** The stop points, with the load each was taken at:
+
+    load 16.1   stopped at 1466 of 2052     (the original observation)
+    load ~30    stopped at 1466 of 2056
+    load ~40    stopped at 1470 of 2059
+
+**A wall-clock budget consumed by a uniformly slower machine stops
+EARLIER under heavier load. These three stop in the same place.** That is
+the observation the scheduler frame cannot represent, and it was available
+the second time without anybody looking for it.
+
+**What the process was actually doing, read from `/proc` rather than
+guessed.** Sampled while stalled at 1426, six times over twenty seconds:
+state `SN` every time, 31% CPU, and the pass count did not move. `wchan`
+is `do_sys_poll`; `/proc/<pid>/syscall` is `ppoll` on **one** descriptor
+with a non-null timeout. So it is **neither starved nor deadlocked**: a
+CPU-starved process is `R` and still progresses, and a deadlock does not
+burn 31% of a core. It is a timer-driven loop waiting for its next tick.
+
+**Three explanations were built and all three are dead, each killed by one
+measurement:**
+
+    load as CPU starvation   24 cores; sleeping in ppoll at 31%, not R
+    memory pressure          RSS peaked at 489 MB, 166 GB available
+    state accumulating       topLevelWidgets=2 in a full run AND alone,
+                               and the stalled region costs 0-1 ms in both
+
+The third was the strongest and the instrumentation refuted it flatly:
+`drive()` at the stop region was timed in a full run and in `graphics`
+alone, and the two agree at 0 ms with the same two top-level widgets.
+
+**And the per-suite matrix says the cost is not in any suite.** Under
+valgrind, all twelve run clean separately in 214 s, `graphics` -- the one
+holding the stop region -- in 9 s. A full run at load 3.8 completes all
+of them in 108 s and sails past 1466 without pausing. **Nothing about
+WHERE it stops explains it, and nothing about any one suite does either.**
+
+**What is left, stated as a candidate rather than a conclusion.** A
+loop that needs many timer round-trips is bounded by scheduling LATENCY
+rather than by CPU share: at ~0.05 ms a tick it is invisible, at the
+scheduler's granularity under load it is a hundredfold slower, and it
+presents exactly as sleeping in `ppoll` at partial CPU. That is consistent
+with every observation above and is not established by any of them.
+
+**The instrument that would finish it is available and was not used.**
+`vgdb` attaches to a running valgrind and gives the GUEST's backtrace --
+the pipe is already in the stalled process's descriptor list. Attaching
+gdb to the valgrind process itself answers about valgrind's internals
+rather than the suite's, which is why it is `vgdb` and not `gdb`. It needs
+a stall in progress, so it needs a loaded machine and the better part of
+an hour.
+
+**Recorded rather than fixed, and the frame is the finding.** Three
+stop points at three loads is cheap to take and refutes the explanation
+this project has carried since the first occurrence. The next person
+should reach for `vgdb` rather than for a load threshold -- and should
+know that the threshold `tool/screen-check` uses, which the earlier entry
+offered as the model, would be treating a symptom whose cause is not load
+at all.
+
 ### 8.373 A list of eight unverified reports, and none of them open (2026-09-29)
 
 **The sweep that produced 8.372's three findings also left eight it had
@@ -18695,8 +18759,11 @@ same content, the same target, twice:
     load  3.1, machine quiet               3 min 12 s, clean
 
 `QTTY_TEST_TIMEOUT=3000` is the arm's own limit and the suite stops itself
-when it passes -- correctly, and saying so. What it does NOT say is that the
-scheduler was the reason, so the verdict reads like a failure of the code.
+when it passes -- correctly, and saying so. What it does NOT say is why, and
+**the reason offered here was the scheduler, which 8.374 disproves**: it has
+since stopped in the same place at load 30 and at load 40, where a uniformly
+slower machine would stop earlier, and the stalled process is asleep in
+`ppoll` at 31% of a core rather than starved of CPU.
 `tool/screen-check` already declines to measure above a load average of 40
 for exactly this reason and prints why; this arm has no such guard, and the
 16x spread above is the number one would be set from. **Recorded and not
