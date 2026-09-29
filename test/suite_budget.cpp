@@ -303,8 +303,13 @@ int suite_budget() {
 	{
 		QTemporaryDir tmp;
 		if (!tmp.isValid()) {
-			printf("SKIP: no temporary directory, so the wire cost of a"
-			       " frame is untested\n");
+			// One line per check this stands in for. count-check adds the
+			// skips back to the checks that ran, so a skip covering two
+			// checks and printing one line reads as a check that vanished.
+			printf("SKIP: no temporary directory, so a one-cell change's"
+			       " damage cost is untested\n");
+			printf("SKIP: no temporary directory, so that cost against the"
+			       " same edit without a region is untested\n");
 		} else {
 			const QByteArray whole =
 			    tmp.filePath(QStringLiteral("full.bin")).toUtf8();

@@ -1362,20 +1362,52 @@ sabotage-check:
 guide-check:
 	python3 tool/guide_check.py
 
+# The population is PASS plus SKIP, not PASS. A skip is a check the
+# environment cannot carry -- no temporary directory, no font file, a user
+# who can read a mode-000 file, an instrument that multiplies durations --
+# and counting only what passed reports those as checks that have vanished.
+#
+# Measured before this was changed: QTTY_UNDER_VALGRIND=1 make count-check
+# said "the suite runs 2052. One of them is out of date" when nothing was
+# out of date and four skips accounted for the four exactly. Both things
+# the message told a reader to do were wrong, and the environments where
+# it misfires -- a container with no fonts, a build as root -- are the ones
+# where nobody has the tree in front of them to argue with it.
+#
+# The output goes to a file rather than through a pipe, because the skip
+# lines have to be read after the count is taken and a pipe's exit status
+# belongs to the last process in it.
 count-check: tests-build
 	@stated=$$(sed -n 's/^\([0-9][0-9]*\) checks, 0 failures.*/\1/p' \
 		project.md | head -1); \
-	actual=$$($(TEST_ENV) timeout $(TEST_TIMEOUT) $(TEST_BIN) 2>/dev/null \
-		| grep -c '^PASS:'); \
+	out=$(dir $(TEST_BIN))count.out; \
+	$(TEST_ENV) timeout $(TEST_TIMEOUT) $(TEST_BIN) > $$out 2>/dev/null; \
+	ran=$$(grep -c '^PASS:' $$out); \
+	skipped=$$(grep -c '^SKIP:' $$out); \
+	actual=$$((ran + skipped)); \
 	if [ -z "$$stated" ]; then \
 		echo "count-check: project.md states no check count" >&2; exit 1; \
 	fi; \
 	if [ "$$stated" != "$$actual" ]; then \
-		echo "count-check: project.md says $$stated checks, the suite runs" >&2; \
-		echo "             $$actual. One of them is out of date." >&2; \
+		echo "count-check: project.md says $$stated checks; the suite ran" >&2; \
+		echo "             $$ran and stepped over $$skipped, which accounts" >&2; \
+		echo "             for $$actual." >&2; \
+		if [ "$$skipped" -gt 0 ]; then \
+			echo "             A skip is not a missing check. Read these" >&2; \
+			echo "             before changing the number:" >&2; \
+			grep '^SKIP:' $$out | sed 's/^/               /' >&2; \
+		else \
+			echo "             Nothing was stepped over, so no environment" >&2; \
+			echo "             explains this: a check has gone or arrived." >&2; \
+		fi; \
 		exit 1; \
 	fi; \
-	echo "count-check: project.md and the suite agree at $$actual checks"
+	if [ "$$skipped" -gt 0 ]; then \
+		echo "count-check: project.md and the suite agree at $$actual checks" \
+		     "($$ran ran, $$skipped stepped over in this environment)"; \
+	else \
+		echo "count-check: project.md and the suite agree at $$actual checks"; \
+	fi
 
 # The commit-msg hook lives in the tree so it is reviewable, survives a clone,
 # and can be kept in sync. .git/hooks is untracked, so a hook that exists only

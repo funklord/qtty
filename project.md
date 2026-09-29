@@ -17941,6 +17941,105 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.370 A skipped check reported as a missing one, found by a reading that measured one half (2026-09-29)
+
+**The gate said two things and neither was true.** Measured before the
+change:
+
+    $ QTTY_UNDER_VALGRIND=1 make count-check
+    count-check: project.md says 2056 checks, the suite runs
+                 2052. One of them is out of date.
+
+Nothing was out of date. Four checks had been stepped over because that
+environment cannot carry them, and four is exactly the difference. A
+reader acting on that message goes to edit a number that is right, or
+hunts a check that has not gone anywhere.
+
+**The population is PASS plus SKIP, and it was PASS.** Eleven sites in the
+suite step over a check the environment cannot carry -- no temporary
+directory, no font file under `/usr/share/fonts`, a user who can read a
+mode-000 file, an instrument that multiplies durations. `count-check`
+counted the lines that passed, so every one of those reads as a check that
+has vanished. It adds them back now, and says so when it does.
+
+**The environments where it misfires are the ones with nobody in front of
+them**: a container with no fonts installed, a build as root. On this
+machine no skip fires, which is why the gate has been right for as long as
+it has existed and would have been wrong on the first machine that
+differed.
+
+**A skip has to stand for one check per line**, or the arithmetic is a
+guess. `suite_budget.cpp`'s temporary-directory skip guarded two checks
+and printed one line; it prints two now, each naming what it stands for.
+
+**What started this was three hand runs printing 2055 where the gate said
+2056, and the first explanation was comfortable and wrong.** §0a already
+records a count going short under load, so load was the ready answer.
+It is disproved rather than merely unconfirmed: the one duration the suite
+asserts is `best_milliseconds(20, ...)` against a 160 ms ceiling and it
+runs at 4.98 ms -- a 32-fold margin on the best of twenty -- and a budget
+check that did blow would print `FAIL`, which lowers the pass count and
+raises the failure count together. The short runs had no failure in them.
+
+**The cause is the process group.** One check is guarded by
+`::getsid(0) == ::getpgrp()`, which is true when the suite is its own
+session's group, and POSIX then discards the stop signal the check sends.
+Confirmed by making it true rather than by waiting for it:
+
+    setsid --wait ./build-test/qtty-tests
+    PASS=2055 FAIL=0 SKIP=1 rc=0
+    SKIP: this process group is the session's own, so the kernel
+          discards a stop sent to it
+
+**`count-check` never saw it, and the reason is worth writing down because
+nothing in the recipe says so.** The suite is invoked through `timeout`,
+which puts its child in a new process group, so the condition cannot hold
+under the gate however it is called -- `setsid --wait make count-check`
+passes. The gate's stability rests on a side effect of the thing bounding
+its runtime. That is now a dependency stated rather than one relied on.
+
+**Four instruments of my own were wrong inside one audit**, which is the
+part worth keeping:
+
+- **A count and a status read from different runs.** The pass count came
+  from three runs and the failure count from a fourth, and they were
+  quoted as one result -- "2055 with no failures" -- which is the pair
+  `evidence.md` says is neither half. The failure count belonged to a run
+  that had passed 2056.
+- **A caller count taken with `grep -c 'page_table_rows('`**, which
+  counted two comments that mention the function beside eleven that call
+  it. Searching for the bare name finds the prose about it.
+- **`grep -c '^FAIL'`**, which counts the suite's closing
+  `FAILED (14 failures)` line as a fifteenth failure. The colon is the
+  difference between the checks and the summary.
+- **`pgrep -c valgrind`**, which answered 0 while valgrind was running,
+  because the process is `valgrind.bin`. That one was a sentence away from
+  the record: the arm was about to be written up as killed, on a probe
+  that cannot tell a dead run from a misspelt name.
+
+**And the figure the audit was checking was itself wrong.** 8.356 claimed
+twelve checks redden when the page reader goes blind. Blinding it and
+counting: **fourteen**, and 2042 + 14 = 2056. Twelve was that sitting's
+measurement carried forward while two more tables were bound -- the scope
+number nothing downstream re-derives.
+
+**Controls, all three watched.** The environment that failed now passes
+and names what it stepped over. A check deleted from `suite_cells.cpp`
+still reddens, and says "Nothing was stepped over, so no environment
+explains this". A check deleted *and* four skipped reddens with the four
+printed, which is the arm that would otherwise only ever run on somebody
+else's machine.
+
+**The residue, named rather than rounded off.** Four sites still stand for
+more than one check and print one line: the no-temporary-directory skip in
+`suite_render.cpp`, the no-font-file skip beside it, and the two font
+skips in `suite_runtime.cpp`. Splitting them wants an exact count of the
+checks in each `else`, and three parsers written to take that count were
+wrong in three different ways -- so the number would be a guess wearing
+arithmetic. Where one of those fires the gate fails, and prints the skips
+that explain it, which is a reader's question rather than a wrong answer.
+
+
 ### 8.369 The flag that prevents a vacuous pass could be switched off by a typo (2026-09-29)
 
 **`qtty-tray-check` had no option check at all**, where its three siblings
@@ -18981,8 +19080,14 @@ own `test -e Makefile || qmake6` guards, which print on every run -- six
 matches on a tree where nothing had changed. The mtime is the artifact;
 the log line was a property of the recipe.
 
-All twelve `page_table_rows()` callers redden when the reader goes blind
+All the `page_table_rows()` callers redden when the reader goes blind
 now, which is the population check this started out trying to take.
+**The number first written here was twelve and it is fourteen**, with
+a method beside it so the next reader need not take anybody's word:
+give the reader an early `return`, rebuild, and count the failures --
+2042 passed and 14 failed, which accounts for the 2056 exactly. Twelve
+was the figure from the sitting before this one, carried forward rather
+than re-derived when two more tables were bound. See 8.370.
 
 **And the lens was finished rather than dropped after the instance, which
 is 0d's method, and it came back EMPTY -- recorded with how it was run so
