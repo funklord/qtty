@@ -5697,3 +5697,12 @@ find = "\t\t\t\t\tif (i == bar->currentIndex()) {"
 into = "\t\t\t\t\tif (false) {"
 count = 1
 check = "and every cell of a tab carries that tab's marks"
+
+
+[[sabotage]]
+name = "a progress bar is one cell thick whatever the widget's size"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tconst int cross = horizontal"
+into = "\t\t\t\tconst int cross = 1 ? 1 : horizontal"
+count = 1
+check = "a progress bar is as thick as the widget on its cross axis"

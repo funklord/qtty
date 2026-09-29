@@ -5640,6 +5640,99 @@ int suite_widgets() {
 		      "and leaves the unfilled part above it");
 	}
 
+	// AND IT IS AS THICK AS THE WIDGET, on both axes. The check above gives
+	// the bar a geometry exactly ONE CELL WIDE -- cw by ch*4 -- which is the
+	// one arrangement where the question cannot arise, and every other
+	// progress-bar fixture here is one cell thick on its cross axis too. So
+	// nothing measured what a thicker bar draws, and the answer was a single
+	// row or column with the rest of the widget's own rect left showing the
+	// window ground:
+	//
+	//     horizontal 10x3     |#####:::::|   and two blank rows
+	//     vertical    6x4     |#     |       and five blank columns
+	//
+	// Asserted as a relationship -- every line of the groove matches its
+	// siblings -- rather than as glyphs, since which glyph means filled is
+	// the vocabulary the checks above already hold.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		struct Case { Qt::Orientation o; int cols, rows; };
+		static const Case cases[] = {
+			{ Qt::Horizontal, 10, 3 },
+			{ Qt::Vertical,    6, 4 },
+		};
+		bool thick = true, lines_match = true;
+		QString first_bad;
+		for (const Case &k : cases) {
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *p = new QProgressBar(&host);
+			p->setOrientation(k.o);
+			p->setTextVisible(false);
+			p->setRange(0, 4);
+			p->setValue(2);
+			p->setGeometry(0, 0, cw * k.cols, ch * k.rows);
+			host.resize(GridMetrics::cells(k.cols + 1, k.rows + 1));
+			host.show();
+			QCoreApplication::processEvents();
+			CellBuffer b(k.cols + 1, k.rows + 1);
+			render_once(host, b);
+			// Every line along the bar's LENGTH must be drawn, and all of
+			// them must read the same: that is what says the groove is the
+			// widget's thickness rather than one cell of it.
+			for (int cross = 0; cross < (k.o == Qt::Horizontal ? k.rows
+			                                                  : k.cols);
+			     ++cross) {
+				QString line, first;
+				for (int along = 0;
+				     along < (k.o == Qt::Horizontal ? k.cols : k.rows);
+				     ++along) {
+					const Cell &c = k.o == Qt::Horizontal
+					    ? b.at(along, cross) : b.at(cross, along);
+					line += c.ch.isEmpty() ? QStringLiteral(" ") : c.ch;
+				}
+				if (line.trimmed().isEmpty()) {
+					thick = false;
+					if (first_bad.isEmpty())
+						first_bad = QStringLiteral("%1 bar: line %2 of its "
+						                           "cross axis is blank")
+						    .arg(k.o == Qt::Horizontal
+						             ? QStringLiteral("horizontal")
+						             : QStringLiteral("vertical"))
+						    .arg(cross);
+					continue;
+				}
+				for (int along = 0;
+				     along < (k.o == Qt::Horizontal ? k.cols : k.rows);
+				     ++along) {
+					const Cell &a = k.o == Qt::Horizontal
+					    ? b.at(along, 0) : b.at(0, along);
+					const Cell &d = k.o == Qt::Horizontal
+					    ? b.at(along, cross) : b.at(cross, along);
+					if (a.ch == d.ch) continue;
+					lines_match = false;
+					if (first_bad.isEmpty())
+						first_bad = QStringLiteral("%1 bar: line %2 differs "
+						                           "from the first at %3")
+						    .arg(k.o == Qt::Horizontal
+						             ? QStringLiteral("horizontal")
+						             : QStringLiteral("vertical"))
+						    .arg(cross).arg(along);
+				}
+			}
+			host.hide();
+			QCoreApplication::processEvents();
+		}
+		CHECK(thick && lines_match,
+		      thick && lines_match
+		        ? "a progress bar is as thick as the widget on its cross "
+		          "axis, in both orientations, rather than one cell of it "
+		          "with the rest of its rect left to the window ground"
+		        : QStringLiteral("a progress bar is as thick as the widget on "
+		                         "its cross axis -- %1").arg(first_bad)
+		              .toUtf8().constData());
+	}
+
 	{
 		// An indeterminate progress bar. minimum == maximum is Qt's way of
 		// saying the length of the job is unknown, and it was drawn as a bar
@@ -6613,14 +6706,46 @@ int suite_widgets() {
 		win.show();
 		QCoreApplication::processEvents();
 
-		// glyphs, undimmed, true-coloured -- over the rows one widget owns.
-		auto survey = [&](const QRect &g, int *glyphs, int *undimmed, int *rgb) {
+		// glyphs, undimmed, true-coloured -- over the rows one widget owns
+		// ALONE. "Owns" was every row its rect touches, which is only the
+		// same thing while no two widgets share one: this layout sets spacing
+		// to zero on purpose, and measured, the progress bar's rect runs
+		// y=133..170 and the scroll bar's y=163..181, so both claim cell row
+		// 8. A full-width scan of that row hands one widget's cells to the
+		// other, and the sweep then reports a disabled scroll bar with half
+		// its cells undimmed because the ENABLED bar above it painted there.
+		//
+		// It went unnoticed because the progress bar used to paint one row of
+		// its two-row rect, leaving the shared row blank -- so this check was
+		// passing on the strength of a widget under-painting, and reddened
+		// the day that was fixed. Which is the sabotage rule arriving from
+		// the other direction: a check can be held up by a defect elsewhere,
+		// and fixing that defect is what reveals it.
+		//
+		// The overlap itself is a finding about GridSnap and is recorded
+		// rather than worked around -- section 11's own risk, "whether
+		// closing a layout's gap can overlap two widgets", measured. This
+		// check declines to be the place that answers it: it counts the rows
+		// no other widget in the list claims, which is exactly the population
+		// its question is about.
+		auto survey = [&](const QRect &g, const QWidget *self,
+		                  int *glyphs, int *undimmed, int *rgb) {
 			QCoreApplication::processEvents();
 			CellBuffer b(24, 14);
 			render_once(win, b);
 			*glyphs = *undimmed = *rgb = 0;
 			for (int y = g.top() / GridMetrics::ch();
-			     y <= g.bottom() / GridMetrics::ch() && y < b.rows(); ++y)
+			     y <= g.bottom() / GridMetrics::ch() && y < b.rows(); ++y) {
+				bool shared = false;
+				for (const Row &other : rows) {
+					if (other.w == self) continue;
+					const QRect o(other.w->mapTo(&win, QPoint()),
+					              other.w->size());
+					if (y >= o.top() / GridMetrics::ch()
+					    && y <= o.bottom() / GridMetrics::ch())
+						shared = true;
+				}
+				if (shared) continue;
 				for (int x = 0; x < b.cols(); ++x) {
 					const Cell &c = b.at(x, y);
 					if (c.ch.isEmpty() || c.ch == QStringLiteral(" ")) continue;
@@ -6628,6 +6753,7 @@ int suite_widgets() {
 					if (!(c.attrs & Attr::Dim)) ++*undimmed;
 					if (c.fg.kind() == Color::Rgb) ++*rgb;
 				}
+			}
 		};
 
 		int bad_dim = 0, bad_rgb = 0, bad_enabled = 0;
@@ -6638,7 +6764,7 @@ int suite_widgets() {
 			// The paired half: while it is ENABLED, nothing is dim. Without
 			// it, a library that dimmed everything unconditionally would
 			// satisfy every claim below.
-			survey(g, &glyphs, &undimmed, &rgb);
+			survey(g, r.w, &glyphs, &undimmed, &rgb);
 			if (glyphs == 0 || undimmed != glyphs) {
 				printf("FAIL: an enabled widget is drawn at full brightness"
 				       " -- a %s has %d of %d glyphs dim\n",
@@ -6647,7 +6773,7 @@ int suite_widgets() {
 			}
 
 			r.w->setEnabled(false);
-			survey(g, &glyphs, &undimmed, &rgb);
+			survey(g, r.w, &glyphs, &undimmed, &rgb);
 			r.w->setEnabled(true);
 			if (glyphs == 0 || undimmed != 0) {
 				printf("FAIL: and every cell of a disabled one is dim, both"

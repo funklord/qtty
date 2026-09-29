@@ -2763,17 +2763,61 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				const bool horizontal = pb->state & State_Horizontal;
 				const int extent = horizontal ? c.width() : c.height();
 				const int filled = qRound(frac * extent);
-				if (unknown) {
-					for (int i = 0; i < extent; ++i) {
+				// ACROSS THE CROSS AXIS, not one cell of it. The loop below
+				// walks the bar's LENGTH and wrote a single row or column,
+				// so a bar thicker than one cell painted a line and left
+				// the rest of its own rect showing the window ground --
+				// measured in both orientations:
+				//
+				//     horizontal 10x3     |#####:::::|   and two blank rows
+				//     vertical    6x4     |#     |       and five blank columns
+				//
+				// This is the defect the comment above records, on the other
+				// axis: "a meter reading nothing, in the orientation an
+				// application picks precisely because it has a tall space."
+				// An application that gave the bar its width chose that as
+				// deliberately as it chose the height, and the cells inside a
+				// widget's rect are the widget's to paint -- unpainted ones
+				// are not a style's answer, they are the ground showing
+				// through a control.
+				//
+				// Every check here used a fixture exactly one cell thick --
+				// `setGeometry(0, 0, cw, ch * 4)` for the vertical one -- so
+				// the question could not arise in either orientation.
+				// THE WIDGET'S OWN EXTENT IN CELLS, not the cell rect's. They
+				// differ whenever a rect straddles a boundary: a bar one row
+				// tall starting at y=103 with a 19-pixel row covers parts of
+				// rows 5 and 6, and cells_of() reports both -- so filling the
+				// cell rect drew a one-row bar two rows tall. Measured by the
+				// disabled-widget sweep, whose fixture sets spacing to zero
+				// and therefore packs widgets off the grid on purpose: the
+				// second row landed in the NEXT widget's band and reported a
+				// disabled scroll bar with 24 of 48 cells undimmed. The
+				// fixture was right and the first version of this fill was
+				// wrong.
+				//
+				// Dividing the pixel extent is what separates the two: 19/19
+				// is one row however the rect is placed, and a four-row bar is
+				// four. Never below one, because a bar shorter than a row
+				// still has to draw.
+				const int cross = horizontal
+				    ? qMax(1, opt->rect.height() / GridMetrics::ch())
+				    : qMax(1, opt->rect.width() / GridMetrics::cw());
+				const auto lay = [&](int along, const QString &g) {
+					for (int k = 0; k < cross; ++k) {
 						if (horizontal)
-							dev->buffer().put_cluster(c.left() + i, c.top(),
-							                          QStringLiteral("▒"),
+							dev->buffer().put_cluster(c.left() + along,
+							                          c.top() + k, g,
 							                          Color(), Color(), bar);
 						else
-							dev->buffer().put_cluster(c.left(), c.top() + i,
-							                          QStringLiteral("▒"),
+							dev->buffer().put_cluster(c.left() + k,
+							                          c.top() + along, g,
 							                          Color(), Color(), bar);
 					}
+				};
+				if (unknown) {
+					for (int i = 0; i < extent; ++i)
+						lay(i, QStringLiteral("▒"));
 					return;
 				}
 				for (int i = 0; i < extent; ++i) {
@@ -2808,12 +2852,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					                        != pb->invertedAppearance;
 					const bool on = from_start ? i < filled : i >= extent - filled;
 					const QString g = on ? QStringLiteral("█") : QStringLiteral("░");
-					if (horizontal)
-						dev->buffer().put_cluster(c.left() + i, c.top(), g,
-						                          Color(), Color(), bar);
-					else
-						dev->buffer().put_cluster(c.left(), c.top() + i, g,
-						                          Color(), Color(), bar);
+					lay(i, g);
 				}
 				// A value BELOW the minimum is Qt's "no progress yet", and a
 				// freshly constructed QProgressBar is in it -- value -1

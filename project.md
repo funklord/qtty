@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2046 checks, 0 failures. **The duration is 4.7 seconds of user time and
+2047 checks, 0 failures. **The duration is 4.7 seconds of user time and
 it belongs to 2026-09-23, over a suite of 2016** --
 `/usr/bin/time ./build-test/qtty-tests`, best of three on a quiet
 machine (load 0.5): 4.68, 4.71, 4.73 user against 14.6 wall each time.
@@ -966,7 +966,7 @@ Owned by the copyright holder:
 | **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise. 8.248 adds a second obstacle on the ink half alone: ToolTipText is the same black as WindowText here, and `role_of()` keys on the colour, so a hover timer would light the tooltip's ground and leave its text at body text's index | §7.2 |
 | **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect. **Both halves are asserted since 8.75** -- the hover arrives, and the render is byte-identical with the pointer on the control and off it | §7.2 |
 | **Two frames nested with no layout margin draw two rules in adjacent columns.** Faithful to the widget tree -- in pixels they are 1px lines 1px apart -- and on a grid they read as two rules. Merging is not a paint-time trick: the edges are in DIFFERENT cells because the inner rect is one cell inside the outer. Three options with their costs are recorded; the cheapest is to suppress a rule whose neighbour already holds one, which cannot tell nesting from two adjacent framed widgets. Reported by fuzzypickles, and reached again by a QScrollArea | 8.25, 8.26, 8.27 |
-| **~~A read-only line edit is not marked.~~ It is, and has been since the caret-or-mark rule; the row outlived its measurement.** 8.33 measured it rendering identically to an editable one and that was true then. Re-measured 2026-09-21 through a compositor, which is what has the caret: a focused read-only field has its WHOLE field including the brackets reversed and shows no caret, while a focused editable one reverses only its selected text and shows one. The brackets are the difference, and a caretless editor gets the mark precisely because it gets no caret -- so the vocabulary this row said was needed was never needed, the rule already had it. Checked both ways now, so it cannot reopen quietly | 8.33, 8.303 |
+| **~~A read-only line edit is not marked.~~ It is, and has been since the caret-or-mark rule; the row outlived its measurement.** 8.33 measured it rendering identically to an editable one and that was true then. Re-measured 2026-09-21 through a compositor, which is what has the caret: a focused read-only field has its BRACKETS reversed and shows no caret, while a focused editable one reverses only its selected text and shows one. The brackets are the difference, and a caretless editor gets the mark precisely because it gets no caret -- so the vocabulary this row said was needed was never needed, the rule already had it. Checked both ways now, so it cannot reopen quietly | 8.33, 8.303 |
 | **~~A tab's mnemonic does nothing.~~ It works with the conventions on (8.67); what is left is the DEFAULT.** `Alt+S` on a tab labelled "&Second" does not switch to it: the router matches Alt against ACTION text and a tab is not an action. It is therefore left unmarked, on the rule that underlining a key that does nothing is worse than leaving it bare. Whether a terminal should switch tabs by mnemonic at all is the question -- the marking follows the answer | 8.37 |
 | **~~Three of `CursorShape`'s four values do nothing.~~ One of the four has no qtty producer, and that is the answer rather than the gap.** 8.241 emitted DECSCUSR -- `ESC[2 q`, `ESC[4 q`, `ESC[6 q`, steady at every shape, and `CSI 0 SP q` on the way out -- so the three are three different sequences now, and `Compositor::shape_for()` derives Block or Bar from the focus widget's `overwriteMode()` with Hidden for no caret. What has no producer is `Underline`: `overwriteMode()` has two values and already has two shapes, so an underline would need a fourth condition invented for it, and the only candidate is read-only -- which this same index records as an open scope question two rows up, and which is not settled sideways by picking a caret. It is still a value the PUBLIC interface admits and `AnsiBackend` encodes, for an application driving its own loop. Asserted since 8.250, so a producer added later reddens a check rather than arriving unnoticed. The blink-or-steady objection this row carried is answered: steady at every shape, because nothing in this tree can observe a blink's phase | 8.51, 8.241, 8.250 |
 | ~~**A `QMainWindow` application sees nine off-grid warnings it cannot act on.**~~ **Closed in 8.274** -- nine became one, and the one left is a widget the application itself added. The fix is the principle's third form rather than a longer list: a widget placed by a layout Qt defines and an application cannot write down is not the application's to size. Original entry: The suite works around this with `GridGuard::reset()` and an application has no equivalent. `is_exempt()`'s PRINCIPLE covers them exactly -- *"widgets Qt builds for itself, which the application never constructs and cannot size"* -- and its mechanism does not: it keys on `qt_` object names and `Private` class names, and `QStatusBar`, `QSizeGrip` and a central widget placed by `QMainWindowLayout` carry neither. Measured on a window shaped like netcfgd's: **9 violations, 0 forgiven**. The fix is not obviously a longer list -- the code warns in as many words that a list is what somebody adds a tenth entry to without deciding anything | 8.61 |
@@ -17918,6 +17918,92 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.360 A progress bar one cell thick, and the overlap that hid behind it (2026-09-29)
+
+**Same sweep as 8.359, second reading.** A progress bar drew a single row
+or column whatever the widget's size, leaving the rest of its own rect
+showing the window ground:
+
+    horizontal 10x3     |#####:::::|   and two blank rows
+    vertical    6x4     |#     |       and five blank columns
+
+**This is the defect the code's own comment records, on the other axis.**
+That comment says a vertical bar "were drawn as a horizontal bar in their
+top row with the rest of the widget left blank -- a meter reading nothing,
+in the orientation an application picks precisely because it has a tall
+space." The fix made it a column and never asked about width. An
+application that gave the bar its width chose that as deliberately as its
+height, and cells inside a widget's rect are the widget's to paint:
+unpainted ones are not a style's answer, they are the ground showing
+through a control.
+
+**Every fixture was one cell thick on the cross axis** -- the vertical
+check uses `setGeometry(0, 0, cw, ch * 4)` -- so the question could not
+arise in either orientation. That is the third fixture of this shape found
+in two days, after the arrow-key row measured over buttons and the `Ctrl+E`
+row measured from a caret already at the end.
+
+**The extent comes from the widget's PIXELS, not from its cell rect, and
+the first version got that wrong in a way the suite caught.** They differ
+whenever a rect straddles a boundary: a one-row bar starting at y=103 with
+a 19-pixel row covers parts of rows 5 and 6, `cells_of()` reports both, and
+filling the cell rect drew it two rows tall. `opt->rect.height() / ch` is
+one row however the rect is placed. Never below one, because a bar shorter
+than a row still has to draw.
+
+**Then the suite caught something else, and it is the larger finding.**
+With the fill correct, the disabled-widget sweep reported *a scroll bar has
+24 of 48 undimmed*. Measured, in that fixture:
+
+    progress     px y=133..170 h=38  cell rows 7..8
+    scroll bar   px y=163..181 h=19  cell rows 8..9
+
+**The two widgets overlap.** The progress bar is genuinely two rows tall and
+correctly paints both; the scroll bar's rect begins seven pixels before the
+progress bar's ends, so both claim cell row 8. The sweep scans a widget's
+rows across the full buffer width, so the enabled bar's cells were counted
+against the disabled scroll bar.
+
+**It was invisible because a defect was holding the check up.** While the
+progress bar painted one row of its two, the shared row stayed blank and the
+sweep saw only the scroll bar. So this check has been passing on the strength
+of another widget under-painting, and reddened the day that was fixed --
+which is the sabotage rule arriving from the far side: a check can be
+propped up by a defect elsewhere, and repairing that defect is what exposes
+it.
+
+The sweep now counts the rows no other widget in its list claims, which is
+the population its question was always about. **It deliberately does not
+answer the overlap**, because that is section 11's own named risk measured
+at last: "the risk to measure before writing any snapping is whether
+closing a layout's gap can overlap two widgets; one safe case is not a
+proof." Here is a case that is not safe -- a `QVBoxLayout` with spacing 0
+and ten children in fourteen rows, `GridSnap` installed, two widgets
+sharing a row. **Recorded as work rather than taken**: what a snapped
+layout should do when the rows do not fit is a design question, and the
+alternatives -- refuse to snap, shrink somebody, let one win -- are not
+interchangeable.
+
+**And one correction to 0b's read-only row while here.** It says a focused
+read-only field "has its WHOLE field including the brackets reversed", and
+its own next sentence says "the brackets are the difference". The second is
+right: measured through a compositor, a focused read-only field reads
+`R....................R` -- the two brackets and nothing between them --
+and the code marks exactly `c.left()` and `c.right()`. The row's conclusion
+was never in doubt; one clause of it was wrong.
+
+That row also cost this session a wrong reading, which is worth one
+sentence. It was re-opened as a finding -- "a read-only line edit is
+indistinguishable from an editable one" -- on a measurement taken with
+`render_once()` on an UNFOCUSED field, which is the one arrangement where
+the two cannot differ, since the caret is the distinction and
+`render_once()` places none. The row says so in as many words. **The record
+was right, the instrument was wrong, and the row's own "checked both ways
+now, so it cannot reopen quietly" did not stop it reopening** -- because
+what reopened it was not doubt about the claim but a measurement of
+something else that looked like it.
 
 
 ### 8.359 A hole in a selected tab's highlight, where the close button is (2026-09-29)
