@@ -18256,6 +18256,16 @@ five of the names it lists and finding the old spellings gone from `src/`
 and `include/`. **Three sections, one cause**: closing an item is done
 under the item's heading, and nothing walks the pointers.
 
+**And §7 was swept as well, which BOUNDS the shape rather than extending
+it.** It is the largest status section and the obvious next place to
+suspect. Swept 2026-09-30 over the claims naming a symbol, those being the
+ones one grep settles, and it came back empty: the gap claims there are
+struck through and verified done (`GridGuard` exists, `pen_to_fg` is
+gone), or historical narrative, or **still true** -- `Qtty::focusWidget()`
+has no caller in `src`, and every match for it there is a comment. So the
+three above are the population rather than a sample of a rotten
+document.
+
 **A list of unverified reports
 decays faster than the tree it describes**, because the work that closes
 an item is done under the item's own heading and never touches the roster.
