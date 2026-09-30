@@ -18076,6 +18076,30 @@ replacement. It reported the hoist 160 ms slower and was right to. A
 speedup measured only on the shape you had in mind is a proxy tested where
 you knew the answer.
 
+**A fourth explanation for the self-timeout died here too, and it had
+arithmetic behind it.** `suite_backend`'s child reaper polls `waitpid`
+with `WNOHANG` and `usleep(1000)`, `patience` times -- 1000 natively and
+**60000 under valgrind**, which is a sixty-second ceiling per child at
+fifteen call sites, so a latent ~900 s. Natively the worst child uses 372
+of its 1000, which is only 2.7x headroom and looked like a tight budget
+about to be paid. Measured under valgrind instead of extrapolated:
+
+    worst child   510 of 60000 polls (0.85%)
+    suite_backend 17 s under valgrind, all children reaped
+
+So the ceiling is never approached and the waits are not where the time
+goes. **The 2.7x native headroom was the misleading figure**: it invites
+scaling by valgrind's factor, and the children do not slow by that factor
+because they spend their time being forked and killed rather than
+executing instrumented code.
+
+**And that measurement was first taken against the wrong binary.** valgrind
+was pointed at `build-dbg-test` while the instrumentation had been built
+into `build-test`, so the run produced no counters at all -- caught by
+asking the artifact (`strings` finds zero copies of the instrumentation,
+and its mtime predates the build by eleven minutes) rather than by reading
+an empty grep as "no children polled".
+
 ### 8.375 Two checks with one message (2026-09-30)
 
 **`sabotage.py` reported "of the 2058 the suite runs" where `count-check`
