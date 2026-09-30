@@ -17953,6 +17953,39 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.377 The page reader never left its section (2026-09-30)
+
+**`page_table_rows()` found its section and then read to the end of the
+file.** `in_section` was set and never cleared, so a table that had been
+renamed or removed was answered by the next table BELOW carrying the same
+header. `| Key |` heads a table in three of the page's sections, which is
+what makes that reachable rather than theoretical.
+
+**Measured by deleting that table's header row on the page and asking the
+built suite**, not by reading the loop:
+
+    unbounded   info: the page promises 5 key row(s); this check drives 16
+    bounded     info: the page promises 0 key row(s); this check drives 16
+
+The five are `## Moving between pages and windows`' rows -- `Ctrl+Tab`, the
+tab-bar arrows, `Ctrl+PageDown`. The gate failed either way, and that is
+the point: **it failed while naming the wrong table**, sending a reader to
+a section nobody had touched. Bounded, it says the page promises none,
+which points at the table that went.
+
+**Nothing is wrong today, and that is not the reason it was fixed.** No two
+tables on the page share a first-column list, and no `##` heading is a
+prefix of another -- both measured, so no caller could have been handed
+another table's rows. But those are properties of the PAGE, which is this
+project's deliverable and the file edited most; the reader carries the
+bound so that they stop being load-bearing.
+
+**The bound is the heading LEVEL**, counted off the section argument, so a
+`###` subsection inside a `##` section does not end the scan while a
+sibling `##` does. That matters because one caller names a `###` section
+of its own -- the pointer-kind table under "One test that uses them
+together" -- and a bound keyed on `## ` alone would have read past it.
+
 ### 8.376 Where the valgrind arm spends its time (2026-09-30)
 
 **8.374 left the self-timeout unexplained and named `vgdb` as the

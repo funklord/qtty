@@ -25,6 +25,27 @@ static QStringList page_table_rows(const QString &section,
 	if (!page.open(QIODevice::ReadOnly | QIODevice::Text)) return out;
 	const QStringList lines =
 	    QString::fromUtf8(page.readAll()).split(QLatin1Char('\n'));
+	// The section's own heading level, so that the scan can END at the next
+	// heading of that level or above. It did not: `in_section` stayed true to
+	// the end of the file, so a table that had been renamed or removed was
+	// answered by the next table BELOW carrying the same header.
+	//
+	// `| Key |` heads a table in three sections, which is what makes that
+	// reachable. Measured against the page with "## What already works"'s
+	// table header deleted: the reader returned the FIVE rows of "## Moving
+	// between pages and windows" -- `Ctrl+Tab`, the tab-bar arrows,
+	// `Ctrl+PageDown` -- and its gate failed saying the page promises five
+	// key rows where the check drives sixteen. Loud, and pointing at the
+	// wrong table. Bounded, it returns nothing and the gate says the page
+	// promises none, which points at the table that went.
+	//
+	// No caller could be given the wrong ROWS today: no two tables on the
+	// page share a first-column list, and no `##` heading is a prefix of
+	// another. Both measured, and both are properties of the page rather
+	// than of this reader, which is why the reader carries the bound.
+	int level = 0;
+	while (level < section.size() && section.at(level) == QLatin1Char('#'))
+		++level;
 	bool in_section = false, in_table = false;
 	for (const QString &line : lines) {
 		if (line.startsWith(section)) {
@@ -33,6 +54,10 @@ static QStringList page_table_rows(const QString &section,
 		}
 		if (!in_section) continue;
 		if (!in_table) {
+			int depth = 0;
+			while (depth < line.size() && line.at(depth) == QLatin1Char('#'))
+				++depth;
+			if (depth > 0 && depth <= level) break;      // out of the section
 			if (line.startsWith(header)) in_table = true;
 			continue;
 		}
