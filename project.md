@@ -18100,6 +18100,23 @@ asking the artifact (`strings` finds zero copies of the instrumentation,
 and its mtime predates the build by eleven minutes) rather than by reading
 an empty grep as "no children polled".
 
+**The lens that fix suggests comes back EMPTY, which is worth a paragraph
+so nobody runs it again.** `'x' + QByteArray::number(n)` appears at 38
+sites in `src/`, and the obvious next move is to sweep them. Only a hot
+one pays, and the ANSI wire path is not hot: `emit_sgr()` short-circuits
+when the style has not changed, so `sgr_sequence()` runs once per style RUN
+rather than per cell. Measured, twenty whole-frame `present()` calls on the
+200x60 fixture:
+
+    ANSI wire path    1.55 ms per frame
+    sixel path        471 ms per frame (after 8.376's fix)
+
+Three orders of magnitude apart, and 1.55 ms is well inside section 11's
+16 ms. **The sixel encoder was an outlier rather than an instance**, and
+the thing that made it one is that its concatenation sat inside a
+per-run lambda with thousands of iterations per frame. The pattern is not
+the defect; the loop it sits in is.
+
 ### 8.375 Two checks with one message (2026-09-30)
 
 **`sabotage.py` reported "of the 2058 the suite runs" where `count-check`
