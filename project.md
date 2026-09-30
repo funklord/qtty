@@ -18023,9 +18023,69 @@ render makes it say 0 bytes and reddens the check, and an ordinary run
 says 487. So a future occurrence is diagnosable from its log alone, by
 whoever's arm reddens, without this investigation being repeated.
 
-**What still would advance it**: if it recurs, sample the fixture's own
-state at the assert rather than changing its timing -- the spin is the
-suspect and adjusting it is how the evidence gets destroyed.
+**And giving the spin a real wait found what it was hiding, which is a
+LIBRARY defect and not a fixture one.** The fifty iterations take 0 ms --
+measured, three runs -- because `processEvents()` with default flags does
+not wait, so the handover's notifier almost never ran before the render.
+Replaced with the suite's own `settle(100)`, which pumps against a wall
+clock, and the fixture was run ten times with both captures reported:
+
+    handover wrote 519 (32 setup + the window's 487)   text present    5
+    handover wrote 32  (setup only)                    text NOWHERE    5
+    the frame after the handover                        0 bytes, all 10
+
+**So with the handover actually processed, half the runs never rewrite the
+window at all.** Not in the handover, not in the frame after it, and not
+later: a further `settle(100)` and a second render wrote 0 bytes and found
+no text in six further runs. The screen is left cleared with nothing on
+it.
+
+**The original fixture passed BY suppressing the handover.** With the 0 ms
+spin the notifier had no chance to run, so the redraw always landed inside
+`render_now()` and the check was green 27 times in 28. The one failure was
+a run where the notifier did get in -- which is why it looked like flake
+and was the truth leaking through.
+
+**The user-visible symptom, if this is what it looks like**: coming back
+from a shell-out, or from `Ctrl+Z` and `fg`, to a screen missing the
+window's content until something else happens to change a cell.
+
+**The mechanism, read out of the code rather than guessed.** The screen is
+cleared SYNCHRONOUSLY and the baseline is invalidated TWO HOPS LATER:
+
+    SIGCONT handler   enter_terminal() re-enters the alternate screen --
+                      the 32 bytes -- and bumps s_handovers, which is
+                      sig_atomic_t because a handler writes it
+    GUI thread        read_winch() drains the self-pipe and bumps the
+                      member handovers_
+    next frame        the compositor asks backend_->handovers(), sees it
+                      move, and resets prev_ -- the diff baseline
+
+**Between the first line and the third, a frame diffs against a baseline
+that no longer describes the screen**, finds nothing changed, and writes
+nothing. The screen stays as `enter_terminal()` left it, which is empty.
+Whether that window is hit is scheduling, which is the 50/50 the
+measurement shows, and `handovers()` is the only consumer of the count --
+one call site, in `compositor.cpp`.
+
+**The counter the handler can safely bump already exists.** `s_handovers`
+is written in the handler; `handovers_` is what `handovers()` exposes and
+it lags by a pipe drain. So the repair is likely to be small -- let the
+exposed count include a handover the handler has recorded but the event
+loop has not yet consumed -- and it is a change to signal-handling
+behaviour, where the separation between the two counters is deliberate and
+documented. **Not made at the end of a long session**, and not the
+fixture's to paper over either.
+
+**The fixture is restored to its committed form**, so the tree is green
+and the evidence is not buried under a half-diagnosis.
+
+**The fixture change that revealed it is worth redoing deliberately** --
+`settle()` in place of the spin, and the assertion on the union of both
+captures, since which capture carries the redraw is a schedule rather than
+a contract. Both were measured here and both are correct; what stopped
+them going in is that the union form still failed 2 of 10 and that failure
+is the library's, not the fixture's.
 
 ### 8.378 The build was not warning-free, and every log said rc=0 (2026-09-30)
 
