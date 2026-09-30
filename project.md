@@ -17953,6 +17953,96 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.376 Where the valgrind arm spends its time (2026-09-30)
+
+**8.374 left the self-timeout unexplained and named `vgdb` as the
+instrument that would settle it. The conditions arrived unasked -- another
+session took the machine to load 72 -- and the instrument worked.**
+
+A bounded watcher sampled the arm's progress every 30 s and, once it had
+not advanced for 90 s, asked valgrind for its guest stacks over valgrind's
+own pipe: `vgdb --pid=N v.info scheduler`. A monitor command rather than a
+`gdb` attach, because `gdb` on that pid answers about valgrind's internals
+instead of the suite's, and this tree has already paid 15 GB of resident
+memory for debuggers left attached to stopped processes.
+
+     30s n=659    90s n=1542   180s n=2041
+     60s n=1027  120s n=1981   210s n=2041   240s n=2041
+
+    Thread 1: status = VgTs_Runnable
+      at   malloc
+      by   QByteArray::number(int, int)
+      by   Qtty::encode_sixel(...)::{lambda#1}     graphics.cpp:202
+      by   Qtty::encode_sixel(QImage const&)       graphics.cpp:213
+      by   AnsiBackend::present_pixels(...)    ansi_backend.cpp:1644
+      by   suite_budget()                      suite_budget.cpp:426
+
+**`VgTs_Runnable`, not blocked -- and THIS RUN FINISHED CLEAN.** It sat on
+2041 for more than ninety seconds and then completed all 2059 checks,
+`test-valgrind: clean`, rc=0, at load 35 to 72. So what the stack caught is
+the encoder being SLOW, not anything hanging, and the self-timeout is what
+happens when the total crosses 3000 s rather than when something stops.
+8.374's reading -- asleep in `ppoll` at 31% of a core -- was another moment
+of the same crawl.
+
+**That the arm passed at load 72 is worth as much as the stack.** Three
+earlier runs self-timed out and this one did not, which is what
+"intermittent" means and is the reason a single green arm is not evidence
+that the cost has gone.
+
+**A number already measured says the same and nobody connected it.** Of
+the twelve suites run separately under valgrind, `budget` was the slowest
+at 45 s: the one suite that calls `present_pixels()` on a full frame.
+
+**What the encoder does, read rather than profiled.** For every band it
+asks, for every palette colour, whether that colour appears anywhere in
+the band -- a full six-by-width scan per colour, before the emit pass that
+scans again. With a 256-colour palette that is on the order of 256 scans
+of the image where one pass would do, and each emitted run costs
+`'!' + QByteArray::number(n) + char(...)`, which is two or three
+temporaries. Under memcheck every one of those mallocs costs about a
+hundred times its native price, which is why the arm surfaces this and an
+ordinary run does not.
+
+**It is NOT the same position as the three earlier stops.** Those were
+1466, 1466 and 1470, which is early `runtime`; this is 2041, in `budget`.
+One stack does not cover both, and the earlier stall's stack was never
+captured. **So this names one slow spot and does not claim it is the
+only one** -- which is the distinction 8.374 was written to keep.
+
+**The obvious repair was the wrong one, and measuring said so.** Hoisting
+the per-colour presence test to one pass per band is what the shape of the
+loop invites, and it is not a win: on a dense 200-colour frame it went
+790 ms to 853 ms, and on flat regions it was 29 ms either way. The old
+scan breaks on its FIRST match, so where a colour IS present it costs
+almost nothing -- and an antialiased frame has most of its greys in most
+bands. The hoist pays a full pass per band to answer a question the old
+code was already answering cheaply.
+
+**What the stack was actually pointing at is the allocation.** It was
+inside `malloc` under `QByteArray::number`, called from the run-emitting
+lambda, and that line read
+`out += '!' + QByteArray::number(run_len) + char(run_char)` -- two
+temporaries per run before the append, on a path that emits thousands of
+short runs per frame. Appending the three pieces in place instead emits
+the same bytes and allocates only what `number()` needs.
+
+    the suite's own frame, 2000x1140, three samples each
+      concatenated   548, 557, 566 ms
+      appended       468, 466, 480 ms
+
+**Byte-exact rather than benchmarked alone**, because a faster encoder
+that emits different bytes is a different encoder. Seven images -- solid,
+long runs, few colours, many colours, a 1x1, a dense frame and flat
+regions -- hashed before and after: every size and every sha identical.
+
+**And the fixture that refuted the hoist is the part worth keeping.** The
+first one cycled a colour per pixel, which puts every colour in every band
+-- the best case for the code being replaced and the worst for the
+replacement. It reported the hoist 160 ms slower and was right to. A
+speedup measured only on the shape you had in mind is a proxy tested where
+you knew the answer.
+
 ### 8.375 Two checks with one message (2026-09-30)
 
 **`sabotage.py` reported "of the 2058 the suite runs" where `count-check`

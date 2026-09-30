@@ -195,12 +195,29 @@ QByteArray encode_sixel(const QImage &src) {
 			if (!present) continue;
 			if (!first_color) out += '$';          // carriage return within band
 			first_color = false;
-			out += '#' + QByteArray::number(c);
+			// APPENDED rather than concatenated. `'#' + QByteArray::number(c)`
+			// builds a temporary to hold the sum and then copies it into
+			// `out`; the run form below built two, one per `+`. Appending in
+			// place emits the same bytes in the same order and allocates only
+			// what number() itself needs.
+			//
+			// It is the run form that matters: a vgdb backtrace of the suite
+			// under valgrind, taken while it sat in this function, was inside
+			// malloc under QByteArray::number called from this lambda. A
+			// frame of antialiased text is thousands of short runs, so this
+			// is the hot line rather than the register header above it.
+			out += '#';
+			out += QByteArray::number(c);
 			int run_char = -1, run_len = 0;
 			auto flush = [&] {
 				if (run_len <= 0) return;
-				if (run_len > 3) out += '!' + QByteArray::number(run_len) + char(run_char);
-				else for (int i = 0; i < run_len; ++i) out += char(run_char);
+				if (run_len > 3) {
+					out += '!';
+					out += QByteArray::number(run_len);
+					out += char(run_char);
+				} else {
+					for (int i = 0; i < run_len; ++i) out += char(run_char);
+				}
 			};
 			for (int x = 0; x < w; ++x) {
 				int bits = 0;
