@@ -3588,6 +3588,21 @@ int suite_backend() {
 					          && moved.contains("\033[?25"),
 					      "while a frame that writes cells places the cursor"
 					      " again, the cells having moved it");
+					// PRINTED WHETHER OR NOT IT HOLDS, because the one
+					// time this check has gone red -- once in 28 runs,
+					// 8.379 -- the log said which check failed and nothing
+					// about why, and the two candidate causes are
+					// distinguishable only by what the frame wrote. An
+					// EMPTY frame means the diff found nothing to send, so
+					// the handover never invalidated the baseline; a
+					// non-empty one that lacks the text means it sent
+					// something else. Those want opposite fixes, and the
+					// next occurrence should not have to be reproduced to
+					// tell them apart.
+					printf("info: the frame after the handover wrote %d"
+					       " byte(s)%s\n", int(again.size()),
+					       again.contains("still here")
+					           ? "" : " and NOT the window's own text");
 					CHECK(again.contains("still here"),
 					      "but a frame after the terminal was handed back"
 					      " writes it again, the handover having cleared the"

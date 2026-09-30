@@ -18003,11 +18003,29 @@ condition never arrives, the fault is the LIBRARY's, which is the thing
 such a change would hide. That is the disagreeing-model case: the check is
 the independent witness, and the first hypothesis is that it is right.
 
-**What would advance it**, in order of cost: run the arm repeatedly and
-keep the whole output whenever it reddens, since the failing frame's bytes
-are what distinguish a stale baseline from an unpropagated signal; and if
-it recurs, sample the fixture's own state at the assert rather than
-changing its timing.
+**The first thing that would advance it is done, and it changes nothing
+about when the check fails.** The fixture now prints what the frame wrote,
+whether or not the assertion holds:
+
+    passing        info: the frame after the handover wrote 487 byte(s)
+    forced empty   info: the frame after the handover wrote 0 byte(s)
+                         and NOT the window's own text
+
+**That is the distinction the two causes turn on.** An empty frame means
+the diff found nothing to send, so the handover never invalidated the
+baseline; a non-empty one lacking the text means something else went out.
+The one failure recorded above said which check failed and nothing about
+which of those it was, so it could not be read without reproducing it --
+and it has not reproduced in 27 further runs.
+
+**Seen to produce both readings** rather than merely added: skipping the
+render makes it say 0 bytes and reddens the check, and an ordinary run
+says 487. So a future occurrence is diagnosable from its log alone, by
+whoever's arm reddens, without this investigation being repeated.
+
+**What still would advance it**: if it recurs, sample the fixture's own
+state at the assert rather than changing its timing -- the spin is the
+suspect and adjusting it is how the evidence gets destroyed.
 
 ### 8.378 The build was not warning-free, and every log said rc=0 (2026-09-30)
 
