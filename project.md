@@ -17957,6 +17957,58 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.379 One failure in twenty-eight runs, and no fix attempted (2026-09-30)
+
+**A behavioural check failed once under valgrind and has not failed
+since.** `make test-valgrind` against `5096b6b` returned exit 1 -- a
+failure, not the self-timeout 8.374 is about -- with 2052 passing,
+memcheck reporting 0 errors from 0 contexts, and one red:
+
+    FAIL: but a frame after the terminal was handed back writes it
+          again, the handover having cleared the screen the diff was
+          measured against
+
+**What it guards is a real contract rather than a detail.** After a
+handover the child has cleared the screen, so qtty's diff baseline no
+longer describes what the terminal shows and the next frame must rewrite
+content instead of diffing against it. If that is unreliable, the symptom
+is coming back from a shell-out to a stale or blank screen.
+
+**Reproduction attempts, none successful:**
+
+    full run, valgrind, load 36     1 run    1 FAILURE
+    backend alone, valgrind         5 runs   0
+    full run, native, load 12-24   20 runs   0
+    full run, valgrind, load 28     2 runs   0
+
+One in twenty-eight, and twenty-seven of those in configurations that have
+never failed. **Recorded as observed, not as flake and not as a bug.**
+
+**The candidate mechanism is structural, and this tree has the precedent.**
+The fixture raises `SIGCONT`, spins `QCoreApplication::processEvents()`
+**fifty times**, then renders and asserts on what was written. Fifty is a
+fixed count rather than a wait for a condition, so if the signal's effect
+has not propagated within it, the render diffs against the stale baseline,
+writes nothing, and the check goes red. The modal-dialog fixture a few
+hundred lines away was fixed for exactly this and says so: "The first
+version read `last_frame()` from a single 10 ms timer and assumed the
+compositor had drawn the dialog by then -- true on an ordinary run, and a
+race it loses under valgrind."
+
+**No fix attempted, and the reason is the rule rather than caution.** The
+failure cannot be reproduced here, so a fix cannot be seen to fail, and a
+check is untested until it has been. Replacing the spin with a wait for
+the condition would look like a repair and be unverifiable -- and if the
+condition never arrives, the fault is the LIBRARY's, which is the thing
+such a change would hide. That is the disagreeing-model case: the check is
+the independent witness, and the first hypothesis is that it is right.
+
+**What would advance it**, in order of cost: run the arm repeatedly and
+keep the whole output whenever it reddens, since the failing frame's bytes
+are what distinguish a stale baseline from an unpropagated signal; and if
+it recurs, sample the fixture's own state at the assert rather than
+changing its timing.
+
 ### 8.378 The build was not warning-free, and every log said rc=0 (2026-09-30)
 
 **`-Wall -Wextra` is on every translation unit here, and two warnings had
