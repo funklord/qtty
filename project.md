@@ -18023,69 +18023,63 @@ render makes it say 0 bytes and reddens the check, and an ordinary run
 says 487. So a future occurrence is diagnosable from its log alone, by
 whoever's arm reddens, without this investigation being repeated.
 
-**And giving the spin a real wait found what it was hiding, which is a
-LIBRARY defect and not a fixture one.** The fifty iterations take 0 ms --
+**Giving the spin a real wait changes what the check reports, and the
+conclusion first written here from that was wrong.** The spin takes 0 ms --
 measured, three runs -- because `processEvents()` with default flags does
-not wait, so the handover's notifier almost never ran before the render.
-Replaced with the suite's own `settle(100)`, which pumps against a wall
-clock, and the fixture was run ten times with both captures reported:
+not wait. Replaced with the suite's own `settle(100)`, which pumps against
+a wall clock, the fixture reports:
 
-    handover wrote 519 (32 setup + the window's 487)   text present    5
-    handover wrote 32  (setup only)                    text NOWHERE    5
-    the frame after the handover                        0 bytes, all 10
+    2026-09-30, load ~29
+      assertion on the second capture alone       7 of 10 red
+      assertion on the union of both captures     2 of 10 red
+      a later run of the same union form          5 of 10 red
+      the handover wrote 519 (32 setup + 487) or 32 (setup only), and
+        that correlated exactly with pass and fail
+    2026-10-01, quieter machine
+      the union form                              0 of 12 red
 
-**So with the handover actually processed, half the runs never rewrite the
-window at all.** Not in the handover, not in the frame after it, and not
-later: a further `settle(100)` and a second render wrote 0 bytes and found
-no text in six further runs. The screen is left cleared with nothing on
-it.
+**~~This is a library defect: half the runs never rewrite the window.~~
+That was written here and the control refutes it.** The fix it proposed --
+`handovers()` counting a handover the signal handler has recorded but the
+event loop has not consumed --
 
-**The original fixture passed BY suppressing the handover.** With the 0 ms
-spin the notifier had no chance to run, so the redraw always landed inside
-`render_now()` and the check was green 27 times in 28. The one failure was
-a run where the notifier did get in -- which is why it looked like flake
-and was the truth leaking through.
+    return handovers_ + (s_handovers != seen_handovers_ ? 1 : 0);
 
-**The user-visible symptom, if this is what it looks like**: coming back
-from a shell-out, or from `Ctrl+Z` and `fg`, to a screen missing the
-window's content until something else happens to change a cell.
+was written, built clean, and then **reverted only on the library side and
+the fixture run again: 0 failures of 12, exactly as with it.** The check
+cannot tell the fix from its absence, so nothing here demonstrates the fix
+does anything, and it was not pushed. A change to signal-handling
+behaviour that its own control cannot distinguish from no change is a
+guess with a commit message.
 
-**The mechanism, read out of the code rather than guessed.** The screen is
-cleared SYNCHRONOUSLY and the baseline is invalidated TWO HOPS LATER:
+**And the mechanism that conclusion rested on does not survive either.**
+It assumed the pipe drain is slow enough for a frame to slip between
+`enter_terminal()` clearing the screen and the compositor resetting
+`prev_`. But `read_winch()` plausibly runs inside the FIRST
+`processEvents()` -- a same-process pipe write is ready at once -- which
+would mean the original fixture passed because the invalidation did
+arrive. On that reading the 519-byte runs are the FrameScheduler's own
+timer firing during the 100 ms wait I added, its full frame then discarded
+by the `take()` below it, which is an artifact of the wait rather than a
+race in the library.
 
-    SIGCONT handler   enter_terminal() re-enters the alternate screen --
-                      the 32 bytes -- and bumps s_handovers, which is
-                      sig_atomic_t because a handler writes it
-    GUI thread        read_winch() drains the self-pipe and bumps the
-                      member handovers_
-    next frame        the compositor asks backend_->handovers(), sees it
-                      move, and resets prev_ -- the diff baseline
+**Two readings, and the evidence does not choose between them.** What is
+established: the spin is 0 ms; the union form's failure rate moved from 5
+of 10 to 0 of 12 between a loaded machine and a quiet one; and the library
+change makes no measurable difference to either. What is not established:
+that anything in `src/` is wrong.
 
-**Between the first line and the third, a frame diffs against a baseline
-that no longer describes the screen**, finds nothing changed, and writes
-nothing. The screen stays as `enter_terminal()` left it, which is empty.
-Whether that window is hit is scheduling, which is the 50/50 the
-measurement shows, and `handovers()` is the only consumer of the count --
-one call site, in `compositor.cpp`.
+**What would settle it is a DETERMINISTIC reproduction**, not another load.
+Force the order rather than hoping for it: render with the pipe
+deliberately undrained, and separately with it drained, and compare. A
+condition reproduced only when the machine is busy cannot support a claim
+about the library, and this entry made one anyway.
 
-**The counter the handler can safely bump already exists.** `s_handovers`
-is written in the handler; `handovers_` is what `handovers()` exposes and
-it lags by a pipe drain. So the repair is likely to be small -- let the
-exposed count include a handover the handler has recorded but the event
-loop has not yet consumed -- and it is a change to signal-handling
-behaviour, where the separation between the two counters is deliberate and
-documented. **Not made at the end of a long session**, and not the
-fixture's to paper over either.
-
-**The fixture is restored to its committed form**, so the tree is green
-and the evidence is not buried under a half-diagnosis.
-
-**The fixture change that revealed it is worth redoing deliberately** --
-`settle()` in place of the spin, and the assertion on the union of both
-captures, since which capture carries the redraw is a schedule rather than
-a contract. Both were measured here and both are correct; what stopped
-them going in is that the union form still failed 2 of 10 and that failure
-is the library's, not the fixture's.
+**The shape is the one `running-code.md` warns about, met from the other
+side.** A comfortable explanation ended the investigation -- here the
+comfortable one was a LIBRARY bug rather than an environmental story, and
+it was more attractive precisely because it was the less flattering
+answer. What reopened it was a control that cost one rebuild.
 
 ### 8.378 The build was not warning-free, and every log said rc=0 (2026-09-30)
 
