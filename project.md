@@ -17990,7 +17990,7 @@ sibling `##` does. That matters because one caller names a `###` section
 of its own -- the pointer-kind table under "One test that uses them
 together" -- and a bound keyed on `## ` alone would have read past it.
 
-### 8.376 Where the valgrind arm spends its time (2026-09-30)
+### 8.376 What the valgrind arm spends its time on (2026-09-30)
 
 **8.374 left the self-timeout unexplained and named `vgdb` as the
 instrument that would settle it. The conditions arrived unasked -- another
@@ -18103,6 +18103,30 @@ into `build-test`, so the run produced no counters at all -- caught by
 asking the artifact (`strings` finds zero copies of the instrumentation,
 and its mtime predates the build by eleven minutes) rather than by reading
 an empty grep as "no children polled".
+
+**One stack sample is not a profile, and this entry rested on one until it
+was given 36.** Sampling the guest every four seconds through a COMPLETED
+valgrind run -- `vgdb v.info scheduler` in a bounded loop, no stall needed
+and no load manufactured -- and attributing each sample by its innermost
+frame:
+
+    malloc / new / free / delete / detach   24 of 36   (67%)
+    stack mentions text shaping or ICU       5
+    stack mentions Fusion style painting     4
+    stack mentions the sixel path            3
+
+**So the run is allocation-bound across the whole suite, and the sixel
+encoder is one site among several rather than the cost centre.** That is
+the honest correction to this entry's original framing, and it explains
+something the encoder fix left odd: 15% off `encode_sixel` barely moved
+the arm's total, because `encode_sixel` was never most of it.
+
+**What the profile does NOT support** is worth pinning beside it. 36
+samples is small; only the innermost six frames were captured, so caller
+attribution is truncated and the three subsystem counts are floors rather
+than shares; and `vgdb` stops the guest at each sample, so the instrument
+perturbs what it measures. It is enough to retire "the arm spends its time
+in the sixel encoder" and not enough to name a replacement.
 
 **The lens that fix suggests comes back EMPTY, which is worth a paragraph
 so nobody runs it again.** `'x' + QByteArray::number(n)` appears at 38
