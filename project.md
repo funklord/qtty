@@ -17957,6 +17957,38 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.378 The build was not warning-free, and every log said rc=0 (2026-09-30)
+
+**`-Wall -Wextra` is on every translation unit here, and two warnings had
+been riding along.** `test/suite_widgets.cpp:1165` declared
+`const int cw = GridMetrics::cw(), ch = GridMetrics::ch();` in a block
+that uses neither. Removed, and a build of the library, the suite, the
+four tools and the example emits none.
+
+**Why they survived is two mechanisms, not carelessness.** An incremental
+build does not recompile a file nobody has touched, so a warning prints
+once -- in the commit that introduced it -- and never again. And `-Wall`
+output survives a green exit status, so a log read for `rc=` or through
+`tail` drops it in silence. This session read build logs about thirty
+times and not once for warnings.
+
+**And there was a trap waiting for anybody who did look.** The scratch
+logs of one day carry 68 warnings -- 42 `'place' set but not used`, 13
+each of `cw` and `ch` -- and 66 of them are from SABOTAGE builds, where
+code broken on purpose produces unused variables by construction. So a
+grep for `warning:` over the logs returns 68 real-looking hits of which
+two are real. **That is the wrong ratio for a habit to survive**, which is
+why the measurement that works is a clean build from `git archive HEAD`
+rather than a sweep of what the day left behind.
+
+**Not fixed: a gate.** `-Werror`, or a `check` arm that counts warnings,
+would hold this closed, and it is a convention change rather than a
+bugfix -- `working-practice.md` says that is its own piece of work and not
+something to adjust while passing through. Recorded with the measurement
+that makes it cheap for whoever decides it: **the tree is at zero today,
+so a gate added now starts green** rather than arriving with a backlog to
+clear first.
+
 ### 8.377 The page reader never left its section (2026-09-30)
 
 **`page_table_rows()` found its section and then read to the end of the

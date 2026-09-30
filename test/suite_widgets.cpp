@@ -1162,7 +1162,6 @@ int suite_widgets() {
 	// has to hold for -- a combo editor is wider than the text it replaces
 	// and carries its own mark.
 	{
-		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 		class ComboCreator : public QItemEditorCreatorBase {
 		public:
 			QWidget *createWidget(QWidget *parent) const override {
