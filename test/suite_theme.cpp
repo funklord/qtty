@@ -625,8 +625,8 @@ int suite_theme() {
 		          == saved_palette.color(QPalette::Link)
 		      && theme().window_text == saved_theme.window_text
 		      && theme().accent == saved_theme.accent,
-		      "and both the palette and the theme are put back, so no later "
-		      "check inherits this fixture");
+		      "and this fixture's Link, window text and accent are put back, "
+		      "so no later check inherits them");
 	}
 
 	// ---- the two roles that stay out of the foreground list, and why ------
@@ -996,8 +996,8 @@ int suite_theme() {
 		CHECK(QGuiApplication::palette().color(QPalette::Base)
 		          == saved_palette.color(QPalette::Base)
 		      && theme().base == saved_theme.base,
-		      "and both the palette and the theme are put back, so no later "
-		      "check inherits this fixture");
+		      "and this fixture's Base is put back, so no later check "
+		      "inherits it");
 	}
 
 	return fails;

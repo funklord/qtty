@@ -17953,6 +17953,46 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.375 Two checks with one message (2026-09-30)
+
+**`sabotage.py` reported "of the 2058 the suite runs" where `count-check`
+says 2059.** Two instruments over one population, disagreeing by one,
+which is 8.370's shape met again in a different pair.
+
+**The cause was not what it was last time.** The ready answer was the
+process-group skip: run the suite as its own session's group and one check
+steps over itself, giving 2058 passes and a skip. Measured from a python
+subprocess, the way the harness invokes it -- `PASS=2059 SKIP=0`. Not
+that, and checking took one command.
+
+**The word in its own sentence was the answer.** It counts DISTINCT check
+messages, and two checks carried the same one:
+
+    suite_theme.cpp:628   restores Link, window text and accent
+    suite_theme.cpp:999   restores Base
+
+Both close a fixture by putting the palette and the theme back, and both
+said "and both the palette and the theme are put back, so no later check
+inherits this fixture".
+
+**What that costs is small and exact.** If either fixture leaks, the output
+names a check twice and a reader cannot tell which leaked. And a sabotage
+spec names a check BY ITS TEXT, with the harness requiring the name to
+match exactly one passing check -- so neither of these could have been
+named in one. No spec names it, so the hazard was latent rather than live.
+
+**Each message says what it restores now**, and the suite's 2059 lines are
+2059 distinct messages. **The tool's sentence became true without the tool
+being touched**, which is the right direction: its number was an accurate
+count of a population the suite should not have had, and editing the tool
+to match would have hidden the duplicate instead of removing it.
+
+**Its refusal belongs beside the finding.** Re-running the sabotage to
+confirm the new denominator, it declined -- "what it would restore may be
+somebody else's work in progress", naming the one dirty file. That is
+`CLAUDE.md`'s rule about discarding another session's work, built into a
+tool rather than left to whoever runs it.
+
 ### 8.374 The valgrind self-timeout is not the scheduler (2026-09-29)
 
 **`make test-valgrind` has now self-timed out three times, and the entry
