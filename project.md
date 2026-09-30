@@ -2959,9 +2959,13 @@ And one raised by the tree rather than by the design:
 - ~~**OQ-6.** Are PascalCase type names inside `namespace Qtty` a settled
   exception to the global style rule?~~ **Closed 2026-08-26 by the
   copyright holder: yes, for type names and nothing wider.** See §8.5.
-  It opened a follow-on that is not an open question but a piece of work:
-  the members are still `camelCase` and the rule says they should not be.
-  §11 carries it.
+  It opened a follow-on that was work rather than a question, and **that
+  work is done**: 117 members moved to `snake_case`, and the only
+  spellings of `setFocusWidget` left in the tree are two in a `grid.h`
+  comment explaining the rename. §11 carries the method and the proof.
+  This line went on saying "the members are still `camelCase`" for as
+  long as it took somebody to follow the pointer -- 8.373's shape again,
+  in a third section.
 
 ## 5. Risks
 
@@ -18243,7 +18247,16 @@ one is a question already recorded here.** Nothing on the list was work.
 **Every closed one says so in its own comment, in the past tense.** The
 code records what it learned; the list does not read the code. So this is
 8.372's lesson at a larger scale, and the scale is the argument: one stale
-pointer is an oversight, eight is a shape. **A list of unverified reports
+pointer is an oversight, eight is a shape.
+
+**A third section had it too**, found on 2026-09-30 by following its own
+words. §4 closed OQ-6 and recorded a follow-on -- "the members are still
+`camelCase`" -- which §11 had finished: 117 renamed, verified by checking
+five of the names it lists and finding the old spellings gone from `src/`
+and `include/`. **Three sections, one cause**: closing an item is done
+under the item's heading, and nothing walks the pointers.
+
+**A list of unverified reports
 decays faster than the tree it describes**, because the work that closes
 an item is done under the item's own heading and never touches the roster.
 
