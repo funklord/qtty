@@ -18074,9 +18074,40 @@ render with the pipe deliberately undrained, and separately with it
 drained, and compare. A condition reproduced only when the machine is busy
 cannot support a claim about the library, and this entry made one anyway.
 
-**That was attempted on 2026-10-01 and did not work. Three probes, each
-invalid for its own reason, and the reasons are the useful part** -- they
-are what the next attempt should not repeat:
+**It worked on the fourth attempt, and it settles the thread by removing
+its premise: THIS FIXTURE NEVER CLEARS THE SCREEN.** Rendering with no
+pumping at all -- so the notifier cannot have drained the self-pipe --
+reports, over four runs:
+
+    DET: handler 0 | undrained render 0 text=0
+
+**The handler wrote nothing.** `enter_terminal()` opens with
+`if (!g_restore.armed) return;`, and `armed` is set only when a backend
+takes the terminal for real. In this fixture it is 0, so the handover is
+simulated at the SIGNAL level -- the counter bumps and the pipe is nudged
+-- and the terminal is never actually re-entered or cleared.
+
+**So the 32 bytes were never the handler's.** They are `read_winch()`'s
+handover branch putting the title back, `if (!last_title_.isEmpty())
+write_out(last_title_)`, and the fixture set a title a few blocks earlier.
+That is why they appeared only once events were pumped.
+
+**Which invalidates the measurements this entry was built on.** The window
+it hypothesised -- screen cleared, baseline stale -- cannot be exercised by
+a fixture that does not clear the screen. The 487-byte redraws were the
+`handovers()` check working as designed, and the 5-of-10 variability was
+the frame scheduler's own timer firing inside the 100 ms wait THIS
+INVESTIGATION added, its frame then discarded by the `take()` below it.
+Every number above is real and none of it was about the library.
+
+**In a real program `armed` is 1 and the clear IS synchronous**, so the
+window is not disproved in principle -- only unexercised here, and
+unreachable through this fixture without arming the restore. That is the
+shape of what is left: not a defect, not a clean bill, and no instrument in
+the tree that can tell the difference.
+
+**Three earlier probes failed first, and the reasons are worth keeping** --
+they are what the next attempt should not repeat:
 
     a second raise(SIGCONT) after the fixture's own handover
       wrote 0 bytes: enter_terminal() does nothing when the
