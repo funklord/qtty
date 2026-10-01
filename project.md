@@ -18100,11 +18100,29 @@ the frame scheduler's own timer firing inside the 100 ms wait THIS
 INVESTIGATION added, its frame then discarded by the `take()` below it.
 Every number above is real and none of it was about the library.
 
-**In a real program `armed` is 1 and the clear IS synchronous**, so the
-window is not disproved in principle -- only unexercised here, and
-unreachable through this fixture without arming the restore. That is the
-shape of what is left: not a defect, not a clean bill, and no instrument in
-the tree that can tell the difference.
+**And WHY it is a no-op is checkable by line number, which is what makes
+this a close rather than another hypothesis.** `resume()` arms with
+`g_restore.tty = tty_out_ ? 1 : 0`, and `enter_terminal()` writes only when
+that is set. `AnsiBackend live` is declared at `suite_backend.cpp:2089`;
+the first `dup2(slave, 1)` is at 3217. **It was constructed over a thousand
+lines before stdout became a pseudo-terminal**, so `tty_out_` is false for
+the life of it.
+
+**Cells still go out and terminal CONTROL does not**, which is why none of
+this was visible: `present()` writes fd 1 regardless, so the 487-byte
+frames are real, while the enter and leave sequences are skipped. The
+handover's screen-clearing half is therefore unexercised **everywhere in
+this fixture**, not just in the probe.
+
+**In a real program `armed` and `tty` are both 1 and the clear IS
+synchronous**, so the window is not disproved -- only unexercised. What a
+test of it would need is now exact rather than vague: **a backend
+constructed AFTER the redirection**, so that `tty_out_` is true when
+`resume()` arms. Everything else in the fixture already works.
+
+That is the shape of what is left: not a defect, not a clean bill, and no
+instrument in the tree that can tell the difference -- plus a one-line
+statement of what building one requires.
 
 **Three earlier probes failed first, and the reasons are worth keeping** --
 they are what the next attempt should not repeat:
