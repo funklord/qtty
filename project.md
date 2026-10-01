@@ -18069,11 +18069,40 @@ of 10 to 0 of 12 between a loaded machine and a quiet one; and the library
 change makes no measurable difference to either. What is not established:
 that anything in `src/` is wrong.
 
-**What would settle it is a DETERMINISTIC reproduction**, not another load.
-Force the order rather than hoping for it: render with the pipe
-deliberately undrained, and separately with it drained, and compare. A
-condition reproduced only when the machine is busy cannot support a claim
-about the library, and this entry made one anyway.
+**What would settle it is a DETERMINISTIC reproduction**, not another load:
+render with the pipe deliberately undrained, and separately with it
+drained, and compare. A condition reproduced only when the machine is busy
+cannot support a claim about the library, and this entry made one anyway.
+
+**That was attempted on 2026-10-01 and did not work. Three probes, each
+invalid for its own reason, and the reasons are the useful part** -- they
+are what the next attempt should not repeat:
+
+    a second raise(SIGCONT) after the fixture's own handover
+      wrote 0 bytes: enter_terminal() does nothing when the
+      terminal is already entered
+    live.suspend() first, then raise(SIGCONT)
+      wrote 0 bytes: disarming restores the previous handlers --
+      sigaction(SIGCONT, &g_prev_cont, ...) -- so the raise hits
+      the DEFAULT action, which for a running process is nothing
+    both therefore measured nothing happening rather than the
+      window they were built to force
+
+Each was caught by its own output being implausibly empty, which is the
+only reason none of them became a finding. **The lesson is about where the
+probe has to live**: forcing this order needs the terminal AND the handler
+re-armed, which the fixture's state machine does from inside and an
+addition bolted on after it cannot. A fourth guess from outside would have
+been a fourth guess.
+
+**And the symptom is already a closed finding, which narrows this.**
+`FrameScheduler::render_now()` carries the measurement in its own comment
+-- "the user comes back from a Ctrl+Z to a blank window... 24 rows of
+content became one, while ESC[23;2H ESC[?25h went out over and over" --
+and the `handovers()` check is the fix for it. So the window hypothesised
+above is the residue of a defect that was found and closed, not an
+unexamined hole; and the control says the proposed narrowing of that
+residue cannot be distinguished from leaving it alone.
 
 **The shape is the one `running-code.md` warns about, met from the other
 side.** A comfortable explanation ended the investigation -- here the
