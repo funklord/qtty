@@ -17,18 +17,26 @@ number rather than restating it.
 
 ## 0a. State
 
-2059 checks, 0 failures. **The duration is 4.76 seconds of user time, taken
-2026-09-29 over this suite** -- `/usr/bin/time ./build-test/qtty-tests`,
-best of three: 5.04, 4.76, 4.77 user, 0.53 to 0.57 sys, 14.6 wall each
-time.
+2059 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
+best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
+wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
+by the end of the three runs.
 
-**The load is part of the figure and it was not 0.5.** 5.12 one-minute and
-3.11 five-minute, with two other sessions building. So the wall figure is
-not comparable to the previous one and the USER figure is: user time is CPU
-this process spent, which contention lengthens the clock around rather than
-inflating. Recorded this way rather than waited for, because a figure with
-its conditions beside it is worth more than a five-day-old one with no
-counterpart -- and this machine has not been quiet since 2026-09-23.
+**And the re-take answers a caution the previous one raised rather than
+just replacing it.** That figure was 4.76 user and 14.6 wall at load 5.12
+over 2056 checks, recorded with the warning that "the wall figure is not
+comparable" because of the contention. It is comparable: load fell from
+5.12 to 1.68 and the wall time did not move -- 14.6 then, 14.64 to 14.79
+now. **So the wall clock here is not CPU-bound and contention is not what
+fills it**; the suite spends it waiting, in the `settle()` calls, the child
+reaping and the pseudo-terminal timings. The user figure rose 0.05 for
+three more checks, which is nothing.
+
+That is worth more than the caution it replaces. A figure whose conditions
+changed four-fold while it did not move has told you what it is a function
+of, which is the question `evidence.md` says to ask of a number before
+asking whether it is right.
 
 **What it says is that the work has not cost anything measurable.** The
 previous figure was 4.7 user over a suite of 2016, on a quiet machine; this
