@@ -2512,11 +2512,13 @@ In the order I would take them:
      `Qtty::set_font()` names another for an application and
      `QTTY_FONT`/`QTTY_FONT_SIZE` for whoever runs it. §0b's
      bundled-font question is the other end of this and is untouched.
-   - **An application's own `QStyle` is discarded.** `GridStyle` is
-     constructed on a hardwired Fusion base, and design.md section 12
-     promises the opposite: "an app's custom style is not lost -- it
-     becomes GridStyle's proxy base". Flagged rather than resolved, per
-     the rule: which of the two is wrong is not mine to pick.
+   - **~~An application's own `QStyle` is discarded.~~ Settled 2026-10-06
+     by the copyright holder, in the document's favour, and fixed.**
+     `setup()` wrapped a hardwired Fusion where design.md section 12
+     promises "an app's custom style is not lost -- it becomes GridStyle's
+     proxy base". It takes the style the application already had. See
+     8.380, which carries the measurement and the one thing the suite does
+     not hold.
    - **`luminance()` assumes a dark ground for a Default colour.** The
      terminal's real background is asked for and stored; using it needs a
      second piece of global state beside the palette and a decision about
@@ -17964,6 +17966,49 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.380 setup() keeps the application's own style now (2026-10-06)
+
+**0b carried this as a flagged contradiction between design.md section 12
+and the code, with "which of the two is wrong is not mine to pick". The
+copyright holder settled it in the document's favour on 2026-10-06.**
+`setup()` did `app.setStyle(new GridStyle)` -- the default constructor,
+which wraps a hardwired Fusion -- so a program that had chosen a style
+before calling setup() lost it.
+
+**Measured, with the probe relinked against each build:**
+
+    chosen before setup()      before the fix     after
+    nothing                    base = fusion      base = fusion
+    Windows                    base = fusion      base = windows
+
+So the no-style case does not move, which is most programs, and the case
+the document promises now holds.
+
+**The fix is the care the re-wrapping filter twenty lines below already
+took**, rather than a new idea: a FRESH instance of the chosen style's key,
+not the live pointer, because `setStyle()` adopts its argument and deletes
+the previous style -- handing the proxy what Qt is about to destroy leaves
+a dangling base. `name()` round-trips, measured on both keys this machine
+has: it answers lowercase and `QStyleFactory::create()` is case-insensitive.
+A style the factory cannot rebuild -- a stylesheet's private
+`QStyleSheetStyle` -- answers null and falls back to Fusion, which is what
+the filter does by declining to wrap that case at all.
+
+**What the suite does NOT hold, said plainly.** Nothing checks this.
+`setup()` runs once per process and `main.cpp` has already called it, so an
+in-process check cannot exercise a style chosen BEFORE setup at all. The
+evidence above is a scratch probe, not a gate. The tree's own pattern for
+this exact problem is a small purpose-built binary -- `tool/install-probe.cpp`
+for `test-install`, `tool/screen-probe.cpp` for `test-screen` -- and that is
+what holding this would take.
+
+**And the control took relinking to be worth anything.** The first attempt
+reported `base = windows` with the fix REVERTED, which would have said the
+fix was pointless. The probe links `libqtty.a` statically, so rebuilding the
+library after reverting left the already-linked binary measuring the fixed
+code. Fifth instance today of concluding from an artifact the build did not
+rebuild.
 
 ### 8.379 One failure in twenty-eight runs, and no fix attempted (2026-09-30)
 

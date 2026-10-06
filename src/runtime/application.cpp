@@ -758,7 +758,29 @@ void setup(QApplication &app) {
 	fonts->base = f;
 	fonts->setParent(&app);
 	app.installEventFilter(fonts);
-	app.setStyle(new GridStyle);
+	// THE APPLICATION'S OWN STYLE BECOMES THE BASE, which is what design.md
+	// section 12 promises -- "an app's custom style is not lost, it becomes
+	// GridStyle's proxy base" -- and what a hardwired Fusion here did not do.
+	// A program that chose a style before setup() lost it, and the document
+	// and the code disagreed about that until the copyright holder settled it
+	// in the document's favour.
+	//
+	// A FRESH instance of the same key rather than the live pointer, because
+	// setStyle() adopts its argument and deletes the previous style: handing
+	// the proxy the pointer Qt is about to destroy leaves a dangling base.
+	// The re-wrapping filter below has taken that care since it was written,
+	// and this is the same care at setup rather than a new idea.
+	//
+	// `name()` round-trips: it answers lowercase ("fusion", "windows") and
+	// QStyleFactory::create() is case-insensitive -- measured on both keys
+	// this machine has. A style the factory cannot rebuild, which is what a
+	// stylesheet's private QStyleSheetStyle looks like from here, answers
+	// null and falls back to Fusion, matching what the filter below does by
+	// declining to wrap that case at all.
+	QStyle *const chosen = app.style();
+	QStyle *rebuilt = chosen ? QStyleFactory::create(chosen->name()) : nullptr;
+	if (!rebuilt) rebuilt = QStyleFactory::create(QStringLiteral("Fusion"));
+	app.setStyle(new GridStyle(rebuilt));
 	// And put it back if the application installs one of its own.
 	//
 	// QApplication::setStyle() REPLACES, so a program that sets a style
