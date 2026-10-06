@@ -17995,13 +17995,32 @@ A style the factory cannot rebuild -- a stylesheet's private
 `QStyleSheetStyle` -- answers null and falls back to Fusion, which is what
 the filter does by declining to wrap that case at all.
 
-**What the suite does NOT hold, said plainly.** Nothing checks this.
-`setup()` runs once per process and `main.cpp` has already called it, so an
-in-process check cannot exercise a style chosen BEFORE setup at all. The
-evidence above is a scratch probe, not a gate. The tree's own pattern for
-this exact problem is a small purpose-built binary -- `tool/install-probe.cpp`
-for `test-install`, `tool/screen-probe.cpp` for `test-screen` -- and that is
-what holding this would take.
+**~~Nothing in the suite holds this.~~ It is held by an arm of its own
+now**, which is what the gap above asked for. `setup()` runs once per
+process and `main.cpp` has already called it, so an in-process check cannot
+exercise a style chosen BEFORE setup at all -- which is why this is a
+binary, as `tool/install-probe.cpp` and `tool/screen-probe.cpp` are.
+`tool/style-probe.cpp`, run by `probe-style`, is in `CHECK_PARTS`.
+
+**Its control is about DISCRIMINATION rather than about firing**, which is
+the half a probe of this shape usually gets wrong. A style key equal to the
+fallback would read correct however the code behaved, so the probe takes a
+key that is NOT `fusion` and **skips rather than passing** when the Qt it
+was built against offers none. On this machine `Windows` exists, so it
+discriminates; on a Fusion-only Qt it says so instead of reporting a pass.
+
+**Seen to fail, through its own check and with the status reaching make.**
+With the fix reverted: `style-probe: ... windows was replaced by fusion`,
+then `probe-style: setup() did not keep the application's own style`, and
+`make` stops with Error 1. Restored, rc=0. That second half matters because
+this tree has a recorded gate that could not fail -- a semicolon-chained
+recipe handing make only the last command's status -- and a probe whose
+exit nobody reads is the same defect.
+
+**And the target recompiles the probe on every run**, so it structurally
+cannot measure a stale binary. That is not decoration: the stale-artifact
+trap bit three times while this was being built, once reporting `windows`
+with the fix REVERTED, which would have said the fix was pointless.
 
 **And the control took relinking to be worth anything.** The first attempt
 reported `base = windows` with the fix REVERTED, which would have said the

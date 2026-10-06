@@ -729,6 +729,45 @@ test-install: $(LIB) $(INSPECT) $(REPLAY)
 # SKIPPED rather than failed where the compiler or pkg-config is absent, the
 # way the tray and screen gates are -- and the skip is PRINTED, because an
 # optional step that vanishes silently is indistinguishable from one that ran.
+# Does setup() keep the application's own style as GridStyle's proxy base?
+#
+# design.md section 12 promises it does, 8.380 fixed it where a hardwired
+# Fusion had been, and NOTHING IN THE SUITE CAN HOLD IT: setup() runs once per
+# process and test/main.cpp has already called it, so a style chosen BEFORE
+# setup is out of reach in process. That is why this is a binary of its own,
+# as tool/install-probe.cpp and tool/screen-probe.cpp are.
+#
+# The probe carries its own control and it is about DISCRIMINATION rather than
+# about firing: a style key equal to the fallback would read correct however
+# the code behaved, so it takes a key that is not, and SKIPS rather than
+# passing when the Qt it was built against offers none. Seen to fail with the
+# fix reverted -- "windows was replaced by fusion", exit 1 -- and the revert
+# had to be RELINKED to show it, the probe taking libqtty.a statically.
+probe-style: $(LIB)
+	@if ! command -v pkg-config >/dev/null 2>&1 \
+	   || ! command -v $(CXX) >/dev/null 2>&1 \
+	   || ! pkg-config --exists Qt6Widgets; then \
+		echo "probe-style: SKIPPED -- pkg-config, $(CXX) or Qt6Widgets is absent,"; \
+		echo "             so the proxy base was not measured"; \
+		exit 0; \
+	fi; \
+	out=$(BUILD_DIR)/style-probe; \
+	$(CXX) -Os -std=c++17 -o "$$out" tool/style-probe.cpp -I include \
+		$$(pkg-config --cflags Qt6Widgets) -L $(BUILD_DIR)/lib -lqtty \
+		$$(pkg-config --libs Qt6Widgets) -lutil \
+		2> $(BUILD_DIR)/style-probe.cc || { \
+		echo "probe-style: the probe did not compile:" >&2; \
+		head -20 $(BUILD_DIR)/style-probe.cc >&2; exit 1; \
+	}; \
+	said=$$(QT_QPA_PLATFORM=offscreen timeout 60 "$$out" 2>&1); rc=$$?; \
+	echo "$$said" | sed 's/^/    /'; \
+	rm -f "$$out" $(BUILD_DIR)/style-probe.cc; \
+	[ "$$rc" -eq 0 ] || { \
+		echo "probe-style: setup() did not keep the application's own style" >&2; \
+		exit 1; \
+	}; \
+	echo "probe-style: setup() keeps the application's style as the proxy base"
+
 probe-install:
 	@test -n "$(strip $(BUILD_DIR))" || { \
 		echo "probe-install: BUILD_DIR is empty, refusing to install" >&2; \
@@ -1255,7 +1294,7 @@ record: tests-build
 # The identity is HEAD plus every uncommitted change to tracked files, which
 # is what `git diff HEAD` gives and is unchanged by staging.
 CHECK_PARTS = style layout version-check count-check guide-check tools-check \
-              sabotage-check test test-tools test-install
+              sabotage-check test test-tools test-install probe-style
 CHECK_STAMP = $(shell git rev-parse --git-common-dir 2>/dev/null)/qtty-check-stamp
 
 check:

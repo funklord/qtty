@@ -91,3 +91,9 @@ install = false
 # put a gate's fixture in somebody's package.
 [target.install-probe]
 install = false
+
+# The style probe is the third of these, and it exists because the suite
+# cannot hold what it checks: setup() runs once per process, so a style
+# chosen BEFORE setup is out of reach from inside test/main.cpp. 8.380.
+[target.style-probe]
+install = false
