@@ -36,6 +36,59 @@ void set_terminal_palette(const QVector<QRgb> &low16) {
 
 QVector<QRgb> terminal_palette() { return s_palette; }
 
+// What the terminal said its ground is, or invalid where it did not. Global
+// beside s_palette and for the reason that comment gives.
+static QColor s_ground_fg, s_ground_bg;
+
+void set_terminal_ground(const QColor &fg, const QColor &bg) {
+	s_ground_fg = fg;
+	s_ground_bg = bg;
+}
+
+// The 601 weights, in ONE place. The Rgb branch of luminance() carried them
+// and so would the Default branch below, and two copies of a constant this
+// workspace has already settled is how the two start disagreeing.
+static int rgb_luminance(QRgb c) {
+	return (qRed(c) * 299 + qGreen(c) * 587 + qBlue(c) * 114) / 1000;
+}
+
+// A Default colour's luminance: the terminal's own ground where it answered.
+//
+// It was `is_foreground ? 210 : 20` -- a conventional dark theme, asserted
+// rather than measured -- and on a light terminal both halves invert. The
+// cost is not cosmetic: theme.cpp's section 6 contrast check runs this on
+// every emitted cell, so on a light terminal it was measuring a ground the
+// terminal does not have, reporting violations that are not there and
+// missing light-on-light ones that are.
+//
+// AN UNSTATED HALF IS ASSUMED TO CONTRAST WITH THE STATED ONE, which is the
+// decision 0b reserved and the copyright holder settled on 2026-10-07. A
+// terminal that answered OSC 11 and not OSC 10 has told us its ground and
+// left its ink to inference, and the only inference worth making is the one
+// every readable terminal satisfies: the ink is at the far end from the
+// ground. So a reported light background implies dark ink rather than the
+// light ink the old constant assumed.
+//
+// With neither answered this returns exactly what it returned before, which
+// is what makes the change additive: a session whose terminal said nothing
+// behaves as it always did.
+static int default_luminance(bool is_foreground) {
+	const bool have_fg = s_ground_fg.isValid();
+	const bool have_bg = s_ground_bg.isValid();
+	const int dark_ink = 20, light_ink = 210;
+	if (is_foreground) {
+		if (have_fg) return rgb_luminance(s_ground_fg.rgb());
+		if (have_bg)
+			return rgb_luminance(s_ground_bg.rgb()) < 128 ? light_ink
+			                                              : dark_ink;
+		return light_ink;
+	}
+	if (have_bg) return rgb_luminance(s_ground_bg.rgb());
+	if (have_fg)
+		return rgb_luminance(s_ground_fg.rgb()) < 128 ? light_ink : dark_ink;
+	return dark_ink;
+}
+
 // The sixteen this session should match against: the terminal's if it said,
 // and the xterm table otherwise. One function, because a second copy of this
 // choice is how the matcher and the encoder would start disagreeing about
@@ -157,8 +210,8 @@ int Color::to_ansi16() const {
 
 int Color::luminance(bool is_foreground) const {
 	switch (kind_) {
-	case Default: return is_foreground ? 210 : 20;        // conventional dark theme
-	case Rgb:     return (qRed(rgb_) * 299 + qGreen(rgb_) * 587 + qBlue(rgb_) * 114) / 1000;
+	case Default: return default_luminance(is_foreground);
+	case Rgb:     return rgb_luminance(rgb_);
 	case Indexed: {
 		if (index_ < 16 && s_palette.isEmpty()) {
 			// The system colours are the terminal's to re-map, so where it

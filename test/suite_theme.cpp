@@ -346,6 +346,53 @@ int suite_theme() {
 		CHECK(Qtty::terminal_palette().isEmpty() &&
 		      Color::rgb(qRgb(40, 40, 200)).to_ansi16() == xterm_answer,
 		      "and clearing it restores the built-in table");
+
+		// ---- a Default colour's ground, which used to be asserted --------
+		//
+		// luminance() answered `is_foreground ? 210 : 20` for a Default --
+		// a conventional dark theme, and on a light terminal both halves
+		// invert. 0b carried that and 8.381 settled it. The ORDERING is
+		// what is asserted here rather than either number: pinning 20 and
+		// 210 would pin the arithmetic of one assumption, and it is the
+		// arithmetic that was wrong.
+		{
+			const Color dflt;            // the default-constructed Default
+			// Nothing reported: the old behaviour, ink above ground.
+			Qtty::set_terminal_ground(QColor(), QColor());
+			const int unsaid_fg = dflt.luminance(true);
+			const int unsaid_bg = dflt.luminance(false);
+			CHECK(unsaid_fg > unsaid_bg,
+			      "with no ground reported a Default still reads as ink on a"
+			      " dark terminal, which is what it always did");
+
+			// A LIGHT ground, both halves answered. The ordering inverts,
+			// and that cannot happen unless the reported ground is read.
+			Qtty::set_terminal_ground(QColor(0, 0, 0), QColor(255, 255, 255));
+			CHECK(dflt.luminance(true) < dflt.luminance(false),
+			      "while a terminal that says it is light inverts them, so"
+			      " the pair is read rather than assumed");
+
+			// A DARK ground: back to ink above ground, by measurement this
+			// time rather than by assumption.
+			Qtty::set_terminal_ground(QColor(230, 230, 230), QColor(10, 10, 10));
+			CHECK(dflt.luminance(true) > dflt.luminance(false),
+			      "and a terminal that says it is dark agrees with the old"
+			      " assumption, which is why this was invisible");
+
+			// THE HALF NOBODY ANSWERS. A terminal that gave OSC 11 and not
+			// OSC 10 has stated its ground and left its ink to inference,
+			// and the inference every readable terminal satisfies is that
+			// the ink is at the far end. This is 8.381's decision.
+			Qtty::set_terminal_ground(QColor(), QColor(255, 255, 255));
+			CHECK(dflt.luminance(true) < dflt.luminance(false),
+			      "and a light ground with no foreground stated implies dark"
+			      " ink, not the light ink the old constant assumed");
+
+			Qtty::set_terminal_ground(QColor(), QColor());   // global: put it back
+			CHECK(dflt.luminance(true) == unsaid_fg
+			      && dflt.luminance(false) == unsaid_bg,
+			      "and clearing it restores what a silent terminal gets");
+		}
 		// Including for luminance, whose table is NOT arithmetic on the
 		// built-in colours -- index 12 is listed at 96 where the formula on
 		// 0x0000ff gives 29 -- so this also pins that the judgement, rather

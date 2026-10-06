@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2059 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2064 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -2519,10 +2519,11 @@ In the order I would take them:
      proxy base". It takes the style the application already had. See
      8.380, which carries the measurement and the one thing the suite does
      not hold.
-   - **`luminance()` assumes a dark ground for a Default colour.** The
-     terminal's real background is asked for and stored; using it needs a
-     second piece of global state beside the palette and a decision about
-     what the FOREGROUND of an unstated Default is.
+   - **~~`luminance()` assumes a dark ground for a Default colour.~~
+     Settled 2026-10-07 by the copyright holder and fixed.** It reads the
+     ground the terminal reported, and an unstated half is assumed to
+     contrast with the stated one -- a reported light background implies
+     dark ink. See 8.381.
 
 4. **The licence is the one thing that blocks distribution**, and it is
    the holder's alone. Recorded here once, as a blocker rather than as a
@@ -17966,6 +17967,58 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.381 A Default colour's ground is read now, not assumed (2026-10-07)
+
+**0b carried this as needing "a second piece of global state beside the
+palette and a decision about what the FOREGROUND of an unstated Default
+is". The copyright holder settled it on 2026-10-07.** `luminance()`
+answered `is_foreground ? 210 : 20` for a Default -- a conventional dark
+theme, asserted rather than measured -- and on a light terminal both halves
+invert.
+
+**The cost was not cosmetic.** theme.cpp's section 6 contrast check runs
+this on every emitted cell, so on a light terminal it measured a ground the
+terminal does not have: reporting violations that are not there, and
+missing the light-on-light ones that are.
+
+**THE DECISION, which is the part that was reserved: an unstated half is
+assumed to CONTRAST with the stated one.** A terminal that answered OSC 11
+and not OSC 10 has told us its ground and left its ink to inference, and
+the only inference every readable terminal satisfies is that the ink sits at
+the far end. So a reported light background implies dark ink, where the old
+constant assumed light ink -- which on white is the unreadable direction.
+
+**The state is `set_terminal_ground(fg, bg)`, beside `set_terminal_palette`
+and pushed from the same place** in `AnsiBackend` once the caps query
+completes. An invalid `QColor` is how it says the terminal did not answer,
+which is the palette setter's "empty resets" in the shape a colour pair
+needs.
+
+**With neither half answered it returns exactly what it returned before**,
+which is what makes the change additive: 2059 checks passed unchanged
+before the new ones were written.
+
+**Held by five checks that assert the ORDERING rather than either number**,
+because pinning 20 and 210 would pin the arithmetic of the assumption that
+was wrong:
+
+    nothing reported            ink above ground   the old behaviour
+    a light ground reported     INVERTED
+    a dark ground reported      ink above ground   by measurement now
+    light ground, no fg stated  dark ink           the decision above
+    cleared                     back to silent-terminal values
+
+**Seen to fail, and WHICH of them failed is the result.** With the library's
+Default branch reverted, two redden -- the light-ground inversion and the
+unstated-foreground inference -- and the other three stay green. That split
+is the evidence: the two that can only hold if the ground is read go red,
+and the three the old code also satisfied are the controls proving the new
+assertions are not vacuous.
+
+**And the 601 weights now live in one function.** The Rgb branch carried
+them and the Default branch would have been a second copy, which is how two
+readings of one constant start disagreeing.
 
 ### 8.380 setup() keeps the application's own style now (2026-10-06)
 

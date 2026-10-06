@@ -257,6 +257,17 @@ AnsiBackend::AnsiBackend() {
 		for (QRgb c : caps_.palette16) if (c == 0) complete = false;
 		if (complete) set_terminal_palette(caps_.palette16);
 	}
+
+	// And the GROUND, from the same place and for the same reason: a Default
+	// colour's luminance was a conventional dark theme asserted, and on a
+	// light terminal both halves of that invert. An invalid QColor is how
+	// this says the terminal did not answer, so a terminal that says nothing
+	// leaves the old behaviour exactly as it was.
+	set_terminal_ground(
+	    caps_.fg_known ? QColor(caps_.fg[0], caps_.fg[1], caps_.fg[2])
+	                   : QColor(),
+	    caps_.bg_known ? QColor(caps_.bg[0], caps_.bg[1], caps_.bg[2])
+	                   : QColor());
 	notifier_ = new QSocketNotifier(0, QSocketNotifier::Read, this);
 	connect(notifier_, &QSocketNotifier::activated, this, [this] { read_input(); });
 	watch_clipboard();

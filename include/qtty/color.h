@@ -61,7 +61,9 @@ public:
 	// all, which is what Channel B output is.
 	int to_ansi16() const;
 
-	// Perceived luminance 0..255 (Default fg assumed light, bg dark).
+	// Perceived luminance 0..255. For a Default colour this is the ground the
+	// terminal reported, where it reported one -- see set_terminal_ground()
+	// below and the definition for what an unstated half is assumed to be.
 	int luminance(bool is_foreground) const;
 
 private:
@@ -96,6 +98,14 @@ QRgb xterm256_rgb(int index);
 // Absent an answer the built-in xterm table stands, which is what every
 // terminal agrees on and what this assumed before it could ask.
 void set_terminal_palette(const QVector<QRgb> &low16);   // empty resets
+
+// What the terminal said its own foreground and background are, for the
+// luminance of a Default colour. An INVALID QColor means it did not say, and
+// a pair of them resets -- the same shape as the palette setter above, and
+// global for the same reason: every colour conversion needs it and threading
+// it through a value type's const methods would put it in every signature to
+// serve one branch.
+void set_terminal_ground(const QColor &fg, const QColor &bg);
 QVector<QRgb> terminal_palette();                        // empty when unasked
 
 enum class Attr : quint8 {
