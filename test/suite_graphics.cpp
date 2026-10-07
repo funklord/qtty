@@ -2473,6 +2473,41 @@ int suite_graphics() {
 		      && bottomed.at(0, 0).ch == QStringLiteral("▄"),
 		      "an icon inked on one side only draws that half");
 
+		// AND A TRANSLUCENT WASH IS STILL A WASH, which is the property the
+		// sampling change could most easily have moved and the one the
+		// overlay path depends on. compose_halfblocks() has three tiers --
+		// ink in both halves, ink in one, and translucent -- and which one
+		// applies is chosen on the GREATEST alpha in the half rather than
+		// on its mean, deliberately: a mean would read an icon's thin
+		// stroke as a wash and tint the cell instead of marking it, and the
+		// scrim an Overlay lays over text would then be the only thing that
+		// still worked.
+		//
+		// A scrim must keep the glyph underneath and tint only the ground.
+		// Swept rather than sampled at one alpha, because what is being
+		// asserted is where the boundary IS: below it the text survives,
+		// above it the image replaces it, and a tier chosen on the mean
+		// would move that line for every image that is not a flat fill.
+		{
+			struct { int alpha; bool keeps_text; } steps[] = {
+				{ 60, true }, { 110, true }, { 180, true }, { 230, false },
+			};
+			int wrong = 0;
+			for (const auto &step : steps) {
+				QImage wash(40, 40, QImage::Format_ARGB32);
+				wash.fill(QColor(0, 0, 0, step.alpha));
+				CellBuffer b(6, 3);
+				b.text(0, 0, QStringLiteral("hello!"));
+				compose_halfblocks(b, wash, QRect(0, 0, 4, 2), ground);
+				const bool kept = b.at(1, 0).ch == QStringLiteral("e");
+				const bool tinted = b.at(1, 0).bg.kind() != Color::Default;
+				if (kept != step.keeps_text || !tinted) ++wrong;
+			}
+			CHECK(wrong == 0,
+			      "a translucent wash tints the ground and leaves the glyph, "
+			      "up to the alpha at which the image takes the cell");
+		}
+
 		// A THIN SHAPE, which is the case point sampling loses and the
 		// reason the sampling here is an area mean. This read the single
 		// pixel at the centre of each half cell, which stands for its

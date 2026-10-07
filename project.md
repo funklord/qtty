@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2068 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2069 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -5408,10 +5408,15 @@ answers, exactly as the disabled item view did.
   cells moving along the bar -- an honest "a picture is here" -- instead
   of a smear of stale label.
 
-  **What is left open is real, and the measurement moves it rather than
-  answering it.** Should a wide, short image be a *placement* rather than a
-  glyph? The entry asked how to tell an icon from a picture. Measured, that
-  is the wrong question to be asking here:
+  ~~**What is left open is real, and the measurement moves it rather than
+  answering it.**~~ **Answered on 2026-10-07 and the answer is yes** --
+  every image is a placement now, and 8.383 records what it cost and the
+  one thing this entry had not measured. What follows is why, and it is
+  the reasoning the fix was built on rather than an open question.
+
+  Should a wide, short image be a *placement* rather than a glyph? The
+  entry asked how to tell an icon from a picture. Measured, that is the
+  wrong question to be asking here:
 
   - A 16x16 warning triangle is **2 cells by 1**. An 82x19 tab grab is
     **8 by 1**. Neither cell extent nor aspect separates them in the one
@@ -5482,9 +5487,14 @@ answers, exactly as the disabled item view did.
   text one.** The choice stays the holder's; what is gone is the
   unpriced half of it.
 
-  It stays **the copyright holder's**, and it is now a smaller question
+  ~~It stays **the copyright holder's**, and it is now a smaller question
   than it was written as: not where to build a mechanism, but whether to
-  relax one condition, given that the tier below it already works.
+  relax one condition, given that the tier below it already works.~~
+  **Settled by the copyright holder on 2026-10-07, and the last clause was
+  wrong: the tier below it did not already work.** It read one pixel per
+  half cell, which a photograph survives and an icon does not -- a 16x16
+  tick lost its left cell outright. Relaxing the condition alone would
+  have traded a coarse block for half a mark. 8.383.
 
   **One thing that was not a decision is fixed.** The substitution threw
   the image's colour away: a red status light and a grey one both drew a
@@ -18039,14 +18049,70 @@ wholly-transparent control next to it refusing a composer that marks
 everything it is handed; reverting to the point sample reddens it and
 nothing else.
 
-**Four checks pinned the retired convention and are now pinned the other
-way**, in three suites: a one-cell pixmap is a placement of one cell, a
-one-cell decoration likewise with no glyph standing in for it, and the
-8x1 dragged-tab case asserts both tiers on one image -- the engine places
-over eight cells and writes no text, and the composer then covers those
-eight and leaves the ninth showing the label underneath. Either half
-alone would pass against the wrong thing: a placement with no mosaic, or
-the substitution this replaced, which drew the cells and never placed.
+**And the tiers below were swept for a minimum size, because a one-cell
+placement is a thing nothing had ever sent them.** The lens was an
+encoder or a crop that assumes an image is at least so many cells, and
+there is none: `encode_kitty_image`, `encode_sixel` and
+`crop_placement` each answer correctly for a one-cell placement and for
+a degenerate 1x1-PIXEL image, which is a case no fixture has either.
+
+    10x19 px  1x1 cell   kitty 1048 B   sixel 59 B   crop 1x1, source 10x19
+      1x1 px  1x1 cell   kitty   38 B   sixel 33 B   crop 1x1, source 1x1
+    20x19 px  2x1 cell   kitty 2060 B   sixel 59 B   crop 2x1, source 20x19
+
+Worth recording as an empty sweep rather than left unsaid: that family
+has been looked at, so the next fault here needs a different lens.
+
+**What the richer sampling costs, and what it leaves alone.** Both were
+measured rather than assumed, because the tier change could have moved a
+property no check was watching:
+
+    a 40x20-cell placement        0.656 ms, against a 16 ms frame budget
+    a uniform wash, alpha 60/110/180   tints the ground, keeps the glyph
+    a uniform wash, alpha 230          takes the cell, as it always did
+
+The 0.656 ms is one pass over the image's 152,000 pixels and is
+irreducible for an area mean -- the stride only engages where a cell
+covers more than sixteen pixels of an axis, so a placement at natural
+size reads every pixel once. It is paid per frame by a terminal with no
+graphics protocol showing a full-screen image, which is the worst case
+that exists here, and it is 4% of the budget.
+
+The wash is the property the overlay path depends on, and it is why the
+tier is chosen on the GREATEST alpha in a half rather than on the mean: a
+mean would read a thin stroke as a wash and tint the cell instead of
+marking it. For a uniform wash the mean and the single pixel this used to
+read agree exactly, so the boundary has not moved -- which is a thing to
+know rather than to hope, and there is a check on it now, swept across
+four alphas so that what is asserted is where the boundary IS.
+
+**And the two checks divide the work in a way neither could do alone,
+which the sabotages say rather than the reading.** Choosing the tier on
+the mean reddens the thin-mark check and leaves the wash check GREEN --
+because for a uniform wash the mean and the peak are the same number, so
+that fixture cannot see the difference by construction. Retuning the
+opaque threshold from 200 to 150 reddens the wash check and leaves the
+thin-mark one green. One guards which NUMBER the tier is chosen on, the
+other guards where the boundary sits, and a fixture that could see both
+would be one that tells you neither when it fails.
+
+**Ten checks went red when the rule moved, and they are three different
+kinds** -- which is worth separating, because "ten reddened" would read as
+ten regressions:
+
+    4  pinned the retired convention, and are rewritten to assert the
+       new one: a one-cell pixmap and a one-cell decoration are each a
+       placement of one cell with no glyph standing in, and the 8x1
+       dragged-tab case asserts BOTH TIERS on one image
+    5  were about the sampling rather than the threshold, and moved onto
+       compose_halfblocks() with it, unchanged in substance
+    1  is the glyph page's row for the shaded block, below
+
+The dragged-tab pair is the one worth reading: the engine places over
+eight cells and writes no text, and the composer then covers those eight
+and leaves the ninth showing the label underneath. Either half alone
+would pass against the wrong thing -- a placement with no mosaic, or the
+substitution this replaced, which drew the cells and never placed.
 
 **One thing the threshold carried is kept.** An image with no ink in it
 draws nothing, rather than claiming a picture is there -- and placing it
@@ -18068,9 +18134,12 @@ is now a placement.
 says the call "arrives at `CellPaintEngine::drawPixmap()`, which -- instead
 of the ▒ placeholder -- registers a `CellImage` at the pixmap's cell rect",
 and names no minimum size anywhere. The threshold was drift against the
-document, not a decision the document had failed to record, and the three
-sections of this one that described it as a decision were describing the
-drift.
+document, not a decision the document had failed to record -- and the four
+sections of THIS one that described it as a decision were describing the
+drift: §0b in three places, §0e, §7.2 in four, and §7.3's note that
+`drawPixmap()` "has always stamped a placeholder block there". Counted off
+the diff rather than recalled, because a pointer left behind is how a
+settled question goes on reading as open.
 
 **Priced before it was done**, on the encoders rather than on an opinion,
 and the figures stand as §7.2 recorded them: eight distinct 16x16 icons
@@ -18078,11 +18147,13 @@ cost 11.2 KB of kitty uploads on the first frame and 280 bytes of
 re-placement on every frame after, against 12.3 KB for the one 48x48
 severity icon the library already sends.
 
-**Three sabotage entries, each `--only`-proven**, and two existing entries
+**Four sabotage entries, each `--only`-proven**, and two existing entries
 re-anchored into `compose_halfblocks()` because the branches they name
-moved there with the sampling. Restoring the threshold reddens four checks
-across three suites; turning the no-ink guard off reddens one; the point
-sample reddens one.
+moved there with the sampling -- re-run rather than just re-anchored,
+since an anchor that matches is not a check that fires. Restoring the
+threshold reddens four checks across three suites; turning the no-ink
+guard off reddens one; the point sample reddens one; retuning the opaque
+threshold reddens one.
 
 **And this answers one of the four rows §0b calls one question.** What a
 small drawn mark becomes on a character grid now has an answer for the

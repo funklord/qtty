@@ -5793,3 +5793,11 @@ find = "\t\tconst int sx = qMax(1, (x1 - x0) / 16), sy = qMax(1, (y1 - y0) / 16)
 into = "\t\tx0 = (x0 + x1) / 2; x1 = x0 + 1;\n\t\ty0 = (y0 + y1) / 2; y1 = y0 + 1;\n\t\tconst int sx = 1, sy = 1;"
 count = 1
 check = "every cell of a thin mark that holds ink is marked, which sampling one pixel a half could not promise"
+
+[[sabotage]]
+name = "the mosaic's opaque threshold is retuned"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\tif (top.peak > 200 && bot.peak > 200) {            // ink in both"
+into = "\t\t\tif (top.peak > 150 && bot.peak > 150) {"
+count = 1
+check = "a translucent wash tints the ground and leaves the glyph, up to the alpha at which the image takes the cell"
