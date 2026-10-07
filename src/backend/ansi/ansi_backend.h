@@ -220,6 +220,8 @@ public:
 	// so an application can ask before it offers the user a Copy that cannot
 	// work, and so a test reads the shipped bound rather than repeating it.
 	static int clipboard_limit();
+	// The inbound counterpart, for the check that asserts the refusal.
+	static int paste_limit();
 
 	// How many encoded placements the tier cache is holding. Public for
 	// the suite, which asserts the BOUND rather than inferring it: the
@@ -259,6 +261,11 @@ private:
 	QSocketNotifier *notifier_ = nullptr;
 	QSocketNotifier *winch_notifier_ = nullptr;
 	QByteArray pending_;
+	// Over the paste limit, and still inside the paste. Set when `paste_`
+	// would pass kPasteMaxBytes, cleared at the next CSI 200~. Paste mode
+	// is HELD while it is set rather than left, because leaving it would
+	// decode the rest of the paste as keystrokes.
+	bool paste_refused_ = false;
 	QByteArray paste_;                   // accumulating between CSI 200~/201~
 	bool in_paste_ = false;
 	QSize cells_;

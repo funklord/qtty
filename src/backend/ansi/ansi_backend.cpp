@@ -1879,6 +1879,25 @@ void AnsiBackend::read_input() {
 //
 // A real sequence is never remotely this long. The number is the string
 // parser's, kept rather than re-chosen so the two cannot drift.
+// The inbound counterpart, and the asymmetry it closes is the finding. A
+// clipboard WRITE -- the direction qtty chooses -- was bounded; a bracketed
+// PASTE, the direction the far end chooses, was not: `paste_` is cleared at
+// CSI 200~, delivered at CSI 201~, and appended to in between with no bound,
+// so a stream that starts a paste and never ends it grows that buffer for as
+// long as it keeps writing. The bounded direction was the safe one.
+//
+// Four million bytes, which is generous for the thing it bounds rather than
+// matched to a terminal's appetite the way kClipboardMaxBytes is: a paste is
+// a user action, and refusing a real one costs the user their paste. Four
+// million bytes of text is about a hundred thousand lines of forty
+// characters -- far past anything pasted into a terminal UI deliberately --
+// and it costs about 8 MB as the QString `on_paste` delivers.
+//
+// NOT a truncation, for the reason kClipboardMaxBytes already gives in the
+// other direction: a paste that silently loses its tail is worse than one
+// that is refused, because the application acts on it and finds out later.
+const int kPasteMaxBytes = 4000000;
+
 static constexpr int kSequenceCap = 4096;
 
 // A CSI is ESC [ , an optional private prefix, semicolon-separated decimal
@@ -2246,9 +2265,25 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 
 	if (final == '~') {
 		switch (param(0, 0)) {
-		case 200: in_paste_ = true;  paste_.clear(); return true;
+		case 200:
+			in_paste_ = true;
+			paste_.clear();
+			paste_refused_ = false;
+			return true;
 		case 201:
 			in_paste_ = false;
+			// Refused pastes deliver nothing, and say so. A qWarning for
+			// the reason the clipboard refusal gives: setup() holds
+			// diagnostics back while qtty owns the terminal and flushes
+			// them when it gives it back, so this reaches the user instead
+			// of landing in the middle of a frame.
+			if (paste_refused_) {
+				qWarning("qtty: a paste over the %d byte limit was refused"
+				         " -- nothing was delivered", kPasteMaxBytes);
+				paste_refused_ = false;
+				paste_.clear();
+				return true;
+			}
 			sink_->on_paste(QString::fromUtf8(paste_));
 			paste_.clear();
 			return true;
@@ -2335,6 +2370,19 @@ bool AnsiBackend::decode_one() {
 			}
 			paste_.append(pending_.left(n));      // an escape inside the paste
 			pending_.remove(0, n);
+			return true;
+		}
+		// Bounded, and the refusal HOLDS paste mode. Leaving it here would
+		// hand the rest of the paste to the key decoder, so a refused paste
+		// would arrive as thousands of keystrokes -- worse than losing it.
+		// The bytes are consumed and dropped until the end marker.
+		if (paste_refused_ || paste_.size() >= kPasteMaxBytes) {
+			if (!paste_refused_) {
+				paste_refused_ = true;
+				paste_.clear();          // give the memory back now
+				paste_.squeeze();
+			}
+			pending_.remove(0, 1);
 			return true;
 		}
 		paste_.append(char(c));
@@ -2589,12 +2637,14 @@ namespace {
 // and reproduced no cap in any of the three above, so it was not adopted.
 const int kClipboardMaxBytes = 200000;
 
+
 // How long an unaccompanied ESC waits. See escape_flush_ms().
 const int kEscapeFlushMs = 50;
 
 } // namespace
 
 int AnsiBackend::clipboard_limit() { return kClipboardMaxBytes; }
+int AnsiBackend::paste_limit() { return kPasteMaxBytes; }
 
 bool AnsiBackend::write_clipboard(const QString &text, Selection sel) {
 	// Gated on the terminal, and this is the line the tree already draws

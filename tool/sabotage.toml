@@ -5889,3 +5889,11 @@ find = "\t\t\tif (rows > 0 && cols > 0\n\t\t\t    && qint64(rows) * qint64(cols)
 into = "\t\t\tif (rows > 0 && cols > 0) {"
 count = 1
 check = "a resize report naming a grid no terminal could have is dropped rather than passed to the compositor"
+
+[[sabotage]]
+name = "a paste accumulates without a limit again"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tif (paste_refused_ || paste_.size() >= kPasteMaxBytes) {"
+into = "\t\tif (false) {"
+count = 1
+check = "a paste past its limit is refused rather than truncated, and nothing is delivered"

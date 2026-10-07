@@ -1608,6 +1608,86 @@ int suite_backend() {
 	feed("\033[8;24;80t");
 	CHECK(rec.resizes.size() == 1 && rec.resizes[0] == QSize(80, 24),
 	      "CSI 8 t is a resize report, columns from the second field");
+	// A PASTE WITH NO END, which is the third quantity the far end chooses.
+	// `paste_` is cleared at CSI 200~, delivered at CSI 201~ and appended
+	// to in between with no bound -- so a stream that starts a paste and
+	// never ends it grows that buffer for as long as it keeps writing.
+	// kPasteMaxBytes says why the bound is where it is.
+	//
+	// Refused rather than truncated, and paste mode is HELD until the real
+	// end marker: leaving it early would decode the rest of the paste as
+	// KEYSTROKES, which is worse than losing the paste.
+	{
+		rec.clear();
+		// A WRITER THAT CANNOT OUTRUN THE READER. Feeder::send() is a
+		// blocking write, and the pipe holds 64 KiB -- so pushing megabytes
+		// through it with one processEvents() per chunk fills the pipe,
+		// blocks inside write(), and nothing drains it because the drain is
+		// on this thread. That deadlocked this check twice before it ran.
+		//
+		// Non-blocking for the bulk, handling EAGAIN by pumping the event
+		// loop, and blocking restored afterwards so every other check keeps
+		// the Feeder it was written against.
+		const auto bulk = [&](const QByteArray &bytes) {
+			const int fd = feeder.write_fd;
+			const int flags = ::fcntl(fd, F_GETFL, 0);
+			::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+			qint64 sent = 0;
+			int stalls = 0;
+			while (sent < bytes.size() && stalls < 200000) {
+				const ssize_t n = ::write(fd, bytes.constData() + sent,
+				                          size_t(bytes.size() - sent));
+				if (n > 0) { sent += n; continue; }
+				QCoreApplication::processEvents();
+				++stalls;
+			}
+			::fcntl(fd, F_SETFL, flags);
+			return sent;
+		};
+		const QByteArray body(AnsiBackend::paste_limit() + 8192, 'x');
+		feeder.send("\033[200~");
+		QCoreApplication::processEvents();
+		const qint64 pushed = bulk(body);
+		printf("info: pushed %lld of %lld paste byte(s)\n",
+		       (long long)pushed, (long long)body.size());
+		feeder.send("\033[201~");
+		int spins = 0;
+		while (rec.pastes.isEmpty() && spins < 20000) {
+			QCoreApplication::processEvents();
+			++spins;
+		}
+		printf("info: a paste past the %d byte limit delivered %lld paste(s)\n",
+		       AnsiBackend::paste_limit(), (long long)rec.pastes.size());
+		CHECK(rec.pastes.isEmpty(),
+		      "a paste past its limit is refused rather than truncated, and "
+		      "nothing is delivered");
+		// AND THE KEYS DID NOT LEAK. The refusal holds paste mode, so the
+		// 'x' bytes are swallowed rather than decoded as a key apiece --
+		// which is the half that matters, because a paste decoded as input
+		// is worse than a paste lost.
+		CHECK(rec.keys.isEmpty(),
+		      "and its bytes do not arrive as keystrokes, the refusal "
+		      "holding paste mode to the end marker");
+		rec.clear();
+	}
+
+	// An ordinary paste still arrives whole, which is the control: a
+	// decoder that refused every paste would pass the two above.
+	{
+		rec.clear();
+		feeder.send("\033[200~");
+		feeder.send(QByteArray(64, 'y'));
+		feeder.send("\033[201~");
+		int spins = 0;
+		while (rec.pastes.isEmpty() && spins < 20000) {
+			QCoreApplication::processEvents();
+			++spins;
+		}
+		CHECK(rec.pastes.size() == 1 && rec.pastes[0].size() == 64,
+		      "while a paste inside the limit arrives whole");
+		rec.clear();
+	}
+
 	// AND A RESIZE REPORT NAMING A GRID NOTHING COULD HOLD. The same wire
 	// that carries a legitimate report carries this one, and the guard was
 	// `rows > 0 && cols > 0` alone -- so the size a multiplexer claims

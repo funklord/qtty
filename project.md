@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2084 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2087 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18167,7 +18167,91 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.390 A paste had no limit, and three instruments lied (2026-10-08)
+
+**The third quantity the far end chooses, and the asymmetry is the
+finding.** A clipboard WRITE -- the direction qtty picks -- has been
+bounded at `kClipboardMaxBytes` since the sweep that measured what
+terminals accept. A bracketed PASTE, the direction the far end picks, had
+no bound at all: `paste_` is cleared at `CSI 200~`, delivered at
+`CSI 201~`, and appended to in between, so a stream that starts a paste
+and never ends it grows that buffer for as long as it keeps writing.
+**The bounded direction was the safe one.**
+
+Bounded at `kPasteMaxBytes`, four million bytes -- about a hundred
+thousand lines of forty characters, far past anything pasted into a
+terminal UI deliberately, and about 8 MB as the `QString` `on_paste`
+delivers. **Refused rather than truncated**, for the reason the clipboard
+refusal already gives in the other direction: a paste that silently loses
+its tail is worse than one refused, because the application acts on it
+and finds out later.
+
+**The refusal HOLDS paste mode, and that is the half that matters.**
+Leaving paste mode at the limit would hand the rest of the paste to the
+key decoder -- a refused paste arriving as a million keystrokes, which is
+worse than losing it. The bytes are consumed and dropped until the real
+end marker, `paste_` is cleared and squeezed at the moment of refusal so
+the memory goes back immediately, and a `qWarning` says so where
+`setup()`'s held-back diagnostics will reach the user rather than the
+middle of a frame.
+
+#### A hypothesis that was wrong, and an instrument that was wrong three times
+
+**The quadratic cost I came for does not exist.** In paste mode the
+decoder appends one byte and then does `pending_.remove(0, 1)`, which
+shifts everything after it -- so the cost per byte goes with the size of
+the read it arrived in, and a paste arriving in one big read would be
+O(n^2). Measured with a working instrument:
+
+    2 KiB   0.10 ms   2048 chars delivered
+    4 KiB   0.20 ms   4096                  2.0x
+    8 KiB   0.35 ms   8192                  1.8x
+    16 KiB  0.64 ms   16384                 1.8x
+
+Linear, doubling per doubling, and the reads turn out to be about 256
+bytes so the shift never dominates. Extrapolated, a megabyte is about 40
+ms. **The fix in this entry is the missing bound, not a speed-up**, and
+the hypothesis that brought me here is disproved rather than quietly
+dropped.
+
+**Getting those four numbers took three instruments, and each failure
+looked like a result:**
+
+- **A hang read as a pathology.** The first probe sent 16 to 128 KiB and
+  the suite stopped for minutes. That is exactly what a quadratic decode
+  would look like -- and it was `Feeder::send()`, a blocking write into a
+  64 KiB pipe, with the drain on the same thread. The test blocked inside
+  `write()` and nothing drained it. **Had I reported from that, the
+  finding would have been a severe performance bug that does not exist.**
+- **A flat number that measured nothing.** The second probe used 1 to 8
+  KiB, which does not deadlock, and reported a flat 0.1 ms per size --
+  which reads as "linear and cheap" and would have supported the opposite
+  conclusion with equal confidence. Printing the delivered length beside
+  the time is what broke it: three of the four sizes delivered NOTHING
+  and the fourth delivered the previous iteration's paste.
+  `processEvents()` returns before the decoder has read the bytes, so the
+  clock was timing the enqueue.
+- **The real check deadlocked the same way the first probe did**, one
+  step down: a 4 MB body in 4 KiB chunks with one `processEvents()` each,
+  and the reader needs about sixteen per chunk, so the pipe filled again.
+  It pushes through a non-blocking fd now, pumping the event loop on
+  `EAGAIN` and restoring the flags afterwards so every other check keeps
+  the `Feeder` it was written against.
+
+**So the rule 8.389 stated has a sharper form.** That entry said a
+fixture written from what the code should do tests the author's model.
+These three say something narrower and more useful: **a fixture that
+cannot prove it OBSERVED anything is not an instrument, however plausible
+its output.** The fix in all three cases was to print what arrived beside
+what was measured -- the delivered length, the pushed byte count, the
+spin count -- and two of the three failures were invisible without it.
+
 ### 8.389 Two unbounded quantities off the wire (2026-10-08)
+
+**A third followed, and it is 8.390**: the bracketed paste, which had no
+bound at all while the clipboard WRITE in the same file has had one for
+weeks. The direction qtty chooses was bounded and the direction the far
+end chooses was not.
 
 **The backend and the input router, swept with the lens the paint engine
 gave up four faults to.** The question that found those was what a
