@@ -3262,6 +3262,94 @@ int suite_render(bool record) {
 			}
 		}
 
+		// TILED, as ONE placement over the cells it covers. QPaintEngine's
+		// own drawTiledPixmap() calls drawPixmap() per tile, and a partial
+		// tile at the far edge is a strip a few pixels tall whose EDGES
+		// round into a cell row it does not touch -- to_cells() rounds
+		// edges deliberately, so that a viewport or a panel snaps, and
+		// that is the wrong answer for a strip.
+		//
+		// Measured against raster Qt before the override: a 4x2-cell
+		// target tiled with an 8x8 pixmap gave four placements covering
+		// eleven cells where raster paints eight, the bottom strip being
+		// 32x6 px at y 32..38 -- inside cell row 1 -- rounded to row 2.
+		//
+		// Asserted as a RELATIONSHIP against raster rather than as a cell
+		// count: the placements' cells must be exactly the cells raster
+		// paints pixels in. A count would pass against a placement of the
+		// right size in the wrong row, which is the fault that was here.
+		{
+			const auto tiled = [&](const QRect &target, QSize tile) {
+				QPixmap pm(tile);
+				pm.fill(QColor(40, 90, 200));
+				Qtty::CellBuffer b(8, 4);
+				QSet<QPair<int, int>> placed;
+				{
+					Qtty::CellPaintDevice dev(b);
+					QPainter p(&dev);
+					p.drawTiledPixmap(target, pm);
+					p.end();
+					for (const Qtty::CellImage &ci : dev.placements)
+						for (int y = ci.cell_rect.top();
+						     y <= ci.cell_rect.bottom(); ++y)
+							for (int x = ci.cell_rect.left();
+							     x <= ci.cell_rect.right(); ++x)
+								placed.insert(qMakePair(x, y));
+				}
+				QImage im(cw * 8, ch * 4, QImage::Format_ARGB32);
+				im.fill(Qt::transparent);
+				{
+					QPainter p(&im);
+					p.drawTiledPixmap(target, pm);
+				}
+				QSet<QPair<int, int>> painted;
+				for (int y = 0; y < im.height(); ++y)
+					for (int x = 0; x < im.width(); ++x)
+						if (qAlpha(im.pixel(x, y)) >= 40)
+							painted.insert(qMakePair(x / cw, y / ch));
+				return qMakePair(placed, painted);
+			};
+			struct Tiling { const char *what; QRect target; QSize tile; };
+			const Tiling tilings[] = {
+				// A tile that divides the target in neither direction,
+				// which is what produces the partial strip.
+				{ "an 8x8 tile", QRect(0, 0, cw * 4, ch * 2), QSize(8, 8) },
+				// One that divides it exactly, which the old code got
+				// right -- so this is the control that stops "the cells
+				// agree" passing for the wrong reason.
+				{ "a cell-sized tile", QRect(0, 0, cw * 4, ch * 2),
+				  QSize(cw, ch) },
+				// Not at the origin, so a wrong row cannot coincide with
+				// a right one.
+				{ "offset from the origin", QRect(cw, ch, cw * 2, ch),
+				  QSize(8, 8) },
+			};
+			int wrong = 0;
+			QString first_bad;
+			for (const Tiling &t : tilings) {
+				const auto both = tiled(t.target, t.tile);
+				if (both.first == both.second) continue;
+				++wrong;
+				if (first_bad.isEmpty())
+					first_bad = QStringLiteral("%1: placed %2 cell(s),"
+					                           " raster paints %3")
+					            .arg(QString::fromLatin1(t.what))
+					            .arg(both.first.size())
+					            .arg(both.second.size());
+			}
+			printf("info: three tilings compared against raster Qt, %d"
+			       " disagreement(s)\n", wrong);
+			if (wrong == 0)
+				printf("PASS: a tiled pixmap is placed over the cells raster"
+				       " paints it in, partial tiles included\n");
+			else {
+				printf("FAIL: a tiled pixmap is placed over the cells raster"
+				       " paints it in, partial tiles included\n"
+				       "      condition: %s\n", qPrintable(first_bad));
+				++r;
+			}
+		}
+
 		// The refusal, for both the rule path and the new walk. A diagonal
 		// crossing a label must leave the label standing: a cell already
 		// holding a glyph is content somebody drew, and a line is chrome.

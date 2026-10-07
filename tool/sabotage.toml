@@ -5857,3 +5857,11 @@ find = "\t\t\tif (box_px.bottom() <= top || box_px.top() >= bot) continue;"
 into = "\t\t\tif (false) continue;"
 count = 1
 check = "and no fill marks a cell raster leaves blank, which holds for the thin ones too"
+
+[[sabotage]]
+name = "a tiled pixmap goes back to one placement per tile"
+file = "src/render/cell_paint.cpp"
+find = "\tdrawPixmap(rn, composed, QRectF(composed.rect()));"
+into = "\tQPaintEngine::drawTiledPixmap(r, pm, offset);"
+count = 1
+check = "a tiled pixmap is placed over the cells raster paints it in, partial tiles included"

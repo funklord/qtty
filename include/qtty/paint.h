@@ -118,6 +118,12 @@ public:
 	void drawPath(const QPainterPath &) override;
 	void drawPixmap(const QRectF &, const QPixmap &, const QRectF &) override;
 	void drawPolygon(const QPointF *, int, PolygonDrawMode) override;
+	// Overridden because QPaintEngine's own implementation calls
+	// drawPixmap() once per TILE, and a partial tile at the far edge is a
+	// strip whose edges round into a cell row it does not touch. See
+	// cell_paint.cpp.
+	void drawTiledPixmap(const QRectF &, const QPixmap &,
+	                     const QPointF &) override;
 
 	CellPaintDevice *device() const { return dev_; }
 

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2077 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2078 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1011,7 +1011,6 @@ Owned by the copyright holder:
 | **~~Right-to-left: does qtty support it at all?~~ It does, and the row's own list is how the last gap was found.** 8.284 mirrored the progress bar, the scroll bar's thumb, the spin box's arrows and a tool button's menu arrow; 8.304 mirrored the combo box's, which this row still named. Re-measured 2026-09-22 against plain Qt: **a label's alignment and a line edit's text are NOT gaps** -- Qt does not mirror either, ink left in both directions, so drawing them the same is correct. What remains undesigned is bidirectional TEXT, which is a different question and is its own row. `doc/keyboard-first.md` has the section, with the numbers | 8.284, 8.304 |
 | **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise. 8.248 adds a second obstacle on the ink half alone: ToolTipText is the same black as WindowText here, and `role_of()` keys on the colour, so a hover timer would light the tooltip's ground and leave its text at body text's index | §7.2 |
 | **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect. **Both halves are asserted since 8.75** -- the hover arrives, and the render is byte-identical with the pointer on the control and off it | §7.2 |
-| **`drawTiledPixmap` bleeds a cell past its target rectangle.** `QPaintEngine`'s own tiling calls `drawPixmap` once per tile, a tile at the far edge runs past the rectangle, and `to_cells()` rounds it up to a whole cell: measured, four placements covering **eleven** cells where raster Qt paints **eight**. Over-coverage, which §8.384 argues is worse than losing content. The fix is to override it and place the composed image once at the target rect, which is cheaper than four placements as well -- raised rather than taken because it is a third subsystem in one pass | §8.384 |
 | **Should Channel A's fill walk whichever axis a shape is long in?** The scanline walks ROWS and samples each row once, which is right for a shape covering cell centres and under-covers a shape that is long and thin along the other axis: 8.384 stopped a thin non-axis-aligned fill DISAPPEARING, and what remains is that a gently slanted 3-pixel band crossing about twenty cells is marked in five to ten of them. Under-coverage rather than absence, and closing it is a rasteriser rather than a guard -- a cost nobody has asked for | §8.384 |
 | **Two frames nested with no layout margin draw two rules in adjacent columns.** Faithful to the widget tree -- in pixels they are 1px lines 1px apart -- and on a grid they read as two rules. Merging is not a paint-time trick: the edges are in DIFFERENT cells because the inner rect is one cell inside the outer. Three options with their costs are recorded; the cheapest is to suppress a rule whose neighbour already holds one, which cannot tell nesting from two adjacent framed widgets. Reported by fuzzypickles, and reached again by a QScrollArea | 8.25, 8.26, 8.27 |
 | **~~A read-only line edit is not marked.~~ It is, and has been since the caret-or-mark rule; the row outlived its measurement.** 8.33 measured it rendering identically to an editable one and that was true then. Re-measured 2026-09-21 through a compositor, which is what has the caret: a focused read-only field has its BRACKETS reversed and shows no caret, while a focused editable one reverses only its selected text and shows one. The brackets are the difference, and a caretless editor gets the mark precisely because it gets no caret -- so the vocabulary this row said was needed was never needed, the rule already had it. Checked both ways now, so it cannot reopen quietly | 8.33, 8.303 |
@@ -18035,6 +18034,70 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.385 A tiled pixmap was placed one tile at a time (2026-10-07)
+
+**Found by 8.384's sweep of the engine's entry points and filed in the
+wrong place first.** `QPaintEngine::drawTiledPixmap()` calls
+`drawPixmap()` once per tile, which is right for a pixel canvas and
+wrong here for a reason that is `cell_paint.cpp`'s own: `to_cells()`
+rounds each EDGE, deliberately, so that a viewport or a panel snaps --
+and a partial tile at the far edge is a strip a few pixels tall whose
+edges round into a cell row the strip does not touch.
+
+Measured against raster Qt:
+
+    4x2 cells, 8x8 tile   4 placements over 11 cells, raster paints 8
+      the bottom strip is 32x6 px at y 32..38, inside cell ROW 1,
+      and its edges rounded to row 2 -- a row that starts at y 38
+    4x2 cells, cell tile  4 placements over 8 cells, raster 8 -- right,
+      because a tile that divides the target leaves no partial strip
+    2x1 cells, 8x8 tile   4 placements over 4 cells, raster 2, and the
+      same cell rect named twice with different contents
+
+So the case that works is the one where the arithmetic is exact, which
+is part of why nothing had noticed: a tiling whose tile happens to
+divide the target is correct, and one that does not bleeds a cell.
+
+**Who reaches it was measured rather than assumed, and the first answer
+was wrong.** This entry said a textured brush bleeds a cell. It does
+not: a `QBrush` holding a pixmap is resolved to one cell colour by
+`brush_cell()` -- measured, a texture-brush fill over 4x2 cells colours
+eight cells and makes **no placement at all** -- which is the rule
+design.md states for a gradient or texture brush, resolved rather than
+believed. Nothing in the library calls `drawTiledPixmap` either. The
+population is an application calling `QPainter::drawTiledPixmap` itself,
+in its own `paintEvent`, for a repeating background or pattern. Narrower
+than a brush, and real.
+
+**It is one placement now.** The tiles are composed by a raster
+`QPainter` onto a pixmap the size of the target, so the offset, the wrap
+and a tile larger than the target are Qt's own answers rather than a
+second implementation of them, and the placement's rect is the target
+the caller named -- the rect whose rounding a caller can predict.
+Measured after: one placement per case, and the placed cells equal
+raster's exactly in all three. **One upload instead of one per tile is
+the cheaper answer as well**, which is unusual for a correctness fix.
+
+**The suite could not see any of it**, which is the third time in this
+pass: 2077 checks, zero failures, with the override in and with it out,
+because nothing in the suite draws a tiled pixmap. The check added for
+it compares the placements' cells against the cells raster paints,
+across three tilings -- one whose tile divides the target, one whose
+tile does not, and one away from the origin so a wrong row cannot
+coincide with a right one. A cell COUNT would have passed against a
+placement of the right size in the wrong row, which is the fault that
+was there.
+
+**One sabotage entry, `--only`-proven**: putting the base class's
+per-tile call back reddens the check and nothing else.
+
+**And it was filed as a §0b row first, which was wrong.** §0b is for
+questions whose answer is the copyright holder's. This was a defect with
+a known fix, deferred for scope -- and `working-practice.md` names the
+asymmetry exactly: a wrong technical claim gets caught, and a
+wrongly-deferred question is caught by nothing, because it sits in the
+document looking like diligence. The row is gone and the work is done.
+
 ### 8.384 A thin fill that is not axis-aligned drew nothing (2026-10-07)
 
 **Found by pointing the last defect's lens at the next subsystem.** The
@@ -18284,20 +18347,13 @@ disappearance class again. Each was driven and compared with raster:
     drawImage, 2x2 cells        forwards to drawPixmap: 1 placement
     drawPolygon, int overload   7 cells of raster's 9, the thin limit
     drawTiledPixmap, 4x2 cells  4 placements over ELEVEN cells, raster 8
+                                -- a finding, and fixed below
 
 The line walk was swept the same way and is sound: a 2-pixel line
 horizontal, vertical or diagonal, and a zero-length one, each mark
 exactly one cell and raster agrees.
 
-**One of those is a finding and is not fixed here.**
-`drawTiledPixmap` covers eleven cells where raster covers eight, because
-`QPaintEngine`'s own tiling calls `drawPixmap` per tile and a tile at
-the far edge extends past the target rectangle -- which `to_cells()`
-then rounds up to a whole cell. So a textured brush bleeds a cell past
-the rectangle it was given. Over-coverage again, and the fix is to override
-`drawTiledPixmap` and place the composed image once at the target rect
--- cheaper than four placements as well. Not done here: a third
-subsystem in one pass, so it is a row in §0b.
+**One of those was a finding and it has its own entry, 8.385.**
 
 #### A guard nothing reaches, caught by the harness
 

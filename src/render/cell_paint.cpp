@@ -980,6 +980,53 @@ void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &whole,
 	dev_->placements.append({quint64(pm.cacheKey()), c, pm});
 }
 
+// TILED, as ONE placement rather than one per tile. QPaintEngine's own
+// implementation calls drawPixmap() for each tile, which is correct for a
+// pixel canvas and wrong here in a way that is this file's own hazard:
+// to_cells() rounds each EDGE, deliberately, so that a viewport or a panel
+// snaps -- and a partial tile at the far edge is a strip a few pixels tall
+// whose edges round into a cell row the strip does not touch.
+//
+// Measured against raster Qt. A 4x2-cell target tiled with an 8x8 pixmap
+// produced four placements covering ELEVEN cells where raster paints eight:
+// the bottom strip is 32x6 px at y 32..38, which is inside cell row 1, and
+// its edges rounded to row 2 -- a row starting at y 38. A 2x1-cell target
+// came out over four cells against raster's two, and twice named the same
+// cell rect with different contents. Over-coverage, which fill_polygon()'s
+// own comment calls worse than losing content, because a reader cannot tell
+// which half is which.
+//
+// Who reaches it: an application calling QPainter::drawTiledPixmap in its
+// own paintEvent. NOT a texture brush -- measured, a QBrush holding a
+// pixmap is resolved to one cell colour by brush_cell() and makes no
+// placement, which is design.md's rule for a gradient or texture brush.
+// Nothing in the library calls this either.
+//
+// Composed first, then placed once. The tiling is Qt's own -- a raster
+// QPainter on the composite, so the offset, the wrap and a tile larger than
+// the target are its answers rather than a second implementation of them --
+// and the placement's rect is the target the caller named, which is the rect
+// whose rounding the caller can predict. One upload instead of one per tile
+// is the cheaper answer as well: the four above become one.
+void CellPaintEngine::drawTiledPixmap(const QRectF &r, const QPixmap &pm,
+                                      const QPointF &offset) {
+	if (segment_sink_) return;
+	const QRectF rn = r.normalized();
+	// Nothing to tile into, and nothing to tile with. A zero-extent target
+	// is the fill_rectf() case: Qt paints no pixels for it, so neither does
+	// this.
+	if (rn.width() <= 0 || rn.height() <= 0 || pm.isNull()) return;
+	const QSize px = rn.size().toSize();
+	if (px.isEmpty()) return;
+	QPixmap composed(px);
+	composed.fill(Qt::transparent);
+	{
+		QPainter into(&composed);
+		into.drawTiledPixmap(QRect(QPoint(0, 0), px), pm, offset);
+	}
+	drawPixmap(rn, composed, QRectF(composed.rect()));
+}
+
 // The MODE, which this took and ignored. Qt sends a polyline, an odd-even
 // polygon, a winding polygon and a convex polygon through one entry point and
 // says which by the third argument; this passed outline_only = true for all
