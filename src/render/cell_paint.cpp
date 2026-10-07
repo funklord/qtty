@@ -2033,6 +2033,22 @@ void CellPaintEngine::fill_polygon(const QPolygonF &pts, bool winding,
 			// centre, which is the only shape that reaches here, so marking
 			// the cells they pass through fills each part and no gap.
 			const double top = double(y) * ch, bot = double(y + 1) * ch;
+			// A ROW THE SHAPE ONLY TOUCHES IS NOT A ROW IT IS IN. `bounded`
+			// comes from the bounding box's cell range, and a box ending
+			// exactly on a cell boundary reaches the row past it -- so a
+			// shape whose last pixel row is 38, with a 19-pixel cell,
+			// gives row 2 a band of [38, 57) that the shape meets at a
+			// single point and has no extent in.
+			//
+			// Measured against raster Qt on an ellipse filled over 4x2
+			// cells: its bottom vertex sits at exactly y = 38, the vertex
+			// test `>= top` counted it as being in row 2, and the fallback
+			// marked a cell there where raster draws nothing. That is the
+			// invention this fallback was rewritten to stop making,
+			// reappearing at a boundary -- and the suite could not see it,
+			// which is why the comparison against raster is a check rather
+			// than a note.
+			if (box_px.bottom() <= top || box_px.top() >= bot) continue;
 			band_lo.clear();
 			band_hi.clear();
 			for (int i = 0; i < pts.size(); ++i) {

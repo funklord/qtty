@@ -4,6 +4,7 @@
 #include <QDirIterator>
 #include <QTemporaryDir>
 #include <cstdio>
+#include <functional>
 #include "page_table.h"
 #include <fcntl.h>
 #include <unistd.h>
@@ -3109,26 +3110,35 @@ int suite_render(bool record) {
 		// the whole of why this is worth more than another assertion about
 		// the cells.
 		{
-			const auto raster_cells = [&](const QRectF &rect) {
+			// A FRINGE IS NOT COVERAGE, which is the instrument's own
+			// hazard and had to be fixed before the result meant
+			// anything: counting any alpha above zero counts a cell
+			// touched by one antialiased pixel of an outline, so raster
+			// reads higher than any renderer that rounds, and the
+			// difference is the threshold rather than the engine. 40 is
+			// the value compose_halfblocks() already calls transparent.
+			const auto raster_cells =
+			    [&](const std::function<void(QPainter &)> &draw) {
 				QImage im(cw * 8, ch * 4, QImage::Format_ARGB32);
 				im.fill(Qt::transparent);
 				{
 					QPainter p(&im);
-					p.fillRect(rect, QColor(200, 40, 40));
+					draw(p);
 				}
 				QSet<QPair<int, int>> hit;
 				for (int y = 0; y < im.height(); ++y)
 					for (int x = 0; x < im.width(); ++x)
-						if (qAlpha(im.pixel(x, y)) > 0)
+						if (qAlpha(im.pixel(x, y)) >= 40)
 							hit.insert(qMakePair(x / cw, y / ch));
 				return hit;
 			};
-			const auto qtty_cells = [&](const QRectF &rect) {
+			const auto qtty_cells =
+			    [&](const std::function<void(QPainter &)> &draw) {
 				Qtty::CellBuffer b(8, 4);
 				{
 					Qtty::CellPaintDevice dev(b);
 					QPainter p(&dev);
-					p.fillRect(rect, QColor(200, 40, 40));
+					draw(p);
 					p.end();
 				}
 				QSet<QPair<int, int>> hit;
@@ -3138,20 +3148,90 @@ int suite_render(bool record) {
 							hit.insert(qMakePair(x, y));
 				return hit;
 			};
-			struct Case { const char *what; QRectF rect; };
-			const Case cases[] = {
-				{ "forwards",   QRectF(cw * 2, ch, cw * 2, ch) },
-				{ "reversed",   QRectF(cw * 4, ch * 2, -cw * 2.0, -double(ch)) },
-				{ "zero width", QRectF(cw * 2, ch, 0, ch) },
-				{ "empty",      QRectF() },
-				{ "a 2x-2 swatch", QRectF(cw * 3 + 7, ch + 13, 2, -2) },
+			const auto filler = [](const QRectF &rect) {
+				return [rect](QPainter &p) {
+					p.fillRect(rect, QColor(200, 40, 40));
+				};
 			};
-			int disagree = 0;
-			QString first_bad;
+			// TWO PROPERTIES, and only one of them is equality.
+			//
+			// A shape that covers cell centres must come out as the cells
+			// raster paints, exactly. A shape too thin to cover one cannot:
+			// section 0b carries that as an open question, and the thin
+			// diagonal below is marked in four cells where raster paints
+			// eleven --
+			// under-coverage, which is this fill's documented limit.
+			//
+			// What holds for EVERY case, thin ones included, is the
+			// direction: the engine may mark fewer cells than raster and
+			// must never mark one raster leaves blank. That is
+			// fill_polygon()'s own rule -- inventing content is worse than
+			// losing it, because a reader cannot tell which half is which
+			// -- asserted against an independent renderer rather than
+			// against this engine's own idea of itself. It is also what
+			// caught the ellipse.
+			struct Case {
+				const char *what;
+				bool exact;
+				std::function<void(QPainter &)> draw;
+			};
+			// Named before the table rather than written into it: a line
+			// opening both an initialiser brace and a lambda brace puts
+			// its body two levels in, which the style gate counts
+			// correctly and which reads worse than this.
+			const auto ellipse_fill = [cw, ch](QPainter &p) {
+				p.setPen(Qt::NoPen);
+				p.setBrush(QColor(200, 40, 40));
+				p.drawEllipse(QRectF(0, 0, cw * 4, ch * 2));
+			};
+			const auto thin_diagonal = [cw, ch](QPainter &p) {
+				p.setPen(Qt::NoPen);
+				p.setBrush(QColor(200, 40, 40));
+				QPainterPath path;
+				path.moveTo(0, 0);
+				path.lineTo(cw * 8, ch * 4);
+				path.lineTo(cw * 8, ch * 4 - 4);
+				path.lineTo(0, -4);
+				path.closeSubpath();
+				p.drawPath(path);
+			};
+			const Case cases[] = {
+				{ "forwards",   true,
+				  filler(QRectF(cw * 2, ch, cw * 2, ch)) },
+				{ "reversed",   true,
+				  filler(QRectF(cw * 4, ch * 2, -cw * 2.0, -double(ch))) },
+				{ "zero width", true, filler(QRectF(cw * 2, ch, 0, ch)) },
+				{ "empty",      true, filler(QRectF()) },
+				{ "a 2x-2 swatch", true,
+				  filler(QRectF(cw * 3 + 7, ch + 13, 2, -2)) },
+				// AN ELLIPSE'S FILL, which is here because it found a
+				// fault no fill of a rectangle could. Its bottom edge
+				// lands exactly on a cell boundary, and the row-band
+				// fallback counted a vertex merely TOUCHING the band as
+				// being in it -- so a cell was marked in the row below
+				// the shape, where raster draws nothing. Nothing else in
+				// the suite could see that: it needs a shape whose
+				// extreme point sits on a boundary and whose row below is
+				// reached by the bounding box's rounding.
+				{ "an ellipse's fill",      true,  ellipse_fill },
+				{ "a thin diagonal fill",   false, thin_diagonal },
+			};
+			int disagree = 0, invented = 0;
+			QString first_bad, first_invented;
 			for (const Case &k : cases) {
-				const QSet<QPair<int, int>> want = raster_cells(k.rect);
-				const QSet<QPair<int, int>> got = qtty_cells(k.rect);
-				if (want == got) continue;
+				const QSet<QPair<int, int>> want = raster_cells(k.draw);
+				const QSet<QPair<int, int>> got = qtty_cells(k.draw);
+				for (const QPair<int, int> &c : got) {
+					if (want.contains(c)) continue;
+					++invented;
+					if (first_invented.isEmpty())
+						first_invented =
+						    QStringLiteral("%1 marks cell %2,%3 where raster"
+						                   " paints nothing")
+						    .arg(QString::fromLatin1(k.what))
+						    .arg(c.first).arg(c.second);
+				}
+				if (!k.exact || want == got) continue;
 				++disagree;
 				if (first_bad.isEmpty())
 					first_bad = QStringLiteral("%1: raster %2 cell(s),"
@@ -3159,15 +3239,25 @@ int suite_render(bool record) {
 					            .arg(QString::fromLatin1(k.what))
 					            .arg(want.size()).arg(got.size());
 			}
-			printf("info: five fills compared against raster Qt, %d"
-			       " disagreement(s)\n", disagree);
+			printf("info: seven fills against raster Qt -- %d exact"
+			       " disagreement(s), %d invented cell(s)\n",
+			       disagree, invented);
 			if (disagree == 0)
-				printf("PASS: the cells a fill marks are the cells raster Qt"
-				       " paints pixels in, reversed and empty included\n");
+				printf("PASS: a fill that covers cell centres marks exactly"
+				       " the cells raster Qt paints, a curve included\n");
 			else {
-				printf("FAIL: the cells a fill marks are the cells raster Qt"
-				       " paints pixels in, reversed and empty included\n"
+				printf("FAIL: a fill that covers cell centres marks exactly"
+				       " the cells raster Qt paints, a curve included\n"
 				       "      condition: %s\n", qPrintable(first_bad));
+				++r;
+			}
+			if (invented == 0)
+				printf("PASS: and no fill marks a cell raster leaves blank,"
+				       " which holds for the thin ones too\n");
+			else {
+				printf("FAIL: and no fill marks a cell raster leaves blank,"
+				       " which holds for the thin ones too\n"
+				       "      condition: %s\n", qPrintable(first_invented));
 				++r;
 			}
 		}

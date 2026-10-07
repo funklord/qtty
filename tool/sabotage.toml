@@ -5849,3 +5849,11 @@ find = "\t\t\t\tint last = b > a ? int(std::ceil(b / cw)) - 1 : first;"
 into = "\t\t\t\tint last = int(std::floor(b / cw));"
 count = 1
 check = "and a row the fallback answers for marks each disjoint part and neither the gap nor the cell past it"
+
+[[sabotage]]
+name = "a row the shape only touches is filled again"
+file = "src/render/cell_paint.cpp"
+find = "\t\t\tif (box_px.bottom() <= top || box_px.top() >= bot) continue;"
+into = "\t\t\tif (false) continue;"
+count = 1
+check = "and no fill marks a cell raster leaves blank, which holds for the thin ones too"

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2076 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2077 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1011,6 +1011,7 @@ Owned by the copyright holder:
 | **~~Right-to-left: does qtty support it at all?~~ It does, and the row's own list is how the last gap was found.** 8.284 mirrored the progress bar, the scroll bar's thumb, the spin box's arrows and a tool button's menu arrow; 8.304 mirrored the combo box's, which this row still named. Re-measured 2026-09-22 against plain Qt: **a label's alignment and a line edit's text are NOT gaps** -- Qt does not mirror either, ink left in both directions, so drawing them the same is correct. What remains undesigned is bidirectional TEXT, which is a different question and is its own row. `doc/keyboard-first.md` has the section, with the numbers | 8.284, 8.304 |
 | **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise. 8.248 adds a second obstacle on the ink half alone: ToolTipText is the same black as WindowText here, and `role_of()` keys on the colour, so a hover timer would light the tooltip's ground and leave its text at body text's index | §7.2 |
 | **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect. **Both halves are asserted since 8.75** -- the hover arrives, and the render is byte-identical with the pointer on the control and off it | §7.2 |
+| **`drawTiledPixmap` bleeds a cell past its target rectangle.** `QPaintEngine`'s own tiling calls `drawPixmap` once per tile, a tile at the far edge runs past the rectangle, and `to_cells()` rounds it up to a whole cell: measured, four placements covering **eleven** cells where raster Qt paints **eight**. Over-coverage, which §8.384 argues is worse than losing content. The fix is to override it and place the composed image once at the target rect, which is cheaper than four placements as well -- raised rather than taken because it is a third subsystem in one pass | §8.384 |
 | **Should Channel A's fill walk whichever axis a shape is long in?** The scanline walks ROWS and samples each row once, which is right for a shape covering cell centres and under-covers a shape that is long and thin along the other axis: 8.384 stopped a thin non-axis-aligned fill DISAPPEARING, and what remains is that a gently slanted 3-pixel band crossing about twenty cells is marked in five to ten of them. Under-coverage rather than absence, and closing it is a rasteriser rather than a guard -- a cost nobody has asked for | §8.384 |
 | **Two frames nested with no layout margin draw two rules in adjacent columns.** Faithful to the widget tree -- in pixels they are 1px lines 1px apart -- and on a grid they read as two rules. Merging is not a paint-time trick: the edges are in DIFFERENT cells because the inner rect is one cell inside the outer. Three options with their costs are recorded; the cheapest is to suppress a rule whose neighbour already holds one, which cannot tell nesting from two adjacent framed widgets. Reported by fuzzypickles, and reached again by a QScrollArea | 8.25, 8.26, 8.27 |
 | **~~A read-only line edit is not marked.~~ It is, and has been since the caret-or-mark rule; the row outlived its measurement.** 8.33 measured it rendering identically to an editable one and that was true then. Re-measured 2026-09-21 through a compositor, which is what has the caret: a focused read-only field has its BRACKETS reversed and shows no caret, while a focused editable one reverses only its selected text and shows one. The brackets are the difference, and a caretless editor gets the mark precisely because it gets no caret -- so the vocabulary this row said was needed was never needed, the rule already had it. Checked both ways now, so it cannot reopen quietly | 8.33, 8.303 |
@@ -18052,11 +18053,11 @@ Measured on a 3-pixel band across twenty cells, before any change:
     slope (cells per cell)   0.25   0.5   1.0   2.0   4.0   8.0
     cells marked of ~20         0     0    20     0    20    10
 
-Zero at three of six slopes. Not coarse -- absent. A regular shape
+Zero at three of six slopes -- absent, not coarse. A regular shape
 against a regular grid either covers a centre in every row or misses one
-in every row, so the failure is all-or-nothing and perfectly
-reproducible, and **a check written at one slope would have had three
-chances in six of passing against it.**
+in every row, so the failure is all-or-nothing and reproducible, and
+**a check written at one slope had three chances in six of passing
+against it.**
 
 `is_thin()` is why a hairline RULE has always worked: it tests the
 BOUNDING RECTANGLE, so an axis-aligned thin rect is caught and filled as
@@ -18129,14 +18130,12 @@ case that defeats the instrument went on drawing nothing for a month.
   a real property and not the one its name claimed.
 
   The fixture is an inverted U now, as ONE polygon through
-  `drawPolygon()`: two legs in the second cell row, above its sample
-  line, joined by a crossbar in the first. Nothing crosses the second
-  row's sample, so the fallback is what answers for that row, and both
-  ways of getting the merge wrong are visible -- not merging marks the
-  cell past each leg, merging everything fills the four cells between
-  them. **A check whose fixture cannot reach the code it names is the
-  vacuous pass with a better disguise**, and the only thing that
-  distinguishes it from coverage is a sabotage.
+  `drawPolygon()`: two legs in the second cell row above its sample
+  line, joined by a crossbar in the first. Both ways of getting the
+  merge wrong are visible in it -- not merging marks the cell past each
+  leg, merging everything fills the four between them. **A check whose
+  fixture cannot reach the code it names is the vacuous pass with a
+  better disguise**, and only a sabotage tells it from coverage.
 
 Both fire only where the scanline wrote nothing, so no shape that
 already rendered can have changed. After: every slope and every offset
@@ -18204,6 +18203,26 @@ forwards covers two. The swatches are two pixels square, so they fit in
 one cell either way -- **the case that reported the bug could not have
 shown this half of it.**
 
+#### And the fallback invented a cell at a boundary, which raster caught
+
+**The fix had one more fault in it, found after the commit by pointing the
+same lens at the engine's other entry points.** Filling an ellipse over
+4x2 cells marked a cell in the row BELOW the shape:
+
+    fill only   cells  ####../####../..#.../
+                raster ####../####../....../
+
+`bounded` comes from the bounding box's cell range, and a box whose last
+pixel row is 38 reaches row 2 when the cell is 19 tall -- so row 2 gets a
+band of `[38, 57)` that the ellipse meets at a single point and has no
+extent in. The vertex test `p1.y() >= top` counted that point as being in
+the band, and the fallback marked a cell from it. **The invention this
+fallback had just been rewritten to stop making, reappearing at a
+boundary**, and every check in this entry stayed green.
+
+A row the shape only TOUCHES is skipped now -- `box_px.bottom() > top`
+is required, not `>=`.
+
 #### Checked against raster Qt, which is the only independent witness
 
 Channel A resolves what `QPainter` draws onto cells, so "does a
@@ -18218,10 +18237,29 @@ cells they fall in:
     fillRect 2x-2         2x2 block           cells agree
     drawPixmap reversed   20x38 at 40,57      cells agree
 
-Five fills are compared against raster in the suite now, and it is the
-one assertion here that is not this engine agreeing with itself. It has
-been seen to fail twice -- dropping the zero guard and handing the
-reversed rect on both redden it.
+**Seven fills are compared against raster in the suite now, and it
+asserts TWO things rather than one**, because only one of them is
+equality. A shape covering cell centres must come out as exactly the
+cells raster paints. A shape too thin to cover one cannot -- the thin
+diagonal is marked in four cells where raster paints eleven, which is
+the limit above. What holds for every case is the DIRECTION: the engine
+may mark fewer cells than raster and must never mark one raster leaves
+blank -- the rule quoted above, asserted against a renderer that is not
+this one.
+
+That second half is what caught the ellipse, and it names the cell when
+it fails -- *"an ellipse's fill marks cell 2,2 where raster paints
+nothing"*. The pair has been seen to fail four times between them:
+dropping the zero guard, handing the reversed rect on, and the
+touch-only row both ways.
+
+**The instrument needed fixing before its result meant anything.** It
+counted a raster cell at any alpha above zero, which counts a cell
+touched by one antialiased pixel of an outline -- so raster read higher
+than any renderer that rounds, and an ellipse's OUTLINE appeared to lose
+three cells when what it loses is the pen's half-pixel overhang. The
+threshold is 40 now, the value `compose_halfblocks()` already calls
+transparent, and under it the stroke's residual is the overhang alone.
 
 **The last row corrects a claim this entry carried for an hour.**
 `drawPixmap` with a reversed target looked two cells off, and it is not:
@@ -18231,6 +18269,35 @@ keeping the origin and taking the extent's magnitude -- traced,
 paints it at 40,57 too.** The comment in `to_cells()` claiming a
 `drawPixmap` fault was written before that control was run, and a
 comfortable explanation that ends an investigation is worse than none.
+
+#### The rest of the engine's surface, swept with the same lens
+
+**Recorded as an empty sweep with its lens named, because that is what
+makes it worth anything.** The engine overrides six `QPaintEngine`
+virtuals; the rest reach the cells through `QPaintEngine`'s own
+forwarding, and an unimplemented virtual that draws nothing is the
+disappearance class again. Each was driven and compared with raster:
+
+    drawPoint / drawPoints      1 and 5 cells, raster agrees
+    drawEllipse, 4x2 cells      outline residual is the pen's overhang
+    drawEllipse, sub-cell       1 cell, raster agrees
+    drawImage, 2x2 cells        forwards to drawPixmap: 1 placement
+    drawPolygon, int overload   7 cells of raster's 9, the thin limit
+    drawTiledPixmap, 4x2 cells  4 placements over ELEVEN cells, raster 8
+
+The line walk was swept the same way and is sound: a 2-pixel line
+horizontal, vertical or diagonal, and a zero-length one, each mark
+exactly one cell and raster agrees.
+
+**One of those is a finding and is not fixed here.**
+`drawTiledPixmap` covers eleven cells where raster covers eight, because
+`QPaintEngine`'s own tiling calls `drawPixmap` per tile and a tile at
+the far edge extends past the target rectangle -- which `to_cells()`
+then rounds up to a whole cell. So a textured brush bleeds a cell past
+the rectangle it was given. Over-coverage again, and the fix is to override
+`drawTiledPixmap` and place the composed image once at the target rect
+-- cheaper than four placements as well. Not done here: a third
+subsystem in one pass, so it is a row in §0b.
 
 #### A guard nothing reaches, caught by the harness
 
@@ -18247,12 +18314,12 @@ the argument for running the arms on what you just wrote rather than only
 on what you changed: a redundant guard and a load-bearing one are
 indistinguishable by reading.
 
-**Eight sabotage entries, each `--only`-proven**, seven new and one
+**Nine sabotage entries, each `--only`-proven**, eight new and one
 re-anchored -- the wave-fold entry named `xf_.mapRect(r)` in the thin
 branch, which is `rn` now.
 
 **And a count that is worth stating because it is the second time today
-the suite has been silent on a real fault.** Of the six faults in this
+the suite has been silent on a real fault.** Of the seven faults in this
 entry, the two thin-fill ones were invisible to 2069 checks, the
 zero-extent one was found by a control written for something else, the
 reversed-rect one was found by a widget check reddening, the invented
@@ -18260,8 +18327,10 @@ gap was found by reading this function's own comment about why the
 bounding rectangle was rejected, and the off-by-one at a cell boundary
 was found by the check that gap produced -- and that check was then
 found to be unable to test what it was named for, by a sabotage.
-**Only one of the six was caught by a check that existed to find it,
-and that check was minutes old; one of the six was a check.**
+**Only one of the seven was caught by a check that existed to find it,
+and that check was minutes old; one of the seven was a check, and one --
+the invented cell at a boundary -- was found after the commit, by
+pointing the lens at the engine's other entry points.**
 That is the argument for the lens in §0e rather than for more checks of
 the kind already here -- and for writing the check before trusting the
 fix, since three versions of one fallback each looked right.
