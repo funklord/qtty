@@ -1064,6 +1064,7 @@ Owned by the copyright holder:
 | **~~Right-to-left: does qtty support it at all?~~ It does, and the row's own list is how the last gap was found.** 8.284 mirrored the progress bar, the scroll bar's thumb, the spin box's arrows and a tool button's menu arrow; 8.304 mirrored the combo box's, which this row still named. Re-measured 2026-09-22 against plain Qt: **a label's alignment and a line edit's text are NOT gaps** -- Qt does not mirror either, ink left in both directions, so drawing them the same is correct. What remains undesigned is bidirectional TEXT, which is a different question and is its own row. `doc/keyboard-first.md` has the section, with the numbers | 8.284, 8.304 |
 | **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise. 8.248 adds a second obstacle on the ink half alone: ToolTipText is the same black as WindowText here, and `role_of()` keys on the colour, so a hover timer would light the tooltip's ground and leave its text at body text's index | §7.2 |
 | **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect. **Both halves are asserted since 8.75** -- the hover arrives, and the render is byte-identical with the pointer on the control and off it | §7.2 |
+| **Which direction is safe on a grid -- drawing a little more than allowed, or a little less?** The file states both as general rules and they point opposite ways: `clip_cells()` drops a clip's shape because drawing more "is the safe direction on a grid", while `fill_polygon()` refuses the bounding rectangle because it "invents content rather than losing it, and a reader cannot tell which half is which". They may both be right for their own case -- a clip that loses content hides what the application drew, a fill that over-covers shows what it did not -- and that asymmetry would be a good answer; it is just not the answer either comment gives. 8.386 | §8.386 |
 | **Should Channel A's fill walk whichever axis a shape is long in?** The scanline walks ROWS and samples each row once, which is right for a shape covering cell centres and under-covers a shape that is long and thin along the other axis: 8.384 stopped a thin non-axis-aligned fill DISAPPEARING, and what remains is that a gently slanted 3-pixel band crossing about twenty cells is marked in five to ten of them. Under-coverage rather than absence, and closing it is a rasteriser rather than a guard -- a cost nobody has asked for | §8.384 |
 | **Two frames nested with no layout margin draw two rules in adjacent columns.** Faithful to the widget tree -- in pixels they are 1px lines 1px apart -- and on a grid they read as two rules. Merging is not a paint-time trick: the edges are in DIFFERENT cells because the inner rect is one cell inside the outer. Three options with their costs are recorded; the cheapest is to suppress a rule whose neighbour already holds one, which cannot tell nesting from two adjacent framed widgets. Reported by fuzzypickles, and reached again by a QScrollArea | 8.25, 8.26, 8.27 |
 | **~~A read-only line edit is not marked.~~ It is, and has been since the caret-or-mark rule; the row outlived its measurement.** 8.33 measured it rendering identically to an editable one and that was true then. Re-measured 2026-09-21 through a compositor, which is what has the caret: a focused read-only field has its BRACKETS reversed and shows no caret, while a focused editable one reverses only its selected text and shows one. The brackets are the difference, and a caretless editor gets the mark precisely because it gets no caret -- so the vocabulary this row said was needed was never needed, the rule already had it. Checked both ways now, so it cannot reopen quietly | 8.33, 8.303 |
@@ -8652,7 +8653,7 @@ rather than to keep pulling on it:
 
     texture brush            drew BLACK
     CompositionMode_Clear    PAINTED where it should erase
-    setClipPath              correct, both in and out
+    setClipPath              correct to its BOUNDING RECT (8.386)
     rotate() and scale()     correct
 
 **Only the texture brush is fixed, and it is a completion rather than a new
@@ -8696,8 +8697,22 @@ on both axes. Neither needed a fixture chosen to flatter it; the rotated
 case is the one that would show a transform being dropped, because a
 dropped transform leaves the bar horizontal.
 
-So the family is swept and clean, and the next fault here needs a different
-lens rather than another probe of the same shape.
+~~So the family is swept and clean, and the next fault here needs a
+different lens rather than another probe of the same shape.~~ **The sweep
+holds for what it tested and the clean verdict was one step too wide,
+which 8.386 measured.** The path-clip fixture here is "a path clip
+NARROWER than the fill" -- the case where the clip's BOUNDING RECTANGLE
+does all the work, and the bounding rectangle is what `clip_cells()`
+deliberately uses. A clip whose bounding rect IS the fill, so that only
+its shape can exclude anything, paints six cells of a row where raster
+paints three.
+
+That is not a defect -- `clip_cells()` argues the direction and measures
+the frequency -- but "setClipPath correct, both in and out" reads as the
+shape being honoured, and it is not. **The fixture shape is the lesson:
+where a feature has a cheap approximation, a test picked for the feature
+rather than for the approximation will pass on the approximation.** Same
+as 8.49 against 8.384.
 
 ### 8.16 The pen path had the same two defects, and one worse (2026-09-06)
 
@@ -18086,6 +18101,80 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.386 The clip's shape is dropped on purpose (2026-10-07)
+
+**A sweep that found no defect, recorded because the lens is the useful
+part and because one claim in it wants correcting.** 8.384's lens was the
+engine's entry points; this is the engine's STATE, which is the other
+half of the same family -- what does Channel A do with painter state it
+does not track?
+
+    a plain fill (control)        8 cells, raster 8    agrees
+    CompositionMode_Clear         8 cells, raster 6    paints where it erases
+    CompositionMode_Destination   8 cells, raster 0    paints, draws nothing
+    a triangular clip path        8 cells, raster 6    paints outside the clip
+    an L-shaped clip region       8 cells, raster 6    paints outside the clip
+
+**None of it is a bug, and the clip half is answered at the call site in
+as many words.** `clip_cells()` says: "The bounding rectangle, not the
+region. That under-clips a region with a hole in it -- it draws a little
+more than it was allowed -- which is the safe direction on a grid, and it
+is rare." So the shape is dropped on purpose, with the direction argued
+and the frequency measured. A reader arriving at my table without that
+paragraph would file four defects.
+
+**What is worth correcting is 8.17**, which swept this family and
+recorded `setClipPath` as "correct, both in and out" and the family as
+"swept and clean". It is correct for the case that entry tested -- its
+own words are "a path clip NARROWER than the fill" -- and that is the
+case where the BOUNDING RECT does all the work. Reproduced both ways:
+
+    8.17's case: narrower path clip    cells  ##....../##....../
+                                       raster ##....../##....../
+    a triangle, same bounding rect     cells  ######../######../
+                                       raster ######../###...../
+
+The triangle's bounding rect IS the fill, so only its shape can exclude
+anything, and the engine paints six cells of a row where raster paints
+three. **Same fixture shape as 8.49 against 8.384 and as this pass's own
+gap check: a test that exercises the configuration in which the simple
+mechanism suffices.** Three instances in one day makes it the lens rather
+than three coincidences -- when a feature has a cheap approximation,
+ask which fixtures the approximation would pass.
+
+**The premise re-measured, because the decision rests on it and a
+countable claim about the tree is the kind that rots.** Instrumented and
+run over the whole suite: **1156 clip consultations carrying a user clip,
+of which 0 are multi-rectangle.** Stated with its method rather than as a
+correction, because the recorded "3386 clip changes, 13 involve more than
+one rectangle" counts clip CHANGES and this counts `clip_cells()` calls
+-- different populations, so the old figure is not shown wrong by mine.
+What is comparable is the part the decision needs: the multi-rect case is
+not merely rare in this tree, it is **absent**, so nothing here exercises
+the under-clipping and nothing would notice if it changed.
+
+**One case is new and nobody had recorded it.**
+`CompositionMode_Destination` means keep the destination and ignore the
+source -- raster draws nothing -- and the engine paints the lot. 8.17
+recorded `CompositionMode_Clear` and argued it down to zero consumers
+reaching this engine, by the good method of asking what each candidate
+paints INTO; `Destination` is the same family and the same argument
+presumably covers it, but it was not measured and is now.
+
+**And the file states two opposite rules for which direction is safe,
+which is the holder's to settle.** `clip_cells()` says drawing a little
+more than allowed "is the safe direction on a grid". `fill_polygon()`
+says the bounding rectangle "invents content rather than losing it, and a
+reader cannot tell which half is which. Drawing nothing at all would at
+least be honest." Both are stated generally and they point opposite ways.
+
+They may both be right for their own case -- a clip that loses content
+hides something the application drew, while a fill that over-covers shows
+something it did not -- and that asymmetry would be a good answer. It is
+just not the answer either comment gives, and this pass leant on
+`fill_polygon()`'s rule four times (8.384, 8.385) without noticing the
+other one existed.
 
 ### 8.385 A tiled pixmap was placed one tile at a time (2026-10-07)
 
