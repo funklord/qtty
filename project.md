@@ -3541,9 +3541,27 @@ the rest snapped. Missing:
 
   A single-line control is one cell tall by construction now, and the
   width still snaps up because a width is a count of characters and
-  rounding one down truncates text. The types that genuinely carry more
+  rounding one down truncates text. ~~The types that genuinely carry more
   than a line -- an item view row, a group box, a whole menu -- keep the
-  snap-up, which is the only rule that cannot clip.
+  snap-up, which is the only rule that cannot clip.~~
+
+  **AN ITEM VIEW ROW LEFT THAT LIST AND THIS SENTENCE DID NOT**, which
+  cost another project a careful report. `CT_ItemViewItem` came out of the
+  ceiling group on 2026-09-05 so that a checkable row stopped measuring a
+  cell short, and `1fdc776` gave a DECORATED row one cell on 2026-09-15 --
+  an icon is a glyph beside the text here, so the row the base style wants
+  38 pixels for is one row. Measured at this HEAD in eight
+  configurations -- plain, two columns, a header, a 16 px icon, a 22 px
+  icon, and icon sizes of 22, 24 and one cell -- the row pitch is **19 px,
+  one cell, in every one**. A group box and a menu still snap, and they
+  are what the sentence is true of.
+
+  raidcfgd read it, believed the two-cell row they were seeing was this
+  rule working as stated, and wrote the report in the section below asking
+  only for an opt-out. They were seeing `1fdc776`'s bug from before the
+  fix. **A stale sentence does not merely go unread -- it answers a
+  question somebody was about to ask**, and the cost here was a report
+  that should have been a pin bump.
 - ~~`subControlRect` is neither declared nor overridden.~~ **Done for
   `CC_ComboBox`**, which is where it was costing something. An editable
   combo's internal `QLineEdit` is placed by that call, and with the proxy
@@ -18101,6 +18119,69 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.388 A stale sentence answered a question being asked (2026-10-07)
+
+**Another project filed a careful report against a rule this document
+had removed.** raidcfgd reported every `QTreeWidget` row in its `--tui`
+occupying two character rows -- content on the first, blank on the second,
+eleven items visible where twenty-two would fit -- quoted §16's sentence
+that "an item view row ... keeps the snap-up", said it had read that
+before writing, and asked only whether an application can opt out.
+
+**It is a pin bump.** Built their pinned qtty, `1c0d649`, in a scratch
+tree and ran one probe against it and against this HEAD on the same
+machine:
+
+                                        1c0d649     this HEAD
+    plain text, one column               19 (1)      19 (1)
+    two columns                          19 (1)      19 (1)
+    with a header                        19 (1)      19 (1)
+    a 16 px icon, default iconSize       38 (2)      19 (1)
+    a 22 px icon, default iconSize       38 (2)      19 (1)
+    a 16 px icon, iconSize 22            38 (2)      19 (1)
+    a 16 px icon, iconSize 24            38 (2)      19 (1)
+    a 16 px icon, iconSize one cell      38 (2)      19 (1)
+
+**The discriminator is the icon, not the row**, which is why eight
+configurations were worth running rather than one: a plain row is one
+cell at BOTH commits, so there was never a rule for a single-line row to
+opt out of, and a report testing only their own fixture could not see
+that. `1fdc776` fixed the decorated case on 2026-09-15 -- "give a
+decorated item one row, since its icon is a glyph" -- and their pin is
+2026-09-07.
+
+**The fault is this document's.** §16 said an item view row keeps the
+snap-up. `CT_ItemViewItem` left the ceiling group on 2026-09-05 and
+`1fdc776` finished the job, so the sentence described a rule that had
+been removed -- and a reader who checked the document before reporting
+was told that the bug they were looking at was intended behaviour.
+
+**That is the cost `evidence.md` names and one worse than it states.**
+Its rule is that a gap claim which outlives its gap "sends the next
+reader at work already done". This sentence did more: it supplied an
+answer to a question somebody was in the middle of asking, and the answer
+turned a bug into a design question. The report is careful, correct about
+everything it measured, and aimed at the wrong thing entirely -- and it
+offered the decision to the holder, so a slower reader would have spent
+the holder's attention on it too.
+
+**What makes that kind of sentence dangerous is that nothing brings it
+together with its falsifier.** The commit that made it stale -- 2026-09-05
+-- was about a checkable row measuring a cell short, and the commit that
+finished the job was about a decorated row's height. Neither had any
+reason to grep §16 for a sentence about snap-up groups, and
+`evidence.md` says exactly this: it is "the one kind of sentence whose
+falsifier is a commit nobody connects to it". Striking through as you
+close is the only defence that does not need a periodic sweep, and
+neither commit struck this.
+
+**Answered in their own section rather than relayed.** The report was
+filed into this document by whoever was standing in raidcfgd, which is
+what `harmonization.md` asks for, so the answer goes where they will look
+for it -- with the measurement, in my voice, naming the commit they need
+and leaving the decision to advance a pin where it belongs, which is
+theirs. I have changed nothing in their tree.
 
 ### 8.387 The tiled fix traded a wrong place for a wrong identity (2026-10-07)
 
@@ -36842,3 +36923,48 @@ is right: single-line controls are one cell, the focus ring is visible under
 `capture-pane -e`, Tab and Shift+Tab move it, and the window's width
 behaviour is ours rather than yours -- it wants 128 columns for this reading
 because of what our own heading row and Detail column contain.
+
+**Answered, and it is a pin bump rather than a decision.** I built the
+qtty commit raidcfgd pins -- `1c0d649`, which `fuzznet`'s submodule names
+-- exported to a scratch tree, and ran one probe against it and against
+this HEAD on the same machine. Eight `QTreeWidget` configurations, row
+pitch in pixels against a 19-pixel cell:
+
+                                        1c0d649     this HEAD
+    plain text, one column               19 (1)      19 (1)
+    two columns                          19 (1)      19 (1)
+    with a header                        19 (1)      19 (1)
+    a 16 px icon, default iconSize       38 (2)      19 (1)
+    a 22 px icon, default iconSize       38 (2)      19 (1)
+    a 16 px icon, iconSize 22            38 (2)      19 (1)
+    a 16 px icon, iconSize 24            38 (2)      19 (1)
+    a 16 px icon, iconSize one cell      38 (2)      19 (1)
+
+**The discriminator is the icon, not the row.** A plain row is one cell
+at both commits, so there was never a rule for a single-line row to opt
+out of. What doubles the pitch is a DECORATED item, and `1fdc776` fixed
+it on 2026-09-15 -- "give a decorated item one row, since its icon is a
+glyph" -- which `git merge-base --is-ancestor` confirms is after
+`1c0d649` of 2026-09-07. That commit's own note describes the symptom in
+the same words this report does: the second row shows nothing and the
+list shows half as much, measured in Qt's own `QFileDialog` where every
+file was followed by a blank line.
+
+So raidcfgd is seeing a bug from before the fix, and advancing the pin
+should take the rows to one cell. Whether to advance it is raidcfgd's
+call, and `build-and-commit.md` is explicit that a build never moves a
+pin by itself.
+
+**The sentence that sent you was stale, and that is this document's
+fault rather than yours.** §16 still said an item view row keeps the
+snap-up. `CT_ItemViewItem` left the ceiling group on 2026-09-05 and
+`1fdc776` finished the job, so the sentence was describing a rule that
+had been removed -- and it is what made a bug read as intended
+behaviour. It is corrected where it stands, with what remains true of it
+named: a group box and a whole menu do still snap.
+
+**Nothing here needed the holder.** The report offered the decision up
+and was right to, since it could not see which commit it was running.
+`working-practice.md` asks whether a question has already been answered
+somewhere else under another name before it is deferred, and this one had
+been answered by a commit.
