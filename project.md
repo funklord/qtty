@@ -18263,8 +18263,19 @@ the same tiling hands back the same `QPixmap` and therefore the same key.
 `Compositor::compose()` builds a `CellPaintDevice` per frame, so the
 cache cannot live on the engine; it is `thread_local`, two entries where
 the steady state is one, bounded by the target rect, and cleared through
-`qAddPostRoutine` because a `QPixmap` outliving `QGuiApplication` is a
-crash at exit rather than a leak.
+`qAddPostRoutine`.
+
+**The reason given for that post routine was stronger than the
+evidence, and the probe says so.** The comment and the commit message
+both said a `QPixmap` outliving `QGuiApplication` is "a crash at exit
+rather than a leak". Measured 2026-10-08, the same program with and
+without the routine: a pixmap held in a static past the application's
+destruction **exits 0** on the offscreen platform. So the crash is not
+demonstrated, and what is left is the honest reason to keep one line --
+the cache is released when the application goes rather than at static
+destruction order, which is a real property and a smaller claim. Whether
+a platform with a native pixmap backend behaves differently was not
+measured and is not asserted.
 
 **Keying on cacheKey rather than on content is the right answer and not
 a shortcut.** An application that rebuilds its tile every frame gets a

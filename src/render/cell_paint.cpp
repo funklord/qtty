@@ -1039,10 +1039,24 @@ void CellPaintEngine::drawTiledPixmap(const QRectF &r, const QPixmap &pm,
 	//
 	// Two entries, which is one more than the steady state: an application
 	// has one tiled background and paints it at one size. Bounded by the
-	// target rect, which is bounded by the widget being painted. thread_local
-	// rather than static because a QPixmap is not shared between threads, and
-	// cleared through qAddPostRoutine because a QPixmap outliving
-	// QGuiApplication is a crash at exit rather than a leak.
+	// target rect, which is bounded by the widget being painted.
+	//
+	// thread_local rather than static, and the honest reason is smaller than
+	// the one written here first: nothing in this library starts a thread and
+	// a paint event reaches this on the GUI thread, so `static` would do.
+	// thread_local costs nothing and removes the question, which is worth one
+	// keyword and is not the same as a thread-safety guarantee -- the post
+	// routine below runs on the thread Qt destroys the application on, so a
+	// cache populated anywhere else would not be cleared by it.
+	//
+	// Cleared through qAddPostRoutine so the pixmaps go when the application
+	// does rather than at static destruction order. The first version of this
+	// comment said a QPixmap outliving QGuiApplication is "a crash at exit
+	// rather than a leak", and that was asserted rather than measured: the
+	// same program with and without the routine exits 0 on the offscreen
+	// platform, holding a pixmap in a static past the application. Whether a
+	// platform with a native pixmap backend differs was not measured, so the
+	// line stays for the reason that IS measured.
 	struct Tiling {
 		qint64 src = 0;
 		QSize size;
