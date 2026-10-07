@@ -33,6 +33,53 @@ fills it**; the suite spends it waiting, in the `settle()` calls, the child
 reaping and the pseudo-terminal timings. The user figure rose 0.05 for
 three more checks, which is nothing.
 
+**Re-taken 2026-10-07 at 2078 checks: 4.83, 4.86 and 4.84 user**, 0.49 to
+0.57 sys, 14.65 to 14.70 wall, at load 12 to 17. **So nineteen more checks
+and a day of paint changes cost nothing measurable** -- 4.84 against the
+4.81 above, and the wall figure has not moved in three re-takes across
+three loads.
+
+**That number had to be taken twice, and the first one was the
+instrument.** Measured earlier the same day it came back **6.89 and 6.97
+user**: checks up 0.9%, user time up 43%. The machine was at **load 190 on
+24 cores**, eight times oversubscribed by four other projects' parallel
+sweeps, and the obvious suspect was this day's own work --
+`compose_halfblocks()` reads every pixel of an image where it read two per
+cell (8.383).
+
+**The experiment that separates those was run rather than reasoned
+about**, because `running-code.md` asks for the one that would confirm the
+comfortable story: `6b45300` exported to a scratch tree, built, and timed
+on the same machine within minutes of HEAD, which holds the contention
+constant and varies only the code.
+
+    6b45300, pre-change    5.78, 5.14 user
+    cc2dfa7, HEAD          4.97, 4.76 user
+
+HEAD is not slower; it is marginally faster, and the gap is inside the
+baseline's own 0.64 spread. **So the 43% was contention and the code
+hypothesis is disproved rather than declined** -- which is the half that
+leaves something behind.
+
+**And it sharpens what the paragraph above says.** That one established
+that the WALL clock here is not CPU-bound, from load 5.12 against 1.68.
+This establishes the complementary fact the document had been assuming
+away: **USER time here is stable to moderate load and inflates badly at
+extreme load** -- 4.81 at load 1.68, 4.84 at load 12 to 17, 6.9 at load
+190. The reliable half of the measurement is only reliable below some
+load, and 190 is past it.
+
+**The valgrind arm is what made it matter.** `cc3bf71` came back
+`platforms rc=0`, `sanitize rc=0`, `valgrind rc=2` -- the suite stopping
+itself at its own 3000-second limit after 1491 checks of 2078. The three
+runs before it that day each reported `test-valgrind: clean` over 2060 to
+2064 checks inside a 640-second three-arm sequence, so the limit normally
+has about ten times the margin it needs, and 8x less CPU per process
+covers a 10x slowdown on its own. With the timing experiment above
+disproving the code, that arm is a casualty of the machine and wants
+re-running when the load is low -- which is a different sentence from
+calling it environmental and moving on.
+
 That is worth more than the caution it replaces. A figure whose conditions
 changed four-fold while it did not move has told you what it is a function
 of, which is the question `evidence.md` says to ask of a number before
@@ -18476,6 +18523,13 @@ covers more than sixteen pixels of an axis, so a placement at natural
 size reads every pixel once. It is paid per frame by a terminal with no
 graphics protocol showing a full-screen image, which is the worst case
 that exists here, and it is 4% of the budget.
+
+**And it costs nothing measurable at suite scale**, which is the figure a
+reader of this entry would otherwise have to guess at. The whole suite is
+4.84 seconds of user time with this in and 5.14 to 5.78 with the
+pre-change tree built beside it under the same load -- see §0a, which
+carries the experiment, including why the first attempt at that
+measurement read 43% higher and was the machine rather than this.
 
 The wash is the property the overlay path depends on, and it is why the
 tier is chosen on the GREATEST alpha in a half rather than on the mean: a
