@@ -3607,9 +3607,13 @@ the rest snapped. Missing:
   as an assertion in every test".
 - `GridMetrics` has `cw`, `ch`, `set`, `cells` and `isAligned`, but not
   `toCells()` or `snapUp()`.
-- The proxy base is hardcoded to Fusion, so design.md §10.1's promise that an
-  application's custom style *becomes* `GridStyle`'s proxy base is not
-  honoured.
+- ~~The proxy base is hardcoded to Fusion, so design.md §10.1's promise that
+  an application's custom style *becomes* `GridStyle`'s proxy base is not
+  honoured.~~ **Honoured since `22f555f` on 2026-10-06** -- `setup()` takes
+  the style the application already had and rebuilds it as the proxy base.
+  8.380. Struck here on 2026-10-07, a day late, by the sweep 8.388
+  prompted: that entry's cost was a stale sentence in THIS list, and the
+  item below it was stale by my own fix.
 
 **Theming -- wired.** `Qtty::theme()` is the single source rendering
 resolves colour through. `CellPaintEngine` still consults
@@ -4182,8 +4186,11 @@ are the same cause is withdrawn. Both were pinned by checks as results
 rather than gaps, with the note that either goes red the day somebody
 fixes its half -- **and the dock half has since gone red and been
 replaced**, which is the paragraph doing its job rather than a
-regression. What remains pinned as a result is the severity icon: a
-picture of at least two cells in each direction.
+regression. ~~What remains pinned as a result is the severity icon: a
+picture of at least two cells in each direction.~~ **The size condition
+is gone**: 8.383 moved the "too small to be a picture" rule to the
+backend on 2026-10-07, so the severity icon is a placement at whatever
+size it comes in and what is pinned is that it IS one.
 
 What has not changed is whose the decision is. **The copyright holder's**,
 and the alternative measured and closed above -- returning themed icons so
@@ -9378,8 +9385,10 @@ because `exec_drag()` does not return until the drop -- exactly as
 from inside the nested loop, which is where a real one comes from too.
 
 **A small icon carries its shape, not just its average** (2026-09-06).
-A pixmap too small to become a placement is substituted by a glyph, and
-the substitution averaged the WHOLE picture into one colour per cell. For
+A pixmap too small to become a placement was substituted by a glyph --
+8.383 retired that rule on 2026-10-07 and the composer moved to the
+backend, where this entry's finding still holds -- and the substitution
+averaged the WHOLE picture into one colour per cell. For
 an icon that encodes its state as a shape that is the entire meaning
 gone: raidcfgd draws five status icons that differ deliberately by shape,
 its own header recording that "around one man in twelve cannot reliably
@@ -10372,9 +10381,10 @@ measured it, reported means I have not.
       mode_usable() and DECRPM 4            fixed: `v != 0 && v != 4`
       the contrast check's Ansi16 table      fixed: it consults the
         palette the terminal reported, and falls back only when unasked
-      the same check's Default luminance     OPEN, and already recorded
-        above as a holder question with what would settle it, so not a
-        new finding: 210 and 20 assume a dark ground
+      the same check's Default luminance     ~~OPEN~~ settled and fixed
+        on 2026-10-07 by the holder's instruction, 8.381: it reads the
+        ground the terminal reported, and an unstated half is assumed
+        to contrast with the stated one
       CellItemDelegate's missing CellClip    fixed: clipped to the
         VIEWPORT through painted_widget()
       CC_ScrollBar and CC_Slider rects       fixed: subControlRect
@@ -18182,6 +18192,47 @@ what `harmonization.md` asks for, so the answer goes where they will look
 for it -- with the measurement, in my voice, naming the commit they need
 and leaving the decision to advance a pin where it belongs, which is
 theirs. I have changed nothing in their tree.
+
+#### The sweep it prompted, and four of the five were mine from today
+
+**The obvious next move after being bitten is to sweep for the same
+shape, and the obvious place is the list the bitten sentence was in.** It
+has two unstruck items, and one of them was stale by my own fix eleven
+hours earlier: "the proxy base is hardcoded to Fusion, so design.md
+§10.1's promise ... is not honoured", which `22f555f` honoured and 8.380
+recorded. I wrote that entry, struck §0e's pointer, and did not strike
+this.
+
+Widened to the claims this day's own work could have falsified, which is
+the discipline the entry above demands of its author:
+
+    §16's proxy-base bullet          stale, 22f555f and 8.380
+    8.373's sweep report             stale, the Default luminance it
+                                     lists as OPEN was 8.381
+    §7.2's severity-icon result      stale, "a picture of at least two
+                                     cells in each direction" is gone
+                                     with 8.383's rule
+    8.37's premise sentence          stale in tense: "a pixmap too small
+                                     to become a placement IS
+                                     substituted"
+    §16's "35 or more metrics
+    answered explicitly"             HOLDS -- recounted, it is 48
+
+**The one that held is the instructive one, and it held because of how it
+is phrased.** "35 or more" is a BOUND, so work that adds metrics cannot
+falsify it; every stale claim in the list above is an exact statement
+about the tree's present shape. `evidence.md` names the countable
+present-tense claim as the kind that rots and the bound reported as a
+value as a separate fault -- this is the same observation from the other
+side: **a bound written as a bound is the one shape that does not rot**,
+and four exact claims in one day's work did.
+
+**And the cost of the method is now measured in both directions.**
+Striking as you close is cheap and I failed it four times in one day
+while writing an entry about somebody else failing it once. A sweep is
+not a substitute -- it found these only because I knew what to look for,
+having just changed it -- but it is what catches the ones the author's
+own memory does not.
 
 ### 8.387 The tiled fix traded a wrong place for a wrong identity (2026-10-07)
 
