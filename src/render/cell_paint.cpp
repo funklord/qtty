@@ -1018,12 +1018,58 @@ void CellPaintEngine::drawTiledPixmap(const QRectF &r, const QPixmap &pm,
 	if (rn.width() <= 0 || rn.height() <= 0 || pm.isNull()) return;
 	const QSize px = rn.size().toSize();
 	if (px.isEmpty()) return;
+
+	// CACHED ACROSS FRAMES, and this is not an optimisation. A placement's
+	// `key` IS its pixmap's cacheKey -- cell.h says so, and
+	// `CellImage::operator==` compares the key rather than the pixels
+	// BECAUSE of that -- so a freshly composed pixmap gets a fresh key every
+	// frame and two identical frames stop comparing equal. The frame loop
+	// decides whether to present at all with
+	// `frame.images != prev_->images` (compositor.cpp), so the first version
+	// of this function made an application with a tiled background re-present
+	// every frame with nothing moving, and re-upload the whole composite each
+	// time on a graphics terminal. Measured: three identical frames gave
+	// three different keys where a plain drawPixmap gives one.
+	//
+	// Keyed on what the composite is a function of -- the source pixmap's
+	// own cacheKey, the target size and the offset -- so the same tiling
+	// hands back the same QPixmap and therefore the same key. `Compositor`
+	// builds a CellPaintDevice per frame, so the cache cannot live on the
+	// engine.
+	//
+	// Two entries, which is one more than the steady state: an application
+	// has one tiled background and paints it at one size. Bounded by the
+	// target rect, which is bounded by the widget being painted. thread_local
+	// rather than static because a QPixmap is not shared between threads, and
+	// cleared through qAddPostRoutine because a QPixmap outliving
+	// QGuiApplication is a crash at exit rather than a leak.
+	struct Tiling {
+		qint64 src = 0;
+		QSize size;
+		QPointF offset;
+		QPixmap composed;
+	};
+	static thread_local QVector<Tiling> cache;
+	static thread_local bool registered = false;
+	if (!registered) {
+		registered = true;
+		qAddPostRoutine([] { cache.clear(); });
+	}
+	for (int i = 0; i < cache.size(); ++i) {
+		const Tiling &t = cache[i];
+		if (t.src != pm.cacheKey() || t.size != px || t.offset != offset)
+			continue;
+		drawPixmap(rn, t.composed, QRectF(t.composed.rect()));
+		return;
+	}
 	QPixmap composed(px);
 	composed.fill(Qt::transparent);
 	{
 		QPainter into(&composed);
 		into.drawTiledPixmap(QRect(QPoint(0, 0), px), pm, offset);
 	}
+	if (cache.size() >= 2) cache.removeFirst();
+	cache.append({pm.cacheKey(), px, offset, composed});
 	drawPixmap(rn, composed, QRectF(composed.rect()));
 }
 

@@ -5865,3 +5865,11 @@ find = "\tdrawPixmap(rn, composed, QRectF(composed.rect()));"
 into = "\tQPaintEngine::drawTiledPixmap(r, pm, offset);"
 count = 1
 check = "a tiled pixmap is placed over the cells raster paints it in, partial tiles included"
+
+[[sabotage]]
+name = "a tiling is composed fresh on every frame again"
+file = "src/render/cell_paint.cpp"
+find = "\t\tif (t.src != pm.cacheKey() || t.size != px || t.offset != offset)"
+into = "\t\tif (true)"
+count = 1
+check = "the same tiling twice is one placement identity, so it uploads once and a still frame stays still"

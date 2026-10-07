@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2078 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2080 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18102,6 +18102,80 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.387 The tiled fix traded a wrong place for a wrong identity (2026-10-07)
+
+**8.385's fix introduced a worse fault than the one it removed, and the
+lens that found it was its own commit.** Composing the tiles into one
+pixmap and placing that once is right about geometry and wrong about
+identity: **a placement's `key` IS its pixmap's cacheKey**, which
+`cell.h` states and which `CellImage::operator==` depends on -- it
+compares the key rather than the pixels precisely because equal keys mean
+equal pixels. A freshly composed pixmap gets a fresh key every frame.
+
+    three identical frames, drawPixmap        one key, three times
+    three identical frames, drawTiledPixmap   12884901890, 17179869186,
+                                              21474836482
+
+**Two consequences, and the second is the serious one.** On a graphics
+terminal the composite is re-uploaded every frame rather than once --
+which for a full-screen background is the whole screen's pixels per
+frame. And `Compositor` decides whether to present a frame AT ALL with
+`frame.images != prev_->images`, so an application with a tiled
+background would have **re-presented every frame with nothing moving**.
+An idle window repainting for ever is worse than a tile landing one cell
+low.
+
+**Cached across frames, keyed on what the composite is a function of** --
+the source pixmap's own cacheKey, the target size and the offset -- so
+the same tiling hands back the same `QPixmap` and therefore the same key.
+`Compositor::compose()` builds a `CellPaintDevice` per frame, so the
+cache cannot live on the engine; it is `thread_local`, two entries where
+the steady state is one, bounded by the target rect, and cleared through
+`qAddPostRoutine` because a `QPixmap` outliving `QGuiApplication` is a
+crash at exit rather than a leak.
+
+**Keying on cacheKey rather than on content is the right answer and not
+a shortcut.** An application that rebuilds its tile every frame gets a
+new source cacheKey, so the cache misses and the composite changes -- and
+that is correct, because a plain `drawPixmap` of a rebuilt pixmap
+re-uploads too. The engine agrees with Qt's own identity model rather
+than inventing a second one.
+
+**The check caught its own fixture first.** It built a fresh `QPixmap`
+per call and filled it with the same colour, then asserted the keys
+matched -- and they differed, correctly, because Qt's cacheKey is
+per-OBJECT and two pixmaps of identical pixels are two images. The
+fixture now holds one pixmap, which is what an application does. **A
+fixture that does not reproduce the configuration is the day's recurring
+fault arriving in a check written for that very fault.**
+
+Both halves are asserted, because "the keys match" is also true of an
+engine returning a constant: a different tile and a different target size
+must each give a different key. One sabotage entry, `--only`-proven --
+bypassing the cache reddens the stability half and leaves the control
+green.
+
+**Swept for the same hazard elsewhere, and the library is clean.** 8.383
+made SMALL images placements too, so they are now subject to the same
+identity rule that large ones always were -- an application building a
+pixmap per paint gets a new key per frame, where before it got stable
+cells. That is Qt's identity model rather than something this engine can
+fix, and the exposure is newly REACHABLE rather than new in kind. What
+matters is whether the library does it to itself, and it does not:
+nothing in `grid_style.cpp`, `cell_paint.cpp` or the compositor builds a
+`QPixmap` inside a paint path. `tray.cpp` builds one, on icon change,
+outside the cell painter entirely.
+
+**What this says about 8.385 is the part worth keeping.** That entry
+measured the geometry against raster and got it right, and geometry was
+the only property it thought to measure. The identity of a placement is a
+second property of the same call, invisible to any comparison of which
+cells are covered -- and it took re-reading `cell.h` on an unrelated
+question to notice. **A fix verified against the property it was written
+for is not verified against the properties it touches**, and the way to
+find those is to read what consumes the thing being changed rather than
+what produces it.
+
 ### 8.386 The clip's shape is dropped on purpose (2026-10-07)
 
 **A sweep that found no defect, recorded because the lens is the useful
@@ -18232,6 +18306,13 @@ was there.
 
 **One sabotage entry, `--only`-proven**: putting the base class's
 per-tile call back reddens the check and nothing else.
+
+**And this fix had a fault of its own, which 8.387 records.** Composing
+a fresh pixmap per call gives it a fresh cacheKey, and a placement's key
+IS its pixmap's cacheKey -- so the geometry came right and the IDENTITY
+broke, which is worse: an application with a tiled background would have
+re-presented every frame with nothing moving. Verified against the
+property this entry was written for, and not against the one it touched.
 
 **And it was filed as a §0b row first, which was wrong.** §0b is for
 questions whose answer is the copyright holder's. This was a defect with

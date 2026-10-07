@@ -3350,6 +3350,79 @@ int suite_render(bool record) {
 			}
 		}
 
+		// AND THE SAME TILING TWICE IS THE SAME PLACEMENT, which is a
+		// different property from where it lands and was broken by the fix
+		// for where it lands.
+		//
+		// A placement's `key` IS its pixmap's cacheKey -- cell.h says so,
+		// and CellImage::operator== compares the key rather than the pixels
+		// BECAUSE of that. Composing the tiles into a fresh pixmap per call
+		// therefore gave a fresh key per frame: measured, three identical
+		// frames produced three different keys where a plain drawPixmap
+		// produces one. The frame loop decides whether to present at all
+		// with `frame.images != prev_->images`, so an application with a
+		// tiled background would have re-presented every frame with nothing
+		// moving, and re-uploaded the whole composite each time on a
+		// graphics terminal.
+		//
+		// Asserted with its own control, because "the keys match" is also
+		// true of an engine that returns a constant: a different tile and a
+		// different size must each give a different key.
+		{
+			// The pixmaps are made ONCE and held, because that is what an
+			// application does and because Qt's cacheKey is per-OBJECT
+			// rather than per-content: two pixmaps of identical pixels are
+			// two images to Qt, so a fixture that rebuilt its tile each
+			// time would be asking for a cache hit that must not happen.
+			// It did, and this check caught its own fixture before it
+			// caught anything else.
+			QPixmap blue_tile(8, 8), red_tile(8, 8);
+			blue_tile.fill(QColor(40, 90, 200));
+			red_tile.fill(QColor(200, 40, 40));
+			const auto tiling_key = [&](const QPixmap &pm,
+			                            const QRect &target) {
+				Qtty::CellBuffer b(8, 4);
+				Qtty::CellPaintDevice dev(b);
+				QPainter p(&dev);
+				p.drawTiledPixmap(target, pm);
+				p.end();
+				return dev.placements.isEmpty() ? quint64(0)
+				                                : dev.placements[0].key;
+			};
+			const QRect target(0, 0, cw * 4, ch * 2);
+			const quint64 a1 = tiling_key(blue_tile, target);
+			const quint64 a2 = tiling_key(blue_tile, target);
+			const quint64 other_tile = tiling_key(red_tile, target);
+			const quint64 other_size =
+			    tiling_key(blue_tile, QRect(0, 0, cw * 2, ch));
+			printf("info: tiling keys -- same twice %s, other tile %s,"
+			       " other size %s\n", a1 == a2 ? "equal" : "DIFFER",
+			       other_tile != a1 ? "differs" : "SAME",
+			       other_size != a1 ? "differs" : "SAME");
+			if (a1 != 0 && a1 == a2)
+				printf("PASS: the same tiling twice is one placement identity,"
+				       " so it uploads once and a still frame stays still\n");
+			else {
+				printf("FAIL: the same tiling twice is one placement identity,"
+				       " so it uploads once and a still frame stays still\n"
+				       "      condition: %llu then %llu\n",
+				       (unsigned long long)a1, (unsigned long long)a2);
+				++r;
+			}
+			if (other_tile != a1 && other_size != a1)
+				printf("PASS: and a different tile or a different size is a"
+				       " different identity, so the key is not a constant\n");
+			else {
+				printf("FAIL: and a different tile or a different size is a"
+				       " different identity, so the key is not a constant\n"
+				       "      condition: tile %llu, size %llu, against %llu\n",
+				       (unsigned long long)other_tile,
+				       (unsigned long long)other_size,
+				       (unsigned long long)a1);
+				++r;
+			}
+		}
+
 		// The refusal, for both the rule path and the new walk. A diagonal
 		// crossing a label must leave the label standing: a cell already
 		// holding a glyph is content somebody drew, and a line is chrome.
