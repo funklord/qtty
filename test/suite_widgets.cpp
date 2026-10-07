@@ -2088,10 +2088,13 @@ int suite_widgets() {
 				{ "a dock's float button",    "\u2197",         28, 24 },
 				{ "a left-pointing arrow",    "\u25C2",         29, 8 },
 				{ "a widget out of reach",    "QGraphicsView", 22, 22 },
-				// The substitution's own cell, the one row of the table that
-				// is not a control. A solid pixmap is the simplest thing that
-				// reaches it: both halves agree in colour and neither leans.
-				{ "a picture reduced to a cell", "\u2592",      23, 6 },
+				// The shaded cell, the one row of the table that is not a
+				// control's own mark. It used to stand for a picture too
+				// small to place, and that rule has moved to the backend --
+				// a small image is a placement now and a terminal that
+				// cannot draw one composes it as a mosaic. What still draws
+				// the shade is a bar with no length to report.
+				{ "a bar whose length is unknown", "\u2592",   23, 20 },
 			};
 			const auto marked_menu = []() {
 				auto *m = new QMenu;
@@ -2266,11 +2269,9 @@ int suite_widgets() {
 				case 22:
 					return new QGraphicsView;
 				case 23: {
-					QPixmap pm(GridMetrics::cw(), GridMetrics::ch());
-					pm.fill(QColor(128, 128, 128));
-					auto *l = new QLabel;
-					l->setPixmap(pm);
-					return l;
+					auto *pb = new QProgressBar;
+					pb->setRange(0, 0);           // indeterminate
+					return pb;
 				}
 				default:
 					return nullptr;
@@ -3462,11 +3463,11 @@ int suite_widgets() {
 	}
 	// decoration role (section 8.6). The delegate does not decide what an icon
 	// becomes: it hands the pixmap to QPainter, and CellPaintEngine::drawPixmap
-	// is already the funnel -- two cells or more in each direction is a
-	// section 5.7 placement carrying real pixels, and anything smaller
-	// substitutes a glyph. Both answers are asserted here because the delegate
-	// is what makes an item view reach that funnel at all: CE_ItemViewItem
-	// drops the icon.
+	// is already the funnel -- every image is a section 5.7 placement, at
+	// whatever size, and the backend turns it into pixels or into a mosaic
+	// according to what the terminal can do. Both sizes are asserted here
+	// because the delegate is what makes an item view reach that funnel at
+	// all: CE_ItemViewItem drops the icon.
 	{
 		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 		QPixmap avatar(4 * cw, 2 * ch);
@@ -3502,8 +3503,10 @@ int suite_widgets() {
 		CellBuffer nb(26, 5);
 		QVector<CellImage> none;
 		render_once(narrow, nb, &none);
-		CHECK(none.isEmpty() && buffer_contains(nb, QStringLiteral("▒")),
-		      "a one-cell decoration substitutes a glyph, no placement");
+		CHECK(none.size() == 1 && none[0].cell_rect.size() == QSize(1, 1)
+		      && !buffer_contains(nb, QStringLiteral("▒")),
+		      "and a one-cell decoration is a placement of one cell, with no "
+		      "glyph standing in for it");
 	}
 	// sizeHint. Neither "it is a cell multiple" nor "it is exactly the cells
 	// a plain row occupies" is a check: GridStyle already snaps

@@ -99,9 +99,12 @@ static void draw_box(CellBuffer &buf, const QRect &c) {
 
 static void draw_placeholder(CellBuffer &buf, const QRect &c, const QString &what) {
 	if (c.width() < 2 || c.height() < 2) {
-		// Too small for a box. One shaded cell still says something is here,
-		// which is the same answer the pixmap substitution gives and for the
-		// same reason.
+		// Too small for a box. One shaded cell still says something is
+		// here, which is all there is room to say. This used to cite the
+		// pixmap substitution as the same answer for the same reason; that
+		// rule has moved to the backend and a small image is a placement
+		// now, so this is the last site where the shade means "something
+		// the library cannot draw" rather than a bar with no length.
 		if (buf.writable(c.left(), c.top())) {
 			Cell v; v.ch = QStringLiteral("▒");
 			buf.at(c.left(), c.top()) = v;
@@ -912,173 +915,50 @@ void CellPaintEngine::drawPixmap(const QRectF &r, const QPixmap &whole,
 	// the two answers part company.
 	const std::optional<QRect> clip = clip_cells();
 	if (clip && !clip->intersects(c)) return;
-	if (c.width() >= 2 && c.height() >= 2)      // section 5.7: real image -> placement
-		dev_->placements.append({quint64(pm.cacheKey()), c, pm});
-	else {
-		// Too small to be a picture -- an icon -- so it is substituted by a
-		// glyph (section 8.6). The substitution covers the CELLS THE IMAGE
-		// OCCUPIES rather than one of them, which for a 1x1 icon is the same
-		// thing and for anything wider is not.
-		//
-		// Measured on a tab being dragged. Qt moves a movable tab by grabbing
-		// it into a pixmap inside a private widget, 82x19 px here, which is
-		// 8 cells by 1 -- so it failed "two cells in each direction", took
-		// this branch, and marked ONE cell. The other seven went on showing
-		// the tab bar underneath, which is not what the widget tree says is
-		// there: a picture covering eight cells left seven of them stale.
-		// One shaded block is an honest "a picture is here"; seven cells of
-		// something that has moved away is not.
-		//
-		// Whether a wide, short image should be a PLACEMENT instead of a
-		// glyph at all is a separate question and a real one -- 8x1 is a
-		// perfectly good kitty placement, and the mosaic tier has two
-		// vertical samples per cell to draw it with. It is not answered here,
-		// because relaxing the threshold by area or by aspect would also
-		// promote the 2x1 that a 16x16 icon becomes, and that icon arriving
-		// as a shaded block rather than a glyph is the fault this branch
-		// exists to prevent.
-		// The colour goes with it. Two icons that differ only in colour --
-		// a red status light and a grey one -- substituted to the same
-		// default-coloured block, so a row of them was a row of identical
-		// smudges. The mosaic tier, which is the other path the same content
-		// takes when a terminal has no graphics protocol, carries colour;
-		// this one threw it away.
-		//
-		// An application's own colour, passed through, which is the rule
-		// cell_geometry.h's fg_for() applies to every colour no palette role
-		// explains. Averaged over the image and weighted by alpha, because
-		// that is what the half-block tier would show if the picture had room
-		// to be one. Strided so a large pixmap substituted into one cell
-		// costs a bounded scan rather than one per pixel.
+	// EVERY image is a placement, whatever its size. This gated on "two cells
+	// or more in each direction" and substituted a glyph for anything smaller
+	// -- section 8.6's "a picture is here" -- and the threshold was a guess at
+	// a question this engine cannot answer.
+	//
+	// What the rule was reaching for is whether the thing is an ICON, whose
+	// meaning is a shape too small to survive being made of cells, or a
+	// PICTURE. Measured, the pixmap does not say: a 16x16 warning triangle is
+	// 2 cells by 1 and an 82x19 dragged tab is 8 by 1, so neither cell extent
+	// nor aspect separates them, and composed as mosaics neither is legible
+	// as a shape. The question that CAN be answered is whether this terminal
+	// can draw pictures at all -- which the BACKEND knows and this does not.
+	// A rule applied where the information is not is a rule applied by guess.
+	//
+	// So the decision moves to where the answer lives, and nothing had to be
+	// built for it: AnsiBackend already composes every placement as
+	// half-blocks when the terminal has no graphics protocol, which is the
+	// fallback tier running today for every such terminal. An icon now
+	// reaches a graphics terminal as real pixels -- which is how every
+	// terminal that can draw pictures shows a 16x16 icon -- and a text-only
+	// one as the same mosaic the substitution drew, from the same numbers,
+	// because the substitution's sampling moved into compose_halfblocks()
+	// with it.
+	//
+	// Priced before it was done, on the encoders rather than on an opinion:
+	// eight distinct 16x16 icons cost 11.2 KB of kitty uploads on the first
+	// frame and 280 bytes of re-placement on every frame after, against
+	// 12.3 KB for the one 48x48 severity icon the library already sends. The
+	// whole toolbar is cheaper than one icon that was never in question.
+	//
+	// What the threshold did carry, and is kept: an image with no ink in it
+	// at all draws nothing, rather than claiming a picture is there. The
+	// alpha scan is skipped for a pixmap that has no alpha channel, which is
+	// every photograph and every grab of a widget.
+	if (pm.hasAlphaChannel()) {
 		const QImage img = pm.toImage();
-		// One colour per HALF CELL rather than one for the whole picture.
-		//
-		// A single average is a picture reduced to its mean, and for an icon
-		// that encodes its meaning as a SHAPE that is the whole meaning gone.
-		// The case that produced this: a sibling project draws five status
-		// icons whose states differ by shape deliberately, its own header
-		// recording that "around one man in twelve cannot reliably tell the
-		// amber from the green" -- and every one of them arrived here as two
-		// cells of one averaged colour, distinct only by hue. The
-		// accessibility property the design was built around was exactly
-		// what the substitution removed.
-		//
-		// The upper half block gives a top and a bottom colour per cell, so
-		// an icon over two cells carries four samples instead of one. That
-		// is not a picture either, but it is the difference between a bar
-		// and a disc.
-		//
-		// HALF blocks and not quadrants, measured: of 20 fixed-pitch
-		// families here 11 carry U+2580 and only 8 carry U+2596..U+259F --
-		// Liberation Mono, Noto Mono, Inconsolata and Nimbus Mono PS have
-		// the half and not the quadrants. 11 is the same set that carries
-		// the box-drawing rules this style already draws every frame, so
-		// this asks for nothing new of a font.
-		const auto mean = [&](int y0, int y1, int x0, int x1, bool *any,
-		                      int *cov = nullptr) {
-			qint64 r = 0, g = 0, b = 0, a = 0;
-			const int sx = qMax(1, (x1 - x0) / 16), sy = qMax(1, (y1 - y0) / 16);
-			qint64 n = 0;
-			for (int y = y0; y < y1; y += sy)
-				for (int x = x0; x < x1; x += sx) {
-					const QRgb px = img.pixel(x, y);
-					const int al = qAlpha(px);
-					r += qint64(qRed(px)) * al;
-					g += qint64(qGreen(px)) * al;
-					b += qint64(qBlue(px)) * al;
-					a += al;
-					++n;
-				}
-			*any = a > 0;
-			// COVERAGE as well as colour, in 0..255. The colour alone is
-			// what a single-hued icon has none of: every half of it that
-			// holds any ink at all reports the same colour, so `close()`
-			// below was always true and every such icon became one shaded
-			// block per cell whatever its shape. Coverage is the half of
-			// the picture that survives being one colour.
-			if (cov) *cov = n > 0 ? int(a / n) : 0;
-			return a > 0 ? qRgb(int(r / a), int(g / a), int(b / a)) : qRgb(0, 0, 0);
-		};
-
-		bool whole_any = false;
-		mean(0, img.height(), 0, img.width(), &whole_any);
-		// Nothing to stand for. A fully transparent pixmap drew a block that
-		// said a picture was there when none was.
-		if (!whole_any) return;
-
-		for (int cy = c.top(); cy <= c.bottom(); ++cy) {
-			for (int cx = c.left(); cx <= c.right(); ++cx) {
-				// The slice of the image this cell covers, and its two
-				// halves. Derived from the cell's position within c so a
-				// picture wider than one cell is sampled across rather than
-				// repeated.
-				const int x0 = (cx - c.left()) * img.width() / c.width();
-				const int x1 = qMax(x0 + 1, (cx - c.left() + 1) * img.width() / c.width());
-				const int y0 = (cy - c.top()) * img.height() / c.height();
-				const int y1 = qMax(y0 + 1, (cy - c.top() + 1) * img.height() / c.height());
-				const int mid = qMax(y0 + 1, (y0 + y1) / 2);
-				bool top_any = false, bot_any = false;
-				int top_cov = 0, bot_cov = 0;
-				const QRgb top = mean(y0, mid, x0, x1, &top_any, &top_cov);
-				const QRgb bot = mean(mid, qMax(mid + 1, y1), x0, x1,
-				                      &bot_any, &bot_cov);
-				Cell v;
-				// A cell whose two halves agree keeps the shaded block this
-				// has always drawn. That is deliberate rather than
-				// conservative: section 8.6's substitution says "a picture
-				// is here", several checks pin it, and an icon with no
-				// vertical structure has nothing more to say. The half
-				// block is ADDED for the cells that do differ, so this
-				// carries strictly more than before and changes no
-				// convention.
-				const auto close = [](QRgb a, QRgb b) {
-					return qAbs(qRed(a) - qRed(b)) + qAbs(qGreen(a) - qGreen(b))
-					     + qAbs(qBlue(a) - qBlue(b)) < 24;
-				};
-				// A cell whose halves agree in COLOUR may still differ in
-				// how much of each is inked, and for a one-colour icon that
-				// is the only difference there is. The comment below used to
-				// say such an icon "has nothing more to say"; measured
-				// against fuzzypickles' three delivery marks -- a ring, a
-				// tick and a double tick, whose own header requires them to
-				// stay distinguishable to someone who cannot tell one tick
-				// from two -- all three arrived as the same two blocks,
-				// because they are one colour and every half of each holds
-				// some ink.
-				//
-				// So the halves are compared by coverage when their colours
-				// match, and the denser one is drawn. Twice as much ink and
-				// a clear absolute gap, so a nearly-even cell still keeps
-				// the block rather than flickering between halves on noise.
-				const bool lean_top = top_cov > bot_cov * 2 && top_cov - bot_cov > 24;
-				const bool lean_bot = bot_cov > top_cov * 2 && bot_cov - top_cov > 24;
-				if (top_any && bot_any && close(top, bot)
-				    && (lean_top || lean_bot)) {
-					v.ch = lean_top ? QStringLiteral("▀")
-					                : QStringLiteral("▄");
-					v.fg = Color::rgb(lean_top ? top : bot);
-				} else if (top_any && bot_any && close(top, bot)) {
-					v.ch = QStringLiteral("▒");
-					v.fg = Color::rgb(qRgb((qRed(top) + qRed(bot)) / 2,
-					                       (qGreen(top) + qGreen(bot)) / 2,
-					                       (qBlue(top) + qBlue(bot)) / 2));
-				} else if (top_any && bot_any) {
-					v.ch = QStringLiteral("▀");
-					v.fg = Color::rgb(top);
-					v.bg = Color::rgb(bot);
-				} else if (top_any) {
-					v.ch = QStringLiteral("▀");
-					v.fg = Color::rgb(top);
-				} else if (bot_any) {
-					v.ch = QStringLiteral("▄");
-					v.fg = Color::rgb(bot);
-				} else {
-					continue;          // this cell of the icon is transparent
-				}
-				if (dev_->buffer().writable(cx, cy)) dev_->buffer().at(cx, cy) = v;
-			}
-		}
+		bool any = false;
+		const int sx = qMax(1, img.width() / 32), sy = qMax(1, img.height() / 32);
+		for (int y = 0; y < img.height() && !any; y += sy)
+			for (int x = 0; x < img.width(); x += sx)
+				if (qAlpha(img.pixel(x, y)) >= 40) { any = true; break; }
+		if (!any) return;
 	}
+	dev_->placements.append({quint64(pm.cacheKey()), c, pm});
 }
 
 // The MODE, which this took and ignored. Qt sends a polyline, an odd-even

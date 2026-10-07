@@ -2378,34 +2378,36 @@ int suite_graphics() {
 	}
 
 
-	// An image too small to be a picture substitutes a block, and the block
-	// carries the image's colour. Two icons differing only in colour -- a red
-	// status light and a grey one -- came out as the same default-coloured
-	// smudge, so a row of them said nothing. The mosaic tier, which is the
-	// other path the same content takes on a terminal with no graphics
-	// protocol, carries colour; this one threw it away.
+	// AN ICON, through the tier that composes one. This family was asserted
+	// against CellPaintEngine::drawPixmap()'s substitution until the "too
+	// small to be a picture" rule moved to the backend; the properties are
+	// the same and the composer under them is compose_halfblocks(), which is
+	// what a terminal with no graphics protocol runs on every placement.
+	//
+	// The block carries the image's colour. Two icons differing only in
+	// colour -- a red status light and a grey one -- came out as the same
+	// default-coloured smudge, so a row of them said nothing.
 	{
-		auto substitute = [](const QColor &fill, CellBuffer &b) {
-			QPixmap pm(GridMetrics::cw(), GridMetrics::ch());
-			pm.fill(fill);
-			CellPaintDevice dev(b);
-			QPainter p(&dev);
-			p.drawPixmap(QRect(0, 0, GridMetrics::cw(), GridMetrics::ch()), pm);
-			p.end();
+		const TerminalGround ground = TerminalGround::from(Capabilities{});
+		auto compose = [&](const QColor &fill, CellBuffer &b) {
+			QImage im(GridMetrics::cw(), GridMetrics::ch(),
+			          QImage::Format_ARGB32);
+			im.fill(fill);
+			compose_halfblocks(b, im, QRect(0, 0, 1, 1), ground);
 		};
 		CellBuffer red(2, 1), grey(2, 1);
-		substitute(QColor(220, 40, 40), red);
-		substitute(QColor(90, 90, 90), grey);
-		CHECK(red.at(0, 0).ch == QStringLiteral("▒")
-		      && grey.at(0, 0).ch == QStringLiteral("▒")
+		compose(QColor(220, 40, 40), red);
+		compose(QColor(90, 90, 90), grey);
+		CHECK(red.at(0, 0).ch == QStringLiteral("▀")
+		      && grey.at(0, 0).ch == QStringLiteral("▀")
 		      && red.at(0, 0).fg.kind() == Color::Rgb
 		      && red.at(0, 0).fg != grey.at(0, 0).fg,
-		      "two icons of different colours substitute to different blocks");
+		      "two icons of different colours compose to different colours");
 
 		// And two icons of ONE colour that differ only in SHAPE. The
-		// substitution compared the halves of a cell by colour alone, so a
+		// composer compared the halves of a cell by colour alone, so a
 		// single-hued icon -- where every inked half reports the same colour
-		// -- always took the "halves agree" branch and became a shaded block
+		// -- always took the "halves agree" branch and became one flat cell
 		// whatever it looked like.
 		//
 		// Measured on fuzzypickles' three delivery marks, a ring, a tick and
@@ -2414,17 +2416,16 @@ int suite_graphics() {
 		// someone who cannot tell one tick from two. The colour was never
 		// the carrier of that difference; the coverage was.
 		//
-		// The fixture is one colour by construction, so a substitution that
+		// The fixture is one colour by construction, so a composer that
 		// still reads only colour cannot pass it.
 		// BOTH halves carry ink, and they differ only in HOW MUCH.
 		//
 		// The first version of this fixture inked one half and left the
-		// other empty, which the top_any/bot_any branches already told
-		// apart -- so it passed against the unfixed engine, and the
-		// sabotage harness refused to redden it. That is the question
-		// worth asking of any new check: what would still be true if the
-		// fix were reverted.
-		auto shaped = [](bool ink_low, CellBuffer &b) {
+		// other empty, which the one-sided branches already told apart --
+		// so it passed against the unfixed code, and the sabotage harness
+		// refused to redden it. That is the question worth asking of any
+		// new check: what would still be true if the fix were reverted.
+		auto shaped = [&](bool ink_low, CellBuffer &b) {
 			const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 			QImage im(cw, ch, QImage::Format_ARGB32);
 			im.fill(Qt::transparent);
@@ -2437,10 +2438,7 @@ int suite_graphics() {
 				for (int x = 0; x < span; ++x)
 					im.setPixelColor(x, y, QColor(220, 40, 40));
 			}
-			CellPaintDevice dev(b);
-			QPainter p(&dev);
-			p.drawPixmap(QRect(0, 0, cw, ch), QPixmap::fromImage(im));
-			p.end();
+			compose_halfblocks(b, im, QRect(0, 0, 1, 1), ground);
 		};
 		CellBuffer low(2, 1), high(2, 1);
 		shaped(true, low);
@@ -2449,15 +2447,16 @@ int suite_graphics() {
 		      "and two one-colour icons differing only in shape do too");
 
 		// ONE-SIDED ink, where a half is entirely empty rather than merely
-		// thinner. That is a different branch -- `top_any` without
-		// `bot_any` and the reverse -- and coverage found it unreached:
+		// thinner. That is a different branch -- one half's peak alpha
+		// above the threshold and the other's below -- and coverage found
+		// it unreached:
 		// the fixture above was CHANGED to ink both halves (an earlier
 		// version inked one, and passed against the unfixed engine), and
 		// changing it left these two lines with nothing exercising them.
 		//
 		// A fixture rewritten to close one hole can open another, and only
 		// counting the lines says which.
-		auto sided = [](bool ink_top, CellBuffer &b) {
+		auto sided = [&](bool ink_top, CellBuffer &b) {
 			const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 			QImage im(cw, ch, QImage::Format_ARGB32);
 			im.fill(Qt::transparent);
@@ -2465,10 +2464,7 @@ int suite_graphics() {
 			     y < (ink_top ? ch / 2 : ch); ++y)
 				for (int x = 0; x < cw; ++x)
 					im.setPixelColor(x, y, QColor(220, 40, 40));
-			CellPaintDevice dev(b);
-			QPainter p(&dev);
-			p.drawPixmap(QRect(0, 0, cw, ch), QPixmap::fromImage(im));
-			p.end();
+			compose_halfblocks(b, im, QRect(0, 0, 1, 1), ground);
 		};
 		CellBuffer topped(2, 1), bottomed(2, 1);
 		sided(true, topped);
@@ -2477,13 +2473,65 @@ int suite_graphics() {
 		      && bottomed.at(0, 0).ch == QStringLiteral("▄"),
 		      "an icon inked on one side only draws that half");
 
-		// And nothing stands for nothing. A fully transparent pixmap drew a
-		// block that said a picture was there when none was -- which is the
+		// A THIN SHAPE, which is the case point sampling loses and the
+		// reason the sampling here is an area mean. This read the single
+		// pixel at the centre of each half cell, which stands for its
+		// neighbours in a photograph and does not in an icon: the ink is a
+		// two-pixel stroke and most of the half is transparent, so the
+		// sample point lands in the gap beside it.
+		//
+		// Measured when the "too small to be a picture" rule moved here from
+		// CellPaintEngine::drawPixmap(): a 16x16 tick, which a 10-pixel cell
+		// covers in two, lost its LEFT cell entirely -- not faint, absent --
+		// and a 16x16 status light lost its right one the same way. Nothing
+		// in the suite could see it, because no fixture had yet put a thin
+		// shape through a placement; the composer change reddened no check
+		// at all.
+		//
+		// Asserted as a RELATIONSHIP: which cells hold ink is read off the
+		// image here, and the composer has to have touched exactly those.
+		// "Both cells are marked" would also be true of a composer that
+		// marks every cell it is handed, which is what the transparent
+		// control below exists to refuse.
+		{
+			const int cw = GridMetrics::cw();
+			QImage tick(16, 16, QImage::Format_ARGB32);
+			tick.fill(Qt::transparent);
+			{
+				QPainter p(&tick);
+				QPen pen(QColor(0x30, 0x8c, 0xc6));
+				pen.setWidth(2);
+				p.setPen(pen);
+				p.drawLine(3, 9, 6, 12);
+				p.drawLine(6, 12, 12, 4);
+			}
+			const int cols = (16 + cw - 1) / cw;
+			CellBuffer mark(cols + 1, 1);
+			compose_halfblocks(mark, tick, QRect(0, 0, cols, 1), ground);
+			int inked = 0, touched = 0;
+			for (int cx = 0; cx < cols; ++cx) {
+				bool any = false;
+				const int x0 = cx * 16 / cols, x1 = (cx + 1) * 16 / cols;
+				for (int x = x0; x < x1 && !any; ++x)
+					for (int y = 0; y < 16; ++y)
+						if (qAlpha(tick.pixel(x, y)) >= 40) { any = true; break; }
+				if (any) ++inked;
+				if (mark.at(cx, 0).ch != QStringLiteral(" ")) ++touched;
+			}
+			printf("info: a 16x16 tick is %d cell(s) wide, %d hold ink, %d "
+			       "were marked\n", cols, inked, touched);
+			CHECK(cols >= 2 && inked == cols && touched == inked,
+			      "every cell of a thin mark that holds ink is marked, which "
+			      "sampling one pixel a half could not promise");
+		}
+
+		// And nothing stands for nothing. A fully transparent image composed
+		// a block that said a picture was there when none was -- which is the
 		// same shape as the null image above, one step along.
 		CellBuffer clear(2, 1);
-		substitute(QColor(0, 0, 0, 0), clear);
+		compose(QColor(0, 0, 0, 0), clear);
 		CHECK(clear.at(0, 0).ch == QStringLiteral(" "),
-		      "and a wholly transparent one substitutes nothing at all");
+		      "and a wholly transparent one composes nothing at all");
 	}
 
 

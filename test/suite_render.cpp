@@ -822,16 +822,17 @@ int suite_render(bool record) {
 		}
 	}
 
-	// An image too small to be a picture is substituted by a glyph, and the
-	// substitution has to cover the cells the image OCCUPIES. For the 1x1 icon
-	// that motivated the rule those are the same thing; for anything wider
-	// they are not, and the difference is stale cells -- a picture covering
-	// eight of them marking one and leaving seven showing whatever was
-	// underneath.
+	// Every image is a PLACEMENT now, whatever its size, and what decides
+	// whether it becomes real pixels or a mosaic is the backend -- the only
+	// tier that knows whether this terminal draws pictures at all. The engine
+	// used to decide it on cell extent, substituting a glyph below two cells
+	// in each direction, and the pixmap cannot answer that question: a 16x16
+	// warning triangle is 2 cells by 1 and an 82x19 dragged tab is 8 by 1.
 	//
-	// Measured on a tab being dragged: Qt moves a movable tab by grabbing it
-	// into a pixmap 82x19 px here, which is 8 cells by 1, so it fails "two
-	// cells in each direction" and takes this branch. Driven at the engine
+	// Measured on that tab. Qt moves a movable tab by grabbing it into a
+	// pixmap, 82x19 px here, so it failed "two cells in each direction",
+	// took the substitution, and marked ONE cell of the eight it covered.
+
 	// The SOURCE rectangle of drawPixmap(target, pixmap, source), which the
 	// engine accepted and ignored: an application drawing one sprite out of
 	// an atlas got the whole atlas placed, at the right size and silently.
@@ -892,6 +893,17 @@ int suite_render(bool record) {
 
 	// rather than through QTabBar, because the widget doing the grabbing is
 	// private to Qt and the rule under test is the engine's.
+	//
+	// THE PAIR IS THE POINT, and it is two tiers rather than two sizes: the
+	// engine places, and the fallback tier covers. Asserting only that a
+	// placement appears would pass against an engine that places and a
+	// composer that draws nothing; asserting only that eight cells are
+	// covered would pass against the substitution this replaced, which drew
+	// the cells and never placed. Both halves, on one image, and the ninth
+	// cell is what says the covering stops where the image does -- a wide
+	// picture marking one cell and leaving seven showing the tab bar
+	// underneath is the defect that moved this rule, and a composer that
+	// filled the row would fail as surely.
 	{
 		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 		Qtty::CellBuffer buf(12, 2);
@@ -900,45 +912,100 @@ int suite_render(bool record) {
 		wide.fill(Qt::red);
 		QPixmap tiny(cw, ch);
 		tiny.fill(Qt::red);
-		int wide_placements = 0, tiny_placements = 0;
+		QVector<Qtty::CellImage> wide_pl, tiny_pl;
 		{
 			Qtty::CellPaintDevice dev(buf);
 			QPainter p(&dev);
 			p.drawPixmap(QRect(0, 0, cw * 8, ch), wide);
 			p.end();
-			wide_placements = int(dev.placements.size());
+			wide_pl = dev.placements;
 		}
 		{
 			Qtty::CellPaintDevice dev(buf);
 			QPainter p(&dev);
 			p.drawPixmap(QRect(0, ch, cw, ch), tiny);
 			p.end();
-			tiny_placements = int(dev.placements.size());
+			tiny_pl = dev.placements;
 		}
+		// The engine wrote no cells: the text is still there, which is what
+		// says the decision was deferred rather than taken.
+		const bool text_intact = buf.at(0, 0).ch == QStringLiteral("a")
+		                      && buf.at(7, 0).ch == QStringLiteral("a");
+		if (wide_pl.size() == 1 && wide_pl[0].cell_rect == QRect(0, 0, 8, 1)
+		    && tiny_pl.size() == 1 && tiny_pl[0].cell_rect == QRect(0, 1, 1, 1)
+		    && text_intact)
+			printf("PASS: every image is a placement over the cells it "
+			       "occupies, one cell wide or eight\n");
+		else {
+			printf("FAIL: every image is a placement over the cells it "
+			       "occupies, one cell wide or eight\n"
+			       "      condition: wide %lld placement(s) %s, tiny %lld %s,"
+			       " text intact %d\n",
+			       (long long)wide_pl.size(),
+			       wide_pl.isEmpty() ? "none"
+			           : qPrintable(QStringLiteral("%1,%2 %3x%4")
+			               .arg(wide_pl[0].cell_rect.x())
+			               .arg(wide_pl[0].cell_rect.y())
+			               .arg(wide_pl[0].cell_rect.width())
+			               .arg(wide_pl[0].cell_rect.height())),
+			       (long long)tiny_pl.size(),
+			       tiny_pl.isEmpty() ? "none"
+			           : qPrintable(QStringLiteral("%1,%2 %3x%4")
+			               .arg(tiny_pl[0].cell_rect.x())
+			               .arg(tiny_pl[0].cell_rect.y())
+			               .arg(tiny_pl[0].cell_rect.width())
+			               .arg(tiny_pl[0].cell_rect.height())),
+			       int(text_intact));
+			++r;
+		}
+		// And the tier below, on the placement the engine just made. The
+		// ground is the default one: what is being asked is which cells the
+		// mosaic touches, not what colour it chose.
+		const Qtty::TerminalGround ground =
+		    Qtty::TerminalGround::from(Qtty::Capabilities{});
+		if (!wide_pl.isEmpty())
+			Qtty::compose_halfblocks(buf, wide_pl[0].pixmap.toImage(),
+			                         wide_pl[0].cell_rect, ground);
 		int covered = 0;
 		for (int x = 0; x < 12; ++x)
-			if (buf.at(x, 0).ch == QStringLiteral("▒")) ++covered;
-		// The pair: the wide one covers its eight cells and stops there, so a
-		// substitution that filled the row would fail this as surely as one
-		// that marked a single cell.
-		if (covered == 8 && buf.at(8, 0).ch == QStringLiteral("a")
-		    && wide_placements == 0)
-			printf("PASS: an image too small to be a picture covers the cells "
-			       "it occupies\n");
+			if (buf.at(x, 0).ch != QStringLiteral("a")
+			    && !buf.at(x, 0).ch.isEmpty()) ++covered;
+		if (covered == 8 && buf.at(8, 0).ch == QStringLiteral("a"))
+			printf("PASS: and a terminal that cannot place it gets a mosaic "
+			       "over those same cells and no others\n");
 		else {
-			printf("FAIL: an image too small to be a picture covers the cells "
-			       "it occupies\n      condition: %d of 8 cells marked, cell 8 is "
-			       "'%s', %d placement(s)\n",
-			       covered, qPrintable(buf.at(8, 0).ch), wide_placements);
+			printf("FAIL: and a terminal that cannot place it gets a mosaic "
+			       "over those same cells and no others\n"
+			       "      condition: %d of 8 cells covered, cell 8 is '%s'\n",
+			       covered, qPrintable(buf.at(8, 0).ch));
 			++r;
 		}
-		if (buf.at(0, 1).ch == QStringLiteral("▒") && buf.at(1, 1).ch != QStringLiteral("▒")
-		    && tiny_placements == 0)
-			printf("PASS: and a one-cell icon still marks one cell, with no placement\n");
-		else {
-			printf("FAIL: and a one-cell icon still marks one cell, with no placement\n"
-			       "      condition: %d placement(s)\n", tiny_placements);
-			++r;
+		// AND NOTHING IS PLACED FOR NOTHING. The threshold this replaced
+		// carried one thing worth keeping: an image with no ink in it drew
+		// no block, rather than claiming a picture was there. Placing it
+		// instead would be worse than a stray block -- an invisible image
+		// uploaded on the first frame and re-placed on every frame after,
+		// which costs bytes and shows nothing.
+		//
+		// Paired with the opaque pixmap above, because "no placement" is
+		// also what an engine that has stopped placing produces.
+		{
+			QPixmap clear(cw * 2, ch * 2);
+			clear.fill(Qt::transparent);
+			Qtty::CellBuffer cb(4, 3);
+			Qtty::CellPaintDevice dev(cb);
+			QPainter p(&dev);
+			p.drawPixmap(QRect(0, 0, cw * 2, ch * 2), clear);
+			p.end();
+			if (dev.placements.isEmpty())
+				printf("PASS: and an image with no ink in it is not placed at"
+				       " all\n");
+			else {
+				printf("FAIL: and an image with no ink in it is not placed at"
+				       " all\n      condition: %lld placement(s)\n",
+				       (long long)dev.placements.size());
+				++r;
+			}
 		}
 	}
 
@@ -1488,21 +1555,21 @@ int suite_render(bool record) {
 			}
 		}
 
-		// An icon whose meaning is its SHAPE, substituted. The old
-		// substitution averaged the whole picture into one colour per cell,
-		// which for an icon encoding its state as a shape is the whole
-		// meaning gone -- a sibling project draws five status icons that
-		// differ deliberately by shape, its header recording that "around
-		// one man in twelve cannot reliably tell the amber from the green",
-		// and every one arrived as two cells of one colour.
+		// An icon whose meaning is its SHAPE, through the tier that now
+		// composes it. A single average per cell is a picture reduced to its
+		// mean, and for an icon encoding its state as a shape that is the
+		// whole meaning gone -- a sibling project draws five status icons
+		// that differ deliberately by shape, its header recording that
+		// "around one man in twelve cannot reliably tell the amber from the
+		// green", and every one of them arrived as two cells of one colour.
 		//
 		// The pair is what says it, and it is the same picture twice: one
-		// with vertical structure and one without. The flat one must still
-		// substitute to the shaded block, because that convention is what
-		// says "a picture is here" and several other checks pin it; the
-		// structured one must carry its two halves.
+		// with vertical structure and one without. The flat one gets one
+		// colour, since a cell with nothing to distinguish its halves has
+		// nothing more to say; the structured one must carry its two halves
+		// as a foreground and a background that differ.
 		{
-			const auto substitute = [&](bool structured) {
+			const auto compose = [&](bool structured) {
 				QPixmap pm(cw * 2, ch);
 				pm.fill(QColor(40, 160, 60));
 				if (structured) {
@@ -1511,26 +1578,24 @@ int suite_render(bool record) {
 					           QColor(200, 40, 40));
 				}
 				Qtty::CellBuffer b(4, 2);
-				{
-					Qtty::CellPaintDevice dev(b);
-					QPainter p(&dev);
-					p.drawPixmap(QRect(0, 0, cw * 2, ch), pm);
-					p.end();
-				}
+				Qtty::compose_halfblocks(b, pm.toImage(), QRect(0, 0, 2, 1),
+				    Qtty::TerminalGround::from(Qtty::Capabilities{}));
 				return b.at(0, 0);
 			};
-			const Qtty::Cell flat = substitute(false);
-			const Qtty::Cell split = substitute(true);
-			printf("info: a flat icon substitutes [%s], one with a top half"
+			const Qtty::Cell flat = compose(false);
+			const Qtty::Cell split = compose(true);
+			printf("info: a flat icon composes [%s], one with a top half"
 			       " [%s] fg/bg %s\n", qPrintable(flat.ch), qPrintable(split.ch),
-			       split.bg == Qtty::Color() ? "one colour" : "two");
-			if (flat.ch == QStringLiteral("▒"))
-				printf("PASS: a flat icon keeps the shaded block that says a"
-				       " picture is here\n");
+			       split.fg == split.bg ? "one colour" : "two");
+			if (flat.ch == QStringLiteral("▀") && flat.fg == flat.bg)
+				printf("PASS: a flat icon composes to one colour, which is"
+				       " all a cell with no structure has to say\n");
 			else {
-				printf("FAIL: a flat icon keeps the shaded block that says a"
-				       " picture is here\n      condition: got [%s]\n",
-				       qPrintable(flat.ch));
+				printf("FAIL: a flat icon composes to one colour, which is"
+				       " all a cell with no structure has to say\n"
+				       "      condition: got [%s], fg/bg %s\n",
+				       qPrintable(flat.ch),
+				       flat.fg == flat.bg ? "one colour" : "two");
 				++r;
 			}
 			if (split.ch == QStringLiteral("▀") && split.bg != Qtty::Color()

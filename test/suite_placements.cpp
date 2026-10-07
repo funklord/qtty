@@ -68,7 +68,16 @@ int suite_placements() {
 	Qtty::CellBuffer tb(10, 4);
 	QVector<Qtty::CellImage> tp;
 	Qtty::render_once(tiny, tb, &tp);
-	CHECK(tp.isEmpty(), "1-cell pixmap substitutes a glyph, no placement");
+	// A ONE-CELL pixmap is a placement as well, which it was not. The engine
+	// gated on "two cells or more in each direction" and substituted a glyph
+	// below that, which is this funnel deciding a question it cannot answer:
+	// whether a 1x1 image is an icon whose shape will not survive being made
+	// of cells, or a picture. What can be answered is whether the terminal
+	// draws pictures at all, and the backend already answers it -- so the
+	// smallest image goes the same road as the largest and the tier that
+	// knows decides.
+	CHECK(tp.size() == 1 && tp[0].cell_rect.size() == QSize(1, 1),
+	      "a one-cell pixmap is a placement too, of exactly one cell");
 
 	return fails;
 }

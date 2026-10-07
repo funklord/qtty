@@ -783,37 +783,124 @@ void compose_halfblocks(CellBuffer &frame, const QImage &src, const QRect &cell_
 	// compose_halfblocks() is declared in qtty/graphics.h and an application
 	// may call it, or append a CellImage of its own to CellBuffer::images.
 	if (src.isNull()) return;
+	if (cell_rect.width() <= 0 || cell_rect.height() <= 0) return;
 	const QImage img = src.convertToFormat(QImage::Format_ARGB32);
 	const QRgb under_default = ground.composite_under;
+	// The MEAN of the half cell, and not one pixel out of it. This sampled
+	// the single pixel at the centre of each half, which is right for a
+	// photograph -- where a cell covers a few pixels of a smooth image and
+	// any of them stands for the rest -- and loses an ICON, where the ink is
+	// a two-pixel stroke and most of the half cell is transparent.
+	//
+	// Measured when the "too small to be a picture" rule moved here from
+	// CellPaintEngine::drawPixmap(): a 16x16 tick and a double tick, which an
+	// 8-pixel-wide cell covers in two, each lost their LEFT cell entirely --
+	// the sample point landed in the transparent gap beside the stroke, so
+	// half the mark was not absent in colour but absent altogether. A red
+	// status light and a grey one lost their RIGHT cell the same way. Point
+	// sampling a shape is a lottery whose stake is the shape.
+	//
+	// So three numbers per half, where there was one pixel:
+	//
+	//   col   the alpha-weighted mean, which is the colour of the INK rather
+	//         than of the ink averaged with the transparency around it
+	//   peak  the greatest alpha, which says whether any of this half is
+	//         solid -- the tier below is chosen on it, so a translucent wash
+	//         (every pixel part-transparent) is still a wash and an icon's
+	//         thin stroke (a few pixels opaque) is still a mark
+	//   cov   the mean alpha, which is how MUCH of the half is inked, and is
+	//         the only thing that separates two marks of one colour
+	//
+	// Strided to at most 16 samples an axis, and read through constScanLine()
+	// rather than pixel(), so a 40x20-cell placement costs a bounded scan.
+	struct Half { QRgb col; int peak; int cov; };
+	const auto mean = [&](int x0, int x1, int y0, int y1) -> Half {
+		x0 = qBound(0, x0, img.width() - 1);
+		x1 = qBound(x0 + 1, x1, img.width());
+		y0 = qBound(0, y0, img.height() - 1);
+		y1 = qBound(y0 + 1, y1, img.height());
+		qint64 r = 0, g = 0, b = 0, a = 0, n = 0;
+		int peak = 0;
+		const int sx = qMax(1, (x1 - x0) / 16), sy = qMax(1, (y1 - y0) / 16);
+		for (int y = y0; y < y1; y += sy) {
+			const QRgb *const line =
+			    reinterpret_cast<const QRgb *>(img.constScanLine(y));
+			for (int x = x0; x < x1; x += sx) {
+				const QRgb px = line[x];
+				const int al = qAlpha(px);
+				r += qint64(qRed(px)) * al;
+				g += qint64(qGreen(px)) * al;
+				b += qint64(qBlue(px)) * al;
+				a += al;
+				++n;
+				peak = qMax(peak, al);
+			}
+		}
+		Half h;
+		h.peak = peak;
+		h.cov = n > 0 ? int(a / n) : 0;
+		h.col = a > 0 ? qRgb(int(r / a), int(g / a), int(b / a)) : qRgb(0, 0, 0);
+		return h;
+	};
+	const auto close = [](QRgb a, QRgb b) {
+		return qAbs(qRed(a) - qRed(b)) + qAbs(qGreen(a) - qGreen(b))
+		     + qAbs(qBlue(a) - qBlue(b)) < 24;
+	};
 	for (int cy = 0; cy < cell_rect.height(); ++cy)
 		for (int cx = 0; cx < cell_rect.width(); ++cx) {
 			const int X = cell_rect.x() + cx, Y = cell_rect.y() + cy;
 			if (X < 0 || Y < 0 || X >= frame.cols() || Y >= frame.rows()) continue;
-			// two vertical samples per cell (2x vertical resolution)
-			auto sample = [&](double fy) -> QRgb {
-				int sx = qMin(int((cx + 0.5) * img.width() / cell_rect.width()), img.width() - 1);
-				int sy = qMin(int((cy + fy) * img.height() / cell_rect.height()), img.height() - 1);
-				return img.pixel(sx, sy);
-			};
-			const QRgb top = sample(0.25), bot = sample(0.75);
-			const int alpha_top = qAlpha(top), alpha_bot = qAlpha(bot);
-			if (alpha_top < 40 && alpha_bot < 40) continue;                  // transparent: untouched
+			// The slice of the image this cell covers, and its two halves,
+			// derived from the cell's position within cell_rect so that a
+			// picture wider than one cell is sampled ACROSS rather than
+			// repeated.
+			const int x0 = cx * img.width() / cell_rect.width();
+			const int x1 = qMax(x0 + 1, (cx + 1) * img.width() / cell_rect.width());
+			const int y0 = cy * img.height() / cell_rect.height();
+			const int y1 = qMax(y0 + 1, (cy + 1) * img.height() / cell_rect.height());
+			const int mid = qMax(y0 + 1, (y0 + y1) / 2);
+			const Half top = mean(x0, x1, y0, mid);
+			const Half bot = mean(x0, x1, mid, qMax(mid + 1, y1));
+			if (top.peak < 40 && bot.peak < 40) continue;      // transparent
 			Cell &cell = frame.at(X, Y);
-			if (alpha_top > 200 && alpha_bot > 200) {                        // opaque: 2 pixels
-				cell.ch = QStringLiteral("▀");
-				cell.fg = Color::rgb(QRgb(top | 0xFF000000));
-				cell.bg = Color::rgb(QRgb(bot | 0xFF000000));
+			if (top.peak > 200 && bot.peak > 200) {            // ink in both
+				// Two halves of one colour differ only in how much of each
+				// is inked, and for a single-hued icon that is the only
+				// difference there is. Compared by colour alone, a ring, a
+				// tick and a double tick all came out as the same two solid
+				// cells -- and the project that draws those three requires
+				// them to stay apart for a reader who cannot tell one tick
+				// from two, so colour was never the carrier.
+				//
+				// Twice the ink and a clear absolute gap, so a nearly-even
+				// cell keeps the solid block rather than flickering between
+				// halves on noise.
+				const bool same = close(top.col, bot.col);
+				const bool lean_top = same && top.cov > bot.cov * 2
+				                   && top.cov - bot.cov > 24;
+				const bool lean_bot = same && bot.cov > top.cov * 2
+				                   && bot.cov - top.cov > 24;
+				if (lean_top || lean_bot) {
+					cell.ch = lean_top ? QStringLiteral("▀")
+					                   : QStringLiteral("▄");
+					cell.fg = Color::rgb(lean_top ? top.col : bot.col);
+				} else {                                       // 2 pixels
+					cell.ch = QStringLiteral("▀");
+					cell.fg = Color::rgb(top.col);
+					cell.bg = Color::rgb(bot.col);
+				}
 				cell.attrs = {}; cell.width = 1;
-			} else if (alpha_top > 200 || alpha_bot > 200) {                 // half-covered edge
-				const bool top_half = alpha_top > 200;
+			} else if (top.peak > 200 || bot.peak > 200) {     // half-covered
+				const bool top_half = top.peak > 200;
 				cell.ch = top_half ? QStringLiteral("▀") : QStringLiteral("▄");
-				cell.fg = Color::rgb(QRgb((top_half ? top : bot) | 0xFF000000));
+				cell.fg = Color::rgb(top_half ? top.col : bot.col);
 				// keep whatever bg is behind the uncovered half
 				cell.attrs = {}; cell.width = 1;
-			} else {                                           // translucent: tint bg,
-				const int a = qMax(alpha_top, alpha_bot);                    // glyph stays readable
+			} else {                                           // translucent:
+				const int a = qMax(top.peak, bot.peak);        // tint bg,
+				const QRgb over = top.peak >= bot.peak ? top.col : bot.col;
 				const QRgb under = rgb_for(cell.bg, under_default);
-				cell.bg = Color::rgb(blend(top, a, under));
+				cell.bg = Color::rgb(blend(over, a, under));   // glyph stays
 			}
 		}
 }

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2066 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2068 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -982,6 +982,11 @@ the bullet an HTML list loses, a table's borders coming out as tinted
 cells, and whether the "too small to be a picture" rule moves to the
 backend all ask the same thing: **what does a small drawn MARK become on a
 character grid -- a glyph, a block, or the ground it is standing on?**
+**One of the four is answered** (8.383): where the terminal can draw
+pictures, a small mark becomes the picture, because the rule now lives in
+the only tier that knows whether it can. The other three are that same
+question asked where it cannot, and each is cheaper for the first being
+settled rather than answered by it.
 Each arrived from a different direction and each carries its own
 measurement, but one answer settles all four, and answering them
 separately would be four chances to answer inconsistently.
@@ -999,10 +1004,10 @@ Owned by the copyright holder:
 | **Which mark should a drop indicator carry?** A view draws `PE_IndicatorItemViewItemDrop` while something is dragged into it, and `Qtty::exec_drag()` makes that reachable -- its contract is to deliver the enter, move, leave and drop events. Measured: the between-rows form draws a ten-cell rule on BLANK cells and **nothing at all** over the items, and the on-item form touches nothing even on a clean buffer. The mechanism is not a bug -- `clear_run` in `cell_paint.cpp` refuses a horizontal rule into any run holding a non-blank cell, which exists because a rule landing on a label put a box-drawing glyph in place of every space. That rule is right for frames and rules, and a drop indicator is neither: it is feedback, and the cells it wants are the ones an item's name is in. **The remedy needs a MARK and the vocabulary has none free** -- reverse is selected, underline is current -- so which one a provisional drop carries is a visual convention. Related to the four-row mark cluster above and not the same question: that one asks what a drawn mark BECOMES, this asks which mark a state should be GIVEN. Asserted as it stands, so a producer added later reddens a check | 8.343 |
 | **Should every printable carry its `Qt::Key`, and should the router ask the focus widget for a `ShortcutOverride`?** The two are one question. A terminal sends a printable as text with no key code, so `Qt::Key_Space` was dead until 8.334 fixed it for Space alone -- and `*` and `+` in a tree are dead by the same mechanism, measured. Giving every printable its key passes the whole suite and breaks an assumption `match_shortcut()` states outright: a bare letter cannot match a shortcut, which is why it falls through to `QMenu::keyPressEvent`. Qt arbitrates with `QEvent::ShortcutOverride` -- measured, a focused `QLineEdit` CLAIMS a plain letter and a plain Space, lets `Ctrl+N` through and CLAIMS `Ctrl+A` -- and this router never asks, so a plain-letter shortcut would fire where a desktop types the letter. Asking it would also subsume the hand-written `Ctrl+A` and `Ctrl+C` exemptions, which are that arbitration written out for two chords. The cost is a change to the most load-bearing rule in the input path | 8.334 |
 | **Should `pointer_only()` widen from a control no key reaches to an ACTION no key reaches?** Measured 2026-09-22 on a `QListWidget` set to `InternalMove`: **0 of 10 plausible chords** moved an item (`Ctrl`/`Alt`/`Shift` with `Up`, `Down`, `PageDown`, and `Ctrl+]`, `Alt+-`), and the function names nothing, because the view IS a tab stop and the present predicate is *reached by no key at all*. The four kinds it returns are all controls; a reorder is an action belonging to no widget, the way a sort belongs to a section -- and the sorting header was admitted on exactly that argument, so the boundary is already blurred. The cost of widening is that under qtty a plain Qt drag does not reorder either: it falls back to rubber-band selection (practice 13), so the action is unreachable by pointer too unless the application calls `Qtty::exec_drag()` -- which makes it a *nothing-reaches-this* finding rather than a pointer-only one, and the function would be answering a question its name does not ask. The guide already tells an implementer to give the reorder a keyboard route; whether the audit should say so too is a scope change to a public function | 8.310, practice 13 |
-| A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. Cheaper to answer after the picture-rule entry below, which is the same question seen from the other end | *Qt's standard iconography* |
+| A message box's severity icon: whether a warning triangle should become a glyph. The mechanism has no open question, the mosaic it would replace is **faithful and still unreadable**, and the picture costs the dialog exactly **one row**. **Cheaper now than when this row was written**: the picture rule has moved to the backend (8.383), so a glyph chosen in `GridStyle` no longer has to be weighed against the real icon a graphics terminal would have drawn -- it is a decision about text-only terminals alone | *Qt's standard iconography* |
 | **A rule drawn as a thin RECTANGLE becomes a coloured background; the same rule drawn as a LINE becomes a box-drawing glyph.** Measured through an HTML table: its borders arrive as `drawRects` of `11x1` and `1x19` and come out as grey blocks, while `drawLines` of the same shape draws `-` and `\|`. The horizontal case could be told from a caret by shape; **the vertical case cannot -- a caret and a one-cell vertical rule are the same `1x19` rectangle**, which is what stops this being a small fix | 8.65 |
 | **An HTML bullet list loses its bullets.** Measured through a `QTextBrowser`: `<ul><li>one</li></ul>` renders the text indented with a one-cell BACKGROUND block and no glyph -- ~~where the bullet belongs~~ **one row BELOW its own item until 8.305**, which also put the last list's block on an empty row underneath the list; the block is beside its item now, and what it should BECOME is still the choice below -- `bg=#000000` on the default dark ground. Qt draws the bullet as `drawPath` with a 6x6 bounding rect, and `is_thin` (`width*2 < cw \|\| height*2 < ch`) is true of it, so a bullet takes the hairline road meant for carets and rules. **The discriminator is clean and is the finding**: a shape smaller than one cell in BOTH dimensions is a mark, not a hairline -- a caret is 1x19 and a rule 50x1, and neither is. What a mark should BECOME is the choice, and it is the holder's | 8.64 |
-| Whether the "too small to be a picture" rule moves to the backend. Nothing left unmeasured: the backend's fallback tier **already** composes placements as half-blocks, so this is one condition in `drawPixmap()`; no widget icon reaches the branch today; and the cost is **1.4 KB once per distinct icon, 35 bytes a frame after** -- eight of them together less than the one 48x48 icon the library already uploads | §7.2 |
+| **~~Whether the "too small to be a picture" rule moves to the backend.~~ It has, and the row was right that it was one condition -- and wrong that nothing was left unmeasured.** The tier below read ONE PIXEL per half cell, so a 16x16 tick lost its left cell outright and a status light its right one; the substitution's area sampling moved with the rule, and the sampling change on its own reddened not one check of 2064. 8.383 | §7.2 |
 | **~~Right-to-left: does qtty support it at all?~~ It does, and the row's own list is how the last gap was found.** 8.284 mirrored the progress bar, the scroll bar's thumb, the spin box's arrows and a tool button's menu arrow; 8.304 mirrored the combo box's, which this row still named. Re-measured 2026-09-22 against plain Qt: **a label's alignment and a line edit's text are NOT gaps** -- Qt does not mirror either, ink left in both directions, so drawing them the same is correct. What remains undesigned is bidirectional TEXT, which is a different question and is its own row. `doc/keyboard-first.md` has the section, with the numbers | 8.284, 8.304 |
 | **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise. 8.248 adds a second obstacle on the ink half alone: ToolTipText is the same black as WindowText here, and `role_of()` keys on the colour, so a hover timer would light the tooltip's ground and leave its text at body text's index | §7.2 |
 | **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect. **Both halves are asserted since 8.75** -- the hover arrives, and the render is byte-identical with the pointer on the control and off it | §7.2 |
@@ -2487,9 +2492,9 @@ In the order I would take them:
    reason to want it.
 
 2. **§0b's questions are the holder's** and are not work to pick up: RTL
-   scope, the bundled font, tooltips and hover, the severity glyph, the
-   picture rule, and whether `qtty-negotiate` belongs in `$PREFIX/bin`
-   (§8.0). **~~the layout top margin~~ was settled and FIXED on
+   scope, the bundled font, tooltips and hover, the severity glyph, and
+   whether `qtty-negotiate` belongs in `$PREFIX/bin` (§8.0). **~~the
+   picture rule~~ was settled on 2026-10-07** and is 8.383. **~~the layout top margin~~ was settled and FIXED on
    2026-09-01** by `66db797`, and §0b dropped it then while this line kept
    it for five weeks -- in the very sentence that boasts of correcting the
    slider pointer below. 8.382. `SH_Slider_AbsoluteSetButtons` was on
@@ -4024,16 +4029,20 @@ icon to a `QPixmap` before the style draws it**. Traced at
   before choosing, because on an 80x24 terminal a dialog is a large
   object.
 
-  **And a small picture is not on the menu.** At 20 px and below the icon
-  stops being a placement and becomes the substitution block -- `▒▒`,
-  then `▒`. So a glyph would not be competing with a picture at that
-  size; it would be competing with a coloured smudge. Which is the same
-  observation the entry above reaches from the other end: **this decision
-  and the "too small to be a picture" one are one question seen twice.**
-  A glyph chosen in `GridStyle` is unconditional and costs a graphics
-  terminal its real icon; a glyph chosen where the terminal's capability
-  is known costs nothing. Answering where the rule lives first makes this
-  one cheap.
+  ~~**And a small picture is not on the menu.** At 20 px and below the
+  icon stops being a placement and becomes the substitution block.~~
+  **It is on the menu now, and that was the other half of this question.**
+  8.383 moved the "too small to be a picture" rule to the backend, so an
+  icon at any size is a placement: real pixels on a terminal that can
+  draw them, a mosaic on one that cannot. The two decisions were one
+  question seen twice and this is the half that has been answered.
+
+  What it changes here is the cost of the glyph rather than the choice. A
+  glyph chosen in `GridStyle` is unconditional and WOULD have cost a
+  graphics terminal its real icon -- which is why this was worth answering
+  second. It no longer competes with a picture on a text-only terminal,
+  because there the mosaic is what a glyph would replace, and §7.2
+  measured that mosaic as faithful and still unreadable at icon size.
 - ~~The dock buttons arrive as a **0x0 pixmap into a -2x-6 rectangle**.
   There is no icon area at all, so no iconography decision can put
   anything in one. That is a sizing fault and a different question.~~
@@ -12079,7 +12088,9 @@ Still not done from this list:
 - ~~The `qtty.glyph` / `QIcon::name()` icon substitution registry
   (design.md §8.6).~~ **Done.** A terminal cannot draw a 16-pixel icon in
   one cell -- there is nothing to see at that size, which is why
-  `drawPixmap()` has always stamped a placeholder block there. The registry
+  `drawPixmap()` stamped a placeholder block there until 8.383 moved that
+  rule to the backend; a terminal that CAN draw one gets the icon now, and
+  the registry is what a terminal that cannot still needs. The registry
   is how an application says what an icon MEANS, chosen by whoever knows the
   icon set rather than guessed by the library, and `CC_ToolButton` is its
   first consumer.
@@ -17970,6 +17981,117 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.383 The picture rule moved to the tier that knows (2026-10-07)
+
+**The question §0b carried was where the rule lives, and the answer was
+cheaper than the row said -- with one thing the row had not measured.**
+`CellPaintEngine::drawPixmap()` gated on "two cells or more in each
+direction": bigger was a section 5.7 placement carrying real pixels,
+smaller was substituted by a shaded block. That threshold tried to answer
+whether a thing is an ICON, whose meaning is a shape too small to survive
+being made of cells, or a PICTURE -- and the pixmap does not say. A 16x16
+warning triangle is 2 cells by 1 and an 82x19 dragged tab is 8 by 1.
+
+The question that CAN be answered is whether this terminal draws pictures
+at all, and the engine does not know it while the backend does. So the
+rule is gone from the engine: every image is a placement, and
+`AnsiBackend` decides -- real pixels where the terminal has a graphics
+protocol, `compose_halfblocks()` where it has not, which is the fallback
+tier running today for every such terminal.
+
+**What the row had not measured is that the tier below was not ready for
+it, and nothing in the suite could say so.** `compose_halfblocks()` read
+the single pixel at the centre of each half cell. That is right for a
+photograph, where a cell covers a few pixels of a smooth image and any of
+them stands for the rest, and it is a lottery for an icon, where the ink
+is a two-pixel stroke and most of the half is transparent. Measured
+through a probe before the change, on marks at 16x16 against a 10x19
+cell:
+
+    tick         substitution [▄][▀]   halfblocks [ ][▀]
+    double tick  substitution [▄][▀]   halfblocks [ ][▀]
+    red light    substitution [▒][▒]   halfblocks [▀][ ]
+    ring         substitution [▒][▒]   halfblocks [▄][▀]
+
+The ticks lost their LEFT cell and the status lights their right one --
+not faint, absent. Relaxing the threshold alone would have moved an icon
+from a coarse block to half a mark.
+
+So the substitution's sampling moved with the rule. Three numbers per
+half cell where there was one pixel: the alpha-weighted mean, which is
+the colour of the INK rather than of the ink averaged with the
+transparency round it; the greatest alpha, which says whether any of the
+half is solid and is what the tier is chosen on, so a translucent wash is
+still a wash and a thin stroke is still a mark; and the mean alpha, which
+is how MUCH of the half is inked and is the only thing that separates two
+marks of one colour. Read through `constScanLine()` and strided to at most
+sixteen samples an axis, so a 40x20-cell placement stays a bounded scan.
+With it, every one of the four composes exactly what the substitution did.
+
+**And the sampling change reddened NOTHING.** 2064 checks, zero failures,
+before any of the rest of the work -- because no fixture in the suite had
+ever put a thin shape through a placement. Every image the suite composed
+was a flat fill or a two-colour split, and both survive point sampling by
+construction. The check that exists now reads which cells hold ink off the
+image and requires the composer to have touched exactly those, with the
+wholly-transparent control next to it refusing a composer that marks
+everything it is handed; reverting to the point sample reddens it and
+nothing else.
+
+**Four checks pinned the retired convention and are now pinned the other
+way**, in three suites: a one-cell pixmap is a placement of one cell, a
+one-cell decoration likewise with no glyph standing in for it, and the
+8x1 dragged-tab case asserts both tiers on one image -- the engine places
+over eight cells and writes no text, and the composer then covers those
+eight and leaves the ninth showing the label underneath. Either half
+alone would pass against the wrong thing: a placement with no mosaic, or
+the substitution this replaced, which drew the cells and never placed.
+
+**One thing the threshold carried is kept.** An image with no ink in it
+draws nothing, rather than claiming a picture is there -- and placing it
+would now be worse than a stray block, since it would upload an invisible
+image and re-place it every frame. The alpha scan is skipped for a pixmap
+with no alpha channel, which is every photograph and every widget grab.
+
+**The shaded block is not retired, and the glyph page had to say so.**
+`▒` is still drawn in two places -- a bar with no length to report, and
+`draw_placeholder()`'s one cell where there is no room for a box -- so the
+page's row for it kept its mark and changed its meaning, from "a picture
+reduced to one cell" to "a bar whose length is unknown, or something too
+small to draw a box around". The check that requires every glyph the style
+draws to be published is what found the row, by failing: it renders each
+row's fixture and the old one was a label holding a one-cell pixmap, which
+is now a placement.
+
+**design.md was right all along, which is the part worth keeping.** §5.7
+says the call "arrives at `CellPaintEngine::drawPixmap()`, which -- instead
+of the ▒ placeholder -- registers a `CellImage` at the pixmap's cell rect",
+and names no minimum size anywhere. The threshold was drift against the
+document, not a decision the document had failed to record, and the three
+sections of this one that described it as a decision were describing the
+drift.
+
+**Priced before it was done**, on the encoders rather than on an opinion,
+and the figures stand as §7.2 recorded them: eight distinct 16x16 icons
+cost 11.2 KB of kitty uploads on the first frame and 280 bytes of
+re-placement on every frame after, against 12.3 KB for the one 48x48
+severity icon the library already sends.
+
+**Three sabotage entries, each `--only`-proven**, and two existing entries
+re-anchored into `compose_halfblocks()` because the branches they name
+moved there with the sampling. Restoring the threshold reddens four checks
+across three suites; turning the no-ink guard off reddens one; the point
+sample reddens one.
+
+**And this answers one of the four rows §0b calls one question.** What a
+small drawn mark becomes on a character grid now has an answer for the
+case where the terminal can draw pictures: it becomes the picture. The
+severity glyph, the HTML bullet and the table border are the same question
+asked where it cannot, and they are cheaper for this being settled -- a
+glyph chosen in `GridStyle` is unconditional and costs a graphics terminal
+its real icon, which is exactly the cost this change removes, so choosing
+one there is now a decision about text-only terminals alone.
 
 ### 8.382 The top margin was fixed five weeks before it was asked for (2026-10-07)
 

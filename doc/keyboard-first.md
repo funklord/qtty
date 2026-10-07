@@ -242,7 +242,7 @@ a third spelling**, which is the other half of practice 10.
 | `↗` | a dock widget's float button, beside its `✕` |
 | `◂` | a previous -- a calendar's month back, a left-arrow tool button |
 | a box with a class name in it | a widget whose content is out of reach -- a `QGraphicsView`, a web view |
-| `▒` | a picture reduced to one cell, which is all this library can say about it |
+| `▒` | a bar whose length is unknown, or something too small to draw a box around |
 
 **Two of these are near neighbours on purpose and one is a trap worth
 knowing.** `✕` is close-or-clear and appears on a tab, a dock title and

@@ -233,9 +233,9 @@ check = "still does after the application installs its own style"
 
 [[sabotage]]
 name = "a small icon is averaged into one colour again"
-file = "src/render/cell_paint.cpp"
-find = "\t\t\t\t} else if (top_any && bot_any && close(top, bot)) {"
-into = "\t\t\t\t} else if (top_any && bot_any) {"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\t\t} else {                                       // 2 pixels"
+into = "\t\t\t\t} else if (false) {"
 count = 1
 check = "one with a top and a bottom carries both"
 
@@ -406,8 +406,8 @@ check = "a texture fill takes its colour from the texture"
 
 [[sabotage]]
 name = "a one-colour icon's halves are compared by colour alone"
-file = "src/render/cell_paint.cpp"
-find = "\t\t\t\tif (top_any && bot_any && close(top, bot)\n\t\t\t\t    && (lean_top || lean_bot)) {"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\t\tif (lean_top || lean_bot) {"
 into = "\t\t\t\tif (false) {"
 count = 1
 check = "and two one-colour icons differing only in shape do too"
@@ -5769,3 +5769,27 @@ find = "\tif (i >= pending_.size()) {\n\t\tif (pending_.size() <= kSequenceCap) 
 into = "\tif (i >= pending_.size()) {\n\t\tif (true) return -1;"
 count = 1
 check = "a CSI whose parameters never end is dropped once it passes the cap"
+
+[[sabotage]]
+name = "the engine decides a small image on cell extent again"
+file = "src/render/cell_paint.cpp"
+find = "\tdev_->placements.append({quint64(pm.cacheKey()), c, pm});"
+into = "\tif (c.width() < 2 || c.height() < 2) return;\n\tdev_->placements.append({quint64(pm.cacheKey()), c, pm});"
+count = 1
+check = "every image is a placement over the cells it occupies, one cell wide or eight"
+
+[[sabotage]]
+name = "a wholly transparent image is placed anyway"
+file = "src/render/cell_paint.cpp"
+find = "\tif (pm.hasAlphaChannel()) {"
+into = "\tif (false && pm.hasAlphaChannel()) {"
+count = 1
+check = "and an image with no ink in it is not placed at all"
+
+[[sabotage]]
+name = "the mosaic reads one pixel a half cell again"
+file = "src/graphics/graphics.cpp"
+find = "\t\tconst int sx = qMax(1, (x1 - x0) / 16), sy = qMax(1, (y1 - y0) / 16);"
+into = "\t\tx0 = (x0 + x1) / 2; x1 = x0 + 1;\n\t\ty0 = (y0 + y1) / 2; y1 = y0 + 1;\n\t\tconst int sx = 1, sy = 1;"
+count = 1
+check = "every cell of a thin mark that holds ink is marked, which sampling one pixel a half could not promise"
