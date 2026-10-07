@@ -3212,6 +3212,49 @@ int suite_widgets() {
 			      " size");
 		}
 
+		// THE LAYOUT MARGINS, which nothing asserted until now. 66db797
+		// made the vertical pair 0 where each had been a whole row, and the
+		// symptom was severe rather than cosmetic: measured on an 80x1
+		// terminal, a window with a plain QVBoxLayout rendered entirely
+		// blank, its first widget one row below the only row there was.
+		// 0e went on listing it as an open question for five weeks after it
+		// was settled, and nothing in the suite would have noticed the
+		// `return 0` going back.
+		//
+		// Asserted at TWO cell sizes, which is what separates a metric that
+		// tracks the cell from a constant that happens to match it -- the
+		// same care the tearoff check above takes. And asserted as the
+		// RELATIONSHIP the fix was argued from, vertical space being
+		// precious where horizontal is not, rather than as four numbers:
+		// PM_LayoutVerticalSpacing already said so two lines below the one
+		// at fault, and the margins said the opposite.
+		{
+			const auto metric = [](QStyle::PixelMetric p) {
+				return QApplication::style()->pixelMetric(p);
+			};
+			const int left = metric(QStyle::PM_LayoutLeftMargin);
+			const int right = metric(QStyle::PM_LayoutRightMargin);
+			const int top = metric(QStyle::PM_LayoutTopMargin);
+			const int bottom = metric(QStyle::PM_LayoutBottomMargin);
+			const int hspace = metric(QStyle::PM_LayoutHorizontalSpacing);
+			const int vspace = metric(QStyle::PM_LayoutVerticalSpacing);
+			GridMetrics::set(cw + 3, ch + 5);
+			const int wide_left = metric(QStyle::PM_LayoutLeftMargin);
+			const int wide_top = metric(QStyle::PM_LayoutTopMargin);
+			GridMetrics::set(cw, ch);
+			printf("info: layout margins l=%d r=%d t=%d b=%d, spacing h=%d"
+			       " v=%d; at a wider cell l=%d t=%d\n", left, right, top,
+			       bottom, hspace, vspace, wide_left, wide_top);
+			CHECK(top == 0 && bottom == 0 && vspace == 0 && wide_top == 0,
+			      "a layout spends no ROWS on margins or spacing, at either"
+			      " cell size, which is what an 80x1 terminal needs to show"
+			      " anything at all");
+			CHECK(left == cw && right == cw && hspace == cw
+			      && wide_left == cw + 3,
+			      "while it spends a COLUMN on each, tracking the cell"
+			      " rather than a constant that happens to match");
+		}
+
 		// A menu row, drawn straight rather than through a QMenu. QMenu only
 		// ever GROWS a column -- it takes the maximum of every item's hint
 		// and floors it -- so an auto-sized menu always has slack and the

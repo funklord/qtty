@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2064 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2066 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -2488,8 +2488,11 @@ In the order I would take them:
 
 2. **§0b's questions are the holder's** and are not work to pick up: RTL
    scope, the bundled font, tooltips and hover, the severity glyph, the
-   picture rule, the layout top margin, and whether `qtty-negotiate`
-   belongs in `$PREFIX/bin` (§8.0). `SH_Slider_AbsoluteSetButtons` was on
+   picture rule, and whether `qtty-negotiate` belongs in `$PREFIX/bin`
+   (§8.0). **~~the layout top margin~~ was settled and FIXED on
+   2026-09-01** by `66db797`, and §0b dropped it then while this line kept
+   it for five weeks -- in the very sentence that boasts of correcting the
+   slider pointer below. 8.382. `SH_Slider_AbsoluteSetButtons` was on
    this list and was answered on 2026-09-05 -- the left button sets the
    value -- which is why the pointer is corrected here rather than left to
    send a reader at a decision already taken.
@@ -17967,6 +17970,51 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.382 The top margin was fixed five weeks before it was asked for (2026-10-07)
+
+**Asked to fix it, and there was nothing to fix.** `66db797` settled it on
+2026-09-01: `PM_LayoutTopMargin` and `PM_LayoutBottomMargin` answer 0 where
+each had been a whole row, and that commit's own message says why it was
+not the holder's call after all -- `PM_LayoutVerticalSpacing` already
+returned 0 two lines below the line at fault, so the margins contradicted a
+rule the file had already stated. Vertical space is precious and horizontal
+is not.
+
+**§0b dropped the item when it was fixed. §0e kept it for five weeks**, in
+the same sentence that boasts of correcting a different stale pointer:
+"`SH_Slider_AbsoluteSetButtons` was on this list and was answered ... which
+is why the pointer is corrected here rather than left to send a reader at a
+decision already taken." It corrected one and kept the other, in one
+breath. That is the fourth stale pointer found in this document, and the
+first found by being sent at finished work on purpose.
+
+**What WAS missing is narrower than it looked, and the sabotage said so.**
+Nothing named the metric, so two checks now assert it at two cell sizes --
+the care the tearoff check beside them already takes, since a metric that
+tracks the cell and a constant that happens to match are indistinguishable
+at one size.
+
+    margins l=10 r=10 t=0 b=0, spacing h=10 v=0; at cw+3: l=13 t=0
+
+**But "nothing would have noticed" was going to be written here and it is
+false.** With the metric reverted to `ch`, **fourteen** checks redden. The
+suite holds this behaviour in thirteen places already -- a form layout
+rendering every row, an inline editor opening where the item's text was, a
+tree's branch indicator, a check box keeping its cells through a rename --
+and not one of them names a margin.
+
+**So the addition is ATTRIBUTION, not detection**, and that is worth having
+for a reason this tree has already paid: the blank top row was written up
+during the odd-size sweep as Qt's default nine-pixel margins rounding
+badly, and 66db797 found it was "neither Qt's nor rounding". Thirteen
+failures about editors and indicators send a reader there again; one that
+says ROWS does not.
+
+**And the second check is the first one's axis control.** Reverting the
+vertical pair reddens the ROWS assertion and leaves the COLUMN assertion
+green, which is what says the sabotage moved the axis the check names and
+nothing else.
 
 ### 8.381 A Default colour's ground is read now, not assumed (2026-10-07)
 
