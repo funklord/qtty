@@ -69,16 +69,22 @@ extreme load** -- 4.81 at load 1.68, 4.84 at load 12 to 17, 6.9 at load
 190. The reliable half of the measurement is only reliable below some
 load, and 190 is past it.
 
-**The valgrind arm is what made it matter.** `cc3bf71` came back
-`platforms rc=0`, `sanitize rc=0`, `valgrind rc=2` -- the suite stopping
-itself at its own 3000-second limit after 1491 checks of 2078. The three
-runs before it that day each reported `test-valgrind: clean` over 2060 to
-2064 checks inside a 640-second three-arm sequence, so the limit normally
-has about ten times the margin it needs, and 8x less CPU per process
-covers a 10x slowdown on its own. With the timing experiment above
-disproving the code, that arm is a casualty of the machine and wants
-re-running when the load is low -- which is a different sentence from
-calling it environmental and moving on.
+**The valgrind arm is what made it matter, and it is green now.**
+`cc3bf71` came back `platforms rc=0`, `sanitize rc=0`, `valgrind rc=2` --
+the suite stopping itself at its own 3000-second limit after 1491 checks
+of 2078. The three runs before it that day each reported
+`test-valgrind: clean` over 2060 to 2064 checks inside a 640-second
+three-arm sequence, so the limit normally has about ten times the margin
+it needs, and 8x less CPU per process covers a 10x slowdown on its own.
+
+Re-run on `db85d76` rather than left as a plausible story: **rc=0,
+`ERROR SUMMARY: 0 errors from 0 contexts`**, 2074 checks and 4 skips. It
+was run by hand with the inner limit raised to 9000 seconds, because the
+load had oscillated between 12 and 222 all afternoon and waiting for
+quiet had no predictable end -- **and the raised limit was not needed**:
+the run took about 1320 seconds, inside the original 3000, because the
+load fell to 12 while it ran. So the ordinary target would have passed
+too, which is the cleanest form the confirmation could take.
 
 That is worth more than the caution it replaces. A figure whose conditions
 changed four-fold while it did not move has told you what it is a function
