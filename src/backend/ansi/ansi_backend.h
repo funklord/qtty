@@ -33,6 +33,46 @@ Capabilities::ColorDepth negotiate_color(const TermCaps &caps);
 // depth that can carry the image id exactly.
 bool use_placeholders(const TermCaps &caps, Capabilities::ColorDepth depth);
 
+// The largest value a CSI parameter may carry. ECMA-48 bounds a sequence's
+// parameter COUNT and says nothing about a parameter's VALUE, so the digits
+// arrive from the terminal unbounded while the accumulator is an `int` --
+// and `kSequenceCap` bounds the buffer's LENGTH, which is a different
+// quantity. Measured: `CSI < 0 ; 99999999999 ; 1 M` decoded to a mouse row
+// of 1215752190, which is that number wrapped into 32 bits, and
+// `InputRouter::on_mouse()` then multiplies a cell by the cell height.
+// Signed overflow is undefined behaviour, so this saturates instead.
+//
+// Two million, which is above every value this decoder has a legitimate use
+// for -- a mode number is four digits, a window-op pixel size is four, a
+// colour component is three, and the largest Unicode codepoint a key could
+// name is 1114111. Saturating here rather than clamping at each reader keeps
+// one bound rather than one per consumer, and leaves room downstream: two
+// million cells times a cell height is well inside an int.
+//
+// Declared here rather than beside kSequenceCap in the .cpp so that the
+// check asserting the saturation reads the bound instead of repeating it.
+constexpr int kCsiParamCap = 2000000;
+
+// The largest grid a RESIZE REPORT may claim. `CSI 8 ; rows ; cols t` is a
+// size the other end asserts, which some multiplexers send unsolicited, and
+// the guard was `rows > 0 && cols > 0` alone -- so the number on the wire
+// became the number `Compositor::compose()` builds its frame at:
+// `CellBuffer frame(cells.width(), cells.height())`, and a `Cell` is 48
+// bytes. Measured, the report arrived at the sink intact: a claimed
+// 2000000x2000000 is 4e12 cells, which is 192 TB of frame buffer, so the
+// allocation fails and the application dies on one escape sequence.
+//
+// A million cells is 48 MB and about six times the largest terminal that
+// can exist -- a 4K display with a six-pixel font is roughly 640 by 270, so
+// 170,000 cells. The product is what allocates, so the product is what is
+// bounded, and it is computed in 64 bits: two parameters at kCsiParamCap
+// multiply to 4e12, which does not fit in the `int` they arrive in.
+//
+// The size from `ioctl(TIOCGWINSZ)` is NOT bounded by this and does not need
+// to be. It is the kernel's answer about a real terminal rather than a claim
+// from the far end of a pipe, and it is bounded by the thing it describes.
+constexpr int kMaxTerminalCells = 1000000;
+
 // How long an unaccompanied ESC waits before it is delivered as Escape.
 //
 // ESC prefixes every escape sequence, so a lone one can only be told from the

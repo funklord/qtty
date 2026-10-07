@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2080 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2084 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -15021,6 +15021,43 @@ Qt **6.8.2**, `qmake6` present, the offscreen platform plugin present,
 DejaVu Sans Mono present. The tree builds clean and the suite reports
 **108 PASS, 0 failures**.
 
+### 9.10 A second unix account reaches this tree through `.git/cc-inbox/`
+
+**Settled by the copyright holder 2026-10-08 and recorded here because
+the channel itself is never pushed.** Two sessions under different unix
+accounts on this machine cannot see or message each other -- the
+messaging socket enumerates only the calling account's sessions -- so the
+channel is a maildrop in the tree: `.git/cc-inbox/`, named
+`<YYYYMMDDTHHMMZ>-<account>.md` in UTC so the names sort by time, with a
+suffixless `README` so that `*.md` lists messages only. The rule is in
+`build-and-commit.md` under *A second account on the same machine is
+reachable, per tree*.
+
+**Why inside `.git`**: it is group-writable to `users` in all nineteen
+private trees and `git status` cannot see into it, so a message can
+neither collide with a working tree somebody else has dirty nor be
+committed by accident. That is the case it was written for -- a finding
+for a tree whose `project.md` was being edited at the moment it had to be
+delivered.
+
+**Two rules that are easy to lose, and both are the README's**, which is
+why they are repeated in a file that ships:
+
+- **Read it whenever you FETCH**, not only on arriving and before
+  finishing. A session already resident when a message arrives never
+  arrives again, so a long session would otherwise read its inbox twice
+  a day.
+- **Commit the record before deleting the message.** The directory is
+  untracked, never pushed and absent from a fresh clone, so a message
+  deleted before its content reaches this document is gone with no copy
+  anywhere.
+
+**On this machine, in this tree**: sessions run as `claude`, the tree is
+owned by `funk`, both are in group `users`, and the inbox exists with
+only its README -- so nothing has been sent here yet. Checked 2026-10-08
+on arriving at the convention; this entry is what the README asks for
+when something has been.
+
 ## 10. Code style
 
 Three rules -- `snake_case`, tabs to indent and spaces to align,
@@ -18129,6 +18166,97 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.389 Two unbounded quantities off the wire (2026-10-08)
+
+**The backend and the input router, swept with the lens the paint engine
+gave up four faults to.** The question that found those was what a
+reducer does with the input it was not built for; here the reducer is the
+CSI parser, and the input it was not built for is a parameter longer than
+an `int`.
+
+ECMA-48 bounds a sequence's parameter COUNT and says nothing about a
+parameter's VALUE. The accumulator was
+
+    value = (value < 0 ? 0 : value) * 10 + (c - '0');
+
+with no cap, and `kSequenceCap` bounds the buffer's LENGTH, which is a
+different quantity -- so a terminal, a multiplexer or a stray paste could
+hand this arbitrarily many digits. Measured, `CSI < 0 ; 99999999999 ; 1 M`
+decoded to a mouse row of **1215752190**, which is that number wrapped
+into 32 bits. Signed overflow is undefined behaviour, and
+`InputRouter::on_mouse()` then multiplies the cell by the cell height:
+1215752190 times 19 overflows again, one layer up.
+
+**Saturating at `kCsiParamCap`, two million.** Above every value this
+decoder has a legitimate use for -- a mode number is four digits, a
+window-op pixel size four, a colour component three, and the largest
+Unicode codepoint a key could name is 1114111 -- and low enough that two
+million cells times a cell height stays well inside an `int`. One bound
+at the one place the value is built, rather than a clamp per reader.
+
+**The check asserts saturation rather than the absence of undefined
+behaviour**, which is what can be asserted: an eleven-digit coordinate
+decodes to 1999999 in either axis, and the cap is read from the header
+rather than repeated in the test. Its control is a four-digit coordinate
+-- `CSI < 0 ; 1000 ; 640 M` must arrive as cell 999,639 exactly -- because
+a decoder that refused every large number would pass the first half.
+
+**Two fixtures of mine were wrong before one was right, and the second
+was wrong about the code rather than about itself.** The first asserted
+that a huge coordinate produces NO event, which is the wrong property: a
+saturated coordinate is still an event, just a harmless one that lands on
+no widget. The second used `CSI 1114111 ; 1 u` as the "large numbers
+still work" control, and measured against the decoder it produces **no
+key at all** -- nor does `CSI 97 ; 1 u`, nor 65536, nor 128512. So CSI u
+key reporting is not a route that reaches a key event here, and a control
+resting on it would have been asserting something about a path that does
+nothing. A four-digit mouse coordinate is a control on the path under
+test.
+
+**UBSan names it, which is the witness that distinguishes this from a
+wrapped number.** With the cap removed, the sanitize arm reports
+
+    ansi_backend.cpp:1927:15: runtime error: signed integer overflow:
+    999999999 * 10
+
+at the exact line, and is clean with the cap in. So the check has an
+independent witness beyond its own assertion -- and the arm covers this
+family now, where before no fixture fed it a parameter long enough to
+overflow.
+
+#### The same wire, a second unbounded quantity
+
+**`CSI 8 ; rows ; cols t` is a size the other end ASSERTS**, which some
+multiplexers send unsolicited, and the guard was `rows > 0 && cols > 0`
+alone. Measured: a claimed **2000000x2000000 arrived at the sink
+intact**, and `Compositor::compose()` builds its frame at exactly that --
+`CellBuffer frame(cells.width(), cells.height())`, with a `Cell` of 48
+bytes, measured rather than counted from the struct.
+
+So the consequence is arithmetic rather than a crash anybody watched:
+4e12 cells is 192 TB of frame buffer, the allocation fails, and the
+application dies on one escape sequence. **It is stated that way
+deliberately** -- provoking a multi-terabyte allocation on a machine
+three other projects are building on is not a measurement worth taking,
+and the report reaching the sink is the part that needed measuring.
+
+Bounded at `kMaxTerminalCells`, a million cells: 48 MB, about six times
+the largest terminal that can exist, since a 4K display with a six-pixel
+font is roughly 640 by 270. **The product is bounded rather than each
+extent, because the product is what allocates** -- and it is computed in
+64 bits, since two parameters at `kCsiParamCap` multiply to 4e12 and they
+arrive as `int`. The size from `ioctl(TIOCGWINSZ)` is deliberately not
+bounded by this: it is the kernel's answer about a real terminal rather
+than a claim from the far end of a pipe.
+
+**That is the fourth time in two days that a fixture has had to be
+corrected before it could discriminate**, after 8.384's gap check,
+8.385's two rectangles and 8.387's rebuilt pixmap. The pattern is sharp
+enough to state as a rule: **a fixture written from what the code SHOULD
+do tests the author's model, and the first run is the measurement that
+replaces it.** Three of the four were caught by the check failing; this
+one needed a print.
 
 ### 8.388 A stale sentence answered a question being asked (2026-10-07)
 

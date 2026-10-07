@@ -1917,7 +1917,17 @@ int AnsiBackend::parse_csi(QByteArray &prefix, QVector<int> &params,
 	while (i < pending_.size()) {
 		const char c = pending_[i];
 		if (c >= '0' && c <= '9') {
-			if (!in_sub) value = (value < 0 ? 0 : value) * 10 + (c - '0');
+			// SATURATING, because signed overflow is undefined behaviour and
+			// the digits are the terminal's to choose. kCsiParamCap says why
+			// the bound is where it is; what matters here is that the test
+			// comes BEFORE the multiply rather than after it, since after is
+			// where the overflow already happened.
+			if (!in_sub) {
+				const int v = value < 0 ? 0 : value;
+				value = v > (kCsiParamCap - (c - '0')) / 10
+				            ? kCsiParamCap
+				            : v * 10 + (c - '0');
+			}
 			++i;
 		} else if (c == ':') {
 			in_sub = true;
@@ -2118,7 +2128,11 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 		const int what = param(0, 0);
 		if (what == 8) {
 			const int rows = param(1, 0), cols = param(2, 0);
-			if (rows > 0 && cols > 0) {
+			// In 64 bits, because two saturated parameters multiply to 4e12
+			// and they arrive as `int`. kMaxTerminalCells says why the bound
+			// is the product rather than each extent.
+			if (rows > 0 && cols > 0
+			    && qint64(rows) * qint64(cols) <= kMaxTerminalCells) {
 				cells_ = QSize(cols, rows);
 				sink_->on_resize(cells_);
 			}

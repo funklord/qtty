@@ -952,6 +952,44 @@ int suite_backend() {
 	CHECK(rec.mice.size() == 1 && rec.mice[0].press
 	      && rec.mice[0].button == 1 && rec.mice[0].cell == QPoint(33, 11),
 	      "SGR mouse press decodes with 0-based cell");
+	// A PARAMETER LONGER THAN AN INT, which nothing fed this decoder
+	// before. ECMA-48 bounds a CSI's parameter COUNT and not a parameter's
+	// VALUE, so the digits arrive from the terminal unbounded while the
+	// accumulator is an `int` -- and the sequence cap bounds the buffer's
+	// LENGTH, which is a different quantity. Signed overflow is undefined
+	// behaviour, and the wrapped value then reaches
+	// `InputRouter::on_mouse()`, which multiplies a cell by the cell size.
+	//
+	// Measured before the cap: `CSI < 0 ; 99999999999 ; 1 M` decoded to
+	// cell y = 1215752190, which is 99999999999 wrapped into 32 bits. That
+	// is not a cell any terminal has, and 1215752190 * 19 overflows again
+	// one layer up.
+	//
+	// The assertable property is that a parameter SATURATES rather than
+	// wraps, which is checkable where "there is no undefined behaviour" is
+	// not. Paired with a legitimate four-digit coordinate, because a
+	// decoder that refused every large number would pass the first half:
+	// 1000 columns is a plausible terminal and must arrive exactly.
+	feed("\033[<0;99999999999;1M");
+	const bool col_capped = rec.mice.size() == 1
+	                     && rec.mice[0].cell.x() > 0
+	                     && rec.mice[0].cell.x() <= kCsiParamCap;
+	const int col_got = rec.mice.isEmpty() ? -1 : rec.mice[0].cell.x();
+	feed("\033[<0;1;99999999999M");
+	const bool row_capped = rec.mice.size() == 1
+	                     && rec.mice[0].cell.y() > 0
+	                     && rec.mice[0].cell.y() <= kCsiParamCap;
+	const int row_got = rec.mice.isEmpty() ? -1 : rec.mice[0].cell.y();
+	printf("info: an 11-digit coordinate decodes to %d (col) and %d (row),"
+	       " cap %d\n", col_got, row_got, kCsiParamCap);
+	CHECK(col_capped && row_capped,
+	      "a CSI parameter too large for an int saturates rather than "
+	      "wrapping, in either mouse axis");
+	feed("\033[<0;1000;640M");
+	CHECK(rec.mice.size() == 1 && rec.mice[0].cell == QPoint(999, 639),
+	      "while a four-digit coordinate a real terminal could send arrives "
+	      "exactly, so the cap is not a refusal of large numbers");
+
 	feed("\033[<0;34;12m");
 	CHECK(rec.mice.size() == 1 && rec.mice[0].release,
 	      "SGR mouse release decodes");
@@ -1570,6 +1608,26 @@ int suite_backend() {
 	feed("\033[8;24;80t");
 	CHECK(rec.resizes.size() == 1 && rec.resizes[0] == QSize(80, 24),
 	      "CSI 8 t is a resize report, columns from the second field");
+	// AND A RESIZE REPORT NAMING A GRID NOTHING COULD HOLD. The same wire
+	// that carries a legitimate report carries this one, and the guard was
+	// `rows > 0 && cols > 0` alone -- so the size a multiplexer claims
+	// became the size the compositor builds its buffers at. Measured here
+	// rather than reasoned about, since what matters is whether the report
+	// reaches the sink at all.
+	feed("\033[8;2000000;2000000t");
+	printf("info: a 2000000x2000000 resize report -> %lld resize(s)%s\n",
+	       (long long)rec.resizes.size(),
+	       rec.resizes.isEmpty() ? ""
+	           : qPrintable(QStringLiteral(", %1x%2")
+	                 .arg(rec.resizes[0].width()).arg(rec.resizes[0].height())));
+	CHECK(rec.resizes.isEmpty(),
+	      "a resize report naming a grid no terminal could have is dropped "
+	      "rather than passed to the compositor");
+	feed("\033[8;24;80t");
+	CHECK(rec.resizes.size() == 1 && rec.resizes[0] == QSize(80, 24),
+	      "while an ordinary report still arrives, so the bound is not a "
+	      "refusal of resize reports");
+
 	feed("\033[6;19;10t");
 	CHECK(rec.keys.isEmpty() && rec.resizes.isEmpty(),
 	      "and the cell-size report is neither a key nor a resize");
