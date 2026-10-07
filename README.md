@@ -250,7 +250,9 @@ guide to the keyboard half.
 **A widget that paints itself works, and transparency has rules.** A
 `paintEvent` reaches a `QPainter` like any other, and what it draws is
 resolved onto cells: a diagonal becomes a line of glyphs, a filled path is
-scanline-filled, a small pixmap is substituted by a block. The one thing
+scanline-filled, and a pixmap of any size becomes an image placement --
+real pixels on a terminal with a graphics protocol, a half-block mosaic on
+one without. The one thing
 worth reading before writing one is `doc/design.md` §6.1, because a cell has
 no alpha channel and the four rules it states — zero alpha draws nothing,
 partial alpha blends against what the cell holds, an unknown ground takes

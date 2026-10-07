@@ -12132,6 +12132,25 @@ Still not done from this list:
   cell in debug and nothing in release. It needs a way to exercise both
   builds, and the suite runs in one.
 
+  **And §8.6 now disagrees with the code in a second way, flagged rather
+  than resolved.** It reads "On `NoGraphics` terminals, AND for tiny images
+  where pixels cannot read (a 16 px icon in a 1-cell space), a substitution
+  registry maps `QIcon::name()` ... to a glyph". The registry half still
+  describes the code: `GridStyle` answers Qt's standard iconography with a
+  glyph before a pixmap is ever drawn, on every terminal. What has moved is
+  the second clause -- since 8.383 a tiny image is a placement, so on a
+  terminal that CAN draw pixels an unregistered 16 px icon is now drawn
+  rather than substituted, and "for tiny images" is conditional on the
+  terminal where the document states it unconditionally.
+
+  Not resolved in either direction, per the rule in `working-practice.md`.
+  design.md §5.7 states the no-threshold behaviour the code now has, and
+  §8.6 states a substitution for the same case, so the document disagrees
+  with ITSELF and the holder is the one who settles which was meant. Worth
+  reading together with the severity-glyph row in §0b, which is the same
+  question: an unconditional glyph costs a graphics terminal its real
+  icon.
+
 ### 7.4 Declared but unreachable -- mostly closed
 
 This was a theme rather than a list: a surface that read as implemented
@@ -18130,16 +18149,22 @@ draws to be published is what found the row, by failing: it renders each
 row's fixture and the old one was a label holding a one-cell pixmap, which
 is now a placement.
 
-**design.md was right all along, which is the part worth keeping.** §5.7
-says the call "arrives at `CellPaintEngine::drawPixmap()`, which -- instead
-of the ▒ placeholder -- registers a `CellImage` at the pixmap's cell rect",
-and names no minimum size anywhere. The threshold was drift against the
+**design.md §5.7 was right all along, and §8.6 was not -- which is more
+useful than the first version of this paragraph, that said the document
+was right and stopped.** §5.7 says the call "arrives at
+`CellPaintEngine::drawPixmap()`, which -- instead of the ▒ placeholder --
+registers a `CellImage` at the pixmap's cell rect", and names no minimum
+size anywhere. §8.6 says a tiny image goes to the substitution registry,
+unconditionally, which the code no longer does -- so the document
+disagrees with itself, and that is flagged in §7.3 rather than resolved
+here: which clause was meant is the holder's. The threshold was drift against the
 document, not a decision the document had failed to record -- and the four
 sections of THIS one that described it as a decision were describing the
 drift: §0b in three places, §0e, §7.2 in four, and §7.3's note that
-`drawPixmap()` "has always stamped a placeholder block there". Counted off
-the diff rather than recalled, because a pointer left behind is how a
-settled question goes on reading as open.
+`drawPixmap()` "has always stamped a placeholder block there" -- which now
+carries the design.md disagreement above instead. Counted off the diff
+rather than recalled, because a pointer left behind is how a settled
+question goes on reading as open.
 
 **Priced before it was done**, on the encoders rather than on an opinion,
 and the figures stand as §7.2 recorded them: eight distinct 16x16 icons
