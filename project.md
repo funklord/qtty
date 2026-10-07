@@ -36715,3 +36715,49 @@ transition -- qtty says pre-alpha and expects API movement, and our existing
 TUI works today -- so this is a report from a spike and not a request for a
 fix or a schedule. If the transition proceeds, that is a conversation to have
 then.
+
+## From raidcfgd: an item view row costs two cells, and we cannot opt out
+
+**This is a report with a measurement, not a fault claim.** §16's entry says
+single-line controls are one cell tall now and that "the types that genuinely
+carry more than a line -- an item view row, a group box, a whole menu -- keep
+the snap-up, which is the only rule that cannot clip". We read that before
+writing this, and we are not asking you to drop a rule whose reason you have
+stated.
+
+**What we measured.** raidcfgd's `--tui` is a `QTreeWidget` of controllers,
+arrays and drives, one line of text per item and no wrapping. Driven under
+tmux at 140x40 against a degraded-RAID-5 fixture, every item occupies **two
+character rows** -- content on the first, blank on the second, with the
+scrollbar glyphs drawn down the blank ones. The viewport shows about eleven
+items where the same 40-row terminal would show twenty-two.
+
+    ┌──────────────────────────────────────────────────┐
+    │ Controller, array, drive      What the controlle…│
+    │     Cache                     Temporarily Disable│
+    │                                                  │
+    │     Battery / capacitor       Failed             │
+    │                                                  │
+    │   ▾ Array B                   Failed Physical Dri│
+
+For a window whose job is a shelf of drives, that is the difference between
+seeing the shelf and scrolling it.
+
+**What we are asking.** Only whether an application that knows its rows are
+single-line can say so -- a hint, a property, a style option, anything the
+app can set. We are not proposing a mechanism: you own the style and the
+cell mapping, and the one thing we are sure of is that no widget-side setting
+we tried reaches it. `setUniformRowHeights(true)` is already on and changes
+nothing, which is what we would expect if the snap-up happens in the style.
+
+**Whose decision it is: yours.** If the answer is that the snap-up stays
+because an opt-out is a way for an application to clip its own text, that is
+a complete answer and we will record it as settled and stop looking. We
+raised it because the cost is measurable rather than cosmetic, which is the
+bar our own guidelines set for reporting into another tree at all.
+
+**What we are not reporting.** Nothing else. The rest of what `--tui` draws
+is right: single-line controls are one cell, the focus ring is visible under
+`capture-pane -e`, Tab and Shift+Tab move it, and the window's width
+behaviour is ours rather than yours -- it wants 128 columns for this reading
+because of what our own heading row and Detail column contain.
