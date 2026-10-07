@@ -4727,8 +4727,8 @@ check = "a spell-check squiggle marks the word it is under"
 # a separate entry. 8.279.
 name = "a wave's fill is not folded into the underline"
 file = "src/render/cell_paint.cpp"
-find = "\tif (thin) {\n\t\tconst QRectF m = xf_.mapRect(r).translated(dev_->origin);\n\t\tconst qreal mid = m.center().y();"
-into = "\tif (false) {\n\t\tconst QRectF m = xf_.mapRect(r).translated(dev_->origin);\n\t\tconst qreal mid = m.center().y();"
+find = "\tif (thin) {\n\t\tconst QRectF m = xf_.mapRect(rn).translated(dev_->origin);\n\t\tconst qreal mid = m.center().y();"
+into = "\tif (false) {\n\t\tconst QRectF m = xf_.mapRect(rn).translated(dev_->origin);\n\t\tconst qreal mid = m.center().y();"
 count = 1
 check = "a spell-check squiggle marks the word it is under"
 
@@ -5801,3 +5801,51 @@ find = "\t\t\tif (top.peak > 200 && bot.peak > 200) {            // ink in both"
 into = "\t\t\tif (top.peak > 150 && bot.peak > 150) {"
 count = 1
 check = "a translucent wash tints the ground and leaves the glyph, up to the alpha at which the image takes the cell"
+
+[[sabotage]]
+name = "a thin fill's sub-cell span is dropped again"
+file = "src/render/cell_paint.cpp"
+find = "\t\t\tif (last < first) {\n\t\t\t\tfirst = last = int(std::floor((lo + hi) / 2 / cw));\n\t\t\t}"
+into = "\t\t\tif (false) { first = last = 0; }"
+count = 1
+check = "a thin fill is drawn at every slope, where whether it appeared at all used to depend on one"
+
+[[sabotage]]
+name = "a shape between two row samples is nothing again"
+file = "src/render/cell_paint.cpp"
+find = "\t\tif (crossings.isEmpty()) {"
+into = "\t\tif (crossings.isEmpty()) { continue; } if (false) {"
+count = 1
+check = "and at every vertical offset within a cell, so a shape between two sample lines is not nothing"
+
+[[sabotage]]
+name = "a rect with no extent is rounded up to a cell again"
+file = "src/render/cell_paint.cpp"
+find = "\tif (rn.width() <= 0 || rn.height() <= 0) return;"
+into = "\tif (false) return;"
+count = 1
+check = "a rect covering no pixels fills no cells, where rounding a zero extent up invented one"
+
+[[sabotage]]
+name = "a reversed rect is handed on reversed"
+file = "src/render/cell_paint.cpp"
+find = "\tQRect c = to_cells(rn);"
+into = "\tQRect c = to_cells(r);"
+count = 1
+check = "and a rect whose corners arrive reversed fills what the same rect forwards does"
+
+[[sabotage]]
+name = "the row fallback takes one range over the whole row again"
+file = "src/render/cell_paint.cpp"
+find = "\t\t\t\tif (band_lo[i] <= hi) {            // touching or overlapping"
+into = "\t\t\t\tif (true) {"
+count = 1
+check = "and a row the fallback answers for marks each disjoint part and neither the gap nor the cell past it"
+
+[[sabotage]]
+name = "the row fallback marks each edge's range on its own"
+file = "src/render/cell_paint.cpp"
+find = "\t\t\t\tint last = b > a ? int(std::ceil(b / cw)) - 1 : first;"
+into = "\t\t\t\tint last = int(std::floor(b / cw));"
+count = 1
+check = "and a row the fallback answers for marks each disjoint part and neither the gap nor the cell past it"

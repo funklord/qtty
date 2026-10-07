@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2069 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2076 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1011,6 +1011,7 @@ Owned by the copyright holder:
 | **~~Right-to-left: does qtty support it at all?~~ It does, and the row's own list is how the last gap was found.** 8.284 mirrored the progress bar, the scroll bar's thumb, the spin box's arrows and a tool button's menu arrow; 8.304 mirrored the combo box's, which this row still named. Re-measured 2026-09-22 against plain Qt: **a label's alignment and a line edit's text are NOT gaps** -- Qt does not mirror either, ink left in both directions, so drawing them the same is correct. What remains undesigned is bidirectional TEXT, which is a different question and is its own row. `doc/keyboard-first.md` has the section, with the numbers | 8.284, 8.304 |
 | **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise. 8.248 adds a second obstacle on the ink half alone: ToolTipText is the same black as WindowText here, and `role_of()` keys on the colour, so a hover timer would light the tooltip's ground and leave its text at body text's index | §7.2 |
 | **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect. **Both halves are asserted since 8.75** -- the hover arrives, and the render is byte-identical with the pointer on the control and off it | §7.2 |
+| **Should Channel A's fill walk whichever axis a shape is long in?** The scanline walks ROWS and samples each row once, which is right for a shape covering cell centres and under-covers a shape that is long and thin along the other axis: 8.384 stopped a thin non-axis-aligned fill DISAPPEARING, and what remains is that a gently slanted 3-pixel band crossing about twenty cells is marked in five to ten of them. Under-coverage rather than absence, and closing it is a rasteriser rather than a guard -- a cost nobody has asked for | §8.384 |
 | **Two frames nested with no layout margin draw two rules in adjacent columns.** Faithful to the widget tree -- in pixels they are 1px lines 1px apart -- and on a grid they read as two rules. Merging is not a paint-time trick: the edges are in DIFFERENT cells because the inner rect is one cell inside the outer. Three options with their costs are recorded; the cheapest is to suppress a rule whose neighbour already holds one, which cannot tell nesting from two adjacent framed widgets. Reported by fuzzypickles, and reached again by a QScrollArea | 8.25, 8.26, 8.27 |
 | **~~A read-only line edit is not marked.~~ It is, and has been since the caret-or-mark rule; the row outlived its measurement.** 8.33 measured it rendering identically to an editable one and that was true then. Re-measured 2026-09-21 through a compositor, which is what has the caret: a focused read-only field has its BRACKETS reversed and shows no caret, while a focused editable one reverses only its selected text and shows one. The brackets are the difference, and a caretless editor gets the mark precisely because it gets no caret -- so the vocabulary this row said was needed was never needed, the rule already had it. Checked both ways now, so it cannot reopen quietly | 8.33, 8.303 |
 | **~~A tab's mnemonic does nothing.~~ It works with the conventions on (8.67); what is left is the DEFAULT.** `Alt+S` on a tab labelled "&Second" does not switch to it: the router matches Alt against ACTION text and a tab is not an action. It is therefore left unmarked, on the rule that underlining a key that does nothing is worse than leaving it bare. Whether a terminal should switch tabs by mnemonic at all is the question -- the marking follows the answer | 8.37 |
@@ -2592,6 +2593,21 @@ the present tense about the tree's own shape. `make count-check` holds
 the headline figure and `make test-platforms` now holds it per
 configuration; the rest is a grep for a number beside a noun, and §0c
 records the one instrument that does NOT work for it.
+
+**A SAMPLER'S HARD INPUT IS THE LENS THIS SESSION LEAVES.** Two
+subsystems in one day lost a shape to a point sample and the suite was
+green through both: `compose_halfblocks()` read one pixel per half cell,
+and `fill_polygon()` asks which cell centres a span contains. Neither
+had a fixture supplying a thin shape, because a suite assembled to
+confirm correct behaviour does not select for the input that
+discriminates. 8.383 and 8.384.
+
+So the lens for the next pass is **every place that reduces a continuous
+thing to cells, asked what it does with a thing thinner than one** --
+and the fixture has to be built rather than found. What is swept: the
+two above, and the encoders and `crop_placement()` beneath them, which
+answer correctly for a one-cell placement and for a degenerate
+1x1-pixel image.
 
 **Re-run the sabotage for checks NEAR what you changed, not only for the
 check you added.** A fix can make a neighbouring check stop
@@ -15630,6 +15646,13 @@ inside the shape, and a one-pixel path contains none, so a caret or a rule
 drawn through `QPainterPath` rather than `fillRect` draws nothing at all.
 Same picture, different Qt call, one road tested.
 
+**And the branch added here catches the axis-aligned case only, which
+8.384 found a month later.** `is_thin()` tests the bounding RECTANGLE, so
+a thin DIAGONAL fill never reaches it: measured, a 3-pixel band across
+twenty cells drew nothing at three of six slopes. The sentence above is
+correct and its instrument cannot see the case that defeats it -- which
+is why the pointer is here rather than only forward.
+
 **And the fixture was wrong twice before it discriminated.** A thin fill
 colours a cell only where its glyph is a SPACE -- that is what keeps a
 caret over a letter from erasing the letter, which the check above it
@@ -18010,6 +18033,238 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.384 A thin fill that is not axis-aligned drew nothing (2026-10-07)
+
+**Found by pointing the last defect's lens at the next subsystem.** The
+habit is `working-practice.md`'s -- derive the next lens from the last
+bug -- and the instrument was §0d's: build the configuration nothing
+exercises, print what a terminal would show, and read it. Here that was
+a thin diagonal fill, which no fixture in the tree had ever drawn.
+8.383's fault was a sampler that dropped ink missing its sample point. `fill_polygon()` is the other sampler in this
+tree -- a scanline that asks, per cell row, where the polygon is at one
+`y`, and then which cell CENTRES lie between two crossings. So the lens
+was: what does it do with a shape too thin to cover a centre?
+
+**It loses it, and whether it loses it is a property of the SLOPE.**
+Measured on a 3-pixel band across twenty cells, before any change:
+
+    slope (cells per cell)   0.25   0.5   1.0   2.0   4.0   8.0
+    cells marked of ~20         0     0    20     0    20    10
+
+Zero at three of six slopes. Not coarse -- absent. A regular shape
+against a regular grid either covers a centre in every row or misses one
+in every row, so the failure is all-or-nothing and perfectly
+reproducible, and **a check written at one slope would have had three
+chances in six of passing against it.**
+
+`is_thin()` is why a hairline RULE has always worked: it tests the
+BOUNDING RECTANGLE, so an axis-aligned thin rect is caught and filled as
+its own box. A diagonal's bounding box is enormous, so the guard never
+fires -- and filling that box is not an option either, which is
+presumably why nobody extended it. The same 3-pixel band drawn flat drew
+all twenty cells.
+
+**Half of this was already paid for, and 8.49 says so in as many words.**
+That entry found `is_thin(path.boundingRect())` had never been true in
+the suite -- "every path this suite filled was big enough to cover a cell
+centre" -- and recorded the consequence exactly: "the scanline fill asks
+which cell CENTRES lie inside the shape, and a one-pixel path contains
+none, so a caret or a rule drawn through `QPainterPath` rather than
+`fillRect` draws nothing at all." The branch it added catches the
+axis-aligned case. **What this adds is the half that sentence could not
+reach**, because a bounding-rectangle test is the thing that cannot see a
+diagonal -- so the hazard was named, the instrument was in place, and the
+case that defeats the instrument went on drawing nothing for a month.
+
+**Two holes, on two axes, and they need different answers.**
+
+- **A span narrower than a cell** contains no centre. Marked at the cell
+  the span falls in now, which is one cell rather than nothing and cannot
+  over-fill, because it fires only where no centre is covered.
+- **A shape lying entirely BETWEEN two row sample lines** crosses
+  neither, so there is no span to widen -- the row loop finds no
+  crossings at all and the shape is nothing. Measured on the same band
+  slanted gently, by its vertical offset inside one 19-pixel cell: at an
+  offset of 12 px it drew **nothing**. Where the sample line finds
+  nothing, the row BAND is asked instead: the part of each EDGE lying
+  inside `[y*ch, (y+1)*ch)`, and the cells those parts pass through.
+
+  **MERGED EDGE RANGES, MARKED HALF-OPEN, and it took three versions to
+  get there -- each wrong in a way the one before it could not see.**
+
+      one range over the whole row    fills the gap between two
+                                      disjoint parts: the bounding
+                                      rectangle's error, on one row
+      each edge's range on its own    over-marks by a cell, because a
+                                      rectangle's right edge sits at
+                                      its own EXCLUSIVE boundary
+      merged ranges, each [lo, hi)    each part gets its cells and the
+                                      gap gets none
+
+  The first is the one this function's own comment forbids: the bounding
+  rectangle was rejected because it "invents content rather than losing
+  it, and a reader cannot tell which half is which", and taking the
+  minimum and maximum x over a row does the same thing one row at a
+  time. **It passed every other check in this entry while inventing that
+  gap**, which is why the gap is a check of its own.
+
+  The second was found by that check and not by reading: a 2-cell part
+  ending at x = 20 with a 10-pixel cell marked cell 2, because
+  `floor(20/10)` is 2 and the part covers pixels 0..19. Half-open
+  closes it, and a degenerate range -- which a vertical edge gives -- is
+  the one cell it sits in. Merging is what makes that safe rather than
+  arbitrary: a rectangle's right edge gives the degenerate range
+  `[20, 20]`, which merges into its top edge's `[0, 20]` and disappears
+  instead of claiming a cell of its own.
+
+  **And the FIRST fixture for the gap could not test the merging at all,
+  which the harness said and no amount of reading would have.** It drew
+  two rectangles through `drawPath()`, and `drawPath()` splits a path
+  into one polygon per subpath -- so each rectangle reached
+  `fill_polygon()` on its own and the two parts were never in one row's
+  range list to be wrongly merged. Sabotaging the merge left the check
+  green: *"the named check PASSED against broken code."* What the
+  fixture had actually been testing was the half-open marking, which is
+  a real property and not the one its name claimed.
+
+  The fixture is an inverted U now, as ONE polygon through
+  `drawPolygon()`: two legs in the second cell row, above its sample
+  line, joined by a crossbar in the first. Nothing crosses the second
+  row's sample, so the fallback is what answers for that row, and both
+  ways of getting the merge wrong are visible -- not merging marks the
+  cell past each leg, merging everything fills the four cells between
+  them. **A check whose fixture cannot reach the code it names is the
+  vacuous pass with a better disguise**, and the only thing that
+  distinguishes it from coverage is a sabotage.
+
+Both fire only where the scanline wrote nothing, so no shape that
+already rendered can have changed. After: every slope and every offset
+marks something, and the 45-degree band marks exactly the ten cells of
+its own diagonal.
+
+**And the suite could not tell the difference, for the second time in a
+day.** Zero failures of 2069 with both fixes in and zero with them out --
+because no fixture had ever handed the scanline a thin non-axis-aligned
+shape, exactly as none had handed the half-block composer a thin stroke.
+**That is the same finding twice in one session, in two subsystems, and
+it is the lens rather than either instance**: a sampler's hard input is
+the one a fixture built to confirm correct behaviour never supplies.
+
+**The limit is pinned rather than left for somebody to discover.** A thin
+band is drawn as a LINE of cells, not as every cell it passes through: a
+gently slanted 3-pixel band crosses about twenty and is marked in five to
+ten, because the scanline walks ROWS and that shape wants columns. That
+is under-coverage where there used to be disappearance, which is the
+whole of what changed. **Whether Channel A's fill should walk whichever
+axis a shape is long in is a design question and is the holder's**, not
+a defect: it would be a rasteriser rather than a guard. It is a row in
+§0b now rather than only a paragraph here, because a question recorded
+where the work is gets read by whoever is already doing that work and by
+nobody else.
+
+#### What the control found, which was not what it was written for
+
+**A fixture is evidence about more than its assertion.** The empty path
+went in as a control -- so that "every slope drew something" could not
+pass against an engine marking whatever it is handed -- and it failed.
+An EMPTY geometry marked a cell, and not only through paths:
+
+    fillRect(QRectF())            marked the cell at 0,0
+    fillRect(QRect(2, 1, 0, 0))   marked the cell at 2,1
+    an empty QPainterPath         marked one, via drawPath()'s thin branch
+
+`to_cells()` rounds every side up to at least one whole cell, which is
+what puts a 1-pixel caret or rule in a cell at all, and applied to a rect
+of zero extent it invents a cell for something covering no pixels. An
+application reaches it without trying: a selection of nothing, a
+zero-length progress chunk, a `fillRect(rect & clip)` whose intersection
+came out empty. **A one-pixel extent is a different thing and is
+untouched** -- that is the caret and the rule, and it covers a pixel
+somebody asked for.
+
+#### The guard was wrong in the other direction, and a widget check said so
+
+The first version refused anything whose `width()` or `height()` was not
+positive. That took **QColorDialog's swatch grid** out: twenty-odd
+distinct cell grounds became one, with the dialog's text intact, which is
+how a swatch grid reads as present and says nothing.
+
+**Read off a trace of what the engine was handed rather than reasoned
+about.** The swatches arrive as `2x-2` -- two pixels square with the
+vertical order reversed -- and Qt normalises a fill before painting it.
+A rect whose corners arrive in the other order is exactly what a
+plausible reading of "empty" refuses, and no amount of re-reading the
+guard would have said so.
+
+Normalising in the guard alone was still not enough, and the pair check
+is what showed it: `to_cells()` and `is_thin()` were still handed the
+reversed rect, and a reversed fill came out ONE cell where the same rect
+forwards covers two. The swatches are two pixels square, so they fit in
+one cell either way -- **the case that reported the bug could not have
+shown this half of it.**
+
+#### Checked against raster Qt, which is the only independent witness
+
+Channel A resolves what `QPainter` draws onto cells, so "does a
+zero-width rect draw" and "where does a reversed rect land" have answers
+belonging to Qt rather than to this engine. Both were measured by making
+the same calls into a `QImage` and mapping the painted pixels to the
+cells they fall in:
+
+    fillRect forwards     20x38 at 20,19      cells agree
+    fillRect reversed     20x38 at 20,19      cells agree (normalised)
+    fillRect zero width   nothing drawn       cells agree
+    fillRect 2x-2         2x2 block           cells agree
+    drawPixmap reversed   20x38 at 40,57      cells agree
+
+Five fills are compared against raster in the suite now, and it is the
+one assertion here that is not this engine agreeing with itself. It has
+been seen to fail twice -- dropping the zero guard and handing the
+reversed rect on both redden it.
+
+**The last row corrects a claim this entry carried for an hour.**
+`drawPixmap` with a reversed target looked two cells off, and it is not:
+`QPainter` resolves a reversed target rect before the engine sees it,
+keeping the origin and taking the extent's magnitude -- traced,
+`QRectF(40, 57, -20, -38)` arrives as `20x38 at 40,57` -- and **raster Qt
+paints it at 40,57 too.** The comment in `to_cells()` claiming a
+`drawPixmap` fault was written before that control was run, and a
+comfortable explanation that ends an investigation is worse than none.
+
+#### A guard nothing reaches, caught by the harness
+
+The fix first normalised inside `to_cells()` and `is_thin()` as well,
+which reads like defence in depth. **The sabotage said otherwise:
+reverting it reddened not one check of 2074.** `fill_rectf()` had already
+normalised and handed the result on, and `drawPixmap()` -- the only other
+caller -- never receives a negative extent. It was code no input reaches
+and no check could reach either, so it is gone, and the two functions say
+that their caller normalises and what would go wrong if it did not.
+
+**That is the session's own instrument catching the session**, and it is
+the argument for running the arms on what you just wrote rather than only
+on what you changed: a redundant guard and a load-bearing one are
+indistinguishable by reading.
+
+**Eight sabotage entries, each `--only`-proven**, seven new and one
+re-anchored -- the wave-fold entry named `xf_.mapRect(r)` in the thin
+branch, which is `rn` now.
+
+**And a count that is worth stating because it is the second time today
+the suite has been silent on a real fault.** Of the six faults in this
+entry, the two thin-fill ones were invisible to 2069 checks, the
+zero-extent one was found by a control written for something else, the
+reversed-rect one was found by a widget check reddening, the invented
+gap was found by reading this function's own comment about why the
+bounding rectangle was rejected, and the off-by-one at a cell boundary
+was found by the check that gap produced -- and that check was then
+found to be unable to test what it was named for, by a sabotage.
+**Only one of the six was caught by a check that existed to find it,
+and that check was minutes old; one of the six was a check.**
+That is the argument for the lens in §0e rather than for more checks of
+the kind already here -- and for writing the check before trusting the
+fix, since three versions of one fallback each looked right.
 
 ### 8.383 The picture rule moved to the tier that knows (2026-10-07)
 

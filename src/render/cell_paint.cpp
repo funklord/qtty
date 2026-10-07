@@ -598,6 +598,25 @@ std::optional<QRect> CellPaintEngine::clip_cells() const {
 
 QRect CellPaintEngine::to_cells(const QRectF &r) const {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+	// A REVERSED RECT IS THE CALLER'S TO NORMALISE, and there is exactly
+	// one caller that can receive a reversed rect: fill_rectf(), through
+	// QPainter::fillRect, which does deliver them -- QColorDialog's swatch
+	// grid arrives as `2x-2`, two pixels square with the vertical order
+	// reversed. It normalises once and hands the result here.
+	//
+	// A normalised() in THIS function was written first and removed, which
+	// is worth a sentence because the sabotage is what said so: reverting
+	// it reddened not one check of 2074, since fill_rectf() had already
+	// normalised and drawPixmap() -- the only other caller -- never sees a
+	// negative extent at all. QPainter resolves a reversed TARGET rect
+	// before the engine does, keeping the origin and taking the extent's
+	// magnitude: traced, `QRectF(40, 57, -20, -38)` arrives there as
+	// `20x38 at 40,57`, and raster Qt paints it at 40,57 too, so the
+	// placement that looked two cells off is Qt's own definition and this
+	// agrees with it.
+	//
+	// So the guard would have been code no input reaches and no check can
+	// reach either. If a third caller appears, it normalises.
 	QRectF m = xf_.mapRect(r).translated(dev_->origin);
 	// Each EDGE is rounded, and the extent follows from the two. Rounding the
 	// extent instead loses where the rectangle actually sits: a scroll area's
@@ -1016,6 +1035,10 @@ static bool is_surface_role(QPalette::ColorRole role) {
 // a hairline. to_cells() cannot represent it, since it rounds every extent up
 // to at least one whole cell.
 bool CellPaintEngine::is_thin(const QRectF &r) const {
+	// Its caller normalises, for the reason to_cells() records. Unnormalised
+	// this would be wrong in a way worth naming: `m.width() * 2 < cw` is
+	// true of every negative number, so a reversed rect of any size would
+	// read as thin.
 	const QRectF m = xf_.mapRect(r).translated(dev_->origin);
 	return m.width() * 2 < GridMetrics::cw() || m.height() * 2 < GridMetrics::ch();
 }
@@ -1032,7 +1055,50 @@ bool CellPaintEngine::is_thin(const QRectF &r) const {
 // application's own colour -- that is how a selection reaches the cells under
 // the default theme, and how Channel B output reaches them at all.
 void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
-	QRect c = to_cells(r);
+	// NO EXTENT IS NOT A THIN EXTENT. to_cells() rounds every side up to at
+	// least one whole cell, which is what makes a 1-pixel caret or rule
+	// land in a cell at all -- and applied to a rect of zero width or
+	// height it invents a cell for something that covers no pixels.
+	// Measured: fillRect(QRectF()) marked the cell at 0,0,
+	// fillRect(QRect(2, 1, 0, 0)) marked the cell at 2,1, and an empty
+	// QPainterPath marked one too, that one by way of drawPath()'s thin
+	// branch filling its own bounding rectangle.
+	//
+	// Qt's raster engine draws no pixels for any of those, so this is the
+	// cell rendering disagreeing with the pixel rendering it is supposed to
+	// resolve -- and an application reaches it without trying: a selection
+	// of nothing, a zero-length progress chunk, a `fillRect(rect & clip)`
+	// whose intersection came out empty. What it drew was a cell of the
+	// brush's colour, which on an empty row is a visible mark.
+	//
+	// A ONE-pixel extent is untouched and is a different thing: that is the
+	// caret and the rule the thin branch below exists for, and it covers a
+	// pixel somebody asked for.
+	//
+	// Found by a control written for another check entirely -- an empty
+	// path, included so that "every slope drew something" could not pass
+	// against an engine marking whatever it is handed. A fixture is
+	// evidence about more than its assertion.
+	// NORMALISED first, because a REVERSED rect is a real rect. The guard
+	// read r.width() and r.height() directly and refused anything not
+	// positive, which took QColorDialog's swatch grid out: measured, those
+	// arrive as `2x-2` -- two pixels square with the vertical order
+	// reversed -- and Qt normalises before filling, so they paint. The
+	// dialog went from twenty-odd distinct cell grounds to one, with its
+	// text intact, which is how a swatch grid reads as present and says
+	// nothing. Read off a trace of what the engine was handed rather than
+	// reasoned about: a rect whose corners arrive in the other order is
+	// exactly what a plausible reading of "empty" refuses.
+	// Normalised ONCE here and used for the rest of this function, rather
+	// than normalised in the guard and then handed on reversed. The guard
+	// alone was not enough: to_cells() maps the rect through the transform
+	// and rounds its edges, and a reversed rect came out one cell where the
+	// same rect forwards covers two -- the swatches that found this are two
+	// pixels square, so they fit in one cell either way and the
+	// under-coverage was invisible in the case that reported it.
+	const QRectF rn = r.normalized();
+	if (rn.width() <= 0 || rn.height() <= 0) return;
+	QRect c = to_cells(rn);
 	// Bounded by the BUFFER rather than by a pair of literals. The 400x200
 	// cap that stood here carried no reason anywhere and was applied to the
 	// UNCLIPPED cell rect, before the clip narrowed it -- so it needed not a
@@ -1068,14 +1134,14 @@ void CellPaintEngine::fill_rectf(const QRectF &r, bool outline_only) {
 	// cursor, which Compositor::compose() places from the focus widget and
 	// ITerminalBackend::set_cursor() emits. A thin fill may still colour a
 	// cell that is empty, which is what keeps a rule drawn on a blank row.
-	const bool thin = is_thin(r);
+	const bool thin = is_thin(rn);
 	// A WAVE ARRIVES AS A FILL, not a line: Qt draws a squiggle as a short
 	// wide rectangle, two pixels tall here. Same rule as line()'s -- inside
 	// a text run's decoration band it IS that run's underline -- and
 	// without it the mark was dropped as a hairline and a misspelling
 	// looked exactly like a correctly spelled word.
 	if (thin) {
-		const QRectF m = xf_.mapRect(r).translated(dev_->origin);
+		const QRectF m = xf_.mapRect(rn).translated(dev_->origin);
 		const qreal mid = m.center().y();
 		if (fold_into_underline(QPointF(m.left(), mid),
 		                        QPointF(m.right(), mid)))
@@ -1919,6 +1985,10 @@ void CellPaintEngine::fill_polygon(const QPolygonF &pts, bool winding,
 	// allocated inside would be allocated once per row of every fill.
 	QVector<double> crossings;
 	QVector<int> directions, order;
+	// For the row-band fallback below, hoisted for the reason the three
+	// above are: a thin shape reaches it once per row it covers.
+	QVector<double> band_lo, band_hi;
+	QVector<int> band_order;
 	for (int y = bounded.top(); y <= bounded.bottom(); ++y) {
 		const double sample = (double(y) + 0.5) * ch;
 		crossings.clear();
@@ -1935,7 +2005,97 @@ void CellPaintEngine::fill_polygon(const QPolygonF &pts, bool winding,
 			crossings.append(p1.x() + t * (p2.x() - p1.x()));
 			directions.append(p2.y() > p1.y() ? 1 : -1);
 		}
-		if (crossings.isEmpty()) continue;
+		if (crossings.isEmpty()) {
+			// NO CROSSING IS NOT NO SHAPE. One sample line per cell row
+			// asks where the polygon is at a single y, and a shape thinner
+			// than a row can lie entirely BETWEEN two of them -- so it
+			// crosses neither, every row reports nothing, and the fill
+			// disappears. Measured on a 3-pixel band slanted across 20
+			// cells: at a vertical offset of 12 px in a 19-pixel cell it
+			// drew 0 cells of the twenty it covers, while the same band
+			// drawn flat drew all 20, because is_thin() catches a flat one
+			// by its bounding rectangle and cannot see a slanted one.
+			//
+			// So where the sample line found nothing, ask the row BAND
+			// instead of the row's middle: the part of each EDGE lying
+			// inside [y*ch, (y+1)*ch), and the cells those parts pass
+			// through. It runs only where the scanline wrote nothing, so a
+			// shape that already draws cannot change.
+			//
+			// PER EDGE RATHER THAN THE EXTENT, which is this function's own
+			// rule rather than a refinement of it. The comment above says
+			// why the bounding rectangle was rejected -- it "invents
+			// content rather than losing it, and a reader cannot tell which
+			// half is which" -- and taking the min and max x over the whole
+			// row does the same thing on one row: two disjoint thin parts
+			// in a row would have had the gap between them filled. The
+			// edges bound the interior of a shape too thin to cover a
+			// centre, which is the only shape that reaches here, so marking
+			// the cells they pass through fills each part and no gap.
+			const double top = double(y) * ch, bot = double(y + 1) * ch;
+			band_lo.clear();
+			band_hi.clear();
+			for (int i = 0; i < pts.size(); ++i) {
+				const QPointF &p1 = pts[i], &p2 = pts[(i + 1) % pts.size()];
+				// The edge's own x-range within the band: its endpoints
+				// where those are inside, and where it leaves through
+				// either horizontal edge.
+				double a = 0, b = 0;
+				bool any = false;
+				const auto note = [&](double x) {
+					if (!any) { a = b = x; any = true; return; }
+					a = qMin(a, x);
+					b = qMax(b, x);
+				};
+				if (p1.y() >= top && p1.y() < bot) note(p1.x());
+				if (p2.y() >= top && p2.y() < bot) note(p2.x());
+				for (double edge : { top, bot }) {
+					if ((p1.y() <= edge) == (p2.y() <= edge)) continue;
+					const double t = (edge - p1.y()) / (p2.y() - p1.y());
+					note(p1.x() + t * (p2.x() - p1.x()));
+				}
+				if (any) { band_lo.append(a); band_hi.append(b); }
+			}
+			if (band_lo.isEmpty()) continue;
+			// MERGED, then marked half-open, and both halves of that are
+			// paid for. Marking each edge's range on its own over-marks by
+			// a cell: a rectangle's right edge sits at its own EXCLUSIVE
+			// boundary, so a part ending at x = 20 with a 10-pixel cell
+			// put a mark in cell 2, which is the gap this fallback exists
+			// not to invent. Taking one range over the whole row instead
+			// fills the gap between two disjoint parts, which is the
+			// bounding rectangle's error on one row. Merging the ranges
+			// that touch, and treating each merged one as [lo, hi), is
+			// what gives each part its own cells and nothing between them.
+			band_order.resize(band_lo.size());
+			for (int i = 0; i < band_order.size(); ++i) band_order[i] = i;
+			std::sort(band_order.begin(), band_order.end(),
+			          [&](int l, int r) { return band_lo[l] < band_lo[r]; });
+			double lo = band_lo[band_order[0]], hi = band_hi[band_order[0]];
+			const auto mark = [&](double a, double b) {
+				const int first = int(std::floor(a / cw));
+				// [a, b) -- so a part ending exactly on a cell boundary
+				// stops at the cell before it. A degenerate range, which
+				// a vertical edge gives, is the one cell it sits in.
+				int last = b > a ? int(std::ceil(b / cw)) - 1 : first;
+				if (last < first) last = first;
+				for (int x = qMax(first, bounded.left());
+				     x <= qMin(last, bounded.right()); ++x)
+					if (buf.writable(x, y)) buf.at(x, y) = written;
+			};
+			for (int k = 1; k < band_order.size(); ++k) {
+				const int i = band_order[k];
+				if (band_lo[i] <= hi) {            // touching or overlapping
+					hi = qMax(hi, band_hi[i]);
+					continue;
+				}
+				mark(lo, hi);
+				lo = band_lo[i];
+				hi = band_hi[i];
+			}
+			mark(lo, hi);
+			continue;
+		}
 		// Sorted together, so a winding count stays paired with its crossing.
 		// An index sort rather than a struct, so the three vectors can be
 		// reused across rows.
@@ -1952,8 +2112,26 @@ void CellPaintEngine::fill_polygon(const QPolygonF &pts, bool winding,
 			const double lo = crossings[order[i]], hi = crossings[order[i + 1]];
 			// A cell is in the span when its CENTRE is, which is the same
 			// question the row sample above asks, asked along the other axis.
-			const int first = int(std::ceil(lo / cw - 0.5));
-			const int last = int(std::floor(hi / cw - 0.5));
+			int first = int(std::ceil(lo / cw - 0.5));
+			int last = int(std::floor(hi / cw - 0.5));
+			// A SPAN NARROWER THAN A CELL contains no centre, and asking
+			// only about centres loses it. A shape whose span is sub-cell
+			// in every row vanishes entirely, and whether it does is a
+			// property of its slope rather than of its size: measured on a
+			// 3-pixel diagonal band over 20 cells, slopes of 1 and 4 cells
+			// per cell drew 20 cells and slopes of 0.25, 0.5 and 2 drew
+			// NONE -- the shape is regular, the grid is regular, so a band
+			// that misses one centre misses every one of them.
+			//
+			// The cell the span falls in, then, rather than nothing. This
+			// is the same answer the half-block composer reached for an
+			// icon's thin stroke and for the same reason: a point sample
+			// of a shape is a lottery whose stake is the shape. It cannot
+			// over-fill, because it fires only where no centre is covered
+			// and marks exactly one cell.
+			if (last < first) {
+				first = last = int(std::floor((lo + hi) / 2 / cw));
+			}
 			for (int x = qMax(first, bounded.left());
 			     x <= qMin(last, bounded.right()); ++x)
 				// writable(), which is what CellBuffer::fill() asks and so

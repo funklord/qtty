@@ -2802,6 +2802,376 @@ int suite_render(bool record) {
 			++r;
 		}
 
+
+		// A THIN FILL THAT IS NOT AXIS-ALIGNED, which this scanline lost
+		// entirely. The row sample asks where the polygon is at one y per
+		// cell row, and the span test asks which cell CENTRES lie between
+		// two crossings -- so a shape thinner than a cell covers no centre,
+		// every row reports nothing, and the fill disappears. `is_thin()`
+		// catches the axis-aligned case by its bounding rectangle, which is
+		// why a hairline rule has always worked and a hairline diagonal
+		// never did.
+		//
+		// **Asserted across SLOPES rather than at one**, because what was
+		// wrong is not that a thin fill drew too little: it is that whether
+		// it drew anything at all was a property of its slope. A regular
+		// shape against a regular grid either hits centres in every row or
+		// misses them in every row. Measured before the fix, a 3-pixel band
+		// over twenty cells drew 20 cells at slopes of 1 and 4 cells per
+		// cell and ZERO at 0.25, 0.5 and 2 -- so a check at one slope has
+		// three chances in six of passing against the unfixed engine.
+		//
+		// The control is the empty fill below: "every slope drew something"
+		// would also be true of an engine that marks every cell it is
+		// handed.
+		{
+			const auto band = [&](double slope, double thick, int rows) {
+				QPainterPath path;
+				const double x2 = 20.0 * cw, y2 = x2 * slope * ch / cw;
+				const double len = std::sqrt(x2 * x2 + y2 * y2);
+				const double ox = -y2 / len * thick / 2,
+				             oy = x2 / len * thick / 2;
+				path.moveTo(ox, oy);
+				path.lineTo(x2 + ox, y2 + oy);
+				path.lineTo(x2 - ox, y2 - oy);
+				path.lineTo(-ox, -oy);
+				path.closeSubpath();
+				Qtty::CellBuffer b(20, rows);
+				Qtty::CellPaintDevice dev(b);
+				QPainter p(&dev);
+				p.setPen(Qt::NoPen);
+				p.setBrush(QColor(200, 40, 40));
+				p.drawPath(path);
+				p.end();
+				int n = 0;
+				for (int y = 0; y < b.rows(); ++y)
+					for (int x = 0; x < 20; ++x)
+						if (b.at(x, y).bg.kind() != Qtty::Color::Default) ++n;
+				return n;
+			};
+			const double slopes[] = { 0.25, 0.5, 1.0, 2.0, 4.0, 8.0 };
+			int least = -1, most = 0, blank = 0;
+			for (double k : slopes) {
+				const int n = band(k, 3.0, 40);
+				if (n == 0) ++blank;
+				if (least < 0 || n < least) least = n;
+				if (n > most) most = n;
+			}
+			printf("info: a 3 px band at six slopes marked %d to %d cell(s),"
+			       " %d of six blank\n", least, most, blank);
+			if (blank == 0 && least >= 5)
+				printf("PASS: a thin fill is drawn at every slope, where"
+				       " whether it appeared at all used to depend on one\n");
+			else {
+				printf("FAIL: a thin fill is drawn at every slope, where"
+				       " whether it appeared at all used to depend on one\n"
+				       "      condition: %d of six blank, fewest %d\n",
+				       blank, least);
+				++r;
+			}
+
+			// AND THE OTHER AXIS, which the span fix cannot reach. A shape
+			// lying entirely BETWEEN two row sample lines crosses neither,
+			// so the row loop finds no crossings at all and there is no
+			// span to widen. Measured at a 3-pixel band slanted gently
+			// across twenty cells, by its vertical offset inside one
+			// 19-pixel cell: at an offset of 12 px it drew nothing, and
+			// flat it drew all twenty, because flat is the case
+			// `is_thin()` sees.
+			const auto slanted = [&](int off) {
+				QPainterPath path;
+				path.moveTo(0, off);
+				path.lineTo(20.0 * cw, off + ch * 0.6);
+				path.lineTo(20.0 * cw, off + ch * 0.6 + 3);
+				path.lineTo(0, off + 3);
+				path.closeSubpath();
+				Qtty::CellBuffer b(20, 4);
+				Qtty::CellPaintDevice dev(b);
+				QPainter p(&dev);
+				p.setPen(Qt::NoPen);
+				p.setBrush(QColor(200, 40, 40));
+				p.drawPath(path);
+				p.end();
+				int n = 0;
+				for (int y = 0; y < 4; ++y)
+					for (int x = 0; x < 20; ++x)
+						if (b.at(x, y).bg.kind() != Qtty::Color::Default) ++n;
+				return n;
+			};
+			int off_blank = 0, off_least = -1;
+			for (int off = 0; off < ch; ++off) {
+				const int n = slanted(off);
+				if (n == 0) ++off_blank;
+				if (off_least < 0 || n < off_least) off_least = n;
+			}
+			printf("info: the same band at %d vertical offsets marked at"
+			       " least %d cell(s), %d blank\n", ch, off_least, off_blank);
+			if (off_blank == 0 && off_least >= 3)
+				printf("PASS: and at every vertical offset within a cell, so"
+				       " a shape between two sample lines is not nothing\n");
+			else {
+				printf("FAIL: and at every vertical offset within a cell, so"
+				       " a shape between two sample lines is not nothing\n"
+				       "      condition: %d of %d blank, fewest %d\n",
+				       off_blank, ch, off_least);
+				++r;
+			}
+
+			// AND THE GAP BETWEEN TWO DISJOINT PARTS STAYS EMPTY, which
+			// is this fill's own rule rather than a nicety. The comment on
+			// fill_polygon() says why the bounding rectangle was rejected
+			// -- it "invents content rather than losing it, and a reader
+			// cannot tell which half is which" -- and a row fallback that
+			// took the min and max x over a whole row would do exactly
+			// that, one row at a time.
+			//
+			// AN INVERTED U, as ONE polygon through drawPolygon(). Two
+			// rectangles were the first fixture and could not test this:
+			// drawPath() splits a path into one polygon per subpath, so
+			// each rectangle reached fill_polygon() on its own and the two
+			// parts were never in one row's range list to be wrongly
+			// merged. The sabotage said so -- "the named check PASSED
+			// against broken code" -- which is the harness doing the one
+			// thing a green check cannot.
+			//
+			// The legs sit in the second cell row ABOVE its sample line
+			// and the crossbar is in the first, so nothing crosses the
+			// second row's sample and the fallback is what answers for it.
+			// Both ways of getting the merge wrong are visible here: not
+			// merging marks the cell past each leg's exclusive right edge,
+			// and merging everything fills the four cells between them.
+			{
+				const QPointF pts[] = {
+					QPointF(0, 2),            QPointF(cw * 8, 2),
+					QPointF(cw * 8, ch + 5),  QPointF(cw * 6, ch + 5),
+					QPointF(cw * 6, 5),       QPointF(cw * 2, 5),
+					QPointF(cw * 2, ch + 5),  QPointF(0, ch + 5),
+				};
+				Qtty::CellBuffer b(10, 2);
+				{
+					Qtty::CellPaintDevice dev(b);
+					QPainter p(&dev);
+					p.setPen(Qt::NoPen);
+					p.setBrush(QColor(200, 40, 40));
+					p.drawPolygon(pts, 8);
+					p.end();
+				}
+				int legs = 0, between = 0, past = 0;
+				for (int x = 0; x < 10; ++x) {
+					if (b.at(x, 1).bg.kind() != Qtty::Color::Rgb) continue;
+					if (x < 2 || (x >= 6 && x < 8)) ++legs;
+					else if (x >= 2 && x < 6) ++between;
+					else ++past;
+				}
+				printf("info: the legs' row marked %d leg cell(s), %d between"
+				       " them and %d past them\n", legs, between, past);
+				if (legs >= 2 && between == 0 && past == 0)
+					printf("PASS: and a row the fallback answers for marks"
+					       " each disjoint part and neither the gap nor the"
+					       " cell past it\n");
+				else {
+					printf("FAIL: and a row the fallback answers for marks"
+					       " each disjoint part and neither the gap nor the"
+					       " cell past it\n      condition: %d legs, %d"
+					       " between, %d past\n", legs, between, past);
+					++r;
+				}
+			}
+
+			// THE CONTROL, and the limit in the same breath.
+			//
+			// An empty path marks nothing, which is what stops either check
+			// above passing against an engine that marks whatever it is
+			// handed. And a thick band is unchanged -- both fixes fire only
+			// where the scanline wrote nothing, so a fill that already
+			// covered centres cannot have grown.
+			//
+			// The limit, pinned so that the fix is not quoted for more than
+			// it does: a thin band is drawn as a LINE of cells rather than
+			// as every cell it passes through. A gently slanted 3-pixel
+			// band crosses about twenty cells and is marked in fewer,
+			// because the scanline walks ROWS and that shape wants
+			// columns. It is under-coverage rather than disappearance,
+			// which is the whole of what changed, and whether Channel A's
+			// fill should walk whichever axis a shape is long in is a
+			// design question rather than a defect.
+			Qtty::CellBuffer empty_buf(20, 4);
+			{
+				Qtty::CellPaintDevice dev(empty_buf);
+				QPainter p(&dev);
+				p.setPen(Qt::NoPen);
+				p.setBrush(QColor(200, 40, 40));
+				p.drawPath(QPainterPath());
+				p.end();
+			}
+			int empty_cells = 0;
+			for (int y = 0; y < 4; ++y)
+				for (int x = 0; x < 20; ++x)
+					if (empty_buf.at(x, y).bg.kind() != Qtty::Color::Default)
+						++empty_cells;
+			const int thick = band(1.0, 8.0 * ch / 19.0, 40);
+			const int thin = band(1.0, 3.0, 40);
+			if (empty_cells == 0 && thick >= thin && slanted(6) < 20)
+				printf("PASS: an empty path marks nothing, a thick band is"
+				       " not thinned, and a thin one is a line of cells\n");
+			else {
+				printf("FAIL: an empty path marks nothing, a thick band is"
+				       " not thinned, and a thin one is a line of cells\n"
+				       "      condition: empty %d, thick %d vs thin %d,"
+				       " slanted %d\n",
+				       empty_cells, thick, thin, slanted(6));
+				++r;
+			}
+		}
+
+		// NO EXTENT AND REVERSED EXTENT, which are the two halves of one
+		// rule and must fail separately.
+		//
+		// to_cells() rounds every side up to at least one whole cell, which
+		// is what puts a 1-pixel caret or rule in a cell at all -- and
+		// applied to a rect of zero width or height it invents a cell for
+		// something covering no pixels. An application reaches that without
+		// trying: a selection of nothing, a zero-length progress chunk, a
+		// `fillRect(rect & clip)` whose intersection came out empty. Qt's
+		// raster engine draws no pixels for any of them.
+		//
+		// A REVERSED rect is the opposite error and the one this cost. Qt
+		// normalises before filling, so a rect whose corners arrive in the
+		// other order paints -- and QColorDialog's swatch grid arrives
+		// exactly that way, measured as `2x-2`. A guard reading width()
+		// and height() directly took the whole grid out and left the
+		// dialog's text intact, which reads as a dialog that is fine.
+		//
+		// Paired because one sabotage must not redden both: dropping the
+		// zero guard reddens the first, dropping normalised() the second.
+		{
+			const auto cells_filled = [&](const QRectF &rect) {
+				Qtty::CellBuffer b(8, 4);
+				{
+					Qtty::CellPaintDevice dev(b);
+					QPainter p(&dev);
+					p.fillRect(rect, QColor(200, 40, 40));
+					p.end();
+				}
+				int n = 0;
+				for (int y = 0; y < 4; ++y)
+					for (int x = 0; x < 8; ++x)
+						if (b.at(x, y).bg.kind() == Qtty::Color::Rgb) ++n;
+				return n;
+			};
+			const int none = cells_filled(QRectF());
+			const int flat = cells_filled(QRectF(cw * 2, ch, 0, ch));
+			const int real = cells_filled(QRectF(cw * 2, ch, cw * 2, ch));
+			// The same rect with both corners the other way round, which
+			// has to come out as the same cells rather than as nothing.
+			const int backwards =
+			    cells_filled(QRectF(cw * 4, ch * 2, -cw * 2.0, -double(ch)));
+			printf("info: fills -- empty %d, zero-width %d, real %d,"
+			       " reversed %d\n", none, flat, real, backwards);
+			if (none == 0 && flat == 0 && real > 0)
+				printf("PASS: a rect covering no pixels fills no cells, where"
+				       " rounding a zero extent up invented one\n");
+			else {
+				printf("FAIL: a rect covering no pixels fills no cells, where"
+				       " rounding a zero extent up invented one\n"
+				       "      condition: empty %d, zero-width %d, real %d\n",
+				       none, flat, real);
+				++r;
+			}
+			if (backwards == real && real > 0)
+				printf("PASS: and a rect whose corners arrive reversed fills"
+				       " what the same rect forwards does\n");
+			else {
+				printf("FAIL: and a rect whose corners arrive reversed fills"
+				       " what the same rect forwards does\n"
+				       "      condition: reversed %d, forwards %d\n",
+				       backwards, real);
+				++r;
+			}
+		}
+
+		// AGAINST RASTER QT, which is the only independent witness available
+		// for a question of this shape. Everything above asserts what the
+		// cells are; this asserts that they are where Qt's own painter puts
+		// the PIXELS -- same calls, a QImage instead of a CellBuffer, and
+		// the painted pixels mapped to the cells they fall in.
+		//
+		// It matters because the rule being enforced is not a preference.
+		// Channel A resolves what QPainter draws onto cells, so "does a
+		// zero-width rect draw" and "where does a reversed rect land" have
+		// answers that belong to Qt rather than to this engine, and a guard
+		// written from a plausible reading of the words got one of them
+		// wrong in each direction: too strict on the reversed rect, which
+		// took QColorDialog's swatch grid out, and right on the zero-width
+		// one only by luck.
+		//
+		// Two renderers that would disagree if either were wrong, which is
+		// the whole of why this is worth more than another assertion about
+		// the cells.
+		{
+			const auto raster_cells = [&](const QRectF &rect) {
+				QImage im(cw * 8, ch * 4, QImage::Format_ARGB32);
+				im.fill(Qt::transparent);
+				{
+					QPainter p(&im);
+					p.fillRect(rect, QColor(200, 40, 40));
+				}
+				QSet<QPair<int, int>> hit;
+				for (int y = 0; y < im.height(); ++y)
+					for (int x = 0; x < im.width(); ++x)
+						if (qAlpha(im.pixel(x, y)) > 0)
+							hit.insert(qMakePair(x / cw, y / ch));
+				return hit;
+			};
+			const auto qtty_cells = [&](const QRectF &rect) {
+				Qtty::CellBuffer b(8, 4);
+				{
+					Qtty::CellPaintDevice dev(b);
+					QPainter p(&dev);
+					p.fillRect(rect, QColor(200, 40, 40));
+					p.end();
+				}
+				QSet<QPair<int, int>> hit;
+				for (int y = 0; y < 4; ++y)
+					for (int x = 0; x < 8; ++x)
+						if (b.at(x, y).bg.kind() == Qtty::Color::Rgb)
+							hit.insert(qMakePair(x, y));
+				return hit;
+			};
+			struct Case { const char *what; QRectF rect; };
+			const Case cases[] = {
+				{ "forwards",   QRectF(cw * 2, ch, cw * 2, ch) },
+				{ "reversed",   QRectF(cw * 4, ch * 2, -cw * 2.0, -double(ch)) },
+				{ "zero width", QRectF(cw * 2, ch, 0, ch) },
+				{ "empty",      QRectF() },
+				{ "a 2x-2 swatch", QRectF(cw * 3 + 7, ch + 13, 2, -2) },
+			};
+			int disagree = 0;
+			QString first_bad;
+			for (const Case &k : cases) {
+				const QSet<QPair<int, int>> want = raster_cells(k.rect);
+				const QSet<QPair<int, int>> got = qtty_cells(k.rect);
+				if (want == got) continue;
+				++disagree;
+				if (first_bad.isEmpty())
+					first_bad = QStringLiteral("%1: raster %2 cell(s),"
+					                           " cells %3")
+					            .arg(QString::fromLatin1(k.what))
+					            .arg(want.size()).arg(got.size());
+			}
+			printf("info: five fills compared against raster Qt, %d"
+			       " disagreement(s)\n", disagree);
+			if (disagree == 0)
+				printf("PASS: the cells a fill marks are the cells raster Qt"
+				       " paints pixels in, reversed and empty included\n");
+			else {
+				printf("FAIL: the cells a fill marks are the cells raster Qt"
+				       " paints pixels in, reversed and empty included\n"
+				       "      condition: %s\n", qPrintable(first_bad));
+				++r;
+			}
+		}
+
 		// The refusal, for both the rule path and the new walk. A diagonal
 		// crossing a label must leave the label standing: a cell already
 		// holding a glyph is content somebody drew, and a line is chrome.
