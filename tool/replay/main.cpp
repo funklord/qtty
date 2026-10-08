@@ -64,6 +64,12 @@ static const QHash<QString, int> &key_map() {
 		// and none could be reproduced in a bug report.
 		{"escape", Qt::Key_Escape}, {"esc", Qt::Key_Escape},
 		{"menu", Qt::Key_Menu}, {"home", Qt::Key_Home},
+		// Two the library answers and a script still could not send, which
+		// is the same reason the row above exists. Help is CSI 28~ and
+		// arrives beside Menu's CSI 29~; keypad Enter is SS3 M and is a
+		// DIFFERENT key code from Return, which is why "enter" above --
+		// deliberately an alias for Return -- cannot stand in for it.
+		{"help", Qt::Key_Help}, {"keypad-enter", Qt::Key_Enter},
 		{"end", Qt::Key_End}, {"delete", Qt::Key_Delete},
 		{"insert", Qt::Key_Insert}, {"space", Qt::Key_Space},
 		{"f1", Qt::Key_F1}, {"f2", Qt::Key_F2}, {"f3", Qt::Key_F3},

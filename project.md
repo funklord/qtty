@@ -18181,6 +18181,91 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.399 The Menu key, wired everywhere except where bytes arrive (2026-10-08)
+
+**The lens came from 8.395 rather than from another validation sweep:** a
+key the library understands at every layer except the decoder. That one
+was F1 to F4 with a modifier, found because two tables disagreed. The
+general form is sharper -- **ask which keys the rest of qtty answers, and
+then ask what sequence produces them.**
+
+`Qt::Key_Menu` is the answer. `InputRouter` opens a context menu for it,
+and has a comment explaining the centre-of-the-widget position it
+invents; `suite_router` asserts that behaviour in four places;
+`qtty-replay` can send the key by name. **No byte sequence produced it.**
+In a library whose own document is called `keyboard-first.md`, the
+keyboard route to a context menu was complete apart from the layer a
+keyboard reaches it through.
+
+**Measured from xterm's own `ctlseqs(1)`, which is installed here** --
+`/usr/share/doc/xterm/ctlseqs.txt.gz`, the table of DEC, SUN, HP and SCO
+key encodings:
+
+    Help          | CSI 2 8 ~  | CSI 1 9 6 z  | -        | -
+    Menu          | CSI 2 9 ~  | CSI 1 9 7 z  | -        | -
+
+That is the same DEC column that gives Find as `CSI 1~` and Next as
+`CSI 6~`, every one of which this decoder already read. The two rows after
+F12 were simply missing.
+
+**Help goes in with Menu rather than after it.** It is the neighbouring
+row of the same table from the same source, and adding one of a pair while
+leaving the other is exactly how a table acquires the gap this change
+closes -- 8.395's fault, one commit later, by my own hand. Nothing in qtty
+consumes `Qt::Key_Help`, and that is not the decoder's business: its job
+is to deliver what the terminal sent to whatever the application makes of
+it.
+
+**The lens was run to the end rather than stopped at the find**, by
+comparing the `Qt::Key_*` constants this decoder can produce against those
+the rest of `src/` consumes. Menu was the only gap. The letters all come
+from the control-byte formula `Qt::Key_A + (c - 1)`, which a grep for
+constants cannot see; and `Qt::Key_BracketLeft` -- the one remaining
+consumer of a key no sequence delivers -- is deliberate and already
+reported to applications, because Ctrl+[ IS the escape byte. The router's
+key-hint code lists exactly that family as unreachable, and the suite
+derives the list by walking every control byte rather than naming it.
+
+**The population assertion earned its keep.** The suite's `CSI <n>~` table
+carries `sizeof(tilde) / sizeof(tilde[0]) == 20` precisely so that a row
+added to the decoder and not to the list is a row nobody checked. Adding
+the two rows to the LIST first turned it red with the two names and
+`0 key(s)` beside each, which is the check doing the job it was written
+for in the direction it was written for.
+
+**And qtty-replay gained two names**, under the rule its own table states:
+a key the library answers that a script cannot send is a bug report nobody
+can reproduce. `help` is the new row's partner. `keypad-enter` was a gap
+that predates all of this -- SS3 M is `Qt::Key_Enter`, which is a
+different key code from `Qt::Key_Return`, and the tool's `enter` is
+deliberately an alias for Return, so the keypad key could not be sent at
+all.
+
+#### Three sweeps that came up empty, with their lenses
+
+Recorded because an absence licenses nothing unless the method is written
+down, and because these three say where the next fault is not.
+
+- **A local value divided by in many places, unguarded at its source.**
+  `GridMetrics::cw()` and `ch()` are read at 59 sites and several divide
+  or take a modulus by them, and `GridMetrics::set()` guards nothing. The
+  guard is elsewhere and is thorough: `grid_font_problem()` refuses a
+  non-integral or non-positive advance OR line height, measured with
+  `QFontMetricsF` so that the integer metrics the setter reads agree, and
+  `setup()` treats a non-empty answer as `qFatal`. The only route to a
+  zero cell is an application calling the setter the header says `setup()`
+  calls.
+- **Numeric environment variables reaching arithmetic.** Four:
+  `QTTY_FRAME_MS` (0..1000), `QTTY_PROBE_MS` and `QTTY_ESCAPE_MS` (1..60000)
+  and `QTTY_FONT_SIZE` (1..512). All four are range-checked at the read,
+  and the `atoi` overflow case lands outside every one of those ranges
+  rather than inside it.
+- **A public method with no caller**, which is `evidence.md`'s own worked
+  example and found a credential leak in another tree. Of 239 names
+  declared across `include/qtty/*.h`, 238 have a call site in `src/`,
+  `test/`, `tool/` or `example/`; the one that did not is `QFile old(path)`
+  in `testing.h`, a variable the regex read as a declaration.
+
 ### 8.398 The terminal's cell, bounded where the product is (2026-10-08)
 
 **The lens was the one 8.391 to 8.397 kept paying out on: which numbers

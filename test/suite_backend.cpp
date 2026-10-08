@@ -873,6 +873,15 @@ int suite_backend() {
 			{ 18, Qt::Key_F7,  "F7"  }, { 19, Qt::Key_F8,  "F8"  },
 			{ 20, Qt::Key_F9,  "F9"  }, { 21, Qt::Key_F10, "F10" },
 			{ 23, Qt::Key_F11, "F11" }, { 24, Qt::Key_F12, "F12" },
+			// 28 and 29 are Help and Menu in the same DEC numbering, from
+			// xterm's own ctlseqs(1) table -- the one that gives Find as
+			// CSI 1~ and Next as CSI 6~, which this list already carries.
+			// Menu is the one that was costing something: the router opens
+			// a context menu for Qt::Key_Menu, suite_router asserts it,
+			// qtty-replay can send it, and no sequence produced it -- so
+			// the keyboard route to a context menu existed at every layer
+			// except the one bytes arrive at.
+			{ 28, Qt::Key_Help, "Help" }, { 29, Qt::Key_Menu, "Menu" },
 		};
 		QStringList wrong;
 		for (const auto &e : tilde) {
@@ -889,9 +898,10 @@ int suite_backend() {
 		if (!wrong.isEmpty())
 			printf("info: CSI ~ rows that did not decode: %s\n",
 			       qPrintable(wrong.join(QStringLiteral("; "))));
-		CHECK(wrong.isEmpty() && sizeof(tilde) / sizeof(tilde[0]) == 20,
-		      "every one of the twenty CSI <n>~ numbers decodes as the key "
-		      "it names, the linux console's F1 to F4 among them");
+		CHECK(wrong.isEmpty() && sizeof(tilde) / sizeof(tilde[0]) == 22,
+		      "every one of the twenty-two CSI <n>~ numbers decodes as the "
+		      "key it names, the linux console's F1 to F4 among them and "
+		      "Menu, which the router has always answered");
 
 		// The gaps, asserted as a set rather than singly: 16, 22 and 25 were
 		// never assigned, and a decoder that mapped them would be inventing

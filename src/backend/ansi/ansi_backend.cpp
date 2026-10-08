@@ -2377,6 +2377,27 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 		case 21: emit_key(Qt::Key_F10, param(1, 1)); return true;
 		case 23: emit_key(Qt::Key_F11, param(1, 1)); return true;
 		case 24: emit_key(Qt::Key_F12, param(1, 1)); return true;
+		// HELP AND MENU, the two rows after F12 in the same DEC numbering
+		// -- xterm's ctlseqs(1) gives Help as CSI 28~ and Menu as CSI 29~,
+		// in the table that also gives Find as CSI 1~ and Next as CSI 6~,
+		// every one of which is already decoded above.
+		//
+		// Menu is the one that was costing something. InputRouter opens a
+		// context menu for Qt::Key_Menu, the suite asserts that it does,
+		// and qtty-replay can send the key -- so the keyboard route to a
+		// context menu was wired at every layer except the one bytes
+		// arrive at, which in a library whose own document is called
+		// keyboard-first is the layer that matters.
+		//
+		// Help comes with it rather than after it. It is the neighbouring
+		// row of the same table from the same source, and adding one of a
+		// pair while leaving the other is how a table ends up with the gap
+		// this change exists to close. Nothing in qtty consumes
+		// Qt::Key_Help, and that is not this decoder's business: its job
+		// is to deliver the key the terminal sent to whatever the
+		// application does with it.
+		case 28: emit_key(Qt::Key_Help, param(1, 1)); return true;
+		case 29: emit_key(Qt::Key_Menu, param(1, 1)); return true;
 		default:         return true;             // consumed, unmapped
 		}
 	}

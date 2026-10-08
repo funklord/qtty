@@ -5981,3 +5981,14 @@ find = "\t\t\t\tif (w <= kMaxCellPx && h <= kMaxCellPx)\n\t\t\t\t\tout.cell_px =
 into = "\t\t\t\tout.cell_px = QSize(w, h);"
 count = 1
 check = "a cell no terminal could have is refused rather than stored"
+
+[[sabotage]]
+# The Menu key's row. Without it the keyboard route to a context menu is
+# wired in the router, asserted in the suite and sendable by qtty-replay,
+# and no byte sequence reaches it.
+name = "the Menu key has no row in the CSI table again"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tcase 29: emit_key(Qt::Key_Menu, param(1, 1)); return true;"
+into = "\t\tcase 29: return true;"
+count = 1
+check = "decodes as the key it names, the linux console's F1 to F4 among them and Menu"
