@@ -2698,6 +2698,36 @@ two above, and the encoders and `crop_placement()` beneath them, which
 answer correctly for a one-cell placement and for a degenerate
 1x1-pixel image.
 
+**~~The lens for the next pass~~ -- read end to end 2026-10-08 and
+exhausted, so the next pass wants a different one.** Every remaining
+member already answers the question, and each carries its own
+measurement in the comment above it, which is better evidence than this
+sweep: `cells_of_rect()` ends in `qMax(1, qRound(...))` on both axes, so
+nothing that reaches it can vanish -- which is also why the two defects
+found were in the paths that BYPASS it. `fill_rectf()` states the
+distinction this lens is really about, "no extent is not a thin extent",
+and separates an empty rect from a one-pixel one; it was measured on
+`QColorDialog`, whose swatches arrive as `2x-2`. `line()` applies the
+same half-cell test along a line's length, measured on a mnemonic
+underline traced at (39.00,16.50) to (49.00,16.50) against cw = 10.
+`draw_box()` cannot be reached with a degenerate rect, both callers
+guarding at `>= 2`.
+
+**How that was established, because it is weaker than what the entry
+asked for.** By reading, not by building fixtures. What makes it worth
+recording anyway is that the paths were measured by whoever wrote them
+and the numbers are in the comments -- so a fixture pass here would
+mostly re-measure what is already written down, which is the one thing
+this sweep can say and a fresh lens cannot.
+
+**One case is left unsettled rather than answered: a zero-LENGTH line.**
+The half-cell test gives it one cell, and whether that is right depends
+on the pen: Qt paints a single pixel for `drawLine(p, p)` under a square
+or round cap and nothing under a flat one, so "agrees with the pixel
+rendering" has two answers. Nothing reaches it by accident the way an
+empty `fillRect()` does, which `fill_rectf()` already covers, so it is
+recorded rather than chased.
+
 **Re-run the sabotage for checks NEAR what you changed, not only for the
 check you added.** A fix can make a neighbouring check stop
 discriminating, and nothing announces it: the check goes on passing, its
@@ -2739,6 +2769,32 @@ owned or released** -- both instances were exactly that -- and a fix to
 a local computation cannot retire a neighbouring check, because nothing
 else was reaching the fault through it. Re-run the sabotages whose
 subject shares state with what changed, rather than all of them.
+
+**THE LENS THAT WORKED ON 2026-10-08, and what is left of it.** *A record
+of what a PEER holds, which stops being true at a handover and was
+restored on one route or none.* Four defects: 8.410 the settle the
+compositor could not see, 8.411 every kitty picture gone after a Ctrl+Z,
+8.412 a letter typed after a shell-out arriving as an arrow key, 8.413 a
+paste abandoned mid-flight freezing the keyboard. It came from
+`read_winch()`'s handover block, which already held two such restores --
+the title and the cursor -- each a defect somebody had paid for, with the
+rest of the family sitting beside them unlooked-at.
+
+**It is exhausted for all three peers**, which is the useful half to
+leave. The TERMINAL: every record enumerated under 8.411, with
+`last_pixel_size_` covered by construction. The APPLICATION: all eight
+setters under 8.414, where `set_font()` was the only one whose sole
+reader had already run. QT ITSELF: the style is wrapped on
+`QEvent::StyleChange`, the font is 8.414, and there is no palette cache
+to go stale -- widget colours resolve per paint from the option's own
+palette, and `s_theme` is the terminal's colours rather than Qt's.
+
+**So the next lens is not this one, and the two candidates it suggests
+are:** *a branch of a state machine that does not consult the flag the
+machine keeps* -- 8.415's shape, swept for every `bool` in the ANSI
+backend and clean, so the unswept part is the router's pointer state
+(`grab_`, `hovered_`, `popups_`) -- and the mouse-grab question in 0b,
+which is that same shape with an owner rather than a fix.
 
 **Derive the next lens from the last defect, and finish it.** Every fault
 found on 2026-09-04 came from a lens the previous fault suggested rather
