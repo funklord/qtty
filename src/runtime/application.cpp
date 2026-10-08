@@ -254,6 +254,31 @@ void prepare_environment() {
 			         "\"width\":10000,\"height\":10000,"
 			         "\"logicalDpi\":96,\"logicalBaseDpi\":96,\"dpr\":1}]}");
 			if (!f->flush()) { delete f; return nullptr; }
+			// AND IT HAS TO GO AWAY AT EXIT, which the static alone does not
+			// arrange: a QTemporaryFile removes its file when it is
+			// DESTROYED, and an object deliberately leaked to outlive the
+			// QApplication has no destructor. Measured 2026-10-08 --
+			// **16,739 of these in /tmp, 66 MB, the oldest 2026-09-12**: one
+			// per process that ever reached this line, which is every suite
+			// run, every tool run, every probe and every application.
+			//
+			// std::atexit rather than qAddPostRoutine, and the ORDER is the
+			// reason. This runs BEFORE the QApplication exists -- the plugin
+			// reads the file inside its constructor -- so the object has to
+			// outlive it, and atexit is the hook that fires after everything
+			// Qt owns is already gone. Deleting it there is file I/O and
+			// nothing else, which needs no event loop.
+			//
+			// A static inside the initialiser rather than a capture, because
+			// a captureless lambda can name a variable of static storage
+			// duration and `config` is still being initialised here.
+			//
+			// WHAT IT STILL LEAVES is one file per abnormal exit, which is
+			// the honest limit: the suite's own watchdog leaves by _exit and
+			// qtty_fatal_handler by raise(), and neither runs atexit. That
+			// takes the count from one per RUN to one per crash.
+			static QTemporaryFile *to_reap = f;
+			std::atexit([] { delete to_reap; to_reap = nullptr; });
 			return f;
 		}();
 		if (config)

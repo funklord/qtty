@@ -68,7 +68,27 @@ public:
 			// vanished is a picture arriving or leaving, not a scroll, and
 			// treating it as one would degrade the first frame of every image
 			// to a mosaic -- the case where the pixels are most wanted.
-			if (was != last_.constEnd() && *was != *it) moved = true;
+			//
+			// A SET THAT MERELY GREW OR SHRANK IS THAT SAME ARRIVAL, and
+			// comparing the sets for inequality missed it. One copy of a
+			// repeated picture appearing -- a list gaining a row of the same
+			// avatar -- changed the set, read as a move, and degraded every
+			// copy of that picture for the whole debounce; a second KEY
+			// appearing beside it was already excluded, so two cases a
+			// viewer cannot tell apart went different ways.
+			//
+			// A move is therefore a rectangle LEFT and a rectangle ARRIVED,
+			// which is the honest reading of the word: a scroll takes every
+			// copy somewhere else, an addition takes none of them anywhere,
+			// and one copy of several moving still satisfies both halves.
+			if (was != last_.constEnd() && *was != *it) {
+				bool left = false, came = false;
+				for (const QRect &r : *was)
+					if (!it->contains(r)) { left = true; break; }
+				for (const QRect &r : *it)
+					if (!was->contains(r)) { came = true; break; }
+				if (left && came) moved = true;
+			}
 		}
 		last_ = now;
 		if (moved) {

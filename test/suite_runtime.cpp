@@ -3957,6 +3957,64 @@ int suite_runtime() {
 		      "application wanting to SHOW that output already does");
 	}
 
+	// AND A QTTY PROCESS LEAVES NO SCREEN FILE BEHIND, which is a leak
+	// counted rather than reasoned about. prepare_environment() writes a
+	// one-line JSON screen description for the offscreen plugin and keeps
+	// the QTemporaryFile alive deliberately -- the plugin reads it inside
+	// the QApplication constructor, so the object has to outlive that -- and
+	// an object kept alive by leaking it never runs the destructor that
+	// removes the file. Measured 2026-10-08: 16,739 of them in /tmp, 66 MB,
+	// the oldest 2026-09-12, one per process that ever called this.
+	//
+	// ASSERTED FROM A CHILD, because the running process is the one case
+	// that cannot answer: this suite's own file exists for as long as the
+	// suite does and goes at ITS exit, so an in-process count can see the
+	// file but never its removal. A child that starts, reaches
+	// prepare_environment(), and exits is the whole of the question.
+	//
+	// The suite binary itself is the child, with a suite name nothing
+	// matches: it runs no checks, prints its own inert-before-setup line
+	// into a pipe nobody reads, and exits -- while taking exactly the path
+	// under test. QTTY_QPA_PLATFORM is what decides that path and is
+	// inherited, so no environment surgery is needed.
+	//
+	// THE CHILD EXITS 1 AND THAT IS BESIDE THE POINT. An unmatched suite
+	// name is a deliberate failure in main() -- recorded there, because a
+	// run over zero suites exits 0 and reads exactly like a pass -- so the
+	// child reports FAIL into a pipe nobody reads and returns 1. What the
+	// count needs is a process that reached prepare_environment() and left
+	// normally, which is why the assertion reads exitStatus() and the exit
+	// CODE is only printed.
+	//
+	// SKIPPED UNDER VALGRIND for the reason the check above it carries:
+	// memcheck reports Qt's own waitid(NULL) from inside libQt6Core, which
+	// trips --error-exitcode=99 and fails the arm while the suite reports OK.
+	// That is the instrument being unable to answer, not a finding.
+	if (!qEnvironmentVariableIsEmpty("QTTY_UNDER_VALGRIND")) {
+		printf("SKIP: a child process cannot be waited for under memcheck "
+		       "-- see the channel-mode check above\n");
+	} else {
+		const QString pattern = QStringLiteral("qtty-screen-*.json");
+		const auto count_now = [&pattern] {
+			return QDir(QDir::tempPath())
+			    .entryList({pattern}, QDir::Files).size();
+		};
+		const int before = count_now();
+		QProcess child;
+		child.start(QCoreApplication::applicationFilePath(),
+		            {QStringLiteral("no-such-suite")});
+		const bool ran = child.waitForFinished(30000)
+		              && child.exitStatus() == QProcess::NormalExit;
+		const int after = count_now();
+		printf("info: %d screen file(s) in the temp directory before a child "
+		       "qtty process and %d after it, child exit %d\n", before, after,
+		       child.exitCode());
+		CHECK(ran && after == before,
+		      "a qtty process removes the screen description it wrote for "
+		       "the offscreen plugin, so running one leaves nothing in the "
+		       "temp directory");
+	}
+
 	return fails;
 }
 

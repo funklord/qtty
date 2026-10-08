@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2114 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2117 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18210,6 +18210,126 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.408 16,740 files in /tmp, one per process ever run (2026-10-08)
+
+**Found by looking after a run rather than by looking at the code**, which
+is `running-code.md`'s own instruction and the one half of it nobody had
+applied here. The valgrind arm had just been stopped by the suite's own
+watchdog at load 187 -- a machine fact, not a code fault -- so the next
+step was the sweep that file prescribes for an interrupted run, and the
+sweep found this:
+
+    /tmp/qtty-screen-*.json   16,740 files, 114 bytes each, 66 MB
+                              oldest 2026-09-12, newest minutes old
+
+**One per process that has ever called `prepare_environment()`.** It
+writes a one-line JSON screen description for the offscreen plugin's
+`configfile` option and keeps the `QTemporaryFile` alive on purpose: the
+plugin reads the file inside the `QApplication` constructor, so the object
+has to outlive that, and the comment says so. What the comment did not say
+is the consequence -- **a `QTemporaryFile` removes its file when it is
+DESTROYED, and an object kept alive by leaking it is never destroyed.**
+
+**It is not a test-only leak**, which is what makes it worth a fix rather
+than a `.gitignore`: 15,679 of this account's were older than a day, 1,055
+were from today, and **6 belong to the holder's account** -- so every
+application built on this library has been doing it too, once per launch,
+for as long as the screen file has existed.
+
+#### The fix is `std::atexit`, and the order is the whole argument
+
+`qAddPostRoutine` is the Qt-shaped answer and it is the wrong one here:
+this code runs BEFORE the `QApplication` exists, and the file has to
+survive the constructor that reads it. `atexit` fires after everything Qt
+owns is already gone, and the deletion is file I/O and nothing else, so it
+needs no event loop. A static inside the initialiser carries the pointer
+rather than a capture, because a captureless lambda may name a variable of
+static storage duration and `config` is still being initialised at that
+point.
+
+**What it still leaves is one file per ABNORMAL exit**, and that is the
+honest limit rather than an oversight: the suite's watchdog leaves by
+`_exit(2)` and `qtty_fatal_handler` by `raise()`, and neither runs
+`atexit`. The count goes from one per RUN to one per crash.
+
+#### The count is the assertion, and it had to come from a child
+
+`running-code.md` says a cleanup is proved by counting what it left
+behind. The running process is the one that cannot do the counting: this
+suite's own file exists for as long as the suite does and goes at ITS
+exit, so an in-process check can see the file and never its removal. So
+the check starts a CHILD -- the suite binary with a suite name nothing
+matches, which runs no checks and takes exactly the path under test -- and
+asserts the temp directory holds no more screen files afterwards than
+before.
+
+Skipped under valgrind, for the reason the channel-mode check beside it
+already carries: memcheck reports Qt's own `waitid(NULL)` from inside
+`libQt6Core`, which trips `--error-exitcode=99` and fails the arm while
+the suite itself reports OK. The instrument cannot answer, which is not a
+finding about this code.
+
+#### And the swept files
+
+15,679 removed -- this account's, older than a day, by owner and name and
+age rather than by pattern alone. Today's 1,055 are left because any of
+them may belong to a process still running, and the holder's 6 are left
+because they are not mine to delete. Both sets stop growing with the fix.
+
+### 8.407 A copy arriving is not a scroll, and the set said it was (2026-10-08)
+
+**`ScrollSettle` had not been read with the predicate lens, and it is a
+state machine of ninety lines.** The question that lens asks is whether a
+condition is true earlier -- or wider -- than its author was picturing,
+and here it is the word *moved*: a placement counted as having moved when
+its set of rectangles compared unequal, which is true of a set that merely
+GREW.
+
+**So two cases a viewer cannot tell apart went different ways.** The suite
+already asserts that a second IMAGE appearing beside the first is not a
+scroll -- *"it would degrade the first frame of every image, the one case
+the pixels are most wanted"* -- and that is a second key. A second COPY of
+a key already up changed the rect set, read as a move, and put the tier on
+the half-block mosaic for the whole debounce. A list gaining one row of a
+repeated avatar is exactly that, and on sixel or iTerm2 the mosaic is what
+the user then looks at.
+
+Measured, and the before and after are the same five lines:
+
+                                    before   after
+    one copy, frame 0                  1       1
+    a second copy appears, 10 ms       0       1
+    that copy goes away, 20 ms         0       1
+    both copies shift, 10 ms           0       0
+    one of two shifts, 10 ms           0       0
+
+The last two are the controls, and they are why the fix is not "compare
+less": a real scroll still degrades, and so does one copy of several
+moving.
+
+**A move is a rectangle LEFT and a rectangle ARRIVED**, which is the
+honest reading of the word. A scroll takes every copy somewhere else, so
+both halves hold; an addition takes none of them anywhere, so neither
+does; a removal likewise; and one copy of several moving satisfies both.
+The old test asked only whether the set had changed, which is a weaker
+question than the one the comment above it was answering.
+
+#### The class's own design is what let this be measured
+
+`ScrollSettle` takes its clock as a parameter rather than calling a timer,
+and its header says why: a hundred-millisecond debounce tested against
+the real clock is a test that sleeps, and one that sleeps is flaky on a
+loaded machine. **That choice paid off in a way nobody planned for.** The
+class is header-only and needs no library, so the defect and the fix were
+both measured by a forty-line program compiled against the header -- the
+fix first against a COPY of it in a scratch directory, because the three
+verification arms were running against the committed tree at the time and
+editing it would have invalidated them.
+
+A testability decision that also makes a probe possible mid-flight is
+worth noticing, because the next class with a clock in it has the same
+choice to make.
 
 ### 8.406 Which end a one-cell scroll bar says the view is at (2026-10-08)
 

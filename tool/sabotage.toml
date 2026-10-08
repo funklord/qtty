@@ -6119,3 +6119,24 @@ find = "\t\t\t\t\t\tg = vert ? QStringLiteral(\"\u25b2\") : QStringLiteral(\"\u2
 into = "\t\t\t\t\t\tg = vert ? QStringLiteral(\"\u25bc\") : QStringLiteral(\"\u25c0\");"
 count = 1
 check = "a one-cell scroll bar says WHICH end the view is at"
+
+[[sabotage]]
+# The screen file left behind again. A QTemporaryFile removes its file in
+# its destructor, and the object is deliberately leaked to outlive the
+# QApplication, so without the atexit nothing ever runs it.
+name = "the offscreen screen file is never reaped"
+file = "src/runtime/application.cpp"
+find = "\t\t\tstatic QTemporaryFile *to_reap = f;\n\t\t\tstd::atexit([] { delete to_reap; to_reap = nullptr; });"
+into = "\t\t\t// no reaping"
+count = 1
+check = "a qtty process removes the screen description it wrote"
+
+[[sabotage]]
+# A rect set that merely grew read as a scroll again, which put every copy
+# of a repeated picture on the mosaic for the debounce.
+name = "a copy arriving counts as a scroll again"
+file = "src/backend/ansi/scroll_settle.h"
+find = "\t\t\t\tbool left = false, came = false;"
+into = "\t\t\t\tbool left = true, came = true;"
+count = 1
+check = "a second copy of it appearing is a picture arriving"

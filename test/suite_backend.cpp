@@ -5007,6 +5007,47 @@ int suite_backend() {
 		// really moving is still a scroll.
 		CHECK(!twice.update(pair(QRect(0, 0, 4, 2), QRect(0, 5, 4, 2)), 40),
 		      "while one of the two moving still degrades to the mosaic");
+
+		// A COPY OF A PICTURE THAT IS ALREADY UP, which the rule above
+		// states and this class did not keep. `arrive` asserts that a
+		// second image appearing beside the first is not a scroll -- and
+		// that is a second KEY. A second copy of the SAME key took the
+		// other road: the rect set grew, the sets compared unequal, and a
+		// list gaining one row of a repeated avatar degraded every copy of
+		// it to the mosaic for the whole debounce.
+		//
+		// The two cases are one case to a viewer, and the comment on
+		// update() says so in as many words: a placement that appeared or
+		// vanished is a picture arriving or leaving, not a scroll. The
+		// asymmetry was in the test for a move rather than in the rule.
+		//
+		// Both directions, because a copy leaving is the same question
+		// mirrored and had the same answer wrong.
+		ScrollSettle copies(100);
+		const auto one = [](QRect a) {
+			QVector<CellImage> v;
+			CellImage c;
+			c.key = 7;
+			c.cell_rect = a;
+			v.append(c);
+			return v;
+		};
+		const auto both = [&pair](QRect a, QRect b) {
+			QVector<CellImage> v = pair(a, b);
+			for (CellImage &c : v) c.key = 7;
+			return v;
+		};
+		CHECK(copies.update(one(QRect(0, 0, 4, 2)), 0),
+		      "one copy of a picture draws pixels");
+		const bool grew = copies.update(both(QRect(0, 0, 4, 2),
+		                                     QRect(0, 4, 4, 2)), 10);
+		const bool shrank = copies.update(one(QRect(0, 0, 4, 2)), 20);
+		printf("info: a second copy of the same picture kept the pixels %d, "
+		       "and losing it again %d\n", int(grew), int(shrank));
+		CHECK(grew && shrank,
+		      "and a second copy of it appearing is a picture arriving "
+		      "rather than a scroll, as a second key already is -- as is "
+		      "that copy going away again");
 	}
 
 	// A DECRPM reply, ESC [ ? 1006 ; 1 $ y. The "$" is an intermediate byte,
