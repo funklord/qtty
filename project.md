@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2124 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2127 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18246,6 +18246,70 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.413 A paste abandoned mid-flight froze the keyboard (2026-10-08)
+
+**The same lens as 8.412 and the fourth member of that family**, with a
+worse symptom than any of them. `in_paste_` is set by `CSI 200~` and
+cleared by `CSI 201~`, and the closing bracket cannot arrive after a
+handover any more than a sequence's final byte can -- the shell had the
+terminal in between.
+
+Left set, every byte typed afterwards is accumulated as pasted text
+rather than delivered as a key, until a `201~` that is never coming. So
+8.412 costs one wrong key and this costs **all of them**: the application
+receives nothing at all and looks hung.
+
+    feed "\033[200~abc"   an open paste -- correctly delivers nothing
+    suspend / resume      the shell-out, or a SIGCONT for the other route
+    feed "x"              -> nothing. Not a key, not a paste.
+
+**And a third line, which had no check until it was asked for.** Clearing
+`in_paste_` alone stops the next key being swallowed and leaves what had
+accumulated in the buffer. Neither check above can see that, both being
+about keys.
+
+**The first version of that third check could not fail, and the sabotage
+is what said so.** It fed a whole new paste after the handover and
+asserted the delivered text was only `fresh` -- which passes with
+`paste_.clear()` removed, because the `CSI 200~` branch clears the buffer
+itself before accumulating. So the fixture exercised the one path that
+hides the fault, and the run reported the check passing against broken
+code.
+
+**What reaches the abandoned bytes is a stray `CSI 201~`**, because that
+branch delivers `paste_` without consulting `in_paste_` -- and a terminal
+can send one: the close of the interrupted paste, arriving after the shell
+gave the terminal back. Aimed there, the check reads an empty paste where
+the broken code hands over `stale`, and the sabotage reddens it.
+
+**Which also settles whether the line is worth keeping.** It looked
+redundant once `200~` was read, and it is not: the 201 branch is a second
+consumer of that buffer and does not guard itself.
+
+#### One helper, because the set will grow
+
+`forget_partial_input()` drops all of it: `pending_`, `paste_`,
+`in_paste_`, `paste_refused_`. A list at each of the two handover routes
+would have been six lines in two places, and the next buffer somebody
+adds would be covered in neither. This is `forget_uploads()`'s shape for
+the same reason.
+
+**Five sabotage entries, not two, and the arithmetic is the point.** Two
+for the routes, because a shell-out reaches `resume()` and a Ctrl+Z
+reaches `read_winch()`. Three for the lines inside, because a single entry
+disabling the call cannot tell which half of the helper is doing the work.
+The first draft of those three was aimed wrong twice over: removing
+`paste_.clear()` does not redden a check about keys, since what swallows
+them is `in_paste_` -- and the check it does belong to was the vacuous one
+above. Each entry now names the line whose behaviour its check actually
+describes, and all five redden it.
+
+**`--validate` refused one of them before it ever ran**, which is the
+anchor guard earning its keep: `in_paste_ = false;` appears twice in this
+file, the other being the `201~` handler, so an entry anchored on that
+line alone would have been applied to whichever came first. It carries
+the line above it now.
 
 ### 8.412 A letter typed after a shell-out moved the cursor (2026-10-08)
 

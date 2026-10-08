@@ -6174,17 +6174,41 @@ count = 1
 check = "and again after a SIGCONT, which is the route a Ctrl+Z actually takes"
 
 [[sabotage]]
-name = "a shell-out keeps the half-read sequence it can never finish"
+name = "a shell-out keeps what had half-arrived"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\tif (!first_resume_) pending_.clear();"
-into = "\tif (false) pending_.clear();"
+find = "\tif (!first_resume_) forget_partial_input();"
+into = "\tif (false) forget_partial_input();"
 count = 1
 check = "does not swallow the first key typed after it comes back"
 
 [[sabotage]]
-name = "a SIGCONT keeps the half-read sequence it can never finish"
+name = "a SIGCONT keeps what had half-arrived"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\t\tpending_.clear();\n\t\t// It costs one re-upload per picture"
+find = "\t\tforget_partial_input();\n\t\t// It costs one re-upload per picture"
 into = "\t\t// It costs one re-upload per picture"
 count = 1
 check = "and a SIGCONT drops it too, which is the route a Ctrl+Z takes"
+
+[[sabotage]]
+name = "the partial-input drop keeps the half-read sequence"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tpending_.clear();\n\tpaste_.clear();"
+into = "\tpaste_.clear();"
+count = 1
+check = "does not swallow the first key typed after it comes back"
+
+[[sabotage]]
+name = "the partial-input drop leaves the paste open"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tpaste_.clear();\n\tin_paste_ = false;"
+into = "\tpaste_.clear();"
+count = 1
+check = "a paste left open when the terminal was handed over does not swallow"
+
+[[sabotage]]
+name = "the partial-input drop keeps the bytes the abandoned paste collected"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tpaste_.clear();\n\tin_paste_ = false;"
+into = "\tin_paste_ = false;"
+count = 1
+check = "does not deliver what the abandoned paste had already collected"

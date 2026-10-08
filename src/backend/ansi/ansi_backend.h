@@ -322,6 +322,13 @@ private:
 	quint32 wire_id_for(const ImageEncodeKey &ek, bool *minted);
 	// Everything uploaded forgotten at once, the ids returned to the pool.
 	void forget_uploads();
+	// Everything half-decoded, dropped together because a handover makes
+	// all of it unfinishable at once: the remainder of a sequence and the
+	// close of a paste are both bytes the shell had the terminal for. One
+	// function rather than a list at each of the two handover routes, so a
+	// buffer added later is covered by being added here rather than by
+	// somebody remembering two call sites.
+	void forget_partial_input();
 	// The bytes each sixel or iTerm2 placement last put on the wire, under
 	// everything they are a function of. Pruned at the end of every frame
 	// that painted pixels, so it is bounded by what is on the screen

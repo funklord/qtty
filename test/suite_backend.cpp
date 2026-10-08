@@ -363,6 +363,58 @@ int suite_backend() {
 	      "and a SIGCONT drops it too, which is the route a Ctrl+Z takes and "
 	      "reaches other code");
 
+	// AND A PASTE LEFT OPEN, which is the same staleness one step worse.
+	// in_paste_ is set by CSI 200~ and cleared by CSI 201~, and the closing
+	// bracket cannot arrive after a handover any more than a CSI's final
+	// can. Left set, every byte typed afterwards is accumulated as pasted
+	// text instead of delivered as a key -- not one wrong key but no keys at
+	// all, until a 201~ that is never coming.
+	feed("\033[200~abc");                       // a paste with no close
+	const int mid_paste = rec.keys.size() + rec.pastes.size();
+	backend.suspend();
+	backend.resume();
+	feed("x");
+	const bool paste_shell = rec.keys.size() == 1
+	                      && rec.keys[0].text == QStringLiteral("x");
+	feed("\033[200~abc");
+	::raise(SIGCONT);
+	for (int i = 0; i < 50; ++i) QCoreApplication::processEvents();
+	feed("y");
+	const bool paste_stop = rec.keys.size() == 1
+	                     && rec.keys[0].text == QStringLiteral("y");
+	printf("info: an unclosed paste delivered %d event(s), and the key after"
+	       " it arrived %d through a shell-out and %d through a SIGCONT\n",
+	       mid_paste, int(paste_shell), int(paste_stop));
+	CHECK(mid_paste == 0 && paste_shell,
+	      "a paste left open when the terminal was handed over does not "
+	      "swallow what is typed after it comes back");
+	CHECK(paste_stop, "and a SIGCONT closes it too");
+
+	// AND THE BYTES THAT HAD ARRIVED, which is a different line of the drop
+	// and would otherwise have none: clearing in_paste_ alone stops the next
+	// key being swallowed and leaves what had accumulated in the buffer.
+	//
+	// THE STRAY CLOSE IS THE FIXTURE, and the first version of this check
+	// used the wrong one -- a whole new paste, which cannot show the fault
+	// because the CSI 200~ branch clears the buffer itself before
+	// accumulating. The sabotage said so: the check passed against code with
+	// the clear removed, which is the one thing that target exists to find.
+	//
+	// What reaches the abandoned bytes is a CSI 201~ with no 200~ before it,
+	// because that branch delivers paste_ WITHOUT consulting in_paste_. A
+	// terminal can send one: the close of the paste that was interrupted,
+	// arriving after the shell gave the terminal back.
+	feed("\033[200~stale");                     // abandoned mid-paste
+	backend.suspend();
+	backend.resume();
+	feed("\033[201~");                          // the interrupted close
+	const QString ghost = rec.pastes.isEmpty() ? QString() : rec.pastes[0];
+	printf("info: a stray close after an abandoned paste delivered %d"
+	       " paste(s): '%s'\n", int(rec.pastes.size()), qPrintable(ghost));
+	CHECK(!ghost.contains(QStringLiteral("stale")),
+	      "and a close arriving after the terminal came back does not "
+	      "deliver what the abandoned paste had already collected");
+
 	// THE KITTY KEYBOARD PROTOCOL, which is the only way a terminal can say
 	// Ctrl+Shift+C at all. A control byte is one of 32 values and carries no
 	// shift bit, so the legacy encoding folds every Ctrl+Shift+letter onto
