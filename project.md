@@ -18324,6 +18324,79 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.416 `make -n check` wrote the commit hook's receipt (2026-10-08)
+
+**Arrived from the guidelines rather than from looking**, which is what
+the shared document is for: `running-code.md` carries fuzznet's instance
+of a dry run mis-parsing a manifest and ossacli's of one overwriting a
+log. This tree had the same hazard pointed at a gate's own artifact.
+
+**Make executes a recipe line containing `$(MAKE)` even under `-n`**, and
+the `check` recipe is one backslash-continued line that contains both the
+sub-make and the writes to the receipt:
+
+    @id=$$(...); \
+    echo "RUNNING $$id" > "$(CHECK_STAMP)"; \
+    if $(MAKE) --no-print-directory $(CHECK_PARTS); then \
+            echo "PASS $$id" > "$(CHECK_STAMP)"; \
+
+So a dry run wrote it. Measured with the stamp path overridden so the real
+one was never at risk: a file holding `SENTINEL` came back holding
+`FAIL <hash of the current content>`.
+
+**And a FAIL for exactly this content makes `pre-commit` refuse the
+commit.** So the operation `running-code.md` recommends for reading a
+target before running it would block commits of that content until a real
+`make check` ran -- and the dangerous direction is the other one, because
+a dry sub-make that SUCCEEDED would have written `PASS` for content
+nothing checked, which the hook reads as a clean bill.
+
+**It failed safe by accident rather than by design.** The dry sub-make
+exits non-zero only because `probe-install` is another such line: it runs
+for real under `-n`, performs a dry install that installs nothing, and
+then fails probing for the files. Nothing about that is a guard, and a
+day that fixed it would have turned the receipt from FAIL to PASS.
+
+#### The guard is on the line `-n` executes, because no other line runs
+
+A `case` at the head of the same continued line, before anything touches
+the stamp. Any guard on a line of its own would merely be printed, which
+is the whole shape of this hazard.
+
+**It covers three modes, and the measurement is why.** `MAKEFLAGS`, read
+from a recipe line that executes:
+
+    make            FLAGS=[]                        FIRST=[]
+    make -n         FLAGS=[n]                       FIRST=[n]
+    make --dry-run  FLAGS=[n]                       FIRST=[n]
+    make -t         FLAGS=[t]                       FIRST=[t]
+    make -n --no-print-directory
+                    FLAGS=[n --no-print-directory]  FIRST=[n]
+    make --no-print-directory
+                    FLAGS=[ --no-print-directory]   FIRST=[--no-print-directory]
+
+`-t` executes the line as well, so a pattern matching only `n` -- which
+is what the first draft of this guard had -- misses it. And the last row
+is why the guard skips a first word beginning with `-`: that word
+contains an `n` and means nothing of the kind. `-q` runs no recipe for a
+prerequisite-less target here, and is matched anyway, which costs
+nothing.
+
+**And `-t` bit the measurement that found it.** The fixture used to read
+`MAKEFLAGS` has a target named `probe`, which is not `.PHONY` -- so
+`make -f <fixture> -t probe`, run from this tree, touched an empty
+`probe` into existence here. Removed by name. `check` is phony and took
+no such damage, but it is the same mode doing the same thing, and it
+landed in a shared tree because the fixture was run from one.
+
+#### What is NOT checked, pinned here rather than left implied
+
+**No gate covers this**, and the reason is structural: a gate for it
+would have to dry-run `check` from inside `check`. What exists instead is
+the measurement above, re-runnable in two commands -- write a sentinel to
+a scratch file, `make -n check CHECK_STAMP=<that file>`, and read it
+back. Before the guard it came back `FAIL`; after it, `SENTINEL`.
+
 ### 8.415 A paste close with no open delivered a paste of nothing (2026-10-08)
 
 **8.413's own consequence, which is how it was found.** That fix drops

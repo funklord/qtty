@@ -1299,8 +1299,17 @@ CHECK_STAMP = $(shell git rev-parse --git-common-dir 2>/dev/null)/qtty-check-sta
 
 check:
 	@rm -f "$(CHECK_STAMP)" 2>/dev/null || true
-	@id=$$( { git rev-parse HEAD 2>/dev/null; git diff HEAD --binary 2>/dev/null; } \
-	        | sha1sum | cut -d' ' -f1 ); \
+	@case "$(firstword $(MAKEFLAGS))" in \
+	-*) ;; \
+	*[ntq]*) \
+		echo "check: -n, -t and -q cannot run the gate, and this line writes" >&2; \
+		echo "       the receipt the commit hook reads -- so it stopped before" >&2; \
+		echo "       touching it. Run \`make check\` for real, or read the" >&2; \
+		echo "       recipe." >&2; \
+		exit 0 ;; \
+	esac; \
+	id=$$( { git rev-parse HEAD 2>/dev/null; git diff HEAD --binary 2>/dev/null; } \
+	       | sha1sum | cut -d' ' -f1 ); \
 	echo "RUNNING $$id" > "$(CHECK_STAMP)" 2>/dev/null || true; \
 	if $(MAKE) --no-print-directory $(CHECK_PARTS); then \
 		echo "PASS $$id" > "$(CHECK_STAMP)" 2>/dev/null || true; \
