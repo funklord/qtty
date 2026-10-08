@@ -13746,18 +13746,44 @@ Makefile's own `QMAKE=` override is all it takes:
 **The public headers are clean.** A translation unit that includes
 `qtty/qtty.h` and nothing else compiles under Qt 5.15 with no errors, so
 an application on Qt 5 could include qtty today. What does not compile is
-**three names, across `theme.cpp`, `cell_geometry.h` and
-`input_router.cpp`** -- and the shape has been three, then four, then
-three again, which is the point. The site count moves under ordinary work
-and the name count does not, so the names are what this counts: 8.248
-took `QPalette::Accent` from one site to four without changing anything
-a Qt 5 port would have to decide.
+**seven constructs across six files, re-measured 2026-10-08 by the two
+commands above: 32 error lines.** It was three when this was written.
+
+**And it moved for the reason this section said it would not**, which is
+the part worth keeping. The claim was that "the site count moves under
+ordinary work and the name count does not, so the names are what this
+counts" -- and three of the four arrivals came from ordinary feature
+work, each dated by `git log -S` on the name itself: `qHashMulti` with
+`174cc0a`, the upload-once cache; `Qt::ColorScheme` with `676f7bf`,
+telling an application whether the terminal is dark; `QStyle::name()`
+with `22f555f`, keeping the application's own style as the proxy base,
+which the holder settled on 2026-10-06. **A name count is cheaper to
+re-take than a site count and is not more stable than one**, so what
+makes this figure worth anything is the date and the command beside it
+rather than the unit it chose.
 
 | Usage | Where | Qt 5 equivalent |
 |---|---|---|
 | `QPalette::Accent` | `src/core/theme.cpp`, three sites; `src/cell_geometry.h`, one, which reaches every file including it | absent before Qt 6.6 |
-| `QAction::associatedObjects()` | `src/runtime/input_router.cpp`, twice | `associatedWidgets()` |
-| `QKeyCombination` | `src/runtime/input_router.cpp` | the older combined `int` |
+| `QAction::associatedObjects()` | `src/runtime/input_router.cpp`, three sites | `associatedWidgets()` |
+| `QKeyCombination` | `src/runtime/input_router.cpp`, three sites | the older combined `int` |
+| `Qt::ColorScheme` | `include/qtty/application.h`, and `src/runtime/application.cpp` | no equivalent: the enum does not exist there |
+| `QStyle::name()` | `src/runtime/application.cpp`, twice | `metaObject()->className()`, which is not the string a factory takes |
+| `qHashMulti` | `src/backend/ansi/ansi_backend.h` | `qHash` combined by hand |
+| `QVector` is not `QList` | `src/runtime/input_router.cpp`, one site taking `findChildren` into a `QVector` | distinct types before Qt 6, so the declaration changes rather than the call |
+
+**The last is a different kind from the others, which is why this counts
+constructs rather than names.** Nothing is missing there: `QVector` and
+`QList` are simply not the same type before Qt 6, so no substitution
+exists and the fix is a declaration. A reader handed six names would look
+for a seventh rename and not find one.
+
+**`Qt::ColorScheme` is the one that is not a spelling.** It is the only
+arrival a port could not resolve locally -- the enum does not exist in Qt
+5, and it is in a PUBLIC header, so what would change is the API qtty
+offers rather than a line inside it. That makes it OQ-3's cost rather
+than a transliteration, and therefore the holder's in a way the other six
+are not.
 
 ~~`QFontDatabase::families()` in `src/grid/grid_style.cpp`~~ **was the
 fourth and is closed**, without a conditional and without settling
@@ -18296,6 +18322,50 @@ first upload was left to make. It builds its own backend now.
 **What it costs is one re-upload per picture per handover**, which is what
 the first frame after a handover pays anyway: `prev_` is reset, so that
 frame is a whole screen.
+
+#### The rest of the lens, which is now finished
+
+Every record the backend keeps of what the TERMINAL holds, and what
+covers each across a handover. Recorded because the lens found this
+defect and the next sweep should start somewhere else:
+
+- **`last_title_`** -- both routes, and each was a measured defect.
+- **`last_cursor_`** -- cleared in the Ctrl+Z block, and `write_out()`
+  clears it on every write, so it is self-maintaining rather than
+  needing the shell-out route.
+- **`wire_id_`, `upload_order_`, `free_wire_ids_`** -- this entry.
+- **`last_pixel_size_`** -- covered by construction, and the reason is
+  the distinction that makes this defect specific. `present_pixels()`
+  re-transmits every DIRTY TILE fresh with no upload cache, and the
+  scheduler's handover reset makes the damage the whole screen, so every
+  tile goes again. Damage drives CELLS and not uploads, which is exactly
+  why the placement path was broken where the tile path is not.
+- **`image_bytes_`** -- an encode cache keyed by content, not a claim
+  about the terminal. Re-encoding costs time and nothing else.
+- **`kitty_placed_`** -- a frame after a handover emits one `d=a`
+  delete-all for placements already gone, which is a wasted twelve bytes
+  rather than a fault.
+- **`Overlay`'s registry and `live_overlay_ids_`** -- the registry pairs
+  append with `removeAll` in the destructor, the scheduler zeroes the id
+  count on a handover, and `present_overlay()` transmits each visible
+  overlay every frame it sends.
+
+**And the sabotages NEAR this change were re-run, not only the two it
+added**, per the standing item: a fix that changes how shared state is
+released has twice retired a neighbouring check here. The two whose
+subject shares `wire_id_` -- the upload that carries its own depth, and
+the placeholder cache keyed on the extent -- each still reddens its own
+check and nothing else.
+
+**The hazard this change does create is worth naming for whoever writes
+the next check here.** `::raise(SIGCONT)` in the new check moves
+`s_handovers` process-wide, so any backend that later reaches
+`read_winch()` forgets its uploads -- which could let a check asserting
+that a picture IS re-transmitted pass for the handover's reason rather
+than its own. It does not today: every check between it and that cluster
+builds its own backend, and a fresh backend's first `read_winch()` comes
+only from an explicit suspend, resume or winch nudge. A check added
+between them that drives one would need to know this.
 
 ### 8.410 A scroll that ended and never sharpened (2026-10-08)
 
