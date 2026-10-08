@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2109 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2110 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18210,6 +18210,82 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.404 Escape rejects a modal, and the conjunct not asserted (2026-10-08)
+
+**Of the five rows 8.403 left on the list, this is the one that earns a
+fixture on its own terms: it is the only promise in the guide's table
+whose crossing depends on a CLOCK.** A lone ESC cannot be told from the
+start of a sequence by its bytes, so the decoder holds it for
+`escape_flush_ms()` and only then calls it `Qt::Key_Escape`. Every check
+of that window stops at the `KeyEvent` -- and the effect the window exists
+for is the user's only way out of a dialog.
+
+Measured from the wire, with a modal `QDialog` up and the backend wired to
+a real router:
+
+    the dialog was up                                     1
+    survived ESC [ A, which is an arrow and not an Escape  1
+    still up inside the escape window                     1
+    visible after the window expired                      0
+
+The control is the second line and it is the half that matters: a decoder
+calling every ESC an Escape immediately would reject the dialog on the
+arrow's first byte, and the first and last lines would still read the
+same.
+
+#### The third line is printed and deliberately not asserted
+
+That the dialog is still up BEFORE the window expires is the timer
+working, and it is exactly the kind of conjunct that looks free. It is
+not: asserting it asserts that this fixture reached the next line within
+`escape_flush_ms()`, which is a race the valgrind arm would lose at twenty
+times the wall clock. The suite already carries one such lesson -- a
+fixture that compared two frames with a pending timer failed once in
+fifteen runs and never reproduced -- so the honest shape is to print the
+number and assert only what does not depend on how fast the machine is.
+
+**A conjunct that cannot fail for the right reason is worse than no
+conjunct**, because the first time it goes red somebody will spend the
+evening on the decoder rather than on the clock.
+
+#### No new sabotage entry -- and the harness could not tell me so
+
+*a bare Escape is never flushed* already exists, deleting the
+`escape_timer_->start()`, so the right answer was to run it rather than
+write a third copy of the same sabotage. That is the third time today: a
+crossing needs a fixture, not a new way to break the thing underneath it.
+
+**But its output could not answer the question.** It said
+`and 4 other check(s) with it` and stopped, which is a count where the
+question is a membership -- did the check I have just written fail? A
+count cannot say. So the break was applied by hand instead, and the five
+it reddens are:
+
+    and becomes Key_Escape once the window closes with nothing behind it
+    Alt-a delivered in one read is still Alt-a
+    and no Escape is invented behind it
+    and the second one follows when its own window closes
+    a lone ESC from the wire rejects the modal once its window expires
+
+**Four about the `KeyEvent` and one about the effect**, which is the whole
+of this entry in one list.
+
+**So `sabotage.py` names them now**, capped at six because a broad
+sabotage reddens dozens and a flood is its own way of not answering. The
+tool change rides with the check that needed it, which is the rule for
+tooling in `working-practice.md`: worth doing when it is in the way of the
+code, and not before.
+
+**And it was verified by the question that motivated it.** Re-running the
+same entry prints the four names under the one it reddens, the new
+crossing among them -- so the second proof came from the tool rather than
+from a break applied by hand, which is the only test a reporting change
+can have.
+
+Four rows are still uncrossed and stay a list: `Enter` firing a dialog's
+default button, type-ahead in a focused list, `F2` opening a view's
+editor, and the quit keys.
 
 ### 8.403 Two more promises crossed from the bytes (2026-10-08)
 

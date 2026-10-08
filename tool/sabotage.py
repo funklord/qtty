@@ -648,7 +648,19 @@ def main():
 				reddened.update(failing_checks(out))
 				others = [c for c in failing_checks(out) if check not in c]
 				if others:
-					say("     and %d other check(s) with it" % len(others))
+					# NAMED rather than counted. The question a new check
+					# asks of this harness is whether IT failed too, and a
+					# count cannot answer it -- confirming that 8.404's
+					# Escape crossing was one of five took a sabotage applied
+					# by hand, because this line said "and 4 other check(s)"
+					# and stopped there. Capped at six, because a broad
+					# sabotage reddens dozens and a flood is its own way of
+					# not answering.
+					say("     and %d other check(s) with it:" % len(others))
+					for other in others[:6]:
+						say("       %s" % other)
+					if len(others) > 6:
+						say("       ... and %d more" % (len(others) - 6))
 			elif check not in " ".join(passing_checks(out)):
 				# Neither red nor green: the run never got there. A hang or a
 				# crash produces no line of either kind, and reporting that

@@ -2067,6 +2067,51 @@ int suite_backend() {
 			}
 		}
 
+		// AND ESC REJECTS A MODAL, FROM THE WIRE. Of the guide's table this
+		// is the one promise whose crossing depends on a CLOCK: a lone ESC
+		// cannot be told from the start of a sequence by its bytes, so the
+		// decoder holds it for escape_flush_ms() and only then calls it
+		// Qt::Key_Escape. Every check of that window stops at the KeyEvent,
+		// and the effect it is for is the user's only way out of a dialog.
+		//
+		// The control is the same byte with a final behind it: ESC [ A is an
+		// arrow, the window never expires, and the dialog must still be up.
+		// That is what the window exists for, and it is the half a decoder
+		// calling every ESC an Escape would break while this check's first
+		// half still passed.
+		{
+			QDialog dlg(&win);
+			dlg.setModal(true);
+			auto *dv = new QVBoxLayout(&dlg);
+			dv->addWidget(new QPushButton(QStringLiteral("Ok"), &dlg));
+			dlg.resize(GridMetrics::cells(12, 4));
+			dlg.show();
+			QCoreApplication::processEvents();
+			const bool up = dlg.isVisible()
+			             && QApplication::activeModalWidget() == &dlg;
+			type("\033[A");                  // an arrow: not an Escape
+			settle(escape_flush_ms() + 80);
+			const bool survived = dlg.isVisible();
+			type("\033");                    // and the lone one
+			// Printed and NOT asserted, deliberately. That the dialog is
+			// still up before the window expires is the timer working, and
+			// asserting it would be asserting that this fixture reached the
+			// next line inside escape_flush_ms() -- which is a race the
+			// valgrind arm would lose at twenty times the wall clock.
+			const bool held = dlg.isVisible();
+			settle(escape_flush_ms() + 80);
+			printf("info: the dialog was up %d, survived an arrow %d, was "
+			       "still up inside the escape window %d, and is visible %d "
+			       "after it\n", int(up), int(survived), int(held),
+			       int(dlg.isVisible()));
+			CHECK(up && survived && !dlg.isVisible(),
+			      "a lone ESC from the wire rejects the modal once its "
+			      "window expires, where an ESC that starts a sequence "
+			      "leaves it up");
+			dlg.hide();
+			QCoreApplication::processEvents();
+		}
+
 		backend.set_event_sink(&rec);
 	}
 
