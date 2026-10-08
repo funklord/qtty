@@ -12216,6 +12216,115 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// ---- a popup over a root the TAB STRIP has pushed down ----
+	{
+		// THE STRIP IS PART OF THE OFFSET A POPUP HAS TO UNDO, and the
+		// compositor says so twice about everything else. compose() draws
+		// the root at `root_at + (0, strip * ch)` and folds the strip into
+		// the scroll it hands the router, because "the strip is part of the
+		// offset input has to undo, not just part of the picture" --
+		// measured there with a button at screen row 1 that could not be
+		// clicked at all. The popup branch subtracts the root's scroll and
+		// nothing else.
+		//
+		// ASSERTED AS A RELATIONSHIP, which is what makes it readable at
+		// all: a menu has a frame, so its first item is some rows below
+		// where the popup was placed, and an absolute row would be pinning
+		// that frame rather than the offset. Composed twice -- once with a
+		// second window up and once without -- the frame cancels, and what
+		// is left is the question. The strip moves the root down one row,
+		// so a popup anchored in the root must move down one row with it.
+		//
+		// Both rows come out of the FRAME, for the reason the check above
+		// gives: recomputing either from a geometry the way the compositor
+		// does would agree with the compositor however wrong it was.
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+
+		// The third case is the identity half, and it needs the compositor
+		// constructed with a window that is NOT the one being shown --
+		// which is what a real tab switch produces, since an application
+		// builds the Compositor once and current_window() moves afterwards.
+		const auto rows_with = [&](bool second_window, bool comp_on_other) {
+			QWidget first;
+			first.setAttribute(Qt::WA_DontShowOnScreen);
+			first.setWindowTitle(QStringLiteral("one"));
+			auto *v = new QVBoxLayout(&first);
+			v->setContentsMargins(0, 0, 0, 0);
+			v->setSpacing(0);
+			v->addWidget(new QLabel(QStringLiteral("anchorhere")));
+			for (int i = 0; i < 3; ++i)
+				v->addWidget(new QLabel(QStringLiteral("pad%1").arg(i)));
+			first.show();
+			first.resize(GridMetrics::cells(30, 4));
+			QWidget other;
+			other.setAttribute(Qt::WA_DontShowOnScreen);
+			other.setWindowTitle(QStringLiteral("two"));
+			other.resize(GridMetrics::cells(30, 4));
+			if (second_window) other.show();
+			Qtty::set_current_window(&first);
+			QCoreApplication::processEvents();
+
+			Qtty::InputRouter router(&first);
+			Qtty::Compositor comp(comp_on_other ? &other : &first, &router);
+			QMenu menu(&first);
+			menu.addAction(QStringLiteral("Cut"));
+			menu.addAction(QStringLiteral("Copy"));
+			menu.popup(QPoint(0, 2 * GridMetrics::ch()));
+			QCoreApplication::processEvents();
+
+			Qtty::CellBuffer b(30, 14);
+			comp.compose(b);
+			const auto row_of = [&b](const QString &word) {
+				for (int y = 0; y < b.rows(); ++y)
+					for (int x = 0; x + word.size() <= b.cols(); ++x) {
+						bool all = true;
+						for (int k = 0; k < word.size() && all; ++k)
+							all = b.at(x + k, y).ch == QString(word.at(k));
+						if (all) return y;
+					}
+				return -1;
+			};
+			const QPair<int, int> seen(row_of(QStringLiteral("anchorhere")),
+			                           row_of(QStringLiteral("Cut")));
+			menu.close();
+			first.hide();
+			other.hide();
+			QCoreApplication::processEvents();
+			return seen;
+		};
+		const QPair<int, int> bare = rows_with(false, false);
+		const QPair<int, int> with_strip = rows_with(true, false);
+		const QPair<int, int> not_win = rows_with(true, true);
+		printf("info: one window puts the anchor on row %d and the menu on "
+		       "%d; two put them on %d and %d; and with the compositor built "
+		       "on the OTHER window, %d and %d\n", bare.first, bare.second,
+		       with_strip.first, with_strip.second, not_win.first,
+		       not_win.second);
+		const bool found = bare.first >= 0 && bare.second >= 0
+		                && with_strip.first >= 0 && with_strip.second >= 0
+		                && not_win.first >= 0 && not_win.second >= 0;
+		CHECK(found && with_strip.first - bare.first == 1
+		      && with_strip.second - bare.second == 1,
+		      "the tab strip moves a popup anchored in the root down with "
+		      "the root, the strip being part of the offset a popup has to "
+		      "undo as well as part of the picture");
+		// THE IDENTITY HALF, which the case above cannot see: there the
+		// shown window and the compositor's own are the same object, so a
+		// branch asking about either passes. This one builds the compositor
+		// on the window that is NOT shown, which is 8.101's configuration,
+		// and the popup must still follow the window that IS.
+		CHECK(found && not_win.first == with_strip.first
+		      && not_win.second == with_strip.second,
+		      "and it follows the window being SHOWN rather than the one the "
+		      "compositor was constructed with, which is the same question "
+		      "8.101 answered for the scroll and the drawing");
+		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	{
 		// A shortcut does not fire from behind an open menu. That is section
 		// 5.5's routing order -- popup > modal > window -- applied to the

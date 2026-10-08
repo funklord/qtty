@@ -1059,11 +1059,34 @@ void Compositor::compose(CellBuffer &out) {
 		// A popup opened from a modal needs nothing: the modal IS moved to
 		// where it is drawn, so a position mapped through it is already a
 		// screen position.
+		//
+		// `base_at` RATHER THAN THE SCROLL, which is the same offset the
+		// root is drawn at and fixes two things this expression got wrong
+		// by computing its own.
+		//
+		// The tab strip was missing. The root is drawn at
+		// `root_at + (0, strip * ch)` and compose() folds the strip into
+		// the scroll it hands the router, saying there that "the strip is
+		// part of the offset input has to undo, not just part of the
+		// picture" -- and a popup undid the scroll alone. Measured: with
+		// one window the anchor is on row 0 and the menu's first item on
+		// row 3; with a second window up the anchor moves to row 1 and the
+		// menu stays on row 3, so a menu opened at a widget was drawn a row
+		// above it.
+		//
+		// And the window compared was win_ rather than the one being SHOWN.
+		// That is 8.101's defect, which this file records as fixed for the
+		// priority pass, the scroll and the drawing -- "right while nothing
+		// else could scroll and wrong the moment the policy above learned
+		// to scroll another window" -- left behind in this branch. A popup
+		// opened from a second tab therefore got no compensation at all
+		// while its window was the one drawn at -scroll.
+		//
+		// One expression now, taken from the variable the drawing uses, so
+		// the two cannot drift again.
 		const bool in_root = !pop->parentWidget()
-		    || pop->parentWidget()->window() == win_;
-		const QPoint origin = in_root
-		    ? anchor - QPoint(root_.scroll.x() * cw, root_.scroll.y() * ch)
-		    : anchor;
+		    || pop->parentWidget()->window() == base;
+		const QPoint origin = in_root ? anchor + base_at : anchor;
 
 		QPoint at = placed_at(QRect(origin, pop->size()), out.cols(), out.rows(),
 		                      cw, ch, true);

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2105 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2107 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18210,6 +18210,79 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.402 A popup did not follow the root, twice, in one line (2026-10-08)
+
+**A new area, with the lens the day had already spent on the backend: a
+rule written twice, one copy fixed.** `compose()` draws the root at
+`root_at + QPoint(0, strip * ch)` and hands the router
+`root_.scroll - QPoint(0, strip)`, with a comment that says why -- *"the
+strip is part of the offset input has to undo, not just part of the
+picture"*, measured there with a button at screen row 1 that could not be
+clicked at all. Forty lines later the popup branch computed its own
+offset, and got two things wrong doing it.
+
+**The strip was missing.** Measured, reading both rows out of the frame:
+
+    one window     anchor row 0   the menu's first item row 3
+    two windows    anchor row 1   the menu's first item row 3
+    after          anchor row 1   the menu's first item row 4
+
+So the root moved down with the strip and the popup did not: a menu opened
+at a widget was drawn a row above it, overlapping the widget instead of
+sitting beside it. A popup is MOVED to where it is drawn, so the hit test
+agreed with the picture throughout -- the click landed on the right item
+of a menu in the wrong place, which is why nothing caught it.
+
+**And `in_root` asked about `win_` rather than the window being shown.**
+That is 8.101's defect, which this file records as fixed for the priority
+pass, for the scroll and for the drawing -- *"right while nothing else
+could scroll and wrong the moment the policy above learned to scroll
+another window"* -- left behind in this branch. A popup opened from a
+second tab therefore got no compensation at all, while its window was
+exactly the one drawn at `-scroll`.
+
+**One expression fixes both, and it is the drawing's own:** `in_root ?
+anchor + base_at : anchor`. The previous version re-derived the offset
+from `root_.scroll`, which is how it came to be missing a term the
+drawing had; taking `base_at` means the popup cannot drift from the root
+again without the root moving too.
+
+**Three of the four consumers of that offset already had it right**,
+which is the measurement that makes this a one-rule-one-place fix rather
+than a preference: `draw(base, base_at)` is the picture,
+`cursor_origin = base_at` is where the terminal's caret goes, and the
+router is handed `root_.scroll - QPoint(0, strip)` -- the same two terms
+folded into its own units, with a comment explaining the fold. The popup
+branch was the only one that computed its own.
+
+#### The fixture is a relationship because a menu has a frame
+
+An absolute row would have pinned the frame rather than the offset -- the
+first item sits some rows below where the popup was placed, and that
+number is QMenu's business. So the same fixture is composed twice, once
+with a second window up and once without, and what is asserted is that
+**the anchor's row and the menu's row move together**. The frame cancels.
+
+Both rows come out of the FRAME rather than from a geometry, which is the
+neighbouring check's own rule: recomputing either the way the compositor
+does would agree with the compositor however wrong it was.
+
+**The first version of the fixture could not be read at all**, and the
+reason is worth keeping: it popped the menu at the anchor label's own
+top-left and then looked for the label's text, which the menu was now
+drawn over. The instrument covered its own reference mark. Popping two
+rows lower and comparing across two composes fixed it.
+
+#### And a third case, because the first two cannot see the identity half
+
+With one window the shown window and the compositor's own are the same
+object, so a branch asking about either passes. The third case builds the
+Compositor on the window that is NOT shown -- which is what a real tab
+switch produces, since an application constructs it once and
+`current_window()` moves afterwards -- and requires the popup to follow
+the window that is. Each half has its own sabotage entry, and each was
+proved to redden its own check.
 
 ### 8.401 The check that joins the two halves (2026-10-08)
 

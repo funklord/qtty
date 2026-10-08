@@ -6045,3 +6045,25 @@ find = "\t\tif (pending_.size() <= kSequenceCap) return -1;  // still arriving"
 into = "\t\treturn -1;  // still arriving"
 count = 1
 check = "a CSI the parser abandons is given up on rather than held"
+
+[[sabotage]]
+# The tab strip dropped from a popup's offset. The root is drawn a row
+# lower and the popup is not, so a menu opens over the widget it was
+# anchored at rather than beside it.
+name = "a popup forgets the tab strip again"
+file = "src/runtime/compositor.cpp"
+find = "\t\tconst QPoint origin = in_root ? anchor + base_at : anchor;"
+into = "\t\tconst QPoint origin = in_root\n\t\t    ? anchor - QPoint(root_.scroll.x() * cw, root_.scroll.y() * ch)\n\t\t    : anchor;"
+count = 1
+check = "the tab strip moves a popup anchored in the root down with"
+
+[[sabotage]]
+# 8.101's defect in the popup branch: asking about the window the
+# compositor was constructed with rather than the one being shown, so a
+# popup opened from a second tab gets no compensation at all.
+name = "a popup asks about win_ rather than the shown window"
+file = "src/runtime/compositor.cpp"
+find = "\t\t    || pop->parentWidget()->window() == base;"
+into = "\t\t    || pop->parentWidget()->window() == win_;"
+count = 1
+check = "it follows the window being SHOWN rather than the one the"
