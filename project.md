@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2090 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2092 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18181,6 +18181,63 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.394 The same framing fault, one branch over (2026-10-08)
+
+**8.392's fix reached one of two copies, and nothing connected them.**
+ESC followed by a UTF-8 lead is Alt held with a non-ASCII key, and that
+branch computed the character's length from the lead exactly as the plain
+path did -- and took the bytes after it on trust exactly as the plain path
+did. Correcting the plain path on the same day left the Alt path wrong:
+
+    ESC 0xC3 ESC [ A      3 keys, the Up arrow lost to a U+FFFD and
+                          then '[' and 'A' arriving as text
+    after                 2 keys: Escape, then Up
+
+So the fix went in, the check passed, the arms were green, and **the
+identical fault sat one branch away**. Section 8.36 recorded this shape --
+the same rule implemented twice -- before either of these existed.
+
+**One implementation now, not two guards.** `utf8_span()` answers how
+many bytes the character at an offset occupies: its length when the lead
+and every continuation are present and well-formed, 0 when the lead is
+not a lead or a continuation is not one, and -1 when the sequence is
+incomplete. Both paths call it, and the twenty-two lines 8.392 added to
+the plain path are gone with it.
+
+**Two keys rather than one is the right answer, not a concession.** A
+malformed lead after the ESC leaves the ESC as an `Escape` -- the user did
+send that byte, and it is the rule the ESC-ESC case above already follows
+-- and the byte goes to the plain path, which drops it. What must not
+appear is `[` or `A` as text, which is what consuming the escape produced.
+
+#### The refactor broke three anchors, which is the harness working
+
+Folding two copies into one invalidated three entries at once: my own from
+8.392, and two that predate it --
+
+    a four-byte Alt character is read as three
+    a split Alt character is decoded before it has arrived
+
+`make sabotage-check` named all three before anything was committed. Both
+older entries defend properties that still hold and now live in the
+helper, so the anchors moved there rather than the entries being retired.
+
+**One of them had to be re-aimed rather than relocated**, which is worth
+the sentence: "a split Alt character is decoded before it has arrived"
+used to delete the `pending_.size() < 1 + len` test, and the helper's
+equivalent is `if (at + k >= buf.size()) return -1`. Deleting THAT would
+read past the end of the buffer -- a sabotage that is undefined behaviour
+rather than a wrong answer, which tests the sanitizer instead of the
+check. It returns 0 instead, so an incomplete sequence is treated as
+malformed and the check reddens on a defined path.
+
+**And this is the argument for the harness that nothing else makes.** A
+refactor that unified two implementations is exactly the change most
+likely to leave a check pointing at code that no longer exists, passing
+for ever, and `sabotage-check` is a gate over anchors rather than over
+behaviour -- so it is the only part of `make check` that could have
+noticed. It cost one command and found three.
+
 ### 8.393 A paste's end marker, split at its ESC (2026-10-08)
 
 **Found while writing a comment, which is the only reason it was found at
@@ -18255,7 +18312,10 @@ two characters in the document, arriving from a byte nobody sent on
 purpose, with the keystroke the user did send lost.
 
 The fix checks that each byte after the lead is a continuation
-(`0x80..0xBF`) and, where one is not, drops the lead alone. Checked as
+(`0x80..0xBF`) and, where one is not, drops the lead alone. **It reached
+one of two copies, which 8.394 records**: the Alt path computed the same
+length from the same lead and took the same bytes on trust, and there is
+one `utf8_span()` now rather than two guards. Checked as
 the bytes arrive rather than after waiting for `len` of them, so a lead
 followed by an escape resolves at once instead of holding that escape
 until a sequence that will never complete does. The control is a

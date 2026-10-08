@@ -1608,6 +1608,37 @@ int suite_backend() {
 	feed("\033[8;24;80t");
 	CHECK(rec.resizes.size() == 1 && rec.resizes[0] == QSize(80, 24),
 	      "CSI 8 t is a resize report, columns from the second field");
+	// AND THE SAME FAULT IN THE ALT PATH, which is the same rule
+	// implemented twice. ESC then a UTF-8 lead is Alt held with a
+	// non-ASCII key, and that branch computes the length from the lead
+	// exactly as the plain path does -- and took the bytes after it on
+	// trust exactly as the plain path did, so the fix for one did not
+	// reach the other.
+	//
+	// ESC, 0xC3, then ESC [ A. The Up arrow must still arrive, and the
+	// malformed Alt chord must not eat its escape.
+	feed(QByteArray("\033\xC3") + "\033[A");
+	printf("info: Alt + a bad lead then Up -> %lld key(s), first qt_key %d\n",
+	       (long long)rec.keys.size(),
+	       rec.keys.isEmpty() ? -1 : rec.keys[0].qt_key);
+	// TWO keys, and that is the right answer rather than a concession: the
+	// ESC is a keypress the user sent, so it arrives as Escape -- which is
+	// the rule the ESC-ESC case above already follows -- and the arrow
+	// behind the garbled byte arrives intact. What must NOT appear is '['
+	// or 'A' as text, which is what consuming the escape produced.
+	CHECK(rec.keys.size() == 2
+	      && rec.keys[0].qt_key == Qt::Key_Escape
+	      && rec.keys[1].qt_key == Qt::Key_Up,
+	      "a malformed lead after ESC leaves the Escape and the sequence "
+	      "behind it, so the Alt path frames a character as the plain one does");
+	// The control: Alt with a WELL-FORMED multi-byte character still
+	// arrives as that character with alt set.
+	feed(QByteArray("\033\xC3\xA9"));
+	CHECK(rec.keys.size() == 1 && rec.keys[0].alt
+	      && rec.keys[0].text == QString::fromUtf8("\xC3\xA9"),
+	      "while Alt with a well-formed multi-byte character still arrives "
+	      "as that character");
+
 	// AN END MARKER SPLIT AT ITS ESC. In paste mode the escape branch
 	// requires two bytes before it will parse, and falls through to the
 	// plain-byte path otherwise -- so an ESC that arrives alone is

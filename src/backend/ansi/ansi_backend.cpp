@@ -1898,6 +1898,37 @@ void AnsiBackend::read_input() {
 // that is refused, because the application acts on it and finds out later.
 const int kPasteMaxBytes = 4000000;
 
+// How many bytes the UTF-8 character at `at` occupies: its length when the
+// lead and every continuation are present and well-formed, 0 when the lead is
+// not a lead or a continuation is not one, and -1 when the sequence is
+// well-formed so far and incomplete.
+//
+// ONE copy, because there were two and that is how this fault survived being
+// fixed. The plain path and the Alt path -- ESC then a lead byte, which is Alt
+// held with a non-ASCII key -- each computed the length from the lead and took
+// the bytes after it on trust. The plain one was corrected on 2026-10-08 and
+// the Alt one was not, because nothing connected them: measured, ESC then 0xC3
+// then ESC [ A still produced three keys where one was sent. Section 8.36 is
+// the same shape, recorded before this one existed.
+//
+// Framing rather than validation: Qt will say what a malformed sequence means,
+// and the fault is consuming bytes that are not part of the character.
+static int utf8_span(const QByteArray &buf, int at) {
+	if (at >= buf.size()) return -1;
+	const unsigned char lead = static_cast<unsigned char>(buf[at]);
+	int len = 0;
+	if (lead < 0x80)                return 1;
+	else if ((lead & 0xE0) == 0xC0) len = 2;
+	else if ((lead & 0xF0) == 0xE0) len = 3;
+	else if ((lead & 0xF8) == 0xF0) len = 4;
+	else                            return 0;
+	for (int k = 1; k < len; ++k) {
+		if (at + k >= buf.size()) return -1;
+		if ((static_cast<unsigned char>(buf[at + k]) & 0xC0) != 0x80) return 0;
+	}
+	return len;
+}
+
 static constexpr int kSequenceCap = 4096;
 
 // A CSI is ESC [ , an optional private prefix, semicolon-separated decimal
@@ -2529,12 +2560,23 @@ bool AnsiBackend::decode_one() {
 		// the plain path below handles: ESC then a UTF-8 lead byte is Alt held
 		// with a non-ASCII key. Decoded as a sequence rather than as one byte,
 		// which is what made the plain path wrong.
-		const unsigned char alt = static_cast<unsigned char>(pending_[1]);
-		int len = 1;
-		if      ((alt & 0xE0) == 0xC0) len = 2;
-		else if ((alt & 0xF0) == 0xE0) len = 3;
-		else if ((alt & 0xF8) == 0xF0) len = 4;
-		if (pending_.size() < 1 + len) return false;      // still arriving
+		// Through utf8_span(), which is the one copy of this: a malformed
+		// lead after the ESC used to be taken on trust, so Alt with a
+		// garbled byte ate whatever followed -- measured, ESC 0xC3 ESC [ A
+		// gave three keys where one was sent.
+		//
+		// A lead that is not one leaves the ESC as an Escape and the byte to
+		// the plain path, which drops it. That is the ESC-ESC rule above
+		// applied to a second unusable second byte: the user did send an
+		// escape, and nothing here can say what the rest was meant to be.
+		const int span = utf8_span(pending_, 1);
+		if (span < 0) return false;                       // still arriving
+		if (span == 0) {
+			pending_.remove(0, 1);
+			sink_->on_key({Qt::Key_Escape, QString(), false, false, false});
+			return true;
+		}
+		const int len = span;
 		KeyEvent k;
 		k.alt = true;
 		k.text = QString::fromUtf8(pending_.mid(1, len));
@@ -2555,39 +2597,19 @@ bool AnsiBackend::decode_one() {
 	// terminal splits input at any byte, and a read() boundary in the middle
 	// of a character is ordinary rather than exceptional.
 	if (c >= 0x80) {
-		int len = 0;
-		if      ((c & 0xE0) == 0xC0) len = 2;
-		else if ((c & 0xF0) == 0xE0) len = 3;
-		else if ((c & 0xF8) == 0xF0) len = 4;
+		// Through utf8_span() as the Alt path above does, so the framing
+		// rule has one implementation rather than two that drift.
+		const int len = utf8_span(pending_, 0);
+		if (len < 0) return false;                    // still arriving
 		if (len == 0) {
-			// A continuation byte with no lead, or an invalid lead. Dropped
-			// rather than delivered: it is not a character, and passing it on
-			// as Latin-1 is what this replaced.
+			// A continuation byte with no lead, an invalid lead, or a lead
+			// whose continuations are not continuations. Dropped rather than
+			// delivered: it is not a character, and passing it on as Latin-1
+			// is what this replaced. Only the lead goes -- consuming what
+			// follows is what ate an escape sequence behind it.
 			pending_.remove(0, 1);
 			return true;
 		}
-		// THE CONTINUATIONS, CHECKED BEFORE THEY ARE CONSUMED. The length
-		// comes from the lead byte and the bytes after it were taken on
-		// trust, so a malformed lead ate whatever followed: measured,
-		// 0xC3 followed by ESC [ A -- the Up arrow -- produced THREE keys
-		// rather than one, a U+FFFD from fromUtf8("\xC3\x1b") and then '['
-		// and 'A' as text. A garbled byte therefore types two printable
-		// characters into the application, which in an editor is two
-		// characters in the document.
-		//
-		// This is framing rather than validation: Qt will happily tell us
-		// what a bad sequence means, and the fault is consuming bytes that
-		// are not part of the character. Checked as they arrive rather than
-		// after waiting for `len` of them, so a lead followed by an escape
-		// resolves at once instead of holding the escape until the sequence
-		// that will never complete does.
-		for (int k = 1; k < len && k < pending_.size(); ++k) {
-			if ((static_cast<unsigned char>(pending_[k]) & 0xC0) == 0x80)
-				continue;
-			pending_.remove(0, 1);               // the lead alone
-			return true;
-		}
-		if (pending_.size() < len) return false;      // still arriving
 		const QByteArray seq = pending_.left(len);
 		pending_.remove(0, len);
 		KeyEvent utf8;
