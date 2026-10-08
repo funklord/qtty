@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2120 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2122 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18220,6 +18220,82 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.411 Every kitty picture is gone after a Ctrl+Z, for ever (2026-10-08)
+
+**The lens came from 8.410 and from the title: every cache of what the
+TERMINAL is currently showing has to be invalidated when the terminal is
+handed over and taken back.** `read_winch()`'s handover block already
+restores two -- `last_cursor_` and `last_title_` -- and each of those was
+a measured defect. The uploads are the third member and were not in it.
+
+**kitty discards a transmitted image across the alt-screen switch.**
+Measured here, textually rather than by screenshot, so it needs no settle
+and runs on a loaded machine where `tool/screen-check` explicitly does
+not: a placement with `q=0` makes kitty answer for itself.
+
+    ESC[?1049h
+    ESC_Ga=t,i=9999,f=24,s=1,v=1,q=0;<one red pixel>ESC\
+      -> ESC_Gi=9999;OK
+
+    ESC[?1049l ESC[?1049h            the handover, as kLeave/kEnter do it
+    ESC_Ga=p,i=9999,p=1,q=0 ESC\
+      -> ESC_Gi=9999,p=1;ENOENT:Put command refers to non-existent
+                                image with id: 9999 and number: 0
+
+**The control is what makes that a finding rather than a guess**, because
+a placement of a never-placed image could be refused for a reason that has
+nothing to do with the screen. The same sequence with the two screen
+switches removed, everything else identical, answers `OK`. So the ENOENT
+is the handover, and the control could have failed the other way and did
+not. Run under `xvfb-run -a kitty -o close_on_child_death=yes`; the probe
+and its control are four fixed steps with every read bounded by a two
+second `select`.
+
+**What qtty does with that.** `wire_id_for()` finds the key, reports
+`minted == false`, and `present()` emits a placement with no transmission
+-- which is the whole point of upload-once and is right on every frame
+except the first after a handover. Nothing clears `wire_id_`: the
+compositor resets `prev_`, `prev_overlays_` and `live_overlay_ids_` on a
+handover, and none of those is the backend's map. So after one Ctrl+Z and
+`fg`, every kitty-protocol picture is absent from the screen and qtty
+never transmits it again -- for the rest of the run, exactly as the title
+was absent for the rest of the run before `last_title_` was restored.
+
+**It reaches the placeholder tier too**, which is the mode tmux gets: the
+placeholder CELLS are text and arrive fine, and they reference a virtual
+placement the terminal has dropped. A frame that looks entirely healthy on
+the wire shows nothing.
+
+#### The fix is the helper that already exists, in the block that already does this
+
+`forget_uploads()` hands the ids back and clears the map, so the next
+frame mints fresh ids and transmits. It was written for a cell-size change
+and is the same remedy for the same reason.
+
+**In BOTH places, because there are two routes and neither reaches the
+other's code.** `s_handovers` is bumped in `qtty_cont_handler()` and
+nowhere else, so `read_winch()`'s handover block fires for Ctrl+Z and
+never for a shell-out -- `suspend()` and `resume()` move no counter. So
+`resume()` carries its own call, exactly as it already carries its own
+copy of the title restore. Two routes, two copies.
+
+**The first version of this fix put one call in `read_winch()` and this
+entry claimed it covered both routes.** What disproved it was the check,
+written to confirm it: driven through `suspend()`/`resume()`, the frame
+after the handover carried no transmission, and reading `s_handovers`
+showed why. The title needed two checks for this reason and got them; this
+needed two and the first draft wrote one.
+
+**And the first draft of the check could not have caught anything**, which
+is the other half worth recording. It reused the `kt` backend two frames
+after that backend had already uploaded, so its "first" frame correctly
+carried no transmission -- a fixture asserting a first upload where no
+first upload was left to make. It builds its own backend now.
+
+**What it costs is one re-upload per picture per handover**, which is what
+the first frame after a handover pays anyway: `prev_` is reset, so that
+frame is a whole screen.
 
 ### 8.410 A scroll that ended and never sharpened (2026-10-08)
 

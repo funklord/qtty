@@ -442,6 +442,36 @@ void AnsiBackend::read_winch() {
 		// set_title() refuses when stdout is not one -- so there is nothing
 		// of its to put back.
 		if (!last_title_.isEmpty()) write_out(last_title_);
+		// AND THE TERMINAL'S COPY OF EVERY PICTURE, which went with the
+		// screen. Measured against kitty, which answers for itself when a
+		// placement carries q=0: a transmission replies OK, and the same id
+		// placed after ESC[?1049l ESC[?1049h replies ENOENT. The control is
+		// the same sequence without the two switches, which replies OK -- so
+		// it is the handover and not a quirk of placing an image that had no
+		// placement yet.
+		//
+		// wire_id_ is what makes upload-once work, and it is right on every
+		// frame except this one: the key is found, nothing is minted, and the
+		// frame places an id the terminal no longer holds. Nothing else
+		// clears it -- the compositor resets prev_, prev_overlays_ and
+		// live_overlay_ids_ on a handover, and none of those is this map --
+		// so one Ctrl+Z left every kitty picture off the screen for the rest
+		// of the run, which is exactly what the title did before the line
+		// above it. The placeholder tier too, and worse: the cells are text
+		// and arrive perfectly, referencing a virtual placement that is gone.
+		//
+		// It costs one re-upload per picture, on a frame that is already a
+		// whole screen because prev_ was reset.
+		//
+		// THIS COVERS ONE OF THE TWO ROUTES, and the first version of this
+		// comment claimed both. s_handovers is bumped in
+		// qtty_cont_handler() and nowhere else, so this block fires for
+		// Ctrl+Z and never for a shell-out: suspend() and resume() move no
+		// counter. resume() therefore carries its own call, exactly as it
+		// carries its own copy of the title restore -- and the check that
+		// drove a handover through suspend()/resume() is what disproved the
+		// claim, having been written to confirm it.
+		forget_uploads();
 	}
 
 	winsize ws{};
@@ -947,6 +977,14 @@ void AnsiBackend::resume() {
 	// application makes, which is the only thing it can see.
 	if (!first_resume_) ++handovers_;
 	if (!first_resume_ && !last_title_.isEmpty()) write_out(last_title_);
+	// And the terminal's copy of every picture, for the same reason and by
+	// the same argument as the title above: kitty drops a transmitted image
+	// when the alternate screen goes, measured with a q=0 placement that
+	// answers OK before the switch and ENOENT after. read_winch() does this
+	// for the Ctrl+Z route; a shell-out reaches neither that block nor any
+	// counter, so the call belongs here as well -- two routes, two copies,
+	// which is what the title already needed.
+	if (!first_resume_) forget_uploads();
 	first_resume_ = false;
 }
 

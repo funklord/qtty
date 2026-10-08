@@ -3174,6 +3174,74 @@ int suite_backend() {
 					CHECK(kmoved.contains("\033_G"),
 					      "a moved kitty placement is NOT degraded, having a handle");
 
+					// AND THE HANDOVER, which upload-once cannot survive on
+					// its own. kitty drops a transmitted image when the
+					// alternate screen goes: measured with a placement
+					// carrying q=0, which answers OK before ESC[?1049l
+					// ESC[?1049h and ENOENT after, against a control with the
+					// two switches removed that answers OK. So the first
+					// frame back places an id the terminal no longer holds,
+					// and wire_id_ -- right on every other frame -- makes
+					// sure nothing ever transmits it again. One Ctrl+Z left
+					// every kitty picture off the screen for the rest of the
+					// run, as the title did before read_winch() restored it.
+					//
+					// A FRESH BACKEND, because the first frame has to be a
+					// first upload. The first draft of this reused `kt`,
+					// which had already transmitted two frames above, so its
+					// opening frame correctly carried no transmission and the
+					// check was measuring nothing of what it names.
+					//
+					// a=T is the transmission in both encoders -- the tile
+					// and the virtual placement -- and a placement re-using
+					// an upload carries no payload at all, so the presence of
+					// that key is exactly the question.
+					fflush(stdout);
+					::dup2(slave, 1);
+					AnsiBackend kh;
+					Recorder kh_rec;
+					kh.set_event_sink(&kh_rec);
+					const auto kh_sent = [&] {
+						f.images[0].cell_rect = QRect(0, 0, 4, 2);
+						while (::read(master, drain, sizeof(drain)) > 0) { }
+						kh.present(f, QRegion());
+						QByteArray got;
+						ssize_t n;
+						while ((n = ::read(master, drain, sizeof(drain))) > 0)
+							got.append(drain, int(n));
+						return got.contains("a=T");
+					};
+					const bool first_up = kh_sent();
+					const bool second_up = kh_sent();
+					// The shell-out route: suspend() and resume() by name,
+					// which is what backend.h says they are for.
+					kh.suspend();
+					kh.resume();
+					const bool after_shell = kh_sent();
+					// And the OTHER route, which is a second check for the
+					// reason the title's is: Ctrl+Z never calls resume(), and
+					// s_handovers moves only in the SIGCONT handler -- so a
+					// fix living in one place covers one route and nothing
+					// says which. Driving the handover through
+					// suspend()/resume() is what caught that here, having
+					// been written to confirm the opposite.
+					::raise(SIGCONT);
+					for (int i = 0; i < 50; ++i) QCoreApplication::processEvents();
+					const bool after_stop = kh_sent();
+					fflush(stdout);
+					::dup2(keep_out, 1);
+					printf("info: a kitty picture transmitted %d, %d on the"
+					       " frame after, %d after a shell-out and %d after a"
+					       " SIGCONT\n", int(first_up), int(second_up),
+					       int(after_shell), int(after_stop));
+					CHECK(first_up && !second_up && after_shell,
+					      "a picture is transmitted once, not again while the "
+					      "terminal still holds it, and again after a "
+					      "shell-out it did not survive");
+					CHECK(after_stop,
+					      "and again after a SIGCONT, which is the route a "
+					      "Ctrl+Z actually takes and reaches other code");
+
 					// DEC 2026, and the pair that matters: the bracket must
 					// open AND close, and the claim in capabilities() must
 					// match what actually goes out. A field saying

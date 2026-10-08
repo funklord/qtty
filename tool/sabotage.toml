@@ -6156,3 +6156,19 @@ find = "\t           || !overlays.isEmpty() || overlays_retired || deferred) {"
 into = "\t           || !overlays.isEmpty() || overlays_retired) {"
 count = 1
 check = "a backend that still owes the screen something is handed a frame"
+
+[[sabotage]]
+name = "a shell-out leaves the upload map claiming the terminal still holds them"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (!first_resume_) forget_uploads();"
+into = "\tif (false) forget_uploads();"
+count = 1
+check = "and again after a shell-out it did not survive"
+
+[[sabotage]]
+name = "a SIGCONT leaves the upload map claiming the terminal still holds them"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tforget_uploads();\n\t}"
+into = "\t}"
+count = 1
+check = "and again after a SIGCONT, which is the route a Ctrl+Z actually takes"
