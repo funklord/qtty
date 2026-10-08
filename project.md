@@ -18376,6 +18376,27 @@ sitting beside it. A popup is MOVED to where it is drawn, so the hit test
 agreed with the picture throughout -- the click landed on the right item
 of a menu in the wrong place, which is why nothing caught it.
 
+**And here is what a user saw**, captured through `qtty-replay` rather
+than through the suite -- `window`, `key alt+f`, `frame` -- with the fix
+reverted for one build and then restored:
+
+    before                          after
+    [replay] second                 [replay] second
+      /-------------------\            File   Edit
+    [O| Clear the field   |--       [O/-------------------\--
+     [\-------------------/   ]      [| Clear the field   |  ]
+                                      \-------------------/
+
+**The menu bar is gone in the left-hand picture.** A menu dropped from
+`File` was drawn one row too high and painted over the bar it had dropped
+from -- so the consequence is not a menu slightly out of place, it is the
+menu bar disappearing the moment a second window exists. The box drawing
+is transliterated here; the frames themselves use the box-drawing glyphs.
+
+**Two pictures are worth the two builds**, and the reason is this tree's
+own: a row number in a fixture says WHERE, and a frame says what a person
+would have reported.
+
 **And `in_root` asked about `win_` rather than the window being shown.**
 That is 8.101's defect, which this file records as fixed for the priority
 pass, for the scroll and for the drawing -- *"right while nothing else
