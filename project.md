@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2129 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2130 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -2720,13 +2720,32 @@ and the numbers are in the comments -- so a fixture pass here would
 mostly re-measure what is already written down, which is the one thing
 this sweep can say and a fresh lens cannot.
 
-**One case is left unsettled rather than answered: a zero-LENGTH line.**
-The half-cell test gives it one cell, and whether that is right depends
-on the pen: Qt paints a single pixel for `drawLine(p, p)` under a square
-or round cap and nothing under a flat one, so "agrees with the pixel
-rendering" has two answers. Nothing reaches it by accident the way an
-empty `fillRect()` does, which `fill_rectf()` already covers, so it is
-recorded rather than chased.
+**~~One case is left unsettled~~ -- measured the same day, and the
+premise for leaving it open was wrong.** A zero-LENGTH line: the
+half-cell test gives it one cell, and this said whether that was right
+depended on the pen, Qt painting a pixel under a square or round cap and
+nothing under a flat one. **Measured, Qt lights one pixel either way** --
+a claim about Qt written from memory rather than read. So both engines
+agree under both caps, which is what `fill_rectf()` already says should
+happen: a one-pixel extent covers a pixel somebody asked for, and an
+empty one does not.
+
+It is pinned as a RELATIONSHIP rather than a count -- a cell is marked
+exactly when Qt lights a pixel, under either cap -- so a Qt that changes
+its mind does not redden it and a divergence between the two engines
+does. **Its sabotage is the plausible wrong fix**: a guard refusing a
+degenerate line, which is what an empty `fillRect()` correctly gets and
+this correctly does not.
+
+**And the edit that added it tripped the substring-anchor hazard this
+document already carries.** The insertion anchored on
+`\tQtty::set_font(QString(), 0);`, which is a substring of the real line
+at two tabs -- so the block went in between that line's leading tabs,
+splitting them. The guard that catches this is the match COUNT, and it
+was written `>= 1` rather than `== 1`, which is the one spelling that
+cannot catch it. **`make style` caught it instead**, naming the
+indentation of every line of the block, which is a gate reporting a
+genuine fault rather than a stylistic one.
 
 **Re-run the sabotage for checks NEAR what you changed, not only for the
 check you added.** A fix can make a neighbouring check stop

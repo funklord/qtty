@@ -3711,6 +3711,78 @@ int suite_render(bool record) {
 	}
 
 
+	// A ZERO-LENGTH LINE, which is the one member of the thin-shape sweep
+	// that reading could not settle -- and the reason it could not is that
+	// the answer lives in Qt rather than here.
+	//
+	// ASSERTED AS A RELATIONSHIP, not as a count. The standard fill_rectf()
+	// states for this whole family is "the cell rendering agreeing with the
+	// pixel rendering it is supposed to resolve", so the question is not how
+	// many cells a degenerate line marks but whether it marks one exactly
+	// when Qt lights a pixel for it. A pinned count would go stale the day
+	// Qt changes its mind; this fails only if the two engines diverge, which
+	// is the thing worth hearing about.
+	//
+	// BOTH CAPS, because the first version of this record claimed Qt paints
+	// nothing for a zero-length line under a flat cap and that the answer
+	// therefore depended on the pen. Measured, it lights one pixel either
+	// way -- a claim about Qt written from memory rather than read, which is
+	// what the measurement is for.
+	//
+	// The plausible wrong fix is the sabotage: a guard that returns early
+	// for a degenerate line, which is what an empty fillRect() correctly
+	// gets and this correctly does not, since a pixel was covered.
+	{
+		const QPointF at(1.0 * GridMetrics::cw() + 2.0,
+		                 2.0 * GridMetrics::ch() + 3.0);
+		const auto lit_pixels = [&](Qt::PenCapStyle cap) {
+			QImage px(GridMetrics::cells(6, 5), QImage::Format_ARGB32);
+			px.fill(Qt::white);
+			QPainter q(&px);
+			QPen pen(Qt::black);
+			pen.setCapStyle(cap);
+			q.setPen(pen);
+			q.drawLine(at, at);
+			q.end();
+			int lit = 0;
+			for (int y = 0; y < px.height(); ++y)
+				for (int x = 0; x < px.width(); ++x)
+					if (px.pixelColor(x, y) != QColor(Qt::white)) ++lit;
+			return lit;
+		};
+		const auto marked_cells = [&](Qt::PenCapStyle cap) {
+			Qtty::CellBuffer b(6, 5);
+			{
+				Qtty::CellPaintDevice dev(b);
+				QPainter p2(&dev);
+				QPen pen(Qt::black);
+				pen.setCapStyle(cap);
+				p2.setPen(pen);
+				p2.drawLine(at, at);
+			}
+			QString t = b.to_text();
+			t.remove(QLatin1Char('\n'));
+			t.remove(QLatin1Char(' '));
+			return int(t.size());
+		};
+		const int sq_px = lit_pixels(Qt::SquareCap);
+		const int sq_cells = marked_cells(Qt::SquareCap);
+		const int fl_px = lit_pixels(Qt::FlatCap);
+		const int fl_cells = marked_cells(Qt::FlatCap);
+		printf("info: a zero-length line lights %d px and marks %d cell(s)"
+		       " with a square cap, %d and %d with a flat one\n",
+		       sq_px, sq_cells, fl_px, fl_cells);
+		if ((sq_px > 0) == (sq_cells > 0) && (fl_px > 0) == (fl_cells > 0))
+			printf("PASS: a zero-length line marks a cell exactly when Qt "
+			       "lights a pixel for it, under either cap\n");
+		else {
+			printf("FAIL: a zero-length line marks a cell exactly when Qt "
+			       "lights a pixel for it, under either cap\n");
+			++r;
+		}
+	}
+
+
 	// ---- which font the grid is laid on ------------------------------------
 	//
 	// The family and the size were hardcoded, so an application that wanted

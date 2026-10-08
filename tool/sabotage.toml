@@ -6228,3 +6228,11 @@ find = "\t\t\tif (!in_paste_) return true;"
 into = "\t\t\tif (false) return true;"
 count = 1
 check = "and reports no paste at all, a close with no open being nothing"
+
+[[sabotage]]
+name = "a degenerate line is refused the way an empty rect is"
+file = "src/render/cell_paint.cpp"
+find = "\tconst QColor pi = pen_ink();\n\tif (pi.alpha() == 0) return;"
+into = "\tconst QColor pi = pen_ink();\n\tif (pi.alpha() == 0) return;\n\tif (l.p1() == l.p2()) return;"
+count = 1
+check = "a zero-length line marks a cell exactly when Qt lights a pixel"
