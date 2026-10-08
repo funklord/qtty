@@ -13902,6 +13902,14 @@ int suite_router() {
 	// and asserted on what the application receives, not on what the
 	// widget looks like.
 	{
+		// Captured before the first dialog exists, for the check at the end
+		// of this section: a QFileDialog writes its state on destruction, so
+		// the question is whether anything in the user's config moved while
+		// three of them came and went.
+		const QDateTime conf_before =
+		    QFileInfo(QDir::homePath()
+		              + QStringLiteral("/.config/QtProject.conf"))
+		        .lastModified();
 		QTemporaryDir tmp;
 		if (!tmp.isValid()) {
 			printf("FAIL: could not make a directory for the file dialog\n");
@@ -14014,6 +14022,43 @@ int suite_router() {
 			      "guide says you do not need really is not needed");
 			GridGuard::reset();
 		}
+
+		// AND NONE OF THAT TOUCHED THE USER'S SETTINGS, which it did until
+		// 2026-10-08. A QFileDialog saves its history, its last directory,
+		// its sidebar width and its column layout when it is DESTROYED, and
+		// three of them have been destroyed by the time this line runs. The
+		// account's ~/.config/QtProject.conf carried five
+		// `file:///tmp/qtty-tests-*` entries and a lastVisited pointing at
+		// one of them -- every one a directory this fixture had already
+		// deleted -- so every Qt application on the account opened its file
+		// dialog in a directory that was gone.
+		//
+		// main() redirects XDG_CONFIG_HOME into a QTemporaryDir for the run;
+		// this is the half that says so. Two conjuncts, because either alone
+		// passes for the wrong reason: the location being redirected shows
+		// the mechanism is in effect, and the real file being untouched is
+		// the property -- and a dialog that silently stopped saving anything
+		// would satisfy the second while the first still failed.
+		const QString real_conf = QDir::homePath()
+		    + QStringLiteral("/.config/QtProject.conf");
+		const QFileInfo conf_now(real_conf);
+		const bool redirected =
+		    !QStandardPaths::writableLocation(
+		         QStandardPaths::GenericConfigLocation)
+		         .startsWith(QDir::homePath() + QStringLiteral("/.config"));
+		printf("info: Qt's config location is %s; the user's QtProject.conf "
+		       "%s\n",
+		       qPrintable(QStandardPaths::writableLocation(
+		           QStandardPaths::GenericConfigLocation)),
+		       conf_now.exists()
+		           ? qPrintable(QStringLiteral("last changed %1")
+		                            .arg(conf_now.lastModified()
+		                                     .toString(Qt::ISODate)))
+		           : "does not exist");
+		CHECK(redirected && conf_now.lastModified() == conf_before,
+		      "a run that opens three file dialogs leaves the user's Qt "
+		      "settings alone, the suite's own config location being a "
+		      "scratch directory for the length of the run");
 	}
 
 	// ---- F10 into the menu bar -------------------------------------------

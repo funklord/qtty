@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2117 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2118 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18210,6 +18210,98 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.409 The suite was writing into the user's Qt settings (2026-10-08)
+
+**The same lens as 8.408, pointed one directory further out: after /tmp,
+look in $HOME.** What was there:
+
+    ~/.config/QtProject.conf, written by this suite at 17:54
+
+    [FileDialog]
+    history=file:///tmp/qtty-tests-cMCbFH, file:///tmp/qtty-tests-PThTTd,
+            file:///tmp/qtty-tests-fydvKW, ...
+    lastVisited=file:///tmp/qtty-tests-wWLNWd
+    sidebarWidth=130
+    viewMode=Detail
+
+**Every path in it is a `QTemporaryDir` the file-dialog fixture made and
+then deleted.** So the account's Qt applications were left with a dialog
+history of five directories that no longer exist and a `lastVisited`
+pointing at one of them: a person opening a file dialog in any Qt program
+on this account started in a directory that was gone.
+
+**The mechanism is one line of Qt nobody had to write.** A `QFileDialog`
+saves its history, its last directory, its sidebar width and its column
+layout **when it is destroyed** -- so a fixture that only ever opens one
+inside a scratch directory still reaches out of the tree, and the
+`suite_router` section that opens three of them wrote three times.
+
+#### The fix is `XDG_CONFIG_HOME`, and the alternatives are worse
+
+`QStandardPaths::setTestModeEnabled()` is the Qt-shaped answer and it puts
+the same files under `~/.qttest`, which is still the user's home.
+`QSettings::setPath()` covers `QSettings` and not everything else Qt reads
+a config location for. A temporary directory exported as
+`XDG_CONFIG_HOME` before the `QApplication` exists covers all of it and
+leaves nothing behind.
+
+**And it is a local in `main()` rather than a leaked static**, which is
+8.408's lesson applied the same afternoon: a `QTemporaryDir` removes its
+tree in its DESTRUCTOR, so it has to be an object that gets destroyed.
+`main()` returning destroys this one, and an abnormal exit leaves one
+directory -- the same honest limit the screen file now carries.
+
+#### No sabotage entry, deliberately, and it is the first of those
+
+**The only edit that reddens this check is one that lets the suite write
+into a real home directory**, which is the thing the check exists to
+prevent. An entry doing that would dirty somebody's `~/.config` on every
+full sweep, and a spec file that damages something outside the tree to
+make a point is worse than a check proved once by hand.
+
+So it was proved by hand, and the measurement is the proof:
+
+    redirect on    Qt's config location is /tmp/qt_temp-lpNQXm
+                   the user's QtProject.conf last changed 17:54:24
+    redirect off   Qt's config location is /home/claude/.config
+                   the user's QtProject.conf last changed 18:18:03
+                   FAIL: a run that opens three file dialogs leaves the
+                         user's Qt settings alone
+
+-- the file written DURING the run, with two `qtty-tests` paths back in it.
+The source was restored, and the file was removed rather than put back:
+every line in it was dialog state this suite had created, so there was
+nothing of anybody's to preserve.
+
+#### The check has two conjuncts because either alone passes wrongly
+
+The location being redirected shows the mechanism is in effect; the user's
+own file being untouched is the property. A dialog that silently stopped
+saving anything would satisfy the second while the first failed, and a
+redirect that pointed somewhere harmless but unreal would satisfy the
+first while the second passed for no reason. The sabotage removes the
+`qputenv` and the second conjunct goes red.
+
+#### Three findings in a row from the same instrument
+
+16,740 temp files, one stray fixture directory from a run killed three
+weeks ago, and the user's config. **None of the three was reachable by
+reading the source**, and all three came from the instruction in
+`running-code.md` to look after a run rather than only before one --
+which was added to that file this morning for a different reason.
+
+What generalises is not "check /tmp". It is that **a test suite's
+footprint is an artifact like any other**, and the question *what did this
+leave outside the tree* has a different answer from *what does the code
+say it writes*. The second was already documented in the comment above the
+screen file; the first had never been asked.
+
+**Left alone deliberately**: an empty `~/.config/qtty/` dating from
+2026-09-06, which nothing in the tree writes to -- `QSettings` appears
+nowhere in it and only the tray tool names an application at all. An
+empty directory is not worth a delete decision somebody else may want to
+re-take.
 
 ### 8.408 16,740 files in /tmp, one per process ever run (2026-10-08)
 

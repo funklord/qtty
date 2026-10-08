@@ -64,6 +64,41 @@ int main(int argc, char **argv) {
 	}
 
 	Qtty::prepare_environment();
+
+	// THE SUITE'S SETTINGS GO IN A SCRATCH DIRECTORY, NOT THE USER'S, and
+	// until this they went in the user's. Measured 2026-10-08 in
+	// ~/.config/QtProject.conf, written by this suite at 17:54 that day:
+	//
+	//     [FileDialog]
+	//     history=file:///tmp/qtty-tests-cMCbFH, file:///tmp/...
+	//     lastVisited=file:///tmp/qtty-tests-wWLNWd
+	//     sidebarWidth=130
+	//     viewMode=Detail
+	//
+	// Every one of those paths is a QTemporaryDir the file-dialog fixture
+	// made and deleted, so the account's Qt applications were left with a
+	// dialog history of five directories that no longer exist and a
+	// lastVisited pointing at one of them. A QFileDialog saves that state
+	// when it is DESTROYED, which is why a fixture that only ever opens one
+	// in a scratch directory still reaches out of the tree.
+	//
+	// XDG_CONFIG_HOME rather than QStandardPaths::setTestModeEnabled(),
+	// which puts the same files under ~/.qttest and is still the user's
+	// home; and rather than QSettings::setPath(), which covers QSettings
+	// and not everything else Qt reads a config location for.
+	//
+	// A local in main() rather than a leaked static, which is the lesson
+	// from the screen file next door (section 8.408): a QTemporaryDir
+	// removes its tree in its DESTRUCTOR, so it has to be an object that is
+	// destroyed. main() returning destroys this one; an abnormal exit
+	// leaves one directory, which is the same honest limit.
+	QTemporaryDir settings_home;
+	if (settings_home.isValid())
+		qputenv("XDG_CONFIG_HOME", QFile::encodeName(settings_home.path()));
+	else
+		printf("info: no scratch config directory, so this run may write "
+		       "into the user's\n");
+
 	QApplication app(argc, argv);
 
 	// section 10.1 inertness gate runs BEFORE setup() by necessity.
