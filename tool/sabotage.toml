@@ -6284,3 +6284,11 @@ find = "\t\t\tconst bool inner = edge && r.height() >= 3 * ch;\n\t\t\treturn QRe
 into = "\t\t\tconst bool inner = false;\n\t\t\treturn QRect(rtl ? r.left() + edge + cw : r.left() + edge,"
 count = 1
 check = "and an editable combo's border has none either"
+
+[[sabotage]]
+name = "the decoder does the UTF-8 arithmetic itself, overlong forms and all"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tutf8.text = QString::fromUtf8(seq);"
+into = "\t\tutf8.text = len == 2 ? QString(QChar(((static_cast<unsigned char>(seq[0]) & 0x1F) << 6) | (static_cast<unsigned char>(seq[1]) & 0x3F))) : QString::fromUtf8(seq);"
+count = 1
+check = "an overlong UTF-8 form does not arrive as the character it encodes"

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2138 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2139 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18323,6 +18323,62 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.418 Fourteen odd input sequences, and the one that earned a check (2026-10-09)
+
+**0d's method pointed at the DECODER rather than at widgets**, which is
+the axis it had not been run on and the one this session's defects came
+from. Fed through the live backend and printed, not asserted:
+
+    C1 CSI as one byte 0x9b   the 0x9b dropped, 'A' arrives as a letter
+    CSI, 12-digit parameter   Up -- the overflow does not break it
+    CSI ? 1 $ y               nothing: a DECRPM reply, consumed
+    CSI 1:2:3 A               Up -- colon sub-parameters tolerated
+    SS3 with no final         nothing: incomplete, waits
+    ESC N                     Alt+N rather than SS2, which is the
+                              prefix convention every terminal uses
+    OSC ... BEL / OSC ... ST  nothing, both terminators
+    DCS, APC strings          nothing
+    lone UTF-8 continuation   nothing, dropped
+    CSI - 1 A                 nothing: not a parameter byte, discarded
+    ESC inside a CSI          Up -- abandons the first, decodes the
+                              second, as the abandon rule says
+    overlong UTF-8 C0 AF      two U+FFFD, and NOT '/'
+
+**No defect in fourteen.** Recorded so the next sweep picks another axis:
+the malformed-sequence family is swept, and what the decoder does instead
+is in the table.
+
+**The last row earned a permanent check**, because it is the only one
+where being wrong is a security property rather than a cosmetic one: C0
+AF is a forbidden two-byte encoding of `/`, and a decoder that accepts it
+smuggles a separator past a filter that looked for one. `utf8_span()`
+frames by the lead byte and does not reject overlong forms;
+`QString::fromUtf8` is what answers U+FFFD. The check therefore pins the
+combination and says so, and its sabotage is the plausible wrong
+implementation -- arithmetic in place of that call, which for these two
+bytes yields exactly 0x2F.
+
+#### Two instrument faults, and the second nearly cost five checks
+
+**The probe's byte lengths were typed by hand and six were one too
+long**, so it fed each literal's terminating NUL, which arrived as Ctrl+@
+and read as a finding in six rows. One was two too long and read PAST its
+literal, producing a phantom `'R'`. Lengths come from the literal now.
+That is 0d's own warning about a probe's bugs reading as findings, met
+twice in one probe.
+
+**And deleting the probe took five committed checks with it.** The slice
+ran from the probe's comment to the next section heading, and the probe
+sat BEFORE that heading rather than at the end of the function -- so
+everything between went too. What caught it was the sabotage run's
+baseline figure, 2133 where 2138 was expected; `count-check` would have
+refused the commit a step later. Recovered with `git checkout HEAD --`
+on a file whose only uncommitted content was minutes old and mine.
+
+**A slice needs both ends measured, not one end and a landmark.** The
+probe-removal code that worked earlier in this session asserted its span
+contained a string unique to the probe; this one asserted only the start.
 
 ### 8.417 A spin box ignored both flags its option carries (2026-10-09)
 

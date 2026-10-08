@@ -305,6 +305,29 @@ int suite_backend() {
 	feed("\033[16~");
 	CHECK(rec.keys.isEmpty(), "and 16~ is consumed without inventing a key");
 
+	// AN OVERLONG UTF-8 FORM MUST NOT BECOME THE CHARACTER IT ENCODES, and
+	// this is the one row of a fourteen-sequence sweep that earned a check.
+	// C0 AF is a two-byte encoding of '/', which the standard forbids
+	// because a shorter one exists -- and a decoder that accepts it smuggles
+	// a path separator past anything that filtered for one. The arithmetic a
+	// hand-rolled decoder would do, `(0xC0 & 0x1F) << 6 | (0xAF & 0x3F)`, is
+	// exactly 0x2F.
+	//
+	// utf8_span() frames by the lead byte and checks the continuations; it
+	// does NOT reject an overlong form, and nothing here claims it does.
+	// What upholds this is QString::fromUtf8, which answers U+FFFD -- so the
+	// check pins the COMBINATION, and the wrong implementation it guards
+	// against is somebody replacing that call with arithmetic of their own,
+	// which is what its sabotage does.
+	feed("\xc0\xaf");
+	const QString overlong = rec.keys.isEmpty() ? QString() : rec.keys[0].text;
+	printf("info: C0 AF arrived as %d key(s) carrying %d character(s)\n",
+	       int(rec.keys.size()), int(overlong.size()));
+	CHECK(!overlong.contains(QLatin1Char('/')),
+	      "an overlong UTF-8 form does not arrive as the character it "
+	      "encodes, so a filtered-for separator cannot be smuggled through "
+	      "the decoder");
+
 	// A HALF-RECEIVED KEY MUST NOT SURVIVE A HANDOVER, which is the
 	// staleness the title and the uploads already answer, asked of the INPUT
 	// side. pending_ holds whatever bytes have arrived of a sequence that is
