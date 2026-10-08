@@ -761,15 +761,22 @@ int suite_budget() {
 		FrameScheduler sched(&back, &comp, &win);
 		sched.render_now();
 
-		// 300 ms is three of the idle tick the scheduler starts in its
-		// constructor, which is the wakeup this relies on rather than a timer
-		// of its own.
+		// WAITED FOR RATHER THAN TIMED, because the wakeup is the 100 ms idle
+		// tick the scheduler starts in its constructor and a fixed window
+		// measures the machine as much as the library. Measured at load 12
+		// this saw two frames in 300 ms where the arithmetic says three, and
+		// the machine this runs on reaches load 170 with other work on it --
+		// so a window that is three ticks wide is one a loaded box can empty.
+		// A ceiling of two seconds keeps the failure a failure; the loop ends
+		// on the first frame, so a healthy run pays one tick.
 		back.owed = 50;
 		back.frames = 0;
-		QEventLoop owed;
-		QTimer::singleShot(300, &owed, &QEventLoop::quit);
-		owed.exec();
+		QElapsedTimer waited;
+		waited.start();
+		while (back.frames == 0 && waited.elapsed() < 2000)
+			QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
 		const int while_owed = back.frames;
+		const qint64 took = waited.elapsed();
 
 		back.owed = 0;
 		back.frames = 0;
@@ -778,9 +785,9 @@ int suite_budget() {
 		quiet.exec();
 		const int while_quiet = back.frames;
 
-		printf("info: a backend saying it is owed a frame was handed %d over"
-		       " 300 ms, and %d once it said it was owed none\n",
-		       while_owed, while_quiet);
+		printf("info: a backend saying it is owed a frame was handed %d after"
+		       " %lld ms, and %d over 300 ms once it said it was owed none\n",
+		       while_owed, qlonglong(took), while_quiet);
 		CHECK(while_owed > 0 && while_quiet == 0,
 		      "a backend that still owes the screen something is handed a "
 		      "frame although no cell changed, and is handed none once it "
