@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2130 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2136 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18323,6 +18323,111 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.417 A spin box ignored both flags its option carries (2026-10-09)
+
+**Found by 0d's method on configurations its candidate list does not
+name** -- render a widget nothing exercises, print what a terminal would
+show, and read it. Eight went in; three of them said something.
+
+    QSpinBox  setFrame(false)                      -> framed anyway
+    QSpinBox  setButtonSymbols(NoButtons)          -> arrows anyway
+    QComboBox setFrame(false)                      -> framed anyway
+
+`grid_style.cpp` never cast to `QStyleOptionSpinBox` or
+`QStyleOptionComboBox` at all, so neither `frame` nor `buttonSymbols`
+nor the combo's `frame` was ever read. **This is 0e's own next lens** --
+a branch that does not consult the flag its own option carries -- which
+had been swept for every `bool` in the ANSI backend and came up clean.
+It was not clean here.
+
+All three are ordinary requests. A table-cell editor asks for no frame; a
+compact form asks for either; and a buttonless spin box had **two cells
+taken out of its edit field** for arrows nobody asked for, because
+`SC_SpinBoxEditField` reserved `width - 4 * cw` unconditionally.
+
+#### The drawing and the hit test are derived from one pair of values
+
+Because the comment already in that arm records what a disagreement
+costs: an arrow drawn in a cell a click does not reach. `edge` and
+`arrows` are computed from the option in `subControlRect`, and the same
+two expressions decide the drawing -- so a frameless spin box moves its
+arrow one cell and the hit test moves with it. `SC_SpinBoxUp` and
+`SC_SpinBoxDown` answer a null rect when there are no buttons, which is
+what Qt's own styles do: a control that is not drawn is not one a click
+can reach, and a rect for it would be a cell swallowing a press meant
+for the text.
+
+#### The existing check caught the change, and its fixture was the thing wrong
+
+Two checks went red: the drawn arrow no longer sat in the cell the hit
+test named, in both directions. **The assertion was right and the fixture
+was not.** It built its option with `initFrom()`, which copies the rect,
+palette, state and direction and nothing a `QStyleOptionSpinBox` adds --
+those are set by the widget's own `initStyleOption()`, which is what Qt
+calls before hit-testing. And `frame` **defaults to false** on both
+options. So the drawing read the widget's real option and said framed,
+the hit test read a hand-built one and said not.
+
+**A field nothing reads cannot make a fixture unfaithful; honouring it
+can.** The fixture sets `frame` and `buttonSymbols` from the widget now,
+and the assertion holds unchanged.
+
+#### Two neighbouring sabotages stopped applying, and `--validate` said so
+
+Both sabotage the right-to-left mirror by dropping the `rtl ?` from a
+subControlRect line -- and those are the lines this change edited, so
+their anchors matched nothing. Re-anchored to the new spelling with the
+same intent. **That is the anchor decaying because the tree moved under
+it**, which is the hazard `evidence.md` names, and it was caught by the
+gate rather than by a run.
+
+#### One of the four sabotages was unprovable, and the mechanism is why
+
+The entry forcing the DRAWING to emit arrows whatever the option says
+left the check passing. Measured rather than puzzled over: with the
+arrows forced on and the rect honest, the row reads `[0         ]`; with
+the rect forced to reserve the two cells instead, it reads
+`[0       ▴▾]`. **The arrows were being erased, not skipped** -- the
+edit field, correctly widened over those cells when there are no
+buttons, paints over them.
+
+So a drawing-only regression here is invisible by construction, and the
+rect is the half that carries the behaviour. That entry was withdrawn and
+replaced with one that forces the RECT to reserve the cells, which the
+check does catch. **An entry the harness refuses is worse than none**,
+and the glyph test beside the null-rect assertion is the user-visible
+result rather than a guard on the drawing -- which the check now says in
+as many words.
+
+**And the fixture's first draft had a second fault the same run found.**
+It read row 1 of a widget one cell tall -- `setFixedSize(cw * 12, ch)` --
+where nothing is ever drawn, so "no arrows here" was true however the
+style behaved. Row 0 now.
+
+**A third was mine and the ASCII gate caught it**, which is worth the
+line because of how it nearly got past: the comment recording the
+measurement above quoted the two arrow glyphs as prose, and this tree
+allows Unicode inside a string literal and not outside one. What let it
+sit for two commands is that `make style` had been run as
+`make style 2>&1 | tail -1` with the next job chained behind `&&`, so
+its failure neither stopped anything nor printed. **That is this
+document's own rule about reducing a check's output before knowing it
+passed, in a command line rather than in a gate.**
+
+#### What the probe found and this does NOT fix
+
+A spin box's frame has **no horizontal runs at all** -- `┌` and `┐` with
+blanks between them, and the same for the bottom. The editable combo and
+the date-time edit share it; a plain `QLineEdit` and a non-editable combo
+are complete. The `──` that looked like a partial border was the arrow
+cells' own background, which the buttonless configuration removed.
+
+So it is a framed parent with a `QLineEdit` child, and the child's inset
+from the border is less than a cell. Recorded rather than guessed at: the
+mechanism is not established, and 8.416's lesson is that a comfortable
+explanation ends an investigation. The reduction is four lines of probe
+and it fires every time.
 
 ### 8.416 `make -n check` wrote the commit hook's receipt (2026-10-08)
 

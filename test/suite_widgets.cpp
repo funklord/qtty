@@ -2863,6 +2863,21 @@ int suite_widgets() {
 				co.initFrom(&cb);
 				co.rect = cb.rect();
 				co.subControls = QStyle::SC_All;
+				// AND THE FIELDS initFrom() DOES NOT CARRY. It copies the
+				// rect, the palette, the state and the direction, and
+				// nothing a QStyleOptionComboBox or SpinBox adds -- those
+				// are set by the widget's own initStyleOption(), which is
+				// what Qt calls before hit-testing. A hand-built option is
+				// therefore only as faithful as the lines that fill it,
+				// and `frame` DEFAULTS TO FALSE on both.
+				//
+				// It could not matter while the style ignored those fields.
+				// It does now that they are honoured, and this check caught
+				// the change: the drawing read the widget's real option and
+				// said framed, the hit test read this one and said not, and
+				// the arrow moved a cell between them. A field nothing reads
+				// cannot make a fixture unfaithful; honouring it can.
+				co.frame = cb.hasFrame();
 				const QRect ar = cb.style()->subControlRect(
 				    QStyle::CC_ComboBox, &co, QStyle::SC_ComboBoxArrow, &cb);
 				CHECK(arrow_drawn >= 0 && arrow_drawn == ar.left() / cw,
@@ -2870,6 +2885,33 @@ int suite_widgets() {
 				            " in the cell its hit test names"
 				          : "and a left-to-right combo box's arrow is drawn"
 				            " in the cell its hit test names");
+
+				// The combo's own `frame`, the third flag of this family.
+				// The arrow stays -- a combo with none would not read as a
+				// combo -- so only the border cell moves, and the drawing
+				// and the hit test move together or a click lands beside it.
+				QComboBox flat;
+				flat.addItems({QStringLiteral("alpha")});
+				flat.setFrame(false);
+				flat.setFixedSize(cw * 14, ch);
+				show(flat, 14, 2);
+				CellBuffer fb(14, 2);
+				render_once(flat, fb);
+				const QString frow = fb.to_text().split(QLatin1Char('\n')).value(0);
+				QStyleOptionComboBox fo;
+				fo.initFrom(&flat);
+				fo.rect = flat.rect();
+				fo.subControls = QStyle::SC_All;
+				fo.frame = flat.hasFrame();
+				const QRect far = flat.style()->subControlRect(
+				    QStyle::CC_ComboBox, &fo, QStyle::SC_ComboBoxArrow, &flat);
+				const int flat_arrow = frow.indexOf(QChar(0x25BE));
+				CHECK(!frow.contains(QChar(0x250C)) && flat_arrow >= 0
+				      && flat_arrow == far.left() / cw,
+				      rtl ? "and a right-to-left combo asked for no frame"
+				            " draws none, its arrow moving with the hit test"
+				          : "and a combo asked for no frame draws none, its"
+				            " arrow moving with the hit test");
 
 				QSpinBox sp;
 				sp.setFixedSize(cw * 12, ch);
@@ -2882,6 +2924,8 @@ int suite_widgets() {
 				so.initFrom(&sp);
 				so.rect = sp.rect();
 				so.subControls = QStyle::SC_All;
+				so.frame = sp.hasFrame();            // see the combo above
+				so.buttonSymbols = sp.buttonSymbols();
 				const QRect up = sp.style()->subControlRect(
 				    QStyle::CC_SpinBox, &so, QStyle::SC_SpinBoxUp, &sp);
 				CHECK(up_drawn >= 0 && up_drawn == up.left() / cw,
@@ -2889,6 +2933,86 @@ int suite_widgets() {
 				            " drawn in the cell its hit test names"
 				          : "and a left-to-right spin box's step-up arrow is"
 				            " drawn in the cell its hit test names");
+
+				// AND THE TWO CONFIGURATIONS THE OPTION CAN ASK FOR, which
+				// the style used to ignore: a spin box with no frame and one
+				// with no buttons. Both are ordinary -- a table-cell editor
+				// asks for the first, a compact form for either -- and both
+				// got a frame and a pair of arrows anyway, with two cells
+				// taken out of the edit field for arrows nobody asked for.
+				//
+				// The SAME relationship as above rather than a count of
+				// cells: the frame's absence moves the arrow one cell, so
+				// the drawing and the hit test have to move together or the
+				// arrow is in a cell a click cannot reach.
+				QSpinBox bare;
+				bare.setFrame(false);
+				bare.setFixedSize(cw * 12, ch);
+				show(bare, 12, 2);
+				CellBuffer bb(12, 2);
+				render_once(bare, bb);
+				const QString brow = bb.to_text().split(QLatin1Char('\n')).value(0);
+				QStyleOptionSpinBox bo;
+				bo.initFrom(&bare);
+				bo.rect = bare.rect();
+				bo.subControls = QStyle::SC_All;
+				bo.frame = bare.hasFrame();
+				bo.buttonSymbols = bare.buttonSymbols();
+				const QRect bup = bare.style()->subControlRect(
+				    QStyle::CC_SpinBox, &bo, QStyle::SC_SpinBoxUp, &bare);
+				const int bare_up = brow.indexOf(QChar(0x25B4));
+				CHECK(!brow.contains(QChar(0x250C)) && bare_up >= 0
+				      && bare_up == bup.left() / cw,
+				      rtl ? "and a right-to-left spin box asked for no frame"
+				            " draws none, its arrow moving with the hit test"
+				          : "and a spin box asked for no frame draws none,"
+				            " its arrow moving with the hit test");
+
+				QSpinBox quiet;
+				quiet.setButtonSymbols(QAbstractSpinBox::NoButtons);
+				quiet.setFixedSize(cw * 12, ch);
+				show(quiet, 12, 2);
+				CellBuffer qb(12, 2);
+				render_once(quiet, qb);
+				// ROW 0, not row 1. The widget is one cell tall --
+				// setFixedSize(cw * 12, ch) -- so the arrows would be drawn
+				// at c.top() + c.height() / 2, which is row 0. The first
+				// version of this read row 1, where nothing is ever drawn,
+				// so "no arrows here" was true however the style behaved:
+				// the sabotage forcing the arrows on left it passing, which
+				// is the one thing that target exists to find.
+				const QString qrow = qb.to_text().split(QLatin1Char('\n')).value(0);
+				QStyleOptionSpinBox qo;
+				qo.initFrom(&quiet);
+				qo.rect = quiet.rect();
+				qo.subControls = QStyle::SC_All;
+				qo.frame = quiet.hasFrame();
+				qo.buttonSymbols = quiet.buttonSymbols();
+				const QRect qup = quiet.style()->subControlRect(
+				    QStyle::CC_SpinBox, &qo, QStyle::SC_SpinBoxUp, &quiet);
+				// A null rect as well, which is what Qt's own styles answer:
+				// a control that is not drawn is not one a click can reach,
+				// and a rect for it would be a cell swallowing a press meant
+				// for the text.
+				//
+				// THE RECT IS THE HALF THAT CARRIES THIS, and the glyph test
+				// beside it is the user-visible result rather than a guard
+				// on the drawing. Measured: forcing the drawing to emit
+				// arrows while the rect still reserves nothing leaves this
+				// passing, because the edit field -- correctly widened over
+				// those cells when there are no buttons -- paints over them.
+				// Forcing the RECT to reserve them instead brings the arrows
+				// back in the two cells the field gave up, which is what
+				// says they were erased rather than never drawn. A
+				// drawing-only regression here
+				// is invisible by construction, and the entry that tried to
+				// prove one was withdrawn rather than kept as a green line.
+				CHECK(!qrow.contains(QChar(0x25B4)) && !qrow.contains(QChar(0x25BE))
+				      && qup.isNull(),
+				      rtl ? "and a right-to-left spin box asked for no buttons"
+				            " draws none and offers no cell to click"
+				          : "and a spin box asked for no buttons draws none"
+				            " and offers no cell to click");
 			}
 			QApplication::setLayoutDirection(Qt::LeftToRight);
 		}
@@ -8308,6 +8432,7 @@ int suite_widgets() {
 		      "terminal's cursor being what says where the typing goes");
 		GridGuard::reset();
 	}
+
 
 	return fails;
 }

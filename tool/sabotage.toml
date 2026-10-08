@@ -4867,8 +4867,8 @@ check = "a right-to-left scroll bar's thumb is where a click reaches it"
 # this control's original fault arriving by a new route. 8.284.
 name = "a right-to-left spin box's arrows are drawn where no click reaches"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\treturn cell_at(rtl ? r.left() + 2 * cw : r.right() + 1 - 3 * cw);"
-into = "\t\t\treturn cell_at(r.right() + 1 - 3 * cw);"
+find = "\t\t\treturn cell_at(rtl ? r.left() + edge + cw\n\t\t\t                   : r.right() + 1 - edge - 2 * cw);"
+into = "\t\t\treturn cell_at(r.right() + 1 - edge - 2 * cw);"
 count = 1
 check = "a right-to-left spin box's step-up arrow is drawn in the cell its hit test names"
 
@@ -5353,8 +5353,8 @@ check = "a ZWJ family of eight code points reaches its cell whole"
 # family's recurring failure. 8.304.
 name = "a right-to-left combo box's arrow is drawn where no click reaches"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\treturn QRect(rtl ? r.left() + cw : r.right() + 1 - 2 * cw,"
-into = "\t\t\treturn QRect(r.right() + 1 - 2 * cw,"
+find = "\t\t\treturn QRect(rtl ? r.left() + edge : r.right() + 1 - edge - cw,"
+into = "\t\t\treturn QRect(r.right() + 1 - edge - cw,"
 count = 1
 check = "a right-to-left combo box's arrow is drawn in the cell its hit test names"
 
@@ -6236,3 +6236,35 @@ find = "\tconst QColor pi = pen_ink();\n\tif (pi.alpha() == 0) return;"
 into = "\tconst QColor pi = pen_ink();\n\tif (pi.alpha() == 0) return;\n\tif (l.p1() == l.p2()) return;"
 count = 1
 check = "a zero-length line marks a cell exactly when Qt lights a pixel"
+
+[[sabotage]]
+name = "a spin box draws its frame whatever the option says"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\tconst bool framed = !sb || sb->frame;"
+into = "\t\t\tconst bool framed = true;"
+count = 1
+check = "and a spin box asked for no frame draws none"
+
+[[sabotage]]
+name = "the spin box reserves arrow cells the option asked it not to"
+file = "src/grid/grid_style.cpp"
+find = "\t\t    (!sb || sb->buttonSymbols != QAbstractSpinBox::NoButtons) ? 2 * cw : 0;"
+into = "\t\t    2 * cw;"
+count = 1
+check = "and a spin box asked for no buttons draws none"
+
+[[sabotage]]
+name = "a combo box draws its frame whatever the option says"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\tconst bool framed = !cbo || cbo->frame;"
+into = "\t\t\tconst bool framed = true;"
+count = 1
+check = "and a combo asked for no frame draws none"
+
+[[sabotage]]
+name = "the spin box hit test ignores the frame the drawing honours"
+file = "src/grid/grid_style.cpp"
+find = "\t\tconst int edge = (!sb || sb->frame) ? cw : 0;"
+into = "\t\tconst int edge = cw;"
+count = 1
+check = "and a spin box asked for no frame draws none, its arrow moving"

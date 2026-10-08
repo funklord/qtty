@@ -24,6 +24,9 @@
 #include <QStyleFactory>
 #include <QStyleOption>
 #include <QStyleOptionButton>
+#include <QStyleOptionComboBox>
+#include <QStyleOptionSpinBox>
+#include <QAbstractSpinBox>
 #include <QPainter>
 #include <QHash>
 #include <QAbstractItemView>
@@ -1360,6 +1363,20 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		// inherit that, so the mirror is here -- and in the drawing below,
 		// which is the same pair as the scroll bar's.
 		const bool rtl = opt->direction == Qt::RightToLeft;
+		// AND THE OPTION'S OWN TWO FLAGS, which neither this nor the drawing
+		// read: `frame` and `buttonSymbols`. A spin box asked for neither --
+		// `setFrame(false)`, `setButtonSymbols(NoButtons)`, which is what a
+		// table-cell editor or a compact form asks for -- got a frame and a
+		// pair of arrows anyway, and the two cells they stand in were taken
+		// out of the edit field for nothing.
+		//
+		// Derived from the same two values here and in the drawing, because
+		// the comment below records what a disagreement between them costs:
+		// an arrow drawn in a cell a click does not reach.
+		const auto *sb = qstyleoption_cast<const QStyleOptionSpinBox *>(opt);
+		const int edge = (!sb || sb->frame) ? cw : 0;
+		const int arrows =
+		    (!sb || sb->buttonSymbols != QAbstractSpinBox::NoButtons) ? 2 * cw : 0;
 		// Written out per side rather than derived from an offset, after
 		// the derived version put SC_SpinBoxUp one cell inside where the
 		// arrow is drawn -- which is the same off-by-one this arm was
@@ -1369,16 +1386,25 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		};
 		switch (sc) {
 		case SC_SpinBoxEditField:
-			return QRect(rtl ? r.left() + 3 * cw : r.left() + cw, r.top(),
-			             qMax(cw, r.width() - 4 * cw), qMax(ch, r.height()));
+			return QRect(rtl ? r.left() + edge + arrows : r.left() + edge,
+			             r.top(),
+			             qMax(cw, r.width() - 2 * edge - arrows),
+			             qMax(ch, r.height()));
 		// A cell each, side by side, rather than a cell split in half. The
 		// halves were r.height()/2 apart -- nine pixels on a nineteen-pixel
 		// cell -- so both rectangles covered the same cell and only the first
 		// could be clicked.
 		case SC_SpinBoxUp:
-			return cell_at(rtl ? r.left() + 2 * cw : r.right() + 1 - 3 * cw);
+			// An empty rect when there are no buttons, which is what Qt's own
+			// styles answer: a control that is not drawn is not one a click
+			// can reach, and a rect for it would be a cell that swallows a
+			// press meant for the text.
+			if (!arrows) return QRect();
+			return cell_at(rtl ? r.left() + edge + cw
+			                   : r.right() + 1 - edge - 2 * cw);
 		case SC_SpinBoxDown:
-			return cell_at(rtl ? r.left() + cw : r.right() + 1 - 2 * cw);
+			if (!arrows) return QRect();
+			return cell_at(rtl ? r.left() + edge : r.right() + 1 - edge - cw);
 		case SC_SpinBoxFrame:
 			return r;
 		default:
@@ -1609,12 +1635,20 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		// 8.284 missed -- section 0b's right-to-left row still named it,
 		// which is how it was found.
 		const bool rtl = opt->direction == Qt::RightToLeft;
+		// The option's `frame`, for the reason the spin box above gives:
+		// `setFrame(false)` is what a combo in a table cell or a toolbar
+		// asks for, and it got a frame anyway. The arrow stays -- a combo
+		// with no arrow would not read as a combo -- so only the border
+		// cell moves, and it moves here and in the drawing together.
+		const auto *cb = qstyleoption_cast<const QStyleOptionComboBox *>(opt);
+		const int edge = (!cb || cb->frame) ? cw : 0;
 		switch (sc) {
 		case SC_ComboBoxEditField:
-			return QRect(rtl ? r.left() + 2 * cw : r.left() + cw, r.top(),
-			             qMax(cw, r.width() - 3 * cw), qMax(ch, r.height()));
+			return QRect(rtl ? r.left() + edge + cw : r.left() + edge, r.top(),
+			             qMax(cw, r.width() - 2 * edge - cw),
+			             qMax(ch, r.height()));
 		case SC_ComboBoxArrow:
-			return QRect(rtl ? r.left() + cw : r.right() + 1 - 2 * cw,
+			return QRect(rtl ? r.left() + edge : r.right() + 1 - edge - cw,
 			             r.top(), cw, qMax(ch, r.height()));
 		case SC_ComboBoxFrame:
 		case SC_ComboBoxListBoxPopup:
@@ -3171,16 +3205,26 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			const int row = c.top() + c.height() / 2;
 			const Attrs a = with_state(opt) | focus_attrs(w);
 			CellBuffer &b = dev->buffer();
-			if (c.height() >= 2) {
-				draw_box(b, c, false, a);
-			} else {
-				b.put_cluster(c.left(), row, QStringLiteral("["), Color(), Color(), a);
-				b.put_cluster(c.right(), row, QStringLiteral("]"), Color(), Color(), a);
+			// The option's `frame`, read here and in subControlRect from the
+			// same expression. See there.
+			const auto *cbo = qstyleoption_cast<const QStyleOptionComboBox *>(opt);
+			const bool framed = !cbo || cbo->frame;
+			const int edge = framed ? 1 : 0;
+			if (framed) {
+				if (c.height() >= 2) {
+					draw_box(b, c, false, a);
+				} else {
+					b.put_cluster(c.left(), row, QStringLiteral("["),
+					              Color(), Color(), a);
+					b.put_cluster(c.right(), row, QStringLiteral("]"),
+					              Color(), Color(), a);
+				}
 			}
 			// Paired with subControlRect above: the arrow is drawn where
-			// the hit test says it is, or a click lands on the frame.
-			b.put_cluster(opt->direction == Qt::RightToLeft ? c.left() + 1
-			                                                : c.right() - 1,
+			// the hit test says it is, or a click lands on the frame -- so
+			// it moves with `edge` as that does.
+			b.put_cluster(opt->direction == Qt::RightToLeft ? c.left() + edge
+			                                                : c.right() - edge,
 			              row, QStringLiteral("▾"), Color(), Color(), a);
 			return;                                    // label via CE_ComboBoxLabel
 		}
@@ -3402,11 +3446,23 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			const int row = c.top() + c.height() / 2;
 			const Attrs a = with_state(opt) | focus_attrs(w);
 			CellBuffer &b = dev->buffer();
-			if (c.height() >= 2) {
-				draw_box(b, c, false, a);
-			} else {
-				b.put_cluster(c.left(), row, QStringLiteral("["), Color(), Color(), a);
-				b.put_cluster(c.right(), row, QStringLiteral("]"), Color(), Color(), a);
+			// The option's own two flags, read here and in subControlRect
+			// from the same expressions. See there for what ignoring them
+			// cost.
+			const auto *sb = qstyleoption_cast<const QStyleOptionSpinBox *>(opt);
+			const bool framed = !sb || sb->frame;
+			const int edge = framed ? 1 : 0;
+			const bool buttons =
+			    !sb || sb->buttonSymbols != QAbstractSpinBox::NoButtons;
+			if (framed) {
+				if (c.height() >= 2) {
+					draw_box(b, c, false, a);
+				} else {
+					b.put_cluster(c.left(), row, QStringLiteral("["),
+					              Color(), Color(), a);
+					b.put_cluster(c.right(), row, QStringLiteral("]"),
+					              Color(), Color(), a);
+				}
 			}
 			// Two cells, two arrows, and the reason is that a click has to be
 			// able to reach both. A single plus-minus glyph said "this steps"
@@ -3426,10 +3482,12 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			// click does not reach, which is this file's spin box fault
 			// from the other side.
 			const bool rtl = opt->direction == Qt::RightToLeft;
-			b.put_cluster(rtl ? c.left() + 2 : c.right() - 2, row,
-			              QStringLiteral("▴"), Color(), Color(), a);
-			b.put_cluster(rtl ? c.left() + 1 : c.right() - 1, row,
-			              QStringLiteral("▾"), Color(), Color(), a);
+			if (buttons) {
+				b.put_cluster(rtl ? c.left() + edge + 1 : c.right() - edge - 1,
+				              row, QStringLiteral("▴"), Color(), Color(), a);
+				b.put_cluster(rtl ? c.left() + edge : c.right() - edge, row,
+				              QStringLiteral("▾"), Color(), Color(), a);
+			}
 			return;                                    // value text via child edit
 		}
 		default:
