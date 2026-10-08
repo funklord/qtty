@@ -1608,6 +1608,41 @@ int suite_backend() {
 	feed("\033[8;24;80t");
 	CHECK(rec.resizes.size() == 1 && rec.resizes[0] == QSize(80, 24),
 	      "CSI 8 t is a resize report, columns from the second field");
+	// AN END MARKER SPLIT AT ITS ESC. In paste mode the escape branch
+	// requires two bytes before it will parse, and falls through to the
+	// plain-byte path otherwise -- so an ESC that arrives alone is
+	// appended to the paste as text and consumed. The `[201~` behind it
+	// then arrives as plain bytes too, the paste never ends, and every
+	// key after it is swallowed into a paste nobody will ever receive.
+	//
+	// The non-paste escape path handles this already: `if
+	// (pending_.size() < 2) return false;`. A read boundary between ESC
+	// and `[` is as ordinary as the one the UTF-8 path is commented for.
+	{
+		rec.clear();
+		feeder.send("\033[200~");
+		QCoreApplication::processEvents();
+		feeder.send("ab");
+		QCoreApplication::processEvents();
+		feeder.send("\033");                 // the end marker, split here
+		QCoreApplication::processEvents();
+		feeder.send("[201~");
+		int spins = 0;
+		while (rec.pastes.isEmpty() && spins < 20000) {
+			QCoreApplication::processEvents();
+			++spins;
+		}
+		printf("info: an end marker split at its ESC -> %lld paste(s), %s\n",
+		       (long long)rec.pastes.size(),
+		       rec.pastes.isEmpty() ? "none"
+		           : qPrintable(QStringLiteral("'%1'").arg(rec.pastes[0])));
+		CHECK(rec.pastes.size() == 1
+		      && rec.pastes[0] == QStringLiteral("ab"),
+		      "a paste whose end marker is split at its ESC still ends, and "
+		      "delivers only what was pasted");
+		rec.clear();
+	}
+
 	// A BAD UTF-8 LEAD SWALLOWS WHAT FOLLOWS IT. The decoder reads a lead
 	// byte, works out the length, and waits for that many bytes -- then
 	// hands them all to QString::fromUtf8 without checking that the ones

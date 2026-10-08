@@ -2356,7 +2356,21 @@ bool AnsiBackend::decode_one() {
 	// including bytes that would otherwise be keys. That is the whole point of
 	// the mode: a newline in pasted text is text, not Return.
 	if (in_paste_) {
-		if (c == 0x1b && pending_.size() >= 2 && pending_[1] == '[') {
+		// WAIT FOR THE BYTE AFTER AN ESC, which the branch below used to
+		// require rather than wait for -- so an ESC arriving alone fell
+		// through to the plain-byte path, was appended to the paste as
+		// text, and the `[201~` behind it arrived as plain bytes too. The
+		// paste then never ended and every key after it was swallowed into
+		// a paste nobody would receive: measured, a marker split at its ESC
+		// delivered no paste at all and took the two checks after it down
+		// with it, because the decoder was still in paste mode.
+		//
+		// The non-paste escape path has always waited -- `if
+		// (pending_.size() < 2) return false;` -- and a read boundary
+		// between ESC and `[` is as ordinary as the one the UTF-8 path
+		// below is commented for. A terminal splits input at any byte.
+		if (c == 0x1b && pending_.size() < 2) return false;
+		if (c == 0x1b && pending_[1] == '[') {
 			QByteArray prefix, inter; QVector<int> params; char final = 0;
 			const int n = parse_csi(prefix, params, inter, final);
 			if (n < 0) return false;              // wait for the rest
@@ -2382,7 +2396,20 @@ bool AnsiBackend::decode_one() {
 				paste_.clear();          // give the memory back now
 				paste_.squeeze();
 			}
-			pending_.remove(0, 1);
+			// DISCARDED IN BULK, not a byte at a time. Every byte here is
+			// going nowhere, and `pending_.remove(0, 1)` shifts the rest of
+			// the buffer to drop one of them -- so refusing a paste cost
+			// more per byte than accepting it, which is the wrong way round
+			// for the case that exists to stop a hostile stream.
+			//
+			// Everything up to the next ESC can go at once: the only thing
+			// the refused path still has to find is the CSI 201~ that ends
+			// the paste, and that begins with one. An ESC inside the
+			// discarded body is handled by the branch above, which parses
+			// it and appends it to `paste_` -- appends that this flag makes
+			// into nothing.
+			const int esc = pending_.indexOf('\033');
+			pending_.remove(0, esc < 0 ? pending_.size() : qMax(1, esc));
 			return true;
 		}
 		paste_.append(char(c));

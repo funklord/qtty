@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2089 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2090 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -85,6 +85,20 @@ quiet had no predictable end -- **and the raised limit was not needed**:
 the run took about 1320 seconds, inside the original 3000, because the
 load fell to 12 while it ran. So the ordinary target would have passed
 too, which is the cleanest form the confirmation could take.
+
+**It recurred on 2026-10-08, and the second instance is cleaner evidence
+than the first.** `90a9075` came back `valgrind rc=2` at **load 312**,
+stopped at 1494 checks of 2090. Re-run on the same binary at **load
+2.38**: clean in **4 minutes 17 seconds**, against the 3000-second limit
+it had just blown -- a twelve-fold margin either side of a twelve-fold
+difference in load, with no raised limit this time.
+
+**And the new suspect was eliminated by the failure itself.** 8.390's
+paste check pushes 4 MB through the decoder, which under valgrind is not
+free, and it was the obvious thing to blame for a slower arm. The failing
+run never reached it: 1494 checks in, with the paste check further down
+the file. So the arm's own limit is right, the machine was the cause, and
+that is measured twice rather than assumed once.
 
 That is worth more than the caution it replaces. A figure whose conditions
 changed four-fold while it did not move has told you what it is a function
@@ -18166,6 +18180,57 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.393 A paste's end marker, split at its ESC (2026-10-08)
+
+**Found while writing a comment, which is the only reason it was found at
+all.** The bulk discard below needed a sentence about what the refused
+path still has to look for, and writing "the CSI 201~ that ends the
+paste, and that begins with an ESC" is what prompted the question: what
+if the ESC arrives alone?
+
+**It wedges the terminal.** The paste branch required two bytes before it
+would parse an escape -- `c == 0x1b && pending_.size() >= 2` -- and fell
+through to the plain-byte path otherwise. So an ESC arriving at the end
+of a read was appended to the paste as text and consumed, the `[201~`
+behind it arrived as plain bytes too, and `in_paste_` stayed true for
+ever. **Every key after that is swallowed into a paste nobody will
+receive.**
+
+Measured, and the cascade is the part a single assertion would have
+missed:
+
+    an end marker split at its ESC -> 0 paste(s)
+    and the two checks after it FAILED as well, because the decoder
+    was still in paste mode and ate their input too
+
+So the fault does not present as a lost paste. It presents as a terminal
+that has stopped responding to the keyboard, with the paste that caused
+it already forgotten -- and in the suite it presented as three failures,
+only one of which was about the thing that broke.
+
+The fix is the line the non-paste escape path has always had:
+`if (c == 0x1b && pending_.size() < 2) return false;`. **A read boundary
+between ESC and `[` is as ordinary as the one the UTF-8 path three
+branches down is explicitly commented for** -- "a terminal splits input
+at any byte" -- and the paste path was the one place that required rather
+than waited.
+
+#### And the refusal now discards in bulk
+
+`pending_.remove(0, 1)` shifts the rest of the buffer to drop one byte,
+so **refusing a paste cost more per byte than accepting it** -- the wrong
+way round for the path that exists to stop a hostile stream. Everything
+up to the next ESC goes at once now, since the only thing the refused
+path still has to find is the end marker, and that begins with one.
+
+**Both of these were suggested by the same sentence**, which is worth
+recording as a method rather than a coincidence: 8.392's fault was an
+aside that explained why something was acceptable, and this one came from
+an aside that explained what a path still had to do. **Writing down what
+code is FOR is a cheap way to notice what it does not handle** -- cheaper
+here than any of the five sweeps, which between them cost three builds
+apiece and found this neither time they passed through the paste path.
 
 ### 8.392 A bad UTF-8 lead typed two characters into the document (2026-10-08)
 
