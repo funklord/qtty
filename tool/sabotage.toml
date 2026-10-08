@@ -6212,3 +6212,11 @@ find = "\tpaste_.clear();\n\tin_paste_ = false;"
 into = "\tin_paste_ = false;"
 count = 1
 check = "does not deliver what the abandoned paste had already collected"
+
+[[sabotage]]
+name = "a font chosen too late is stored and nothing says so"
+file = "src/grid/grid_style.cpp"
+find = "\tif (is_tui_active())\n\t\tqWarning(\"qtty: set_font(%s, %d) after setup() has no effect"
+into = "\tif (false)\n\t\tqWarning(\"qtty: set_font(%s, %d) after setup() has no effect"
+count = 1
+check = "a font chosen after setup() says it has no effect"

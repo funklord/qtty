@@ -495,6 +495,22 @@ static int s_font_pixels = 0;
 void set_font(const QString &family, int pixel_size) {
 	s_font_family = family;
 	s_font_pixels = pixel_size;
+	// AND SAY SO WHEN IT IS TOO LATE TO MATTER. setup() reads these two and
+	// nothing else does, so a call afterwards stores a family nobody asks
+	// for again: the application chooses a font, the grid keeps the old one,
+	// and there is nothing to attribute that to. grid.h has said "before
+	// setup()" all along, and an unenforced precondition is one the next
+	// person meets rather than reads.
+	//
+	// A WARNING RATHER THAN A RE-MEASURE, which is the smaller half of the
+	// question deliberately. Doing it properly means re-laying every window
+	// -- cw and ch size every widget in the program -- and that is recorded
+	// in 0b with its cost rather than decided here. The style sibling in
+	// application.cpp chose the other way for its own case and says why.
+	if (is_tui_active())
+		qWarning("qtty: set_font(%s, %d) after setup() has no effect -- the"
+		         " grid was measured when setup() ran, so choose the font"
+		         " before it", qPrintable(family), pixel_size);
 }
 
 // Path to the family it holds, so a file is registered ONCE however often

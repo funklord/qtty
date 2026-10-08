@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2127 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2128 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1075,6 +1075,7 @@ Owned by the copyright holder:
 | Question | Where |
 |---|---|
 | **Should a menu item's mnemonic answer while its menu is CLOSED?** It does here, deliberately -- a terminal user reaching an item directly is worth something -- and a desktop Qt answers an item's letter only while its menu is open. The cost is now measured rather than supposed: in Qt's own `menus` example, thirty actions produce **five letters with more than one claimant**, and only the first answers (`&Print...` takes `p` from `&Paste` and *Set &Paragraph Spacing...*). Keeping it means an application with menus needs `Qtty::mnemonic_conflicts()` to find what it has lost; narrowing it to open menus costs the direct reach the conventions were added for | 8.165 |
+| **Should a late `set_font()` WORK rather than warn?** It is stored and ignored today, and says so as of 8.414. The sibling case decided the other way: a `QStyle` installed after `setup()` is wrapped rather than refused, because doing it afterwards is an ordinary thing for a Qt program to want -- and a font picker in a preferences dialog is as ordinary. **The cost is the difference:** `cw` and `ch` size every widget, so a late font change is a re-measure plus a re-layout of every window, which is a resize qtty already knows how to do. `image_key()` already carries `font_px`, so the upload caches invalidate by construction. Reachable rather than hard, and a decision about what a public call does. | 8.414 |
 | **Should a handover tell the ROUTER, and through which seam?** A press sets `grab_` and only a release clears it, and `kLeave` turns mouse reporting off -- so a button held across a handover has its release delivered to the shell, and every mouse event afterwards is routed to that widget until the next click's release clears it. One misdirected click, bounded, and reachable only with a button held while a program shells out or is stopped. **The cost is why this is a question rather than a fix:** the router cannot hear about it today. `Compositor::router_` is private with no accessor, and `FrameScheduler` is where a handover is noticed -- so the candidates are a public accessor on `Compositor`, or a non-pure `on_handover()` on `ITerminalEventSink` beside `on_terminal_lost()`, which is the precedent for an optional sink hook here. Both are additions to a PUBLIC header for a one-click symptom, which is the holder's trade rather than mine. 8.413's family, measured 2026-10-08 by reading the two sites. | §0b, and the lens in 8.411 |
 | **Should the terminal's background be re-measured, and how?** It is asked once at startup and the half-block tier composites against it for the life of the session, so a user who toggles their desktop theme -- or a `shell_out()` that returns from a program which changed it -- leaves every translucent edge composited against a ground that has gone. Re-asking at each handover costs one query and needs the decoder to stop discarding an OSC 11 reply; subscribing with `DECSET 2031` costs nothing per frame and needs capability detection; leaving it costs the fallback tier only, kitty-tier sessions sending alpha and never compositing | 8.160 |
 | **Should the conventions offer a key for Qt's own pointer-only furniture?** Measured with plain Qt and no qtty: a closable `QTabWidget` ignores `Ctrl+W`, `Ctrl+F4` and `Delete` -- `tabCloseRequested` never fires -- and a closable `QDockWidget` ignores `Ctrl+W` and `Esc`. So the `x` on a tab and a dock's close button have no keyboard route ANYWHERE, which on a desktop is a mouse away and here may be nothing away. The option is one convention binding each; the cost is that both plausible keys are ones applications mean something by (`Ctrl+W` closes a document in most, and a shortcut an application binds wins anyway, so the convention would answer only where the application is silent -- which is exactly where the user has no other route). The guide names the gap and tells an application to bind its own; whether the library should offer one is the holder's. **Four controls, not two, and the gap is visible now**: `Qtty::pointer_only()` (8.181) enumerates rather than recognises, and it named a dock widget's FLOAT button beside the two above, then a `QSplitter`'s handle (8.191) -- which is the one that changes the question, since a splitter answers no key even with the focus forced onto it, so a convention binding is the ONLY route there could be. An application can at least see what it is being asked to bind. | 8.159, 8.181, 8.191 |
@@ -18247,6 +18248,41 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.414 A font chosen after setup() was stored and ignored (2026-10-08)
+
+**`Qtty::set_font()` writes two file statics and `setup()` is the only
+reader.** So a call afterwards stored a family nobody would ask for
+again: the application chose a font, the grid kept the old one, and
+nothing attributed it to anything. `grid.h` has said "before setup()"
+since the call existed -- **a precondition nothing enforces is one the
+next person meets rather than reads.**
+
+It says so now, guarded on `is_tui_active()`, which is true exactly once
+a backend is installed. Before setup, and in a GUI build, the call is
+legitimate and stays silent -- `suite_render` makes several and the run
+carries one mention of the sentence, which is the PASS line.
+
+#### A warning rather than a re-measure, and the other half is the holder's
+
+**The sibling case chose the other way and that is why this is only
+half.** `application.cpp` meets the same shape for `QStyle`: a program
+that installs a style after setup used to delete `GridStyle` and with it
+every Channel A drawing, and the answer there was to make the late call
+WORK -- wrap the application's style as the proxy base -- on the stated
+grounds that doing it afterwards is "an ordinary thing for a Qt program
+to want". A font picker in a preferences dialog is equally ordinary.
+
+**What makes the font the more expensive one is that `cw` and `ch` size
+every widget in the program.** Making a late `set_font()` work means
+re-measuring, `GridMetrics::set()`, and then re-laying every window --
+which is a resize, and qtty already does resizes. There is even evidence
+the design anticipated it: `image_key()` carries `font_px`, so the
+upload caches invalidate by construction when the metrics move.
+
+So it is reachable rather than hard, and it is a decision about what a
+public call does rather than a defect: recorded in 0b with the cost and
+the owner, as the mouse-grab question above it was.
 
 ### 8.413 A paste abandoned mid-flight froze the keyboard (2026-10-08)
 
