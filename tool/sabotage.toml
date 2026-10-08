@@ -6078,3 +6078,33 @@ find = "\t\tKeyEvent k;\n\t\tk.alt = true;\n\t\tk.text = QString::fromUtf8(pendi
 into = "\t\tKeyEvent k;\n\t\tk.text = QString::fromUtf8(pending_.mid(1, len));"
 count = 1
 check = "ESC then a letter reaches the button whose mnemonic it is"
+
+[[sabotage]]
+# Return losing its key code. A dialog's default button reads the KEY, so
+# the chord that accepts a form stops accepting it.
+name = "a Return byte carries no key code"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (c == '\\r' || c == '\\n')       k.qt_key = Qt::Key_Return;"
+into = "\tif (c == '\\r' || c == '\\n')       k.qt_key = 0;"
+count = 1
+check = "a Return byte fires a dialog's default button from"
+
+[[sabotage]]
+# An ordinary printable arriving with no text. Nothing can be typed and
+# Qt's own type-ahead has nothing to search with.
+name = "a printable arrives with no text"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\telse { k.qt_key = 0; k.text = QString(QChar(c)); }"
+into = "\telse { k.qt_key = 0; }"
+count = 1
+check = "a letter typed into a focused list jumps to the item"
+
+[[sabotage]]
+# F2's vt220 row. The check feeds both encodings and requires both, so
+# losing either one reddens it.
+name = "F2 loses its CSI row"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tcase 12: emit_key(Qt::Key_F2,  param(1, 1)); return true;"
+into = "\t\tcase 12: return true;"
+count = 1
+check = "F2 opens an editable view's editor in either encoding"

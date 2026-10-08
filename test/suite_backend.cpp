@@ -2067,6 +2067,132 @@ int suite_backend() {
 			}
 		}
 
+		// F2 OPENS A VIEW'S EDITOR, the last row of the guide's table with
+		// no crossing, and another the guide attributes to Qt -- so the
+		// only way it can be false is F2's bytes not arriving. Both
+		// encodings are fed, because a terminal picks one: CSI 12~ is the
+		// vt220 numbering the linux console always sends, and SS3 Q is what
+		// xterm sends unmodified.
+		//
+		// Asserted on the EDITOR's existence rather than on a signal: an
+		// editable view answers the edit key by creating a widget over the
+		// cell, and nothing else in this fixture makes a QLineEdit appear
+		// inside a table. The control is the first line -- there is no
+		// editor before the key.
+		{
+			auto *grid = new QTableWidget(2, 2, &win);
+			grid->setGeometry(0, GridMetrics::ch() * 17,
+			                  GridMetrics::cw() * 12, GridMetrics::ch() * 3);
+			for (int r = 0; r < 2; ++r)
+				for (int c = 0; c < 2; ++c)
+					grid->setItem(r, c, new QTableWidgetItem(
+					                        QStringLiteral("r%1c%2").arg(r).arg(c)));
+			grid->show();
+			grid->setCurrentCell(0, 0);
+			grid->setFocus();
+			set_focus_widget(grid);
+			QCoreApplication::processEvents();
+			const bool none_before = grid->findChild<QLineEdit *>() == nullptr;
+			type("\033[12~");                 // the vt220 encoding
+			const bool by_tilde = grid->findChild<QLineEdit *>() != nullptr;
+			type("\033");                     // Escape cancels it
+			settle(escape_flush_ms() + 80);
+			const bool gone = grid->findChild<QLineEdit *>() == nullptr;
+			type("\033OQ");                   // and xterm's SS3
+			const bool by_ss3 = grid->findChild<QLineEdit *>() != nullptr;
+			type("\033");
+			settle(escape_flush_ms() + 80);
+			printf("info: no editor before F2 %d, after CSI 12~ %d, gone "
+			       "after Escape %d, after SS3 Q %d\n", int(none_before),
+			       int(by_tilde), int(gone), int(by_ss3));
+			CHECK(none_before && by_tilde && gone && by_ss3,
+			      "F2 opens an editable view's editor in either encoding, "
+			      "and Escape closes it again");
+		}
+
+		// TYPE-AHEAD, which the guide lists as Qt's own and which therefore
+		// needs no qtty code at all -- a letter typed into a focused list
+		// jumps to the next item beginning with it. That makes it exactly
+		// the row most worth crossing: nothing here implements it, so the
+		// only way it can be false is the router not handing a plain letter
+		// to the widget, and the suite's letter checks all end at a line
+		// edit's text.
+		//
+		// Three distinct initials rather than this block's forty "row N"
+		// items, which share one and could not tell a jump from a cycle.
+		// The control is a letter no item starts with: the current row must
+		// not move, so a list that simply advanced on every keystroke would
+		// fail here.
+		{
+			auto *fruit = new QListWidget(&win);
+			for (const char *n : { "apple", "banana", "cherry" })
+				fruit->addItem(QString::fromLatin1(n));
+			fruit->setGeometry(0, GridMetrics::ch() * 14,
+			                   GridMetrics::cw() * 10, GridMetrics::ch() * 3);
+			fruit->show();
+			fruit->setCurrentRow(0);
+			fruit->setFocus();
+			set_focus_widget(fruit);
+			QCoreApplication::processEvents();
+			type("b");
+			const int after_b = fruit->currentRow();
+			type("z");
+			const int after_z = fruit->currentRow();
+			printf("info: typing 'b' into a list of three took it to row %d, "
+			       "and 'z' left it at %d\n", after_b, after_z);
+			CHECK(after_b == 1 && after_z == 1,
+			      "a letter typed into a focused list jumps to the item "
+			      "beginning with it, and one no item begins with moves "
+			      "nothing");
+		}
+
+		// ENTER FIRES A DIALOG'S DEFAULT BUTTON, from the byte, and the
+		// control is the other half of the same guide row: in an ordinary
+		// window a focused button answers Space and NOT Enter, because Qt
+		// gives autoDefault only to a dialog's buttons. A library that made
+		// Enter activate buttons everywhere would satisfy the first half
+		// and break the second, and an application would meet that as a
+		// Return in a form firing something nobody aimed at.
+		//
+		// The focus is on the FIELD and not on the button, because "from
+		// anywhere else in it" is what the row promises and a check with
+		// the button focused would pass for the wrong reason.
+		{
+			QDialog dlg(&win);
+			dlg.setModal(true);
+			auto *dv = new QVBoxLayout(&dlg);
+			auto *field = new QLineEdit(&dlg);
+			auto *def = new QPushButton(QStringLiteral("Accept"), &dlg);
+			def->setDefault(true);
+			dv->addWidget(field);
+			dv->addWidget(def);
+			dlg.resize(GridMetrics::cells(14, 4));
+			dlg.show();
+			int accepted = 0;
+			QObject::connect(def, &QPushButton::clicked,
+			                 [&accepted] { ++accepted; });
+			field->setFocus();
+			set_focus_widget(field);
+			QCoreApplication::processEvents();
+			type("\r");
+			const int in_dialog = accepted;
+			dlg.hide();
+			QCoreApplication::processEvents();
+			int plain = 0;
+			QObject::connect(go, &QPushButton::clicked, [&plain] { ++plain; });
+			go->setFocus();
+			set_focus_widget(go);
+			QCoreApplication::processEvents();
+			type("\r");
+			printf("info: a Return byte fired a dialog's default button %d "
+			       "time(s) from a field, and an ordinary window's focused "
+			       "button %d\n", in_dialog, plain);
+			CHECK(in_dialog == 1 && plain == 0,
+			      "a Return byte fires a dialog's default button from "
+			      "anywhere in the dialog, and does not activate a focused "
+			      "button in an ordinary window");
+		}
+
 		// AND ESC REJECTS A MODAL, FROM THE WIRE. Of the guide's table this
 		// is the one promise whose crossing depends on a CLOCK: a lone ESC
 		// cannot be told from the start of a sequence by its bytes, so the

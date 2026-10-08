@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2110 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2113 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18210,6 +18210,56 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.405 The last three crossings, and the one that cannot (2026-10-08)
+
+**8.403 left four rows of the guide's table uncrossed and called a fixture
+per row a cost nobody had asked for. Three of the four are now crossed and
+the fourth cannot be**, which is a better answer than the list was.
+
+All three pass, so this closes no defect. What it buys is that each row
+now fails when a layer stops agreeing, which is the whole argument of
+8.401 and 8.403: every one of these was checked at the sink and at the
+effect, and never from one end to the other.
+
+    Enter in a dialog   fired the default button once, from a FIELD
+                        and an ordinary window's focused button: 0
+    type-ahead          'b' took a list of three to row 1
+                        and 'z', which no item begins with: row 1
+    F2                  no editor before, one after CSI 12~, gone
+                        after Escape, one again after SS3 Q
+
+**Each control is the half that would pass for the wrong reason.** Enter's
+is the guide's own next clause -- in an ordinary window a focused button
+answers Space and NOT Enter, because Qt gives `autoDefault` only to a
+dialog's buttons -- and a library that made Enter activate buttons
+everywhere would satisfy the first line and break the second. Type-ahead's
+is a letter no item starts with, so a list that advanced on every
+keystroke fails. F2's is the state before the key, and both encodings are
+fed because a terminal picks one: `CSI 12~` is the vt220 numbering the
+linux console always sends and `SS3 Q` is what xterm sends unmodified.
+
+**Two of the three are Qt's own behaviour, which is what makes them worth
+crossing rather than less so.** Nothing in this tree implements type-ahead
+or a view's edit key, so the only way either can be false is a plain
+letter or an F2 not reaching the widget -- and the suite's letter checks
+all ended at a line edit's text.
+
+#### The quit keys cannot be crossed here, and that is measured
+
+`Ctrl+C` and `Ctrl+D` are the fourth row, and this suite cannot check the
+quit itself: `QCoreApplication::quit()` is a no-op with no main loop
+running, the suite has none, and `aboutToQuit` therefore never fires.
+`suite_router` says so where it tests what ARRIVES instead, and the four
+real quit cases live in this document, taken from an application with a
+real `exec()`.
+
+**So the row is impossible here rather than deferred**, and the
+distinction is the one `evidence.md` asks for: a recorded impossibility
+tells the next reader not to write a fixture that cannot work, while a
+deferral invites them to try. The crossing exists -- it just needs a
+program with an event loop, which is what the four cases in this document
+are.
 
 ### 8.404 Escape rejects a modal, and the conjunct not asserted (2026-10-08)
 
