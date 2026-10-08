@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2087 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2089 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18167,6 +18167,51 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.392 A bad UTF-8 lead typed two characters into the document (2026-10-08)
+
+**8.391 recorded this as "honest rather than wrong" and that was the
+wrong call**, reached with a weak argument I should not have accepted:
+"the alternative is a decoder that re-validates what Qt already
+validates". It is not validation. The length comes from the lead byte,
+the bytes after it were taken on trust, and **consuming bytes that are
+not part of the character is a framing fault** -- which Qt has no view
+on, because it is never asked.
+
+**Measured, and the consequence is larger than the entry predicted.**
+0xC3 announces two bytes; what followed in the fixture was `ESC [ A`,
+the Up arrow:
+
+    before   3 keys: U+FFFD from fromUtf8("\xC3\x1b"), then '[', then 'A'
+    after    1 key:  Qt::Key_Up
+
+So a single garbled byte did not merely swallow an escape -- it **typed
+two printable characters into the application**. In a text editor that is
+two characters in the document, arriving from a byte nobody sent on
+purpose, with the keystroke the user did send lost.
+
+The fix checks that each byte after the lead is a continuation
+(`0x80..0xBF`) and, where one is not, drops the lead alone. Checked as
+the bytes arrive rather than after waiting for `len` of them, so a lead
+followed by an escape resolves at once instead of holding that escape
+until a sequence that will never complete does. The control is a
+well-formed two-byte character, which must still arrive whole -- a
+decoder that dropped every lead would pass the first half.
+
+**What this says about the sweep that found it is the part worth
+keeping.** 8.391 was an empty sweep, and the entry recording it as empty
+had the real fault written into it as an aside, in the same paragraph,
+with a reason for leaving it. **The sweep was not empty; the write-up
+made it empty**, by reasoning about the residue instead of measuring it
+-- and the measurement took one `feed()` and contradicted the reasoning
+by a factor of three keys to one.
+
+So the rule 8.390 arrived at has a companion. That one says a fixture
+which cannot prove it observed anything is not an instrument. This one
+says: **an aside that explains why something is acceptable is a
+measurement nobody took.** Both failures are the same act -- substituting
+an argument for an observation -- and in this case the argument was mine
+and it was in the sentence immediately after the word "handled".
+
 ### 8.391 Two empty sweeps, and what each one would have caught (2026-10-08)
 
 **Recorded because an empty result is a measurement only when its lens is
@@ -18182,13 +18227,21 @@ a character is ordinary rather than exceptional". A lone continuation
 byte or an invalid lead is dropped rather than delivered as Latin-1,
 which is the fault §7.6 already records being fixed.
 
-What remains is honest rather than wrong: a lead byte followed by
+~~What remains is honest rather than wrong: a lead byte followed by
 something that is not a continuation is handed to
 `QString::fromUtf8()`, which yields U+FFFD. A malformed byte therefore
 consumes the byte after it -- so a bad lead immediately before an escape
 sequence eats that sequence's ESC. Reachable only on a garbled stream,
 and the alternative is a decoder that re-validates what Qt already
-validates.
+validates.~~
+
+**That paragraph was wrong and it is 8.392.** Measured rather than
+argued, the malformed lead produced THREE keys where one was sent --
+U+FFFD, then `[`, then `A` -- so a garbled byte typed two printable
+characters into the application rather than merely eating an escape. It
+is framing and not validation, the fix is four lines, and **this sweep
+was not empty: the write-up made it empty** by reasoning about the
+residue instead of feeding it.
 
 **A mode set and never unset.** 8.390's shape was an asymmetry -- one
 direction guarded, its mirror not -- so the mechanically checkable
@@ -18209,11 +18262,16 @@ deliberate: `0m` and `0 q` restore state qtty may not have set, which is
 the safe direction for a restore where it is the wrong direction for a
 guard.
 
-**So the wire-quantity lens is spent in this subsystem.** It found three
+~~**So the wire-quantity lens is spent in this subsystem.** It found three
 faults -- 8.389's two and 8.390's -- and these two sweeps are its edges:
 the input decoder's framing was already right, and the mode pairs were
-already symmetric. The next fault here will need a lens derived from
-something other than "what does the far end control".
+already symmetric.~~ **Four faults, and the decoder's framing was not
+right** -- 8.392 is the one this entry argued away. The mode pairs were
+symmetric and that half stands.
+
+What is true of the lens is narrower: it found four faults, and the only
+sweep it has genuinely exhausted is the mode-symmetry one, where the
+answer is visible in two string constants and needs no fixture at all.
 
 ### 8.390 A paste had no limit, and three instruments lied (2026-10-08)
 

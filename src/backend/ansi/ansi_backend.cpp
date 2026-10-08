@@ -2539,6 +2539,27 @@ bool AnsiBackend::decode_one() {
 			pending_.remove(0, 1);
 			return true;
 		}
+		// THE CONTINUATIONS, CHECKED BEFORE THEY ARE CONSUMED. The length
+		// comes from the lead byte and the bytes after it were taken on
+		// trust, so a malformed lead ate whatever followed: measured,
+		// 0xC3 followed by ESC [ A -- the Up arrow -- produced THREE keys
+		// rather than one, a U+FFFD from fromUtf8("\xC3\x1b") and then '['
+		// and 'A' as text. A garbled byte therefore types two printable
+		// characters into the application, which in an editor is two
+		// characters in the document.
+		//
+		// This is framing rather than validation: Qt will happily tell us
+		// what a bad sequence means, and the fault is consuming bytes that
+		// are not part of the character. Checked as they arrive rather than
+		// after waiting for `len` of them, so a lead followed by an escape
+		// resolves at once instead of holding the escape until the sequence
+		// that will never complete does.
+		for (int k = 1; k < len && k < pending_.size(); ++k) {
+			if ((static_cast<unsigned char>(pending_[k]) & 0xC0) == 0x80)
+				continue;
+			pending_.remove(0, 1);               // the lead alone
+			return true;
+		}
 		if (pending_.size() < len) return false;      // still arriving
 		const QByteArray seq = pending_.left(len);
 		pending_.remove(0, len);

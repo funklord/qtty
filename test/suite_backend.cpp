@@ -1608,6 +1608,29 @@ int suite_backend() {
 	feed("\033[8;24;80t");
 	CHECK(rec.resizes.size() == 1 && rec.resizes[0] == QSize(80, 24),
 	      "CSI 8 t is a resize report, columns from the second field");
+	// A BAD UTF-8 LEAD SWALLOWS WHAT FOLLOWS IT. The decoder reads a lead
+	// byte, works out the length, and waits for that many bytes -- then
+	// hands them all to QString::fromUtf8 without checking that the ones
+	// after the lead are continuations. So a malformed lead consumes the
+	// byte after it, and a bad lead immediately before an escape sequence
+	// eats that sequence's ESC.
+	//
+	// 0xC3 says "two bytes"; what follows is ESC [ A, which is the Up
+	// arrow. The Up must still arrive.
+	feed(QByteArray("\xC3") + "\033[A");
+	printf("info: a bad lead then Up -> %lld key(s), first qt_key %d\n",
+	       (long long)rec.keys.size(),
+	       rec.keys.isEmpty() ? -1 : rec.keys[0].qt_key);
+	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Up,
+	      "a malformed UTF-8 lead consumes only itself, so the escape "
+	      "sequence behind it still arrives");
+	// And a WELL-FORMED multi-byte character still arrives whole, which is
+	// the control: a decoder that dropped every lead would pass the above.
+	feed(QByteArray("\xC3\xA9"));
+	CHECK(rec.keys.size() == 1
+	      && rec.keys[0].text == QString::fromUtf8("\xC3\xA9"),
+	      "while a well-formed two-byte character still arrives as itself");
+
 	// A PASTE WITH NO END, which is the third quantity the far end chooses.
 	// `paste_` is cleared at CSI 200~, delivered at CSI 201~ and appended
 	// to in between with no bound -- so a stream that starts a paste and
