@@ -5971,3 +5971,13 @@ find = "\tif (!grab_.isNull() && (m.motion || m.release)) target = grab_;"
 into = "\tif (!grab_.isNull() && m.motion) target = grab_;"
 count = 1
 check = "still reaches the widget the press grabbed"
+
+[[sabotage]]
+# The bound on a reported cell. Without it a CSI 16t reply of 9999999
+# multiplies by an image's width inside for_terminal() and overflows an int.
+name = "a reported cell is stored unbounded again"
+file = "src/backend/ansi/term_caps.cpp"
+find = "\t\t\t\tif (w <= kMaxCellPx && h <= kMaxCellPx)\n\t\t\t\t\tout.cell_px = QSize(w, h);"
+into = "\t\t\t\tout.cell_px = QSize(w, h);"
+count = 1
+check = "a cell no terminal could have is refused rather than stored"

@@ -1405,6 +1405,28 @@ int suite_backend() {
 		      "and so is the text-area report");
 		CHECK(!caps_of("\033[6;0;10t").cell_px.isValid(),
 		      "a zero dimension is refused rather than stored");
+		// AND THE OTHER END OF THE SAME FIELD, which is the end with a
+		// consumer. scan_uint() stops accumulating at a million, so an
+		// eleven-digit reply stores 9999999 rather than wrapping -- and
+		// for_terminal() multiplies that by an image's width BEFORE
+		// dividing, which is a product nothing bounded. Measured against
+		// this machine's own numbers:
+		//
+		//     image 214 px * cell 9999999 = 2139999786   fits
+		//     image 215 px * cell 9999999 = 2149999785   past INT_MAX
+		//     image 800 px * cell 9999999 = 7999999200
+		//
+		// and 800 px is an ordinary 80-column frame at a 10-pixel cell, so
+		// the overflow is reachable by every picture rather than by a
+		// large one. Signed overflow is undefined and whatever survives it
+		// is handed to QImage::scaled() as a size.
+		//
+		// The control is in the same condition on purpose: a parser that
+		// refused every cell report would satisfy the first half alone.
+		CHECK(!caps_of("\033[6;9999999;9999999t").cell_px.isValid()
+		      && caps_of("\033[6;19;10t").cell_px == QSize(10, 19),
+		      "a cell no terminal could have is refused rather than stored, "
+		      "while the one a terminal really reports still arrives");
 
 		// -- XTGETTCAP, asked instead of trusting $COLORTERM.
 		CHECK(caps_of("\033P1+r524742=38\033\\").truecolor, "RGB in a tcap reply");

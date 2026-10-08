@@ -98,8 +98,41 @@ void scan_winop(const QByteArray &b, TermCaps &out) {
 		const int w = scan_uint(b, j);
 		if (w < 0 || j >= b.size() || b[j] != 't') continue;
 		if (w > 0 && h > 0) {
-			if (what == 6) out.cell_px = QSize(w, h);
-			else           out.text_px = QSize(w, h);
+			// A CELL NO TERMINAL COULD HAVE IS REFUSED. scan_uint() stops
+			// accumulating at a million, so the value cannot overflow an
+			// int on its own -- and AnsiBackend::for_terminal() multiplies
+			// it by an image's width before dividing, which is a product
+			// nothing bounded. Measured: 9999999 by a 215-pixel image is
+			// already past INT_MAX, and an ordinary 80-column frame at a
+			// 10-pixel cell is 800 px wide, so the overflow is reachable
+			// by every picture rather than by a large one. Signed overflow
+			// is undefined and what survives it becomes a QImage size.
+			//
+			// 8192 because nothing on a screen is wider than the screen
+			// and the widest display that exists is 8K at 7680 px. A cell
+			// at that bound times an image the size of the same screen is
+			// 6.3e7, which is two orders inside an int.
+			//
+			// REFUSED rather than clamped -- the resize report's answer
+			// rather than the mouse coordinate's, and for the reason that
+			// separates those two: a cell report carries nothing but
+			// geometry, so there is no transition to preserve. Refusing it
+			// leaves cell_px invalid, which is exactly the state of a
+			// terminal that never answered CSI 16t at all, and
+			// for_terminal() already sends the image unscaled in that
+			// state. A clamped cell would scale every picture by a number
+			// the terminal never said.
+			//
+			// The bound is the CELL's alone. text_px has one consumer in
+			// the tree -- qtty-negotiate, printing whether it was
+			// answered -- and no arithmetic anywhere, so a bound on it
+			// would refuse a report nothing reads.
+			if (what == 6) {
+				if (w <= kMaxCellPx && h <= kMaxCellPx)
+					out.cell_px = QSize(w, h);
+			} else {
+				out.text_px = QSize(w, h);
+			}
 		}
 	}
 }

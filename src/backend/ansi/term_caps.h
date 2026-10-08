@@ -29,6 +29,11 @@
 
 namespace Qtty {
 
+// The largest cell a CSI 16t reply may name, above which the report is
+// refused rather than stored -- see scan_winop(), which carries the
+// measurement and the reason it is refused rather than clamped.
+constexpr int kMaxCellPx = 8192;
+
 struct TermCaps {
 	bool answered = false;      // the DA1 reply arrived -- see caps_complete()
 	bool kitty = false;         // answered the kitty graphics query with OK

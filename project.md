@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2098 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2099 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18180,6 +18180,84 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.398 The terminal's cell, bounded where the product is (2026-10-08)
+
+**The lens was the one 8.391 to 8.397 kept paying out on: which numbers
+does the far end choose, and what arithmetic do they reach?** The CSI
+parameter has a cap, the resize report has a bound, the modifier parameter
+and the mouse coordinate have floors. The other door a terminal's numbers
+come in by is the capability parser, and `CSI 16t` -- the cell in pixels --
+is the one with a consumer that multiplies.
+
+**Why nobody had looked further is the interesting half.** `scan_uint()`
+already saturates: it stops accumulating above a million, so an
+eleven-digit reply stores 9999999 and no single value can overflow an
+`int`. That is a real bound and it reads as the end of the question.
+**What was unbounded is the product**, and the product is computed
+somewhere else -- `AnsiBackend::for_terminal()` scales an image from qtty's
+cell to the terminal's with `img.width() * cell_px.width() / cw`, which in
+C++ multiplies before it divides.
+
+Measured, with the saturated value the parser really stores:
+
+    image 214 px * cell 9999999 = 2139999786   fits
+    image 215 px * cell 9999999 = 2149999785   past INT_MAX
+    image 800 px * cell 9999999 = 7999999200
+
+**800 px is an ordinary 80-column frame at this machine's 10-pixel cell**,
+so the overflow is reachable by every picture rather than by a large one.
+Signed overflow is undefined, and what survives it is handed to
+`QImage::scaled()` as a size.
+
+**Refused rather than clamped, which is the opposite of 8.397 one day
+later, and the discriminator is now written down**: a report that carries
+nothing but geometry can be refused, because refusing it lands in a state
+the code already handles. A cell report refused leaves `cell_px` invalid --
+exactly the state of a terminal that never answered `CSI 16t` at all, and
+`for_terminal()` sends the image unscaled in that state. A mouse report
+could not be refused because it carries a button transition that nothing
+can invent afterwards. **So the question to ask of a malformed report is
+not whether to be strict but what else it carries.**
+
+And a clamped cell would be worse than either: it would scale every
+picture by a number the terminal never said.
+
+**8192, and the reasoning rather than the number.** Nothing on a screen is
+wider than the screen, and the widest display that exists is 8K at 7680
+px. A cell at that bound times an image the size of the same screen is
+6.3e7, two orders inside an `int`. It is deliberately far above any real
+cell -- kitty reports 10 by 19 here -- because the bound's job is to stop
+the arithmetic, not to police plausibility.
+
+#### The sibling field, swept and left
+
+`text_px` comes from `CSI 14t` through the same parser, the same
+`scan_uint()` and the same guard, so it is the obvious second instance.
+**It has one consumer in the tree** -- `qtty-negotiate`, printing whether
+the terminal answered -- and no arithmetic anywhere, so a bound on it
+would refuse a report nothing reads and would refuse a 16K display's text
+area for no benefit. The lens is recorded because the absence is the
+finding: the field was swept for the same shape and the shape needs a
+multiplying consumer, which this one has not got.
+
+**And the rest of the parser's far-end numbers, swept with it.** Three
+more, all bounded already and each for a reason worth knowing rather than
+for luck:
+
+- **OSC 4's palette index** would be the sharp one -- it indexes a
+  sixteen-element vector -- and it is refused above 15 before the vector
+  is touched.
+- **Its colour components** stop at four hex digits per field, so the
+  value cannot exceed 0xffff and the scaling by digit width stays inside
+  a `long`.
+- **DECRPM's mode and value** go into a hash and are only ever compared
+  (`v != 0 && v != 4`), never multiplied by anything.
+
+So the shape needs two halves to bite -- a far-end number AND a consumer
+that multiplies or indexes with it -- and after this change the parser has
+no site with both. That is what makes the sweep worth recording: the next
+fault in here will not be this one.
 
 ### 8.397 A floor under the mouse coordinate (2026-10-08)
 
