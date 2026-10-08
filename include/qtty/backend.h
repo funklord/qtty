@@ -219,6 +219,30 @@ public:
 	// up answers truthfully without implementing anything, which is the case
 	// for NullBackend and for any test double.
 	virtual int handovers() const { return 0; }
+
+	// Does this backend still owe the screen something about the frame it was
+	// last handed, and in how many milliseconds? Zero means it does not.
+	//
+	// The ANSI backend answers yes while a sixel or iTerm2 placement is
+	// scrolling: it drew the half-block mosaic and will draw the real pixels
+	// once movement settles (design.md section 5.7). Nothing in the CELLS
+	// changes when that moment comes -- the mosaic and the picture occupy the
+	// same rectangle -- so a scheduler diffing frames has nothing to send,
+	// and the frame that would carry the pixels back is exactly the frame a
+	// diff calls empty. The screen then keeps the coarse mosaic until
+	// something unrelated repaints.
+	//
+	// THE THIRD MEMBER OF A FAMILY the scheduler already carries: a picture
+	// repainted in place changes no cell, and a retired overlay leaves
+	// nothing behind in the cells either. Both are part of what makes a frame
+	// worth sending because the compositor can see them. This one it cannot:
+	// the state belongs to the backend, so the backend is asked.
+	//
+	// Milliseconds rather than a bool so that a scheduler can wait the right
+	// amount instead of guessing, and not pure, for the reason bell() is not:
+	// a policy belonging to two tiers of one backend must not stop an
+	// adopter's backend compiling.
+	virtual int deferred_ms() const { return 0; }
 };
 
 // The MIME type a mirrored terminal paste carries, and it exists so that a

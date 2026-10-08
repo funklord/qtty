@@ -106,6 +106,24 @@ public:
 
 	int debounce_ms() const { return debounce_; }
 
+	// Milliseconds until the real pixels may be drawn, or 0 when nothing is
+	// owed. A placement that has stopped moving does not change a single
+	// CELL -- the mosaic and the picture occupy the same rectangle -- so a
+	// scheduler diffing frames sees nothing to send, and the frame that
+	// would carry the pixels back is exactly the frame a diff calls empty.
+	// Without somebody asking this, a scroll that stops leaves the coarse
+	// mosaic on the screen until something unrelated repaints.
+	//
+	// ONE while the debounce has expired and update() has not yet been
+	// called, rather than 0. Zero means "nothing owed", and the state only
+	// clears inside update(): answering 0 there would drop the one frame
+	// this exists to ask for, and the picture would never come back at all.
+	int pending_ms(qint64 now_ms) const {
+		if (!settling_) return 0;
+		const qint64 left = debounce_ - (now_ms - moved_at_);
+		return left > 0 ? int(left) : 1;
+	}
+
 private:
 	QHash<quint64, QVector<QRect>> last_;
 	qint64 moved_at_ = 0;

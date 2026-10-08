@@ -1530,6 +1530,19 @@ void FrameScheduler::render_now() {
 	// screen. The count is therefore part of what makes a frame worth
 	// sending.
 	const bool overlays_retired = int(overlays.size()) < live_overlay_ids_;
+	// And the backend's own answer, for the half of "worth sending" the
+	// compositor cannot see. A sixel or iTerm2 placement that has stopped
+	// moving gets its real pixels back on the next frame the backend is
+	// handed -- and that frame carries the same cells as the mosaic it
+	// replaces, so both tests above are false and the frame is dropped. The
+	// picture then stays coarse until something unrelated repaints: measured
+	// as a scroll that ends and never sharpens.
+	//
+	// The 100 ms idle tick in the constructor is the wakeup, so no timer is
+	// added here. It asks for a frame while the window is visible whatever
+	// else is happening, which is what it was put there for; what was
+	// missing is a reason for that frame to reach the terminal.
+	const bool deferred = backend_->deferred_ms() > 0;
 
 	if (software_composite) {
 		// One finished picture, kept between frames and repainted only where
@@ -1582,7 +1595,7 @@ void FrameScheduler::render_now() {
 		p.end();
 		gfx->present_pixels(px, pix);
 	} else if (!damage.isEmpty() || images_changed || !prev_
-	           || !overlays.isEmpty() || overlays_retired) {
+	           || !overlays.isEmpty() || overlays_retired || deferred) {
 		backend_->present(frame, damage);
 		if (gmode == Capabilities::KittyAlpha && gfx) {   // terminal-blended alpha
 			int id = 0;

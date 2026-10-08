@@ -712,5 +712,80 @@ int suite_budget() {
 		      "loop that had stopped");
 	}
 
+	// A BACKEND THAT STILL OWES THE SCREEN SOMETHING is handed the frame it
+	// is owed, although no cell changed. The sixel and iTerm2 settle is the
+	// case: it draws the half-block mosaic while a placement scrolls and the
+	// real pixels once movement stops -- and that frame carries exactly the
+	// cells the mosaic did, so the diff the check above relies on calls it
+	// empty and the loop drops it. Measured as a scroll that ends and never
+	// sharpens, with both halves of the seam innocent: the compositor built
+	// the right frame and the backend was never handed it.
+	//
+	// ASKED AT THE SEAM rather than through the graphics stack, for the
+	// reason the check above uses a progress bar. The question is whether
+	// the scheduler sends a frame it can see no reason for, and a double
+	// that answers deferred_ms() states the reason in one line.
+	//
+	// THE CONTROL IS THE SAME SHAPE and is the half that makes this
+	// evidence: a loop sending a frame every tick regardless would satisfy
+	// the first assertion exactly as loudly, so the same window, the same
+	// double and the same instrument are then asked with nothing owed.
+	{
+		struct Owing : ITerminalBackend {
+			int frames = 0;
+			int owed = 0;
+			QSize size() const override { return QSize(20, 4); }
+			Capabilities capabilities() const override { return {}; }
+			void present(const CellBuffer &, const QRegion &) override {
+				++frames;
+			}
+			void set_cursor(std::optional<QPoint>, CursorShape) override {}
+			void set_event_sink(ITerminalEventSink *) override {}
+			void resume() override {}
+			void suspend() override {}
+			int deferred_ms() const override { return owed; }
+		};
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(20, 4));
+		auto *v = new QVBoxLayout(&win);
+		auto *still = new QProgressBar;
+		still->setRange(0, 10);
+		still->setValue(3);
+		v->addWidget(still);
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter router(&win);
+		Compositor comp(&win, &router);
+		Owing back;
+		FrameScheduler sched(&back, &comp, &win);
+		sched.render_now();
+
+		// 300 ms is three of the idle tick the scheduler starts in its
+		// constructor, which is the wakeup this relies on rather than a timer
+		// of its own.
+		back.owed = 50;
+		back.frames = 0;
+		QEventLoop owed;
+		QTimer::singleShot(300, &owed, &QEventLoop::quit);
+		owed.exec();
+		const int while_owed = back.frames;
+
+		back.owed = 0;
+		back.frames = 0;
+		QEventLoop quiet;
+		QTimer::singleShot(300, &quiet, &QEventLoop::quit);
+		quiet.exec();
+		const int while_quiet = back.frames;
+
+		printf("info: a backend saying it is owed a frame was handed %d over"
+		       " 300 ms, and %d once it said it was owed none\n",
+		       while_owed, while_quiet);
+		CHECK(while_owed > 0 && while_quiet == 0,
+		      "a backend that still owes the screen something is handed a "
+		      "frame although no cell changed, and is handed none once it "
+		      "stops saying so");
+	}
+
 	return fails;
 }

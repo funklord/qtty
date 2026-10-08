@@ -6140,3 +6140,19 @@ find = "\t\t\t\tbool left = false, came = false;"
 into = "\t\t\t\tbool left = true, came = true;"
 count = 1
 check = "a second copy of it appearing is a picture arriving"
+
+[[sabotage]]
+name = "the settle owes nothing once its debounce has expired"
+file = "src/backend/ansi/scroll_settle.h"
+find = "\t\treturn left > 0 ? int(left) : 1;"
+into = "\t\treturn left > 0 ? int(left) : 0;"
+count = 1
+check = "the settle owes a frame from the move until the one that draws the pixels"
+
+[[sabotage]]
+name = "a frame is worth sending only for what the compositor can see"
+file = "src/runtime/compositor.cpp"
+find = "\t           || !overlays.isEmpty() || overlays_retired || deferred) {"
+into = "\t           || !overlays.isEmpty() || overlays_retired) {"
+count = 1
+check = "a backend that still owes the screen something is handed a frame"

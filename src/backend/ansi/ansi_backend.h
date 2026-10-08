@@ -181,6 +181,9 @@ public:
 	void suspend() override;
 	void resume() override;
 	int handovers() const override { return handovers_; }
+	// What the settle policy still owes the screen -- see the definition,
+	// which mirrors present()'s own tier guards rather than restating them.
+	int deferred_ms() const override;
 
 	// IGraphicsOutput (section 5.7): pixel tiers for capable terminals.
 	void present_pixels(const QImage &frame, const QRegion &cell_region) override;

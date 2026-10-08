@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2118 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2120 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -12177,6 +12177,12 @@ Still not done from this list:
   to the half-block mosaic, which is cells and diffs like any other text,
   and the real pixels come back once scrolling settles.
 
+  **They come back on the next frame the backend is handed, and until
+  8.410 there was no such frame.** The mosaic and the picture occupy the
+  same cells, so the scheduler's content diff called that frame empty and
+  dropped it, and a scroll that ended never sharpened.
+  `ITerminalBackend::deferred_ms()` is what makes it worth sending.
+
   **Kitty is excluded deliberately**, because a placement there has a
   handle and moving it is one short escape with no re-upload -- degrading
   would trade a cheap correct picture for a coarse one and buy nothing.
@@ -12189,9 +12195,13 @@ Still not done from this list:
   The clock is a parameter rather than a timer read inside, for the reason
   the capability parser takes bytes rather than a descriptor: a
   hundred-millisecond debounce tested against the real clock is a test that
-  sleeps, and a test that sleeps is flaky on a loaded machine. Eleven
-  checks drive the policy directly, including that the wait restarts from
-  the LAST move rather than the first.
+  sleeps, and a test that sleeps is flaky on a loaded machine. Seventeen
+  checks drive the policy directly -- `grep -c 'CHECK('` over that block
+  in `suite_backend` -- including that the wait restarts from the LAST
+  move rather than the first, and what the settle still owes when it has
+  stopped. **This said eleven, and had said it through six additions:** a
+  count quoted in prose is re-derived by nobody, so the method is in the
+  sentence now.
 
   **Two things had to be checked separately, and one of them was a claim
   with nothing behind it.** The policy being correct and the backend
@@ -18210,6 +18220,109 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.410 A scroll that ended and never sharpened (2026-10-08)
+
+**The lens was "an interface is only as wired as its least-used method",
+run mechanically: 292 method names out of the headers, counted against
+every call site in `src/`, `test/`, `include/`, `tool/` and `example/`.**
+It produced exactly one name with no caller anywhere --
+`ScrollSettle::debounce_ms()` -- and that accessor is the fingerprint of
+the defect rather than the defect. The value was exposed for a wakeup
+nobody wrote.
+
+**design.md section 5.7 promises that on sixel and iTerm2 "the real pixels
+are drawn when scrolling settles (~100 ms debounce)". They were not.**
+`ScrollSettle` is correct and so is `present()`: while a placement moves
+the frame degrades to the half-block mosaic, and the frame after the
+debounce draws the picture. What was missing is that frame.
+
+    FrameScheduler::render_now()
+
+    damage          = frame.diff(*prev_)     -- empty: same cells
+    images_changed  = frame.images != prev_->images   -- false: same rects
+    overlays_retired                          -- false
+    => present() is not called, so settle_.update() is never reached
+
+**The mosaic and the picture occupy the same cells.** So the frame that
+would bring the pixels back is exactly the frame a content diff calls
+empty, and the scheduler drops it -- with both halves of the seam
+innocent, which is this tree's third instance of that shape. The screen
+keeps the coarse mosaic until something unrelated repaints: scroll a view
+with a sticker in it to a stop over ssh, touch nothing, and it stays
+blocky.
+
+#### Asked rather than told
+
+`ITerminalBackend::deferred_ms()` answers how many milliseconds until the
+backend has something more to say about the frame it was last handed, zero
+when it has not, and the scheduler makes that part of what makes a frame
+worth sending. **It is the third member of a family `render_now()` already
+carried**: a picture repainted in place changes no cell, and a retired
+overlay leaves nothing behind in the cells either. Both of those the
+compositor can see. This one it cannot, because the state belongs to the
+backend -- so the backend is asked, which is the shape `handovers()`
+already uses for the same reason.
+
+Not pure and zero by default, for the reason `bell()` is not: a policy
+belonging to two tiers of one backend must not stop an adopter's backend
+compiling. `AnsiBackend::deferred_ms()` mirrors `present()`'s own tier
+guards in the same order and spelling, because two opinions about which
+tier pays for movement is how one of them goes stale -- kitty has handles
+and never degrades, and placeholders replace the placement mechanism
+entirely.
+
+**The wakeup was already there and needed a reason, not a timer.** The
+scheduler's constructor starts a 100 ms idle tick that asks for a frame
+while the window is visible -- "catches timer-driven updates" -- and every
+one of those frames was reaching the drop above. So no timer was added.
+
+**`pending_ms()` answers 1, not 0, once the debounce has expired with
+nothing having asked.** The state clears inside `update()`, so a backend
+that answered 0 there would say "nothing owed" on the one frame this
+exists to get, and the picture would never come back at all. That conjunct
+is what the first sabotage breaks.
+
+#### What the two checks are, and what each sabotage proves
+
+Every existing settle check drives `update()` by hand on the next frame,
+so not one of them could see that in a running program there is no next
+frame. The new ones are a pair, at the two places the fault lived:
+
+- **`ScrollSettle::pending_ms()` against `update()`**, a relationship
+  rather than numbers: owed while `update()` would refuse the pixels, owed
+  nothing from the frame that draws them, and `mid <= debounce_ms()` --
+  which is also the accessor's first caller.
+- **The scheduler, through a double that answers `deferred_ms()`**, asked
+  at the seam rather than through the graphics stack: a frame arrives
+  although no cell changed. **Its control is the half that makes it
+  evidence** -- a loop sending a frame every tick would pass that exactly
+  as loudly, so the same window and the same double are then asked with
+  nothing owed, and must get none.
+
+#### Two lenses that came up empty, and what they were
+
+Recorded so the next sweep picks a different lens rather than these.
+
+- **What the library writes outside the tree** -- `QStandardPaths`,
+  `QSettings`, `QTemporaryFile`, `QTemporaryDir`, `QSaveFile`,
+  `writableLocation`, `QDir::temp`, `QDir::home` across `src/`. One site,
+  the screen description `application.cpp` writes, and 8.408 had already
+  fixed it. The lens is spent for the library; 8.408 and 8.409 found both
+  of its instances in the SUITE, which is where a fixture reaches out.
+- **Every `QTTY_*` knob, both ways** -- 25 names, each counted against the
+  tracked files that are not markdown. Only `QTTY_DIR` has no
+  implementation anywhere, and it is fuzznet's make variable, written in
+  fuzznet's voice where this document records what they run. So no
+  documented knob is dead and no live knob is undocumented.
+
+  **The instrument was wrong first, in the reassuring direction.**
+  Scoping that grep by `--include=*.sh` reported
+  `QTTY_SCREEN_MAX_LOAD` as a documented override with no reader -- a
+  finding, had it been one. It is read by `tool/screen-check`, a program
+  whose name carries no suffix, which is `evidence.md`'s own instrument
+  error: a search scoped by extension excludes the programs.
+  `git ls-files` is what the re-run used.
 
 ### 8.409 The suite was writing into the user's Qt settings (2026-10-08)
 

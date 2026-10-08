@@ -5048,6 +5048,38 @@ int suite_backend() {
 		      "and a second copy of it appearing is a picture arriving "
 		      "rather than a scroll, as a second key already is -- as is "
 		      "that copy going away again");
+
+		// WHAT THE SETTLE STILL OWES THE SCREEN, which is what asks for the
+		// frame that brings the pixels back. Every check above drives update()
+		// by hand on the next frame, so not one of them can see that in a
+		// running program there IS no next frame: the mosaic and the picture
+		// occupy the same cells, a frame diff calls that empty, and the
+		// scheduler drops it. debounce_ms() had no caller anywhere in the
+		// tree -- the value was exposed for a wakeup nobody wrote.
+		//
+		// A RELATIONSHIP against update() rather than numbers: owed while
+		// update() would refuse the pixels, and owed nothing from the frame
+		// that draws them. The load-bearing conjunct is `due`, taken after the
+		// debounce has expired with nothing having asked -- answering 0 there
+		// reads as "nothing owed" and drops the one frame this exists to get,
+		// so the picture never comes back at all.
+		ScrollSettle owes(100);
+		const bool owed_fresh = owes.pending_ms(0) == 0;
+		owes.update(placed(1, QRect(0, 0, 4, 2)), 0);
+		const bool owed_still = owes.pending_ms(10) == 0;
+		owes.update(placed(1, QRect(0, 1, 4, 2)), 20);          // a move
+		const int mid = owes.pending_ms(60);
+		const int due = owes.pending_ms(120);
+		const bool drew = owes.update(placed(1, QRect(0, 1, 4, 2)), 120);
+		const int after = owes.pending_ms(130);
+		printf("info: the settle owes a frame in %d ms mid-debounce, %d once it"
+		       " is due, and %d after the frame that drew the pixels\n",
+		       mid, due, after);
+		CHECK(owed_fresh && owed_still && mid > 0 && mid <= owes.debounce_ms()
+		      && due > 0 && drew && after == 0,
+		      "the settle owes a frame from the move until the one that draws "
+		      "the pixels, including after the debounce has expired with "
+		      "nothing having asked for it");
 	}
 
 	// A DECRPM reply, ESC [ ? 1006 ; 1 $ y. The "$" is an intermediate byte,

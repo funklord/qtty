@@ -1466,6 +1466,25 @@ void AnsiBackend::present(const CellBuffer &frame, const QRegion &damage) {
 	write_out(out);
 }
 
+// What the settle policy still owes the screen, for a scheduler that would
+// otherwise have no way to know. The frame that brings the real pixels back
+// changes no cell, so a frame diff calls it empty and drops it -- and the
+// mosaic stays on the screen for as long as nothing else repaints.
+//
+// THE GUARDS ARE present()'s, in the same order and spelled the same way,
+// because two opinions about which tier pays for movement is how one of them
+// goes stale. Kitty has handles and never degrades; placeholders replace the
+// placement mechanism entirely, so the settle has nothing to say about
+// either -- and answering for them would ask for a frame nobody needs, every
+// hundred milliseconds, for the life of the program.
+int AnsiBackend::deferred_ms() const {
+	const bool handles = mode_ == Capabilities::Kitty
+	                  || mode_ == Capabilities::KittyAlpha;
+	if (handles || mode_ < Capabilities::Sixel) return 0;
+	if (use_placeholders(caps_, depth_)) return 0;
+	return settle_.pending_ms(clock_.elapsed());
+}
+
 // Free the terminal's copy of a picture nothing is showing any more.
 //
 // kitty_delete_all() uses d=a, which drops PLACEMENTS and leaves the image
