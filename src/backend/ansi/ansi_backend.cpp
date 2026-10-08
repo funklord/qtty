@@ -2116,6 +2116,25 @@ static QByteArray params_to_bytes(const QVector<int> &params) {
 	return out;
 }
 
+// XTERM'S MODIFIER PARAMETER, READ IN ONE PLACE. It is 1 + a bitmask, which
+// gives the arithmetic a floor nobody had written down: a 0 -- what every
+// other parameter in this parser reads as "the default" -- underflows to -1,
+// whose low bits are all set, so a value meaning no modifiers delivered all
+// three. Measured before this existed: CSI 1;0A arrived as Up with Ctrl, Alt
+// and Shift held.
+//
+// OR rather than assignment, because one caller has already decided a
+// modifier before it gets here -- CSI Z is Shift+Tab, and the parameter adds
+// to that rather than replacing it. Where the event is fresh the flags are
+// false and the OR is identity, so one spelling serves every caller and the
+// three sites that each kept their own copy of these lines are one.
+static void apply_key_modifiers(KeyEvent &k, int value) {
+	const int mods = value > 0 ? value - 1 : 0;
+	k.shift = k.shift || (mods & 1);
+	k.alt   = k.alt   || (mods & 2);
+	k.ctrl  = k.ctrl  || (mods & 4);
+}
+
 bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
                               const QVector<int> &params,
                               const QByteArray &inter, char final) {
@@ -2233,15 +2252,12 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 	}
 	if (final == 'u' && prefix.isEmpty() && !params.isEmpty()) {
 		// The modifier parameter is the same 1 + bitmask every other key
-		// here uses, so the three lines below are the ones emit_function_key
-		// uses. Super, hyper, meta, caps lock and num lock occupy the higher
-		// bits and are dropped: KeyEvent has three modifiers and there is
-		// nowhere honest to put a fourth.
-		const int mods = param(1, 1) - 1;
+		// here uses, so it is read by the same helper. Super, hyper, meta,
+		// caps lock and num lock occupy the higher bits and are dropped:
+		// KeyEvent has three modifiers and there is nowhere honest to put a
+		// fourth.
 		KeyEvent k;
-		k.shift = mods & 1;
-		k.alt   = mods & 2;
-		k.ctrl  = mods & 4;
+		apply_key_modifiers(k, param(1, 1));
 		const int code = params[0];
 		// The keys that have a legacy encoding AND an ambiguity worth
 		// removing. Escape is the whole point of the disambiguating flag:
@@ -2281,16 +2297,16 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 		return true;
 	}
 
-	// One place that turns a function key and xterm's modifier parameter into
-	// an event, because there are twelve of them and twelve copies of three
-	// lines is twelve chances to get one wrong. The mask is the same 1 + bits
-	// the cursor keys below use.
-	const auto emit_function_key = [&](int key, int mods) {
+	// A named key and the modifier parameter it came with, for the eighteen
+	// CSI <n>~ rows: twelve function keys and the six navigation keys that
+	// used to be written out with their three modifier flags as false. It
+	// takes the parameter as the terminal sent it and leaves the arithmetic
+	// to apply_key_modifiers(), so there is one place that knows the
+	// encoding rather than one per row.
+	const auto emit_key = [&](int key, int value) {
 		KeyEvent k;
 		k.qt_key = key;
-		k.shift = mods & 1;
-		k.alt   = mods & 2;
-		k.ctrl  = mods & 4;
+		apply_key_modifiers(k, value);
 		sink_->on_key(k);
 	};
 
@@ -2318,29 +2334,29 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 			sink_->on_paste(QString::fromUtf8(paste_));
 			paste_.clear();
 			return true;
-		case 1: case 7:  sink_->on_key({Qt::Key_Home, {}, false, false, false}); return true;
-		case 2:          sink_->on_key({Qt::Key_Insert, {}, false, false, false}); return true;
-		case 3:          sink_->on_key({Qt::Key_Delete, {}, false, false, false}); return true;
-		case 4: case 8:  sink_->on_key({Qt::Key_End, {}, false, false, false}); return true;
-		case 5:          sink_->on_key({Qt::Key_PageUp, {}, false, false, false}); return true;
-		case 6:          sink_->on_key({Qt::Key_PageDown, {}, false, false, false}); return true;
+		case 1: case 7:  emit_key(Qt::Key_Home, param(1, 1)); return true;
+		case 2:          emit_key(Qt::Key_Insert, param(1, 1)); return true;
+		case 3:          emit_key(Qt::Key_Delete, param(1, 1)); return true;
+		case 4: case 8:  emit_key(Qt::Key_End, param(1, 1)); return true;
+		case 5:          emit_key(Qt::Key_PageUp, param(1, 1)); return true;
+		case 6:          emit_key(Qt::Key_PageDown, param(1, 1)); return true;
 		// The function keys, in the numbering every terminal since the VT220
 		// has used. The gaps are real and are not typos: 16, 22 and 25 were
 		// never assigned. F1 to F4 usually arrive as SS3 instead -- see the
 		// ESC O branch -- but xterm sends this form under some settings and
 		// the linux console sends 11 to 14 always.
-		case 11: emit_function_key(Qt::Key_F1,  param(1, 1) - 1); return true;
-		case 12: emit_function_key(Qt::Key_F2,  param(1, 1) - 1); return true;
-		case 13: emit_function_key(Qt::Key_F3,  param(1, 1) - 1); return true;
-		case 14: emit_function_key(Qt::Key_F4,  param(1, 1) - 1); return true;
-		case 15: emit_function_key(Qt::Key_F5,  param(1, 1) - 1); return true;
-		case 17: emit_function_key(Qt::Key_F6,  param(1, 1) - 1); return true;
-		case 18: emit_function_key(Qt::Key_F7,  param(1, 1) - 1); return true;
-		case 19: emit_function_key(Qt::Key_F8,  param(1, 1) - 1); return true;
-		case 20: emit_function_key(Qt::Key_F9,  param(1, 1) - 1); return true;
-		case 21: emit_function_key(Qt::Key_F10, param(1, 1) - 1); return true;
-		case 23: emit_function_key(Qt::Key_F11, param(1, 1) - 1); return true;
-		case 24: emit_function_key(Qt::Key_F12, param(1, 1) - 1); return true;
+		case 11: emit_key(Qt::Key_F1,  param(1, 1)); return true;
+		case 12: emit_key(Qt::Key_F2,  param(1, 1)); return true;
+		case 13: emit_key(Qt::Key_F3,  param(1, 1)); return true;
+		case 14: emit_key(Qt::Key_F4,  param(1, 1)); return true;
+		case 15: emit_key(Qt::Key_F5,  param(1, 1)); return true;
+		case 17: emit_key(Qt::Key_F6,  param(1, 1)); return true;
+		case 18: emit_key(Qt::Key_F7,  param(1, 1)); return true;
+		case 19: emit_key(Qt::Key_F8,  param(1, 1)); return true;
+		case 20: emit_key(Qt::Key_F9,  param(1, 1)); return true;
+		case 21: emit_key(Qt::Key_F10, param(1, 1)); return true;
+		case 23: emit_key(Qt::Key_F11, param(1, 1)); return true;
+		case 24: emit_key(Qt::Key_F12, param(1, 1)); return true;
 		default:         return true;             // consumed, unmapped
 		}
 	}
@@ -2390,10 +2406,7 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 	default:  return true;                        // consumed, unmapped
 	}
 	// xterm reports modifiers as a second parameter, 1 + a bitmask.
-	const int mods = param(1, 1) - 1;
-	k.shift = k.shift || (mods & 1);
-	k.alt   = (mods & 2) != 0;
-	k.ctrl  = (mods & 4) != 0;
+	apply_key_modifiers(k, param(1, 1));
 	sink_->on_key(k);
 	return true;
 }

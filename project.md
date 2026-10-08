@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2094 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2096 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18180,6 +18180,87 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.396 The modifier parameter, read in fifteen places (2026-10-08)
+
+**Two faults, one encoding, and the second was found by counting the
+readers of the first.** `grep` for `param(1, 1) - 1` in the ANSI backend
+returned fifteen sites. Three of them each kept their own copy of the
+three lines that turn the value into flags, twelve passed it to a lambda
+that did, and reading all fifteen together is what showed the other two
+groups: six rows that did not read it at all, and arithmetic with no
+floor under it.
+
+#### Six navigation keys threw the parameter away
+
+`Home`, `Insert`, `Delete`, `End`, `PageUp` and `PageDown` were delivered
+as `sink_->on_key({Qt::Key_Delete, {}, false, false, false})` -- the three
+modifier flags written out as false -- while the twelve function-key rows
+in the same switch read the parameter through `emit_function_key()`.
+Measured, all eight rows including the rxvt aliases 7 and 8:
+
+    CSI 3;6~    Delete 0x1000007  ctrl=0 shift=0 alt=0
+    after       Delete            ctrl=1 shift=1 alt=0
+
+**Not keys that did nothing -- keys that did the unmodified thing**, which
+is the more expensive failure. Shift+Delete in a text field is a cut and
+arrived as a deletion; Ctrl+Shift+End is a selection to the end and
+arrived as a cursor move, losing the selection it was asked to make. A
+dead key is noticed by whoever presses it. A key that quietly does the
+smaller thing is noticed after the text is gone.
+
+#### And the arithmetic had no floor
+
+The parameter is 1 + a bitmask, so **0 is one below the lowest value the
+encoding has** -- and -1 is the mask with every low bit set:
+
+    CSI 1;0A    Up 0x1000013  ctrl=1 shift=1 alt=1
+    after       Up            ctrl=0 shift=0 alt=0
+
+A value meaning no modifiers delivered all three. It is reachable and
+8.395's sabotage proves it rather than arguing it: with the prefix guard
+removed, an XTSMGRAPHICS reply whose second parameter is `0` arrives as F4
+with Ctrl, Alt and Shift held. A `0` is the default in every other
+parameter this parser reads, and the default here is no modifiers.
+
+#### One reader, and OR rather than assignment
+
+`apply_key_modifiers(KeyEvent &, int value)` is the only place that knows
+the encoding now. The twelve function keys and the six navigation keys go
+through one `emit_key()` lambda that calls it, and the kitty `CSI u` site
+and the cursor-key site call it directly.
+
+**The OR is the part worth recording.** One caller has already decided a
+modifier before the parameter is read -- `CSI Z` is Shift+Tab, and the
+parameter adds to that rather than replacing it -- so the cursor-key copy
+had `k.shift = k.shift || (mods & 1)` while the other two assigned. Where
+the event is fresh the flags are false and the OR is identity, which is
+why one spelling serves every caller; assigning would have taken the shift
+off Shift+Tab, and that is what the re-anchored entry below now defends.
+
+#### Four anchors went stale, and the harness named all four
+
+Unifying the sites invalidated four sabotage entries -- three that name a
+`case 15:` or `case 13:` row by its old spelling, and one that deleted the
+shift bit from the three lines the kitty site used to carry.
+`make sabotage-check` listed them before anything was committed, which is
+the second time in two days that the anchor gate has been the only part of
+`make check` able to see a refactor. The three row entries were
+re-anchored to the `emit_key` spelling; the shift-bit entry moved to the
+helper's own line, where it now defends the same property for every
+caller rather than for one.
+
+Each of the six -- two new, four re-anchored -- was proved with `--only`.
+
+#### The fifteenth site is a different rule, and is left
+
+`m.cell = QPoint(param(1, 1) - 1, param(2, 1) - 1)` converts a 1-based
+mouse coordinate rather than a bitmask, and it underflows the same way: a
+report naming column 0 gives cell x = -1. Nothing here clamps it, and
+nothing should until the right answer is settled -- dropping the report
+and clamping it to the corner are different claims about a malformed
+coordinate, and inventing a click at (0, 0) is the worse of the two. What
+the hit test does with a negative cell today is unmeasured. Next.
 
 ### 8.395 Four rows in one copy of a table and not the other (2026-10-08)
 

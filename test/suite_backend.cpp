@@ -904,6 +904,88 @@ int suite_backend() {
 		CHECK(invented.isEmpty(),
 		      "and the three numbers nobody ever assigned invent no key");
 	}
+	// THE MODIFIER PARAMETER ON THE NAVIGATION KEYS, which this decoder
+	// parsed and threw away. Six of the CSI <n>~ rows -- Home, Insert,
+	// Delete, End, PageUp and PageDown -- were delivered with the three
+	// modifier flags written out as false, while the twelve function-key
+	// rows beside them read the parameter through emit_function_key(). So
+	// Shift+Delete, Ctrl+Home and Shift+PageDown arrived bare: not keys
+	// that did nothing, keys that did the UNMODIFIED thing, which in a text
+	// field is a deletion where a cut was asked for and a cursor move where
+	// a selection was.
+	//
+	// Asserted against the unmodified form of the same row rather than
+	// against a literal key, so a table that drifts fails here rather than
+	// agreeing with itself.
+	{
+		const struct { int n; int key; const char *what; } nav[] = {
+			{ 1, Qt::Key_Home,     "Home"     },
+			{ 2, Qt::Key_Insert,   "Insert"   },
+			{ 3, Qt::Key_Delete,   "Delete"   },
+			{ 4, Qt::Key_End,      "End"      },
+			{ 5, Qt::Key_PageUp,   "PageUp"   },
+			{ 6, Qt::Key_PageDown, "PageDown" },
+			{ 7, Qt::Key_Home,     "Home (7)" },
+			{ 8, Qt::Key_End,      "End (8)"  },
+		};
+		QStringList bare;
+		for (const auto &e : nav) {
+			feed("\033[" + QByteArray::number(e.n) + "~");
+			const int plain = rec.keys.size() == 1 ? rec.keys[0].qt_key : 0;
+			feed("\033[" + QByteArray::number(e.n) + ";6~");
+			const bool one = rec.keys.size() == 1;
+			if (!one || rec.keys[0].qt_key != plain || plain != e.key
+			    || !rec.keys[0].ctrl || !rec.keys[0].shift
+			    || rec.keys[0].alt)
+				bare << QStringLiteral("%1 (CSI %2;6~) gave %3")
+				            .arg(QLatin1String(e.what)).arg(e.n)
+				            .arg(one ? QStringLiteral("0x%1 c=%2 s=%3 a=%4")
+				                           .arg(rec.keys[0].qt_key, 0, 16)
+				                           .arg(int(rec.keys[0].ctrl))
+				                           .arg(int(rec.keys[0].shift))
+				                           .arg(int(rec.keys[0].alt))
+				                     : QStringLiteral("%1 key(s)")
+				                           .arg(rec.keys.size()));
+		}
+		if (!bare.isEmpty())
+			printf("info: navigation rows that lost their modifiers: %s\n",
+			       qPrintable(bare.join(QStringLiteral("; "))));
+		CHECK(bare.isEmpty() && sizeof(nav) / sizeof(nav[0]) == 8,
+		      "and all eight of them carry the modifier parameter, so "
+		      "Shift+Delete is a cut and not a delete");
+	}
+
+	// A MODIFIER PARAMETER OF ZERO, which is one less than the lowest value
+	// the encoding has. xterm's parameter is 1 + a bitmask, so 0 underflows
+	// to -1 -- and -1 & 1, -1 & 2 and -1 & 4 are each non-zero, which is
+	// every modifier held at once from a value that means none.
+	//
+	// Not hypothetical: the sabotage entry that removes the prefix guard
+	// delivers an XTSMGRAPHICS reply whose second parameter is 0 as F4 with
+	// Ctrl, Alt and Shift. A 0 is the default in every other parameter this
+	// parser reads, and the default here is no modifiers.
+	{
+		feed("\033[1;0A");
+		const bool none = rec.keys.size() == 1
+		    && rec.keys[0].qt_key == Qt::Key_Up && !rec.keys[0].ctrl
+		    && !rec.keys[0].alt && !rec.keys[0].shift;
+		if (!none)
+			printf("info: CSI 1;0A gave %d key(s)%s\n", int(rec.keys.size()),
+			       rec.keys.size() == 1
+			           ? qPrintable(QStringLiteral(", 0x%1 c=%2 s=%3 a=%4")
+			                            .arg(rec.keys[0].qt_key, 0, 16)
+			                            .arg(int(rec.keys[0].ctrl))
+			                            .arg(int(rec.keys[0].shift))
+			                            .arg(int(rec.keys[0].alt)))
+			           : "");
+		// The control, without which a decoder that had stopped reading the
+		// parameter at all would satisfy the line above.
+		feed("\033[1;6A");
+		CHECK(none && rec.keys.size() == 1 && rec.keys[0].ctrl
+		      && rec.keys[0].shift,
+		      "while a modifier parameter of 0 is no modifiers rather than "
+		      "all three, which is what 1 + a bitmask underflows to");
+	}
 
 	// AN OSC THAT IS NEVER TERMINATED, and then a real key. Branch coverage
 	// found this one: `if (c == 0x1b) return i;` in parse_string_sequence --

@@ -186,7 +186,7 @@ check = "SS3 P decodes as F1"
 [[sabotage]]
 name = "the function keys are consumed and unmapped"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\t\tcase 15: emit_function_key(Qt::Key_F5,  param(1, 1) - 1); return true;"
+find = "\t\tcase 15: emit_key(Qt::Key_F5,  param(1, 1)); return true;"
 into = "\t\tcase 15: return true;"
 count = 1
 check = "CSI 15~ decodes as F5"
@@ -693,16 +693,16 @@ check = "an SS3 final the decoder does not know is swallowed"
 [[sabotage]]
 name = "CSI 13~ is decoded as the wrong function key"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\t\tcase 13: emit_function_key(Qt::Key_F3,  param(1, 1) - 1); return true;"
-into = "\t\tcase 13: emit_function_key(Qt::Key_F4,  param(1, 1) - 1); return true;"
+find = "\t\tcase 13: emit_key(Qt::Key_F3,  param(1, 1)); return true;"
+into = "\t\tcase 13: emit_key(Qt::Key_F4,  param(1, 1)); return true;"
 count = 1
 check = "every one of the twenty CSI <n>~ numbers decodes as the key it names"
 
 [[sabotage]]
 name = "a number nobody assigned is given a key"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\t\tcase 15: emit_function_key(Qt::Key_F5,  param(1, 1) - 1); return true;"
-into = "\t\tcase 15: case 22: emit_function_key(Qt::Key_F5,  param(1, 1) - 1); return true;"
+find = "\t\tcase 15: emit_key(Qt::Key_F5,  param(1, 1)); return true;"
+into = "\t\tcase 15: case 22: emit_key(Qt::Key_F5,  param(1, 1)); return true;"
 count = 1
 check = "the three numbers nobody ever assigned invent no key"
 
@@ -4577,8 +4577,8 @@ check = "a CSI ? <flags> u reply says the keyboard protocol is there"
 # protocol was added to escape. 8.270.
 name = "the protocol's shift bit is discarded"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\t\tk.shift = mods & 1;\n\t\tk.alt   = mods & 2;\n\t\tk.ctrl  = mods & 4;\n\t\tconst int code = params[0];"
-into = "\t\tk.shift = false;\n\t\tk.alt   = mods & 2;\n\t\tk.ctrl  = mods & 4;\n\t\tconst int code = params[0];"
+find = "\tk.shift = k.shift || (mods & 1);"
+into = "\tk.shift = false;"
 count = 1
 check = "CSI 99;6u decodes as Ctrl+Shift+C"
 
@@ -5929,3 +5929,23 @@ find = "\tif (!prefix.isEmpty()) return true;           // consumed, not a key"
 into = "\tif (false) return true;           // consumed, not a key"
 count = 1
 check = "an XTSMGRAPHICS answer"
+
+[[sabotage]]
+# The floor under the modifier arithmetic. 1 + a bitmask means a 0 is one
+# below the lowest value the encoding has, and -1's low bits are all set.
+name = "the modifier parameter underflows again"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tconst int mods = value > 0 ? value - 1 : 0;"
+into = "\tconst int mods = value - 1;"
+count = 1
+check = "a modifier parameter of 0 is no modifiers rather than all three"
+
+[[sabotage]]
+# A navigation row written out with its modifiers as false, which is the
+# shape all six carried.
+name = "a navigation key drops its modifiers again"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tcase 3:          emit_key(Qt::Key_Delete, param(1, 1)); return true;"
+into = "\t\tcase 3:          sink_->on_key({Qt::Key_Delete, {}, false, false, false}); return true;"
+count = 1
+check = "all eight of them carry the modifier parameter"
