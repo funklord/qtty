@@ -18588,6 +18588,29 @@ first upload was left to make. It builds its own backend now.
 the first frame after a handover pays anyway: `prev_` is reset, so that
 frame is a whole screen.
 
+**And `make test-screen` was run against this, which the three arms do
+not cover.** It sits outside `make check` because it starts terminals, so
+nothing in the ordinary sequence exercises it -- and these changes are in
+the one path it draws. Run at load 4.4, under its own threshold of forty,
+so it executed rather than skipping:
+
+    kitty drew left=199 width=35, predicted 198 and 36
+    overlay drew left=198 width=36, predicted 198 and 36
+    after clear_overlay the marker is gone, control still 2592 px
+    through tmux drew left=198 width=36 -- the placeholder path
+    xterm drew left=135 width=24, predicted 132 and 24
+    halfblocks drew left=135 width=24, predicted 132 and 24
+    kitty drew the image at its own size, 9600 px
+
+**What that is and is not evidence for.** It says the normal upload path
+still draws, through two terminals and two wire formats that share
+nothing but this tree -- including the placeholder tier the fix also
+reaches. It does NOT exercise a handover: that gate draws and captures,
+it does not suspend. The handover half rests on the two witnesses it
+already had, which are independent of each other -- the probe above,
+where kitty answers ENOENT for itself against a control, and the suite's
+assertion that qtty re-transmits, which is the half qtty owns.
+
 #### The rest of the lens, which is now finished
 
 Every record the backend keeps of what the TERMINAL holds, and what
