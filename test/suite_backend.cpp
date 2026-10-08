@@ -305,6 +305,64 @@ int suite_backend() {
 	feed("\033[16~");
 	CHECK(rec.keys.isEmpty(), "and 16~ is consumed without inventing a key");
 
+	// A HALF-RECEIVED KEY MUST NOT SURVIVE A HANDOVER, which is the
+	// staleness the title and the uploads already answer, asked of the INPUT
+	// side. pending_ holds whatever bytes have arrived of a sequence that is
+	// not complete -- the reason the lone-escape timer exists at all -- and
+	// nothing cleared it when the terminal was handed over. A partial CSI
+	// waits for its final, the shell runs, and the first key typed
+	// afterwards supplies it: "A" after a stranded ESC [ arrives as Up, and
+	// the letter is gone.
+	//
+	// Dropped rather than flushed, because no key is spelled by an
+	// incomplete CSI. The lone-escape flush delivers Escape for a bare ESC
+	// because that IS the key; two bytes whose remainder will never come are
+	// not a key held back, they are a key that did not finish arriving.
+	//
+	// HERE, where `backend` is the only live one. The first version of this
+	// sat beside the title's handover checks, 4000 lines later, and measured
+	// nothing: the pty fixture owns fd 0 there and several backends watch
+	// it, so feed() reached a pipe nobody reads and a different recorder
+	// than the one being asserted on. Its control -- one plain letter, no
+	// partial sequence, no handover -- delivered zero keys too, which is
+	// what said the fixture was dead rather than the code broken. The
+	// control is kept for the same reason.
+	//
+	// TWO ROUTES, two checks, as the title and the uploads needed: a
+	// shell-out reaches resume() and no counter, a Ctrl+Z reaches
+	// qtty_cont_handler() and read_winch()'s block, and a clear in one place
+	// covers one of them. Both are safe to drive here because stdout is not
+	// a terminal this early, so neither writes a byte anywhere.
+	feed("B");
+	const bool feeder_alive = rec.keys.size() == 1
+	                       && rec.keys[0].text == QStringLiteral("B");
+	feed("\033[");                              // a CSI with no final
+	const int mid_shell = rec.keys.size();
+	backend.suspend();
+	backend.resume();
+	feed("A");
+	const bool after_shell = rec.keys.size() == 1
+	                      && rec.keys[0].text == QStringLiteral("A");
+	feed("\033[");                              // and again, for the signal
+	::raise(SIGCONT);
+	for (int i = 0; i < 50; ++i) QCoreApplication::processEvents();
+	feed("C");
+	const bool after_stop = rec.keys.size() == 1
+	                     && rec.keys[0].text == QStringLiteral("C");
+	printf("info: the control letter arrived %d; a half-read CSI delivered"
+	       " %d key(s); the letter after it arrived %d through a shell-out"
+	       " and %d through a SIGCONT, the last frame holding %d key(s)"
+	       " with key=%d text='%s'\n", int(feeder_alive), mid_shell,
+	       int(after_shell), int(after_stop), int(rec.keys.size()),
+	       rec.keys.isEmpty() ? 0 : rec.keys[0].qt_key,
+	       rec.keys.isEmpty() ? "" : qPrintable(rec.keys[0].text));
+	CHECK(feeder_alive && mid_shell == 0 && after_shell,
+	      "a sequence left half-read when the terminal was handed over does "
+	      "not swallow the first key typed after it comes back");
+	CHECK(after_stop,
+	      "and a SIGCONT drops it too, which is the route a Ctrl+Z takes and "
+	      "reaches other code");
+
 	// THE KITTY KEYBOARD PROTOCOL, which is the only way a terminal can say
 	// Ctrl+Shift+C at all. A control byte is one of 32 values and carries no
 	// shift bit, so the legacy encoding folds every Ctrl+Shift+letter onto

@@ -460,6 +460,20 @@ void AnsiBackend::read_winch() {
 		// above it. The placeholder tier too, and worse: the cells are text
 		// and arrive perfectly, referencing a virtual placement that is gone.
 		//
+		// AND THE HALF-READ KEY, for the same reason pointed at the input
+		// side. pending_ holds whatever bytes have arrived of a sequence
+		// that is not complete, and its remainder is never coming: the
+		// shell had the terminal in between. Left alone, the first key
+		// typed afterwards supplies the missing final -- measured, a
+		// stranded ESC [ and then "C" delivered Key_Right and no letter,
+		// so the user comes back, types, and the cursor moves instead.
+		//
+		// Dropped rather than flushed, because no key is spelled by an
+		// incomplete CSI; the lone-escape flush delivers Escape for a bare
+		// ESC because that IS the key. An armed escape timer needs no
+		// attention either -- flush_lone_escape() re-reads pending_ before
+		// delivering anything, which is why that re-check is there.
+		pending_.clear();
 		// It costs one re-upload per picture, on a frame that is already a
 		// whole screen because prev_ was reset.
 		//
@@ -985,6 +999,10 @@ void AnsiBackend::resume() {
 	// counter, so the call belongs here as well -- two routes, two copies,
 	// which is what the title already needed.
 	if (!first_resume_) forget_uploads();
+	// And the half-read key, by the same argument as the two above: a
+	// shell-out reaches this and no counter, so read_winch()'s copy of this
+	// clear covers Ctrl+Z and nothing else.
+	if (!first_resume_) pending_.clear();
 	first_resume_ = false;
 }
 

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2122 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2124 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18246,6 +18246,62 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.412 A letter typed after a shell-out moved the cursor (2026-10-08)
+
+**8.411's lens, pointed at the input side**, and it is the third member of
+that family rather than a new one: `last_title_`, `wire_id_` and now
+`pending_` are all records that stop being true when the terminal is
+handed over, and all three were restored on one route or none.
+
+`pending_` holds whatever bytes have arrived of a sequence that is not
+complete yet -- the reason the lone-escape timer exists at all. Nothing
+cleared it across a handover, and the remainder is never coming, because
+the shell had the terminal in between. So the first key typed afterwards
+supplies the missing final byte:
+
+    feed "\033["          a CSI with no final -- correctly delivers nothing
+    suspend / resume      the shell-out, or a SIGCONT for the Ctrl+Z route
+    feed "C"              -> Key_Right, text ""
+
+**It is not a dropped keystroke, which is what makes it worth fixing.**
+The letter is consumed as the final byte of the stranded sequence and the
+application is handed an arrow key: come back from a shell-out, type, and
+the cursor moves. `"A"` would be Up, `"C"` is Right -- measured as
+`key=16777236 text=''`.
+
+Dropped rather than flushed, because no key is spelled by an incomplete
+CSI. The lone-escape flush delivers Escape for a bare ESC because that IS
+the key; two bytes whose remainder will never come are not a key held
+back. An armed escape timer needs nothing either: `flush_lone_escape()`
+re-reads `pending_` before delivering, which is why that re-check exists.
+
+**Two routes, two clears**, as 8.411 established the hard way and the
+title before it: `resume()` for a shell-out, `read_winch()`'s block for
+Ctrl+Z, and a clear in one place covers one of them.
+
+#### The check was wrong twice before it measured anything
+
+Worth the space because both failures LOOK like a confirmed defect.
+
+**First it sat beside the title's handover checks, four thousand lines
+in, and measured nothing.** The pty fixture owns fd 0 there and several
+backends are alive watching it, so `feed()` wrote into a pipe nobody
+reads and the bytes that did arrive went to a different recorder than the
+one being asserted on. The check failed, which is exactly what a real
+defect looks like.
+
+**What caught it was a control that could not have passed either**: one
+plain letter, no partial sequence, no handover. It delivered zero keys
+too -- so the fixture was dead rather than the code broken. The control
+is kept in the check for that reason, and it is the whole of
+`evidence.md`'s *a failing check is not evidence either* in one line.
+
+**And the first report of the symptom was wrong in the direction that
+understates it.** With the dead fixture the letter appeared to vanish, so
+the first draft of this entry said "swallowed". Printing the key code
+rather than the boolean is what turned a lost keystroke into a wrong
+action, which is a different finding with a different cost.
 
 ### 8.411 Every kitty picture is gone after a Ctrl+Z, for ever (2026-10-08)
 
