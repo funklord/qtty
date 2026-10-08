@@ -6108,3 +6108,14 @@ find = "\t\tcase 12: emit_key(Qt::Key_F2,  param(1, 1)); return true;"
 into = "\t\tcase 12: return true;"
 count = 1
 check = "F2 opens an editable view's editor in either encoding"
+
+[[sabotage]]
+# The at-maximum arrow pointing the way the at-minimum one does. A
+# one-cell scroll bar then says the view is at the top wherever it is,
+# which is a lie rather than a missing affordance.
+name = "a one-cell scroll bar points the wrong way at the end"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\t\tg = vert ? QStringLiteral(\"\u25b2\") : QStringLiteral(\"\u25c0\");"
+into = "\t\t\t\t\t\tg = vert ? QStringLiteral(\"\u25bc\") : QStringLiteral(\"\u25c0\");"
+count = 1
+check = "a one-cell scroll bar says WHICH end the view is at"

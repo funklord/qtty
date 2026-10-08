@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2113 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2114 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18210,6 +18210,52 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.406 Which end a one-cell scroll bar says the view is at (2026-10-08)
+
+**The last item on 8.400's residue list.** Of the one-cell scroll bar's
+four branches, coverage found two that no test had ever drawn: the
+at-maximum arrow and the glyph for a range with nothing in it. The other
+two were covered because the existing fixture sets the value to 50 and
+the range to 0..100, which reaches the middle and nothing else.
+
+**Two glyphs a user reads were drawn by no test**, and that is the whole
+finding -- an arrow pointing the wrong way is not a missing affordance,
+it is a lie about where the view is.
+
+Seven states now, as a population rather than as the two that were
+missing, because the horizontal pair is a separate arm of the same
+ternary and was uncovered with them:
+
+    vertical    at the top      down arrow
+                at the bottom   up arrow
+                between         full block
+    horizontal  at the left     right arrow
+                at the right    left arrow
+                between         full block
+    either      nothing to scroll   light shade
+
+All seven draw exactly what the source says, so this closes no defect.
+What it buys is that the pair cannot be swapped without the suite saying
+so, which is what the sabotage entry demonstrates: it points the
+at-maximum arrow the way the at-minimum one points, and a one-cell bar
+then says the view is at the top wherever it is.
+
+**The entry keeps `sabotage.toml` ASCII.** The file had zero non-ASCII
+bytes and still does -- the glyphs are written as `▲` and the like,
+which `tomllib` decodes before the anchor is matched. A spec file read by
+a tool in a tree that enforces ASCII in its own sources is worth keeping
+in the same shape, and the escape costs nothing but a line that reads
+less obviously; the `check` field names the assertion in prose, so
+anybody searching for the row has something to search for.
+
+**And the anchor needed a uniqueness argument**, which is the hazard
+`evidence.md` names for single edits. Two lines in `grid_style.cpp` draw
+that pair of glyphs -- the one-cell case and the multi-cell arrow head --
+so the anchor carries the six tabs that precede `g = vert ?` in the first
+and are followed by `if (i == 0)` in the second. `make sabotage-check`
+would have refused an ambiguous one, which is how the count assertion
+earns its keep on an edit of one line.
 
 ### 8.405 The last three crossings, and the one that cannot (2026-10-08)
 

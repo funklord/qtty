@@ -2928,6 +2928,54 @@ int suite_widgets() {
 			CHECK(!two.isEmpty(), "a two-cell scroll bar draws something");
 			CHECK(!one.isEmpty(),
 			      "and a one-cell scroll bar says a bar is there");
+
+			// AND WHICH END IT IS AT, which is the whole of what one cell
+			// can carry and which coverage found half-untested: the branch
+			// returning the at-maximum arrow and the one for an empty range
+			// had never run, so two glyphs a user reads were drawn by no
+			// test. An arrow pointing the wrong way is not a missing
+			// affordance, it is a lie about where the view is.
+			//
+			// Seven states rather than two, as a population: both ends and
+			// the middle in both orientations, plus the empty range that
+			// has nothing to point at. The horizontal pair is a separate
+			// arm of the same ternary and was uncovered with it.
+			const auto end_glyph = [&](Qt::Orientation o, int lo, int hi,
+			                           int at) {
+				QScrollBar sb(o);
+				sb.setRange(lo, hi);
+				sb.setValue(at);
+				sb.setFixedSize(cw, ch);
+				show(sb, 3, 2);
+				CellBuffer b(3, 2);
+				render_once(sb, b);
+				return b.to_text().trimmed();
+			};
+			const struct { Qt::Orientation o; int lo, hi, at;
+			               const char *want; const char *what; } ends[] = {
+				{ Qt::Vertical,   0, 100,   0, "\u25bc", "vertical at the top" },
+				{ Qt::Vertical,   0, 100, 100, "\u25b2", "vertical at the bottom" },
+				{ Qt::Vertical,   0, 100,  50, "\u2588", "vertical between" },
+				{ Qt::Horizontal, 0, 100,   0, "\u25b6", "horizontal at the left" },
+				{ Qt::Horizontal, 0, 100, 100, "\u25c0", "horizontal at the right" },
+				{ Qt::Horizontal, 0, 100,  50, "\u2588", "horizontal between" },
+				{ Qt::Vertical,   0,   0,   0, "\u2591", "nothing to scroll" },
+			};
+			QStringList wrong;
+			for (const auto &e : ends) {
+				const QString got = end_glyph(e.o, e.lo, e.hi, e.at);
+				if (got != QString::fromUtf8(e.want))
+					wrong << QStringLiteral("%1 drew '%2' for '%3'")
+					             .arg(QLatin1String(e.what), got,
+					                  QString::fromUtf8(e.want));
+			}
+			if (!wrong.isEmpty())
+				printf("info: one-cell scroll bar ends: %s\n",
+				       qPrintable(wrong.join(QStringLiteral("; "))));
+			CHECK(wrong.isEmpty() && sizeof(ends) / sizeof(ends[0]) == 7,
+			      "and a one-cell scroll bar says WHICH end the view is at, "
+			      "in both orientations, with a different glyph again when "
+			      "there is nothing to scroll");
 		}
 
 		// A framed scroll area shorter than three rows. SE_FrameContents
