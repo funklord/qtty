@@ -9050,7 +9050,18 @@ the binary with a deliberately broken bus address and `--require-bus`, and
 fails the gate if that returns 0. Verified by dropping the flag from the
 control's own command line: `tray: the no-bus control PASSED, so this gate
 cannot refuse a run that measured nothing`, make exits 1. Restored, and
-`make test-tray` is green with seven checks.
+the gate is green.
+
+**~~Green with seven checks.~~ Twenty-seven, re-measured 2026-10-08** --
+`make test-tray 2>&1 | grep -c '^PASS:'`, with 0 failures and no leaked
+`dbus-daemon` (58 on the machine before the run and 58 after). The count
+was right when it was written and the gate has grown four times since;
+what makes it worth the strike-through rather than a silent edit is where
+it was wrong. **A gate `make check` cannot run is a gate whose recorded
+size nothing re-derives**, so the number went stale in the one place no
+routine run would correct it -- `evidence.md`'s present-tense countable
+claim, in the setting that guarantees it. The method is in this paragraph
+for the next reader, and the number is not quoted anywhere else.
 
 **The fifteen checks that assume they are the only visible top-level:
 measured, and there is nothing to fix** (2026-09-06). This was the last
@@ -18482,15 +18493,20 @@ caller rather than for one.
 
 Each of the six -- two new, four re-anchored -- was proved with `--only`.
 
-#### The fifteenth site is a different rule, and is left
+#### The fifteenth site is a different rule, and 8.397 settled it
 
 `m.cell = QPoint(param(1, 1) - 1, param(2, 1) - 1)` converts a 1-based
 mouse coordinate rather than a bitmask, and it underflows the same way: a
-report naming column 0 gives cell x = -1. Nothing here clamps it, and
-nothing should until the right answer is settled -- dropping the report
-and clamping it to the corner are different claims about a malformed
-coordinate, and inventing a click at (0, 0) is the worse of the two. What
-the hit test does with a negative cell today is unmeasured. Next.
+report naming column 0 gives cell x = -1. **This section said the right
+answer was unsettled and left it open.** It is settled, in 8.397, the
+same day: measured, dropping the report and clamping it are not two
+spellings of caution -- a mouse report carries a button transition, so
+dropping a malformed release leaves the widget holding a press nothing
+answers, and the floor is a clamp.
+
+It is rewritten rather than appended to because an open question that has
+been closed elsewhere reads as live, and this one would have sent the
+next reader to measure what 8.397 already measured.
 
 ### 8.395 Four rows in one copy of a table and not the other (2026-10-08)
 
@@ -18555,16 +18571,17 @@ looking. Sections 8.36 and 8.394 are the same fault in the source,
 `evidence.md`'s *uniqueness is a property of the file at the moment of
 the edit* is the same fault in the tool.
 
-#### Found while here, and not fixed: the modifier parameter underflows
+#### Found while here, and fixed in 8.396: the parameter underflows
 
 `param(1, 1) - 1` is how all fifteen modifier sites read the parameter,
 and an explicit `0` makes it **-1**, whose low bits are all set: `-1 & 1`,
 `-1 & 2` and `-1 & 4` are each non-zero, so every modifier comes back
 true. It is not hypothetical and the sabotage above proves it -- with the
 prefix guard removed, an XTSMGRAPHICS reply whose second parameter is `0`
-arrives as F4 with Ctrl, Alt and Shift all held. Its own entry next; it
-wants one place that reads the parameter rather than fifteen, which is the
-same change this entry just made to the table.
+arrives as F4 with Ctrl, Alt and Shift all held. It got its own entry the
+same day -- 8.396, which gave it one reader rather than fifteen, the same
+change this entry made to the table -- and this heading says so rather
+than leaving a closed finding described as open.
 
 ### 8.394 The same framing fault, one branch over (2026-10-08)
 
