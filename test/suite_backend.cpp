@@ -775,6 +775,79 @@ int suite_backend() {
 		      "and an SS3 final the decoder does not know is swallowed "
 		      "rather than delivered as Alt held with the letter O");
 	}
+	// MODIFIED F1 TO F4, which arrive as CSI rather than as SS3 -- and the
+	// CSI table had no row for them, so Shift+F1 was consumed and produced
+	// nothing at all while plain F1 worked.
+	//
+	// 8.394's lens found it: one rule written twice. A, B, C, D, H and F
+	// appear in both tables, the SS3 one additionally carries P, Q, R and S,
+	// and only the CSI one applies the modifier parameter -- so the four
+	// rows present in one copy and missing from the other are exactly the
+	// four keys whose modified form nobody could receive.
+	//
+	// What terminfo says. ONE convention rather than five witnesses --
+	// xterm's, which the other three imitate deliberately:
+	//
+	//   xterm, xterm-256color, foot, alacritty, tmux-256color
+	//       kf1=\EOP  kf13=\E[1;2P  kf25=\E[1;5P  kf37=\E[1;6P
+	//
+	// So Shift, Ctrl and Ctrl+Shift all take the CSI form. CSI 1;2R is
+	// Shift+F3 here and not a cursor-position report: nothing in this
+	// library ever writes DSR-CPR, so no reply is ever outstanding.
+	{
+		const struct { char final; int key; const char *what; } mf[] = {
+			{ 'P', Qt::Key_F1, "F1" }, { 'Q', Qt::Key_F2, "F2" },
+			{ 'R', Qt::Key_F3, "F3" }, { 'S', Qt::Key_F4, "F4" },
+		};
+		QStringList wrong;
+		for (const auto &e : mf) {
+			// The relationship rather than either value: the modified form
+			// must name the key the unmodified one does and carry the
+			// modifiers the parameter asked for. A table that named the
+			// keys alone would pass against an SS3 copy that had drifted.
+			feed(QByteArray("\033O") + e.final);
+			const int plain = rec.keys.size() == 1 ? rec.keys[0].qt_key : 0;
+			feed(QByteArray("\033[1;6") + e.final);
+			const bool one = rec.keys.size() == 1;
+			if (!one || rec.keys[0].qt_key != plain || plain != e.key
+			    || !rec.keys[0].ctrl || !rec.keys[0].shift
+			    || rec.keys[0].alt)
+				wrong << QStringLiteral("%1: SS3 gave 0x%2, CSI 1;6%3 gave %4")
+				             .arg(QLatin1String(e.what)).arg(plain, 0, 16)
+				             .arg(QLatin1Char(e.final))
+				             .arg(one ? QStringLiteral("0x%1 c=%2 s=%3 a=%4")
+				                            .arg(rec.keys[0].qt_key, 0, 16)
+				                            .arg(int(rec.keys[0].ctrl))
+				                            .arg(int(rec.keys[0].shift))
+				                            .arg(int(rec.keys[0].alt))
+				                      : QStringLiteral("%1 key(s)")
+				                            .arg(rec.keys.size()));
+		}
+		if (!wrong.isEmpty())
+			printf("info: modified F-key rows: %s\n",
+			       qPrintable(wrong.join(QStringLiteral("; "))));
+		CHECK(wrong.isEmpty(),
+		      "and Ctrl+Shift+F1 to F4, which arrive as CSI 1;6P to 1;6S, "
+		      "decode as the keys the SS3 finals do with the modifiers the "
+		      "parameter names");
+
+		// The other half of the same change, and the one the four rows made
+		// necessary: S and R are finals a terminal REPLIES with, so a switch
+		// reading the final byte alone turns an answer into a keypress. An
+		// XTSMGRAPHICS reply is the shape to fear -- it carries a ? prefix,
+		// three parameters and the final S -- and nothing in this library
+		// asks for one, so without a fixture this guard would be a claim.
+		feed("\033[?2;0;1000S");
+		const bool no_phantom = rec.keys.isEmpty();
+		// The control, which is what says the feed reached the decoder at
+		// all: the same final WITHOUT a prefix is still F4.
+		feed("\033[1;6S");
+		CHECK(no_phantom && rec.keys.size() == 1
+		      && rec.keys[0].qt_key == Qt::Key_F4,
+		      "while a reply that merely ends in the same final -- an "
+		      "XTSMGRAPHICS answer, CSI ? 2;0;1000 S -- is no key at all, "
+		      "and the prefixless form is still F4");
+	}
 
 	// AND THE CSI <n> ~ TABLE, for the same reason and with a sharper
 	// consequence. Two of its twelve function-key rows were checked, 15 and

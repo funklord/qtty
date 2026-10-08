@@ -5913,3 +5913,19 @@ find = "\t\tif (c == 0x1b && pending_.size() < 2) return false;"
 into = "\t\tif (false) return false;"
 count = 1
 check = "a paste whose end marker is split at its ESC still ends, and delivers only what was pasted"
+
+[[sabotage]]
+name = "modified F1 is no longer a row in the CSI table"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\n\tcase 'P': k.qt_key = Qt::Key_F1; break;"
+into = "\n\tcase 'p': k.qt_key = Qt::Key_F1; break;"
+count = 1
+check = "decode as the keys the SS3 finals do"
+
+[[sabotage]]
+name = "a prefixed reply reaches the key table again"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (!prefix.isEmpty()) return true;           // consumed, not a key"
+into = "\tif (false) return true;           // consumed, not a key"
+count = 1
+check = "an XTSMGRAPHICS answer"

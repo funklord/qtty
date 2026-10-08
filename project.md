@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2092 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2094 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18180,6 +18180,80 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.395 Four rows in one copy of a table and not the other (2026-10-08)
+
+**8.394's lens, run once more: which rules in this backend are written
+twice?** The literal answer is the cursor-key table. `A`, `B`, `C`, `D`,
+`H` and `F` appear in `dispatch_csi()`'s final switch and again in the SS3
+switch, and both copies are correct about those six.
+
+**The divergence is what the copies do NOT share.** The SS3 copy
+additionally carries `P`, `Q`, `R`, `S` for F1 to F4, and the CSI copy is
+the only one that applies the modifier parameter. So the four rows one
+copy has and the other lacks are exactly the four keys whose modified
+form can only arrive as CSI -- and that form was consumed and delivered
+nothing. Plain F1 worked, every modified F1 did not.
+
+**Measured, from terminfo rather than from memory:**
+
+    xterm, xterm-256color, foot, alacritty, tmux-256color
+        kf1=\EOP   kf13=\E[1;2P   kf25=\E[1;5P   kf37=\E[1;6P
+
+Shift, Ctrl and Ctrl+Shift all take the CSI form, and plain F1 is the only
+SS3 one. **That is one convention and not five witnesses** -- xterm's,
+which the other three imitate deliberately; `screen` defines `kf1` and
+none of the modified rows at all.
+
+And measured in the decoder before the fix: `CSI 1;6P` through `CSI 1;6S`
+each delivered **0 keys**, while the SS3 finals delivered F1 to F4. Four
+rows in the CSI switch is the whole fix.
+
+#### A key never carries a prefix, and the four rows are what made that matter
+
+`S` is the final an XTSMGRAPHICS reply ends with and `R` is DSR-CPR's, so
+a switch that reads the final byte alone turns a terminal's answer into a
+keypress nobody made. Nothing here asks for either -- no `ESC [ 6 n` is
+written anywhere in the library, and `caps_query()` asks nothing of
+XTSMGRAPHICS -- which is why the ambiguity is settled in favour of the key
+and not against it. But an unsolicited reply is reachable, and it was the
+four new rows that made it so, so the guard belongs to the same change
+rather than to a later one.
+
+**Its fixture needed a control more than most.** A reply nothing requests
+is a fixture whose failure mode is silence: feed `CSI ? 2;0;1000 S`,
+require no key, and a decoder that had stopped receiving anything at all
+would satisfy it. The same block feeds the prefixless `CSI 1;6S`
+afterwards and requires F4, so the silence is the guard's and not the
+harness's.
+
+#### The duplicate table defeated the anchor the way it defeated the fix
+
+The first sabotage entry anchored `case 'P': k.qt_key = Qt::Key_F1;
+break;` with one leading tab, and `make sabotage-check` refused it: the
+anchor matches **twice**, because the SS3 copy is three tabs in and the
+one-tab string is a substring of it. Anchoring on the newline before the
+tab makes it unique -- `\n\tcase 'P'` cannot match a line that opens with
+three tabs.
+
+Which is this entry's own subject arriving from the other side. The
+duplicated table is what let the fix reach one copy, and it is what let
+the anchor reach both; a uniqueness assertion caught the second because
+something checks it, and nothing checked the first until somebody went
+looking. Sections 8.36 and 8.394 are the same fault in the source,
+`evidence.md`'s *uniqueness is a property of the file at the moment of
+the edit* is the same fault in the tool.
+
+#### Found while here, and not fixed: the modifier parameter underflows
+
+`param(1, 1) - 1` is how all fifteen modifier sites read the parameter,
+and an explicit `0` makes it **-1**, whose low bits are all set: `-1 & 1`,
+`-1 & 2` and `-1 & 4` are each non-zero, so every modifier comes back
+true. It is not hypothetical and the sabotage above proves it -- with the
+prefix guard removed, an XTSMGRAPHICS reply whose second parameter is `0`
+arrives as F4 with Ctrl, Alt and Shift all held. Its own entry next; it
+wants one place that reads the parameter rather than fifteen, which is the
+same change this entry just made to the table.
 
 ### 8.394 The same framing fault, one branch over (2026-10-08)
 

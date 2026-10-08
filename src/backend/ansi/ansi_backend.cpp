@@ -2359,6 +2359,15 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 	if (final == 'I') { sink_->on_focus_change(true);  return true; }
 	if (final == 'O') { sink_->on_focus_change(false); return true; }
 
+	// A KEY NEVER CARRIES A PREFIX, and the table below has to say so now
+	// that it answers to P, Q, R and S. Those three letters are finals
+	// other things reply with -- XTSMGRAPHICS answers CSI ? <n> ; <n> ; <n> S
+	// -- and a reply reaching a switch that reads only the final byte is a
+	// keypress nobody made. Nothing here asks for one today, which is why
+	// this is a guard rather than a fix: the four rows are what make an
+	// unsolicited reply reachable, so the guard belongs to the same change.
+	if (!prefix.isEmpty()) return true;           // consumed, not a key
+
 	KeyEvent k;
 	switch (final) {
 	case 'A': k.qt_key = Qt::Key_Up; break;
@@ -2368,6 +2377,16 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 	case 'H': k.qt_key = Qt::Key_Home; break;
 	case 'F': k.qt_key = Qt::Key_End; break;
 	case 'Z': k.qt_key = Qt::Key_Tab; k.shift = true; break;
+	// F1 TO F4 WITH A MODIFIER, which is the only form they take: plain F1
+	// is SS3 P and Shift+F1 is CSI 1;2P, so the four keys live in the SS3
+	// table for their unmodified form and here for every other. Missing
+	// from this copy, the whole modified set was consumed and delivered
+	// nothing -- terminfo's kf13 through kf48 for xterm, foot, alacritty
+	// and tmux, which is one convention rather than four witnesses.
+	case 'P': k.qt_key = Qt::Key_F1; break;
+	case 'Q': k.qt_key = Qt::Key_F2; break;
+	case 'R': k.qt_key = Qt::Key_F3; break;
+	case 'S': k.qt_key = Qt::Key_F4; break;
 	default:  return true;                        // consumed, unmapped
 	}
 	// xterm reports modifiers as a second parameter, 1 + a bitmask.
