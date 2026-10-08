@@ -2429,6 +2429,21 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 			paste_refused_ = false;
 			return true;
 		case 201:
+			// A CLOSE WITH NO OPEN DELIVERS NOTHING, and this branch used to
+			// deliver an empty paste for one: it never consulted in_paste_,
+			// although that flag exists to say whether a paste is running.
+			// An application sees on_paste("") and does whatever it does
+			// with a paste of nothing -- a cleared selection, an undo entry
+			// for an edit that did not happen.
+			//
+			// It matters more since the handover fix, which is how it was
+			// found. The input a terminal sends after giving the screen back
+			// is exactly the close of the paste that was interrupted, and
+			// 8.413 drops what had accumulated -- so that close now arrives
+			// at a decoder holding nothing, which is this case rather than a
+			// hypothetical one. Measured there: one paste event carrying the
+			// empty string.
+			if (!in_paste_) return true;
 			in_paste_ = false;
 			// Refused pastes deliver nothing, and say so. A qWarning for
 			// the reason the clipboard refusal gives: setup() holds

@@ -414,6 +414,15 @@ int suite_backend() {
 	CHECK(!ghost.contains(QStringLiteral("stale")),
 	      "and a close arriving after the terminal came back does not "
 	      "deliver what the abandoned paste had already collected");
+	// AND DELIVERS NOTHING AT ALL, which is the half the assertion above
+	// cannot reach. It was written when the close still produced an empty
+	// paste, so it asked only that the text be absent -- and "" satisfies
+	// that while still handing an application a paste of nothing to act on.
+	// The 201 branch consults in_paste_ now, so a close with no open is
+	// consumed rather than reported.
+	CHECK(rec.pastes.isEmpty(),
+	      "and reports no paste at all, a close with no open being nothing "
+	      "that happened rather than a paste of nothing");
 
 	// THE KITTY KEYBOARD PROTOCOL, which is the only way a terminal can say
 	// Ctrl+Shift+C at all. A control byte is one of 32 values and carries no

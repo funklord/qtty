@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2128 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2129 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18249,6 +18249,33 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.415 A paste close with no open delivered a paste of nothing (2026-10-08)
+
+**8.413's own consequence, which is how it was found.** That fix drops
+what an abandoned paste had collected, so the close a terminal sends
+after giving the screen back now arrives at a decoder holding nothing --
+and the `CSI 201~` branch never consulted `in_paste_`, although that flag
+exists to say whether a paste is running. It delivered `on_paste("")`.
+
+An application then does whatever it does with a paste of nothing: a
+cleared selection, an undo entry for an edit that did not happen. Not
+expensive, and not hypothetical either -- the check written for 8.413
+measured it, one paste event carrying the empty string.
+
+A close with no open is consumed now. **The normal path is unaffected
+because `in_paste_` is true there**, and the refusal branch still runs
+for an over-limit paste, that being inside one.
+
+#### The assertion that could not reach it
+
+The 8.413 check asked only that the delivered text not contain `stale`,
+because when it was written the close still produced an empty paste --
+and `""` satisfies that while still handing an application something to
+act on. **A check written against the behaviour of the day pins that
+behaviour, including the part of it that is wrong.** There is a second
+assertion beside it now: no paste at all, a close with no open being
+nothing that happened rather than a paste of nothing.
+
 ### 8.414 A font chosen after setup() was stored and ignored (2026-10-08)
 
 **`Qtty::set_font()` writes two file statics and `setup()` is the only
@@ -18283,6 +18310,31 @@ upload caches invalidate by construction when the metrics move.
 So it is reachable rather than hard, and it is a decision about what a
 public call does rather than a defect: recorded in 0b with the cost and
 the owner, as the mouse-grab question above it was.
+
+#### The lens is finished: the other seven setters
+
+**A public configuration call whose only reader has already run.** All
+eight an application can make, and what each does when called late:
+
+- **`set_font()`** -- this entry. The only one of the eight.
+- **`set_quit_keys()` and `set_frame_interval()`** -- designed for both
+  times, each carrying its own argument for why: an application chooses
+  while building its window, long before a router or a scheduler exists,
+  so each sets the default the next one starts from AND reaches the ones
+  already running. That is the shape the font question above would have
+  to take.
+- **`set_keyboard_conventions()`** -- read continuously, at paint time in
+  `grid_style.cpp` and at input time in the router, so a late call takes
+  effect on the next frame.
+- **`set_focus_widget()`, `set_terminal_focused()`, `set_priority()`,
+  `set_icon_glyph()`** -- all act when called or are read at paint or
+  layout time.
+- **`add_font_file()`** -- documented with the same precondition and
+  deliberately NOT warned. Its effect is a registration with Qt's font
+  database, which is time-independent and useful to a program for its own
+  widgets; only the grid's adoption of it needs `setup()`. A warning
+  there would fire on a legitimate call, which is how a diagnostic
+  becomes noise.
 
 ### 8.413 A paste abandoned mid-flight froze the keyboard (2026-10-08)
 
