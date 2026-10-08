@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2096 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2098 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18180,6 +18180,73 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.397 A floor under the mouse coordinate (2026-10-08)
+
+**8.396 left the fifteenth modifier-parameter site open** -- the one that
+converts a 1-based mouse coordinate rather than a bitmask -- and said
+dropping the report and clamping it were different claims about a
+malformed coordinate. Both were measured, and the measurement reversed the
+answer the precedent suggested.
+
+**What the underflow costs, measured through the router.** A report naming
+column 0 gives cell -1, and `InputRouter::on_mouse()` multiplies a cell by
+the cell size, so the press arrives at the top level at local x = -7 --
+outside the widget receiving it, `childAt()` having found nothing there.
+`QCursor::setPos()` goes with it, and that cursor is written on every
+mouse event precisely so that `menu.exec(QCursor::pos())` works (8.251's
+neighbour in the same function), so a context menu anchored from it is
+anchored off the screen.
+
+**The precedent said drop and the precedent does not transfer.** 8.391
+drops a resize report naming a grid no terminal could have, which is the
+same shape one level up -- a far-end value outside the encoding's range.
+But a resize report carries nothing except geometry, while a mouse report
+carries a **button transition**, and the two are not equally inventable
+afterwards:
+
+    press, then a release at cell (-1,-1)   the button comes back up
+    press, with that release dropped        the button stays down
+
+The release reaches the widget because the router sends a release to
+whatever the press grabbed wherever it lands. So dropping a malformed
+report converts a bad position into a widget holding a press nothing will
+ever answer, while clamping converts it into a press at the nearest cell
+the terminal could have meant. Clamped, therefore -- and the comment at
+the site says why, because the opposite answer sits twenty lines below it.
+
+#### The mechanism written down first was wrong, and the fixture refused it
+
+The first version of the router check asserted that a dropped release
+**strands the grab**, so a later click would reach the dragged widget
+instead of whatever it landed on. Measured, both arms reached the button:
+a PRESS re-runs the hit test and takes the grab with it, so routing
+recovers on the very next click. What survives a dropped release is a
+**stuck widget, not a misrouted one**.
+
+The reading came from a probe showing a child with one press and no
+release. That observation was correct; "no release" was then read as "the
+grab is stranded" when it only ever said the press was unanswered -- the
+reduction was right and the mechanism attached to it was not, which is
+exactly the pair `evidence.md` keeps separate.
+
+**What makes this cheap rather than expensive is where it was caught.**
+The wrong mechanism was already written into a source comment and a check
+name, and the check refused to pass -- so it cost one fixture run and
+never reached a commit message. An assertion written to the mechanism
+rather than to the observable is what made the refusal possible: had the
+check asserted only that the button came up, it would have passed and the
+wrong story would have shipped beside a working fix.
+
+#### The premise it rests on had no check
+
+Clamping is right only while a release routes by grab rather than by
+position, and nothing asserted that: the slider drag never leaves the
+slider, and the splitter's moves all land on the screen. The new check
+feeds a release from off the grid and asserts the **difference** between
+delivering it and dropping it -- the delivered half alone would pass
+against a router that routed by position and happened to find the same
+widget. A sabotage entry routes a release by position and reddens it.
 
 ### 8.396 The modifier parameter, read in fifteen places (2026-10-08)
 

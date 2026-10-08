@@ -1140,6 +1140,36 @@ int suite_backend() {
 	CHECK(col_capped && row_capped,
 	      "a CSI parameter too large for an int saturates rather than "
 	      "wrapping, in either mouse axis");
+	// THE OTHER END OF THE SAME PARAMETER, and the one with no cap to
+	// reach: SGR coordinates are 1-based, so a 0 is one below the lowest
+	// value the encoding has and the conversion to a 0-based cell
+	// underflows. Measured before the floor: a report naming column 0
+	// reached InputRouter::on_mouse() as cell -1, which delivered a
+	// QMouseEvent to the top level at local x = -7 -- outside the widget
+	// that received it -- and moved QCursor::pos() there with it.
+	feed("\033[<0;0;0M");
+	const bool floored = rec.mice.size() == 1
+	                  && rec.mice[0].cell == QPoint(0, 0);
+	// And it is still the press it was. What a malformed coordinate makes
+	// doubtful is the position, not the button, which is the whole reason
+	// this is clamped rather than dropped.
+	const bool still_press = rec.mice.size() == 1 && rec.mice[0].press
+	                      && rec.mice[0].button == 1;
+	if (!floored)
+		printf("info: CSI <0;0;0M gave %d event(s)%s\n", int(rec.mice.size()),
+		       rec.mice.size() == 1
+		           ? qPrintable(QStringLiteral(", cell (%1,%2)")
+		                            .arg(rec.mice[0].cell.x())
+		                            .arg(rec.mice[0].cell.y()))
+		           : "");
+	// The control, which has to be a cell that is NOT the corner: a
+	// decoder that answered (0,0) to everything would satisfy the line
+	// above and nothing else.
+	feed("\033[<0;3;2M");
+	CHECK(floored && still_press && rec.mice.size() == 1
+	      && rec.mice[0].cell == QPoint(2, 1),
+	      "a mouse coordinate of 0 lands on the nearest cell rather than "
+	      "below the grid, and still arrives as the press it was");
 	feed("\033[<0;1000;640M");
 	CHECK(rec.mice.size() == 1 && rec.mice[0].cell == QPoint(999, 639),
 	      "while a four-digit coordinate a real terminal could send arrives "

@@ -10172,6 +10172,53 @@ int suite_router() {
 		CHECK(sl->value() > 0, "dragging a slider moves it");
 	}
 	{
+		// A RELEASE THE TERMINAL PUT OUTSIDE THE GRID still reaches the
+		// widget the press grabbed, and that is the premise the backend's
+		// mouse-coordinate floor rests on: a malformed report is clamped
+		// rather than dropped, because the button transition it carries
+		// cannot be invented afterwards. Nothing asserted it -- the slider
+		// above never leaves the slider, and the splitter's moves all land
+		// on the screen.
+		//
+		// Asserted as the DIFFERENCE between delivering that release and
+		// dropping it. The delivered half alone would pass against a
+		// router that routed a release by position and happened to find
+		// the same widget; what separates the two is the dropped half.
+		//
+		// A STRANDED GRAB IS NOT THE COST, and the first version of this
+		// check asserted that it was -- a later click reaching the slider
+		// instead of the button it landed on. It does not: a PRESS re-runs
+		// the hit test and takes the grab with it, so routing recovers on
+		// the very next click. What is left behind is a widget holding a
+		// press no release will ever answer. The fixture refused the
+		// mechanism before the mechanism reached a commit message.
+		const auto run = [&](bool deliver_release) {
+			QWidget h;
+			h.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *btn = new QPushButton(QStringLiteral("ok"), &h);
+			btn->setGeometry(0, 0, cw * 8, ch);
+			h.resize(GridMetrics::cells(30, 4));
+			h.show();
+			QCoreApplication::processEvents();
+			InputRouter r(&h);
+			r.on_mouse({QPoint(1, 0), 1, true, false, false, 0});
+			const bool down_after_press = btn->isDown();
+			if (deliver_release)
+				r.on_mouse({QPoint(-1, -1), 1, false, true, false, 0});
+			QCoreApplication::processEvents();
+			printf("info: a release off the grid, delivered=%d: the button"
+			       " was down after the press %d, and after it %d\n",
+			       int(deliver_release), int(down_after_press),
+			       int(btn->isDown()));
+			return btn->isDown();
+		};
+		const bool after_release = run(true), after_drop = run(false);
+		CHECK(!after_release && after_drop,
+		      "a release the terminal put outside the grid still reaches "
+		      "the widget the press grabbed, where dropping that report "
+		      "would leave the widget held down");
+	}
+	{
 		// Selecting text with the mouse came free with the same change, and
 		// section 7.2 had recorded selection as the untested half of the text
 		// widgets. It is a third distinct shape: the target never changes and

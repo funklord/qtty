@@ -2148,7 +2148,27 @@ bool AnsiBackend::dispatch_csi(const QByteArray &prefix,
 	if (prefix == "<" && (final == 'M' || final == 'm')) {
 		const int b = param(0, 0);
 		MouseEvent m;
-		m.cell = QPoint(param(1, 1) - 1, param(2, 1) - 1);
+		// A 1-BASED COORDINATE WITH A FLOOR UNDER IT. The far end chooses
+		// these, and 0 is one below the lowest value the encoding has, so
+		// the conversion underflows: measured, a report naming column 0
+		// reached InputRouter::on_mouse() as cell -1, which delivered a
+		// QMouseEvent to the top level at local x = -7 -- outside the
+		// widget that received it -- and moved QCursor::pos() there, which
+		// is where a context menu anchors itself.
+		//
+		// CLAMPED rather than dropped, which is the opposite of what a
+		// malformed RESIZE report gets a few lines below, and the two were
+		// separated by measurement rather than by argument. A mouse report
+		// carries a button transition as well as a position, and the router
+		// sends a release to whatever the press grabbed wherever it lands --
+		// so a malformed release still ends its drag correctly, while
+		// dropping it would leave the widget holding a press nothing
+		// answers. Measured: a QPushButton sent a press and then a release
+		// at cell (-1,-1) comes back up, and with that release dropped it
+		// stays down. A position can be moved to the nearest cell the
+		// terminal could have meant; a button transition cannot be invented
+		// afterwards.
+		m.cell = QPoint(qMax(0, param(1, 1) - 1), qMax(0, param(2, 1) - 1));
 		m.motion = (b & 32) != 0;
 		// Bits 4, 8 and 16, which were parsed by nothing. A shift-click and a
 		// control-click arrived as plain clicks, so an item view could not be

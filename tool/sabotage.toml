@@ -5949,3 +5949,25 @@ find = "\t\tcase 3:          emit_key(Qt::Key_Delete, param(1, 1)); return true;
 into = "\t\tcase 3:          sink_->on_key({Qt::Key_Delete, {}, false, false, false}); return true;"
 count = 1
 check = "all eight of them carry the modifier parameter"
+
+[[sabotage]]
+# The floor under the 1-based mouse coordinate. A 0 from the far end is one
+# below the lowest value the encoding has, and the conversion underflows.
+name = "a mouse coordinate underflows the grid again"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tm.cell = QPoint(qMax(0, param(1, 1) - 1), qMax(0, param(2, 1) - 1));"
+into = "\t\tm.cell = QPoint(param(1, 1) - 1, param(2, 1) - 1);"
+count = 1
+check = "a mouse coordinate of 0 lands on the nearest cell"
+
+[[sabotage]]
+# A release routed by position rather than by the grab the press took. The
+# slider and splitter drags survive it -- their releases land on the widget
+# anyway -- so the check that catches it is the one feeding a release from
+# off the grid, which is the premise the backend's coordinate floor rests on.
+name = "a release is routed by position rather than by the grab"
+file = "src/runtime/input_router.cpp"
+find = "\tif (!grab_.isNull() && (m.motion || m.release)) target = grab_;"
+into = "\tif (!grab_.isNull() && m.motion) target = grab_;"
+count = 1
+check = "still reaches the widget the press grabbed"
