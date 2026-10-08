@@ -3807,6 +3807,154 @@ int suite_router() {
 		      "not both, so the audit names the fault once");
 		GridGuard::reset();
 	}
+	{
+		// AUDIT'S SIX DETAIL ROWS, WHICH NOBODY HAD EVER PRODUCED. Found by
+		// coverage: of the ten kinds `audit()` can emit, the four that name
+		// a WIDGET are exercised by the checks above and every one that
+		// formats a FINDING -- mnemonic_conflicts, shortcut_conflicts,
+		// conventions_shadowed, tab_order_anomalies, ambiguous_chords,
+		// mnemonic_missing -- had never run. Each detector is tested on its
+		// own, several times over; what was untested is the aggregator's
+		// formatting of what they return.
+		//
+		// That is the half that rots quietly. If a detector stops firing
+		// something downstream notices, because the suite asks it directly.
+		// If `audit()` formats a finding with the wrong field, or drops the
+		// claimant list, or puts a pointer where a name belongs, nothing
+		// notices at all -- and `audit()` is what an application author
+		// runs, so the row they read is the whole product.
+		//
+		// ASSERTED AGAINST WHAT THE DETECTORS RETURN, not against the
+		// format: one row per finding, and each row carrying that
+		// finding's own strings. Restating the format here would be the
+		// same hand writing both sides, which is corroboration by
+		// construction and would pass with the separator deleted.
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(40, 12));
+		auto *v = new QVBoxLayout(&win);
+		// Two claimants on one letter, and a third control with no letter
+		// at all -- reachable by Tab, so mnemonic_missing's finding rather
+		// than pointer_only's.
+		v->addWidget(new QPushButton(QStringLiteral("&Go")));
+		v->addWidget(new QPushButton(QStringLiteral("&Get")));
+		v->addWidget(new QPushButton(QStringLiteral("Run")));
+		// A form whose second row was inserted above a field built before
+		// it, which is tab_order_anomalies' own fixture shape.
+		auto *form = new QWidget(&win);
+		auto *fl = new QFormLayout(form);
+		auto *user = new QLineEdit;
+		user->setObjectName(QStringLiteral("user_field"));
+		fl->addRow(QStringLiteral("&User"), user);
+		v->addWidget(form);
+		auto *port = new QLineEdit;
+		port->setObjectName(QStringLiteral("port_field"));
+		fl->insertRow(0, QStringLiteral("&Port"), port);
+		// Two actions on one sequence; one on a chord a terminal cannot
+		// deliver unambiguously; one on the context-menu convention, which
+		// reports whether or not the bundle was asked for.
+		auto *save = new QAction(QStringLiteral("Save"), &win);
+		save->setShortcut(QKeySequence(QStringLiteral("Ctrl+S")));
+		auto *store = new QAction(QStringLiteral("Store"), &win);
+		store->setShortcut(QKeySequence(QStringLiteral("Ctrl+S")));
+		auto *italic = new QAction(QStringLiteral("Italic"), &win);
+		italic->setShortcut(QKeySequence(QStringLiteral("Ctrl+I")));
+		auto *context = new QAction(QStringLiteral("Context"), &win);
+		context->setShortcut(QKeySequence(Qt::ShiftModifier | Qt::Key_F10));
+		for (QAction *a : { save, store, italic, context }) win.addAction(a);
+		win.show();
+		QCoreApplication::processEvents();
+
+		QMap<QString, QStringList> rows;
+		for (const auto &r : Qtty::audit(&win)) rows[r.first] << r.second;
+		// One row per finding, and every string the finding carries present
+		// in some row of that question.
+		const auto carries = [&rows](const QString &q, int n,
+		                             const QStringList &bits) {
+			const QStringList got = rows.value(q);
+			if (got.size() != n)
+				return QStringLiteral("%1: %2 row(s) for %3 finding(s)")
+				           .arg(q).arg(got.size()).arg(n);
+			for (const QString &b : bits) {
+				bool any = false;
+				for (const QString &t : got) if (t.contains(b)) any = true;
+				if (!any)
+					return QStringLiteral("%1: no row carries '%2'")
+					           .arg(q, b);
+			}
+			return QString();
+		};
+		QStringList faults;
+		const auto note = [&faults](const QString &e) {
+			if (!e.isEmpty()) faults << e;
+		};
+		{
+			const auto f = mnemonic_conflicts(&win);
+			QStringList bits;
+			for (const auto &c : f) { bits << QString(c.first) << c.second; }
+			note(carries(QStringLiteral("mnemonic_conflicts"), f.size(), bits));
+		}
+		{
+			const auto f = shortcut_conflicts(&win);
+			QStringList bits;
+			for (const auto &c : f) {
+				bits << c.first.toString(QKeySequence::NativeText);
+				bits << c.second;
+			}
+			note(carries(QStringLiteral("shortcut_conflicts"), f.size(), bits));
+		}
+		{
+			const auto f = conventions_shadowed(&win);
+			QStringList bits;
+			for (const auto &c : f) { bits << c.first << c.second; }
+			note(carries(QStringLiteral("conventions_shadowed"), f.size(), bits));
+		}
+		{
+			const auto f = tab_order_anomalies(&win);
+			QStringList bits;
+			for (const auto &p : f) {
+				if (p.first) bits << p.first->objectName();
+				if (p.second) bits << p.second->objectName();
+			}
+			note(carries(QStringLiteral("tab_order_anomalies"), f.size(), bits));
+		}
+		{
+			const auto f = ambiguous_chords(&win);
+			QStringList bits;
+			for (const auto &c : f) { bits << c.first << c.second; }
+			note(carries(QStringLiteral("ambiguous_chords"), f.size(), bits));
+		}
+		{
+			const auto f = mnemonic_missing(&win);
+			QStringList bits;
+			for (const auto &c : f) { bits << c.first << c.second; }
+			note(carries(QStringLiteral("mnemonic_missing"), f.size(), bits));
+		}
+		// And the fixture has to have produced all six, or the assertion
+		// above is six comparisons against nothing -- the vacuous pass this
+		// whole check exists because of.
+		QStringList absent;
+		for (const QString &q : { QStringLiteral("mnemonic_conflicts"),
+		                          QStringLiteral("shortcut_conflicts"),
+		                          QStringLiteral("conventions_shadowed"),
+		                          QStringLiteral("tab_order_anomalies"),
+		                          QStringLiteral("ambiguous_chords"),
+		                          QStringLiteral("mnemonic_missing") })
+			if (rows.value(q).isEmpty()) absent << q;
+		if (!faults.isEmpty() || !absent.isEmpty())
+			printf("info: audit rows -- %s%s%s\n",
+			       qPrintable(faults.join(QStringLiteral("; "))),
+			       faults.isEmpty() || absent.isEmpty() ? "" : "; ",
+			       absent.isEmpty()
+			           ? ""
+			           : qPrintable(QStringLiteral("produced nothing for ")
+			                            + absent.join(QStringLiteral(", "))));
+		CHECK(faults.isEmpty() && absent.isEmpty(),
+		      "audit() emits one row per finding for all six of its detail "
+		      "questions, each carrying what the detector it came from "
+		      "reported");
+		GridGuard::reset();
+	}
 
 	// ---- a popup that takes another one with it ---------------------------
 	//

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2099 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2104 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -610,12 +610,22 @@ derives everything from was an *account setting*, not a property of the
 font, and `setup()` now asks for the hinting that makes it so rather than
 inheriting whatever the desktop supplies.
 
-Whole-tree line coverage **97.77%, 2675 of 2736 when last taken, on
-2026-09-04**, with the command in §0c into a build directory removed
+Whole-tree line coverage **95.23%, 5287 of 5552 when last taken, on
+2026-10-08**, with the command in §0c into a build directory removed
 first. **The date is part of the claim**: checks have been added since,
 so this is a reading and not a property of the tree -- which is this
 document's own rule about countable claims, applied to the number it is
 most tempted to state flatly.
+
+**And the headline is the wrong number to quote on its own**, which is
+8.400's finding rather than a caveat: 173 of the 258 uncovered lines are
+`tray.cpp` and its moc, a program this recipe cannot execute because the
+tray is exercised by `make test-tray` against a private D-Bus session.
+**Excluding that pair it is 98.33%, 5287 of 5377.** The reading before
+this one, `97.77%, 2675 of 2736 on 2026-09-04`, predates `tray.cpp` by two
+days and is therefore already on that footing, which makes the series
+**97.77% then, 97.71% before this session's five checks and 98.33% after
+them** -- on a tree whose countable lines have doubled.
 
 An earlier reading the same day, `97.65%, 2655 of 2719`, was **taken
 twice from two fresh builds and returned the identical pair.** A single
@@ -1096,6 +1106,15 @@ Owned by the copyright holder:
 
 Owned elsewhere, and signalled rather than fixed here:
 
+- **The PID-reuse guard and the self-match guard are different guards, and
+  the first reads like the second.** `running-code.md` carries both
+  remedies in different sections and does not say that applying one does
+  nothing for the other; measured here 2026-10-08 by killing my own shell
+  twice in one session, the second time with the cmdline recheck in place
+  and passing, because the pattern is genuinely in the shell's own command
+  line. Signalled as `claude-guidelines` `a36828d`, which carries the loop
+  that did it and why the remedy is a sentence in that document rather
+  than a change in any tree.
 - **The braced-initialiser lexer fault in `style_gate.py`** is
   `claude-guidelines`', signalled with three fixtures and the paren case
   that must not change. It is larger than it looked: a braced continuation
@@ -18191,6 +18210,163 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.400 Coverage re-taken, and the five gaps it named (2026-10-08)
+
+**The figure in section 0a was dated 2026-09-04 and said so**, which is
+this document's own rule about countable claims. The suite was 843 checks
+then and 2099 when this was taken, so re-taking it was overdue -- and the
+reason to re-take it is not the number. **An uncovered line is a
+question**: either a check is missing or the line cannot be reached, and
+the second wants recording so the next reader does not re-derive it.
+
+#### The number, and the two corrections it needed
+
+    same recipe as section 0c, build-cov removed first
+    5251 of 5549 gcov records, 94.63%            against 97.77% of 2736
+
+**That reads as a three-point fall and it is not one.** Two corrections,
+both measured:
+
+- **173 of the 291 uncovered lines are the tray**, `tray.cpp` (137) and
+  its `moc_tray.cpp` (36), and this runner cannot reach them by
+  construction: the tray is exercised by `make test-tray`, a separate
+  program against a private D-Bus session, which ran today at 27 checks
+  and 0 failures. **And `src/runtime/tray.cpp` did not exist when the
+  baseline was taken** -- `git log --reverse` dates its first commit
+  2026-09-06, two days after. So the whole of the apparent fall is a file
+  that arrived after the baseline and that this recipe structurally
+  cannot execute. Excluding the pair: **5251 of 5374, 97.71%**, on a tree
+  with twice the countable lines.
+- **298 uncovered RECORDS are 291 uncovered source lines**, because gcov
+  lists a line once per emitted variant and a destructor has three. The
+  Makefile's own comment says exactly this about `gcov -f`; the count
+  above is the records, kept that way so it compares with the baseline,
+  and the per-line figure is what the gap list below is drawn from.
+
+**The transferable half: a whole-tree coverage figure assumes every file
+is reachable by the runner that took it**, and this tree acquired one that
+is not, two days after the number was written down. The population changed
+under the claim, which is the shape `evidence.md` names for a price with
+two halves -- and neither half was wrong when it was taken.
+
+#### The closing measurement, because a check inspects nothing by default
+
+The five checks were written from an uncovered-line list, which says
+nothing about whether they reach those lines -- the mistake below is what
+that costs. So the recipe was run again afterwards, from a tree deleted a
+second time:
+
+    before   5251 of 5549  94.63%   291 uncovered lines, 118 outside the tray
+    after    5287 of 5552  95.23%   258 uncovered lines,  85 outside the tray
+
+    tray pair excluded:  97.71% before, 98.33% after
+
+**Thirty-three lines**, and they are where they were aimed:
+`ansi_backend.cpp` falls 51 to 38 -- the kitty rows, the keypad operators,
+the environment override and the abandon-branch cap -- and
+`input_router.cpp` falls 28 to 8, which is `audit()`'s six detail rows.
+Nothing else moved, which is the other half of the answer: the checks
+touched what they named and not something adjacent.
+
+**What the eight left in that file are is worth one line, because one of
+them is the next fixture rather than an impossibility**: `name_of()`'s
+QAction arm needs a finding whose claimant is an ACTION and not a widget,
+which none of the fixtures produces -- `shortcut_conflicts()` names
+actions by their text, so the arm that falls back to an object name or to
+the words "a QAction" has still never run.
+
+**What is left outside the tray, named so nobody re-derives it.** Of the
+85: `ansi_backend` keeps 38, nearly all of them the terminal handover a
+headless suite has no terminal for -- `leave_terminal()`, the fatal and
+stop signal handlers, the kitty keyboard enable, the SIGWINCH pipe's
+failure arm; `grid_style` keeps 19 and `cell_paint` 7, which want a
+fixture each rather than a lens; `application` keeps 9, the qFatal paths
+and the platform refusals a process can only take once.
+
+#### The five gaps, and three of them are one shape
+
+- **The kitty protocol's other three named codes.** Of 27, 13, 9 and 127
+  only Escape's row had ever been fed. A kitty-protocol terminal sends
+  every key that way once the disambiguating flag is on, so Return
+  arriving as something else is not an edge case there.
+- **Six of the keypad's eighteen rows.** The suite fed `k` and `y`, so the
+  digit block was entered once and every operator row -- `*`, `,`, `-`,
+  `.`, `/`, `=` -- had never run. Checked against xterm's `ctlseqs(1)`
+  table rather than from memory, and all eighteen are right.
+- **`QTTY_ESCAPE_MS`'s override branch**, whose twin has a check. Its own
+  comment says it is overridable "in the shape and with the bounds
+  QTTY_PROBE_MS already uses", and `QTTY_PROBE_MS` is asserted; this one
+  was not. Asserted against the fallback rather than against 50, so the
+  check says what the bounds DO and does not go stale if the default
+  moves.
+- **`audit()`'s six detail rows**, which is the one worth the most. Of the
+  ten kinds it emits, the four that name a WIDGET are exercised and every
+  one that formats a FINDING had never been produced. Each detector is
+  tested on its own several times over; what was untested is the
+  aggregator's formatting of what they return -- and that is the half that
+  rots quietly, because a detector that stops firing has something
+  downstream to trip over while a row formatted with the wrong field does
+  not. `audit()` is what an application author runs, so the row they read
+  is the whole product. Asserted against what the detectors return -- one
+  row per finding, each row carrying that finding's own strings -- rather
+  than against the format, because restating the format in the check is
+  the same hand writing both sides.
+- **The cap on `parse_csi()`'s abandon branch**, which is the entry below.
+
+**Three of the five are one shape: a rule written twice with one copy
+checked.** `QTTY_PROBE_MS` against `QTTY_ESCAPE_MS`; the string parser's
+byte cap against the control parser's; `audit()`'s widget rows against its
+detail rows. That is the shape four of this day's commits were about, met
+in the SUITE rather than in the source -- so the lens transfers, and the
+place it points is wherever two things are written to one pattern and only
+one has a fixture.
+
+#### A check that could not fail, and a fix that should not have been
+
+**Coverage named `parse_csi()`'s second cap and my fixture reached the
+first one.** The parser has two: one for a buffer that simply ENDS
+mid-sequence, which the suite already exercised with a flood of
+parameters, and one for the branch it takes when a byte can be neither a
+parameter, an intermediate nor a final. I read the uncovered line, wrote a
+flood of digits, watched the check pass, and was wrong about which line it
+had touched.
+
+**The sabotage harness said so and I misread it the first time.** With the
+cap deleted the check still passed, and the reason is not the branch: what
+rescues the key AFTER a flood is the rule that abandons a sequence the
+moment a NEW escape arrives, so `the next key still arrives` is true with
+or without any cap at all. A second version narrowed the assertion and
+still fed digits, and the harness refused it again. The third feeds `0x01`
+bytes, which is the byte class that reaches the branch, and asserts the
+thing only this cap can produce: that the bytes it gave up on are
+DELIVERED rather than held -- 651 keys, every one Ctrl+A.
+
+**In between I implemented a fix for a defect that was not one.** The
+measurement that started it is real: one 5002-byte unterminated CSI
+delivered 650 keystrokes of `1`, where `parse_csi()`'s own comment says
+the discard exists so that "four kilobytes of `1;`" does not become "four
+kilobytes of keystrokes nobody typed". So I added state -- a flag set at
+both discard sites and a drain in `decode_one()` swallowing to the next
+ESC, the same shape the refused paste uses -- and the suite went red on a
+check that says in as many words that **a letter after the discard is read
+as a letter**. The trade had already been decided: input after an
+abandoned run resumes being input, and swallowing it would lose real
+keystrokes to buy back invented ones. Reverted.
+
+Three lessons, and the third is the one I would not have got from reading:
+
+- **A check aimed at a line by reading the line is not aimed at it until
+  something proves it.** Coverage says which line; only a sabotage says
+  whether the fixture reached it.
+- **An assertion satisfied by a different guard says nothing about this
+  one.** Ask what the guard under test can produce that nothing else can,
+  and assert that.
+- **The suite knew the design decision and I did not.** `working-practice`
+  says a disagreement between the record and the code is to be flagged
+  rather than resolved; here the record WAS a check, and the thing that
+  stopped a reversal of somebody's deliberate trade was running the suite
+  before believing the diff.
 
 ### 8.399 The Menu key, wired everywhere except where bytes arrive (2026-10-08)
 

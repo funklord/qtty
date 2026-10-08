@@ -315,6 +315,45 @@ int suite_backend() {
 	      && rec.keys[0].ctrl && rec.keys[0].shift && !rec.keys[0].alt,
 	      "CSI 99;6u decodes as Ctrl+Shift+C, which no control byte can "
 	      "express");
+	// AND THE THREE LEGACY KEYS THE PROTOCOL ALSO CARRIES, which coverage
+	// found: of the four codes that switch names -- 27, 13, 9 and 127 --
+	// only Escape's was ever fed, and the other three are rows where a
+	// typo lives unseen. A kitty-protocol terminal sends every key this
+	// way once the disambiguating flag is on, so Return arriving as
+	// something else is not an edge case there, it is Return.
+	{
+		const struct { int code; int key; const char *what; } legacy_u[] = {
+			{  27, Qt::Key_Escape,    "Escape"    },
+			{  13, Qt::Key_Return,    "Return"    },
+			{   9, Qt::Key_Tab,       "Tab"       },
+			{ 127, Qt::Key_Backspace, "Backspace" },
+		};
+		QStringList wrong;
+		for (const auto &e : legacy_u) {
+			// With a modifier, because the mask is the same code path and
+			// the plain form of three of these also arrives as a byte --
+			// so a check on the bare form could pass on the legacy road
+			// while this branch was broken.
+			feed("\033[" + QByteArray::number(e.code) + ";5u");
+			if (rec.keys.size() != 1 || rec.keys[0].qt_key != e.key
+			    || !rec.keys[0].ctrl)
+				wrong << QStringLiteral("%1 (CSI %2;5u) gave %3")
+				             .arg(QLatin1String(e.what)).arg(e.code)
+				             .arg(rec.keys.size() == 1
+				                  ? QStringLiteral("key 0x%1 ctrl=%2")
+				                        .arg(rec.keys[0].qt_key, 0, 16)
+				                        .arg(int(rec.keys[0].ctrl))
+				                  : QStringLiteral("%1 key(s)")
+				                        .arg(rec.keys.size()));
+		}
+		if (!wrong.isEmpty())
+			printf("info: kitty legacy rows: %s\n",
+			       qPrintable(wrong.join(QStringLiteral("; "))));
+		CHECK(wrong.isEmpty() && sizeof(legacy_u) / sizeof(legacy_u[0]) == 4,
+		      "and all four codes the protocol names -- Escape, Return, Tab "
+		      "and Backspace -- decode as those keys with their modifier");
+	}
+
 	// THE SAME CHORD BY BOTH ROADS MUST BE THE SAME EVENT, or a quit key, a
 	// shortcut and a mnemonic all behave differently depending on which
 	// terminal the user has. The legacy control byte is the reference.
@@ -775,6 +814,59 @@ int suite_backend() {
 		      "and an SS3 final the decoder does not know is swallowed "
 		      "rather than delivered as Alt held with the letter O");
 	}
+
+	// THE WHOLE KEYPAD, for the reason the SS3 table above was written and
+	// in the one place that reason had not been applied. Coverage named it:
+	// of the keypad's eighteen rows the suite fed two -- `k` for plus and
+	// `y` for nine -- so the digit block was entered once and SIX operator
+	// rows had never run. Those are the rows a typo survives in, and a
+	// keypad comma arriving as a minus is not a key that does nothing.
+	//
+	// Checked against xterm's own ctlseqs(1) table rather than from memory,
+	// which is where the order j=* k=+ l=, m=- n=. o=/ X== comes from, and
+	// `p` through `y` are 0 through 9 in that order.
+	//
+	// A named key carries qt_key and a character carries text, which is
+	// this decoder's own rule: keypad Enter is Qt::Key_Enter -- NOT
+	// Qt::Key_Return, which is why qtty-replay needed a second name for it
+	// -- and keypad 5 reaches a field as the character 5, indistinguishable
+	// from the one on the main keyboard.
+	{
+		const struct { char final; int key; const char *text; } pad[] = {
+			{ 'M', Qt::Key_Enter, nullptr },
+			{ 'p', 0, "0" }, { 'q', 0, "1" }, { 'r', 0, "2" },
+			{ 's', 0, "3" }, { 't', 0, "4" }, { 'u', 0, "5" },
+			{ 'v', 0, "6" }, { 'w', 0, "7" }, { 'x', 0, "8" },
+			{ 'y', 0, "9" },
+			{ 'j', 0, "*" }, { 'k', 0, "+" }, { 'l', 0, "," },
+			{ 'm', 0, "-" }, { 'n', 0, "." }, { 'o', 0, "/" },
+			{ 'X', 0, "=" },
+		};
+		QStringList wrong;
+		for (const auto &e : pad) {
+			feed(QByteArray("\033O") + e.final);
+			const bool one = rec.keys.size() == 1;
+			const bool ok = one
+			    && (e.text ? rec.keys[0].text == QLatin1String(e.text)
+			                     && rec.keys[0].qt_key == 0
+			               : rec.keys[0].qt_key == e.key
+			                     && rec.keys[0].text.isEmpty());
+			if (!ok)
+				wrong << QStringLiteral("ESC O %1 gave %2")
+				             .arg(QLatin1Char(e.final))
+				             .arg(one ? QStringLiteral("key 0x%1 text '%2'")
+				                            .arg(rec.keys[0].qt_key, 0, 16)
+				                            .arg(rec.keys[0].text)
+				                      : QStringLiteral("%1 key(s)")
+				                            .arg(rec.keys.size()));
+		}
+		if (!wrong.isEmpty())
+			printf("info: keypad rows that did not decode: %s\n",
+			       qPrintable(wrong.join(QStringLiteral("; "))));
+		CHECK(wrong.isEmpty() && sizeof(pad) / sizeof(pad[0]) == 18,
+		      "and all eighteen keypad finals decode as the digit, operator "
+		      "or key xterm's own table names, Enter among them");
+	}
 	// MODIFIED F1 TO F4, which arrive as CSI rather than as SS3 -- and the
 	// CSI table had no row for them, so Shift+F1 was consumed and produced
 	// nothing at all while plain F1 worked.
@@ -1110,6 +1202,44 @@ int suite_backend() {
 	settle(escape_flush_ms() + 80);
 	CHECK(rec.keys.size() == 2 && rec.keys[1].qt_key == Qt::Key_Escape,
 	      "and the second one follows when its own window closes");
+
+	// AND THE WINDOW IS OVERRIDABLE, which coverage found nobody had
+	// exercised. escape_flush_ms() says in its own comment that it is
+	// overridable "in the shape and with the bounds QTTY_PROBE_MS already
+	// uses", and QTTY_PROBE_MS has a check -- so of two readers written to
+	// one shape, one was tested and the override branch of the other had
+	// never run. That is the same one-of-two-copies shape the framing and
+	// the cursor-key table each cost a commit for, in the suite instead of
+	// the source.
+	//
+	// Asserted against the fallback rather than against 50, so the check
+	// says what the bounds DO -- take a value in range, refuse one outside
+	// it -- and does not go stale if the default moves.
+	{
+		const QByteArray saved = qgetenv("QTTY_ESCAPE_MS");
+		const int fallback = escape_flush_ms();
+		qputenv("QTTY_ESCAPE_MS", "250");
+		const int honoured = escape_flush_ms();
+		qputenv("QTTY_ESCAPE_MS", "0");             // below the bound
+		const int zero = escape_flush_ms();
+		qputenv("QTTY_ESCAPE_MS", "60001");         // above it
+		const int over = escape_flush_ms();
+		qputenv("QTTY_ESCAPE_MS", "soon");          // not a number at all
+		const int junk = escape_flush_ms();
+		if (saved.isEmpty()) qunsetenv("QTTY_ESCAPE_MS");
+		else                 qputenv("QTTY_ESCAPE_MS", saved);
+		const int restored = escape_flush_ms();
+		if (honoured != 250 || zero != fallback || over != fallback
+		    || junk != fallback || restored != fallback)
+			printf("info: QTTY_ESCAPE_MS gave %d for 250, %d for 0, %d for "
+			       "60001, %d for junk, %d restored, against a fallback of "
+			       "%d\n", honoured, zero, over, junk, restored, fallback);
+		CHECK(honoured == 250 && zero == fallback && over == fallback
+		      && junk == fallback && restored == fallback,
+		      "QTTY_ESCAPE_MS is honoured inside its bounds and refused "
+		      "outside them, which is what its twin QTTY_PROBE_MS already "
+		      "asserts");
+	}
 
 	// -- SGR 1006 mouse. Unreachable before: the backend never enabled the
 	//    mode and the decoder had no branch for it.
@@ -2031,6 +2161,40 @@ int suite_backend() {
 	for (int i = 0; i < 200; ++i) QCoreApplication::processEvents();
 	CHECK(rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Up,
 	      "input after an unterminated string sequence still arrives");
+
+	// AND THE MALFORMED BRANCH'S OWN CAP, which is a different line in the
+	// same parser and the one coverage named. The check above this feeds
+	// PARAMETERS with no final, which reaches the cap that fires when the
+	// buffer simply ends mid-sequence; this one feeds a byte that is
+	// neither a parameter, nor an intermediate, nor a final -- 0x01 -- so
+	// the parser takes the abandon road, finds no final and no following
+	// escape, and reaches the second cap.
+	//
+	// THE FIRST VERSION OF THIS CHECK COULD NOT FAIL and the harness said
+	// so twice. It fed digits, which never reach this branch at all, and it
+	// asserted that the key AFTER the flood still arrives -- which is true
+	// with the cap deleted, because the rule a few lines up abandons a
+	// sequence the moment a NEW escape appears. What the cap alone decides
+	// is whether the bytes it gave up on are delivered or held, so the
+	// assertion is that the flood produced keys: with the cap they are the
+	// control bytes they always were, without it they sit in a buffer until
+	// something escapes.
+	rec.clear();
+	feeder.send(QByteArray("\033[1") + QByteArray(5000, '\001'));
+	for (int i = 0; i < 200; ++i) QCoreApplication::processEvents();
+	int flood_keys = rec.keys.size(), flood_other = 0;
+	for (const KeyEvent &k : rec.keys)
+		if (k.qt_key != Qt::Key_A || !k.ctrl) ++flood_other;
+	rec.clear();
+	feeder.send("\033[A");
+	for (int i = 0; i < 200; ++i) QCoreApplication::processEvents();
+	printf("info: a malformed CSI flood produced %d key(s), %d of them not "
+	       "Ctrl+A\n", flood_keys, flood_other);
+	CHECK(flood_keys > 0 && flood_other == 0 && rec.keys.size() == 1
+	      && rec.keys[0].qt_key == Qt::Key_Up,
+	      "a CSI the parser abandons is given up on rather than held, so "
+	      "the control bytes behind it arrive as themselves and the next "
+	      "real key still arrives");
 
 	// -- the collector, driven over a socketpair. It takes descriptors rather
 	//    than reaching for 0 and 1 precisely so this can exist: a real

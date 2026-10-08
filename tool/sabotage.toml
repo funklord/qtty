@@ -5992,3 +5992,56 @@ find = "\t\tcase 29: emit_key(Qt::Key_Menu, param(1, 1)); return true;"
 into = "\t\tcase 29: return true;"
 count = 1
 check = "decodes as the key it names, the linux console's F1 to F4 among them and Menu"
+
+[[sabotage]]
+# A keypad operator row mistyped, which is the fault the population check
+# exists for: six of the eighteen rows had never been fed before it.
+name = "the keypad's comma is a minus"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\tcase 'l': k.text = QStringLiteral(\",\"); break;"
+into = "\t\t\tcase 'l': k.text = QStringLiteral(\"-\"); break;"
+count = 1
+check = "all eighteen keypad finals decode as the digit, operator"
+
+[[sabotage]]
+# One of the kitty protocol's four named codes losing its row. Only
+# Escape's was ever fed before the population check.
+name = "the kitty protocol's Tab loses its row"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tcase 9:   k.qt_key = Qt::Key_Tab; break;"
+into = "\t\tcase 8:   k.qt_key = Qt::Key_Tab; break;"
+count = 1
+check = "all four codes the protocol names"
+
+[[sabotage]]
+# The bounds on the escape window's override. Its twin QTTY_PROBE_MS was
+# checked and this one's override branch had never run.
+name = "the escape window's override is unbounded"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tif (v > 0 && v <= 60000) return v;"
+into = "\t\tif (v != 0) return v;"
+count = 1
+check = "QTTY_ESCAPE_MS is honoured inside its bounds"
+
+[[sabotage]]
+# The claimant list dropped from an audit row. Every detector still fires
+# and the row still appears; what is lost is the half an application
+# author reads -- which is why the check compares a row against what the
+# detector reported rather than against a format.
+name = "an audit row loses the finding's claimants"
+file = "src/runtime/input_router.cpp"
+find = "\t\t            QStringLiteral(\"Alt+\") + c.first + QStringLiteral(\": \")\n\t\t                + c.second.join(QStringLiteral(\", \"))});"
+into = "\t\t            QStringLiteral(\"Alt+\") + c.first});"
+count = 1
+check = "audit() emits one row per finding for all six of its detail"
+
+[[sabotage]]
+# The cap on the branch parse_csi() takes when a byte can be neither a
+# parameter, an intermediate nor a final. Without it the bytes it should
+# have given up on are held in a buffer until something escapes.
+name = "a control sequence waits for ever again"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tif (pending_.size() <= kSequenceCap) return -1;  // still arriving"
+into = "\t\treturn -1;  // still arriving"
+count = 1
+check = "a CSI the parser abandons is given up on rather than held"
