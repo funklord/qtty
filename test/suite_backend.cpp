@@ -1949,6 +1949,88 @@ int suite_backend() {
 		      "wire, and CSI 21;2~ opens it by the other road the guide "
 		      "promises");
 
+		// AND A SPACE ACTIVATES WHAT HAS FOCUS, from the byte. The guide's
+		// "what already works" table promises it of a button and a check
+		// box, and the decode half is asserted a thousand lines above --
+		// a space byte carries Qt::Key_Space as well as its text, which
+		// 8.334 had to fix because it carried text alone and a button
+		// reads the KEY. What nothing crossed is the middle: the router
+		// could deliver that event as typing and the promise would be
+		// false again with both halves still green.
+		//
+		// The control is the letter, which must NOT activate: the key is
+		// what a button answers, and a router that handed every printable
+		// to the focused widget as an activation would satisfy the line
+		// above.
+		auto *go = new QPushButton(QStringLiteral("Go"), &win);
+		go->setGeometry(0, GridMetrics::ch() * 11, GridMetrics::cw() * 4,
+		                GridMetrics::ch());
+		auto *tick = new QCheckBox(QStringLiteral("on"), &win);
+		tick->setGeometry(0, GridMetrics::ch() * 12, GridMetrics::cw() * 4,
+		                  GridMetrics::ch());
+		go->show();
+		tick->show();
+		int fired = 0;
+		QObject::connect(go, &QPushButton::clicked, [&fired] { ++fired; });
+		go->setFocus();
+		set_focus_widget(go);
+		QCoreApplication::processEvents();
+		type(" ");
+		const int by_space = fired;
+		type("a");
+		const int by_letter = fired - by_space;
+		tick->setFocus();
+		set_focus_widget(tick);
+		QCoreApplication::processEvents();
+		const bool was_checked = tick->isChecked();
+		type(" ");
+		printf("info: a space byte fired the button %d time(s), a letter %d, "
+		       "and the check box went from %d to %d\n", by_space, by_letter,
+		       int(was_checked), int(tick->isChecked()));
+		CHECK(by_space == 1 && by_letter == 0
+		      && tick->isChecked() != was_checked,
+		      "a space byte activates the focused button and toggles the "
+		      "focused check box, where an ordinary letter does neither");
+
+		// AND A MNEMONIC, FROM THE BYTES, which is the guide's own row and
+		// the one this suite had never crossed: `Alt` + letter reaches a
+		// menu, a toolbar action, a button, or the field a label is the
+		// buddy of, and it arrives as ESC then the letter. Three layers
+		// have to agree -- the escape window decides it is a chord rather
+		// than a lone Escape, the decoder frames the letter after the ESC,
+		// and the router matches Alt against the action text -- and each
+		// was checked on its own.
+		//
+		// It is worth the fixture TODAY in particular: 8.394 reworked the
+		// framing of exactly that second layer, and every check it reddened
+		// was about the KeyEvent rather than about a button that fires.
+		//
+		// The control is the guide's next row: a letter matching nothing
+		// does nothing AND does not type itself into whatever has focus,
+		// which is the half a decoder that dropped the ESC would break
+		// while the mnemonic above still worked.
+		auto *zap = new QPushButton(QStringLiteral("&Zap"), &win);
+		zap->setGeometry(0, GridMetrics::ch() * 13, GridMetrics::cw() * 5,
+		                 GridMetrics::ch());
+		zap->show();
+		int zapped = 0;
+		QObject::connect(zap, &QPushButton::clicked, [&zapped] { ++zapped; });
+		edit->setText(QStringLiteral("keep"));
+		edit->setFocus();
+		set_focus_widget(edit);
+		QCoreApplication::processEvents();
+		type("\033z");
+		const int by_mnemonic = zapped;
+		type("\033q");
+		printf("info: ESC z fired the mnemonic %d time(s); ESC q fired %d "
+		       "and left the field as '%s'\n", by_mnemonic, zapped - by_mnemonic,
+		       qPrintable(edit->text()));
+		CHECK(by_mnemonic == 1 && zapped == 1
+		      && edit->text() == QStringLiteral("keep"),
+		      "ESC then a letter reaches the button whose mnemonic it is, "
+		      "and a letter that matches nothing neither fires anything nor "
+		      "types itself into the focused field");
+
 		// CSI Z is Shift+Tab, and shift is the whole of it: without it this
 		// moves focus FORWARD and the assertion below passes for the wrong
 		// reason, since with two widgets forward and backward are the same

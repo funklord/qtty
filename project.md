@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2107 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2109 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18210,6 +18210,72 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.403 Two more promises crossed from the bytes (2026-10-08)
+
+**The lens is 8.401's, stated as a question about the guide rather than
+about a key:** which of `doc/keyboard-first.md`'s promises has no single
+check from the byte to the effect? Both of the day's last two findings had
+the same shape -- every layer worked and nothing crossed them -- so the
+population worth walking is the guide's own tables.
+
+Two were taken, and the reason for each is the point.
+
+**`Space` activates the focused button and toggles the focused check
+box.** The decode half is asserted a thousand lines above -- a space byte
+carries `Qt::Key_Space` as well as its text, which 8.334 had to fix
+because it carried text alone and a button reads the KEY -- and the effect
+half is asserted in `suite_router` with a synthesised key. The middle was
+never crossed, and the middle is where it would break again: a router that
+treated a key carrying text as typing would make the promise false with
+both halves still green. Measured from the wire: the byte fires the button
+**once**, an ordinary letter **not at all**, and the check box goes 0 to 1.
+
+**`Alt` + letter reaches the button whose mnemonic it is.** Three layers
+have to agree -- the escape window deciding chord from lone Escape, the
+decoder framing the letter after the ESC, the router matching Alt against
+the action text -- and each was checked on its own. **It was worth the
+fixture today in particular**: 8.394 reworked that second layer this
+morning, and every check that change reddened was about the `KeyEvent`
+rather than about a button that fires. Measured: `ESC z` fires the
+mnemonic once, and `ESC q` -- the guide's next row, a letter matching
+nothing -- fires nothing and leaves the focused field reading `keep`,
+which is the half a decoder that dropped the ESC would break while the
+mnemonic above went on working.
+
+#### One needed a sabotage entry and one did not
+
+The Space check needed none: *a space arrives as text with no key code*
+already existed, and running it reddens **2 distinct checks of 2108** --
+the sink-level one it names and this one. A second copy of that sabotage
+would have added nothing, which is the same accounting 8.401 did for the
+Menu key.
+
+The mnemonic got one, and the count it returned corrects the reason I
+wrote for it. Dropping `k.alt = true` makes the letter plain text, so the
+mnemonic never fires and the letter is typed into whatever has focus
+instead -- both halves of the new check at once. But it reddens **8
+distinct checks of 2109**, seven of which already existed, so the FLAG
+was never undefended; the entry is new because the existing Alt entries
+are about a multi-byte character's LENGTH and a single ASCII letter never
+reaches them.
+
+**What was undefended is the crossing, and a sabotage count cannot say
+so** -- the seven are about the `KeyEvent` or about the router with a
+synthesised key, and being one of eight is all the harness can tell me.
+That the new check is in the eight proves it can fail; that it crosses
+three layers is an argument, and it stays an argument.
+
+#### What is still uncrossed, as a list rather than as fixtures
+
+The same walk names five more rows whose layers are each checked and
+whose crossing is not: `Enter` firing a dialog's default button, `Esc`
+rejecting a modal, type-ahead in a focused list, `F2` opening a view's
+editor, and the `Ctrl+C`/`Ctrl+D` quit keys. **Recorded rather than
+written**: a fixture per row is a cost nobody has asked for, and the two
+taken here are the ones whose middle layer either changed today or has a
+history of having been dead. A list is what the next pass needs; eight
+fixtures is what a session produces instead of software.
 
 ### 8.402 A popup did not follow the root, twice, in one line (2026-10-08)
 
