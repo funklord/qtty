@@ -18167,6 +18167,54 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.391 Two empty sweeps, and what each one would have caught (2026-10-08)
+
+**Recorded because an empty result is a measurement only when its lens is
+written down**, and because both of these are lenses the next pass should
+not spend again.
+
+**A multi-byte character split across two reads.** The hard input for the
+key decoder, and certain to occur on a slow pty or inside a paste rather
+than merely possible. It is handled, and the code says so before the
+measurement does: `if (pending_.size() < len) return false;` with "a
+terminal splits input at any byte, and a read() boundary in the middle of
+a character is ordinary rather than exceptional". A lone continuation
+byte or an invalid lead is dropped rather than delivered as Latin-1,
+which is the fault §7.6 already records being fixed.
+
+What remains is honest rather than wrong: a lead byte followed by
+something that is not a continuation is handed to
+`QString::fromUtf8()`, which yields U+FFFD. A malformed byte therefore
+consumes the byte after it -- so a bad lead immediately before an escape
+sequence eats that sequence's ESC. Reachable only on a garbled stream,
+and the alternative is a decoder that re-validates what Qt already
+validates.
+
+**A mode set and never unset.** 8.390's shape was an asymmetry -- one
+direction guarded, its mirror not -- so the mechanically checkable
+instance here is `resume()` against `suspend()`: a terminal left in mouse
+mode writes an escape burst into the user's shell on every click, which
+this tree already cares about.
+
+Nothing to find. The modes live in two string constants rather than
+scattered through the functions, which is what makes the question
+answerable at all:
+
+    kEnter   1049h  25l  1006h 1002h 2004h 1004h  22;2t
+    kLeave   23;2t  1004l 2004l 1002l 1006l  0m  1049l 25h  0 q
+
+Every set has its reset, **and kLeave unwinds in reverse order**, which is
+the discipline rather than a coincidence of listing. The two extras are
+deliberate: `0m` and `0 q` restore state qtty may not have set, which is
+the safe direction for a restore where it is the wrong direction for a
+guard.
+
+**So the wire-quantity lens is spent in this subsystem.** It found three
+faults -- 8.389's two and 8.390's -- and these two sweeps are its edges:
+the input decoder's framing was already right, and the mode pairs were
+already symmetric. The next fault here will need a lens derived from
+something other than "what does the far end control".
+
 ### 8.390 A paste had no limit, and three instruments lied (2026-10-08)
 
 **The third quantity the far end chooses, and the asymmetry is the
