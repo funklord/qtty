@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2104 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2105 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18210,6 +18210,74 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.401 The check that joins the two halves (2026-10-08)
+
+**8.399 fixed a path that was wired at every layer but one, and nothing in
+the suite could have noticed.** `doc/keyboard-first.md` promises in a table
+that `Menu` and `Shift+F10` open the focused widget's context menu.
+`InputRouter` has always done that for `Qt::Key_Menu`; `suite_router` has
+always asserted it, in four places; `qtty-replay` has always been able to
+send the key. The decoder could not produce it, so for a terminal user
+half of a documented promise was false -- and every check involved was
+green, because each tested one half.
+
+**One check now feeds `CSI 29~` through a real `AnsiBackend` into a real
+`InputRouter` and asserts a `QContextMenuEvent` reaches the focused
+widget**, with `CSI 21;2~` -- Shift+F10 -- beside it as the control. The
+pair is the point: a decode that stops working fails one of them, a router
+branch that stops working fails both, and the end-to-end shape is the only
+one that can fail when the two halves disagree rather than when either is
+wrong on its own.
+
+**It has been seen to fail, without a new sabotage entry.** Both halves
+already had one -- the decoder's `case 29` row, and two on the router's
+branch -- so the existing decode entry was run and the harness reported
+it reddening **2 distinct checks of 2105**: the population check it names
+and this one. An entry of its own would have added a third copy of the
+same sabotage; what was missing was never the sabotage.
+
+It costs almost nothing, because the fixture already existed: this suite
+has had a backend wired to a router and a window since the byte-to-widget
+checks were written, and this is one more `type()` call in that block.
+**The shape is what to copy, not the key** -- for any promise a document
+makes about a keystroke, the question is whether one check crosses every
+layer the keystroke does.
+
+#### The residue I did not act on, and why
+
+The same coverage pass that named five gaps named 85 lines outside the
+tray, and most of the remaining ones are not gaps:
+
+- **`grid_font_problem()`'s five diagnostics** are uncovered and the
+  project had already measured why: `suite_runtime` produces the
+  fixed-pitch message and asserts its wording, and records that the
+  numeric branches are unreachable on this font engine -- letter spacing,
+  stretch at eight values, fractional point sizes, every one producing a
+  whole-number advance and a height of 19. **Reading the suite before
+  writing a check is what stopped this being a second copy of work
+  already done**, which is the cheapest lesson in the pass.
+- **A one-cell scroll bar's `░` and `▲`** at `grid_style.cpp:3079` and
+  `:3083` are reachable and unchecked: the empty-range case and the
+  at-maximum case, where the glyph says which end a view is at. Recorded
+  as the next fixture rather than written now -- nothing suggests they are
+  wrong, and a fixture per glyph is a cost nobody has asked for.
+- **`application.cpp`'s nine** are the `qFatal` path, the message handler
+  that puts the screen back, and the platform refusals: one-shot by
+  construction, since a process takes them once and dies.
+
+#### And a comment that cost an hour
+
+`parse_csi()`'s two call sites both read `if (n == 0) { ... } // over the
+cap`, and that is the STRING parser's convention rather than this one's.
+`parse_csi()` says over-the-cap by returning the whole buffered length
+with `final` at 0, so it arrives at the ordinary `remove(0, n)` like any
+other consumed run; **nothing in it returns 0 at all**, every path
+returning -1, a length of at least three, or the buffer. The guard is a
+defence against a value the function does not produce, which one of the
+two comments already said and the other replaced with the wrong reason.
+It is corrected at both, because reading the wrong one is what sent 8.400
+hunting the wrong branch.
 
 ### 8.400 Coverage re-taken, and the five gaps it named (2026-10-08)
 

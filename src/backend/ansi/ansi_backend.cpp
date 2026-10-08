@@ -2478,9 +2478,17 @@ bool AnsiBackend::decode_one() {
 			QByteArray prefix, inter; QVector<int> params; char final = 0;
 			const int n = parse_csi(prefix, params, inter, final);
 			if (n < 0) return false;              // wait for the rest
-			// Over the cap: drop the opener, as the string parser does. A
-			// zero here would append nothing and remove nothing, which is
-			// the one way this loop could spin.
+			// A zero would append nothing and remove nothing, which is the
+			// one way this loop could spin, so it drops the opener.
+			//
+			// NOT the over-the-cap case, which this comment used to call it
+			// and which cost an hour of reading the wrong branch: that is
+			// the STRING parser's convention. parse_csi() says over the cap
+			// by returning the whole buffered length with `final` at 0, so
+			// it arrives at the `pending_.remove(0, n)` below like any other
+			// consumed run. Nothing in parse_csi() returns 0 at all -- every
+			// path returns -1, a length of at least three, or the buffer --
+			// so this is a guard against a value it does not produce.
 			if (n == 0) { pending_.remove(0, 1); return true; }
 			if (final == '~' && !params.isEmpty() && params[0] == 201) {
 				pending_.remove(0, n);
@@ -2527,7 +2535,7 @@ bool AnsiBackend::decode_one() {
 			QByteArray prefix, inter; QVector<int> params; char final = 0;
 			const int n = parse_csi(prefix, params, inter, final);
 			if (n < 0) return false;              // still arriving
-			if (n == 0) { pending_.remove(0, 1); return true; }  // over the cap
+			if (n == 0) { pending_.remove(0, 1); return true; }  // see above
 			pending_.remove(0, n);
 			// Malformed, per parse_csi: consumed and dropped rather than
 			// dispatched. Reported as progress, because progress is what it

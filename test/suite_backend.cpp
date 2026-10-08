@@ -1910,6 +1910,45 @@ int suite_backend() {
 		type("\033[2~");
 		CHECK(watch->last == Qt::Key_Insert, "CSI 2~ reaches a widget as Insert");
 
+		// AND THE MENU KEY, END TO END, which is the check that would have
+		// caught 8.399 before it shipped. `doc/keyboard-first.md` promises
+		// in a table that `Menu` and `Shift+F10` open the focused widget's
+		// context menu; InputRouter has always done that for
+		// Qt::Key_Menu, suite_router has always asserted it, qtty-replay
+		// has always been able to send it -- and until the decoder gained
+		// CSI 29~ no terminal could produce the key. Two halves green, the
+		// whole broken, and nothing joined them.
+		//
+		// Shift+F10 is the control, and the better of the two available: it
+		// reaches the same router branch down a different sequence, so a
+		// decode that stops working fails one of the pair rather than both,
+		// and a router branch that stops working fails both.
+		struct Opener : QWidget {
+			using QWidget::QWidget;
+			int menus = 0;
+			void contextMenuEvent(QContextMenuEvent *e) override {
+				++menus;
+				e->accept();
+			}
+		};
+		auto *opener = new Opener(&win);
+		opener->setFocusPolicy(Qt::StrongFocus);
+		opener->setGeometry(0, GridMetrics::ch() * 10, GridMetrics::cw() * 4,
+		                    GridMetrics::ch());
+		opener->show();
+		opener->setFocus();
+		set_focus_widget(opener);
+		QCoreApplication::processEvents();
+		type("\033[29~");
+		const int by_menu = opener->menus;
+		type("\033[21;2~");                  // Shift+F10, the other road
+		printf("info: the Menu key opened %d context menu(s), Shift+F10 "
+		       "took it to %d\n", by_menu, opener->menus);
+		CHECK(by_menu == 1 && opener->menus == 2,
+		      "CSI 29~ opens the focused widget's context menu from the "
+		      "wire, and CSI 21;2~ opens it by the other road the guide "
+		      "promises");
+
 		// CSI Z is Shift+Tab, and shift is the whole of it: without it this
 		// moves focus FORWARD and the assertion below passes for the wrong
 		// reason, since with two widgets forward and backward are the same
