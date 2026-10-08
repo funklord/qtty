@@ -1385,11 +1385,13 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 			return QRect(x, r.top(), cw, qMax(ch, r.height()));
 		};
 		switch (sc) {
-		case SC_SpinBoxEditField:
+		case SC_SpinBoxEditField: {
+			const bool inner = edge && r.height() >= 3 * ch;
 			return QRect(rtl ? r.left() + edge + arrows : r.left() + edge,
-			             r.top(),
+			             inner ? r.top() + ch : r.top(),
 			             qMax(cw, r.width() - 2 * edge - arrows),
-			             qMax(ch, r.height()));
+			             inner ? r.height() - 2 * ch : qMax(ch, r.height()));
+		}
 		// A cell each, side by side, rather than a cell split in half. The
 		// halves were r.height()/2 apart -- nine pixels on a nineteen-pixel
 		// cell -- so both rectangles covered the same cell and only the first
@@ -1643,10 +1645,13 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		const auto *cb = qstyleoption_cast<const QStyleOptionComboBox *>(opt);
 		const int edge = (!cb || cb->frame) ? cw : 0;
 		switch (sc) {
-		case SC_ComboBoxEditField:
-			return QRect(rtl ? r.left() + edge + cw : r.left() + edge, r.top(),
+		case SC_ComboBoxEditField: {
+			const bool inner = edge && r.height() >= 3 * ch;
+			return QRect(rtl ? r.left() + edge + cw : r.left() + edge,
+			             inner ? r.top() + ch : r.top(),
 			             qMax(cw, r.width() - 2 * edge - cw),
-			             qMax(ch, r.height()));
+			             inner ? r.height() - 2 * ch : qMax(ch, r.height()));
+		}
 		case SC_ComboBoxArrow:
 			return QRect(rtl ? r.left() + edge : r.right() + 1 - edge - cw,
 			             r.top(), cw, qMax(ch, r.height()));

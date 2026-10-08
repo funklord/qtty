@@ -6268,3 +6268,19 @@ find = "\t\tconst int edge = (!sb || sb->frame) ? cw : 0;"
 into = "\t\tconst int edge = cw;"
 count = 1
 check = "and a spin box asked for no frame draws none, its arrow moving"
+
+[[sabotage]]
+name = "a spin box's editor covers the frame rows it sits inside"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\tconst bool inner = edge && r.height() >= 3 * ch;\n\t\t\treturn QRect(rtl ? r.left() + edge + arrows : r.left() + edge,"
+into = "\t\t\tconst bool inner = false;\n\t\t\treturn QRect(rtl ? r.left() + edge + arrows : r.left() + edge,"
+count = 1
+check = "a framed spin box's top border has no gap"
+
+[[sabotage]]
+name = "an editable combo's editor covers the frame rows it sits inside"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\tconst bool inner = edge && r.height() >= 3 * ch;\n\t\t\treturn QRect(rtl ? r.left() + edge + cw : r.left() + edge,"
+into = "\t\t\tconst bool inner = false;\n\t\t\treturn QRect(rtl ? r.left() + edge + cw : r.left() + edge,"
+count = 1
+check = "and an editable combo's border has none either"

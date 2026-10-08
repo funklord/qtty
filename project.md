@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2136 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2138 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18415,19 +18415,36 @@ its failure neither stopped anything nor printed. **That is this
 document's own rule about reducing a check's output before knowing it
 passed, in a command line rather than in a gate.**
 
-#### What the probe found and this does NOT fix
+#### The frame gap the probe also found, explained and fixed
 
-A spin box's frame has **no horizontal runs at all** -- `┌` and `┐` with
-blanks between them, and the same for the bottom. The editable combo and
-the date-time edit share it; a plain `QLineEdit` and a non-editable combo
-are complete. The `──` that looked like a partial border was the arrow
-cells' own background, which the buttonless configuration removed.
+A spin box's frame had **no horizontal runs** -- corners and sides, blanks
+between them -- and the editable combo and the date-time edit shared it
+while a plain `QLineEdit` and a non-editable combo were complete.
 
-So it is a framed parent with a `QLineEdit` child, and the child's inset
-from the border is less than a cell. Recorded rather than guessed at: the
-mechanism is not established, and 8.416's lesson is that a comfortable
-explanation ends an investigation. The reduction is four lines of probe
-and it fires every time.
+**It was coverage, not drawing**, and two measurements settled it rather
+than one. First: the two horizontals that looked like a partial border
+were the arrow cells' own background, which the buttonless configuration
+removed. Then, with a `QFrame` and a child inset two pixels, the child's
+text landed on the frame's own CORNER cell -- so a sub-cell inset rounds
+to zero, which named the family without explaining the width of the gap.
+
+What explained it was the rect: `SC_SpinBoxEditField` answered a height of
+`qMax(ch, r.height())`, **the whole widget**, so the embedded `QLineEdit`
+occupied the frame's rows and painted over the horizontals across every
+cell it spanned. The corners and the cells under the arrows survived
+because the field did not reach them, which is exactly why it read as a
+partial border rather than a missing one.
+
+The field takes the inner rows when there is a frame and room for them --
+`edge && r.height() >= 3 * ch` -- and `qMax(ch, r.height())` stays for the
+one-cell case it was written for, where the bracket form is used and there
+are no frame rows to avoid. The combo's edit field answered the same way
+and has the same fix.
+
+**Asserted as the absence of a gap** rather than as an exact row: every
+cell between the corners carries the horizontal, whatever the glyph is. A
+pinned row would go stale if the box characters changed; this says the
+thing that was wrong, and a sabotage per rect returns the gap.
 
 ### 8.416 `make -n check` wrote the commit hook's receipt (2026-10-08)
 

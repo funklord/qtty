@@ -8434,6 +8434,57 @@ int suite_widgets() {
 	}
 
 
+
+	// A FRAMED EDITOR'S BORDER IS CONTINUOUS, which it was not: a spin box
+	// three rows tall drew its corners and its sides and almost none of its
+	// top or bottom, and the editable combo and the date-time edit shared
+	// it while a plain QLineEdit and a non-editable combo were complete.
+	//
+	// The cause was coverage rather than drawing. SC_SpinBoxEditField
+	// answered a rect as tall as the whole widget -- `qMax(ch, r.height())`
+	// -- so the embedded QLineEdit occupied the frame's own rows and painted
+	// over the horizontals across every cell it spanned. The corners and the
+	// cells under the arrows survived because the field did not reach them,
+	// which is why it read as a partial border rather than a missing one.
+	//
+	// Asserted as the ABSENCE OF A GAP rather than as an exact row: every
+	// cell between the two corners carries the horizontal, whatever the
+	// glyphs are. A pinned row would go stale if the box characters changed;
+	// this says the thing that was wrong.
+	{
+		const auto unbroken = [](QWidget &w, int cols, int rows) {
+			w.setAttribute(Qt::WA_DontShowOnScreen);
+			w.resize(GridMetrics::cells(cols, rows));
+			w.show();
+			QCoreApplication::processEvents();
+			CellBuffer b(cols, rows);
+			render_once(w, b);
+			const QStringList got = b.to_text().split(QLatin1Char('\n'));
+			const QString top = got.value(0);
+			if (top.size() < 3) return false;
+			const QString h = top.mid(1, 1);
+			if (h == QStringLiteral(" ")) return false;
+			for (int x = 1; x < top.size() - 1; ++x)
+				if (top.mid(x, 1) != h) return false;
+			return true;
+		};
+		QSpinBox sp;
+		sp.setValue(7);
+		const bool spin_ok = unbroken(sp, 18, 3);
+		QComboBox cb;
+		cb.setEditable(true);
+		cb.addItems({QStringLiteral("alpha")});
+		const bool combo_ok = unbroken(cb, 18, 3);
+		printf("info: a three-row spin box's top border is unbroken %d, and"
+		       " an editable combo's %d\n", int(spin_ok), int(combo_ok));
+		CHECK(spin_ok,
+		      "a framed spin box's top border has no gap, its editor sitting"
+		      " inside the frame rather than over it");
+		CHECK(combo_ok,
+		      "and an editable combo's border has none either, which is the"
+		      " same rect answering for the same reason");
+	}
+
 	return fails;
 }
 
