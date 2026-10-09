@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2143 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2150 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1087,7 +1087,7 @@ Owned by the copyright holder:
 | **A rule drawn as a thin RECTANGLE becomes a coloured background; the same rule drawn as a LINE becomes a box-drawing glyph.** Measured through an HTML table: its borders arrive as `drawRects` of `11x1` and `1x19` and come out as grey blocks, while `drawLines` of the same shape draws `-` and `\|`. The horizontal case could be told from a caret by shape; **the vertical case cannot -- a caret and a one-cell vertical rule are the same `1x19` rectangle**, which is what stops this being a small fix | 8.65 |
 | **An HTML bullet list loses its bullets.** Measured through a `QTextBrowser`: `<ul><li>one</li></ul>` renders the text indented with a one-cell BACKGROUND block and no glyph -- ~~where the bullet belongs~~ **one row BELOW its own item until 8.305**, which also put the last list's block on an empty row underneath the list; the block is beside its item now, and what it should BECOME is still the choice below -- `bg=#000000` on the default dark ground. Qt draws the bullet as `drawPath` with a 6x6 bounding rect, and `is_thin` (`width*2 < cw \|\| height*2 < ch`) is true of it, so a bullet takes the hairline road meant for carets and rules. **The discriminator is clean and is the finding**: a shape smaller than one cell in BOTH dimensions is a mark, not a hairline -- a caret is 1x19 and a rule 50x1, and neither is. What a mark should BECOME is the choice, and it is the holder's | 8.64 |
 | **~~Whether the "too small to be a picture" rule moves to the backend.~~ It has, and the row was right that it was one condition -- and wrong that nothing was left unmeasured.** The tier below read ONE PIXEL per half cell, so a 16x16 tick lost its left cell outright and a status light its right one; the substitution's area sampling moved with the rule, and the sampling change on its own reddened not one check of 2064. 8.383 | §7.2 |
-| **~~Right-to-left: does qtty support it at all?~~ It does, and the row's own list is how the last gap was found.** 8.284 mirrored the progress bar, the scroll bar's thumb, the spin box's arrows and a tool button's menu arrow; 8.304 mirrored the combo box's, which this row still named. Re-measured 2026-09-22 against plain Qt: **a label's alignment and a line edit's text are NOT gaps** -- Qt does not mirror either, ink left in both directions, so drawing them the same is correct. What remains undesigned is bidirectional TEXT, which is a different question and is its own row. `doc/keyboard-first.md` has the section, with the numbers | 8.284, 8.304 |
+| **~~Right-to-left: does qtty support it at all?~~ It does, and the row's own list is how the last gap was found.** 8.284 mirrored the progress bar, the scroll bar's thumb, the spin box's arrows and a tool button's menu arrow; 8.304 mirrored the combo box's, which this row still named; 8.420 mirrored the ITEM VIEW, which no version of this list had ever named -- its check box, its label's alignment, the rectangle a click is tested against and the one a rename field opens at, in the style and in CellItemDelegate alike. **A list is evidence about what it names and silent about the rest**, which is the half 8.304's lens did not say: re-reading the row finds a stale entry, and only enumerating the controls finds a missing one. Re-measured 2026-09-22 against plain Qt: **a label's alignment and a line edit's text are NOT gaps** -- Qt does not mirror either, ink left in both directions, so drawing them the same is correct. Still unmeasured: `CE_HeaderLabel`'s `textAlignment`, the one remaining alignment consumer, settled by the pixel comparison 8.304 used rather than by reading Qt. What remains undesigned is bidirectional TEXT, which is a different question and is its own row. `doc/keyboard-first.md` has the section, with the numbers | 8.284, 8.304 |
 | **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise. 8.248 adds a second obstacle on the ink half alone: ToolTipText is the same black as WindowText here, and `role_of()` keys on the colour, so a hover timer would light the tooltip's ground and leave its text at body text's index | §7.2 |
 | **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect. **Both halves are asserted since 8.75** -- the hover arrives, and the render is byte-identical with the pointer on the control and off it | §7.2 |
 | **Which direction is safe on a grid -- drawing a little more than allowed, or a little less?** The file states both as general rules and they point opposite ways: `clip_cells()` drops a clip's shape because drawing more "is the safe direction on a grid", while `fill_polygon()` refuses the bounding rectangle because it "invents content rather than losing it, and a reader cannot tell which half is which". They may both be right for their own case -- a clip that loses content hides what the application drew, a fill that over-covers shows what it did not -- and that asymmetry would be a good answer; it is just not the answer either comment gives. 8.386 | §8.386 |
@@ -18323,6 +18323,104 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.420 The item view was in nobody's right-to-left list (2026-10-09)
+
+**The lens came from 8.419's own population sweep, run on a different
+axis.** Having retired the frame-row family, the same harness was pointed
+at `Qt::RightToLeft`: render all 24 framed widget types in both
+directions and read which ones differ.
+
+Five mirrored, which 8.284 and 8.304 had fixed. Twelve had nothing to
+mirror. Two were the non-gaps 8.304 recorded -- a label's alignment and a
+line edit's text, where Qt does not mirror either -- and reading
+`QLabel::paintEvent` says why independently: it flips on the TEXT's
+direction, not the widget's, so Latin text staying left is Qt's own
+answer. **Item views were the ones nobody's list had ever named.**
+
+**Measured against plain Qt before anything was written**, which is the
+method 8.304 used to find that two of its four claims were never gaps.
+Fusion's own `subElementRect` on a 180px item:
+
+    Fusion  LTR  text  20..179   check    3..16
+    Fusion  RTL  text   0..159   check  163..176
+    qtty    LTR  text  50..179   check   10..39
+    qtty    RTL  text  50..179   check   10..39
+
+Fusion is an exact mirror -- `rtl_left == W - 1 - ltr_right`. This style
+answered identically in both directions.
+
+**The check rectangle is not decoration.** `QAbstractItemView` tests a
+click against `SE_ItemViewItemCheckIndicator`, and
+`SE_ItemViewItemText` is where Qt's own delegate opens a rename field. So
+under `RightToLeft` a checkable list drew its boxes on the wrong side,
+toggled from the wrong column, left its labels where no built-in style
+puts them, and opened an editor over the check column.
+
+**One derivation, not four.** The row is `indent, check, decoration,
+text` from the LEADING edge, and four places derive it:
+`SE_ItemViewItemCheckIndicator`, `SE_ItemViewItemText`,
+`CE_ItemViewItem` and `CellItemDelegate`. Writing the mirror out four
+times is four chances to get three, which is exactly what 8.417 and 8.419
+cost -- so `cell_geometry.h` carries it once:
+
+    leading_edge(left, right, off, w, dir)
+        dir == RightToLeft ? right + 1 - off - w : left + off
+
+Units are the caller's, cells in a drawing path and pixels in a rectangle
+answer. **It is the identity under `LeftToRight`**, which is why all 2143
+existing checks passed unchanged -- the measurement that says this moved
+nothing it should not.
+
+The alignment is a second fix and not the same one: `Qt::AlignLeft` on an
+item means the leading edge, and `QCommonStyle` maps it through
+`QStyle::visualAlignment` before drawing. **Dropping that half leaves the
+box correctly mirrored and the label at column 0**, which four of the
+seven checks cannot see -- so one of them asserts adjacency, one space
+between label and box, which is the same sentence either way round.
+
+    ltr [ [ ] ab       ]  box 1   text 5   rect 1   text rect 5+9
+    rtl [       ab [ ] ]  box 10  text 7   rect 10  text rect 0+9
+
+Seven checks: the left-to-right control (a both-ways mirror fails it),
+the mirror, the exact mirrored cells, the rectangle agreeing with the
+drawing in both directions, the two writers agreeing, the label's
+adjacency, and the editor rectangle. Five sabotages, one per site. **Two
+pre-existing entries had to be re-anchored** on lines this change moved,
+which is the third time in two days -- a sabotage anchored on a line of
+code is a claim about that line's spelling.
+
+**What is not done.** `CE_HeaderLabel`'s `textAlignment` is the one
+remaining alignment consumer in the tree and is **unmeasured**; the
+method to settle it is the pixel comparison 8.304 used, not reading Qt,
+because two claims in this family have already been wrong from memory.
+`CE_ItemViewItem` still draws no decoration where the delegate does,
+which is a separate gap and predates this.
+
+**Two sweeps in this pass came back empty, recorded because an empty
+sweep is a measurement only if its method is.**
+
+    a framed widget whose border has a gap        24 types, 18 boxes, 6 explained
+      18 draw a complete box top and bottom at 3 and at 5 rows, including
+      every widget 8.417 and 8.419 touched. QGroupBox and QTabWidget carry
+      the border one row down, behind the title and the tab bar, which is
+      the design their own comments record. QProgressBar's fill is a
+      groove, QToolBox's page has no frame, QCalendarWidget has no outer
+      one. QKeySequenceEdit renders blank rows because its inner QLineEdit
+      is frame=1 at 180x19+0+38 -- one row, vertically centred, which is
+      what Qt's layout does with a Fixed vertical policy -- and the
+      "[Press shortcut  ]" it draws is this style's own one-row form.
+
+    AnsiBackend::deferred_ms() drifting from present()  6 of 6 modes, plus placeholders
+      It mirrors rather than shares the tier guard, so the question is
+      whether the mirror holds for every GraphicsMode and not just the
+      ones its author had in mind. It does: the two kitty tiers
+      short-circuit on `handles`, NoGraphics and Halfblocks have no sharp
+      tier to owe because the settle's result reaches only
+      `pixel_placements`, and Sixel and ITerm2 get the pending time.
+      Sharing the expression would mean restructuring `present()`, which
+      would change WHEN a state machine is advanced, so the duplication
+      stays and this is the record that it was checked.
 
 ### 8.419 The other half of a rect: arrows that claimed the border (2026-10-09)
 

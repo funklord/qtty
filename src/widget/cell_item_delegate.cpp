@@ -128,14 +128,26 @@ void CellItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
 		if (opt.displayAlignment & Qt::AlignBottom)       row = c.bottom();
 		else if (opt.displayAlignment & Qt::AlignVCenter) row = c.top() + (c.height() - 1) / 2;
 	}
-	int col = c.left() + indent_cells();
+	// Laid out from the LEADING edge, by the leading_edge() the style's own
+	// CE_ItemViewItem and both of its rectangle answers now use. `used`
+	// counts cells consumed from that edge; the absolute column each element
+	// lands in is derived from it, so right-to-left puts the indent, the box
+	// and the decoration at the right-hand end as Qt does.
+	//
+	// Shared rather than copied for the reason this file's header gives: a
+	// second copy of a rule arrived at by measurement is the kind that
+	// drifts, and the displayAlignment above is a case where these two
+	// writers HAD drifted -- a program with this delegate installed was
+	// right and the same program without it was wrong.
+	int used = indent_cells();
 
 	if (opt.features & QStyleOptionViewItem::HasCheckIndicator) {
 		QString box = QStringLiteral("[ ]");
 		if (opt.checkState == Qt::Checked)                box = QStringLiteral("[x]");
 		else if (opt.checkState == Qt::PartiallyChecked)  box = QStringLiteral("[-]");
-		buffer.text(col, row, box, fg, bg, attrs);
-		col += check_cells();
+		buffer.text(leading_edge(c.left(), c.right(), used, 3, opt.direction),
+		            row, box, fg, bg, attrs);
+		used += check_cells();
 	}
 
 	if ((opt.features & QStyleOptionViewItem::HasDecoration) && !opt.icon.isNull()) {
@@ -148,21 +160,27 @@ void CellItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
 		// second copy of that decision here is a second answer to one
 		// question, and the two would part company the first time the
 		// graphics tier learned something.
-		const QRect px(opt.rect.left() + (col - c.left()) * cw,
+		const int deco_at =
+		    leading_edge(c.left(), c.right(), used, dw, opt.direction);
+		const QRect px(opt.rect.left() + (deco_at - c.left()) * cw,
 		               opt.rect.top() + (row - c.top()) * ch, dw * cw, dh * ch);
 		painter->drawPixmap(px, opt.icon.pixmap(opt.decorationSize));
-		col += dw + 1;
+		used += dw + 1;
 	}
 
-	const int budget = c.right() - col + 1;
+	const int budget = c.width() - used;
+	const int col =
+	    leading_edge(c.left(), c.right(), used, budget, opt.direction);
 	if (budget > 0 && !opt.text.isEmpty()) {
 		// The view's own elide mode, for the reason the style records at
 		// its own call: the option carries it and both writers discarded it.
 		const QString s = elide_to_cells(opt.text, budget, opt.textElideMode);
 		const int width = text_cells(s);
 		int x = col;
-		if (opt.displayAlignment & Qt::AlignRight)        x = c.right() - width + 1;
-		else if (opt.displayAlignment & Qt::AlignHCenter) x = col + (budget - width) / 2;
+		const Qt::Alignment al =
+		    QStyle::visualAlignment(opt.direction, opt.displayAlignment);
+		if (al & Qt::AlignRight)        x = col + budget - width;
+		else if (al & Qt::AlignHCenter) x = col + (budget - width) / 2;
 		buffer.text(x, row, s, fg, bg, attrs);
 	}
 }

@@ -1818,7 +1818,7 @@ check = "a tree column elides the end its view asked for"
 # it all along, so the default path was the wrong one. 8.140.
 name = "the style ignores the alignment a model asked for"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\t\tif (vi->displayAlignment & Qt::AlignRight)"
+find = "\t\t\t\tif (al & Qt::AlignRight)"
 into = "\t\t\t\tif (false)"
 count = 1
 check = "a right-aligned column lines its digits up"
@@ -5495,8 +5495,8 @@ check = "a band over a row that is already selected still shows"
 [[sabotage]]
 name = "the style draws a glyph the vocabulary does not publish"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\t\tint text_at = c.left() + 1;"
-into = "\t\t\t\tint text_at = c.left() + 1;\n\t\t\t\tdev->buffer().put_cluster(c.left(), c.top(), QStringLiteral(\"\\u2593\"));"
+find = "\t\t\t\tint used = 1;                      // the indent"
+into = "\t\t\t\tint used = 1;\n\t\t\t\tdev->buffer().put_cluster(c.left(), c.top(), QStringLiteral(\"\\u2593\"));"
 count = 1
 # The wording common to both arms: this check's message is conditional, so
 # the FAIL line carries the "these are not" form rather than the PASS one,
@@ -6308,3 +6308,43 @@ find = "\t\t\treturn QRect(rtl ? r.left() + edge : r.right() + 1 - edge - cw,\n\
 into = "\t\t\treturn QRect(rtl ? r.left() + edge : r.right() + 1 - edge - cw,\n\t\t\t             r.top(), cw, qMax(ch, r.height()));"
 count = 1
 check = "and not the border rows, where a click would open the popup"
+
+[[sabotage]]
+name = "the check rectangle keeps the leading edge in both directions"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\treturn QRect(leading_edge(opt->rect.left(), opt->rect.right(),\n\t\t\t                          cw, 3 * cw, opt->direction),"
+into = "\t\t\treturn QRect(opt->rect.left() + cw,"
+count = 1
+check = "the check rectangle names the cell the box is drawn in"
+
+[[sabotage]]
+name = "the item's text rectangle keeps the leading edge in both directions"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\treturn QRect(leading_edge(opt->rect.left(), opt->rect.right(), in,\n\t\t\t                          opt->rect.width() - in, opt->direction),"
+into = "\t\t\treturn QRect(opt->rect.left() + in,"
+count = 1
+check = "and the text rectangle keeps its width and changes which end"
+
+[[sabotage]]
+name = "the drawn check box keeps the leading edge in both directions"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\tdev->buffer().text(leading_edge(c.left(), c.right(), used,\n\t\t\t\t\t                                3, vi->direction),"
+into = "\t\t\t\t\tdev->buffer().text(c.left() + used,"
+count = 1
+check = "a right-to-left item carries its check box at the trailing"
+
+[[sabotage]]
+name = "an item's alignment is used as given rather than made visual"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tconst Qt::Alignment al =\n\t\t\t\t    QStyle::visualAlignment(vi->direction, vi->displayAlignment);"
+into = "\t\t\t\tconst Qt::Alignment al = vi->displayAlignment;"
+count = 1
+check = "an item's label sits one space from its check box"
+
+[[sabotage]]
+name = "the delegate lays its row out from the left rather than the leading edge"
+file = "src/widget/cell_item_delegate.cpp"
+find = "\t\tbuffer.text(leading_edge(c.left(), c.right(), used, 3, opt.direction),\n\t\t            row, box, fg, bg, attrs);"
+into = "\t\tbuffer.text(c.left() + used, row, box, fg, bg, attrs);"
+count = 1
+check = "and CellItemDelegate lays the row out the same way the style"

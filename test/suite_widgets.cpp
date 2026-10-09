@@ -8014,6 +8014,136 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// AND AN ITEM'S ROW IS LAID OUT FROM THE LEADING EDGE, which it was not.
+	// Under Qt::RightToLeft a check box belongs at the trailing end and the
+	// label's Qt::AlignLeft means "leading", which QCommonStyle maps through
+	// QStyle::visualAlignment before drawing. This style mirrored five
+	// controls in 8.284 and 8.304 and never the item view, which was in
+	// nobody's list.
+	//
+	// Measured against plain Qt first, the way 8.304's two non-gaps were
+	// found. Fusion's own answers on a 180px item:
+	//
+	//     LTR  text  20..179   check    3..16
+	//     RTL  text   0..159   check  163..176
+	//
+	// an exact mirror -- and this style answered `text 50..179 check 10..39`
+	// in BOTH directions. The check rectangle is what QAbstractItemView
+	// tests a click against, so the toggling column was not the drawn one.
+	//
+	// Asserted on the drawing AND the rectangle, in both directions, for
+	// both writers. The style and the delegate are separately capable of
+	// this: displayAlignment was already found split between them, which is
+	// why their agreement is one of the assertions rather than an assumption.
+	{
+		const int cols = 14;
+		const auto row_of = [cols](bool with_delegate, Qt::LayoutDirection d,
+		                           int *box_rect_col) {
+			QApplication::setLayoutDirection(d);
+			QListWidget lw;
+			lw.setFrameShape(QFrame::NoFrame);
+			lw.setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+			lw.setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+			if (with_delegate)
+				lw.setItemDelegate(new CellItemDelegate(&lw));
+			auto *it = new QListWidgetItem(QStringLiteral("ab"));
+			it->setCheckState(Qt::Unchecked);
+			lw.addItem(it);
+			lw.setAttribute(Qt::WA_DontShowOnScreen);
+			lw.resize(GridMetrics::cells(cols, 3));
+			lw.show();
+			QCoreApplication::processEvents();
+			if (box_rect_col) {
+				QStyleOptionViewItem o;
+				o.initFrom(&lw);
+				o.direction = d;
+				o.rect = QRect(0, 0, cols * GridMetrics::cw(),
+				               GridMetrics::ch());
+				o.features = QStyleOptionViewItem::HasCheckIndicator
+				           | QStyleOptionViewItem::HasDisplay;
+				o.checkState = Qt::Unchecked;
+				o.text = QStringLiteral("ab");
+				o.displayAlignment = Qt::AlignLeft | Qt::AlignVCenter;
+				const QRect ck = lw.style()->subElementRect(
+				    QStyle::SE_ItemViewItemCheckIndicator, &o, &lw);
+				*box_rect_col = ck.left() / GridMetrics::cw();
+				const QRect tr = lw.style()->subElementRect(
+				    QStyle::SE_ItemViewItemText, &o, &lw);
+				box_rect_col[1] = tr.left() / GridMetrics::cw();
+				box_rect_col[2] = tr.width() / GridMetrics::cw();
+			}
+			CellBuffer b(cols, 3);
+			render_once(lw, b);
+			QString line;
+			for (int x = 0; x < b.cols(); ++x) line += b.at(x, 0).ch;
+			QApplication::setLayoutDirection(Qt::LeftToRight);
+			return line;
+		};
+		int ltr_r[3] = {-1, -1, -1}, rtl_r[3] = {-1, -1, -1};
+		const QString s_ltr = row_of(false, Qt::LeftToRight, ltr_r);
+		const QString s_rtl = row_of(false, Qt::RightToLeft, rtl_r);
+		const int rect_ltr = ltr_r[0], rect_rtl = rtl_r[0];
+		const QString d_ltr = row_of(true, Qt::LeftToRight, nullptr);
+		const QString d_rtl = row_of(true, Qt::RightToLeft, nullptr);
+		const auto box_at = [](const QString &l) {
+			return int(l.indexOf(QLatin1Char('[')));
+		};
+		const auto text_at = [](const QString &l) {
+			return int(l.indexOf(QStringLiteral("ab")));
+		};
+		printf("info: item row ltr [%s] box %d text %d rect %d\n",
+		       qPrintable(s_ltr), box_at(s_ltr), text_at(s_ltr), rect_ltr);
+		printf("info: item row rtl [%s] box %d text %d rect %d\n",
+		       qPrintable(s_rtl), box_at(s_rtl), text_at(s_rtl), rect_rtl);
+		// THE CONTROL, and it is the half a both-ways mirror would fail:
+		// left-to-right is unchanged -- one cell of indent, then the box,
+		// then the label after it.
+		CHECK(box_at(s_ltr) == 1 && text_at(s_ltr) > box_at(s_ltr),
+		      "a left-to-right item still carries its check box after one"
+		      " cell of indent and its label after the box");
+		// The mirror: the box moves to the trailing end and the label sits
+		// before it rather than after.
+		CHECK(box_at(s_rtl) > text_at(s_rtl) && text_at(s_rtl) >= 0,
+		      "a right-to-left item carries its check box at the trailing"
+		      " end and its label before it");
+		// Exactly where Qt puts it: the indent is at the trailing edge, so
+		// the box's three cells end one cell short of it.
+		CHECK(box_at(s_rtl) == cols - 4,
+		      "and the box is the exact mirror of its left-to-right cells,"
+		      " the indent keeping the trailing cell");
+		// The pairing this family keeps failing. The rectangle is what a
+		// click is tested against; the row is what the user sees.
+		CHECK(rect_ltr == box_at(s_ltr) && rect_rtl == box_at(s_rtl),
+		      "the check rectangle names the cell the box is drawn in, in"
+		      " both directions, so a click reaches the box it can see");
+		// And the two writers agree, displayAlignment having already been
+		// found split between them.
+		CHECK(d_ltr == s_ltr && d_rtl == s_rtl,
+		      "and CellItemDelegate lays the row out the same way the style"
+		      " does, in both directions");
+		// THE LABEL'S OWN PLACE, which the two checks above cannot see: the
+		// box moving is one fix and Qt::AlignLeft meaning "leading" is
+		// another, and dropping the second leaves the label at column 0
+		// with the box still correctly at the trailing end. Asserted as
+		// adjacency -- one space between the label and the box -- which is
+		// the same sentence either way round.
+		printf("info: item text rect ltr %d+%d rtl %d+%d\n", ltr_r[1],
+		       ltr_r[2], rtl_r[1], rtl_r[2]);
+		CHECK(text_at(s_ltr) == box_at(s_ltr) + 4
+		          && text_at(s_rtl) + 2 + 1 == box_at(s_rtl),
+		      "an item's label sits one space from its check box, after it"
+		      " going one way and before it going the other");
+		// And the rectangle an inline EDITOR is placed at mirrors with the
+		// label: same width, starting at the other end. Qt's own delegate
+		// puts a rename field here, so an unmirrored answer opened it over
+		// the check column.
+		CHECK(ltr_r[2] == rtl_r[2] && ltr_r[2] > 0 && ltr_r[1] == 5
+		          && rtl_r[1] == 0,
+		      "and the text rectangle keeps its width and changes which end"
+		      " it starts at, so a rename field opens over the label");
+		GridGuard::reset();
+	}
+
 	// A right-aligned column and its HEADING, asserted as sharing an edge.
 	//
 	// The heading is positioned to line up with the data rather than by its

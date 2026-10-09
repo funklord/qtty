@@ -1286,11 +1286,19 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 	// after them -- so a click anywhere in them means the box, and demanding
 	// the exact row would mean deriving it twice, once here and once in each
 	// of the two drawing paths.
+	//
+	// And at the trailing edge under RightToLeft, by leading_edge(), because
+	// Qt puts it there: measured, Fusion answers 3..16 on a 180px item going
+	// one way and 163..176 going the other, while this answered 10..39 in
+	// both. A check box on the wrong side is not a cosmetic mirror -- this
+	// rectangle is what QAbstractItemView tests a click against, so the
+	// column that toggles the item was the one the box was not drawn in.
 	if (se == SE_ItemViewItemCheckIndicator && opt) {
 		const int cw = GridMetrics::cw();
 		if (r.isValid())
-			return QRect(opt->rect.left() + cw, opt->rect.top(),
-			             3 * cw, opt->rect.height());
+			return QRect(leading_edge(opt->rect.left(), opt->rect.right(),
+			                          cw, 3 * cw, opt->direction),
+			             opt->rect.top(), 3 * cw, opt->rect.height());
 	}
 	// AND THE CELLS THE TEXT IS DRAWN IN, which nothing here answered and
 	// which is not only about drawing: Qt's own delegate places an inline
@@ -1317,8 +1325,15 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 			if (vi->features & QStyleOptionViewItem::HasCheckIndicator)
 				in += 4 * cw;
 		}
+		// The text region keeps its WIDTH and changes which end it starts
+		// at, which is what Qt does: the indent and the box are at the
+		// leading edge, so the label has the rest of the row whichever way
+		// round that is. This is also where an inline editor is placed, so
+		// an unmirrored answer put a rename box over the check column.
 		if (opt->rect.width() > in)
-			return QRect(opt->rect.left() + in, opt->rect.top(),
+			return QRect(leading_edge(opt->rect.left(), opt->rect.right(), in,
+			                          opt->rect.width() - in, opt->direction),
+			             opt->rect.top(),
 			             opt->rect.width() - in, opt->rect.height());
 	}
 	if (se == SE_TabBarTabRightButton || se == SE_TabBarTabLeftButton) {
@@ -2661,16 +2676,25 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// unsettable by eye. Qt says whether an item has one and what
 				// it is; the glyphs are the checkbox's, because a check is a
 				// check wherever it appears.
-				int text_at = c.left() + 1;
+				// Laid out from the LEADING edge by leading_edge(), so the
+				// indent, the box and the label are at the right-hand end
+				// under RightToLeft -- and at the same cells the two
+				// rectangles above answer, which is the pairing this family
+				// keeps failing: an element drawn where no click reaches.
+				int used = 1;                      // the indent
 				if (vi->features & QStyleOptionViewItem::HasCheckIndicator) {
 					const QString box =
 					    vi->checkState == Qt::Checked            ? QStringLiteral("[x]")
 					    : vi->checkState == Qt::PartiallyChecked ? QStringLiteral("[-]")
 					                                            : QStringLiteral("[ ]");
-					dev->buffer().text(text_at, c.top(), box, fg, bg, la);
-					text_at += 4;                  // the box and one space
+					dev->buffer().text(leading_edge(c.left(), c.right(), used,
+					                                3, vi->direction),
+					                   c.top(), box, fg, bg, la);
+					used += 4;                     // the box and one space
 				}
-				const int room = c.right() - text_at + 1;
+				const int room = c.width() - used;
+				const int text_at = leading_edge(c.left(), c.right(), used,
+				                                 room, vi->direction);
 				// The view's own elide mode, which Qt puts in the option and
 				// this discarded: every item was elided on the right however
 				// the application had asked. A path column set to ElideLeft
@@ -2688,11 +2712,23 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// program without it was wrong -- and the delegate is the
 				// optional extra, so the default was the broken one. The two
 				// writers agree now; the arithmetic is the delegate's.
+				//
+				// Made VISUAL first, which it was not: Qt::AlignLeft on an
+				// item means the leading edge, and QCommonStyle maps it
+				// through QStyle::visualAlignment before drawing. Without
+				// that a right-to-left list left its labels on the left
+				// while every built-in style moves them.
+				//
+				// Written as an offset from text_at rather than from
+				// c.right(), because the two are the same cell going one way
+				// and `used` cells apart going the other.
 				int text_x = text_at;
 				const int shown_cells = text_cells(shown);
-				if (vi->displayAlignment & Qt::AlignRight)
-					text_x = c.right() - shown_cells + 1;
-				else if (vi->displayAlignment & Qt::AlignHCenter)
+				const Qt::Alignment al =
+				    QStyle::visualAlignment(vi->direction, vi->displayAlignment);
+				if (al & Qt::AlignRight)
+					text_x = text_at + room - shown_cells;
+				else if (al & Qt::AlignHCenter)
 					text_x = text_at + (room - shown_cells) / 2;
 				dev->buffer().text(text_x, c.top(), shown, fg, bg, la);
 				return;

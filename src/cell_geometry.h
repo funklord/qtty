@@ -278,6 +278,35 @@ inline Attrs with_state(const QStyleOption *opt, Attrs base = Attrs()) {
 // -- and that copy was in these same two files.
 bool item_view_current(const QStyleOptionViewItem *vi, const QWidget *w);
 
+// An element's position, measured from the LEADING edge rather than the left
+// one. Left-to-right the leading edge is the left, right-to-left it is the
+// right -- so an element `off` in and `w` wide sits at `left + off` one way
+// and at `right + 1 - off - w` the other.
+//
+// Units are the caller's: cells in a drawing path, pixels in a rectangle
+// answer, which passes multiples of the cell width. One formula either way,
+// because the mirror is the thing four sites did not have. An item's row is
+// laid out as indent, check box, decoration, text, from the leading edge, and
+// it is derived in SE_ItemViewItemCheckIndicator, in SE_ItemViewItemText, in
+// CE_ItemViewItem and in CellItemDelegate -- so writing the mirror out four
+// times is four chances to get three of them. Measured twice in one day in
+// this tree: a spin box's arrows kept the full height after its edit field
+// was inset, and a combo's arrow did the same.
+//
+// Measured against plain Qt before being written, which is how two earlier
+// claims in this family were found not to be gaps at all. Fusion's own
+// SE_ItemViewItemText and SE_ItemViewItemCheckIndicator on a 180px item:
+//
+//     LTR  text  20..179   check    3..16
+//     RTL  text   0..159   check  163..176
+//
+// an exact mirror, `rtl_left == W - 1 - ltr_right`. This style answered
+// `text 50..179  check 10..39` in BOTH directions.
+inline int leading_edge(int left, int right, int off, int w,
+                        Qt::LayoutDirection dir) {
+	return dir == Qt::RightToLeft ? right + 1 - off - w : left + off;
+}
+
 // The emphasis a font carries, as cell attributes. A terminal has these four
 // and no others, which is why this is a translation rather than a rendering:
 // weight is bold or it is not, and a font's size, family and stretch have
