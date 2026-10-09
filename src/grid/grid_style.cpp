@@ -1377,16 +1377,31 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		const int edge = (!sb || sb->frame) ? cw : 0;
 		const int arrows =
 		    (!sb || sb->buttonSymbols != QAbstractSpinBox::NoButtons) ? 2 * cw : 0;
+		// The frame rows, in ONE expression shared by the edit field and by
+		// the two arrow cells. It was the field's alone: 9c34bf8 inset the
+		// field so it stopped painting over the border, and left the arrows
+		// claiming the full height. Measured at 18x3 -- the top row drew a
+		// plain `----` border and answered SC_SpinBoxUp and SC_SpinBoxDown
+		// for the two cells of it above the arrows, so clicking the border
+		// stepped the value and the bottom border did it too. The glyphs are
+		// drawn on the middle row only, which is why the box looked right.
+		//
+		// Qt's own QCommonStyle insets these by PM_SpinBoxFrameWidth for the
+		// same reason. Half a fix is worse than neither here: the border is
+		// drawn correctly and the click is wrong, which is this file's
+		// standing "an arrow drawn in a cell a click does not reach" fault
+		// pointed the other way -- a cell a click reaches with no arrow in it.
+		const bool inner = edge && r.height() >= 3 * ch;
 		// Written out per side rather than derived from an offset, after
 		// the derived version put SC_SpinBoxUp one cell inside where the
 		// arrow is drawn -- which is the same off-by-one this arm was
 		// written to fix, reintroduced by being clever about the mirror.
 		const auto cell_at = [&](int x) {
-			return QRect(x, r.top(), cw, qMax(ch, r.height()));
+			return QRect(x, inner ? r.top() + ch : r.top(), cw,
+			             inner ? r.height() - 2 * ch : qMax(ch, r.height()));
 		};
 		switch (sc) {
 		case SC_SpinBoxEditField: {
-			const bool inner = edge && r.height() >= 3 * ch;
 			return QRect(rtl ? r.left() + edge + arrows : r.left() + edge,
 			             inner ? r.top() + ch : r.top(),
 			             qMax(cw, r.width() - 2 * edge - arrows),
@@ -1644,9 +1659,12 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		// cell moves, and it moves here and in the drawing together.
 		const auto *cb = qstyleoption_cast<const QStyleOptionComboBox *>(opt);
 		const int edge = (!cb || cb->frame) ? cw : 0;
+		// Shared with the arrow below, for the reason the spin box above
+		// gives: the arrow claimed the frame rows, so the border cell above
+		// it answered SC_ComboBoxArrow and a click there opened the popup.
+		const bool inner = edge && r.height() >= 3 * ch;
 		switch (sc) {
 		case SC_ComboBoxEditField: {
-			const bool inner = edge && r.height() >= 3 * ch;
 			return QRect(rtl ? r.left() + edge + cw : r.left() + edge,
 			             inner ? r.top() + ch : r.top(),
 			             qMax(cw, r.width() - 2 * edge - cw),
@@ -1654,7 +1672,8 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		}
 		case SC_ComboBoxArrow:
 			return QRect(rtl ? r.left() + edge : r.right() + 1 - edge - cw,
-			             r.top(), cw, qMax(ch, r.height()));
+			             inner ? r.top() + ch : r.top(), cw,
+			             inner ? r.height() - 2 * ch : qMax(ch, r.height()));
 		case SC_ComboBoxFrame:
 		case SC_ComboBoxListBoxPopup:
 			return r;

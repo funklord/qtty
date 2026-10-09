@@ -6272,16 +6272,16 @@ check = "and a spin box asked for no frame draws none, its arrow moving"
 [[sabotage]]
 name = "a spin box's editor covers the frame rows it sits inside"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\tconst bool inner = edge && r.height() >= 3 * ch;\n\t\t\treturn QRect(rtl ? r.left() + edge + arrows : r.left() + edge,"
-into = "\t\t\tconst bool inner = false;\n\t\t\treturn QRect(rtl ? r.left() + edge + arrows : r.left() + edge,"
+find = "\t\t\treturn QRect(rtl ? r.left() + edge + arrows : r.left() + edge,\n\t\t\t             inner ? r.top() + ch : r.top(),"
+into = "\t\t\treturn QRect(rtl ? r.left() + edge + arrows : r.left() + edge,\n\t\t\t             r.top(),"
 count = 1
 check = "a framed spin box's top border has no gap"
 
 [[sabotage]]
 name = "an editable combo's editor covers the frame rows it sits inside"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\tconst bool inner = edge && r.height() >= 3 * ch;\n\t\t\treturn QRect(rtl ? r.left() + edge + cw : r.left() + edge,"
-into = "\t\t\tconst bool inner = false;\n\t\t\treturn QRect(rtl ? r.left() + edge + cw : r.left() + edge,"
+find = "\t\t\treturn QRect(rtl ? r.left() + edge + cw : r.left() + edge,\n\t\t\t             inner ? r.top() + ch : r.top(),"
+into = "\t\t\treturn QRect(rtl ? r.left() + edge + cw : r.left() + edge,\n\t\t\t             r.top(),"
 count = 1
 check = "and an editable combo's border has none either"
 
@@ -6292,3 +6292,19 @@ find = "\t\tutf8.text = QString::fromUtf8(seq);"
 into = "\t\tutf8.text = len == 2 ? QString(QChar(((static_cast<unsigned char>(seq[0]) & 0x1F) << 6) | (static_cast<unsigned char>(seq[1]) & 0x3F))) : QString::fromUtf8(seq);"
 count = 1
 check = "an overlong UTF-8 form does not arrive as the character it encodes"
+
+[[sabotage]]
+name = "a spin box's arrow cells cover the frame rows above and below them"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\treturn QRect(x, inner ? r.top() + ch : r.top(), cw,\n\t\t\t             inner ? r.height() - 2 * ch : qMax(ch, r.height()));"
+into = "\t\t\treturn QRect(x, r.top(), cw, qMax(ch, r.height()));"
+count = 1
+check = "and neither reaches the border rows above or below them"
+
+[[sabotage]]
+name = "an editable combo's arrow cell covers the frame rows"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\treturn QRect(rtl ? r.left() + edge : r.right() + 1 - edge - cw,\n\t\t\t             inner ? r.top() + ch : r.top(), cw,\n\t\t\t             inner ? r.height() - 2 * ch : qMax(ch, r.height()));"
+into = "\t\t\treturn QRect(rtl ? r.left() + edge : r.right() + 1 - edge - cw,\n\t\t\t             r.top(), cw, qMax(ch, r.height()));"
+count = 1
+check = "and not the border rows, where a click would open the popup"

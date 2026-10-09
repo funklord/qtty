@@ -8485,6 +8485,91 @@ int suite_widgets() {
 		      " same rect answering for the same reason");
 	}
 
+	// AND AN ARROW'S CELL DOES NOT REACH INTO THOSE SAME FRAME ROWS, which
+	// is the other half of the rect above and was left behind by the fix to
+	// it. SC_SpinBoxEditField was inset so a framed editor stopped painting
+	// over its own border; SC_SpinBoxUp, SC_SpinBoxDown and SC_ComboBoxArrow
+	// went on answering `qMax(ch, r.height())` -- the whole widget.
+	//
+	// Measured at 18x3 before the fix, by printing the drawn row beside
+	// hitTestComplexControl's answer per cell:
+	//
+	//     spin row 0 drawn [+----------------+] hit [FFFFFFFFFFFFFFFUDF]
+	//     spin row 1 drawn [|7             ^v|] hit [FFFFFFFFFFFFFFFUDF]
+	//
+	// so the two border cells above the arrows answered SC_SpinBoxUp and
+	// SC_SpinBoxDown: clicking a plain stretch of border stepped the value,
+	// and the bottom border did it too. The glyphs are drawn on the middle
+	// row only, which is why the picture looked right while the clicking
+	// did not. Qt's own QCommonStyle insets these by PM_SpinBoxFrameWidth.
+	//
+	// Asserted in BOTH directions off one picture, because agreement is the
+	// half that breaks silently: the row the glyph is drawn on must be
+	// inside the rect, and the border rows must not be. A fix answering an
+	// empty rect satisfies the second and fails the first.
+	{
+		const auto row_of = [](const CellBuffer &b, int rows, QChar g) {
+			const QStringList got = b.to_text().split(QLatin1Char('\n'));
+			for (int y = 0; y < rows; ++y)
+				if (got.value(y).contains(g)) return y;
+			return -1;
+		};
+		const int ch = GridMetrics::ch();
+		const auto covers = [ch](const QRect &q, int y) {
+			return y * ch >= q.top() && y * ch <= q.bottom();
+		};
+		const int cols = 18, rows = 3;
+
+		QSpinBox sp;
+		sp.setValue(7);
+		show(sp, cols, rows);
+		CellBuffer sb(cols, rows);
+		render_once(sp, sb);
+		const int sglyph = row_of(sb, rows, QChar(0x25b4));
+		QStyleOptionSpinBox so;
+		so.initFrom(&sp);
+		so.rect = sp.rect();
+		so.frame = sp.hasFrame();
+		so.buttonSymbols = sp.buttonSymbols();
+		so.subControls = QStyle::SC_All;
+		const QRect up = sp.style()->subControlRect(
+		    QStyle::CC_SpinBox, &so, QStyle::SC_SpinBoxUp, &sp);
+		const QRect down = sp.style()->subControlRect(
+		    QStyle::CC_SpinBox, &so, QStyle::SC_SpinBoxDown, &sp);
+		printf("info: a three-row spin box draws its arrows on row %d, and"
+		       " SC_SpinBoxUp spans rows %d..%d of %d\n", sglyph,
+		       up.top() / ch, up.bottom() / ch, rows);
+		CHECK(sglyph > 0 && covers(up, sglyph) && covers(down, sglyph),
+		      "a framed spin box's arrow cells reach the row its arrows are"
+		      " drawn on, the rect and the picture agreeing");
+		CHECK(!covers(up, 0) && !covers(down, 0) && !covers(up, rows - 1)
+		      && !covers(down, rows - 1),
+		      "and neither reaches the border rows above or below them,"
+		      " where a click would step the value with no arrow in sight");
+
+		QComboBox cb;
+		cb.setEditable(true);
+		cb.addItems({QStringLiteral("alpha")});
+		show(cb, cols, rows);
+		CellBuffer cbb(cols, rows);
+		render_once(cb, cbb);
+		const int cglyph = row_of(cbb, rows, QChar(0x25be));
+		QStyleOptionComboBox co;
+		co.initFrom(&cb);
+		co.rect = cb.rect();
+		co.frame = cb.hasFrame();
+		co.editable = cb.isEditable();
+		co.subControls = QStyle::SC_All;
+		const QRect ar = cb.style()->subControlRect(
+		    QStyle::CC_ComboBox, &co, QStyle::SC_ComboBoxArrow, &cb);
+		CHECK(cglyph > 0 && covers(ar, cglyph),
+		      "an editable combo's arrow cell reaches the row its arrow is"
+		      " drawn on");
+		CHECK(!covers(ar, 0) && !covers(ar, rows - 1),
+		      "and not the border rows, where a click would open the popup"
+		      " from a cell drawn as a plain border");
+	}
+
 	return fails;
 }
 

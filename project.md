@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2139 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2143 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18323,6 +18323,63 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.419 The other half of a rect: arrows that claimed the border (2026-10-09)
+
+**A lens derived from 8.417's own fix: a sub-control rect that claims
+cells it does not own.** That fix inset `SC_SpinBoxEditField` so a framed
+editor stopped painting over its border, and left the two arrow cells and
+the combo's arrow answering `qMax(ch, r.height())` -- the whole widget.
+
+Measured at 18x3 by printing the drawn row beside
+`hitTestComplexControl`'s answer per cell, which is 0d's method pointed at
+a rect rather than at a picture:
+
+    spin  row 0  drawn [+----------------+]  hit [FFFFFFFFFFFFFFFUDF]
+    spin  row 1  drawn [|7             ^v|]  hit [FFFFFFFFFFFFFFFUDF]
+    spin  row 2  drawn [+----------------+]  hit [FFFFFFFFFFFFFFFUDF]
+    combo row 0  drawn [+----------------+]  hit [FFFFFFFFFFFFFFFFAF]
+
+So the two border cells above and below the arrows answered
+`SC_SpinBoxUp` and `SC_SpinBoxDown`: **clicking a plain stretch of border
+stepped the value**, and the bottom border did it too. The combo's border
+cell answered `SC_ComboBoxArrow`, which opens the popup. The glyphs are
+drawn on the middle row only, which is why the picture looked right while
+the clicking did not -- the same disagreement 8.417 records from the other
+side, there an arrow in a cell no click reaches and here a cell a click
+reaches with no arrow in it.
+
+`inner` is one expression now, shared by the field and the arrow cells
+rather than the field's alone, which is what 8.417 said it was for. Qt's
+own `QCommonStyle` insets these by `PM_SpinBoxFrameWidth`.
+
+**Who is in the condition, because narrowing it would read as rare.** The
+natural size is 6x1 cells for a spin box and 12x1 for a combo -- measured,
+not assumed -- and `QAbstractSpinBox` sets a Fixed vertical policy, so a
+layout will not stretch one. Three rows takes a deliberate height: a cell
+editor in a table whose rows have been made taller, a `setFixedHeight`, or
+an Expanding policy in a grid. **It is not a shape qtty's defaults
+produce, and that is the honest size of it** -- the same condition 8.417's
+own fix needed, which is why both halves belong to one finding.
+
+**The population, because the lens is worth retiring rather than
+re-running.** `subControlRect` answers for six complex controls.
+`CC_SpinBox` and `CC_ComboBox` had the fault in both halves. `CC_GroupBox`
+had it in `SC_GroupBoxContents` and was fixed before, with the measurement
+in the comment -- a five-row box drew its first child through its own top
+border. `CC_ToolButton`'s `SC_ToolButtonMenu` was fixed before too, to the
+arrow's cell and only that. `CC_ScrollBar` and `CC_Slider` draw no frame,
+and their bands partition the length. Six accounted for, none unexamined,
+and three of the six had this fault at some point -- so the lens paid out
+on half the population it was pointed at.
+
+Four checks, asserted in both directions off one picture because
+agreement is the half that breaks silently: the row the glyph is drawn on
+must be inside the rect, and the border rows must not be. A fix answering
+an empty rect satisfies the second and fails the first. Four sabotages,
+each reddening one of the four and nothing else -- and the two entries
+8.417 left behind had to be re-anchored, the `inner` they named having
+moved out of the case blocks.
 
 ### 8.418 Fourteen odd input sequences, and the one that earned a check (2026-10-09)
 
