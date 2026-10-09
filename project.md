@@ -18324,6 +18324,53 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.421 Three instruments, and which kind of error each made (2026-10-09)
+
+**The two defects above were found with probes written for them, and all
+three of this pass's mistakes were in the apparatus rather than in what it
+measured.** Recorded because the remedies differ by direction of error.
+
+**One under-reported, which is the dangerous direction.** The border sweep
+classified a row as a complete box by taking its second character and
+requiring every other to match. `CellBuffer::to_text()` trims trailing
+blanks, so a three-cell row like `[T]` has one interior character, the loop
+runs once, and it compares that character with itself. A tab widget's tab
+bar therefore read as a solid border. **A loose pattern makes you work and
+a short view makes you comfortable**, so the control is the instrument's
+own width: the row must be 18 cells before its uniformity means anything.
+Four of the twenty-four types were mis-classified until it was.
+
+**One mis-read a population for a different population.** `make style`
+refused with `128 convention violation(s) in 87 file(s)`, and 87 files is
+more than any four-file change can produce, so the other writer's dirty
+`tool/style_gate.py` was the first suspect -- which is the right instinct
+and the wrong answer. All 128 were in one file, this session's own, and 87
+is the count the gate INSPECTED: it prints the same figure on success,
+`87 file(s) pass`. **A number is not a finding until you know what its
+denominator is**, and the discriminator was one command -- counting
+findings per file rather than reading the summary line.
+
+**And one caught what the compiler could not.** The new fixture was
+appended after a `CHECK(` that sits inside the previous fixture's braces,
+so it nested one level deeper than it was written for: 128 lines indented
+one tab where the structure says two. It compiled, it ran, and all seven
+new checks passed, because C++ does not care. `make style` is the only
+thing in the tree that could see it. The fix moved the block out to be a
+sibling fixture, with assertions that no `CHECK(` was lost and the file's
+length was unchanged -- a move being the one edit where both are provable.
+
+**The next lens, derived from these two defects rather than chosen.** Both
+were one expression with several consumers where only some were updated --
+the field inset but not the arrows, then four derivations of an item's row
+of which none mirrored. `leading_edge()` and `inner` are now shared, so the
+question that remains is **where else does this tree derive one picture in
+two places?** The file names four such pairings and all four are in the
+spin box and the combo. `CE_ItemViewItem` draws no decoration where
+`CellItemDelegate` does, which is the same shape and is already written
+down above. That is where to start, and the method is to enumerate the
+consumers rather than to grep for the expression, because a count inherits
+its detector.
+
 ### 8.420 The item view was in nobody's right-to-left list (2026-10-09)
 
 **The lens came from 8.419's own population sweep, run on a different
