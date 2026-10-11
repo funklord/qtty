@@ -6364,3 +6364,11 @@ find = "\t\t\t\tconst Qt::Alignment hal =\n\t\t\t\t    QStyle::visualAlignment(o
 into = "\t\t\t\tconst Qt::Alignment hal = h->textAlignment;"
 count = 1
 check = "a heading shares an edge with its data in both layout"
+
+[[sabotage]]
+name = "the style ignores a decoration the model supplied"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tif ((vi->features & QStyleOptionViewItem::HasDecoration)\n\t\t\t\t    && !vi->icon.isNull()) {"
+into = "\t\t\t\tif (false) {"
+count = 1
+check = "an item's decoration moves its label the same distance for"

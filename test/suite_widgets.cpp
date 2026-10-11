@@ -8792,6 +8792,68 @@ int suite_widgets() {
 		      " from a cell drawn as a plain border");
 	}
 
+
+	// A DECORATION REACHES BOTH WRITERS, which it did not. The fixture that
+	// asserts the style and CellItemDelegate draw an item identically says
+	// in its own comment that "a third [field] read by only one of them
+	// fails here without anybody having thought to test that particular
+	// property" -- and it cannot, because it builds items with text and no
+	// icon. The third field was Qt::DecorationRole, and the blind spot was
+	// in the control rather than in the claim.
+	//
+	// Measured on a QListWidget carrying a 16px icon:
+	//
+	//     style     row0[ file]        label at column 1, nothing reserved
+	//     delegate  row0[    file]     three cells reserved and a placement
+	//
+	// so a program that had not installed qtty's delegate showed no icons in
+	// any item view, which is the same shape as textElideMode and
+	// displayAlignment before it and the same conclusion: the delegate is
+	// the optional extra, so the default was the broken one.
+	//
+	// The second clause is the control, and it is the half that matters: if
+	// BOTH writers ignored a decoration they would still agree, and an
+	// agreement check would pass while saying nothing. So the label must
+	// also sit further in WITH an icon than without one, which is the
+	// property that fails if the cells are not really reserved.
+	{
+		const auto label_col = [](bool with_delegate, bool icon) {
+			QPixmap px(16, 16);
+			px.fill(Qt::red);
+			QListWidget lw;
+			lw.setFrameShape(QFrame::NoFrame);
+			lw.setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+			lw.setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+			if (with_delegate)
+				lw.setItemDelegate(new CellItemDelegate(&lw));
+			lw.addItem(icon ? new QListWidgetItem(QIcon(px),
+			                                      QStringLiteral("file"))
+			                : new QListWidgetItem(QStringLiteral("file")));
+			lw.setAttribute(Qt::WA_DontShowOnScreen);
+			lw.resize(GridMetrics::cells(16, 3));
+			lw.show();
+			QCoreApplication::processEvents();
+			CellBuffer b(16, 3);
+			render_once(lw, b);
+			return int(b.to_text().split(QLatin1Char('\n')).value(0)
+			               .indexOf(QStringLiteral("file")));
+		};
+		const int s_icon = label_col(false, true);
+		const int d_icon = label_col(true, true);
+		const int s_bare = label_col(false, false);
+		const int d_bare = label_col(true, false);
+		printf("info: label column, style %d/%d and delegate %d/%d with and"
+		       " without an icon\n", s_bare, s_icon, d_bare, d_icon);
+		CHECK(s_icon > 0 && s_icon == d_icon,
+		      "an item's decoration moves its label the same distance for"
+		      " the style as for CellItemDelegate, one picture being drawn"
+		      " by two writers");
+		CHECK(s_icon > s_bare && d_icon > d_bare,
+		      "and it moves the label at all, so the cells are reserved"
+		      " rather than two writers agreeing to ignore it");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

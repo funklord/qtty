@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2151 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2153 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18324,6 +18324,52 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.423 The third field split between two writers, and the control that could not see it (2026-10-11)
+
+**`CE_ItemViewItem` drew no decoration while `CellItemDelegate` placed
+one**, so a program that had not installed qtty's optional delegate showed
+no icons in any item view. Measured on a `QListWidget` carrying a 16-pixel
+icon:
+
+    style     row0[ file]        label at column 1, nothing reserved
+    delegate  row0[    file]     three cells reserved and a placement
+
+**This is the third field found split between those two writers**, after
+`textElideMode` and `displayAlignment`, and it reaches the same conclusion
+for the same reason: the delegate is the optional extra, so the default is
+the broken one.
+
+**The part worth more than the fix is why nothing caught it.** The suite
+has a check asserting the two writers draw an item identically, and its
+comment says in as many words that "a third one read by only one of them
+fails here without anybody having thought to test that particular
+property". It could not. That fixture builds its items from text with no
+icon, so the one check written to catch this class was blind to the
+instance by construction -- **the claim was right and the control was the
+thing that was wrong.** A guard's population is as much a part of it as
+its assertion, and this one's was drawn from the two fields already known.
+
+**Why the earlier sweep did not reach it either.** The ten-configuration
+item-view sweep recorded above ran every case **through
+`CellItemDelegate`**, including a decoration supplied as a colour, which
+is why that one was found correct. The style path was never the subject.
+An instrument pointed at one of two writers cannot report on their
+agreement, however many cases it runs.
+
+The fix puts a decoration slot in the style's own run so the two layouts
+are the same sequence -- indent, check, decoration, text, from the leading
+edge -- and places the picture through `QPainter::drawPixmap` rather than
+writing cells, because `CellPaintEngine::drawPixmap` is already the funnel
+that decides between a real placement and a glyph standing in. A second
+copy of that decision here would be a second answer to one question, which
+is what this entry is about.
+
+Two checks: the two writers agreeing with a decoration, and -- the half
+that matters -- the label moving at all compared with no icon. **If both
+writers ignored a decoration they would still agree**, so an agreement
+assertion alone would pass while saying nothing, which is the same defect
+as the fixture it replaces. One sabotage, reddening both.
+
 ### 8.422 8.420 moved the data and left the heading behind (2026-10-11)
 
 **The entry above left `CE_HeaderLabel`'s `textAlignment` as the one
@@ -18431,11 +18477,11 @@ the field inset but not the arrows, then four derivations of an item's row
 of which none mirrored. `leading_edge()` and `inner` are now shared, so the
 question that remains is **where else does this tree derive one picture in
 two places?** The file names four such pairings and all four are in the
-spin box and the combo. `CE_ItemViewItem` draws no decoration where
-`CellItemDelegate` does, which is the same shape and is already written
-down above. That is where to start, and the method is to enumerate the
-consumers rather than to grep for the expression, because a count inherits
-its detector.
+spin box and the combo. The instance named here -- `CE_ItemViewItem`
+drawing no decoration where `CellItemDelegate` does -- was taken up and is
+8.423, and the method held: enumerating the consumers found it where a
+grep for the expression could not, because neither writer mentions the
+other.
 
 ### 8.420 The item view was in nobody's right-to-left list (2026-10-09)
 
@@ -18506,8 +18552,7 @@ code is a claim about that line's spelling.
 **What is not done.** `CE_HeaderLabel`'s `textAlignment` was left
 unmeasured here and is settled in 8.422 -- which found this very commit
 had broken the heading's agreement with the data, so the deferral was
-not neutral. `CE_ItemViewItem` still draws no decoration where the
-delegate does, which is a separate gap and predates this.
+not neutral. The decoration this entry also left open is 8.423.
 
 **Two sweeps in this pass came back empty, recorded because an empty
 sweep is a measurement only if its method is.**

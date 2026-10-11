@@ -2692,6 +2692,37 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					                   c.top(), box, fg, bg, la);
 					used += 4;                     // the box and one space
 				}
+				// THE DECORATION, which this drew nowhere while
+				// CellItemDelegate placed one -- the THIRD field found split
+				// between the two writers, after textElideMode and
+				// displayAlignment, and the default is the broken one again
+				// because the delegate is the optional extra. Measured on a
+				// QListWidget carrying an icon: the delegate reserved three
+				// cells and placed the picture, and this put the label at
+				// column 1 with no cells for it and nothing placed, so a
+				// program that did not install the delegate showed no icons
+				// in any item view.
+				//
+				// Through the painter rather than into the buffer, because
+				// CellPaintEngine::drawPixmap IS the funnel -- two cells or
+				// more each way becomes a real placement and anything
+				// smaller substitutes a glyph. A second copy of that
+				// decision here would be a second answer to one question.
+				// The delegate's own comment says so at its call.
+				if ((vi->features & QStyleOptionViewItem::HasDecoration)
+				    && !vi->icon.isNull()) {
+					const int dcw = GridMetrics::cw(), dch = GridMetrics::ch();
+					const int dw = qMax(1, qRound(vi->decorationSize.width()
+					                              / double(dcw)));
+					const int dh = qMax(1, qRound(vi->decorationSize.height()
+					                              / double(dch)));
+					const int at = leading_edge(c.left(), c.right(), used,
+					                            dw, vi->direction);
+					p->drawPixmap(QRect(opt->rect.left() + (at - c.left()) * dcw,
+					                    opt->rect.top(), dw * dcw, dh * dch),
+					              vi->icon.pixmap(vi->decorationSize));
+					used += dw + 1;                // the picture and one space
+				}
 				const int room = c.width() - used;
 				const int text_at = leading_edge(c.left(), c.right(), used,
 				                                 room, vi->direction);
