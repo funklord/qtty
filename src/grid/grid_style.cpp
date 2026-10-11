@@ -2824,10 +2824,36 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// heading as it did about the cells, and the heading now
 				// follows the data to the other edge instead of only to the
 				// near one.
-				int at = c.left() + 1;
+				// And from the LEADING edge, by the leading_edge() and the
+				// visualAlignment() CE_ItemViewItem uses, because "the
+				// arithmetic is CE_ItemViewItem's" above is a promise this
+				// did not keep once that arithmetic learned about direction.
+				//
+				// 8.420 mirrored the data and left the heading here, which
+				// broke the one invariant this whole case exists for.
+				// Measured on the fixture the suite already had, a
+				// right-aligned column at 14x5 under RightToLeft:
+				//
+				//     before 8.420   head ends 13   data ends 13   lined up
+				//     after  8.420   head ends 13   data ends  2   eleven out
+				//
+				// The indent is the same half: a heading one cell in from
+				// the LEFT sits one cell off a row whose own indent has
+				// moved to the other end, which is the AlignLeft case and
+				// was out by one even before.
+				//
+				// Identical to the old expressions under LeftToRight --
+				// at = L+1 + room - fits is R+1-fits when room is width-1 --
+				// so this moves nothing that was right.
+				const int room = c.width() - 1;
+				const int from = leading_edge(c.left(), c.right(), 1, room,
+				                              opt->direction);
 				const int fits = text_cells(label);
-				if (h->textAlignment & Qt::AlignRight)
-					at = c.right() - fits + 1;
+				const Qt::Alignment hal =
+				    QStyle::visualAlignment(opt->direction, h->textAlignment);
+				int at = from;
+				if (hal & Qt::AlignRight)
+					at = from + room - fits;
 				dev->buffer().text(at, c.top(), label, Color(), Color(),
 				                   label_attrs(opt, w, Attr::Bold));
 				return;

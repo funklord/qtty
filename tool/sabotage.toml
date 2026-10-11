@@ -1830,8 +1830,8 @@ check = "a right-aligned column lines its digits up"
 # reads as a right-aligned body under a left-aligned title. 8.141.
 name = "a heading ignores the alignment its column was given"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\t\tif (h->textAlignment & Qt::AlignRight)\n\t\t\t\t\tat = c.right() - fits + 1;"
-into = "\t\t\t\tif (false)\n\t\t\t\t\tat = c.right() - fits + 1;"
+find = "\t\t\t\tif (hal & Qt::AlignRight)\n\t\t\t\t\tat = from + room - fits;"
+into = "\t\t\t\tif (false)\n\t\t\t\t\tat = from + room - fits;"
 count = 1
 check = "a right-aligned heading ends where its right-aligned data does"
 
@@ -6348,3 +6348,19 @@ find = "\t\tbuffer.text(leading_edge(c.left(), c.right(), used, 3, opt.direction
 into = "\t\tbuffer.text(c.left() + used, row, box, fg, bg, attrs);"
 count = 1
 check = "and CellItemDelegate lays the row out the same way the style"
+
+[[sabotage]]
+name = "a heading keeps the left edge in both layout directions"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tconst int from = leading_edge(c.left(), c.right(), 1, room,\n\t\t\t\t                              opt->direction);"
+into = "\t\t\t\tconst int from = c.left() + 1;"
+count = 1
+check = "a heading shares an edge with its data in both layout"
+
+[[sabotage]]
+name = "a heading uses the alignment as given rather than made visual"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tconst Qt::Alignment hal =\n\t\t\t\t    QStyle::visualAlignment(opt->direction, h->textAlignment);"
+into = "\t\t\t\tconst Qt::Alignment hal = h->textAlignment;"
+count = 1
+check = "a heading shares an edge with its data in both layout"

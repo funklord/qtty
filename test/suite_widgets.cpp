@@ -8193,6 +8193,98 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// AND IT SHARES THAT EDGE IN BOTH DIRECTIONS, which the check above
+	// cannot see: it sets no layout direction, so it asserts the invariant
+	// left-to-right only -- and 8.420 broke it right-to-left while that
+	// check stayed green.
+	//
+	// The heading's position is CE_ItemViewItem's arithmetic by design, so
+	// when that arithmetic learned about direction the heading had to learn
+	// with it. Measured on this same fixture at 14x5, a right-aligned
+	// column under Qt::RightToLeft:
+	//
+	//     before 8.420   head ends 13   data ends 13   lined up
+	//     after  8.420   head ends 13   data ends  2   eleven cells out
+	//
+	// Asserted over the whole population -- two directions by two
+	// alignments -- because three of those four cells had no check at all,
+	// and the one that did is the one that kept passing. Which EDGE they
+	// share is itself derived from QStyle::visualAlignment rather than
+	// written per case, so the assertion says "the heading goes where the
+	// data goes" instead of pinning four column numbers.
+	{
+		const auto edges = [](Qt::LayoutDirection d, Qt::Alignment al,
+		                      int *head_l, int *head_r, int *data_l,
+		                      int *data_r) {
+			QApplication::setLayoutDirection(d);
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *box = new QVBoxLayout(&host);
+			box->setContentsMargins(0, 0, 0, 0);
+			auto *table = new QTableWidget(2, 1);
+			table->setFrameShape(QFrame::NoFrame);
+			table->verticalHeader()->hide();
+			auto *head = new QTableWidgetItem(QStringLiteral("Size"));
+			head->setTextAlignment(al | Qt::AlignVCenter);
+			table->setHorizontalHeaderItem(0, head);
+			for (int row = 0; row < 2; ++row) {
+				auto *cell = new QTableWidgetItem(
+				    row ? QStringLiteral("1234") : QStringLiteral("7"));
+				cell->setTextAlignment(al | Qt::AlignVCenter);
+				table->setItem(row, 0, cell);
+			}
+			box->addWidget(table);
+			host.resize(GridMetrics::cells(14, 5));
+			host.show();
+			QCoreApplication::processEvents();
+			table->setColumnWidth(0, 12 * GridMetrics::cw());
+			QCoreApplication::processEvents();
+			CellBuffer b(14, 5);
+			render_once(host, b);
+			const QStringList got = b.to_text().split(QLatin1Char('\n'));
+			const auto ink = [&](int y, bool left, int *out) {
+				const QString r = got.value(y);
+				*out = -1;
+				if (left) {
+					for (int x = 0; x < r.size(); ++x)
+						if (!r.mid(x, 1).trimmed().isEmpty()) { *out = x; return; }
+				} else {
+					for (int x = r.size() - 1; x >= 0; --x)
+						if (!r.mid(x, 1).trimmed().isEmpty()) { *out = x; return; }
+				}
+			};
+			ink(0, true, head_l);
+			ink(0, false, head_r);
+			ink(1, true, data_l);
+			ink(1, false, data_r);
+			QApplication::setLayoutDirection(Qt::LeftToRight);
+		};
+		int shared = 0;
+		for (int pass = 0; pass < 4; ++pass) {
+			const Qt::LayoutDirection d =
+			    (pass & 1) ? Qt::RightToLeft : Qt::LeftToRight;
+			const Qt::Alignment want =
+			    (pass & 2) ? Qt::AlignLeft : Qt::AlignRight;
+			int hl = -1, hr = -1, dl = -1, dr = -1;
+			edges(d, want, &hl, &hr, &dl, &dr);
+			// The edge they must share is the one the VISUAL alignment puts
+			// the ink at, which is the same function the drawing uses.
+			const bool right = QStyle::visualAlignment(d, want) & Qt::AlignRight;
+			const bool ok = right ? (hr >= 0 && hr == dr) : (hl >= 0 && hl == dl);
+			printf("info: header %s %s shares the %s edge: head %d..%d data"
+			       " %d..%d -> %d\n",
+			       d == Qt::RightToLeft ? "rtl" : "ltr",
+			       (want & Qt::AlignRight) ? "AlignRight" : "AlignLeft",
+			       right ? "trailing" : "leading", hl, hr, dl, dr, int(ok));
+			if (ok) ++shared;
+		}
+		CHECK(shared == 4,
+		      "a heading shares an edge with its data in both layout"
+		      " directions and for either alignment, the heading's own"
+		      " arithmetic being the data's");
+		GridGuard::reset();
+	}
+
 	// Every label in a menu starts in the same column, whether or not that
 	// particular item is checkable.
 	//

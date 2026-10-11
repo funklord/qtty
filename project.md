@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2150 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2151 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1087,7 +1087,7 @@ Owned by the copyright holder:
 | **A rule drawn as a thin RECTANGLE becomes a coloured background; the same rule drawn as a LINE becomes a box-drawing glyph.** Measured through an HTML table: its borders arrive as `drawRects` of `11x1` and `1x19` and come out as grey blocks, while `drawLines` of the same shape draws `-` and `\|`. The horizontal case could be told from a caret by shape; **the vertical case cannot -- a caret and a one-cell vertical rule are the same `1x19` rectangle**, which is what stops this being a small fix | 8.65 |
 | **An HTML bullet list loses its bullets.** Measured through a `QTextBrowser`: `<ul><li>one</li></ul>` renders the text indented with a one-cell BACKGROUND block and no glyph -- ~~where the bullet belongs~~ **one row BELOW its own item until 8.305**, which also put the last list's block on an empty row underneath the list; the block is beside its item now, and what it should BECOME is still the choice below -- `bg=#000000` on the default dark ground. Qt draws the bullet as `drawPath` with a 6x6 bounding rect, and `is_thin` (`width*2 < cw \|\| height*2 < ch`) is true of it, so a bullet takes the hairline road meant for carets and rules. **The discriminator is clean and is the finding**: a shape smaller than one cell in BOTH dimensions is a mark, not a hairline -- a caret is 1x19 and a rule 50x1, and neither is. What a mark should BECOME is the choice, and it is the holder's | 8.64 |
 | **~~Whether the "too small to be a picture" rule moves to the backend.~~ It has, and the row was right that it was one condition -- and wrong that nothing was left unmeasured.** The tier below read ONE PIXEL per half cell, so a 16x16 tick lost its left cell outright and a status light its right one; the substitution's area sampling moved with the rule, and the sampling change on its own reddened not one check of 2064. 8.383 | §7.2 |
-| **~~Right-to-left: does qtty support it at all?~~ It does, and the row's own list is how the last gap was found.** 8.284 mirrored the progress bar, the scroll bar's thumb, the spin box's arrows and a tool button's menu arrow; 8.304 mirrored the combo box's, which this row still named; 8.420 mirrored the ITEM VIEW, which no version of this list had ever named -- its check box, its label's alignment, the rectangle a click is tested against and the one a rename field opens at, in the style and in CellItemDelegate alike. **A list is evidence about what it names and silent about the rest**, which is the half 8.304's lens did not say: re-reading the row finds a stale entry, and only enumerating the controls finds a missing one. Re-measured 2026-09-22 against plain Qt: **a label's alignment and a line edit's text are NOT gaps** -- Qt does not mirror either, ink left in both directions, so drawing them the same is correct. Still unmeasured: `CE_HeaderLabel`'s `textAlignment`, the one remaining alignment consumer, settled by the pixel comparison 8.304 used rather than by reading Qt. What remains undesigned is bidirectional TEXT, which is a different question and is its own row. `doc/keyboard-first.md` has the section, with the numbers | 8.284, 8.304 |
+| **~~Right-to-left: does qtty support it at all?~~ It does, and the row's own list is how the last gap was found.** 8.284 mirrored the progress bar, the scroll bar's thumb, the spin box's arrows and a tool button's menu arrow; 8.304 mirrored the combo box's, which this row still named; 8.420 mirrored the ITEM VIEW, which no version of this list had ever named -- its check box, its label's alignment, the rectangle a click is tested against and the one a rename field opens at, in the style and in CellItemDelegate alike. **A list is evidence about what it names and silent about the rest**, which is the half 8.304's lens did not say: re-reading the row finds a stale entry, and only enumerating the controls finds a missing one. Re-measured 2026-09-22 against plain Qt: **a label's alignment and a line edit's text are NOT gaps** -- Qt does not mirror either, ink left in both directions, so drawing them the same is correct. 8.422 then mirrored `CE_HeaderLabel`, which this row had deferred as unmeasured -- and the measurement found 8.420 had BROKEN it, a heading being positioned to line up with the data it names. So the row's own deferral was the gap, and the commit that wrote it caused the fault it put off. What remains undesigned is bidirectional TEXT, which is a different question and is its own row. `doc/keyboard-first.md` has the section, with the numbers | 8.284, 8.304, 8.420, 8.422 |
 | **Tooltips: should a terminal pop one?** The machinery is built and the event is not sent: `InputRouter` tracks `Qt::ToolTip` layers so the compositor stacks them, `theme()` defines ToolTipBase and ToolTipText as black on bright yellow, and a widget with a tooltip hovered for 1.5 s receives no `QEvent::ToolTip`. It needs a hover timer and a decision, not a mechanism. **Asserted since 8.75**, so an accidental tooltip is a red check rather than a surprise. 8.248 adds a second obstacle on the ink half alone: ToolTipText is the same black as WindowText here, and `role_of()` keys on the colour, so a hover timer would light the tooltip's ground and leave its text at body text's index | §7.2 |
 | **Hover: should a control light up under the pointer?** The state is now reachable -- `InputRouter` sends Enter and Leave, so `underMouse()` answers and `State_MouseOver` will arrive on options for the first time -- and nothing renders it. Qt itself marks widgets as wanting it: `WA_Hover` was already set on a push button while the hover could never come. Whether a terminal control should respond to a pointer merely passing over is a question about what a TUI is, not a defect. **Both halves are asserted since 8.75** -- the hover arrives, and the render is byte-identical with the pointer on the control and off it | §7.2 |
 | **Which direction is safe on a grid -- drawing a little more than allowed, or a little less?** The file states both as general rules and they point opposite ways: `clip_cells()` drops a clip's shape because drawing more "is the safe direction on a grid", while `fill_polygon()` refuses the bounding rectangle because it "invents content rather than losing it, and a reader cannot tell which half is which". They may both be right for their own case -- a clip that loses content hides what the application drew, a fill that over-covers shows what it did not -- and that asymmetry would be a good answer; it is just not the answer either comment gives. 8.386 | §8.386 |
@@ -18324,6 +18324,72 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.422 8.420 moved the data and left the heading behind (2026-10-11)
+
+**The entry above left `CE_HeaderLabel`'s `textAlignment` as the one
+unmeasured alignment consumer, with the method to settle it written down.
+Measured, and it was not merely unmirrored -- 8.420 had broken it.**
+
+`CE_HeaderLabel` exists to put a heading where its data is: "a header is
+only a label because of what is below it", and its own comment says "the
+arithmetic is `CE_ItemViewItem`'s". When that arithmetic learned about
+direction, the heading did not learn with it -- so the promise the comment
+makes stopped being true the moment 8.420 landed.
+
+**The before-and-after, measured rather than reasoned, on the fixture the
+suite already had** -- a right-aligned column at 14x5 under
+`Qt::RightToLeft`. Taken by setting `src/grid/grid_style.cpp` to
+`6e26984^` and rebuilding, because a first attempt that reversed only the
+`visualAlignment` half answered a different question and said one cell
+where the truth was eleven:
+
+    pre-8.420 (f5d7924)   head ends 13   data ends 13   lined up
+    post-8.420 (6e26984)  head ends 13   data ends  2   eleven cells out
+
+**Why the existing check stayed green through it.** The suite has asserted
+this invariant since 8.141 -- "a right-aligned heading ends where its
+right-aligned data does" -- and that fixture **sets no layout direction**,
+so it asserts it left-to-right only. One of four cells was covered, and
+the covered one is the one that could not break. The other three had no
+check at all.
+
+**The fix is the same two halves 8.420 needed, which is the point.** The
+heading now takes `leading_edge()` for its one-cell indent and
+`QStyle::visualAlignment()` for its alignment, so it is derived exactly as
+the data is. Under `LeftToRight` the new expressions are algebraically the
+old ones -- `from + room - fits` is `c.right() + 1 - fits` when `room` is
+`width - 1` -- which is why nothing left-to-right moved.
+
+    ltr AlignRight  shares the trailing edge   head  8..11  data 11..11
+    rtl AlignRight  shares the leading  edge   head  2..5   data  2..2
+    ltr AlignLeft   shares the leading  edge   head  1..4   data  1..11
+    rtl AlignLeft   shares the trailing edge   head  9..12  data  2..12
+
+All four share now, **including `AlignLeft` under `RightToLeft`, which was
+out by one before 8.420 as well** -- the heading indenting one cell from
+the left while the row's own indent had moved to the other end. So this
+closes a pre-existing cell as well as the regression.
+
+**One check over the whole population rather than four pinned numbers**,
+and which edge it demands is derived from `QStyle::visualAlignment` --
+the same function the drawing calls -- so the assertion reads "the heading
+goes where the data goes" rather than restating the arithmetic. Two
+sabotages, one per half, and each reddens only this check: the mirror and
+the flip are independently load-bearing, which is what 8.420 said to prove
+and did not prove here. The 8.141 entry's own sabotage had to be
+re-anchored on the lines this moved.
+
+**The lesson is not "mirror the header too".** It is that **8.420's
+population was drawn around the thing being changed rather than around the
+invariant it was keeping.** That commit enumerated six complex controls
+and three alignment consumers and congratulated itself on accounting for
+all of them -- and the heading was in that list of three, named, deferred
+with a method, and shipped broken in the same commit. A list of consumers
+is not a list of the promises between them. The question that would have
+caught it is not "what else reads an alignment" but **"what was true of
+this picture before, and is it still true"** -- and the suite had the
+answer written down, in a fixture that ran in one direction.
+
 ### 8.421 Three instruments, and which kind of error each made (2026-10-09)
 
 **The two defects above were found with probes written for them, and all
@@ -18437,12 +18503,11 @@ pre-existing entries had to be re-anchored** on lines this change moved,
 which is the third time in two days -- a sabotage anchored on a line of
 code is a claim about that line's spelling.
 
-**What is not done.** `CE_HeaderLabel`'s `textAlignment` is the one
-remaining alignment consumer in the tree and is **unmeasured**; the
-method to settle it is the pixel comparison 8.304 used, not reading Qt,
-because two claims in this family have already been wrong from memory.
-`CE_ItemViewItem` still draws no decoration where the delegate does,
-which is a separate gap and predates this.
+**What is not done.** `CE_HeaderLabel`'s `textAlignment` was left
+unmeasured here and is settled in 8.422 -- which found this very commit
+had broken the heading's agreement with the data, so the deferral was
+not neutral. `CE_ItemViewItem` still draws no decoration where the
+delegate does, which is a separate gap and predates this.
 
 **Two sweeps in this pass came back empty, recorded because an empty
 sweep is a measurement only if its method is.**
