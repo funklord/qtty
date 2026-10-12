@@ -18324,6 +18324,79 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.425 The suite run mirrored, and a sabotage that can no longer speak (2026-10-12)
+
+**Two measurements from the same pass, both recorded because neither
+produced a commit and an empty sweep is a measurement only if its method
+is.** Each carries a decision rather than work I could finish.
+
+#### The whole suite under Qt::RightToLeft
+
+8.422's lesson was that a fixture asserting an invariant in one
+configuration stays green while the invariant breaks. The systematic form
+of that question is whether the suite passes mirrored, so it was run that
+way -- a temporary `QApplication::setLayoutDirection()` after the
+application is built, driven by an environment variable, since `main()`
+treats any argv that is not `--record` as a suite name and `-reverse`
+would be eaten as one.
+
+    2157 checks, mirrored:  2121 pass, 36 fail
+
+**None of the 36 is a defect.** Those read were all pinning a
+left-to-right relation, and their own diagnostics say so:
+
+    click_cell(9) == 51 && click_cell(10) == 49      hard-coded cells
+    label.x() == on.x() + check_cells()              label after the box
+    number.x() + 1 == column_right                   AlignRight at the far edge
+    !indent && open_b && mark && close_b             the indent cell
+
+The one with a non-positional symptom was read furthest, because it was
+the only candidate for a real fault: a scroll area's clipping check
+reported `in view 0`, meaning its own positive control failed rather than
+its assertion. Mirrored, a 200px content in a 190px viewport starts
+scrolled to the RIGHT and the scrollbar moves to the left, so a child at
+`x=0` is one cell out of view and `XXXXXX` renders as five X's. **Correct
+Qt behaviour, and the experiment that would have confirmed a clipping
+defect disproved it instead.**
+
+**So the finding is not a defect but a coverage shape, and it is the one
+8.422 was an instance of.** 2121 of 2157 checks are direction-agnostic and
+pass mirrored; 36 encode the unmirrored relation. **A mirrored layout is
+therefore unguarded except where somebody wrote a direction-aware check by
+hand** -- which is exactly where 8.422's regression lived for two days.
+
+**The option, its cost, and whose it is.** Making those 36 direction-aware
+would turn a mirrored run into a real arm beside `test-platforms`, and it
+is the only thing that would have caught 8.422 automatically. The cost is
+36 fixtures, several of which assert arrow-key semantics that Qt itself
+mirrors, so the expected key has to be derived from the direction rather
+than written. **Not proposed either way, and not started.** A single
+pass/fail threshold over that run is explicitly the wrong instrument: the
+population mixes fixtures that pin a relation with real defects, and those
+two grow by different laws.
+
+#### A sabotage that no longer reddens the check it names
+
+Surfaced incidentally -- `--only 'decoration'` selected it by name -- and
+it is this tree's own standard failing:
+
+    sabotage: Qt's underline decoration is drawn as well as attributed
+      FAILED: the named check PASSED against broken code.
+
+The entry removes an early return in `cell_paint.cpp` that skips drawing a
+rule inside the text's own underline band, so Qt's drawn rule should
+appear under the word and the check should go red. It does not. The
+fixture itself is healthy -- it reports the word on row 1 with the
+browser's frame below it -- so **the check is defended by a second
+condition the entry does not touch**, which is `evidence.md`'s *a control
+has to be reached, not only able to fire*.
+
+It is unrelated to anything in this pass: the entry edits
+`src/render/cell_paint.cpp`, the fixture is a `QTextBrowser` with rich
+text, and nothing here reaches either. **What it means is that one check
+is undefended**, not that the code is wrong -- and finding the second
+guard is the work, which is not done.
+
 ### 8.424 A decoration above the text took columns anyway (2026-10-12)
 
 **8.423 added a decoration to the style's row run and reserved its columns
