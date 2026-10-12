@@ -6404,3 +6404,11 @@ find = "\t\t\tif (fold_into_underline(a, b2)) return;"
 into = "\t\t\tif (false) return;"
 count = 1
 check = "and a dotted underline marks the word rather than ruling the row"
+
+[[sabotage]]
+name = "a mirrored tool button's label is written over its menu arrow"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\tconst int at = c.left() + (bracket ? 1 : 0)\n\t\t\t\t\t             + (menu && opt->direction == Qt::RightToLeft\n\t\t\t\t\t                ? 1 : 0);"
+into = "\t\t\t\t\tconst int at = c.left() + (bracket ? 1 : 0);"
+count = 1
+check = "and a mirrored tool button's menu still opens from the cell"

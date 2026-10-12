@@ -11424,47 +11424,89 @@ int suite_router() {
 	// left edge plus one pixel and spans three cells' worth: cells 0, 1 and
 	// 2. The drawn box and the live rectangle are one cell apart, at every
 	// cell size -- not a parity accident like the scroll bar's arrows.
+	//
+	// AND IN BOTH LAYOUT DIRECTIONS, by asking the style which cells the box
+	// is in rather than naming four that are only true one way round. 8.420
+	// mirrored this very rectangle -- it is what QAbstractItemView tests a
+	// click against -- and this check could not have seen it either way,
+	// which is the coverage shape 8.425 measured over the whole suite.
+	//
+	// The left-to-right cells are KEPT as their own assertion, so the
+	// derivation below cannot become the style agreeing with itself.
 	{
-		QWidget ch_host;
-		ch_host.setAttribute(Qt::WA_DontShowOnScreen);
-		auto *lv = new QListView(&ch_host);
-		auto *im = new QStandardItemModel(&ch_host);
-		auto *it = new QStandardItem(QStringLiteral("item"));
-		it->setCheckable(true);
-		it->setCheckState(Qt::Unchecked);
-		im->appendRow(it);
-		lv->setModel(im);
-		lv->setFrameShape(QFrame::NoFrame);
-		lv->setGeometry(0, 0, cw * 12, ch * 3);
-		ch_host.resize(GridMetrics::cells(12, 3));
-		ch_host.show();
-		QCoreApplication::processEvents();
-
-		const auto click_cell = [&](int x) {
+		for (int pass = 0; pass < 2; ++pass) {
+			const Qt::LayoutDirection d =
+			    pass ? Qt::RightToLeft : Qt::LeftToRight;
+			QApplication::setLayoutDirection(d);
+			QWidget ch_host;
+			ch_host.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *lv = new QListView(&ch_host);
+			auto *im = new QStandardItemModel(&ch_host);
+			auto *it = new QStandardItem(QStringLiteral("item"));
+			it->setCheckable(true);
 			it->setCheckState(Qt::Unchecked);
-			InputRouter rc(&ch_host);
-			MouseEvent m;
-			m.cell = QPoint(x, 0);
-			m.button = 1;
-			m.press = true;
-			rc.on_mouse(m);
-			m.press = false;
-			m.release = true;
-			rc.on_mouse(m);
+			im->appendRow(it);
+			lv->setModel(im);
+			lv->setFrameShape(QFrame::NoFrame);
+			lv->setGeometry(0, 0, cw * 12, ch * 3);
+			ch_host.resize(GridMetrics::cells(12, 3));
+			ch_host.show();
 			QCoreApplication::processEvents();
-			return it->checkState() == Qt::Checked;
-		};
-		const bool indent = click_cell(0), open_b = click_cell(1);
-		const bool mark = click_cell(2), close_b = click_cell(3);
-		printf("info: check box cells 0..3 toggle: %d %d %d %d\n",
-		       int(indent), int(open_b), int(mark), int(close_b));
-		// The three cells the box is DRAWN in toggle it, and the blank
-		// indent cell beside it does not. Asserting both halves, because
-		// "cell 3 works" is satisfied by a rectangle covering the whole row.
-		CHECK(!indent && open_b && mark && close_b,
-		      "the cells an item's check box is drawn in are the cells that"
-		      " toggle it");
-		GridGuard::reset();
+
+			const auto click_cell = [&](int x) {
+				it->setCheckState(Qt::Unchecked);
+				InputRouter rc(&ch_host);
+				MouseEvent m;
+				m.cell = QPoint(x, 0);
+				m.button = 1;
+				m.press = true;
+				rc.on_mouse(m);
+				m.press = false;
+				m.release = true;
+				rc.on_mouse(m);
+				QCoreApplication::processEvents();
+				return it->checkState() == Qt::Checked;
+			};
+			// The cells the STYLE says the box occupies, and the indent
+			// cell at the leading edge, which is cell 0 one way round and
+			// cell 11 the other.
+			QStyleOptionViewItem o;
+			o.initFrom(lv);
+			o.direction = d;
+			o.rect = QRect(0, 0, 12 * cw, ch);
+			o.features = QStyleOptionViewItem::HasCheckIndicator
+			           | QStyleOptionViewItem::HasDisplay;
+			o.checkState = Qt::Unchecked;
+			o.text = QStringLiteral("item");
+			const QRect ck = lv->style()->subElementRect(
+			    QStyle::SE_ItemViewItemCheckIndicator, &o, lv);
+			const int b0 = ck.left() / cw;
+			const int indent_cell = (d == Qt::RightToLeft) ? 11 : 0;
+			const bool indent = click_cell(indent_cell);
+			const bool open_b = click_cell(b0);
+			const bool mark = click_cell(b0 + 1);
+			const bool close_b = click_cell(b0 + 2);
+			printf("info: a %s item puts its box at cells %d..%d; they"
+			       " toggle %d%d%d and the indent cell %d toggles %d\n",
+			       pass ? "right-to-left" : "left-to-right", b0, b0 + 2,
+			       int(open_b), int(mark), int(close_b), indent_cell,
+			       int(indent));
+			if (!pass)
+				CHECK(b0 == 1 && indent_cell == 0,
+				      "a left-to-right item's check box is at cells 1 to 3"
+				      " after one cell of indent, which is where it was"
+				      " measured");
+			// Both halves, because "the last cell works" is satisfied by a
+			// rectangle covering the whole row.
+			CHECK(!indent && open_b && mark && close_b,
+			      pass ? "and a mirrored item's box toggles from the three"
+			             " cells it is drawn in, its indent cell having"
+			             " moved to the other end"
+			           : "the cells an item's check box is drawn in are the"
+			             " cells that toggle it");
+			QApplication::setLayoutDirection(Qt::LeftToRight);
+			GridGuard::reset();
+		}
 	}
 
 	// A tool button with a drop-down draws a down-arrow glyph in the cell before its
@@ -11497,23 +11539,55 @@ int suite_router() {
 		tb_host.show();
 		QCoreApplication::processEvents();
 
-		QStyleOptionToolButton o;
-		o.initFrom(tb);
-		o.rect = tb->rect();
-		o.features = QStyleOptionToolButton::MenuButtonPopup;
-		const QRect band = tb->style()->subControlRect(
-		    QStyle::CC_ToolButton, &o, QStyle::SC_ToolButtonMenu, tb);
-		// Cell 6 is the arrow on an eight-cell button, cell 7 the bracket.
-		const QPoint arrow(6 * cw + cw / 2, ch / 2);
-		const QPoint bracket(7 * cw + cw / 2, ch / 2);
-		const QPoint label(1 * cw + cw / 2, ch / 2);
-		printf("info: the menu band is %d..%d px; arrow %d bracket %d"
-		       " label %d\n", band.left(), band.right(),
-		       int(band.contains(arrow)), int(band.contains(bracket)),
-		       int(band.contains(label)));
-		CHECK(band.contains(arrow) && !band.contains(label),
-		      "a tool button's menu opens from the cell its arrow is drawn"
-		      " in");
+		// The arrow's cell is READ FROM THE PICTURE rather than named, so
+		// this holds whichever way the layout runs -- the arrow is at the
+		// trailing end under LeftToRight and the leading one under
+		// RightToLeft, and the hard-coded cell 6 could only ever describe
+		// the first. The band and the drawing are derived separately here,
+		// which is what makes their agreement worth asserting: this file's
+		// standing fault in that family is an arrow drawn in a cell no
+		// click reaches.
+		for (int pass = 0; pass < 2; ++pass) {
+			const Qt::LayoutDirection d =
+			    pass ? Qt::RightToLeft : Qt::LeftToRight;
+			QApplication::setLayoutDirection(d);
+			tb->setLayoutDirection(d);
+			QCoreApplication::processEvents();
+			CellBuffer pic(10, 3);
+			render_once(tb_host, pic);
+			QString row;
+			for (int x = 0; x < pic.cols(); ++x) row += pic.at(x, 0).ch;
+			const int arrow_cell = row.indexOf(QChar(0x25be));
+			const int label_cell = row.indexOf(QStringLiteral("Cut"));
+			QStyleOptionToolButton o;
+			o.initFrom(tb);
+			o.direction = d;
+			o.rect = tb->rect();
+			o.features = QStyleOptionToolButton::MenuButtonPopup;
+			const QRect band = tb->style()->subControlRect(
+			    QStyle::CC_ToolButton, &o, QStyle::SC_ToolButtonMenu, tb);
+			const QPoint arrow(arrow_cell * cw + cw / 2, ch / 2);
+			const QPoint label(label_cell * cw + cw / 2, ch / 2);
+			printf("info: a %s tool button draws its arrow in cell %d and"
+			       " its label at %d; the menu band is %d..%d px; row [%s]\n",
+			       pass ? "right-to-left" : "left-to-right", arrow_cell,
+			       label_cell, band.left(), band.right(),
+			       qPrintable(row));
+			// Both are needed: a band covering the whole button contains
+			// the arrow too, and that is the fault this replaced.
+			CHECK(arrow_cell >= 0 && label_cell >= 0
+			          && band.contains(arrow) && !band.contains(label),
+			      pass ? "and a mirrored tool button's menu still opens"
+			             " from the cell its arrow moved to"
+			           : "a tool button's menu opens from the cell its"
+			             " arrow is drawn in");
+			if (!pass)
+				CHECK(arrow_cell == 6,
+				      "and left-to-right that cell is the one before the"
+				      " closing bracket, where it was measured");
+			QApplication::setLayoutDirection(Qt::LeftToRight);
+		}
+		tb->setLayoutDirection(Qt::LeftToRight);
 		GridGuard::reset();
 	}
 

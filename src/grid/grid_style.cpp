@@ -3438,7 +3438,25 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				const int inner = c.width() - (bracket ? 2 : 0) - (menu ? 2 : 0);
 				if (inner > 0) {
 					const QString shown = elide_to_cells(label, inner);
-					const int at = c.left() + (bracket ? 1 : 0);
+					// AND PAST THE ARROW WHEN THE ARROW IS ON THIS SIDE.
+					// The arrow mirrors just above and the label did not, so
+					// under RightToLeft both were written to the same cell
+					// and the label -- drawn second -- erased the arrow.
+					// Measured on an eight-cell button with a menu:
+					//
+					//     left-to-right  [Cut  v]
+					//     right-to-left  [Cut   ]
+					//
+					// so a mirrored tool button carried no sign that it had
+					// a menu at all, while SC_ToolButtonMenu had correctly
+					// moved to that same cell -- the cell showing the
+					// label's first letter opened the menu. That is this
+					// case's own standing fault inverted: not an arrow in a
+					// cell no click reaches, but a click reaching a cell
+					// with no arrow left in it.
+					const int at = c.left() + (bracket ? 1 : 0)
+					             + (menu && opt->direction == Qt::RightToLeft
+					                ? 1 : 0);
 					dev->buffer().text(at, row, shown, Color(), Color(),
 					                   label_attrs(opt, w, on ? Attrs(Attr::Reverse)
 					                                          : Attrs()));

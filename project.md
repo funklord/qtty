@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2159 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2163 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18323,6 +18323,70 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.428 A mirrored tool button's label erased its menu arrow (2026-10-12)
+
+**Two more of 8.425's 36 fixtures made direction-aware, and the second one
+found a defect on its first run.** That is the argument for doing the rest,
+stated as a measurement rather than a hope.
+
+#### The item-view check box, which held
+
+It pinned cells 0 to 3. It asks the style where the box is now:
+
+    left-to-right  box at cells 1..3, indent cell 0   three toggle, indent inert
+    right-to-left  box at cells 8..10, indent cell 11  three toggle, indent inert
+
+An exact mirror, and it confirms 8.420's check rectangle reaches the CLICK
+path -- that rectangle is what `QAbstractItemView` tests a press against,
+so this is the half that matters and it was previously asserted in one
+direction only.
+
+#### The tool button, which did not
+
+`CC_ToolButton` draws the menu arrow mirrored and wrote the label from the
+left either way:
+
+    if (menu) put_cluster(rtl ? c.left() + 1 : c.right() - 1, "v")
+    const int at = c.left() + (bracket ? 1 : 0);        // always the left
+
+So under `RightToLeft` both went to cell 1 and the label, drawn second,
+**erased the arrow**:
+
+    left-to-right  [Cut  v]
+    right-to-left  [Cut   ]
+
+A mirrored tool button therefore carried no sign that it had a menu --
+and `SC_ToolButtonMenu` had correctly moved to that same cell, so **the
+cell showing the label's first letter opened the menu** instead of firing
+the default action. It is this case's own standing fault inverted: not an
+arrow in a cell no click reaches, but a click reaching a cell with no
+arrow left in it.
+
+The label now starts past the arrow when the arrow is on its side:
+
+    left-to-right  [Cut  v]   arrow cell 6, label 1, band cell 6
+    right-to-left  [v Cut ]   arrow cell 1, label 2, band cell 1
+
+**The fixture is what found it, and only because it stopped naming a
+cell.** It read the arrow's column from the PICTURE and the band from
+`subControlRect`, which are derived separately -- that is what makes their
+agreement worth asserting. The old form hard-coded cell 6, which is a true
+statement about one direction and says nothing about the other.
+
+#### The pattern, which is now three
+
+A mirror applied to one of two co-located things, three times:
+
+    8.417  inset the editor            8.419  left the arrows claiming rows
+    8.420  mirrored the item's row     8.422  left the heading behind
+    8.284  mirrored the menu arrow     8.428  left the label on top of it
+
+Each time the thing that moved was the one being worked on, and the thing
+left behind shared a cell with it. **The question that catches it is not
+"did I mirror this control" but "what else is drawn in these cells"** --
+which is a question about the picture rather than about the code, and is
+why reading the rendered row is worth more here than reading the diff.
 
 ### 8.427 One fixture mirrored, and two instruments that failed their controls (2026-10-12)
 
