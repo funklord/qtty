@@ -11189,32 +11189,73 @@ int suite_router() {
 	// The pair is the assertion. "Up increments" passed against the broken
 	// version; it is the two together, from the same starting value, that say
 	// the arrows are separately reachable.
+	//
+	// AND IN BOTH LAYOUT DIRECTIONS, by asking the style where the arrows
+	// are rather than naming two cells that are only true one way round.
+	// The cells were pinned at 9 and 10, so the check could not see a
+	// mirrored spin box at all -- and the arrow rectangles have now been
+	// got wrong twice, once by claiming the frame rows and once by not
+	// mirroring, so this is the family where a one-directional check costs
+	// the most.
+	//
+	// The left-to-right pin is KEPT as its own assertion, because deriving
+	// the expected cell from the same style that answers the click would
+	// otherwise be the style agreeing with itself. Pinned once, where the
+	// geometry was measured; mirrored by derivation from there.
 	{
-		QWidget h;
-		h.setAttribute(Qt::WA_DontShowOnScreen);
-		auto *sp = new QSpinBox(&h);
-		sp->setRange(0, 100);
-		sp->setGeometry(0, 0, cw * 12, ch);
-		h.resize(GridMetrics::cells(14, 3));
-		h.show();
-		QCoreApplication::processEvents();
-		const auto click_cell = [&](int x) {
-			sp->setValue(50);
-			InputRouter r2(&h);
-			MouseEvent m;
-			m.cell = QPoint(x, 0);
-			m.button = 1;
-			m.press = true;
-			r2.on_mouse(m);
-			m.press = false;
-			m.release = true;
-			r2.on_mouse(m);
+		for (int pass = 0; pass < 2; ++pass) {
+			const Qt::LayoutDirection d =
+			    pass ? Qt::RightToLeft : Qt::LeftToRight;
+			QApplication::setLayoutDirection(d);
+			QWidget h;
+			h.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *sp = new QSpinBox(&h);
+			sp->setRange(0, 100);
+			sp->setGeometry(0, 0, cw * 12, ch);
+			h.resize(GridMetrics::cells(14, 3));
+			h.show();
 			QCoreApplication::processEvents();
-			return sp->value();
-		};
-		CHECK(click_cell(9) == 51 && click_cell(10) == 49,
-		      "a spin box's up and down arrows are separately clickable");
-		GridGuard::reset();
+			const auto click_cell = [&](int x) {
+				sp->setValue(50);
+				InputRouter r2(&h);
+				MouseEvent m;
+				m.cell = QPoint(x, 0);
+				m.button = 1;
+				m.press = true;
+				r2.on_mouse(m);
+				m.press = false;
+				m.release = true;
+				r2.on_mouse(m);
+				QCoreApplication::processEvents();
+				return sp->value();
+			};
+			QStyleOptionSpinBox so;
+			so.initFrom(sp);
+			so.rect = sp->rect();
+			so.frame = sp->hasFrame();
+			so.buttonSymbols = sp->buttonSymbols();
+			so.subControls = QStyle::SC_All;
+			const auto cell_of = [&](QStyle::SubControl sc) {
+				return sp->style()->subControlRect(QStyle::CC_SpinBox, &so,
+				                                   sc, sp).left() / cw;
+			};
+			const int up = cell_of(QStyle::SC_SpinBoxUp);
+			const int down = cell_of(QStyle::SC_SpinBoxDown);
+			printf("info: a %s spin box puts its arrows in cells %d and %d\n",
+			       pass ? "right-to-left" : "left-to-right", up, down);
+			if (!pass)
+				CHECK(up == 9 && down == 10,
+				      "a left-to-right spin box's arrows are in the two"
+				      " cells before its border, which is where they were"
+				      " measured");
+			CHECK(click_cell(up) == 51 && click_cell(down) == 49,
+			      pass ? "and a mirrored spin box's arrows step from the"
+			             " cells the style puts them in too"
+			           : "a spin box's up and down arrows are separately"
+			             " clickable");
+			QApplication::setLayoutDirection(Qt::LeftToRight);
+			GridGuard::reset();
+		}
 	}
 
 

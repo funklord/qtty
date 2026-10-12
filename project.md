@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2157 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2159 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18323,6 +18323,74 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.427 One fixture mirrored, and two instruments that failed their controls (2026-10-12)
+
+**8.425 measured that 36 fixtures pin a left-to-right relation and left
+making them direction-aware as a decision.** One of them is in the family
+that has now been got wrong twice -- 8.419 for claiming the frame rows and
+8.420 for not mirroring -- so that one is done rather than deferred.
+
+`a spin box's up and down arrows are separately clickable` pinned cells 9
+and 10, so it could not see a mirrored spin box at all. It asks the style
+where the arrows are now and clicks those, in both directions:
+
+    left-to-right  arrows in cells 9 and 10
+    right-to-left  arrows in cells 2 and  1
+
+and clicking them steps the value either way, so the mirror those two
+entries put in is guarded rather than merely believed.
+
+**The left-to-right pin is kept as its own assertion**, because deriving
+the expected cell from the same style that answers the click would be the
+style agreeing with itself -- two readings with one author. Pinned once
+where the geometry was measured, mirrored by derivation from there.
+
+#### The churn proxy, and its control
+
+The open question from 8.426 is how many other entries are inert, and the
+only instrument is running them: 615 entries, serially, about eight hours,
+and qtty's copy of the tool has no `--jobs`. So a cheap ranking was tried
+instead -- an entry goes quiet when the code it anchors on changes after
+the entry was written, so rank by commits to the target file since the
+entry landed.
+
+    commits to the target file after the entry landed
+      0 (untouched)   41        21-50   192
+      1-5            138        51+      60
+      6-20           184
+
+**574 of 615 flagged, which already says the proxy does not
+discriminate** -- these files change constantly. And the control settles
+it: the one entry known to be inert landed 2026-09-08 with **14** commits
+to `cell_paint.cpp` since, which is the middle band with 252 entries
+ranked above it. **Ranking by churn would have put it around 300th of 615
+and missed it.**
+
+So there is no cheap proxy, and that is worth knowing rather than
+re-deriving: the sweep is the instrument, it costs hours, and the decision
+is when to spend them. **A proxy tested only against cases whose answer is
+already known would have looked fine**; this one was pointed at the single
+case whose answer was known independently, and failed.
+
+#### The sizing-against-drawing sweep, empty
+
+8.424's shape was a distinction the sizing layer made and the drawing did
+not, so the same question was put to every control mechanically:
+difference the option fields `sizeFromContents` reads against those the
+drawing reads.
+
+    controls with both a sizing and a drawing case   13
+    asymmetric                                        5
+    asymmetric in 8.424's direction (sizing only)     1
+
+Four of the five are the drawing reading MORE, which is expected -- it
+needs state the measurement does not. The one in 8.424's direction is
+`CT_TabBarTab`, which reads `shape` where `CE_TabBarTab` never does, **and
+it dissolved**: the vertical shapes are handled in the sizing and covered
+in the suite, and the drawing does not need the shape because a vertical
+tab's rect already encodes its orientation. So the lens that found 8.424
+has one instance and it is closed.
 
 ### 8.426 Two guards, each saving the case the other was sabotaged for (2026-10-12)
 
