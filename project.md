@@ -18324,6 +18324,68 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.426 Two guards, each saving the case the other was sabotaged for (2026-10-12)
+
+**8.425 left one check undefended: the entry for "Qt's underline
+decoration is drawn as well as attributed" reported the named check
+PASSING against broken code.** Fixed, and the cause is the shape
+`evidence.md` calls *a control has to be reached, not only able to fire*.
+
+`CellPaintEngine::line()` drops a horizontal mark inside a text run's
+underline band through **two independent guards**:
+
+    for (const QRectF &band : underline_bands_)      // 1
+        if (band.contains(a) && band.contains(b2)) return;
+    if (fold_into_underline(a, b2)) return;          // 2
+
+The entry disabled the first. The second then dropped the same line, so
+the rule never appeared and the check stayed green -- **each guard
+independently saves the case the other's sabotage was written for.**
+
+**Why they overlap, which is in how the two lists are filled.**
+`underline_bands_` gets a run's band only when the run already carries
+`Attr::Underline`; `text_bands_` gets the same band for every run with a
+non-empty cell span, underlined or not -- which exists because Qt spells a
+rich-text underline two ways and `setUnderlineStyle()` never touches the
+font. So guard 1's population is a SUBSET of guard 2's, except for one
+case: an underlined run occupying no whole cell, which `text_bands_`
+skips on `x > col`.
+
+**Measured across the whole suite, by printing at both sites:**
+
+    guard 1 fired                                   40 times
+    ... where guard 2 would NOT have fired           0
+    an underlined run with no whole cell             0
+
+So guard 1 is never the only thing dropping a line in anything the suite
+draws, and its one unique case never arises. **Recorded rather than acted
+on**, for two reasons: the grid enforces an integral cell advance as a
+startup error, so a non-empty run always spans a whole cell and `x <= col`
+may be unreachable rather than merely unseen -- and guard 1 is also the
+cheap side-effect-free test that runs first, where guard 2 WRITES
+attributes to cells. Removing it would route every such line through a
+mutating function for no measured gain. Whether it earns its place is the
+holder's call, and the numbers are here for it.
+
+**The fix is in the entries.** The existing one now removes both guards,
+and reddens the plain-underline check and the dotted one with it. A second
+entry breaks `fold_into_underline` alone, and reddens exactly one check --
+"a dotted underline marks the word rather than ruling the row beneath it"
+-- which is the DotLine case, where the run arrives plain and folding is
+the only thing that marks it. So guard 2 is proven independently
+load-bearing and guard 1 is proven not to be, which is a statement about
+coverage rather than a gap in it.
+
+**What this says about the sabotage spec generally.** An entry is written
+against the mechanism its author had in mind, and a second guard added
+later is invisible to it -- the entry goes on passing, reporting on the
+pair while naming one. **The failure mode is silent in the direction that
+reassures**, because a sabotage that cannot redden its check looks exactly
+like a check nobody has broken. Only running the entry finds it, and the
+full sweep is hours, so entries near a change get run and the rest do not.
+This one surfaced because `--only 'decoration'` matched its name while a
+different family was being proved.
+
 ### 8.425 The suite run mirrored, and a sabotage that can no longer speak (2026-10-12)
 
 **Two measurements from the same pass, both recorded because neither

@@ -899,8 +899,8 @@ check = "rich text's strikethrough reaches the cells as an attribute"
 [[sabotage]]
 name = "Qt's underline decoration is drawn as well as attributed"
 file = "src/render/cell_paint.cpp"
-find = "\t\t\t\tif (band.contains(QPointF(a.x(), a.y()))\n\t\t\t\t    && band.contains(QPointF(b2.x(), b2.y())))\n\t\t\t\t\treturn;"
-into = "\t\t\t\tif (false)\n\t\t\t\t\treturn;"
+find = "\t\t\tfor (const QRectF &band : underline_bands_)\n\t\t\t\tif (band.contains(QPointF(a.x(), a.y()))\n\t\t\t\t    && band.contains(QPointF(b2.x(), b2.y())))\n\t\t\t\t\treturn;\n\t\t\tif (fold_into_underline(a, b2)) return;"
+into = "\t\t\t(void)0;"
 count = 1
 check = "its underline is the attribute alone"
 
@@ -6396,3 +6396,11 @@ find = "\tif (has_deco && decoration_beside(option.decorationPosition))"
 into = "\tif (has_deco)"
 count = 1
 check = "and the style and CellItemDelegate put it in the same cell"
+
+[[sabotage]]
+name = "a line that IS the underline is not folded into the attribute"
+file = "src/render/cell_paint.cpp"
+find = "\t\t\tif (fold_into_underline(a, b2)) return;"
+into = "\t\t\tif (false) return;"
+count = 1
+check = "and a dotted underline marks the word rather than ruling the row"
