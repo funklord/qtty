@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2153 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2157 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18323,6 +18323,64 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.424 A decoration above the text took columns anyway (2026-10-12)
+
+**8.423 added a decoration to the style's row run and reserved its columns
+whichever way round the decoration sat. On a four-cell icon-mode item that
+is every column**, so the label elided to the empty string and the item
+drew nothing at all. Measured before and after that commit, on an item
+with a 2x2-cell icon:
+
+    before 8.423   iconmode  ink 3 cells, caption ` cap`
+    after  8.423   iconmode  ink 0 cells, blank
+
+A caption is an item's identity in icon mode, so this was the whole item
+going blank -- **a regression introduced by the commit that closed the
+decoration gap**, found by the next lens rather than by the suite, which
+had no icon-mode check to lose.
+
+**The distinction already existed one layer away.** `sizeFromContents` has
+always asked where the decoration sits, and keeps an item's extra rows
+precisely for this case, because "the icon is the item and the text its
+caption, and one row would have nowhere to put it". Its own comment says
+measuring and drawing in one place "is what a style is for" -- and the
+drawing did not ask.
+
+`decoration_beside()` is in `cell_geometry.h` now with **four** consumers:
+the style's sizing, the style's drawing, the delegate's drawing and the
+delegate's sizing. Above the text the picture takes the rows before the
+caption and the row run keeps all its columns; beside it, nothing changes.
+
+**The fourth consumer was the subtle one and is why the two writers looked
+like they disagreed about layout when they did not.** `CellItemDelegate::sizeHint`
+added the decoration's columns unconditionally, so it answered **7 cells
+where the style answered 4** for the same icon-mode item -- and the two
+then drew the caption in different columns because their RECTS differed:
+
+    before   style item 4x4 caption row 2 col 1   delegate item 7x4 col 2
+    after    style item 4x4 caption row 2 col 1   delegate item 4x4 col 1
+
+**A rect disagreement reads exactly like a layout disagreement**, and the
+instinct is to go looking at the layout code. What separated them was
+printing the item rect, which is one line and was not the first thing
+tried.
+
+Four checks: the caption drawn at all, which is the regression; the row
+after the picture, which is what "above" means; the two writers agreeing
+on both the cell and the measured width; and -- the control -- a
+decoration beside the text still pushing the caption along its own row, so
+a fix that sent every decoration to the rows above fails. Three sabotages,
+one per consumer that was not asking.
+
+**And the lens that found it is worth more than the fix.** 8.423's method
+was "enumerate the consumers rather than grep for the expression", and
+running it on the two item-view writers mechanically -- differencing the
+`QStyleOptionViewItem` fields each one reads -- returned **no remaining
+split field**. That empty answer is what turned the question into the
+stronger one: not "which field does one writer read", but **"which field
+does NEITHER read"**. `decorationPosition` was the answer, and it was
+being read by the sizing path all along.
 
 ### 8.423 The third field split between two writers, and the control that could not see it (2026-10-11)
 

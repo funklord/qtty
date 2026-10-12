@@ -6372,3 +6372,27 @@ find = "\t\t\t\tif ((vi->features & QStyleOptionViewItem::HasDecoration)\n\t\t\t
 into = "\t\t\t\tif (false) {"
 count = 1
 check = "an item's decoration moves its label the same distance for"
+
+[[sabotage]]
+name = "the style draws every decoration beside the text"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\tconst bool beside =\n\t\t\t\t\t    decoration_beside(vi->decorationPosition);"
+into = "\t\t\t\t\tconst bool beside = true;"
+count = 1
+check = "an icon-mode item draws its caption, the icon taking rows"
+
+[[sabotage]]
+name = "the delegate draws every decoration beside the text"
+file = "src/widget/cell_item_delegate.cpp"
+find = "\t\tconst bool beside = decoration_beside(opt.decorationPosition);"
+into = "\t\tconst bool beside = true;"
+count = 1
+check = "and the style and CellItemDelegate put it in the same cell"
+
+[[sabotage]]
+name = "the delegate measures a stacked decoration as columns"
+file = "src/widget/cell_item_delegate.cpp"
+find = "\tif (has_deco && decoration_beside(option.decorationPosition))"
+into = "\tif (has_deco)"
+count = 1
+check = "and the style and CellItemDelegate put it in the same cell"

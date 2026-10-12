@@ -160,12 +160,22 @@ void CellItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
 		// second copy of that decision here is a second answer to one
 		// question, and the two would part company the first time the
 		// graphics tier learned something.
-		const int deco_at =
-		    leading_edge(c.left(), c.right(), used, dw, opt.direction);
+		// BESIDE the text or ABOVE it, by the decoration_beside() the
+		// style's own sizing and drawing both ask. Above, the icon is the
+		// item and this is its caption, so the picture takes the rows
+		// before it and the row run keeps all its columns -- and the
+		// caption moves under the picture rather than staying where the
+		// vertical alignment put it.
+		const bool beside = decoration_beside(opt.decorationPosition);
+		const int deco_at = beside
+		    ? leading_edge(c.left(), c.right(), used, dw, opt.direction)
+		    : leading_edge(c.left(), c.right(), 0, dw, opt.direction);
 		const QRect px(opt.rect.left() + (deco_at - c.left()) * cw,
-		               opt.rect.top() + (row - c.top()) * ch, dw * cw, dh * ch);
+		               opt.rect.top() + (beside ? (row - c.top()) : 0) * ch,
+		               dw * cw, dh * ch);
 		painter->drawPixmap(px, opt.icon.pixmap(opt.decorationSize));
-		used += dw + 1;
+		if (beside) used += dw + 1;
+		else        row = c.top() + dh;
 	}
 
 	const int budget = c.width() - used;
@@ -204,9 +214,25 @@ QSize CellItemDelegate::sizeHint(const QStyleOptionViewItem &option,
 
 	int cells = indent_cells();
 	if (index.data(Qt::CheckStateRole).isValid()) cells += check_cells();
-	if (index.data(Qt::DecorationRole).isValid())
-		cells += qMax(1, qRound(option.decorationSize.width() / double(cw))) + 1;
-	cells += text_cells(index.data(Qt::DisplayRole).toString());
+	// A decoration BESIDE the text adds its columns to the row; one ABOVE
+	// stacks, so the wider of the two decides and nothing is added. This
+	// added them either way, which over-measured an icon-mode item by the
+	// icon's own width: measured, 7 cells against the 4 the style's
+	// sizeFromContents answers for the same item, and the two writers then
+	// drew the caption in different columns because their rects differed
+	// rather than because their layout did.
+	//
+	// decoration_beside() is the same predicate the style's sizing and both
+	// drawing paths ask. Four consumers of one distinction, and this was the
+	// last one not asking.
+	const int label = text_cells(index.data(Qt::DisplayRole).toString());
+	const bool has_deco = index.data(Qt::DecorationRole).isValid();
+	const int deco = has_deco
+	    ? qMax(1, qRound(option.decorationSize.width() / double(cw))) : 0;
+	if (has_deco && decoration_beside(option.decorationPosition))
+		cells += deco + 1 + label;
+	else
+		cells += qMax(deco, label);
 
 	return QSize(cells * cw, qMax(ch, ((base.height() + ch - 1) / ch) * ch));
 }

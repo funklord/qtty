@@ -1787,8 +1787,7 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 			// an avatar, and a style that shrinks it to one is overruling a
 			// request rather than declining to waste a row on a 16-pixel
 			// icon.
-			const bool beside = vi->decorationPosition == QStyleOptionViewItem::Left
-			                 || vi->decorationPosition == QStyleOptionViewItem::Right;
+			const bool beside = decoration_beside(vi->decorationPosition);
 			const bool fits = vi->decorationSize.height() <= ch;
 			return QSize(qMax(width, cells * cw),
 			             beside && fits ? ch : snapped);
@@ -2682,6 +2681,9 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// rectangles above answer, which is the pairing this family
 				// keeps failing: an element drawn where no click reaches.
 				int used = 1;                      // the indent
+				// The row the label goes on, which is the item's own unless
+				// a decoration above it has taken the rows before.
+				int caption_row = c.top();
 				if (vi->features & QStyleOptionViewItem::HasCheckIndicator) {
 					const QString box =
 					    vi->checkState == Qt::Checked            ? QStringLiteral("[x]")
@@ -2716,12 +2718,25 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					                              / double(dcw)));
 					const int dh = qMax(1, qRound(vi->decorationSize.height()
 					                              / double(dch)));
-					const int at = leading_edge(c.left(), c.right(), used,
-					                            dw, vi->direction);
+					// BESIDE takes columns from the row run; ABOVE takes
+					// ROWS and leaves the run alone, which is the shape the
+					// sizing half has always kept an item's extra rows for.
+					// Reserving columns either way took a four-cell icon-mode
+					// item whole: measured, its caption went from ` cap` to
+					// nothing at all, because the run had no cells left and
+					// the label elided to the empty string.
+					const bool beside =
+					    decoration_beside(vi->decorationPosition);
+					const int at = beside
+					    ? leading_edge(c.left(), c.right(), used, dw,
+					                   vi->direction)
+					    : leading_edge(c.left(), c.right(), 0, dw,
+					                   vi->direction);
 					p->drawPixmap(QRect(opt->rect.left() + (at - c.left()) * dcw,
 					                    opt->rect.top(), dw * dcw, dh * dch),
 					              vi->icon.pixmap(vi->decorationSize));
-					used += dw + 1;                // the picture and one space
+					if (beside) used += dw + 1;    // the picture and one space
+					else        caption_row = c.top() + dh;
 				}
 				const int room = c.width() - used;
 				const int text_at = leading_edge(c.left(), c.right(), used,
@@ -2761,7 +2776,7 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 					text_x = text_at + room - shown_cells;
 				else if (al & Qt::AlignHCenter)
 					text_x = text_at + (room - shown_cells) / 2;
-				dev->buffer().text(text_x, c.top(), shown, fg, bg, la);
+				dev->buffer().text(text_x, caption_row, shown, fg, bg, la);
 				return;
 			}
 			break;

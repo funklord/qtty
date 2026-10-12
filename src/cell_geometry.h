@@ -278,6 +278,20 @@ inline Attrs with_state(const QStyleOption *opt, Attrs base = Attrs()) {
 // -- and that copy was in these same two files.
 bool item_view_current(const QStyleOptionViewItem *vi, const QWidget *w);
 
+// Whether a decoration sits BESIDE the text or ABOVE it. Three places ask:
+// sizeFromContents, which keeps an item's extra rows for the second case,
+// and the two writers that draw an item. The sizing half asked first and
+// the drawing did not ask at all, so a decoration took COLUMNS whichever
+// way round it was -- which on a four-cell icon-mode item took every one
+// of them and left the caption nowhere, drawn as nothing.
+//
+// Left and Right are beside; Top and Bottom are the icon-mode shape, where
+// the icon is the item and the text its caption.
+inline bool decoration_beside(QStyleOptionViewItem::Position at) {
+	return at == QStyleOptionViewItem::Left
+	    || at == QStyleOptionViewItem::Right;
+}
+
 // An element's position, measured from the LEADING edge rather than the left
 // one. Left-to-right the leading edge is the left, right-to-left it is the
 // right -- so an element `off` in and `w` wide sits at `left + off` one way

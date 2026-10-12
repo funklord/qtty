@@ -8854,6 +8854,85 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+
+	// A DECORATION ABOVE THE TEXT TAKES ROWS, NOT COLUMNS, which is the
+	// distinction sizeFromContents has always made -- it keeps an item's
+	// extra rows precisely for this case, because "the icon is the item and
+	// the text its caption" -- and which neither drawing path nor the
+	// delegate's own sizeHint asked about.
+	//
+	// Reserving the icon's columns either way ate a four-cell icon-mode item
+	// whole. Measured, before and after, on an item with a 2x2-cell icon:
+	//
+	//     caption drawn ' cap'   then nothing at all, 0 cells of ink
+	//
+	// because the row run had no columns left and the label elided to the
+	// empty string. The caption is an item's identity in icon mode, so this
+	// is the whole item going blank.
+	//
+	// decoration_beside() is one predicate with FOUR consumers now: the
+	// style's sizing, the style's drawing, the delegate's drawing and the
+	// delegate's sizing. The last was the subtle one -- it added the icon's
+	// columns to an icon-mode item, answering 7 cells where the style
+	// answered 4, so the two writers drew the caption in different columns
+	// because their RECTS disagreed rather than their layout.
+	{
+		struct Shot { int row, col, cols; };
+		const auto shot = [](bool icon_mode, bool with_delegate) {
+			QPixmap px(2 * GridMetrics::cw(), 2 * GridMetrics::ch());
+			px.fill(Qt::red);
+			QListWidget lw;
+			lw.setFrameShape(QFrame::NoFrame);
+			lw.setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+			lw.setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+			if (icon_mode) lw.setViewMode(QListView::IconMode);
+			if (with_delegate)
+				lw.setItemDelegate(new CellItemDelegate(&lw));
+			lw.setIconSize(px.size());
+			lw.addItem(new QListWidgetItem(QIcon(px), QStringLiteral("cap")));
+			lw.setAttribute(Qt::WA_DontShowOnScreen);
+			lw.resize(GridMetrics::cells(14, 5));
+			lw.show();
+			QCoreApplication::processEvents();
+			CellBuffer b(14, 5);
+			render_once(lw, b);
+			const QStringList got = b.to_text().split(QLatin1Char('\n'));
+			Shot o{-1, -1, lw.visualItemRect(lw.item(0)).width()
+			                   / GridMetrics::cw()};
+			for (int y = 0; y < 5 && o.row < 0; ++y) {
+				const int at = got.value(y).indexOf(QStringLiteral("cap"));
+				if (at >= 0) { o.row = y; o.col = at; }
+			}
+			return o;
+		};
+		const Shot is = shot(true, false), id = shot(true, true);
+		const Shot ls = shot(false, false), ld = shot(false, true);
+		printf("info: icon-mode caption at row/col %d/%d style and %d/%d"
+		       " delegate, item %d and %d cells wide\n", is.row, is.col,
+		       id.row, id.col, is.cols, id.cols);
+		// THE REGRESSION ITSELF: the caption is drawn at all.
+		CHECK(is.row >= 0 && id.row >= 0,
+		      "an icon-mode item draws its caption, the icon taking rows"
+		      " rather than every column the label needed");
+		// And on the row AFTER the picture's two, which is what "above"
+		// means and what the reserved rows were kept for.
+		CHECK(is.row == 2 && id.row == 2,
+		      "and on the row after the picture, which is the shape the"
+		      " extra rows were reserved for");
+		// The two writers agree, and they agree because they size the item
+		// alike -- a rect disagreement reads exactly like a layout one.
+		CHECK(is.row == id.row && is.col == id.col && is.cols == id.cols,
+		      "and the style and CellItemDelegate put it in the same cell"
+		      " of an item they measure the same width");
+		// THE CONTROL, the other side of the predicate: beside a decoration
+		// the caption still moves along the row rather than down it, so a
+		// fix that sent every decoration to the rows above fails here.
+		CHECK(ls.col > 1 && ld.col > 1 && ls.row == 0,
+		      "while a decoration beside the text still pushes the caption"
+		      " along its own row");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 
