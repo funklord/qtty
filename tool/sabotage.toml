@@ -6412,3 +6412,11 @@ find = "\t\t\t\t\tconst int at = c.left() + (bracket ? 1 : 0)\n\t\t\t\t\t       
 into = "\t\t\t\t\tconst int at = c.left() + (bracket ? 1 : 0);"
 count = 1
 check = "and a mirrored tool button's menu still opens from the cell"
+
+[[sabotage]]
+name = "the shared slider position ignores upsideDown"
+file = "src/cell_geometry.h"
+find = "\tif (sl->upsideDown) pos = len - 1 - pos;"
+into = "\tif (false) pos = len - 1 - pos;"
+count = 1
+check = "and a mirrored one puts it the same distance from the other"

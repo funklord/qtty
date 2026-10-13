@@ -8933,6 +8933,61 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+
+	// A MIRRORED SLIDER'S HANDLE, which nothing asserted either way.
+	//
+	// It is CORRECT and was correct before this check existed, and the
+	// interesting part is how nearly it was "fixed". Asking Fusion and this
+	// style for SC_SliderHandle with a hand-built QStyleOptionSlider -- the
+	// method that settled the item view in 8.420 -- said Fusion mirrored a
+	// 200px slider at value 20 to 148..162 while this answered cell 3 both
+	// ways, which reads exactly like the family's standing fault.
+	//
+	// It was an artifact of the OPTION. QSlider normalises a mirrored
+	// horizontal slider into `upsideDown` and hands the style `direction` =
+	// Qt::LeftToRight, so that a style does not mirror a second time:
+	// measured by printing what the drawing actually receives,
+	// `upsideDown=1 dir=LTR`, handle in cell 16 of 20. The hand-built option
+	// carried `upsideDown=0 dir=RTL`, a pair Qt never produces here --
+	// Fusion mirrors it because Fusion reads `direction`, this style does not
+	// because it reads `upsideDown`, and both are right about real widgets.
+	//
+	// So this asserts the RENDERED handle of a real slider and builds no
+	// option at all. The hit path is the router suite's to test, through a
+	// click, where the option is Qt's own.
+	{
+		const int cols = 20;
+		const auto drawn_cell = [cols](Qt::LayoutDirection d) {
+			QApplication::setLayoutDirection(d);
+			QSlider sl(Qt::Horizontal);
+			sl.setRange(0, 100);
+			sl.setValue(20);
+			sl.setLayoutDirection(d);
+			sl.setFixedSize(cols * GridMetrics::cw(), GridMetrics::ch());
+			sl.setAttribute(Qt::WA_DontShowOnScreen);
+			sl.show();
+			QCoreApplication::processEvents();
+			CellBuffer b(cols, 2);
+			render_once(sl, b);
+			QString row;
+			for (int x = 0; x < b.cols(); ++x) row += b.at(x, 0).ch;
+			QApplication::setLayoutDirection(Qt::LeftToRight);
+			return int(row.indexOf(QChar(0x25cf)));
+		};
+		const int l = drawn_cell(Qt::LeftToRight);
+		const int r = drawn_cell(Qt::RightToLeft);
+		printf("info: a slider at 20 of 100 draws its handle in cell %d"
+		       " left-to-right and %d mirrored, of %d\n", l, r, cols);
+		CHECK(l == 3,
+		      "a left-to-right slider at a fifth of its range draws its"
+		      " handle a fifth along, which is where it was measured");
+		CHECK(r == cols - 1 - l,
+		      "and a mirrored one puts it the same distance from the other"
+		      " end, which QSlider asks for through upsideDown rather than"
+		      " through the layout direction");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

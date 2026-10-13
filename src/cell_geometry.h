@@ -292,6 +292,33 @@ inline bool decoration_beside(QStyleOptionViewItem::Position at) {
 	    || at == QStyleOptionViewItem::Right;
 }
 
+// Where a slider's handle sits, in cells along its length. TWO places need
+// it -- subControlRect, which is the hit target, and drawComplexControl,
+// which is the picture -- and they carried a copy each. The recurring fault
+// in this style is a mirror applied to one of two co-located derivations, so
+// this is one function rather than two copies that agree today.
+//
+// `upsideDown` is the option's own: QSlider sets it to !invertedAppearance()
+// for a VERTICAL slider, so a vertical one is inverted by default and its
+// minimum is at the bottom.
+//
+// The layout direction is deliberately NOT consulted, and that was worth
+// measuring rather than assuming. QSlider normalises a mirrored horizontal
+// slider into `upsideDown` and hands the style `direction` =
+// Qt::LeftToRight, exactly so a style does not mirror a second time --
+// measured, the option this drawing receives for a right-to-left slider at
+// value 20 of 100 is `upsideDown=1 dir=LTR`, and the handle lands in cell 16
+// of 20 as it should. A style that XORed the direction in here would double
+// mirror any caller that set both, and the scroll bar's own XOR is NOT a
+// precedent: QScrollBar leaves direction alone and needs it.
+inline int slider_cell(const QStyleOptionSlider *sl, int len) {
+	const int span = sl->maximum - sl->minimum;
+	int pos = span > 0
+	    ? (len - 1) * (sl->sliderPosition - sl->minimum) / span : 0;
+	if (sl->upsideDown) pos = len - 1 - pos;
+	return qBound(0, pos, len - 1);
+}
+
 // An element's position, measured from the LEADING edge rather than the left
 // one. Left-to-right the leading edge is the left, right-to-left it is the
 // right -- so an element `off` in and `w` wide sits at `left + off` one way

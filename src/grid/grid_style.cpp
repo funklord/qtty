@@ -1584,11 +1584,9 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 			const int cell = vert ? ch : cw;
 			const int len = (vert ? r.height() : r.width()) / qMax(1, cell);
 			if (len >= 1) {
-				const int span = sl->maximum - sl->minimum;
-				int pos = span > 0
-				    ? (len - 1) * (sl->sliderPosition - sl->minimum) / span : 0;
-				if (sl->upsideDown) pos = len - 1 - pos;
-				pos = qBound(0, pos, len - 1);
+				// One derivation, shared with the drawing. See
+				// slider_cell() for what the two copies were missing.
+				const int pos = slider_cell(sl, len);
 				switch (sc) {
 				case SC_SliderHandle:
 					return vert
@@ -3492,9 +3490,7 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			if (auto *sl = qstyleoption_cast<const QStyleOptionSlider *>(opt)) {
 				const bool vert = sl->orientation == Qt::Vertical;
 				const int len = vert ? c.height() : c.width();
-				const int span = sl->maximum - sl->minimum;
-				int pos = span > 0
-				    ? (len - 1) * (sl->sliderPosition - sl->minimum) / span : 0;
+				const int pos = slider_cell(sl, len);
 				// A vertical slider's minimum is at the BOTTOM, which the
 				// option says and this did not read: `upsideDown` is set by
 				// QSlider to !invertedAppearance() for a vertical one, so it
@@ -3508,8 +3504,8 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				//
 				// The flag rather than the orientation, because a horizontal
 				// slider with invertedAppearance set is the same question and
-				// carries the same answer.
-				if (sl->upsideDown) pos = len - 1 - pos;
+				// carries the same answer. It lives in slider_cell() now,
+				// with the layout direction it was missing.
 				// The groove carries the state; the handle also says whether
 				// it is being held. Qt sets State_Sunken on a slider whose
 				// handle has been grabbed, and this style already spells

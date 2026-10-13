@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2163 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2165 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18323,6 +18323,73 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.429 The slider defect that was not there (2026-10-13)
+
+**The next of 8.425's 36 was the slider, and it produced a fix that was
+written, built, green on 2165 checks -- and wrong.** It is reverted. The
+entry is here for how it was caught, because nothing in the ordinary
+sequence caught it.
+
+**What the method said.** `CC_Slider` reads `upsideDown` and never
+`direction`, where the scroll bar beside it XORs the direction in. Asked
+the way 8.420's item view was settled -- build a `QStyleOptionSlider`,
+hand it to Fusion and to this style, compare:
+
+    LTR  upsideDown=0  qtty cell 3   fusion 37..51 of 200
+    RTL  upsideDown=0  qtty cell 3   fusion 148..162 of 200
+
+An exact mirror from Fusion, nothing from this style. That reads precisely
+like the family's standing fault, and the fix -- XOR the direction into the
+flip, as the scroll bar does -- made the whole suite pass.
+
+**What caught it was a sabotage reddening a check it had no business
+reddening.** The entry for the new XOR reddened the mirror check *and* "the
+cell it is drawn in is the cell a click reaches", and by the code as
+written both derivations now shared one function, so they should have moved
+together and stayed in agreement. Measured instead of explained away: with
+the XOR removed the drawing answered cell 16 and the rectangle cell 3 --
+**the drawing was mirroring without any help from the new code.**
+
+**Because the option is not what the probe built.** Printing what the
+drawing actually receives for a right-to-left slider:
+
+    DRAWOPT len=20 upsideDown=1 dir=LTR pos=16
+
+`QSlider` normalises a mirrored horizontal slider into `upsideDown` and
+hands the style `direction` = `Qt::LeftToRight`, **exactly so that a style
+does not mirror a second time.** The hand-built option carried
+`upsideDown=0 dir=RTL`, a pair Qt never produces for a slider. Fusion
+mirrors it because Fusion reads `direction`; this style does not because it
+reads `upsideDown`; **both are right about real widgets.** There was no
+defect, and the XOR was a latent double mirror for any caller that set
+both.
+
+**So the 8.420 method has a precondition it did not declare: the option
+you build has to be the option the toolkit produces.** It held for the
+item view because `direction`, `features` and `displayAlignment` are
+fields a view really sets, and it failed here because `upsideDown` is
+DERIVED and the probe left it at its default. **A fabricated input is a
+fabricated finding**, and it wears the costume of the real thing -- a
+clean Fusion comparison, a plausible mechanism, a family with three prior
+instances, and a green suite after the fix.
+
+**What survives, and it is small on purpose.** The position was derived
+twice -- once in `subControlRect` for the hit target and once in the
+drawing -- in two copies of the same arithmetic. They share
+`slider_cell()` now, which is the de-duplication this style keeps needing,
+and a sabotage of it reddens three checks across both sites, so the
+sharing is proven load-bearing. And a mirrored slider's rendering is
+asserted for the first time: cell 3 of 20 left-to-right, cell 16
+mirrored. **It would have passed before any of this**, which is the
+honest description of a check added to code that was already right.
+
+**The generalisable half.** Three fixes in this family were found by
+reading the rendered picture, and this non-fix was nearly made by reading
+a rectangle computed from an option nobody produced. **Prefer the artifact
+the program emits over the answer a function gives to an input you
+invented** -- and when a sabotage reddens a check your model says it
+cannot, that disagreement is the instrument working.
 
 ### 8.428 A mirrored tool button's label erased its menu arrow (2026-10-12)
 
