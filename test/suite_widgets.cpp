@@ -9044,6 +9044,82 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+
+	// AN INDICATOR AND ITS LABEL MIRROR TOGETHER, which is the question two
+	// defects in this family were instances of: the tool button moved its
+	// menu arrow and left the label on top of it, and the group box moved
+	// its title and left the indicator behind. Both are fixed; these two are
+	// the members that were already right and had nothing asserting it.
+	//
+	// The population for "an indicator drawn beside a label" is the check
+	// box, the radio button, the group box, the tool button, the push
+	// button -- whose brackets are symmetric, so there is nothing to mirror
+	// -- the item view, and the spin box and combo. Two carried the fault.
+	// These are the two cheapest to pin and the ones a reader is most
+	// likely to assume.
+	//
+	// AND WHAT THEY DO NOT CATCH, which is the half worth stating. This
+	// style overrides only PE_IndicatorCheckBox -- the glyph -- and leaves
+	// SE_CheckBoxIndicator and SE_CheckBoxContents to QCommonStyle, which
+	// mirrors them through visualRect. **So these two mirror because Qt does
+	// it, not because this style does**, and there is no code here to
+	// sabotage for the property: they cannot be seen to fail, and they are
+	// not evidence about this style's own arithmetic. What they are good for
+	// is the day somebody overrides that geometry the way CC_GroupBox
+	// already does, which is exactly how the group box came to be wrong.
+	{
+		const int cols = 16;
+		struct Row { int ind, label; };
+		const auto shot = [cols](Qt::LayoutDirection d, int row,
+		                         const QString &text, QChar open) {
+			QApplication::setLayoutDirection(d);
+			QWidget host;
+			host.setLayoutDirection(d);
+			auto *v = new QVBoxLayout(&host);
+			v->setContentsMargins(0, 0, 0, 0);
+			v->setSpacing(0);
+			auto *c = new QCheckBox(QStringLiteral("Wrap"), &host);
+			c->setFixedHeight(GridMetrics::ch());
+			v->addWidget(c);
+			auto *r = new QRadioButton(QStringLiteral("Both"), &host);
+			r->setFixedHeight(GridMetrics::ch());
+			v->addWidget(r);
+			show(host, cols, 3);
+			CellBuffer b(cols, 3);
+			render_once(host, b);
+			const QString line =
+			    b.to_text().split(QLatin1Char('\n')).value(row);
+			QApplication::setLayoutDirection(Qt::LeftToRight);
+			return Row{int(line.indexOf(open)), int(line.indexOf(text))};
+		};
+		// The check box is on the first row and the radio on the third,
+		// which is this fixture's spacing rather than anything asserted.
+		const Row cl = shot(Qt::LeftToRight, 0, QStringLiteral("Wrap"),
+		                    QLatin1Char('['));
+		const Row cr = shot(Qt::RightToLeft, 0, QStringLiteral("Wrap"),
+		                    QLatin1Char('['));
+		const Row rl = shot(Qt::LeftToRight, 2, QStringLiteral("Both"),
+		                    QLatin1Char('('));
+		const Row rr = shot(Qt::RightToLeft, 2, QStringLiteral("Both"),
+		                    QLatin1Char('('));
+		printf("info: a check box is indicator %d label %d left-to-right and"
+		       " %d / %d mirrored; a radio %d / %d and %d / %d\n",
+		       cl.ind, cl.label, cr.ind, cr.label,
+		       rl.ind, rl.label, rr.ind, rr.label);
+		// Both halves move, which is the whole assertion: the indicator
+		// crossing to the far end while the label stays is the shape that
+		// cost the tool button its arrow.
+		CHECK(cl.ind == 0 && cl.label > cl.ind
+		          && cr.ind == cols - 3 && cr.label < cr.ind,
+		      "a check box's indicator and its label cross together when"
+		      " the layout mirrors, rather than one of the two moving");
+		CHECK(rl.ind == 0 && rl.label > rl.ind
+		          && rr.ind == cols - 3 && rr.label < rr.ind,
+		      "and a radio button's do too, which is the same drawing"
+		      " asked about the other glyph");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

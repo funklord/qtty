@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2167 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2169 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18323,6 +18323,58 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.431 Every mirroring defect was in a control this style took over (2026-10-13)
+
+**The indicator-and-label lens is exhausted, and closing it produced a
+predictive rule rather than another fix.**
+
+The two members left unmeasured were the check box and the radio button,
+and both mirror correctly -- indicator AND label:
+
+    ltr  [ ] Wrap      ( ) Both
+    rtl  Wrap [ ]      Both ( )
+
+**Why they are right is the finding.** This style overrides only
+`PE_IndicatorCheckBox`, the glyph, and leaves `SE_CheckBoxIndicator` and
+`SE_CheckBoxContents` to `QCommonStyle`, which mirrors them through
+`visualRect`. They mirror because **Qt** does it.
+
+Set against every mirroring fault this workspace has found:
+
+    geometry taken over by this style
+      CC_SpinBox      rects + drawing    broke -- 8.419, 8.422
+      CC_ComboBox     rects + drawing    broke -- 8.304, 8.419
+      CC_ToolButton   drawn whole        broke -- 8.428
+      CC_GroupBox     rects              broke -- 8.430
+      CE_ItemViewItem drawn whole        broke -- 8.420
+      CC_ScrollBar    rects + drawing    right: explicit direction code
+      CC_Slider       shared derivation  right: Qt normalises upsideDown
+      SE_TabBarTab*Button                right: snaps Qt's own answer
+      SE_*Contents insets                nothing to mirror, symmetric
+
+    geometry left to Qt
+      QCheckBox, QRadioButton            right, and not by this style's doing
+
+**Five of five faults are in the first group and none in the second.** The
+rule that falls out is not "check the controls that look suspicious" but
+**"a mirror is at risk exactly where this style has taken the geometry off
+Qt"** -- because `visualRect` is doing the work everywhere else, silently
+and correctly. It says where to look and, more usefully, where not to.
+
+It also explains the three half-fixes recorded at 8.428 as one thing: a
+control drawn whole, or whose rects are answered here, has no `visualRect`
+underneath it, so each element has to be mirrored by hand and the one
+nobody was working on gets left.
+
+**Two checks, and their limit is pinned in the fixture.** They assert the
+check box's and the radio's two halves crossing together. **They have no
+sabotage and cannot be seen to fail**, because the property is Qt's, so
+they are not evidence about this style's arithmetic -- they are a tripwire
+for the day somebody overrides that geometry the way `CC_GroupBox`
+already does, which is how the group box came to be wrong in the first
+place. Recorded rather than left for a reader to assume the usual
+standard was met.
 
 ### 8.430 A checkable group box's indicator stayed on the left (2026-10-13)
 
