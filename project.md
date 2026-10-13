@@ -18324,6 +18324,101 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.432 The whole sabotage spec run, and what it found (2026-10-13)
+
+**Run on the copyright holder's instruction**: all 618 entries, 17:05 to
+23:46, six hours forty-one minutes. 8.426 found one inert entry by accident
+and argued that others must exist; this is the measurement.
+
+    618 entries
+      600  ok, reddened the check they name
+        5  ok, the suite could not finish, which those entries expect
+        8  FAILED -- applied, and the named check PASSED anyway
+        5  REFUSED -- the named check matches no passing check
+      ---
+      618
+
+**The tree was restored.** All 55 source files under `src/`, `include/` and
+`test/` hash byte-identical to a snapshot taken before the run, and the
+tool reported restoring 27. Recorded because a six-hour unattended run
+that rewrites sources is exactly where that should be proved rather than
+assumed -- and the hashes were taken BEFORE starting, which is the only
+time they can be.
+
+#### The five refused all died of a COUNT
+
+Each named a check whose wording had moved, and in every case what moved
+was a number:
+
+    twenty CSI <n>~ numbers        -> twenty-two
+    six attributes emits ECMA-48   -> seven
+    a snapshot spells the six      -> seven
+    the other seven reports        -> every report
+    an audit question's row        -> reworded entirely
+
+**Four of the five broke because the suite GREW** -- an attribute was
+added, two keys were added, a report list stopped being counted. So the
+entries were killed by the healthy case, and the harness went quiet about
+five behaviours as a reward for covering more of them.
+
+They are re-pointed at the part of each message that carries no count,
+each substring verified to match exactly one check, and **all five redden
+again**.
+
+#### And that class is a gate now
+
+`--validate` compared anchors against the source and nothing else, so it
+could see neither broken class. It now also asserts that every entry's
+`check` string still appears in `test/`, which catches the refused class
+in milliseconds where the sweep costs hours.
+
+**Adjacent string literals have to be joined first** -- 298 lines of one
+suite file end mid-string -- or a literal search finds almost nothing and
+condemns nearly every entry, which is the shape of error this guard would
+make if it were wrong.
+
+**Its control is the sweep.** The guard must name exactly the five the
+six-hour run refused, and on the first attempt it named **six**. The extra
+was `every widget geometry landed on the grid (render)`, whose message is
+built at run time as `"... (%s)"` with the suite's name, so the tail is in
+no source file -- entry 242 reddened 25 checks in the sweep. One false
+finding in 618 is precisely how a guard earns an ignore list and gets
+switched off by instalments, so it retries on the text before the last
+parenthesis instead. It now reproduces the sweep's refused set exactly.
+
+The success line names both halves, because a pass that reports less than
+it checked is quoted afterwards for the half it mentioned.
+
+#### The eight failures are outstanding
+
+These applied cleanly and the check they name passed anyway, so each is a
+behaviour this harness no longer defends. 8.426's was two independent
+guards saving the same case; these need the same treatment one at a time
+and **none of them is fixed yet**:
+
+      1  text runs at the same origin are consecutive
+     55  a frameless line edit is boxed anyway
+     96  a hairline path is filled by the scanline that cannot see it
+    136  a window becomes current with nothing focused in it
+    194  readline chords apply outside a text field too
+    311  the link handler claims mailto as well
+    585  a shell-out leaves the upload map claiming the terminal still holds them
+    591  the partial-input drop keeps the bytes the abandoned paste collected
+
+**Two of them are this session's own.** 585 and 591 were proved reddening
+on 2026-10-08 when 8.411 and 8.413 were written, and they do not redden
+now -- so something landed between then and now that covers the same case,
+most likely 8.415's `if (!in_paste_) return true;` for 591. **An entry
+proved once stays proved only until the next commit touches its
+behaviour**, which is the same shelf-life argument this file makes about
+recorded facts, pointed at the harness.
+
+**1207 of 2169 checks are reddened by at least one entry.** The remaining
+962 are not all undefended -- controls, info lines and population
+assertions are not meant to be broken by a single edit -- so that figure
+is a ceiling on coverage rather than a gap, and separating the two is not
+work anybody has done.
+
 ### 8.431 Every mirroring defect was in a control this style took over (2026-10-13)
 
 **The indicator-and-label lens is exhausted, and closing it produced a

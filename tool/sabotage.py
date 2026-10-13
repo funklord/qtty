@@ -30,6 +30,7 @@ verified byte-identical afterwards and the run fails if it is not.
 import atexit
 import hashlib
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -398,13 +399,63 @@ def main():
 				    % e.get("count", 1))
 				say("          the check it names is undefended.")
 				bad += 1
+		# AND THAT THE CHECK IT NAMES STILL EXISTS, which the anchor half
+		# cannot see. An entry whose `check` has been reworded or deleted
+		# matches no passing check when it runs and is REFUSED -- so the
+		# behaviour it defended is undefended, exactly as a drifted anchor
+		# leaves it, and validate said nothing at all about it.
+		#
+		# Measured by the first sweep of the whole spec, 2026-10-13: of 618
+		# entries, 8 applied and failed to redden their check, and 5 were
+		# refused for naming a check that is not there. The second class is
+		# a string comparison and belongs in a gate; the first needs the
+		# six-hour run.
+		#
+		# Adjacent string literals are JOINED first, because a check
+		# message is routinely written as several -- 298 lines of one suite
+		# file end mid-string -- so a literal search over the raw text
+		# finds almost nothing and would condemn nearly every entry. That
+		# is the shape of error this guard would make if it were wrong, and
+		# it fails loudly rather than quietly.
+		src = ""
+		test_dir = os.path.join(ROOT, "test")
+		for name in sorted(os.listdir(test_dir)):
+			if name.endswith(".cpp"):
+				with open(os.path.join(test_dir, name), encoding="utf-8",
+				          errors="replace") as f:
+					src += f.read()
+		joined = re.sub(r'"\s*\n\s*"', "", src)
+		for e in spec:
+			want = e.get("check", "")
+			if want and want not in joined:
+				# A check message may be BUILT at run time: the grid audit
+				# appends the suite's own name, `"... on the grid (%s)"`, so
+				# the tail of the spelling is in no source file and a
+				# literal search condemns an entry that is perfectly alive.
+				# Measured -- entry 242 reddened 25 checks in the sweep and
+				# this guard flagged it, which is one false finding out of
+				# 618 and exactly the kind that earns a guard an ignore
+				# list. Retry on the part before the last parenthesis.
+				head = want.rsplit("(", 1)[0].strip()
+				if head and head in joined:
+					continue
+				say("sabotage: %s" % e["name"])
+				say("          names a check no suite source carries:")
+				say("            %s" % want)
+				say("          so it is refused when run, and the behaviour")
+				say("          it was written for is undefended.")
+				bad += 1
 		if bad:
 			say("sabotage: %d of %d entries cannot be applied" % (bad, len(spec)))
 			return 1
 		if not spec:
 			say("sabotage: the spec is empty, so validating it proves nothing")
 			return 1
-		say("sabotage: %d entries, every anchor matches its source" % len(spec))
+		# Both halves named, because a pass that reports less than it
+		# checked is quoted afterwards for the half it mentioned.
+		say("sabotage: %d entries, every anchor matches its source and every"
+		    % len(spec))
+		say("          check it names is still spelled that way in test/")
 		return 0
 
 	dirty = subprocess.run(["git", "status", "--porcelain", "--", "src", "test",
