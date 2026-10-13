@@ -18324,6 +18324,86 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.433 One of the eight fixed, seven diagnosed, and what they share (2026-10-14)
+
+**Asked to fix the eight entries 8.432 found failing. One is fixed; the
+other seven are measured and none is fixed**, and the reason is the same
+for all of them, which is worth more than seven separate fixes would have
+been.
+
+**The instrument.** A harness that, for one entry, applies it, builds, runs
+the whole suite and names every check that went PASS to FAIL -- so the
+question "what does breaking this actually defend" is answered by
+measurement instead of by reading. It restores the file under every exit
+path and lives in the scratchpad; whether it earns a place in `tool/` is
+not a call to make while using it.
+
+    entry                                   checks it reddens
+      1  text runs at the same origin              1, and about another subject
+     55  a frameless line edit is boxed anyway     0
+     96  a hairline path filled by the scanline    0
+    136  a window becomes current unfocused        6, all downstream
+    194  readline chords outside a text field      0
+    311  the link handler claims mailto            0
+    585  a shell-out leaves the upload map         0
+    591  the partial-input drop keeps the bytes    0  -- REMOVED
+
+**Six of eight redden nothing at all.** They are not weak entries; they are
+entries whose behaviour a second mechanism produces independently, which is
+8.426's shape measured at scale rather than found by luck.
+
+#### The one that is fixed
+
+`591` sabotaged `paste_.clear()` in `forget_partial_input()`. Since the
+close-with-no-open guard landed, `case 200` clears the buffer on every new
+paste and a stray close delivers nothing, so that line has no behavioural
+consequence left -- it only returns memory. **Removed**, and the entry
+count is 617.
+
+**A count assertion stopped it being re-pointed wrongly.** The obvious move
+was to aim it at the swallow check, and the find string turned out to
+appear twice in the spec: entry `590` already sabotages the observable half
+of the same function, `in_paste_ = false`, and reddens three checks. An
+earlier grep had reported that check undefended, because the spec truncates
+it at a different word. **591 was a duplicate of nothing, not a gap.**
+
+#### Why 136 could not be fixed, which is the instructive one
+
+Its check is "arriving in a window that has never had focus seeds its first
+tab stop", and `adopt_window()` seeds only `if (!w->focusWidget())`. The
+fixture shows `b_win` with one `QLineEdit` in it, and **a shown window gets
+a focus widget from Qt**, so that branch is never entered and the check
+passes for Qt's reason either way.
+
+The obvious fix is to make the fixture arrive with nothing focused, and it
+was tried: `if (QWidget *had = b_win.focusWidget()) had->clearFocus();`
+before the switch. **Measured inert** -- the suite stayed green, the key
+still reached the field, the probe reported `win.focusWidget=QLineEdit`
+with the seeding disabled, and the entry still failed. **Reverted rather
+than left in place**, because a change whose comment claims it reaches a
+branch it does not reach is worse than no change: the next reader would
+trust it.
+
+#### And 585, where three sites were ruled out
+
+The shell-out check re-transmits a kitty picture after `suspend()` and
+`resume()`. Disabling `resume()`'s own `forget_uploads()` leaves
+`after_shell` true; disabling the `cell_px` site beside it as well **still**
+leaves it true, and `suspend()` sets only `active_ = false`. So the
+re-transmission comes from a mechanism none of those three explains, and
+the check cannot isolate the call it was written for. The sibling entry for
+the SIGCONT route reddens correctly, so the two routes 8.411 added are not
+equally defended -- one is, one is not.
+
+**What this says about the spec as a whole.** 8.426 treated an inert entry
+as an accident. At 618 entries the rate is **13 broken, of which 8 are this
+shape**, and in every case examined the cause is a second mechanism rather
+than a drifted anchor. So the question for each is not "repair the entry"
+but **"which of these two mechanisms is the one the project means to
+keep"** -- and that is a design question per entry, not a maintenance pass.
+Seven of them are open, with their measurements here so the next reader
+starts from the answer rather than the search.
+
 ### 8.432 The whole sabotage spec run, and what it found (2026-10-13)
 
 **Run on the copyright holder's instruction**: all 618 entries, 17:05 to

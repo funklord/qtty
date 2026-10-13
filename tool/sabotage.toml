@@ -6206,14 +6206,6 @@ count = 1
 check = "a paste left open when the terminal was handed over does not swallow"
 
 [[sabotage]]
-name = "the partial-input drop keeps the bytes the abandoned paste collected"
-file = "src/backend/ansi/ansi_backend.cpp"
-find = "\tpaste_.clear();\n\tin_paste_ = false;"
-into = "\tin_paste_ = false;"
-count = 1
-check = "does not deliver what the abandoned paste had already collected"
-
-[[sabotage]]
 name = "a font chosen too late is stored and nothing says so"
 file = "src/grid/grid_style.cpp"
 find = "\tif (is_tui_active())\n\t\tqWarning(\"qtty: set_font(%s, %d) after setup() has no effect"
