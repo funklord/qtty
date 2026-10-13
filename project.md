@@ -18324,6 +18324,60 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.434 A second of the eight fixed, and a third entry this session broke (2026-10-14)
+
+**`55` is fixed.** Its check renders a three-row spin box and counts top-left
+corners, expecting exactly one: the spin box's own box, and none from the
+frameless `QLineEdit` inside it. Removing the frameless early return should
+add a second corner.
+
+It does not, and the reason is 9c34bf8. **That commit inset a framed
+editor to the rows INSIDE the frame**, so at three rows the spin box's
+editor is one row tall -- and the box is drawn by
+`if (c.height() >= 2)`, which the fall-through can no longer reach. The
+rule became unobservable through the only widget the fixture offered it.
+
+**That is the third entry this session's own work silenced**, after the two
+8.433 describes. Each time the fix was right and the entry's visibility was
+collateral, which is the argument for the sweep being periodic rather than
+a one-off: the entries that go quiet are the ones near where the work is
+happening.
+
+The fixture now carries a frameless `QLineEdit` of its own, three rows
+tall, where the early return is the only thing between it and a box:
+
+    a 3-row spin box shows 1 corner, a framed editor 1, a frameless one 0
+
+and the entry reddens again.
+
+#### `96` diagnosed, not fixed
+
+Its check fills a 1x19 pixel path over a blank cell and asserts the cell
+goes red. Disabling the `is_thin(path.boundingRect())` branch leaves it
+green, and the measurements rule out every mechanism the code suggests:
+
+    is_thin branch off                              green
+    is_thin + the row-band fallback off             green
+    is_thin + the pen/stroke branch off             green
+    all three off                                   green
+
+**And the sabotaged build was proved to be the one running** -- a marker
+printed from `drawPath` appeared 35 times, with the fixture's own call
+visible as `bbox 1x19+20+0`, so this is not the stale-artifact trap that
+has caught this session once already.
+
+So `fill_polygon`'s ordinary scanline colours that cell by itself, and the
+`drawPath` branch is redundant for an axis-aligned thin shape -- which is
+every shape it can fire for, since a thin DIAGONAL has a bounding
+rectangle that is not thin. **The discriminating experiment is left
+named**: a thin shape spanning several cells, comparing which cells each
+road colours, because the two apply their blank-cell rule at different
+granularities and that is where they could still differ. Until somebody
+runs it, the branch stays and the entry cannot defend it.
+
+**Running total: two of the eight fixed, four diagnosed, two untouched**
+(`1` and the readline and mailto pair at `194` and `311`).
+
 ### 8.433 One of the eight fixed, seven diagnosed, and what they share (2026-10-14)
 
 **Asked to fix the eight entries 8.432 found failing. One is fixed; the

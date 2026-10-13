@@ -1596,7 +1596,33 @@ int suite_widgets() {
 		for (int x = 0; x < pb.cols(); ++x)
 			if (pb.at(x, 0).ch == QStringLiteral("┌")) framed = true;
 
-		CHECK(corners == 1 && framed,
+		// AND ONE TALL ENOUGH TO BE BOXED IF THE RULE WERE DROPPED, which
+		// the spin box above no longer is. Its editor is the frameless one,
+		// and 9c34bf8 inset that editor to the rows INSIDE the frame -- so
+		// at three rows it is one row tall, the `c.height() >= 2` arm that
+		// draws the box cannot be reached, and removing the frameless
+		// early return changes nothing. Measured by the full sweep: the
+		// entry for that rule reddened no check at all.
+		//
+		// A frameless editor of its own, three rows tall, restores the
+		// question: the early return is the only thing standing between it
+		// and a box.
+		QLineEdit bare;
+		bare.setFrame(false);
+		bare.setText(QStringLiteral("hi"));
+		bare.setAttribute(Qt::WA_DontShowOnScreen);
+		bare.resize(GridMetrics::cells(14, 3));
+		bare.show();
+		QCoreApplication::processEvents();
+		CellBuffer bb(14, 3);
+		render_once(bare, bb);
+		bool bare_boxed = false;
+		for (int x = 0; x < bb.cols(); ++x)
+			if (bb.at(x, 0).ch == QStringLiteral("┌")) bare_boxed = true;
+		printf("info: a 3-row spin box shows %d corner(s), a framed editor"
+		       " %d, a frameless one %d\n", corners, int(framed),
+		       int(bare_boxed));
+		CHECK(corners == 1 && framed && !bare_boxed,
 		      "a frameless line edit draws no box and a framed one still"
 		      " does");
 	}
