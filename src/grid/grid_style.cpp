@@ -1627,16 +1627,41 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		// and draws it AFTER the title, so it overwrote whatever the title
 		// had put there. Measured on a fourteen-cell box titled "Advanced":
 		// the buffer read "[x]anced".
+		//
+		// At the TRAILING edge under RightToLeft, by leading_edge(), because
+		// Qt puts it there and the title already moved without it. Measured
+		// on a real Fusion group box by diffing checked against unchecked --
+		// which localises the indicator's own mark without the frame's ink,
+		// and builds no style option, after 8.429 -- the mark moves at
+		// x=3..12 of 200 one way round and x=187..196 the other, an exact
+		// mirror. This style drew `[x]` in cells 0..2 both ways while its
+		// title went to the far end, leaving the indicator detached from the
+		// words it belongs to and on the side no built-in style uses.
+		//
+		// One change moves the picture as well as the hit target: Qt's
+		// CC_GroupBox asks this rectangle and draws PE_IndicatorCheckBox
+		// into it, so the two cannot part company here -- which is the
+		// opposite of the spin box and the tool button, where the drawing
+		// carries its own arithmetic.
 		case SC_GroupBoxCheckBox:
-			return checkable ? QRect(r.left(), r.top(), 3 * cw, ch) : QRect();
+			return checkable
+			    ? QRect(leading_edge(r.left(), r.right(), 0, 3 * cw,
+			                         opt->direction),
+			            r.top(), 3 * cw, ch)
+			    : QRect();
 		// And the title starts after it. Reserving the cells is the half
 		// that makes the fix sound at any cell size: moving the indicator
 		// alone would leave the title centred across it again on a box
 		// narrow enough, which is exactly the case this was found in.
 		case SC_GroupBoxLabel: {
 			const int in = checkable ? 4 * cw : 0;
-			return title ? QRect(r.left() + in, r.top(),
-			                     qMax(cw, r.width() - in), ch)
+			// And the label keeps its WIDTH and changes which end it starts
+			// at, so the cells it gives up to the indicator are the ones on
+			// the indicator's side.
+			const int wide = qMax(cw, r.width() - in);
+			return title ? QRect(leading_edge(r.left(), r.right(), in, wide,
+			                                  opt->direction),
+			                     r.top(), wide, ch)
 			             : QRect();
 		}
 		case SC_GroupBoxFrame:

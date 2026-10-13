@@ -6420,3 +6420,11 @@ find = "\tif (sl->upsideDown) pos = len - 1 - pos;"
 into = "\tif (false) pos = len - 1 - pos;"
 count = 1
 check = "and a mirrored one puts it the same distance from the other"
+
+[[sabotage]]
+name = "a checkable group box keeps its indicator at the left either way"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t    ? QRect(leading_edge(r.left(), r.right(), 0, 3 * cw,\n\t\t\t                         opt->direction),\n\t\t\t            r.top(), 3 * cw, ch)"
+into = "\t\t\t    ? QRect(r.left(), r.top(), 3 * cw, ch)"
+count = 1
+check = "and a mirrored one carries it in the last three, with the"

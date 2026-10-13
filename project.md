@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2165 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2167 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18323,6 +18323,82 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.430 A checkable group box's indicator stayed on the left (2026-10-13)
+
+**The fifth of 8.425's 36, and a real one** -- found by asking the question
+8.428 raised rather than by converting a fixture: *what else is drawn in
+these cells?* A check box, a radio button and a group box all draw an
+indicator beside a label, which is the shape that cost 8.428.
+
+The group box was half mirrored. Its title moved to the far end under
+`Qt::RightToLeft` -- Qt's own `drawItemText` mirrors a logical alignment --
+and `SC_GroupBoxCheckBox` answered `r.left()` unconditionally:
+
+    ltr [[x] Gp        ]
+    rtl [[x]         Gp]     title moved, indicator did not
+
+So the indicator sat detached from the words it belongs to, on the side no
+built-in style uses.
+
+**Settled with no style option built by hand**, which is 8.429's lesson
+applied the same day it was learned. A real Fusion `QGroupBox` rendered to
+pixels, and the indicator localised by diffing CHECKED against UNCHECKED so
+that the frame's own ink cannot be mistaken for it:
+
+    fusion ltr  the mark moves at x=3..12 of 200
+    fusion rtl  the mark moves at x=187..196
+
+an exact mirror, `200 - 1 - 12 == 187`. The first attempt at this probe
+measured the leftmost ink in the title band and reported `0..199` both ways,
+because the frame draws across that band -- **a probe that cannot
+distinguish the thing it is aimed at from the thing beside it**, which the
+checked-against-unchecked diff fixes by construction.
+
+Both rects take `leading_edge()` now -- the indicator at the leading edge,
+the label keeping its width and changing which end it starts at:
+
+    ltr [[x] Gp        ]   indicator 0..2, title 4..5
+    rtl [        Gp [x]]   indicator 11..13, title 8..9
+
+**One change moves the picture as well as the hit target, and that is worth
+naming because it is the exception here.** Qt's `CC_GroupBox` asks
+`SC_GroupBoxCheckBox` and draws `PE_IndicatorCheckBox` into it, so the two
+cannot part company. The spin box, the combo and the tool button each carry
+their own arithmetic in the drawing, which is why those needed the pairing
+checked and this one does not.
+
+**What the probe also showed, and is NOT a finding.** A `QCheckBox` and a
+`QRadioButton` rendered standalone drew their indicator and no label at
+all, in BOTH directions. Equal in both is not a mirroring fault, and the
+suite already asserts a check box's label elsewhere, so this is the
+fixture -- a top-level widget resized and shown -- rather than the code.
+Recorded so the next reader does not chase it: **an anomaly that is
+symmetric under the variable you are testing is evidence about your
+harness.**
+
+**And the differential test is load-sensitive, which cost a diagnosis
+here.** `test-platforms` failed on this change with two checks red under
+xcb -- "the GUI side of the differential is a genuinely active window" and
+the model-state comparison that depends on it. Its own diagnostic says
+what happened:
+
+    GUI [][] check=0 row=-1 clicks=0 on=first
+    TUI [a][] check=0 row=-1 clicks=0 on=first
+
+The GUI side received NO input, which is an Xvfb window failing to
+activate rather than a disagreement about behaviour. Three lines agree it
+was environmental: the machine was at **load 213 of 24 cores** from
+another account's work; `leading_edge()` is `r.left() + off` under
+`LeftToRight`, byte-identical to what it replaced, so this change cannot
+reach a differential that sets no direction; and a re-run passed with 0
+failed at load 156. **Recorded rather than waved away** -- a concurrent-load
+story is a candidate and not a conclusion, so the re-run is what settled
+it, and the next session to meet this check should know it is timing
+sensitive before reading it as a regression.
+
+Five of the 36 are done now. Two found real defects, one found a defect
+that was not there, two held.
 
 ### 8.429 The slider defect that was not there (2026-10-13)
 

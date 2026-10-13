@@ -8988,6 +8988,62 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+
+	// A CHECKABLE GROUP BOX'S INDICATOR MIRRORS, which it did not: the
+	// title moved to the far end under Qt::RightToLeft and `[x]` stayed in
+	// cells 0 to 2, leaving the indicator detached from the words it belongs
+	// to and on the side no built-in style uses.
+	//
+	// Settled against a REAL Fusion widget rendered to pixels, with no style
+	// option built by hand -- which is 8.429's lesson, where a fabricated
+	// `QStyleOptionSlider` invented a defect that was not there. The
+	// indicator was localised by diffing CHECKED against UNCHECKED, so the
+	// frame's own ink cannot be mistaken for it:
+	//
+	//     fusion ltr  the mark moves at x=3..12 of 200
+	//     fusion rtl  the mark moves at x=187..196
+	//
+	// an exact mirror, 200 - 1 - 12 == 187.
+	//
+	// Asserted here off the rendered CELLS for the same reason. The hit
+	// target needs no separate assertion in this one case: Qt's CC_GroupBox
+	// asks SC_GroupBoxCheckBox and draws PE_IndicatorCheckBox into it, so
+	// the picture and the click cannot part company -- unlike the spin box
+	// and the tool button, where the drawing carries its own arithmetic and
+	// the pairing has to be checked.
+	{
+		const int cols = 14;
+		struct Shot { int ind, title; };
+		const auto shot = [cols](Qt::LayoutDirection d) {
+			QApplication::setLayoutDirection(d);
+			QGroupBox g(QStringLiteral("Gp"));
+			g.setCheckable(true);
+			g.setLayoutDirection(d);
+			g.setAttribute(Qt::WA_DontShowOnScreen);
+			g.resize(GridMetrics::cells(cols, 3));
+			g.show();
+			QCoreApplication::processEvents();
+			CellBuffer b(cols, 3);
+			render_once(g, b);
+			QString row;
+			for (int x = 0; x < b.cols(); ++x) row += b.at(x, 0).ch;
+			QApplication::setLayoutDirection(Qt::LeftToRight);
+			return Shot{int(row.indexOf(QLatin1Char('['))),
+			            int(row.indexOf(QStringLiteral("Gp")))};
+		};
+		const Shot l = shot(Qt::LeftToRight), r = shot(Qt::RightToLeft);
+		printf("info: a checkable group box puts its indicator at cell %d"
+		       " and its title at %d; mirrored, %d and %d\n",
+		       l.ind, l.title, r.ind, r.title);
+		CHECK(l.ind == 0 && l.title > l.ind + 2,
+		      "a left-to-right group box carries its check indicator in the"
+		      " first three cells and its title after them");
+		CHECK(r.ind == cols - 3 && r.title >= 0 && r.title + 1 < r.ind,
+		      "and a mirrored one carries it in the last three, with the"
+		      " title before it, which is where Qt puts them");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 
