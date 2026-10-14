@@ -16,10 +16,18 @@
 # shelf life measured in commits.
 
 [[sabotage]]
+# BOTH TERMS, because either alone saves the case. The `>` is what stops a
+# selected field's second run -- Qt draws it at the same origin, once
+# clipped to the selection and once for the rest -- being read as
+# consecutive with the first and pushed right. `clip == last_clip_` refuses
+# the join anyway, that selected run carrying its own clip, so relaxing the
+# comparison on its own changed nothing and this entry reported on the pair
+# while naming one. The sibling that disables the whole guard keeps its own
+# anchor and is unaffected.
 name = "text runs at the same origin are consecutive"
 file = "src/render/cell_paint.cpp"
 find = "if (row == last_row_ && q.x() > last_x_ && col < last_end_col_\n\t    && clip == last_clip_)"
-into = "if (row == last_row_ && q.x() >= last_x_ && col < last_end_col_\n\t    && clip == last_clip_)"
+into = "if (row == last_row_ && q.x() >= last_x_ && col < last_end_col_)"
 count = 1
 check = "selecting a field's text does not draw it twice"
 
@@ -1886,10 +1894,17 @@ check = "Ctrl+Shift+K is not the readline kill"
 # The per-widget test dropped, so Ctrl+A takes start-of-line everywhere and a
 # list view loses Qt's Select All. That is the global answer the Ctrl+C
 # precedent was chosen over. 8.146.
+# BOTH guards, because either one alone saves the case and the entry then
+# reports on the pair while naming one. The attribute test and the item-view
+# test are seventeen lines apart, so the anchor spans the comment between
+# them -- deliberately: an edit to that comment makes this entry fail
+# --validate loudly rather than go quiet, which is the trade this spec
+# prefers. The item-view guard also has an entry of its own, so it is proven
+# independently and this one proves the pair.
 name = "readline chords apply outside a text field too"
 file = "src/runtime/input_router.cpp"
-find = "\tif (!fw || !fw->testAttribute(Qt::WA_InputMethodEnabled)) return false;"
-into = "\tif (!fw) return false;"
+find = "\tif (!fw || !fw->testAttribute(Qt::WA_InputMethodEnabled)) return false;\n\t// AND NOT AN ITEM VIEW, the fourth place this attribute was asked a\n\t// question it does not answer. The guide promises that Ctrl+A is\n\t// decided per widget -- start of line where a caret is, Qt's Select\n\t// All in a list, a tree or a table -- and for the commonest list in\n\t// Qt that promise was false: a QListView over QStringListModel has\n\t// editable items, so it carries WA_InputMethodEnabled and these\n\t// chords fired on it. Measured, with five rows and the current one at\n\t// the bottom:\n\t//\n\t//     QListWidget, items not editable   Ctrl+A selected 5\n\t//     QListView + QStringListModel      Ctrl+A selected 1, and the\n\t//                                       current row jumped 4 -> 0\n\t//\n\t// Home wearing Select All's clothes. An open editor is a QLineEdit\n\t// and is the key target in its own right, so a real caret inside a\n\t// view keeps every chord.\n\tif (qobject_cast<QAbstractItemView *>(fw)) return false;"
+into = "\tif (!fw) return false;\n\t// AND NOT AN ITEM VIEW, the fourth place this attribute was asked a\n\t// question it does not answer. The guide promises that Ctrl+A is\n\t// decided per widget -- start of line where a caret is, Qt's Select\n\t// All in a list, a tree or a table -- and for the commonest list in\n\t// Qt that promise was false: a QListView over QStringListModel has\n\t// editable items, so it carries WA_InputMethodEnabled and these\n\t// chords fired on it. Measured, with five rows and the current one at\n\t// the bottom:\n\t//\n\t//     QListWidget, items not editable   Ctrl+A selected 5\n\t//     QListView + QStringListModel      Ctrl+A selected 1, and the\n\t//                                       current row jumped 4 -> 0\n\t//\n\t// Home wearing Select All's clothes. An open editor is a QLineEdit\n\t// and is the key target in its own right, so a real caret inside a\n\t// view keeps every chord.\n\tif (false) return false;"
 count = 1
 check = "and outside a text field it is still Select All"
 

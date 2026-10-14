@@ -18324,6 +18324,78 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.435 Keep both guards, and make the entry break both (2026-10-14)
+
+**Settled by the copyright holder 2026-10-14**, on the question 8.433 and
+8.434 left open three times: where two mechanisms independently produce a
+behaviour, both stay and the entry is the thing that changes -- it breaks
+all of them, so the check is defended again without anybody deciding which
+guard is redundant.
+
+**Applied, and it fixes four of the eight.** Two more than the rule was
+asked for, because looking for the second mechanism is what found the
+first two as well.
+
+    1    text runs at the same origin      FIXED -- also drops `clip == last_clip_`
+    55   a frameless line edit is boxed    FIXED -- the fixture needed a taller editor
+    194  readline chords outside a field   FIXED -- also drops the item-view guard
+    591  the partial-input drop            REMOVED -- a duplicate of nothing
+
+`1` names the `>` that stops a selected field's second run, drawn at the
+same origin once clipped to the selection and once for the rest, being read
+as consecutive and pushed right. **`clip == last_clip_` in the same
+condition refuses the join anyway**, that run carrying its own clip, so
+relaxing the comparison alone changed nothing. Both terms go now, and the
+sibling entry that disables the whole guard keeps its own anchor.
+
+`194` names the attribute test that keeps the readline chords inside a text
+field. **An item-view test seventeen lines below refuses them again**, and
+the check uses a list, so the attribute test alone was invisible. The
+anchor spans both and therefore spans the comment between them -- chosen
+deliberately: an edit to that comment makes the entry fail `--validate`
+loudly rather than go quiet, which is the trade this spec prefers. The
+item-view guard keeps its own entry, so it stays proven on its own and
+this one proves the pair.
+
+**Two count assertions stopped two wrong edits**, which is the second and
+third time today. `1`'s find text appears twice in the spec -- a sibling
+sabotages the same two lines differently -- so a global replace would have
+rewritten both; and `591`'s appeared twice for the same reason. Both were
+caught before anything was written.
+
+#### Where the rule does not reach, and why each is different
+
+**`311` has only one mechanism.** The fixture registers its own `mailto`
+handler, and `QDesktopServices::setUrlHandler` REPLACES any existing one
+for a scheme -- so the fixture erases whatever the sabotage registered, by
+Qt's API semantics rather than by a second guard. The only way to observe
+an unclaimed scheme without an application handler is to let the URL
+escape, which that fixture refuses on purpose: it once launched **mutt**
+through `xdg-open` and left it orphaned to init.
+
+**`136`'s second mechanism is Qt's.** `adopt_window()` seeds focus only
+`if (!w->focusWidget())`, and a shown window already has one, so the branch
+is never entered. Nothing here can break Qt's seeding.
+
+**`96`'s second road is the general one.** With `is_thin` disabled the fill
+goes to `fill_polygon`, whose ordinary scanline colours the same cell --
+proved by disabling the row-band fallback and the pen branch as well, in
+every combination, all four runs green, with a marker confirming the
+sabotaged build was the one running. Breaking `fill_polygon` would redden
+hundreds of checks, so there is no pair to break.
+
+**`585`'s second mechanism is a data structure, not a guard.**
+`ImageEncodeKey` carries `cell_px` and `font_px`, so a shell-out that
+re-queries the terminal's cell size changes the key, misses the map and
+re-transmits whatever the upload map says. Three call sites and
+`suspend()` were ruled out by measurement before this was found.
+
+**So the rule is right and the remainder is not the same problem.** Four
+entries had a second GUARD and are fixed. The other four are a fixture
+erasing its own sabotage, a guard belonging to Qt, a special case of a
+general path, and a cache key -- and each wants a different answer, which
+is why none of them is a line to add to this pass.
+
 ### 8.434 A second of the eight fixed, and a third entry this session broke (2026-10-14)
 
 **`55` is fixed.** Its check renders a three-row spin box and counts top-left
