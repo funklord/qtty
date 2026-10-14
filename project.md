@@ -18324,6 +18324,42 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.437 The state lens, empty, and the detector that nearly lied twice (2026-10-14)
+
+**A lens with nothing in it, recorded because an empty sweep is a
+measurement only if its method is, and because the detector was wrong
+before it was right.**
+
+The mirroring family is structurally closed by 8.431, so the question moved
+from WHERE a control is drawn to WHAT STATE it is drawn in: for every case
+in `drawControl`, `drawComplexControl` and `drawPrimitive`, which of
+disabled, focus, selection, sunken and on does it consult? A control that
+draws focus and never dims is the shape of a defect this tree has already
+had -- "a disabled item's label was not dim, while the rest of its row
+was".
+
+**The first detector named four suspects and all four were false.**
+`PanelItemViewRow`, `PushButtonLabel`, `TabBarTab` and `ToolBoxTabLabel`
+appeared to draw focus or selection and never call `with_state()`. They
+all reach it -- through `label_attrs()`, which calls `with_state()` on the
+caller's behalf. **The detector could not see one level of indirection**,
+which is this file's own "a count inherits its detector" with the
+indirection standing in for the pattern.
+
+Corrected, 29 of 50 cases write cells and **two** never reach state by
+either road:
+
+    PanelItemViewRow   harmless: CE_ItemViewItem fills the whole item with
+                       with_state()'s attributes, so the band cells get the
+                       dim anyway -- measured, a disabled row's band-only
+                       cell carries Dim=1 exactly as its text cell does
+    RubberBand         has no disabled state to carry
+
+So the lens is spent. **What it is worth is the negative**: state reaches
+the cells through two roads and the indirect one is the common case, so a
+future sweep of this kind has to look for `label_attrs()` as well or it
+will produce the same four false names.
+
 ### 8.436 All eight resolved, and twice the first diagnosis was wrong (2026-10-14)
 
 **The holder's rule finishes the job: all eight of 8.432's failing entries
