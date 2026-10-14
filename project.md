@@ -18324,6 +18324,43 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.438 The spec re-swept: 617 of 617 (2026-10-14)
+
+**The verification 8.436 said it owed.** Each of the eight fixes was proved
+on its own; nothing had confirmed the other 609 were undisturbed. Re-run
+end to end, 15:59 to 23:51, seven hours fifty-two minutes:
+
+    617 entries
+      612  reddened the check they name
+        5  the suite could not finish, which those entries expect
+        0  FAILED
+        0  REFUSED
+        0  without a verdict
+
+**Every entry in the spec now defends the check it names**, where the first
+sweep had 13 that did not.
+
+**And the tree came back**: all 55 sources byte-identical to a snapshot
+taken before the run, 28 files restored, with `src/`, `include/` and
+`test/` clean at the start so the tool's own dirty-tree guard stayed
+active rather than being waived.
+
+**Coverage moved with it.** Distinct checks reddened by at least one entry
+went from **1207 to 1216** of 2169 -- nine more, which is the eight repairs
+plus `311` landing on a registration that had no entry at all. The
+remaining 953 are not all undefended: controls, info lines and population
+assertions are not meant to fall to a single edit, so that figure stays a
+ceiling on coverage rather than a gap, and separating the two is still
+nobody's work.
+
+**What the pair of sweeps is worth as a measurement.** The first found 13
+broken of 618 and cost 6h41m; this one found 0 of 617 and cost 7h52m on a
+machine another account was also using. **So the spec's health is a known
+quantity rather than an assumption**, and the next sweep's job is to catch
+the next drift -- which, on this session's evidence, arrives from ordinary
+correct work rather than from neglect: three entries went quiet because
+fixes near them were right.
+
 ### 8.437 The state lens, empty, and the detector that nearly lied twice (2026-10-14)
 
 **A lens with nothing in it, recorded because an empty sweep is a
