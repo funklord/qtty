@@ -1053,23 +1053,31 @@ int suite_router() {
 		// in a window nobody can see -- so the untouched field is the half
 		// that says where it did NOT go.
 		Qtty::set_current_window(&b_win);
+
+		// ASSERTED AT ARRIVAL, BEFORE ANY KEY, which is what the sentence
+		// says and what the old order could not test. It used to sit after the
+		// key press, and the router seeds the first tab stop ITSELF when a key
+		// arrives with nothing focused -- so this passed on the router's
+		// fallback whether adopt_window() had run or not.
+		//
+		// Measured by staging the state rather than reading it: with the
+		// seeding disabled, b_win.focusWidget() is none after the switch and a
+		// QLineEdit after the key. Two mechanisms in two files, so no single
+		// sabotage entry can break both -- asserting at arrival is what
+		// separates them. An earlier note said Qt seeded the window on show()
+		// so the branch was never entered; that was measured after the key
+		// press and was wrong.
+		const QVector<QWidget *> b_stops = Qtty::keyboard_reachable(&b_win);
+		CHECK(!b_stops.isEmpty() && Qtty::focusWidget() == b_stops.first(),
+		      "arriving in a window that has never had focus seeds its first "
+		      "tab stop");
+
 		router.on_key({Qt::Key_B, QStringLiteral("b"), false, false, false});
 		QCoreApplication::processEvents();
 		CHECK(b_edit->text() == QStringLiteral("b")
 		      && a_edit->text() == QStringLiteral("a"),
 		      "a key after a window switch reaches the window on screen and "
 		      "not the one left behind");
-
-		// And it had a target to reach at all. A desktop Qt seeds a window's
-		// focus on activation; nothing activates here, so a window opened
-		// after exec() had no focus widget and the switch above would have
-		// had nowhere to deliver to. Asserted against keyboard_reachable(),
-		// which is what decides a tab stop for Tab -- naming the widget would
-		// let focus be seeded somewhere Tab cannot go and still pass.
-		const QVector<QWidget *> b_stops = Qtty::keyboard_reachable(&b_win);
-		CHECK(!b_stops.isEmpty() && Qtty::focusWidget() == b_stops.first(),
-		      "arriving in a window that has never had focus seeds its first "
-		      "tab stop");
 
 		// A popup belongs to the window it was opened in, and on a desktop it
 		// closes when that window deactivates. Nothing deactivates here, so a

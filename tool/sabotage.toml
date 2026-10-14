@@ -819,10 +819,21 @@ count = 1
 check = "an unsupported widget too small for a box is still a mark"
 
 [[sabotage]]
-name = "a hairline path is filled by the scanline that cannot see it"
+# BOTH ROADS, which is the whole brush block: the thin branch routes a
+# hairline to fill_rectf, and the else branch routes everything else to
+# fill_polygon -- whose ordinary scanline colours the SAME cell, so
+# disabling the thin branch alone changed nothing. Measured in four
+# combinations, the row-band fallback and the pen branch included, all four
+# green, with a marker proving the sabotaged build was the one running.
+#
+# Broader than the name it replaced, and deliberately: the two branches are
+# the only content of that `if`, so breaking both IS breaking the block.
+# It reddens seven checks, which is the cost of the pair being
+# indistinguishable from outside.
+name = "a path with a brush fills on neither road"
 file = "src/render/cell_paint.cpp"
-find = "\t\tif (is_thin(path.boundingRect())) {"
-into = "\t\tif (false) {"
+find = "\tif (brush_.style() != Qt::NoBrush) {"
+into = "\tif (false) {"
 count = 1
 check = "a hairline drawn as a PATH colours the blank cell it lands on"
 
@@ -3177,12 +3188,25 @@ check = "keeps the scheme through a run"
 # A scheme claimed that has no right answer on a terminal, so an
 # application that would have handled mailto: itself -- or read the
 # false and said something useful -- never hears about it. 8.236.
-name = "the link handler claims mailto as well"
+# REPURPOSED, not repaired, and the distinction is the point. As written
+# this added a `mailto` handler and asked a check to notice -- and nothing
+# can: QDesktopServices::setUrlHandler REPLACES any handler for a scheme,
+# the fixture registers its own `mailto` before openUrl(), so whatever this
+# registered is gone by the time anything looks. Measured: the sabotage
+# reddens zero of 2169 checks. The only way to observe an unclaimed scheme
+# with no application handler is to let the URL escape, which that fixture
+# refuses on purpose -- it once launched mutt through xdg-open and left it
+# orphaned to init.
+#
+# So the property it named is untestable here and is recorded as such. What
+# IS observable, and had no entry at all while seven checks rested on it,
+# is that qtty registers the scheme it says it does.
+name = "the link handler stops claiming https"
 file = "src/runtime/application.cpp"
 find = "\tQDesktopServices::setUrlHandler(QStringLiteral(\"https\"), opener, \"open_url\");"
-into = "\tQDesktopServices::setUrlHandler(QStringLiteral(\"https\"), opener, \"open_url\");\n\tQDesktopServices::setUrlHandler(QStringLiteral(\"mailto\"), opener, \"open_url\");"
+into = "\t;"
 count = 1
-check = "a scheme qtty does not claim"
+check = "an application's QDesktopServices::openUrl() is accepted"
 
 [[sabotage]]
 # The fold widened out of reach, which is the state the first version of
@@ -6173,10 +6197,19 @@ count = 1
 check = "a backend that still owes the screen something is handed a frame"
 
 [[sabotage]]
+# EMPTIED AT THE FUNCTION rather than at one of its callers, because either
+# caller alone saves the case. resume() carries a call for the shell-out
+# route and the SIGCONT handover block carries another, and disabling the
+# first left the picture re-transmitted: measured, `after a shell-out 1`
+# with resume()'s call gone and `0` once the handover block's went too.
+# Three call sites and suspend() were ruled out one at a time before the
+# pair was found. The sibling entry disables the handover block alone and
+# still reddens the SIGCONT check, so that route stays proven on its own
+# and this entry proves the function every route depends on.
 name = "a shell-out leaves the upload map claiming the terminal still holds them"
 file = "src/backend/ansi/ansi_backend.cpp"
-find = "\tif (!first_resume_) forget_uploads();"
-into = "\tif (false) forget_uploads();"
+find = "\tfor (const quint32 id : std::as_const(wire_id_)) free_wire_ids_.append(id);\n\twire_id_.clear();\n\tupload_order_.clear();"
+into = "\t(void)0;"
 count = 1
 check = "and again after a shell-out it did not survive"
 

@@ -18324,6 +18324,81 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.436 All eight resolved, and twice the first diagnosis was wrong (2026-10-14)
+
+**The holder's rule finishes the job: all eight of 8.432's failing entries
+are resolved.** Six break every mechanism now, one is gone and one is
+repurposed, and `--validate` passes over 617.
+
+    1    text runs at the same origin     both terms: `>` and `clip == last_clip_`
+    55   a frameless line edit is boxed   fixture: an editor tall enough to box
+    96   a path fills on neither road     both roads: the whole brush block
+    136  a window becomes current         fixture: assert at arrival, not after a key
+    194  readline chords outside a field  both guards: attribute and item view
+    311  the link handler stops https     repurposed; the old property is untestable
+    585  a shell-out leaves the map       the FUNCTION, not either caller
+    591  the partial-input drop           removed, a duplicate of nothing
+
+#### Two fixes the shape of the pair decided
+
+**`585`'s two callers are five hundred lines apart**, so no spanning anchor
+was possible -- the entry empties `forget_uploads()` itself instead, which
+is the one edit every route depends on. `resume()` carries the call for a
+shell-out and the SIGCONT handover block carries another; disabling the
+first left `after a shell-out 1`, and disabling both gave `0`. **Three call
+sites and `suspend()` were ruled out one at a time before the pair was
+found**, and the sibling entry still breaks the handover block alone, so
+that route stays proven on its own.
+
+**`96`'s two roads are the only content of one `if`**, so breaking the
+brush block IS breaking both. It reddens seven checks, which is the price
+of a pair that is indistinguishable from outside, and the name says what it
+breaks now rather than naming the thin road alone.
+
+#### And twice the first diagnosis was wrong, for the same reason
+
+`136` and `585` were both written up as unfixable, and both were fixed
+within the hour once the state was STAGED rather than read at the end.
+
+For `136` the probe printed the focus widget after the key press, saw a
+`QLineEdit` and blamed Qt for seeding it on `show()`. Printing at each step
+says otherwise:
+
+    before the switch    none
+    after the switch     QLineEdit     <- adopt_window(), the branch under test
+    after the key        QLineEdit
+
+and with the seeding disabled, `after the switch` is none and `after the
+key` is a `QLineEdit` -- **the router seeds the first tab stop itself when a
+key arrives with nothing focused.** Two mechanisms in two files, so no entry
+can break both; the check moved to arrival, where only one of them has run.
+8.433 and 8.435 are corrected in place.
+
+**The lesson is about when to look, not how hard.** A value read after
+several steps is evidence about the last one. Both wrong diagnoses blamed
+the component whose name was nearest the symptom, and both fell to the same
+remedy: print the thing at every step and let the transition name its own
+cause.
+
+#### Where a pair did not exist
+
+**`311` is repurposed and that is not a repair.** As written it added a
+`mailto` handler for a check to notice, and nothing can:
+`setUrlHandler` REPLACES a scheme's handler and the fixture registers its
+own before `openUrl()`, so the sabotage is gone before anything looks --
+**measured, it reddens zero of 2169.** Observing an unclaimed scheme with no
+application handler means letting the URL escape, which that fixture
+refuses on purpose, having once launched `mutt` through `xdg-open` and left
+it orphaned to init.
+
+So the property is recorded as untestable, and the entry now guards the one
+that is observable and **had no entry at all while seven checks rested on
+it**: that qtty registers the scheme it says it does.
+
+**What is not yet known** is whether these eight edits left the other 609
+alone. Each was proved individually; only the six-hour sweep answers the
+rest, and it has not been re-run.
+
 ### 8.435 Keep both guards, and make the entry break both (2026-10-14)
 
 **Settled by the copyright holder 2026-10-14**, on the question 8.433 and
@@ -18373,9 +18448,13 @@ an unclaimed scheme without an application handler is to let the URL
 escape, which that fixture refuses on purpose: it once launched **mutt**
 through `xdg-open` and left it orphaned to init.
 
-**`136`'s second mechanism is Qt's.** `adopt_window()` seeds focus only
-`if (!w->focusWidget())`, and a shown window already has one, so the branch
-is never entered. Nothing here can break Qt's seeding.
+**`136`'s second mechanism is the ROUTER'S, and this entry first said it
+was Qt's, which was wrong.** `adopt_window()` seeds focus only
+`if (!w->focusWidget())`, and the window genuinely arrives with none -- so
+the branch IS entered. What covered the sabotage is that the router seeds
+the first tab stop itself when a key arrives with nothing focused, and the
+check sat after the key press. Settled in 8.436 by staging the state
+instead of reading it.
 
 **`96`'s second road is the general one.** With `is_thin` disabled the fill
 goes to `fill_polygon`, whose ordinary scanline colours the same cell --
@@ -18496,19 +18575,18 @@ it at a different word. **591 was a duplicate of nothing, not a gap.**
 #### Why 136 could not be fixed, which is the instructive one
 
 Its check is "arriving in a window that has never had focus seeds its first
-tab stop", and `adopt_window()` seeds only `if (!w->focusWidget())`. The
-fixture shows `b_win` with one `QLineEdit` in it, and **a shown window gets
-a focus widget from Qt**, so that branch is never entered and the check
-passes for Qt's reason either way.
+tab stop", and `adopt_window()` seeds only `if (!w->focusWidget())`.
 
-The obvious fix is to make the fixture arrive with nothing focused, and it
-was tried: `if (QWidget *had = b_win.focusWidget()) had->clearFocus();`
-before the switch. **Measured inert** -- the suite stayed green, the key
-still reached the field, the probe reported `win.focusWidget=QLineEdit`
-with the seeding disabled, and the entry still failed. **Reverted rather
-than left in place**, because a change whose comment claims it reaches a
-branch it does not reach is worse than no change: the next reader would
-trust it.
+**This entry first blamed Qt for seeding the window on `show()`, and that
+was wrong.** The probe behind it printed the focus widget only AFTER the
+key press, where a `QLineEdit` is focused for a reason that has nothing to
+do with arrival. A fixture change built on the wrong cause was measured
+inert and reverted -- which was the right call for the wrong reason.
+
+Staging the state settled it, and 8.436 has the fix: the window does arrive
+with nothing focused, `adopt_window()` is what seeds it, and the ROUTER
+seeds the first tab stop again when a key arrives with nothing focused.
+The check sat after the key, so it rested on the router's fallback.
 
 #### And 585, where three sites were ruled out
 
