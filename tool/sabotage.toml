@@ -5403,21 +5403,33 @@ check = "a right-to-left combo box's arrow is drawn in the cell its hit test nam
 # last one under the list. 8.305.
 name = "a mark is placed by its edges rather than by where it sits"
 file = "src/render/cell_paint.cpp"
-find = "\tif (m.width() < cw && m.height() < ch)\n\t\treturn QRect(int(std::floor(m.center().x() / cw)),\n\t\t             int(std::floor(m.center().y() / ch)), 1, 1);"
-into = ""
+find = "\tconst bool thin_x = m.width() < cw, thin_y = m.height() < ch;"
+into = "\tconst bool thin_x = false, thin_y = false;"
 count = 1
 check = "a mark inside a row lands in that row"
 
 [[sabotage]]
-# The mark rule widened to either dimension, which swallows a caret --
-# 1x19 is narrower than a cell and a whole row tall, and placing it by
-# its centre moves it off the boundary it belongs on. 8.305.
-name = "the mark rule swallows a caret"
+# A SPANNING shape taking the cell its top edge sits in, rather than the
+# nearest boundary. That is the thin rule applied where it does not
+# belong: an edge that crosses a cell is an edge that wants snapping, and
+# flooring it is what would move a viewport, a panel and a frame off the
+# grid they are laid out on. The caret is the cheapest shape that shows
+# it -- one pixel wide and a whole row tall, so it is thin in x and not
+# in y, and only the y half is being broken here.
+#
+# This entry REPLACES "the mark rule swallows a caret", which widened the
+# mark test to either dimension and is now the behaviour rather than a
+# sabotage. 8.441 has what it was really reddening: not the caret, which
+# that widening left on the same row, but the half of the same check that
+# asserted a one-pixel rule rounds -- an assertion raster Qt contradicts.
+# An entry can defend a defect, and its name can say it is defending
+# something else.
+name = "a spanning shape takes the cell its top edge is in"
 file = "src/render/cell_paint.cpp"
-find = "\tif (m.width() < cw && m.height() < ch)"
-into = "\tif (m.width() < cw || m.height() < ch)"
+find = "\tconst int t = thin_y ? int(std::floor(m.center().y() / ch))\n\t                     : qRound(m.top() / ch);"
+into = "\tconst int t = int(std::floor(m.top() / ch));"
 count = 1
-check = "a caret a whole row tall and a rule many cells wide still round"
+check = "while a caret spanning a whole row still rounds"
 
 [[sabotage]]
 # mouse_press setting `release` instead, which is the mistake a helper
@@ -6468,3 +6480,27 @@ find = "\t\t\t    ? QRect(leading_edge(r.left(), r.right(), 0, 3 * cw,\n\t\t\t  
 into = "\t\t\t    ? QRect(r.left(), r.top(), 3 * cw, ch)"
 count = 1
 check = "and a mirrored one carries it in the last three, with the"
+
+[[sabotage]]
+# The thin test back to BOTH axes, which is what it asked for before a
+# raster comparison said a thin rule lands in the cell its pixel is in
+# whatever the other axis does. The widget-level check is named rather than
+# the arithmetic one because it is the consequence: a bottom border drawn
+# one row below its own widget.
+name = "the thin test asks for both axes, as the mark rule did"
+file = "src/render/cell_paint.cpp"
+find = "\tconst bool thin_x = m.width() < cw, thin_y = m.height() < ch;"
+into = "\tconst bool thin_x = m.width() < cw && m.height() < ch,\n\t           thin_y = thin_x;"
+count = 1
+check = "a widget's own one-pixel bottom border is drawn in the widget's"
+
+[[sabotage]]
+# The other side of the same rule: thin in x only. A vertical rule in the
+# right part of a cell goes one COLUMN over, which the mark fixture's own
+# sibling is what notices.
+name = "a thin vertical extent rounds its edges"
+file = "src/render/cell_paint.cpp"
+find = "\tconst int l = thin_x ? int(std::floor(m.center().x() / cw))\n\t                     : qRound(m.left() / cw);"
+into = "\tconst int l = qRound(m.left() / cw);"
+count = 1
+check = "and no fill marks a cell raster leaves blank, which holds for the thin"

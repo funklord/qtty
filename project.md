@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2169 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2171 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18323,6 +18323,144 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.441 A thin fill rounded its edges, so a border fell outside its widget (2026-10-15)
+
+**Section 0e's standing lens, run: every place that reduces a continuous
+thing to cells, asked what it does with a shape thinner than one cell --
+and the fixture built rather than found, which is what that section asks
+for.** Eighteen sub-cell shapes rendered twice, once through
+`CellPaintDevice` and once through raster Qt onto a `QImage` of the same
+pixel size, printing both cell maps side by side and marking the rows that
+disagree. Raster is the oracle; the probe asserted nothing.
+
+Eight of the eighteen disagreed, and four of those are one defect.
+
+**`to_cells()` asked whether a shape was thin in BOTH dimensions.** If it
+was, it went to the cell holding its centre -- the mark rule, from the HTML
+bullet list. Otherwise both edges were rounded to the nearest boundary. So
+a shape thin in ONE axis had that axis's edges rounded, and a rule one
+pixel wide sitting in the far part of a cell was reported in the NEXT cell:
+measured on a 10 x 19 cell, x 8 and x 9 gave column 1 where the pixel is in
+column 0, and y 17 and y 18 gave row 1 where the pixel is in row 0.
+
+**Who reaches it is the part that makes it a defect rather than a rounding
+preference.** A widget draws its own bottom border as
+`fillRect(0, height() - 1, width(), 1)`, and grid-snapping puts
+`height() - 1` at the LAST PIXEL ROW of the widget's last cell row -- y 37
+for a two-row widget, which is exactly the failing offset. So a bottom or
+right border drawn as a thin fill was drawn one row or column OUTSIDE the
+widget it belongs to: it landed on whatever the neighbour had drawn, and
+the widget that drew it had none.
+
+**The fix is the same test taken per axis, and it subsumes the mark rule
+rather than replacing it.** An axis the shape does not span has no edge
+that wants snapping, whatever the other axis is doing; where both axes are
+thin the per-axis form gives the mark rule's answer identically, so that
+behaviour is preserved by construction rather than by a second branch.
+
+**`walk_segment()` has used `floor()` for this since a rule was found in
+the row below its widget, and its comment names this symptom in those
+words.** The line path was right and the fill path was not -- the same
+shape as every other defect this session: one behaviour, two
+implementations, one of them fixed.
+
+**The other four disagreements are the documented centre rule and are
+left.** A 5x5 mark straddling four cells gets the cell holding nine of its
+twenty-five pixels; a three-pixel band straddling two rows gets the row
+holding two of the three; a caret spanning a row gets the row holding 14 of
+its 19; a two-pixel pixmap centred exactly on a boundary gets the far side.
+A cell is atomic, so one of the two is the only available answer and the
+majority is the right one. What a thin shape should BECOME is still the
+choice section 0b reserves; this is only where it lands.
+
+**A check was pinning the defect, which is the finding worth more than the
+fix.** The mark rule's own control asserted that a rule 50 cells wide and
+one pixel tall "still rounds to the nearest boundary, being a mark in
+neither dimension" -- and under that rounding it went to row 1 where raster
+draws row 0. It was a control defending the half of the rule that was
+wrong, written to stop the mark rule widening and succeeding at that while
+asserting a cell nothing is drawn in. It is two checks now: the caret half
+holds unchanged and is still the discriminator, and the rule half asserts
+the per-axis answer with the raster measurement as its reason.
+
+**A SABOTAGE ENTRY WAS DEFENDING THE DEFECT, and its name said it was
+defending something else.** `--validate` refused three entries after the
+change, which is how this was found: two anchored on the branch that is
+gone, and one naming a check whose text had been rewritten.
+
+One of them, "the mark rule swallows a caret", widened the mark test from
+`&&` to `||` and expected the control to go red. Traced through the
+arithmetic it had never moved a caret at all: a caret at y 14.25 rounds to
+row 1 and centres to `floor(23.75 / 19)`, which is also row 1, so the two
+rules agree on exactly that shape. What the `||` form actually changed was
+the RULE -- 50 cells wide and one pixel tall, which it put in row 0, where
+raster Qt draws it. The entry was reddening a check for giving the right
+answer, and the check printed one line for both shapes so nobody could see
+which half had moved.
+
+So it is not re-anchored, it is **superseded**: the `||` behaviour is now
+the behaviour, per axis. What replaces it breaks the half that is real --
+a shape that SPANS a cell taking the cell its top edge sits in rather than
+the nearest boundary, which is what would move a viewport, a panel and a
+frame off the grid -- and it reddens the caret control alone, which the
+entry it replaces never did.
+
+**An entry can defend a defect.** The spec's whole argument is that a check
+which stops discriminating gets caught by the next sweep; this is the case
+that argument does not cover, because the entry passed every sweep it was
+ever in. What caught it was changing the code it was anchored to, and the
+anchor refusing to match. That is an argument for anchoring on code rather
+than on line numbers which the spec's header already makes, reaching
+further than it claims: a stale anchor is a prompt to re-read the entry's
+reasoning, and one of them did not survive the reading.
+
+**And the two halves of one check could not be told apart**, which is why
+the misattribution lasted. The control printed a single PASS line for a
+caret and a rule, so a sabotage moving one of them named the other. Split
+in two now, for the reason `evidence.md` gives about a count and an exit
+code: two claims behind one verdict is one claim you cannot act on.
+
+**And the suite already held the oracle, green throughout.** A table of
+fills compares the cells qtty marks against the cells raster Qt paints,
+exactly and for over-coverage. It could not see this: four of its five
+rectangle cases are cell-aligned, and the fifth -- a 2x-2 colour swatch --
+is a mark, thin in both axes and therefore already placed by its centre.
+**Not one case was thin in one axis at an offset where the two rules give
+different cells.** That is section 0e's own sentence confirmed by the
+fixture it predicted -- a suite assembled from correct behaviour does not
+select for the input that separates two rules -- and the remedy is two
+rows in that table rather than a new fixture: a rule at a row's last pixel
+and a rule at a column's last pixel, both `exact`.
+
+**What is asserted, and where.** The widget-level check is the one worth
+having -- a two-row widget painting its own bottom border, asserted to
+land in row 1 with nothing on another row -- because it names the
+consequence at the place an application meets it, and the arithmetic
+fixtures are its explanation. 2169 checks to 2171. Two sabotage entries,
+one per axis, each watched reddening the check it names; the first draft
+of the second named a check that did not discriminate and the tool
+refused it, reporting the two it had actually reddened.
+
+**The lens is closed, and the two members that look like gaps are not
+ones.** Agreeing with raster already: the tiled pixmap, the polygon fill,
+the clip, and a segment shorter than a cell. The other two were read
+rather than left open, because a question deferred under a name grander
+than it deserves is one nobody comes back to:
+
+- **`drawTextItem` reduces a POINT, not an extent**, and rounds it:
+  `qRound(q.x() / cw)` on the glyph origin. That is the right reduction
+  for text and the opposite of the right one for a thin fill, and the
+  difference is not an inconsistency -- a glyph drawn from x 8 extends
+  rightwards into the next column and belongs to it, where a rule AT x 8
+  is one pixel and belongs to the column holding that pixel. Two
+  reductions because there are two questions.
+- **`lcd_decode` is scale-relative and has no cell in it.** It classifies
+  `QLCDNumber`'s segment rectangles against each other -- `seg / 2`
+  separates a dot from a bar, and the digit window is one segment wide --
+  so a display whose segments are all sub-cell decodes exactly as a large
+  one does. Nothing is reduced to cells until the characters it produces
+  are placed as text.
 
 ### 8.440 The coverage figure was counting messages, not checks (2026-10-15)
 

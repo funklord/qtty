@@ -645,13 +645,35 @@ QRect CellPaintEngine::to_cells(const QRectF &r) const {
 	// caret (1x19, a full row tall) and a rule (50x1, many cells wide) are
 	// not. This changes WHERE a mark lands and not what it becomes; what
 	// it should become is the choice that row reserves.
-	if (m.width() < cw && m.height() < ch)
-		return QRect(int(std::floor(m.center().x() / cw)),
-		             int(std::floor(m.center().y() / ch)), 1, 1);
-	const qreal l = m.left() / cw, t = m.top() / ch;
-	const qreal r2 = m.right() / cw, b = m.bottom() / ch;
-	return QRect(qRound(l), qRound(t),
-	             qMax(1, qRound(r2) - qRound(l)), qMax(1, qRound(b) - qRound(t)));
+	// AND THE TEST IS PER AXIS, which the mark rule above was not: it asked
+	// for a shape thinner than a cell in BOTH dimensions, and the two cases
+	// are one case. An axis along which the shape does not span a cell has
+	// no edge that wants snapping, whatever the other axis is doing. A mark
+	// is what this gives when both axes are thin, so that rule is not lost
+	// -- it is the corner of this one.
+	//
+	// Measured against raster Qt on a 10x19 cell, with the shape qtty's own
+	// grid-snapping produces. A 1-pixel rule at the LAST pixel row of a
+	// one-row widget is at y 18: rounding its edges sends it to row 1, below
+	// the widget that drew it, where its only pixel is in row 0. Same
+	// off-by-one at y 17, and at x 8 and x 9 for a vertical rule -- so a
+	// bottom or right border drawn as a thin FILL lands outside the widget
+	// it belongs to. That is the defect the extent rounding above was
+	// written for, reaching the fill path by the one route the fix did not
+	// cover: it stopped the extent rounding up, and left the EDGE rounding
+	// to send a thin rule to the wrong side of a boundary.
+	//
+	// walk_segment() has used floor() for exactly this since a rule was
+	// found in the row below its widget, and its comment names this
+	// symptom. The line path was right and the fill path was not.
+	const bool thin_x = m.width() < cw, thin_y = m.height() < ch;
+	const int l = thin_x ? int(std::floor(m.center().x() / cw))
+	                     : qRound(m.left() / cw);
+	const int t = thin_y ? int(std::floor(m.center().y() / ch))
+	                     : qRound(m.top() / ch);
+	return QRect(l, t,
+	             thin_x ? 1 : qMax(1, qRound(m.right() / cw) - l),
+	             thin_y ? 1 : qMax(1, qRound(m.bottom() / ch) - t));
 }
 
 // Text colour policy (section 6). The application palette is consulted for one

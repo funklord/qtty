@@ -125,22 +125,99 @@ int suite_render(bool record) {
 			       row_of_mark(ch / 2.0, 5.0, 5.0));
 			++r;
 		}
-		// THE CONTROLS, and they are the discriminator: a caret is a full
-		// row tall and a rule is many cells wide, so neither is a mark and
-		// both keep the edge rounding the paragraph above defends. Without
-		// these the rule could widen until it swallowed them.
+		// THE CONTROL, and it is the discriminator: a caret SPANS a row, so
+		// its top edge is an edge that wants snapping and it keeps the
+		// rounding the paragraph above defends. Without it the rule could
+		// widen until it swallowed every thin shape.
+		//
+		// Measured against raster Qt, which is why this is one check and
+		// not two: a caret at y 14.25 covers pixel rows 14..32, which is
+		// ink in rows 0 and 1, and rounding picks the row holding 14 of
+		// its 19 pixels. A cell is atomic, so one of the two is the only
+		// available answer and the majority is the right one.
 		const bool caret_unmoved = row_of_mark(ch * 0.75, 1.0, ch) == 1;
-		const bool rule_unmoved = row_of_mark(ch * 0.75, 50.0, 1.0) == 1;
-		if (caret_unmoved && rule_unmoved)
-			printf("PASS: while a caret a whole row tall and a rule many "
-			       "cells wide still round to the nearest boundary, being "
-			       "marks in neither dimension\n");
+		if (caret_unmoved)
+			printf("PASS: while a caret spanning a whole row still rounds "
+			       "to the nearest boundary, its top edge being one that "
+			       "wants snapping\n");
 		else {
-			printf("FAIL: while a caret a whole row tall and a rule many "
-			       "cells wide still round to the nearest boundary, being "
-			       "marks in neither dimension\n      caret %d rule %d\n",
-			       int(caret_unmoved), int(rule_unmoved));
+			printf("FAIL: while a caret spanning a whole row still rounds "
+			       "to the nearest boundary, its top edge being one that "
+			       "wants snapping\n      got row %d\n",
+			       row_of_mark(ch * 0.75, 1.0, ch));
 			++r;
+		}
+		// AND THE MARK RULE IS PER AXIS, which is where this check used to
+		// assert the opposite. A rule 50 cells wide and one pixel tall was
+		// called a mark in neither dimension and expected to round, and it
+		// went to row 1: raster Qt draws its one pixel at row 14, which is
+		// row 0. An axis the shape does not span has no edge wanting
+		// snapped whatever the other axis does, so the thin test is taken
+		// per axis and a wide thin rule lands in the row its pixel is in.
+		//
+		// What it cost while it was wrong is the next check: a bottom or
+		// right border drawn as a thin fill was drawn outside its own
+		// widget.
+		const int rule_row = row_of_mark(ch * 0.75, 50.0, 1.0);
+		if (rule_row == 0)
+			printf("PASS: and a rule one pixel tall lands in the row that "
+			       "pixel is in rather than rounding, being thin in that "
+			       "axis however wide it is in the other\n");
+		else {
+			printf("FAIL: and a rule one pixel tall lands in the row that "
+			       "pixel is in rather than rounding, being thin in that "
+			       "axis however wide it is in the other\n      got row "
+			       "%d\n", rule_row);
+			++r;
+		}
+		// THE DEFECT THE PER-AXIS RULE WAS FOUND BY, asserted where an
+		// application meets it rather than against to_cells(). A widget
+		// that draws its own bottom border as a one-pixel fill puts it at
+		// `height() - 1`, which grid-snapping makes the LAST pixel row of
+		// the widget's last cell row -- y 37 for a two-row widget on a
+		// 19-pixel cell. Rounding its edges sent it to row 2, one row
+		// BELOW the widget, where raster Qt draws it inside row 1.
+		//
+		// Worth a check of its own because the to_cells() fixtures above
+		// are arithmetic and this is the consequence: the border of a
+		// custom widget, a frame or a separator landed on whatever its
+		// neighbour had drawn, and the widget it belonged to had none.
+		{
+			struct Bordered : QWidget {
+				using QWidget::QWidget;
+				void paintEvent(QPaintEvent *) override {
+					QPainter p(this);
+					p.fillRect(QRect(0, height() - 1, width(), 1),
+					           Qt::red);
+				}
+			};
+			Bordered w;
+			w.setAttribute(Qt::WA_DontShowOnScreen);
+			w.resize(GridMetrics::cells(4, 2));
+			w.show();
+			QCoreApplication::processEvents();
+			Qtty::CellBuffer b(6, 4);
+			Qtty::render_once(w, b);
+			int inked = -1, extra = 0;
+			for (int y = 0; y < 4; ++y)
+				for (int x = 0; x < 4; ++x)
+					if (b.at(x, y).bg.kind() != Qtty::Color::Default) {
+						if (inked < 0) inked = y;
+						else if (y != inked) ++extra;
+					}
+			printf("info: the border landed on row %d of a widget occupying"
+			       " rows 0..1, with %d cell(s) on another row\n",
+			       inked, extra);
+			if (inked == 1 && !extra)
+				printf("PASS: a widget's own one-pixel bottom border is "
+				       "drawn in the widget's last row rather than the row "
+				       "below it\n");
+			else {
+				printf("FAIL: a widget's own one-pixel bottom border is "
+				       "drawn in the widget's last row rather than the row "
+				       "below it\n");
+				++r;
+			}
 		}
 		// AND THE LIST ITSELF, which is what the row in section 0b is
 		// about: a block beside each item and none below the list.
@@ -3213,6 +3290,23 @@ int suite_render(bool record) {
 				// the suite could see that: it needs a shape whose
 				// extreme point sits on a boundary and whose row below is
 				// reached by the bounding box's rounding.
+				// THIN IN ONE AXIS, AT AN OFFSET THAT DISCRIMINATES,
+				// which none of the five above is: four are cell-aligned
+				// and the swatch is a mark, thin in BOTH axes and so
+				// already placed by its centre. So the whole table agreed
+				// with raster while a rule one pixel tall at a row's last
+				// pixel was marked a row below it -- a suite assembled
+				// from correct behaviour does not select for the input
+				// that separates two rules.
+				//
+				// These two are where rounding an edge and taking the
+				// centre give different cells: y = ch - 1 rounds up to
+				// the next row and x = cw - 2 rounds up to the next
+				// column, and the shape's only pixel is in neither.
+				{ "a rule at a row's last pixel", true,
+				  filler(QRectF(0, ch - 1, cw * 4, 1)) },
+				{ "a rule at a column's last pixel", true,
+				  filler(QRectF(cw - 2, 0, 1, ch * 2)) },
 				{ "an ellipse's fill",      true,  ellipse_fill },
 				{ "a thin diagonal fill",   false, thin_diagonal },
 			};
@@ -3239,7 +3333,7 @@ int suite_render(bool record) {
 					            .arg(QString::fromLatin1(k.what))
 					            .arg(want.size()).arg(got.size());
 			}
-			printf("info: seven fills against raster Qt -- %d exact"
+			printf("info: nine fills against raster Qt -- %d exact"
 			       " disagreement(s), %d invented cell(s)\n",
 			       disagree, invented);
 			if (disagree == 0)
