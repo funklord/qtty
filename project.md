@@ -18324,6 +18324,69 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.440 The coverage figure was counting messages, not checks (2026-10-15)
+
+**The sweep ran a third time to produce the two set files, and the
+subtraction they were written for did not reconcile.** 617 of 617 entries,
+612 reddened, 5 expected-abort, 0 FAILED and 0 REFUSED, with all 55 sources
+byte-identical to a snapshot taken before the run. The dump wrote 1217
+reddened lines against 2169 green ones, and 2169 - 1217 is 952, but
+subtracting the sets as strings left 1076. Both cannot be right.
+
+**The reddened file was not holding checks.** A FAIL line carries a
+diagnosis the PASS line does not -- `... -- got 3, want 4` -- and a few are
+reworded outright, so 124 of the reddened lines matched no green line at
+all. Resolving each one back to the green check it came from (exact match,
+then the longest green prefix, then the head before ` -- `) gives **1216 of
+1217 messages mapping onto 1124 distinct checks**, with one text,
+`library not inert before setup()`, having no PASS form to match. So the
+spec defends **1124 of 2169 checks and the complement is 1045**, where this
+file has three times quoted 1207 or 1216 as a count of checks. It was a
+count of distinct failure messages. 8.432 and 8.438 are corrected where
+they stand.
+
+**The tool now counts what the figure claims.** `check_of()` resolves each
+FAIL line against the baseline's passing set before it is accumulated, so
+the dump is a subset of the green file by construction and the complement
+is an honest subtraction -- verified by running it rather than by reading
+it: the reddened file is a strict subset of the green one, where before the
+fix 124 of its lines were in neither.
+
+**And the 1045 is now classified, which 8.438 and 8.439 both left as
+nobody's work.** As a partition, so it sums to the population:
+
+    a plain behavioural claim          815
+    an absence or limit claim           98
+    a quantified or population claim    87
+    a sibling control (still)           36
+    an explicit control                  7
+    a fixture self-check                 2
+                                      ----
+                                      1045
+
+The last three buckets, 45 checks, are the ones 8.432 meant by "not all
+undefended": a control is written to survive an edit, and a sabotage that
+reddened one would be the finding. The 36 are the LTR-pinning siblings
+8.429 counted under RTL. The 185 in the middle two buckets are defensible
+either way -- an absence claim falls to an edit that makes something appear,
+which is a different kind of entry from one that breaks a behaviour.
+
+**What is left is 815 behavioural claims no entry breaks, and that is a
+ceiling rather than a defect count.** Sampling them finds real behaviours
+-- a stray continuation byte is dropped rather than delivered, a wide
+cluster claims a lead and a continuation, a payload over 4096 chunks with
+the mode bit set and clear -- so each is a candidate for an entry rather
+than evidence of one. Whether a given claim earns one is judgement about
+what a single edit could plausibly break, and 815 of those is a body of
+work rather than a sweep. What this entry buys is that the list exists and
+is addressable by name, where before it was a figure nobody could resolve.
+
+**One figure is unexplained and is left that way.** 8.438's counter said
+1216 messages at `29757cf` and the dump says 1217 at `f409110`, one commit
+apart, and nothing establishes which of the two moved -- the counter and
+the file were never run against the same commit. It is one message either
+way and changes no bucket, so it is recorded rather than chased.
+
 ### 8.439 The sweep now writes the set it was only counting (2026-10-15)
 
 **8.438 left "which checks does no entry redden" as nobody's work, and the
@@ -18382,13 +18445,16 @@ taken before the run, 28 files restored, with `src/`, `include/` and
 `test/` clean at the start so the tool's own dirty-tree guard stayed
 active rather than being waived.
 
-**Coverage moved with it.** Distinct checks reddened by at least one entry
-went from **1207 to 1216** of 2169 -- nine more, which is the eight repairs
-plus `311` landing on a registration that had no entry at all. The
-remaining 953 are not all undefended: controls, info lines and population
-assertions are not meant to fall to a single edit, so that figure stays a
-ceiling on coverage rather than a gap, and separating the two is still
-nobody's work.
+**Coverage moved with it, by a figure this entry got wrong.** Distinct
+reddened **failure messages** went from **1207 to 1216** of 2169 -- nine
+more, which is the eight repairs plus `311` landing on a registration that
+had no entry at all. A failure message is not a check: a FAIL line carries
+a diagnosis its PASS line does not, so several messages can belong to one
+check. 8.440 resolves them, and the figures are 1124 checks reddened with
+1045 remaining rather than the 953 subtracted here. The remainder is still
+not all undefended -- controls, info lines and population assertions are
+not meant to fall to a single edit -- so it stays a ceiling on coverage
+rather than a gap, and 8.440 is where the two are separated.
 
 **What the pair of sweeps is worth as a measurement.** The first found 13
 broken of 618 and cost 6h41m; this one found 0 of 617 and cost 7h52m on a
@@ -18807,11 +18873,12 @@ proved once stays proved only until the next commit touches its
 behaviour**, which is the same shelf-life argument this file makes about
 recorded facts, pointed at the harness.
 
-**1207 of 2169 checks are reddened by at least one entry.** The remaining
-962 are not all undefended -- controls, info lines and population
-assertions are not meant to be broken by a single edit -- so that figure
-is a ceiling on coverage rather than a gap, and separating the two is not
-work anybody has done.
+**1207 of 2169 reddened items are failure messages rather than checks**,
+which is what this entry claimed and 8.440 corrects; the complement
+quoted here is wrong with it. The remainder is not all undefended --
+controls, info lines and population assertions are not meant to be broken
+by a single edit -- so it is a ceiling on coverage rather than a gap, and
+separating the two is not work anybody has done.
 
 ### 8.431 Every mirroring defect was in a control this style took over (2026-10-13)
 

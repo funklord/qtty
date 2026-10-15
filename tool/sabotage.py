@@ -243,6 +243,33 @@ def failing_checks(output):
 	        for ln in output.splitlines() if ln.startswith("FAIL: ")]
 
 
+# The CHECK a FAIL line belongs to, which is not the line itself. A check
+# that fails appends its diagnosis -- "a progress bar is as thick as the
+# widget on its cross axis -- horizontal bar: line 1 differs from the first
+# at 0" -- and two different failures of ONE check are two different lines.
+# Counting the lines therefore over-counts the checks, and the figure this
+# tool has reported as "distinct check(s)" was a count of distinct failure
+# MESSAGES: measured over the whole spec, 1217 messages were 1124 checks.
+#
+# Resolved against the baseline's own passing set, longest prefix first,
+# because that set is what the complement has to be subtracted from and a
+# shorter green message can be a prefix of a longer one.
+def check_of(fail_line, green):
+	if fail_line in green:
+		return fail_line
+	best = None
+	for c in green:
+		if fail_line.startswith(c) and (best is None or len(c) > len(best)):
+			best = c
+	if best:
+		return best
+	head = fail_line.split(" -- ")[0]
+	for c in green:
+		if head.startswith(c) or c.startswith(head):
+			return c
+	return None
+
+
 def passing_checks(output):
 	return [ln[len("PASS: "):].strip()
 	        for ln in output.splitlines() if ln.startswith("PASS: ")]
@@ -696,7 +723,9 @@ def main():
 			red = [c for c in failing_checks(out) if check in c]
 			if red:
 				say("  ok -- reddened: %s" % red[0])
-				reddened.update(failing_checks(out))
+				for fl in failing_checks(out):
+					hit = check_of(fl, green)
+					reddened.add(hit if hit else fl)
 				others = [c for c in failing_checks(out) if check not in c]
 				if others:
 					# NAMED rather than counted. The question a new check
@@ -809,6 +838,10 @@ def main():
 	# same line as 233 that redden four hundred. Entries declaring
 	# `expect = "crash"` contribute nothing here, a stopped suite printing
 	# no FAIL line to count.
+	#
+	# A check, not a message: every FAIL line goes through check_of() above
+	# before it is accumulated, without which this line reported distinct
+	# failure TEXTS and over-counted -- 1217 of them for 1124 checks.
 	if reddened:
 		say("sabotage: between them the entries redden %d distinct check(s)"
 		    " of the %d the suite runs" % (len(reddened), len(green)))
