@@ -812,6 +812,31 @@ def main():
 	if reddened:
 		say("sabotage: between them the entries redden %d distinct check(s)"
 		    " of the %d the suite runs" % (len(reddened), len(green)))
+		# AND WRITTEN OUT, because the per-entry list above is truncated
+		# with "... and N more" and the set is therefore NOT recoverable
+		# from a log. Asking afterwards which checks no entry reddens is a
+		# question this run can answer for nothing and a finished log
+		# cannot answer at all: measured, an attempt to reconstruct the set
+		# from the 617-entry log recovered 907 of 1216 and silently counted
+		# the truncation markers as checks.
+		#
+		# Both halves, since the complement is the useful one and deriving
+		# it needs a clean run's own list to subtract from -- which is why
+		# the green set goes beside it rather than being re-measured later
+		# against a tree that has moved.
+		for name, rows in (("reddened", reddened), ("green", green)):
+			out = os.path.join(ROOT, "build", "sabotage-%s.txt" % name)
+			try:
+				os.makedirs(os.path.dirname(out), exist_ok=True)
+				with open(out, "w", encoding="utf-8") as f:
+					f.write("\n".join(sorted(rows)) + "\n")
+				say("sabotage: wrote %d %s check(s) to %s"
+				    % (len(rows), name, os.path.relpath(out, ROOT)))
+			except OSError as e:
+				# Reported rather than raised: the sweep's verdict is the
+				# product and this is a by-product, so a read-only build
+				# directory must not turn a clean run into a failure.
+				say("sabotage: could not write %s (%s)" % (out, e))
 	if rc == 0:
 		say("sabotage: %d sabotage(s), each reddened the check it names"
 		    % len(spec))

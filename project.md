@@ -18324,6 +18324,43 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.439 The sweep now writes the set it was only counting (2026-10-15)
+
+**8.438 left "which checks does no entry redden" as nobody's work, and the
+attempt to answer it from the finished log failed in an instructive way.**
+
+The log prints a sample of each entry's collateral and **truncates the rest
+with `... and N more`**, so the reddened set is not recoverable from it.
+Reconstructing it recovered **907 of the 1216** the tool had counted, and
+-- worse -- swallowed the truncation markers as if they were check
+messages: `... and 11 more` became a line in the set. The complement came
+out at **1262** against a true 953, and nothing in the output said so.
+
+**A derived set whose source is truncated looks complete**, which is this
+file's own manufactured-absence rule arriving from the other side: there
+the output was empty, here it was plausible and short.
+
+**So the tool writes both sets now**, which costs a sweep nothing and makes
+the question a subtraction:
+
+    sabotage: wrote 1216 reddened check(s) to build/sabotage-reddened.txt
+    sabotage: wrote 2169 green check(s) to build/sabotage-green.txt
+
+**Both halves, because the complement is the useful one** and deriving it
+needs the clean run's own list to subtract from. Re-measuring the green set
+afterwards would measure a tree that has moved -- the same reason a receipt
+beats a fresh observation of the thing that produced it.
+
+Verified by running it rather than by reading it: a one-entry sweep wrote 7
+and 2169. The write is reported and never raised, since the verdict is the
+product and a read-only build directory must not turn a clean run into a
+failure.
+
+**What it does not do is answer the question** -- that needs the next full
+sweep, and then the 953 can be classified rather than estimated. The point
+is that the next sweep will answer it for free, where this one could not be
+made to answer it at all.
+
 ### 8.438 The spec re-swept: 617 of 617 (2026-10-14)
 
 **The verification 8.436 said it owed.** Each of the eight fixes was proved
