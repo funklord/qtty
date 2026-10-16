@@ -8137,26 +8137,43 @@ int suite_exec() {
 	// so comparing it here would be asserting the downgrade, which is a
 	// different question with its own checks.
 	{
+		// CAPTURED THROUGH A PIPE, with no file and no temporary directory.
+		// The budget fixture next door uses a file and says why -- a full
+		// 200x60 frame is 33 KB and would block on a pipe nobody drains --
+		// and these frames are at most a few hundred bytes against a 64 KiB
+		// pipe buffer, so the warning does not reach them.
+		//
+		// It is not a convenience. The first draft wrote to a hardcoded path
+		// under /tmp carrying one session's name, which on any other machine
+		// fails to open: the capture comes back empty and all three checks go
+		// red blaming the wire for a missing directory. The fix after that
+		// was a QTemporaryDir and a SKIP branch for when it could not be
+		// made -- correct, and a branch with no way to exercise it, since an
+		// unwritable temp directory stops Qt long before this fixture runs.
+		// A pipe needs no filesystem at all, so there is no branch to leave
+		// untested and nothing to clean up.
 		const auto emitted = [](const CellBuffer &f, const QRegion &damage,
 		                        AnsiBackend *wire) {
-			const QByteArray path = QByteArrayLiteral("/tmp/claude-1001/"
-			    "-home-funk-src-qtty/4a8ff110-e525-4700-a0c1-ac03c8173b6a/"
-			    "scratchpad/frame.bin");
+			QByteArray raw;
+			int fds[2];
+			if (::pipe(fds) != 0) return raw;
 			fflush(stdout);
 			const int saved = ::dup(1);
-			const int fd = ::open(path.constData(),
-			                      O_WRONLY | O_CREAT | O_TRUNC, 0600);
-			QByteArray raw;
-			if (fd >= 0) {
-				::dup2(fd, 1);
-				wire->present(f, damage);
-				fflush(stdout);
-				::dup2(saved, 1);
-				::close(fd);
-				QFile in(QString::fromUtf8(path));
-				if (in.open(QIODevice::ReadOnly)) raw = in.readAll();
-			}
+			::dup2(fds[1], 1);
+			wire->present(f, damage);
+			fflush(stdout);
+			::dup2(saved, 1);
 			::close(saved);
+			// The WRITE end closed before reading, or the read below waits
+			// for an end-of-file that this process is itself holding open.
+			::close(fds[1]);
+			char buf[4096];
+			for (;;) {
+				const ssize_t n = ::read(fds[0], buf, sizeof buf);
+				if (n <= 0) break;
+				raw.append(buf, int(n));
+			}
+			::close(fds[0]);
 			return raw;
 		};
 		// The COMPARISON, named once: which cells differ, and the first of
@@ -8228,13 +8245,13 @@ int suite_exec() {
 		printf("info: three frames out and back: %d glyph and %d attribute"
 		       " mismatch(es)\n", total_glyph, total_attr);
 		CHECK(total_glyph == 0,
-		      "every glyph a frame carries survives the wire and comes back in"
-		      " the cell it was sent from");
+		      "every glyph a frame carries survives the wire and comes back"
+		      " in the cell it was sent from");
 		if (total_attr != 0)
 			printf("      condition: %s\n", qPrintable(worst));
 		CHECK(total_attr == 0,
-		      "and so does every attribute, which a byte count cannot see and"
-		      " a grep for one glyph does not ask");
+		      "and so does every attribute, which a byte count cannot see"
+		      " and a grep for one glyph does not ask");
 
 		// THE DAMAGE PATH, which is the half most able to be wrong: a frame
 		// presented with its damage region carries only what changed, so it
@@ -8267,9 +8284,10 @@ int suite_exec() {
 			       qint64(diff_bytes.size()), g, a);
 			if (g || a) printf("      condition: %s\n", qPrintable(first_bad));
 			CHECK(g == 0 && a == 0,
-			      "and a frame sent with only its damage region, applied over"
-			      " the one before it, reproduces the whole frame -- which is"
-			      " what says the runs are addressed to the right cells");
+			      "and a frame sent with only its damage region, applied"
+			      " over the one before it, reproduces the whole frame --"
+			      " which is what says the runs are addressed to the right"
+			      " cells");
 		}
 	}
 

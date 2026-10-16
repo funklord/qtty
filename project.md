@@ -18394,6 +18394,35 @@ then apply the second frame's damage-limited stream and require the result
 to be the second frame entirely. Measured, 35 bytes carrying two edits over
 a 20x5 frame, and it reproduces it.
 
+**AND THE FIRST VERSION OF IT ONLY WORKED IN THE SESSION THAT WROTE IT**,
+which is worth more than the fixture. The capture wrote the emitted bytes to
+a file, and the path was a hardcoded `/tmp` directory carrying this session's
+own name. On any other machine that `open` fails, the capture comes back
+empty, the rebuilt frame is blank, and **all three checks go red blaming the
+wire for a missing directory** -- a test that reports a defect in the subject
+when the fault is in itself. It was committed and pushed before the
+post-commit sweep looked at the scratchpad and asked why a file was in it.
+
+The fix after that was a `QTemporaryDir` with a `SKIP` branch for when it
+could not be made. Correct, and **a branch with no way to exercise it**: an
+unwritable temp directory stops Qt long before this fixture runs, which was
+measured by trying -- `TMPDIR` pointed at nothing gave a run that failed an
+unrelated geometry check 415 lines earlier and never reached the block. A
+defensive branch that cannot be seen to take is the vacuous pass one layer
+along.
+
+**So the capture is a pipe, and the branch is gone rather than untested.**
+These frames are at most a few hundred bytes against a 64 KiB pipe buffer,
+so the budget fixture's reason for using a file -- a full 200x60 frame is
+33 KB and would block on a pipe nobody drains -- does not reach them. No
+file, no path, no temporary directory, nothing to clean up and no branch to
+leave unexercised. The write end is closed before the read, or the read waits
+on an end-of-file this process is holding open.
+
+Three mistakes in one fixture, each cheaper than the last: a path only one
+machine has, then a guard against it that could not be tested, then not
+needing either.
+
 **Proved before it was trusted, because "0 mismatches" is exactly what a
 blind parser reports.** Dropping SGR 9 from `sgr_sequence()` by hand gave 6
 and 1 attribute mismatches with the cells and masks spelled out -- so the
