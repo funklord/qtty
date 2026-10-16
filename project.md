@@ -1342,6 +1342,26 @@ Three things it taught, which the next run should carry in:
   been green for weeks can be answering a different question than its name
   says, and a sabotage run somewhere else in the file is what surfaces it.
 
+  **A tenth, and it makes a correct control look broken: `to_text()` is
+  GLYPH-ONLY.** A probe that dumps it cannot see three of the things this
+  style does -- a rubber band XORs `Attr::Reverse` and leaves every glyph
+  alone, a selection is reverse, a current item is underlined. Measured, a
+  6x2 band marks 12 cells reverse and writes 0 glyphs, and the probe
+  reading `to_text()` reported `QRubberBand` drawing NOTHING, which reads
+  as a drag-selection with no band. `Qtty::test::snapshot_of()` prints the
+  attribute plane beside the glyphs and is what a probe should use. 8.443.
+
+  **An eleventh, and it is the most convincing of them: the step that
+  feels like the safety check may answer a question nothing asks.** Having
+  found a tool button's sub-control rects overlapping, the obvious
+  confirmation was `hitTestComplexControl` at the arrow's centre. It
+  answered `SC_ToolButton` in both layout directions -- decisive,
+  repeatable, and one step from filing "the menu arrow cannot be clicked".
+  `QToolButton` never calls that function: it asks for
+  `SC_ToolButtonMenu`'s own rect and tests containment. A measurement that
+  AGREES with the suspicion is the one to ask "who reads this?" about.
+  8.443.
+
   **A ninth, in the tooling this session leaned on hardest: `make record
   R=<fixture>` records nothing and says OK.** The argument is a SUITE
   name, and `widgets_gallery` is a fixture -- so the filter matched no
@@ -18323,6 +18343,103 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.443 Four lenses swept empty, and two instruments that lied (2026-10-16)
+
+**Recorded because the alternative is somebody re-running them.** No code
+changed. What this entry buys is that the next pass knows these have been
+asked, how, and with what detector -- 8.437 is the precedent, and its own
+point was that an empty lens is worth writing down.
+
+**Section 0d's method, second batch: no defect.** The configurations were
+chosen by counting mentions in `test/` rather than guessed: `QInputDialog`
+0, `QErrorMessage` 1, `QAbstractSpinBox` 2, `QColumnView` 2, `QFontDialog`
+2, `QRubberBand` 2. Seven rendered and read. `QInputDialog` is right in all
+three input modes -- a line edit, a spin box, a combo -- `QErrorMessage`
+frames its text above its "show again" box and its button, and a spin box
+with `NoButtons` draws `[42          ]` with no arrows.
+
+**`QColumnView` re-run, and half of it is still open.** The first pass
+squeezed it into 30 cells and never resolved what the trough glyphs in its
+second column were; with room they are a vertical scroll bar per column,
+each filling its track. What that settles is 8.442's fix: Qt itself keeps
+those bars VISIBLE at `range 0..0` -- measured, `visible=1` on both -- so a
+slider filling the groove is what Qt draws and the fix matches it. What it
+does not settle is where the bars belong, and the instrument cannot say:
+under `WA_DontShowOnScreen` the view never ran its layout and every scroll
+bar reports geometry `+0+0`, a vertical bar at its list's left edge, which
+is not a laid-out answer. Left open rather than resolved from a measurement
+that cannot reach it.
+
+**A MECHANICAL OVERLAP SWEEP, which is this style's characteristic defect
+asked all at once.** Two elements derived separately landing in one cell is
+what put the spin box arrows together, a decoration over its own text, and
+a mirrored label on its menu arrow. Six complex controls -- spin box, combo,
+both scroll bar orientations, slider, group box, tool button -- their
+sibling sub-control rects taken in cells, in both layout directions, with
+the option each widget fills for itself.
+
+**One overlap, and nothing consumes it in a way that breaks.** A
+`QToolButton` under RTL answers `SC_ToolButton` as `1,0 10x1` and
+`SC_ToolButtonMenu` as `1,0 1x1`, so the button's area covers the arrow's
+cell. Its consumers are the drawing, which 8.428 already shifted off the
+arrow, and `QToolButton::mousePressEvent`, which asks for
+`SC_ToolButtonMenu`'s own rect and tests containment -- a rect contains its
+own centre by construction. So the overlap is real and costs nothing, which
+is a finding about the sweep rather than about the style: **an overlap is a
+defect only where something reads both rects.**
+
+**Three lenses derived from 8.441 and 8.442, each empty, each with its
+detector named** -- because a count inherits its detector and an empty
+result inherits it twice:
+
+- **A geometric rule kept in more than one copy, found textually.** One
+  expression appears in two or more files and it is the local
+  `const int cw = ..., ch = ...;`. The detector is the weak half: all three
+  duplications found this session were semantic, between code sharing no
+  text.
+- **A predicate ANDing two conditions that should be per axis**, which is
+  8.441's defect exactly. Four candidates, every one a genuine conjunction
+  -- a seven-segment dot is small in BOTH axes, a skipped rescale needs both
+  extents equal, "does it fit" needs both, the cursor guard needs both
+  coordinates.
+- **A variable whose only writer is a guard**, which is 8.442's scroll bar
+  exactly -- `thumb_len = 1` with the real value computed only for a
+  non-empty range. Seven sites, all correct defaults: a walk's infinities
+  for an axis with no step, a clamp, a non-view scroll area, a left-aligned
+  default, a one-row item, an environment override, and a UTF-8 lead
+  decoder whose `len = 0` is unreachable because every branch returns or
+  assigns.
+
+**AND TWO INSTRUMENTS LIED, which is the half worth carrying forward.**
+Section 0d says to check the instrument before believing the result; both
+of these were believed first.
+
+**`to_text()` is glyph-only, and three of this style's idioms are
+attribute-only.** The probe reported `QRubberBand` drawing nothing at all,
+which read as a serious defect -- a drag-selection with no visible band.
+`CE_RubberBand` is handled deliberately: it XORs `Attr::Reverse` over its
+cells and leaves every glyph where it was, so that a drag does not hide the
+rows it is selecting. Measured on the attribute plane, a 6x2 band marks 12
+cells reverse and writes 0 glyphs. The band's XOR, a selection's reverse
+and a current item's underline are all invisible to a glyph dump, so
+**a probe that reads `to_text()` cannot see three of the things this style
+does**; `snapshot_of()` prints the attribute plane and is what to use.
+
+**And the step that felt like the safety check answered another
+question.** Having found the tool button overlap, the obvious confirmation
+was to ask `hitTestComplexControl` what a click at the arrow's centre
+reports. It answered `SC_ToolButton` in BOTH directions -- decisive,
+repeatable, and one step from filing "a tool button's menu arrow cannot be
+clicked". `QToolButton` never calls that function. The measurement was of a
+code path nothing takes, which is `evidence.md`'s own entry met by walking
+straight into it, and what saved it was asking who the consumers are rather
+than trusting a number that agreed with the suspicion.
+
+**The experiment that would have settled it crashed the suite**: a local
+`QMenu` shown from an offscreen widget, truncating the run mid-`printf`.
+The probe's own bug, section 0d's second lesson, and the third time in this
+session that the instrument was the fault.
 
 ### 8.442 The same rounding again, in the text path, and a bar that lied (2026-10-16)
 
