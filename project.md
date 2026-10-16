@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2174 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2177 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18343,6 +18343,76 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.444 The output chain has an oracle now (2026-10-16)
+
+**No defect. The oracle is the product**, and it is the thing this tree was
+missing on the side nothing was looking at.
+
+**The gap, stated as this file already states its mirror.** `suite_backend`
+carries a paragraph saying the input decoder was exhaustively checked on one
+side and the router on the other, with nothing running a byte through both
+-- "the one path a terminal library exists for" -- and that was closed with
+a fixture that types into a line edit. **Coming back the other way the tree
+was in the same state and less visibly.** The budget fixture weighs what
+`present()` emits and greps the bytes for one row number and one glyph. A
+run addressed to the wrong row, an attribute dropped, a reset emitted a cell
+early: all weigh the same, and all pass.
+
+So the mirror was built. Present a frame, read the bytes that went out,
+rebuild the cells from them, and require the result to be the frame. **Section
+11 item 3 made exactly this argument for the graphics encoders and measured
+it** -- four of five deliberate sabotages left every pre-existing structural
+check in that file passing -- and the text plane had no equivalent.
+
+**It was cheap because the vocabulary is small, which was measured rather
+than assumed.** A 6x3 frame is 59 bytes: `ESC[H`, `ESC[0m`, SGR 1, 2, 3, 4,
+5, 7 and 9, a 16-colour foreground and background, `CR LF` between rows, and
+the text. Reading what there was to parse came before writing a parser.
+
+**What is compared, and what is deliberately not.**
+
+- **Glyphs and attributes, exactly.** Those have to survive the trip.
+- **Colour, not at all**, and this is a property rather than a shortcut: a
+  pen of `rgb(200, 30, 30)` leaves as SGR 91 when the terminal cannot be
+  asked for more, so the wire carries what the CAPABILITIES allow and not
+  what the cell holds. Comparing it here would assert the downgrade, which
+  is a separate question with its own checks.
+- **Narrow glyphs only.** Advancing over a wide cluster needs the test side
+  to know how wide a cluster is, and a second implementation of that is a
+  second place for it to be wrong -- at which point the round trip is
+  testing the stand-in rather than the emitter. `evidence.md` names that
+  shape; the restriction is written into the parser's own comment so the
+  next reader does not take it for an oversight.
+
+**The damage path is the half most able to be wrong, and it changed the
+parser's shape.** A frame presented with its damage region carries only the
+cells that changed, so reading that stream alone gives a mostly-empty buffer
+and proves nothing. The parser therefore applies a stream ON TOP of a buffer
+rather than returning a fresh one: present the first frame, rebuild it,
+then apply the second frame's damage-limited stream and require the result
+to be the second frame entirely. Measured, 35 bytes carrying two edits over
+a 20x5 frame, and it reproduces it.
+
+**Proved before it was trusted, because "0 mismatches" is exactly what a
+blind parser reports.** Dropping SGR 9 from `sgr_sequence()` by hand gave 6
+and 1 attribute mismatches with the cells and masks spelled out -- so the
+parser can fail, and it fails nameably.
+
+Three sabotage entries, one per check, each watched reddening the check it
+names:
+
+- **an attribute dropped on the wire** -- Strike, which is the one with no
+  neighbour to hide behind;
+- **a damage run addressed one row down**;
+- **a whole frame addressed one row down**, which emits every glyph in
+  order with its own attributes and leaves the byte count unchanged. That
+  is the point of both of the last two: a spot check for one glyph finds it
+  exactly as readily on the wrong row.
+
+2174 checks to 2177 -- three, where the first draft of this entry said
+four. `make count-check` is what said otherwise, which is the gate doing
+the job the headline figure exists for.
 
 ### 8.443 Four lenses swept empty, and two instruments that lied (2026-10-16)
 

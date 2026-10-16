@@ -247,6 +247,115 @@ QByteArray fatal_child(bool screen, const std::function<void()> &body,
 
 } // namespace
 
+// A FRAME PARSED BACK OUT OF THE WIRE. The input chain is checked
+// byte-to-widget and the output chain is not checked at all as a chain: the
+// budget fixture weighs the bytes and greps for one address and one glyph.
+// This is the mirror -- present() a frame, read what went out, and rebuild
+// the cells from it.
+//
+// Narrow glyphs only, deliberately. Advancing over a wide cluster needs this
+// side to know how wide a cluster is, and a second implementation of that is
+// a second place for it to be wrong; the round trip would then be testing the
+// stand-in. Wide clusters have their own checks on the emitting side.
+//
+// Colour is NOT compared by the caller and this does not record it. A pen of
+// rgb(200,30,30) leaves as SGR 91 when the terminal cannot be asked for more,
+// so the wire carries what the capabilities allow rather than what the cell
+// holds -- a real property, and a different question from whether the frame
+// survives the trip. Glyphs and attributes do have to survive exactly.
+//
+// Parses INTO a buffer rather than returning a fresh one, because the damage
+// path cannot be checked any other way: a frame presented with its damage
+// region carries only the cells that changed, so reading that stream alone
+// gives a mostly-empty buffer and proves nothing. Applied on top of the
+// previous frame it has to reproduce the edited one exactly, which is what
+// says the addressing is right -- the question the budget fixture spot-checks
+// with a grep for one row number and one glyph.
+static void parse_into(Qtty::CellBuffer &out, const QByteArray &raw) {
+	using namespace Qtty;
+	const int cols = out.cols(), rows = out.rows();
+	int row = 0, col = 0;
+	Attrs attrs;
+	int i = 0;
+	const int n = raw.size();
+	const auto num = [](const QByteArray &b) { return b.isEmpty() ? 0 : b.toInt(); };
+	while (i < n) {
+		const unsigned char u = static_cast<unsigned char>(raw[i]);
+		if (u == 0x0d) { col = 0; ++i; continue; }
+		if (u == 0x0a) { ++row; ++i; continue; }
+		if (u == 0x1b) {
+			if (i + 1 < n && raw[i + 1] == '[') {
+				int j = i + 2;
+				while (j < n && (static_cast<unsigned char>(raw[j]) < 0x40
+				                 || static_cast<unsigned char>(raw[j]) > 0x7e))
+					++j;
+				if (j >= n) break;
+				const char final_byte = raw[j];
+				const QByteArray body = raw.mid(i + 2, j - i - 2);
+				i = j + 1;
+				if (final_byte == 'H') {
+					const QList<QByteArray> ps = body.split(';');
+					row = ps.size() > 0 ? qMax(0, num(ps[0]) - 1) : 0;
+					col = ps.size() > 1 ? qMax(0, num(ps[1]) - 1) : 0;
+				} else if (final_byte == 'm') {
+					const QList<QByteArray> ps = body.split(';');
+					for (int k = 0; k < ps.size(); ++k) {
+						const int v = num(ps[k]);
+						switch (v) {
+						case 0: attrs = Attrs(); break;
+						case 1: attrs |= Attr::Bold; break;
+						case 2: attrs |= Attr::Dim; break;
+						case 3: attrs |= Attr::Italic; break;
+						case 4: attrs |= Attr::Underline; break;
+						case 5: attrs |= Attr::Blink; break;
+						case 7: attrs |= Attr::Reverse; break;
+						case 9: attrs |= Attr::Strike; break;
+						case 22: attrs &= ~(Attrs(Attr::Bold)
+						                    | Attr::Dim); break;
+						case 23: attrs &= ~Attrs(Attr::Italic); break;
+						case 24: attrs &= ~Attrs(Attr::Underline); break;
+						case 25: attrs &= ~Attrs(Attr::Blink); break;
+						case 27: attrs &= ~Attrs(Attr::Reverse); break;
+						case 29: attrs &= ~Attrs(Attr::Strike); break;
+						// 38 and 48 carry their own parameters, which this
+						// skips rather than mis-reading as attributes.
+						case 38: case 48:
+							if (k + 1 < ps.size() && num(ps[k + 1]) == 5) k += 2;
+							else if (k + 1 < ps.size() && num(ps[k + 1]) == 2) k += 4;
+							break;
+						default: break;              // a colour, or unknown
+						}
+					}
+				}
+				continue;
+			}
+			i += 2;                                   // a two-byte escape
+			continue;
+		}
+		// TEXT. Decoded as UTF-8 and written one code point per cell, which
+		// is the narrow-only restriction above stated as code.
+		int len = 1;
+		if ((u & 0xE0) == 0xC0) len = 2;
+		else if ((u & 0xF0) == 0xE0) len = 3;
+		else if ((u & 0xF8) == 0xF0) len = 4;
+		const QString g = QString::fromUtf8(raw.mid(i, len));
+		i += len;
+		if (row >= 0 && row < rows && col >= 0 && col < cols) {
+			Cell c = out.at(col, row);
+			c.ch = g;
+			c.attrs = attrs;
+			out.fill(QRect(col, row, 1, 1), c);
+		}
+		++col;
+	}
+}
+
+static Qtty::CellBuffer parse_frame(const QByteArray &raw, int cols, int rows) {
+	Qtty::CellBuffer out(cols, rows);
+	parse_into(out, raw);
+	return out;
+}
+
 int suite_backend() {
 	fails = 0;
 	Feeder feeder;
@@ -8004,6 +8113,163 @@ int suite_exec() {
 			CHECK(w_leave.contains("\033[0 q"),
 			      "and giving the terminal back restores the caret the user "
 			      "configured");
+		}
+	}
+
+	// THE OUTPUT CHAIN AS A CHAIN. The comment above this file's typing
+	// fixture says the input half was checked byte-to-widget and the chain
+	// between the halves was covered nowhere; the same was true coming back
+	// the other way, and less visibly. The budget fixture weighs what
+	// present() emits and greps it for one row number and one glyph, which
+	// is a spot check on a stream of hundreds of cells: a run addressed to
+	// the wrong row, an attribute dropped, a reset emitted a cell early all
+	// weigh the same and all pass.
+	//
+	// So: present a frame, read the bytes that went out, rebuild the cells
+	// from them, and require the result to be the frame. Section 11 item 3
+	// made this argument for the graphics encoders and measured it -- four of
+	// five deliberate sabotages left every pre-existing structural check in
+	// that file passing -- and the text plane had no equivalent.
+	//
+	// Glyphs and attributes only. Colour on the wire is what the terminal's
+	// capabilities allow rather than what the cell holds -- a pen of
+	// rgb(200,30,30) leaves as SGR 91 when nothing better can be asked for --
+	// so comparing it here would be asserting the downgrade, which is a
+	// different question with its own checks.
+	{
+		const auto emitted = [](const CellBuffer &f, const QRegion &damage,
+		                        AnsiBackend *wire) {
+			const QByteArray path = QByteArrayLiteral("/tmp/claude-1001/"
+			    "-home-funk-src-qtty/4a8ff110-e525-4700-a0c1-ac03c8173b6a/"
+			    "scratchpad/frame.bin");
+			fflush(stdout);
+			const int saved = ::dup(1);
+			const int fd = ::open(path.constData(),
+			                      O_WRONLY | O_CREAT | O_TRUNC, 0600);
+			QByteArray raw;
+			if (fd >= 0) {
+				::dup2(fd, 1);
+				wire->present(f, damage);
+				fflush(stdout);
+				::dup2(saved, 1);
+				::close(fd);
+				QFile in(QString::fromUtf8(path));
+				if (in.open(QIODevice::ReadOnly)) raw = in.readAll();
+			}
+			::close(saved);
+			return raw;
+		};
+		// The COMPARISON, named once: which cells differ, and the first of
+		// them spelled out. A count alone cannot be acted on.
+		const auto differs = [](const CellBuffer &want, const CellBuffer &got,
+		                        int *glyphs, int *attrs, QString *first) {
+			*glyphs = *attrs = 0;
+			for (int y = 0; y < want.rows(); ++y)
+				for (int x = 0; x < want.cols(); ++x) {
+					const Cell &a = want.at(x, y), &b = got.at(x, y);
+					const bool g = a.ch != b.ch, t = a.attrs != b.attrs;
+					if (g) ++*glyphs;
+					if (t) ++*attrs;
+					if ((g || t) && first->isEmpty())
+						*first = QStringLiteral("%1,%2 sent '%3' attrs %4,"
+						                        " read '%5' attrs %6")
+						         .arg(x).arg(y).arg(a.ch)
+						         .arg(int(a.attrs), 0, 16).arg(b.ch)
+						         .arg(int(b.attrs), 0, 16);
+				}
+		};
+
+		int total_glyph = 0, total_attr = 0;
+		QString worst;
+		const auto trip = [&](const CellBuffer &f) {
+			AnsiBackend wire;
+			const CellBuffer back = parse_frame(emitted(f, QRegion(), &wire),
+			                                    f.cols(), f.rows());
+			int g = 0, a = 0;
+			QString first;
+			differs(f, back, &g, &a, &first);
+			total_glyph += g;
+			total_attr += a;
+			if (!first.isEmpty() && worst.isEmpty()) worst = first;
+		};
+		{
+			CellBuffer f(10, 3);
+			f.text(0, 0, QStringLiteral("hello"));
+			f.text(0, 1, QStringLiteral("plain row"));
+			f.text(0, 2, QStringLiteral("abc"));
+			trip(f);
+		}
+		{
+			// EVERY attribute, one per row, so a dropped one is named rather
+			// than hidden behind a neighbour sharing its row's SGR run.
+			CellBuffer f(12, 7);
+			const Attr each[] = {Attr::Bold, Attr::Dim, Attr::Italic,
+			                     Attr::Underline, Attr::Reverse, Attr::Strike,
+			                     Attr::Blink};
+			for (int i = 0; i < 7; ++i)
+				f.text(0, i, QStringLiteral("mark"), Color(), Color(),
+				       Attrs(each[i]));
+			trip(f);
+		}
+		{
+			// COMBINED and interleaved with plain cells, which is what makes
+			// the emitter's run-coalescing part of the question: a reset
+			// emitted one cell early or late shows up here and nowhere else.
+			CellBuffer f(14, 2);
+			f.text(0, 0, QStringLiteral("a"), Color(), Color(),
+			       Attrs(Attr::Bold) | Attr::Underline | Attr::Reverse);
+			f.text(2, 0, QStringLiteral("b"), Color(), Color(),
+			       Attrs(Attr::Italic) | Attr::Strike);
+			f.text(4, 0, QStringLiteral("c"));
+			f.text(0, 1, QStringLiteral("d"), Color(), Color(),
+			       Attrs(Attr::Bold) | Attr::Dim | Attr::Blink);
+			trip(f);
+		}
+		printf("info: three frames out and back: %d glyph and %d attribute"
+		       " mismatch(es)\n", total_glyph, total_attr);
+		CHECK(total_glyph == 0,
+		      "every glyph a frame carries survives the wire and comes back in"
+		      " the cell it was sent from");
+		if (total_attr != 0)
+			printf("      condition: %s\n", qPrintable(worst));
+		CHECK(total_attr == 0,
+		      "and so does every attribute, which a byte count cannot see and"
+		      " a grep for one glyph does not ask");
+
+		// THE DAMAGE PATH, which is the half most able to be wrong: a frame
+		// presented with its damage region carries only what changed, so it
+		// is the addressing rather than the content that has to be right.
+		// Applied on top of the first frame it must reproduce the second
+		// exactly -- a run put on the wrong row leaves two faults, the cell
+		// that did not change and the cell that should not have.
+		{
+			CellBuffer first(20, 5);
+			for (int y = 0; y < 5; ++y)
+				first.text(0, y, QStringLiteral("....................."));
+			CellBuffer second(20, 5);
+			for (int y = 0; y < 5; ++y)
+				second.text(0, y, QStringLiteral("....................."));
+			second.text(7, 3, QStringLiteral("X"), Color(), Color(),
+			            Attrs(Attr::Bold));
+			second.text(2, 1, QStringLiteral("yz"), Color(), Color(),
+			            Attrs(Attr::Underline));
+			AnsiBackend wire;
+			CellBuffer shadow = parse_frame(emitted(first, QRegion(), &wire),
+			                                20, 5);
+			const QByteArray diff_bytes =
+			    emitted(second, second.diff(first), &wire);
+			parse_into(shadow, diff_bytes);
+			int g = 0, a = 0;
+			QString first_bad;
+			differs(second, shadow, &g, &a, &first_bad);
+			printf("info: a damage-limited frame is %lld byte(s) and leaves %d"
+			       " glyph and %d attribute mismatch(es)\n",
+			       qint64(diff_bytes.size()), g, a);
+			if (g || a) printf("      condition: %s\n", qPrintable(first_bad));
+			CHECK(g == 0 && a == 0,
+			      "and a frame sent with only its damage region, applied over"
+			      " the one before it, reproduces the whole frame -- which is"
+			      " what says the runs are addressed to the right cells");
 		}
 	}
 

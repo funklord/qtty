@@ -6537,3 +6537,39 @@ find = "\t\t\t\t\tthumb_len = qBound(1, track * sb->pageStep\n\t\t\t\t\t        
 into = "\t\t\t\t\tthumb_len = track;"
 count = 2
 check = "and one that really can scroll still does not"
+
+[[sabotage]]
+# An attribute dropped on the wire. SGR 9 is the one with no neighbour to
+# hide behind -- Strike is last in sgr_sequence and nothing else emits it --
+# so the frame comes back identical in every cell but one row's mask. A byte
+# count cannot see it and the budget fixture's grep does not ask.
+name = "the wire drops an attribute"
+file = "src/core/theme.cpp"
+find = "\tif (attrs & Attr::Strike)    out += \"\\033[9m\";"
+into = "\tif (false)                   out += \"\\033[9m\";"
+count = 1
+check = "and so does every attribute, which a byte count cannot see"
+
+[[sabotage]]
+# A damage run addressed one row down. The frame still weighs the same and
+# still carries the right glyph, which is why this is the half a spot check
+# cannot reach: the cell that should have changed does not, and one that
+# should not have does.
+name = "a damage run is addressed to the wrong row"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\t\tout += \"\\033[\" + QByteArray::number(y + 1) + \";\"\n\t\t\t\t     + QByteArray::number(from + 1) + \"H\";"
+into = "\t\t\t\tout += \"\\033[\" + QByteArray::number(y + 2) + \";\"\n\t\t\t\t     + QByteArray::number(from + 1) + \"H\";"
+count = 1
+check = "and a frame sent with only its damage region, applied over"
+
+[[sabotage]]
+# The whole frame started one row down. Every glyph is still emitted, in
+# order, with its own attributes, so the byte count is unchanged -- and
+# every cell is in the wrong row. The round trip is what notices; a grep
+# for one glyph finds it exactly as readily on the wrong row.
+name = "a full frame is addressed one row down"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tout += \"\\033[H\";\n\t\tfor (int y = 0; y < composed.rows(); ++y) {"
+into = "\t\tout += \"\\033[2;1H\";\n\t\tfor (int y = 0; y < composed.rows(); ++y) {"
+count = 1
+check = "every glyph a frame carries survives the wire and comes back"
