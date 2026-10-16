@@ -1514,7 +1514,15 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 			if (len >= 2) {
 				const int track = len - 2;
 				const int span = sb->maximum - sb->minimum;
-				int thumb_len = 1, thumb_pos = 0;
+				// A BAR WITH NOTHING TO SCROLL FILLS ITS TRACK, which is
+				// Qt's answer and was not this one's. Measured on Fusion
+				// with the option QScrollBar itself fills: at range 4..4 it
+				// gives SC_ScrollBarSlider 92 px of a 92 px groove, 100 per
+				// cent. This left thumb_len at 1, so a bar with nothing to
+				// scroll drew a single cell at the start -- which is what a
+				// bar scrolled TO the start looks like, so the picture said
+				// "there is more below" about a view that was complete.
+				int thumb_len = qMax(1, track), thumb_pos = 0;
 				if (span > 0 && track > 0) {
 					thumb_len = qBound(1, track * sb->pageStep
 					                     / qMax(1, span + sb->pageStep), track);
@@ -3295,7 +3303,15 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				}
 				const int track = len - 2;
 				const int span = sb->maximum - sb->minimum;
-				int thumb_len = 1, thumb_pos = 0;
+				// A BAR WITH NOTHING TO SCROLL FILLS ITS TRACK, which is
+				// Qt's answer and was not this one's. Measured on Fusion
+				// with the option QScrollBar itself fills: at range 4..4 it
+				// gives SC_ScrollBarSlider 92 px of a 92 px groove, 100 per
+				// cent. This left thumb_len at 1, so a bar with nothing to
+				// scroll drew a single cell at the start -- which is what a
+				// bar scrolled TO the start looks like, so the picture said
+				// "there is more below" about a view that was complete.
+				int thumb_len = qMax(1, track), thumb_pos = 0;
 				if (span > 0 && track > 0) {
 					thumb_len = qBound(1, track * sb->pageStep
 					                     / qMax(1, span + sb->pageStep), track);

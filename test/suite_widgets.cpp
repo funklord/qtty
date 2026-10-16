@@ -9146,6 +9146,77 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// A COMMAND LINK BUTTON SHOWS BOTH OF ITS LINES. QCommandLinkButton
+	// clears the option's text and draws the title and the description
+	// itself, one above the other -- the title with top 10 on a 19 px cell,
+	// the description with top 24. Rounding each run's top to the nearest
+	// row sent the title to row 1, where the description already correctly
+	// was, and the description is drawn second: the button showed its
+	// explanatory line and nothing naming the thing you press.
+	//
+	// Asserted on the two lines being on DIFFERENT rows and the title being
+	// present, rather than on either row number, because what was wrong is
+	// the collision and not the placement.
+	{
+		QCommandLinkButton b(QStringLiteral("Upgrade"),
+		                     QStringLiteral("Takes about a minute"));
+		b.setAttribute(Qt::WA_DontShowOnScreen);
+		b.resize(GridMetrics::cells(30, 3));
+		b.show();
+		QCoreApplication::processEvents();
+		CellBuffer buf(30, 3);
+		render_once(b, buf);
+		int title_row = -1, desc_row = -1;
+		for (int y = 0; y < buf.rows(); ++y) {
+			QString line;
+			for (int x = 0; x < buf.cols(); ++x) line += buf.at(x, y).ch;
+			if (line.contains(QStringLiteral("Upgrade"))) title_row = y;
+			if (line.contains(QStringLiteral("Takes about"))) desc_row = y;
+		}
+		printf("info: a command link button's title is on row %d and its"
+		       " description on row %d\n", title_row, desc_row);
+		CHECK(title_row >= 0 && desc_row >= 0 && title_row != desc_row,
+		      "a command link button shows its title as well as its"
+		      " description, on two rows rather than one overwriting the"
+		      " other");
+		GridGuard::reset();
+	}
+
+	// A SCROLL BAR WITH NOTHING TO SCROLL FILLS ITS TRACK. Measured on
+	// Fusion with the option QScrollBar itself fills: at range 4..4 it gives
+	// SC_ScrollBarSlider 92 px of a 92 px groove. This drew a one-cell thumb
+	// at the start, which is what a bar scrolled TO the start looks like --
+	// so the picture promised more content below a view that was complete.
+	//
+	// The second range is the control, and it is the half that keeps the
+	// fix from being "always full": a bar that really can scroll must not
+	// fill its track.
+	{
+		const auto thumb_cells = [](int lo, int hi) {
+			QScrollBar sb(Qt::Horizontal);
+			sb.setAttribute(Qt::WA_DontShowOnScreen);
+			sb.setRange(lo, hi);
+			sb.resize(GridMetrics::cells(12, 1));
+			sb.show();
+			QCoreApplication::processEvents();
+			CellBuffer b(12, 1);
+			render_once(sb, b);
+			int n = 0;
+			for (int x = 0; x < b.cols(); ++x)
+				if (b.at(x, 0).ch == QStringLiteral("█")) ++n;
+			GridGuard::reset();
+			return n;
+		};
+		const int empty = thumb_cells(4, 4), real = thumb_cells(4, 40);
+		printf("info: an empty range gives a thumb of %d cell(s) and a"
+		       " scrollable one %d, in a track of 10\n", empty, real);
+		CHECK(empty == 10,
+		      "a scroll bar with nothing to scroll fills its track, as Qt's"
+		      " own answer does, rather than showing a thumb at the start");
+		CHECK(real > 0 && real < 10,
+		      "and one that really can scroll still does not, which is what"
+		      " stops the fix from being a bar that is always full");
+	}
 	return fails;
 }
 

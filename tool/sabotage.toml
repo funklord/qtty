@@ -6504,3 +6504,36 @@ find = "\tconst int l = thin_x ? int(std::floor(m.center().x() / cw))\n\t       
 into = "\tconst int l = qRound(m.left() / cw);"
 count = 1
 check = "and no fill marks a cell raster leaves blank, which holds for the thin"
+
+[[sabotage]]
+# A text run placed by rounding its TOP rather than by where its body
+# sits. The command link button is the case: its title's top is 10 px into
+# a 19 px row, which rounds to the next row, where its own description
+# correctly is -- and the description is drawn second.
+name = "a text run rounds its top edge to the nearest row"
+file = "src/render/cell_paint.cpp"
+find = "\tconst qreal body = fm.ascent() + fm.descent();\n\tint row = int(std::floor((q.y() - fm.ascent() + body / 2)\n\t                         / GridMetrics::ch()));"
+into = "\tint row = qRound((q.y() - fm.ascent()) / GridMetrics::ch());"
+count = 1
+check = "a command link button shows its title as well as its description"
+
+[[sabotage]]
+# The thumb back to one cell when there is nothing to scroll, in BOTH
+# copies: the drawing's and the hit test's, which this file requires to
+# agree. Qt gives the slider the whole groove for an empty range.
+name = "an empty range draws a one-cell thumb at the start"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tint thumb_len = qMax(1, track), thumb_pos = 0;"
+into = "\t\t\t\tint thumb_len = 1, thumb_pos = 0;"
+count = 2
+check = "a scroll bar with nothing to scroll fills its track"
+
+[[sabotage]]
+# And the control for that fix, which is what stops it being "always
+# full": a bar that really can scroll must not fill its track either.
+name = "every scroll bar fills its track, scrollable or not"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\t\tthumb_len = qBound(1, track * sb->pageStep\n\t\t\t\t\t                     / qMax(1, span + sb->pageStep), track);"
+into = "\t\t\t\t\tthumb_len = track;"
+count = 2
+check = "and one that really can scroll still does not"

@@ -699,7 +699,25 @@ void CellPaintEngine::drawTextItem(const QPointF &p, const QTextItem &ti) {
 	QPointF q = xf_.map(p) + QPointF(dev_->origin);
 	QFontMetricsF fm(ti.font());
 	int col = qRound(q.x() / GridMetrics::cw());
-	int row = qRound((q.y() - fm.ascent()) / GridMetrics::ch());
+	// THE ROW HOLDING MOST OF THE RUN, which is not the row its top edge is
+	// nearest. A run of this font is 16 px on a 19 px cell -- thinner than
+	// one cell, so it is placed by its centre, the same rule to_cells()
+	// applies to a thin fill. Rounding the TOP is a 9.5 px offset where the
+	// centre is half the run's own height, so the two agree except for a
+	// 1.5 px window, and that window is where a widget that reserves room
+	// above its text lands.
+	//
+	// Measured on a QCommandLinkButton, which is the case: its title is
+	// drawn with top 10 and its description with top 24, on a 19 px cell.
+	// Rounding sent the title to row 1 -- where the description already
+	// correctly was -- and the description, drawn second, replaced it. The
+	// button showed its explanatory line and nothing naming the thing you
+	// press. Reading the engine's own text runs is what said so; the
+	// grouping rule below was the plausible culprit and reported
+	// `grouped=0` for both.
+	const qreal body = fm.ascent() + fm.descent();
+	int row = int(std::floor((q.y() - fm.ascent() + body / 2)
+	                         / GridMetrics::ch()));
 	// RUNS ON ONE BASELINE ARE ONE LINE, whatever their font sizes. The
 	// row above is computed from the run's own TOP -- baseline minus its
 	// own ascent -- so two runs Qt placed on the same baseline land on

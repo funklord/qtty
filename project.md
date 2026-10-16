@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2171 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2174 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18323,6 +18323,112 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.442 The same rounding again, in the text path, and a bar that lied (2026-10-16)
+
+**Two lenses derived from 8.441 came back empty, and the method that found
+eleven defects found two more.** The empty ones are recorded because a
+negative result with its detector named is worth something and a forgotten
+one is worth nothing:
+
+- **A geometric rule kept in more than one copy, found textually.** Every
+  line in `src/` mentioning `cw`, `ch` or `GridMetrics`, normalised and
+  compared across files: one expression appears in two or more files, and
+  it is `const int cw = GridMetrics::cw(), ch = GridMetrics::ch();`. The
+  detector is the weak half -- all three duplications this session found
+  were semantic, between code that shares no text, so a line comparison
+  could never have seen them.
+- **A predicate ANDing two conditions that should be per axis**, which is
+  what 8.441's defect was. Four candidates in the tree, every one a
+  genuine conjunction: a seven-segment dot is small in BOTH axes, a
+  skipped rescale needs both extents to match, "does it fit" needs both,
+  and the cursor's on-screen guard needs both coordinates. So 8.441 was
+  not an instance of a class here.
+
+**Then section 0d's method: render what nothing exercises, print it, read
+it.** Which configurations those are was measured rather than guessed, by
+counting each class's mentions in `test/`: `QFontComboBox` not once,
+`QCommandLinkButton` once, `QColumnView` twice, against `QDial`'s 79. Six
+rendered. Two defects, and one thing that looked like a third and was not.
+
+**A QCommandLINK button showed no title.** It rendered as an empty bracket
+and a description -- the explanatory line present, nothing naming the thing
+you press.
+
+The first hypothesis was the one-line grouping rule, which makes a run
+whose top overlaps the previous baseline adopt that run's row and would
+have had the description land on the title and replace it. **Instrumenting
+`drawTextItem` and reading the runs it actually receives said `grouped=0`
+for both**, and gave the real numbers: the title's top is 10 and the
+description's is 24, on a 19-pixel cell, so `qRound(10 / 19)` and
+`qRound(24 / 19)` are both 1. The two runs computed the same row
+independently, and the description is drawn second.
+
+**So it is 8.441's defect in the text path, and 8.441 itself had closed the
+door on it.** That entry's closing paragraph said `drawTextItem` was
+outside the thin-shape lens because it "reduces a POINT, not an extent, and
+rounds it", and that a glyph drawn from x 8 extends rightwards into the next
+column and belongs to it. **That is true of x and false of y.** A run has
+no extent in x that this engine cares about -- the glyphs advance from the
+origin -- but it has a height, and the height is 16 on a 19-pixel cell:
+thinner than one cell, therefore placed by its centre, which is
+`to_cells()`'s own rule for a thin axis.
+
+**That is worth more than the fix.** A paragraph explaining why something
+is out of scope is a claim, and this one was sound for one axis and applied
+silently to both -- written while closing a lens, in the entry that makes
+the strongest case for closing it. **An argument for exclusion has an axis
+too, and it has to be stated**, or the next reader inherits a door marked
+checked.
+
+The change is surgical rather than a rewrite of the row rule, which is
+worth stating because the existing comment warns that recomputing the row
+from the baseline broke two checks -- the lines the pinned limit is about,
+and the caret's own arithmetic. Rounding the top is `floor((top + 9.5) /
+19)` and the centre is `floor((top + 8) / 19)`, so the two differ only for
+a run whose top is 9.5 to 11 pixels into a row: 1.5 pixels of 19, and both
+warned-of checks are untouched. The suite was green before the change and
+after it.
+
+**What is left is cosmetic and is not a defect.** `QCommandLinkButton`
+clears the option's text before asking the style, so `CE_PushButtonLabel`
+draws `<>` with nothing in it and the title lands beside it: `<> Upgrade`.
+Making the bracket wrap the title would need the style to recognise this
+widget class, which is more than the appearance justifies.
+
+**A scroll bar with nothing to scroll looked like one scrolled to the
+start.** `thumb_len` was initialised to 1 and computed only when the range
+was non-empty, so a bar whose minimum equals its maximum drew a single cell
+at the left of a ten-cell track -- a picture that promises more content
+below a view that is complete.
+
+**Qt's answer was measured rather than quoted, with the option QScrollBar
+itself fills.** That distinction is this session's own lesson, from a slider
+fix written against a hand-built `QStyleOptionSlider` and reverted because
+the pair of fields it set is one Qt never produces. Asking Fusion through
+`initStyleOption`: range 4..4 gives `SC_ScrollBarSlider` 92 pixels of a 92
+pixel groove, 100 per cent, and range 4..40 gives 26 of 92. The empty range
+fills the groove.
+
+Fixed in **both** copies of the arithmetic. The hit test carries its own,
+deliberately -- the file says so, because two derivations of one layout is
+what put this style's spin box arrows in the same cell -- so a fix to one
+would have put the thumb where a click cannot reach it.
+
+Who reaches it: any scroll bar whose range collapses, which is a list that
+fits, a text edit holding one line, or a view whose model has emptied.
+
+**And the third configuration that looked wrong was right.** A `QLabel`
+with `wordWrap` and a word longer than its width showed one clipped line
+and lost fourteen of twenty-four characters. `Qt::TextWordWrap` does not
+break an unbreakable word -- it lets it overflow and be clipped -- so one
+clipped line is what Qt draws, and the three empty rows below it are
+correct. Checked before it was claimed, which is the only reason it is not
+in the paragraph above as a third defect.
+
+2171 checks to 2174. Three sabotage entries, each watched reddening the
+check it names; the third is the control that stops the scroll bar fix from
+being a bar that is always full.
 
 ### 8.441 A thin fill rounded its edges, so a border fell outside its widget (2026-10-15)
 
