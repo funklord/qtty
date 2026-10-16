@@ -8291,5 +8291,126 @@ int suite_exec() {
 		}
 	}
 
+	// THE MOUSE CHAIN, END TO END. This file's typing fixture was written
+	// because the decoder was checked exhaustively on one side and the
+	// router on the other with nothing running a byte through both -- "the
+	// one path a terminal library exists for" -- and it closed that for
+	// KEYS only. The mouse was in the same state: the decoder is checked to
+	// a recording sink ("SGR mouse press decodes with 0-based cell"), the
+	// router is checked from hand-built events, and nothing drove a report
+	// off the wire into the widget under the cell it names.
+	//
+	// Everything between is what that leaves unasserted: the wire's
+	// one-based column becoming a zero-based cell, the cell becoming a pixel
+	// point at its centre, and the hit test choosing a widget from it.
+	{
+		Feeder feeder;
+		AnsiBackend backend;
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(30, 6));
+		int hit_a = 0, hit_b = 0, hit_c = 0;
+		const auto button = [&win](int col, int row, int cols,
+		                           const QString &name) {
+			auto *p = new QPushButton(name, &win);
+			p->setGeometry(col * GridMetrics::cw(), row * GridMetrics::ch(),
+			               cols * GridMetrics::cw(), GridMetrics::ch());
+			return p;
+		};
+		// PLACED SO THAT A TRANSPOSITION CANNOT PASS. A and B share a
+		// column and differ by row; C differs in both and sits where the
+		// transpose of its own cell is off the window entirely. Three
+		// buttons at the same place would be satisfied by a chain that
+		// ignored the coordinates.
+		QPushButton *ba = button(0, 0, 10, QStringLiteral("A"));
+		QPushButton *bb = button(0, 2, 10, QStringLiteral("B"));
+		QPushButton *bc = button(15, 4, 10, QStringLiteral("C"));
+		QObject::connect(ba, &QPushButton::clicked, [&hit_a] { ++hit_a; });
+		QObject::connect(bb, &QPushButton::clicked, [&hit_b] { ++hit_b; });
+		QObject::connect(bc, &QPushButton::clicked, [&hit_c] { ++hit_c; });
+		struct Watch : QWidget {
+			using QWidget::QWidget;
+			int right = 0, wheel = 0;
+			void mousePressEvent(QMouseEvent *e) override {
+				if (e->button() == Qt::RightButton) ++right;
+			}
+			void wheelEvent(QWheelEvent *) override { ++wheel; }
+		};
+		Watch *watch = new Watch(&win);
+		watch->setGeometry(0, GridMetrics::ch() * 5,
+		                   GridMetrics::cw() * 30, GridMetrics::ch());
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter router(&win);
+		set_current_window(&win);
+		backend.set_event_sink(&router);
+		QCoreApplication::processEvents();
+		const auto raw = [&](const QByteArray &b) {
+			feeder.send(b);
+			for (int i = 0; i < 30; ++i) QCoreApplication::processEvents();
+		};
+		// ONE-BASED on the wire: a report at cell (x, y) is sent as column
+		// x + 1, row y + 1, which is the conversion under test and so is
+		// written here rather than taken from a helper that shares it.
+		const auto click = [&raw](int button_bit, int cell_x, int cell_y) {
+			const QByteArray at = QByteArray::number(cell_x + 1) + ";"
+			                    + QByteArray::number(cell_y + 1);
+			raw("\033[<" + QByteArray::number(button_bit) + ";" + at + "M");
+			raw("\033[<" + QByteArray::number(button_bit) + ";" + at + "m");
+		};
+		click(0, 5, 0);
+		click(0, 5, 2);
+		click(0, 20, 4);
+		printf("info: a click in each of three buttons' cells gives"
+		       " A=%d B=%d C=%d\n", hit_a, hit_b, hit_c);
+		CHECK(hit_a == 1 && hit_b == 1 && hit_c == 1,
+		      "a mouse report on the wire reaches the widget under the cell it"
+		      " names, and only that one");
+		click(0, 25, 0);                            // no widget there
+		click(0, 5, 1);                             // the row between A and B
+		printf("info: and after two clicks where nothing is, A=%d B=%d C=%d\n",
+		       hit_a, hit_b, hit_c);
+		CHECK(hit_a == 1 && hit_b == 1 && hit_c == 1,
+		      "and a report naming a cell no widget covers clicks nothing,"
+		      " which is what stops the check above passing on a chain that"
+		      " clicks whatever it can find");
+		// THE EDGES, which a click in the middle cannot discriminate: A
+		// spans cells 0..9, so 0 and 9 are inside and 10 is the first that
+		// is not. An off-by-one in the one-based conversion moves all three
+		// by a column and leaves a middle-of-the-button click landing.
+		const int before_first = hit_a;
+		click(0, 0, 0);
+		const int after_first = hit_a;
+		click(0, 9, 0);
+		const int after_last = hit_a;
+		click(0, 10, 0);
+		const int after_past = hit_a;
+		printf("info: A's first cell +%d, its last +%d, the cell past it"
+		       " +%d\n", after_first - before_first, after_last - after_first,
+		       after_past - after_last);
+		CHECK(after_first == before_first + 1 && after_last == after_first + 1
+		      && after_past == after_last,
+		      "and the wire's one-based column names the cell it means at both"
+		      " edges of a widget, the cell past the end reaching nothing");
+		// A RIGHT BUTTON and A WHEEL, each a decode of its own and a
+		// delivery of its own -- the wheel arrives as bit 64 rather than as
+		// a button at all, so a chain that mapped every report to a left
+		// click would pass everything above and fail both of these.
+		click(2, 6, 5);
+		printf("info: a right button at row 5 arrives %d time(s) as a right"
+		       " button\n", watch->right);
+		CHECK(watch->right == 1,
+		      "and a right button arrives as a right button rather than as"
+		      " whatever the left one maps to");
+		raw("\033[<64;6;6M");
+		raw("\033[<65;6;6M");
+		printf("info: two wheel reports arrive as %d wheel event(s)\n",
+		       watch->wheel);
+		CHECK(watch->wheel == 2,
+		      "and a wheel report arrives as a wheel event, which is bit 64"
+		      " and not a button");
+		GridGuard::reset();
+	}
+
 	return fails;
 }

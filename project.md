@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2177 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2182 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18343,6 +18343,57 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.445 The mouse chain had no end to end either (2026-10-16)
+
+**No defect. The chain is the product**, and it is the same hole 8.444 found
+on the output side, met once more on the input side for a different device.
+
+**`suite_backend`'s typing fixture exists because of this exact shape.** Its
+own comment says the decoder was checked exhaustively on one side and the
+router on the other, with nothing running a byte through both -- "the one
+path a terminal library exists for" -- and the fixture that closed it drives
+keys. **The mouse was left in the state the comment describes**: the decoder
+is checked to a recording sink, which is where "SGR mouse press decodes with
+0-based cell" stops, and the router is checked from hand-built events.
+Nothing drove a report off the wire into the widget under the cell it names.
+
+**Three conversions sit between those two halves and no check could see all
+three**: the wire's one-based column becoming a zero-based cell, the cell
+becoming a pixel point at its own centre, and the hit test choosing a widget
+from that point.
+
+**The fixture is placed so that a chain ignoring the coordinates cannot
+pass.** Three buttons in a 30x6 window: A and B share a column and differ by
+row, and C differs in both and sits where the transpose of its own cell is
+off the window entirely. Three buttons in one place would be satisfied by a
+chain that clicked whatever it found.
+
+Five checks, and all five were already true:
+
+- a report reaches the widget under the cell it names **and only that one**
+  -- A, B and C once each;
+- a report naming a cell no widget covers **clicks nothing** -- the control
+  for the one above, since "reaches the right widget" is also satisfied by a
+  chain that clicks the nearest thing;
+- the one-based column names the cell it means **at both edges** -- A spans
+  cells 0 to 9, so 0 and 9 land and 10 does not;
+- a **right button** arrives as a right button, which is its own decode;
+- a **wheel** report arrives as a wheel event, which is bit 64 and not a
+  button at all.
+
+**The edge check is the one that earns its place.** An off-by-one in the
+one-based conversion moves every cell by a column and leaves a
+middle-of-the-button click landing exactly as before -- so three of the five
+sabotages below would pass every check except that one.
+
+Five sabotage entries, each watched reddening the check it names: the column
+read one-based, the cell transposed on the way to pixels, every button
+collapsed to the left one, the wheel branch removed, and the column
+discarded so that every report names column 0 -- the last being what the
+exclusivity control exists for, and it reddens that check plus seven others.
+
+2177 checks to 2182.
 
 ### 8.444 The output chain has an oracle now (2026-10-16)
 

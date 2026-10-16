@@ -6573,3 +6573,59 @@ find = "\t\tout += \"\\033[H\";\n\t\tfor (int y = 0; y < composed.rows(); ++y) {
 into = "\t\tout += \"\\033[2;1H\";\n\t\tfor (int y = 0; y < composed.rows(); ++y) {"
 count = 1
 check = "every glyph a frame carries survives the wire and comes back"
+
+[[sabotage]]
+# The mouse wire's one-based column taken as zero-based, which shifts every
+# report a column. A click in the middle of a widget still lands, which is
+# why the edge check exists: the first cell moves inward and the last moves
+# out.
+name = "the mouse wire's column is read one-based"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tm.cell = QPoint(qMax(0, param(1, 1) - 1), qMax(0, param(2, 1) - 1));"
+into = "\t\tm.cell = QPoint(qMax(0, param(1, 1)), qMax(0, param(2, 1) - 1));"
+count = 1
+check = "and the wire's one-based column names the cell it means at both"
+
+[[sabotage]]
+# The mouse wire's cell transposed on the way to a pixel point. Three
+# buttons placed so that this cannot pass: A and B share a column, and C's
+# transpose is off the window.
+name = "the mouse wire's cell is transposed into pixels"
+file = "src/runtime/input_router.cpp"
+find = "\tconst QPoint px(m.cell.x() * GridMetrics::cw() + GridMetrics::cw() / 2,\n\t                m.cell.y() * GridMetrics::ch() + GridMetrics::ch() / 2);"
+into = "\tconst QPoint px(m.cell.y() * GridMetrics::cw() + GridMetrics::cw() / 2,\n\t                m.cell.x() * GridMetrics::ch() + GridMetrics::ch() / 2);"
+count = 1
+check = "a mouse report on the wire reaches the widget under the cell it"
+
+[[sabotage]]
+# Every mouse wire button collapsed to the left one, which is the shape the
+# 128-bit comment above this code calls an impersonation rather than a
+# fallback.
+name = "the mouse wire makes every button the left one"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\telse                   m.button = (b & 3) + 1;"
+into = "\t\t\telse                   m.button = 1;"
+count = 1
+check = "and a right button arrives as a right button rather than as"
+
+[[sabotage]]
+# The mouse wire's wheel delivered as a button press, which the comment at
+# this branch says would leave a button stuck down for the session.
+name = "the mouse wire has no wheel branch"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tif (b & 64) {"
+into = "\t\tif (false) {"
+count = 1
+check = "and a wheel report arrives as a wheel event, which is bit 64"
+
+[[sabotage]]
+# The mouse wire's column discarded, so every report names column 0. This
+# is the shape the exclusivity control exists for: a chain that clicks
+# whatever it can find rather than what the cell names. A click on empty
+# space at column 25 lands on the button at column 0.
+name = "the mouse wire ignores the column entirely"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tm.cell = QPoint(qMax(0, param(1, 1) - 1), qMax(0, param(2, 1) - 1));"
+into = "\t\tm.cell = QPoint(0, qMax(0, param(2, 1) - 1));"
+count = 1
+check = "and a report naming a cell no widget covers clicks nothing"
