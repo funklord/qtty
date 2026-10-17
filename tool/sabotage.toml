@@ -6890,3 +6890,48 @@ find = "\t\tif (!w->property(\"qtty.blink\").toBool()) continue;"
 into = "\t\tif (false) continue;"
 count = 1
 check = "a widget that was never given qtty.blink draws text and none of it"
+
+# ---- The third absence batch, aimed by 8.449's sharpest finding: a
+# ---- check whose predicate is narrower than its claim. Each of these
+# ---- asserts that something does not happen on a plane or through a
+# ---- path the fixture may not be looking at.
+
+# ---- A THIRD ENTRY WAS WRITTEN HERE AND REMOVED, for the same reason
+# ---- as the two above: its break is a crash, not a wrong answer.
+# ---- term_caps.cpp's `if (digits == 0) { ok = false; break; }` guards a
+# ---- DIVIDE BY ZERO -- with digits 0, `span = (1L << 0) - 1` is 0 and
+# ---- the next line divides by it. Measured by hand with both copies
+# ---- disabled: "Floating point exception", exit 2, the suite gone before
+# ---- the check it names. 8.450.
+
+[[sabotage]]
+# A missing field separator accepted, which is the other half of the same
+# truncation: "rgb:ff" with nothing after it should set nothing.
+name = "a truncated absence of a separator is accepted"
+file = "src/backend/ansi/term_caps.cpp"
+find = "\t\t\t\tif (j >= b.size() || b[j] != '/') { ok = false; break; }"
+into = "\t\t\t\tif (false) { ok = false; break; }"
+count = 2
+check = "and a reply whose channel separators are not slashes sets"
+
+[[sabotage]]
+# A continuation cell emitted as a cell of its own, so a wide cluster's
+# second column gets its own SGR and its own glyph write. The frame still
+# carries every character; what breaks is the run.
+name = "the absence of a glyph in a continuation is emitted anyway"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\tif (c.width == 0) continue;              // continuation of wide cell"
+into = "\t\t\tif (false) continue;                     // continuation of wide cell"
+count = 1
+check = "and the colour run is not broken across its continuation"
+
+[[sabotage]]
+# A drop target never told it was left, so a highlight set on enter stays
+# on after the pointer has gone -- the state the comment at this code says
+# leaves two widgets both looking like the drop site.
+name = "the absence of a target sends no leave"
+file = "src/runtime/drag.cpp"
+find = "\t\tif (g_live->over) {\n\t\t\tQDragLeaveEvent leave;\n\t\t\tQApplication::sendEvent(g_live->over, &leave);\n\t\t}"
+into = "\t\tif (false) {\n\t\t\tQDragLeaveEvent leave;\n\t\t\tQApplication::sendEvent(g_live->over, &leave);\n\t\t}"
+count = 1
+check = "background drops nothing, and the area is told it was"

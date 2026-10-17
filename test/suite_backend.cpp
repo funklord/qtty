@@ -1855,6 +1855,22 @@ int suite_backend() {
 		      "and is scaled by its own digit width like the background");
 		CHECK(!caps_of("\033]10;rgb:\033\\").fg_known,
 		      "a truncated foreground reply sets nothing either");
+		// AND A REPLY WHOSE SEPARATORS ARE NOT SLASHES, which is the only
+		// input that reaches the separator guard. The two truncation checks
+		// above cannot: both stop before a channel has digits, so the
+		// digits guard fires and the separator guard is never asked.
+		// Measured by disabling the separator guard and watching them both
+		// pass -- the sabotage target refused the entry, which is how this
+		// was found.
+		//
+		// With that guard gone the `++j` after it still runs, so the parser
+		// steps over whatever stood where a slash should be and reads three
+		// perfectly good channels out of `rgb:ff:ff:ff` -- a colour the
+		// terminal never sent, from a reply no terminal would write.
+		CHECK(!caps_of("\033]10;rgb:ff:ff:ff\033\\").fg_known,
+		      "and a reply whose channel separators are not slashes sets"
+		      " nothing, which is the one truncation the digits guard does"
+		      " not already refuse");
 		const TermCaps both =
 		    caps_of("\033]11;rgb:1c1c/1c1c/1c1c\033\\\033]10;rgb:d0d0/d0d0/d0d0\033\\");
 		CHECK(both.bg_known && both.fg_known && both.bg[0] == 0x1c

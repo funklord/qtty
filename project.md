@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2190 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2191 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18366,6 +18366,63 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.450 A guard with no reachable input, and a crash guard class (2026-10-17)
+
+**A third batch, aimed by 8.449's sharpest finding -- a check whose
+predicate is narrower than its claim -- and searched for mechanically:
+undefended absence claims about a non-glyph plane whose fixture might only
+be testing glyphs.**
+
+**Two well-made checks were examined and left alone, which is worth saying
+because a batch that reports only its findings hides how many checks were
+fine.** The drop-indicator one compares `to_snapshot()`, so it sees the
+attribute plane its text claims, and it carries its own control against the
+vacuous pass -- "nothing changed" passing from a call that never reached the
+engine. The drag-off-the-area one puts four conditions behind one verdict,
+and each of the four is substantive rather than decoration.
+
+Four entries. Two reddened at once: a continuation cell emitted as a cell of
+its own, and a drop target never told it was left.
+
+**THE REFUSAL: A GUARD WITH NO INPUT THAT REACHES IT.** `term_caps.cpp`
+refuses a colour reply whose channel separator is not a slash, and nothing
+could reach that guard. "a truncated foreground reply sets nothing either"
+feeds `rgb:` with nothing after it -- so the DIGITS guard fires first and the
+separator guard is never asked. Both truncation checks stop before a channel
+has any digits, which is the one case the separator guard cannot see.
+
+**And the subtlety is what makes it worth a check rather than a shrug.**
+With the separator test gone, the `++j` after it still runs: the parser steps
+over whatever stood where a slash should be and reads three perfectly good
+channels out of `rgb:ff:ff:ff`, setting a colour the terminal never sent. So
+a *truncated* reply is caught by the digits guard either way, and only a
+*replaced* separator reaches this one -- which is why the new check is named
+for separators that are not slashes rather than for truncation.
+
+**THE INCONCLUSIVE, AND IT MAKES 8.449'S THIRD KIND A CLASS.**
+`if (digits == 0) { ok = false; break; }` guards a **divide by zero**: with
+no digits, `span = (1L << (4 * digits)) - 1` is 0 and the next line divides
+by it. Measured by hand rather than inferred -- both copies disabled gives
+"Floating point exception", exit 2, the suite gone before the check it names.
+
+That is the second crash guard in two days, after `compose_halfblocks()`'s
+null image. **Two of the guards I have tried to sabotage are guards against
+a crash rather than against a wrong answer**, and no in-process check can
+reach either: the suite dies before it can report. The entries are removed
+with their measurements written where they stood, so the next pass over this
+pool does not rediscover them by crashing its own run.
+
+**AND THE ANCHOR MATCHED TWICE, which taught something nobody asked
+about.** `term_caps.cpp` parses a colour reply **twice** -- once for
+OSC 10/11 and once for the OSC 4 palette -- carrying the same rule in the
+same shape, which the second one's own comment acknowledges ("and for the
+same reason"). The entries carry `count = 2` so the rule is not left half
+tested, which is the fault this tree keeps finding in other forms: one
+behaviour, two implementations, one of them fixed.
+
+650 sabotage entries to 653 -- four written, one removed -- and 2190 checks
+to 2191.
 
 ### 8.449 Three ways a check cannot say what it looks like it says (2026-10-17)
 
