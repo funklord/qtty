@@ -18367,6 +18367,59 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.449 Three ways a check cannot say what it looks like it says (2026-10-17)
+
+**Five more entries against absence claims, two routine and three
+instructive -- and the three are different kinds of the same surprise.**
+8.448's one finding came from this pool, so the pool was worked further:
+236 of the 1485 unnamed claims read as absence claims by their phrasing.
+What makes them worth the effort is that "X does not happen" can be true
+for a reason the check never mentions.
+
+**ONE: A CHECK BLIND TO THE THING IT FORBIDS.** "an unfilled polygon draws
+its edges and leaves its middle alone" passed with the engine's
+`brush_.style() != Qt::NoBrush` test removed -- a polygon that was being
+filled. Its interior probe is `occupied()`, which tests `ch != " "`, and a
+fill writes the BACKGROUND: **a filled middle looked exactly like an empty
+one.** The fixture sets `Qt::NoBrush` deliberately and the engine's comment
+says QPainter does not filter the call, so the fill really ran.
+
+That is section 0d's tenth trap -- a glyph-only instrument, blind to what
+this library does on the other planes -- and this is the version that
+matters. **A probe is read once; a check is trusted for ever.** It tests
+ink now, glyph or non-default background, and the entry reddens it.
+
+**TWO: A GUARD WITH NO BEHAVIOURAL CONTENT.** `crop_placement()`'s
+uncropped fast path, `if (visible == cell_rect)`. Disabled, the general path
+returns the same answer and "a placement inside the grid is not cropped"
+still passes. That is not a weak check -- it is a fast path that **cannot
+drift from the general one**, so there is nothing for an entry to break and
+the entry was removed. Its reason is written into the spec where it stood,
+because the next pass over this pool will reach for it again.
+
+**THREE: A GUARD WHOSE ABSENCE IS A CRASH.** `compose_halfblocks()`'s
+`if (src.isNull()) return;`. Removed, the suite **segfaults** -- measured by
+hand, exit 2 -- so it dies before the check it names and the target reports
+INCONCLUSIVE rather than a verdict. The guard is load-bearing in the
+strongest way there is; what cannot be expressed is a check that survives to
+say so. `suite_backend`'s forked-child helper is the route if anybody wants
+one, and that is recorded with the removed entry rather than left for
+somebody to rediscover by segfaulting their own run.
+
+**The three matter together because the spec cannot tell them apart.** All
+three arrived as "the named check PASSED against broken code" or its
+inconclusive cousin, and the natural reading of all three is "this check is
+weak". One was. One was a check doing its job against an optimisation with
+no content. One was a guard too important for a check to reach. **A refusal
+is a prompt to measure, not a verdict on the check** -- and the measurement
+was different every time: reading what the fixture's predicate tests,
+removing a fast path and comparing answers, and running the break by hand to
+watch it die.
+
+647 sabotage entries to 650 -- five written, two removed. **The check count
+is unchanged at 2190**, which is the better outcome of the three: the suite
+got stricter without getting bigger.
+
 ### 8.448 Hardening by looking for the entries the target refuses (2026-10-17)
 
 **Twelve entries written, eleven of them routine, and the twelfth is the

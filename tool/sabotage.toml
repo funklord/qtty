@@ -6837,3 +6837,56 @@ find = "\tif (w == 2 && !writable(x + 1, y)) {"
 into = "\tif (false) {"
 count = 1
 check = "a wide cluster with no room is not written as width 2"
+
+# ---- The second absence batch. Three of these break a guard that a
+# ---- second mechanism may already carry, which is where 8.448's one
+# ---- finding came from; three break a guard nothing else can carry.
+
+# ---- TWO ENTRIES WERE WRITTEN HERE AND REMOVED, both refused by this
+# ---- target, and 8.449 has the measurements. Recorded so nobody writes
+# ---- them again:
+# ----
+# ---- * `compose_halfblocks`'s `if (src.isNull()) return;` cannot be
+# ----   sabotaged from inside this process. Removing it SEGFAULTS -- the
+# ----   suite dies before the check it names, so the target reports
+# ----   INCONCLUSIVE rather than a verdict. The guard is load-bearing in
+# ----   the strongest way there is; what cannot be expressed is a check
+# ----   that survives to say so. suite_backend's forked-child helper is
+# ----   the route if anybody wants one.
+# ---- * `crop_placement`'s uncropped fast path has no behavioural
+# ----   content. With `if (visible == cell_rect)` disabled, the general
+# ----   path returns the same answer and "a placement inside the grid is
+# ----   not cropped" still passes. The fast path cannot drift from the
+# ----   general one, so there is nothing for an entry to break.
+
+[[sabotage]]
+# A polygon filled although its brush says not to, which is the mode
+# argument this entry point ignored once before: drawPolyline came out as
+# a closed box and a filled polygon drew no fill.
+name = "the absence of a brush still fills a polygon"
+file = "src/render/cell_paint.cpp"
+find = "\tif (closed && brush_.style() != Qt::NoBrush)\n\t\tfill_polygon(p, mode == WindingMode, clip);"
+into = "\tif (closed)\n\t\tfill_polygon(p, mode == WindingMode, clip);"
+count = 1
+check = "an unfilled polygon draws its edges and leaves its middle alone"
+
+[[sabotage]]
+# A curve written over a cell that already holds a character, which the
+# comment at this guard says reads as corruption where a table's grid line
+# crosses a row of text.
+name = "the absence of a glyph is not checked before a curve"
+file = "src/render/cell_paint.cpp"
+find = "\t\tif (cell.ch != QStringLiteral(\" \")) continue;\n\t\tcell.ch = segment_glyph("
+into = "\t\tif (false) continue;\n\t\tcell.ch = segment_glyph("
+count = 1
+check = "neither a rule nor a diagonal overwrites a cell that holds a glyph"
+
+[[sabotage]]
+# Every widget treated as having asked for blink, so an attribute nobody
+# set reaches every glyph in the tree.
+name = "the absence of qtty.blink is read as asking for it"
+file = "src/cell_geometry.h"
+find = "\t\tif (!w->property(\"qtty.blink\").toBool()) continue;"
+into = "\t\tif (false) continue;"
+count = 1
+check = "a widget that was never given qtty.blink draws text and none of it"

@@ -2803,9 +2803,21 @@ int suite_render(bool record) {
 		// columns 3 and 12, and they only spread further apart below that.
 		// Sampling nearer the apex would sample the legs themselves, which is
 		// what the first version of this check did.
+		// INK, NOT GLYPHS, and this check could not see a fill until it
+		// said so. occupied() tests `ch != " "` and a fill writes the
+		// BACKGROUND, so a filled middle looked exactly like an empty one:
+		// measured by removing the engine's `brush_.style() != Qt::NoBrush`
+		// test and watching this check pass against a polygon that was
+		// being filled. Section 0d's tenth trap, inside a permanent check
+		// rather than a probe.
+		const auto inked = [](const Qtty::CellBuffer &b, int x, int y) {
+			const Qtty::Cell &c = b.at(x, y);
+			return c.ch != QStringLiteral(" ")
+			    || c.bg.kind() != Qtty::Color::Default;
+		};
 		int interior = 0;
 		for (int y = 4; y < 7; ++y)
-			for (int x = 5; x < 11; ++x) if (occupied(wire, x, y)) ++interior;
+			for (int x = 5; x < 11; ++x) if (inked(wire, x, y)) ++interior;
 		const bool wire_corners = !occupied(wire, 0, 0) && !occupied(wire, 15, 0);
 		bool wire_edges = false;
 		for (int x = 0; x < 16; ++x) if (occupied(wire, x, 7)) wire_edges = true;
