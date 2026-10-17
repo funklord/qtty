@@ -6680,3 +6680,22 @@ find = "void InputRouter::on_paste(const QString &text) {\n\tQWidget *target = k
 into = "void InputRouter::on_paste(const QString &text) {\n\tif (true) return;\n\tQWidget *target = key_target();"
 count = 1
 check = "a bracketed paste on the wire becomes text in the focused widget"
+
+[[sabotage]]
+# A terminal at EOF that nobody is told about. The notifier is still
+# disabled, so the program does not spin -- it simply never stops, which is
+# the state the seam was built to make unbreakable and which nothing
+# guarded from the far end. The backend's own side cannot see it: its check
+# counts the call on a fake sink, and this removes the call.
+#
+# Its sibling control -- a terminal still there must NOT stop the program --
+# has no entry, and that is a property rather than a gap: with an idle
+# pseudo-terminal the notifier never activates, `n <= 0` already treats
+# EAGAIN as EOF, and no single-line edit here makes a healthy terminal look
+# lost.
+name = "nobody is told the terminal went away"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tif (notifier_) notifier_->setEnabled(false);\n\t\tif (sink_) sink_->on_terminal_lost();"
+into = "\t\tif (notifier_) notifier_->setEnabled(false);\n\t\tif (false) sink_->on_terminal_lost();"
+count = 1
+check = "a terminal really going away stops the program"

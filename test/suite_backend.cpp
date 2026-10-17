@@ -8530,5 +8530,92 @@ int suite_exec() {
 		GridGuard::reset();
 	}
 
+	// THE SIXTH SINK, AND THE LAST. suite_runtime's terminal-lost check says
+	// in as many words that the backend half is covered by counting the call
+	// on a fake sink and the router half -- "the part that actually stops" --
+	// was not, and it closed the router half with a hand-built
+	// router.on_terminal_lost(). So this is the same seam 8.446 is about,
+	// met once more: nothing took a terminal really going away and watched
+	// the program stop.
+	{
+		struct Run { qint64 took = -1; bool timed_out = false; bool ran = false; };
+		// `hangup_at` negative means LEAVE THE TERMINAL ALONE, which is the
+		// control: without it a prompt exit cannot be told from a clock that
+		// happened to fire.
+		const auto drive = [](int hangup_at, int net_ms) {
+			Run r;
+			// A PTY OF ITS OWN rather than the shared Tty helper, because
+			// signalling a hangup means closing the MASTER and that helper
+			// closes it again in its destructor. A second close of a
+			// descriptor this process has already closed lands on whatever
+			// number was reused in between -- the stale-descriptor hazard
+			// running-code.md records for PIDs, wearing another hat.
+			int master = posix_openpt(O_RDWR | O_NOCTTY);
+			int slave = -1, saved_in = -1;
+			if (master >= 0 && grantpt(master) == 0 && unlockpt(master) == 0) {
+				if (const char *name = ptsname(master)) {
+					slave = ::open(name, O_RDWR | O_NOCTTY);
+					if (slave >= 0) { saved_in = ::dup(0); ::dup2(slave, 0); }
+				}
+			}
+			if (slave >= 0) {
+				r.ran = true;
+				QWidget win;
+				win.setAttribute(Qt::WA_DontShowOnScreen);
+				win.resize(GridMetrics::cells(10, 3));
+				win.show();
+				QCoreApplication::processEvents();
+				AnsiBackend backend;
+				InputRouter router(&win);
+				set_current_window(&win);
+				backend.set_event_sink(&router);
+				QCoreApplication::processEvents();
+				// THE MAIN LOOP, not a nested QEventLoop. The first version
+				// of this fixture used the latter and reported a three-second
+				// timeout, which reads exactly like a terminal loss that does
+				// not stop the program: InputRouter's handler is qApp->quit(),
+				// and that ends the MAIN event loop while a nested
+				// QEventLoop::exec() does not return for it. suite_runtime's
+				// own terminal-lost check uses exec() and says so.
+				QTimer net;
+				QObject::connect(&net, &QTimer::timeout, [&r] {
+					r.timed_out = true;
+					QCoreApplication::quit();
+				});
+				net.setSingleShot(true);
+				net.start(net_ms);
+				QTimer hangup;
+				QObject::connect(&hangup, &QTimer::timeout, [&master] {
+					if (master >= 0) { ::close(master); master = -1; }
+				});
+				if (hangup_at >= 0) {
+					hangup.setSingleShot(true);
+					hangup.start(hangup_at);
+				}
+				const qint64 began = QDateTime::currentMSecsSinceEpoch();
+				QCoreApplication::exec();
+				r.took = QDateTime::currentMSecsSinceEpoch() - began;
+				GridGuard::reset();
+			}
+			if (saved_in >= 0) { ::dup2(saved_in, 0); ::close(saved_in); }
+			if (slave >= 0) ::close(slave);
+			if (master >= 0) ::close(master);
+			return r;
+		};
+		const Run lost = drive(50, 3000);
+		const Run kept = drive(-1, 300);
+		printf("info: a closed terminal ended the loop after %lld ms"
+		       " (timed out: %d); one left open after %lld ms (timed out:"
+		       " %d)\n", (long long)lost.took, int(lost.timed_out),
+		       (long long)kept.took, int(kept.timed_out));
+		CHECK(lost.ran && !lost.timed_out && lost.took < 1000,
+		      "a terminal really going away stops the program, driven from a"
+		      " hangup on a pseudo-terminal rather than from a call to the"
+		      " handler");
+		CHECK(kept.ran && kept.timed_out,
+		      "and a terminal still there does not, which is what says the"
+		      " check above measured the hangup and not the clock");
+	}
+
 	return fails;
 }

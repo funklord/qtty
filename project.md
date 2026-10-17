@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2187 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2189 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1341,6 +1341,22 @@ Three things it taught, which the next run should carry in:
   suspect is not only the temporary block you just wrote; a check that has
   been green for weeks can be answering a different question than its name
   says, and a sabotage run somewhere else in the file is what surfaces it.
+
+  **A twelfth, and it accused the one path a library has no second chance
+  at: `qApp->quit()` does not end a nested `QEventLoop`.** A probe waiting
+  on one, driving a real pseudo-terminal hangup, timed out after three
+  seconds -- which reads exactly like a terminal loss that fails to stop
+  the program. `InputRouter::on_terminal_lost()` is `qApp->quit()` and that
+  ends the MAIN loop; `suite_runtime`'s own terminal-lost check uses
+  `exec()` and says why in its comment. 8.447.
+
+  **And the three of these together are the rule.** A glyph-only dump said
+  a correct rubber band drew nothing; a focused `QLineEdit` said a focus
+  report was dropped, when a line edit draws no mark by design; a nested
+  event loop said a terminal loss did not stop the program. **Not one
+  looked like an instrument fault -- all three looked like findings, and
+  the more convincing the finding, the more it is worth asking what the
+  instrument can SEE before asking what it saw.**
 
   **A tenth, and it makes a correct control look broken: `to_text()` is
   GLYPH-ONLY.** A probe that dumps it cannot see three of the things this
@@ -18343,6 +18359,55 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.447 The sixth sink, and the instrument said the opposite (2026-10-17)
+
+**No defect, and the sink set is complete**: all six of
+`ITerminalBackend::IEventSink`'s methods now have a check that takes a byte
+off a real descriptor and watches the far end move. 8.446 closed three and
+argued the hole was the seam rather than any event; this is the one it left,
+and it was in the same state for the same reason.
+
+`suite_runtime`'s terminal-lost check says it outright -- the backend half is
+covered by counting the call on a fake sink, and the router half, "the part
+that actually stops", was not -- and it closed the router half with a
+hand-built `router.on_terminal_lost()`. **Nothing took a terminal really
+going away and watched the program stop.** It does: a pseudo-terminal on
+fd 0, the master closed from inside the running loop, and the program is gone
+in 49 ms.
+
+**WITH ITS CONTROL, because a prompt exit cannot be told from a clock that
+happened to fire.** The same fixture run with the terminal left open must
+reach its safety timer instead, and does -- 290 ms, timed out. Without that
+the first check passes against a fixture whose loop ends for any reason at
+all.
+
+**AND THE FIRST VERSION REPORTED THE DEFECT THAT WAS NOT THERE.** It waited
+on a nested `QEventLoop` and timed out after three seconds, which reads
+exactly like a terminal loss that fails to stop the program -- a serious
+finding, in the one path a library has no second chance at.
+`InputRouter::on_terminal_lost()` is `qApp->quit()`, and that ends the MAIN
+event loop; a nested `QEventLoop::exec()` does not return for it.
+`suite_runtime`'s own check uses `exec()` and says so in its comment, which
+is where the answer was the whole time.
+
+**So the instrument has now been the fault three times in two days, and each
+time it pointed the same way: at the subject.** A glyph-only dump said a
+correct rubber band drew nothing. A focused `QLineEdit` said a focus report
+was dropped, when a line edit draws no mark by design. A nested event loop
+said a terminal loss did not stop the program. **None of the three looked
+like an instrument fault; all three looked like findings, and a convincing
+one is exactly what section 0d says to distrust.** What caught all three was
+asking what the instrument can see before asking what it saw.
+
+One sabotage entry: the EOF branch telling nobody, which leaves a program
+that never stops. **Its control has no entry and that is a property rather
+than a gap** -- with an idle pseudo-terminal the notifier never activates,
+`n <= 0` already treats `EAGAIN` as EOF, and no single-line edit in the
+library makes a healthy terminal look lost. Written down so the next sweep
+does not go looking for the missing half.
+
+2187 checks to 2189.
 
 ### 8.446 The seam was the hole, not any one event (2026-10-17)
 
