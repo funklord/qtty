@@ -121,6 +121,26 @@ int main(int argc, char **argv) {
 
 	Qtty::setup(app);
 
+	// THE KEYBOARD CONVENTIONS ARE OFF, OBSERVED WHERE AN APPLICATION SEES
+	// THEM: after setup() and before any fixture has run. suite_router
+	// asserts the same thing, and cannot -- it calls
+	// set_keyboard_conventions(false) in several places before reaching that
+	// check, so what it tests is the flag a previous fixture left rather than
+	// the default. Measured: with `s_conventions` initialised to true, that
+	// check still passes. This one is the only seat from which the default
+	// is visible, and setup() not turning them on is the half an adopting
+	// application actually depends on.
+	if (!Qtty::keyboard_conventions())
+		printf("PASS: the keyboard conventions are off after setup() and"
+		       " before any fixture, which is where an application sees"
+		       " them\n");
+	else {
+		printf("FAIL: the keyboard conventions are off after setup() and"
+		       " before any fixture, which is where an application sees"
+		       " them\n");
+		++failures;
+	}
+
 	// section 9: "GridGuard runs as an assertion in every test". Installed
 	// here rather than in each suite, so a suite added later is covered by
 	// having been written rather than by remembering to opt in -- which is

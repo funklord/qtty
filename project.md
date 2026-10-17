@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2191 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2192 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18366,6 +18366,65 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.451 A check that could not see the default it named (2026-10-17)
+
+**A fourth batch, behaviour-level rather than plane-level: three entries,
+all three refused, and only one of the three refusals was the suite's
+fault.** Separating them is the work, and this entry is mostly about how
+they were separated.
+
+**THE FINDING: a check about a DEFAULT that never observes one.**
+`suite_router` asserts "the terminal keyboard conventions are off until an
+application asks for them", and it cannot: the suite calls
+`set_keyboard_conventions(false)` in several earlier fixtures, so what that
+check reads is the flag a previous fixture left behind. Measured -- with
+`s_conventions` initialised to `true`, the check still passes.
+
+**The default is observable exactly once per process**, and `test/main.cpp`
+already has the seat: the section that runs before any suite, where the
+inertness gate lives. A check there reads the conventions after `setup()`
+and before any fixture, which is **where an application sees them** -- and
+it makes the stronger claim the original was reaching for, that `setup()`
+does not turn them on either. It reddens under the entry, together with four
+of the checks that depend on the gate being shut.
+
+**The two refusals that were not the suite's fault**, both removed with
+their measurements written into the spec where they stood:
+
+- **A guard with no observable effect.** `drag.cpp`'s
+  `if (target && g_live->over_accepts)`. With the second term removed the
+  drop IS sent -- the `else` branch stops running, so the leave disappears:
+  measured `enter=1 leave=0 drop=0` against a clean `enter=1 leave=1
+  drop=0`. **The refusing widget's `dropEvent` still does not run.**
+  Something below this library declines to deliver a drop to a widget that
+  ignored the enter; what, is not established, and saying so is more honest
+  than naming Qt for it on one measurement. The guard is defensive and the
+  claim is carried elsewhere.
+- **A sabotage behind a shut gate.** Swapping `key_target()` for
+  `Qtty::focusWidget()` in the Enter arm cannot be reached by the check that
+  names it: the whole arm sits inside `if (s_conventions && ...)` and that
+  fixture asserts the conventions are OFF. The same mistake as building
+  `KeyEvent`s by hand inside `on_paste` in 8.446 -- **a break the check's
+  own input cannot reach is no break at all.**
+
+**AND I BROKE THE TREE WHILE MEASURING, which is worth more than the batch.**
+Reverting the drag sabotage by replacing the first occurrence of
+`if (target) {` hit the wrong one -- line 113 in `drag_move_to`, not line 152
+in `drag_drop_at` -- so the sabotage stayed in and the enter-sending branch
+broke as well. What caught it was `git diff --stat` reporting **two** changed
+lines where one was changed, and then reading the diff rather than the stat.
+
+Two things follow. **A text replacement is not an edit to a line, and a
+revert by string is not the inverse of a sabotage by string** -- the spec's
+own entries are safe only because the tool restores from a snapshot rather
+than by replacing text back. And the recovery used `git stash push -- <path>`
+rather than `git checkout --`: both hunks were read and recognised as mine
+first, which is the rule `CLAUDE.md` carries, and a stash is recoverable
+where a checkout is not.
+
+653 sabotage entries to 654 -- three written, two removed -- and 2191 checks
+to 2192.
 
 ### 8.450 A guard with no reachable input, and a crash guard class (2026-10-17)
 

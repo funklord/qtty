@@ -6935,3 +6935,38 @@ find = "\t\tif (g_live->over) {\n\t\t\tQDragLeaveEvent leave;\n\t\t\tQApplicatio
 into = "\t\tif (false) {\n\t\t\tQDragLeaveEvent leave;\n\t\t\tQApplication::sendEvent(g_live->over, &leave);\n\t\t}"
 count = 1
 check = "background drops nothing, and the area is told it was"
+
+# ---- TWO MORE ENTRIES WERE WRITTEN HERE AND REMOVED. 8.451 has the
+# ---- measurements.
+# ----
+# ---- * drag.cpp's `if (target && g_live->over_accepts)` has no effect
+# ----   this suite can observe. With the second term removed the drop IS
+# ----   sent and the refusing widget's dropEvent still does not run:
+# ----   measured enter=1 leave=0 drop=0 against a clean enter=1 leave=1
+# ----   drop=0. Something below this library declines to deliver a drop to
+# ----   a widget that ignored the enter; what, is not established. The
+# ----   guard is defensive and the claim is carried elsewhere.
+# ---- * `key_target()` swapped for `Qtty::focusWidget()` in the Enter arm
+# ----   cannot be reached by the check that names it: that whole arm sits
+# ----   inside `if (s_conventions && ...)` and the fixture asserts the
+# ----   conventions are OFF. A sabotage behind a shut gate is no sabotage,
+# ----   which is the same mistake as building KeyEvents by hand in
+# ----   on_paste -- see 8.446.
+
+# ---- The fourth absence batch. These are behaviour-level rather than
+# ---- plane-level: each claim is that some key or gesture does NOT do
+# ---- something, and the risk is that it does not because a gate is shut
+# ---- rather than because the behaviour is right.
+
+[[sabotage]]
+# The terminal keyboard conventions on without an application asking,
+# which is the gate three checks around it depend on: with it open, Down
+# moves focus and Enter clicks a focused button, which is what those
+# checks assert does NOT happen until the conventions are requested.
+name = "the absence of a request turns the conventions on"
+file = "src/runtime/input_router.cpp"
+find = "static bool s_conventions = false;"
+into = "static bool s_conventions = true;"
+count = 1
+check = "the keyboard conventions are off after setup() and before any"
+
