@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2189 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2190 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18366,6 +18366,72 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.448 Hardening by looking for the entries the target refuses (2026-10-17)
+
+**Twelve entries written, eleven of them routine, and the twelfth is the
+whole point.** The task was hardening the behavioural claims no sabotage
+entry names, and the productive way to do it is not to write entries --
+it is to watch for the ones the target REFUSES, because a refusal means the
+check cannot discriminate and that is a defect in the suite.
+
+**The undefended set, computed exactly rather than from a sweep.** A full
+run is hours; the spec's own `check` fields against the suite's check
+literals is seconds and answers a stricter question: **2013 distinct check
+texts, 1485 named by no entry.** That is larger than 8.440's complement of
+1045, and both are right -- 1045 counts a check reddened by any entry
+including as collateral, and 1485 counts only the checks an entry NAMES.
+The second is the actionable one, since collateral reddening is not a
+defence anybody chose.
+
+**And the first extractor was too loose, which is this document's own
+rule met again.** Taking every long string literal gave 1781 and included
+format strings and diagnostic messages -- `%1 bar: line %2 differs from
+the first at %3` is not a check. Parsing `CHECK(cond, "...")` and
+`printf("PASS: ...")` specifically gives 2013 and 1485. A count inherits
+its detector, twice in one measurement.
+
+**The first batch, eight entries against `suite_cells`**, chosen for a
+small subject: both directions of a wide cluster's overwrite, the diff
+region, the diff count, two separate ranges of the width table so the
+checks discriminate between neighbouring ranges rather than between the
+table being present and absent, and two elide claims. **All eight
+discriminate**, which is the result and not a finding.
+
+**The second batch was chosen where a refusal was most likely**: absence
+claims, which 8.440 counted 98 of and which are the vacuous-pass shape --
+"X does not happen" is satisfied by X being impossible for a reason the
+check never mentions. Four entries, each breaking the subject in the one
+direction its claim does constrain. Three discriminated. One did not.
+
+**THE REFUSAL: "a blank frame reports nothing" passes against code that
+counts blank cells.** `contrast_violations()` skips a cell whose glyph is a
+space, and its comment gives the reason -- "counting the background fill
+would drown the real findings... a warning that fires on every frame is a
+warning nobody reads". Remove the skip and that check still passes.
+
+**The mechanism was measured rather than guessed.** A default `Cell` has
+`fg` and `bg` both `Color::Default`, and `has_minimum_contrast()` compares
+the terminal's assumed ink against its assumed ground -- two different
+luminances -- so **a blank frame is LEGIBLE** and reports nothing whether
+the skip is there or not. The contrast test alone carries that check. The
+skip is defended by nothing.
+
+**Its real purpose had no fixture at all.** The skip bites on a cell whose
+glyph is a space but whose colours are explicit and unreadable, which is
+exactly the background fill its comment is about -- and nothing in the
+suite built one. Four space cells carrying a 2-of-255 pairing now assert
+zero violations, the entry reddens it, and the skip is covered by the check
+whose text was already claiming to cover it.
+
+**The shape worth keeping: an absence claim can be satisfied by a second
+mechanism, and then the first is unguarded while the check still reads as
+guarding it.** This check's TEXT named the skip's job -- no glyph, no
+unreadable pairing -- and its CONTENT tested the contrast rule. Nothing
+about reading either would have separated them; what separated them was
+breaking the skip and watching the check not care.
+
+2189 checks to 2190, and 635 sabotage entries to 647.
 
 ### 8.447 The sixth sink, and the instrument said the opposite (2026-10-17)
 

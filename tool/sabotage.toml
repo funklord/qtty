@@ -6699,3 +6699,141 @@ find = "\t\tif (notifier_) notifier_->setEnabled(false);\n\t\tif (sink_) sink_->
 into = "\t\tif (notifier_) notifier_->setEnabled(false);\n\t\tif (false) sink_->on_terminal_lost();"
 count = 1
 check = "a terminal really going away stops the program"
+
+# ---- The hardening batch of 2026-10-17: entries for claims in
+# ---- suite_cells that no entry named. Each break is one a maintainer
+# ---- could plausibly write; what is being tested is whether the check
+# ---- notices.
+
+[[sabotage]]
+# A wide cluster's lead left standing when its continuation is overwritten,
+# which leaves a two-column glyph with one column of it replaced -- every
+# column after it on the row then disagrees with the terminal.
+name = "a cells overwritten continuation leaves its lead"
+file = "src/core/cell_buffer.cpp"
+find = "\t\tif (lead.width == 2) lead = Cell{};"
+into = "\t\tif (false) lead = Cell{};"
+count = 1
+check = "writing over continuation clears the wide lead"
+
+[[sabotage]]
+# The other half: a lead overwritten and its continuation left behind, so a
+# cell with no glyph in it keeps claiming to be part of one.
+name = "a cells overwritten lead leaves its continuation"
+file = "src/core/cell_buffer.cpp"
+find = "\t\tif (cont.width == 0) cont = Cell{};"
+into = "\t\tif (false) cont = Cell{};"
+count = 1
+check = "writing over lead clears the continuation"
+
+[[sabotage]]
+# A cells diff that damages whole rows rather than the runs that changed.
+# Still correct to draw and the wrong answer: it is what the budget
+# fixture's "a one-cell change costs one addressed run" is about.
+name = "a cells diff damages the whole row"
+file = "src/core/cell_buffer.cpp"
+find = "\t\t\t\tdamage += QRect(run_start, y, x - run_start, 1);"
+into = "\t\t\t\tdamage += QRect(0, y, c_, 1);"
+count = 1
+check = "diff region is exactly the change"
+
+[[sabotage]]
+# A cells diff count that double-counts every changed cell.
+name = "a cells diff counts each change twice"
+file = "src/core/cell_buffer.cpp"
+find = "\tfor (int i = 0; i < d_.size(); ++i) if (d_[i] != prev.d_[i]) ++n;"
+into = "\tfor (int i = 0; i < d_.size(); ++i) if (d_[i] != prev.d_[i]) n += 2;"
+count = 1
+check = "diff_cells counts one"
+
+[[sabotage]]
+# The CJK Unified range gone from the width table, which is the block most
+# text in the languages this matters for actually sits in.
+name = "the cells width table forgets CJK Unified"
+file = "src/core/cell_buffer.cpp"
+find = "\t    || (u >= 0x4E00  && u <= 0x9FFF)   // CJK Unified"
+into = "\t    || (false)                         // CJK Unified"
+count = 1
+check = "CJK is wide"
+
+[[sabotage]]
+# The Kana range gone, which is the hiragana claim's own block and a
+# separate line from the CJK one above -- so the two checks discriminate
+# between neighbouring ranges rather than between the table being present
+# and absent.
+name = "the cells width table forgets Kana"
+file = "src/core/cell_buffer.cpp"
+find = "\t    || (u >= 0x3041  && u <= 0x33FF)   // Kana..CJK Compat"
+into = "\t    || (false)                         // Kana..CJK Compat"
+count = 1
+check = "hiragana is wide"
+
+[[sabotage]]
+# An elide with no room for the marker returning nothing rather than the
+# marker, which is the case the check names: an empty string says "there is
+# nothing here" where a single ellipsis says "there is more than fits".
+name = "an elide with one cell returns nothing"
+file = "src/cell_geometry.h"
+find = "\tif (room <= 0) return QString(dots);"
+into = "\tif (room <= 0) return QString();"
+count = 1
+check = "eliding to 1 cell is the marker, never an empty string"
+
+[[sabotage]]
+# The elide marker written as a Latin-1 character rather than U+2026,
+# which is the mistake the code's own comment says it is avoiding -- so
+# this asks whether the check would catch the comment being ignored.
+name = "the elide marker is a Latin-1 character"
+file = "src/cell_geometry.h"
+find = "\tconst QChar dots(0x2026);"
+into = "\tconst QChar dots(QLatin1Char('.'));"
+count = 1
+check = "and the marker is U+2026, not a truncated byte"
+
+# ---- The absence-claim batch. Each of these checks asserts that
+# ---- something does NOT happen, which is the shape that can pass
+# ---- vacuously -- so each entry breaks the subject in the one direction
+# ---- the claim does constrain, which is the only way to learn whether
+# ---- the claim is load-bearing.
+
+[[sabotage]]
+# A contrast count that includes blank cells, which the function's own
+# comment says it must not: "a warning that fires on every frame is a
+# warning nobody reads". A blank frame then reports violations.
+name = "the absence count includes blank cells"
+file = "src/core/theme.cpp"
+find = "\t\t\tif (c.width == 0 || c.ch == QStringLiteral(\" \")) continue;"
+into = "\t\t\tif (c.width == 0) continue;"
+count = 1
+check = "and a blank cell carrying an unreadable pairing of its own is"
+
+[[sabotage]]
+# A contrast count that counts the legible pairings too, so the number
+# stops meaning "unreadable" and starts meaning "cells with a glyph".
+name = "the absence count includes legible pairings"
+file = "src/core/theme.cpp"
+find = "\t\t\tif (has_minimum_contrast(fg, bg, min_delta)) continue;"
+into = "\t\t\tif (false) continue;"
+count = 1
+check = "a legible pairing is not counted"
+
+[[sabotage]]
+# A mono terminal sent a colour, which is the one depth whose whole
+# contract is that attributes carry everything.
+name = "the absence of colour on mono is an indexed colour"
+file = "src/core/theme.cpp"
+find = "\tcase Capabilities::Mono:\n\t\treturn Color();                          // attributes carry everything"
+into = "\tcase Capabilities::Mono:\n\t\treturn Color::indexed(7);"
+count = 1
+check = "mono emits no colour at all"
+
+[[sabotage]]
+# A wide cluster written as width 2 with no room for its continuation,
+# which is the corruption section 5.2 exists to prevent: a lead whose
+# partner is off the end of the row or past a clip.
+name = "the absence of room still writes width 2"
+file = "src/core/cell_buffer.cpp"
+find = "\tif (w == 2 && !writable(x + 1, y)) {"
+into = "\tif (false) {"
+count = 1
+check = "a wide cluster with no room is not written as width 2"

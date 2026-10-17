@@ -214,6 +214,31 @@ int suite_theme() {
 		CellBuffer blank(4, 1);
 		CHECK(contrast_violations(blank, Capabilities::TrueColor) == 0,
 		      "a blank frame reports nothing -- no glyph, no unreadable pairing");
+		// AND A BLANK CELL WITH COLOURS ON IT, which is what the skip in
+		// contrast_violations() is actually for and what nothing covered.
+		// The check above cannot reach it: a default cell's fg and bg are
+		// both Color::Default, and has_minimum_contrast() compares the
+		// terminal's assumed ink against its assumed ground, so a blank
+		// frame is LEGIBLE and reports nothing whether the skip is there or
+		// not. Measured by removing the skip and watching that check pass
+		// against it -- the sabotage target refused the entry, which is how
+		// this was found.
+		//
+		// So the skip's own reason needs its own fixture: a space carrying
+		// an explicit unreadable pairing, which is the background fill its
+		// comment says would drown the real findings. Four cells of fill
+		// under no text at all must still report nothing, because a blank
+		// cell has no foreground to be unreadable.
+		CellBuffer filled(4, 1);
+		filled.text(0, 0, QStringLiteral("    "),
+		            Color::rgb(qRgb(10, 10, 10)), Color::rgb(qRgb(12, 12, 12)));
+		printf("info: four space cells carrying a 2-of-255 pairing report"
+		       " %d violation(s)\n",
+		       contrast_violations(filled, Capabilities::TrueColor));
+		CHECK(contrast_violations(filled, Capabilities::TrueColor) == 0,
+		      "and a blank cell carrying an unreadable pairing of its own is"
+		      " still not counted, a cell with no glyph having no foreground"
+		      " to be unreadable");
 
 		// AND THE CLAIM THE PAGE MAKES, which the three above do not
 		// reach: they are synthetic buffers, and what
