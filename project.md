@@ -2610,7 +2610,14 @@ had just committed.
 In the order I would take them:
 
 1. **A second Qt 6 point release**, still the cheapest untaken
-   configuration and still absent from this machine. Qt 5.15 is here and
+   configuration and **not installable from this machine's archive**,
+   which is a sharper statement than the "absent from this machine" that
+   stood here. Re-measured 2026-10-17: `apt-cache policy qt6-base-dev`
+   offers exactly one candidate, 6.8.2+dfsg-9+deb13u2, the version already
+   installed, with Qt 5.15.15 beside it. So this is not an install, it is a
+   source build or another archive -- a different cost, and one belonging to
+   whoever maintains the machine rather than to a session that wanted the
+   configuration. Qt 5.15 is here and
    is a port rather than an axis -- §8.1 prices it at three conditionals
    in two files, the fourth usage having been closed without one. What a second 6.x would answer, with no decision at all,
    is whether anything here depends on 6.8.2's particulars; the beerssh
