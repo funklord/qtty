@@ -6629,3 +6629,54 @@ find = "\t\tm.cell = QPoint(qMax(0, param(1, 1) - 1), qMax(0, param(2, 1) - 1));
 into = "\t\tm.cell = QPoint(0, qMax(0, param(2, 1) - 1));"
 count = 1
 check = "and a report naming a cell no widget covers clicks nothing"
+
+[[sabotage]]
+# A seam paste bracket the decoder does not recognise, so the pasted bytes
+# flow on through the ordinary key path -- which is the real-world failure
+# bracketed paste exists to prevent, and what a terminal without the mode
+# does. The two content checks pass either way, a line edit receiving the
+# same letters; the button discriminator is what notices.
+#
+# This replaces a first attempt that built KeyEvents by hand in
+# InputRouter::on_paste and was REFUSED by this target: a hand-made event
+# with qt_key 0 never becomes a space press, so the code was broken in a
+# way the check could not see and the check looked blind. 8.446 has it.
+name = "the seam does not know a paste bracket"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\tcase 200:\n\t\t\tin_paste_ = true;"
+into = "\t\tcase 200:\n\t\t\tin_paste_ = false;"
+count = 1
+check = "and a paste is a paste rather than a run of keys"
+
+[[sabotage]]
+# A seam resize report read with its rows and columns the other way round.
+# A square fixture could not tell; 60 by 12 can.
+name = "the seam reads a resize report transposed"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\t\t\tconst int rows = param(1, 0), cols = param(2, 0);"
+into = "\t\t\tconst int rows = param(2, 0), cols = param(1, 0);"
+count = 1
+check = "a resize report on the wire resizes the window to the grid it names"
+
+[[sabotage]]
+# A seam focus report dropped, so the terminal losing focus leaves every
+# focus mark painted. Nothing on the backend's side notices: the report
+# still decodes and still reaches the sink.
+name = "the seam drops a focus report"
+file = "src/runtime/input_router.cpp"
+find = "void InputRouter::on_focus_change(bool focused) {\n\tset_terminal_focused(focused);"
+into = "void InputRouter::on_focus_change(bool focused) {\n\tset_terminal_focused(true);\n\t(void)focused;"
+count = 1
+check = "a terminal focus report on the wire reaches the painted focus mark"
+
+[[sabotage]]
+# A seam paste that reaches the router and goes nowhere. The decoder still
+# brackets it, the sink is still called, and nothing arrives in the widget
+# -- which the backend's own side cannot see, its checks stopping at a
+# recording sink that counted the call.
+name = "the seam paste reaches no widget"
+file = "src/runtime/input_router.cpp"
+find = "void InputRouter::on_paste(const QString &text) {\n\tQWidget *target = key_target();"
+into = "void InputRouter::on_paste(const QString &text) {\n\tif (true) return;\n\tQWidget *target = key_target();"
+count = 1
+check = "a bracketed paste on the wire becomes text in the focused widget"

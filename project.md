@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2182 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2187 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18343,6 +18343,73 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.446 The seam was the hole, not any one event (2026-10-17)
+
+**No defect. Five checks, and the useful part is that the hole turned out
+to be one hole.** `ITerminalBackend::IEventSink` has six methods. `on_key`
+was joined to a widget by this file's typing fixture, `on_mouse` by 8.445 --
+and `on_paste`, `on_resize` and `on_focus_change` were all still in the
+state that fixture's own comment describes: checked exhaustively to a
+recording sink on the backend's side, checked from a hand-built call on the
+router's, joined nowhere.
+
+So three sinks went into one fixture rather than three, because **the gap is
+a property of the seam and not of any event crossing it**. That is worth
+more than the three cases: the next sink added to that interface arrives with
+the same hole already in it, and nothing about any individual event would
+have said so.
+
+Five checks, all already true:
+
+- a bracketed paste on the wire becomes text in the focused widget;
+- a newline inside one survives, arriving as a line break rather than
+  ending the paste;
+- **a paste is a paste rather than a run of keys**, and this is what makes
+  the two above mean anything -- a path that delivered pasted bytes as keys
+  satisfies both of them. With a BUTTON focused a pasted space is nothing at
+  all as a paste and a press as a key, so the button is the discriminator
+  and the line edit cannot be;
+- a resize report resizes the window to the grid it names, **rows and
+  columns the way round the report has them** -- `CSI 8 ; rows ; cols t`, so
+  a square fixture could not tell the two fields apart and 60 by 12 can;
+- a focus report reaches the **painted** focus mark, which goes when the
+  terminal loses focus and returns when it does.
+
+**The focus instrument had to be changed before it could answer.** The first
+probe asked a `QLineEdit` and read 0 marked cells in all three states, which
+looks exactly like a dropped report. A focused line edit draws no mark of its
+own BY DESIGN -- the terminal's own cursor is what says where the typing
+goes, and this suite asserts that elsewhere -- so the question was put to a
+widget that cannot answer it. A push button's brackets take `Attr::Reverse`
+when `owns_focus()` is true: 4 marked cells with terminal focus, 0 without,
+4 again.
+
+**AND THE SABOTAGE TARGET REFUSED MY OWN SABOTAGE, in the direction nobody
+expects it to.** The first paste entry built `KeyEvent`s by hand inside
+`InputRouter::on_paste` to simulate key delivery. It broke five other checks
+and left the discriminator **passing**, so the target reported "the named
+check PASSED against broken code" -- which reads as a blind check and was a
+bad sabotage: a hand-made event with `qt_key` 0 never becomes a space press,
+so the code was broken in a way the check could not be expected to see.
+
+The replacement breaks the real road instead -- the decoder's `CSI 200~`
+branch not entering paste mode, so the bytes flow on through the ordinary
+key path, which is exactly what a terminal without the mode does -- and it
+reddens the discriminator.
+
+**The rule is worth keeping: a sabotage that has to SIMULATE the path it is
+breaking is testing the simulation.** `evidence.md` says a stand-in
+reproduces the half of a tool you have seen; this is that, pointed at a
+deliberate break rather than at a check. Break the road the bytes really
+take.
+
+Five entries. The paste-content one reddens ten checks including both
+content checks, **read out of `build/sabotage-reddened.txt` rather than
+inferred from the log's truncated sample** -- which is what 8.440 added that
+file for.
+
+2182 checks to 2187.
 
 ### 8.445 The mouse chain had no end to end either (2026-10-16)
 

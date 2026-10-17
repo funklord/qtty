@@ -8412,5 +8412,123 @@ int suite_exec() {
 		GridGuard::reset();
 	}
 
+	// THE THREE REMAINING SINKS, END TO END. ITerminalBackend::IEventSink
+	// has six methods. on_key was joined to a widget by the typing fixture
+	// above and on_mouse by the fixture below it; on_paste, on_resize and
+	// on_focus_change were all still in the state this file's own comment
+	// describes -- checked to a recording sink on the backend's side,
+	// checked from a hand-built call on the router's, and joined nowhere.
+	//
+	// Three sinks in one fixture rather than three, because the hole is one
+	// hole: the halves are exhaustively covered and the seam between them is
+	// not, which is a property of the seam and not of any one event.
+	{
+		Feeder feeder;
+		AnsiBackend backend;
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		win.resize(GridMetrics::cells(40, 8));
+		auto *edit = new QLineEdit(&win);
+		edit->setGeometry(0, 0, GridMetrics::cw() * 20, GridMetrics::ch());
+		auto *doc = new QPlainTextEdit(&win);
+		doc->setFrameShape(QFrame::NoFrame);
+		doc->setGeometry(0, GridMetrics::ch() * 2,
+		                 GridMetrics::cw() * 30, GridMetrics::ch() * 3);
+		int pressed = 0;
+		auto *btn = new QPushButton(QStringLiteral("Go"), &win);
+		btn->setGeometry(0, GridMetrics::ch() * 6,
+		                 GridMetrics::cw() * 10, GridMetrics::ch());
+		QObject::connect(btn, &QPushButton::clicked, [&pressed] { ++pressed; });
+		win.show();
+		QCoreApplication::processEvents();
+		InputRouter router(&win);
+		set_current_window(&win);
+		backend.set_event_sink(&router);
+		const auto focus_on = [](QWidget *w) {
+			w->setFocus();
+			set_focus_widget(w);
+			QCoreApplication::processEvents();
+		};
+		focus_on(edit);
+		const auto raw = [&](const QByteArray &b) {
+			feeder.send(b);
+			for (int i = 0; i < 40; ++i) QCoreApplication::processEvents();
+		};
+
+		raw("\033[200~hello\033[201~");
+		printf("info: a bracketed paste into a focused line edit leaves"
+		       " '%s'\n", qPrintable(edit->text()));
+		CHECK(edit->text() == QStringLiteral("hello"),
+		      "a bracketed paste on the wire becomes text in the focused"
+		      " widget");
+
+		focus_on(doc);
+		raw("\033[200~one\ntwo\033[201~");
+		printf("info: and a paste carrying a newline leaves %d block(s):"
+		       " '%s'\n", doc->document()->blockCount(),
+		       qPrintable(doc->toPlainText().replace(QLatin1Char('\n'),
+		                                             QLatin1Char('/'))));
+		CHECK(doc->document()->blockCount() == 2
+		      && doc->toPlainText() == QStringLiteral("one\ntwo"),
+		      "and a newline inside one survives it, arriving as a line break"
+		      " rather than ending the paste");
+
+		// THE DISCRIMINATOR, and the two checks above need it: a path that
+		// delivered pasted bytes as KEYS would satisfy both of them. With a
+		// BUTTON focused a pasted space is a button press if it arrives as a
+		// key, and nothing at all if it arrives as a paste -- a button
+		// having nothing to paste into.
+		focus_on(btn);
+		raw("\033[200~a b\033[201~");
+		printf("info: and a paste carrying a space, with a button focused,"
+		       " presses it %d time(s)\n", pressed);
+		CHECK(pressed == 0,
+		      "and a paste is a paste rather than a run of keys, which a space"
+		      " at a focused button is what shows");
+
+		// RESIZE, which arrives on stdin as CSI 8 ; rows ; cols t -- rows
+		// first, so a fixture using a square grid could not tell the two
+		// fields apart. 60 by 12 can.
+		raw("\033[8;12;60t");
+		const int cols = win.width() / GridMetrics::cw();
+		const int rows = win.height() / GridMetrics::ch();
+		printf("info: after CSI 8;12;60t the window is %dx%d cells\n",
+		       cols, rows);
+		CHECK(cols == 60 && rows == 12,
+		      "a resize report on the wire resizes the window to the grid it"
+		      " names, rows and columns the way round the report has them");
+
+		// FOCUS, with the PAINTED mark as the far end rather than a flag.
+		// owns_focus() gates the focus attribute, so a terminal the user has
+		// switched away from stops marking the focused widget -- and the
+		// button is what is asked, because a focused QLineEdit draws no mark
+		// of its own by design: the terminal's cursor is what says where the
+		// typing goes, which this suite asserts elsewhere. Asking the line
+		// edit would be asking a widget that cannot answer.
+		const auto marked = [&] {
+			CellBuffer b(60, 12);
+			render_once(win, b);
+			int n = 0;
+			for (int y = 0; y < b.rows(); ++y)
+				for (int x = 0; x < b.cols(); ++x)
+					if (b.at(x, y).attrs & Attr::Reverse) ++n;
+			return n;
+		};
+		focus_on(btn);
+		raw("\033[I");
+		const int with = marked();
+		raw("\033[O");
+		const int without = marked();
+		raw("\033[I");
+		const int again = marked();
+		printf("info: reverse cells with terminal focus %d, without %d, and"
+		       " with it again %d\n", with, without, again);
+		CHECK(with > 0 && without == 0 && again == with,
+		      "a terminal focus report on the wire reaches the painted focus"
+		      " mark, which goes when the terminal loses focus and comes back"
+		      " when it returns");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
