@@ -520,8 +520,17 @@ int suite_widgets() {
 		render_once(host, b);
 		const QPoint marked = findText(b, QStringLiteral("Mnemonic"));
 		const QPoint plain = findText(b, QStringLiteral("Plain"));
+		// THE CELL, not the glyph, and the next check is why: a mnemonic is
+		// an UNDERLINE here, so "puts nothing in the gap" tested on glyphs
+		// alone cannot see the one mark a mnemonic actually makes. The
+		// attribute is compared against the plain label's for the same
+		// reason the glyph is -- what is asserted is that the two labels'
+		// leading gaps are indistinguishable.
 		CHECK(marked.x() > 0 && plain.x() > 0
-		      && b.at(marked.x() - 1, marked.y()).ch == b.at(plain.x() - 1, plain.y()).ch,
+		      && b.at(marked.x() - 1, marked.y()).ch
+		         == b.at(plain.x() - 1, plain.y()).ch
+		      && b.at(marked.x() - 1, marked.y()).attrs
+		         == b.at(plain.x() - 1, plain.y()).attrs,
 		      "a mnemonic puts nothing in the gap a plain label leaves empty");
 		CHECK(marked.x() > 0 && (b.at(marked.x(), marked.y()).attrs & Attr::Underline)
 		      && !(b.at(plain.x(), plain.y()).attrs & Attr::Underline),

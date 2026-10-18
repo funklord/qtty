@@ -6994,3 +6994,52 @@ into = "static bool s_terminal_focused = false;"
 count = 1
 check = "and a terminal that has reported nothing counts as focused, which only"
 
+
+# ---- The seventh absence batch. Existing checks only -- no new ones --
+# ---- after 8.453, where adding a check and claiming its guard was
+# ---- unguarded took credit for an earlier pass's work.
+
+[[sabotage]]
+# Snapping grown to a whole cell instead of allowed to vanish, which is
+# the case snap()'s own comment records as measured: "a widget under half
+# a cell wide rounds away to nothing, and growing it to a whole cell is
+# the case measured overlapping its neighbour". The non-overlap check is
+# the guard for exactly that measurement.
+name = "the absence of width is grown to a cell"
+file = "src/grid/grid_style.cpp"
+find = "\treturn QRect(l, t, qMax(0, r - l), qMax(0, b - t));"
+into = "\treturn QRect(l, t, qMax(cw, r - l), qMax(ch, b - t));"
+count = 1
+check = "snapping never overlaps two disjoint rectangles"
+
+[[sabotage]]
+# Snapping that moves a rectangle already on the grid, so the filter is no
+# longer idempotent and every pass over a laid-out tree walks it further
+# down the screen.
+name = "the absence of movement is not preserved by snapping"
+file = "src/grid/grid_style.cpp"
+find = "\tconst int t = qRound(double(px.top()) / ch) * ch;"
+into = "\tconst int t = qRound(double(px.top()) / ch) * ch + ch;"
+count = 1
+check = "snapping a snapped rectangle changes nothing"
+
+[[sabotage]]
+# A wholly transparent half composed anyway, so an image with no ink in it
+# paints half-blocks over whatever the cells held.
+name = "the absence of ink is composed anyway"
+file = "src/graphics/graphics.cpp"
+find = "\t\t\tif (top.peak < 40 && bot.peak < 40) continue;      // transparent"
+into = "\t\t\tif (false) continue;                               // transparent"
+count = 1
+check = "and a wholly transparent one composes nothing at all"
+
+[[sabotage]]
+# An aligned geometry reported as off-grid, which is the guard's own
+# control: a report that fired on everything would name every widget in
+# the tree and be switched off within the hour.
+name = "the absence of misalignment is still reported"
+file = "include/qtty/grid.h"
+find = "\t\treturn px.x() % cw() == 0 && px.y() % ch() == 0\n\t\t    && px.width() % cw() == 0 && px.height() % ch() == 0;"
+into = "\t\treturn false;"
+count = 1
+check = "a cell-multiple geometry raises nothing"

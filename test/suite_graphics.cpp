@@ -2355,8 +2355,15 @@ int suite_graphics() {
 		CHECK(clipped.at(0, 0).fg == whole.at(2, 2).fg
 		      && clipped.at(1, 1).fg == whole.at(3, 3).fg,
 		      "a placement clipped at the top-left shows its bottom-right");
+		// The CELLS beyond it, glyph and ground both. Half-block composition
+		// writes a background as readily as a glyph -- see the transparency
+		// case below, where that is the whole of what a disabled guard did
+		// -- so a cell past the placement with a Default ground is the claim
+		// and `ch == " "` is half of it.
 		CHECK(clipped.at(2, 0).ch == QStringLiteral(" ")
-		      && clipped.at(0, 2).ch == QStringLiteral(" "),
+		      && clipped.at(0, 2).ch == QStringLiteral(" ")
+		      && clipped.at(2, 0).bg.kind() == Color::Default
+		      && clipped.at(0, 2).bg.kind() == Color::Default,
 		      "and nothing beyond where the placement ends");
 
 		// A null image draws nothing, QUIETLY. The sampling clamps to
@@ -2565,7 +2572,22 @@ int suite_graphics() {
 		// same shape as the null image above, one step along.
 		CellBuffer clear(2, 1);
 		compose(QColor(0, 0, 0, 0), clear);
-		CHECK(clear.at(0, 0).ch == QStringLiteral(" "),
+		// THE CELL, not the glyph. This read `ch` alone and could not see
+		// what the transparency guard actually does: with that guard
+		// disabled the translucent branch below it still runs, blending at
+		// alpha 0 and writing the cell's own ground back as an Rgb value --
+		// so `ch` stays a space and `bg` goes from Default to Rgb.
+		// Measured: bg kind 0 clean, kind 2 with the guard gone, and this
+		// check passed both times.
+		//
+		// Default versus Rgb is not a detail here: suite_widgets asserts
+		// that a window leaves "no cell carrying a colour the theme never
+		// named", and this is exactly such a cell.
+		printf("info: a wholly transparent compose leaves ch='%s' and a bg of"
+		       " kind %d\n", qPrintable(clear.at(0, 0).ch),
+		       int(clear.at(0, 0).bg.kind()));
+		CHECK(clear.at(0, 0).ch == QStringLiteral(" ")
+		      && clear.at(0, 0).bg.kind() == Color::Default,
 		      "and a wholly transparent one composes nothing at all");
 	}
 

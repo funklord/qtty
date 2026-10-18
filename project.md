@@ -18367,6 +18367,72 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.454 The glyph-blind check is a class, and a search found all five (2026-10-19)
+
+**Four entries against existing checks only -- no new ones, after
+8.453 -- three reddened, and the fourth found the same fault 8.449 found,
+which makes it a class worth searching for rather than meeting twice.**
+
+**The refusal.** `compose_halfblocks()` skips a cell whose halves are both
+under alpha 40, and "and a wholly transparent one composes nothing at all"
+passed with that guard disabled. Measured rather than read off: **`bg` kind
+0 clean, kind 2 with the guard gone, and `ch` a space both times.** The
+translucent branch below the guard still runs, blends at alpha 0, and writes
+the cell's own ground back as an `Rgb` value -- so the guard's entire effect
+is on the background, and the check read only the glyph.
+
+**Default versus Rgb is not a detail in this tree.** `suite_widgets` asserts
+that a window leaves "no cell carrying a colour the theme never named", and
+a cell blended at alpha 0 is exactly such a cell.
+
+**So the shape was searched for instead of waited for.** Every `CHECK`
+whose text says nothing, never, untouched or "leaves alone", and whose
+condition reads `.ch` while mentioning no `.bg`, `.fg`, `attrs` or
+`to_snapshot`: **five, across three suites.** Named, because the list is
+the useful part:
+
+- the transparency one above, measured broken and now reading the cell;
+- **"and nothing beyond where the placement ends"** -- half-block
+  composition writes a ground as readily as a glyph, which the case above
+  it proves, so a cell past the placement needs a Default ground as well as
+  a space. Strengthened;
+- **"a mnemonic puts nothing in the gap a plain label leaves empty"** -- and
+  the check immediately after it asserts that a mnemonic IS an underline, so
+  a glyph-only comparison cannot see the one mark a mnemonic makes.
+  Strengthened to compare the attribute too;
+- **"and writing one erases nothing"** -- left alone. Erasure of a base
+  glyph by a zero-width character IS a glyph question, and the predicate
+  matches the claim;
+- **"a null image composites nothing and says nothing"** -- left alone, and
+  it is 8.449's crash guard: removing the null return segfaults, so no
+  predicate on this side can be reached. It also already tests a message
+  count, which is the "says nothing" half.
+
+**Two of the five were strengthened by analogy and not by measurement, and
+that is written here rather than implied.** The transparency one was
+measured; the placement and mnemonic ones share its shape and the extra
+plane is demonstrably in play for each -- half-blocks write grounds, a
+mnemonic is an attribute -- but neither was sabotaged into failing first.
+8.453's lesson is about claiming absences, and the honest form of this one
+is that three checks got stricter and one of the three is known to have
+needed it.
+
+The three that reddened at once: snapping grown to a whole cell rather than
+allowed to vanish, which is the case `snap()`'s own comment records as
+"measured overlapping its neighbour"; snapping that moves a rectangle
+already on the grid; and an aligned geometry reported as off-grid, which is
+the grid guard's own control.
+
+**And one entry was predicted and not written.** `Qtty::bell()` is
+`if (ITerminalBackend *b = ...) b->bell();` and "bell() before a run rings
+nothing" is guarded by that null test -- so breaking it dereferences null,
+which makes it the third crash guard of the class 8.449 and 8.450 record.
+Predicted by reading and deliberately not measured, the measurement being a
+crash; said plainly so the next pass knows it is a prediction.
+
+656 sabotage entries to 660, and the check count is unchanged at 2195 --
+three checks got stricter without the suite getting bigger.
+
 ### 8.453 I wrote a wrong gap claim within the hour of reading the rule against it (2026-10-19)
 
 **The batch found nothing, and the mistake is the entry.** `evidence.md`
