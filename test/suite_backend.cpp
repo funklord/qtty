@@ -2052,6 +2052,46 @@ int suite_backend() {
 			printf("%s: a key after %s still arrives\n", ok ? "PASS" : "FAIL", o.name);
 			if (!ok) ++fails;
 		}
+		// AND THE SAME SEVEN UNTERMINATED. The abandonment guard itself is
+		// already checked and already has a sabotage entry -- see the OSC
+		// pair further up this file, which feeds
+		// `\033]11;rgb:00/00/00\033[A` and was written when that guard had
+		// never run. What that pair cannot say is anything about the other
+		// six openers: it proves the guard through the OSC road alone,
+		// while the terminated table above asks all seven.
+		//
+		// So this is the unterminated half of that symmetry and nothing
+		// more. It would catch an opener whose framing stopped going
+		// through the shared string scanner -- a DCS or APC given its own
+		// path, say -- and it would not have caught the fault the OSC pair
+		// was written for.
+		//
+		// A terminal produces this by being interrupted: a reply cut off
+		// by a resize, a multiplexer dropping a pane mid-answer.
+		int swallowed = 0;
+		QString first_swallowed;
+		for (const auto &o : openers) {
+			QByteArray cut = o.bytes;
+			if (cut.endsWith(QByteArray("\033\\"))) cut.chop(2);
+			else if (cut.endsWith(QByteArray("\007"))) cut.chop(1);
+			feed(cut + QByteArray("\033[A"));
+			if (rec.keys.size() == 1 && rec.keys[0].qt_key == Qt::Key_Up)
+				continue;
+			++swallowed;
+			if (first_swallowed.isEmpty())
+				first_swallowed = QStringLiteral("%1 swallowed the key after"
+				                                 " it (%2 key(s) arrived)")
+				                  .arg(QString::fromLatin1(o.name))
+				                  .arg(rec.keys.size());
+		}
+		printf("info: seven unterminated openers, %d of which swallowed the"
+		       " key after them\n", swallowed);
+		if (swallowed)
+			printf("      condition: %s\n", qPrintable(first_swallowed));
+		CHECK(swallowed == 0,
+		      "and a key after an UNTERMINATED string sequence still arrives,"
+		      " the new escape abandoning the old sequence rather than the"
+		      " old one swallowing the session");
 	}
 
 	// Bytes on stdin becoming text in a widget. The decoder is exhaustively

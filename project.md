@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2194 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2195 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18366,6 +18366,61 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.453 I wrote a wrong gap claim within the hour of reading the rule against it (2026-10-19)
+
+**The batch found nothing, and the mistake is the entry.** `evidence.md`
+gained *Writing a gap claim* two days ago -- search the record for a prior
+measurement before "nothing checks this" reaches a record -- and 8.452
+records having applied it. The very next batch broke it.
+
+**What happened.** Working the shadowed-guard lens, I reached the decoder's
+seven-opener table: OSC by ST, OSC by BEL, two DCS shapes, APC, PM, SOS,
+each fed terminated with a key behind it. The abandonment guard -- a new
+ESC meaning an unterminated sequence is given up on -- is reached by none of
+those, so I wrote the unterminated half, and wrote into its comment that
+"the fix had no check that could see it. Measured by breaking the guard and
+watching all seven of the lines above stay green."
+
+**I had not measured that.** The sabotage run said `sabotage 1/2` -- two
+entries matched the name -- because **the guard was already checked and
+already had an entry**, forty lines up the same file, feeding
+`\033]11;rgb:00/00/00\033[A`. Its comment opens by saying the guard "had
+never run" and that "every OSC this suite fed was closed properly": the
+fault I thought I had found was found and fixed by an earlier pass, and
+written down in the place I would have looked.
+
+**AND THE DETECTOR WAS MY OWN PIPE.** I did grep for it --
+`grep -nE 'abandon' test/suite_backend.cpp | head -4` -- and `head -4` cut
+the output at line 548, hiding the hits at 728, 748, 783, 1345 and 1367.
+The search was right and I truncated its answer. *A count inherits its
+detector* is this document's refrain; this is the same fault wearing
+`head`, and it is worse than a bad pattern because the output looked like a
+complete answer to a well-aimed question.
+
+**So the rule needs a clause it did not have, and it is mine to add here
+rather than to the source**: when a grep is the evidence for an absence,
+**read all of it or count it, never `head` it.** `wc -l` would have said 11
+and cost nothing.
+
+What survives: the duplicate sabotage entry is removed, and the
+unterminated check is **kept with an honest comment**. The pre-existing
+pair proves the guard through the OSC road alone while the terminated table
+asks all seven, so this is the unterminated half of that symmetry and
+nothing more -- it would catch an opener whose framing stopped going
+through the shared string scanner, and it would not have caught the fault
+the OSC pair was written for. That is a modest and true claim where the
+first version took credit for somebody else's.
+
+**The pool's two clean negatives this batch, for the next pass:**
+`utf8_span` is fully covered -- every reachable refusal, including the
+truncated-read `-1` path and both the stray-continuation and
+lead-then-non-continuation roads, the last two backed by checks and not
+only by the comment that records the measurement. And the BEL terminator is
+fed as well as ST.
+
+656 sabotage entries unchanged -- one written, one removed -- and 2194
+checks to 2195.
 
 ### 8.452 A default is observable once, and three checks claimed one (2026-10-19)
 

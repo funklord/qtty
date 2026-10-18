@@ -6993,3 +6993,4 @@ find = "static bool s_terminal_focused = true;"
 into = "static bool s_terminal_focused = false;"
 count = 1
 check = "and a terminal that has reported nothing counts as focused, which only"
+
