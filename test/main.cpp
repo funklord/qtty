@@ -130,15 +130,38 @@ int main(int argc, char **argv) {
 	// check still passes. This one is the only seat from which the default
 	// is visible, and setup() not turning them on is the half an adopting
 	// application actually depends on.
-	if (!Qtty::keyboard_conventions())
-		printf("PASS: the keyboard conventions are off after setup() and"
-		       " before any fixture, which is where an application sees"
-		       " them\n");
-	else {
-		printf("FAIL: the keyboard conventions are off after setup() and"
-		       " before any fixture, which is where an application sees"
-		       " them\n");
-		++failures;
+	// AND THE OTHER TWO DOCUMENTED DEFAULTS OF PROCESS-WIDE STATE, for the
+	// same reason and as a class. Each is asserted in a suite as well, and
+	// each of those is sound only by ORDERING:
+	//
+	//   * `wide_clusters()` is claimed "by default" in suite_cells, which
+	//     happens to run first and happens to touch the flag nowhere
+	//     earlier -- but Compositor::compose() sets it from the backend's
+	//     capabilities, so any suite that builds a compositor before that
+	//     check would turn it into a test of whatever the backend said.
+	//   * `terminal_focused()` is claimed in suite_router, and exec() sets
+	//     it true on entry and on exit -- the same value as the default, so
+	//     that check cannot tell a default from a value somebody set. Only
+	//     suite order keeps an exec-driving fixture from running first.
+	//
+	// A default is observable once per process. Claiming one from inside a
+	// suite is claiming it about whatever ran before, which is how
+	// suite_router's conventions check came to assert nothing -- so the
+	// claims live here, before anything can have moved them.
+	const struct { bool held; const char *what; } defaults[] = {
+		{ !Qtty::keyboard_conventions(),
+		  "the keyboard conventions are off after setup() and before any"
+		  " fixture, which is where an application sees them" },
+		{ Qtty::wide_clusters(),
+		  "and a wide cluster is two cells by default, read before any"
+		  " fixture or backend has had the chance to say otherwise" },
+		{ Qtty::terminal_focused(),
+		  "and a terminal that has reported nothing counts as focused,"
+		  " which only this seat can tell from a value exec() set" },
+	};
+	for (const auto &d : defaults) {
+		printf("%s: %s\n", d.held ? "PASS" : "FAIL", d.what);
+		if (!d.held) ++failures;
 	}
 
 	// section 9: "GridGuard runs as an assertion in every test". Installed

@@ -6970,3 +6970,26 @@ into = "static bool s_conventions = true;"
 count = 1
 check = "the keyboard conventions are off after setup() and before any"
 
+
+[[sabotage]]
+# A wide cluster one cell by default, which is the flag Compositor sets
+# from the backend's capabilities. The suite_cells claim reads the same
+# flag and is sound only because that suite runs first; this one is read
+# before any suite at all.
+name = "the default absence of a capability makes clusters narrow"
+file = "src/core/cell_buffer.cpp"
+find = "static bool s_wide_clusters = true;"
+into = "static bool s_wide_clusters = false;"
+count = 1
+check = "and a wide cluster is two cells by default, read before any"
+
+[[sabotage]]
+# A session starting unfocused, so a terminal that has reported nothing
+# draws no focus mark -- the state exec()'s own comment says would never
+# be corrected, the terminal reporting a CHANGE and never a start.
+name = "the default absence of a report counts as unfocused"
+file = "src/runtime/application.cpp"
+find = "static bool s_terminal_focused = true;"
+into = "static bool s_terminal_focused = false;"
+count = 1
+check = "and a terminal that has reported nothing counts as focused, which only"

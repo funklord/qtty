@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2192 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2194 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18366,6 +18366,57 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.452 A default is observable once, and three checks claimed one (2026-10-19)
+
+**8.451 found one check asserting a default it could not see. It is a
+class, and the other two members were sound only by suite ordering** --
+which is a property of `main.cpp`'s table rather than of anything either
+check says.
+
+- **`wide_clusters()`** is claimed "by default" in `suite_cells`. That suite
+  runs first and touches the flag nowhere earlier, so the claim holds
+  today -- but `Compositor::compose()` sets the flag from the backend's
+  `unicode_wide` capability, so **any suite that builds a compositor before
+  that check turns it into a test of whatever the backend said.**
+- **`terminal_focused()`** is claimed in `suite_router`, and `exec()` sets it
+  true on entry and again on exit. That is **the same value as the
+  default**, so the check cannot tell a default from a value somebody set;
+  what keeps it honest is only that no exec-driving fixture runs before it.
+
+**A default of process-wide state is observable exactly once per process.**
+Claiming one from inside a suite is claiming it about whatever ran before,
+which is precisely how `suite_router`'s conventions check came to assert
+nothing at all. So all three claims now live in `test/main.cpp`, before any
+suite, beside the inertness gate -- and each is written as the stronger
+thing it can say from that seat: not merely that the flag reads true, but
+that `setup()` has not moved it and no backend has had the chance to.
+
+Two sabotage entries, both reddening their check plus six and three others.
+The per-suite claims stay where they are: they are true statements about
+their own fixtures, and what they could not carry was the word "default".
+
+**AND THE GUIDELINES GAINED A RULE THIS WORK IS SUBJECT TO.**
+`evidence.md` has a new section, *Writing a gap claim*: before
+"unmeasured", "untested" or "nothing checks this" reaches a record, search
+the record for a prior measurement -- by METHOD and quantity rather than by
+prose, because a log states a gap and its remedy in the same tense.
+
+So the gap claims in 8.444 to 8.447 were re-checked against this document
+the way that section asks: `\033[<` and `1006` for the mouse chain,
+`parse_frame` and "rebuild the cells" for the output chain. The 1006 hits
+are about mode negotiation and the decoder, not about a report reaching a
+widget, and nothing had parsed a frame back. **Both claims hold**, and they
+hold by a search rather than by my having remembered.
+
+The rule's sharper half is worth carrying into the next batch: **"never
+measured" and "measured once and never repeated" are different claims, and
+the second is usually the true one.** Three of the five entries this pool
+has cost were removed because the thing they broke was measured by hand and
+could not be measured by a check -- which is that distinction, met from the
+other side.
+
+654 sabotage entries to 656, and 2192 checks to 2194.
 
 ### 8.451 A check that could not see the default it named (2026-10-17)
 
