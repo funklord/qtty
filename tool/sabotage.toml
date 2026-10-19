@@ -7098,3 +7098,33 @@ find = "\tif (!tty_out_) return;                 // nothing is reading the escap
 into = "\tif (false) return;                     // nothing is reading the escapes"
 count = 1
 check = "and a title is written to a terminal and not into a pipe"
+
+# ---- The tenth absence batch found no defect. These two entries defend
+# ---- sound claims that no entry named; 8.457 records the negative and
+# ---- the detector that produced it.
+
+[[sabotage]]
+# A size grip asked for cells, which is what CT_SizeGrip returning (0, 0)
+# refuses: a grip with area is a grip a click can reach, and dragging the
+# corner of a status bar cannot resize a terminal window.
+name = "the absence of grip cells becomes a size"
+file = "src/grid/grid_style.cpp"
+find = "\tcase CT_SizeGrip:\n\t\treturn QSize(0, 0);"
+into = "\tcase CT_SizeGrip:\n\t\treturn QSize(GridMetrics::cw(), GridMetrics::ch());"
+count = 1
+check = "a size grip is asked for no cells at all"
+
+# ---- AN ENTRY WAS WRITTEN HERE AND REMOVED. draw_box()'s
+# ---- `c.height() < 2` floor is SHADOWED: removing it changes nothing
+# ---- this suite can see, because a caller guard refuses a one-row
+# ---- rectangle first. Measured twice -- against the old check, which is
+# ---- about ELSEWHERE, and against the new `frame_inside == 0`, which is
+# ---- about the box's own row -- and both passed with the floor gone.
+# ---- The one-row group box's frame is refused somewhere above draw_box
+# ---- and WHICH caller was not established; the line-edit path guards
+# ---- with `if (c.height() >= 2)` and the MDI path does not, so a fourth
+# ---- guess was not worth making. 8.457.
+# ----
+# ---- The check stays and is named by no entry, which is said plainly
+# ---- rather than left for a sweep to notice.
+

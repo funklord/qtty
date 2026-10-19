@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2196 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2197 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18366,6 +18366,60 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.457 A new searchable class, 46 candidates, and three of my own mis-aims (2026-10-19)
+
+**One check added, one entry added, one entry removed, and no defect in the
+library. The honest headline is that three of this batch's refusals were my
+aim rather than the suite's**, which is the second batch running where that
+is true and is the measurement this pool is now producing about me.
+
+**A new searchable class, and its first detector was wrong.** The suite's
+fixtures keep writing "THE CONTROL FIRST", so: an absence asserted with no
+presence control. The first search looked only BACKWARDS for the control and
+returned **131** -- a useless number, because in this suite the absence check
+is frequently the control that comes FIRST, with the presence check after it
+("no message box is up before a link is opened, so counting them below
+discriminates"). Looking both ways, and excluding checks whose own condition
+carries a presence term, gives **46**. The 131 is recorded as what it was: a
+count that inherited a one-directional detector.
+
+**Of the 46, the three read closely are sound**, and the most suspicious was
+explained by its own neighbour. `frame_inside` is computed in the group-box
+block and then `(void)`-ed away, which looks exactly like a control somebody
+dropped -- and the comment four lines later shows the pairing problem was
+already recognised and solved another way, by sabotaging `draw_box` rather
+than by asserting the count.
+
+**But the voided variable was worth asserting anyway, for a different
+reason.** The check beside it is about ELSEWHERE, and elsewhere is not where
+a one-row box would draw. **Nothing asserted that a box too short to say it
+is one draws no box at all** -- a behaviour the design leans on: a one-row
+control is BRACKETED precisely because "at one row a frame cannot say so",
+which this file states of the line edit, the combo and the spin box. The
+count is asserted now.
+
+**And `draw_box()`'s own floor is shadowed, measured twice.**
+`c.height() < 2` can be removed and neither check moves: not the elsewhere
+one, and not the new own-row one. A one-row rectangle has
+`top() == bottom()`, so its horizontal loop WOULD write to the box's row --
+which means a caller guard refuses first. The line-edit path guards with
+`if (c.height() >= 2)` and the MDI path does not, and **which caller refuses
+the group box I did not establish**. The entry is removed with that written
+where it stood, and the new check is named by no entry, which is said here
+rather than left for a sweep to find.
+
+**My three mis-aims, named because the pattern is mine and not the
+suite's:** a sabotage that broke the other branch of a gate from the check I
+pointed at it (8.456), a guard paired with a fixture that runs a different
+backend (8.456), and a floor behind another guard (here). All three present
+as "the named check PASSED against broken code", which is the same sentence
+the suite's real weaknesses produce -- so **the refusal tells you to measure,
+and the first thing to measure is whether the break reached the check's own
+road.**
+
+666 sabotage entries to 665 -- two written, one removed -- and 2196 checks
+to 2197.
 
 ### 8.456 Two refusals that were both mine, and a gate with one half unasked (2026-10-19)
 

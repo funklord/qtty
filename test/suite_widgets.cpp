@@ -7475,7 +7475,23 @@ int suite_widgets() {
 		// obvious spelling is true whether the text is there or not.
 		CHECK(findText(b, QStringLiteral("Box")).x() >= 0,
 		      "and still says its name, which is the part that fits");
-		(void)frame_inside;
+		// AND NONE OF IT ON ITS OWN ROW EITHER, which is what `frame_inside`
+		// was computed for and then `(void)`-ed away. The check above is
+		// about ELSEWHERE, and elsewhere is not where a one-row box would
+		// draw: `draw_box()` refuses a rectangle under two rows and the
+		// design leans on that refusal -- a one-row control is BRACKETED
+		// precisely because "at one row a frame cannot say so", which this
+		// file says of the line edit, the combo and the spin box.
+		//
+		// Nothing asserted the refusal. Measured: with draw_box()'s
+		// `c.height() < 2` floor removed, box-drawing glyphs appear on the
+		// box's own row, `frame_outside` stays 0 and the check above passes.
+		// So the voided variable was the control for the floor all along.
+		printf("info: a one-row group box draws %d box glyph(s) on its own"
+		       " row and %d elsewhere\n", frame_inside, frame_outside);
+		CHECK(frame_inside == 0,
+		      "and none of it on its own row either, a box too short to say"
+		      " it is one drawing no box at all");
 
 		// The pairing, and the first attempt at it was not one. "Still says
 		// its name" survives draw_box() drawing nothing at all, because a
