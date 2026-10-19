@@ -15,6 +15,7 @@
 #include <QHash>
 #include <QRect>
 #include <QVector>
+#include "../../qt_compat.h"
 
 class QTimer;
 
@@ -146,7 +147,7 @@ struct ImageEncodeKey {
 };
 
 inline size_t qHash(const ImageEncodeKey &k, size_t seed = 0) {
-	return qHashMulti(seed, k.key, k.source, k.extent, k.cell_px, k.font_px,
+	return Qtty::hash_multi(seed, k.key, k.source, k.extent, k.cell_px, k.font_px,
 	                  k.mode);
 }
 

@@ -11,6 +11,7 @@
 #include "../backend/ansi/ansi_backend.h"
 #include "../cell_geometry.h"
 #include <QtWidgets>
+#include "../qt_compat.h"
 #include <cstdlib>
 #include <unistd.h>
 
@@ -425,7 +426,7 @@ public:
 		// than the live pointer, which setStyle() would destroy underneath
 		// the proxy that had just been given it.
 		rewrapping_ = true;
-		QStyle *const base = QStyleFactory::create(now->name());
+		QStyle *const base = QStyleFactory::create(Qtty::style_name(now));
 		QApplication::setStyle(new GridStyle(
 		    base ? base : QStyleFactory::create(QStringLiteral("Fusion"))));
 		rewrapping_ = false;
@@ -803,7 +804,8 @@ void setup(QApplication &app) {
 	// null and falls back to Fusion, matching what the filter below does by
 	// declining to wrap that case at all.
 	QStyle *const chosen = app.style();
-	QStyle *rebuilt = chosen ? QStyleFactory::create(chosen->name()) : nullptr;
+	QStyle *rebuilt = chosen ? QStyleFactory::create(Qtty::style_name(chosen))
+	                         : nullptr;
 	if (!rebuilt) rebuilt = QStyleFactory::create(QStringLiteral("Fusion"));
 	app.setStyle(new GridStyle(rebuilt));
 	// And put it back if the application installs one of its own.
@@ -1011,15 +1013,15 @@ void bell() {
 // pair rather than a dark one. Abstaining rather than guessing is not
 // caution for its own sake: a wrong LIGHT leaves an application plain, and a
 // wrong DARK paints pale text onto a pale ground.
-Qt::ColorScheme color_scheme() {
+ColorScheme color_scheme() {
 	const ITerminalBackend *b = g_session ? g_session : g_backend;
-	if (!b) return Qt::ColorScheme::Unknown;
+	if (!b) return ColorScheme::Unknown;
 	const Capabilities c = b->capabilities();
-	if (!c.background_known || !c.foreground_known) return Qt::ColorScheme::Unknown;
+	if (!c.background_known || !c.foreground_known) return ColorScheme::Unknown;
 	const int bg = Color::rgb(c.background).luminance(false);
 	const int fg = Color::rgb(c.foreground).luminance(true);
-	if (bg == fg) return Qt::ColorScheme::Unknown;
-	return bg < fg ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;
+	if (bg == fg) return ColorScheme::Unknown;
+	return bg < fg ? ColorScheme::Dark : ColorScheme::Light;
 }
 
 int exec(QApplication &app, QWidget &win, ITerminalBackend &backend) {

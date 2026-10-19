@@ -181,7 +181,7 @@ int main(int argc, char **argv) {
 	// once this scope ends nobody is -- so a call placed with the printing
 	// would report "not known" for every terminal there has ever been,
 	// which is a line that cannot fail rather than a measurement.
-	Qt::ColorScheme scheme = Qt::ColorScheme::Unknown;
+	Qtty::ColorScheme scheme = Qtty::ColorScheme::Unknown;
 	{
 		AnsiBackend backend;                      // asks on construction
 		c = backend.capabilities();
@@ -243,8 +243,8 @@ int main(int argc, char **argv) {
 	// the terminal is dark is a comparison between the two, and a report
 	// naming both and not their verdict leaves the reader to redo it.
 	fprintf(out, "colour scheme        %s\n",
-	        scheme == Qt::ColorScheme::Dark    ? "dark"
-	        : scheme == Qt::ColorScheme::Light ? "light"
+	        scheme == Qtty::ColorScheme::Dark    ? "dark"
+	        : scheme == Qtty::ColorScheme::Light ? "light"
 	                                           : "not known");
 	// The palette is not on Capabilities: it is consumed by the colour model
 	// rather than reported to an application, so it is read from there.

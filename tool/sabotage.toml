@@ -3679,8 +3679,8 @@ check = "an OSC 10 reply is read as the foreground"
 # uses one a desktop actually ships. 8.243.
 name = "the colour scheme is decided against a midpoint"
 file = "src/runtime/application.cpp"
-find = "\treturn bg < fg ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;"
-into = "\treturn bg < 128 ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;"
+find = "\treturn bg < fg ? ColorScheme::Dark : ColorScheme::Light;"
+into = "\treturn bg < 128 ? ColorScheme::Dark : ColorScheme::Light;"
 count = 1
 check = "one mid-grey background answers differently under a lighter"
 
@@ -3691,8 +3691,8 @@ check = "one mid-grey background answers differently under a lighter"
 # light palette onto a dark terminal. 8.243.
 name = "a dark terminal is reported as a light one"
 file = "src/runtime/application.cpp"
-find = "\treturn bg < fg ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;"
-into = "\treturn bg > fg ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;"
+find = "\treturn bg < fg ? ColorScheme::Dark : ColorScheme::Light;"
+into = "\treturn bg > fg ? ColorScheme::Dark : ColorScheme::Light;"
 count = 1
 check = "a terminal reporting a dark background under a light foreground"
 
@@ -3703,8 +3703,8 @@ check = "a terminal reporting a dark background under a light foreground"
 # -- a wrong DARK is pale text on a pale ground. 8.243.
 name = "an unanswered foreground is guessed at"
 file = "src/runtime/application.cpp"
-find = "\tif (!c.background_known || !c.foreground_known) return Qt::ColorScheme::Unknown;"
-into = "\tif (!c.background_known) return Qt::ColorScheme::Unknown;"
+find = "\tif (!c.background_known || !c.foreground_known) return ColorScheme::Unknown;"
+into = "\tif (!c.background_known) return ColorScheme::Unknown;"
 count = 1
 check = "answered OSC 11 and not OSC 10 answers Unknown"
 
@@ -3714,8 +3714,8 @@ check = "answered OSC 11 and not OSC 10 answers Unknown"
 # not say which of them was load-bearing. 8.243.
 name = "an unanswered background is guessed at"
 file = "src/runtime/application.cpp"
-find = "\tif (!c.background_known || !c.foreground_known) return Qt::ColorScheme::Unknown;"
-into = "\tif (!c.foreground_known) return Qt::ColorScheme::Unknown;"
+find = "\tif (!c.background_known || !c.foreground_known) return ColorScheme::Unknown;"
+into = "\tif (!c.foreground_known) return ColorScheme::Unknown;"
 count = 1
 check = "answered OSC 10 and not OSC 11, the"
 
@@ -3727,7 +3727,7 @@ check = "answered OSC 10 and not OSC 11, the"
 # off. 8.248.
 name = "the foreground role list is back to its four roles"
 file = "src/cell_geometry.h"
-find = "\t        QPalette::HighlightedText, QPalette::BrightText,\n\t        QPalette::PlaceholderText, QPalette::Link,\n\t        QPalette::LinkVisited, QPalette::Accent};"
+find = "\t        QPalette::HighlightedText, QPalette::BrightText,\n\t        QPalette::PlaceholderText, QPalette::Link,\n\t        QPalette::LinkVisited,\n#if QTTY_HAS_PALETTE_ACCENT\n\t        QPalette::Accent,\n#endif\n\t       };"
 into = "\t        QPalette::HighlightedText};"
 count = 1
 check = "a QLabel's link draws in the 12 the role table authors"

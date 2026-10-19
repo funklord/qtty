@@ -281,7 +281,23 @@ void bell();
 // default. The two errors are not symmetric -- a wrong LIGHT leaves an
 // application looking plain, a wrong DARK puts pale text on a pale ground
 // and it cannot be read -- so there is no coin to toss here.
-Qt::ColorScheme color_scheme();
+// Qt 6.5 added Qt::ColorScheme, and section 8.1 called this the one Qt 5
+// arrival "that is not a spelling" -- the enum does not exist there, and it
+// is in THIS header, so what would change is the API qtty offers.
+//
+// IT HAS A SPELLING THAT COMMITS TO NOTHING. On Qt 6.5 and later the name
+// below is a typedef to Qt's own enum, so every caller already writing
+// `Qt::ColorScheme s = Qtty::color_scheme();` compiles exactly as before and
+// the public API is unchanged; Qt 5 gets an enum of the same three names.
+// The alias lives in this PUBLIC header rather than in src/qt_compat.h with
+// the other six, because a public declaration cannot name a private type.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+using ColorScheme = Qt::ColorScheme;
+#else
+enum class ColorScheme { Unknown, Light, Dark };
+#endif
+
+ColorScheme color_scheme();
 
 // The font qtty lays its grid on, chosen before setup() installs it.
 // DejaVu Sans Mono at 16 pixels otherwise.

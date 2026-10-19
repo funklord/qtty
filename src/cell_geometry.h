@@ -25,6 +25,7 @@
 #include <QWidget>
 #include <QGuiApplication>
 #include <QPalette>
+#include "qt_compat.h"
 #include "qtty/cell.h"
 #include "qtty/grid.h"
 #include "qtty/paint.h"
@@ -176,7 +177,11 @@ inline QVector<QPalette::ColorRole> ink_roles() {
 	return {QPalette::WindowText, QPalette::Text, QPalette::ButtonText,
 	        QPalette::HighlightedText, QPalette::BrightText,
 	        QPalette::PlaceholderText, QPalette::Link,
-	        QPalette::LinkVisited, QPalette::Accent};
+	        QPalette::LinkVisited,
+#if QTTY_HAS_PALETTE_ACCENT
+	        QPalette::Accent,
+#endif
+	       };
 }
 
 inline QVector<QPalette::ColorRole> furniture_roles() {

@@ -3144,10 +3144,13 @@ argument:
 
 Open:
 
-- **OQ-3.** Qt 5.15 and Qt 6 in one codebase, or Qt 6 only with the two
-  laggard products upgrading first? Affects Phase 3 sequencing. See §8.1
-  -- the tree has already been built one way while design.md says the
-  other, which makes this the most urgent of the three.
+- **~~OQ-3.~~ ANSWERED 2026-10-19 by the copyright holder: both.** The
+  library, both tools and the example build against Qt 5.15.15 and against
+  Qt 6.8.2, with the conditionals in `src/qt_compat.h` and one alias in
+  `include/qtty/application.h`. 8.462 carries what it took and the one
+  half still open -- the SUITE does not compile under Qt 5, at a measured
+  8 errors, and three of those are checks whose content is about a role Qt
+  5 does not have.
 - **OQ-4.** Do any of the four products need the TUI where QtWidgets
   cannot be linked (embedded, serial console)? If yes, that product goes
   to the design.md §13.2 fallback permanently and Phase 4's scope changes.
@@ -13952,11 +13955,19 @@ here**, because it is a change to working code for a version nobody has
 adopted -- but it is priced now, and unlike the other three it commits
 the project to nothing.
 
-That is the whole of it for the library. **None of it is fixed here**,
-because writing those three conditionals *is* the decision this section
-records as open -- §8.1 says the code has "no version conditionals
-anywhere", and adding the first three would settle by hand what belongs
-to the copyright holder.
+That is the whole of it for the library. **It was open until 2026-10-19
+and is now done** -- the holder settled OQ-3 with the instruction to do the
+port, and 8.462 records it. What stood here until then was that writing the
+conditionals *is* the decision this section records as open, which is why
+they were priced and not written; the price held, re-measured by the command
+above at the same 32 lines.
+
+**And one of the seven turned out not to need the decision at all.**
+`Qt::ColorScheme` is called below "the one that is not a spelling", and it
+has one: a typedef to Qt's own enum on Qt 6.5 and later, which leaves the
+public API unchanged. Looking for a portable form is what found it -- the
+same move this section makes two paragraphs down for `QFontDatabase()`, and
+the same lesson.
 
 **One of the five errors was a defect rather than a version difference,
 and it is fixed.** `src/grid/grid_style.cpp` uses `QAction` through
@@ -18373,6 +18384,78 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.462 The Qt 5.15 port, taken (2026-10-19)
+
+**OQ-3 settled by the copyright holder 2026-10-19: do the port.** The
+library, both tools and the example **build and link against Qt 5.15.15**,
+and Qt 6.8.2 is unchanged -- 2203 checks, 0 failures, all three arms clean.
+
+**Re-measured first, by section 8.1's own command.** 32 error lines, the
+same figure that section records from 2026-10-06 -- so the price was still
+accurate, which is worth knowing because that section's own history is of
+the number moving under ordinary work. Seven constructs, and the count came
+down 32 -> 3 -> 0.
+
+**The conditionals live in one file, `src/qt_compat.h`.** Section 8.1
+reserved them because "a conditional is a statement about which versions
+are supported", and a statement is easier to read, change and withdraw
+when it is made once. Six of the seven are spellings:
+`combined_key`/`combined_of`/`combined_mods`/`combined_key_only` for
+`QKeyCombination`, `hash_multi` for `qHashMulti`, `style_name` for
+`QStyle::name()`, `associated_objects` for `QAction::associatedObjects()`,
+and `QList` for the one `QVector` declaration.
+
+**`Qt::ColorScheme` had a spelling that commits to nothing, and section 8.1
+did not look for one.** That section calls it "the one that is not a
+spelling" -- the enum does not exist in Qt 5 and it is in a PUBLIC header,
+so what would change is the API qtty offers, "and therefore the holder's in
+a way the other six are not". But `using ColorScheme = Qt::ColorScheme;` on
+Qt 6.5 and later is a typedef TO Qt's own enum: every caller already
+written against `Qt::ColorScheme` compiles unchanged, and Qt 5 gets an enum
+of the same three names. **The public API does not change.** It is the same
+shape as that section's own `QFontDatabase()` finding two paragraphs later
+-- a portable form that takes no position -- found by looking for one.
+
+The alias lives in `include/qtty/application.h` rather than with the other
+six, because a public declaration cannot name a private type, and
+`qt_compat.h` says so where the reader will look.
+
+**Two things the port found that the price did not name:**
+
+- **`QPalette::Accent` needs guards, not an alias.** `theme.cpp` switches
+  on Accent AND Highlight, and its own comment gives Accent 12 "rather than
+  Highlight's 4" -- so aliasing them is a duplicate case. Three sites plus
+  the foreground-role list are `#if`-guarded instead, and a Qt 5 build has
+  no accent, which is the state `CellTheme::terminal_default()` is already
+  asserted to be in.
+- **Qt 5 has no `qHash` for `QRect` or `QSize`**, which `hash_multi()` is
+  handed. Two overloads at global scope -- where argument lookup for a Qt
+  type looks -- guarded to Qt 5 so a later Qt adding them cannot collide.
+
+**And one consumer had to change its spelling: `tool/negotiate` wrote
+`Qt::ColorScheme`**, which works on Qt 6 because the alias IS that type and
+fails on Qt 5. Four uses now say `Qtty::ColorScheme`, correct on both. That
+is the alias's whole cost, and it falls on qtty's own tool rather than on
+any application.
+
+**Five sabotage anchors were on lines the port moved** and are re-anchored
+to the ported text; all five still redden the check they name. One needed
+its anchor widened over the `#if` block, because replacing a list's tail
+left the guarded lines stranded.
+
+**WHAT IS NOT DONE, measured rather than estimated: the suite.** Section
+8.1 says reaching run-time exposure "means compiling the suite", and under
+Qt 5 that is **8 errors, all `QPalette::Accent`, all in
+`suite_theme.cpp`.** Three of them are woven into checks whose CONTENT is
+about Accent -- a foreground-role census, a nearest-match comparison, a
+tinted-label table -- so on Qt 5 those would have to SKIP rather than pass,
+and the suite would assert meaningfully less on that version than on this
+one. That is a judgement about what the Qt 5 build is for rather than a
+transliteration, so it is left for the holder with the cost named.
+
+So the axis section 0e wanted is **half open**: the library runs on Qt 5
+and nothing has run its checks there.
 
 ### 8.461 A theme changes colours and not cells, and two sabotages could not say so (2026-10-19)
 
@@ -40186,11 +40269,12 @@ claim is true, and now somebody has looked.
 
 **design.md's own Open Questions were checked the same way, and one is
 answered by the tree rather than by anybody.** OQ-1 and OQ-2 are struck
-through as closed. Of the three left, **OQ-3 -- "Qt 5.15 and Qt 6 in one
-codebase, or Qt 6 only" -- is settled in practice**: the code uses Qt 6
-APIs throughout and the README states Qt 6 as a requirement. Nothing
-enforces it, so the requirement is carried by compilation failing rather
-than by a guard, which is a poor message and not a defect. OQ-4 and OQ-5
+through as closed. **OQ-3 -- "Qt 5.15 and Qt 6 in one codebase, or Qt 6
+only" -- was answered on 2026-10-19 by the holder: both**, and 8.462
+records the port. What stood here was that it was "settled in practice"
+because the code used Qt 6 APIs throughout and the README said so; that
+was a description of the tree rather than an answer, and the answer went
+the other way. OQ-4 and OQ-5
 are product and scope questions that only the holder can answer, and they
 are not stale.
 

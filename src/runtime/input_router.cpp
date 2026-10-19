@@ -14,6 +14,7 @@
 #include <QTextDocument>
 #include <QTextBlock>
 #include <QShortcut>
+#include "../qt_compat.h"
 
 namespace Qtty {
 
@@ -868,9 +869,10 @@ bool InputRouter::match_mnemonic(const KeyEvent &k) {
 		if (auto *a = qobject_cast<QAction *>(claim.who)) {
 			if (QMenu *sub = a->menu()) {
 				// A menu opens rather than triggers.
-				QWidget *owner = a->associatedObjects().isEmpty()
+				QWidget *owner = Qtty::associated_objects(a).isEmpty()
 				    ? nullptr
-				    : qobject_cast<QWidget *>(a->associatedObjects().first());
+				    : qobject_cast<QWidget *>(
+				          Qtty::associated_objects(a).first());
 				if (auto *bar = qobject_cast<QMenuBar *>(owner)) {
 					// The BAR opens it, rather than this function calling
 					// popup() at a position it worked out itself. The
@@ -1046,7 +1048,7 @@ static bool context_applies(Qt::ShortcutContext ctx, const QWidget *owner,
 // rather than picking one.
 static QVector<const QWidget *> owners_of(const QAction *a) {
 	QVector<const QWidget *> out;
-	const auto associated = a->associatedObjects();
+	const auto associated = Qtty::associated_objects(a);
 	for (QObject *o : associated)
 		if (auto *w = qobject_cast<QWidget *>(o)) out.append(w);
 	if (out.isEmpty())
@@ -1284,8 +1286,8 @@ QVector<QPair<QString, QStringList>> conventions_shadowed(QWidget *scope) {
 		QStringList who;
 		for (const Qt::Key k : row.keys) {
 			if (k == 0) continue;
-			const QKeySequence want(QKeyCombination(
-			    Qt::KeyboardModifiers(int(row.mod)), k).toCombined());
+			const QKeySequence want(Qtty::combined_key(
+			    Qt::KeyboardModifiers(int(row.mod)), k));
 			for (const ShortcutClaim &c : claims)
 				if (c.key == want && !who.contains(c.text)) who << c.text;
 		}
@@ -1504,10 +1506,10 @@ QVector<QPair<QString, QString>> ambiguous_chords(QWidget *scope) {
 	const QVector<ShortcutClaim> claims = shortcut_claims(scope);
 	for (const ShortcutClaim &c : claims) {
 		for (int i = 0; i < c.key.count(); ++i) {
-			const QKeyCombination combo = c.key[i];
-			const Qt::KeyboardModifiers mods = combo.keyboardModifiers();
+			const int combo = Qtty::combined_of(c.key, i);
+			const Qt::KeyboardModifiers mods = Qtty::combined_mods(combo);
 			if (!(mods & Qt::ControlModifier)) continue;
-			const int key = combo.key();
+			const int key = Qtty::combined_key_only(combo);
 			// A SHIFTED control chord cannot be sent at all: the byte
 			// carries no shift bit. Reported whatever the key is.
 			bool bad = mods & Qt::ShiftModifier;
@@ -1759,7 +1761,7 @@ QVector<QPair<QString, QString>> mnemonic_missing(QWidget *scope) {
 	// sabotage that removed it passed, because every fixture asked the
 	// wizard about itself. One list and one insert, so the spec's anchor
 	// covers the rule rather than one of its two spellings.
-	QVector<QWizard *> wizards = scope->findChildren<QWizard *>();
+	QList<QWizard *> wizards = scope->findChildren<QWizard *>();
 	if (auto *w = qobject_cast<QWizard *>(scope)) wizards.append(w);
 	for (QWizard *w : wizards)
 		keyed.insert(w->button(QWizard::CancelButton));
@@ -1980,7 +1982,7 @@ QVector<QWidget *> pointer_only(QWidget *scope) {
 bool InputRouter::match_shortcut(const KeyEvent &k) {
 	if (!k.qt_key || k.qt_key == Qt::Key_unknown) return false;
 	const Qt::KeyboardModifiers mods = qt_modifiers(k.ctrl, k.alt, k.shift);
-	const QKeySequence pressed(QKeyCombination(mods, Qt::Key(k.qt_key)).toCombined());
+	const QKeySequence pressed(Qtty::combined_key(mods, Qt::Key(k.qt_key)));
 
 	// Collect actions from the input scope, all its children, and menus
 	// (rebuilt per press: correctness first, the table is small; section 5.5).

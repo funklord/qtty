@@ -1,5 +1,6 @@
 // src/core/theme.cpp -- the role tables, quantisation and SGR emission (section 6).
 #include "qtty/theme.h"
+#include "../qt_compat.h"
 
 namespace Qtty {
 
@@ -36,7 +37,9 @@ CellTheme CellTheme::from_palette(const QPalette &p) {
 	// (8.248). Without them, listing the roles in the paint path would
 	// have sent every one of them to window_text: the sixteen-colour tier
 	// fixed at the price of the other two.
+#if QTTY_HAS_PALETTE_ACCENT
 	t.accent           = opaque(p.color(QPalette::Accent));
+#endif
 	t.bright_text      = opaque(p.color(QPalette::BrightText));
 	t.placeholder_text = opaque(p.color(QPalette::PlaceholderText));
 	t.link             = opaque(p.color(QPalette::Link));
@@ -143,10 +146,12 @@ int ansi16_for_role(QPalette::ColorRole role) {
 	case QPalette::Dark:     return 8;
 	case QPalette::Shadow:   return 0;
 
+#if QTTY_HAS_PALETTE_ACCENT
 	case QPalette::Accent:
 		// The product's own emphasis colour. 12 rather than Highlight's 4, so
 		// that an accented widget inside a selection is still visible.
 		return 12;
+#endif
 
 	default:
 		// NoRole, NColorRoles, and whatever a later Qt adds: no authored
@@ -171,7 +176,9 @@ Color CellTheme::foreground(QPalette::ColorRole r) const {
 	case QPalette::PlaceholderText: c = placeholder_text; break;
 	case QPalette::Link:            c = link; break;
 	case QPalette::LinkVisited:     c = link_visited; break;
+#if QTTY_HAS_PALETTE_ACCENT
 	case QPalette::Accent:          c = accent; break;
+#endif
 	default:                        c = window_text; break;
 	}
 	return c.with_ansi16(ansi16_for_role(r));
