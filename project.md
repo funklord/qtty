@@ -1342,6 +1342,13 @@ Three things it taught, which the next run should carry in:
   been green for weeks can be answering a different question than its name
   says, and a sabotage run somewhere else in the file is what surfaces it.
 
+  **A thirteenth: a popup reaches the compositor through a registry the
+  ROUTER stamps on show, so a router built after the popup never sees
+  it.** Measured, the registry held 0 layers and a 20x3 screen inked 0
+  cells with a visible `QMenu` on it -- a menu that draws nothing, which
+  is what a frame looks like when there is nothing in it. Build the
+  router, make its window current, THEN pop up. 8.459.
+
   **A twelfth, and it accused the one path a library has no second chance
   at: `qApp->quit()` does not end a nested `QEventLoop`.** A probe waiting
   on one, driving a real pseudo-terminal hangup, timed out after three
@@ -18366,6 +18373,41 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.459 The rest of 0d's size list draws, and a popup needs the router first (2026-10-19)
+
+**8.458's reframing run to the end of the list, and the one-column case was
+the only finding in it.** That sweep's question was whether a degenerate
+grid composes; this one's is whether it DRAWS. The remaining names:
+
+- **200x2** -- window 2000x57, eleven cells inked in both rows. Three rows
+  of content on a two-row screen shows the first two and the button is
+  below the fold, which is §7 scrolling and not a loss.
+- **6x60** -- window 100x1140, fourteen cells in three of sixty rows, the
+  first four blank. That is `QBoxLayout` handing its slack to the items
+  with nothing to absorb it, which §0d already records and an application
+  fixes with a stretch. Not qtty's.
+- **3x3** -- six cells in three rows, `" Na" / " [v" / " <A"`, and the
+  leading column is the margin: three columns is where 8.458's clamp stops
+  yielding, so this is the holder's threshold visible in a render.
+- **a menu at the corner of a three-row screen** -- 26 cells, the menu
+  flipped from column 19 to column 5 and clipped to the three rows there
+  are, with `follow_focus()` able to scroll to the item below the fold.
+
+**AND THE MENU TOOK TWO WRONG MEASUREMENTS FIRST, which is the reusable
+part.** The first said the popup registry held **0 layers** and the screen
+inked **0 cells** -- a visible `QMenu` drawing nothing at all, which reads
+like a serious defect in the one path a menu has. The router was built
+AFTER the menu was shown, and a popup reaches the compositor through the
+registry the router stamps on show: a router that did not exist when the
+popup appeared never sees it.
+
+So the frame was empty for the same reason a frame is empty when there is
+nothing in it, and the two are indistinguishable from outside. **The fourth
+instrument fault of this session**, and like the other three it presented
+as a finding rather than as a fault: §0d gained a thirteenth entry for it.
+
+No code changed. 2200 checks and 667 entries, unmoved.
 
 ### 8.458 A one-column terminal draws nothing, and the margin says why (2026-10-19)
 
