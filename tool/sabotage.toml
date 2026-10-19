@@ -7128,3 +7128,26 @@ check = "a size grip is asked for no cells at all"
 # ---- The check stays and is named by no entry, which is said plainly
 # ---- rather than left for a sweep to notice.
 
+
+[[sabotage]]
+# The side margin spending columns a narrow terminal does not have, which
+# is the state 8.458 measured: at one or two columns the indent is the
+# whole screen and a form shows nothing. Set by the copyright holder
+# 2026-10-19 to yield below three.
+name = "the side margin does not yield on a narrow terminal"
+file = "src/grid/grid_style.cpp"
+find = "\t\treturn room > 0 && room < 3 ? 0 : cw;"
+into = "\t\treturn cw;"
+count = 1
+check = "the layout's side margin yields on a terminal one or two columns wide"
+
+[[sabotage]]
+# The clamp widened until it swallows the terminal it was written for: a
+# margin that yields at eighty columns is no indent at all, which is the
+# control for the entry above.
+name = "the side margin yields at every width"
+file = "src/grid/grid_style.cpp"
+find = "\t\treturn room > 0 && room < 3 ? 0 : cw;"
+into = "\t\treturn 0;"
+count = 1
+check = "and keeps its column from three columns up"

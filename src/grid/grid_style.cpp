@@ -965,7 +965,31 @@ int GridStyle::pixelMetric(PixelMetric m, const QStyleOption *o, const QWidget *
 	// Left and right keep a column. A column of eighty is cheap where a row
 	// of twenty-four is not, and the indent is what stops text touching the
 	// screen edge.
-	case PM_LayoutLeftMargin: case PM_LayoutRightMargin:   return cw;
+	// AND IT YIELDS BELOW THREE COLUMNS, set by the copyright holder
+	// 2026-10-19 after 8.458 measured what the paragraph above costs at the
+	// other end of its own assumption. Two columns of margin leave nothing
+	// for content on a terminal one or two wide, so the indent that "stops
+	// text touching the screen edge" becomes the entire screen.
+	//
+	// THE TERMINAL'S WIDTH, not the widget's, and that is measured rather
+	// than chosen. A window whose layout minimum exceeds the screen does
+	// not shrink to fit -- traced, `resize(cells(1, 4))` on a form holding
+	// one label leaves a 60-pixel window, and section 7 scrolls it. So the
+	// widget is six columns wide while the user can see one, and a clamp on
+	// `w->width()` would never fire in the case that reported this. Worse,
+	// it would fire inconsistently: the margin is asked for repeatedly, and
+	// the early queries see 10 px where the later ones see 60, so the answer
+	// would depend on which query Qt kept.
+	//
+	// The widget is the fallback for when there is no terminal at all -- no
+	// run, as in most of this suite -- where it is the only room there is to
+	// measure, and where nothing is being scrolled to confuse it.
+	case PM_LayoutLeftMargin: case PM_LayoutRightMargin: {
+		const QSize term = terminal_cells();
+		const int room = term.isEmpty() ? (w ? w->width() / cw : 0)
+		                                : term.width();
+		return room > 0 && room < 3 ? 0 : cw;
+	}
 	case PM_LayoutTopMargin:  case PM_LayoutBottomMargin:  return 0;
 	case PM_LayoutHorizontalSpacing:                       return cw;
 	case PM_LayoutVerticalSpacing:                         return 0;

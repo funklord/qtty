@@ -2,6 +2,7 @@
 // the widgets_gallery snapshot.
 #include <qtty/qtty.h>
 #include <qtty/delegate.h>
+#include "src/runtime/terminal_owner.h"
 #include <QtWidgets>
 #include <QUndoStack>
 #include <QUndoView>
@@ -9242,6 +9243,73 @@ int suite_widgets() {
 		      "and one that really can scroll still does not, which is what"
 		      " stops the fix from being a bar that is always full");
 	}
+	// THE LAYOUT MARGIN YIELDS BELOW THREE COLUMNS, set by the copyright
+	// holder 2026-10-19 after 8.458. One column each side is the indent that
+	// stops text touching the screen edge on a terminal eighty wide; on one
+	// two columns wide it is the whole screen, which is section 7.8's 80x1
+	// fault on the axis that was left alone.
+	//
+	// Asked through a REGISTERED BACKEND, because the clamp reads the
+	// terminal's width and not the widget's -- a window whose layout minimum
+	// exceeds the screen keeps its size and is scrolled, so the widget is
+	// wide while the user can see one column. take_terminal() is how a size
+	// is made known outside a run -- a PRIVATE header, reached the way this
+	// suite already reaches the backend's, and not public API.
+	{
+		struct Sized : Qtty::NullBackend {
+			using NullBackend::NullBackend;
+		};
+		const auto margin_at = [](int cols) {
+			Sized b(QSize(cols, 4));
+			Qtty::take_terminal(&b);
+			QStyleOption o;
+			const int m = QApplication::style()->pixelMetric(
+			    QStyle::PM_LayoutLeftMargin, &o, nullptr);
+			Qtty::release_terminal(&b);
+			return m;
+		};
+		const int at1 = margin_at(1), at2 = margin_at(2);
+		const int at3 = margin_at(3), at80 = margin_at(80);
+		printf("info: the layout's side margin is %d px at one column, %d at"
+		       " two, %d at three and %d at eighty, on a %d px cell\n",
+		       at1, at2, at3, at80, GridMetrics::cw());
+		CHECK(at1 == 0 && at2 == 0,
+		      "the layout's side margin yields on a terminal one or two"
+		      " columns wide, where two columns of indent are the screen");
+		CHECK(at3 == GridMetrics::cw() && at80 == GridMetrics::cw(),
+		      "and keeps its column from three columns up, which is where the"
+		      " indent it was written for starts being affordable");
+
+		// AND THE SYMPTOM, which is what 8.458 reported and the only thing
+		// the clamp is for: a form on a one-column terminal showed nothing
+		// at all, its one visible column being margin. The window does not
+		// shrink to one column -- its layout minimum holds it wider and
+		// section 7 scrolls it -- so what changed is that the first column
+		// now carries the first glyph instead of the indent.
+		Sized one(QSize(1, 4));
+		Qtty::take_terminal(&one);
+		QWidget win;
+		win.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *v = new QVBoxLayout(&win);
+		v->addWidget(new QLabel(QStringLiteral("Name")));
+		win.resize(GridMetrics::cells(1, 4));
+		win.show();
+		QCoreApplication::processEvents();
+		CellBuffer b(1, 4);
+		render_once(win, b);
+		int inked = 0;
+		for (int y = 0; y < b.rows(); ++y)
+			if (b.at(0, y).ch != QStringLiteral(" ")) ++inked;
+		printf("info: a form on a one-column terminal inks %d of its %d"
+		       " visible cell(s), first row [%s]\n", inked, b.rows(),
+		       qPrintable(b.to_text().split(QLatin1Char('\n')).value(0)));
+		Qtty::release_terminal(&one);
+		CHECK(inked > 0,
+		      "and a form on a one-column terminal shows something, the one"
+		      " column a user can see no longer being spent on the indent");
+		GridGuard::reset();
+	}
+
 	return fails;
 }
 

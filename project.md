@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2197 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2200 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1075,7 +1075,6 @@ Owned by the copyright holder:
 | Question | Where |
 |---|---|
 | **Should a menu item's mnemonic answer while its menu is CLOSED?** It does here, deliberately -- a terminal user reaching an item directly is worth something -- and a desktop Qt answers an item's letter only while its menu is open. The cost is now measured rather than supposed: in Qt's own `menus` example, thirty actions produce **five letters with more than one claimant**, and only the first answers (`&Print...` takes `p` from `&Paste` and *Set &Paragraph Spacing...*). Keeping it means an application with menus needs `Qtty::mnemonic_conflicts()` to find what it has lost; narrowing it to open menus costs the direct reach the conventions were added for | 8.165 |
-| **Should the layout's horizontal margin YIELD on a narrow terminal?** One column each side, deliberate, and the comment's reason names its own assumption -- "a column of eighty is cheap where a row of twenty-four is not". Measured 2026-10-19: at one column a window draws nothing at all, and the same window with no margins draws its first glyph; a terminal under three columns wide has nothing left for content. This is §7.8's 80x1 fault on the other axis, where the vertical half was set to 0 and the horizontal half was kept. A clamp that yields at the extreme is the option -- the shape `snap()` uses when a sub-cell widget is allowed to vanish rather than grow -- and the threshold, and whether the margin belongs to the window or the terminal, are the decision. 8.458. | §0b, and 8.458 |
 | **Should a late `set_font()` WORK rather than warn?** It is stored and ignored today, and says so as of 8.414. The sibling case decided the other way: a `QStyle` installed after `setup()` is wrapped rather than refused, because doing it afterwards is an ordinary thing for a Qt program to want -- and a font picker in a preferences dialog is as ordinary. **The cost is the difference:** `cw` and `ch` size every widget, so a late font change is a re-measure plus a re-layout of every window, which is a resize qtty already knows how to do. `image_key()` already carries `font_px`, so the upload caches invalidate by construction. Reachable rather than hard, and a decision about what a public call does. | 8.414 |
 | **Should a handover tell the ROUTER, and through which seam?** A press sets `grab_` and only a release clears it, and `kLeave` turns mouse reporting off -- so a button held across a handover has its release delivered to the shell, and every mouse event afterwards is routed to that widget until the next click's release clears it. One misdirected click, bounded, and reachable only with a button held while a program shells out or is stopped. **The cost is why this is a question rather than a fix:** the router cannot hear about it today. `Compositor::router_` is private with no accessor, and `FrameScheduler` is where a handover is noticed -- so the candidates are a public accessor on `Compositor`, or a non-pure `on_handover()` on `ITerminalEventSink` beside `on_terminal_lost()`, which is the precedent for an optional sink hook here. Both are additions to a PUBLIC header for a one-click symptom, which is the holder's trade rather than mine. 8.413's family, measured 2026-10-08 by reading the two sites. | §0b, and the lens in 8.411 |
 | **Should the terminal's background be re-measured, and how?** It is asked once at startup and the half-block tier composites against it for the life of the session, so a user who toggles their desktop theme -- or a `shell_out()` that returns from a program which changed it -- leaves every translucent edge composited against a ground that has gone. Re-asking at each handover costs one query and needs the decoder to stop discarding an OSC 11 reply; subscribing with `DECSET 2031` costs nothing per frame and needs capability detection; leaving it costs the fallback tier only, kitty-tier sessions sending alpha and never compositing | 8.160 |
@@ -18412,12 +18411,35 @@ earlier wording is honest about which it answered, and the search for a
 prior measurement is what separated the two -- the gap-claim rule earning
 its place for the second time in three batches.
 
-**Not fixed, because the fix is a decision.** The margin is deliberate and
-recorded as such. What is available short of reversing it is a clamp of the
-shape `snap()` already uses -- yield at the extreme rather than consume it,
-the way a sub-cell widget is allowed to vanish rather than grow into its
-neighbour -- and the threshold, and whether the margin is a property of the
-window or of the terminal, are not mine to pick. §0b carries it.
+**FIXED, by the copyright holder's decision 2026-10-19: yield below three
+columns.** `PM_LayoutLeftMargin` and `PM_LayoutRightMargin` return 0 when
+the room is one or two columns and `cw` from three up. §0b's row is removed
+rather than struck through, the question having been answered.
+
+**It keys on the TERMINAL's width, and that was measured rather than
+chosen.** Two findings from instrumenting the query:
+
+- **A window whose layout minimum exceeds the screen does not shrink to
+  fit.** `resize(cells(1, 4))` on a form holding one label leaves a
+  **60-pixel** window, and §7 scrolls it. So the widget is six columns wide
+  while the user can see one, and a clamp on `w->width()` would never fire
+  in the case that reported this. **This also corrects this entry's own
+  first mechanism**: the blank is not "the window is one column and the
+  margin is all of it", it is "the first column is margin and the window is
+  wider than the screen".
+- **And `w->width()` is asked repeatedly with different answers.** The early
+  queries see 10 px where the later ones see 60, and the last one wins -- so
+  a widget-keyed clamp would be decided by which query Qt kept.
+
+The widget is kept as the fallback for when there is no terminal at all --
+no run, which is most of this suite -- where it is the only room there is to
+measure and nothing is being scrolled to confuse it.
+
+**Three checks and two entries**, the second entry being the control that
+stops the clamp widening until it swallows the terminal it was written for:
+a margin that yields at eighty columns is no indent at all. And the symptom
+itself is asserted, not just the metric -- a form on a one-column terminal
+inks 1 of its 4 visible cells where it inked 0.
 
 ### 8.457 A new searchable class, 46 candidates, and three of my own mis-aims (2026-10-19)
 
