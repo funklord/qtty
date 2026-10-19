@@ -382,10 +382,35 @@ int suite_cells() {
 		// it is misaligned.
 		CellBuffer wide_row(4, 1);
 		wide_row.text(0, 0, wide + wide);
-		int rendered = 0;
-		for (int x = 0; x < 4; ++x)
-			rendered += wide_row.at(x, 0).width;
-		CHECK(rendered <= 4, "a full row of wide clusters occupies exactly the row");
+		// THE SHAPE OF THE ROW, not the sum of its widths, and the sum was
+		// insensitive rather than merely loose. This read
+		// `rendered += at(x, 0).width` and asserted `rendered <= 4`, which
+		// admits 0 through 3 -- but tightening it to `== 4` fixes nothing,
+		// because **a default cell carries width 1**. Drop the second
+		// cluster and the row goes from (2, 0, 2, 0) to (2, 0, 1, 1): the
+		// sum is 4 either way, so no bound on it can tell a filled row from
+		// a half-filled one.
+		//
+		// Measured: with text() stopping one cluster early the sum stayed
+		// 4 and the check passed, which is how the metric was caught rather
+		// than the comparison.
+		//
+		// Two leads, two continuations and no plain cell is the claim. It
+		// still carries the fault the comment above names -- a row wider
+		// than the buffer cannot produce two leads and two continuations in
+		// four cells -- and it adds the under-fill half.
+		int leads = 0, conts = 0, plain = 0;
+		for (int x = 0; x < 4; ++x) {
+			const int w = wide_row.at(x, 0).width;
+			if (w == 2)      ++leads;
+			else if (w == 0) ++conts;
+			else             ++plain;
+		}
+		printf("info: two wide clusters in a four-cell row leave %d lead(s),"
+		       " %d continuation(s) and %d plain cell(s)\n",
+		       leads, conts, plain);
+		CHECK(leads == 2 && conts == 2 && plain == 0,
+		      "a full row of wide clusters occupies exactly the row");
 	}
 
 	// text() reports what it wrote, not what it was handed. It used to add the

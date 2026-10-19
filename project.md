@@ -18367,6 +18367,51 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.455 The comparison was loose and the metric was blind (2026-10-19)
+
+**A searched class, one finding, and the finding was not the one the search
+predicted** -- which is the part worth keeping.
+
+**The search.** `evidence.md` names *a name that claims exhaustiveness* as a
+trap, so: every unnamed `CHECK` whose text says exactly, every, all, whole
+or full, and whose only comparison is an **inequality**. Thirteen. Twelve
+are legitimate -- budget ratios, orderings, "at all" claims -- and one is
+not: `rendered <= 4` under the name "a full row of wide clusters occupies
+exactly the row". A bound that admits 0, 1, 2 and 3 for a claim of
+exactness.
+
+**The prediction was wrong in an instructive way.** Tightening it to
+`== 4` looked like the whole fix, and it is no fix at all. The fixture sums
+`at(x, 0).width` across the row, and **a default cell carries width 1**.
+Drop one of the two wide clusters and the row goes from `(2, 0, 2, 0)` to
+`(2, 0, 1, 1)`: **the sum is 4 either way.** No bound on that number can
+tell a filled row from a half-filled one.
+
+**Measured, which is how the metric was caught rather than the
+comparison.** An entry making `text()` stop one cluster early -- `>= c_`
+for `> c_`, which still never over-runs the row and so leaves the fault the
+fixture's comment names untouched -- was REFUSED against the tightened
+`== 4`. That refusal is the finding: a comparison can be wrong and
+repairable, and a metric can be insensitive, and only the second survives
+being made strict.
+
+The check asserts the row's SHAPE now: two leads, two continuations, no
+plain cell. It still carries what the comment is about -- a row wider than
+the buffer cannot produce two leads and two continuations in four cells --
+and it adds the under-fill half that nothing had. The entry reddens it,
+with ten others.
+
+**The transferable rule, and it is not about inequalities.** The search
+found this by its loose comparison, and the loose comparison was the
+symptom. **Ask what the metric cannot distinguish before asking whether the
+bound is tight** -- a sum over a row of cells whose default is 1 is nearly
+constant, so it was never going to discriminate however it was compared.
+`evidence.md` says *assert the relationship, not either value*; this is the
+same instruction aimed one level down, at whether the quantity being
+related can move.
+
+660 sabotage entries to 661, and the check count is unchanged at 2195.
+
 ### 8.454 The glyph-blind check is a class, and a search found all five (2026-10-19)
 
 **Four entries against existing checks only -- no new ones, after

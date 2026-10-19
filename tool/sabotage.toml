@@ -7043,3 +7043,15 @@ find = "\t\treturn px.x() % cw() == 0 && px.y() % ch() == 0\n\t\t    && px.width
 into = "\t\treturn false;"
 count = 1
 check = "a cell-multiple geometry raises nothing"
+
+[[sabotage]]
+# text() stopping one cell early, so the last cluster that would exactly
+# fit the row is dropped. The row still never over-runs -- which is the
+# fault the fixture's comment names -- so the old `<= 4` bound passed this
+# and the tightened `== 4` does not. 8.455.
+name = "the absence of the last cluster that exactly fits"
+file = "src/core/cell_buffer.cpp"
+find = "\t\tif (x + consumed + w > c_) break;"
+into = "\t\tif (x + consumed + w >= c_) break;"
+count = 1
+check = "a full row of wide clusters occupies exactly the row"
