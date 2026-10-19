@@ -5608,6 +5608,14 @@ int suite_backend() {
 					CellBuffer frame(4, 1);
 					frame.text(0, 0, QStringLiteral("hi"));
 					b.present(frame, QRegion(0, 0, 4, 1));
+					// AND A TITLE, which is the one sequence here that
+					// carries APPLICATION data rather than a mode. Its own
+					// `if (!tty_out_) return;` was the half of this gate
+					// nothing asked about: the checks below assert the
+					// alternate screen and the mouse modes on both sides,
+					// and a title written into a pipe is the same fault with
+					// a filename in it.
+					b.set_title(QStringLiteral("a named window"));
 					b.suspend();
 				}
 				fflush(stdout);
@@ -5656,6 +5664,17 @@ int suite_backend() {
 			// changes something we do not own and cannot reset; writing the
 			// frame is what was asked for, and `program | cat` wants it as
 			// much as `program > recording` does.
+			// The title, on both sides of the same gate.
+			printf("info: the title sequence is %s on a terminal and %s in a"
+			       " pipe\n",
+			       on_tty.contains("\033]2;a named window") ? "present"
+			                                                : "absent",
+			       on_pipe.contains("a named window") ? "present" : "absent");
+			CHECK(on_tty.contains("\033]2;a named window")
+			      && !on_pipe.contains("a named window"),
+			      "and a title is written to a terminal and not into a pipe,"
+			      " an OSC with a filename in it being the one sequence here"
+			      " that carries application data");
 			CHECK(on_pipe.contains("hi") && !on_pipe.contains("\033[?1049h"),
 			      "a pipe is written the frame and none of the modes");
 		} else {

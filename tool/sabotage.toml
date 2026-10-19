@@ -7055,3 +7055,46 @@ find = "\t\tif (x + consumed + w > c_) break;"
 into = "\t\tif (x + consumed + w >= c_) break;"
 count = 1
 check = "a full row of wide clusters occupies exactly the row"
+
+# ---- The ninth absence batch, back to sampling: the three searchable
+# ---- classes are closed (glyph-blind predicates, suite-claimed
+# ---- defaults, aggregates over a non-neutral default), and two further
+# ---- searches -- width aggregations and same-call comparisons -- came
+# ---- back with nothing to fix.
+
+[[sabotage]]
+# A frame presented although nothing changed, which is the whole of the
+# damage economy: an idle program would write the screen on every tick.
+# The condition is an OR, so dropping the guard means presenting always.
+name = "the absence of a change presents anyway"
+file = "src/runtime/compositor.cpp"
+find = "\t} else if (!damage.isEmpty() || images_changed || !prev_\n\t           || !overlays.isEmpty() || overlays_retired || deferred) {"
+into = "\t} else if (true) {"
+count = 1
+check = "and an unchanged tree is not presented again"
+
+[[sabotage]]
+# The image comparison dropped from that condition, so a NEW picture with
+# the same cell count and the same damage is never presented -- which is
+# the fault the comment above this line records: a PixelSurface showing a
+# plot that redrew and never reached the screen.
+name = "the absence of a cell change hides a new picture"
+file = "src/runtime/compositor.cpp"
+find = "\tconst bool images_changed = !prev_ || frame.images != prev_->images;"
+into = "\tconst bool images_changed = !prev_;"
+count = 1
+check = "and a picture whose pixels changed under unchanged cells is"
+
+[[sabotage]]
+# A title written when stdout is not a terminal, which is the one thing
+# set_title()'s guard is for: the escapes go into whatever the output was
+# redirected to. The pipe/pty harness this names was already asserting the
+# alternate screen and the mouse modes on both sides of that gate and said
+# nothing about a title -- the one sequence in it that carries application
+# data. 8.456.
+name = "the absence of a terminal still writes a title"
+file = "src/backend/ansi/ansi_backend.cpp"
+find = "\tif (!tty_out_) return;                 // nothing is reading the escapes"
+into = "\tif (false) return;                     // nothing is reading the escapes"
+count = 1
+check = "and a title is written to a terminal and not into a pipe"

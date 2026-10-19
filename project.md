@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2195 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2196 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18366,6 +18366,55 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.456 Two refusals that were both mine, and a gate with one half unasked (2026-10-19)
+
+**Three entries, one reddened, two refused -- and both refusals were my
+own aim rather than the suite's.** That is the batch's result and the
+reason it is written down: the refusal rate in this pool is no longer
+measuring the suite, it is partly measuring me.
+
+**The searchable classes are closed.** Two more searches came back with
+nothing to fix: no other check aggregates a non-neutral default the way
+8.455's width sum did, and the two checks that compare two results of the
+same call both guard against it -- the `QFocusFrame` one asserts its own
+render produced something before comparing two of them, which is the
+control `evidence.md` asks for. So this batch went back to sampling.
+
+**My first mis-aim: a sabotage breaking the other branch.** Dropping
+`frame.images != prev_->images` from `images_changed` breaks the case where
+a picture DID change, and I named the check for the case where it did not.
+Repointed to "and a picture whose pixels changed under unchanged cells is",
+which it reddens. The check I had named is innocent and was always going to
+pass.
+
+**My second mis-aim: a guard the named fixture cannot reach.**
+`AnsiBackend::set_title`'s `if (!tty_out_) return;` paired against a check
+that runs on a `NullBackend` -- the same error as 8.451's Enter arm behind
+a shut gate, which makes it twice.
+
+**But the search for the right check found a real gap.** The pipe/pty
+harness in `suite_backend` exists for exactly this gate: it runs a backend
+into a pipe and into a pty and compares. Its comment says the modes "must
+never have been set for a stream that is not a terminal, since then there
+is nothing to reset and the bytes land in somebody's file" -- and it
+asserts the alternate screen and the mouse modes on both sides and **said
+nothing about a title**, which is the one sequence in it carrying
+application data rather than a mode. A filename written into somebody's
+redirected output is that comment's own fault with a name in it.
+
+The harness now sets a title between the frame and the suspend, and asserts
+the OSC on the tty and its absence in the pipe. The entry reddens it.
+
+**And the new check failed first, for a reason worth keeping.** It looked
+for `ESC ] 0 ;` and `set_title` writes **OSC 2** -- so the title read as
+absent on the terminal side as well, which is what sent me to read the
+function instead of trusting the pattern. A fixture whose instrument is
+wrong **failing** is the cheap direction for that mistake; the expensive
+direction is the one 8.449 and 8.454 are about, where a wrong instrument
+passes.
+
+661 sabotage entries to 664, and 2195 checks to 2196.
 
 ### 8.455 The comparison was loose and the metric was blind (2026-10-19)
 
