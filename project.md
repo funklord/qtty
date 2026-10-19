@@ -1075,6 +1075,7 @@ Owned by the copyright holder:
 | Question | Where |
 |---|---|
 | **Should a menu item's mnemonic answer while its menu is CLOSED?** It does here, deliberately -- a terminal user reaching an item directly is worth something -- and a desktop Qt answers an item's letter only while its menu is open. The cost is now measured rather than supposed: in Qt's own `menus` example, thirty actions produce **five letters with more than one claimant**, and only the first answers (`&Print...` takes `p` from `&Paste` and *Set &Paragraph Spacing...*). Keeping it means an application with menus needs `Qtty::mnemonic_conflicts()` to find what it has lost; narrowing it to open menus costs the direct reach the conventions were added for | 8.165 |
+| **Should the layout's horizontal margin YIELD on a narrow terminal?** One column each side, deliberate, and the comment's reason names its own assumption -- "a column of eighty is cheap where a row of twenty-four is not". Measured 2026-10-19: at one column a window draws nothing at all, and the same window with no margins draws its first glyph; a terminal under three columns wide has nothing left for content. This is §7.8's 80x1 fault on the other axis, where the vertical half was set to 0 and the horizontal half was kept. A clamp that yields at the extreme is the option -- the shape `snap()` uses when a sub-cell widget is allowed to vanish rather than grow -- and the threshold, and whether the margin belongs to the window or the terminal, are the decision. 8.458. | §0b, and 8.458 |
 | **Should a late `set_font()` WORK rather than warn?** It is stored and ignored today, and says so as of 8.414. The sibling case decided the other way: a `QStyle` installed after `setup()` is wrapped rather than refused, because doing it afterwards is an ordinary thing for a Qt program to want -- and a font picker in a preferences dialog is as ordinary. **The cost is the difference:** `cw` and `ch` size every widget, so a late font change is a re-measure plus a re-layout of every window, which is a resize qtty already knows how to do. `image_key()` already carries `font_px`, so the upload caches invalidate by construction. Reachable rather than hard, and a decision about what a public call does. | 8.414 |
 | **Should a handover tell the ROUTER, and through which seam?** A press sets `grab_` and only a release clears it, and `kLeave` turns mouse reporting off -- so a button held across a handover has its release delivered to the shell, and every mouse event afterwards is routed to that widget until the next click's release clears it. One misdirected click, bounded, and reachable only with a button held while a program shells out or is stopped. **The cost is why this is a question rather than a fix:** the router cannot hear about it today. `Compositor::router_` is private with no accessor, and `FrameScheduler` is where a handover is noticed -- so the candidates are a public accessor on `Compositor`, or a non-pure `on_handover()` on `ITerminalEventSink` beside `on_terminal_lost()`, which is the precedent for an optional sink hook here. Both are additions to a PUBLIC header for a one-click symptom, which is the holder's trade rather than mine. 8.413's family, measured 2026-10-08 by reading the two sites. | §0b, and the lens in 8.411 |
 | **Should the terminal's background be re-measured, and how?** It is asked once at startup and the half-block tier composites against it for the life of the session, so a user who toggles their desktop theme -- or a `shell_out()` that returns from a program which changed it -- leaves every translucent edge composited against a ground that has gone. Re-asking at each handover costs one query and needs the decoder to stop discarding an OSC 11 reply; subscribing with `DECSET 2031` costs nothing per frame and needs capability detection; leaving it costs the fallback tier only, kitty-tier sessions sending alpha and never compositing | 8.160 |
@@ -18366,6 +18367,57 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.458 A one-column terminal draws nothing, and the margin says why (2026-10-19)
+
+**A window on a terminal one column wide renders ZERO inked cells.** Six
+degenerate grids rendered with a plain `QVBoxLayout` holding a label, a
+field and a button:
+
+    1x1    0 inked cell(s)
+    2x1    1                  " N"
+    1x6    0
+    40x1   4                  " Name"
+    3x3    6                  " Na" / " [v" / " <A"
+    6x2    9                  " Name" / " [valu"
+
+**The mechanism is measured, not inferred.** The layout's margins are
+`l=10 t=0 r=10 b=0` -- one column each side, zero rows, which is exactly
+what `PM_LayoutLeftMargin` returns. The same window with
+`setContentsMargins(0, 0, 0, 0)` draws **1 inked cell, "N"** at 1x1 and 2
+at 2x1 where the margined one draws 1. So the horizontal margin spends two
+of the available columns, and a terminal under three columns wide has
+nothing left for content.
+
+**This is the 80x1 fault on the other axis, and only one axis was fixed.**
+§7.8's measurement is a window with Qt's default margins losing its top
+row, "which on an 80x1 terminal is the whole screen" -- traced to this same
+pixel metric, whose vertical half was then set to 0. The horizontal half
+was kept, and the comment states the reason in a form that names its own
+assumption: **"A column of eighty is cheap where a row of twenty-four is
+not."** True at eighty columns. At one, a column is not cheap; two of them
+are the screen.
+
+That is `working-practice.md`'s own shape -- a rule written under one
+configuration, never tested against the question it is actually answering,
+with a second configuration revealing rather than causing it.
+
+**AND THE PRIOR SWEEP COVERED THIS SIZE AND ASKED A DIFFERENT QUESTION,
+which is why this is recorded as new rather than as a gap.** §0d's size
+sweep lists "one cell, one row, one column, three by three, six by sixty,
+two hundred by two" and concluded **"Everything above zero composed without
+complaint"**. A blank screen composes without complaint: that sweep asked
+whether a degenerate grid SURVIVES, and this asks whether it DRAWS. The
+earlier wording is honest about which it answered, and the search for a
+prior measurement is what separated the two -- the gap-claim rule earning
+its place for the second time in three batches.
+
+**Not fixed, because the fix is a decision.** The margin is deliberate and
+recorded as such. What is available short of reversing it is a clamp of the
+shape `snap()` already uses -- yield at the extreme rather than consume it,
+the way a sub-cell widget is allowed to vanish rather than grow into its
+neighbour -- and the threshold, and whether the margin is a property of the
+window or of the terminal, are not mine to pick. §0b carries it.
 
 ### 8.457 A new searchable class, 46 candidates, and three of my own mis-aims (2026-10-19)
 
