@@ -1,6 +1,7 @@
 // suite_runtime -- L6 (section 5.6): the backend seam, the font provisioning
 // check (section 5.3, risk R3), and GridGuard (section 5.3, section 9).
 #include <qtty/qtty.h>
+#include "src/qt_compat.h"
 #include <qtty/null_backend.h>
 #include "src/runtime/title_keeper.h"
 // Internal, and included for one check: proving that an application's own
@@ -204,6 +205,12 @@ int suite_runtime() {
 	// Asserted rather than assumed: if a Qt release ever answers here, this
 	// reddens and somebody re-reads the paragraph above.
 	{
+		// QStyleHints::colorScheme() ARRIVED IN Qt 6.5, and this check is
+		// about Qt's OWN answer rather than about qtty's -- so on a build
+		// where Qt has no such accessor there is nothing to ask and the
+		// check steps over. It is the one check in this file that is about
+		// Qt's spelling rather than about the terminal.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
 		printf("info: qApp->styleHints()->colorScheme() is %d, Qt's"
 		       " Unknown being %d\n",
 		       int(qApp->styleHints()->colorScheme()),
@@ -211,6 +218,12 @@ int suite_runtime() {
 		CHECK(qApp->styleHints()->colorScheme() == Qt::ColorScheme::Unknown,
 		      "Qt's own colour scheme is Unknown under qtty's pinned"
 		      " platform theme, which is why the terminal is asked instead");
+#else
+		printf("SKIP: Qt's own colour scheme is Unknown under qtty's pinned"
+		       " platform theme, which is why the terminal is asked"
+		       " instead\n      QStyleHints::colorScheme() arrived in"
+		       " Qt 6.5\n");
+#endif
 
 		// Mutable colours, so one run can be asked about several terminals.
 		// The same shape as TellingBackend above and for the same reason: a
@@ -238,18 +251,18 @@ int suite_runtime() {
 		// terminal_cells() are asked before theirs: with no backend there is
 		// nothing to know, and saying so is what stops a caller acting on a
 		// default that happens to look plausible.
-		CHECK(Qtty::color_scheme() == Qt::ColorScheme::Unknown,
+		CHECK(Qtty::color_scheme() == Qtty::ColorScheme::Unknown,
 		      "before a run the terminal's colour scheme is Unknown, there"
 		      " being no terminal to have asked");
 
 		// Each configuration read from INSIDE the run, which is the only
 		// seat an application could read it from.
-		Qt::ColorScheme dark_seen = Qt::ColorScheme::Light;
-		Qt::ColorScheme light_seen = Qt::ColorScheme::Dark;
-		Qt::ColorScheme no_bg = Qt::ColorScheme::Dark;
-		Qt::ColorScheme no_fg = Qt::ColorScheme::Dark;
-		Qt::ColorScheme grey_light_fg = Qt::ColorScheme::Unknown;
-		Qt::ColorScheme grey_dark_fg = Qt::ColorScheme::Unknown;
+		Qtty::ColorScheme dark_seen = Qtty::ColorScheme::Light;
+		Qtty::ColorScheme light_seen = Qtty::ColorScheme::Dark;
+		Qtty::ColorScheme no_bg = Qtty::ColorScheme::Dark;
+		Qtty::ColorScheme no_fg = Qtty::ColorScheme::Dark;
+		Qtty::ColorScheme grey_light_fg = Qtty::ColorScheme::Unknown;
+		Qtty::ColorScheme grey_dark_fg = Qtty::ColorScheme::Unknown;
 		int step = 0;
 		QTimer stepper;
 		stepper.setInterval(5);
@@ -303,23 +316,23 @@ int suite_runtime() {
 		stepper.stop();
 
 		CHECK(scheme_rc == 0, "the colour-scheme run returns cleanly");
-		CHECK(dark_seen == Qt::ColorScheme::Dark,
+		CHECK(dark_seen == Qtty::ColorScheme::Dark,
 		      "a terminal reporting a dark background under a light"
 		      " foreground answers Dark");
-		CHECK(light_seen == Qt::ColorScheme::Light,
+		CHECK(light_seen == Qtty::ColorScheme::Light,
 		      "and the reverse pair answers Light");
-		CHECK(no_fg == Qt::ColorScheme::Unknown,
+		CHECK(no_fg == Qtty::ColorScheme::Unknown,
 		      "a terminal that answered OSC 11 and not OSC 10 answers"
 		      " Unknown, one colour saying nothing about a comparison");
-		CHECK(no_bg == Qt::ColorScheme::Unknown,
+		CHECK(no_bg == Qtty::ColorScheme::Unknown,
 		      "and so does one that answered OSC 10 and not OSC 11, the"
 		      " two halves failing separately");
 		printf("info: mid-grey #636464 answers %d under a light foreground"
 		       " and %d under a dark one, Dark being %d\n",
 		       int(grey_light_fg), int(grey_dark_fg),
-		       int(Qt::ColorScheme::Dark));
-		CHECK(grey_light_fg == Qt::ColorScheme::Dark
-		      && grey_dark_fg == Qt::ColorScheme::Light,
+		       int(Qtty::ColorScheme::Dark));
+		CHECK(grey_light_fg == Qtty::ColorScheme::Dark
+		      && grey_dark_fg == Qtty::ColorScheme::Light,
 		      "and one mid-grey background answers differently under a"
 		      " lighter foreground than under a darker one, which a"
 		      " comparison against a fixed midpoint cannot do");
@@ -327,7 +340,7 @@ int suite_runtime() {
 		// Cleared afterwards, like capabilities() and terminal_cells(): a
 		// scheme from a run that has ended is a claim about a screen nobody
 		// owns, and a caller cannot tell a stale answer from a current one.
-		CHECK(Qtty::color_scheme() == Qt::ColorScheme::Unknown,
+		CHECK(Qtty::color_scheme() == Qtty::ColorScheme::Unknown,
 		      "and afterwards it goes back to Unknown");
 	}
 

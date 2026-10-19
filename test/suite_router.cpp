@@ -2,6 +2,7 @@
 // dispatch, popup stamping + compositor placement (F7, section 8.1), the
 // top-level walk (section 5.4 step 3), and modal handling (section 8.3).
 #include <qtty/qtty.h>
+#include "src/qt_compat.h"
 #include <qtty/drag.h>
 #include <qtty/windows.h>
 #include <QtWidgets>
@@ -372,11 +373,11 @@ int suite_router() {
 			bool got_press = false, got_wheel = false;
 			using QWidget::QWidget;
 			void mousePressEvent(QMouseEvent *e) override {
-				press_at = e->position().toPoint(); got_press = true;
+				press_at = Qtty::event_position(e).toPoint(); got_press = true;
 				e->accept();
 			}
 			void wheelEvent(QWheelEvent *e) override {
-				wheel_at = e->position().toPoint(); got_wheel = true;
+				wheel_at = Qtty::event_position(e).toPoint(); got_wheel = true;
 				e->accept();
 			}
 		};
@@ -10185,8 +10186,8 @@ int suite_router() {
 		// chord took and not whichever the walk reached first.
 		const auto shadowed_by = [&host](int mod, int key) {
 			auto *sc = new QShortcut(
-			    QKeySequence(QKeyCombination(Qt::KeyboardModifiers(mod),
-			                                 Qt::Key(key)).toCombined()),
+			    QKeySequence(Qtty::combined_key(Qt::KeyboardModifiers(mod),
+			                                    Qt::Key(key))),
 			    &host);
 			sc->setObjectName(QStringLiteral("the taker"));
 			QCoreApplication::processEvents();
@@ -11611,7 +11612,7 @@ int suite_router() {
 		struct Counting : QWidget {
 			int enters = 0, leaves = 0;
 			using QWidget::QWidget;
-			void enterEvent(QEnterEvent *) override { ++enters; }
+			void enterEvent(Qtty::EnterEvent *) override { ++enters; }
 			void leaveEvent(QEvent *) override { ++leaves; }
 		};
 		QWidget win;

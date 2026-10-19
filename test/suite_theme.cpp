@@ -1,6 +1,7 @@
 // suite_theme -- section 6: quantisation, the ANSI-16 role table, emission,
 // contrast, and the wiring that makes theme() the source rendering reads.
 #include <qtty/qtty.h>
+#include "src/qt_compat.h"
 #include <QtWidgets>
 #include <cstdio>
 
@@ -554,7 +555,9 @@ int suite_theme() {
 		set_theme(CellTheme::from_palette(QGuiApplication::palette()));
 
 		const QPalette live = QGuiApplication::palette();
+#if QTTY_HAS_PALETTE_ACCENT
 		const QColor fx_accent = live.color(QPalette::Accent);
+#endif
 		// Each fixture colour must belong to exactly one of the roles the
 		// foreground list carries, across all three colour groups, or the
 		// lookup could reach it by a route other than the one under test
@@ -563,7 +566,11 @@ int suite_theme() {
 			QPalette::WindowText, QPalette::Text, QPalette::ButtonText,
 			QPalette::HighlightedText, QPalette::BrightText,
 			QPalette::PlaceholderText, QPalette::Link,
-			QPalette::LinkVisited, QPalette::Accent};
+			QPalette::LinkVisited,
+#if QTTY_HAS_PALETTE_ACCENT
+			QPalette::Accent,
+#endif
+		};
 		const QVector<QPalette::ColorGroup> groups{
 			QPalette::Active, QPalette::Inactive, QPalette::Disabled};
 		const auto owners = [&](const QColor &c) {
@@ -573,14 +580,27 @@ int suite_theme() {
 					if (live.color(g, r).rgba() == c.rgba()) { ++n; break; }
 			return n;
 		};
+		// THE ACCENT TERM IS A BOOL, true where the role does not exist.
+		// QPalette::Accent arrived in Qt 6.6 and these two checks are about
+		// the FIXTURE separating the roles it reads, not about Accent -- so
+		// on a build with no such role the claim is the same claim over one
+		// role fewer, and the checks stay rather than becoming version-
+		// conditional prose. The checks that are ABOUT Accent skip instead,
+		// further down.
+#if QTTY_HAS_PALETTE_ACCENT
+		const bool accent_alone = owners(fx_accent) == 1;
+		const bool accent_index = Color::rgb(fx_accent).to_ansi16() == 6;
+#else
+		const bool accent_alone = true, accent_index = true;
+#endif
 		CHECK(owners(fx_link) == 1 && owners(fx_visited) == 1
-		      && owners(fx_bright) == 1 && owners(fx_accent) == 1,
+		      && owners(fx_bright) == 1 && accent_alone,
 		      "the fixture separates the four roles it reads: each of their "
 		      "colours belongs to exactly one foreground role");
 		CHECK(Color::rgb(fx_link).to_ansi16() == 6
 		      && Color::rgb(fx_visited).to_ansi16() == 2
 		      && Color::rgb(fx_bright).to_ansi16() == 1
-		      && Color::rgb(fx_accent).to_ansi16() == 6,
+		      && accent_index,
 		      "and not one of them nearest-matches to the index its role "
 		      "authors, or these checks could not tell the two apart");
 
@@ -648,14 +668,24 @@ int suite_theme() {
 		{
 			struct { QColor colour; int authored; const char *sentence; }
 			tinted[] = {
+#if QTTY_HAS_PALETTE_ACCENT
 				{fx_accent, 12,
 				 "a label tinted with the palette's accent draws at the "
 				 "authored 12, not the 6 that accent nearest-matches to"},
+#endif
 				{fx_visited, 13,
 				 "and one tinted with LinkVisited at 13, not 2"},
 				{fx_bright, 15,
 				 "and one tinted with BrightText at 15, not 1"},
 			};
+			// STEPPED OVER RATHER THAN DROPPED, so the headline check count
+			// is the same on both versions: the Makefile's count-check adds
+			// SKIP lines to the passes, which is what that mechanism is for.
+#if !QTTY_HAS_PALETTE_ACCENT
+			printf("SKIP: a label tinted with the palette's accent draws at"
+			       " the authored 12, not the 6 that accent nearest-matches"
+			       " to\n      QPalette::Accent arrived in Qt 6.6\n");
+#endif
 			for (const auto &t : tinted) {
 				QLabel lab(QStringLiteral("x"));
 				QPalette lp = lab.palette();
@@ -732,11 +762,18 @@ int suite_theme() {
 		      "ToolTipText and WindowText are one colour here, which is why "
 		      "ToolTipText is not in the foreground list -- revisit the list "
 		      "if this goes red");
+#if QTTY_HAS_PALETTE_ACCENT
 		CHECK(live.color(QPalette::Accent).rgba()
 		      == live.color(QPalette::Highlight).rgba(),
 		      "and Accent and Highlight are one colour here, which is why "
 		      "Accent is a foreground role only -- revisit the surface lists "
 		      "if this goes red");
+#else
+		printf("SKIP: and Accent and Highlight are one colour here, which is"
+		       " why Accent is a foreground role only -- revisit the surface"
+		       " lists if this goes red\n      QPalette::Accent arrived in"
+		       " Qt 6.6\n");
+#endif
 	}
 
 	// ---- CellTheme::accent, which was dead at both ends (8.248) -----------
@@ -757,6 +794,7 @@ int suite_theme() {
 		      "the default theme names no accent either, so every field of "
 		      "it really is the terminal's own colour");
 
+#if QTTY_HAS_PALETTE_ACCENT
 		QPalette pal = QGuiApplication::palette();
 		pal.setColor(QPalette::Accent, QColor(0x8a, 0x1f, 0x5c));
 		const CellTheme t = CellTheme::from_palette(pal);
@@ -788,6 +826,21 @@ int suite_theme() {
 		      && (b.at(0, 0).fg.value() & 0xffffff) == 0x8a1f5cu,
 		      "and an application that sets theme.accent sees it on the "
 		      "wire, where the field used to be a no-op");
+#else
+		// STEPPED OVER, three checks, because every one of them names
+		// QPalette::Accent as its subject rather than using it in passing:
+		// a build with no such role has nothing to capture, nothing for
+		// foreground() to answer with, and no palette colour for an
+		// application to tint a label with. The SKIP lines keep the
+		// headline count the same on both versions.
+		printf("SKIP: from_palette() captures the accent, which it did not\n"
+		       "      QPalette::Accent arrived in Qt 6.6\n");
+		printf("SKIP: and foreground() answers with it, carrying the"
+		       " authored 12\n      QPalette::Accent arrived in Qt 6.6\n");
+		printf("SKIP: and an application that sets theme.accent sees it on"
+		       " the wire, where the field used to be a no-op\n"
+		       "      QPalette::Accent arrived in Qt 6.6\n");
+#endif
 	}
 
 	// ---- the surface half's own two unreachable roles (8.256) ------------

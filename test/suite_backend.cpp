@@ -9,6 +9,7 @@
 // sink plus a way to push bytes in exercises the real code path -- which is
 // also the corpus shape doc/beerssh.md section 4 proposes sharing.
 #include <qtty/qtty.h>
+#include "src/qt_compat.h"
 #include "src/backend/ansi/ansi_backend.h"
 #include "src/backend/ansi/term_caps.h"
 #include "src/backend/ansi/scroll_settle.h"
@@ -826,8 +827,8 @@ int suite_backend() {
 	{
 		QStringList derived;
 		const auto chord_of = [](int ch) {
-			return QKeySequence(QKeyCombination(Qt::ControlModifier,
-			                                   Qt::Key(ch)))
+			return QKeySequence(Qtty::combined_key(Qt::ControlModifier,
+			                                       Qt::Key(ch)))
 			    .toString(QKeySequence::NativeText);
 		};
 		for (int ch = 0x20; ch <= 0x5f; ++ch) {
@@ -858,7 +859,7 @@ int suite_backend() {
 			if (ch != 0x20 && ch < 0x40) continue;
 			auto *a = new QAction(chord_of(ch), &win);
 			a->setShortcut(QKeySequence(
-			    QKeyCombination(Qt::ControlModifier, Qt::Key(ch))));
+			    Qtty::combined_key(Qt::ControlModifier, Qt::Key(ch))));
 			win.addAction(a);
 		}
 		win.show();

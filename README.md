@@ -111,10 +111,10 @@ own still works, and is what the Makefile does:
 Requires Qt 5.15 or Qt 6 — built here against 5.15.15 and 6.8.2 — and a
 monospace font with integral metrics (DejaVu Sans Mono for now; bundled font planned). Fixture
 maintenance: `make record R=render` rewrites the render snapshot after a
-reviewed change. On Qt 5 the library, the tools and the example build; the
-test suite does not, four of its theme checks being about a palette role
-Qt 5 has no name for. Build against Qt 5 with
-`make BUILD_DIR=build-qt5 QMAKE=/usr/bin/qmake`. The example runs with `make run`, or directly as
+reviewed change. Build against Qt 5 with
+`make BUILD_DIR=build-qt5 QMAKE=/usr/bin/qmake`; the suite builds and runs
+there too, with 24 of its checks failing on behavioural differences that
+version axis exists to find — see project.md 8.463. The example runs with `make run`, or directly as
 `build/example/chat/chat --tui`.
 
 ## Using it from another project

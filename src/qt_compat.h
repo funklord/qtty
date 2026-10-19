@@ -19,6 +19,9 @@
 #include <QString>
 #include <QStyle>
 #include <QWidget>
+#include <QMouseEvent>
+#include <QWheelEvent>
+#include <QEvent>
 #include <QAction>
 
 // Qt 6.6 added QPalette::Accent. There is no older equivalent and it cannot
@@ -91,6 +94,34 @@ inline Qt::KeyboardModifiers combined_mods(int combined) {
 
 inline int combined_key_only(int combined) {
 	return combined & ~int(Qt::KeyboardModifierMask);
+}
+
+// Qt 6 narrowed QWidget::enterEvent from QEvent to QEnterEvent, so an
+// override's signature differs by version and `override` is what catches it.
+// One name for the parameter type lets a widget override it on both.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+using EnterEvent = QEnterEvent;
+#else
+using EnterEvent = QEvent;
+#endif
+
+// Qt 6 renamed QMouseEvent::localPos() to position() and changed its return
+// from QPointF to QPointF -- the name moved, not the meaning.
+inline QPointF event_position(const QMouseEvent *e) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+	return e->position();
+#else
+	return e->localPos();
+#endif
+}
+
+// And the same rename on a wheel event, whose position() arrived with it.
+inline QPointF event_position(const QWheelEvent *e) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+	return e->position();
+#else
+	return e->posF();
+#endif
 }
 
 // Qt 6 added qHashMulti. Combining by hand is what it does, and the shape

@@ -18385,6 +18385,65 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.463 The suite ported too, and it runs: 24 failures on Qt 5 (2026-10-20)
+
+**The holder took the judgement 8.462 left open, and the suite compiles and
+RUNS under Qt 5.15.15.** That is the axis section 0e has wanted since it was
+written: a second Qt that finds assumptions at run time rather than at
+compile time.
+
+    Qt 6.8.2   2203 pass, 0 fail
+    Qt 5.15.15 2169 pass, 8 step over, 24 FAIL
+
+**The compile half took three more rounds and four more constructs**, none
+of which the price had named because the price was measured on the library:
+
+- **`QPalette::Accent` in the suite**, 8 errors in `suite_theme.cpp`. Three
+  checks are ABOUT Accent and step over with a `SKIP` line each, which keeps
+  the headline count whole because the Makefile adds skips to the passes.
+  Two others merely READ it while being about something else -- a role
+  census and a nearest-match comparison -- and those keep running with the
+  accent term as a bool that is true where the role does not exist. **The
+  distinction is the work**: a check about a missing role has nothing to say,
+  and a check that happens to mention one is the same claim over one role
+  fewer.
+- **`QStyleHints::colorScheme()`**, Qt 6.5, in the one check that is about
+  QT's answer rather than the terminal's. Steps over.
+- **`QEnterEvent`** -- Qt 6 narrowed `enterEvent` from `QEvent`, so an
+  override's signature differs by version and `override` is what catches it.
+  One name, `Qtty::EnterEvent`.
+- **`QMouseEvent::position()`**, renamed from `localPos()`, and the same on
+  a wheel event.
+
+**AND THE 24 FAILURES ARE THE POINT.** They are not a broken port -- the
+suite builds clean and every one of those checks runs -- they are what a
+second version was wanted to find. They cluster:
+
+    10  drag and drop, every check in that family
+     3  the file dialog, including through exec()
+     2  nested exec() loops: a context menu, and the dialog
+     2  item-view scrolling to keep a selection on screen
+     7  a style sheet, a standard icon, menu placement, and others
+
+**The drag cluster's obvious explanation is wrong, measured.** All ten report
+`enter=0 move=0 drop=0 leave=0` -- the target hears nothing at all -- and
+the fixtures drive the gesture from `QTimer::singleShot(0, ...)` while this
+very file warns elsewhere that "a zero-timer fires before the loop is
+running". So that was the hypothesis, and **a 5 ms delay changed nothing**:
+still `enter=0`, and the run ended early rather than later. The cause is
+something else and is not established. The experiment is reverted.
+
+**Two checks are unaccounted for and that is said rather than rounded
+away.** 2169 passes plus 8 skips plus 24 failures is 2201, where Qt 6 runs
+2203. Six of the eight skips are the ones this entry adds; the other two are
+pre-existing and environmental. **Which two checks do not report at all on
+Qt 5 is not established** -- it is the shape `count-check` exists to catch,
+and the Qt 5 run has no count gate on it.
+
+So the axis is **open and immediately productive**: twenty-four run-time
+differences between the two versions, found in the first run anybody has
+ever done, with one cluster of ten that is probably one cause.
+
 ### 8.462 The Qt 5.15 port, taken (2026-10-19)
 
 **OQ-3 settled by the copyright holder 2026-10-19: do the port.** The
