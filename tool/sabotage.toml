@@ -7166,3 +7166,21 @@ find = "\t\t\treturn QRect(x, inner ? r.top() + ch : r.top(), cw,"
 into = "\t\t\treturn QRect(x, inner ? r.top() + ch : r.top(), 10,"
 count = 1
 check = "every part of a spin box, a scroll bar and a slider lands on"
+
+# ---- AN ENTRY WAS WRITTEN HERE AND REMOVED. Relaxing the erase to
+# ---- plain `!thin` -- 8.205's recorded "untested difference rather
+# ---- than a known-good one" -- is STILL observationally inert, and the
+# ---- theme-invariance check below does not reach it either: measured,
+# ---- the named check passed and nothing else reddened. 8.205's question
+# ---- stays open and is not closed by that check. 8.461.
+
+# ---- AND A SECOND WAS WRITTEN AND REMOVED: inverting the erase
+# ---- decision so a THEMED surface erases and an unthemed one does not.
+# ---- Refused as well. Neither relaxing nor inverting the erase reaches a
+# ---- drawn glyph, because the fill precedes the text -- Qt draws a
+# ---- background before its content, so erasing the background cannot
+# ---- remove a glyph that is not there yet. Whether a widget exists that
+# ---- fills AFTER drawing is not established. So the theme-invariance
+# ---- checks in suite_theme are named by no entry, which is said here
+# ---- rather than left for a sweep to notice. 8.461.
+

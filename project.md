@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2201 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2203 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18373,6 +18373,53 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.461 A theme changes colours and not cells, and two sabotages could not say so (2026-10-19)
+
+**A second numeric invariant, asserted, holding -- and two attempts to
+prove it discriminates both refused, for a reason worth more than the
+checks.**
+
+**The invariant.** A theme decides what a cell is coloured and not what is
+drawn in it. Rendered twice, once under `terminal_default()` and once under
+a theme naming Window, Base, Button and WindowText: **the glyph plane
+differs in 0 of 192 cells.** And once more across the axis 8.381 added --
+the ground the terminal reported, which decides what an unstated colour
+contrasts with -- light against dark: **0 cells.** Both asserted now.
+
+**The hypothesis it was built on was wrong, and that is the useful half.**
+`fill_rectf()`'s erase path fills with `Cell{}`, which resets the GLYPH,
+and whether it fires depends on whether the theme named the colour -- so
+the two themes could in principle disagree about what is drawn. 8.205
+records the guard on that path as "an untested difference rather than a
+known-good one", relaxed to plain `!thin` once and reverted because no
+check changed.
+
+**Two entries were written to break it and both were refused:**
+
+- **relaxing the erase to plain `!thin`**, which is 8.205's own
+  experiment. Measured: the named check passed and **nothing else
+  reddened**. So 8.205's question is still open, and **the
+  theme-invariance check does not close it** -- said plainly, because the
+  tempting write-up is that a new check settled a recorded gap.
+- **inverting the decision** so a themed surface erases and an unthemed
+  one does not. Refused as well.
+
+**Why neither reaches a glyph: the fill precedes the text.** Qt draws a
+widget's background before its content, so erasing the background cannot
+remove a glyph that is not there yet. That is a stronger statement than
+8.205's "nothing here reaches this branch" -- it says why -- and it is
+bounded: **whether a widget exists that fills AFTER drawing is not
+established**, and such a widget is where this branch would finally bite.
+
+**So the two checks are named by no entry.** They assert a real promise and
+would catch a theme-dependent layout fault of a different kind -- a metric
+that read a colour, say -- and they cannot be broken through the mechanism
+they were designed around. Both facts are recorded where the entries would
+have stood.
+
+2201 checks to 2203, and 668 sabotage entries unchanged -- two written, two
+removed.
 
 ### 8.460 The cell is the unit, asked numerically, and it holds (2026-10-19)
 

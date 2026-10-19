@@ -1072,5 +1072,80 @@ int suite_theme() {
 		      "inherits it");
 	}
 
+	// A THEME CHANGES COLOURS, NOT CELLS, which is a promise this library
+	// makes everywhere and asserted nowhere as an invariant. There is a
+	// mechanism that could break it:
+	// fill_rectf()'s erase path fills with Cell{}, which resets the GLYPH,
+	// and whether it fires depends on whether the theme named the colour.
+	// 8.205 records that branch as reached by nothing.
+	{
+		const auto glyphs = [](const CellTheme &t) {
+			const CellTheme had = theme();
+			set_theme(t);
+			QWidget win;
+			win.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *v = new QVBoxLayout(&win);
+			v->addWidget(new QLabel(QStringLiteral("Label")));
+			v->addWidget(new QPushButton(QStringLiteral("Press")));
+			auto *list = new QListWidget;
+			list->addItems({QStringLiteral("alpha"), QStringLiteral("beta")});
+			v->addWidget(list);
+			win.resize(GridMetrics::cells(24, 8));
+			win.show();
+			QCoreApplication::processEvents();
+			CellBuffer b(24, 8);
+			Qtty::render_once(win, b);
+			QString out;
+			for (int y = 0; y < b.rows(); ++y)
+				for (int x = 0; x < b.cols(); ++x) out += b.at(x, y).ch;
+			set_theme(had);
+			return out;
+		};
+		CellTheme named = CellTheme::terminal_default();
+		named.window = Color::rgb(qRgb(30, 30, 40));
+		named.base = Color::rgb(qRgb(20, 20, 28));
+		named.button = Color::rgb(qRgb(45, 45, 55));
+		named.window_text = Color::rgb(qRgb(220, 220, 220));
+		const QString plain = glyphs(CellTheme::terminal_default());
+		const QString themed = glyphs(named);
+		// AND THE REPORTED GROUND, which 8.381 made luminance() read: a
+		// light terminal and a dark one resolve an unstated colour
+		// differently, and that must not move a glyph either.
+		set_terminal_ground(QColor(20, 20, 20), QColor(240, 240, 240));
+		const QString on_light = glyphs(CellTheme::terminal_default());
+		set_terminal_ground(QColor(230, 230, 230), QColor(10, 10, 10));
+		const QString on_dark = glyphs(CellTheme::terminal_default());
+		set_terminal_ground(QColor(), QColor());        // as it was found
+		int ground_differ = 0;
+		for (int i = 0; i < qMin(on_light.size(), on_dark.size()); ++i)
+			if (on_light.at(i) != on_dark.at(i)) ++ground_differ;
+		printf("probe: and in %d cell(s) between a light terminal and a dark"
+		       " one\n", ground_differ);
+		int differ = 0;
+		QString first;
+		for (int i = 0; i < qMin(plain.size(), themed.size()); ++i)
+			if (plain.at(i) != themed.at(i)) {
+				++differ;
+				if (first.isEmpty())
+					first = QStringLiteral("cell %1,%2: '%3' vs '%4'")
+					        .arg(i % 24).arg(i / 24)
+					        .arg(plain.at(i)).arg(themed.at(i));
+			}
+		printf("info: the glyph plane differs in %d of %lld cell(s) between"
+		       " the default theme and a named one, and in %d between a"
+		       " light terminal and a dark one\n", differ,
+		       qint64(plain.size()), ground_differ);
+		if (!first.isEmpty())
+			printf("      condition: %s\n", qPrintable(first));
+		CHECK(differ == 0 && plain.size() == themed.size(),
+		      "a theme changes colours and not cells: the same window names"
+		      " the same glyph in every cell whether the theme colours it or"
+		      " leaves it to the terminal");
+		CHECK(ground_differ == 0,
+		      "and so does the ground the terminal reported, which decides"
+		      " what an unstated colour contrasts with and must not decide"
+		      " what is drawn");
+	}
+
 	return fails;
 }
