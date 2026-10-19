@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2200 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2201 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18373,6 +18373,48 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.460 The cell is the unit, asked numerically, and it holds (2026-10-19)
+
+**A fresh lens, derived from 8.458 the way `working-practice.md` asks: the
+last bug was a rule whose justification named a configuration -- "a column
+of eighty is cheap where a row of twenty-four is not" -- applied outside
+it.** The configuration this tree names most is its cell, 10 x 19, and §7.9
+counts the exposure at 7 of 102 installed families.
+
+**So the question was asked numerically rather than read: double the cell
+and does every answer double?** The grid is this library's central promise,
+and the way it breaks is a pixel constant -- a 4, a 16, a 24 that means
+something at 10 x 19 and nothing at any other size. `make layout` forbids
+those syntactically and cannot see one computed.
+
+Three surfaces, 72 answers, **all clean**:
+
+- **55 overridden pixel metrics**: 35 scale with the cell, 20 are zero,
+  **none is a pixel constant.** Asked of the metrics this style OVERRIDES
+  rather than of all 90-odd, because one it does not override returns the
+  base style's own number and is not its claim -- the first sweep conflated
+  the two and reported 24 non-scaling metrics, nearly all of them Qt's.
+- **9 sub-element rects**, with the option rect given in cells at both
+  sizes: identical in cells.
+- **8 complex-control parts** -- a spin box's two arrows and its field, a
+  scroll bar's three, a slider's handle and groove: identical in cells. The
+  widget is rebuilt at each cell size and asked for its OWN option, because
+  a hand-built `QStyleOptionSlider` is a pair Qt never produces and a fix
+  was written and reverted on that in this tree.
+
+**Promoted rather than discarded**, because the negative is a statement
+about a promise and the check is cheap: a pixel constant introduced later
+moves it. One entry proves it -- a spin box's arrow column given a literal
+10 -- which is invisible at this machine's cell and wrong at every other.
+
+**And what it does not cover is written into the fixture rather than left
+to be assumed.** These move the CELL while the font stays, which is right
+for arithmetic and wrong for anything that renders: a second cell size
+needs a font whose metrics match it, and that is §7.9's axis rather than
+this one. Nothing in the sweep renders.
+
+2200 checks to 2201, and 667 sabotage entries to 668.
 
 ### 8.459 The rest of 0d's size list draws, and a popup needs the router first (2026-10-19)
 

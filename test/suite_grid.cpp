@@ -293,5 +293,105 @@ int suite_grid() {
 		      "and answers a whole number of cells wide");
 	}
 
+	// THE CELL IS THE UNIT, ASKED OF EVERY ANSWER THIS STYLE GIVES. The
+	// grid is this library's central promise, and the way it breaks is a
+	// pixel constant: a 4, a 16, a 24 that means something at a 10x19 cell
+	// and nothing at any other. `make layout` forbids those syntactically
+	// and cannot see one computed, so this asks the question numerically --
+	// double the cell and every answer doubles, or is zero, or is a count.
+	//
+	// Three surfaces, 72 answers between them, and the richest is this one:
+	// the parts of a spin box, a scroll bar and a slider are where the
+	// arithmetic actually lives.
+	//
+	// WHAT THIS DOES NOT COVER, said here so nobody reads it as more than
+	// it is: the font. A second cell size needs a font whose metrics match
+	// it -- section 7.9 counts 7 of 102 installed families giving the 10x19
+	// this one assumes -- and these checks move the CELL while the font
+	// stays, which is exactly right for arithmetic and exactly wrong for
+	// anything that renders. Nothing below renders.
+	//
+	// The widget is rebuilt at each cell size and asked for its own option,
+	// because a hand-built QStyleOptionSlider is a pair Qt never produces --
+	// a fix was written and reverted on that in this tree.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		const auto in_cells = [](const QRect &r, int w, int h) {
+			return QRect(r.x() / w, r.y() / h, r.width() / w, r.height() / h);
+		};
+		struct Probe : QSpinBox { using QSpinBox::QSpinBox;
+			QStyleOptionSpinBox real() const {
+				QStyleOptionSpinBox o; initStyleOption(&o); return o; } };
+		struct Bar : QScrollBar { using QScrollBar::QScrollBar;
+			QStyleOptionSlider real() const {
+				QStyleOptionSlider o; initStyleOption(&o); return o; } };
+		struct Sl : QSlider { using QSlider::QSlider;
+			QStyleOptionSlider real() const {
+				QStyleOptionSlider o; initStyleOption(&o); return o; } };
+		int same = 0, differ = 0;
+		const auto compare = [&](const char *what,
+		                         std::function<QRect(int,int)> ask) {
+			GridMetrics::set(cw, ch);
+			const QRect a = in_cells(ask(cw, ch), cw, ch);
+			GridMetrics::set(cw * 2, ch * 2);
+			const QRect b = in_cells(ask(cw * 2, ch * 2), cw * 2, ch * 2);
+			GridMetrics::set(cw, ch);
+			if (a == b) { ++same; return; }
+			++differ;
+			printf("probe: %-26s %d,%d %dx%d -> %d,%d %dx%d\n", what,
+			       a.x(), a.y(), a.width(), a.height(),
+			       b.x(), b.y(), b.width(), b.height());
+		};
+		struct Part { QStyle::ComplexControl cc; QStyle::SubControl sc;
+		              const char *name; int kind; };
+		static const Part parts[] = {
+			{ QStyle::CC_SpinBox, QStyle::SC_SpinBoxUp,        "spin up",    0 },
+			{ QStyle::CC_SpinBox, QStyle::SC_SpinBoxDown,      "spin down",  0 },
+			{ QStyle::CC_SpinBox, QStyle::SC_SpinBoxEditField, "spin edit",  0 },
+			{ QStyle::CC_ScrollBar, QStyle::SC_ScrollBarSubLine, "bar sub",  1 },
+			{ QStyle::CC_ScrollBar, QStyle::SC_ScrollBarSlider,  "bar thumb",1 },
+			{ QStyle::CC_ScrollBar, QStyle::SC_ScrollBarAddLine, "bar add",  1 },
+			{ QStyle::CC_Slider, QStyle::SC_SliderHandle,      "slider handle",2 },
+			{ QStyle::CC_Slider, QStyle::SC_SliderGroove,      "slider groove",2 },
+		};
+		for (const Part &pt : parts) {
+			compare(pt.name, [&](int w, int h) -> QRect {
+				if (pt.kind == 0) {
+					Probe sp; sp.setAttribute(Qt::WA_DontShowOnScreen);
+					sp.resize(w * 12, h * 1); sp.show();
+					QCoreApplication::processEvents();
+					const QStyleOptionSpinBox o = sp.real();
+					return QApplication::style()->subControlRect(
+					    pt.cc, &o, pt.sc, &sp);
+				}
+				if (pt.kind == 1) {
+					Bar b(Qt::Horizontal);
+					b.setAttribute(Qt::WA_DontShowOnScreen);
+					b.setRange(0, 100); b.setValue(50);
+					b.resize(w * 12, h * 1); b.show();
+					QCoreApplication::processEvents();
+					const QStyleOptionSlider o = b.real();
+					return QApplication::style()->subControlRect(
+					    pt.cc, &o, pt.sc, &b);
+				}
+				Sl sl(Qt::Horizontal);
+				sl.setAttribute(Qt::WA_DontShowOnScreen);
+				sl.setRange(0, 10); sl.setValue(5);
+				sl.resize(w * 12, h * 1); sl.show();
+				QCoreApplication::processEvents();
+				const QStyleOptionSlider o = sl.real();
+				return QApplication::style()->subControlRect(
+				    pt.cc, &o, pt.sc, &sl);
+			});
+		}
+		printf("info: %d complex-control part(s) asked at two cell sizes:"
+		       " %d the same in cells, %d not\n",
+		       int(sizeof(parts) / sizeof(parts[0])), same, differ);
+		CHECK(differ == 0 && same == int(sizeof(parts) / sizeof(parts[0])),
+		      "every part of a spin box, a scroll bar and a slider lands on"
+		      " the same cells when the cell doubles, there being no pixel"
+		      " constant inside the arithmetic");
+	}
+
 	return fails;
 }

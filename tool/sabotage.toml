@@ -7151,3 +7151,18 @@ find = "\t\treturn room > 0 && room < 3 ? 0 : cw;"
 into = "\t\treturn 0;"
 count = 1
 check = "and keeps its column from three columns up"
+
+
+[[sabotage]]
+# A pixel constant inside the arithmetic, which is the one way the grid
+# promise breaks and the thing `make layout` can only forbid
+# syntactically: a spin box's arrow column given a literal 10 pixels
+# rather than a cell. Invisible at the 10x19 cell this machine has, and
+# wrong at every other -- which is the whole reason the cell-invariance
+# sweep asks numerically.
+name = "a spin box's arrow column is ten pixels"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\treturn QRect(x, inner ? r.top() + ch : r.top(), cw,"
+into = "\t\t\treturn QRect(x, inner ? r.top() + ch : r.top(), 10,"
+count = 1
+check = "every part of a spin box, a scroll bar and a slider lands on"
