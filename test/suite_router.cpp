@@ -12770,7 +12770,8 @@ int suite_router() {
 		//
 		// What this canNOT check is the quit itself: QCoreApplication::quit()
 		// is a no-op with no main loop running, and the suite has none, so
-		// aboutToQuit never fires -- measured. The four quit cases are in
+		// aboutToQuit never fires -- measured ON Qt 6. On Qt 5 the same call
+		// latches a permanent thread quit; 8.464 has it. The four quit cases are in
 		// project.md, taken from an application with a real exec().
 		{
 			// The widget is WATCHED rather than the text compared, and the
@@ -13313,7 +13314,10 @@ int suite_router() {
 	//     a line edit         copy, as intended
 	//
 	// The quit cannot be observed here -- QCoreApplication::quit() is a
-	// no-op with no main loop and this suite has none -- so the check
+	// no-op with no main loop and this suite has none ON Qt 6. On Qt 5 it
+	// is not a no-op: it latches a thread quit that kills every later
+	// nested QEventLoop in the process, which is what 8.464 measures and
+	// what fails fifteen checks of the Qt 5 run. So the check
 	// counts what ARRIVES, which is the same instrument the Ctrl+D case
 	// below uses and for the same reason: a key the loop consumed never
 	// reaches the widget, and one it gave up does.

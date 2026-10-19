@@ -18385,6 +18385,66 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.464 One stray quit kills every nested loop on Qt 5, for good (2026-10-20)
+
+**The drag cluster has a root cause, it is one line of Qt behaviour, and it
+is not in this library.** Ten of 8.463's 24 Qt 5 failures reported
+`enter=0 move=0 drop=0 leave=0` -- the target hearing nothing -- and
+tracing the chain found that `drag_move_to()`, `drag_drop_at()` and
+`drag_cancel()` are **none of them called**, while `exec_drag()`'s nested
+`loop.exec()` returns in **0 ms** with nothing having quit it.
+
+**The minimal reproduction is twelve lines and answers differently on the
+two versions:**
+
+    QCoreApplication app(argc, argv);
+    QCoreApplication::quit();            // with NO loop running
+    QEventLoop loop;
+    QTimer::singleShot(10, [&] { fired = true; loop.quit(); });
+    loop.exec();
+
+    Qt 5.15.15   returned after  0 ms, timer fired = 0
+    Qt 6.8.2     returned after 10 ms, timer fired = 1
+
+**And on Qt 5 the latch is permanent.** A second and a third nested loop
+also return in 0 ms with their timers unfired, so no throwaway loop absorbs
+it: **one `quit()` issued while no event loop is running disables every
+nested `QEventLoop` in that process for the rest of its life.**
+
+**The suite depends on the opposite, in writing, and says it was
+measured.** Two of its comments read "`QCoreApplication::quit()` is a no-op
+with no main loop running, and the suite has none" -- which is true on Qt 6
+and false on Qt 5. The quit-key fixtures lean on that to drive a quit they
+cannot observe, and on Qt 5 each one poisons every nested-loop fixture that
+runs after it. That accounts for about fifteen of the twenty-four: ten
+drags, two nested `exec()` calls, three file-dialog checks.
+
+**Two hypotheses were wrong first and both were measured rather than argued
+away.** The zero-timer ordering -- this file warns elsewhere that "a
+zero-timer fires before the loop is running" -- survived a 5 ms delay
+unchanged, still `enter=0`. And `quitNow` propagation from quitting a
+RUNNING loop is not it either: a nested loop after that works fine on Qt 5,
+10 ms and the timer fired. It is specifically the quit with no loop.
+
+**The library consequence, bounded and not reproduced.**
+`InputRouter::on_terminal_lost()` is `qApp->quit()`. An `exec()`-based
+application always has a loop running when that fires, so it is untouched.
+An application running its OWN frame loop -- which this library supports --
+that quits with no `QEventLoop` running would afterwards find every
+`exec_drag()`, `QMenu::exec()` and `QDialog::exec()` dead for the life of
+the process. That is reasoned from the measurement above rather than seen in
+an application, and is recorded as such.
+
+**The fix is a decision rather than a transliteration**, which is why it is
+not made here. The quit-key checks exist BECAUSE the quit is unobservable,
+so making them not quit changes what they test; and ordering the suite so
+they run last is the fragility 8.452 already measured in `main.cpp`'s
+table. Whether the Qt 5 run should carry those fifteen failures, skip the
+nested-loop fixtures, or have the quit-key checks restructured is the
+holder's.
+
+No code changed: 2203 checks and 668 entries, unmoved.
+
 ### 8.463 The suite ported too, and it runs: 24 failures on Qt 5 (2026-10-20)
 
 **The holder took the judgement 8.462 left open, and the suite compiles and
@@ -22264,6 +22324,9 @@ all ended at a line edit's text.
 
 `Ctrl+C` and `Ctrl+D` are the fourth row, and this suite cannot check the
 quit itself: `QCoreApplication::quit()` is a no-op with no main loop
+on Qt 6 -- and NOT on Qt 5, where 8.464 measures it latching a permanent
+thread quit that kills every later nested event loop; the claim below was
+measured on one version
 running, the suite has none, and `aboutToQuit` therefore never fires.
 `suite_router` says so where it tests what ARRIVES instead, and the four
 real quit cases live in this document, taken from an application with a
