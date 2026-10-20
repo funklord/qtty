@@ -4726,6 +4726,43 @@ int suite_widgets() {
 		// keeps the cells -- so no empty pair survives anywhere in the frame.
 		CHECK(!title.contains(QStringLiteral("[]")),
 		      "a tool button too narrow to bracket spends its cells on content");
+		// AND "TOO NARROW" IS ABOUT THE LABEL, NOT A CELL COUNT, which the
+		// rule's own words said and its test did not: `c.width() >= 3`
+		// brackets at exactly three cells, which leaves one, and a
+		// two-character label elides into it as a bare ellipsis. Measured
+		// 2026-10-20 -- `Hi` at two cells and `[...]` at THREE, one more
+		// cell carrying strictly less, which is the one thing a width rule
+		// must never do.
+		//
+		// Paired, because a fix that simply never bracketed would satisfy
+		// the first of these: a one-character label DOES survive inside the
+		// brackets at three cells and must keep them.
+		{
+			const auto at_cells = [](const QString &text, int cells) {
+				QWidget host;
+				host.setAttribute(Qt::WA_DontShowOnScreen);
+				auto *tb = new QToolButton(&host);
+				tb->setText(text);
+				tb->setGeometry(0, 0, cells * GridMetrics::cw(),
+				                GridMetrics::ch());
+				show(host, cells, 1);
+				CellBuffer b(cells, 1);
+				render_once(host, b);
+				GridGuard::reset();
+				return b.to_text().split(QLatin1Char('\n')).value(0);
+			};
+			const QString two = at_cells(QStringLiteral("Hi"), 3);
+			const QString one = at_cells(QStringLiteral("H"), 3);
+			printf("info: at three cells a two-letter tool button reads"
+			       " '%s' and a one-letter one '%s'\n",
+			       qPrintable(two), qPrintable(one));
+			CHECK(two.contains(QStringLiteral("Hi")),
+			      "a tool button whose brackets would leave nothing but an"
+			      " ellipsis drops them and shows the label");
+			CHECK(one.contains(QStringLiteral("[H]")),
+			      "while a label that does survive inside them keeps its"
+			      " brackets at the same width");
+		}
 		// A QMainWindow's dock layout puts three widgets off the grid, and
 		// they are Qt's own rather than this suite's to place -- the same
 		// category section 7.8 exempts by principle. Reset so the count this

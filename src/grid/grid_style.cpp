@@ -3520,8 +3520,29 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				// first written for the dock buttons. Two cells of "[]" say
 				// "a button is here" and nothing else, and that is more than
 				// two blank cells say.
+				// AND "A BRACKET FITS" HAS TO MEAN ROOM FOR THE CONTENT
+				// TOO, which a cell count alone cannot say. At exactly three
+				// cells the brackets leave one, and a two-character label
+				// elides into it as a bare ellipsis: measured 2026-10-20, a
+				// tool button reading "Hi" drew `Hi` at two cells and `[...]`
+				// at THREE -- one more cell carrying strictly less, which is
+				// the one thing a width rule must never do.
+				//
+				// Settled by this rule's own argument rather than by a new
+				// one: dropping the brackets buys room for content, and a
+				// lone ellipsis is not content. So the question is asked of
+				// the elided label instead of the width -- bracket when
+				// something of the label survives inside them, and spend the
+				// cells on content when nothing does. A one-character label
+				// still brackets at three cells, `[H]`, because there it
+				// does survive.
 				const QString label = tool_button_label(tb, w);
-				const bool bracket = c.width() >= 3 || label.isEmpty();
+				const QString inside =
+				    elide_to_cells(label, qMax(0, c.width() - 2));
+				const bool carries =
+				    inside.size() > 1
+				    || (inside.size() == 1 && inside.at(0) != QChar(0x2026));
+				const bool bracket = label.isEmpty() || carries;
 				// THE MARK GOES ON THE WHOLE GLYPH, brackets and menu arrow
 				// included. It went on the label alone, so a focused tool
 				// button read `[Tool]` with only the four middle cells

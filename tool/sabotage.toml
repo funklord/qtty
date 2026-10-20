@@ -7235,3 +7235,15 @@ find = "\t\t\t\tconst int indent = h->orientation == Qt::Horizontal ? 1 : 0;"
 into = "\t\t\t\tconst int indent = 1;"
 count = 1
 check = "a table's row labels are drawn in full, the heading indent being for a column of data below and a row having none"
+
+[[sabotage]]
+# The bracket decision back to a cell count, which is what stood: at
+# exactly three cells the brackets leave one, and a two-character label
+# elides into it as a bare ellipsis -- so the button read `[...]` at three
+# cells and `Hi` at two. 8.471.
+name = "a tool button brackets by width rather than by what survives inside"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tconst bool bracket = label.isEmpty() || carries;"
+into = "\t\t\t\tconst bool bracket = c.width() >= 3 || label.isEmpty();"
+count = 1
+check = "a tool button whose brackets would leave nothing but an ellipsis drops them and shows the label"

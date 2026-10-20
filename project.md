@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2209 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2211 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3150,8 +3150,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-20: **2209 on Qt 6 with no failures,
-  and 2176 passing, 33 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-20: **2211 on Qt 6 with no failures,
+  and 2178 passing, 33 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18390,6 +18390,76 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.471 Three cells carried less than two, and the rule already said why (2026-10-20)
+
+**A tool button labelled "Hi" drew `Hi` at two cells and brackets with an
+ellipsis between them at THREE** -- one more cell carrying strictly less,
+which is the one thing a width rule must never do.
+
+    1 cell   an ellipsis
+    2 cells  Hi
+    3 cells  brackets with an ellipsis inside   <- less than two cells gave
+    4 cells  [Hi]
+
+**The rule's own words were right and its test was not.** The comment at
+that site reads "a bracket goes where a bracket fits", "below three cells
+the content wins and the brackets are dropped", and "dropping the brackets
+buys room for content". The test was `c.width() >= 3`. Three cells leave one
+between the brackets, and a two-character label elides into that cell as a
+bare ellipsis -- so the brackets had not "fitted" in the sense the sentence
+means, and the cell count could not tell.
+
+**Settled by that argument rather than a new one**: ask the elided label
+instead of the width. Bracket when something of the label survives inside
+them, and spend the cells on content when nothing does. Every neighbouring
+case is unchanged and was re-measured rather than assumed:
+
+    one-char 'H'      2 cells  H        3 cells  [H]   -- it survives, so it brackets
+    arrow only        2 cells  an arrow 3 cells  [arrow]
+    no text at all    2 cells  []       3 cells  [ ]   -- "a button is here"
+    'Hi'              2 cells  Hi       3 cells  Hi
+
+The empty-label case is the one the original rule carved out -- two cells of
+`[]` say a button is here and nothing else, which is more than two blank
+cells say -- and it still does.
+
+**One trade is NOT taken here and is the copyright holder's.** A
+four-character label still shows fewer letters at four cells than at three:
+
+    'Save'  3 cells  Sa + an ellipsis      two letters
+            4 cells  [S + an ellipsis]     one letter, plus the affordance
+
+That is the same non-monotonicity one width along, and unlike the case above
+it is a judgement rather than a defect: one letter plus a visible control
+against the whole short word with no control. The fix deliberately closes
+only the case where the brackets leave NOTHING, which the rule's own
+sentence already forbids. **Closing the rest means deciding how much label
+an affordance is worth**, which is a decision about every narrow button in
+every toolbar, and it is not one to take while fixing a test.
+
+**And the same class is visible on four other widgets, measured and not
+touched**, for the same reason -- extending "chrome goes where chrome fits"
+past the tool button is a convention change rather than a fix:
+
+    QPushButton   3 cells  <, an ellipsis, >     no label, and no fallback
+    QCheckBox     4 cells  [ ] and a space       no label until six cells
+    QRadioButton  4 cells  ( ) and a space       no label until six cells
+    QComboBox     2 cells  an arrow, then H      the arrow on the LEFT
+
+The tool button is the one with a stated rule to be wrong against. The
+others have never had one, and the last of them -- a combo box drawing its
+arrow at the left edge at two cells, where every other width draws it at
+the right -- looks like a placement fault rather than a policy and is worth
+a look of its own.
+
+**Found by rendering every decorated widget at one to six cells and
+reading the frames**, which is section 0d's method aimed at width rather
+than at configuration. The lens came from 8.470: a decoration consuming the
+room its content needed.
+
+2211 checks on Qt 6, 2178 passing and 33 stepping over on Qt 5, 673 sabotage
+entries.
 
 ### 8.470 No application could show a table's row labels (2026-10-20)
 
