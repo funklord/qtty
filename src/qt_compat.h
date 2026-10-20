@@ -53,6 +53,26 @@ inline uint qHash(const QRect &r, uint seed = 0) {
 }
 #endif
 
+// WHETHER A NESTED QEventLoop CAN BE TRUSTED. On Qt 5, one
+// QCoreApplication::quit() issued while no loop is running latches a thread
+// quit that makes every later QEventLoop::exec() return immediately without
+// running anything -- permanently, measured in 8.464 with a twelve-line
+// reproduction that answers 0 ms on Qt 5 and 10 ms on Qt 6.
+//
+// The suite does exactly that in its quit-key checks, which exist BECAUSE
+// the quit is unobservable, so every fixture needing a nested loop after
+// them is dead there. Set by the copyright holder 2026-10-20: those
+// fixtures step over on Qt 5 rather than failing.
+//
+// This is not a statement that nested loops are broken on Qt 5 -- they work
+// in a process that has not issued a stray quit. It is a statement about
+// this suite, which has.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#  define QTTY_NESTED_LOOPS_USABLE 1
+#else
+#  define QTTY_NESTED_LOOPS_USABLE 0
+#endif
+
 namespace Qtty {
 
 // Qt::ColorScheme IS NOT HERE. It is the one of the seven that appears in a

@@ -4993,6 +4993,7 @@ int suite_router() {
 	// Driven by a timer inside the loop, bounded by TRIES rather than by the
 	// clock: under valgrind a wall-clock bound shrinks while the work does
 	// not, which is how a timing fix becomes a second timing bug.
+#if QTTY_NESTED_LOOPS_USABLE
 	{
 		QWidget host;
 		host.setAttribute(Qt::WA_DontShowOnScreen);
@@ -5036,6 +5037,17 @@ int suite_router() {
 		      "and the terminal drew the menu while that loop was spinning, "
 		      "then the stack unwound to nothing");
 	}
+#else
+	printf("SKIP: a context menu run with exec() returns the action the keys"
+	       " chose, twice in a row -- the idiom an application writes, and a"
+	       " nested loop inside the router's own dispatch"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+	printf("SKIP: and the terminal drew the menu while that loop was spinning,"
+	       " then the stack unwound to nothing"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+#endif
 
 	// ---- a QCompleter, which is the other common popup and behaves
 	// nothing like a menu. Qt marks its list by pointing the popup's focus
@@ -5852,6 +5864,7 @@ int suite_router() {
 	// supply. Asserted end to end: the target must hear the enter, must be
 	// offered the moves, must receive the PAYLOAD, and exec_drag() must
 	// return the action the target accepted rather than a hopeful default.
+#if QTTY_NESTED_LOOPS_USABLE
 	{
 		struct Target : QWidget {
 			int enters = 0, moves = 0, drops = 0, leaves = 0;
@@ -6231,6 +6244,43 @@ int suite_router() {
 
 		}
 	}
+#else
+	printf("SKIP: a drag reaches the widget under the pointer"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+	printf("SKIP: and the drop carries the payload"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+	printf("SKIP: and the action the target chose is what exec_drag returns"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+	printf("SKIP: an abandoned drag was offered to the target first"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+	printf("SKIP: and Escape abandons it without a drop"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+	printf("SKIP: a drag crossing from one widget to another tells the one it"
+	       " left before the one it reached, so two widgets are never both lit"
+	       " as the drop site"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+	printf("SKIP: a widget offered a drag and refusing it gets no drop, and"
+	       " the drag reports that nothing was taken"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+	printf("SKIP: and it still hears the leave, because it heard the enter"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+	printf("SKIP: a drop over a child that takes no drops reaches the ancestor"
+	       " that does, which is how every real drop area is built"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+	printf("SKIP: dragging off the drop area and letting go over the"
+	       " background drops nothing, and the area is told it was left"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+#endif
 
 	// A modal with an EMPTY geometry. The rule above drops every click
 	// outside the modal, and an empty rectangle contains no point at all --
@@ -14048,6 +14098,7 @@ int suite_router() {
 				f.open(QIODevice::WriteOnly);
 				f.close();
 			}
+#if QTTY_NESTED_LOOPS_USABLE
 			QWidget host;
 			host.setAttribute(Qt::WA_DontShowOnScreen);
 			host.resize(GridMetrics::cells(80, 24));
@@ -14101,6 +14152,18 @@ int suite_router() {
 			      "reaches the application, so Open works with no mouse "
 			      "anywhere in it");
 			GridGuard::reset();
+#else
+			printf("SKIP: a file dialog draws the directory it was opened on,"
+			       " names and all -- the largest composite widget an"
+			       " application opens, and the one nothing here had tried"
+			       "\n      a nested QEventLoop does not run on Qt 5 in a"
+			       " process that has issued a stray quit -- project.md 8.464\n");
+			printf("SKIP: and a name typed into it and accepted with Return"
+			       " reaches the application, so Open works with no mouse"
+			       " anywhere in it"
+			       "\n      a nested QEventLoop does not run on Qt 5 in a"
+			       " process that has issued a stray quit -- project.md 8.464\n");
+#endif
 		}
 
 		// AND WITHOUT THE OPTION, which is the half the check above does
@@ -14465,6 +14528,7 @@ int suite_router() {
 		// key arrives from a terminal. The first version of this probe
 		// asked before the queued repair had run and read a stale null,
 		// which is a fixture measuring its own timing.
+#if QTTY_NESTED_LOOPS_USABLE
 		{
 			QDialog dlg(&host);
 			auto *field = new QLineEdit(&dlg);
@@ -14484,6 +14548,12 @@ int suite_router() {
 			      "and the same through exec(), where a lost keystroke is "
 			      "what an application would actually ship");
 		}
+#else
+		printf("SKIP: and the same through exec(), where a lost keystroke is"
+		       " what an application would actually ship"
+		       "\n      a nested QEventLoop does not run on Qt 5 in a process"
+		       " that has issued a stray quit -- project.md 8.464\n");
+#endif
 
 		// CONTROL ONE: the application chose, and keeps its choice.
 		{
@@ -14704,6 +14774,7 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+#if QTTY_NESTED_LOOPS_USABLE
 	// ---- a drag whose source dies under it -------------------------------
 	//
 	// THE QDrag BELONGS TO THE WIDGET THE DRAG STARTED FROM, which is what
@@ -14937,6 +15008,24 @@ int suite_router() {
 		}
 		GridGuard::reset();
 	}
+#else
+	printf("SKIP: a drop handler that closes the drag source, deleting the"
+	       " QDrag parented to it, leaves exec_drag returning the action the"
+	       " target took rather than deleting a QDrag already gone"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+	printf("SKIP: a drag whose source is destroyed while the loop is still"
+	       " running ends there and tells the target it was left, rather than"
+	       " offering it another move and a drop carrying a QMimeData the QDrag"
+	       " freed"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+	printf("SKIP: and a source closed by the last move before the button came"
+	       " up takes the drop with it, rather than being handed one whose"
+	       " payload the QDrag has already freed"
+	       "\n      a nested QEventLoop does not run on Qt 5 in a process that"
+	       " has issued a stray quit -- project.md 8.464\n");
+#endif
 
 	// ---- focus handed to a widget the focus-out handler destroyed --------
 	//

@@ -3147,10 +3147,12 @@ Open:
 - **~~OQ-3.~~ ANSWERED 2026-10-19 by the copyright holder: both.** The
   library, both tools and the example build against Qt 5.15.15 and against
   Qt 6.8.2, with the conditionals in `src/qt_compat.h` and one alias in
-  `include/qtty/application.h`. 8.462 carries what it took and the one
-  half still open -- the SUITE does not compile under Qt 5, at a measured
-  8 errors, and three of those are checks whose content is about a role Qt
-  5 does not have.
+  `include/qtty/application.h`. 8.462 carries what it took. **The suite
+  builds and runs on both too** -- 8.463 ported it, 8.464 found why a
+  cluster of its checks could not work on Qt 5, and 8.465 steps those
+  fixtures over: 2203 on Qt 6 with no failures, and 2170 passing, 26
+  stepping over and 7 failing on Qt 5. Those 7 are the axis still paying
+  out and are listed in 8.465.
 - **OQ-4.** Do any of the four products need the TUI where QtWidgets
   cannot be linked (embedded, serial console)? If yes, that product goes
   to the design.md §13.2 fallback permanently and Phase 4's scope changes.
@@ -18385,6 +18387,63 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.465 The nested-loop fixtures step over on Qt 5, and one of them was passing for the wrong reason (2026-10-20)
+
+**The holder took 8.464's decision: skip the nested-loop fixtures on Qt 5.**
+Five blocks in `suite_router.cpp` are guarded on one macro, and the Qt 5 run
+goes from **24 failures to 7**:
+
+    Qt 6.8.2   2203 pass,  0 step over, 0 fail -- make check green
+    Qt 5.15.15 2170 pass, 26 step over, 7 fail
+
+The macro is `QTTY_NESTED_LOOPS_USABLE` in `src/qt_compat.h`, and its comment
+says what it is not: **not a claim that nested loops are broken on Qt 5**,
+where they work in a process that has not issued a stray quit, but a claim
+about this suite, which has. Each guarded block carries an `#else` that
+prints one `SKIP` line per check it would have made, naming 8.464 as the
+reason -- so the headline count is whole on both versions, which is what the
+Makefile's skip arithmetic is for.
+
+**Eighteen checks step over where 8.464 predicted about fifteen, and the
+discrepancy is the finding.** Seventeen of the eighteen were failing. The
+eighteenth was **passing on Qt 5**, and it was passing because nothing
+happened:
+
+    and Escape abandons it without a drop
+
+It asserts that the target received no drop. A dead `exec_drag()` delivers no
+drop, so the assertion is satisfied by the drag never having run -- a check
+whose pass includes the failure, sitting in the middle of nine of its
+siblings that fail loudly. **It was not found by reading the check.** It was
+found by comparing the set of checks a guard would step over against the list
+of checks that actually fail, and noticing one name in the first list that
+was not in the second. The guard keeps it, because a `SKIP` saying the loop
+is dead is a truer report than a `PASS` earned by it.
+
+**The seven that remain are not nested loops**, and each is its own question
+for whoever takes the axis next:
+
+    2  item-view scrolling: keeping a selection on screen, and reaching
+       the last item from the keyboard
+    1  a style sheet costing a button its brackets
+    1  a dialog being a whole number of rows tall
+    1  a standard icon's identity through standardIcon()
+    1  a menu opening past the 80 columns the offscreen platform defaults to
+    1  scrolling by what overflows and no further
+
+**And 8.463's "two checks are unaccounted for" is answered: nothing is.**
+2170 passes plus 26 skips plus 7 failures is 2203 exactly, twice, from two
+direct runs of the binary. The old arithmetic came from a run whose output
+passed through `make`, where two `PASS:` lines did not begin at column 0 and
+a `^PASS:` count could not see them -- which is the phenomenon the Makefile
+already documents for its pty gate, and the stated reason `count-check`
+writes the suite's stdout to a file rather than a pipe. The shortfall was in
+the instrument, not the suite. That paragraph in 8.463 is rewritten rather
+than left standing with a correction appended to it.
+
+No library code changed. 2203 checks on Qt 6, 668 sabotage entries, every
+anchor still matching.
+
 ### 8.464 One stray quit kills every nested loop on Qt 5, for good (2026-10-20)
 
 **The drag cluster has a root cause, it is one line of Qt behaviour, and it
@@ -18416,8 +18475,9 @@ measured.** Two of its comments read "`QCoreApplication::quit()` is a no-op
 with no main loop running, and the suite has none" -- which is true on Qt 6
 and false on Qt 5. The quit-key fixtures lean on that to drive a quit they
 cannot observe, and on Qt 5 each one poisons every nested-loop fixture that
-runs after it. That accounts for about fifteen of the twenty-four: ten
-drags, two nested `exec()` calls, three file-dialog checks.
+runs after it. That accounted for about fifteen of the twenty-four when
+estimated here; counted exactly in 8.465 it is seventeen -- twelve drags,
+two nested menu `exec()` calls, three file-dialog checks.
 
 **Two hypotheses were wrong first and both were measured rather than argued
 away.** The zero-timer ordering -- this file warns elsewhere that "a
@@ -18435,13 +18495,14 @@ that quits with no `QEventLoop` running would afterwards find every
 the process. That is reasoned from the measurement above rather than seen in
 an application, and is recorded as such.
 
-**The fix is a decision rather than a transliteration**, which is why it is
-not made here. The quit-key checks exist BECAUSE the quit is unobservable,
-so making them not quit changes what they test; and ordering the suite so
-they run last is the fragility 8.452 already measured in `main.cpp`'s
-table. Whether the Qt 5 run should carry those fifteen failures, skip the
-nested-loop fixtures, or have the quit-key checks restructured is the
-holder's.
+**The fix was a decision rather than a transliteration**, which is why it
+was not made here. The quit-key checks exist BECAUSE the quit is
+unobservable, so making them not quit changes what they test; and ordering
+the suite so they run last is the fragility 8.452 already measured in
+`main.cpp`'s table. Of the three -- carry the failures, skip the nested-loop
+fixtures, or restructure the quit-key checks -- **the holder took the
+second**, and 8.465 has it: eighteen checks step over on Qt 5, and the count
+of latched failures was seventeen rather than the fifteen estimated here.
 
 No code changed: 2203 checks and 668 entries, unmoved.
 
@@ -18493,12 +18554,12 @@ running". So that was the hypothesis, and **a 5 ms delay changed nothing**:
 still `enter=0`, and the run ended early rather than later. The cause is
 something else and is not established. The experiment is reverted.
 
-**Two checks are unaccounted for and that is said rather than rounded
-away.** 2169 passes plus 8 skips plus 24 failures is 2201, where Qt 6 runs
-2203. Six of the eight skips are the ones this entry adds; the other two are
-pre-existing and environmental. **Which two checks do not report at all on
-Qt 5 is not established** -- it is the shape `count-check` exists to catch,
-and the Qt 5 run has no count gate on it.
+**Two checks looked unaccounted for and none were**, settled in 8.465:
+the figures above were read from a run whose output passed through `make`,
+where two `PASS:` lines did not begin at column 0 and a `^PASS:` count could
+not see them. Run directly, Qt 5 reports 2170 passes, 26 skips and 7
+failures -- 2203, with nothing missing. The shortfall was in the instrument,
+which is why `count-check` writes the suite's stdout to a file.
 
 So the axis is **open and immediately productive**: twenty-four run-time
 differences between the two versions, found in the first run anybody has
