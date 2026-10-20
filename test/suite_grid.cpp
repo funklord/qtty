@@ -393,5 +393,151 @@ int suite_grid() {
 		      " constant inside the arithmetic");
 	}
 
+	// AND THE PIXEL-METRIC SURFACE, WHICH NOTHING ASKED NUMERICALLY. The
+	// sweep above covers sizeFromContents() and subControlRect(); the third
+	// surface a style answers through is pixelMetric(), and no check in this
+	// tree called it except as a helper. That is the surface
+	// PM_MessageBoxIconSize was on when it answered Fusion's 48 -- 2.53 rows
+	// -- and made a message box a fractional number of rows tall (8.466).
+	//
+	// PINNED AS MEASURED, NOT AS WANTED. A set of metrics answers a fixed
+	// pixel number that does not move when the cell doubles, because
+	// GridStyle's switch does not name them and the proxy base answers for
+	// them. Today that is latent rather than live: sizeFromContents() rounds
+	// every answer up to whole cells before a widget sees it, which is why
+	// nothing breaks, and PM_MessageBoxIconSize escaped only because
+	// QMessageBox reads a metric DIRECTLY to size a pixmap. Whether the icon
+	// metrics should answer in cells is section 0b's question and is not
+	// this check's to decide.
+	//
+	// ASSERTED IN BOTH DIRECTIONS, so the set cannot rot. A metric outside
+	// it must scale, or be zero, or be a negative sentinel; a metric inside
+	// it must still NOT scale. Without the second half the set would outlive
+	// its subject -- a metric that started answering in cells would leave a
+	// name behind that nobody could falsify by running anything.
+	//
+	// BY NAME, and not by count or by value, because the two Qt versions
+	// differ in all three. Qt 5.15 carries PM_DialogButtons* and
+	// PM_Default*Margin that Qt 6 removed, Qt 6 carries PM_LineEditIcon*
+	// that Qt 5 lacks, and the shared ones disagree on the number --
+	// PM_ScrollBarSliderMin is 26 on Qt 6 and 27 on Qt 5. So a name this Qt
+	// does not have is skipped rather than failed, and the counts are
+	// printed rather than asserted.
+	//
+	// Canonical names come from valueToKey(), because Qt 5's enum has two
+	// keys for one value -- PM_MDISubWindowFrameWidth beside
+	// PM_MdiSubWindowFrameWidth -- so a sweep keyed on the index would
+	// otherwise ask one metric twice under two spellings.
+	{
+		// Measured 2026-10-20 against Qt 5.15.15 and Qt 6.8.2.
+		static const char *const fixed_pixels[] = {
+			"PM_ButtonIconSize",
+			// GONE FROM QT 6'S ENUM, so keyToValue() skips these three
+			// there and no conditional is needed: Qt 5's Fusion answers
+			// 11, 9 and 6 pixels for them.
+			"PM_DefaultChildMargin",
+			"PM_DefaultLayoutSpacing",
+			"PM_DefaultTopLevelMargin",
+			// STILL IN QT 6'S ENUM AND ANSWERING 0 THERE, which is
+			// grid-safe, against 31, 72 and 27 pixels on Qt 5. So these
+			// three cannot be left to keyToValue() the way the three above
+			// are -- the name resolves on both versions and only one of
+			// them answers a fixed number. The conditional is a statement
+			// about which Qt deprecated them, not about behaviour this
+			// library chooses. Measured 2026-10-20 on both.
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+			"PM_DialogButtonsButtonHeight",
+			"PM_DialogButtonsButtonWidth",
+			"PM_DialogButtonsSeparator",
+#endif
+			"PM_DockWidgetFrameWidth",
+			"PM_DockWidgetHandleExtent",
+			"PM_DockWidgetTitleBarButtonMargin",
+			"PM_DockWidgetTitleMargin",
+			"PM_IconViewIconSize",
+			"PM_LargeIconSize",
+			"PM_LineEditIconMargin",              // Qt 6 only
+			"PM_LineEditIconSize",                // Qt 6 only
+			"PM_ListViewIconSize",
+			"PM_MaximumDragDistance",             // -1, a sentinel
+			"PM_MdiSubWindowFrameWidth",
+			"PM_MdiSubWindowMinimizedWidth",
+			"PM_MenuButtonIndicator",
+			"PM_ScrollBarSliderMin",
+			"PM_SizeGripSize",
+			"PM_SliderTickmarkOffset",
+			"PM_SmallIconSize",
+			"PM_SpinBoxFrameWidth",
+			"PM_SpinBoxSliderHeight",
+			"PM_SubMenuOverlap",                  // -1, a sentinel
+			"PM_TabBarIconSize",
+			"PM_TabBarScrollButtonWidth",
+			"PM_TabBarTabOverlap",
+			"PM_TabBar_ScrollButtonOverlap",
+			"PM_TextCursorWidth",
+			"PM_TitleBarButtonIconSize",
+			"PM_TitleBarButtonSize",
+			"PM_ToolTipLabelFrameWidth",
+		};
+		const auto pinned = [&](const QByteArray &name) {
+			for (const char *n : fixed_pixels)
+				if (name == n) return true;
+			return false;
+		};
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		QStyle *style = QApplication::style();
+		const QMetaEnum me = QMetaEnum::fromType<QStyle::PixelMetric>();
+		QSet<int> seen;
+		QSet<QByteArray> fixed_here;
+		QStringList unpinned;
+		int scales = 0, zeroes = 0;
+		for (int i = 0; i < me.keyCount(); ++i) {
+			const int v = me.value(i);
+			if (seen.contains(v)) continue;
+			seen.insert(v);
+			const QByteArray name = me.valueToKey(v);
+			const auto ask = [&](int w, int h) {
+				GridMetrics::set(w, h);
+				const int r = style->pixelMetric(QStyle::PixelMetric(v),
+				                                 nullptr, nullptr);
+				GridMetrics::set(cw, ch);
+				return r;
+			};
+			const int one = ask(cw, ch), two = ask(cw * 2, ch * 2);
+			if (one == 0 && two == 0) { ++zeroes; continue; }
+			if (two == 2 * one) { ++scales; continue; }
+			fixed_here.insert(name);
+			if (!pinned(name))
+				unpinned << QString::fromLatin1(name)
+				             + QStringLiteral(" (%1)").arg(one);
+		}
+		QStringList rotted;
+		int pinned_here = 0;
+		for (const char *n : fixed_pixels) {
+			if (me.keyToValue(n) == -1) continue;   // not in this Qt
+			++pinned_here;
+			if (!fixed_here.contains(QByteArray(n)))
+				rotted << QString::fromLatin1(n);
+		}
+		printf("info: %d pixel metric(s): %d scale with the cell, %d are"
+		       " zero, %d answer a fixed number; %d of %d pinned name(s)"
+		       " exist on this Qt\n", int(seen.size()), scales, zeroes,
+		       int(fixed_here.size()), pinned_here,
+		       int(sizeof(fixed_pixels) / sizeof(fixed_pixels[0])));
+		if (!unpinned.isEmpty())
+			printf("info: not pinned: %s\n",
+			       qPrintable(unpinned.join(QStringLiteral(", "))));
+		if (!rotted.isEmpty())
+			printf("info: pinned but no longer fixed: %s\n",
+			       qPrintable(rotted.join(QStringLiteral(", "))));
+		CHECK(unpinned.isEmpty(),
+		      "no pixel metric outside the pinned set answers a fixed number"
+		      " of pixels, so a new one cannot arrive unnoticed on the one"
+		      " surface that has already carried a defect");
+		CHECK(rotted.isEmpty(),
+		      "and every pinned metric this Qt has still answers one, so the"
+		      " set cannot outlive what it describes");
+	}
+
 	return fails;
 }

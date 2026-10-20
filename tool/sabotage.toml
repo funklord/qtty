@@ -7198,3 +7198,28 @@ into = "\tif (auto *bar = qobject_cast<QStatusBar *>(w)) bar->setSizeGripEnabled
 count = 1
 check = "a status bar built outside a QMainWindow can be polished and measured, rather than dying in its own constructor"
 expect = "crash"
+
+[[sabotage]]
+# The historical defect itself: PM_MessageBoxIconSize back to Fusion's
+# pixels, which is what it answered until a message box came out 2.53 rows
+# tall. It is then a fixed number outside the pinned set, which is the
+# first of the two directions the metric sweep asserts. 8.469.
+name = "a pixel metric answers Fusion's pixels rather than cells"
+file = "src/grid/grid_style.cpp"
+find = "\tcase PM_MessageBoxIconSize:                            return 2 * ch;"
+into = "\tcase PM_MessageBoxIconSize:                            return 48;"
+count = 1
+check = "no pixel metric outside the pinned set answers a fixed number of pixels, so a new one cannot arrive unnoticed on the one surface that has already carried a defect"
+
+[[sabotage]]
+# The other direction: a pinned metric made to scale, so the pinned set
+# over-claims and nothing would say so without the second assertion.
+# PM_SmallIconSize is pinned because the proxy base answers 16 for it; this
+# makes GridStyle answer in cells instead, which is an IMPROVEMENT the set
+# must still be made to notice. 8.469.
+name = "a pinned pixel metric starts scaling and the set is not told"
+file = "src/grid/grid_style.cpp"
+find = "\tcase PM_MessageBoxIconSize:                            return 2 * ch;"
+into = "\tcase PM_MessageBoxIconSize: case PM_SmallIconSize:      return 2 * ch;"
+count = 1
+check = "and every pinned metric this Qt has still answers one, so the set cannot outlive what it describes"

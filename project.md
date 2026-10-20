@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2205 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2207 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3150,8 +3150,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-20: **2205 on Qt 6 with no failures,
-  and 2172 passing, 33 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-20: **2207 on Qt 6 with no failures,
+  and 2174 passing, 33 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18391,6 +18391,70 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.469 The pixel-metric surface is asked numerically now, and the pin caught itself being wrong (2026-10-20)
+
+**The gap 8.468 named is closed.** A style answers through three surfaces and
+the "cell is the unit" sweep covered two of them: `sizeFromContents()` and
+`subControlRect()`. The third is `pixelMetric()`, and no check in this tree
+called it except as a helper -- which is the surface
+`PM_MessageBoxIconSize` was on when it answered Fusion's 48, 2.53 rows, and
+made a message box a fractional number of rows tall.
+
+**Pinned as measured, not as wanted.** Asked at one cell and at two, every
+metric the enum names:
+
+    Qt 6.8.2    96 metrics: 36 scale, 31 are zero, 29 answer a fixed number
+    Qt 5.15.15  97 metrics: 36 scale, 28 are zero, 33 answer a fixed number
+
+The fixed ones are Fusion's pixels falling through `GridStyle`'s switch.
+They are latent rather than live -- `sizeFromContents()` rounds every answer
+up to whole cells before a widget sees it -- and `PM_MessageBoxIconSize`
+escaped only because `QMessageBox` reads a metric DIRECTLY to size a pixmap.
+Whether the icon metrics should answer in cells is section 0b's and is not
+this check's to decide, so the set is recorded rather than corrected.
+
+**Asserted in BOTH directions, and the second one is the half that pays.** A
+metric outside the set must scale, be zero, or be a negative sentinel; a
+metric inside it must still NOT scale. Without the second assertion the set
+would outlive its subject: a metric that started answering in cells would
+leave a name behind that nothing could falsify by running anything.
+
+**It caught its own author within the minute.** The first version listed
+`PM_DialogButtonsButtonHeight`, `-ButtonWidth` and `-Separator` as "Qt 5
+only", and the rotted-direction check failed on Qt 6 naming all three. They
+are **still in Qt 6's enum** -- so `keyToValue()` resolves them and they
+cannot be skipped the way a removed name is -- and Qt 6 answers **0** for
+them where Qt 5 answers 31, 72 and 27. The three `PM_Default*Margin` names
+beside them genuinely are gone from Qt 6's enum and are skipped with no
+conditional at all. A list of names written from one version's measurement
+and labelled by guess, caught by the assertion that exists for exactly that.
+
+**By name, not by count or by value**, because the two versions differ in
+all three: Qt 5 keeps six metrics Qt 6 removed or zeroed, Qt 6 has
+`PM_LineEditIcon*` that Qt 5 lacks, and the shared ones disagree on the
+number -- `PM_ScrollBarSliderMin` is 26 against 27. A name this Qt does not
+have is skipped rather than failed, and the counts are printed rather than
+asserted. Canonical names come from `valueToKey()`, because Qt 5's enum has
+two keys for one value -- `PM_MDISubWindowFrameWidth` beside
+`PM_MdiSubWindowFrameWidth` -- so a sweep keyed on the index would ask one
+metric twice under two spellings and report 35 names where there are 33.
+
+**One sabotage per direction, because a two-directional check needs two.**
+
+    a pixel metric answers Fusion's pixels rather than cells
+      -> reddens the unpinned direction, AND "the dialog it sits in is a
+         whole number of rows tall" -- the historical defect, recreated
+    a pinned pixel metric starts scaling and the set is not told
+      -> reddens the rot direction, AND the clear-button mark check, since
+         PM_SmallIconSize moves where that glyph lands
+
+The first is `PM_MessageBoxIconSize` put back to 48, which is what it
+answered before 8.466; the second makes `PM_SmallIconSize` answer in cells,
+an IMPROVEMENT the set must still be made to notice.
+
+2207 checks on Qt 6, 2174 passing and 33 stepping over on Qt 5, 671 sabotage
+entries.
+
 ### 8.468 A status bar an application builds itself crashed, on both versions (2026-10-20)
 
 **`GridStyle::polish()` took the size grip out of a `QStatusBar` the moment
@@ -18468,11 +18532,11 @@ latent rather than live for the same reason: `sizeFromContents()` absorbs
 them. `PM_MessageBoxIconSize` was the one that escaped, because
 `QMessageBox` reads a metric directly to size a pixmap, and 8.466 has it.
 
-**The one gap left behind, named rather than closed**: nothing asks the
-`pixelMetric` surface numerically. The "cell is the unit" sweep in
-`suite_grid.cpp` covers `sizeFromContents` and `subControlRect` and never
-calls `pixelMetric`, so the 29 above are unmeasured by any gate -- and that
-surface has produced exactly one real defect already.
+**The gap left behind was closed the same day**, in 8.469: nothing asked the
+`pixelMetric` surface numerically, so the 29 above were unmeasured by any
+gate on a surface that had already produced one real defect. The sweep pins
+them by name in both directions, and caught its own list being wrong about
+three of them on the first run.
 
 2205 checks on Qt 6, 2172 passing and 33 stepping over on Qt 5, 669 sabotage
 entries.
