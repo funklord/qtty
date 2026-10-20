@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2211 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2215 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3150,8 +3150,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-20: **2211 on Qt 6 with no failures,
-  and 2178 passing, 33 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-21: **2215 on Qt 6 with no failures,
+  and 2182 passing, 33 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18391,6 +18391,105 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.472 A combo box's arrow had no floor, and at three cells a click on the value opened the popup (2026-10-21)
+
+**The arrow's x was the right edge less two cells, with nothing stopping
+it**, while the edit field kept a `qMax()` floor of one cell. Two claims
+that cannot both hold below four cells. Measured in CELLS from the left:
+
+    width   arrow rect   what a click reached
+    1 cell  -1..0        the frame -- the field was outside the widget
+    2 cells 0..0         the opening bracket's cell
+    3 cells 1..1         THE FIELD'S ONLY CELL
+    4 cells 2..2         correct, and the first width that was
+
+**The three-cell case cost something, and it is not cosmetic.** These rects
+are the hit test. An editable combo three cells wide had **no edit region at
+all** -- the one cell that showed the value hit-tested as the arrow, so a
+click there opened the popup instead of placing a cursor. At one cell the
+field was outside the widget and no click could reach it either.
+
+    before   3 cells:  cell 0 Frame    cell 1 ARROW      cell 2 Frame
+    after    3 cells:  cell 0 EditField cell 1 EditField cell 2 Arrow
+
+**Fixed by the rule this case already stated.** Its own comment, written for
+`setFrame(false)`, says "the arrow stays -- a combo with no arrow would not
+read as a combo -- so only the border cell moves". So the border is what
+yields: a combo needs a cell for its value and a cell for its arrow, and the
+two border cells go when the width cannot hold all four. One cell holds the
+arrow alone and the field is null, which is the honest answer rather than a
+rect overlapping the arrow.
+
+    1 cell   the arrow alone        4 cells  [H and the arrow]
+    2 cells  H and the arrow        5 cells  [Hi and the arrow]
+    3 cells  Hi and the arrow       6 cells  unchanged
+
+Four cells and wider are untouched. Right-to-left keeps the arrow on the
+left and never overlaps, and `setFrame(false)` is unchanged but for the
+one-cell case.
+
+**The expression is shared, because the two sites must agree exactly.**
+`combo_edge_cells()` sits beside `tool_button_label()` and exists for the
+same reason that one does: the arrow is drawn where the hit test says it is,
+so a drawing site and a geometry site computing it separately is a click
+landing beside the glyph.
+
+**And the sabotage harness caught this change weakening an older check,
+which is the part worth keeping.** An entry that forces `framed = true` had
+reddened "a combo asked for no frame draws none" for a year. It stopped:
+`framed` and the arrow's offset used to be ONE expression, so sabotaging the
+frame moved the arrow, and the check noticed by comparing the arrow against
+its hit test. They are two expressions now, so the sabotage only added a
+bracket -- **and the check never tested for a bracket.** It looked for the
+box-drawing corner, which a one-row combo never draws anyway, and for the
+arrow's cell.
+
+So that check had been defended by a coincidence of the code's shape rather
+than by asserting its own sentence, and nothing would have said so without
+the entry going green against broken code. It asserts the bracket's absence
+now, which is what "draws none" always claimed.
+
+**This is the strongest argument for the sabotage spec there has been in a
+while**: the defect it caught was not in the library but in a REFACTOR's
+effect on an unrelated check, three thousand lines away from anything this
+change touched.
+
+**The spin box has the same unfloored arithmetic and NO measured
+consequence, which is why it is not fixed here.** Its up and down rects are
+the right edge less two and one cells with the same missing floor, so below
+five cells they overlap the field and go negative -- but a click never
+reaches them. Measured by clicking the cell a spin box draws its VALUE in,
+at three, four, five and six cells: the value did not change once, because
+the internal `QLineEdit` covers the field rect and takes the press, so
+`QAbstractSpinBox` never consults the hit test. The combo differs precisely
+there -- `QComboBox` DOES consult it, to decide whether a click opens the
+popup, which is why the same arithmetic cost something in one control and
+nothing in the other.
+
+What is left on the spin box is cosmetic and sits at exactly three cells:
+the up arrow is drawn over the opening bracket, so it reads as an arrow, a
+value and a CLOSING bracket with nothing to match it. Four cells and wider
+are balanced. Fixing it needs more than the combo's remedy -- a spin box
+wants five cells for two borders, a value and two arrows, so collapsing the
+borders still leaves two arrows wanting one cell, and **which arrow a
+three-cell spin box should keep is a decision rather than a transliteration.**
+Recorded with the measurement; not taken.
+
+**And one instrument check worth keeping**, because it nearly cost a wrong
+finding. The hit tables above are from hand-built options, which this
+suite's own comment warns are "only as faithful as the lines that fill
+them" -- so the defaults were measured rather than assumed:
+`QStyleOptionComboBox::frame` defaults to TRUE and matches a real combo, so
+the combo table is faithful; `QStyleOptionSpinBox::frame` defaults to FALSE
+where a real spin box is framed. A spin box reading that looked like a
+second defect -- the value's cell hit-testing as the frame -- survived
+setting `stepEnabled` both ways and is Qt's own ordering: it tests
+`SC_SpinBoxFrame`, which is the whole widget, before the edit field.
+Nothing of qtty's is in that one.
+
+2215 checks on Qt 6, 2182 passing and 33 stepping over on Qt 5, 674 sabotage
+entries.
+
 ### 8.471 Three cells carried less than two, and the rule already said why (2026-10-20)
 
 **A tool button labelled "Hi" drew `Hi` at two cells and brackets with an
@@ -18450,8 +18549,9 @@ past the tool button is a convention change rather than a fix:
 The tool button is the one with a stated rule to be wrong against. The
 others have never had one, and the last of them -- a combo box drawing its
 arrow at the left edge at two cells, where every other width draws it at
-the right -- looks like a placement fault rather than a policy and is worth
-a look of its own.
+the right -- was a placement fault rather than a policy, chased in 8.472:
+the arrow had no floor at all, and at three cells it sat on the edit
+field's only cell so a click on the value opened the popup.
 
 **Found by rendering every decorated widget at one to six cells and
 reading the frames**, which is section 0d's method aimed at width rather

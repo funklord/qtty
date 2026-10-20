@@ -2958,12 +2958,87 @@ int suite_widgets() {
 				const QRect far = flat.style()->subControlRect(
 				    QStyle::CC_ComboBox, &fo, QStyle::SC_ComboBoxArrow, &flat);
 				const int flat_arrow = frow.indexOf(QChar(0x25BE));
-				CHECK(!frow.contains(QChar(0x250C)) && flat_arrow >= 0
+				// AND NO BRACKET EITHER, which "draws none" claims and this
+				// did not test. It looked for the box-drawing corner and for
+				// the arrow landing where the hit test says -- and while
+				// `framed` and the arrow's offset were one expression, moving
+				// the arrow was how a sabotage of the frame showed up. They
+				// are two expressions since 8.472, so that sabotage stopped
+				// reddening this and the harness said so: the check had been
+				// defended by a coincidence of the code's shape rather than
+				// by asserting its own sentence. A one-row combo brackets
+				// rather than boxing, so the bracket is what "draws none"
+				// is about.
+				CHECK(!frow.contains(QChar(0x250C))
+				      && !frow.contains(QLatin1Char('['))
+				      && !frow.contains(QLatin1Char(']')) && flat_arrow >= 0
 				      && flat_arrow == far.left() / cw,
 				      rtl ? "and a right-to-left combo asked for no frame"
 				            " draws none, its arrow moving with the hit test"
 				          : "and a combo asked for no frame draws none, its"
 				            " arrow moving with the hit test");
+
+				// AND THE ARROW HAD NO FLOOR, so below four cells it
+				// marched left out of its own rectangle. Its x was the
+				// right edge less two cells with nothing stopping it,
+				// while the edit field kept a qMax() floor of one cell --
+				// two claims that cannot both hold in three cells.
+				// Measured 2026-10-20, in cells from the left:
+				//
+				//     width   arrow rect   a click reached
+				//     1 cell  -1..0        the frame; the field was outside
+				//     2 cells 0..0         the opening bracket's cell
+				//     3 cells 1..1         THE FIELD'S ONLY CELL
+				//     4 cells 2..2         correct, and the first that was
+				//
+				// The three-cell case is the one that cost something: an
+				// editable combo there had nowhere a click could place a
+				// cursor, because the cell showing the value hit-tested as
+				// the arrow and opened the popup instead.
+				//
+				// Asserted as the RELATIONSHIP at every width rather than
+				// as a column, because a column number is this fixture's
+				// arithmetic and the fault was two rectangles overlapping.
+				int bad_width = 0, no_field = 0;
+				for (int cells = 1; cells <= 6; ++cells) {
+					QComboBox n;
+					n.addItems({QStringLiteral("Hi")});
+					n.setFixedSize(cw * cells, ch);
+					if (rtl) n.setLayoutDirection(Qt::RightToLeft);
+					show(n, cells, 1);
+					QStyleOptionComboBox no;
+					no.initFrom(&n);
+					no.rect = n.rect();
+					no.subControls = QStyle::SC_All;
+					no.frame = n.hasFrame();
+					const QRect na = n.style()->subControlRect(
+					    QStyle::CC_ComboBox, &no, QStyle::SC_ComboBoxArrow, &n);
+					const QRect nf = n.style()->subControlRect(
+					    QStyle::CC_ComboBox, &no, QStyle::SC_ComboBoxEditField,
+					    &n);
+					if (na.isEmpty() || !n.rect().contains(na)
+					    || na.intersects(nf))
+						++bad_width;
+					// And a field wherever there is room for one, which is
+					// every width but the first: one cell holds the arrow
+					// alone, and that is the deliberate half.
+					if (cells >= 2 && nf.isEmpty()) ++no_field;
+					GridGuard::reset();
+				}
+				printf("info: %d of 6 widths put a combo's arrow outside"
+				       " itself or on its field, %d lost the field\n",
+				       bad_width, no_field);
+				CHECK(bad_width == 0,
+				      rtl ? "a right-to-left combo box's arrow stays inside"
+				            " the widget and clear of its field at every"
+				            " width"
+				          : "a combo box's arrow stays inside the widget and"
+				            " clear of its field at every width");
+				CHECK(no_field == 0,
+				      rtl ? "and a right-to-left combo keeps an edit field"
+				            " wherever two cells allow one"
+				          : "and a combo keeps an edit field wherever two"
+				            " cells allow one");
 
 				QSpinBox sp;
 				sp.setFixedSize(cw * 12, ch);

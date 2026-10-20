@@ -6308,8 +6308,13 @@ check = "and a spin box asked for no buttons draws none"
 [[sabotage]]
 name = "a combo box draws its frame whatever the option says"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\tconst bool framed = !cbo || cbo->frame;"
-into = "\t\t\tconst bool framed = true;"
+# Re-pointed in 8.472. `framed` is derived from the cell count now, so
+# sabotaging it draws a bracket at each end that the field's label and the
+# arrow immediately overwrite -- no observable effect, and the harness said
+# so by passing against broken code. The option is read in the helper now,
+# which is where the decision actually lives.
+find = "\tconst int want = (!cb || cb->frame) ? 1 : 0;"
+into = "\tconst int want = 1;"
 count = 1
 check = "and a combo asked for no frame draws none"
 
@@ -7247,3 +7252,15 @@ find = "\t\t\t\tconst bool bracket = label.isEmpty() || carries;"
 into = "\t\t\t\tconst bool bracket = c.width() >= 3 || label.isEmpty();"
 count = 1
 check = "a tool button whose brackets would leave nothing but an ellipsis drops them and shows the label"
+
+[[sabotage]]
+# The combo's border cells back to the option alone, with no floor for the
+# width: below four cells the arrow then marches left out of its own
+# rectangle, and at three cells it lands on the edit field's only cell so
+# a click on the value opens the popup. 8.472.
+name = "a combo box keeps its border cells however narrow it is"
+file = "src/grid/grid_style.cpp"
+find = "\treturn width_px >= (2 * want + 2) * cw ? want : 0;"
+into = "\t(void)width_px; (void)cw; return want;"
+count = 1
+check = "a combo box's arrow stays inside the widget and clear of its field at every width"

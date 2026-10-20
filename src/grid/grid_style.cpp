@@ -51,6 +51,37 @@ namespace Qtty {
 // agree exactly -- a label measured without the glyph is drawn into a box one
 // cell too narrow, and the elide would then eat the last letter rather than
 // the thing that did not fit.
+// How many cells of border a combo box can afford. Read by subControlRect()
+// and by drawComplexControl() from this one place, for the reason
+// tool_button_label() below exists: the arrow is drawn where the hit test
+// says it is, so the two must agree exactly or a click lands on the frame.
+//
+// A combo needs a cell for its value and a cell for its arrow. The two
+// border cells are what yield when the width cannot hold all four, which is
+// the choice this style already makes for setFrame(false) -- the arrow stays,
+// because a combo with no arrow would not read as a combo, and the border is
+// what moves.
+//
+// It had no floor at all before, and below four cells the arrow marched left
+// out of its own rectangle. Measured 2026-10-20 on an editable combo, in
+// CELLS from the left:
+//
+//     width   arrow rect   what a click reached
+//     1 cell  -1..0        the frame, the field being outside the widget
+//     2 cells 0..0         the opening bracket's cell
+//     3 cells 1..1         THE FIELD'S ONLY CELL -- so clicking the value
+//                          opened the popup and there was no edit region
+//     4 cells 2..2         correct, and the first width that was
+//
+// The three-cell case is the one that cost something: an editable combo
+// there had nowhere a click could place a cursor.
+static int combo_edge_cells(const QStyleOption *opt, int width_px) {
+	const auto *cb = qstyleoption_cast<const QStyleOptionComboBox *>(opt);
+	const int cw = GridMetrics::cw();
+	const int want = (!cb || cb->frame) ? 1 : 0;
+	return width_px >= (2 * want + 2) * cw ? want : 0;
+}
+
 static QString tool_button_label(const QStyleOptionToolButton *tb, const QWidget *w) {
 	// A button whose whole content is an ARROW -- the scroll and navigation
 	// buttons Qt builds, and any QToolButton given an arrowType -- rendered
@@ -1727,14 +1758,20 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		// asks for, and it got a frame anyway. The arrow stays -- a combo
 		// with no arrow would not read as a combo -- so only the border
 		// cell moves, and it moves here and in the drawing together.
-		const auto *cb = qstyleoption_cast<const QStyleOptionComboBox *>(opt);
-		const int edge = (!cb || cb->frame) ? cw : 0;
+		const int edge = combo_edge_cells(opt, r.width()) * cw;
 		// Shared with the arrow below, for the reason the spin box above
 		// gives: the arrow claimed the frame rows, so the border cell above
 		// it answered SC_ComboBoxArrow and a click there opened the popup.
 		const bool inner = edge && r.height() >= 3 * ch;
 		switch (sc) {
 		case SC_ComboBoxEditField: {
+			// AT ONE CELL THERE IS ROOM FOR ONE THING, and the arrow is the
+			// one that says "combo box" -- the same choice the border makes
+			// when it yields above. A field with no cells is the honest
+			// answer: a combo one cell wide has nowhere to put a cursor, and
+			// a rect that overlapped the arrow instead made a click on the
+			// value open the popup.
+			if (r.width() < 2 * cw) return QRect();
 			return QRect(rtl ? r.left() + edge + cw : r.left() + edge,
 			             inner ? r.top() + ch : r.top(),
 			             qMax(cw, r.width() - 2 * edge - cw),
@@ -3467,9 +3504,12 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			CellBuffer &b = dev->buffer();
 			// The option's `frame`, read here and in subControlRect from the
 			// same expression. See there.
-			const auto *cbo = qstyleoption_cast<const QStyleOptionComboBox *>(opt);
-			const bool framed = !cbo || cbo->frame;
-			const int edge = framed ? 1 : 0;
+			// From combo_edge_cells(), which subControlRect() reads too --
+			// the pairing the comment below depends on. A width that cannot
+			// hold both borders, a value and an arrow draws no border at
+			// all, so `framed` follows the cells rather than the option.
+			const int edge = combo_edge_cells(opt, opt->rect.width());
+			const bool framed = edge > 0;
 			if (framed) {
 				if (c.height() >= 2) {
 					draw_box(b, c, false, a);
