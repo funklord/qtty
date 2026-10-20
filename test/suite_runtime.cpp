@@ -12,6 +12,7 @@
 #include "src/runtime/url_opener.h"
 #include "src/runtime/placement_paint.h"
 #include <QtWidgets>
+#include <QScreen>
 #include <QProcess>
 #include <cstdio>
 
@@ -670,13 +671,40 @@ int suite_runtime() {
 		m.popup(asked);
 		QCoreApplication::processEvents();
 		const QPoint got = m.geometry().topLeft();
-		printf("info: a menu asked for px (%d,%d) was placed at (%d,%d)\n",
-		       asked.x(), asked.y(), got.x(), got.y());
+		const QRect want(asked, m.geometry().size());
+		const QRect avail = QGuiApplication::primaryScreen()->availableGeometry();
+		printf("info: a menu asked for px (%d,%d) was placed at (%d,%d),"
+		       " on a %dx%d screen\n", asked.x(), asked.y(), got.x(), got.y(),
+		       avail.width(), avail.height());
 		m.close();
 		QCoreApplication::processEvents();
-		CHECK(got == asked,
-		      "a menu opens where it was asked to, past the 80 columns the"
-		      " offscreen platform defaults to");
+		// WHETHER THE SCREEN COULD BE ENLARGED IS A PROPERTY OF THE PLUGIN
+		// AND IS ASKED RATHER THAN ASSUMED. prepare_environment() hands the
+		// offscreen platform a 10000x10000 screen through `configfile=`, an
+		// option Qt 5.15's offscreen plugin does not have -- it ignores the
+		// argument silently and keeps its 800x600 default, measured in
+		// 8.466. So the clamp Qt applies there is unavoidable from this
+		// library, and a check asserting otherwise is asserting a platform
+		// it is not running on.
+		//
+		// Asked as a run-time precondition rather than `#if QT_VERSION`,
+		// which would be the wrong question in three ways: it is right
+		// under xcb on BOTH versions, where the screen is real and holds
+		// the asked position; it would still fire if a Qt 6 plugin stopped
+		// honouring the option; and it states what the check actually
+		// needs, which a version number does not.
+		if (!avail.contains(want)) {
+			printf("SKIP: a menu opens where it was asked to, past the 80"
+			       " columns the offscreen platform defaults to\n      the"
+			       " screen is %dx%d and cannot hold a menu at (%d,%d), so"
+			       " Qt's own clamp is not this library's to undo"
+			       " -- project.md 8.466\n",
+			       avail.width(), avail.height(), asked.x(), asked.y());
+		} else {
+			CHECK(got == asked,
+			      "a menu opens where it was asked to, past the 80 columns the"
+			      " offscreen platform defaults to");
+		}
 	}
 
 	// THE TERMINAL GOING AWAY STOPS THE PROGRAM, which nothing checked.
@@ -2491,8 +2519,11 @@ int suite_runtime() {
 	// design.md section 7's policy on the POPUP layer, which is the layer it
 	// never reached -- and a menu is the case with no way out of it at all.
 	// There is no Tab away from an open menu the way there is from the root,
-	// and Qt will not paginate one either: the offscreen QScreen is 800x800,
-	// so nothing tells Qt how tall the terminal is.
+	// and Qt will not paginate one either: prepare_environment() hands the
+	// offscreen plugin a 10000x10000 screen, so nothing tells Qt how tall
+	// the terminal is. On Qt 5 that option does not exist and the screen
+	// stays 800x600, which is why the control below asks how many columns
+	// Qt built before asserting on one (8.466).
 	//
 	// Measured 2026-09-02 before the fix: a 30-item menu is 608 px in a 190 px
 	// terminal, and after twenty Down presses the active item was "Item 19"
@@ -2596,10 +2627,29 @@ int suite_runtime() {
 		       menu.activeAction() ? qPrintable(menu.activeAction()->text())
 		                           : "(none)",
 		       qPrintable(b.to_text()));
-		CHECK(b.to_text().contains(QStringLiteral("Item 29"))
-		      && b.to_text().contains(QStringLiteral("Item 20"))
-		      && !b.to_text().contains(QStringLiteral("Item 19")),
-		      "and it scrolls by what overflows and no further");
+		// ONE COLUMN IS THE PRECONDITION, and it is asked rather than
+		// assumed. "The nine above it are on the screen too" is a statement
+		// about a single column of items; Qt column-wraps a menu taller
+		// than ITS OWN screen, and on Qt 5 that screen is 800x600 whatever
+		// prepare_environment() hands the plugin, because the offscreen
+		// plugin there has no configfile option (8.466). A wrapped menu put
+		// Item 29 beside Item 0 and this check read it as not having
+		// scrolled -- a true report of a menu the check is not about.
+		int columns = 0, last_x = -1;
+		for (QAction *a : menu.actions()) {
+			const int ax = menu.actionGeometry(a).x();
+			if (ax != last_x) { ++columns; last_x = ax; }
+		}
+		if (columns > 1) {
+			printf("SKIP: and it scrolls by what overflows and no further\n"
+			       "      Qt laid the menu out in %d columns against its own"
+			       " screen -- project.md 8.466\n", columns);
+		} else {
+			CHECK(b.to_text().contains(QStringLiteral("Item 29"))
+			      && b.to_text().contains(QStringLiteral("Item 20"))
+			      && !b.to_text().contains(QStringLiteral("Item 19")),
+			      "and it scrolls by what overflows and no further");
+		}
 		menu.close();
 		QCoreApplication::processEvents();
 		GridGuard::reset();

@@ -3151,8 +3151,10 @@ Open:
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
   fixtures over: 2203 on Qt 6 with no failures, and 2170 passing, 26
-  stepping over and 7 failing on Qt 5. Those 7 are the axis still paying
-  out and are listed in 8.465.
+  stepping over and none failing on Qt 5 -- 8.466 chased the last seven,
+  four of which were one missing plugin option. The axis is still paying
+  out on a pair nothing had run before: Qt 5 under xcb, where three checks
+  fail that every other combination passes.
 - **OQ-4.** Do any of the four products need the TUI where QtWidgets
   cannot be linked (embedded, serial console)? If yes, that product goes
   to the design.md §13.2 fallback permanently and Phase 4's scope changes.
@@ -18387,6 +18389,127 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.466 The last seven Qt 5 failures, four of them one missing plugin option (2026-10-20)
+
+**Qt 5 is clean, and nothing was waved through to get there.**
+
+    Qt 6.8.2   offscreen  2203 pass,  0 step over, 0 fail
+    Qt 5.15.15 offscreen  2170 pass, 33 step over, 0 fail
+
+**Four of the seven were one cause: an option Qt 5's offscreen plugin does
+not have.** `prepare_environment()` hands the plugin a 10000x10000 screen
+through `offscreen:configfile=<json>`, because Qt clamps a menu, a completer
+and a modal's centring into `availableGeometry()`. Qt 5.15's plugin takes
+that argument, says nothing, and keeps its default:
+
+    same configfile argument, same JSON
+    Qt 5.15.15   geometry 800x600    available 800x600
+    Qt 6.8.2     geometry 10000x10000 available 10000x10000
+
+Corroborated independently rather than from one probe: `configfile=` is
+absent from the Qt 5 plugin's strings and present in the Qt 6 one, and
+`QT_QPA_OFFSCREEN_NO_GLX` is the only option that binary carries.
+
+**What that does to menus, measured on a forty-item one:**
+
+    Qt 5.15.15  screen 800x600      menu 258x580   2 columns
+    Qt 6.8.2    screen 10000x10000  menu 120x1000  1 column
+
+Qt lays a menu out against ITS OWN screen, so past that screen it
+column-wraps -- it put `Item 29` beside `Item 0` and the scrolling control
+read that, correctly, as a menu that had not scrolled. The same screen
+clamps placement: a menu asked for px (1000,494) was placed at (650,494).
+
+**This is a real limitation on Qt 5 and not a test artefact.** A terminal
+past 80 columns or 31 rows gets its menus clamped and its tall menus wrapped
+by Qt before this library sees anything, and the compositor anchors a popup
+at its own geometry, so it is DRAWN where Qt moved it. There is no supported
+route to the screen on that plugin: `vnc` and `linuxfb` take a `size=`
+option and neither is usable here -- one opens a listening socket, the other
+wants a framebuffer -- and resizing it through
+`QWindowSystemInterface::handleScreenGeometryChange` needs the private QPA
+headers, which are installed for neither version on this machine. **The
+option, its cost and whose it is**: it would add a `qtbase5-private-dev` and
+`qt6-base-private-dev` build dependency and couple the library to a Qt patch
+version, and it is the copyright holder's call rather than one to take while
+fixing a test.
+
+**The preconditions are asked at RUN TIME, and the proof that this matters
+is an xcb run.** Every new guard reads a property -- can the screen hold the
+asked rectangle, how many columns did Qt build, did the icon come back the
+size the style asked for, do the icon keys meet -- rather than `#if
+QT_VERSION`. Under Qt 5.15.15 + xcb on a 1280x1024 Xvfb, all five of those
+checks PASS:
+
+    Qt 5.15.15 xcb  2172 pass, 28 step over, 3 fail
+    Qt 6.8.2   xcb  2203 pass,  0 step over, 0 fail
+
+A version guard would have stepped over five working checks on that
+platform. The failures are a property of the PLUGIN, and a check that says
+so keeps working where the plugin changes.
+
+**A check's prose claim was verified by nothing, and on Qt 5 it is false.**
+"a forty-item menu is taller than the terminal, Qt having no screen small
+enough to paginate it against" asserted its second clause in prose and
+tested only the height, on both versions. It reads the actions' x positions
+now, so the sentence is held to something.
+
+**The style sheet is the version's answer and is pinned per version.** A
+colour-only sheet on a push button draws nothing at all on Qt 6 and draws
+`Hi` on Qt 5 -- keeping the text and losing only the brackets, which is the
+better of the two for a terminal user. Pinned by version rather than
+loosened to a relationship covering both, because that check exists to
+notice the behaviour CHANGING in either direction and "either nothing or the
+text" is exactly the sentence that would stop noticing. It is the one guard
+here that is not a run-time property, because no run-time property answers
+"does a colour-only sheet suppress drawing".
+
+**The message box's fractional height is an icon Qt could not render, and
+decomposing it is what said so.** A total cannot name which term is
+fractional, so the run prints the sum:
+
+    Qt 6.8.2    57 px, 3.00 rows -- QLabel 38, QLabel 19, QDialogButtonBox 19
+    Qt 5.15.15  51 px, 2.68 rows -- QLabel 32, QLabel 19, QDialogButtonBox 19
+
+`GridStyle` answers `PM_MessageBoxIconSize` with `2 * ch`, which is 38, and
+is given 32 -- because **a QIcon never scales past its largest available
+pixmap**, and `SP_MessageBoxWarning` offers 32x32 and nothing else on Qt 5
+where Qt 6 offers 16, 32 and 128:
+
+    pixmap(38) -> 32x32 on Qt 5.15.15, 38x38 on Qt 6.8.2
+
+So a fractional dialog there is not the style answering wrongly. It answered
+38 and was handed 32, and the check asks that question now.
+
+**And standard icons DO have a stable identity on Qt 5, which is the day the
+recorded decision says to re-open.** That check's comment reads "this goes
+red the day Qt gives standard icons a stable identity, and that day is
+exactly when this decision is worth re-opening". On Qt 5 two
+`standardIcon()` calls and the pixmap the message box actually placed share
+ONE cacheKey, where Qt 6 gives three that do not meet. So the
+cacheKey-to-glyph map that decision rules out **is workable on Qt 5**, and
+the QIconEngine mint point is a Qt 6 requirement rather than a general one.
+
+**The two icon findings converge on one option, which is also not mine.**
+`GridStyle` does not override `standardIcon()` at all today -- only the
+metric. An override returning an icon whose engine renders at any requested
+size would fix the fractional height AND be the mint point the identity
+decision wants, in one change. It is a design change, it touches section
+0b's open question about how much of a style qtty should notice, and it is
+the holder's.
+
+**One new axis opened on the way and is left open rather than explained.**
+Qt 5.15.15 + xcb fails three checks that Qt 5 + offscreen and both Qt 6 runs
+pass, all in one family -- the Qt message handler's deferral cap, which
+buffers 256 distinct messages and counts the rest: "past its cap the
+deferral counts what it drops", "and keeps the first ones rather than the
+last", "and is said when the program ends, rather than dropped". **The cause
+is not established and no guess is recorded**, because a comfortable
+explanation that ends an investigation costs more than none. It is a
+platform-and-version pair nothing had run before today.
+
+2203 checks on Qt 6, 668 sabotage entries, every anchor matching.
+
 ### 8.465 The nested-loop fixtures step over on Qt 5, and one of them was passing for the wrong reason (2026-10-20)
 
 **The holder took 8.464's decision: skip the nested-loop fixtures on Qt 5.**
@@ -18420,16 +18543,13 @@ of checks that actually fail, and noticing one name in the first list that
 was not in the second. The guard keeps it, because a `SKIP` saying the loop
 is dead is a truer report than a `PASS` earned by it.
 
-**The seven that remain are not nested loops**, and each is its own question
-for whoever takes the axis next:
-
-    2  item-view scrolling: keeping a selection on screen, and reaching
-       the last item from the keyboard
-    1  a style sheet costing a button its brackets
-    1  a dialog being a whole number of rows tall
-    1  a standard icon's identity through standardIcon()
-    1  a menu opening past the 80 columns the offscreen platform defaults to
-    1  scrolling by what overflows and no further
+**The seven that remained were not nested loops, and 8.466 has them all.**
+Four were one cause -- Qt 5's offscreen plugin has no `configfile` option,
+so it keeps an 800x600 screen and Qt clamps and column-wraps menus against
+it -- and the other three were a style sheet, an icon Qt could not render at
+the size the style asked for, and standard icons having on Qt 5 the stable
+identity whose absence a design decision was built on. None was a library
+defect and none was waved through.
 
 **And 8.463's "two checks are unaccounted for" is answered: nothing is.**
 2170 passes plus 26 skips plus 7 failures is 2203 exactly, twice, from two

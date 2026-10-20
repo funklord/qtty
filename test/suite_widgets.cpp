@@ -126,8 +126,24 @@ int suite_widgets() {
 		       " with a colour sheet [%s]; a label with one [%s]\n",
 		       qPrintable(a1), qPrintable(a2), qPrintable(a3),
 		       qPrintable(a4));
+		// AND THE COLOUR-ONLY CASE IS THE VERSION'S ANSWER RATHER THAN
+		// THIS LIBRARY'S. Qt 6.8.2 draws nothing at all; Qt 5.15.15 draws
+		// "Hi", keeping the text and losing only the brackets -- measured
+		// 2026-10-20, and Qt 5's is the better of the two for a terminal
+		// user, who at least sees the label.
+		//
+		// Pinned PER VERSION rather than loosened to a relationship that
+		// covers both, because this check exists to notice the behaviour
+		// changing in either direction, and "either nothing or the text"
+		// is exactly the sentence that would stop noticing.
+		const QString tinted_expect =
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+		    QString();
+#else
+		    QStringLiteral("Hi");
+#endif
 		CHECK(a1 == QStringLiteral("<Hi>") && a2 == QStringLiteral("Hi")
-		      && a3.isEmpty() && a4 == QStringLiteral("Hi"),
+		      && a3 == tinted_expect && a4 == QStringLiteral("Hi"),
 		      "a style sheet costs a button its brackets, and a colour-only "
 		      "one draws it not at all, while a label is unharmed -- pinned "
 		      "as measured rather than as wanted");
@@ -4520,8 +4536,53 @@ int suite_widgets() {
 		// pixels -- 48, which is 2.53 rows -- so the dialog asked for 3.5 cells
 		// and the half was unusable. Two rows exactly keeps it a picture and
 		// makes the dialog 3.0.
-		CHECK(mb.sizeHint().height() % GridMetrics::ch() == 0,
-		      "and the dialog it sits in is a whole number of rows tall");
+		// DECOMPOSED RATHER THAN TOTALLED, because a height that is not a
+		// whole number of rows is a sum and the question is which term is
+		// fractional. Printed on every run, since the answer differs by Qt
+		// version and a total alone cannot say why.
+		int icon_h = 0;
+		{
+			QLayout *lay = mb.layout();
+			const QMargins m = lay ? lay->contentsMargins() : QMargins();
+			printf("info: the message box's sizeHint is %d px, %.2f rows of"
+			       " %d -- margins %d/%d, spacing %d",
+			       mb.sizeHint().height(),
+			       double(mb.sizeHint().height()) / GridMetrics::ch(),
+			       GridMetrics::ch(), m.top(), m.bottom(),
+			       lay ? lay->spacing() : -1);
+			if (lay)
+				for (int i = 0; i < lay->count(); ++i)
+					if (QWidget *w = lay->itemAt(i)->widget()) {
+						printf(", %s %d", w->metaObject()->className(),
+						       w->sizeHint().height());
+						if (!icon_h) icon_h = w->sizeHint().height();
+					}
+			printf("\n");
+		}
+		// AND WHETHER QT COULD DELIVER THE ICON THE STYLE ASKED FOR IS THE
+		// PRECONDITION. The metric is 2 * ch, and a QIcon never scales
+		// PAST its largest available pixmap: on Qt 5 SP_MessageBoxWarning
+		// offers 32x32 and nothing else, so pixmap(38) returns 32 and the
+		// dialog is 51 px, 2.68 rows. Qt 6 offers 16, 32 and 128 and
+		// honours 38 exactly, giving 57 and 3.00 rows. Measured 2026-10-20
+		// against both, and 8.466 has it.
+		//
+		// So a fractional dialog there is not this style answering wrongly
+		// -- it answered 38 and was given 32. Asked as "did the icon come
+		// back the size we asked for", which is the actual condition and is
+		// right on any version.
+		const int asked_icon = mb.style()->pixelMetric(
+		    QStyle::PM_MessageBoxIconSize, nullptr, &mb);
+		if (icon_h && icon_h < asked_icon) {
+			printf("SKIP: and the dialog it sits in is a whole number of"
+			       " rows tall\n      the style asked for a %d px icon and"
+			       " Qt could only give %d, so the height is not the"
+			       " style's to round -- project.md 8.466\n",
+			       asked_icon, icon_h);
+		} else {
+			CHECK(mb.sizeHint().height() % GridMetrics::ch() == 0,
+			      "and the dialog it sits in is a whole number of rows tall");
+		}
 
 		// And WHERE a key registry would have to mint, which is the part the
 		// recorded option got wrong. standardIcon() is not the mint point: one
@@ -4545,8 +4606,35 @@ int suite_widgets() {
 		const quint64 k1_again = quint64(i1.pixmap(48, 48).cacheKey());
 		const quint64 k2 = quint64(i2.pixmap(48, 48).cacheKey());
 		const quint64 placed = placements.isEmpty() ? 0 : placements[0].key;
-		CHECK(k1 == k1_again && k2 != k1 && placed != k1 && placed != k2,
-		      "a standard icon's identity does not survive standardIcon()");
+		printf("info: standard icon keys -- one icon asked twice %s, a second"
+		       " icon %s the first, and what was placed %s either\n",
+		       k1 == k1_again ? "agrees" : "DISAGREES",
+		       k2 == k1 ? "MATCHES" : "differs from",
+		       (placed == k1 || placed == k2) ? "MATCHES" : "is neither of");
+		// AND ON QT 5 THE IDENTITY SURVIVES, which is the day this comment
+		// says to re-open the decision. Measured 2026-10-20: there, two
+		// standardIcon() calls and the pixmap the message box actually
+		// placed all share one cacheKey, where Qt 6 gives three that do not
+		// meet. So the cacheKey-to-glyph map ruled out above IS workable on
+		// Qt 5, and the QIconEngine mint point is a Qt 6 requirement rather
+		// than a general one -- 8.466, and whether that changes the design
+		// is the copyright holder's.
+		//
+		// Stepped over rather than asserted the other way round, because
+		// the check's NAME says the identity does not survive and a check
+		// asserting the opposite of its own sentence is worse than one that
+		// cannot run.
+		if (k2 == k1 || placed == k1 || placed == k2) {
+			printf("SKIP: a standard icon's identity does not survive"
+			       " standardIcon()\n      here it DOES: two calls and the"
+			       " placed pixmap share one cacheKey, so the registry this"
+			       " rules out is workable -- project.md 8.466\n");
+		} else {
+			CHECK(k1 == k1_again && k2 != k1
+			      && placed != k1 && placed != k2,
+			      "a standard icon's identity does not survive"
+			      " standardIcon()");
+		}
 
 		// The message box is put away before the rest of this block runs.
 		// It is a MODAL, so while it is up QApplication::activeModalWidget()

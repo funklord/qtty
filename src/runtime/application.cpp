@@ -220,14 +220,30 @@ void prepare_environment() {
 
 	// And the offscreen platform is given a SCREEN nothing can exceed.
 	//
-	// Its default is 800x800, which at a 10x19 cell is 80 columns by 42
-	// rows -- and Qt clamps a menu, a completer popup and a modal dialog's
-	// centring into screen()->availableGeometry(). A maximised terminal on
-	// an ordinary display is around 200x55, so the clamp is not an edge
-	// case, it is where most users are. Measured: a menu asked for column
-	// 150 was placed at column 66, and the compositor anchors a popup at
-	// its own geometry, so it was DRAWN detached from the item that opened
-	// it. Nothing in this library saw the move; Qt had already made it.
+	// Its default is 800x600 on Qt 5 and 800x800 on Qt 6, which at a 10x19
+	// cell is 80 columns by 31 or 42 rows -- and Qt clamps a menu, a
+	// completer popup and a modal dialog's centring into
+	// screen()->availableGeometry(), and column-wraps a menu taller than
+	// it. A maximised terminal on an ordinary display is around 200x55, so
+	// the clamp is not an edge case, it is where most users are. Measured:
+	// a menu asked for column 150 was placed at column 66, and the
+	// compositor anchors a popup at its own geometry, so it was DRAWN
+	// detached from the item that opened it. Nothing in this library saw
+	// the move; Qt had already made it.
+	//
+	// ON QT 5 THIS DOES NOT WORK AND THE LIMITATION IS REAL. The offscreen
+	// plugin there has no `configfile` option: it takes the argument, says
+	// nothing, and keeps 800x600 -- measured 2026-10-20 against both
+	// plugins, and `configfile=` is absent from the Qt 5 binary's strings.
+	// So on Qt 5 a terminal past 80 columns or 31 rows gets its menus
+	// clamped and its tall menus wrapped into columns by Qt before this
+	// library sees them. There is no supported route to the screen on that
+	// plugin: `vnc` and `linuxfb` take a `size=` option and are not usable
+	// here (one opens a listening socket, the other wants a framebuffer),
+	// and resizing the screen through QWindowSystemInterface needs the
+	// private QPA headers. project.md 8.466 has the measurement and names
+	// that cost; it is the copyright holder's decision, not one to take in
+	// passing.
 	//
 	// A screen nothing can exceed puts every placement decision back here,
 	// which is where the flipping and pagination already live and the

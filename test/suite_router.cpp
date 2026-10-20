@@ -12639,14 +12639,46 @@ int suite_router() {
 		press(5);
 		const QStringList end = rows_shown();
 
-		CHECK(menu.height() > 24 * GridMetrics::ch() && !before.isEmpty(),
-		      "a forty-item menu is taller than the terminal, Qt having no"
-		      " screen small enough to paginate it against");
-		CHECK(mid != before && !mid.contains(QStringLiteral("item-00")),
-		      "and it scrolls to keep the selection on screen rather than"
-		      " leaving the caret below the last row");
-		CHECK(end.contains(QStringLiteral("item-39")),
-		      "so the last item is reachable from the keyboard");
+		// AND THE CLAIM IN THE FIRST CHECK'S OWN WORDS IS NOW TESTED.
+		// "Qt having no screen small enough to paginate it against" was
+		// asserted in prose and verified by nothing, and on Qt 5 it is
+		// false: that plugin ignores the screen prepare_environment() hands
+		// it, keeps 800x600, and COLUMN-WRAPS a menu too tall for it --
+		// measured at 258x580 in two columns where Qt 6 gives 120x1000 in
+		// one (8.466). All three checks below are about scrolling one
+		// column, so none of them can be asked of a wrapped menu.
+		//
+		// Read off the actions' x positions rather than from the screen
+		// size, because the wrap is what breaks these checks and the screen
+		// is only why Qt chose it.
+		int columns = 0, last_x = -1;
+		for (QAction *a : menu.actions()) {
+			const int ax = menu.actionGeometry(a).x();
+			if (ax != last_x) { ++columns; last_x = ax; }
+		}
+		if (columns > 1) {
+			printf("SKIP: a forty-item menu is taller than the terminal, Qt"
+			       " having no screen small enough to paginate it against\n"
+			       "      Qt laid it out in %d columns against its own"
+			       " screen -- project.md 8.466\n", columns);
+			printf("SKIP: and it scrolls to keep the selection on screen"
+			       " rather than leaving the caret below the last row\n"
+			       "      the menu Qt built is not one column"
+			       " -- project.md 8.466\n");
+			printf("SKIP: so the last item is reachable from the keyboard\n"
+			       "      the menu Qt built is not one column"
+			       " -- project.md 8.466\n");
+		} else {
+			CHECK(menu.height() > 24 * GridMetrics::ch()
+			      && !before.isEmpty(),
+			      "a forty-item menu is taller than the terminal, Qt having"
+			      " no screen small enough to paginate it against");
+			CHECK(mid != before && !mid.contains(QStringLiteral("item-00")),
+			      "and it scrolls to keep the selection on screen rather"
+			      " than leaving the caret below the last row");
+			CHECK(end.contains(QStringLiteral("item-39")),
+			      "so the last item is reachable from the keyboard");
+		}
 		router.on_key({Qt::Key_Escape, QString(), false, false, false});
 		QCoreApplication::processEvents();
 		CHECK(!menu.isVisible(),
