@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2203 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2205 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3150,11 +3150,13 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over: 2203 on Qt 6 with no failures, and 2170 passing, 26
-  stepping over and none failing on Qt 5 -- 8.466 chased the last seven,
-  four of which were one missing plugin option. The axis is still paying
-  out on a pair nothing had run before: Qt 5 under xcb, where three checks
-  fail that every other combination passes.
+  fixtures over. Re-measured 2026-10-20: **2205 on Qt 6 with no failures,
+  and 2172 passing, 33 stepping over and none failing on Qt 5** -- 8.466
+  chased the last seven, four of which were one missing plugin option, and
+  8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
+  exiting, not the deferral it appeared to be). The axis has paid for
+  itself twice over: 8.468 is a crash it found in a status bar an
+  application builds by hand, on both versions.
 - **OQ-4.** Do any of the four products need the TUI where QtWidgets
   cannot be linked (embedded, serial console)? If yes, that product goes
   to the design.md §13.2 fallback permanently and Phase 4's scope changes.
@@ -18388,6 +18390,92 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.468 A status bar an application builds itself crashed, on both versions (2026-10-20)
+
+**`GridStyle::polish()` took the size grip out of a `QStatusBar` the moment
+it was handed one, and `polish()` arrives from inside the bar's OWN
+`setSizeGripEnabled(true)`:**
+
+    QStatusBar::QStatusBar
+      setSizeGripEnabled(true)
+        reformat()
+          QLayout::activate()
+            ensurePolished()  ->  GridStyle::polish(bar)
+                                    setSizeGripEnabled(false)
+                                      delete the grip, reformat() AGAIN
+
+The second `reformat()` deletes the box layout that the first one is still
+activating, so Qt returns into freed memory. **SIGSEGV in
+`QLayout::totalMinimumSize()`, on Qt 5.15.15 and Qt 6.8.2 alike.**
+
+**It was this style's and not Qt's**, which is the control that matters: the
+same construction under plain `QFusionStyle` and plain `QWindowsStyle`
+answers `3x22` and does not crash. Bisected further -- `prepare_environment()`
+alone is fine, the pinned font is irrelevant, and a `GridStyle` over a fresh
+Fusion base is enough to reproduce it.
+
+**Two shapes, because where `polish()` first arrives decides which:**
+
+    new QStatusBar             crashes in the CONSTRUCTOR
+    QMainWindow::statusBar()   constructs, then crashes on sizeHint()
+
+**Why nothing caught it for months, which is the transferable part.** Every
+status-bar fixture in this tree reaches one through
+`QMainWindow::statusBar()` -- 30-odd call sites across three suites -- and
+not one had ever asked a status bar for its size hint. So the whole of the
+suite's coverage sat on the one arrangement that survives, and **the shape
+an application writes by hand -- a status bar in a window that is not a
+`QMainWindow`** -- was the shape nothing had ever constructed. A widget
+reached only through a convenience accessor is a widget tested only in the
+state that accessor leaves it in.
+
+**The fix is a queued call to the bar itself**, so the removal happens once
+Qt's own call has unwound. The bar is the context object, so a bar destroyed
+first discards the event rather than reviving a dead pointer. The documented
+escape is unchanged and says why it survives: an application that insists
+asks again AFTER showing, by which time this has run. Measured end to end --
+1 grip after construction, 0 after show and one event pass, and 1 with no
+cells after asking again.
+
+**Both halves are defended, and the crash needed the harness's `expect =
+crash`.** A crash is not a red line: restoring the immediate call takes the
+suite out after 1306 checks with no summary, which is what that expectation
+exists to accept. The sibling entry -- the grip never removed at all -- still
+reddens "and costs a status bar nothing", and now reddens the new
+grip-removal check with it.
+
+    a status bar keeps Qt's size grip                  ok -- reddened
+    ...grip is taken out while Qt is still inside      ok -- could not finish
+
+**How it was found, since it was not by looking for it.** A sweep printed the
+`sizeHint()` of 38 widget types to see which came out a fractional number of
+rows -- the lens from 8.466's message box -- and the probe segfaulted partway
+down the list. The crash was the finding; the fractional-height question it
+was asking returned nothing, because `sizeFromContents()` rounds every
+answer up to whole cells before a widget sees it.
+
+**Three other lenses were run first and found nothing, which is worth one
+line each so nobody re-runs them.** Every ambient pin
+`prepare_environment()` makes still takes effect against an environment that
+sets all five against it, measured on both versions under xcb. The
+`QAbstractScrollArea` family reports Qt's hardcoded 256x192 -- 10.11 rows --
+and it never reaches the user, because the layout snaps children to the grid
+(a list at its natural size came out 260x190, exactly 26x10). And of 96
+pixel metrics, **29 answer a fixed pixel number that does not move when the
+cell doubles** -- Fusion's, falling through this style's switch -- which is
+latent rather than live for the same reason: `sizeFromContents()` absorbs
+them. `PM_MessageBoxIconSize` was the one that escaped, because
+`QMessageBox` reads a metric directly to size a pixmap, and 8.466 has it.
+
+**The one gap left behind, named rather than closed**: nothing asks the
+`pixelMetric` surface numerically. The "cell is the unit" sweep in
+`suite_grid.cpp` covers `sizeFromContents` and `subControlRect` and never
+calls `pixelMetric`, so the 29 above are unmeasured by any gate -- and that
+surface has produced exactly one real defect already.
+
+2205 checks on Qt 6, 2172 passing and 33 stepping over on Qt 5, 669 sabotage
+entries.
 
 ### 8.467 The three xcb failures are one child that never finishes exiting (2026-10-20)
 

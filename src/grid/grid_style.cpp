@@ -1983,7 +1983,38 @@ static Color alternate_ground(const QStyleOptionViewItem *vi) {
 // the layering on purpose: the size removes the hazard, and this removes the
 // cost.
 void GridStyle::polish(QWidget *w) {
-	if (auto *bar = qobject_cast<QStatusBar *>(w)) bar->setSizeGripEnabled(false);
+	// DEFERRED, AND THE IMMEDIATE VERSION CRASHED. polish() arrives from
+	// inside the status bar's OWN setSizeGripEnabled(true): the QStatusBar
+	// constructor calls it, it calls reformat(), reformat() activates the
+	// box layout, and QLayout::activate() calls ensurePolished() on the
+	// bar. Calling setSizeGripEnabled(false) at that point deletes the grip
+	// AND -- through the second reformat() it triggers -- the layout that is
+	// mid-activate, so Qt returns into freed memory.
+	//
+	// Measured 2026-10-20, SIGSEGV in QLayout::totalMinimumSize() under both
+	// Qt 5.15.15 and Qt 6.8.2, with plain Fusion and plain Windows
+	// unaffected -- so it was this style's, not Qt's. Two shapes, because
+	// where polish() first arrives decides which:
+	//
+	//     new QStatusBar          crashes in the CONSTRUCTOR
+	//     QMainWindow::statusBar() constructs, then crashes on sizeHint()
+	//
+	// The suite reached neither for months: every fixture goes through
+	// QMainWindow::statusBar() and none had ever asked a status bar for its
+	// size hint, so the one public path an application takes by itself --
+	// building a status bar for a window that is not a QMainWindow -- was
+	// the one nothing rendered.
+	//
+	// A queued call to the bar itself, so the removal happens once Qt's own
+	// call has unwound. The bar is the context object, so a bar destroyed
+	// before the event runs discards it rather than reviving a dead
+	// pointer. The documented escape is unaffected and says why: an
+	// application that insists asks again AFTER showing, by which time this
+	// has run.
+	if (auto *bar = qobject_cast<QStatusBar *>(w))
+		QMetaObject::invokeMethod(bar,
+		    [bar] { bar->setSizeGripEnabled(false); },
+		    Qt::QueuedConnection);
 	QProxyStyle::polish(w);
 }
 

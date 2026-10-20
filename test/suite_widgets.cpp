@@ -8500,6 +8500,41 @@ int suite_widgets() {
 		    QStyle::CT_SizeGrip, &o, QSize(13, 13), nullptr);
 		CHECK(grip.isEmpty(), "a size grip is asked for no cells at all");
 
+		// AND A STATUS BAR AN APPLICATION BUILDS ITSELF, which crashed for
+		// months and which nothing here had ever constructed. Every fixture
+		// in this tree reaches a status bar through QMainWindow::statusBar()
+		// and none had asked one for a size hint, so the one shape an
+		// application writes by hand -- a status bar in a window that is not
+		// a QMainWindow -- was the shape nothing rendered.
+		//
+		// GridStyle::polish() took the grip out immediately, and polish()
+		// arrives from inside QStatusBar's own setSizeGripEnabled(true):
+		// constructor, reformat(), QLayout::activate(), ensurePolished().
+		// Removing it there deletes the layout mid-activate, and Qt returns
+		// into freed memory -- SIGSEGV in QLayout::totalMinimumSize() on
+		// both Qt versions, with plain Fusion and plain Windows unaffected.
+		//
+		// NO PARENT, deliberately: that is the arrangement that died in the
+		// constructor rather than later. The sizeHint() call is the second
+		// shape -- a QMainWindow's bar survived construction and crashed
+		// when first asked to measure itself.
+		//
+		// A crash is not a red line, so the entry defending this declares
+		// `expect = crash`: restore the immediate call and the suite stops
+		// here rather than reporting anything.
+		{
+			QStatusBar bare;
+			bare.addWidget(new QLabel(QStringLiteral("ready")));
+			const QSize hint = bare.sizeHint();
+			QCoreApplication::processEvents();
+			CHECK(hint.height() > 0 && hint.width() > 0,
+			      "a status bar built outside a QMainWindow can be polished"
+			      " and measured, rather than dying in its own constructor");
+			CHECK(bare.findChildren<QSizeGrip *>().isEmpty(),
+			      "and the grip is still taken out, once Qt's own call has"
+			      " unwound");
+		}
+
 		// THE RELATIONSHIP, not either frame. The same window rendered with
 		// Qt's grip switched on and with it switched off must come out the
 		// same cells -- which is the claim, "it costs a status bar nothing".

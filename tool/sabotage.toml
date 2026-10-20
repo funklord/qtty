@@ -4459,7 +4459,7 @@ check = "under the default theme a banded row is still the terminal's own ground
 # comparing the bar against itself with the grip switched off. 8.264.
 name = "a status bar keeps Qt's size grip"
 file = "src/grid/grid_style.cpp"
-find = "\tif (auto *bar = qobject_cast<QStatusBar *>(w)) bar->setSizeGripEnabled(false);"
+find = "\tif (auto *bar = qobject_cast<QStatusBar *>(w))\n\t\tQMetaObject::invokeMethod(bar,\n\t\t    [bar] { bar->setSizeGripEnabled(false); },\n\t\t    Qt::QueuedConnection);"
 into = "\tif (auto *bar = qobject_cast<QStatusBar *>(w)) (void)bar;"
 count = 1
 check = "and costs a status bar nothing"
@@ -7184,3 +7184,17 @@ check = "every part of a spin box, a scroll bar and a slider lands on"
 # ---- checks in suite_theme are named by no entry, which is said here
 # ---- rather than left for a sweep to notice. 8.461.
 
+
+[[sabotage]]
+# The grip taken out of a status bar immediately, which is what the code
+# did for months. polish() arrives from inside QStatusBar's own
+# setSizeGripEnabled(true) -- constructor, reformat(), QLayout::activate(),
+# ensurePolished() -- so removing it there deletes the layout mid-activate
+# and Qt returns into freed memory. 8.468.
+name = "a status bar's grip is taken out while Qt is still inside its own call"
+file = "src/grid/grid_style.cpp"
+find = "\tif (auto *bar = qobject_cast<QStatusBar *>(w))\n\t\tQMetaObject::invokeMethod(bar,\n\t\t    [bar] { bar->setSizeGripEnabled(false); },\n\t\t    Qt::QueuedConnection);"
+into = "\tif (auto *bar = qobject_cast<QStatusBar *>(w)) bar->setSizeGripEnabled(false);"
+count = 1
+check = "a status bar built outside a QMainWindow can be polished and measured, rather than dying in its own constructor"
+expect = "crash"
