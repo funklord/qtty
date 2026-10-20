@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2207 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2209 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3150,8 +3150,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-20: **2207 on Qt 6 with no failures,
-  and 2174 passing, 33 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-20: **2209 on Qt 6 with no failures,
+  and 2176 passing, 33 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18390,6 +18390,69 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.470 No application could show a table's row labels (2026-10-20)
+
+**Every label on a vertical header was elided, at every length, and a
+one-cell label vanished outright.** Measured on a two-row table before the
+fix:
+
+    label          header width   drawn
+    'r'            1 cell         nothing at all
+    'r1'           2 cells        one ellipsis, alone
+    'row'          3 cells        r and an ellipsis
+    'row-1'        5 cells        row and an ellipsis
+    'row-12'       6 cells        row- and an ellipsis
+    'a-longer-one' 12 cells       a-longer-o and an ellipsis
+
+`CE_HeaderLabel` indents a heading by one cell, and the reason is sound
+where it was written: `CE_ItemViewItem` starts an item's text one cell in,
+so a heading that did not would sit one cell left of the column it names.
+That is this project's own finding and three checks hold it.
+
+**The indent is about a heading and the column of data BELOW it, and a
+vertical header has none.** It names a ROW, whose data is to the right.
+So the indent buys nothing there -- and it costs everything, because **Qt
+sizes a vertical header to exactly fit its widest text.** One cell of
+indent therefore guarantees the text never fits, which is why the table
+above has no length that works rather than a threshold.
+
+**A horizontal header escaped for a reason worth knowing**: its section
+width is the COLUMN's, sized by the view and normally wider than the
+heading, so the indent has room. The rule was correct in the orientation it
+was measured in and wrong in the other, and nothing distinguished them.
+
+**Why no check caught it, which is the transferable half.** The fixture that
+asserts the heading rule calls `verticalHeader()->hide()` two lines in --
+to keep the frame about the columns -- so the heading rule was asserted
+only in the orientation it was written for. **A fixture that hides a
+widget to make its measurement clean is a fixture that cannot see that
+widget**, and three checks sat on top of that hide for months.
+
+This is the shape `working-practice.md` names: a rule written under one
+configuration, answering a question it did not state. "Who does the
+heading line up with" was a complete answer while a heading only ever sat
+above a column; the second orientation did not make it wrong, it revealed
+that the rule had never said which orientation it was about.
+
+**The fix reads the orientation off the option**, not by casting to
+QHeaderView, because a style is handed what to draw and not who asked --
+and `QStyleOptionHeader` defaults to `Horizontal`, so a caller that sets
+nothing keeps the indent it had. The horizontal invariant is unchanged and
+re-measured: `name` and `qty` still start at columns 3 and 13, exactly over
+`a0` and `b0`.
+
+**Found by rendering the widget set and reading it**, which is section 0d's
+method and the same sweep that turned up 8.468's crash. 38 widget types,
+each alone in a terminal, each frame printed: none drew nothing, and the
+table was the one whose frame did not read correctly.
+
+**Four sabotage entries now cover this case**, three that existed for the
+heading rule and one new for the orientation. The new one restores
+`indent = 1` unconditionally, which is the code as it stood.
+
+2209 checks on Qt 6, 2176 passing and 33 stepping over on Qt 5, 672
+sabotage entries.
 
 ### 8.469 The pixel-metric surface is asked numerically now, and the pin caught itself being wrong (2026-10-20)
 

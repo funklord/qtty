@@ -4065,6 +4065,51 @@ int suite_widgets() {
 		GridGuard::reset();
 	}
 
+	// AND THE SAME INDENT ON A VERTICAL HEADER, WHERE IT COST THE WHOLE
+	// LABEL. The check above hides the vertical header -- `verticalHeader()
+	// ->hide()`, two lines into the fixture -- which is why this stood: the
+	// heading rule was asserted only in the orientation it was written for.
+	//
+	// A vertical header names a ROW and that row's data is to the RIGHT, so
+	// there is nothing under it to line up with and the indent buys nothing.
+	// It costs everything, because Qt sizes a vertical header to exactly fit
+	// its widest text: one cell of indent means the text never fits, at any
+	// length. Measured 2026-10-20 before the fix -- 'r' drew nothing at all,
+	// 'r1' drew one ellipsis, 'a-longer-one' drew 'a-longer-o' and an
+	// ellipsis. No application could show row labels.
+	//
+	// Two lengths, because they failed differently: a label at least two
+	// cells wide kept a head and lost its tail, and a one-cell label had no
+	// room for even the ellipsis and vanished.
+	{
+		const auto row_label = [](const QString &lab) {
+			QStandardItemModel m(2, 1);
+			m.setItem(0, 0, new QStandardItem(QStringLiteral("x")));
+			m.setItem(1, 0, new QStandardItem(QStringLiteral("y")));
+			m.setHorizontalHeaderLabels({QStringLiteral("col")});
+			m.setVerticalHeaderLabels({lab, lab});
+			QTableView t;
+			t.setModel(&m);
+			t.setFrameShape(QFrame::NoFrame);
+			show(t, 30, 5);
+			CellBuffer b(32, 6);
+			render_once(t, b);
+			const QPoint at = findText(b, lab);
+			GridGuard::reset();
+			return at;
+		};
+		const QPoint wide = row_label(QStringLiteral("r1"));
+		const QPoint narrow = row_label(QStringLiteral("r"));
+		printf("info: a two-cell row label is at column %d, a one-cell one"
+		       " at %d\n", wide.x(), narrow.x());
+		CHECK(wide.x() >= 0,
+		      "a table's row labels are drawn in full, the heading indent"
+		      " being for a column of data below and a row having none");
+		CHECK(narrow.x() >= 0,
+		      "and a one-cell row label is drawn rather than vanishing, which"
+		      " is the length that had no room even for an ellipsis");
+	}
+
 	// The CURRENT item, which was drawn nowhere at all: measured with a full
 	// to_snapshot() so a colour-only difference could not hide, moving it
 	// through a three-item list changed ZERO cells. State_HasFocus is never

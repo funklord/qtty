@@ -2942,7 +2942,9 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				//
 				// The arithmetic is CE_ItemViewItem's, for the same reason
 				// the starting column is.
-				const QString label = elide_to_cells(h->text, c.width() - 1);
+				const QString label = elide_to_cells(
+				    h->text, c.width()
+				             - (h->orientation == Qt::Horizontal ? 1 : 0));
 				// AlignRight only, and CENTRING is deliberately still
 				// ignored. Qt centres a horizontal header by default, and
 				// the decision above -- line the heading up with the data --
@@ -2977,9 +2979,41 @@ void GridStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPainter
 				// Identical to the old expressions under LeftToRight --
 				// at = L+1 + room - fits is R+1-fits when room is width-1 --
 				// so this moves nothing that was right.
-				const int room = c.width() - 1;
-				const int from = leading_edge(c.left(), c.right(), 1, room,
-				                              opt->direction);
+				// AND ONLY A HORIZONTAL HEADER IS INDENTED, which is what
+				// every argument above is about: a heading and the column of
+				// data BELOW it. A VERTICAL header names a row, and that
+				// row's data is to the RIGHT -- there is nothing under it to
+				// line up with, so the indent buys nothing there and costs
+				// the label.
+				//
+				// It costs the whole label, because Qt sizes a vertical
+				// header to exactly fit its widest text. One cell of indent
+				// therefore guarantees the text never fits, at every length.
+				// Measured 2026-10-20 on a two-row table:
+				//
+				//     label          header   drawn
+				//     'r'            1 cell   nothing at all
+				//     'r1'           2 cells  an ellipsis, alone
+				//     'row'          3 cells  r + an ellipsis
+				//     'row-1'        5 cells  row + an ellipsis
+				//     'a-longer-one' 12 cells a-longer-o + an ellipsis
+				//
+				// So no application could show row labels: every one of them
+				// lost at least its last character and a short one lost
+				// everything. A horizontal header escapes because its
+				// section width is the COLUMN's, which is sized by the view
+				// and is normally wider than the heading -- which is why this
+				// stood while the rule looked right.
+				//
+				// The orientation is read off the option rather than by
+				// casting to QHeaderView, because a style is handed what to
+				// draw and not who asked. QStyleOptionHeader defaults to
+				// Horizontal, so a caller that sets nothing keeps the
+				// indent it had.
+				const int indent = h->orientation == Qt::Horizontal ? 1 : 0;
+				const int room = c.width() - indent;
+				const int from = leading_edge(c.left(), c.right(), indent,
+				                              room, opt->direction);
 				const int fits = text_cells(label);
 				const Qt::Alignment hal =
 				    QStyle::visualAlignment(opt->direction, h->textAlignment);

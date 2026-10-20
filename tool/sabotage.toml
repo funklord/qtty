@@ -6404,8 +6404,8 @@ check = "and CellItemDelegate lays the row out the same way the style"
 [[sabotage]]
 name = "a heading keeps the left edge in both layout directions"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\t\tconst int from = leading_edge(c.left(), c.right(), 1, room,\n\t\t\t\t                              opt->direction);"
-into = "\t\t\t\tconst int from = c.left() + 1;"
+find = "\t\t\t\tconst int from = leading_edge(c.left(), c.right(), indent,\n\t\t\t\t                              room, opt->direction);"
+into = "\t\t\t\tconst int from = c.left() + indent;"
 count = 1
 check = "a heading shares an edge with its data in both layout"
 
@@ -7223,3 +7223,15 @@ find = "\tcase PM_MessageBoxIconSize:                            return 2 * ch;"
 into = "\tcase PM_MessageBoxIconSize: case PM_SmallIconSize:      return 2 * ch;"
 count = 1
 check = "and every pinned metric this Qt has still answers one, so the set cannot outlive what it describes"
+
+[[sabotage]]
+# The heading indent applied to a vertical header again, which is what
+# stood for months: Qt sizes a vertical header to exactly fit its widest
+# label, so one cell of indent means the label never fits and every row
+# label came out elided -- a one-cell label vanished outright. 8.470.
+name = "a vertical header's label is indented like a column heading"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tconst int indent = h->orientation == Qt::Horizontal ? 1 : 0;"
+into = "\t\t\t\tconst int indent = 1;"
+count = 1
+check = "a table's row labels are drawn in full, the heading indent being for a column of data below and a row having none"
