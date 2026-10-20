@@ -18389,6 +18389,83 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.467 The three xcb failures are one child that never finishes exiting (2026-10-20)
+
+**All four arms are clean, and the cause was in none of the places the three
+red checks pointed at.**
+
+    Qt 6.8.2   offscreen  2203 pass,  0 step over, 0 fail
+    Qt 6.8.2   xcb        2200 pass,  3 step over, 0 fail
+    Qt 5.15.15 offscreen  2170 pass, 33 step over, 0 fail
+    Qt 5.15.15 xcb        2172 pass, 31 step over, 0 fail
+
+The three were "past its cap the deferral counts what it drops", "and keeps
+the first ones rather than the last", and "and is said when the program ends,
+rather than dropped" -- the Qt message handler's deferral, its 256-message cap
+and its atexit end. **None of that was reached.** All three read the bytes a
+forked child wrote to a pseudo-terminal, and on Qt 5 under xcb the child wrote
+nothing at all.
+
+**The bytes could not say that, which is why the fixture now says how the
+child LEFT.** An empty capture, a child killed on the parent's patience, and a
+child that exited cleanly having written nothing are three different faults
+reading identically from outside. With the wait status printed:
+
+    exit(0) child        how it left        bytes
+    Qt 5 offscreen       exited 0           8666 / 36
+    Qt 6 offscreen       exited 0           8666 / 36
+    Qt 5 xcb             KILLED, signal 9   0 / 0
+    Qt 6 xcb             KILLED, signal 9   8666 / 36
+
+**So the child hangs in `exit(3)` on BOTH versions under xcb**, and is
+SIGKILLed when the parent's one second of patience runs out. Qt 5 blocks
+BEFORE qtty's atexit flush and Qt 6 blocks after it. That is the whole of the
+difference between a red check and a green one here, and **Qt 6 was passing by
+winning a race rather than by being right.**
+
+**What makes the child hang is the parent having touched the X server**,
+measured with a probe that forks after making and destroying twenty windows:
+
+    windows made first   Qt 5.15.15          Qt 6.8.2
+    no                   exited 0, printed   killed, printed
+    yes                  KILLED, SILENT      killed, printed
+
+A forked child inherits its parent's X connection and cannot complete exit
+with it; the suite has touched the server thoroughly by the time this fixture
+runs. Nothing here is a defect in the library or in the deferral, both of
+which are exercised correctly on the offscreen arm that `make check` runs.
+
+**The first version of that probe had a control that controlled nothing, and
+it was caught by the probe printing what it did.** The arms were selected with
+`PROBE_WIDGETS=` and `PROBE_WIDGETS=1` -- and an empty string is a non-null
+`getenv`, so BOTH arms made windows and the comparison was between two copies
+of one case. The run said "made and destroyed 20 windows first" under both
+headings, which is the only reason it was noticed. **Printing what a fixture
+DID, beside what it concluded, is what let a bad control fail visibly** -- the
+same method section 0d records, turned on the instrument instead of the
+subject.
+
+**Stepped over on the measured condition, not on the platform's name.** The
+guard is `WIFSIGNALED(status)`: a child that had to be killed is not evidence
+about the deferral. That costs three nominal passes on the Qt 6 xcb arm, and
+it is worth paying -- a check that passes because a write beat a deadlock is
+not holding anything, and the offscreen arm still holds all three with the
+child exiting 0.
+
+**The cost that remains, stated rather than hidden**: two children per xcb run
+cannot exit, so each one spends the parent's full second before the SIGKILL.
+An xcb run pays two seconds for work that produces nothing.
+
+**The one option that would make them run anywhere is the holder's.** The
+fixture forks, which is why the child inherits the connection; spawning a
+FRESH process that sets qtty up itself would test the same thing with no
+inherited X state. It needs a small helper binary -- a new build artefact, a
+new install question, and a path the suite has to find -- so it is recorded
+with its cost rather than built. Nothing else in this tree spawns a helper
+today.
+
+2203 checks on Qt 6, 668 sabotage entries, every anchor matching.
+
 ### 8.466 The last seven Qt 5 failures, four of them one missing plugin option (2026-10-20)
 
 **Qt 5 is clean, and nothing was waved through to get there.**
@@ -18498,15 +18575,13 @@ decision wants, in one change. It is a design change, it touches section
 0b's open question about how much of a style qtty should notice, and it is
 the holder's.
 
-**One new axis opened on the way and is left open rather than explained.**
-Qt 5.15.15 + xcb fails three checks that Qt 5 + offscreen and both Qt 6 runs
-pass, all in one family -- the Qt message handler's deferral cap, which
-buffers 256 distinct messages and counts the rest: "past its cap the
-deferral counts what it drops", "and keeps the first ones rather than the
-last", "and is said when the program ends, rather than dropped". **The cause
-is not established and no guess is recorded**, because a comfortable
-explanation that ends an investigation costs more than none. It is a
-platform-and-version pair nothing had run before today.
+**One new axis opened on the way and 8.467 closed it.** Qt 5.15.15 + xcb
+failed three checks that Qt 5 + offscreen and both Qt 6 runs passed, all in
+the Qt message handler's deferral. The cause was in none of them: a forked
+child cannot complete `exit(3)` once its parent has touched the X server, so
+it is SIGKILLed on the parent's patience -- on both versions, with Qt 6
+blocking after the atexit flush and Qt 5 before it. Qt 6 was passing by
+winning a race rather than by being right.
 
 2203 checks on Qt 6, 668 sabotage entries, every anchor matching.
 

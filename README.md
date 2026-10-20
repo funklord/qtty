@@ -113,8 +113,8 @@ monospace font with integral metrics (DejaVu Sans Mono for now; bundled font pla
 maintenance: `make record R=render` rewrites the render snapshot after a
 reviewed change. Build against Qt 5 with
 `make BUILD_DIR=build-qt5 QMAKE=/usr/bin/qmake`; the suite builds and runs
-there too, with 33 checks stepping over where that version's platform
-plugin cannot be asked the question — see project.md 8.465 and 8.466. The example runs with `make run`, or directly as
+there too, with 33 checks stepping over where that version cannot be asked
+the question — see project.md 8.465 to 8.467. The example runs with `make run`, or directly as
 `build/example/chat/chat --tui`.
 
 ## Using it from another project

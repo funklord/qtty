@@ -153,7 +153,7 @@ struct Tty {
 // at the first short read of a non-blocking master.
 QByteArray fatal_child(bool screen, const std::function<void()> &body,
                        const QByteArray &preload = QByteArray(),
-                       bool *stopped = nullptr) {
+                       bool *stopped = nullptr, int *wait_status = nullptr) {
 	const int master = posix_openpt(O_RDWR | O_NOCTTY);
 	if (master < 0) return QByteArray();
 	int slave = -1;
@@ -243,7 +243,28 @@ QByteArray fatal_child(bool screen, const std::function<void()> &body,
 		out.append(buf, int(n));
 	}
 	::close(master);
+	// HOW THE CHILD LEFT, for whoever reads an empty capture. A child that
+	// was killed on the patience above, one that died on a signal and one
+	// that exited cleanly having written nothing are three different faults,
+	// and the bytes alone cannot tell them apart -- measured on Qt 5 under
+	// xcb, where three checks in one family went red together because the
+	// child said nothing at all.
+	if (wait_status) *wait_status = status;
 	return out;
+}
+
+// A wait status in a form an info line can print.
+QByteArray how_it_left(int status) {
+	char buf[64];
+	if (WIFEXITED(status))
+		snprintf(buf, sizeof(buf), "exited %d", WEXITSTATUS(status));
+	else if (WIFSIGNALED(status))
+		snprintf(buf, sizeof(buf), "killed by signal %d", WTERMSIG(status));
+	else if (WIFSTOPPED(status))
+		snprintf(buf, sizeof(buf), "stopped by signal %d", WSTOPSIG(status));
+	else
+		snprintf(buf, sizeof(buf), "status %d", status);
+	return QByteArray(buf);
 }
 
 } // namespace
@@ -5777,16 +5798,60 @@ int suite_backend() {
 		//
 		// exit(0) rather than _exit(0), because the atexit flush is what
 		// prints the report.
+		int many_status = 0;
 		const QByteArray many = fatal_child(false, [] {
 			for (int i = 0; i < 300; ++i)
 				qWarning("qtty-check: distinct message %d", i);
 			::exit(0);
-		});
-		CHECK(many.contains("further distinct message(s)"),
-		      "past its cap the deferral counts what it drops");
-		CHECK(many.contains("qtty-check: distinct message 0")
-		      && !many.contains("qtty-check: distinct message 299"),
-		      "and keeps the first ones rather than the last");
+		}, QByteArray(), nullptr, &many_status);
+		// PRINTED, because the three checks in this family all read a
+		// child's captured bytes and every one of them reads as a failure
+		// of the deferral when the child simply said nothing. Measured on
+		// Qt 5 under xcb: all three went red together, which an empty
+		// capture explains and a broken cap does not.
+		printf("info: the 300-message child %s and said %d byte(s)%s\n",
+		       how_it_left(many_status).constData(), many.size(),
+		       many.isEmpty() ? " -- NOTHING, so the checks below are about"
+		                        " the child rather than the cap" : "");
+		// AND A CHILD THAT HAD TO BE KILLED IS NOT EVIDENCE ABOUT THE
+		// DEFERRAL. These three read a forked child's captured bytes, and
+		// they need that child to COMPLETE exit(3), because the atexit
+		// flush is the thing under test and _exit(2) skipping it is the
+		// control twenty lines down.
+		//
+		// A forked child whose parent holds X resources cannot complete
+		// exit. Measured 2026-10-20 under xcb on a 1280x1024 Xvfb, with a
+		// probe that forks after making and destroying twenty windows:
+		//
+		//     windows first   Qt 5.15.15        Qt 6.8.2
+		//     no              exited 0, printed killed, printed
+		//     yes             KILLED, SILENT    killed, printed
+		//
+		// So the child hangs in exit on BOTH versions once the parent has
+		// touched the X server, and the suite has touched it thoroughly by
+		// the time this runs. Qt 5 blocks BEFORE qtty's atexit flush and Qt
+		// 6 blocks after it -- which is why Qt 6 passes here and Qt 5 does
+		// not, and why Qt 6's pass is a race it happens to win rather than
+		// evidence. Stepped over on the measured condition rather than on
+		// the platform's name, so the offscreen arm -- which is what `make
+		// check` runs, and where the child exits 0 -- still holds the
+		// deferral to all three. 8.467 has the measurement and the one
+		// option that would make them run anywhere: spawning a fresh helper
+		// process instead of forking, which is a new build artefact and the
+		// holder's to want.
+		if (WIFSIGNALED(many_status)) {
+			printf("SKIP: past its cap the deferral counts what it drops\n"
+			       "      the child had to be killed, so its bytes say"
+			       " nothing about the cap -- project.md 8.467\n");
+			printf("SKIP: and keeps the first ones rather than the last\n"
+			       "      the child had to be killed -- project.md 8.467\n");
+		} else {
+			CHECK(many.contains("further distinct message(s)"),
+			      "past its cap the deferral counts what it drops");
+			CHECK(many.contains("qtty-check: distinct message 0")
+			      && !many.contains("qtty-check: distinct message 299"),
+			      "and keeps the first ones rather than the last");
+		}
 
 		// Interleaved, which is the case the first version of this fix left
 		// open: it kept only what arrived before the first ESC. Over a slow
@@ -5914,12 +5979,25 @@ int suite_backend() {
 		// printed nothing at all. The control above still holds because
 		// _exit(2) skips atexit handlers, which is exactly the difference
 		// between the two.
+		int at_exit_status = 0;
 		const QByteArray at_exit = fatal_child(false, [] {
 			qWarning("qtty-check: this one was held back");
 			::exit(0);
-		});
-		CHECK(at_exit.contains("qtty-check: this one was held back"),
-		      "and is said when the program ends, rather than dropped");
+		}, QByteArray(), nullptr, &at_exit_status);
+		printf("info: the exit(0) child %s and said %d byte(s), the"
+		       " _exit(0) one %d\n", how_it_left(at_exit_status).constData(),
+		       at_exit.size(), quiet.size());
+		// Same precondition as the cap above, and for the same reason: this
+		// is the check that the atexit end exists at all, so a child that
+		// never finished exiting cannot answer it.
+		if (WIFSIGNALED(at_exit_status)) {
+			printf("SKIP: and is said when the program ends, rather than"
+			       " dropped\n      the child had to be killed before it"
+			       " finished exiting -- project.md 8.467\n");
+		} else {
+			CHECK(at_exit.contains("qtty-check: this one was held back"),
+			      "and is said when the program ends, rather than dropped");
+		}
 	}
 	{
 		// With a frame up the screen has to go back FIRST. A message printed
