@@ -539,5 +539,222 @@ int suite_grid() {
 		      " set cannot outlive what it describes");
 	}
 
+	// AND WHICH PARTS THIS STYLE SAYS EXIST, against the base style's answer.
+	// A sub-control rect is a hit target and a drawing site, so a style that
+	// CLAIMS a part the base declines has invented one, and a style that
+	// DECLINES one the base claims has taken one away. Both are reachable
+	// faults and neither shows in a frame.
+	//
+	// The lens is 8.475's, where it cost something: that change wrapped every
+	// standard icon in an engine, and QIcon::isNull() asks the ENGINE -- so
+	// 11 of the 81 StandardPixmap values Fusion has no icon for came back
+	// non-null with a blank pixmap behind them, and a widget asking isNull()
+	// would have reserved cells for nothing. The question that found it
+	// generalises to every override: what did Qt decline to answer, and does
+	// this style now answer it?
+	//
+	// PINNED AS MEASURED. Eleven differences, and each is this style being
+	// right or a case already recorded:
+	//
+	//   groupbox bare/checkbox, bare/label, titled/checkbox   declined
+	//     Fusion computes a 14x14 checkbox rect for a box that is not
+	//     checkable and a 2x2 label rect for one with no title. There is no
+	//     such part; declining is the honest answer and Fusion is the sloppy
+	//     one here.
+	//   spinbox/field   claimed
+	//     The field keeps a one-cell floor below the width where Fusion gives
+	//     up. 8.473 measured the consequence and found none -- the internal
+	//     QLineEdit covers the field and takes the press, so nothing reads
+	//     the rect.
+	//   combobox/field   claimed
+	//     Deliberate in 8.472: a combo keeps an edit field wherever two cells
+	//     allow one, because a rect overlapping the arrow made a click on the
+	//     value open the popup. Its own check asserts it.
+	//   h+v scrollbar/subline, addline   declined
+	//   h+v scrollbar/thumb              claimed
+	//     At one cell this style gives the cell to the thumb and declines
+	//     both arrows, where Fusion claims both arrows and declines the
+	//     thumb. Measured: it draws the thumb, no click moves it, and the
+	//     KEYBOARD steps it at every width -- which is this library's whole
+	//     premise, so an indicator you work with the keys rather than a trap.
+	//
+	// ASSERTED IN BOTH DIRECTIONS, so the set cannot rot: nothing outside it
+	// may differ, and everything inside it must still differ. The same set
+	// holds on Qt 5.15.15 and Qt 6.8.2 -- 95 agreements and these 11 on both
+	// -- so unlike the pixel metrics above this needs no conditional.
+	{
+		static const char *const allowed[] = {
+			"combobox/field/claimed",
+			"groupbox bare/checkbox/declined",
+			"groupbox bare/label/declined",
+			"groupbox titled/checkbox/declined",
+			"h scrollbar/addline/declined",
+			"h scrollbar/subline/declined",
+			"h scrollbar/thumb/claimed",
+			"spinbox/field/claimed",
+			"v scrollbar/addline/declined",
+			"v scrollbar/subline/declined",
+			"v scrollbar/thumb/claimed",
+		};
+		QStyle *plain = QStyleFactory::create(QStringLiteral("Fusion"));
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		QSet<QString> seen_diffs;
+		int agreed = 0;
+		const auto cmp = [&](const QString &what, const QString &part,
+		                     QStyle::ComplexControl cc, QStyle::SubControl sc,
+		                     const QStyleOptionComplex *o, const QWidget *w) {
+			if (!plain) return;
+			const bool b = plain->subControlRect(cc, o, sc, w).isEmpty();
+			const bool g = QApplication::style()
+			                   ->subControlRect(cc, o, sc, w).isEmpty();
+			if (b == g) { ++agreed; return; }
+			seen_diffs.insert(what + QLatin1Char('/') + part
+			                  + (b ? QStringLiteral("/claimed")
+			                       : QStringLiteral("/declined")));
+		};
+		for (int n : { 1, 2, 3, 6, 14 }) {
+			{
+				struct Sp : QSpinBox { using QSpinBox::QSpinBox;
+					QStyleOptionSpinBox real() const {
+						QStyleOptionSpinBox o; initStyleOption(&o);
+						return o; } };
+				Sp x;
+				x.setAttribute(Qt::WA_DontShowOnScreen);
+				x.resize(n * cw, ch);
+				x.show();
+				QCoreApplication::processEvents();
+				QStyleOptionSpinBox o = x.real();
+				o.subControls = QStyle::SC_All;
+				cmp(QStringLiteral("spinbox"), QStringLiteral("up"),
+				    QStyle::CC_SpinBox, QStyle::SC_SpinBoxUp, &o, &x);
+				cmp(QStringLiteral("spinbox"), QStringLiteral("down"),
+				    QStyle::CC_SpinBox, QStyle::SC_SpinBoxDown, &o, &x);
+				cmp(QStringLiteral("spinbox"), QStringLiteral("field"),
+				    QStyle::CC_SpinBox, QStyle::SC_SpinBoxEditField, &o, &x);
+			}
+			{
+				struct Cb : QComboBox { using QComboBox::QComboBox;
+					QStyleOptionComboBox real() const {
+						QStyleOptionComboBox o; initStyleOption(&o);
+						return o; } };
+				Cb x;
+				x.addItem(QStringLiteral("Hi"));
+				x.setAttribute(Qt::WA_DontShowOnScreen);
+				x.resize(n * cw, ch);
+				x.show();
+				QCoreApplication::processEvents();
+				QStyleOptionComboBox o = x.real();
+				o.subControls = QStyle::SC_All;
+				cmp(QStringLiteral("combobox"), QStringLiteral("arrow"),
+				    QStyle::CC_ComboBox, QStyle::SC_ComboBoxArrow, &o, &x);
+				cmp(QStringLiteral("combobox"), QStringLiteral("field"),
+				    QStyle::CC_ComboBox, QStyle::SC_ComboBoxEditField, &o, &x);
+			}
+			for (auto d : { Qt::Horizontal, Qt::Vertical }) {
+				const QString side = d == Qt::Horizontal
+				    ? QStringLiteral("h ") : QStringLiteral("v ");
+				{
+					struct Sl : QSlider { using QSlider::QSlider;
+						QStyleOptionSlider real() const {
+							QStyleOptionSlider o; initStyleOption(&o);
+							return o; } };
+					Sl x(d);
+					x.setAttribute(Qt::WA_DontShowOnScreen);
+					if (d == Qt::Horizontal) x.resize(n * cw, ch);
+					else x.resize(cw, n * ch);
+					x.show();
+					QCoreApplication::processEvents();
+					QStyleOptionSlider o = x.real();
+					o.subControls = QStyle::SC_All;
+					cmp(side + QStringLiteral("slider"),
+					    QStringLiteral("handle"), QStyle::CC_Slider,
+					    QStyle::SC_SliderHandle, &o, &x);
+					cmp(side + QStringLiteral("slider"),
+					    QStringLiteral("groove"), QStyle::CC_Slider,
+					    QStyle::SC_SliderGroove, &o, &x);
+				}
+				{
+					struct Sb : QScrollBar { using QScrollBar::QScrollBar;
+						QStyleOptionSlider real() const {
+							QStyleOptionSlider o; initStyleOption(&o);
+							return o; } };
+					Sb x(d);
+					x.setRange(0, 100);
+					x.setValue(50);
+					x.setAttribute(Qt::WA_DontShowOnScreen);
+					if (d == Qt::Horizontal) x.resize(n * cw, ch);
+					else x.resize(cw, n * ch);
+					x.show();
+					QCoreApplication::processEvents();
+					QStyleOptionSlider o = x.real();
+					o.subControls = QStyle::SC_All;
+					const QString bar = side + QStringLiteral("scrollbar");
+					cmp(bar, QStringLiteral("subline"), QStyle::CC_ScrollBar,
+					    QStyle::SC_ScrollBarSubLine, &o, &x);
+					cmp(bar, QStringLiteral("thumb"), QStyle::CC_ScrollBar,
+					    QStyle::SC_ScrollBarSlider, &o, &x);
+					cmp(bar, QStringLiteral("addline"), QStyle::CC_ScrollBar,
+					    QStyle::SC_ScrollBarAddLine, &o, &x);
+				}
+			}
+			for (int kind = 0; kind < 3; ++kind) {
+				struct Gb : QGroupBox { using QGroupBox::QGroupBox;
+					QStyleOptionGroupBox real() const {
+						QStyleOptionGroupBox o; initStyleOption(&o);
+						return o; } };
+				Gb x;
+				if (kind >= 1) x.setTitle(QStringLiteral("T"));
+				if (kind == 2) x.setCheckable(true);
+				x.setAttribute(Qt::WA_DontShowOnScreen);
+				x.resize(n * cw, 4 * ch);
+				x.show();
+				QCoreApplication::processEvents();
+				QStyleOptionGroupBox o = x.real();
+				const QString g = kind == 0
+				    ? QStringLiteral("groupbox bare")
+				    : (kind == 1 ? QStringLiteral("groupbox titled")
+				                 : QStringLiteral("groupbox checkable"));
+				cmp(g, QStringLiteral("checkbox"), QStyle::CC_GroupBox,
+				    QStyle::SC_GroupBoxCheckBox, &o, &x);
+				cmp(g, QStringLiteral("label"), QStyle::CC_GroupBox,
+				    QStyle::SC_GroupBoxLabel, &o, &x);
+				cmp(g, QStringLiteral("contents"), QStyle::CC_GroupBox,
+				    QStyle::SC_GroupBoxContents, &o, &x);
+			}
+		}
+		delete plain;
+		QStringList unpinned, rotted;
+		for (const QString &d : seen_diffs) {
+			bool known = false;
+			for (const char *a : allowed)
+				if (d == QLatin1String(a)) known = true;
+			if (!known) unpinned << d;
+		}
+		for (const char *a : allowed)
+			if (!seen_diffs.contains(QLatin1String(a)))
+				rotted << QString::fromLatin1(a);
+		unpinned.sort();
+		rotted.sort();
+		printf("info: %d sub-control answer(s) agree with the base style and"
+		       " %d differ; %d unpinned, %d pinned but gone\n", agreed,
+		       int(seen_diffs.size()), int(unpinned.size()),
+		       int(rotted.size()));
+		if (!unpinned.isEmpty())
+			printf("info: not pinned: %s\n",
+			       qPrintable(unpinned.join(QStringLiteral(", "))));
+		if (!rotted.isEmpty())
+			printf("info: pinned but no longer differing: %s\n",
+			       qPrintable(rotted.join(QStringLiteral(", "))));
+		// `agreed > 0` is the vacuous-pass guard: a sweep that compared
+		// nothing would report no differences and ask nothing.
+		CHECK(agreed > 0 && unpinned.isEmpty(),
+		      "no sub-control claims a part the base style declines, or"
+		      " declines one it claims, except where this style does so"
+		      " deliberately and says which");
+		CHECK(rotted.isEmpty(),
+		      "and every deliberate difference still happens, so that set"
+		      " cannot outlive what it describes either");
+	}
+
 	return fails;
 }

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2220 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2222 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3150,8 +3150,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-21: **2220 on Qt 6 with no failures,
-  and 2189 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-21: **2222 on Qt 6 with no failures,
+  and 2191 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18390,6 +18390,84 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.476 A gate on which parts this style says exist (2026-10-21)
+
+**Taken by the copyright holder 2026-10-21**, and the lens is 8.475's, where
+it cost something. That change wrapped every standard icon in an engine, and
+`QIcon::isNull()` asks the ENGINE -- so the 11 StandardPixmap values Fusion
+has no icon for came back non-null with a blank pixmap behind them. A widget
+asking `isNull()` would have reserved cells for nothing, and the placement
+path's alpha scan would have stopped the blank picture reaching a terminal,
+so the symptom was spent space rather than ink.
+
+**The question that found it generalises to every override: what did Qt
+decline to answer, and does this style now answer it?** A sub-control rect is
+a hit target and a drawing site, so a style that CLAIMS a part the base
+declines has invented one, and a style that DECLINES one the base claims has
+taken one away. Both are reachable and neither shows in a frame.
+
+Swept: every sub-control of the spin box, combo box, slider, scroll bar and
+group box, in both orientations and three group-box shapes, at 1, 2, 3, 6
+and 14 cells, against a fresh `QFusionStyle`.
+
+    95 answers agree with the base style, 11 differ
+    the same 95 and the same 11 on Qt 5.15.15 and Qt 6.8.2
+
+**Identical on both versions, so this needs no conditional** -- unlike the
+pixel-metric sweep in 8.469, where the two Qts disagreed on count, value and
+membership and the pin had to be by name with one `#if`.
+
+**The eleven, and why each is right rather than tolerated:**
+
+    groupbox bare/checkbox, bare/label, titled/checkbox   declined
+      Fusion computes a 14x14 checkbox rect for a box that is NOT checkable
+      and a 2x2 label rect for one with NO title. There is no such part;
+      declining is the honest answer, and here Fusion is the sloppy one.
+    spinbox/field   claimed
+      A one-cell floor below the width where Fusion gives up. 8.473 measured
+      the consequence and found none: the internal QLineEdit covers the
+      field and takes the press, so nothing reads the rect.
+    combobox/field   claimed
+      Deliberate in 8.472 -- a combo keeps an edit field wherever two cells
+      allow one, because a rect overlapping the arrow made a click on the
+      value open the popup. Its own check asserts it.
+    h+v scrollbar/subline, addline   declined
+    h+v scrollbar/thumb              claimed
+      At ONE cell this style gives the cell to the thumb and declines both
+      arrows, where Fusion claims both arrows and declines the thumb.
+      Measured: it draws the thumb, no click moves it, and the KEYBOARD
+      steps it at every width -- which is this library's premise, so an
+      indicator worked with the keys rather than a trap.
+
+**Both directions, so the set cannot rot**: nothing outside it may differ,
+and everything inside it must still differ. One sabotage entry per
+direction -- the group box's contents rect declined, which appears unpinned;
+and a non-checkable group box given a checkbox rect after all, which removes
+a pinned difference and would otherwise leave the set over-claiming in
+silence.
+
+**And `agreed > 0` is in the first assertion**, because a sweep that compared
+nothing would report no differences and ask nothing. That is the same guard
+the pixel-metric sweep carries and the same one the null-icon check needed.
+
+**Two method notes, both from getting it wrong first.**
+
+The sweep reads each widget's OWN option through `initStyleOption()`, not a
+hand-built one. This file's own comment says a hand-built option is only as
+faithful as the lines that fill it, and that has cost a wrong reading twice
+today -- once where `QStyleOptionSpinBox::frame` defaults to false while a
+real spin box is framed.
+
+And the first pass **sized a `QScrollBar` one row tall while `QScrollBar`
+defaults to VERTICAL**, which manufactured a difference at every width: a
+vertical bar with no room for an arrow declines one, and Fusion splits the
+height regardless. It read as a defect in the scroll bar's geometry and was
+an instrument holding the widget sideways. The sweep sizes each orientation
+to match itself now.
+
+2222 checks on Qt 6, 2191 passing and 31 stepping over on Qt 5, 681 sabotage
+entries.
 
 ### 8.475 GridStyle::standardIcon(), on an engine that keeps its size and its name (2026-10-21)
 

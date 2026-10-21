@@ -7333,3 +7333,26 @@ find = "\tif (base.isNull()) return base;\n\treturn QIcon(new GridIconEngine(whi
 into = "\treturn QIcon(new GridIconEngine(which, base));"
 count = 1
 check = "a standard icon the base style has none of stays null through this one, rather than becoming a blank picture that costs cells"
+
+[[sabotage]]
+# A part invented: the group box's contents rect declined, which the base
+# style always claims. It appears as an unpinned difference, which is the
+# direction that catches a change answering for something Qt declined --
+# the shape that cost 8.475 eleven standard icons. 8.476.
+name = "a sub-control declines a part the base style claims, unpinned"
+file = "src/grid/grid_style.cpp"
+find = "\t\tcase SC_GroupBoxContents:\n\t\t\treturn QRect(r.left() + cw, r.top() + (title + 1) * ch,"
+into = "\t\tcase SC_GroupBoxContents:\n\t\t\tif (title) return QRect();\n\t\t\treturn QRect(r.left() + cw, r.top() + (title + 1) * ch,"
+count = 1
+check = "no sub-control claims a part the base style declines, or declines one it claims, except where this style does so deliberately and says which"
+
+[[sabotage]]
+# A pinned difference removed: a non-checkable group box given a checkbox
+# rect after all, the way Fusion does. The pin then over-claims and nothing
+# would say so without the second assertion. 8.476.
+name = "a non-checkable group box is given a checkbox rect after all"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t            r.top(), 3 * cw, ch)\n\t\t\t    : QRect();"
+into = "\t\t\t            r.top(), 3 * cw, ch)\n\t\t\t    : QRect(r.left(), r.top(), 3 * cw, ch);"
+count = 1
+check = "and every deliberate difference still happens, so that set cannot outlive what it describes either"
