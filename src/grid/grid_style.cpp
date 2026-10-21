@@ -2181,8 +2181,26 @@ static Color alternate_ground(const QStyleOptionViewItem *vi) {
 // want both properties.
 QIcon GridStyle::standardIcon(StandardPixmap which, const QStyleOption *opt,
                               const QWidget *w) const {
-	return QIcon(new GridIconEngine(which,
-	                                QProxyStyle::standardIcon(which, opt, w)));
+	const QIcon base = QProxyStyle::standardIcon(which, opt, w);
+	// A NULL ICON STAYS NULL, and wrapping one was a regression this change
+	// introduced and nearly shipped. QIcon::isNull() asks the ENGINE, so an
+	// engine that answers for a base icon with nothing in it makes a null
+	// icon look present: measured 2026-10-21, 11 of the 81 StandardPixmap
+	// values are null in Fusion -- SP_VistaShield, SP_DialogRetryButton and
+	// nine others -- and every one of them came back non-null with a blank
+	// 38x38 pixmap behind it.
+	//
+	// A widget that asks isNull() to decide whether to show an icon would
+	// then reserve cells for nothing. The placement path's own alpha scan
+	// would stop the blank picture reaching a terminal, so the symptom was
+	// spent space rather than ink, which is exactly the kind that goes
+	// unnoticed.
+	//
+	// Returned unwrapped rather than answered with an isNull() override,
+	// because there is nothing to render at any size and nothing to name:
+	// the cheapest correct engine for a null icon is no engine.
+	if (base.isNull()) return base;
+	return QIcon(new GridIconEngine(which, base));
 }
 
 void GridStyle::polish(QWidget *w) {

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2219 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2220 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3150,8 +3150,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-21: **2219 on Qt 6 with no failures,
-  and 2188 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-21: **2220 on Qt 6 with no failures,
+  and 2189 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18485,7 +18485,40 @@ a message box can see**, so that is not the lever; the size the pixmap is
 BUILT at is, and the entry sabotages that instead. The code comment on
 `actualSize()` now records the measurement rather than the guess.
 
-2219 checks on Qt 6, 2188 passing and 31 stepping over on Qt 5, 678 sabotage
+**The override introduced a regression and the wrapper's own edges caught
+it.** `QIcon::isNull()` asks the ENGINE, so an engine that answers for a base
+icon with nothing in it makes an absent icon look present. Measured over
+every value the enum names:
+
+    Qt 6.8.2    11 of 81 StandardPixmap values are null in Fusion
+    Qt 5.15.15  10 of 79
+    before      every one of them came back NON-NULL through this style,
+                with a blank 38x38 pixmap behind it
+    after       none of them disagree with the base style
+
+A widget asking `isNull()` to decide whether to show an icon would have
+reserved cells for nothing, and the placement path's alpha scan would have
+stopped the blank picture reaching a terminal -- so **the symptom was spent
+space rather than ink**, which is the kind nobody reports. `SP_VistaShield`,
+`SP_DialogRetryButton` and nine others are in that set.
+
+A null icon is returned unwrapped rather than answered with an `isNull()`
+override, because there is nothing to render at any size and nothing to
+name: the cheapest correct engine for a null icon is no engine.
+
+**The check asks the RELATIONSHIP against the base style over every value**,
+rather than against a list of the ones that are null -- which values a style
+has icons for is the style's business and differs by version. And it asserts
+that some value IS null, because a style with an icon for everything would
+satisfy "none disagree" while asking nothing.
+
+**The lesson is about wrappers rather than about icons.** A QProxyStyle hook
+is a place where this library answers for Qt, and the question to ask of each
+one is not only "is the answer better" but "what did Qt previously decline to
+answer, and does the wrapper now answer that too". Nullness was the
+declining; the override answered it by accident.
+
+2220 checks on Qt 6, 2189 passing and 31 stepping over on Qt 5, 679 sabotage
 entries.
 
 ### 8.474 A cell buffer reported a size its storage did not have (2026-10-21)

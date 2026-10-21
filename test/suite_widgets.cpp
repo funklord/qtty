@@ -4751,6 +4751,46 @@ int suite_widgets() {
 		      && standard_icon_of(0) == -1,
 		      "and a pixmap this library did not mint resolves to nothing,"
 		      " so the registry names what it made rather than everything");
+		// AND A NULL STANDARD ICON STAYS NULL, which wrapping one broke.
+		// QIcon::isNull() asks the ENGINE, so an engine answering for a base
+		// icon with nothing in it makes an absent icon look present --
+		// measured 2026-10-21 while 8.475 was being written, 11 of the 81
+		// StandardPixmap values are null in Fusion and every one came back
+		// non-null with a blank 38x38 pixmap behind it. A widget asking
+		// isNull() to decide whether to show an icon then reserves cells for
+		// nothing, and the placement path's alpha scan stops the blank
+		// picture reaching a terminal -- so the symptom is spent space
+		// rather than ink, which is the kind that goes unnoticed.
+		//
+		// Asked as the RELATIONSHIP against the base style over every value
+		// the enum names, rather than against a list of the ones that are
+		// null: which values a style has icons for is the style's business
+		// and differs by version, 11 on Qt 6 and 10 on Qt 5.
+		{
+			QStyle *plain = QStyleFactory::create(QStringLiteral("Fusion"));
+			const QMetaEnum sp =
+			    QMetaEnum::fromType<QStyle::StandardPixmap>();
+			int differ = 0, nulls = 0;
+			for (int i = 0; i < sp.keyCount(); ++i) {
+				const auto v = QStyle::StandardPixmap(sp.value(i));
+				const bool b = !plain || plain->standardIcon(v).isNull();
+				const bool g =
+				    QApplication::style()->standardIcon(v).isNull();
+				if (b) ++nulls;
+				if (b != g) ++differ;
+			}
+			delete plain;
+			printf("info: %d of %d standard pixmaps are null in the base"
+			       " style, and %d disagree through this one\n",
+			       nulls, sp.keyCount(), differ);
+			// `nulls > 0` is the half that stops this passing vacuously: a
+			// style with an icon for everything would satisfy "none
+			// disagree" while asking nothing.
+			CHECK(nulls > 0 && differ == 0,
+			      "a standard icon the base style has none of stays null"
+			      " through this one, rather than becoming a blank picture"
+			      " that costs cells");
+		}
 
 		// The message box is put away before the rest of this block runs.
 		// It is a MODAL, so while it is up QApplication::activeModalWidget()

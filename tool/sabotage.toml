@@ -7289,8 +7289,8 @@ expect = "crash"
 # 0b's iconography row. 8.475.
 name = "a standard icon comes from the base style with no identity minted"
 file = "src/grid/grid_style.cpp"
-find = "\treturn QIcon(new GridIconEngine(which,\n\t                                QProxyStyle::standardIcon(which, opt, w)));"
-into = "\treturn QProxyStyle::standardIcon(which, opt, w);"
+find = "\tif (base.isNull()) return base;\n\treturn QIcon(new GridIconEngine(which, base));"
+into = "\treturn base;"
 count = 1
 check = "the pixmap a message box places can be named as the standard icon it came from, which is what a glyph would need to travel on"
 
@@ -7321,3 +7321,15 @@ find = "\t\tQPixmap out(size);\n\t\tif (size.isEmpty()) return out;"
 into = "\t\tQPixmap out(size / 2);\n\t\tif (size.isEmpty()) return out;"
 count = 1
 check = "a message box's severity icon arrives the size the style asked for, rather than capped at the largest pixmap Qt happened to have"
+
+[[sabotage]]
+# A null standard icon wrapped again, which is the regression 8.475
+# introduced and caught before shipping: QIcon::isNull() asks the engine, so
+# an engine answering for an icon with nothing in it makes an absent icon
+# look present and a widget reserves cells for a blank picture.
+name = "a null standard icon is wrapped and stops reporting itself null"
+file = "src/grid/grid_style.cpp"
+find = "\tif (base.isNull()) return base;\n\treturn QIcon(new GridIconEngine(which, base));"
+into = "\treturn QIcon(new GridIconEngine(which, base));"
+count = 1
+check = "a standard icon the base style has none of stays null through this one, rather than becoming a blank picture that costs cells"
