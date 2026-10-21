@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2226 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2233 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3150,8 +3150,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-21: **2226 on Qt 6 with no failures,
-  and 2195 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-21: **2233 on Qt 6 with no failures,
+  and 2202 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18391,6 +18391,106 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.479 Four parts of three controls claiming cells they did not own (2026-10-21)
+
+**The lens is the hit test, and the first frame it gave was wrong, which is
+the half worth keeping.** `GridStyle` does not override
+`hitTestComplexControl`, so the reasonable guess was that a proxy's hit test
+runs on the BASE style's geometry while the drawing uses this style's --
+8.472's defect made systemic. Measured against a plain Fusion over 2460
+points of twelve widgets: **827 of them differ**, so the hit test does
+follow this style. Qt's own styles call `proxy()->subControlRect()` rather
+than `this->`, which is exactly what makes a proxy work.
+
+So the question moved from "does the hit test see this style" to "does this
+style give it a consistent answer", and that found four faults.
+
+**The invariant nobody had asked for: no two parts of one control may claim
+the same cell.** 8.476 gated sub-control EMPTINESS and 8.477 gated negative
+dimensions; overlap is a third question and three controls were failing it.
+It matters because of how it is resolved: `QCommonStyle` walks the
+sub-controls in **bit order** and takes the first whose rect contains the
+point, so an overlap is settled by the numeric value of an enumerator
+rather than by what was drawn.
+
+    spin box     up, down over the value's cell below five cells
+    tool button  its own part 8 px into the menu arrow's cell, every width
+    scroll bar   a thumb at the add line's cell on a two-cell bar
+
+**The spin box, and a question that dissolved rather than being answered.**
+8.472 measured this same unfloored arithmetic, found no click reached it --
+the internal `QLineEdit` covers the field and takes the press -- and left it
+there, recording that "which arrow a three-cell spin box should keep is a
+decision rather than a transliteration". **That sentence's arithmetic was
+wrong.** It says five cells hold two borders, a value and two arrows, "so
+collapsing the borders still leaves two arrows wanting one cell" -- and five
+less two borders is three, which is a value and two arrows exactly. There
+was nothing to decide.
+
+What it was, in cells from the left of a framed spin box with buttons:
+
+    width   up      down    drawn
+    1 cell  -2..-1  -1..0   both arrows OUTSIDE the widget
+    2 cells -1..0   0..0    up outside, down on the value's cell
+    3 cells 0..0    1..1    up over the OPENING BRACKET
+    4 cells 1..1    2..2    up on the value's cell, painted over by it
+
+`spin_cells()` divides them now, read by `subControlRect()` and by
+`drawComplexControl()` from one place, which is `combo_edge_cells()`'s own
+reason. **Two orders of yielding, both already settled in this file rather
+than chosen here**: the borders go first, which is the combo's rule, and
+then both arrows, which is the scroll bar's -- at one cell it "gives the
+cell to the thumb and declines both arrows", because the keyboard steps the
+control at every width and an affordance a click cannot reach is a trap. A
+spin box whose value cannot be READ is the worse failure, which 8.473 paid
+for. Nothing at five cells or wider moved.
+
+**The tool button's own part was never overridden, and had never been
+asked.** `QCommonStyle` answers `SC_ToolButton` as the rect less
+`PM_MenuButtonIndicator` -- 12 px, the same ungridded constant that put the
+menu band on the closing bracket -- so it ran into the arrow's cell at every
+width and came back **two pixels wide** at one cell. 8.477 reported "the
+sub-control surface was already clean at 120 of 120"; that was true of the
+five controls it asked, and the tool button is in neither that sweep nor the
+negativity tally. **A count inherits its detector.** It is in both now, and
+so is the slider.
+
+**The closing bracket's cell is claimed by neither part, deliberately.** The
+arrow sits one cell in from the end, so the button's own region is
+everything before the arrow plus the bracket after it, and a rectangle
+cannot be two pieces. What a press on it does is `QToolButton`'s business
+either way -- a press anywhere in a button triggers it.
+
+**And a two-cell scroll bar answered a thumb it does not draw.** `qMax(1,
+track)` exists so that a bar with nothing to scroll fills its track; at two
+cells the track is zero, so it answered one cell -- the add line's. The
+expression is `track`, which is the same number wherever there is a track.
+The click was right by the bit order and the rect was a phantom.
+
+**The sabotage harness caught a check defended by a coincidence, for the
+second time in this family.** The entry forcing a spin box's frame on
+stopped reddening "a spin box asked for no frame draws none": that check
+looked for the box-drawing corner, which a one-row spin box never draws, and
+the brackets the sabotage added are painted over -- the one at cell 0 by the
+editor, the one at the last cell by the arrow. 8.471 corrected the combo's
+twin for exactly this and the spin box's was left, because nothing had
+broken it yet. It asserts the brackets' absence now, and the entry is
+anchored on the shared flag, which moves the arrows and the field with it.
+
+**Five new pinned differences from the base style**, each a part this style
+declines where Fusion claims one: both spin box arrows below three cells,
+both tool button parts at one cell and its own part at two, and a vertical
+scroll bar's thumb at two cells. 99 agreements and 16 differences, the same
+set on Qt 5.15.15 and Qt 6.8.2.
+
+**The overlap gate has a positive control that needs no sabotage.** Asked of
+the same 100 pairs, the base style overlaps 11 times -- so the comparison is
+one that can fail, and `0 overlapping` is an answer rather than the
+question's absence.
+
+2233 checks on Qt 6, 2202 passing and 31 stepping over on Qt 5, 687 sabotage
+entries, every anchor matching.
+
 ### 8.478 A cell of zero pixels, from a public setter with no guard (2026-10-21)
 
 **The lens is 8.474's, pointed at the other door.** That entry fixed a
@@ -18947,11 +19047,16 @@ nothing in the other.
 What is left on the spin box is cosmetic and sits at exactly three cells:
 the up arrow is drawn over the opening bracket, so it reads as an arrow, a
 value and a CLOSING bracket with nothing to match it. Four cells and wider
-are balanced. Fixing it needs more than the combo's remedy -- a spin box
-wants five cells for two borders, a value and two arrows, so collapsing the
-borders still leaves two arrows wanting one cell, and **which arrow a
-three-cell spin box should keep is a decision rather than a transliteration.**
-Recorded with the measurement; not taken.
+are balanced.
+
+**~~Fixing it needs more than the combo's remedy~~ -- TAKEN in 8.479, and
+the reason it was deferred was an arithmetic slip rather than a design
+question.** This paragraph said a spin box wants five cells for two
+borders, a value and two arrows, "so collapsing the borders still leaves
+two arrows wanting one cell", and therefore that which arrow a three-cell
+spin box keeps is a decision. Five less two borders is THREE, which is a
+value and two arrows exactly. There was nothing to decide, and the combo's
+remedy transliterated after all.
 
 **And one instrument check worth keeping**, because it nearly cost a wrong
 finding. The hit tables above are from hand-built options, which this

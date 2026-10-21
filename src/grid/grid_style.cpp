@@ -252,6 +252,53 @@ static int combo_edge_cells(const QStyleOption *opt, int width_px) {
 	return width_px >= (2 * want + 2) * cw ? want : 0;
 }
 
+// How a spin box's cells are divided, read by subControlRect() and by
+// drawComplexControl() from this one place -- combo_edge_cells()'s reason
+// above, and the spin box is the control that lesson was NOT applied to.
+//
+// 8.472 measured its arrows overlapping the field below five cells and left
+// it there, on the ground that "which arrow a three-cell spin box should
+// keep is a decision rather than a transliteration". It is not a decision:
+// the arithmetic in that sentence was wrong. Five cells hold two borders, a
+// value and two arrows; collapsing the borders leaves THREE, and three is a
+// value and two arrows exactly. Measuring the feared cost dissolved the
+// question instead of answering it.
+//
+// What the unfloored version actually produced, measured 2026-10-21 in cells
+// from the left of a framed spin box with buttons:
+//
+//     width   up      down    field   what was drawn
+//     1 cell  -2..-1  -1..0   1..1    both arrows OUTSIDE the widget
+//     2 cells -1..0   0..0    1..1    up outside, down on the value's cell
+//     3 cells 0..0    1..1    1..1    up over the OPENING BRACKET, down
+//                                     sharing the value's only cell
+//     4 cells 1..1    2..2    1..2    up sharing a cell with the value,
+//                                     and painted over by it
+//
+// Two orders of yielding, and both are already settled in this file rather
+// than chosen here. THE BORDERS GO FIRST, which is combo_edge_cells()'s
+// rule -- "the border is what moves". THEN THE ARROWS, which is the scroll
+// bar's: at one cell it "gives the cell to the thumb and declines both
+// arrows", because the keyboard steps the control at every width and an
+// affordance a click cannot reach is a trap rather than a hint. A spin box
+// whose value cannot be READ is the worse failure of the two, which 8.473
+// paid for.
+struct SpinCells { int edge; int arrows; };
+
+static SpinCells spin_cells(const QStyleOption *opt, int cells) {
+	const auto *sb = qstyleoption_cast<const QStyleOptionSpinBox *>(opt);
+	const int want_edge = (!sb || sb->frame) ? 1 : 0;
+	const int want_arrows =
+	    (!sb || sb->buttonSymbols != QAbstractSpinBox::NoButtons) ? 2 : 0;
+	// In CELLS rather than pixels, unlike the combo's helper, because the
+	// drawing site below already works in cells and the rect site has the
+	// width to divide. One conversion either way, and this is the side that
+	// cannot round twice.
+	const int edge = cells >= 2 * want_edge + want_arrows + 1 ? want_edge : 0;
+	const int arrows = cells - 2 * edge >= want_arrows + 1 ? want_arrows : 0;
+	return { edge, arrows };
+}
+
 static QString tool_button_label(const QStyleOptionToolButton *tb, const QWidget *w) {
 	// A button whose whole content is an ARROW -- the scroll and navigation
 	// buttons Qt builds, and any QToolButton given an arrowType -- rendered
@@ -1663,10 +1710,14 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		// Derived from the same two values here and in the drawing, because
 		// the comment below records what a disagreement between them costs:
 		// an arrow drawn in a cell a click does not reach.
-		const auto *sb = qstyleoption_cast<const QStyleOptionSpinBox *>(opt);
-		const int edge = (!sb || sb->frame) ? cw : 0;
-		const int arrows =
-		    (!sb || sb->buttonSymbols != QAbstractSpinBox::NoButtons) ? 2 * cw : 0;
+		//
+		// AND THE WIDTH, through spin_cells(), which the first version of
+		// this did not ask: both flags were read and the floor was not, so
+		// an arrow could be placed outside the widget or on top of the
+		// value. That helper's comment has the table.
+		const SpinCells div = spin_cells(opt, r.width() / qMax(1, cw));
+		const int edge = div.edge * cw;
+		const int arrows = div.arrows * cw;
 		// The frame rows, in ONE expression shared by the edit field and by
 		// the two arrow cells. It was the field's alone: 9c34bf8 inset the
 		// field so it stopped painting over the border, and left the arrows
@@ -1692,9 +1743,15 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 		};
 		switch (sc) {
 		case SC_SpinBoxEditField: {
+			// NOT qMax(cw, ...), which is what manufactured the overlap: a
+			// floor on the field alone widened it over a neighbour rather
+			// than making room. spin_cells() guarantees a cell is left, so
+			// the subtraction stands on its own; the qMax(0) is for a
+			// widget narrower than one cell, where an empty rect is the
+			// honest answer and a cell-wide one would stick out.
 			return QRect(rtl ? r.left() + edge + arrows : r.left() + edge,
 			             inner ? r.top() + ch : r.top(),
-			             qMax(cw, r.width() - 2 * edge - arrows),
+			             qMax(0, r.width() - 2 * edge - arrows),
 			             inner ? r.height() - 2 * ch : qMax(ch, r.height()));
 		}
 		// A cell each, side by side, rather than a cell split in half. The
@@ -1730,15 +1787,52 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 	// frame, drawn for a button with no menu as well, so it belongs to the
 	// button -- one meaning per cell, which is the rule the spin box's two
 	// arrows established here.
-	if (cc == CC_ToolButton && sc == SC_ToolButtonMenu && opt) {
+	// AND THE BUTTON'S OWN PART, which was left to the base style and is
+	// the half this arm did not do. QCommonStyle answers SC_ToolButton as
+	// the rect less PM_MenuButtonIndicator -- 12 px again -- so on a
+	// one-cell button it came back **-2 pixels wide**, and at every width
+	// it ran 8 px into the arrow's cell. Two parts of one control claiming
+	// one cell is what the hit test resolves by bit order rather than by
+	// intent: SC_ToolButton is the lower bit, so the arrow's cell answered
+	// "button".
+	//
+	// Measured 2026-10-21, and it had never been asked: the sub-control
+	// sweep in 8.476 and the negativity tally in 8.477 cover the spin box,
+	// the combo, both scroll bars and the group box, and the TOOL BUTTON is
+	// in neither. "120 of 120 clean" was true of what it asked.
+	//
+	// The closing bracket's cell is claimed by neither part, deliberately.
+	// The arrow sits one cell in from the end, so the button's own region
+	// is everything before the arrow PLUS the bracket after it, and a
+	// rectangle cannot be two pieces. The comment above says the bracket
+	// belongs to the button, and that stays true of the drawing; what a
+	// click on it reaches is QToolButton's business either way, since a
+	// press anywhere in a button triggers it. Declining a cell is this
+	// file's existing answer for a part it cannot place -- the scroll bar
+	// declines both arrows at one cell rather than putting them where they
+	// are not drawn.
+	if (cc == CC_ToolButton && opt
+	    && (sc == SC_ToolButtonMenu || sc == SC_ToolButton)) {
 		if (auto *tb = qstyleoption_cast<const QStyleOptionToolButton *>(opt)) {
 			if (tb->features & QStyleOptionToolButton::MenuButtonPopup) {
 				const QRect r = opt->rect;
-				// Inside the bracket at whichever end the layout
-				// direction puts it, paired with the drawing below.
-				return opt->direction == Qt::RightToLeft
-				       ? QRect(r.left() + cw, r.top(), cw, r.height())
-				       : QRect(r.right() + 1 - 2 * cw, r.top(), cw, r.height());
+				const bool rtl = opt->direction == Qt::RightToLeft;
+				// Two cells at the least: one for the arrow and one for
+				// the bracket it sits inside. Below that the arrow's cell
+				// is off the widget -- it was answered as -10 -- and the
+				// drawing cannot place it either, so both parts decline.
+				if (r.width() < 2 * cw) return QRect();
+				if (sc == SC_ToolButtonMenu)
+					// Inside the bracket at whichever end the layout
+					// direction puts it, paired with the drawing below.
+					return rtl
+					       ? QRect(r.left() + cw, r.top(), cw, r.height())
+					       : QRect(r.right() + 1 - 2 * cw, r.top(), cw,
+					               r.height());
+				const int rest = r.width() - 2 * cw;
+				if (rest <= 0) return QRect();
+				return QRect(rtl ? r.left() + 2 * cw : r.left(), r.top(),
+				             rest, r.height());
 			}
 		}
 	}
@@ -1797,7 +1891,18 @@ QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
 				// scroll drew a single cell at the start -- which is what a
 				// bar scrolled TO the start looks like, so the picture said
 				// "there is more below" about a view that was complete.
-				int thumb_len = qMax(1, track), thumb_pos = 0;
+				//
+				// AND NO TRACK MEANS NO THUMB, which qMax(1, track) got
+				// wrong in the one case it was not written for. At two cells
+				// the bar is two arrows with nothing between them -- drawn as
+				// two arrow heads, measured -- while this answered a one-cell
+				// thumb at cell 1, which is the ADD LINE's cell. Two parts of
+				// one control claiming one cell is resolved by the hit test's
+				// bit order rather than by intent, so the click was right by
+				// luck and the rect was a phantom nothing drew. `track` is the
+				// same number wherever there IS a track, which is what the
+				// paragraph above is about.
+				int thumb_len = track, thumb_pos = 0;
 				if (span > 0 && track > 0) {
 					thumb_len = qBound(1, track * sb->pageStep
 					                     / qMax(1, span + sb->pageStep), track);
@@ -3690,7 +3795,18 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 				// scroll drew a single cell at the start -- which is what a
 				// bar scrolled TO the start looks like, so the picture said
 				// "there is more below" about a view that was complete.
-				int thumb_len = qMax(1, track), thumb_pos = 0;
+				//
+				// AND NO TRACK MEANS NO THUMB, which qMax(1, track) got
+				// wrong in the one case it was not written for. At two cells
+				// the bar is two arrows with nothing between them -- drawn as
+				// two arrow heads, measured -- while this answered a one-cell
+				// thumb at cell 1, which is the ADD LINE's cell. Two parts of
+				// one control claiming one cell is resolved by the hit test's
+				// bit order rather than by intent, so the click was right by
+				// luck and the rect was a phantom nothing drew. `track` is the
+				// same number wherever there IS a track, which is what the
+				// paragraph above is about.
+				int thumb_len = track, thumb_pos = 0;
 				if (span > 0 && track > 0) {
 					thumb_len = qBound(1, track * sb->pageStep
 					                     / qMax(1, span + sb->pageStep), track);
@@ -4039,11 +4155,14 @@ void GridStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
 			// The option's own two flags, read here and in subControlRect
 			// from the same expressions. See there for what ignoring them
 			// cost.
-			const auto *sb = qstyleoption_cast<const QStyleOptionSpinBox *>(opt);
-			const bool framed = !sb || sb->frame;
-			const int edge = framed ? 1 : 0;
-			const bool buttons =
-			    !sb || sb->buttonSymbols != QAbstractSpinBox::NoButtons;
+			// Through spin_cells(), which is also where the WIDTH enters:
+			// the two flags were read here and in subControlRect() from
+			// matching expressions, and neither asked whether what they
+			// asked for fitted. See that helper for the table.
+			const SpinCells div = spin_cells(opt, c.width());
+			const int edge = div.edge;
+			const bool framed = edge != 0;
+			const bool buttons = div.arrows != 0;
 			if (framed) {
 				if (c.height() >= 2) {
 					draw_box(b, c, false, a);

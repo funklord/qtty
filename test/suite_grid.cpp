@@ -598,7 +598,7 @@ int suite_grid() {
 	// generalises to every override: what did Qt decline to answer, and does
 	// this style now answer it?
 	//
-	// PINNED AS MEASURED. Eleven differences, and each is this style being
+	// PINNED AS MEASURED. Sixteen differences, and each is this style being
 	// right or a case already recorded:
 	//
 	//   groupbox bare/checkbox, bare/label, titled/checkbox   declined
@@ -622,10 +622,28 @@ int suite_grid() {
 	//     thumb. Measured: it draws the thumb, no click moves it, and the
 	//     KEYBOARD steps it at every width -- which is this library's whole
 	//     premise, so an indicator you work with the keys rather than a trap.
+	//   v scrollbar/thumb   declined
+	//     And at TWO cells the bar is two arrows with no track between
+	//     them, so there is no thumb to answer for. It used to answer the
+	//     add line's cell, which the disjointness check below now refuses.
+	//     The horizontal bar makes no difference here because Fusion
+	//     declines a 20-pixel thumb as well; at two ROWS it fits one.
+	//   spinbox/up, down   declined
+	//     Below three cells a spin box cannot hold two arrows and a value,
+	//     and the value is what must survive -- a spin box whose number
+	//     cannot be read is 8.473's worst case. Both arrows go rather than
+	//     one, which is the scroll bar's answer one control along, and it
+	//     keeps the keyboard as the way to step it.
+	//   toolbutton/button, menu   declined
+	//     A menu button wants a cell for its arrow and a cell for the
+	//     bracket the arrow sits inside, so at one cell both parts decline
+	//     and at two the button's own part does. Fusion answers the rect
+	//     less a 12-pixel indicator at every width, which is where the
+	//     TWO-PIXEL-WIDE rect came from.
 	//
 	// ASSERTED IN BOTH DIRECTIONS, so the set cannot rot: nothing outside it
 	// may differ, and everything inside it must still differ. The same set
-	// holds on Qt 5.15.15 and Qt 6.8.2 -- 95 agreements and these 11 on both
+	// holds on Qt 5.15.15 and Qt 6.8.2 -- 99 agreements and these 16 on both
 	// -- so unlike the pixel metrics above this needs no conditional.
 	{
 		static const char *const allowed[] = {
@@ -636,16 +654,22 @@ int suite_grid() {
 			"h scrollbar/addline/declined",
 			"h scrollbar/subline/declined",
 			"h scrollbar/thumb/claimed",
+			"spinbox/down/declined",
 			"spinbox/field/claimed",
+			"spinbox/up/declined",
+			"toolbutton/button/declined",
+			"toolbutton/menu/declined",
 			"v scrollbar/addline/declined",
 			"v scrollbar/subline/declined",
 			"v scrollbar/thumb/claimed",
+			"v scrollbar/thumb/declined",
 		};
 		QStyle *plain = QStyleFactory::create(QStringLiteral("Fusion"));
 		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 		QSet<QString> seen_diffs;
 		int agreed = 0;
-		QStringList negative;
+		QStringList negative, overlapping;
+		int pairs = 0;
 		const auto cmp = [&](const QString &what, const QString &part,
 		                     QStyle::ComplexControl cc, QStyle::SubControl sc,
 		                     const QStyleOptionComplex *o, const QWidget *w) {
@@ -666,6 +690,48 @@ int suite_grid() {
 			                  + (b ? QStringLiteral("/claimed")
 			                       : QStringLiteral("/declined")));
 		};
+		// AND NO TWO PARTS OF ONE CONTROL MAY CLAIM THE SAME CELL, which
+		// the sweep above cannot see: emptiness and overlap are different
+		// questions, and three of this style's controls were failing the
+		// second one while passing the first.
+		//
+		// Measured 2026-10-21. The spin box's two arrows sat on the value's
+		// cell below five cells and the up arrow was painted over by it; the
+		// tool button's own part ran eight pixels into the menu arrow's cell
+		// at every width and came back TWO PIXELS WIDE at one cell; and a
+		// two-cell scroll bar answered a thumb at the add line's cell for a
+		// bar drawn as two arrows with no track at all.
+		//
+		// It matters because of how the hit test resolves it: QCommonStyle
+		// walks the sub-controls in BIT ORDER and takes the first whose rect
+		// contains the point, so an overlap is settled by the numeric value
+		// of an enumerator rather than by what the style drew. Two of the
+		// three were right by that accident and one was wrong by it.
+		//
+		// Only parts that are meant to be disjoint. A slider's groove
+		// CONTAINS its handle and a frame contains everything, so those
+		// pairs are not a question -- which is why this is a list of sets
+		// rather than SC_All.
+		using Parts = QList<QPair<QString, QStyle::SubControl>>;
+		const auto disjoint =
+		    [&](const QString &what, QStyle::ComplexControl cc,
+		        const QStyleOptionComplex *o, const QWidget *w,
+		        const Parts &parts) {
+			for (int i = 0; i < parts.size(); ++i)
+				for (int j = i + 1; j < parts.size(); ++j) {
+					const QRect a = QApplication::style()
+					                    ->subControlRect(cc, o,
+					                                     parts[i].second, w);
+					const QRect b = QApplication::style()
+					                    ->subControlRect(cc, o,
+					                                     parts[j].second, w);
+					++pairs;
+					if (a.intersects(b))
+						overlapping << what + QLatin1Char('/')
+						               + parts[i].first + QLatin1Char('+')
+						               + parts[j].first;
+				}
+		};
 		for (int n : { 1, 2, 3, 6, 14 }) {
 			{
 				struct Sp : QSpinBox { using QSpinBox::QSpinBox;
@@ -685,6 +751,13 @@ int suite_grid() {
 				    QStyle::CC_SpinBox, QStyle::SC_SpinBoxDown, &o, &x);
 				cmp(QStringLiteral("spinbox"), QStringLiteral("field"),
 				    QStyle::CC_SpinBox, QStyle::SC_SpinBoxEditField, &o, &x);
+				const Parts spin = {
+					{ QStringLiteral("up"), QStyle::SC_SpinBoxUp },
+					{ QStringLiteral("down"), QStyle::SC_SpinBoxDown },
+					{ QStringLiteral("field"), QStyle::SC_SpinBoxEditField },
+				};
+				disjoint(QStringLiteral("spinbox"), QStyle::CC_SpinBox, &o,
+				         &x, spin);
 			}
 			{
 				struct Cb : QComboBox { using QComboBox::QComboBox;
@@ -703,6 +776,12 @@ int suite_grid() {
 				    QStyle::CC_ComboBox, QStyle::SC_ComboBoxArrow, &o, &x);
 				cmp(QStringLiteral("combobox"), QStringLiteral("field"),
 				    QStyle::CC_ComboBox, QStyle::SC_ComboBoxEditField, &o, &x);
+				const Parts combo = {
+					{ QStringLiteral("arrow"), QStyle::SC_ComboBoxArrow },
+					{ QStringLiteral("field"), QStyle::SC_ComboBoxEditField },
+				};
+				disjoint(QStringLiteral("combobox"), QStyle::CC_ComboBox, &o,
+				         &x, combo);
 			}
 			for (auto d : { Qt::Horizontal, Qt::Vertical }) {
 				const QString side = d == Qt::Horizontal
@@ -749,6 +828,15 @@ int suite_grid() {
 					    QStyle::SC_ScrollBarSlider, &o, &x);
 					cmp(bar, QStringLiteral("addline"), QStyle::CC_ScrollBar,
 					    QStyle::SC_ScrollBarAddLine, &o, &x);
+					const Parts three = {
+						{ QStringLiteral("subline"),
+						  QStyle::SC_ScrollBarSubLine },
+						{ QStringLiteral("addline"),
+						  QStyle::SC_ScrollBarAddLine },
+						{ QStringLiteral("thumb"),
+						  QStyle::SC_ScrollBarSlider },
+					};
+					disjoint(bar, QStyle::CC_ScrollBar, &o, &x, three);
 				}
 			}
 			for (int kind = 0; kind < 3; ++kind) {
@@ -774,6 +862,49 @@ int suite_grid() {
 				    QStyle::SC_GroupBoxLabel, &o, &x);
 				cmp(g, QStringLiteral("contents"), QStyle::CC_GroupBox,
 				    QStyle::SC_GroupBoxContents, &o, &x);
+				const Parts box = {
+					{ QStringLiteral("checkbox"),
+					  QStyle::SC_GroupBoxCheckBox },
+					{ QStringLiteral("label"), QStyle::SC_GroupBoxLabel },
+					{ QStringLiteral("contents"),
+					  QStyle::SC_GroupBoxContents },
+				};
+				disjoint(g, QStyle::CC_GroupBox, &o, &x, box);
+			}
+			// AND THE TOOL BUTTON, which was in neither this sweep nor the
+			// negativity tally below it. 8.477 reported "the sub-control
+			// surface was already clean at 120 of 120", and that was true of
+			// the five controls it asked: SC_ToolButton came back TWO PIXELS
+			// WIDE at one cell -- the base style's rect less a 12-pixel menu
+			// indicator -- and nothing had ever asked it. A count inherits
+			// its detector.
+			{
+				struct Tb : QToolButton { using QToolButton::QToolButton;
+					QStyleOptionToolButton real() const {
+						QStyleOptionToolButton o; initStyleOption(&o);
+						return o; } };
+				Tb x;
+				x.setText(QStringLiteral("Go"));
+				x.setPopupMode(QToolButton::MenuButtonPopup);
+				QMenu m;
+				m.addAction(QStringLiteral("One"));
+				x.setMenu(&m);
+				x.setAttribute(Qt::WA_DontShowOnScreen);
+				x.resize(n * cw, ch);
+				x.show();
+				QCoreApplication::processEvents();
+				QStyleOptionToolButton o = x.real();
+				o.subControls = QStyle::SC_All;
+				cmp(QStringLiteral("toolbutton"), QStringLiteral("button"),
+				    QStyle::CC_ToolButton, QStyle::SC_ToolButton, &o, &x);
+				cmp(QStringLiteral("toolbutton"), QStringLiteral("menu"),
+				    QStyle::CC_ToolButton, QStyle::SC_ToolButtonMenu, &o, &x);
+				const Parts two = {
+					{ QStringLiteral("button"), QStyle::SC_ToolButton },
+					{ QStringLiteral("menu"), QStyle::SC_ToolButtonMenu },
+				};
+				disjoint(QStringLiteral("toolbutton"), QStyle::CC_ToolButton,
+				         &o, &x, two);
 			}
 		}
 		delete plain;
@@ -815,6 +946,20 @@ int suite_grid() {
 		CHECK(negative.isEmpty(),
 		      "and no sub-control rect has a negative dimension, which would"
 		      " lie about its area rather than merely be empty");
+		overlapping.sort();
+		overlapping.removeDuplicates();
+		printf("info: %d disjoint pair(s) of parts asked, %d overlapping%s%s\n",
+		       pairs, int(overlapping.size()),
+		       overlapping.isEmpty() ? "" : ": ",
+		       qPrintable(overlapping.join(QStringLiteral(", "))));
+		// `pairs > 0` is the same vacuous-pass guard as `agreed > 0`, and it
+		// has a positive control that needs no sabotage: the base style
+		// overlaps 11 times at these same questions, so the comparison is
+		// one that can fail and the number is not the question's absence.
+		CHECK(pairs > 0 && overlapping.isEmpty(),
+		      "and no two parts of one complex control that are meant to be"
+		      " disjoint claim the same pixel, the hit test settling an"
+		      " overlap by enumerator order rather than by what was drawn");
 	}
 
 	// AND THE SAME OF THE SUB-ELEMENT SURFACE, which is where they were.

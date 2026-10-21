@@ -3041,6 +3041,87 @@ int suite_widgets() {
 				          : "and a combo keeps an edit field wherever two"
 				            " cells allow one");
 
+				// AND THE SPIN BOX AT EVERY WIDTH, which is the same
+				// question one control along. 8.472 measured the same
+				// unfloored arithmetic here, found that no click reached it
+				// -- the internal QLineEdit covers the field and takes the
+				// press -- and left it on the ground that "which arrow a
+				// three-cell spin box should keep is a decision rather than
+				// a transliteration".
+				//
+				// It was not a decision. That sentence says five cells hold
+				// two borders, a value and two arrows, "so collapsing the
+				// borders still leaves two arrows wanting one cell" -- and
+				// five less two borders is THREE, which is a value and two
+				// arrows exactly. The arithmetic was wrong, and measuring
+				// it dissolved the question instead of answering it.
+				//
+				// What it was, measured 2026-10-21 in cells from the left:
+				//
+				//     width   up      down    drawn
+				//     1 cell  -2..-1  -1..0   both arrows OUTSIDE the widget
+				//     2 cells -1..0   0..0    up outside, down on the value
+				//     3 cells 0..0    1..1    up over the OPENING BRACKET
+				//     4 cells 1..1    2..2    up on the value's cell, and
+				//                             painted over by it
+				//
+				// Asserted as the relationship rather than as columns, for
+				// the combo's reason above: the fault is rectangles
+				// overlapping, and a column number is this fixture doing
+				// the style's arithmetic again.
+				int spin_bad = 0, spin_no_field = 0;
+				for (int cells = 1; cells <= 7; ++cells) {
+					QSpinBox n;
+					n.setFixedSize(cw * cells, ch);
+					if (rtl) n.setLayoutDirection(Qt::RightToLeft);
+					show(n, cells, 1);
+					QStyleOptionSpinBox no;
+					no.initFrom(&n);
+					no.rect = n.rect();
+					no.subControls = QStyle::SC_All;
+					no.frame = n.hasFrame();           // see the combo above
+					no.buttonSymbols = n.buttonSymbols();
+					const auto part = [&](QStyle::SubControl sc) {
+						return n.style()->subControlRect(QStyle::CC_SpinBox,
+						                                 &no, sc, &n);
+					};
+					const QRect nu = part(QStyle::SC_SpinBoxUp);
+					const QRect nd = part(QStyle::SC_SpinBoxDown);
+					const QRect nf = part(QStyle::SC_SpinBoxEditField);
+					// An arrow is either absent or wholly inside the widget
+					// and clear of both the other arrow and the value. An
+					// arrow drawn where a click cannot reach it, and a cell
+					// a click reaches with no arrow in it, are the two
+					// halves of this file's standing spin box fault.
+					for (const QRect &a : { nu, nd })
+						if (!a.isEmpty()
+						    && (!n.rect().contains(a) || a.intersects(nf)))
+							++spin_bad;
+					if (!nu.isEmpty() && nu.intersects(nd)) ++spin_bad;
+					// And the value survives at every width, which is the
+					// half that must never yield: 8.473 paid for a spin box
+					// whose number could be changed and not read.
+					if (nf.isEmpty() || !n.rect().contains(nf))
+						++spin_no_field;
+					GridGuard::reset();
+				}
+				printf("info: %d of 7 spin box widths put an arrow outside"
+				       " itself or on another part, %d lost the value\n",
+				       spin_bad, spin_no_field);
+				CHECK(spin_bad == 0,
+				      rtl ? "a right-to-left spin box's arrows stay inside"
+				            " the widget and clear of each other and the"
+				            " value at every width"
+				          : "a spin box's arrows stay inside the widget and"
+				            " clear of each other and the value at every"
+				            " width");
+				CHECK(spin_no_field == 0,
+				      rtl ? "and a right-to-left spin box keeps a readable"
+				            " value at every width, the arrows being what"
+				            " yield"
+				          : "and a spin box keeps a readable value at every"
+				            " width, the arrows being what yield");
+
 				QSpinBox sp;
 				sp.setFixedSize(cw * 12, ch);
 				show(sp, 12, 2);
@@ -3089,7 +3170,19 @@ int suite_widgets() {
 				const QRect bup = bare.style()->subControlRect(
 				    QStyle::CC_SpinBox, &bo, QStyle::SC_SpinBoxUp, &bare);
 				const int bare_up = brow.indexOf(QChar(0x25B4));
-				CHECK(!brow.contains(QChar(0x250C)) && bare_up >= 0
+				// AND NO BRACKET EITHER, for the combo's reason two cases
+				// up and found the same way: a one-row spin box brackets
+				// rather than boxing, so the box-drawing corner this used
+				// to look for can never appear at this size. The frame and
+				// the arrow's offset were one expression, so a sabotage
+				// forcing the frame moved the arrow and this noticed; they
+				// are two since the width floor arrived, and the harness
+				// reported the check passing against broken code. The
+				// combo's twin was corrected in 8.471 and this one was not,
+				// because nothing had broken it yet.
+				CHECK(!brow.contains(QChar(0x250C))
+				      && !brow.contains(QLatin1Char('['))
+				      && !brow.contains(QLatin1Char(']')) && bare_up >= 0
 				      && bare_up == bup.left() / cw,
 				      rtl ? "and a right-to-left spin box asked for no frame"
 				            " draws none, its arrow moving with the hit test"

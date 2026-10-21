@@ -11644,6 +11644,23 @@ int suite_router() {
 				CHECK(arrow_cell == 6,
 				      "and left-to-right that cell is the one before the"
 				      " closing bracket, where it was measured");
+			// AND THE BUTTON'S OWN PART, which was left to the base style
+			// while the band above was moved. QCommonStyle answers
+			// SC_ToolButton as the rect less the same 12-pixel indicator,
+			// so it ran eight pixels into the arrow's cell at every width
+			// and came back TWO PIXELS WIDE at one cell -- a rectangle
+			// that lies about its area rather than merely being empty,
+			// which is 8.477's fault on the surface 8.477 reported clean.
+			// It was reported clean because the tool button had never been
+			// asked.
+			const QRect own = tb->style()->subControlRect(
+			    QStyle::CC_ToolButton, &o, QStyle::SC_ToolButton, tb);
+			CHECK(!own.isEmpty() && tb->rect().contains(own)
+			          && own.contains(label) && !own.intersects(band),
+			      pass ? "and a mirrored tool button's own part holds the"
+			             " label and not the arrow's cell"
+			           : "and the tool button's own part holds the label"
+			             " and not the arrow's cell");
 			QApplication::setLayoutDirection(Qt::LeftToRight);
 		}
 		tb->setLayoutDirection(Qt::LeftToRight);

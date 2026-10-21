@@ -6290,18 +6290,23 @@ count = 1
 check = "a zero-length line marks a cell exactly when Qt lights a pixel"
 
 [[sabotage]]
+# Re-anchored when the two sites were given one expression: sabotaging the
+# drawing's `framed` alone has no observable effect once the width floor is
+# in, because with no border cell the bracket it draws at cell 0 is painted
+# over by the editor and the one at the last cell by the arrow. The lever is
+# the shared flag, which moves the arrows and the field with it.
 name = "a spin box draws its frame whatever the option says"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\tconst bool framed = !sb || sb->frame;"
-into = "\t\t\tconst bool framed = true;"
+find = "\tconst int want_edge = (!sb || sb->frame) ? 1 : 0;"
+into = "\tconst int want_edge = 1;"
 count = 1
 check = "and a spin box asked for no frame draws none"
 
 [[sabotage]]
 name = "the spin box reserves arrow cells the option asked it not to"
 file = "src/grid/grid_style.cpp"
-find = "\t\t    (!sb || sb->buttonSymbols != QAbstractSpinBox::NoButtons) ? 2 * cw : 0;"
-into = "\t\t    2 * cw;"
+find = "\t    (!sb || sb->buttonSymbols != QAbstractSpinBox::NoButtons) ? 2 : 0;"
+into = "\t    2;"
 count = 1
 check = "and a spin box asked for no buttons draws none"
 
@@ -6321,7 +6326,7 @@ check = "and a combo asked for no frame draws none"
 [[sabotage]]
 name = "the spin box hit test ignores the frame the drawing honours"
 file = "src/grid/grid_style.cpp"
-find = "\t\tconst int edge = (!sb || sb->frame) ? cw : 0;"
+find = "\t\tconst int edge = div.edge * cw;"
 into = "\t\tconst int edge = cw;"
 count = 1
 check = "and a spin box asked for no frame draws none, its arrow moving"
@@ -6528,7 +6533,7 @@ check = "a command link button shows its title as well as its description"
 # agree. Qt gives the slider the whole groove for an empty range.
 name = "an empty range draws a one-cell thumb at the start"
 file = "src/grid/grid_style.cpp"
-find = "\t\t\t\tint thumb_len = qMax(1, track), thumb_pos = 0;"
+find = "\t\t\t\tint thumb_len = track, thumb_pos = 0;"
 into = "\t\t\t\tint thumb_len = 1, thumb_pos = 0;"
 count = 2
 check = "a scroll bar with nothing to scroll fills its track"
@@ -7379,3 +7384,45 @@ into = "\tif (false) {"
 count = 1
 check = "and the arithmetic that divides by it still answers, rather than dividing by zero or measuring in negative pixels"
 expect = "crash"
+
+[[sabotage]]
+# The spin box's borders stop yielding, so two arrows and a value want five
+# cells and get three or four: the up arrow lands on the value's cell and is
+# painted over by it. 8.479.
+name = "a spin box keeps its borders at every width"
+file = "src/grid/grid_style.cpp"
+find = "\tconst int edge = cells >= 2 * want_edge + want_arrows + 1 ? want_edge : 0;"
+into = "\tconst int edge = want_edge;"
+count = 1
+check = "and a spin box keeps a readable value at every width, the arrows being what yield"
+
+[[sabotage]]
+# And the arrows stop yielding, so below three cells they are placed where
+# the widget is not. 8.479.
+name = "a spin box keeps both arrows however narrow it is"
+file = "src/grid/grid_style.cpp"
+find = "\tconst int arrows = cells - 2 * edge >= want_arrows + 1 ? want_arrows : 0;"
+into = "\tconst int arrows = want_arrows;"
+count = 1
+check = "a spin box's arrows stay inside the widget and clear of each other and the value at every width"
+
+[[sabotage]]
+# The tool button's own part goes back to the base style's rect less a
+# 12-pixel menu indicator, which runs into the arrow's cell at every width
+# and is two pixels wide at one cell. 8.479.
+name = "the tool button's own part is left to the base style"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tif (sc == SC_ToolButtonMenu)"
+into = "\t\t\t\tif (sc == SC_ToolButtonMenu || true)"
+count = 1
+check = "and the tool button's own part holds the label and not the arrow's cell"
+
+[[sabotage]]
+# A two-cell scroll bar is two arrows with no track, and this gives it a
+# one-cell thumb at the add line's cell. 8.479.
+name = "a scroll bar answers a thumb where it has no track"
+file = "src/grid/grid_style.cpp"
+find = "\t\t\t\tint thumb_len = track, thumb_pos = 0;"
+into = "\t\t\t\tint thumb_len = qMax(1, track), thumb_pos = 0;"
+count = 2
+check = "and no two parts of one complex control that are meant to be disjoint claim the same pixel, the hit test settling an overlap by enumerator order rather than by what was drawn"
