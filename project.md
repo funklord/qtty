@@ -18391,6 +18391,60 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.473 The rest of the complex-control family, swept at narrow sizes: four anomalies, none of them reachable (2026-10-21)
+
+**8.472's lens generalised and found no second defect, which is worth
+recording so nobody runs it again.** The shape was a sub-control rect
+computed from one edge with no floor, colliding with its sibling at small
+sizes. Asked of every complex control that has parts which must be disjoint,
+at one to eight cells, for rects that leave the widget or each other:
+
+    spin box     1x1  up, down and field all outside the widget
+    spin box     2x1  up outside
+    spin box     3x1  down overlaps the field
+    spin box     4x1  up overlaps the field
+    tool button  2x1 .. 8x1  button overlaps menu, at EVERY width
+    h scrollbar  2x1  thumb overlaps the add-line
+    v scrollbar  1x2  thumb overlaps the add-line
+    group box    2x2 .. 4x4  checkbox and label outside
+
+**Every one was then asked what it costs, and the answer each time was
+nothing.** That is the half that matters, and it is the half that separated
+the combo box in 8.472 -- where the same arithmetic DID cost something --
+from the rest:
+
+- **The spin box**: clicking the cell it draws its value in, at three
+  through six cells, never changed the value. The internal `QLineEdit`
+  covers the field rect and takes the press, so `QAbstractSpinBox` never
+  consults the hit test. 8.472 has this.
+- **The scroll bar**: a two-cell bar renders as two arrows and behaves --
+  clicking the first stepped down, the second stepped up. The thumb's
+  minimum length overlaps the add-line arrow, and the arrow wins.
+- **The tool button**: the overlap is TWO PIXELS and the router delivers a
+  cell's CENTRE -- `cell * cw + cw / 2` -- so the sliver is five pixels
+  away from anything a terminal can send. No pixel path exists in this
+  library to reach it.
+- **The group box**: not an anomaly at all once measured. The widget is
+  always its 12-cell minimum and the terminal narrows around it, and the
+  content shifts by exactly `right - cols + 1` -- `follow_focus()`'s own
+  rule, keeping the followed rect's right edge visible. Section 7's
+  scrolling, working. Identical with and without a focusable child, which
+  is what ruled out a focus fault.
+
+**The tool button's two pixels have a named source, which is the one thing
+here a reader could act on.** `GridStyle` overrides `SC_ToolButtonMenu` to a
+whole cell and leaves `SC_ToolButton` at the base style's
+`adjust(0, 0, -mbi, 0)`, where `mbi` is `PM_MenuButtonIndicator` -- 12
+pixels, and one of the 29 metrics 8.469 pinned as answering Fusion's pixels
+rather than cells. So this is that pin leaking into a rectangle, at the one
+place the two rects are meant to tile. **Not fixed**: the consequence is
+unreachable by construction, and a change with no observable effect is not
+the work. It is written down because the next reader of that sweep will
+find the same two pixels and should not have to re-derive why they are
+harmless.
+
+No code changed.
+
 ### 8.472 A combo box's arrow had no floor, and at three cells a click on the value opened the popup (2026-10-21)
 
 **The arrow's x was the right edge less two cells, with nothing stopping
