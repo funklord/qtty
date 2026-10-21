@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2222 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2224 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3150,8 +3150,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-21: **2222 on Qt 6 with no failures,
-  and 2191 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-21: **2224 on Qt 6 with no failures,
+  and 2193 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18390,6 +18390,66 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.477 Eighteen invalid rectangles, from a cell being subtracted twice (2026-10-21)
+
+**The gate in 8.476 covered `subControlRect` and `subElementRect` is where the
+faults were.** Extending the same question to it found a sharper invariant
+than emptiness on the way: each widget asked only for ITS OWN sub-elements,
+at 1, 2, 3, 6 and 14 cells, **18 of 90 answers came back with a negative
+dimension.**
+
+    pushbutton  SE_PushButtonContents    120x-1   at EVERY width
+    pushbutton  SE_PushButtonFocusRect   118x-5   at every width
+    checkbox    SE_CheckBoxContents      -30x19   below four cells
+    radio       SE_RadioButtonContents   -30x19   below four cells
+    lineedit    SE_LineEditContents      -10x19   at one cell
+    lineedit    SE_FrameContents         -10x19   at one cell
+
+**One cause.** `QCommonStyle` insets by `PM_DefaultFrameWidth` on all four
+sides, and this style answers that metric with a whole CELL -- ten pixels
+against Fusion's one. On a one-row widget the vertical subtraction goes past
+zero, and on a widget narrower than a three-cell indicator the horizontal one
+does.
+
+**This file had already met the fault and fixed it twice**, which is what
+made the remainder findable rather than surprising: `SE_FrameContents` carries
+a comment saying Fusion's inset "at one row is NEGATIVE", and
+`SE_LineEditContents` says in as many words that it refused to copy the
+`isValid()` guard because "r is invalid in precisely the case that needs
+correcting". Both correct the vertical half deliberately. The four
+sub-elements nobody had needed were left taking the base style's arithmetic
+whole.
+
+**Why a negative rectangle is worse than an empty one.** `isEmpty()` is
+already true for all of them, so nothing read them as space. What a caller
+can read wrongly is the numbers -- and **-12 by -5 multiplies to a positive
+60**, which is exactly the trap 8.474 fixed in `CellBuffer` from the other
+end, where two negative sides allocated eight cells and reported minus four
+columns.
+
+**Clamped rather than given a shape, deliberately.** Nothing in this library
+consults those four: `CE_PushButtonLabel` and `CE_CheckBox` are drawn here,
+so the base style's label path never runs. Inventing a contents rect for a
+sub-element with no consumer would be choosing a layout nobody asked for;
+clamping removes the invalid value and leaves the shape to whoever finds a
+use for it.
+
+**The clamp had to be FUNNELLED, and the first attempt proved it.** Putting
+it at the final return fixed 16 of the 18 and left two -- the line edit's
+frame at one cell -- because the branches that correct a case of their own
+return before reaching it. Every exit goes through `valid_rect()` now, and
+the two survivors are what said so rather than a reading of the code.
+
+**The check needs no allow-list**, which is the difference from 8.476's
+emptiness sweep: a rectangle with a negative side is never the right answer
+to anything, so the assertion is that there are none. 80 sub-element answers
+asked, 0 negative, on both versions -- and the sub-control surface was
+already clean at 120 of 120, with the tally folded into the sweep that
+already had the rect.
+
+2224 checks on Qt 6, 2193 passing and 31 stepping over on Qt 5, 682 sabotage
+entries.
 
 ### 8.476 A gate on which parts this style says exist (2026-10-21)
 

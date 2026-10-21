@@ -202,6 +202,25 @@ private:
 
 } // namespace
 
+// A rectangle no caller can read wrongly. QCommonStyle insets by
+// PM_DefaultFrameWidth -- a whole CELL here against Fusion's one pixel -- on
+// all four sides, so on a widget too small to hold it the subtraction goes
+// past zero and the answer comes back with a negative dimension.
+//
+// A negative dimension is not merely unhelpful, it LIES ABOUT ITS AREA:
+// -12 by -5 multiplies to a positive 60, which is the trap 8.474 fixed in
+// CellBuffer from the other end. isEmpty() is already true for such a rect,
+// so nothing reads it as space; what a caller can read wrongly is the
+// numbers.
+//
+// Every exit from subElementRect() goes through this, including the branches
+// that correct a case of their own -- those were the two that still leaked
+// after the first attempt put the clamp at the final return only, because
+// they return before reaching it.
+static QRect valid_rect(const QRect &r) {
+	return QRect(r.x(), r.y(), qMax(0, r.width()), qMax(0, r.height()));
+}
+
 // How many cells of border a combo box can afford. Read by subControlRect()
 // and by drawComplexControl() from this one place, for the reason
 // tool_button_label() below exists: the arrow is drawn where the hit test
@@ -1390,8 +1409,8 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 		const QRect pane = QProxyStyle::subElementRect(SE_TabWidgetTabPane,
 		                                              opt, w);
 		if (pane.isValid() && pane.width() > 2 * cw)
-			return QRect(pane.left() + cw, r.top(),
-			             pane.width() - 2 * cw, r.height());
+			return valid_rect(QRect(pane.left() + cw, r.top(),
+			                        pane.width() - 2 * cw, r.height()));
 	}
 	if ((se == SE_FrameContents || se == SE_ShapedFrameContents) && opt) {
 		const int ch = GridMetrics::ch();
@@ -1417,8 +1436,9 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 			// it refused to copy: r is invalid in precisely the case that
 			// needs correcting, so guarding on it declines exactly there.
 			if (opt->rect.height() >= 3 * ch)
-				return QRect(r.left(), opt->rect.top() + ch,
-				             r.width(), opt->rect.height() - 2 * ch);
+				return valid_rect(QRect(r.left(), opt->rect.top() + ch,
+				                        r.width(),
+				                        opt->rect.height() - 2 * ch));
 			// Below that, override ONLY where Qt's own answer is smaller
 			// than a single row -- which is where it stops being a viewport
 			// at all. The frame's border rows are given up rather than the
@@ -1441,8 +1461,8 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 			// rows less one pixel and no longer a whole number of anything.
 			if (opt->rect.height() > 0 && opt->rect.height() % ch == 0
 			    && r.height() < ch)
-				return QRect(r.left(), opt->rect.top(),
-				             r.width(), opt->rect.height());
+				return valid_rect(QRect(r.left(), opt->rect.top(),
+				                        r.width(), opt->rect.height()));
 		}
 	}
 	// The VERTICAL half of a line edit's inset, from the same number and for
@@ -1473,8 +1493,8 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 		const int ch = GridMetrics::ch();
 		// Nothing below three rows, as above: two borders and a content row.
 		const int v = opt->rect.height() >= 3 * ch ? ch : 0;
-		return QRect(r.left(), opt->rect.top() + v,
-		             r.width(), opt->rect.height() - 2 * v);
+		return valid_rect(QRect(r.left(), opt->rect.top() + v,
+		                        r.width(), opt->rect.height() - 2 * v));
 	}
 	// The cells the check box is DRAWN in. Both CE_ItemViewItem here and
 	// CellItemDelegate put "[x]" at one cell of indent, so cells 1, 2 and 3
@@ -1554,7 +1574,22 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 		// sabotage said so, and the line came out: a fix that cannot be shown
 		// to do anything is a fix for a defect that was somewhere else.
 	}
-	return r;
+	// Measured 2026-10-21, each widget asked only for ITS OWN sub-elements
+	// at 1, 2, 3, 6 and 14 cells: 18 of 90 answers came back with a negative
+	// dimension, and valid_rect() above says why that matters.
+	//
+	//     pushbutton  SE_PushButtonContents    120x-1 at EVERY width
+	//     pushbutton  SE_PushButtonFocusRect   118x-5 at every width
+	//     checkbox    SE_CheckBoxContents      -30x19 below four cells
+	//     radio       SE_RadioButtonContents   -30x19 below four cells
+	//
+	// Clamped rather than given a shape, deliberately. Nothing in this
+	// library consults those four -- CE_PushButtonLabel and CE_CheckBox are
+	// drawn here, so the base style's label path never runs -- and inventing
+	// a contents rect for a sub-element with no consumer would be choosing a
+	// layout nobody asked for. Clamping removes the invalid value and leaves
+	// the shape to whoever finds a use for it.
+	return valid_rect(r);
 }
 
 // One row for a title, none without one. A check box in the title takes the

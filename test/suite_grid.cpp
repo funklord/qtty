@@ -600,13 +600,22 @@ int suite_grid() {
 		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 		QSet<QString> seen_diffs;
 		int agreed = 0;
+		QStringList negative;
 		const auto cmp = [&](const QString &what, const QString &part,
 		                     QStyle::ComplexControl cc, QStyle::SubControl sc,
 		                     const QStyleOptionComplex *o, const QWidget *w) {
 			if (!plain) return;
+			const QRect gr = QApplication::style()
+			                     ->subControlRect(cc, o, sc, w);
+			// AND NO ANSWER HAS A NEGATIVE DIMENSION, folded in here
+			// because this sweep already has the rect. A negative one lies
+			// about its area -- -12 by -5 multiplies to a positive 60 --
+			// which is 8.474's trap in CellBuffer from the other end, and
+			// 8.477 found 18 of them on the sub-element surface.
+			if (gr.width() < 0 || gr.height() < 0)
+				negative << what + QLatin1Char('/') + part;
 			const bool b = plain->subControlRect(cc, o, sc, w).isEmpty();
-			const bool g = QApplication::style()
-			                   ->subControlRect(cc, o, sc, w).isEmpty();
+			const bool g = gr.isEmpty();
 			if (b == g) { ++agreed; return; }
 			seen_diffs.insert(what + QLatin1Char('/') + part
 			                  + (b ? QStringLiteral("/claimed")
@@ -754,6 +763,150 @@ int suite_grid() {
 		CHECK(rotted.isEmpty(),
 		      "and every deliberate difference still happens, so that set"
 		      " cannot outlive what it describes either");
+		negative.sort();
+		if (!negative.isEmpty())
+			printf("info: negative sub-control rect(s): %s\n",
+			       qPrintable(negative.join(QStringLiteral(", "))));
+		CHECK(negative.isEmpty(),
+		      "and no sub-control rect has a negative dimension, which would"
+		      " lie about its area rather than merely be empty");
+	}
+
+	// AND THE SAME OF THE SUB-ELEMENT SURFACE, which is where they were.
+	// QCommonStyle insets by PM_DefaultFrameWidth -- a whole CELL here
+	// against Fusion's one pixel -- on all four sides, so on a widget too
+	// small to hold it the subtraction goes past zero. Measured 2026-10-21,
+	// each widget asked only for ITS OWN sub-elements: 18 of 90 answers came
+	// back negative, including SE_PushButtonContents at EVERY width because
+	// a one-row button cannot give up a row at the top and another at the
+	// bottom.
+	//
+	// No pinned set and no allow-list, unlike the emptiness sweep above: a
+	// rectangle with a negative side is never the right answer to anything,
+	// so the assertion is simply that there are none.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		QStyle *st = QApplication::style();
+		QStringList bad;
+		int looked = 0;
+		const auto look = [&](const QString &what, const QString &name,
+		                      QStyle::SubElement se, const QStyleOption *o,
+		                      const QWidget *w) {
+			const QRect r = st->subElementRect(se, o, w);
+			++looked;
+			if (r.width() < 0 || r.height() < 0)
+				bad << QStringLiteral("%1/%2 -> %3x%4").arg(what).arg(name)
+				       .arg(r.width()).arg(r.height());
+		};
+		for (int n : { 1, 2, 3, 6, 14 }) {
+			{
+				struct B : QPushButton { using QPushButton::QPushButton;
+					QStyleOptionButton real() const {
+						QStyleOptionButton o; initStyleOption(&o);
+						return o; } };
+				B x(QStringLiteral("Hi"));
+				x.setAttribute(Qt::WA_DontShowOnScreen);
+				x.resize(n * cw, ch);
+				x.show();
+				QCoreApplication::processEvents();
+				QStyleOptionButton o = x.real();
+				look(QStringLiteral("pushbutton"),
+				     QStringLiteral("contents"),
+				     QStyle::SE_PushButtonContents, &o, &x);
+				look(QStringLiteral("pushbutton"), QStringLiteral("focus"),
+				     QStyle::SE_PushButtonFocusRect, &o, &x);
+				look(QStringLiteral("pushbutton"), QStringLiteral("bevel"),
+				     QStyle::SE_PushButtonBevel, &o, &x);
+			}
+			{
+				struct C : QCheckBox { using QCheckBox::QCheckBox;
+					QStyleOptionButton real() const {
+						QStyleOptionButton o; initStyleOption(&o);
+						return o; } };
+				C x(QStringLiteral("Hi"));
+				x.setAttribute(Qt::WA_DontShowOnScreen);
+				x.resize(n * cw, ch);
+				x.show();
+				QCoreApplication::processEvents();
+				QStyleOptionButton o = x.real();
+				look(QStringLiteral("checkbox"),
+				     QStringLiteral("indicator"),
+				     QStyle::SE_CheckBoxIndicator, &o, &x);
+				look(QStringLiteral("checkbox"), QStringLiteral("contents"),
+				     QStyle::SE_CheckBoxContents, &o, &x);
+				look(QStringLiteral("checkbox"), QStringLiteral("focus"),
+				     QStyle::SE_CheckBoxFocusRect, &o, &x);
+				look(QStringLiteral("checkbox"), QStringLiteral("click"),
+				     QStyle::SE_CheckBoxClickRect, &o, &x);
+			}
+			{
+				struct R : QRadioButton { using QRadioButton::QRadioButton;
+					QStyleOptionButton real() const {
+						QStyleOptionButton o; initStyleOption(&o);
+						return o; } };
+				R x(QStringLiteral("Hi"));
+				x.setAttribute(Qt::WA_DontShowOnScreen);
+				x.resize(n * cw, ch);
+				x.show();
+				QCoreApplication::processEvents();
+				QStyleOptionButton o = x.real();
+				look(QStringLiteral("radio"), QStringLiteral("indicator"),
+				     QStyle::SE_RadioButtonIndicator, &o, &x);
+				look(QStringLiteral("radio"), QStringLiteral("contents"),
+				     QStyle::SE_RadioButtonContents, &o, &x);
+				look(QStringLiteral("radio"), QStringLiteral("click"),
+				     QStyle::SE_RadioButtonClickRect, &o, &x);
+			}
+			{
+				struct L : QLineEdit { using QLineEdit::QLineEdit;
+					QStyleOptionFrame real() const {
+						QStyleOptionFrame o; initStyleOption(&o);
+						return o; } };
+				L x(QStringLiteral("Hi"));
+				x.setAttribute(Qt::WA_DontShowOnScreen);
+				x.resize(n * cw, ch);
+				x.show();
+				QCoreApplication::processEvents();
+				QStyleOptionFrame o = x.real();
+				look(QStringLiteral("lineedit"), QStringLiteral("contents"),
+				     QStyle::SE_LineEditContents, &o, &x);
+				look(QStringLiteral("lineedit"), QStringLiteral("frame"),
+				     QStyle::SE_FrameContents, &o, &x);
+				look(QStringLiteral("lineedit"), QStringLiteral("shaped"),
+				     QStyle::SE_ShapedFrameContents, &o, &x);
+			}
+			{
+				struct P : QProgressBar { using QProgressBar::QProgressBar;
+					QStyleOptionProgressBar real() const {
+						QStyleOptionProgressBar o; initStyleOption(&o);
+						return o; } };
+				P x;
+				x.setValue(40);
+				x.setAttribute(Qt::WA_DontShowOnScreen);
+				x.resize(n * cw, ch);
+				x.show();
+				QCoreApplication::processEvents();
+				QStyleOptionProgressBar o = x.real();
+				look(QStringLiteral("progressbar"),
+				     QStringLiteral("groove"),
+				     QStyle::SE_ProgressBarGroove, &o, &x);
+				look(QStringLiteral("progressbar"),
+				     QStringLiteral("contents"),
+				     QStyle::SE_ProgressBarContents, &o, &x);
+				look(QStringLiteral("progressbar"), QStringLiteral("label"),
+				     QStyle::SE_ProgressBarLabel, &o, &x);
+			}
+		}
+		bad.sort();
+		printf("info: %d sub-element rect(s) asked, %d with a negative"
+		       " dimension%s%s\n", looked, int(bad.size()),
+		       bad.isEmpty() ? "" : ": ",
+		       qPrintable(bad.join(QStringLiteral(", "))));
+		// `looked > 0` for the reason every sweep here carries one: a loop
+		// that asked nothing reports no faults.
+		CHECK(looked > 0 && bad.isEmpty(),
+		      "no sub-element rect this style hands out has a negative"
+		      " dimension, however small the widget it was asked about");
 	}
 
 	return fails;

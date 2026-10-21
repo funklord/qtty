@@ -7356,3 +7356,14 @@ find = "\t\t\t            r.top(), 3 * cw, ch)\n\t\t\t    : QRect();"
 into = "\t\t\t            r.top(), 3 * cw, ch)\n\t\t\t    : QRect(r.left(), r.top(), 3 * cw, ch);"
 count = 1
 check = "and every deliberate difference still happens, so that set cannot outlive what it describes either"
+
+[[sabotage]]
+# The clamp removed, so a cell-sized inset subtracted from a widget too
+# small to hold it comes back as a negative dimension again -- which lies
+# about its area rather than merely being empty. 8.477.
+name = "a sub-element rect is handed out with a negative side"
+file = "src/grid/grid_style.cpp"
+find = "\treturn QRect(r.x(), r.y(), qMax(0, r.width()), qMax(0, r.height()));"
+into = "\treturn r;"
+count = 1
+check = "no sub-element rect this style hands out has a negative dimension, however small the widget it was asked about"
