@@ -3,6 +3,7 @@
 #include <qtty/qtty.h>
 #include <qtty/delegate.h>
 #include "src/runtime/terminal_owner.h"
+#include "src/standard_icons.h"
 #include <QtWidgets>
 #include <QUndoStack>
 #include <QUndoView>
@@ -4679,46 +4680,47 @@ int suite_widgets() {
 					}
 			printf("\n");
 		}
-		// AND WHETHER QT COULD DELIVER THE ICON THE STYLE ASKED FOR IS THE
-		// PRECONDITION. The metric is 2 * ch, and a QIcon never scales
-		// PAST its largest available pixmap: on Qt 5 SP_MessageBoxWarning
-		// offers 32x32 and nothing else, so pixmap(38) returns 32 and the
-		// dialog is 51 px, 2.68 rows. Qt 6 offers 16, 32 and 128 and
-		// honours 38 exactly, giving 57 and 3.00 rows. Measured 2026-10-20
-		// against both, and 8.466 has it.
+		// AND THE ICON COMES BACK THE SIZE THE STYLE ASKED FOR, which is
+		// the precondition the height depends on and which Qt's own icons
+		// did not meet. A QIcon never scales PAST its largest available
+		// pixmap: SP_MessageBoxWarning offers 32x32 and nothing else on
+		// Qt 5, so the metric's two rows came back as 1.68 and the dialog
+		// was 51 px -- 2.68 rows. 8.466 had to step this check over there.
 		//
-		// So a fractional dialog there is not this style answering wrongly
-		// -- it answered 38 and was given 32. Asked as "did the icon come
-		// back the size we asked for", which is the actual condition and is
-		// right on any version.
+		// GridStyle::standardIcon() renders on its own engine since 8.475,
+		// so the size is now the style's to answer on both versions and
+		// the step-over is gone. Asserted as the RELATIONSHIP -- the icon
+		// is the size that was asked for -- rather than as 38, which is
+		// this fixture's arithmetic rather than the rule.
 		const int asked_icon = mb.style()->pixelMetric(
 		    QStyle::PM_MessageBoxIconSize, nullptr, &mb);
-		if (icon_h && icon_h < asked_icon) {
-			printf("SKIP: and the dialog it sits in is a whole number of"
-			       " rows tall\n      the style asked for a %d px icon and"
-			       " Qt could only give %d, so the height is not the"
-			       " style's to round -- project.md 8.466\n",
-			       asked_icon, icon_h);
-		} else {
-			CHECK(mb.sizeHint().height() % GridMetrics::ch() == 0,
-			      "and the dialog it sits in is a whole number of rows tall");
-		}
+		CHECK(icon_h == asked_icon,
+		      "a message box's severity icon arrives the size the style"
+		      " asked for, rather than capped at the largest pixmap Qt"
+		      " happened to have");
+		CHECK(mb.sizeHint().height() % GridMetrics::ch() == 0,
+		      "and the dialog it sits in is a whole number of rows tall");
 
-		// And WHERE a key registry would have to mint, which is the part the
-		// recorded option got wrong. standardIcon() is not the mint point: one
-		// QIcon caches its own pixmap, so asking it twice gives one identity --
-		// but a SECOND standardIcon() call for the same value re-renders, and
-		// the identity the message box actually placed is neither of them.
-		// Measured, and printed as three keys that do not meet.
+		// AND THE PLACED PIXMAP CAN BE NAMED, which is what the recorded
+		// decision was waiting on. Qt rasterises a QIcon before a style
+		// draws it, so a severity icon reached drawItemPixmap() as pixels
+		// with no identity left -- and section 0b's iconography row is
+		// blocked on exactly that, because a glyph cannot travel inside a
+		// QIcon to a cell renderer.
 		//
-		// So a cacheKey-to-glyph map minted at standardIcon() would resolve
-		// nothing, and the mint point has to be inside the icon -- a
-		// QIconEngine that registers each pixmap it returns, because that is
-		// the object QIcon asks once per size, mode and state and then caches.
+		// The mint point is not standardIcon(), which 8.466 measured: one
+		// QIcon caches its own pixmap, so asking it twice gives one
+		// identity, but a second standardIcon() call re-renders to another,
+		// a different size gives a third, and what the message box placed
+		// matched none of them. It had to be inside the icon, in a
+		// QIconEngine -- the object QIcon asks once per size, mode and
+		// state and then caches, so every pixmap that escapes passes
+		// through it exactly once. 8.475 put it there.
 		//
-		// The relationships are the assertion, not the numbers. This goes red
-		// the day Qt gives standard icons a stable identity, and that day is
-		// exactly when this decision is worth re-opening.
+		// Those raw facts are UNCHANGED and are still printed: two engines
+		// still render two pixmaps with two keys. What changed is that the
+		// keys no longer have to agree, because each one is noted as it
+		// leaves -- so identity is a lookup rather than a coincidence.
 		QStyle *st = mb.style();
 		const QIcon i1 = st->standardIcon(QStyle::SP_MessageBoxWarning, nullptr, &mb);
 		const QIcon i2 = st->standardIcon(QStyle::SP_MessageBoxWarning, nullptr, &mb);
@@ -4727,34 +4729,28 @@ int suite_widgets() {
 		const quint64 k2 = quint64(i2.pixmap(48, 48).cacheKey());
 		const quint64 placed = placements.isEmpty() ? 0 : placements[0].key;
 		printf("info: standard icon keys -- one icon asked twice %s, a second"
-		       " icon %s the first, and what was placed %s either\n",
+		       " icon %s the first; the placed pixmap resolves to %d and a"
+		       " hand-made one to %d\n",
 		       k1 == k1_again ? "agrees" : "DISAGREES",
 		       k2 == k1 ? "MATCHES" : "differs from",
-		       (placed == k1 || placed == k2) ? "MATCHES" : "is neither of");
-		// AND ON QT 5 THE IDENTITY SURVIVES, which is the day this comment
-		// says to re-open the decision. Measured 2026-10-20: there, two
-		// standardIcon() calls and the pixmap the message box actually
-		// placed all share one cacheKey, where Qt 6 gives three that do not
-		// meet. So the cacheKey-to-glyph map ruled out above IS workable on
-		// Qt 5, and the QIconEngine mint point is a Qt 6 requirement rather
-		// than a general one -- 8.466, and whether that changes the design
-		// is the copyright holder's.
-		//
-		// Stepped over rather than asserted the other way round, because
-		// the check's NAME says the identity does not survive and a check
-		// asserting the opposite of its own sentence is worse than one that
-		// cannot run.
-		if (k2 == k1 || placed == k1 || placed == k2) {
-			printf("SKIP: a standard icon's identity does not survive"
-			       " standardIcon()\n      here it DOES: two calls and the"
-			       " placed pixmap share one cacheKey, so the registry this"
-			       " rules out is workable -- project.md 8.466\n");
-		} else {
-			CHECK(k1 == k1_again && k2 != k1
-			      && placed != k1 && placed != k2,
-			      "a standard icon's identity does not survive"
-			      " standardIcon()");
-		}
+		       standard_icon_of(placed),
+		       standard_icon_of(quint64(QPixmap(4, 4).cacheKey())));
+		CHECK(!placements.isEmpty()
+		      && standard_icon_of(placed)
+		         == int(QStyle::SP_MessageBoxWarning)
+		      && standard_icon_of(k1) == int(QStyle::SP_MessageBoxWarning)
+		      && standard_icon_of(k2) == int(QStyle::SP_MessageBoxWarning),
+		      "the pixmap a message box places can be named as the standard"
+		      " icon it came from, which is what a glyph would need to"
+		      " travel on");
+		// THE CONTROL, and without it a registry that answered the same
+		// value for everything would satisfy the check above. A pixmap this
+		// library never minted has no identity to find, and must say so
+		// rather than be claimed.
+		CHECK(standard_icon_of(quint64(QPixmap(4, 4).cacheKey())) == -1
+		      && standard_icon_of(0) == -1,
+		      "and a pixmap this library did not mint resolves to nothing,"
+		      " so the registry names what it made rather than everything");
 
 		// The message box is put away before the rest of this block runs.
 		// It is a MODAL, so while it is up QApplication::activeModalWidget()

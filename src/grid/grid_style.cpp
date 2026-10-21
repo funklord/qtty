@@ -5,6 +5,7 @@
 #include "qtty/runtime.h"          // keyboard_conventions(), for the tip below
 #include "qtty/application.h"      // terminal_focused(), for the focus mark
 #include "../cell_geometry.h"
+#include "../standard_icons.h"
 // QAction, which this file uses through QToolButton::defaultAction() and had
 // never included. It compiled because something else drags it in -- and that
 // is luck rather than a fact about this file: Qt 6 MOVED QAction from
@@ -29,6 +30,7 @@
 #include <QAbstractSpinBox>
 #include <QPainter>
 #include <QHash>
+#include <QIconEngine>
 #include <QAbstractItemView>
 #include <QLineEdit>
 #include <QToolButton>
@@ -51,6 +53,155 @@ namespace Qtty {
 // agree exactly -- a label measured without the glyph is drawn into a box one
 // cell too narrow, and the elide would then eat the last letter rather than
 // the thing that did not fit.
+// ---- standard icons that keep their identity (standard_icons.h) --------
+//
+// A registry of the pixmaps this style's own icons produced, keyed by
+// cacheKey -- which is exactly what a placement carries.
+//
+// BOUNDED, AND IT TURNS OVER WHOLESALE. A placement's key is resolved in the
+// frame that made it, so only recent entries can ever be wanted; and a cache
+// that only grows is the shape this project has paid for twice, in 16,739
+// temporary files and in 693 GB of orphaned logs. Past the cap the whole map
+// goes rather than half of it, because evicting the oldest needs an order
+// this does not otherwise keep, and losing identity degrades to exactly the
+// state before this existed -- a pixmap nobody can name.
+//
+// The cap is the deferral's, 256, for no better reason than that this
+// project already chose that number once for a buffer of recent things and a
+// second arbitrary number is worse than a shared one.
+namespace {
+constexpr int kMaxNotedIcons = 256;
+QHash<quint64, int> g_noted_icons;
+int g_forgotten_icons = 0;
+}
+
+void note_standard_icon(quint64 key, int which) {
+	if (g_noted_icons.size() >= kMaxNotedIcons) {
+		g_forgotten_icons += g_noted_icons.size();
+		g_noted_icons.clear();
+	}
+	g_noted_icons.insert(key, which);
+}
+
+int standard_icon_of(quint64 key) {
+	return g_noted_icons.value(key, -1);
+}
+
+int standard_icons_noted() { return g_noted_icons.size(); }
+int standard_icons_forgotten() { return g_forgotten_icons; }
+
+namespace {
+
+// AN ICON THAT RENDERS AT THE SIZE IT WAS ASKED FOR, which Qt's own standard
+// icons do not. A QIcon never scales PAST its largest available pixmap:
+// measured 2026-10-21, SP_MessageBoxWarning offers 32x32 and nothing else on
+// Qt 5.15.15, so pixmap(38) came back 32 -- and 38 is what
+// PM_MessageBoxIconSize answers, two whole rows. The message box therefore
+// asked for 2 rows of icon, was given 1.68, and its dialog came out 51 px:
+// 2.68 rows, which 8.466 had to make the height check step over. Qt 6.8.2
+// offers 16, 32 and 128 and honours 38, which is why this only ever showed
+// on one version.
+//
+// So the engine takes whatever the base style will give and draws it into
+// the requested rectangle itself. Scaling a 32-pixel icon to 38 is a blur
+// nobody will see at this size on a character grid, and a dialog that is a
+// whole number of rows tall is the thing being bought.
+//
+// AND IT IS THE MINT POINT, which is the other half and the reason the
+// override exists at all. See standard_icons.h.
+class GridIconEngine : public QIconEngine {
+public:
+	GridIconEngine(QStyle::StandardPixmap which, QIcon base)
+	    : which_(which), base_(std::move(base)) {}
+
+	// A CLONE KEEPS WHAT IT HAS RENDERED. Dropping the cache here made a
+	// copy of an icon render afresh, which costs a render and mints a
+	// second identity for the same picture -- and Qt clones on paths that
+	// are not obvious from the call site, so the cheap assumption that a
+	// clone is rare is not one to rest on.
+	QIconEngine *clone() const override {
+		return new GridIconEngine(*this);
+	}
+
+	// EXACTLY WHAT WAS ASKED, which is what an engine that renders at any
+	// size should report: QIcon asks this before asking for the pixmap, and
+	// a smaller answer is the engine declaring a cap it does not have.
+	//
+	// It is NOT, measured, what decides the size that arrives. Halving this
+	// changed nothing a message box could see -- a sabotage of it reported
+	// "the named check PASSED against broken code" -- so QIcon does not
+	// resize the engine's answer down to it on that path. The size the
+	// pixmap is BUILT at below is the lever, and that is what the entry
+	// defending this sabotages. Said here because the obvious guess was
+	// wrong and the next reader will make it too.
+	QSize actualSize(const QSize &size, QIcon::Mode, QIcon::State) override {
+		return size;
+	}
+
+	void paint(QPainter *p, const QRect &rect, QIcon::Mode mode,
+	           QIcon::State state) override {
+		p->drawPixmap(rect, pixmap(rect.size(), mode, state));
+	}
+
+	// CACHED PER SIZE, MODE AND STATE, which is what the engine is
+	// described as doing and what QPixmapIconEngine did for the icons this
+	// replaces. Without it one QIcon asked twice rendered twice and minted
+	// two identities -- measured, the suite's own info line read "asked
+	// twice DISAGREES" -- which wastes a render, churns the registry, and
+	// loses a property the icons had before this existed.
+	QPixmap pixmap(const QSize &size, QIcon::Mode mode,
+	               QIcon::State state) override {
+		const Asked k{size, mode, state};
+		if (const auto it = cache_.constFind(k); it != cache_.constEnd())
+			return it.value();
+		QPixmap out(size);
+		if (size.isEmpty()) return out;
+		out.fill(Qt::transparent);
+		const QPixmap src = base_.pixmap(size, mode, state);
+		if (!src.isNull()) {
+			const QPixmap fit = src.size() == size
+			    ? src
+			    : src.scaled(size, Qt::KeepAspectRatio,
+			                 Qt::SmoothTransformation);
+			QPainter p(&out);
+			p.drawPixmap((size.width() - fit.width()) / 2,
+			             (size.height() - fit.height()) / 2, fit);
+		}
+		// Noted even when the base gave nothing: an empty icon this style
+		// minted is still one it can name, and a caller asking what a
+		// transparent placement was should get an answer rather than a
+		// silence it cannot tell from somebody else's pixmap.
+		note_standard_icon(quint64(out.cacheKey()), int(which_));
+		cache_.insert(k, out);
+		return out;
+	}
+
+private:
+	// What a caller asked for, as one key. An engine is cloned per QIcon
+	// copy, so the cache lives and dies with the icon and needs no bound of
+	// its own: a QIcon asks for a handful of sizes in its life.
+	struct Asked {
+		QSize size;
+		QIcon::Mode mode;
+		QIcon::State state;
+		bool operator==(const Asked &o) const {
+			return size == o.size && mode == o.mode && state == o.state;
+		}
+	};
+	// Qtty::HashSeed, because the two Qts want different signatures here and
+	// qt_compat.h is where this tree keeps that. See there for what it cost
+	// to find out.
+	friend Qtty::HashSeed qHash(const Asked &a, Qtty::HashSeed seed = 0) {
+		return Qtty::hash_multi(seed, a.size.width(), a.size.height(),
+		                        int(a.mode), int(a.state));
+	}
+	QStyle::StandardPixmap which_;
+	QIcon base_;
+	QHash<Asked, QPixmap> cache_;
+};
+
+} // namespace
+
 // How many cells of border a combo box can afford. Read by subControlRect()
 // and by drawComplexControl() from this one place, for the reason
 // tool_button_label() below exists: the arrow is drawn where the hit test
@@ -2019,6 +2170,21 @@ static Color alternate_ground(const QStyleOptionViewItem *vi) {
 // grip that no press can reach, because the size rule still holds. That is
 // the layering on purpose: the size removes the hazard, and this removes the
 // cost.
+// Every standard icon this style hands out, on the engine above. The base
+// style still decides what the picture IS -- this decides that it arrives at
+// the size the style asked for and that it can be named afterwards.
+//
+// Not filtered to the values qtty cares about. A table of interesting ones
+// would be a second place to keep in step with the first, and the engine
+// costs a QIcon either way; the 28 calls this style sees are a message box's
+// severity icon and a dock widget's two title-bar buttons, and all three
+// want both properties.
+QIcon GridStyle::standardIcon(StandardPixmap which, const QStyleOption *opt,
+                              const QWidget *w) const {
+	return QIcon(new GridIconEngine(which,
+	                                QProxyStyle::standardIcon(which, opt, w)));
+}
+
 void GridStyle::polish(QWidget *w) {
 	// DEFERRED, AND THE IMMEDIATE VERSION CRASHED. polish() arrives from
 	// inside the status bar's OWN setSizeGripEnabled(true): the QStatusBar

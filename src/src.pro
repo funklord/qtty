@@ -26,6 +26,7 @@ HEADERS += \
     ../include/qtty/drag.h \
     ../include/qtty/windows.h \
     qt_compat.h \
+    standard_icons.h \
     backend/ansi/ansi_backend.h \
     backend/ansi/term_caps.h \
     backend/ansi/scroll_settle.h \

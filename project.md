@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2217 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2219 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3150,8 +3150,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-21: **2217 on Qt 6 with no failures,
-  and 2184 passing, 33 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-21: **2219 on Qt 6 with no failures,
+  and 2188 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18391,6 +18391,103 @@ re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
 
+### 8.475 GridStyle::standardIcon(), on an engine that keeps its size and its name (2026-10-21)
+
+**Taken by the copyright holder 2026-10-21.** 8.466 and 8.468 both ended at
+this override, from opposite directions, and it buys two things that happen
+to share a hook. Both measured on both versions:
+
+    Qt 5.15.15   pixmap(38) was 32x32        now 38x38
+                 message box 51 px, 2.68 rows   now 57 px, 3.00 rows
+    Qt 6.8.2     pixmap(38) was 38x38        unchanged
+                 message box 57 px, 3.00 rows   unchanged
+    both         the placed pixmap resolved to nothing
+                 now resolves to SP_MessageBoxWarning
+
+**The size half.** A QIcon never scales PAST its largest available pixmap,
+and `SP_MessageBoxWarning` offers 32x32 and nothing else on Qt 5. So
+`PM_MessageBoxIconSize`'s two rows came back as 1.68, the dialog was 2.68
+rows, and 8.466 had to make the height check step over there. The engine
+takes whatever the base style will give and draws it into the rectangle that
+was asked for, so the size is the style's answer on both versions now and
+the step-over is gone -- Qt 5's skip count falls from 33 to 31.
+
+**The identity half, which is what section 0b was waiting on.** Qt rasterises
+a QIcon before a style draws it, so a severity icon reached
+`drawItemPixmap()` as pixels with no name. The mint point is NOT
+`standardIcon()`, which 8.466 measured and which this entry does not
+re-litigate: a second call re-renders, a different size gives a third, and
+what the message box places matches none of them. It has to be inside the
+icon, in a `QIconEngine` -- the object QIcon asks once per size, mode and
+state and then caches -- and `src/standard_icons.h` is that registry.
+
+**It does not choose a glyph, and that is deliberate.** Whether a warning
+triangle should become one is section 0b's row and the holder's; this is the
+mechanism that row was blocked on. The channel already existed --
+`CellImage::key` IS the pixmap's `cacheKey()`, carried to the backend and
+asserted by `suite_placements` -- so a glyph decision now needs no plumbing,
+only an answer.
+
+**The check that said identity does not survive is INVERTED rather than
+amended**, because its own comment named this day: "this goes red the day Qt
+gives standard icons a stable identity, and that day is exactly when this
+decision is worth re-opening". The raw facts it printed are unchanged and
+still printed -- two engines still render two pixmaps with two keys -- but
+the keys no longer have to agree, because each is noted as it leaves.
+Identity is a lookup rather than a coincidence.
+
+**With the control that makes it mean anything.** A registry that answered
+the same value for everything would satisfy "the placed pixmap can be
+named", so a pixmap this library never minted must resolve to nothing. An
+entry sabotages exactly that.
+
+**The registry is bounded and turns over WHOLESALE.** A placement's key is
+resolved in the frame that made it, so only recent entries can be wanted; a
+cache that only grows is the shape this project has paid for twice, in
+16,739 temporary files and in 693 GB of orphaned logs. Past 256 the whole map
+goes rather than half, because evicting the oldest needs an order this does
+not keep, and losing identity degrades to exactly the state before the
+registry existed. The cap is the deferral's number, because a second
+arbitrary number is worse than a shared one.
+
+**The engine caches per size, mode and state, and a clone carries it.**
+Without the cache one icon asked twice rendered twice and minted two
+identities -- the suite's own info line read "asked twice DISAGREES" -- which
+wastes a render, churns the registry, and loses a property Qt's own
+`QPixmapIconEngine` had. Without the clone carrying it, a copy of an icon
+rendered afresh.
+
+**And a stale binary made this entry wrong once, which is the half worth
+keeping.** `QHash` wants `size_t qHash(const T &, size_t)` on Qt 6 and
+`uint qHash(const T &, uint)` on Qt 5. The size_t form built on Qt 6 and the
+Qt 5 LIBRARY then failed to compile -- while `make -C build-qt5-test`
+rebuilt only the suite, linked the library that was already there, and ran.
+It reported "one icon asked twice DISAGREES" on Qt 5, and that was read as a
+version difference and nearly recorded as one. **There was no cache in the
+binary being measured.**
+
+`build-and-commit.md` states the rule this broke -- never conclude a test
+passed or failed from a binary the build step did not rebuild -- and the
+shape it arrives in here is worth naming: a two-stage build where the second
+stage succeeds over the first stage's failure. The remedy is to read the
+rc of every stage rather than grepping the last log for errors.
+`Qtty::HashSeed` in `src/qt_compat.h` carries the signature now, which is
+where this tree keeps version conditionals.
+
+**And the sabotage for the size half took two attempts, which named a
+mechanism this entry had guessed at.** It cannot be defended by capping the
+pixmap the way Qt 5 does, because the harness runs on Qt 6 where the base
+icon honours 38 and the check would stay green against broken code. The
+first attempt understated `actualSize()`, on the assumption that QIcon
+resizes an engine's answer down to it -- and the harness reported "the named
+check PASSED against broken code". **Halving `actualSize()` changes nothing
+a message box can see**, so that is not the lever; the size the pixmap is
+BUILT at is, and the entry sabotages that instead. The code comment on
+`actualSize()` now records the measurement rather than the guess.
+
+2219 checks on Qt 6, 2188 passing and 31 stepping over on Qt 5, 678 sabotage
+entries.
+
 ### 8.474 A cell buffer reported a size its storage did not have (2026-10-21)
 
 **The declared size and the storage were two different numbers.**
@@ -19105,14 +19202,17 @@ exactly when this decision is worth re-opening". On Qt 5 two
 ONE cacheKey, where Qt 6 gives three that do not meet. So the
 cacheKey-to-glyph map that decision rules out **is workable on Qt 5**, and
 the QIconEngine mint point is a Qt 6 requirement rather than a general one.
+**Settled the other way in 8.475**: the engine was built for both, because
+depending on one version's accidental stability would have made the
+mechanism a thing that works here and not there.
 
-**The two icon findings converge on one option, which is also not mine.**
-`GridStyle` does not override `standardIcon()` at all today -- only the
-metric. An override returning an icon whose engine renders at any requested
-size would fix the fractional height AND be the mint point the identity
-decision wants, in one change. It is a design change, it touches section
-0b's open question about how much of a style qtty should notice, and it is
-the holder's.
+**The two icon findings converge on one option, and the holder took it the
+next day.** `GridStyle` overrode `standardIcon()` nowhere -- only the metric
+-- and an override returning an icon whose engine renders at any requested
+size fixes the fractional height AND is the mint point the identity decision
+wants, in one change. 8.475 has it: the dialog is 3.00 rows on both versions
+and the placed pixmap resolves to `SP_MessageBoxWarning`. The glyph itself
+is still section 0b's.
 
 **One new axis opened on the way and 8.467 closed it.** Qt 5.15.15 + xcb
 failed three checks that Qt 5 + offscreen and both Qt 6 runs passed, all in

@@ -396,6 +396,16 @@ public:
 	// must refuse. See the implementation.
 	int styleHint(StyleHint, const QStyleOption *, const QWidget *,
 	              QStyleHintReturn *) const override;
+	// Every standard icon goes out on this style's own QIconEngine, for two
+	// reasons that happen to share a hook. Qt's standard icons do not render
+	// above their largest available pixmap -- SP_MessageBoxWarning offers
+	// 32x32 and nothing else on Qt 5, so PM_MessageBoxIconSize's two rows
+	// came back as 1.68 and the dialog was 2.68 rows tall. And a QIcon is
+	// rasterised before a style draws it, so identity is lost unless
+	// something mints it where QIcon asks exactly once: inside the engine.
+	// src/standard_icons.h carries the second half and names what it is for.
+	QIcon standardIcon(StandardPixmap, const QStyleOption *,
+	                   const QWidget *) const override;
 	// Qt's size grip is REMOVED here rather than only sized away. Giving it
 	// no cells takes away the drag that could shrink a window off the
 	// terminal and the pen that painted its corner black, and leaves one

@@ -7282,3 +7282,42 @@ check = "a cell buffer asked for a negative size reports none, rather than two n
 # check is the first in suite_cells(), so the run dies at zero passes --
 # which is itself the measurement, and stronger than a red line would be.
 expect = "crash"
+
+[[sabotage]]
+# The override gone, so standard icons come straight from the base style
+# again: rasterised with no identity left, which is what blocked section
+# 0b's iconography row. 8.475.
+name = "a standard icon comes from the base style with no identity minted"
+file = "src/grid/grid_style.cpp"
+find = "\treturn QIcon(new GridIconEngine(which,\n\t                                QProxyStyle::standardIcon(which, opt, w)));"
+into = "\treturn QProxyStyle::standardIcon(which, opt, w);"
+count = 1
+check = "the pixmap a message box places can be named as the standard icon it came from, which is what a glyph would need to travel on"
+
+[[sabotage]]
+# The registry claiming every pixmap, which is the way a lookup passes its
+# own check while meaning nothing: an application's icon, a grab of a
+# widget and a hand-made pixmap would all come back named. 8.475.
+name = "the icon registry names pixmaps it never minted"
+file = "src/grid/grid_style.cpp"
+find = "\treturn g_noted_icons.value(key, -1);"
+into = "\treturn g_noted_icons.isEmpty() ? -1 : g_noted_icons.constBegin().value();"
+count = 1
+check = "and a pixmap this library did not mint resolves to nothing, so the registry names what it made rather than everything"
+
+[[sabotage]]
+# The engine rendering smaller than it was asked, which is the Qt 5 pixmap
+# cap reproduced in a way that does not depend on the version -- the harness
+# runs on Qt 6, where the base icon honours 38 and capping it would leave
+# this green against broken code.
+#
+# NOT actualSize(), which was tried first and reported "the named check
+# PASSED against broken code": halving it changed nothing the message box
+# could see, so QIcon does not resize the engine's answer down to it on that
+# path. The size the pixmap is BUILT at is the lever. 8.475.
+name = "an icon engine renders smaller than it was asked for"
+file = "src/grid/grid_style.cpp"
+find = "\t\tQPixmap out(size);\n\t\tif (size.isEmpty()) return out;"
+into = "\t\tQPixmap out(size / 2);\n\t\tif (size.isEmpty()) return out;"
+count = 1
+check = "a message box's severity icon arrives the size the style asked for, rather than capped at the largest pixmap Qt happened to have"

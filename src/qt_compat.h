@@ -144,6 +144,22 @@ inline QPointF event_position(const QWheelEvent *e) {
 #endif
 }
 
+// WHAT QHash WANTS A qHash TO RETURN AND TAKE. Qt 6 looks for
+// `size_t qHash(const T &, size_t)` and Qt 5 for `uint qHash(const T &,
+// uint)`, both with a default seed. A type that gives only one of the two
+// compiles against the other version by accident if at all -- measured in
+// 8.475, where the size_t form built on Qt 6 and the Qt 5 library then
+// failed with "no matching function for call to qHash" while the suite
+// linked the stale library and reported a cache that was never in it.
+//
+// An alias rather than a conditional at each use, so a hashable type writes
+// one function and no `#if` splits a brace.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+using HashSeed = size_t;
+#else
+using HashSeed = uint;
+#endif
+
 // Qt 6 added qHashMulti. Combining by hand is what it does, and the shape
 // here is Qt's own documented one rather than an invention: seed each value
 // into the accumulator with the multiplier QHash uses.
