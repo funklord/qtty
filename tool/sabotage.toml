@@ -7264,3 +7264,21 @@ find = "\treturn width_px >= (2 * want + 2) * cw ? want : 0;"
 into = "\t(void)width_px; (void)cw; return want;"
 count = 1
 check = "a combo box's arrow stays inside the widget and clear of its field at every width"
+
+[[sabotage]]
+# The buffer's size back to the raw product with no clamp, which is what
+# stood: a negative was reported as asked, two negatives multiplied to a
+# positive, and a product that overflowed left writable() saying yes about
+# cells the storage did not have. 8.474.
+name = "a cell buffer reports the size it was asked for rather than the one it has"
+file = "include/qtty/cell.h"
+find = "\tCellBuffer(int cols, int rows)\n\t    : c_(qMax(0, cols)), r_(qMax(0, rows)),\n\t      d_(qsizetype(c_) * qsizetype(r_)) {}"
+into = "\tCellBuffer(int cols, int rows) : c_(cols), r_(rows), d_(cols * rows) {}"
+count = 1
+check = "a cell buffer asked for a negative size reports none, rather than two negatives a caller multiplies into a positive"
+# The honest outcome is a DEAD SUITE rather than a red line, because the
+# check it defends CONSTRUCTS the degenerate buffer and the unclamped
+# constructor cannot survive being asked: a QVector built from -8. The
+# check is the first in suite_cells(), so the run dies at zero passes --
+# which is itself the measurement, and stronger than a red line would be.
+expect = "crash"

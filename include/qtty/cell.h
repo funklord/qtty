@@ -107,7 +107,35 @@ QVector<QString> to_clusters(const QString &text);
 
 class CellBuffer {
 public:
-	CellBuffer(int cols, int rows) : c_(cols), r_(rows), d_(cols * rows) {}
+	// THE DECLARED SIZE AND THE STORAGE ARE THE SAME NUMBER, which they
+	// were not: `d_(cols * rows)` sized the storage from the raw product
+	// while `c_` and `r_` kept whatever was asked for, and at() bounds-checks
+	// against c_ and r_. So a product that did not match left writable()
+	// saying yes about cells that did not exist. Measured 2026-10-21:
+	//
+	//     CellBuffer(65536, 65536)  product is 0 as int, so the storage was
+	//                               EMPTY while cols() said 65536 and
+	//                               writable(0,0) said true -- at(0,0) then
+	//                               read and wrote past the end
+	//     CellBuffer(-4, 2)         a container built from -8
+	//     CellBuffer(-4, -2)        two negatives multiply to a POSITIVE, so
+	//                               it allocated 8 cells and reported -4
+	//                               columns, and cols() * rows() handed a
+	//                               caller 8 for a buffer with no columns
+	//
+	// Qt's own asserts catch the first two in a debug build and are compiled
+	// out of a release one, which is how this library ships -- so there it
+	// was an unchecked read and write.
+	//
+	// Clamped to non-negative and multiplied as a qsizetype. A negative
+	// becomes no cells, which is what the rest of this library already does
+	// with a degenerate size; an enormous product now fails as an allocation
+	// rather than silently, which is a defined failure instead of an
+	// undefined one. c_ and r_ are declared before d_, so they are the
+	// clamped values by the time it is sized.
+	CellBuffer(int cols, int rows)
+	    : c_(qMax(0, cols)), r_(qMax(0, rows)),
+	      d_(qsizetype(c_) * qsizetype(r_)) {}
 	int cols() const { return c_; }
 	int rows() const { return r_; }
 

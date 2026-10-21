@@ -4057,25 +4057,55 @@ int suite_runtime() {
 		printf("SKIP: a child process cannot be waited for under memcheck "
 		       "-- see the channel-mode check above\n");
 	} else {
-		const QString pattern = QStringLiteral("qtty-screen-*.json");
-		const auto count_now = [&pattern] {
-			return QDir(QDir::tempPath())
-			    .entryList({pattern}, QDir::Files).size();
-		};
-		const int before = count_now();
-		QProcess child;
-		child.start(QCoreApplication::applicationFilePath(),
-		            {QStringLiteral("no-such-suite")});
-		const bool ran = child.waitForFinished(30000)
-		              && child.exitStatus() == QProcess::NormalExit;
-		const int after = count_now();
-		printf("info: %d screen file(s) in the temp directory before a child "
-		       "qtty process and %d after it, child exit %d\n", before, after,
-		       child.exitCode());
-		CHECK(ran && after == before,
-		      "a qtty process removes the screen description it wrote for "
-		       "the offscreen plugin, so running one leaves nothing in the "
-		       "temp directory");
+		// IN A DIRECTORY ONLY THE CHILD CAN TOUCH, because counting the
+		// shared one by PREFIX is the measuring side of the mistake this
+		// project's own rules name on the deleting side: never act on what
+		// matches a prefix, only on what this process made. The count was
+		// of every `qtty-screen-*.json` in /tmp, so ANY other qtty process
+		// finishing inside the window moved it -- and this workspace runs
+		// several sessions.
+		//
+		// Measured 2026-10-21: three suite runs overlapping by accident took
+		// the count from 92 to 91 and failed this check, with the library
+		// behaving correctly throughout. Run alone a moment later it was 90
+		// to 90. A check that two concurrent runs can redden is a check that
+		// will cry wolf, and the first thing anybody does with one is stop
+		// believing it.
+		//
+		// TMPDIR is what QDir::tempPath() reads on Unix, and
+		// prepare_environment() builds the screen file's name from that --
+		// so handing the child its own TMPDIR redirects the file under test
+		// without touching the code that writes it. The parent's own file
+		// stays where it was, in the real temp directory, and is no longer
+		// in the population being counted.
+		QTemporaryDir own_tmp;
+		if (!own_tmp.isValid()) {
+			printf("SKIP: no private temp directory, so a shared count"
+			       " could not be avoided\n");
+		} else {
+			const QString pattern = QStringLiteral("qtty-screen-*.json");
+			const QString where = own_tmp.path();
+			const auto count_now = [&pattern, &where] {
+				return QDir(where).entryList({pattern}, QDir::Files).size();
+			};
+			const int before = count_now();
+			QProcess child;
+			QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+			env.insert(QStringLiteral("TMPDIR"), where);
+			child.setProcessEnvironment(env);
+			child.start(QCoreApplication::applicationFilePath(),
+			            {QStringLiteral("no-such-suite")});
+			const bool ran = child.waitForFinished(30000)
+			              && child.exitStatus() == QProcess::NormalExit;
+			const int after = count_now();
+			printf("info: %d screen file(s) in the temp directory before a child "
+			       "qtty process and %d after it, child exit %d\n", before, after,
+			       child.exitCode());
+			CHECK(ran && after == before,
+			      "a qtty process removes the screen description it wrote for "
+			       "the offscreen plugin, so running one leaves nothing in the "
+			       "temp directory");
+		}
 	}
 
 	return fails;

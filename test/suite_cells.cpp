@@ -19,6 +19,38 @@ static int fails = 0;
 int suite_cells() {
 	fails = 0;
 
+	// A SIZE THAT CAME OUT OF ARITHMETIC, which is how a buffer gets asked
+	// for one nobody meant: `CellBuffer(width - margin, rows)` with a margin
+	// wider than the width is an ordinary slip, and before 8.474 it built a
+	// buffer that REPORTED the negative. Two of them multiplied to a
+	// positive, so it allocated eight cells, said it had minus four columns,
+	// and handed `cols() * rows()` to a caller as 8.
+	//
+	// The worse half is not testable from here and is said rather than
+	// asserted: the storage was sized from the raw product while at()
+	// bounds-checks against the declared size, so a product that overflowed
+	// to zero -- 65536 by 65536 is exactly that as an int -- left
+	// writable(0,0) saying yes about a buffer with no cells at all. Qt's own
+	// asserts catch it in a debug build and are compiled out of a release
+	// one, which is how this library ships. Measuring it here would mean
+	// asking for four billion cells, so the check below holds the property
+	// that IS reachable: the two numbers agree, and neither is negative.
+	{
+		const CellBuffer one_neg(-4, 2), both_neg(-4, -2), zero(0, 0);
+		printf("info: a buffer asked for (-4,2) reports %dx%d, (-4,-2)"
+		       " reports %dx%d\n", one_neg.cols(), one_neg.rows(),
+		       both_neg.cols(), both_neg.rows());
+		CHECK(one_neg.cols() >= 0 && one_neg.rows() >= 0
+		      && both_neg.cols() >= 0 && both_neg.rows() >= 0
+		      && both_neg.cols() * both_neg.rows() == 0,
+		      "a cell buffer asked for a negative size reports none, rather"
+		      " than two negatives a caller multiplies into a positive");
+		CHECK(!one_neg.writable(0, 0) && !both_neg.writable(0, 0)
+		      && !zero.writable(0, 0) && both_neg.to_text().isEmpty(),
+		      "and nothing in a degenerate buffer is writable, so at() has no"
+		      " cell inside its declared size that its storage lacks");
+	}
+
 	CHECK(cluster_width(u"a") == 1, "ascii is narrow");
 	CHECK(cluster_width(u"あ") == 2, "hiragana is wide");
 	CHECK(cluster_width(u"漢") == 2, "CJK is wide");

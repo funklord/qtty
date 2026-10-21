@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2215 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2217 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3150,8 +3150,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-21: **2215 on Qt 6 with no failures,
-  and 2182 passing, 33 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-21: **2217 on Qt 6 with no failures,
+  and 2184 passing, 33 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18390,6 +18390,106 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.474 A cell buffer reported a size its storage did not have (2026-10-21)
+
+**The declared size and the storage were two different numbers.**
+
+    CellBuffer(int cols, int rows) : c_(cols), r_(rows), d_(cols * rows) {}
+
+`at()` bounds-checks against `c_` and `r_`; the storage came from the raw
+product. Whenever the two disagreed, `writable()` said yes about cells that
+did not exist. Measured:
+
+    CellBuffer(65536, 65536)  the product is EXACTLY 0 as an int, so the
+                              storage was empty while cols() said 65536 and
+                              writable(0,0) said true -- at(0,0) then read
+                              and WROTE past the end
+    CellBuffer(-4, 2)         a container built from -8
+    CellBuffer(-4, -2)        two negatives multiply to a POSITIVE: eight
+                              cells allocated, minus four columns reported,
+                              and cols() * rows() handed a caller 8
+
+**Qt's own asserts catch the first two and are compiled out of a release
+build, which is how this library ships** -- so there it was an unchecked
+read and write rather than a stop. The probe that found it was built debug
+and showed `ASSERT failure in QList::operator[]: "index out of range"`,
+which is the assert a shipped consumer does not get.
+
+**The realistic input is not the absurd one.** 65536 columns is nobody's
+terminal; `CellBuffer(width - margin, rows)` with a margin wider than the
+width is an ordinary slip, and `CellBuffer` is public API -- an application
+driving its own frame loop through `render_once()` constructs one from its
+own arithmetic.
+
+**Clamped to non-negative, and multiplied as a qsizetype.** A negative
+becomes no cells, which is what the rest of this library already does with
+a degenerate size -- the ANSI backend refuses one at both of its doors and
+`FrameScheduler` refuses a zero-cell terminal. After it:
+
+    (-4, 2)   -> 0x2, nothing writable
+    (-4, -2)  -> 0x0, and cols() * rows() is 0
+    (0, 0)    -> 0x0, unchanged
+    (4, 2)    -> unchanged
+
+**What it does NOT do, said rather than implied**: an enormous product
+still fails, now as an allocation instead of silently. That is a defined
+failure where it was an undefined one, and no clamp can make four billion
+cells succeed. Capping the size would need a maximum terminal, which is a
+number nobody here has had to choose; the check holds the property that is
+reachable instead -- the two numbers agree and neither is negative.
+
+**Found by misusing the public API on purpose**, which is the lens 8.468's
+crash suggests: construct the library's own objects in orders and with
+values nothing has tried. Eight cases -- `setup()` twice, two routers on one
+window, composing after the window is deleted, a key after the focus widget
+is deleted, a mouse off the grid, a null router, a zero buffer and a
+negative one -- and seven of the eight were already sound. The eighth
+answered `cols=-4 rows=-2` and was worth the other seven.
+
+**Three lenses came back clean on the way and are recorded so they are not
+re-run.** Unicode content: CJK, Hangul, an emoji, a combining mark, Arabic
+and a zero-width space all land on the right cells, with widths `1 1 2 0 1`
+around a wide cluster and the combining mark joining its base -- **measured
+at the cell level after `to_text()` said otherwise.** A string index into
+`to_text()` is not a column, because a wide cluster is one glyph in two
+cells and the text is a character short under each one; `cell.h` says so,
+and reading the string first produced four confident false drifts. That
+instrument has now cost this session two near-misses.
+
+**The entry defending it expects a DEAD SUITE, and that is the measurement
+rather than a concession.** The check constructs the degenerate buffer, so
+the unclamped constructor cannot survive being asked -- a QVector built from
+-8. The check is the first in `suite_cells()`, so reverting the clamp kills
+the run at **zero passes**, which says more than a red line would: the old
+code could not even be interrogated about the case.
+
+**And a second, unrelated defect fell out of the verification: a check that
+two concurrent runs can redden.** The screen-file reaper check counted every
+`qtty-screen-*.json` in the shared temp directory before and after a child
+process and required the two to agree. Three suite runs overlapped by
+accident here -- a waiter launched three times by mistake -- and the count
+went from 92 to 91 while the library behaved correctly throughout. Run alone
+a moment later it was 90 to 90.
+
+**That is the measuring side of a rule this project already states for
+deleting**: never act on what matches a prefix, only on what this process
+made. A count over a shared directory is that error pointed the other way,
+and this workspace runs several sessions, so it would have cried wolf for
+real rather than only for one careless session. **The first thing anybody
+does with a check that cries wolf is stop believing it.**
+
+Fixed by giving the child its own `TMPDIR`, which is what `QDir::tempPath()`
+reads and what `prepare_environment()` builds the screen file's name from --
+so the file under test is redirected without touching the code that writes
+it, the parent's own file leaves the population entirely, and the counts are
+0 and 0. **Proved not vacuous**, which is the risk a private directory
+introduces: with the reaper sabotaged the check still reddens, so the
+redirection genuinely reaches the child's file rather than counting an empty
+directory twice.
+
+2217 checks on Qt 6, 2184 passing and 33 stepping over on Qt 5, 675
+sabotage entries.
 
 ### 8.473 The rest of the complex-control family, swept at narrow sizes: four anomalies, none of them reachable (2026-10-21)
 
