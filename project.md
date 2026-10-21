@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2224 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2226 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3150,8 +3150,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-21: **2224 on Qt 6 with no failures,
-  and 2193 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-21: **2226 on Qt 6 with no failures,
+  and 2195 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18390,6 +18390,62 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.478 A cell of zero pixels, from a public setter with no guard (2026-10-21)
+
+**The lens is 8.474's, pointed at the other door.** That entry fixed a
+`CellBuffer` that reported a size its storage did not have, and the question
+it came from -- which public entry points take a size and believe it -- had
+one more answer in it. `GridMetrics::set(int, int)` is public, `setup()` is
+its only caller inside the library, and nothing stopped an application from
+calling it with a zero.
+
+**A zero was not a bad answer. It was a crash.** Measured with a probe that
+sets the cell and then asks the arithmetic, 2026-10-21:
+
+    set(0, 0)    is_aligned ... <process dies on SIGFPE>
+    set(0, 19)   is_aligned ... <process dies on SIGFPE>
+    set(10, 0)   is_aligned ... <process dies on SIGFPE>
+
+`GridMetrics::is_aligned()` takes a modulo by both numbers, and the output
+stops dead in the middle of the line that calls it. Nothing had rendered
+yet.
+
+**The negative case survived and lied, which is worse in kind.**
+`set(-10, -19)` stored happily, after which `cells(2, 2)` answered
+**-20x-38** and `is_aligned()` answered **true** of a rectangle aligned to
+nothing. 8.477 made the same point from the rectangle end -- a stop is
+visible and a wrong answer is not.
+
+**The surface is wide, which is why the guard belongs at the setter rather
+than at the division.** Re-measured by `grep -rE '[/%] *(GridMetrics::)?c[wh]\b' src include`:
+**83 divisions and modulos by the cell size, on 67 lines across eight
+files**, led by `cell_paint.cpp` with 25 and `grid_style.cpp` with 14. One
+of them is in a public header. Guarding 83 sites against a value that is
+never legitimate is the wrong half to defend.
+
+**Refused rather than clamped to one**, which is this library's existing
+idiom for a degenerate size: the ANSI backend refuses one at both of its
+doors, `FrameScheduler` refuses a zero-cell terminal, and `CellBuffer`
+refuses a negative one as of 8.474. A one-pixel cell would be an invention
+nobody asked for; keeping the cell that was working is not.
+
+**And said rather than swallowed.** The refusal warns through this library's
+own deferring handler, so it reaches a terminal when one is handed back
+rather than being painted over a frame.
+
+**The check restores the cell size it borrowed.** This is process-wide
+state and every sweep after it in `suite_grid` depends on it, so the five
+refusals are followed by `set(cw, ch)` -- and the two assertions ask
+`is_aligned()` and `cells()` AFTER the refusals, because that call is the
+one that died.
+
+**The sabotage entry expects a crash**, which is the honest outcome: with
+the guard removed the suite does not report a failure, it dies. That is the
+`expect = "crash"` form 8.4xx introduced for exactly this shape.
+
+2226 checks on Qt 6, 2195 passing and 31 stepping over on Qt 5, 683 sabotage
+entries, every anchor matching.
 
 ### 8.477 Eighteen invalid rectangles, from a cell being subtracted twice (2026-10-21)
 

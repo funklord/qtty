@@ -325,7 +325,41 @@ static QString tool_button_label(const QStyleOptionToolButton *tb, const QWidget
 static int s_cw = 8, s_ch = 16;
 int GridMetrics::cw() { return s_cw; }
 int GridMetrics::ch() { return s_ch; }
-void GridMetrics::set(int cw, int ch) { s_cw = cw; s_ch = ch; }
+// A CELL IS A POSITIVE NUMBER OF PIXELS, and a non-positive one is refused
+// rather than stored. This is public API -- setup() is its caller but nothing
+// stops an application from calling it -- and the whole library divides by
+// these two numbers. Measured 2026-10-21 with
+// `grep -rE '[/%] *(GridMetrics::)?c[wh]\b' src include`: 83 divisions and
+// modulos, on 67 lines across eight files, one of them a public header.
+// Guarding 83 sites against a value that is never legitimate is the wrong
+// half to defend.
+//
+// So a zero was not a bad answer, it was a CRASH. Measured 2026-10-21: after
+// set(0, 0), set(0, 19) or set(10, 0), is_aligned() divides by zero and the
+// process dies on SIGFPE before anything renders. A negative pair survives
+// and answers nonsense instead -- cells(2, 2) came back -20x-38, and
+// is_aligned() said TRUE of a rectangle aligned to nothing, which is the
+// worse of the two because it is a wrong answer rather than a stop.
+//
+// Refused rather than clamped to one, which is the idiom this library
+// already uses for a degenerate size: the ANSI backend refuses one at both
+// of its doors, FrameScheduler refuses a zero-cell terminal, and
+// CellBuffer refuses a negative one since 8.474. A one-pixel cell would be
+// an invention; keeping the cell that was working is not.
+//
+// And said rather than swallowed, because a diagnostic that vanishes
+// without trace is the opposite defect. The warning goes through this
+// library's own deferring handler, so it reaches a terminal when one is
+// given back rather than onto a frame.
+void GridMetrics::set(int cw, int ch) {
+	if (cw <= 0 || ch <= 0) {
+		qWarning("qtty: a cell of %dx%d was refused -- a cell is a positive"
+		         " number of pixels, so %dx%d is kept", cw, ch, s_cw, s_ch);
+		return;
+	}
+	s_cw = cw;
+	s_ch = ch;
+}
 
 // A QPointer, for the reason InputRouter gives for `grab_` and `hovered_`: a
 // widget can be destroyed while something still points at it. This is

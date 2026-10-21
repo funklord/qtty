@@ -18,7 +18,11 @@ class GridMetrics {
 public:
 	static int cw();
 	static int ch();
-	static void set(int cw, int ch);            // called by Qtty::setup()
+	// Called by Qtty::setup(). A non-positive cell is REFUSED and the
+	// working one kept, because the whole library divides by these two
+	// numbers -- including is_aligned() just below, where a zero is a
+	// division by zero rather than a bad answer. See the definition.
+	static void set(int cw, int ch);
 	static QSize cells(int c, int r) { return {c * cw(), r * ch()}; }
 	static bool is_aligned(const QRect &px) {
 		return px.x() % cw() == 0 && px.y() % ch() == 0

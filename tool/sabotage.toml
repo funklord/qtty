@@ -7367,3 +7367,15 @@ find = "\treturn QRect(r.x(), r.y(), qMax(0, r.width()), qMax(0, r.height()));"
 into = "\treturn r;"
 count = 1
 check = "no sub-element rect this style hands out has a negative dimension, however small the widget it was asked about"
+
+[[sabotage]]
+# The cell size stored unchecked again. A zero is not a bad answer but a
+# crash: the library divides by it in 83 places and GridMetrics::is_aligned()
+# takes a modulo by it, so the suite dies on SIGFPE. 8.478.
+name = "a cell size of zero is stored and the library divides by it"
+file = "src/grid/grid_style.cpp"
+find = "\tif (cw <= 0 || ch <= 0) {"
+into = "\tif (false) {"
+count = 1
+check = "and the arithmetic that divides by it still answers, rather than dividing by zero or measuring in negative pixels"
+expect = "crash"

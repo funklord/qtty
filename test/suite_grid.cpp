@@ -393,6 +393,51 @@ int suite_grid() {
 		      " constant inside the arithmetic");
 	}
 
+	// A CELL OF ZERO, which was a CRASH rather than a bad answer.
+	// GridMetrics::set() is public -- setup() is its caller but nothing
+	// stops an application calling it -- and the library divides by those
+	// two numbers in 83 places, plus the modulo in is_aligned() in the same
+	// header. Measured 2026-10-21: after set(0, 0), set(0, 19) or
+	// set(10, 0), is_aligned() died on SIGFPE before anything rendered.
+	//
+	// A negative pair was worse in kind though not in effect: it survived
+	// and answered nonsense, cells(2, 2) coming back -20x-38 and
+	// is_aligned() saying TRUE of a rectangle aligned to nothing. A wrong
+	// answer outlives a stop.
+	//
+	// The cell is restored at the end, because this is process-wide state
+	// and the sweeps below depend on it -- the same care the two-cell-size
+	// sweep takes.
+	{
+		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
+		int refused = 0, kept = 0, answered = 0;
+		for (QPoint bad : { QPoint(0, 0), QPoint(0, 19), QPoint(10, 0),
+		                    QPoint(-10, -19), QPoint(-1, 19) }) {
+			GridMetrics::set(bad.x(), bad.y());
+			++refused;
+			if (GridMetrics::cw() == cw && GridMetrics::ch() == ch) ++kept;
+			// Asked INSIDE the loop, which is the reproduction rather
+			// than a tidier place to put it: is_aligned() is the call
+			// that died, and it has to be made while the bad pair is
+			// the one in force. Asked after the loop it would be safe
+			// whatever the setter did, the last pair carrying no zero.
+			const QSize two = GridMetrics::cells(2, 2);
+			if (GridMetrics::is_aligned(QRect(0, 0, 2 * cw, 2 * ch))
+			    && two.width() > 0 && two.height() > 0) ++answered;
+		}
+		GridMetrics::set(cw, ch);
+		printf("info: %d of %d non-positive cell sizes were refused, and the"
+		       " grid is still %dx%d\n", kept, refused, GridMetrics::cw(),
+		       GridMetrics::ch());
+		CHECK(refused == kept && GridMetrics::cw() == cw
+		      && GridMetrics::ch() == ch,
+		      "a cell of zero or less is refused and the working one kept,"
+		      " because the whole library divides by it");
+		CHECK(answered == refused,
+		      "and the arithmetic that divides by it still answers, rather"
+		      " than dividing by zero or measuring in negative pixels");
+	}
+
 	// AND THE PIXEL-METRIC SURFACE, WHICH NOTHING ASKED NUMERICALLY. The
 	// sweep above covers sizeFromContents() and subControlRect(); the third
 	// surface a style answers through is pixelMetric(), and no check in this
