@@ -3081,6 +3081,12 @@ void InputRouter::on_mouse(const MouseEvent &m) {
 		// with this function's mouse handling after motion and the button,
 		// and the same shape as both: an event correctly parsed, delivered
 		// somewhere that cannot act on it.
+		// The step first, in cells: a mode changed after polish() shows up
+		// here, and a wheel is where it costs something. See
+		// snap_scroll_steps().
+		for (QWidget *w = target; w; w = w->parentWidget())
+			if (auto *sa = qobject_cast<QAbstractScrollArea *>(w))
+				snap_scroll_steps(sa);
 		for (QWidget *w = target; w; w = w->parentWidget()) {
 			// From `screen`, for the same reason `pos` above is. The comment
 			// there says "two derivations of one position, and only one of

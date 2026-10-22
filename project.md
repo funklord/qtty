@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2250 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2252 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3151,8 +3151,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-22: **2250 on Qt 6 with no failures,
-  and 2219 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-22: **2252 on Qt 6 with no failures,
+  and 2221 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18391,6 +18391,52 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.491 A wheel notch moved three rows and three pixels (2026-10-22)
+
+**Qt's default single step for a scroll bar is 20 pixels, against a cell of
+19.** So a wheel notch -- three single steps -- moved 60 pixels, and the
+content never sat on the row grid again. Measured 2026-10-22 on a six-row
+`QScrollArea` over twenty one-row labels:
+
+    notch   value   top row shown
+    0         0     0
+    1        60     3
+    2       120     6
+    3       180     9
+    4       240     13     <- four rows for one notch
+
+**The stutter is the visible half and the quiet half is worse.** Every child
+of the viewport sat three pixels above its cell -- which is what GridGuard
+exists to report, and what GridSnap cannot correct, the offset belonging to
+the scroll rather than to any widget. Twenty labels off the grid on every
+notch.
+
+**In pixels only, which is the half that could have gone wrong.** A
+`QAbstractItemView` defaults to `ScrollPerItem`, where a bar's value is an
+ITEM INDEX: setting a 19 there would scroll nineteen rows a notch, which is
+exactly what the router's keyboard path records costing when it assumed the
+unit -- "one arrow key scrolled nineteen rows and a page key ninety-five".
+An axis scrolling by item is left alone, its step of one item already being
+a whole number of rows.
+
+**Called from two places, one expression.** `GridStyle::polish()` sets it so
+the bar is right from the start -- which covers the arrow buttons and the
+keyboard as well as the wheel -- and the router calls it again on a wheel
+event, because the scroll MODE is a property an application may change after
+polish and a wheel is where that first costs something. The rule lives in
+`cell_geometry.h` beside the other things both the style and the router need.
+
+**ASSERTED AS THE STEP AND AS THE EFFECT.** The value stays a whole number
+of cells, and the top row advances by the same number of rows every notch
+until the bar reaches its end. Either alone passes against the fault:
+checking the value admits a step that is a whole cell and still wrong, and
+checking the rows admits a run too short to accumulate the error -- it took
+FOUR notches to cross a row. The end of the document is excluded
+deliberately, a notch there moving nothing because there is nowhere to go.
+
+2252 checks on Qt 6, 2221 passing and 31 stepping over on Qt 5, 708 sabotage
+entries, every anchor matching.
 
 ### 8.490 Closing the pixel-to-text family: what was already right (2026-10-22)
 

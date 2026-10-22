@@ -4327,6 +4327,88 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- a wheel notch moves a whole number of rows -----------------------
+	//
+	// Qt's default single step for a scroll bar is 20 PIXELS against a cell
+	// of 19, so a notch moved 60 -- three rows and three pixels -- and the
+	// content never sat on the row grid again. Measured 2026-10-22 on a
+	// six-row QScrollArea over twenty one-row labels:
+	//
+	//     notch   value   top row shown
+	//     0         0     0
+	//     1        60     3
+	//     2       120     6
+	//     3       180     9
+	//     4       240     13     <- four rows for one notch
+	//
+	// The stutter is the visible half. The quiet half is that every child
+	// of the viewport sat three pixels above its cell, which is what
+	// GridGuard exists to report and what GridSnap cannot correct -- the
+	// offset belongs to the scroll rather than to any widget.
+	//
+	// ASSERTED AS THE STEP AND AS THE EFFECT: the value stays a whole
+	// number of cells, and the top row advances by the same number of rows
+	// every notch until the bar reaches its end. Checking only the value
+	// would pass against a step that is a whole cell and still wrong, and
+	// checking only the rows would pass on a run too short to accumulate
+	// the error -- it took four notches to cross a row.
+	{
+		QWidget host;
+		host.setAttribute(Qt::WA_DontShowOnScreen);
+		auto *area = new QScrollArea(&host);
+		area->setGeometry(0, 0, 20 * cw, 6 * ch);
+		auto *inner = new QWidget;
+		auto *col = new QVBoxLayout(inner);
+		col->setContentsMargins(0, 0, 0, 0);
+		col->setSpacing(0);
+		for (int i = 0; i < 20; ++i) {
+			auto *l = new QLabel(QStringLiteral("row %1").arg(i), inner);
+			l->setFixedHeight(ch);
+			col->addWidget(l);
+		}
+		area->setWidget(inner);
+		host.resize(GridMetrics::cells(20, 7));
+		host.show();
+		QCoreApplication::processEvents();
+		QScrollBar *bar = area->verticalScrollBar();
+		const int step = bar->singleStep();
+		InputRouter wr(&host);
+		int ragged = 0, uneven = 0, notches = 0, prev = -1, moves = 0;
+		for (int n = 0; n < 6; ++n) {
+			Qtty::test::wheel(wr, QPoint(5, 2), -1, 0);
+			QCoreApplication::processEvents();
+			++notches;
+			if (bar->value() % ch != 0) ++ragged;
+			CellBuffer wb(20, 7);
+			render_once(host, wb);
+			QString row;
+			for (int x = 0; x < wb.cols(); ++x) row += wb.at(x, 1).ch;
+			const int mark = row.indexOf(QStringLiteral("row "));
+			const int shown = mark < 0 ? -1
+			                : row.mid(mark + 4, 3).trimmed()
+			                      .split(QLatin1Char(' ')).value(0).toInt();
+			// Only while the bar can still move: at the end of the
+			// document a notch moves nothing, which is right and is not a
+			// step this check is about.
+			if (prev >= 0 && bar->value() < bar->maximum()) {
+				++moves;
+				if (shown - prev != 3) ++uneven;
+			}
+			prev = shown;
+		}
+		printf("info: a wheel step of %d against a cell of %d: %d of %d"
+		       " value(s) off the grid, %d of %d notch(es) uneven\n", step,
+		       ch, ragged, notches, uneven, moves);
+		CHECK(step % ch == 0 && ragged == 0,
+		      "a scroll bar steps in whole cells, so a wheel notch leaves"
+		      " the content on the row grid rather than three pixels above"
+		      " it");
+		CHECK(moves > 0 && uneven == 0,
+		      "and every notch moves the same number of rows, the"
+		      " three-pixel error having crossed a row by the fourth");
+		GridGuard::reset();
+	}
+
 	// ---- a click lands on the character it was drawn on --------------------
 	//
 	// Qt maps a pixel to a text position through the FONT's advance, and

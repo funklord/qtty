@@ -7634,3 +7634,13 @@ into = "\t(void)text_x_for_cell(target, pos);"
 count = 1
 check = "a click on the cell a character is drawn in puts the cursor at that character, wide characters included"
 
+
+[[sabotage]]
+# The scroll bar's step goes back to Qt's twenty pixels against a cell of
+# nineteen, so a wheel notch moves three rows and three pixels. 8.491.
+name = "a scroll bar steps in pixels rather than cells"
+file = "src/cell_geometry.h"
+find = "\t\tif (!v_items) v->setSingleStep(GridMetrics::ch());"
+into = "\t\tif (false) v->setSingleStep(GridMetrics::ch());"
+count = 1
+check = "a scroll bar steps in whole cells, so a wheel notch leaves the content on the row grid rather than three pixels above it"

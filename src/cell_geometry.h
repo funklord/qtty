@@ -23,6 +23,9 @@
 #include <QString>
 #include <QStyleOption>
 #include <QWidget>
+#include <QAbstractItemView>
+#include <QAbstractScrollArea>
+#include <QScrollBar>
 #include <QGuiApplication>
 #include <QPalette>
 #include "qt_compat.h"
@@ -701,6 +704,51 @@ inline void apply_blink(QWidget &root, CellBuffer &buf, const QPoint &origin) {
 			}
 		}
 	}
+}
+
+// A WHEEL NOTCH AND AN ARROW BUTTON MOVE A WHOLE NUMBER OF CELLS. Qt's
+// default single step for a scroll bar is 20 pixels against a cell of 19, so
+// a notch moved 60 pixels -- three rows and three pixels -- and the content
+// never sat on the row grid again.
+//
+// Measured 2026-10-22 on a six-row QScrollArea over twenty one-row labels,
+// wheeling once per frame. The picture stays legible, the paint path
+// rounding each row to its nearest cell, and the error accumulates until it
+// crosses a row:
+//
+//     notch   value   top row shown
+//     0         0     0
+//     1        60     3
+//     2       120     6
+//     3       180     9
+//     4       240     13     <- four rows for one notch
+//
+// So the stutter is the visible half and the off-grid geometry is the
+// quiet one: every child of the viewport sat three pixels above its cell,
+// which is what GridGuard exists to report and what GridSnap cannot
+// correct, the offset belonging to the scroll rather than to any widget.
+//
+// IN PIXELS ONLY. A QAbstractItemView defaults to ScrollPerItem, where a
+// bar's value is an ITEM INDEX -- the router's keyboard path records what
+// assuming otherwise cost there, one arrow key scrolling nineteen rows --
+// so an axis scrolling by item is left alone, its step of one item already
+// being a whole number of rows.
+//
+// The MODE IS READ WHENEVER THIS IS CALLED rather than once, because an
+// application may change it at any time: GridStyle::polish() calls it so
+// the bar is right from the start, and the router calls it again on a wheel
+// event, which is where a mode changed later shows up first.
+inline void snap_scroll_steps(QAbstractScrollArea *area) {
+	if (!area) return;
+	const auto *view = qobject_cast<const QAbstractItemView *>(area);
+	const bool v_items = view && view->verticalScrollMode()
+	                             == QAbstractItemView::ScrollPerItem;
+	const bool h_items = view && view->horizontalScrollMode()
+	                             == QAbstractItemView::ScrollPerItem;
+	if (QScrollBar *v = area->verticalScrollBar())
+		if (!v_items) v->setSingleStep(GridMetrics::ch());
+	if (QScrollBar *h = area->horizontalScrollBar())
+		if (!h_items) h->setSingleStep(GridMetrics::cw());
 }
 
 } // namespace Qtty

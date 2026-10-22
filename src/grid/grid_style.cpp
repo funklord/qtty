@@ -2543,6 +2543,11 @@ void GridStyle::polish(QWidget *w) {
 		QMetaObject::invokeMethod(bar,
 		    [bar] { bar->setSizeGripEnabled(false); },
 		    Qt::QueuedConnection);
+	// A scroll bar's step in CELLS, which Qt leaves at 20 pixels against a
+	// cell of 19. See snap_scroll_steps() for the measurement; the router
+	// calls it again on a wheel, where a scroll mode changed after polish
+	// shows up.
+	snap_scroll_steps(qobject_cast<QAbstractScrollArea *>(w));
 	QProxyStyle::polish(w);
 }
 
