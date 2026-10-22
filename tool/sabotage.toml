@@ -7633,3 +7633,4 @@ find = "\tpos.setX(text_x_for_cell(target, pos));"
 into = "\t(void)text_x_for_cell(target, pos);"
 count = 1
 check = "a click on the cell a character is drawn in puts the cursor at that character, wide characters included"
+

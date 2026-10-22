@@ -4392,6 +4392,73 @@ int suite_router() {
 		CHECK(clicks == 14 && wrong == 0,
 		      "a click on the cell a character is drawn in puts the cursor"
 		      " at that character, wide characters included");
+
+		// AND A DRAG SELECTS WHAT IT WAS DRAGGED OVER, which is the half
+		// the clicks above cannot reach: the correction is applied where
+		// the target's local position is derived, so it reaches the press,
+		// the MOVE and the release alike -- and only a drag exercises the
+		// middle one. A selection is also what a user sees rather than
+		// infers, the cursor position being invisible between two
+		// characters.
+		int off = 0, drags = 0;
+		for (const QString &text : { QStringLiteral("abcd"), cjk,
+		                             QStringLiteral("ab") + cjk }) {
+			QWidget host;
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			auto *ed = new QLineEdit(&host);
+			ed->setGeometry(0, 0, 20 * cw, ch);
+			ed->setText(text);
+			host.resize(GridMetrics::cells(20, 2));
+			host.show();
+			QCoreApplication::processEvents();
+			ed->setFocus();
+			QCoreApplication::processEvents();
+			set_focus_widget(ed);
+			InputRouter dr(&host);
+			CellBuffer db(20, 2);
+			render_once(host, db);
+			QVector<int> lead;
+			for (int x = 0; x < db.cols(); ++x) {
+				const QString g = db.at(x, 0).ch;
+				if (db.at(x, 0).width == 0) continue;
+				if (g.isEmpty() || g == QStringLiteral(" ")
+				    || g == QStringLiteral("[") || g == QStringLiteral("]"))
+					continue;
+				lead.append(x);
+			}
+			// From the first character's cell to the last's, so the drag
+			// crosses every wide cluster in the field.
+			const int last = lead.size() - 1;
+			Qtty::test::mouse_press(dr, QPoint(lead[0], 0));
+			QCoreApplication::processEvents();
+			// THE BUTTON IS PASSED, which a first version of this left out
+			// -- a move with no button held extends no selection, and all
+			// three cases came back empty including the ASCII one. A
+			// fixture that fails the control is a fixture, not a finding.
+			Qtty::test::mouse_move(dr, QPoint(lead[last], 0), 1);
+			QCoreApplication::processEvents();
+			Qtty::test::mouse_release(dr, QPoint(lead[last], 0));
+			QCoreApplication::processEvents();
+			++drags;
+			if (ed->selectionStart() != 0
+			    || ed->selectedText() != text.left(last))
+				++off;
+			GridGuard::reset();
+		}
+		printf("info: %d of %d drags selected something other than the"
+		       " characters dragged over\n", off, drags);
+		// DEFENDED BY THE CLICK'S OWN ENTRY rather than one of its own,
+		// which is measured: removing the correction reddens both checks
+		// together, the harness naming this one as the second. An entry
+		// aimed at the move half alone was tried and withdrawn -- the
+		// only expression it could break is shared with the press, and
+		// the variant written for it (subtracting before dividing rather
+		// than after) is the SAME NUMBER wherever the text's origin is
+		// cell-aligned, which it is in every fixture here.
+		CHECK(drags == 3 && off == 0,
+		      "and a drag across a field selects the characters whose cells"
+		      " it crossed, which is the same correction reaching a move"
+		      " rather than a press");
 	}
 
 	// ---- a title that is not ASCII ----------------------------------------

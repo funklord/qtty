@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2249 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2250 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3151,8 +3151,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-22: **2249 on Qt 6 with no failures,
-  and 2218 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-22: **2250 on Qt 6 with no failures,
+  and 2219 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18391,6 +18391,47 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.490 Closing the pixel-to-text family: what was already right (2026-10-22)
+
+**Two more directions of 8.488 and 8.489's fault, measured and found
+sound.** The family is a pixel measurement of Qt's reinterpreted as cells,
+and it has four directions rather than two:
+
+    the caret SHOWN     8.488, two cells adrift on four CJK characters
+    a click HEARD       8.489, landing on the character beside it
+    a selection DRAWN   already right
+    a drag SELECTED     already right, by 8.489's correction
+
+**The selection's marks were already in cells.** Reversing characters 1 and
+2 of a CJK field marks exactly the four cells they were drawn in, and
+selecting all four marks all eight -- measured against the cells read off
+the buffer, with an ASCII row as the control. Nothing was taking Qt's pixel
+rectangle for that.
+
+**The drag was right because 8.489 made it so, which is worth a check of its
+own.** That correction is applied where the target's local position is
+derived, so it reaches the press, the MOVE and the release alike -- and only
+a drag exercises the middle one. A selection is also what a user SEES, where
+a cursor position between two characters is something they infer.
+
+**The fixture failed its own control first, which is the half worth
+recording.** A drag of three `mouse_move` calls selected nothing at all --
+in every case including ASCII -- because the move was sent with no button
+held, and a move with no button extends no selection. A fixture that fails
+the control is a fixture rather than a finding; the button is passed now and
+the comment says why.
+
+**And the check is defended by 8.489's entry rather than one of its own.**
+Removing the correction reddens both checks together, the harness naming
+this one as the second. An entry aimed at the move half alone was written
+and withdrawn: the only expression it could break is shared with the press,
+and the variant tried for it -- subtracting before dividing rather than
+after -- is the SAME NUMBER wherever the text's origin is cell-aligned,
+which it is in every fixture here.
+
+2250 checks on Qt 6, 2219 passing and 31 stepping over on Qt 5, 707 sabotage
+entries, every anchor matching.
 
 ### 8.489 A click landed on the character beside the one drawn there (2026-10-22)
 
