@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2243 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2244 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3150,8 +3150,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-22: **2243 on Qt 6 with no failures,
-  and 2212 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-22: **2244 on Qt 6 with no failures,
+  and 2213 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18390,6 +18390,59 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.484 A dialog's frame lost a corner to its own title (2026-10-22)
+
+**The lens is 8.483's, pointed at the rest of the tree**: every place a
+QString's `size()`, `left()` or an index stands in for a count of CELLS. One
+grep, four instances, and the first of them breaks a rule its own comment
+states.
+
+`frame_layer()` draws the ring a terminal puts round a modal, with the title
+in the top rule, and says what it does when there is no room: a title is
+"dropped whole rather than elided when the rule is too short to hold it --
+half a title in a border reads as a drawing fault, where a plain rule reads
+as a plain rule". The fit test was `label.size() > room`.
+
+**Measured 2026-10-22 with a six-character CJK title -- six code units,
+twelve cells.** At the dialog widths where the rule can hold eight units and
+not fourteen cells, the test let it through:
+
+    ascii, 14 cells   a plain rule, both corners -- dropped, as stated
+    CJK,   14 cells   the title, and NO closing corner
+
+**It was silent by construction**, which is why none of the invariants from
+8.480 to 8.482 could see it: the write has always been per cluster, so no
+cell was left illegal, and `put()` clips, so the overflow never reached the
+buffer. What a user saw was a frame with a corner missing.
+
+**The other three instances are latent and are fixed anyway.** The
+placeholder box centres its label on `label.size()` and writes one code unit
+per cell, and the LCD read-back right-aligns on the same count -- but one
+takes a Qt class name and the other `lcd_decode()`'s digits, so both are
+ASCII by construction today. Corrected rather than left as the instances a
+later reader has to rediscover, and the record says plainly that only the
+ring's had a consequence. The LCD's cut is still marker-free: its comment
+chose to lose the most significant digits so the result reads as wrong
+rather than as a plausible different number, and an ellipsis is not a glyph
+a seven-segment display can show.
+
+**ASSERTED AS THE FRAME rather than as the title**, because the frame is what
+the rule protects: all four corners, at every width, whichever way the title
+went. Counted, not sampled -- a ring that loses its closing corner still has
+the other three, so a check for "a corner" would have passed against every
+broken width.
+
+**The first fixture drew no ring at all and the vacuous-pass guard is what
+said so.** Shrinking the TERMINAL put the dialog at row 0, where there is no
+row above it for a ring, and all fourteen cases came back with no frame --
+indistinguishable from the defect, and reported as `0 carried the whole
+title`. The room the rule has is the dialog's width plus two, so the
+DIALOG's width is the variable and the terminal stays the size the check
+above it already produces a ring at.
+
+2244 checks on Qt 6, 2213 passing and 31 stepping over on Qt 5, 697 sabotage
+entries, every anchor matching.
 
 ### 8.483 A window tab strip laid out in code units (2026-10-22)
 

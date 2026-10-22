@@ -14261,6 +14261,93 @@ int suite_router() {
 		GridGuard::reset();
 	}
 
+	// AND THE TITLE FITS IN CELLS, which the fit test measured in code
+	// units -- so the one rule this function states for itself was the rule
+	// it broke. Its comment: a title is "dropped whole rather than elided
+	// when the rule is too short to hold it: half a title in a border reads
+	// as a drawing fault, where a plain rule reads as a plain rule."
+	//
+	// Measured 2026-10-22 with a six-character CJK title, which is six code
+	// units and TWELVE cells. At the dialog widths where the rule can hold
+	// eight units and not fourteen cells, the test let it through, the
+	// title ran past the rule, and the ring's CLOSING CORNER was
+	// overwritten by it -- while an ASCII title of the same cell width was
+	// dropped there, which is what the function says it does.
+	//
+	// Nothing illegal reached a cell, which is why no invariant caught it:
+	// the write has always been per cluster and put() clips, so the
+	// overflow was silent and what a user saw was a frame with a corner
+	// missing.
+	//
+	// THE DIALOG'S WIDTH IS WHAT VARIES, not the terminal's, which took a
+	// wrong fixture to learn: with the terminal shrunk instead, the dialog
+	// was placed at row 0, there was no row above it for a ring, and
+	// fourteen of fourteen cases came back with no frame at all --
+	// indistinguishable from the defect. The room the rule has is the
+	// dialog's width plus two, so that is the variable; the terminal stays
+	// the size the check above this one uses, which is known to produce a
+	// ring.
+	{
+		QVector<QWidget *> hidden;
+		for (QWidget *t : QApplication::topLevelWidgets())
+			if (t->isVisible()) { t->hide(); hidden.append(t); }
+		QWidget host2;
+		host2.setAttribute(Qt::WA_DontShowOnScreen);
+		host2.resize(GridMetrics::cells(50, 12));
+		auto *mark = new QLabel(QStringLiteral("BEHIND"), &host2);
+		mark->setGeometry(0, 10 * ch, 10 * cw, ch);
+		host2.show();
+		QCoreApplication::processEvents();
+		InputRouter r2(&host2);
+		Compositor c2(&host2, &r2);
+		QString six;
+		for (int k = 0; k < 6; ++k) six += QChar(0x4fdd + k);
+		int cornerless = 0, cases = 0, with_title = 0;
+		for (const QString &title : { QStringLiteral("SaveFile12"), six }) {
+			for (int wide : { 10, 12, 14, 15, 16, 18, 22 }) {
+				QDialog dlg2(&host2);
+				dlg2.setWindowTitle(title);
+				dlg2.setModal(true);
+				dlg2.setAttribute(Qt::WA_DontShowOnScreen);
+				dlg2.resize(GridMetrics::cells(wide, 3));
+				dlg2.show();
+				QCoreApplication::processEvents();
+				CellBuffer b2(50, 12);
+				c2.compose(b2);
+				const QString frame = b2.to_text();
+				++cases;
+				// All four, counted: a ring that lost its closing corner
+				// still has the other three, so a check for "a corner"
+				// would have passed against every broken width.
+				const bool four = frame.contains(QChar(0x250C))
+				               && frame.contains(QChar(0x2510))
+				               && frame.contains(QChar(0x2514))
+				               && frame.contains(QChar(0x2518));
+				if (!four) {
+					++cornerless;
+					printf("info:   a %d-cell dialog titled |%s| lost a"
+					       " corner\n", wide, qPrintable(title));
+				}
+				if (frame.contains(title)) ++with_title;
+				dlg2.close();
+				QCoreApplication::processEvents();
+			}
+		}
+		printf("info: %d of %d ring(s) lost a corner; %d carried the whole"
+		       " title\n", cornerless, cases, with_title);
+		// with_title > 0 is the vacuous-pass guard, and it earned its place:
+		// the fixture this replaced drew no ring at all and reported zero
+		// titles, which is how the fault in it was found rather than taken
+		// for the defect.
+		CHECK(cases == 14 && cornerless == 0 && with_title > 0,
+		      "a modal's ring keeps all four corners at every width, its"
+		      " title being dropped whole when the rule cannot hold it in"
+		      " CELLS rather than in code units");
+		for (QWidget *t : hidden) t->show();
+		QCoreApplication::processEvents();
+		GridGuard::reset();
+	}
+
 	// ---- a file dialog, end to end, by keyboard alone ---------------------
 	//
 	// The biggest composite widget an ordinary application opens, and

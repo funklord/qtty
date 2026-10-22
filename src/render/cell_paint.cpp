@@ -121,7 +121,12 @@ static void draw_placeholder(CellBuffer &buf, const QRect &c, const QString &wha
 	const int room = c.width() - 2;
 	if (room <= 0) return;
 	const QString label = elide_to_cells(what, room);
-	const int x0 = c.left() + 1 + qMax(0, (room - int(label.size())) / 2);
+	// CENTRED AND WRITTEN IN CELLS. `what` is a Qt class name and so ASCII
+	// today, which is why this had no measured consequence -- unlike the
+	// window ring's title, which is the application's and lost a corner over
+	// the same arithmetic. It is the same class and it is corrected here
+	// rather than left as the one instance a later reader has to rediscover.
+	const int x0 = c.left() + 1 + qMax(0, (room - text_cells(label)) / 2);
 	const int y = c.top() + c.height() / 2;
 	// Written cell by cell like the border above, and not through
 	// CellBuffer::text(), which honours the device clip -- measured, the box
@@ -129,8 +134,11 @@ static void draw_placeholder(CellBuffer &buf, const QRect &c, const QString &wha
 	// whatever was drawing when this ran. The placeholder is not the
 	// application's content and is not subject to the application's clip: it
 	// is this library saying what it cannot draw.
-	for (int i = 0; i < label.size(); ++i)
-		put(x0 + i, y, QString(label.at(i)));
+	int at = x0;
+	for (const QString &cl : to_clusters(label)) {
+		put(at, y, cl);
+		at += cluster_width(cl);
+	}
 }
 
 // -- A QLCDNumber, READ BACK OFF ITS OWN SEGMENTS.
@@ -435,12 +443,34 @@ private:
 		// cells are too few -- losing the most significant digits is
 		// visibly wrong, where losing the least significant reads as a
 		// different and plausible number.
-		const QString shown = text.size() > inner.width()
-		                      ? text.right(inner.width()) : text;
-		const int x0 = inner.right() - shown.size() + 1;
+		// In cells, like the placeholder above. lcd_decode() answers
+		// digits, a point, a minus and a colon, so this is ASCII by
+		// construction and had no measured consequence either; the same
+		// correction for the same reason.
+		//
+		// NOT elide_to_cells(), which would put a marker in. The comment
+		// above chose to lose the most significant digits precisely so
+		// that the result reads as wrong rather than as a different
+		// plausible number, and an ellipsis in a seven-segment display is
+		// a glyph it cannot show. Taken from the right by cluster, which
+		// is the same cut in the unit the grid uses.
+		QString shown;
+		{
+			const QVector<QString> cls = to_clusters(text);
+			int used = 0;
+			for (int i = cls.size() - 1; i >= 0; --i) {
+				const int w = cluster_width(cls[i]);
+				if (used + w > inner.width()) break;
+				shown.prepend(cls[i]);
+				used += w;
+			}
+		}
+		int at = inner.right() - text_cells(shown) + 1;
 		const int y = inner.top() + inner.height() / 2;
-		for (int i = 0; i < shown.size(); ++i)
-			put_cell(dev->buffer(), x0 + i, y, QString(shown.at(i)));
+		for (const QString &cl : to_clusters(shown)) {
+			put_cell(dev->buffer(), at, y, cl);
+			at += cluster_width(cl);
+		}
 		return true;                               // consumed
 	}
 

@@ -7522,3 +7522,14 @@ find = "\t\tx += out.text(x, 0, text, Color(), Color(),\n\t\t              here 
 into = "\t\tfor (const QChar qc : text) { Cell v; v.ch = QString(qc); if (here) v.attrs |= Attr::Reverse; if (out.writable(x, 0)) out.at(x, 0) = v; ++x; }"
 count = 1
 check = "a window tab strip lays out its titles in cells, so a wide or an astral title neither overflows the row nor splits a cluster across two cells"
+
+[[sabotage]]
+# The window ring's title is measured in code units again, so a wide title
+# that does not fit is let through and overwrites the ring's closing corner.
+# 8.484.
+name = "a window ring measures its title in code units"
+file = "src/runtime/compositor.cpp"
+find = "\tif (text_cells(label) > room) return;"
+into = "\tif (label.size() > room) return;"
+count = 1
+check = "a modal's ring keeps all four corners at every width, its title being dropped whole when the rule cannot hold it in CELLS rather than in code units"

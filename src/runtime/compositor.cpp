@@ -415,7 +415,19 @@ static void frame_layer(CellBuffer &out, const QRect &cells,
 	if (title.isEmpty()) return;
 	const QString label = QStringLiteral(" ") + title + QStringLiteral(" ");
 	const int room = ring.width() - 3;             // corners, and one rule
-	if (label.size() > room) return;
+	// IN CELLS, which this compared in code units -- and the rule above is
+	// the one it broke. Measured 2026-10-22 on a dialog with a six-character
+	// CJK title, which is six units and TWELVE cells: at fourteen, sixteen,
+	// seventeen and eighteen columns the test let it through, the title ran
+	// past the rule, and the ring's closing corner was overwritten by it. An
+	// ASCII title of the same CELL width was dropped at those widths, which
+	// is what this function says it does. From nineteen columns on, where
+	// the title genuinely fits, both agree.
+	//
+	// The write below has always been per cluster, so nothing illegal
+	// reached a cell: put() clips, so the overflow was silent and what the
+	// user saw was a frame with a corner missing.
+	if (text_cells(label) > room) return;
 	int x = ring.left() + 2;
 	for (const QString &cl : to_clusters(label)) {
 		put(x, ring.top(), cl);
