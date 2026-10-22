@@ -1,9 +1,11 @@
 // suite_grid -- alignment/reflow (F6), focus injection (F10), synthetic input (F4).
 #include <qtty/qtty.h>
+#include "src/cell_geometry.h"
 #include <QtWidgets>
 #include <cstdio>
 
 using Qtty::GridMetrics;
+using Qtty::text_cells;
 
 static int fails = 0;
 // The failure carries the condition that was false, not only the sentence.
@@ -442,6 +444,108 @@ int suite_grid() {
 		CHECK(sfc_backward.isEmpty(),
 		      "and none of them shrinks as the contents it must hold grow,"
 		      " which is the non-monotonicity 8.471 met in the drawing");
+	}
+
+	// AND THE SIZE HOLDS THE LABEL IT WILL BE DRAWN WITH, which the sweep
+	// above cannot ask: every answer there is a whole number of cells and
+	// rises with the contents, and both were true while four controls were
+	// a cell or two short of their own text.
+	//
+	// Qt measures a label by the FONT's advance and a two-column glyph does
+	// not advance by two cells, so a size rounded up from Qt's pixels is
+	// short for wide text. Measured 2026-10-22 with a six-character CJK
+	// label -- twelve cells -- each widget clipped to its own hint:
+	//
+	//     push button   13 given, 14 wanted, a character lost to `...`
+	//     check box     15 given, 16 wanted, the last character lost
+	//     radio         15 given, 16 wanted, the same
+	//     tab           12 given, 14 wanted, TWO characters lost
+	//
+	// ASKED OF THE STYLE rather than of a rendered widget, because the
+	// style is what this library owns: the width it answers must hold the
+	// label plus the chrome it draws round it. The ASCII row is the
+	// control, and it is the half that says the floor did not simply make
+	// everything wider -- Qt's own width for an eight-cell ASCII button is
+	// eleven cells where the floor is ten, so the floor must not show
+	// there.
+	//
+	// A QLabel is deliberately absent: its sizeHint is Qt's own, built
+	// from the same metrics and reaching no style, and the same measurement
+	// found it losing a character too. That is section 0b's question about
+	// what a font's wide glyphs must advance by.
+	{
+		const int cw = GridMetrics::cw();
+		QStyle *st = QApplication::style();
+		QString cjk;
+		for (int k = 0; k < 6; ++k) cjk += QChar(0x4fdd + k);
+		int short_of = 0, asked = 0;
+		const auto ask = [&](const QString &what, QStyle::ContentsType ct,
+		                     const QStyleOption *o, int chrome,
+		                     const QString &label) {
+			const QSize got = st->sizeFromContents(ct, o, QSize(), nullptr);
+			const int want = (text_cells(label) + chrome) * cw;
+			++asked;
+			if (got.width() < want) {
+				++short_of;
+				printf("info:   %s: %d cell(s) for a label wanting %d\n",
+				       qPrintable(what), got.width() / cw, want / cw);
+			}
+			return got.width();
+		};
+		for (int wide = 0; wide < 2; ++wide) {
+			const QString label = wide ? cjk : QStringLiteral("SixChars");
+			QStyleOptionButton b;
+			b.text = label;
+			b.rect = QRect(0, 0, 200, GridMetrics::ch());
+			const int push = ask(QStringLiteral("push button"),
+			                     QStyle::CT_PushButton, &b, 2, label);
+			ask(QStringLiteral("check box"), QStyle::CT_CheckBox, &b, 4,
+			    label);
+			ask(QStringLiteral("radio"), QStyle::CT_RadioButton, &b, 4,
+			    label);
+			QStyleOptionTab tab;
+			tab.text = label;
+			tab.shape = QTabBar::RoundedNorth;
+			tab.rect = QRect(0, 0, 200, GridMetrics::ch());
+			ask(QStringLiteral("tab"), QStyle::CT_TabBarTab, &tab, 2, label);
+			QStyleOptionToolButton tb;
+			tb.text = label;
+			tb.rect = QRect(0, 0, 200, GridMetrics::ch());
+			ask(QStringLiteral("tool button"), QStyle::CT_ToolButton, &tb, 2,
+			    label);
+			(void)push;
+		}
+		// THE CONTROL, and it has to be asked of a real widget. Asked of
+		// the style with an empty contents size the base style has nothing
+		// to work from, so the floor decides every answer and the control
+		// says "AT the floor" about the ASCII case too -- which is this
+		// fixture being unfaithful rather than the floor being wrong.
+		// QPushButton::sizeHint() passes the contents size Qt measured,
+		// which is the number the floor is meant to sit under.
+		int above = 0, at = 0;
+		for (int wide = 0; wide < 2; ++wide) {
+			const QString label = wide ? cjk : QStringLiteral("SixChars");
+			QPushButton b(label);
+			b.setAttribute(Qt::WA_DontShowOnScreen);
+			b.show();
+			QCoreApplication::processEvents();
+			const int hint = b.sizeHint().width();
+			const int floor_px = (text_cells(label) + 2) * cw;
+			if (hint > floor_px) ++above;
+			if (hint == floor_px) ++at;
+			printf("info:   a %s button hints %d cell(s), the floor is"
+			       " %d\n", wide ? "CJK" : "ascii", hint / cw,
+			       floor_px / cw);
+		}
+		printf("info: %d of %d label size(s) are short of the cells they"
+		       " will be drawn in\n", short_of, asked);
+		CHECK(asked == 10 && short_of == 0,
+		      "every size this style answers for a control it draws a label"
+		      " in holds that label in cells, wide characters included");
+		CHECK(above == 1 && at == 1,
+		      "and the floor decides the size only where Qt's own"
+		      " measurement is short of it, an ascii button already being"
+		      " wider than its label needs");
 	}
 
 	// THE CELL IS THE UNIT, ASKED OF EVERY ANSWER THIS STYLE GIVES. The

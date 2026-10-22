@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2245 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2247 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -1074,7 +1074,7 @@ Owned by the copyright holder:
 
 | Question | Where |
 |---|---|
-| **What must a font's WIDE glyphs advance by, and does anything check?** `grid_font_problem()` requires an integral advance and probes `MilW@#0oX|._` -- all narrow Latin -- so nothing asks what a two-column glyph advances by, and a terminal renders one at two cells whatever the font says. The consequence is in every widget Qt sizes from its own metrics: measured 2026-10-22, a message box holding a 70-cell folded line of CJK came out **50 cells on Qt 6 and 40 on Qt 5** -- the same font, two answers, neither of them 70. The fold that feeds it is correct in cells since 8.485; what is open is whether the grid should REQUIRE a font whose wide advance is exactly twice its narrow one, warn when it is not, or leave Qt's measurement and accept that wide text is clipped by boxes Qt sized. The first is a new startup error on fonts that work today | 8.485, section 5.3 |
+| **What must a font's WIDE glyphs advance by, and does anything check?** `grid_font_problem()` requires an integral advance and probes `MilW@#0oX|._` -- all narrow Latin -- so nothing asks what a two-column glyph advances by, and a terminal renders one at two cells whatever the font says. The consequence is in every widget Qt sizes from its own metrics: measured 2026-10-22, a message box holding a 70-cell folded line of CJK came out **50 cells on Qt 6 and 40 on Qt 5** -- the same font, two answers, neither of them 70. The fold that feeds it is correct in cells since 8.485, and 8.486 put a cell-counted FLOOR under every size this style answers -- so a push button, a check box, a radio and a tab hold their wide labels now. What is left is everything Qt sizes WITHOUT reaching a style: a `QLabel` hints 10 cells for 12 and loses a character, and a `QMessageBox` sizes itself the same way. Whether the grid should REQUIRE a font whose wide advance is exactly twice its narrow one, warn when it is not, or leave Qt's measurement and accept the clipping. The first is a new startup error on fonts that work today | 8.485, 8.486, section 5.3 |
 | **Should a menu item's mnemonic answer while its menu is CLOSED?** It does here, deliberately -- a terminal user reaching an item directly is worth something -- and a desktop Qt answers an item's letter only while its menu is open. The cost is now measured rather than supposed: in Qt's own `menus` example, thirty actions produce **five letters with more than one claimant**, and only the first answers (`&Print...` takes `p` from `&Paste` and *Set &Paragraph Spacing...*). Keeping it means an application with menus needs `Qtty::mnemonic_conflicts()` to find what it has lost; narrowing it to open menus costs the direct reach the conventions were added for | 8.165 |
 | **Should a late `set_font()` WORK rather than warn?** It is stored and ignored today, and says so as of 8.414. The sibling case decided the other way: a `QStyle` installed after `setup()` is wrapped rather than refused, because doing it afterwards is an ordinary thing for a Qt program to want -- and a font picker in a preferences dialog is as ordinary. **The cost is the difference:** `cw` and `ch` size every widget, so a late font change is a re-measure plus a re-layout of every window, which is a resize qtty already knows how to do. `image_key()` already carries `font_px`, so the upload caches invalidate by construction. Reachable rather than hard, and a decision about what a public call does. | 8.414 |
 | **Should a handover tell the ROUTER, and through which seam?** A press sets `grab_` and only a release clears it, and `kLeave` turns mouse reporting off -- so a button held across a handover has its release delivered to the shell, and every mouse event afterwards is routed to that widget until the next click's release clears it. One misdirected click, bounded, and reachable only with a button held while a program shells out or is stopped. **The cost is why this is a question rather than a fix:** the router cannot hear about it today. `Compositor::router_` is private with no accessor, and `FrameScheduler` is where a handover is noticed -- so the candidates are a public accessor on `Compositor`, or a non-pure `on_handover()` on `ITerminalEventSink` beside `on_terminal_lost()`, which is the precedent for an optional sink hook here. Both are additions to a PUBLIC header for a one-click symptom, which is the holder's trade rather than mine. 8.413's family, measured 2026-10-08 by reading the two sites. | §0b, and the lens in 8.411 |
@@ -3151,8 +3151,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-22: **2245 on Qt 6 with no failures,
-  and 2214 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-22: **2247 on Qt 6 with no failures,
+  and 2216 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18391,6 +18391,59 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.486 Four controls a cell short of their own label (2026-10-22)
+
+**8.485's row, acted on where the library actually owns the answer.** That
+entry recorded what the fold cannot fix -- Qt measures a label by the FONT's
+advance, and a two-column glyph does not advance by two cells -- and filed
+it as a question about what font the grid requires. It is that, for a
+`QLabel`. For every control whose label **this style draws**, the style is
+what answers the size, and it was rounding Qt's pixels up to cells rather
+than counting the cells it was about to draw in.
+
+Measured 2026-10-22 with a six-character CJK label -- twelve cells -- each
+widget clipped to its own hint:
+
+    push button   13 cells given, 14 wanted   `<...>`, one character lost
+    check box     15 given, 16 wanted         `[ ] `, the last lost
+    radio button  15 given, 16 wanted         the same
+    tab           12 given, 14 wanted         `[...]`, TWO lost
+
+**The remedy was already in the file twice.** `CT_ToolButton` and a VERTICAL
+`CT_TabBarTab` both count the label in clusters and add the chrome they
+draw; both measured correct here. The horizontal tab fell through to the
+proxied width in the same `switch`, four lines below the vertical one that
+does it properly.
+
+**A FLOOR under the proxied answer, not a replacement for it.** Nothing
+narrower than Qt asked for is ever handed back, so no ASCII size moves --
+and that is asserted rather than hoped: an eight-cell ASCII button hints
+**eleven** cells where the floor is ten, and a CJK one hints fourteen where
+the floor is fourteen. The floor decides the second and not the first, which
+is the whole claim.
+
+**The control had to be asked of a real widget, and the first version was
+asked of the style.** With an empty contents size the base style has nothing
+to measure, so the floor decides every answer and the control reported the
+ASCII case "AT the floor" -- the fixture being unfaithful rather than the
+floor being wrong. `QPushButton::sizeHint()` passes the contents size Qt
+measured, which is the number a floor is meant to sit under.
+
+**A QLabel is deliberately not fixed and cannot be here**: its `sizeHint()`
+is Qt's own, built from the same metrics and reaching no style, and the same
+measurement found it losing a character too -- 10 cells for 12, the last
+character cut. That stays section 0b's question.
+
+**And reading one row at a time nearly produced a wrong finding.** The first
+reading of the label case said it drew NOTHING, because the probe printed
+row 0 and the label's hint was 24 pixels tall -- 1.26 rows -- so the text
+was on row 1. Five of its six characters were there. A probe that prints
+part of a widget is a probe that can report an absence the widget does not
+have.
+
+2247 checks on Qt 6, 2216 passing and 31 stepping over on Qt 5, 702 sabotage
+entries, every anchor matching.
 
 ### 8.485 A link the box exists to show, cut off by its own fold (2026-10-22)
 

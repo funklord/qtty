@@ -2163,12 +2163,49 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 	const int width = ((s.width() + cw - 1) / cw) * cw;
 	const int snapped = ((s.height() + ch - 1) / ch) * ch;
 
+	// WIDE TEXT NEEDS THE CELLS IT WILL BE DRAWN IN, which the proxied
+	// width cannot say. Qt measures a label by the FONT's advance, and a
+	// two-column glyph does not advance by two cells -- so a size rounded
+	// up from Qt's pixels is short for every control whose label this style
+	// draws. Measured 2026-10-22 with a six-character CJK label, each
+	// widget clipped to its own hint:
+	//
+	//     push button   13 cells given, 14 wanted -- `<...>` and a
+	//                   character lost to an ellipsis
+	//     check box     15 given, 16 wanted -- `[ ] ` and the last
+	//     radio         15 given, 16 wanted -- the same
+	//     tab           12 given, 14 wanted -- `[...]` and TWO lost
+	//
+	// The remedy is the one CT_ToolButton and a vertical CT_TabBarTab
+	// already use: count the label in cells and add the chrome this style
+	// draws round it. Taken as a FLOOR under the proxied answer rather than
+	// instead of it, so nothing narrower than Qt asked for is ever handed
+	// back and no ASCII size moves -- measured, Qt's own width for an
+	// eight-cell ASCII button is eleven cells, where the floor is ten.
+	//
+	// A QLabel is NOT in this list and cannot be: its sizeHint is Qt's own,
+	// built from the same metrics and reaching no style. That is section
+	// 0b's question about what a font's wide glyphs must advance by, and
+	// the same measurement found it losing a character too.
+	const auto label_floor = [&](int chrome) {
+		int cells = 0;
+		if (const auto *b = qstyleoption_cast<const QStyleOptionButton *>(o))
+			cells = text_cells(strip_mnemonic(b->text));
+		else if (const auto *tb = qstyleoption_cast<const QStyleOptionTab *>(o))
+			cells = text_cells(strip_mnemonic(tb->text));
+		return cells > 0 ? (cells + chrome) * cw : 0;
+	};
+
 	switch (t) {
 	// Controls that hold exactly one line of text, whatever a desktop style
 	// would give them for a mouse target.
 	case CT_CheckBox:
 	case CT_RadioButton:
+		// `[ ] ` -- the three-cell indicator and a space, which is where
+		// CE_CheckBox puts the label.
+		return QSize(qMax(width, label_floor(4)), ch);
 	case CT_PushButton:
+		return QSize(qMax(width, label_floor(2)), ch);   // `<label>`
 	case CT_LineEdit:
 	case CT_ComboBox:
 	case CT_SpinBox:
@@ -2208,7 +2245,9 @@ QSize GridStyle::sizeFromContents(ContentsType t, const QStyleOption *o, const Q
 				return QSize((cells + 2) * cw, rows * ch);   // + two brackets
 			}
 		}
-		return QSize(width, ch);
+		// A horizontal tab, which took the proxied width and so was short
+		// for a wide label by the same two cells the vertical one counts.
+		return QSize(qMax(width, label_floor(2)), ch);   // `[label]`
 
 	// Measured from the row CE_ItemViewItem DRAWS, the way CT_TabBarTab and
 	// CT_ToolButton above are: one cell of indent, four more for "[x] " when
