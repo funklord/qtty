@@ -2008,8 +2008,8 @@ check = "the focus sweep covers sixteen standard widgets"
 # .md goes on describing a smaller library than the one that shipped. 8.152.
 name = "a chord enters the bundle without reaching the guide"
 file = "src/runtime/input_router.cpp"
-find = "\t\t{ QStringLiteral(\"Ctrl+W/D\"),       QStringLiteral(\"rub out word, delete, in text\") },"
-into = "\t\t{ QStringLiteral(\"Ctrl+W/Y\"),       QStringLiteral(\"rub out word, yank, in text\") },"
+find = "\t\t{ QStringLiteral(\"Ctrl+D\"),         QStringLiteral(\"delete, in text\") },"
+into = "\t\t{ QStringLiteral(\"Ctrl+Y\"),         QStringLiteral(\"yank, in text\") },"
 count = 1
 check = "every key the conventions list is one this check knows where to look"
 
@@ -7644,3 +7644,14 @@ find = "\t\tif (!v_items) v->setSingleStep(GridMetrics::ch());"
 into = "\t\tif (false) v->setSingleStep(GridMetrics::ch());"
 count = 1
 check = "a scroll bar steps in whole cells, so a wheel notch leaves the content on the row grid rather than three pixels above it"
+
+[[sabotage]]
+# Ctrl+W stops closing a tab or a dock, which leaves the x on a tab and a
+# dock's close button with no keyboard route anywhere again. 8.492.
+name = "Ctrl+W closes neither a tab nor a dock"
+file = "src/runtime/input_router.cpp"
+find = "\t\tif (k.ctrl && k.qt_key == Qt::Key_W) {"
+into = "\t\tif (false) {"
+count = 1
+check = "Ctrl+W asks a closable tab to close and closes a closable dock, which had no keyboard route anywhere before"
+

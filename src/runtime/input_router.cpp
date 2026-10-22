@@ -66,7 +66,15 @@ QVector<QPair<QString, QString>> keyboard_conventions_help() {
 		// exactly when to expect them.
 		{ QStringLiteral("Ctrl+A/E"),       QStringLiteral("line start/end, in text") },
 		{ QStringLiteral("Ctrl+K/U"),       QStringLiteral("kill to end/start, in text") },
-		{ QStringLiteral("Ctrl+W/D"),       QStringLiteral("rub out word, delete, in text") },
+		// SPLIT FROM "Ctrl+W/D", because the two keys stopped sharing a
+		// scope when Ctrl+W gained the tab and dock close: `D` answers
+		// only where a caret is and `W` answers everywhere, differently.
+		// A row that said "in text" of both would have promised the
+		// wrong thing about one of them, which is the fault this list
+		// exists to avoid -- and the guide's own table has had them on
+		// separate rows all along.
+		{ QStringLiteral("Ctrl+W"),         QStringLiteral("rub out word in text, else close the tab or dock") },
+		{ QStringLiteral("Ctrl+D"),         QStringLiteral("delete, in text") },
 		menu,
 	};
 }
@@ -118,7 +126,8 @@ static const ConventionRow k_convention_rows[] = {
 	{ "Ctrl+PgUp/PgDn", Qt::CTRL,        { Qt::Key_PageUp,   Qt::Key_PageDown },false },
 	{ "Ctrl+A/E",       Qt::CTRL,        { Qt::Key_A,        Qt::Key_E },       false },
 	{ "Ctrl+K/U",       Qt::CTRL,        { Qt::Key_K,        Qt::Key_U },       false },
-	{ "Ctrl+W/D",       Qt::CTRL,        { Qt::Key_W,        Qt::Key_D },       false },
+	{ "Ctrl+W",         Qt::CTRL,        { Qt::Key_W,        Qt::Key(0) },      false },
+	{ "Ctrl+D",         Qt::CTRL,        { Qt::Key_D,        Qt::Key(0) },      false },
 	{ "Menu/Shift+F10", Qt::SHIFT,       { Qt::Key_F10,      Qt::Key(0) },      true  },
 };
 
@@ -2311,6 +2320,86 @@ void InputRouter::deliver_key(QWidget *target, const KeyEvent &k) {
 				set_focus_widget(scope->focusWidget());
 				if (frame_requested) frame_requested();
 				return;
+			}
+		}
+		// Ctrl+W CLOSES THE TAB OR THE DOCK THE FOCUS IS IN, outside a
+		// text widget. Measured 2026-10-22 against plain Qt with no
+		// qtty: a closable QTabWidget ignores Ctrl+W, Ctrl+F4 and
+		// Delete -- tabCloseRequested never fires -- and a closable
+		// QDockWidget ignores Ctrl+W and Escape. So the `x` on a tab and
+		// a dock's close button had no keyboard route ANYWHERE, which on
+		// a desktop is a mouse away and here is nothing away. 0b carried
+		// it as the holder's; taken on their instruction 2026-10-22.
+		//
+		// IN TEXT IT IS STILL THE READLINE RUB-OUT, and this needs no
+		// test of its own to be: readline_edit() is tried BEFORE
+		// deliver_key(), which is where this arm lives, so a caret has
+		// already taken the chord by the time it could get here. A form
+		// is mostly buttons, lists and tables, and Ctrl+W closes from
+		// all of them; only a caret takes the key away.
+		//
+		// THE FIRST VERSION TESTED IT AGAIN HERE and the sabotage
+		// harness found it: a copy of readline_edit()'s own predicate --
+		// WA_InputMethodEnabled and not an item view -- which broke an
+		// unrelated entry by making its anchor match TWICE, and which no
+		// sabotage of could redden anything, the first copy deciding
+		// every case. Two derivations of one condition is the fault this
+		// file has paid for in the spin box's arrows and the combo's
+		// edge cells; the check that a caret keeps the rub-out proves
+		// the ORDER instead, which is the thing actually relied on.
+		//
+		// THE INNERMOST CLOSABLE THING, walking out from the focus, for
+		// the reason the tab switch above gives: a page holding its own
+		// tabs is ordinary and the inner one is the one being used. A
+		// dock met before a tab wins, and a tab met before a dock wins,
+		// because what the user is looking at is what they mean.
+		//
+		// A TAB IS ASKED, A DOCK IS CLOSED, and the difference is Qt's.
+		// tabCloseRequested is a request: the close button emits it and
+		// the application decides whether the page goes, which is the
+		// only thing a style or a router may do with somebody's
+		// document. A QDockWidget's button closes the dock itself, and
+		// close() sends a QCloseEvent an application can refuse --
+		// which is the same route the quit key takes.
+		if (k.ctrl && k.qt_key == Qt::Key_W) {
+			for (QWidget *w = key_target(); w; w = w->parentWidget()) {
+				if (auto *dock = qobject_cast<QDockWidget *>(w)) {
+					if (!(dock->features()
+					      & QDockWidget::DockWidgetClosable))
+						continue;
+					dock->close();
+					set_focus_widget(scope->focusWidget());
+					if (frame_requested) frame_requested();
+					return;
+				}
+				// A BAR INSIDE A TAB WIDGET ASKS THE WIDGET, because that
+				// is the signal an application connected to. Qt forwards
+				// the bar's to the widget's, but only for the bar it made
+				// itself -- and emitting the one a program is listening to
+				// needs no assumption about that forwarding. A bare
+				// QTabBar, which an application builds for itself, has
+				// only its own.
+				if (auto *bar = qobject_cast<QTabBar *>(w)) {
+					if (!bar->tabsClosable() || bar->currentIndex() < 0)
+						continue;
+					const int i = bar->currentIndex();
+					if (auto *own = qobject_cast<QTabWidget *>(
+					        bar->parentWidget()))
+						emit own->tabCloseRequested(i);
+					else
+						emit bar->tabCloseRequested(i);
+					set_focus_widget(scope->focusWidget());
+					if (frame_requested) frame_requested();
+					return;
+				}
+				if (auto *tabs = qobject_cast<QTabWidget *>(w)) {
+					if (!tabs->tabsClosable() || tabs->currentIndex() < 0)
+						continue;
+					emit tabs->tabCloseRequested(tabs->currentIndex());
+					set_focus_widget(scope->focusWidget());
+					if (frame_requested) frame_requested();
+					return;
+				}
 			}
 		}
 		// Alt and a TAB's own letter, which 8.37 recorded as doing

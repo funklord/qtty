@@ -4327,6 +4327,118 @@ int suite_router() {
 		QCoreApplication::processEvents();
 	}
 
+	// ---- Ctrl+W closes the tab or the dock the focus is in ----------------
+	//
+	// Measured 2026-10-22 against plain Qt with no qtty: a closable
+	// QTabWidget ignores Ctrl+W, Ctrl+F4 and Delete -- tabCloseRequested
+	// never fires -- and a closable QDockWidget ignores Ctrl+W and Escape.
+	// The `x` on a tab and a dock's close button had no keyboard route
+	// ANYWHERE, which on a desktop is a mouse away and here is nothing away.
+	// Taken on the copyright holder's instruction 2026-10-22, having been
+	// section 0b's.
+	//
+	// FOUR THINGS ASSERTED, and the last two are what stop it being a
+	// nuisance: the tab is asked, the dock closes, a text widget keeps the
+	// readline rub-out, and with the conventions OFF nothing happens at all.
+	{
+		int asked = -1, closed = 0, rubbed = 0, quiet = 0;
+		for (int conv = 0; conv < 2; ++conv) {
+			set_keyboard_conventions(conv != 0);
+			{
+				QWidget host;
+				host.setAttribute(Qt::WA_DontShowOnScreen);
+				auto *tabs = new QTabWidget(&host);
+				tabs->setTabsClosable(true);
+				tabs->addTab(new QLabel(QStringLiteral("one")),
+				             QStringLiteral("First"));
+				tabs->addTab(new QLabel(QStringLiteral("two")),
+				             QStringLiteral("Second"));
+				tabs->setGeometry(0, 0, 30 * cw, 5 * ch);
+				int got = -1;
+				QObject::connect(tabs, &QTabWidget::tabCloseRequested,
+				                 [&got](int i) { got = i; });
+				host.resize(GridMetrics::cells(30, 6));
+				host.show();
+				QCoreApplication::processEvents();
+				tabs->setCurrentIndex(1);
+				tabs->setFocus();
+				QCoreApplication::processEvents();
+				set_focus_widget(host.focusWidget());
+				InputRouter tr(&host);
+				tr.on_key({Qt::Key_W, QString(), true, false, false});
+				QCoreApplication::processEvents();
+				if (conv) asked = got;
+				else if (got == -1) ++quiet;
+				GridGuard::reset();
+			}
+			{
+				QMainWindow win;
+				win.setAttribute(Qt::WA_DontShowOnScreen);
+				auto *dock = new QDockWidget(QStringLiteral("Tools"), &win);
+				dock->setFeatures(QDockWidget::DockWidgetClosable);
+				dock->setWidget(new QLabel(QStringLiteral("inside")));
+				win.addDockWidget(Qt::LeftDockWidgetArea, dock);
+				win.setCentralWidget(new QLabel(QStringLiteral("body")));
+				win.resize(GridMetrics::cells(40, 10));
+				win.show();
+				QCoreApplication::processEvents();
+				dock->widget()->setFocus();
+				QCoreApplication::processEvents();
+				set_focus_widget(win.focusWidget());
+				InputRouter dr2(&win);
+				dr2.on_key({Qt::Key_W, QString(), true, false, false});
+				QCoreApplication::processEvents();
+				if (conv) { if (!dock->isVisible()) ++closed; }
+				else if (dock->isVisible()) ++quiet;
+				GridGuard::reset();
+			}
+			// AND A CARET KEEPS THE RUB-OUT, which is the chord this
+			// bundle already promised: a field inside a closable tab,
+			// where both readings are available and the text one wins.
+			{
+				QWidget host;
+				host.setAttribute(Qt::WA_DontShowOnScreen);
+				auto *tabs = new QTabWidget(&host);
+				tabs->setTabsClosable(true);
+				auto *page = new QWidget;
+				auto *col = new QVBoxLayout(page);
+				auto *ed = new QLineEdit(QStringLiteral("one two"), page);
+				col->addWidget(ed);
+				tabs->addTab(page, QStringLiteral("Edit"));
+				tabs->setGeometry(0, 0, 30 * cw, 5 * ch);
+				int got = -1;
+				QObject::connect(tabs, &QTabWidget::tabCloseRequested,
+				                 [&got](int i) { got = i; });
+				host.resize(GridMetrics::cells(30, 6));
+				host.show();
+				QCoreApplication::processEvents();
+				ed->setFocus();
+				ed->setCursorPosition(ed->text().size());
+				QCoreApplication::processEvents();
+				set_focus_widget(ed);
+				InputRouter er(&host);
+				er.on_key({Qt::Key_W, QString(), true, false, false});
+				QCoreApplication::processEvents();
+				if (conv && got == -1 && ed->text() == QStringLiteral("one "))
+					++rubbed;
+				GridGuard::reset();
+			}
+		}
+		set_keyboard_conventions(false);
+		printf("info: Ctrl+W asked to close tab %d, closed %d dock(s), rubbed"
+		       " out %d word(s), and did nothing %d time(s) with the"
+		       " conventions off\n", asked, closed, rubbed, quiet);
+		CHECK(asked == 1 && closed == 1,
+		      "Ctrl+W asks a closable tab to close and closes a closable"
+		      " dock, which had no keyboard route anywhere before");
+		CHECK(rubbed == 1,
+		      "and a caret keeps the readline rub-out, the chord this"
+		      " bundle already promised where a text widget has focus");
+		CHECK(quiet == 2,
+		      "and with the conventions off neither answers, this being an"
+		      " opt-in convention rather than a key the library takes");
+	}
+
 	// ---- a wheel notch moves a whole number of rows -----------------------
 	//
 	// Qt's default single step for a scroll bar is 20 PIXELS against a cell
@@ -10320,7 +10432,8 @@ int suite_router() {
 			      && keys.contains(QStringLiteral("Alt+letter"))
 			      && keys.contains(QStringLiteral("Ctrl+A/E"))
 			      && keys.contains(QStringLiteral("Ctrl+K/U"))
-			      && keys.contains(QStringLiteral("Ctrl+W/D"))
+			      && keys.contains(QStringLiteral("Ctrl+W"))
+			      && keys.contains(QStringLiteral("Ctrl+D"))
 			      && keys.contains(QStringLiteral("Menu/Shift+F10")),
 			      "the conventions can list what they bind, so an "
 			      "application shows the keys without keeping its own copy "
@@ -10330,7 +10443,13 @@ int suite_router() {
 			CHECK(!keys.isEmpty(),
 			      "and every line says what its key does, a key with no "
 			      "meaning beside it being no help at all");
-			CHECK(help.size() == 10,
+			// ELEVEN SINCE "Ctrl+W/D" WAS SPLIT, the two keys having
+			// stopped sharing a scope when Ctrl+W gained the tab and
+			// dock close: `D` answers only where a caret is and `W`
+			// answers everywhere, differently. This number is what
+			// catches a row added without a line above saying what it
+			// is -- it did exactly that for the split.
+			CHECK(help.size() == 11,
 			      "and the list is exactly as long as this check knows about,"
 			      " which is what stands in for deriving it from the"
 			      " bindings");
@@ -10378,8 +10497,8 @@ int suite_router() {
 				{"Ctrl+A/E",       "`Ctrl+E`"},
 				{"Ctrl+K/U",       "`Ctrl+K`"},
 				{"Ctrl+K/U",       "`Ctrl+U`"},
-				{"Ctrl+W/D",       "`Ctrl+W`"},
-				{"Ctrl+W/D",       "`Ctrl+D`"},
+				{"Ctrl+W",         "`Ctrl+W`"},
+				{"Ctrl+D",         "`Ctrl+D`"},
 				{"Menu/Shift+F10", "`Menu`, `Shift+F10`"},
 			};
 
@@ -10574,8 +10693,8 @@ int suite_router() {
 			{ "Ctrl+A/E",       int(Qt::CTRL),  Qt::Key_E,        nullptr },
 			{ "Ctrl+K/U",       int(Qt::CTRL),  Qt::Key_K,        nullptr },
 			{ "Ctrl+K/U",       int(Qt::CTRL),  Qt::Key_U,        nullptr },
-			{ "Ctrl+W/D",       int(Qt::CTRL),  Qt::Key_W,        nullptr },
-			{ "Ctrl+W/D",       int(Qt::CTRL),  Qt::Key_D,        nullptr },
+			{ "Ctrl+W",         int(Qt::CTRL),  Qt::Key_W,        nullptr },
+			{ "Ctrl+D",         int(Qt::CTRL),  Qt::Key_D,        nullptr },
 			{ "Menu/Shift+F10", int(Qt::SHIFT), Qt::Key_F10,      nullptr },
 			// THE ONE ROW THAT IS NOT A CHORD, and it is a family rather
 			// than an omission: the letter is whatever a tab, a mnemonic

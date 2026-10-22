@@ -506,7 +506,7 @@ One line turns on the habits a terminal user has and Qt does not:
 | `Alt` + a tab's letter | Switch to that tab |
 | `Ctrl+A`, `Ctrl+E` | Start and end of the line, **in a widget that takes text** |
 | `Ctrl+K`, `Ctrl+U` | Kill to the end of the line, and to the start |
-| `Ctrl+W` | Rub out the word before the caret |
+| `Ctrl+W` | Rub out the word before the caret -- and **outside a text widget**, close the tab or the dock the focus is in |
 | `Ctrl+D` | Delete the character under the caret -- a quit key everywhere else |
 
 **These are the chords as written, `Shift` included.** Adding a shift to
@@ -874,7 +874,19 @@ the desktop either. Measured with plain Qt and no qtty in it: `Ctrl+W`,
 `Ctrl+F4` and `Delete` reach a closable `QTabWidget` and `tabCloseRequested`
 never fires; `Ctrl+W` and `Esc` reach a closable `QDockWidget` and it stays
 visible. On a desktop that is a mouse away. Here it may be nothing away at
-all, so if your application uses either, give the same action a menu entry
+all, so **the conventions bind `Ctrl+W` to both**: with
+`set_keyboard_conventions(true)`, that chord closes the tab or the dock the
+focus is in -- the innermost of the two, walking out from the focused
+widget. A tab is *asked* rather than closed, `tabCloseRequested` being a
+request the application answers, and a dock is closed through `close()`, so
+a `closeEvent()` that calls `ignore()` refuses it exactly as on a desktop.
+Inside a text widget the chord is still readline's rub-out, which is where a
+caret means that instead.
+
+That covers the two buttons and not the other three below, and a chord the
+library binds is one an application can take back: a `QShortcut` on `Ctrl+W`
+is matched first, and `conventions_shadowed()` reports the row as taken. So
+if your application uses either, consider a menu entry
 or a shortcut of your own -- this practice applied to Qt's furniture rather
 than to yours. The tab bar itself is fine: it takes `Tab` focus and the
 arrows move between pages.
