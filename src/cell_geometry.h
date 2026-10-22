@@ -450,95 +450,18 @@ inline QRect cells_of(const QRect &r, QPainter *p, CellPaintDevice *dev,
 	return cells_of_rect(r, paint_widget ? paint_widget : w, dev->origin);
 }
 
-// Shorten `s` to fit `cells` columns, counting grapheme clusters and their
-// display width rather than QChar units.
+// text_cells() and elide_to_cells() lived here and are PUBLIC now, in
+// qtty/cell.h, with their bodies beside cluster_width() and to_clusters() in
+// core/cell_buffer.cpp. An application fitting text to a terminal needs the
+// same two numbers this library does, and until they were exported it could
+// not have them: `make install` copies include/qtty only, so the shipped
+// example added the clusters up itself from the two calls that were public.
 //
-// This is the delegate's version, kept over GridStyle's, because a
-// differential run over 143 cases found the two disagreeing on 9 and the
-// other one wrong on every one of them. It ended with `out.chop(1)`, which
-// removes one QChar rather than one cluster, and it reserved no cell for the
-// marker -- so a five-character CJK string elided to a budget of 3 came back
-// as a lone ellipsis using 1 of its 3 cells, and at a budget of 1 it came
-// back EMPTY, rendering a truncated string as nothing at all. Chopping a
-// QChar would also have split a surrogate pair, which is an invalid string
-// rather than a short one.
-//
-// Two implementations of one rule disagreeing is what surfaced it. Neither
-// had a test that asked about a wide cluster.
-// How many CELLS a string occupies: a combining sequence is one grapheme
-// cluster and a wide one occupies two (section 5.2), so counting QChars would
-// put a CJK label one cell past the column it was given.
-//
-// Shared rather than copied. It lived as a static in cell_item_delegate.cpp
-// while GridStyle needed the same number to right-align an item, and this
-// file's own history says what a second copy of one rule costs: two
-// implementations of elide_to_cells disagreed on 9 of 143 cases and the
-// loser had been wrong for months.
-inline int text_cells(const QString &s) {
-	int n = 0;
-	for (const QString &cluster : to_clusters(s)) n += cluster_width(cluster);
-	return n;
-}
-
-// The MODE is Qt's and was ignored: every caller got ElideRight, whatever the
-// application asked for. Measured on a tree column twelve cells wide showing
-// "/home/user/deep/dir/report.txt" -- all four modes rendered
-// "/home/user/d...", and an application sets ElideLeft on a path column
-// precisely because the END is the part worth seeing. It got the other half.
-//
-// ElideNone truncates with NO marker, which is the one thing that mode means:
-// the caller has said not to elide, and an ellipsis is an elision.
-inline QString elide_to_cells(const QString &s, int cells,
-                              Qt::TextElideMode mode = Qt::ElideRight) {
-	if (cells <= 0) return {};
-	const QVector<QString> clusters = to_clusters(s);
-	int width = 0;
-	for (const QString &cluster : clusters) width += cluster_width(cluster);
-	if (width <= cells) return s;
-
-	// Taken from one end while the running width fits, never by chopping
-	// QChars: `out.chop(1)` removes half a surrogate pair and splits a
-	// grapheme, which is an invalid string rather than a short one. That
-	// fault is recorded above and the rule holds for every mode here.
-	const auto head = [&](int budget) {
-		QString out;
-		int used = 0;
-		for (const QString &cluster : clusters) {
-			const int w = cluster_width(cluster);
-			if (used + w > budget) break;
-			out += cluster;
-			used += w;
-		}
-		return out;
-	};
-	const auto tail = [&](int budget) {
-		QString out;
-		int used = 0;
-		for (int i = clusters.size() - 1; i >= 0; --i) {
-			const int w = cluster_width(clusters[i]);
-			if (used + w > budget) break;
-			out.prepend(clusters[i]);
-			used += w;
-		}
-		return out;
-	};
-
-	if (mode == Qt::ElideNone) return head(cells);
-	// One cell reserved for U+2026, as a code point and never a character
-	// literal: QLatin1Char takes a char, so a UTF-8 ellipsis there is a
-	// multichar constant truncating to a broken bar.
-	const QChar dots(0x2026);
-	const int room = cells - 1;
-	if (room <= 0) return QString(dots);
-	if (mode == Qt::ElideLeft) return dots + tail(room);
-	if (mode == Qt::ElideMiddle) {
-		// The FRONT gets the odd cell. A path elided in the middle is read
-		// from both ends, and the left is where the reader starts.
-		const int right = room / 2;
-		return head(room - right) + dots + tail(right);
-	}
-	return head(room) + dots;
-}
+// Moved rather than copied, which is this file's whole subject. Two
+// implementations of elide_to_cells once disagreed on 9 of 143 cases and the
+// loser had been wrong for months -- recorded with the bodies -- so a
+// private copy left behind for the library's own callers would have rebuilt
+// the hazard the export was meant to retire.
 
 // A mnemonic marker is Qt's, not the label's: "&Save" is drawn "Save" with the
 // S underlined, and "&&" is a literal ampersand. Every style that draws text

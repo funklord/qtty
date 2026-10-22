@@ -3169,12 +3169,11 @@ int suite_router() {
 		// three classes the row names -- and for ASCII, where they agree and
 		// therefore where measuring the wrong thing costs nothing. That last
 		// one is why the mistake survives: it is invisible until it is not.
+		// THE ROW'S OWN CALL, not a copy of it. This drove a locally
+		// written cluster sum while the page told the reader to write one,
+		// which was honest advice then -- text_cells() was internal -- and
+		// is a parallel copy now that the page names it. 8.500.
 		const auto row_columns = [](QString *why) {
-			const auto columns = [](const QString &s) {
-				int n = 0;
-				for (const QString &g : to_clusters(s)) n += cluster_width(g);
-				return n;
-			};
 			struct Case { const char *what; QString text; bool differs; };
 			const Case cases[] = {
 				{ "ascii",     QStringLiteral("abc"),                 false },
@@ -3184,14 +3183,14 @@ int suite_router() {
 			};
 			bool ok = true;
 			for (const Case &k : cases) {
-				const bool differs = k.text.size() != columns(k.text);
+				const bool differs = k.text.size() != text_cells(k.text);
 				if (differs == k.differs) continue;
 				ok = false;
 				if (why->isEmpty())
 					*why = QStringLiteral("%1: size=%2 columns=%3, wanted "
 					                      "them to differ %4")
 					           .arg(QString::fromLatin1(k.what))
-					           .arg(k.text.size()).arg(columns(k.text))
+					           .arg(k.text.size()).arg(text_cells(k.text))
 					           .arg(k.differs);
 			}
 			return ok;
@@ -3231,8 +3230,8 @@ int suite_router() {
 			"(practice 11)",
 			"Fold pasted newlines if you are single-line (*Copy and paste*)",
 			"Put your text lines at least `Qtty::GridMetrics::ch()` apart",
-			"Measure your text in COLUMNS, with `Qtty::to_clusters()` and "
-			"`Qtty::cluster_width()`",
+			"Measure your text in COLUMNS, with `Qtty::text_cells()`, and "
+			"shorten it with `Qtty::elide_to_cells()`",
 			"Do not draw a rule through your own content -- leave a blank "
 			"column or row for it",
 		};

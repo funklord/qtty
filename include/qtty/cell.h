@@ -105,6 +105,32 @@ bool wide_clusters();
 // Split text into grapheme clusters (QTextBoundaryFinder::Grapheme).
 QVector<QString> to_clusters(const QString &text);
 
+// How many CELLS a string occupies. A combining sequence is one grapheme
+// cluster and a wide one occupies two (section 5.2), so counting QChars puts
+// a CJK label one cell past the column it was given.
+//
+// PUBLIC because an application needs it. Anything that fits its own text to
+// the terminal -- a status line, a set of key hints, a column of its own
+// drawing -- is asking this library's question and was left to answer it
+// twice: `make install` copies this directory only, so the shipped example
+// summed the clusters itself from cluster_width() and to_clusters(). That is
+// the parallel copy this library has already paid for once, in the comment
+// over elide_to_cells() in core/cell_buffer.cpp, and asking every application
+// to make the same one was the wrong side of the trade.
+int text_cells(const QString &s);
+
+// Shorten `s` to fit `cells` columns, counting clusters and their display
+// width rather than QChar units, and reserving a cell for the marker.
+//
+// `mode` is Qt's and means what Qt means by it, including ElideNone, which
+// truncates with no marker at all -- the caller has said not to elide, and an
+// ellipsis is an elision. A budget of zero or less yields an empty string.
+//
+// Never chops a QChar: that splits a surrogate pair and breaks a grapheme,
+// which gives an invalid string rather than a short one.
+QString elide_to_cells(const QString &s, int cells,
+                       Qt::TextElideMode mode = Qt::ElideRight);
+
 class CellBuffer {
 public:
 	// THE DECLARED SIZE AND THE STORAGE ARE THE SAME NUMBER, which they

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2268 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2277 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18390,6 +18390,88 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.500 Measuring text in cells, from outside the library (2026-10-22)
+
+**An application fitting its own text to the terminal was asked to
+rewrite the library's measurement.** `text_cells()` and
+`elide_to_cells()` lived in `src/cell_geometry.h`, which is internal:
+`make install` copies `include/qtty` only. So the public surface for
+measuring a string was `cluster_width()` and `to_clusters()` -- the
+pieces -- and every program wanting the total had to sum them itself.
+
+**The evidence is in this tree, in the commit before last.** 8.496
+fitted the example's key hints to the terminal and had to write
+
+        const auto in_cells = [](const QString &s) {
+                int n = 0;
+                for (const QString &cl : Qtty::to_clusters(s))
+                        n += Qtty::cluster_width(cl);
+                return n;
+        };
+
+with a comment saying why. That is the one program in the tree that
+could not reach the call, because it is the one program here that is a
+consumer rather than part of the library -- which is exactly the
+population the export is for.
+
+**And this file already records what a second implementation costs.**
+`elide_to_cells()` existed twice; a differential run over 143 cases
+found the two disagreeing on 9, every one involving a wide cluster or a
+budget of 1, and the loser had been wrong for months (8.139). Asking
+every application to make the same copy was the wrong side of that
+trade, so both are declared in `qtty/cell.h` now and defined beside
+`cluster_width()` and `to_clusters()` in `core/cell_buffer.cpp`.
+
+**Moved rather than copied, which is the whole point.** A private copy
+left behind for the library's own callers would have rebuilt the hazard
+the export was meant to retire. `cell_geometry.h` keeps a pointer to
+where they went and the reason, and it turned up two more copies the
+export made visible: the custom-widget contract's driver summed the
+clusters itself while the page it drives told the reader to -- honest
+advice then, a parallel copy now that the page names the call -- and
+`suite_cells` has a `width()` lambda that stays, deliberately, as the
+suite's own second opinion about a three-line sum.
+
+**The guide's row changed with it**, which is the half a reader sees:
+*Measure your text in COLUMNS, with `Qtty::text_cells()`, and shorten
+it with `Qtty::elide_to_cells()`*. `guide-check` compiles every
+`Qtty::` name the documentation uses against the public headers alone,
+so the row is now a claim it verifies -- 75 symbols reachable.
+
+**The gate that matters is `consume-check`, and it is asserted by
+value.** A name that resolves is not a function that works, and the
+point of exporting these is that an application gets the library's
+answer instead of its own -- so the consumer built from the installed
+prefix now measures a fixture of three wide clusters and prints
+
+        cells=9 chars=6 cut_cells=5 cut_chars=3 none_cells=4 none_chars=2
+
+which the gate pins exactly. Every pair differs, so a `text_cells()`
+counting code units fails there rather than passing; a fixture of ASCII
+would not have separated them. The fixture is built from code points
+rather than written as literals, this file being source.
+
+**2268 checks to 2277.** Nine for `text_cells()` itself, which had none
+of its own: it was exercised only through the things that use it -- the
+style's label floors, the tab strip, the message fold -- so a fault in
+the sum would have surfaced as a wrong button width and sent a reader
+to `GridStyle`. The expected values are written out rather than
+computed, because a check that sums the same clusters the function sums
+agrees with it by construction.
+
+**One new sabotage entry and four re-pointed.** The new one makes
+`text_cells()` count code units; `--only`-proven, it reddens the check
+it names and 11 others. The four are 8.139's own elide entries, which
+anchored on lines that moved -- `--validate` found all four dead the
+moment the bodies left the header, which is the gate doing what it was
+written for -- and one of them is `--only`-proven from the new file.
+`--validate` passes over all 716.
+
+**The holder's call, and it was asked.** This is an addition to the
+public API rather than a fix, so it was put to the copyright holder
+with the evidence above and made on their instruction.
 
 
 ### 8.499 Readable on a light terminal, and the check that said nothing (2026-10-22)

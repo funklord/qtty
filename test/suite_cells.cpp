@@ -438,6 +438,55 @@ int suite_cells() {
 	      "text() advances 1+2+1 cells");
 
 
+	// text_cells(), which is PUBLIC as of 8.500 and had no checks of its own.
+	// It was exercised only through the things that use it -- the style's
+	// label floors, the tab strip, the message fold -- so a fault in the sum
+	// itself would have surfaced as a wrong button width rather than as a
+	// wrong number, and a reader chasing it would start in GridStyle.
+	//
+	// EXPECTED VALUES WRITTEN OUT, not computed. A check that sums the same
+	// clusters the function sums agrees with it by construction; a literal 4
+	// disagrees with anything else. Every fixture here is one where the cell
+	// count differs from QString::size(), which is the whole point of the
+	// call: an ASCII fixture passes against a text_cells() that counted code
+	// units, and that is the implementation an application writes by mistake.
+	{
+		const QString wide = QString::fromUtf8("\u6f22\u5b57");
+		const QString acute = QString::fromUtf8("e\u0301");
+		const QString mark = QString::fromUtf8("\u0301");
+		const QString flag = QString::fromUtf8("\U0001F1F8\U0001F1EA");
+		const QString warn = QString::fromUtf8("\u26a0\ufe0f");
+		const QString mixed = QString::fromUtf8("a\u6f22b");
+		CHECK(text_cells(QString()) == 0, "an empty string is no cells");
+		CHECK(text_cells(QStringLiteral("abc")) == 3, "three letters are three cells");
+		CHECK(text_cells(wide) == 4 && wide.size() == 2,
+		      "two wide clusters are four cells in two code units");
+		CHECK(text_cells(acute) == 1 && acute.size() == 2,
+		      "a base and a combining mark are one cell in two code units");
+		CHECK(text_cells(mark) == 0 && mark.size() == 1,
+		      "a combining mark alone is no cells, not one");
+		CHECK(text_cells(flag) == 2 && flag.size() == 4,
+		      "a flag is two regional indicators, one cluster, two cells");
+		CHECK(text_cells(warn) == 2 && warn.size() == 2,
+		      "and VS16 forces emoji presentation, so two cells");
+		CHECK(text_cells(mixed) == 4,
+		      "a mixed string adds the widths rather than the characters");
+
+		// THE RELATIONSHIP BETWEEN THE TWO EXPORTS, which is what an
+		// application relies on without being told: text_cells() names a
+		// budget that elide_to_cells() will not shorten. If they disagreed by
+		// one, a program measuring its own text and then eliding to that
+		// number would lose a cluster off the end of a string that fitted.
+		const QVector<QString> own = { wide, acute, flag, warn, mixed,
+		                               QStringLiteral("abc") };
+		int whole = 0;
+		for (const QString &f : own)
+			if (elide_to_cells(f, text_cells(f)) == f) ++whole;
+		CHECK(whole == own.size(),
+		      "every string elided to its own cell count is returned whole,"
+		      " so a program that measures and then elides loses nothing");
+	}
+
 	// elide_to_cells: a wide cluster is two cells, and the marker needs one.
 	//
 	// This is the gap that let a wrong implementation live in GridStyle for

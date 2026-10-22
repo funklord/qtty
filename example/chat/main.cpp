@@ -178,17 +178,12 @@ int main(int argc, char **argv) {
 		//
 		// IN CELLS, for the reason project.md 8.483 to 8.487 record: a
 		// QString's size counts code units, and a hint carrying a wide
-		// character is twice that on screen. text_cells() is internal --
-		// `make install` ships include/qtty only -- so this adds the
-		// clusters up from the two public calls, which is what an
-		// application can actually write.
+		// character is twice that on screen. Qtty::text_cells() is what
+		// the library measures its own text with, and this file summed
+		// the clusters itself until 8.500 made it public -- the one
+		// place in this tree that had to, and the evidence that an
+		// application needs it.
 		const auto fit = [&win, hints] {
-			const auto in_cells = [](const QString &s) {
-				int n = 0;
-				for (const QString &cl : Qtty::to_clusters(s))
-					n += Qtty::cluster_width(cl);
-				return n;
-			};
 			// Already answered here: setup() reads the terminal before
 			// this branch runs, so this is the real width and not a
 			// zero waiting for exec().
@@ -196,7 +191,7 @@ int main(int argc, char **argv) {
 			QStringList fits;
 			int used = 0;
 			for (const QString &hint : hints) {
-				const int cost = in_cells(hint)
+				const int cost = Qtty::text_cells(hint)
 				               + (fits.isEmpty() ? 0 : 2);
 				if (room > 0 && used + cost > room) break;
 				fits << hint;

@@ -2337,7 +2337,7 @@ three are facts about the grid.
 | `setAttribute(Qt::WA_InputMethodEnabled)` if you edit text (practice 11) | `Ctrl+C` quits instead of copying, and no cursor is placed on you |
 | Fold pasted newlines if you are single-line (*Copy and paste*) | you get the raw ones: the fold is by type and your type is not on the list |
 | Put your text lines at least `Qtty::GridMetrics::ch()` apart | two lines closer than a cell row share one, and the later one wins -- measured in Qt's own `QCommandLinkButton`, whose title and description sit 14 pixels apart and whose title therefore vanishes |
-| Measure your text in COLUMNS, with `Qtty::to_clusters()` and `Qtty::cluster_width()` | `QString::size()` counts the wrong thing for every emoji, every CJK character and every combining mark, so your own truncation lands in the middle of a glyph |
+| Measure your text in COLUMNS, with `Qtty::text_cells()`, and shorten it with `Qtty::elide_to_cells()` | `QString::size()` counts the wrong thing for every emoji, every CJK character and every combining mark, so your own truncation lands in the middle of a glyph |
 | Do not draw a rule through your own content -- leave a blank column or row for it | it is not drawn **at all**: one occupied cell anywhere along a rule drops the whole rule, blank stretches included |
 
 **The sixth is where a custom widget most often goes wrong quietly**,
@@ -2353,10 +2353,20 @@ cells, and `QString` counts neither. The rules, each measured:
   are dropped: UAX-15's stream-safe limit, so that one cell cannot cost
   the wire ten thousand bytes.
 
-`to_clusters()` splits a string the way the grid does and
-`cluster_width()` prices each piece. Between them they are what
-`elide_to_cells()` uses, and a widget that truncates its own text wants
-the same pair rather than `left(n)`.
+`Qtty::text_cells()` is the number -- the same call the library measures
+its own labels with, so your widget and the style agree about the width of
+a string by construction rather than by two implementations happening to
+match. `Qtty::elide_to_cells(s, cells, mode)` is the other half: it
+shortens to a column budget, reserves a cell for the ellipsis, honours all
+four of Qt's elide modes including `ElideNone`, and never cuts a cluster in
+two. Use them rather than `left(n)`, which counts code units.
+
+`Qtty::to_clusters()` and `Qtty::cluster_width()` are underneath both and
+are public as well, for a widget that needs the pieces rather than the
+total -- laying glyphs out one cell at a time, say. If you want a width or
+a truncation, the two above are what you want: the pair of them was
+internal until recently, and the one program in this tree that had to
+re-derive the sum from the pieces is the reason they are not.
 
 **The seventh is the one with no workaround, so it is worth the
 sentence.** A rule -- a divider, a table's grid line, an underline you

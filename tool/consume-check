@@ -86,6 +86,34 @@ int main(int argc, char **argv) {
 	std::printf("drag active=%d windows=%d\n",
 	            int(Qtty::drag_active()), int(Qtty::window_tabs().size()));
 
+	// MEASURING TEXT IN CELLS, which is the one thing every application
+	// drawing its own text has to do and could not: text_cells() and
+	// elide_to_cells() were internal until 8.500, so a program fitting a
+	// status line or a set of key hints to the terminal had to re-derive
+	// them from cluster_width() and to_clusters(). This tree's own example
+	// did exactly that.
+	//
+	// The fixture carries THREE WIDE CLUSTERS, so every number below
+	// separates cells from QChars -- 9 against 6, and an elision that is 5
+	// cells in 3 characters. A check written on an ASCII string would pass
+	// against a text_cells() that counted QChars, which is the fault these
+	// functions exist to prevent.
+	//
+	// Built from code points rather than written as literals: this file is
+	// source and the tree's ASCII rule applies to it.
+	QString wide;
+	wide += QChar(0x65E5);
+	wide += QChar(0x672C);
+	wide += QChar(0x8A9E);
+	wide += QStringLiteral("abc");
+	const QString cut = Qtty::elide_to_cells(wide, 5);
+	const QString none = Qtty::elide_to_cells(wide, 5, Qt::ElideNone);
+	std::printf("cells=%d chars=%d cut_cells=%d cut_chars=%d"
+	            " none_cells=%d none_chars=%d\n",
+	            Qtty::text_cells(wide), int(wide.size()),
+	            Qtty::text_cells(cut), int(cut.size()),
+	            Qtty::text_cells(none), int(none.size()));
+
 	if (argc > 1 && QString::fromLatin1(argv[1]) == QStringLiteral("--headless")) {
 		Qtty::NullBackend backend(QSize(40, 6));
 		QTimer quit;
@@ -142,6 +170,27 @@ if grep -q "hello from a consumer" "$dir/headless"; then
 else
 	echo "consume-check: FAILED -- NullBackend captured no such frame:" >&2
 	head -4 "$dir/headless" >&2
+	exit 1
+fi
+
+# And the cell measurements, asserted by value rather than by compiling. A
+# name that resolves is not a function that works: the whole point of
+# exporting these is that an application gets the library's own answer
+# instead of its own, so the gate has to pin the answer.
+#
+# 9 cells in 6 characters, an elision 5 cells wide in 3 characters, and
+# ElideNone giving 4 cells in 2 with no marker at all. Every pair differs,
+# so a text_cells() counting QChars fails here rather than passing.
+want='cells=9 chars=6 cut_cells=5 cut_chars=3 none_cells=4 none_chars=2'
+got=$(grep '^cells=' "$dir/headless" || true)
+if [ "$got" = "$want" ]; then
+	echo "consume-check: and measures text in cells through the public" \
+	     "header: $got"
+else
+	echo "consume-check: FAILED -- the installed text measurement does not" >&2
+	echo "               agree with the library:" >&2
+	echo "                 want $want" >&2
+	echo "                 got  ${got:-(no such line)}" >&2
 	exit 1
 fi
 

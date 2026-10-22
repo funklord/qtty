@@ -181,6 +181,92 @@ QVector<QString> to_clusters(const QString &text) {
 	return out;
 }
 
+// Shared rather than copied, which is the whole reason these two sit beside
+// to_clusters() instead of in whichever file first needed them. text_cells()
+// lived as a static in cell_item_delegate.cpp while GridStyle needed the same
+// number to right-align an item, and what a second copy of one rule costs is
+// recorded below. They were internal to src/cell_geometry.h until 8.500, and
+// the copy that export retires is an APPLICATION's: `make install` ships
+// include/qtty only, so a program fitting its own text to the terminal -- the
+// example in this tree among them -- had to sum the clusters itself.
+int text_cells(const QString &s) {
+	int n = 0;
+	for (const QString &cluster : to_clusters(s)) n += cluster_width(cluster);
+	return n;
+}
+
+// This is the delegate's version, kept over GridStyle's, because a
+// differential run over 143 cases found the two disagreeing on 9 and the
+// other one wrong on every one of them. It ended with `out.chop(1)`, which
+// removes one QChar rather than one cluster, and it reserved no cell for the
+// marker -- so a five-character CJK string elided to a budget of 3 came back
+// as a lone ellipsis using 1 of its 3 cells, and at a budget of 1 it came
+// back EMPTY, rendering a truncated string as nothing at all. Chopping a
+// QChar would also have split a surrogate pair, which is an invalid string
+// rather than a short one.
+//
+// Two implementations of one rule disagreeing is what surfaced it. Neither
+// had a test that asked about a wide cluster.
+//
+// The MODE is Qt's and was ignored: every caller got ElideRight, whatever the
+// application asked for. Measured on a tree column twelve cells wide showing
+// "/home/user/deep/dir/report.txt" -- all four modes rendered
+// "/home/user/d...", and an application sets ElideLeft on a path column
+// precisely because the END is the part worth seeing. It got the other half.
+//
+// ElideNone truncates with NO marker, which is the one thing that mode means:
+// the caller has said not to elide, and an ellipsis is an elision.
+QString elide_to_cells(const QString &s, int cells, Qt::TextElideMode mode) {
+	if (cells <= 0) return {};
+	const QVector<QString> clusters = to_clusters(s);
+	int width = 0;
+	for (const QString &cluster : clusters) width += cluster_width(cluster);
+	if (width <= cells) return s;
+
+	// Taken from one end while the running width fits, never by chopping
+	// QChars: `out.chop(1)` removes half a surrogate pair and splits a
+	// grapheme, which is an invalid string rather than a short one. That
+	// fault is recorded above and the rule holds for every mode here.
+	const auto head = [&](int budget) {
+		QString out;
+		int used = 0;
+		for (const QString &cluster : clusters) {
+			const int w = cluster_width(cluster);
+			if (used + w > budget) break;
+			out += cluster;
+			used += w;
+		}
+		return out;
+	};
+	const auto tail = [&](int budget) {
+		QString out;
+		int used = 0;
+		for (int i = clusters.size() - 1; i >= 0; --i) {
+			const int w = cluster_width(clusters[i]);
+			if (used + w > budget) break;
+			out.prepend(clusters[i]);
+			used += w;
+		}
+		return out;
+	};
+
+	if (mode == Qt::ElideNone) return head(cells);
+	// One cell reserved for U+2026, as a code point and never a character
+	// literal: QLatin1Char takes a char, so a UTF-8 ellipsis there is a
+	// multichar constant truncating to a broken bar.
+	const QChar dots(0x2026);
+	const int room = cells - 1;
+	if (room <= 0) return QString(dots);
+	if (mode == Qt::ElideLeft) return dots + tail(room);
+	if (mode == Qt::ElideMiddle) {
+		// The FRONT gets the odd cell. A path elided in the middle is read
+		// from both ends, and the left is where the reader starts.
+		const int right = room / 2;
+		return head(room - right) + dots + tail(right);
+	}
+	return head(room) + dots;
+}
+
 // ---- CellBuffer ------------------------------------------------------------
 // A WIDE CLUSTER STRADDLING THE EDGE LOSES ITS OTHER HALF, which this did
 // not do and put_cluster() has guarded against since section 5.2 was
