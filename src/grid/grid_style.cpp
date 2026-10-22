@@ -217,8 +217,29 @@ private:
 // that correct a case of their own -- those were the two that still leaked
 // after the first attempt put the clamp at the final return only, because
 // they return before reaching it.
-static QRect valid_rect(const QRect &r) {
-	return QRect(r.x(), r.y(), qMax(0, r.width()), qMax(0, r.height()));
+//
+// AND IT IS INSIDE THE THING IT DESCRIBES, which is a second question and
+// was a second fault. A rect can be positive, clear of its neighbours and
+// still name cells the widget does not own: measured 2026-10-22, a check box
+// and a radio button narrower than three cells answered a 30-pixel
+// indicator and a 30-pixel click rect, and a group box narrower than five
+// placed its indicator, its title and its CONTENTS outside itself -- the
+// last of which is what QGroupBox turns into its contents margins, so the
+// children of a narrow box are laid out past its own edge.
+//
+// CLIPPED rather than declined, deliberately. Declining a part that will not
+// fit is a judgement about what a narrow control should SHOW -- 8.470's
+// "chrome goes where chrome fits", which that entry records as a convention
+// change and the copyright holder's rather than a fix. Clipping changes no
+// picture at all, the paint device already clipping to the widget, and makes
+// the rect say what the widget actually has.
+//
+// The option's own rect is the bound, and an empty one is left alone: a
+// caller that passed no rect is not asking to be clipped to nothing.
+static QRect valid_rect(const QRect &r, const QStyleOption *opt = nullptr) {
+	const QRect c(r.x(), r.y(), qMax(0, r.width()), qMax(0, r.height()));
+	if (!opt || opt->rect.isEmpty()) return c;
+	return c.intersected(opt->rect);
 }
 
 // How many cells of border a combo box can afford. Read by subControlRect()
@@ -1491,7 +1512,7 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 		                                              opt, w);
 		if (pane.isValid() && pane.width() > 2 * cw)
 			return valid_rect(QRect(pane.left() + cw, r.top(),
-			                        pane.width() - 2 * cw, r.height()));
+			                        pane.width() - 2 * cw, r.height()), opt);
 	}
 	if ((se == SE_FrameContents || se == SE_ShapedFrameContents) && opt) {
 		const int ch = GridMetrics::ch();
@@ -1519,7 +1540,7 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 			if (opt->rect.height() >= 3 * ch)
 				return valid_rect(QRect(r.left(), opt->rect.top() + ch,
 				                        r.width(),
-				                        opt->rect.height() - 2 * ch));
+				                        opt->rect.height() - 2 * ch), opt);
 			// Below that, override ONLY where Qt's own answer is smaller
 			// than a single row -- which is where it stops being a viewport
 			// at all. The frame's border rows are given up rather than the
@@ -1543,7 +1564,7 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 			if (opt->rect.height() > 0 && opt->rect.height() % ch == 0
 			    && r.height() < ch)
 				return valid_rect(QRect(r.left(), opt->rect.top(),
-				                        r.width(), opt->rect.height()));
+				                        r.width(), opt->rect.height()), opt);
 		}
 	}
 	// The VERTICAL half of a line edit's inset, from the same number and for
@@ -1575,7 +1596,7 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 		// Nothing below three rows, as above: two borders and a content row.
 		const int v = opt->rect.height() >= 3 * ch ? ch : 0;
 		return valid_rect(QRect(r.left(), opt->rect.top() + v,
-		                        r.width(), opt->rect.height() - 2 * v));
+		                        r.width(), opt->rect.height() - 2 * v), opt);
 	}
 	// The cells the check box is DRAWN in. Both CE_ItemViewItem here and
 	// CellItemDelegate put "[x]" at one cell of indent, so cells 1, 2 and 3
@@ -1670,7 +1691,7 @@ QRect GridStyle::subElementRect(SubElement se, const QStyleOption *opt,
 	// a contents rect for a sub-element with no consumer would be choosing a
 	// layout nobody asked for. Clamping removes the invalid value and leaves
 	// the shape to whoever finds a use for it.
-	return valid_rect(r);
+	return valid_rect(r, opt);
 }
 
 // One row for a title, none without one. A check box in the title takes the
@@ -1682,8 +1703,27 @@ static int title_rows(const QStyleOptionComplex *opt) {
 	return 0;
 }
 
+// THE SAME FUNNEL AS subElementRect()'s, and the group box is why it is
+// needed on this surface too. Measured 2026-10-22, with the widget's own
+// option rather than SC_All: below five cells a checkable group box answered
+// an indicator, a title and a contents rect reaching past its right edge,
+// and the contents rect is what QGroupBox turns into its contents margins --
+// so the children of a narrow box were laid out outside it. The same
+// qMax(cw, width - inset) floor that put the spin box's arrows on its value
+// in 8.479, one control along.
+//
+// Wrapped rather than clamped at each `return`, because 8.477 measured what
+// per-site clamping costs: the clamp at the final return fixed 16 of 18
+// negative rects and the two branches that correct a case of their own
+// returned before reaching it.
 QRect GridStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *opt,
                                 SubControl sc, const QWidget *w) const {
+	return valid_rect(sub_control_rect(cc, opt, sc, w), opt);
+}
+
+QRect GridStyle::sub_control_rect(ComplexControl cc,
+                                  const QStyleOptionComplex *opt,
+                                  SubControl sc, const QWidget *w) const {
 	const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 	if (cc == CC_SpinBox && opt) {
 		// The same fault as the combo below, in the same place, and it cost

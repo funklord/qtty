@@ -7368,8 +7368,8 @@ check = "and every deliberate difference still happens, so that set cannot outli
 # about its area rather than merely being empty. 8.477.
 name = "a sub-element rect is handed out with a negative side"
 file = "src/grid/grid_style.cpp"
-find = "\treturn QRect(r.x(), r.y(), qMax(0, r.width()), qMax(0, r.height()));"
-into = "\treturn r;"
+find = "\tconst QRect c(r.x(), r.y(), qMax(0, r.width()), qMax(0, r.height()));"
+into = "\tconst QRect c(r);"
 count = 1
 check = "no sub-element rect this style hands out has a negative dimension, however small the widget it was asked about"
 
@@ -7426,3 +7426,24 @@ find = "\t\t\t\tint thumb_len = track, thumb_pos = 0;"
 into = "\t\t\t\tint thumb_len = qMax(1, track), thumb_pos = 0;"
 count = 2
 check = "and no two parts of one complex control that are meant to be disjoint claim the same pixel, the hit test settling an overlap by enumerator order rather than by what was drawn"
+
+[[sabotage]]
+# The sub-control funnel is removed, so a group box narrower than five cells
+# answers its indicator, its title and its contents outside itself again --
+# and the contents rect is what QGroupBox turns into contents margins. 8.480.
+name = "a sub-control rect is handed out unclipped"
+file = "src/grid/grid_style.cpp"
+find = "\treturn valid_rect(sub_control_rect(cc, opt, sc, w), opt);"
+into = "\treturn sub_control_rect(cc, opt, sc, w);"
+count = 1
+check = "and no sub-control rect names cells outside the control it is part of, which is neither empty nor negative nor overlapping and is still not an answer"
+
+[[sabotage]]
+# And the sub-element half of the same funnel: a check box narrower than
+# three cells answers a thirty-pixel indicator and click rect. 8.480.
+name = "a sub-element rect is not clipped to the widget"
+file = "src/grid/grid_style.cpp"
+find = "\treturn c.intersected(opt->rect);"
+into = "\treturn c;"
+count = 1
+check = "and none names cells outside the widget it was asked about, which a positive rectangle clear of its neighbours can still do"

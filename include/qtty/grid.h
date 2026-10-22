@@ -420,6 +420,15 @@ public:
 	// QApplication and QPalette overloads from every caller.
 	using QProxyStyle::polish;
 	void polish(QWidget *) override;
+
+private:
+	// The answer before it is made safe to read. subControlRect() above is a
+	// wrapper that clamps a negative side and clips to the control's own
+	// rect, for the reason subElementRect()'s valid_rect() gives: a clamp at
+	// each `return` misses the branches that return early, which is how two
+	// of eighteen invalid rectangles survived the first attempt at it.
+	QRect sub_control_rect(ComplexControl, const QStyleOptionComplex *,
+	                       SubControl, const QWidget *) const;
 };
 
 } // namespace Qtty

@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2233 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2237 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -3150,8 +3150,8 @@ Open:
   `include/qtty/application.h`. 8.462 carries what it took. **The suite
   builds and runs on both too** -- 8.463 ported it, 8.464 found why a
   cluster of its checks could not work on Qt 5, and 8.465 steps those
-  fixtures over. Re-measured 2026-10-21: **2233 on Qt 6 with no failures,
-  and 2202 passing, 31 stepping over and none failing on Qt 5** -- 8.466
+  fixtures over. Re-measured 2026-10-22: **2237 on Qt 6 with no failures,
+  and 2206 passing, 31 stepping over and none failing on Qt 5** -- 8.466
   chased the last seven, four of which were one missing plugin option, and
   8.467 closed the Qt 5 xcb trio (a forked child that cannot finish
   exiting, not the deferral it appeared to be). The axis has paid for
@@ -18390,6 +18390,97 @@ fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
 
+
+### 8.480 Rectangles naming cells the widget does not own (2026-10-22)
+
+**The fourth question of the family, and the one the first three could not
+see.** 8.476 gated whether a sub-control is empty, 8.477 whether it has a
+negative side, 8.479 whether two of them overlap. A rectangle can pass all
+three and still describe cells the widget does not have, which is what the
+spin box's arrows were doing at cells `-2..-1` of a one-cell box. Asked of
+both surfaces, it failed on both.
+
+    group box   contents, title and indicator outside the box below 5 cells
+    check box   a 30-pixel indicator and click rect in a 1- or 2-cell widget
+    radio       the same
+
+**The group box is the one with teeth, because `SC_GroupBoxContents` is
+what `QGroupBox` turns into its contents margins.** A box narrower than
+three cells answered a contents rect starting one cell in and one cell wide
+-- `10x19+10+38` on a widget ten pixels wide -- so its children were laid
+out past its own right edge. Measured by putting a check box in a
+one-cell-wide checkable group box: the child came back `0x19+10+38`, zero
+cells wide, at an x the box does not reach.
+
+**The same `qMax(cw, width - inset)` floor as the spin box's, one control
+along.** A floor on a width without a matching reduction of the offset
+widens a part over its neighbour or past the edge; 8.479 found it on the
+spin box's field, and the group box has it three times -- the contents, the
+title (which starts after a three-cell indicator and a gap, so it needs
+five cells) and `SC_GroupBoxFrame`'s two-row floor on a one-row box.
+
+**CLIPPED rather than declined, and the distinction is the holder's.**
+Declining a part that will not fit is a judgement about what a narrow
+control should SHOW -- 8.470 records "chrome goes where chrome fits" as a
+convention change rather than a fix, and reserves it. Clipping changes no
+picture at all, the paint device already clipping to the widget, and makes
+the rect say what the widget actually has. The only visible consequence of
+the old behaviour was a truncated indicator -- a one-cell checkable group
+box drew `[`, a two-cell one `[x` -- and that is unchanged, because it was
+the clip in the device doing it.
+
+**Wrapped, not clamped per site.** `subControlRect()` is now a wrapper over
+a private `sub_control_rect()`, and every sub-element exit passes its
+option to `valid_rect()`. 8.477 measured what the other order costs: a
+clamp at the final return fixed 16 of 18 negative rects and the two
+branches that correct a case of their own returned before reaching it.
+
+**And the clip swallowed the check that the clamp was there for**, which
+the sabotage harness reported rather than anybody noticing.
+`QRect::intersected()` of an invalid rectangle is EMPTY rather than
+negative, so with a non-empty option rect the clip answers for the clamp
+and removing the clamp left the negativity check green. The sweep has a
+pass with an EMPTY option rect now -- the one place the clamp is still
+visible -- and the entry reddens again. A hand-built option is the faithful
+instrument for exactly that one pass, the question being this function's
+arithmetic on a rect it was handed rather than what a widget asks for.
+
+**Six rects are off the grid, pinned rather than refused, and the
+consequence was measured before deciding that.** `is_aligned()` is this
+library's own test and `GridGuard` reports a WIDGET that fails it, so a
+rect this style hands out that fails it is worth knowing about: the check
+box's click rect is 62 pixels on a ten-pixel cell, the radio's 63, and
+their contents and focus rects start at 39 and 36. All six come from
+`QCommonStyle` compounding this style's three-cell indicator with
+`PM_CheckBoxLabelSpacing` and the focus margins -- the 29 metrics 8.476
+measured as answering a fixed number of pixels, whose fate is recorded
+there as the holder's.
+
+**Rendering a check box and a radio button at 4, 6, 8 and 14 cells and
+testing every cell's centre against the click rect: every cell carrying ink
+is a cell a click reaches.** The cells the band stops short of are blank
+ones past the label. So the set is pinned in both directions -- a seventh
+cannot arrive unnoticed -- and the clickability check is what says why.
+
+**That check cannot be reddened from inside this library, and says so.**
+Both sides are `QCommonStyle`'s: it draws the indicator into
+`SE_CheckBoxIndicator` and the label into `SE_CheckBoxContents`, and builds
+the click rect from those same two, so the one metric of this style's that
+enters moves the drawing and the band together. Shrinking
+`PM_IndicatorWidth` to one cell WIDENS the band, and the sabotage entry
+written for it was withdrawn rather than left passing. It stays for the
+reason the `setFrame(false)` check beside it stays: this file already
+answers eight sub-element rects of its own, and the first time it answers
+either of those two the agreement that holds for free stops holding.
+
+**Four new pinned differences from the base style**, all of them a group
+box at one cell declining a part Fusion claims -- its contents in all three
+configurations and a checkable box's title. 93 agreements and 20
+differences, the same set on Qt 5.15.15 and Qt 6.8.2, and the off-grid six
+are identical on both too.
+
+2237 checks on Qt 6, 2206 passing and 31 stepping over on Qt 5, 689
+sabotage entries, every anchor matching.
 
 ### 8.479 Four parts of three controls claiming cells they did not own (2026-10-21)
 

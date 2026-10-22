@@ -598,7 +598,7 @@ int suite_grid() {
 	// generalises to every override: what did Qt decline to answer, and does
 	// this style now answer it?
 	//
-	// PINNED AS MEASURED. Sixteen differences, and each is this style being
+	// PINNED AS MEASURED. Twenty differences, and each is this style being
 	// right or a case already recorded:
 	//
 	//   groupbox bare/checkbox, bare/label, titled/checkbox   declined
@@ -634,6 +634,17 @@ int suite_grid() {
 	//     cannot be read is 8.473's worst case. Both arrows go rather than
 	//     one, which is the scroll bar's answer one control along, and it
 	//     keeps the keyboard as the way to step it.
+	//   groupbox bare/contents, titled/contents, checkable/contents
+	//   groupbox checkable/label   declined
+	//     A one-cell group box has no interior: the contents rect is a cell
+	//     of inset from each side, so it lies wholly outside a widget one
+	//     cell wide, and a checkable box's title starts after a
+	//     three-cell indicator and a gap. Both used to be answered
+	//     OUTSIDE the box -- and the contents rect is what QGroupBox turns
+	//     into its contents margins, so a narrow box laid its children
+	//     past its own edge. Clipped to the widget now, which leaves them
+	//     empty at that width, and the children were already zero cells
+	//     wide there.
 	//   toolbutton/button, menu   declined
 	//     A menu button wants a cell for its arrow and a cell for the
 	//     bracket the arrow sits inside, so at one cell both parts decline
@@ -643,11 +654,15 @@ int suite_grid() {
 	//
 	// ASSERTED IN BOTH DIRECTIONS, so the set cannot rot: nothing outside it
 	// may differ, and everything inside it must still differ. The same set
-	// holds on Qt 5.15.15 and Qt 6.8.2 -- 99 agreements and these 16 on both
+	// holds on Qt 5.15.15 and Qt 6.8.2 -- 93 agreements and these 20 on both
 	// -- so unlike the pixel metrics above this needs no conditional.
 	{
 		static const char *const allowed[] = {
 			"combobox/field/claimed",
+			"groupbox bare/contents/declined",
+			"groupbox checkable/contents/declined",
+			"groupbox checkable/label/declined",
+			"groupbox titled/contents/declined",
 			"groupbox bare/checkbox/declined",
 			"groupbox bare/label/declined",
 			"groupbox titled/checkbox/declined",
@@ -668,7 +683,7 @@ int suite_grid() {
 		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 		QSet<QString> seen_diffs;
 		int agreed = 0;
-		QStringList negative, overlapping;
+		QStringList negative, overlapping, outside, offgrid;
 		int pairs = 0;
 		const auto cmp = [&](const QString &what, const QString &part,
 		                     QStyle::ComplexControl cc, QStyle::SubControl sc,
@@ -683,6 +698,19 @@ int suite_grid() {
 			// 8.477 found 18 of them on the sub-element surface.
 			if (gr.width() < 0 || gr.height() < 0)
 				negative << what + QLatin1Char('/') + part;
+			// AND IT HAS TO BE INSIDE THE CONTROL IT IS PART OF, which is
+			// a third question again: a rect can be positive, clear of its
+			// neighbours and still describe cells the widget does not own.
+			// The spin box's arrows were at cells -2..-1 of a one-cell box
+			// until 8.479, so this is not hypothetical -- it is the one
+			// invariant of that family nothing asks about.
+			if (!gr.isEmpty() && !o->rect.contains(gr))
+				outside << what + QLatin1Char('/') + part;
+			if (!gr.isEmpty() && !GridMetrics::is_aligned(gr))
+				offgrid << what + QLatin1Char('/') + part
+				           + QStringLiteral(" -> %1x%2+%3+%4")
+				             .arg(gr.width()).arg(gr.height())
+				             .arg(gr.x()).arg(gr.y());
 			const bool b = plain->subControlRect(cc, o, sc, w).isEmpty();
 			const bool g = gr.isEmpty();
 			if (b == g) { ++agreed; return; }
@@ -956,6 +984,20 @@ int suite_grid() {
 		// has a positive control that needs no sabotage: the base style
 		// overlaps 11 times at these same questions, so the comparison is
 		// one that can fail and the number is not the question's absence.
+		outside.sort();
+		outside.removeDuplicates();
+		if (!outside.isEmpty())
+			printf("info: sub-control(s) outside their own control: %s\n",
+			       qPrintable(outside.join(QStringLiteral(", "))));
+		offgrid.sort();
+		offgrid.removeDuplicates();
+		printf("info: %d sub-control rect(s) off the grid%s%s\n",
+		       int(offgrid.size()), offgrid.isEmpty() ? "" : ": ",
+		       qPrintable(offgrid.join(QStringLiteral(", "))));
+		CHECK(outside.isEmpty(),
+		      "and no sub-control rect names cells outside the control it is"
+		      " part of, which is neither empty nor negative nor overlapping"
+		      " and is still not an answer");
 		CHECK(pairs > 0 && overlapping.isEmpty(),
 		      "and no two parts of one complex control that are meant to be"
 		      " disjoint claim the same pixel, the hit test settling an"
@@ -977,7 +1019,7 @@ int suite_grid() {
 	{
 		const int cw = GridMetrics::cw(), ch = GridMetrics::ch();
 		QStyle *st = QApplication::style();
-		QStringList bad;
+		QStringList bad, out, askew;
 		int looked = 0;
 		const auto look = [&](const QString &what, const QString &name,
 		                      QStyle::SubElement se, const QStyleOption *o,
@@ -987,6 +1029,18 @@ int suite_grid() {
 			if (r.width() < 0 || r.height() < 0)
 				bad << QStringLiteral("%1/%2 -> %3x%4").arg(what).arg(name)
 				       .arg(r.width()).arg(r.height());
+			// And the containment question, for the sub-control sweep's
+			// reason above and asked here because this sweep already holds
+			// the option it would be compared against.
+			if (!o->rect.isEmpty() && !r.isEmpty() && !o->rect.contains(r))
+				out << QStringLiteral("%1/%2 -> %3x%4+%5+%6").arg(what)
+				       .arg(name).arg(r.width()).arg(r.height())
+				       .arg(r.x()).arg(r.y());
+			if (!o->rect.isEmpty() && !r.isEmpty()
+			    && !GridMetrics::is_aligned(r))
+				askew << QStringLiteral("%1/%2 -> %3x%4+%5+%6").arg(what)
+				         .arg(name).arg(r.width()).arg(r.height())
+				         .arg(r.x()).arg(r.y());
 		};
 		for (int n : { 1, 2, 3, 6, 14 }) {
 			{
@@ -1087,6 +1141,43 @@ int suite_grid() {
 				     QStyle::SE_ProgressBarLabel, &o, &x);
 			}
 		}
+		// AND ONE PASS WITH AN EMPTY OPTION RECT, which is the only place
+		// the negative-side clamp can still be seen. A non-empty rect is
+		// intersected with now, and QRect::intersected() of an invalid
+		// rect is EMPTY rather than negative -- so the clip answers for
+		// the clamp and removing the clamp left this check green.
+		// Measured by the sabotage harness, which is what it is for.
+		//
+		// A hand-built option is the faithful instrument here, unlike
+		// everywhere else in this sweep: the question is this function's
+		// arithmetic on a rect it was handed, not what any widget asks
+		// for. A real widget is still passed, because the implementation
+		// reads it.
+		{
+			QPushButton host(QStringLiteral("Hi"));
+			host.setAttribute(Qt::WA_DontShowOnScreen);
+			host.resize(6 * cw, ch);
+			host.show();
+			QCoreApplication::processEvents();
+			QStyleOptionFrame f;
+			f.rect = QRect();
+			f.lineWidth = 1;
+			look(QStringLiteral("empty option"),
+			     QStringLiteral("frame contents"),
+			     QStyle::SE_FrameContents, &f, &host);
+			look(QStringLiteral("empty option"),
+			     QStringLiteral("shaped frame"),
+			     QStyle::SE_ShapedFrameContents, &f, &host);
+			QStyleOptionButton b;
+			b.rect = QRect();
+			look(QStringLiteral("empty option"),
+			     QStringLiteral("push contents"),
+			     QStyle::SE_PushButtonContents, &b, &host);
+			look(QStringLiteral("empty option"), QStringLiteral("push focus"),
+			     QStyle::SE_PushButtonFocusRect, &b, &host);
+			look(QStringLiteral("empty option"), QStringLiteral("check box"),
+			     QStyle::SE_CheckBoxIndicator, &b, &host);
+		}
 		bad.sort();
 		printf("info: %d sub-element rect(s) asked, %d with a negative"
 		       " dimension%s%s\n", looked, int(bad.size()),
@@ -1097,6 +1188,69 @@ int suite_grid() {
 		CHECK(looked > 0 && bad.isEmpty(),
 		      "no sub-element rect this style hands out has a negative"
 		      " dimension, however small the widget it was asked about");
+		out.sort();
+		out.removeDuplicates();
+		printf("info: %d of them name cells outside the widget%s%s\n",
+		       int(out.size()), out.isEmpty() ? "" : ": ",
+		       qPrintable(out.join(QStringLiteral(", "))));
+		// AND WHICH OF THEM ARE OFF THE GRID, pinned rather than
+		// forbidden. `is_aligned()` is this library's own test and
+		// GridGuard reports a WIDGET that fails it, so a rect this style
+		// hands out that fails it is at least worth knowing about. Six do,
+		// all on the check box and the radio button, and all from
+		// QCommonStyle compounding the indicator's three cells with
+		// PM_CheckBoxLabelSpacing and the focus margins -- which are
+		// among the 29 metrics 8.476 measured as answering a fixed number
+		// of pixels, and whether those should answer in cells is recorded
+		// there as the copyright holder's.
+		//
+		// MEASURED FOR A CONSEQUENCE AND THERE IS NONE, which is why this
+		// pins rather than asserts emptiness: rendering a check box and a
+		// radio button at 4, 6, 8 and 14 cells and testing every cell's
+		// centre against the click rect, **every cell carrying ink is a
+		// cell a click reaches** at every width. The cells the click rect
+		// stops short of are blank ones past the label.
+		//
+		// Asserted in both directions, like the emptiness set above: a
+		// seventh cannot arrive unnoticed and one that goes away cannot
+		// leave a stale entry behind.
+		static const char *const askew_pinned[] = {
+			"checkbox/click -> 62x19+0+0",
+			"checkbox/contents -> 100x19+39+0",
+			"checkbox/contents -> 20x19+39+0",
+			"checkbox/focus -> 24x19+36+0",
+			"checkbox/focus -> 26x19+36+0",
+			"radio/click -> 63x19+0+0",
+		};
+		askew.sort();
+		askew.removeDuplicates();
+		printf("info: %d sub-element rect(s) off the grid%s%s\n",
+		       int(askew.size()), askew.isEmpty() ? "" : ": ",
+		       qPrintable(askew.join(QStringLiteral(", "))));
+		QStringList askew_new, askew_gone;
+		for (const QString &a : askew) {
+			bool known = false;
+			for (const char *k : askew_pinned)
+				if (a == QLatin1String(k)) known = true;
+			if (!known) askew_new << a;
+		}
+		for (const char *k : askew_pinned)
+			if (!askew.contains(QLatin1String(k)))
+				askew_gone << QString::fromLatin1(k);
+		if (!askew_new.isEmpty())
+			printf("info: not pinned: %s\n",
+			       qPrintable(askew_new.join(QStringLiteral(", "))));
+		if (!askew_gone.isEmpty())
+			printf("info: pinned but gone: %s\n",
+			       qPrintable(askew_gone.join(QStringLiteral(", "))));
+		CHECK(askew_new.isEmpty() && askew_gone.isEmpty(),
+		      "and the rects that are off the grid are exactly the six"
+		      " measured ones, every cell of whose ink a click still"
+		      " reaches");
+		CHECK(out.isEmpty(),
+		      "and none names cells outside the widget it was asked about,"
+		      " which a positive rectangle clear of its neighbours can"
+		      " still do");
 	}
 
 	return fails;

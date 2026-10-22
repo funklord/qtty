@@ -5033,6 +5033,95 @@ int suite_widgets() {
 		CHECK(!row(3).contains(QLatin1Char('[')),
 		      "and setFrame(false) is obeyed, so a bare field stays bare");
 
+		// EVERY CELL A CHECK BOX INKS IS A CELL A CLICK REACHES, which
+		// is the consequence behind a measurement that looks alarming and
+		// is not. `SE_CheckBoxClickRect` is off the grid -- 62 pixels on a
+		// ten-pixel cell, and the radio's 63 -- because QCommonStyle
+		// compounds this style's three-cell indicator with
+		// PM_CheckBoxLabelSpacing and the focus margins, which answer in
+		// Fusion's pixels. So the live band ends part-way through a cell.
+		//
+		// The question that matters is not whether the number divides but
+		// whether it stops short of anything drawn, and it does not: the
+		// cells it excludes are blank ones past the label. The two are
+		// derived separately -- this style draws CE_CheckBox itself and
+		// QAbstractButton tests the press against that rect -- which is
+		// what makes their agreement worth asserting rather than assuming.
+		//
+		// The suite_grid sweep pins the six off-grid rects; this is why
+		// they are pinned rather than refused.
+		//
+		// HONEST ABOUT WHAT IT CAN PROVE, like the setFrame(false) check
+		// above: nothing in this library can redden it today. Both sides
+		// are QCommonStyle's -- it draws the indicator into
+		// SE_CheckBoxIndicator and the label into SE_CheckBoxContents, and
+		// builds the click rect from those same two -- so the one metric
+		// of this style's that enters, PM_IndicatorWidth, moves the
+		// drawing and the click band together. Tried: shrinking it to one
+		// cell WIDENS the band and the check stayed green, which is why
+		// the sabotage entry written for it was withdrawn rather than
+		// kept passing.
+		//
+		// It stays because the property is worth holding and the risk is
+		// live: this file already answers eight sub-element rects of its
+		// own, and the first time it answers either of these two the
+		// agreement that currently holds for free stops holding.
+		//
+		// THE OPTION IS THE WIDGET'S OWN, which this check needed before it
+		// could say anything. Built by hand from initFrom() it carries no
+		// `text` -- the field `SE_CheckBoxClickRect` is computed FROM -- so
+		// the live band came back as the indicator alone and 24 inked cells
+		// looked dead. The same trap 8.471 named for the combo's `frame`,
+		// on a different field: a hand-built option is only as faithful as
+		// the lines that fill it, and the one that matters here is the one
+		// the answer depends on.
+		{
+			const int cw = GridMetrics::cw();
+			struct Cb : QCheckBox { using QCheckBox::QCheckBox;
+				QStyleOptionButton real() const {
+					QStyleOptionButton o; initStyleOption(&o); return o; } };
+			struct Rb : QRadioButton { using QRadioButton::QRadioButton;
+				QStyleOptionButton real() const {
+					QStyleOptionButton o; initStyleOption(&o); return o; } };
+			int ink_dead = 0, widths = 0;
+			for (int kind = 0; kind < 2; ++kind) {
+				for (int cells : { 4, 6, 8, 14 }) {
+					Cb *c = kind ? nullptr
+					             : new Cb(QStringLiteral("Hi there"));
+					Rb *r = kind ? new Rb(QStringLiteral("Hi there"))
+					             : nullptr;
+					QWidget *b = kind ? static_cast<QWidget *>(r) : c;
+					b->setFixedSize(cw * cells, ch);
+					show(*b, cells, 1);
+					CellBuffer pic(cells, 1);
+					render_once(*b, pic);
+					const QStyleOptionButton bo = kind ? r->real()
+					                                   : c->real();
+					const QRect live = b->style()->subElementRect(
+					    kind ? QStyle::SE_RadioButtonClickRect
+					         : QStyle::SE_CheckBoxClickRect, &bo, b);
+					++widths;
+					for (int x = 0; x < cells; ++x) {
+						const QString g = pic.at(x, 0).ch;
+						const bool inked =
+						    !g.isEmpty() && g != QStringLiteral(" ");
+						if (inked
+						    && !live.contains(QPoint(x * cw + cw / 2,
+						                             ch / 2)))
+							++ink_dead;
+					}
+					delete b;
+					GridGuard::reset();
+				}
+			}
+			printf("info: %d cell(s) of check box and radio ink are outside"
+			       " the click rect, over %d width(s)\n", ink_dead, widths);
+			CHECK(widths == 8 && ink_dead == 0,
+			      "every cell a check box or a radio button draws ink in is"
+			      " a cell a click reaches, the click rect being off the"
+			      " grid but never short of the label");
+		}
+
 		// Where a one-row field puts its TEXT, which is a second consumer of
 		// PM_DefaultFrameWidth: QLineEdit hands that number to lineWidth and
 		// QCommonStyle insets by it on all four sides, so a one-row field's
