@@ -7518,6 +7518,101 @@ int suite_router() {
 			      "asking about a container lists what is inside it and "
 			      "not its siblings, the focus chain running on past the "
 			      "end of a group");
+
+			// QT'S OWN COMPOSITES, which no fixture here contained and
+			// which is where the filter was wrong. A widget that HAS a
+			// focus proxy is not a stop -- focusing it focuses something
+			// else, so it is not a place the focus can come to rest --
+			// and Qt's focusNextPrevChild_helper() skips one. This asked
+			// only about visibility, enablement and focus policy. 8.504.
+			//
+			// The proxy is set the surprising way round, which is why
+			// ordinary forms meet it: a QSpinBox's internal QLineEdit
+			// carries the SPIN BOX as its proxy, and an editable
+			// QComboBox's does the same. Both answered all three
+			// questions this used to ask, so a four-control form listed
+			// SIX stops -- measured, and Qt's Tab cycle on the same form
+			// visits four.
+			//
+			// It matters because of the direction. The contract is that
+			// this lists what a user can reach and an application audits
+			// against it, and pointer_only() is the complement -- so
+			// over-reporting here under-reports there, and a control
+			// nothing can focus goes unnamed. That is the one answer the
+			// comment over keyboard_reachable() says it exists to rule
+			// out, reached by a route a hand-written walk does not have.
+			{
+				QWidget form;
+				form.setAttribute(Qt::WA_DontShowOnScreen);
+				auto *rows = new QFormLayout(&form);
+				auto *before = new QLineEdit;
+				auto *spin = new QSpinBox;
+				auto *combo = new QComboBox;
+				combo->setEditable(true);
+				combo->addItem(QStringLiteral("one"));
+				auto *after = new QLineEdit;
+				rows->addRow(QStringLiteral("&First"), before);
+				rows->addRow(QStringLiteral("&Count"), spin);
+				rows->addRow(QStringLiteral("&Pick"), combo);
+				rows->addRow(QStringLiteral("&Last"), after);
+				form.resize(GridMetrics::cells(40, 10));
+				form.show();
+				QCoreApplication::processEvents();
+
+				// The fixture's own premise: Qt really did give these
+				// composites internal children pointing back at them.
+				// Without this the checks below pass on a Qt that stopped
+				// doing so, which would make them vacuous rather than
+				// wrong.
+				QVector<QWidget *> internal;
+				for (QWidget *c : form.findChildren<QWidget *>())
+					if (c->focusProxy() == spin || c->focusProxy() == combo)
+						internal.append(c);
+				CHECK(internal.size() == 2,
+				      "a spin box and an editable combo each carry an"
+				      " internal widget whose focus proxy is the composite"
+				      " itself, which is the arrangement this is about");
+
+				const QVector<QWidget *> stops = keyboard_reachable(&form);
+				bool any_proxied = false;
+				for (QWidget *w : stops) if (w->focusProxy()) any_proxied = true;
+				CHECK(stops.size() == 4 && stops.contains(before)
+				      && stops.contains(spin) && stops.contains(combo)
+				      && stops.contains(after),
+				      "a form of four controls lists four stops, the"
+				      " composites themselves and not the widgets inside"
+				      " them");
+				CHECK(!any_proxied,
+				      "and nothing it lists has a focus proxy, which is the"
+				      " rule rather than the two classes that happened to"
+				      " break it");
+
+				// THE RELATIONSHIP, as above, and here it is also the
+				// differential: Qt answers Tab in this build, so where the
+				// focus actually lands is Qt's own chain. Measured on an
+				// ordinary activatable window outside qtty, Qt's cycle on
+				// this form visits exactly these four.
+				InputRouter r3(&form);
+				Qtty::set_current_window(&form);
+				before->setFocus();
+				QCoreApplication::processEvents();
+				QVector<QWidget *> met;
+				for (int i = 0; i < stops.size(); ++i) {
+					r3.on_key({Qt::Key_Tab, QStringLiteral("\t"),
+						       false, false, false});
+					QCoreApplication::processEvents();
+					met.append(form.focusWidget());
+				}
+				QVector<QWidget *> x = stops, y = met;
+				std::sort(x.begin(), x.end());
+				std::sort(y.begin(), y.end());
+				CHECK(!x.isEmpty() && x == y,
+				      "and four presses of Tab meet exactly those four, so"
+				      " the list is the cycle a person walks rather than a"
+				      " second copy of the filter");
+				form.hide();
+				QCoreApplication::processEvents();
+			}
 		}
 
 		// ---- the other side of the same question: what only a POINTER

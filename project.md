@@ -17,7 +17,7 @@ number rather than restating it.
 
 ## 0a. State
 
-2307 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
+2311 checks, 0 failures. **The duration is 4.81 seconds of user time, taken
 2026-10-03 over 2059 checks** -- `/usr/bin/time ./build-test/qtty-tests`,
 best of three: 4.81, 4.86, 4.93 user, 0.51 to 0.57 sys, 14.64 to 14.79
 wall. **The load was 1.68** one-minute and 1.62 five-minute, rising to 2.90
@@ -18390,6 +18390,69 @@ no chord and no reason, which is the only way to watch the partition
 fail from the side the old check was blind to. One existing entry was
 re-anchored -- the readline guard's line changed under it -- and
 `--validate` passes over all 393.
+
+
+### 8.504 A widget with a focus proxy was counted as a tab stop (2026-10-23)
+
+**8.503's shape, generalised into the lens that found this one.** That
+defect was qtty's replacement for a Qt mechanism missing a precondition Qt
+checks. qtty replaces several, because nothing activates a window here --
+`QShortcutMap` was one, and the focus-chain filter is another. So: for
+every mechanism reimplemented, compare the preconditions.
+
+**Qt's `focusNextPrevChild_helper()` skips a candidate whose `focus_proxy`
+is set** --
+
+        if ((test->focusPolicy() & focus_flag) == focus_flag
+            && !(test->d_func()->extra && test->d_func()->extra->focus_proxy)
+            && test->isVisibleTo(toplevel) && test->isEnabled() ...
+
+-- because focusing such a widget focuses something else, so it is not a
+place the focus can come to rest. `tab_stop()` asked about the scope,
+visibility, enablement and focus policy, and not about that.
+
+**Qt's own composites set the proxy the surprising way round**, which is
+why ordinary forms meet this rather than clever applications only.
+Measured on a form of four controls:
+
+        QSpinBox        internal QLineEdit, proxy = the QSpinBox
+        QComboBox       internal QLineEdit, proxy = the QComboBox
+        (editable)
+
+Both internal children answered visible, enabled and `TabFocus`, so
+`keyboard_reachable()` listed **six** stops. Qt's Tab cycle on the same
+form, measured on an ordinary activatable window outside qtty, visits
+**four**.
+
+**The direction is what makes it worth fixing rather than noting.**
+`keyboard_reachable()` is public, the guide asks an application to audit
+against it, and `pointer_only()` is its complement -- so over-reporting
+here under-reports there, and a control nothing can focus goes unnamed.
+"A test built on that reports controls reachable that a user cannot get
+to" is what the comment over that function already says a hand-written
+walk gets wrong; it had the same fault by a route a hand-written walk
+does not even have.
+
+**`move_focus()` reads the same filter and was not visibly wrong**, which
+is worth recording so the next reader does not go looking for a Tab bug
+that was never there. It calls `setFocus()` on the stop it picks and Qt
+resolves that through the proxy, so the focus landed on the spin box
+either way -- a redundant step rather than a wrong one. The Tab cycle is
+byte-for-byte what it was, before and after, and that is asserted.
+
+**2307 checks to 2311**, and the fixture asserts its own premise first: Qt
+really did give these composites internal children pointing back at them.
+Without that, the checks would pass on a Qt that stopped doing so, which
+is vacuous rather than wrong. The list is then compared against where Tab
+actually lands, which in this build is Qt's answer rather than qtty's,
+since Qt takes Tab before the fallback runs.
+
+**One sabotage entry added, one re-anchored.** The new one removes the
+proxy test and reddens its check and two others. The re-anchored one is
+8.70's `focus steps onto a disabled control`, whose anchor spanned the two
+lines the new test now sits between -- `--validate` found it, as it did
+yesterday for the elide entries, and it is anchored on the single line it
+actually breaks now. `--validate` passes over all 726.
 
 
 ### 8.503 A shortcut answered from a page you were not on (2026-10-23)

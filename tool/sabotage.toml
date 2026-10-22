@@ -988,10 +988,14 @@ count = 1
 check = "Alt and a letter that matches nothing types nothing"
 
 [[sabotage]]
+# Re-anchored 8.504: the two lines it spanned are no longer adjacent, the
+# focus-proxy test having gone between them. Anchored on the one line it
+# actually breaks, and `if (false)` rather than deleting it, so the edit is
+# the same size whatever else joins that function.
 name = "focus steps onto a disabled control"
 file = "src/runtime/input_router.cpp"
-find = "\tif (!w->isVisible() || !w->isEnabled()) return false;\n\treturn (w->focusPolicy() & Qt::TabFocus) != 0;"
-into = "\treturn (w->focusPolicy() & Qt::TabFocus) != 0;"
+find = "\tif (!w->isVisible() || !w->isEnabled()) return false;"
+into = "\tif (false) return false;"
 count = 1
 check = "a disabled control is stepped over rather than landed on"
 
@@ -6800,6 +6804,18 @@ find = "\t\tconst CellClip bound(dev, cells_of_rect(visible_rect(w), w,\n\t\t   
 into = "\t\tconst CellClip bound(dev, cells_of_rect(w->rect(), w, dev->origin));"
 count = 1
 check = "a cell-painted widget taller than its viewport is handed its whole rect and writes only the rows the viewport shows"
+
+[[sabotage]]
+# The focus-proxy test removed from tab_stop(), which is how it was: a
+# QSpinBox's internal QLineEdit carries the spin box as its proxy and
+# answered all three of the questions this used to ask, so a four-control
+# form listed six stops where Qt's Tab cycle visits four. 8.504.
+name = "a widget that has a focus proxy is counted as a tab stop"
+file = "src/runtime/input_router.cpp"
+find = "\tif (w->focusProxy()) return false;"
+into = "\tif (false) return false;"
+count = 1
+check = "a form of four controls lists four stops, the composites themselves and not the widgets inside them"
 
 [[sabotage]]
 # An ACTION's owner state unread, which is how it was: a QAction on the page

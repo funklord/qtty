@@ -622,6 +622,35 @@ static QList<QAction *> mnemonic_actions(QWidget *scope) {
 static bool tab_stop(QWidget *scope, QWidget *w) {
 	if (w != scope && !scope->isAncestorOf(w)) return false;
 	if (!w->isVisible() || !w->isEnabled()) return false;
+	// A WIDGET THAT HAS A FOCUS PROXY IS NOT A STOP, which Qt's own walk
+	// says and this did not ask. focusNextPrevChild_helper() skips a
+	// candidate whose `focus_proxy` is set, because focusing it would focus
+	// something else -- so it is not a place the focus can come to rest.
+	//
+	// Qt's composites set the proxy the surprising way round, which is why
+	// this matters for ordinary forms rather than for clever applications
+	// only. Measured on a form of four controls: a QSpinBox's internal
+	// QLineEdit carries the SPIN BOX as its focus proxy, and an editable
+	// QComboBox's does the same, so both internal children answered
+	// isVisible(), isEnabled() and TabFocus and were counted. Qt's Tab
+	// cycle on the same form visits four widgets; keyboard_reachable()
+	// listed six.
+	//
+	// The direction is what makes it worth fixing rather than noting. That
+	// function's contract -- in the comment below and in the guide -- is
+	// that it lists what a user can REACH, and an application audits
+	// against it; pointer_only() is its complement, so over-reporting here
+	// under-reports there and a control nothing can focus goes unnamed.
+	// "A test built on that reports controls reachable that a user cannot
+	// get to" is what the comment below says a hand-written walk gets
+	// wrong, and this had the same fault by a route the hand-written walk
+	// does not even have.
+	//
+	// move_focus() reads the same filter and was not visibly wrong: it
+	// calls setFocus() on the stop it picks, and Qt resolves that through
+	// the proxy, so the focus landed on the spin box either way. A
+	// redundant step rather than a wrong one, and it stops being taken.
+	if (w->focusProxy()) return false;
 	return (w->focusPolicy() & Qt::TabFocus) != 0;
 }
 
